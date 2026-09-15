@@ -235,7 +235,8 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 	h := newHarness(t)
 	h.json(http.MethodPut, "/api/settings", map[string]any{
 		"swarm": map[string]any{"max_concurrent": 3, "agent_timeout_seconds": 42,
-			"max_turns": 9, "manager_max_iterations": 11, "progress_interval_seconds": 7},
+			"max_turns": 9, "manager_max_iterations": 11, "progress_interval_seconds": 7,
+			"delta_coalesce_ms": 16},
 		"tools": map[string]any{"disabled": []string{"exec"}, "web_search_max_results": 5},
 		"log":   map[string]any{"level": "debug"},
 	}, http.StatusOK)
@@ -245,6 +246,9 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 	}
 	if h.app.Config.Swarm.ProgressIntervalSeconds != 7 {
 		t.Fatalf("progress interval not applied: %+v", h.app.Config.Swarm)
+	}
+	if h.app.Config.Swarm.DeltaCoalesceMS != 16 {
+		t.Fatalf("delta coalesce not applied: %+v", h.app.Config.Swarm)
 	}
 	if !h.app.Config.Tools.IsDisabled("exec") {
 		t.Fatal("tool toggle not applied")
@@ -780,7 +784,7 @@ func TestRestartRecoversConversations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	th, err := first.Engine.CreateThread("Survivor", "")
+	th, err := first.Engine.CreateThread("Survivor", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -837,6 +841,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindSteer, "steer"},
 		{engine.KindCleanup, "cleanup"},
 		{engine.KindProgress, "progress"},
+		{engine.KindMemoryReview, "memory_review"},
 	} {
 		if tc.got != tc.want {
 			t.Fatalf("the event kind %q the UI relies on is now sent as %q", tc.want, tc.got)

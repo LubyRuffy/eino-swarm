@@ -324,15 +324,15 @@ func TestLifecycleToolsReportFailuresToTheManager(t *testing.T) {
 		}}
 	}
 	tools := reg.Tools()
-	spawnT, sendT, waitT, closeT := invokable(t, tools[0]), invokable(t, tools[1]),
-		invokable(t, tools[2]), invokable(t, tools[3])
+	spawnT, sendT, waitT, closeT, resumeT := invokable(t, tools[0]), invokable(t, tools[1]),
+		invokable(t, tools[2]), invokable(t, tools[3]), invokable(t, tools[4])
 	ctx := context.Background()
 
 	// malformed arguments are the model's mistake, and it has to be told which
 	// tool it got wrong
 	for name, it := range map[string]tool.InvokableTool{
 		"spawn_agent": spawnT, "send_message": sendT,
-		"wait_agents": waitT, "close_agent": closeT,
+		"wait_agents": waitT, "close_agent": closeT, "resume_agent": resumeT,
 	} {
 		_, err := it.InvokableRun(ctx, "{not json")
 		if err == nil || !strings.Contains(err.Error(), name) {
@@ -688,8 +688,8 @@ func TestManagerConfigWiring(t *testing.T) {
 	if cfg.Name != "mgr" || cfg.Description != "test manager" {
 		t.Fatalf("identity fields not applied: %+v", cfg)
 	}
-	if len(cfg.ToolsConfig.ToolsNodeConfig.Tools) != 4 {
-		t.Fatalf("expected 4 lifecycle tools, got %d", len(cfg.ToolsConfig.ToolsNodeConfig.Tools))
+	if len(cfg.ToolsConfig.ToolsNodeConfig.Tools) != 5 {
+		t.Fatalf("expected 5 lifecycle tools, got %d", len(cfg.ToolsConfig.ToolsNodeConfig.Tools))
 	}
 	found := false
 	for _, h := range cfg.Handlers {
@@ -713,8 +713,8 @@ func TestManagerConfigWiring(t *testing.T) {
 	if cfg2.Instruction != "custom prompt" || cfg2.MaxIterations != 40 {
 		t.Fatalf("options not applied: instruction=%q iters=%d", cfg2.Instruction, cfg2.MaxIterations)
 	}
-	if len(cfg2.ToolsConfig.ToolsNodeConfig.Tools) != 5 {
-		t.Fatalf("expected 5 tools (4+1), got %d", len(cfg2.ToolsConfig.ToolsNodeConfig.Tools))
+	if len(cfg2.ToolsConfig.ToolsNodeConfig.Tools) != 6 {
+		t.Fatalf("expected 6 tools (5+1), got %d", len(cfg2.ToolsConfig.ToolsNodeConfig.Tools))
 	}
 	if len(cfg2.Handlers) != 2 {
 		t.Fatalf("expected 2 handlers, got %d", len(cfg2.Handlers))

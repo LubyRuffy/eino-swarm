@@ -109,22 +109,31 @@ func (m swarmTUI) pane(a *agentState, w, h int) string {
 				fmt.Fprintln(&b, cThink.Render("▸ 💭 thought ("+fmt.Sprint(len([]rune(blk.thinkText)))+") "+trunc(preview, w-10)))
 			}
 		case blockTool:
+			style := cTool
+			if blk.toolFailed {
+				style = cErr
+			}
 			if blk.open {
-				fmt.Fprintln(&b, cTool.Render("▾ ⚙ "+blk.toolName+"  (enter to fold)"))
+				fmt.Fprintln(&b, style.Render("▾ ⚙ "+blk.toolName+"  (enter to fold)"))
 				if blk.toolArgs != "" {
-					fmt.Fprintln(&b, cDim.Render("│ args: "+trunc(blk.toolArgs, w-8)))
+					fmt.Fprintln(&b, cDim.Render("│ "+trunc(blk.toolArgs, w-8)))
 				}
 				if blk.toolRes != "" {
-					fmt.Fprintln(&b, cTool.Render("│ ← "+trunc(blk.toolRes, w-8)))
+					resStyle := cToolRe
+					if blk.toolFailed {
+						resStyle = cErr
+					}
+					fmt.Fprintln(&b, resStyle.Render("│ ← "+trunc(blk.toolRes, w-8)))
 				}
 			} else {
 				line := "▸ ⚙ " + blk.toolName
+				if blk.toolArgs != "" {
+					line += " " + trunc(blk.toolArgs, 40)
+				}
 				if blk.toolRes != "" {
 					line += " → " + firstWords(blk.toolRes, 10)
-				} else if blk.toolArgs != "" {
-					line += "(" + trunc(blk.toolArgs, 40) + ")"
 				}
-				fmt.Fprintln(&b, cTool.Render(trunc(line, w-2)))
+				fmt.Fprintln(&b, style.Render(trunc(line, w-2)))
 			}
 		case blockAnswer:
 			if blk.open {

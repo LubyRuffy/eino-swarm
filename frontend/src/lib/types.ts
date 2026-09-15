@@ -15,6 +15,7 @@ export type EventKind =
   | "steer"
   | "cleanup"
   | "progress"
+  | "memory_review"
   | "done"
   | "error"
 
@@ -33,9 +34,63 @@ export interface SwarmEvent {
   created_at: string
 }
 
+export interface Project {
+  id: string
+  name: string
+  /** Added to the manager's prompt for every conversation in the project. */
+  system_prompt: string
+  /** What the user chose, empty when zwai manages the directory. */
+  workdir: string
+  /** Where the agents actually work, so the UI never derives a path itself. */
+  resolved_workdir: string
+  memory_enabled: boolean
+  memory_dir: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MemoryEntries {
+  text: string
+  entries: string[]
+  chars: number
+  /** The prompt budget. Memory rides in every turn's system prompt, so the
+   *  panel shows how much of it is spent. */
+  limit: number
+}
+
+export interface SkillInfo {
+  name: string
+  description: string
+  updated_at: string
+}
+
+export interface Skill extends SkillInfo {
+  body: string
+}
+
+export interface ProjectMemory {
+  dir: string
+  /** False when either the project or the global setting has memory off. */
+  enabled: boolean
+  memory: MemoryEntries
+  skills: SkillInfo[]
+}
+
+/** The payload of a `memory_review` event: what the post-turn review decided
+ *  to keep. `changed: false` is the common case and shows nothing. */
+export interface ReviewOutcome {
+  changed: boolean
+  notes?: Record<string, number>
+  skills?: { target: string; action: string; name?: string }[]
+  note?: string
+  err?: string
+}
+
 export interface Thread {
   id: string
   title: string
+  /** Empty for a conversation that belongs to no project. */
+  project_id: string
   provider_id: string
   /** This conversation's thinking level: "" (model default), low, medium,
    *  high. Switchable in the composer, applied from the next turn. */
@@ -119,7 +174,7 @@ export interface Meta {
    *  rendered as "Default" and is not in this list. */
   reasoning_levels: string[]
   data_dir: string
-  capabilities: { reveal?: boolean }
+  capabilities: { reveal?: boolean; memory?: boolean }
   swarm: SwarmLimits
 }
 
@@ -129,6 +184,7 @@ export interface SwarmLimits {
   max_turns: number
   manager_max_iterations: number
   progress_interval_seconds: number
+  delta_coalesce_ms: number
 }
 
 export interface ProviderSettings {
@@ -153,5 +209,14 @@ export interface Settings {
     proxy: { http: string; https: string; no_proxy: string }
     web_search_max_results: number
   }
+  memory: MemorySettings
   log: { level: string }
+}
+
+export interface MemorySettings {
+  enabled: boolean
+  auto_review: boolean
+  char_limit: number
+  review_max_iterations: number
+  skills_index_max: number
 }

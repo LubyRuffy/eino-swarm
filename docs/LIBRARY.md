@@ -11,15 +11,16 @@ import swarm "github.com/LubyRuffy/eino-swarm"
 
 `adk.NewAgentTool` runs sub-agents in parallel (when the host model issues several
 tool calls in one message), but it is **synchronous** and gives sub-agents **no
-communication channel**. This package fills that gap with four lifecycle tools
+communication channel**. This package fills that gap with five lifecycle tools
 over one concurrency-safe registry:
 
 | tool | semantics |
 |---|---|
-| `spawn_agent(role, task, fork_context)` | start a sub-agent in the background; returns `{"agent_id": …}` immediately. `fork_context: true` replays the manager's conversation into it. |
-| `send_message(agent_id, text)` | steer a running agent; delivered at its **next turn boundary** via a `ChatModelAgentMiddleware` |
-| `wait_agents(agent_ids, timeout_s)` | return as soon as the next listed agent reaches a final status (or the timeout); reports every agent's status (`running`/`done`/`failed`), the finished ones' results, and the running ones' last activity, plus `timed_out`. It hands control back per-finish so the manager can report progress and wait again, instead of dead-waiting on the whole batch |
+| `spawn_agent(role, task, fork_context)` | start a sub-agent in the background; returns `{"agent_id": …}` immediately. `fork_context: true` replays **this manager conversation** into it, not a previous worker's. |
+| `send_message(agent_id, text)` | steer a **running** agent; queued for its **next turn boundary**. `delivered: true` means queued, not that a later model call consumed it. A finished agent does not receive it. |
+| `wait_agents(agent_ids, timeout_s)` | return as soon as the next listed agent reaches a final status (or the timeout); reports every agent's status (`running`/`done`/`failed`), the finished ones' results, leftover steering that never reached a model call (`undelivered`), and the running ones' last activity, plus `timed_out`. It hands control back per-finish so the manager can report progress and wait again, instead of dead-waiting on the whole batch |
 | `close_agent(agent_id)` | cancel a running agent |
+| `resume_agent(agent_id, task)` | continue a finished or failed worker **in place** under the same `agent_id`, seeded with that worker's conversation. Returns `{"agent_id": …, "resumed_from": …}` with the same id. Rejects a still-running id (`send_message` instead). Survives `Stats()` pruning the live handle. Do not `spawn_agent` a second worker with the same role to replace one that failed. |
 
 Give sub-agents `SendTool()` as well and any agent can message any other (a mesh
 rather than a star).
@@ -42,7 +43,7 @@ final, err := reg.Run(ctx, task, func(n swarm.Notification) {
 })
 ```
 
-`Run` wires the manager agent, the four lifecycle tools, the `fork_context`
+`Run` wires the manager agent, the five lifecycle tools, the `fork_context`
 middleware and signal handling (SIGINT/SIGTERM → context cancel → every agent
 cancelled).
 
@@ -90,7 +91,7 @@ type Notification struct {
 | `NotifySpawned` | the sub-agent's role (`AgentID` is its id) |
 | `NotifyFinished` | its result; `Err` set when it failed |
 | `NotifyToolCall` | `name(args)` |
-| `NotifyToolResult` | the (truncated) result |
+| `NotifyToolResult` | the tool's stdout, **newlines kept**, clipped at 64k runes so a huge `exec` cannot blow up the event log |
 | `NotifyTurn` | `turn N` |
 | `NotifyDelta` | the streamed answer **so far** |
 | `NotifyReasoningDelta` | the streamed reasoning **so far** |
@@ -158,7 +159,12 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 - Steering never interrupts an in-flight model call or tool execution; messages
   land at the next turn boundary (the same semantics as Codex steering).
 - `send_message` to a finished agent returns `{"delivered": false}` rather than an
-  error: the caller lost a race, it did not make a mistake.
+  error: the caller lost a race, it did not make a mistake. `delivered: true`
+  means the text was queued. If the agent finishes before another model call,
+  `wait_agents` reports that text as `undelivered`.
+- `resume_agent` continues a finished worker's conversation on the **same** id.
+  `fork_context` is the manager's conversation, not a previous worker's findings.
+  A still-running worker is steered with `send_message`, not resumed.
 - Sub-agents never outlive their lineage, even when nobody calls `close_agent`:
 
 | mechanism | what it catches |
@@ -168,12 +174,16 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 | `MaxTurns` (default 20) | a model looping forever; ends with eino's `ErrExceedMaxIterations` |
 | `Registry.Close` | cancels everything and rejects further spawns; safe even for an agent whose cancel was not yet wired, because contexts are created synchronously inside `Spawn` |
 | `Registry.Cleanup` | kills whatever is still running at the end of a turn and reports how many |
-| bounded registry | finished handles are pruned by `Stats`, so a long session cannot grow the map without bound. Use `Progress` for reporting: it never prunes. |
+| bounded registry | finished handles are pruned by `Stats`, so a long session cannot grow the map without bound. Use `Progress` for reporting: it never prunes. Finished conversations stay in a separate archive (default 32) for `resume_agent`. |
 
 Each of those has a test: `TestCallerContextCancelReleasesAgents`,
 `TestWatchdogTimeoutReleasesAgent`, `TestMaxTurnsEndsBrokenModel`,
 `TestRegistryClose`, `TestForkContextInheritsHistory`,
-`TestWaitAndCleanupEndATurn`. Run them with `-race`.
+`TestForkContextSeedsBeforeFirstModelCall`,
+`TestWaitAndCleanupEndATurn`, `TestResumeSeesFinishedWorkersHistory`,
+`TestResumeAfterFailureKeepsTheSameID`,
+`TestResumeStillWorksAfterStatsPrune`,
+`TestUndeliveredSteerSurfacesWhenTheAgentFinishes`. Run them with `-race`.
 
 ## No pre-registration
 
@@ -181,7 +191,12 @@ Each of those has a test: `TestCallerContextCancelReleasesAgents`,
 at runtime and `ModelBuilder` constructs the agent on the fly — matching Codex's
 `spawn_agent(task_name, message)`. `fork_context: true` replays the manager's
 conversation (kept fresh by `Registry.ManagerMiddleware()` on the manager's
-`Handlers`) into the new agent, the `fork_turns` equivalent.
+`Handlers`) into the new agent, the `fork_turns` equivalent. Continuing a
+finished worker is `resume_agent(agent_id, task)`: the **same** id, that
+worker's conversation as the seed. A second worker with the same role is a
+bug — the roster identity is the id. Inbox seed is applied **before** the worker
+goroutine starts, so the first model call cannot lose the race against
+`fork_context` / resume.
 
 ## Examples
 

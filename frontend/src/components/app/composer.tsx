@@ -33,8 +33,8 @@ export function Composer({
   onStop,
   onUpload,
   disabled,
-  text,
-  onTextChange,
+  prefill,
+  prefillToken,
   focusSignal,
 }: {
   running: boolean
@@ -50,15 +50,22 @@ export function Composer({
   onStop: () => void
   onUpload: (files: File[]) => Promise<void>
   disabled?: boolean
-  /** Held above so a keyboard shortcut or a starter idea can fill it in. */
-  text: string
-  onTextChange: (text: string) => void
+  /** Bumped by the empty state (or a shortcut) to drop text into the box
+   *  without the composer being a controlled field of the whole app. */
+  prefill?: string
+  prefillToken?: number
   focusSignal: number
 }) {
+  const [text, setText] = useState("")
   const [pending, setPending] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!prefillToken) return
+    setText(prefill ?? "")
+  }, [prefillToken, prefill])
 
   // Grow with the text, but stop before the composer eats the conversation.
   useEffect(() => {
@@ -89,7 +96,7 @@ export function Composer({
     }
     if (value) {
       onSend(value)
-      onTextChange("")
+      setText("")
     }
   }
 
@@ -129,7 +136,7 @@ export function Composer({
                 : "Describe what you want done. It will delegate as needed."
             }
             className="max-h-[200px] min-h-[44px] px-4 py-3 text-[15px]"
-            onChange={(e) => onTextChange(e.target.value)}
+            onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
               // Enter sends; Shift+Enter is a newline. That is what every chat
               // app does, and muscle memory is not negotiable.

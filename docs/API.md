@@ -13,9 +13,9 @@ desktop mode (printed on startup and used by the window).
 
 | status | meaning |
 |---|---|
-| `400` | malformed body, bad path, or a rejected value |
-| `404` | no such conversation / turn / file |
-| `409` | `code: "busy"` — a turn is already running; `code: "idle"` — nothing to steer or interrupt |
+| `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory |
+| `404` | no such conversation / turn / file / project / skill |
+| `409` | `code: "busy"` — a turn is already running; `code: "idle"` — nothing to steer, interrupt or review |
 | `501` | the shell cannot do this (`reveal` outside the desktop app) |
 
 ## Meta
@@ -33,9 +33,10 @@ What the UI reads once at startup to decide what to render.
   "default_provider": "default",
   "reasoning_levels": ["low", "medium", "high"],
   "data_dir": "/Users/me/.zwai-swarm",
-  "capabilities": { "reveal": false },
+  "capabilities": { "reveal": false, "memory": true },
   "swarm": { "max_concurrent": 6, "agent_timeout_seconds": 600,
-             "max_turns": 24, "manager_max_iterations": 32 }
+             "max_turns": 24, "manager_max_iterations": 32,
+             "progress_interval_seconds": 5, "delta_coalesce_ms": 50 }
 }
 ```
 
@@ -43,7 +44,9 @@ What the UI reads once at startup to decide what to render.
 a base URL and a model name — the UI shows a setup banner until then. `mock` is
 true when running on the scripted offline provider. `reasoning_levels` is the
 ordered set of explicit thinking levels the composer offers; the empty default
-is rendered as "Default" and is not listed.
+is rendered as "Default" and is not listed. `capabilities.memory` mirrors
+`memory.enabled`: the UI disables a project's memory switch when the whole
+install has memory off, rather than offering something that will not happen.
 
 ## Settings, models and tools
 
@@ -61,9 +64,12 @@ provider carries `has_api_key` and `ready` instead.
      "has_api_key": true, "ready": true}
   ]},
   "swarm": {"max_concurrent": 6, "agent_timeout_seconds": 600,
-            "max_turns": 24, "manager_max_iterations": 32},
+            "max_turns": 24, "manager_max_iterations": 32,
+            "progress_interval_seconds": 5, "delta_coalesce_ms": 50},
   "tools": {"disabled": [], "enabled": [], "web_search_max_results": 8,
             "proxy": {"http": "", "https": "", "no_proxy": ""}},
+  "memory": {"enabled": true, "auto_review": true, "char_limit": 2200,
+             "review_max_iterations": 8, "skills_index_max": 50},
   "log": {"level": "info"}
 }}
 ```
@@ -106,26 +112,108 @@ The catalog the Settings dialog lays out, plus which tools are currently active.
 `screenshot`) need something zwai does not ship and must be switched on
 explicitly.
 
+## Projects
+
+A project is a working directory, an instruction and a memory shared by its
+conversations. See [CONFIG.md](CONFIG.md) for the budgets and
+[DATA_MODEL.md](DATA_MODEL.md) for the on-disk layout.
+
+### `GET /api/projects`
+
+```json
+{"projects": [{"id": "pj_ab12…", "name": "Quarterly report",
+               "system_prompt": "…", "workdir": "/Users/me/work/report",
+               "resolved_workdir": "/Users/me/work/report",
+               "memory_enabled": true,
+               "memory_dir": "/Users/me/.zwai-swarm/projects/pj_ab12…/memory",
+               "created_at": "…", "updated_at": "…"}]}
+```
+
+`workdir` is what the user chose and is empty when zwai manages the directory;
+`resolved_workdir` is where the agents actually work, so no client has to derive
+a path.
+
+### `POST /api/projects` → `201`
+
+Body `{"name": "…", "system_prompt": "optional", "workdir": "optional",
+"memory_enabled": true}`. A name is required (`400`). `workdir` must be an
+absolute path to an existing directory — anything else is `400` with
+`code: "workdir"`, which the project dialog shows against that field. Left
+empty, the project gets `projects/<id>/workspace` under the data directory.
+Omitting `memory_enabled` takes the configured default rather than switching
+memory off.
+
+### `GET /api/projects/:id` · `PATCH /api/projects/:id`
+
+`PATCH` accepts `name`, `system_prompt`, `workdir` and `memory_enabled`; an
+omitted field is left alone. Both respond `{"project": {…}}`.
+
+### `DELETE /api/projects/:id` → `204`
+
+Deletes the project, **its conversations and everything it remembered**. A
+`workdir` the user supplied is never touched; a directory zwai created for the
+project is removed with it.
+
+### `GET /api/projects/:id/memory`
+
+```json
+{"memory": {
+  "dir": "/Users/me/.zwai-swarm/projects/pj_ab12…/memory",
+  "enabled": true,
+  "memory": {"text": "…", "entries": ["…"], "chars": 412, "limit": 2200},
+  "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}]
+}}
+```
+
+`enabled` is false when either the project or `memory.enabled` has it off: what
+is stored stays readable, and nothing is carried into a prompt. `entries` are
+the notes as the prompt sees them, split on blank lines. `skills` carries names
+and one-line descriptions only — the body is fetched per skill, exactly as an
+agent fetches it with `skill_view`.
+
+### `PUT /api/projects/:id/memory`
+
+Body `{"text": "…"}`, replacing the notes wholesale — the hand edit behind the
+Memory panel. Responds with the new snapshot `{"memory": {…}}`. The character
+limit still applies: notes that no longer fit in a prompt are the same problem
+whoever typed them (`400`).
+
+### `GET /api/projects/:id/skills/:name`
+
+```json
+{"skill": {"name": "weekly-rollup", "description": "…",
+           "body": "## Steps\n1. …", "updated_at": "…"}}
+```
+
+`404` for a skill nobody wrote, `400` for a name that could never be one
+(anything outside `[a-z0-9-]`).
+
+### `DELETE /api/projects/:id/skills/:name` → `204`
+
 ## Conversations
 
-### `GET /api/threads?archived=1`
+### `GET /api/threads?archived=1&project=<id>`
 
 ```json
 {"threads": [{"id": "th_ab12…", "title": "Deadline sweep", "provider_id": "default",
-              "reasoning_effort": "", "archived": false,
+              "reasoning_effort": "", "archived": false, "project_id": "pj_ab12…",
               "created_at": "2026-09-15T11:03:12.884+08:00",
               "last_active_at": "2026-09-15T11:31:02.114+08:00", "running": true}]}
 ```
 
-`archived=1` returns the archived ones instead. `running` is computed from the
-live runtimes in one pass, so the sidebar does not poll per row.
-`reasoning_effort` is the conversation's thinking level (`""`, `low`, `medium`,
-`high`); empty means the model's own default.
+`archived=1` returns the archived ones instead. `project=<id>` returns only that
+project's conversations, which is what the sidebar filter sends. `running` is
+computed from the live runtimes in one pass, so the sidebar does not poll per
+row. `reasoning_effort` is the conversation's thinking level (`""`, `low`,
+`medium`, `high`); empty means the model's own default. `project_id` is empty for
+a conversation that belongs to no project.
 
 ### `POST /api/threads` → `201`
 
-Body `{"title": "optional", "provider_id": "optional"}` (an empty body is fine).
-A conversation created without a title gets one from its first message.
+Body `{"title": "optional", "provider_id": "optional", "project_id": "optional"}`
+(an empty body is fine). A conversation created without a title gets one from its
+first message. With a `project_id` it works in that project's directory, carries
+its instruction and its memory, and an unknown id is rejected (`404`).
 
 ### `GET /api/threads/:id`
 
@@ -143,16 +231,19 @@ client would happily turn into a two-thousand-year elapsed time).
 
 ### `PATCH /api/threads/:id`
 
-Body may contain `title`, `provider_id`, `reasoning_effort`, `archived`. An
-empty title is rejected; an unknown `provider_id` is rejected. `reasoning_effort`
-is one of `""` (the model default), `low`, `medium` or `high` — a blank clears
-back to the default, and any other value is rejected the same way an unknown
-provider is. Responds like `GET`.
+Body may contain `title`, `provider_id`, `reasoning_effort`, `archived`,
+`project_id`. An empty title is rejected; an unknown `provider_id` or
+`project_id` is rejected. `reasoning_effort` is one of `""` (the model default),
+`low`, `medium` or `high` — a blank clears back to the default, and any other
+value is rejected the same way an unknown provider is. An empty `project_id`
+takes the conversation out of its project; from then on it works in its own
+workspace again. Responds like `GET`.
 
 ### `DELETE /api/threads/:id` → `204`
 
-Deletes the conversation, its transcript, its events **and its workspace
-directory**.
+Deletes the conversation, its transcript and its events. Its workspace directory
+goes too **only when zwai created it**: a conversation in a project shares that
+project's directory, which may be the user's own repository.
 
 ## Turns
 
@@ -193,6 +284,15 @@ recorded as `cancelled`. `409 idle` when nothing is running.
 Every turn of the conversation, oldest first. This is what renders the
 "Worked for 12s" footers.
 
+### `POST /api/threads/:id/review` → `202`
+
+Reviews the conversation's most recent completed turn again, curating the
+project's memory from it. Answers with the turn being reviewed
+(`{"turn": {…}}`), not the outcome: the review is a background job and its
+result arrives on the event stream as `memory_review`, the same way a turn's
+answer does. `409 idle` when the conversation is in no project, has memory off,
+or has no finished turn to read.
+
 ## Event stream
 
 ### `GET /api/threads/:id/events?since=<seq>`
@@ -228,13 +328,14 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `delta` | streamed answer, **full text so far** |
 | `agent_message` | a completed assistant message |
 | `tool_call` | `Text` is `name(args)`, paired by `tool_call_id` |
-| `tool_result` | the result, paired by `tool_call_id` |
+| `tool_result` | the result, paired by `tool_call_id`. Newlines are kept so the UI can render a file body; clipped at 64k runes |
 | `spawned` | a sub-agent started; `text` is its role, `agent_id` is its id |
 | `finished` | a sub-agent finished; `err` set when it failed |
 | `turn` | an agent started a model turn (`turn N`) |
 | `steer` | guidance was accepted |
 | `cleanup` | sub-agents were stopped at the end of the turn |
 | `progress` | a pulse while the turn runs (see below); `seq` is 0, not stored |
+| `memory_review` | the post-turn review of a project's memory finished (see below) |
 | `done` | the turn finished; `text` is the final answer |
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
@@ -242,7 +343,11 @@ Event names (the SSE `event:` field and the payload's `kind`):
 Two rules the client depends on:
 
 1. **Deltas carry the full text so far**, so a dropped one cannot corrupt the
-   rendering. Replace, do not append.
+   rendering. Replace, do not append. The engine coalesces them for
+   `swarm.delta_coalesce_ms` (default 50): tokens inside the window replace the
+   pending event, so a 50-token-per-second model is one event, not fifty. A
+   tool call, a finished worker or the end of the turn flushes whatever is still
+   held.
 2. **Only stored events have `seq > 0` and an SSE `id`.** Deltas and progress
    pulses are broadcast live and never stored, which is why a reconnect resumes
    at a completed event.
@@ -274,6 +379,27 @@ event, so it must not be used to change an agent's status.
 
 A heartbeat comment is sent every 20s. A client that falls behind is caught up
 from the database rather than dropped, so no stored event is lost.
+
+### Memory reviews
+
+A turn of a project conversation with memory on is read back afterwards, and one
+`memory_review` event is stored under **the turn's own id** — so one turn id
+still reaches everything that happened, including the reviewer's model calls
+(`agent_id: "memory-reviewer"` in `llm_calls`). `text` is JSON:
+
+```json
+{
+  "changed": true,
+  "notes": {"add": 1, "replace": 1},
+  "skills": [{"target": "skill_manage", "action": "create", "name": "weekly-rollup"}],
+  "note": "Kept what this project treats as done.",
+  "err": ""
+}
+```
+
+The event is stored even when `changed` is false: a review that left no trace
+could not be told apart from one that never ran. The turn's status is not
+affected — a failed review (`err`) costs a note, not the answer.
 
 ## Workspace files
 

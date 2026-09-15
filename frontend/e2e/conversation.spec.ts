@@ -25,6 +25,10 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await freshConversation(page)
   await send(page, "Look at this from two angles and merge the findings")
 
+  // live status must look alive: a sweep on the running line, not a frozen
+  // ellipsis. The mock turn is long enough for wait_agents / heartbeat to land.
+  await expect(page.locator('[data-marquee="shimmer"]').first()).toBeVisible({ timeout: 15_000 })
+
   // the manager delegates, and both workers show up in the roster
   const roster = page.getByRole("tabpanel").first()
   await expect(roster.getByText("researcher")).toBeVisible()

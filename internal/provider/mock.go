@@ -28,16 +28,25 @@ import (
 const mockChunkDelay = 18 * time.Millisecond
 
 // newMockModel returns a scripted model for one agent. The manager script
-// fans work out and collects it; every other role is a worker that does one
-// tool call and reports back.
+// fans work out and collects it, the reviewer curates a project's memory, and
+// every other role is a worker that does one tool call and reports back.
 func newMockModel(role string) model.BaseChatModel {
-	if role == managerRole || role == "" {
+	switch role {
+	case managerRole, "":
 		return &mockModel{script: managerScript}
+	case reviewerRole:
+		return &mockModel{script: reviewerScript}
+	default:
+		return &mockModel{script: workerScript(role)}
 	}
-	return &mockModel{script: workerScript(role)}
 }
 
-const managerRole = "manager"
+const (
+	managerRole = "manager"
+	// reviewerRole must match the engine's review agent id, or a mock run
+	// exercises the swarm and quietly skips the memory review.
+	reviewerRole = "memory-reviewer"
+)
 
 // mockScript maps a turn number and the conversation so far to the message the
 // model "generates".
@@ -197,7 +206,7 @@ func mockAnswer(task string, results []string) string {
 
 // workerScript makes each worker do real work: one write into the conversation
 // workspace, then a short report. The file is what proves the tool layer is
-// wired to the right sandbox.
+// wired to the right directory.
 func workerScript(role string) mockScript {
 	return func(turn int, msgs []*schema.Message) *schema.Message {
 		task := firstUserText(msgs)
@@ -219,6 +228,45 @@ func workerScript(role string) mockScript {
 			return schema.AssistantMessage(
 				role+" finished: notes written to notes/"+safeName(role)+".md for \""+oneLine(task)+"\".", nil)
 		}
+	}
+}
+
+// ---------- reviewer script ----------
+
+// reviewerScript is the post-turn memory review: store one note, record one
+// skill, then report in a line. It is what makes `--mock` and the end-to-end
+// tests exercise the whole memory path — the tools, the files, the event and
+// the Memory panel — without an endpoint.
+//
+// Everything it writes is derived from the conversation it was handed. Nothing
+// here may encode a particular task: the same text would otherwise show up in
+// screenshots and test expectations as if the product had decided it.
+func reviewerScript(turn int, msgs []*schema.Message) *schema.Message {
+	task := oneLine(firstUserText(msgs))
+	switch turn {
+	case 1:
+		note, _ := json.Marshal(map[string]any{
+			"action":  "add",
+			"content": "A conversation in this project covered: " + task,
+		})
+		skill, _ := json.Marshal(map[string]any{
+			"action":      "create",
+			"name":        safeName(task),
+			"description": "Recorded from a conversation about: " + task,
+			"content": "1. Read what is already in the workspace.\n" +
+				"2. Fan the work out to sub-agents and collect their results.\n" +
+				"3. Report back with the result first.\n",
+		})
+		return &schema.Message{
+			Role:             schema.Assistant,
+			ReasoningContent: "Worth keeping: what this project was asked for, and the shape of the work.\n",
+			ToolCalls: []schema.ToolCall{
+				call("mock-memory-1", "memory", string(note)),
+				call("mock-skill-1", "skill_manage", string(skill)),
+			},
+		}
+	default:
+		return schema.AssistantMessage("Stored one note and one skill from this conversation.", nil)
 	}
 }
 

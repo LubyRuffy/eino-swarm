@@ -54,7 +54,7 @@ const (
 	NotifySpawned                          // a worker was spawned (Text=role, AgentID set)
 	NotifyFinished                         // a worker finished (Text=result; Err set on failure)
 	NotifyToolCall                         // a tool call was issued (Text="name(args)")
-	NotifyToolResult                       // a tool returned (Text=truncated result)
+	NotifyToolResult                       // a tool returned (Text=clipped result, newlines kept)
 	NotifyTurn                             // an agent started a new model turn (Text="turn N")
 	NotifyDelta                            // streamed answer text, accumulated within the turn
 	NotifyReasoningDelta                   // streamed reasoning, accumulated within the turn
@@ -172,12 +172,17 @@ func (r *Registry) emit(n Notification) {
 
 // ---------- event mapping ----------
 
-// summarize truncates tool output for notifications, collapsing newlines so a
-// single-line UI row stays a single line.
-func summarize(s string, n int) string {
-	s = strings.ReplaceAll(s, "\n", " ")
+// toolResultNotifyLimit is how much of a tool's stdout the UI event is
+// allowed to carry. The model still sees the full result in the transcript;
+// this cap is only the copy stored and rendered. exec can dump megabytes
+// and the event log is not a second filesystem.
+const toolResultNotifyLimit = 64_000
+
+// clipToolResult truncates on runes and keeps newlines. Collapsing them
+// used to turn a file body into a one-line dump the UI could not highlight.
+func clipToolResult(s string, n int) string {
 	r := []rune(s)
-	if len(r) > n {
+	if n > 0 && len(r) > n {
 		return string(r[:n]) + "…"
 	}
 	return s
@@ -209,7 +214,7 @@ func (r *Registry) emitComplete(role, agentID string, ev *adk.AgentEvent) {
 		}
 	case schema.Tool:
 		r.emit(Notification{Kind: NotifyToolResult, AgentID: agentID, Role: role,
-			Text: summarize(msg.Content, 400), ToolCallID: msg.ToolCallID})
+			Text: clipToolResult(msg.Content, toolResultNotifyLimit), ToolCallID: msg.ToolCallID})
 	}
 }
 

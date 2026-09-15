@@ -22,8 +22,6 @@ function renderComposer(props: Partial<Parameters<typeof Composer>[0]> = {}) {
         onSend={vi.fn()}
         onStop={vi.fn()}
         onUpload={vi.fn(async () => {})}
-        text=""
-        onTextChange={vi.fn()}
         focusSignal={0}
         {...props}
       />

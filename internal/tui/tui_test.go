@@ -54,6 +54,21 @@ func TestNotificationsBecomeAgentsAndBlocks(t *testing.T) {
 	}
 }
 
+func TestAResumedWorkerDoesNotDuplicateTheRoster(t *testing.T) {
+	m := newModel(nil)
+	feed(&m,
+		swarm.Notification{Kind: swarm.NotifySpawned, AgentID: "w1", Role: "worker"},
+		swarm.Notification{Kind: swarm.NotifyFinished, AgentID: "w1", Err: errors.New("timed out")},
+		swarm.Notification{Kind: swarm.NotifySpawned, AgentID: "w1", Role: "worker"},
+	)
+	if len(m.agents) != 1 {
+		t.Fatalf("resume minted a twin: %+v", m.agents)
+	}
+	if m.agents[0].finished || m.agents[0].finErr != nil {
+		t.Fatalf("resumed worker should look alive: finished=%v err=%v", m.agents[0].finished, m.agents[0].finErr)
+	}
+}
+
 // A turn boundary starts a new answer block, or the second turn's text would
 // be appended to the first and the transcript would read as one long message.
 func TestATurnBoundaryStartsANewAnswerBlock(t *testing.T) {
@@ -354,6 +369,34 @@ func TestPanesShowTheConversationAndHideTheBookkeeping(t *testing.T) {
 	}
 }
 
+func TestAJSONToolCallShowsTheCommandNotTheEnvelope(t *testing.T) {
+	m := newModel(nil)
+	m.width, m.height = 120, 40
+	feed(&m,
+		swarm.Notification{Kind: swarm.NotifyToolCall, AgentID: swarm.DefaultManagerID,
+			Text: `exec({"command":"echo hi"})`},
+		swarm.Notification{Kind: swarm.NotifyToolResult, AgentID: swarm.DefaultManagerID,
+			Text: `{"exit_code":127,"stdout":"","stderr":"not found","failed":true,"error":"exit status 127","full_command":"echo hi"}`},
+	)
+	tools := blocksOfKind(m.manager, blockTool)
+	if len(tools) != 1 || tools[0].toolArgs != "echo hi" || !tools[0].toolFailed {
+		t.Fatalf("tool block: %+v", tools)
+	}
+	if strings.Contains(tools[0].toolRes, "full_command") || strings.Contains(tools[0].toolRes, "{") {
+		t.Fatalf("the JSON envelope leaked into the result: %q", tools[0].toolRes)
+	}
+	pane := m.pane(m.manager, 80, 30)
+	if strings.Contains(pane, `"command"`) || strings.Contains(pane, "full_command") {
+		t.Fatalf("JSON leaked into the pane:\n%s", pane)
+	}
+	if !strings.Contains(pane, "echo hi") {
+		t.Fatalf("the command is missing:\n%s", pane)
+	}
+	if !strings.Contains(pane, "exit status 127") {
+		t.Fatalf("the error is missing:\n%s", pane)
+	}
+}
+
 // Every block has a folded and an expanded form, and the pane also carries the
 // live tail of whatever is streaming right now.
 func TestPanesRenderFoldedAndExpandedBlocks(t *testing.T) {
@@ -391,12 +434,12 @@ func TestPanesRenderFoldedAndExpandedBlocks(t *testing.T) {
 	// and the second opens it — one key, one state for the whole pane.
 	m = press(t, m, "t")
 	m = press(t, m, "enter")
-	if strings.Contains(m.pane(m.manager, 80, 30), "args:") {
+	if strings.Contains(m.pane(m.manager, 80, 30), "enter to fold") {
 		t.Fatal("the first enter should have folded the open tool block")
 	}
 	m = press(t, m, "enter")
 	open := m.pane(m.manager, 80, 30)
-	for _, want := range []string{"to fold", "args: notes.md", "← the file body"} {
+	for _, want := range []string{"enter to fold", "notes.md", "← the file body"} {
 		if !strings.Contains(open, want) {
 			t.Fatalf("an expanded block is missing %q:\n%s", want, open)
 		}

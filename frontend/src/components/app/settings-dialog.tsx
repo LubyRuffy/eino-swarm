@@ -1,6 +1,7 @@
 import { Loader2, Plus, Trash2 } from "lucide-react"
 import { cloneElement, useEffect, useId, useState } from "react"
 
+import { MemorySettings } from "@/components/app/memory-settings"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -100,6 +101,7 @@ export function SettingsDialog({
                 <TabsTrigger value="models">Models</TabsTrigger>
                 <TabsTrigger value="swarm">Swarm</TabsTrigger>
                 <TabsTrigger value="tools">Tools</TabsTrigger>
+                <TabsTrigger value="memory">Memory</TabsTrigger>
                 <TabsTrigger value="general">General</TabsTrigger>
               </TabsList>
 
@@ -123,6 +125,13 @@ export function SettingsDialog({
                   catalog={catalog}
                   onChange={setSettings}
                 />
+              </TabsContent>
+
+              <TabsContent
+                value="memory"
+                className="thin-scrollbar max-h-96 overflow-y-auto pt-4"
+              >
+                <MemorySettings settings={settings} onChange={setSettings} />
               </TabsContent>
 
               <TabsContent value="general" className="pt-4">
@@ -378,6 +387,19 @@ function SwarmTab({
           value={settings.swarm.progress_interval_seconds}
           onChange={(e) =>
             update({ progress_interval_seconds: Number(e.target.value) })
+          }
+        />
+      </Field>
+      <Field
+        label="Stream coalesce (ms)"
+        hint="How long streamed tokens wait to be sent as one event. Lower is snappier; higher is cheaper to render."
+      >
+        <Input
+          type="number"
+          min={1}
+          value={settings.swarm.delta_coalesce_ms}
+          onChange={(e) =>
+            update({ delta_coalesce_ms: Number(e.target.value) })
           }
         />
       </Field>

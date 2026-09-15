@@ -138,6 +138,10 @@ func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
 	if err != nil {
 		return nil, err
 	}
+	pc, err := e.projectContextFor(th)
+	if err != nil {
+		return nil, err
+	}
 	toolset, err := tools.Build(context.Background(), e.cfg, e.WorkspaceDir(threadID))
 	if err != nil {
 		return nil, err
@@ -190,7 +194,7 @@ func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
 	e.autoTitle(th, text)
 
 	messages := append(history, schema.UserMessage(text))
-	go rt.run(ctx, cancel, idle, turn, reg, toolset, messages, len(messages))
+	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages))
 	return turn, nil
 }
 
@@ -266,7 +270,7 @@ const (
 )
 
 func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan struct{},
-	turn *store.Turn, reg *swarm.Registry, toolset *tools.Set,
+	turn *store.Turn, reg *swarm.Registry, toolset *tools.Set, pc *projectContext,
 	messages []adk.Message, inputCount int,
 ) {
 	e := rt.engine
@@ -285,16 +289,16 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 		Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText})
 
-	acc := newAccumulator(e, rt.threadID, turn.ID)
+	acc := newAccumulator(e, rt.threadID, turn.ID, e.cfg.Swarm.DeltaCoalesce())
 	// The pulse stops the moment the manager returns: everything after that is
 	// teardown, and a pulse arriving after the final event would make a finished
 	// turn look like it was still working.
 	beat, stopBeat := context.WithCancel(ctx)
 	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.Swarm.ProgressInterval())
 	res, runErr := reg.RunWith(ctx, swarm.RunConfig{
-		Instruction:        managerPrompt(toolset, e.cfg),
+		Instruction:        managerPrompt(toolset, e.cfg, pc.promptSections()),
 		Messages:           messages,
-		ManagerTools:       toolset.Tools,
+		ManagerTools:       pc.managerTools(toolset),
 		ManagerMiddlewares: nil,
 		MaxIterations:      e.cfg.Swarm.ManagerMaxIterations,
 	}, swarm.Callback(acc.onNotify))
@@ -349,6 +353,10 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		final.Err = errText
 	}
 	e.record(final)
+	// The review reads the conversation and curates the project's memory. It
+	// runs after the terminal event on purpose: nobody is waiting for it, and
+	// a turn must never look slower because something is being learned from it.
+	e.scheduleReview(rt.threadID, turn, status, pc, messages, res)
 	rt.runLateSteers(status, leftover)
 }
 
@@ -428,14 +436,24 @@ type accumulator struct {
 	reasoning map[string]string
 	answer    map[string]string
 	roles     map[string]string
+
+	// live holds the latest streamed delta per agent and kind until the
+	// coalesce timer fires. Without it a 50-token-per-second model would
+	// redraw the UI fifty times a second, once per token.
+	coalesce  time.Duration
+	live      map[string]store.Event
+	liveTimer map[string]*time.Timer
 }
 
-func newAccumulator(e *Engine, threadID, turnID string) *accumulator {
+func newAccumulator(e *Engine, threadID, turnID string, coalesce time.Duration) *accumulator {
 	return &accumulator{
 		engine: e, threadID: threadID, turnID: turnID,
 		reasoning: map[string]string{},
 		answer:    map[string]string{},
 		roles:     map[string]string{},
+		coalesce:  coalesce,
+		live:      map[string]store.Event{},
+		liveTimer: map[string]*time.Timer{},
 	}
 }
 
@@ -460,16 +478,18 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 	switch n.Kind {
 	case swarm.NotifyReasoningDelta:
 		a.setReasoning(n.AgentID, n.Text)
-		a.engine.emit(a.event(n, n.Kind.String()))
+		a.pushLive(n)
 
 	case swarm.NotifyDelta:
 		// answer text has started, so the thinking for this turn is complete
+		a.flushKind(n.AgentID, swarm.NotifyReasoningDelta.String())
 		a.flushReasoning(n.AgentID)
 		a.setAnswer(n.AgentID, n.Text)
-		a.engine.emit(a.event(n, n.Kind.String()))
+		a.pushLive(n)
 
 	case swarm.NotifyToolCall:
 		// an interim turn: persist its thinking and its commentary, then the call
+		a.flushAgentLive(n.AgentID)
 		a.flushReasoning(n.AgentID)
 		a.flushAnswer(n.AgentID)
 		a.engine.record(a.event(n, n.Kind.String()))
@@ -477,6 +497,7 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 	case swarm.NotifyAgentMessage:
 		// the swarm already hands over the complete text, so the pending
 		// accumulator is dropped rather than persisted twice
+		a.dropLive(n.AgentID)
 		a.flushReasoning(n.AgentID)
 		a.clearAnswer(n.AgentID)
 		a.engine.record(a.event(n, n.Kind.String()))
@@ -487,9 +508,11 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 	case swarm.NotifyDone, swarm.NotifyError:
 		// the run loop writes the final event itself, once the turn's status
 		// is known; emitting here too would duplicate it
+		a.flushAgentLive(n.AgentID)
 		a.flushAgent(n.AgentID)
 
 	case swarm.NotifyFinished:
+		a.flushAgentLive(n.AgentID)
 		a.flushAgent(n.AgentID)
 		a.engine.record(a.event(n, n.Kind.String()))
 
@@ -555,6 +578,7 @@ func (a *accumulator) flushAgent(agentID string) {
 // it, interrupting a turn mid-answer loses the partial answer on reload — the
 // user would see text on screen that vanishes when they come back.
 func (a *accumulator) flushAll() {
+	a.flushAllLive()
 	a.mu.Lock()
 	ids := make([]string, 0, len(a.reasoning)+len(a.answer))
 	for id := range a.reasoning {

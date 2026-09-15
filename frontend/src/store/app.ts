@@ -5,6 +5,7 @@ import { subscribeEvents } from "@/lib/stream"
 import {
   emptyTranscript,
   reduceEvent,
+  collapseLiveEvents,
   type TranscriptState,
 } from "@/lib/transcript"
 import type {
@@ -16,6 +17,7 @@ import type {
   ThreadStatus,
   Turn,
 } from "@/lib/types"
+import { useProjects } from "./projects"
 
 export type Theme = "light" | "dark" | "system"
 
@@ -41,7 +43,11 @@ interface AppState {
   boot: () => Promise<void>
   refreshThreads: () => Promise<void>
   openThread: (id: string) => Promise<void>
-  newThread: () => Promise<string | undefined>
+  /** Lands in projectId, or in the project the sidebar has selected. */
+  newThread: (projectId?: string) => Promise<string | undefined>
+  /** Filters the sidebar to one project and loads its memory. */
+  selectProject: (projectId?: string) => Promise<void>
+  reviewNow: () => Promise<void>
   renameThread: (id: string, title: string) => Promise<void>
   deleteThread: (id: string) => Promise<void>
   send: (text: string) => Promise<void>
@@ -55,6 +61,12 @@ interface AppState {
 }
 
 let unsubscribe: (() => void) | undefined
+
+/** Streamed events that have arrived since the last animation frame. One
+ *  rAF applies them together, so a burst of tokens is one React render. */
+let queued: SwarmEvent[] = []
+let queuedThread = ""
+let raf = 0
 
 /** Set while a conversation is being created. Someone who clicks "New
  *  conversation" starts typing immediately, and a send that read activeId
@@ -83,6 +95,7 @@ export const useApp = create<AppState>((set, get) => ({
         api.meta(),
         api.models(),
         api.threads(),
+        useProjects.getState().refresh(),
       ])
       set({ meta, models: models.models, threads })
       if (threads.length > 0) await get().openThread(threads[0].id)
@@ -93,14 +106,34 @@ export const useApp = create<AppState>((set, get) => ({
 
   refreshThreads: async () => {
     try {
-      set({ threads: await api.threads() })
+      set({ threads: await api.threads(false, useProjects.getState().selectedId) })
     } catch (e) {
       set({ error: message(e) })
     }
   },
 
+  selectProject: async (projectId) => {
+    useProjects.getState().select(projectId)
+    await get().refreshThreads()
+    await useProjects.getState().loadMemory(projectId)
+  },
+
+  reviewNow: async () => {
+    const id = get().activeId
+    if (!id) return
+    try {
+      await api.reviewThread(id)
+    } catch (e) {
+      // Nothing to review is an answer, not a failure worth an alert.
+      if (!(e instanceof ApiError && e.code === "idle")) {
+        set({ error: message(e) })
+      }
+    }
+  },
+
   openThread: async (id) => {
     if (get().activeId === id) return
+    dropQueued()
     unsubscribe?.()
     unsubscribe = undefined
     set({
@@ -114,7 +147,7 @@ export const useApp = create<AppState>((set, get) => ({
     })
 
     unsubscribe = subscribeEvents(id, {
-      onEvent: (ev) => ingest(set, get, id, ev),
+      onEvent: (ev) => queueEvent(set, get, id, ev),
       onReady: ({ status }) => {
         set((s) => ({
           loaded: true,
@@ -127,17 +160,27 @@ export const useApp = create<AppState>((set, get) => ({
     })
 
     try {
-      const [{ status }, turns] = await Promise.all([api.thread(id), api.turns(id)])
+      const [{ thread, status }, turns] = await Promise.all([
+        api.thread(id),
+        api.turns(id),
+      ])
       set({ status, turns })
+      // The Memory tab belongs to the project, not the conversation, so it is
+      // loaded per conversation opened rather than kept from the sidebar's
+      // filter: a conversation can be in a project that is not selected.
+      if (thread.project_id) {
+        void useProjects.getState().loadMemory(thread.project_id)
+      }
     } catch (e) {
       set({ error: message(e) })
     }
   },
 
-  newThread: async () => {
+  newThread: async (projectId) => {
     creating = (async () => {
       try {
-        const thread = await api.createThread()
+        const project = projectId ?? useProjects.getState().selectedId
+        const thread = await api.createThread(undefined, undefined, project)
         set((s) => ({ threads: [thread, ...s.threads] }))
         await get().openThread(thread.id)
         return thread.id
@@ -269,32 +312,83 @@ async function currentThread(get: () => AppState): Promise<string | undefined> {
 }
 
 /** Fold one event into the transcript, ignoring anything for a conversation
- *  the user has already navigated away from. */
-function ingest(
-  set: (partial: Partial<AppState>) => void,
+ *  the user has already navigated away from. Streamed tokens are queued and
+ *  applied on the next animation frame so a burst of deltas is one render,
+ *  not one render per token. Terminal events flush immediately: a `done` that
+ *  sat behind a rAF would leave the composer looking busy after the turn ended. */
+function queueEvent(
+  set: (partial: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void,
   get: () => AppState,
   threadId: string,
   ev: SwarmEvent,
 ) {
+  if (get().activeId !== threadId) return
+  if (queuedThread !== threadId) {
+    flushQueued(set, get)
+    queuedThread = threadId
+  }
+  queued.push(ev)
+  if (ev.kind === "done" || ev.kind === "error" || ev.kind === "user_message") {
+    flushQueued(set, get)
+    return
+  }
+  if (!raf) {
+    raf = requestAnimationFrame(() => {
+      raf = 0
+      flushQueued(set, get)
+    })
+  }
+}
+
+function dropQueued() {
+  queued = []
+  queuedThread = ""
+  if (raf) {
+    cancelAnimationFrame(raf)
+    raf = 0
+  }
+}
+
+function flushQueued(
+  set: (partial: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void,
+  get: () => AppState,
+) {
+  if (raf) {
+    cancelAnimationFrame(raf)
+    raf = 0
+  }
+  if (queued.length === 0) return
+  const threadId = queuedThread
+  const events = collapseLiveEvents(queued)
+  queued = []
   const state = get()
   if (state.activeId !== threadId) return
 
-  const transcript = reduceEvent(state.transcript, ev)
-  const patch: Partial<AppState> = { transcript }
-
-  if (ev.kind === "user_message") {
-    // The event's own timestamp is the turn's start, so the header's clock is
-    // right without waiting for a status fetch to come back.
-    patch.status = {
-      ...state.status,
-      running: true,
-      turn_id: ev.turn_id,
-      started_at: ev.created_at,
+  let transcript = state.transcript
+  let status = state.status
+  let closed = false
+  for (const ev of events) {
+    transcript = reduceEvent(transcript, ev)
+    if (ev.kind === "user_message") {
+      status = {
+        ...status,
+        running: true,
+        turn_id: ev.turn_id,
+        started_at: ev.created_at,
+      }
+    }
+    if (ev.kind === "done" || ev.kind === "error") {
+      status = { running: false }
+      closed = true
+    }
+    if (ev.kind === "memory_review") {
+      // The review wrote the files directly, so the panel has to re-read them
+      // rather than derive the new state from the event.
+      void useProjects.getState().loadMemory()
     }
   }
-  if (ev.kind === "done" || ev.kind === "error") {
-    patch.status = { running: false }
-    // The turn produced files and a title; both are worth refreshing once.
+  set({ transcript, status })
+  if (closed) {
     void get().refreshFiles()
     void get().refreshThreads()
     void api
@@ -302,7 +396,6 @@ function ingest(
       .then((turns) => set({ turns }))
       .catch(() => undefined)
   }
-  set(patch)
 }
 
 function message(e: unknown): string {

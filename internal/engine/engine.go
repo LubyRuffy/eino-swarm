@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
@@ -46,6 +47,12 @@ type Engine struct {
 	// recordMu keeps a stored event's sequence number and its delivery in the
 	// same order. See record.
 	recordMu sync.Mutex
+
+	// memory holds one store per project, shared so its lock means something.
+	memory projectMemory
+	// reviews tracks the post-turn memory reviews still running, so shutdown
+	// can wait for a write instead of killing it halfway.
+	reviews reviewPool
 }
 
 // New builds an engine over an already-open store and provider pool.
@@ -60,6 +67,8 @@ func New(cfg *config.Config, st *store.Store, pool *provider.Pool, log *slog.Log
 		log:      log,
 		runtimes: map[string]*runtime{},
 		subs:     map[string]map[int]*subscriber{},
+		memory:   projectMemory{stores: map[string]*memory.Store{}},
+		reviews:  newReviewPool(),
 	}
 }
 
@@ -74,15 +83,30 @@ func (e *Engine) Providers() *provider.Pool { return e.pool }
 
 // ---------- conversations ----------
 
-// CreateThread opens a new conversation with its own workspace directory.
-func (e *Engine) CreateThread(title, providerID string) (*store.Thread, error) {
+// CreateThread opens a new conversation. A conversation in a project works in
+// the project's directory; one in no project gets a workspace of its own.
+func (e *Engine) CreateThread(title, providerID, projectID string) (*store.Thread, error) {
 	if strings.TrimSpace(providerID) == "" {
 		providerID = e.cfg.Models.Default
 	}
 	if _, err := e.pool.Resolve(providerID); err != nil {
 		return nil, err
 	}
-	th := &store.Thread{Title: strings.TrimSpace(title), ProviderID: providerID}
+	projectID = strings.TrimSpace(projectID)
+	if projectID != "" {
+		p, err := e.store.GetProject(projectID)
+		if err != nil {
+			return nil, err
+		}
+		if err := e.prepareProjectDirs(p); err != nil {
+			return nil, err
+		}
+	}
+	th := &store.Thread{
+		Title:      strings.TrimSpace(title),
+		ProviderID: providerID,
+		ProjectID:  projectID,
+	}
 	if err := e.store.CreateThread(th); err != nil {
 		return nil, err
 	}
@@ -94,20 +118,34 @@ func (e *Engine) CreateThread(title, providerID string) (*store.Thread, error) {
 
 // DeleteThread stops any running turn, drops the rows and removes the
 // workspace. A conversation the user deleted must not leave its files behind.
+//
+// A conversation in a project is the exception: its directory belongs to the
+// project and is shared with every other conversation in it — and may be the
+// user's own repository. Deleting one conversation must not take that with it.
 func (e *Engine) DeleteThread(id string) error {
 	if err := e.Interrupt(id); err != nil && !errors.Is(err, ErrIdle) && !errors.Is(err, ErrNotFound) {
 		return err
 	}
 	e.closeRuntime(id)
+	ws := e.WorkspaceDir(id)
 	if err := e.store.DeleteThread(id); err != nil {
 		return err
 	}
-	ws := e.WorkspaceDir(id)
-	if err := os.RemoveAll(ws); err != nil {
-		e.log.Warn("could not remove workspace", "thread", id, "path", ws, "err", err)
+	if e.ownsWorkspace(ws) {
+		if err := os.RemoveAll(ws); err != nil {
+			e.log.Warn("could not remove workspace", "thread", id, "path", ws, "err", err)
+		}
 	}
 	e.dropSubscribers(id)
 	return nil
+}
+
+// ownsWorkspace reports whether a directory is one zwai created per
+// conversation. Everything else — a project's directory, and above all a path
+// the user typed — is not this function's to delete.
+func (e *Engine) ownsWorkspace(dir string) bool {
+	root := e.cfg.WorkspacesDir()
+	return dir != root && strings.HasPrefix(dir, root+string(os.PathSeparator))
 }
 
 // RenameThread sets a conversation's title.
@@ -141,9 +179,28 @@ func (e *Engine) SetThreadArchived(id string, archived bool) error {
 	return e.store.UpdateThread(id, map[string]any{"archived": archived})
 }
 
-// WorkspaceDir is a conversation's workspace directory.
+// WorkspaceDir is where a conversation's agents work.
+//
+// A conversation in a project shares the project's directory: that is the
+// point of a project, and it is why a second conversation can read what the
+// first one wrote. A conversation in no project keeps one of its own, named
+// after it.
+//
+// A project that has gone missing falls back to the per-conversation
+// workspace. Answering with an empty path instead would anchor the tools at
+// the process's own working directory, which is nobody's intent.
 func (e *Engine) WorkspaceDir(threadID string) string {
-	return e.cfg.WorkspaceDir(threadID)
+	th, err := e.store.GetThread(threadID)
+	if err != nil || strings.TrimSpace(th.ProjectID) == "" {
+		return e.cfg.WorkspaceDir(threadID)
+	}
+	p, err := e.store.GetProject(th.ProjectID)
+	if err != nil {
+		e.log.Warn("conversation points at a project that is not there",
+			"thread", threadID, "project", th.ProjectID, "err", err)
+		return e.cfg.WorkspaceDir(threadID)
+	}
+	return e.ProjectWorkdir(p)
 }
 
 // ---------- status ----------
@@ -194,7 +251,14 @@ func (e *Engine) Running() []string {
 
 // Shutdown interrupts every running turn and marks them cancelled, so a
 // restarted app does not show conversations frozen mid-answer.
+//
+// Memory reviews are refused from here on and the ones already running are
+// waited for, briefly: a review that is cut off mid-write would leave a note
+// half stored, and a review that never finishes must not keep the app open.
 func (e *Engine) Shutdown() {
+	if !e.reviews.stop(reviewShutdownGrace) {
+		e.log.Warn("a memory review was still running at shutdown; its notes may be incomplete")
+	}
 	e.mu.Lock()
 	rts := make([]*runtime, 0, len(e.runtimes))
 	for _, rt := range e.runtimes {
@@ -281,6 +345,11 @@ type subscriber struct {
 // subscriberBuffer is deep enough to absorb a burst of streamed deltas while a
 // client renders a frame.
 const subscriberBuffer = 256
+
+// reviewShutdownGrace is how long shutdown waits for a memory review. A review
+// is one short model call and a file write; longer than this means the
+// endpoint is not answering, and the user is waiting for a window to close.
+const reviewShutdownGrace = 5 * time.Second
 
 // Replay returns a conversation's persisted events after seq, for a client
 // that is catching up.
@@ -376,6 +445,13 @@ func (e *Engine) ListFiles(threadID string) ([]FileEntry, error) {
 		rel, relErr := filepath.Rel(root, path)
 		if relErr != nil {
 			return nil
+		}
+		// A project's directory is often a repository, and `.git` alone holds
+		// thousands of files: without this the cap below is spent before the
+		// panel reaches anything the user recognizes. Dot-directories are
+		// skipped in the listing only — the agents still read and write them.
+		if d.IsDir() && strings.HasPrefix(d.Name(), ".") {
+			return filepath.SkipDir
 		}
 		if len(out) >= maxWorkspaceEntries {
 			return filepath.SkipAll

@@ -20,7 +20,12 @@ import (
 // It must stay task-agnostic. Nothing about any particular request belongs
 // here: the prompt describes capabilities and conventions, the user's message
 // supplies the task.
-func managerPrompt(set *tools.Set, cfg *config.Config) string {
+//
+// extra carries what a project adds — its own instruction, its notes and its
+// skills index — and is empty for a conversation that belongs to no project.
+// It goes last, after the generic sections, so the project's instruction is
+// the most recent thing the model read.
+func managerPrompt(set *tools.Set, cfg *config.Config, extra string) string {
 	var b strings.Builder
 
 	b.WriteString(`You are the manager of a small team of AI agents, working alongside a human.
@@ -33,10 +38,14 @@ You can start sub-agents that work in parallel, each with its own context:
 
 - spawn_agent(role, task, fork_context?) starts one and returns immediately
   with its agent_id. Give each a role name and a task that is complete on its
-  own, because a sub-agent cannot see this conversation unless you pass
-  fork_context, and even then only what has been said so far.
+  own. fork_context copies THIS conversation so far — not a previous worker's
+  findings. To continue a finished worker's own conversation, use resume_agent.
+- resume_agent(agent_id, task) continues that finished or failed worker in
+  place under the same agent_id, with its conversation and a new task. Do not
+  spawn a second worker with the same role to replace one that failed.
 - send_message(agent_id, text) steers a running sub-agent. It is delivered at
-  the sub-agent's next step, so it never interrupts work in progress.
+  the sub-agent's next step, so it never interrupts work in progress. A finished
+  worker does not receive it; resume_agent that same id instead.
 - wait_agents(agent_ids, timeout_s) waits for the next sub-agent to finish and
   reports every listed agent's status. It returns as soon as one finishes, not
   once they all do: spawn everything first, then wait in a loop. Each time it
@@ -77,6 +86,12 @@ result, then the detail that supports it; do not narrate your process or list
 the tools you used unless asked. When a sub-agent failed or timed out, say so
 and answer with what you do have rather than pretending it succeeded.
 `)
+
+	if extra = strings.TrimSpace(extra); extra != "" {
+		b.WriteString("\n")
+		b.WriteString(extra)
+		b.WriteString("\n")
+	}
 
 	return b.String()
 }

@@ -337,6 +337,50 @@ func TestMockWorkerWritesIntoTheWorkspace(t *testing.T) {
 	}
 }
 
+// The reviewer role is what makes --mock and the end-to-end tests exercise the
+// memory path at all. Its writes must be derived from the conversation: text
+// baked in here would show up in screenshots and expectations as if the
+// product had chosen it.
+func TestMockReviewerCuratesMemoryFromTheConversation(t *testing.T) {
+	m := newMockModel("memory-reviewer")
+	ctx := context.Background()
+	convo := []*schema.Message{schema.UserMessage("Conversation to review:\n\nuser: collect the inputs")}
+
+	first, err := m.Generate(ctx, convo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.ToolCalls) != 2 {
+		t.Fatalf("the reviewer should write a note and a skill: %+v", first.ToolCalls)
+	}
+	names := map[string]string{}
+	for _, c := range first.ToolCalls {
+		names[c.Function.Name] = c.Function.Arguments
+	}
+	note, ok := names["memory"]
+	if !ok {
+		t.Fatalf("no memory call: %v", names)
+	}
+	if !strings.Contains(note, "collect the inputs") {
+		t.Fatalf("the note must come from the conversation: %s", note)
+	}
+	skill, ok := names["skill_manage"]
+	if !ok {
+		t.Fatalf("no skill_manage call: %v", names)
+	}
+	if !strings.Contains(skill, `"action":"create"`) || !strings.Contains(skill, "collect the inputs") {
+		t.Fatalf("the skill must come from the conversation: %s", skill)
+	}
+
+	second, err := m.Generate(ctx, append(convo, first, schema.ToolMessage(`{"success":true}`, "x")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second.ToolCalls) != 0 || second.Content == "" {
+		t.Fatalf("the reviewer must finish with a line, not another tool call: %+v", second)
+	}
+}
+
 // Streaming must reassemble to exactly the scripted text: the UI's accumulated
 // deltas depend on chunks being a clean partition of the message.
 func TestMockStreamReassemblesExactly(t *testing.T) {

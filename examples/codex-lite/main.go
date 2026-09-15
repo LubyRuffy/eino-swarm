@@ -1,7 +1,7 @@
 // Command codex-lite is the minimal Codex-CLI-style multi-agent runner built
-// on github.com/LubyRuffy/eino-swarm: a manager LLM holding four lifecycle
-// tools (spawn_agent / send_message / wait_agents / close_agent), spawning
-// sub-agents on demand — no pre-registered roles, no extra infra.
+// on github.com/LubyRuffy/eino-swarm: a manager LLM holding five lifecycle
+// tools (spawn_agent / send_message / wait_agents / close_agent / resume_agent),
+// spawning sub-agents on demand — no pre-registered roles, no extra infra.
 //
 //	Live:  OPENAI_BASE_URL=http://your-endpoint/v1 OPENAI_MODEL=your-model \
 //	       OPENAI_API_KEY=sk-... go run ./examples/codex-lite -task "..."
@@ -31,9 +31,12 @@ const managerPrompt = `You are the manager of a worker swarm.
 Tools: spawn_agent(role, task[, fork_context]) starts a background worker and
 returns agent_id; send_message(agent_id, text) steers a running worker at its
 next turn boundary; wait_agents(agent_ids, timeout_s) blocks for results;
-close_agent(agent_id) cancels one.
+close_agent(agent_id) cancels one; resume_agent(agent_id, task) continues that
+finished worker in place under the same id.
 Spawn independent work in ONE message (multiple spawn_agent calls run in
 parallel). Use fork_context:true when a worker needs this conversation so far.
+Use resume_agent when more work depends on what a finished worker already did;
+do not spawn a second worker with the same role.
 Always wait_agents before answering. Stop when the goal is met.`
 
 func main() {

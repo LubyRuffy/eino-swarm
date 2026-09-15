@@ -25,15 +25,25 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **It says what it is doing, even when it is quiet.** A turn reports in every
   few seconds while it works, so a swarm thinking hard inside a slow tool call
   shows a ticking "Working for 1m 12s · 2 sub-agents running" instead of looking
-  frozen.
+  frozen. While it is running, that line — and the live tool / sub-agent rows —
+  sweep, and scroll if the text does not fit.
+- **It stays live without freezing the window.** Streamed tokens are folded into
+  one event every few milliseconds, completed markdown is not re-parsed on
+  every token, and typing in the composer does not rebuild the conversation.
 - **Steering, not restarting.** Press Enter while a turn is running and your text
   is injected at the next turn boundary instead of starting over.
+- **Projects that remember.** Group conversations under one working directory and
+  one instruction, and let them keep what they learn: after each turn the project
+  writes down durable facts and records reusable procedures as skills, which
+  every later conversation in that project starts with.
 - **Per-conversation model and thinking level.** When more than one endpoint is
   configured, the composer switches models per conversation; a thinking-level
   menu (Default / Low / Medium / High) sets how hard the models reason. Both
   apply from the next turn.
 - **Real tools.** File read/write/edit, `ls`/`tree`/`glob`/`grep`, shell `exec`,
   web search and fetch, from [eino-tools](https://github.com/LubyRuffy/eino-tools).
+  The transcript shows the command or query, not the JSON envelope; a failed
+  `exec` is a red error, not a grey dump.
 - **Nothing hardcoded.** Endpoints, models, concurrency and tool switches live in
   one YAML file, editable from Settings.
 - **One-id troubleshooting.** Copy a turn id from the UI and
@@ -90,18 +100,51 @@ Ask for something that has parts, because that is when a swarm beats one agent:
 What you get:
 
 1. **A plan, then sub-agents.** The manager spawns workers (`fork_context` when a
-   worker needs the conversation so far) and you see each one appear.
+   worker needs this conversation so far; `resume_agent` when more work depends
+   on a finished worker — same id, not a twin with the same name) and you see each one appear.
 2. **A workspace.** Every conversation has its own directory
    (`~/.zwai-swarm/workspaces/<thread-id>/`). Uploads land in `uploads/`, agent
    output lands next to it, and the **Files** tab lists it all with download
-   (and, in the desktop app, "Show in Finder").
+   (and, in the desktop app, "Show in Finder"). Expand a `read` in the transcript
+   to see the file: markdown is rendered, other files keep their line numbers.
 3. **Steering.** Type while it works — "skip the third file, it's a duplicate" —
    and the manager picks it up at its next turn instead of after finishing.
 4. **A reason for everything.** The **Trace** tab and `zwai trace <turn-id>` show
    the ordered timeline plus every model call with its size and duration.
 
-Keyboard: `⌘K` command palette · `⌘N` new conversation · `⌘\` toggle the right
-panel · `⌘,` settings · `Esc` stop the running turn.
+Keyboard: `⌘K` command palette · `⌘N` new conversation · `⌘B` hide or show the
+conversation list · `⌘\` toggle the right panel · `⌘,` settings · `Esc` stop the
+running turn.
+
+### Projects
+
+Work that comes back — one repository, one report, one recurring chore — belongs
+in a project. **New project** at the top of the conversation list asks for three
+things:
+
+- **an instruction**, added to the system prompt of every conversation in the
+  project, so you stop repeating how you want things done;
+- **a working directory**, an absolute path that already exists. Every
+  conversation in the project reads and writes it directly, with your
+  permissions. Leave it empty and zwai keeps one for you;
+- **memory**, on by default.
+
+With memory on, each finished turn is read back and what is worth carrying
+forward is kept: short notes about how this project works, and *skills* —
+step-by-step procedures the agents wrote for themselves. The next conversation in
+that project starts with the notes in its prompt and an index of the skills, and
+opens a skill when it needs one.
+
+The **Memory** tab shows both. Notes are editable, skills can be read and
+deleted, and **Review now** re-reads the last finished turn. Correcting a wrong
+note there matters: it would otherwise be repeated in every future conversation.
+Notes are budgeted (`memory.char_limit`, default 2200 characters) because they
+ride in every prompt — once full, something has to be replaced to make room.
+
+Memory lives in the data directory, never in your working directory, so a project
+pointed at a repository leaves nothing in it. Deleting a project deletes its
+conversations and its memory; files in a working directory you chose are left
+alone. See [docs/CONFIG.md](docs/CONFIG.md) for the budgets.
 
 ## Common ways to run it
 
@@ -125,12 +168,15 @@ zwai --data-dir /tmp/demo   # use a throwaway data directory
 ~/.zwai-swarm/            $ZWAI_HOME overrides this
 ├── config.yaml           settings (0600; the API key is in here)
 ├── zwai.db               conversations, transcripts, event timeline, model calls
-└── workspaces/<thread>/  one directory per conversation, `uploads/` inside it
+├── workspaces/<thread>/  one directory per standalone conversation, `uploads/` inside it
+└── projects/<project>/   a managed working directory, and the project's memory
 ```
 
-Deleting a conversation deletes its workspace. Nothing is sent anywhere except to
-the model endpoint you configured — and to whatever the agents fetch when you ask
-them to search the web.
+Deleting a conversation deletes its workspace when zwai created it; a
+conversation in a project shares the project's directory, which may be your own
+repository, so that is left alone. Nothing is sent anywhere except to the model
+endpoint you configured — and to whatever the agents fetch when you ask them to
+search the web.
 
 ## Full access, deliberately
 

@@ -23,15 +23,16 @@ const (
 )
 
 type block struct {
-	kind      blockKind
-	agentID   string
-	thinkText string // for blockThinking: full accumulated reasoning
-	answer    string // for blockThinking/Answer: final text
-	toolName  string // for blockTool
-	toolArgs  string
-	toolRes   string
-	open      bool // collapsed/expanded; thinking defaults open while streaming
-	live      bool // still streaming (reasoning running)
+	kind       blockKind
+	agentID    string
+	thinkText  string // for blockThinking: full accumulated reasoning
+	answer     string // for blockThinking/Answer: final text
+	toolName   string // for blockTool
+	toolArgs   string
+	toolRes    string
+	toolFailed bool
+	open       bool // collapsed/expanded; thinking defaults open while streaming
+	live       bool // still streaming (reasoning running)
 }
 
 // ---------- per-agent state ----------
@@ -121,6 +122,11 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 	// notifications can find it via byID.
 	switch n.Kind {
 	case swarm.NotifySpawned:
+		if a := m.byID(n.AgentID); a != nil {
+			a.finished = false
+			a.finErr = nil
+			return
+		}
 		m.agents = append(m.agents, &agentState{
 			id:   n.AgentID,
 			role: n.Role,
@@ -154,13 +160,21 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 		blk.open = false // finished message collapses to one line
 	case swarm.NotifyToolCall:
 		a.closeThinking()
-		blk := &block{kind: blockTool, agentID: a.id, open: false, toolName: toolNameOf(n.Text), toolArgs: toolArgsOf(n.Text)}
-		blk.open = true // expand while running
+		name := toolNameOf(n.Text)
+		blk := &block{
+			kind:     blockTool,
+			agentID:  a.id,
+			open:     true, // expand while running
+			toolName: name,
+			toolArgs: summariseToolArgs(name, toolArgsOf(n.Text)),
+		}
 		a.curTool = blk
 		a.blocks = append(a.blocks, blk)
 	case swarm.NotifyToolResult:
 		if a.curTool != nil {
-			a.curTool.toolRes = n.Text
+			view := viewToolResult(a.curTool.toolName, n.Text)
+			a.curTool.toolRes = view.display()
+			a.curTool.toolFailed = view.failed
 			a.curTool.open = false // done: collapse to summary line
 			a.curTool = nil
 		}
@@ -357,7 +371,7 @@ func dumpBlock(bld *strings.Builder, blk *block) {
 		fmt.Fprintln(bld, "⚙ "+line)
 		if blk.open || blk.toolRes == "" {
 			if blk.toolArgs != "" {
-				fmt.Fprintln(bld, "   args: "+blk.toolArgs)
+				fmt.Fprintln(bld, "   "+blk.toolArgs)
 			}
 			if blk.toolRes != "" {
 				fmt.Fprintln(bld, "   result: "+blk.toolRes)

@@ -41,8 +41,8 @@ type RunConfig struct {
 	// ModelBuilder builds it as DefaultManagerID.
 	Model model.BaseChatModel
 
-	// ManagerTools are registered on the manager in addition to the four
-	// lifecycle tools (spawn/send/wait/close).
+	// ManagerTools are registered on the manager in addition to the five
+	// lifecycle tools (spawn/send/wait/close/resume).
 	ManagerTools []tool.BaseTool
 
 	// ManagerMiddlewares are appended after the swarm's own manager
@@ -66,7 +66,7 @@ type RunResult struct {
 	Transcript []adk.Message
 }
 
-// Run is the one-shot surface: it wires the manager agent (four lifecycle
+// Run is the one-shot surface: it wires the manager agent (five lifecycle
 // tools + fork_context/steering middleware), runs every agent in streaming
 // mode, converts Ctrl+C into context cancellation that cascades to every
 // spawned agent, and drives ui with lifecycle + stream events. It blocks until

@@ -19,6 +19,7 @@ a query each would be absurd.
 
 ```mermaid
 erDiagram
+  PROJECT ||--o{ THREAD : groups
   THREAD ||--o{ TURN : has
   THREAD ||--o{ MESSAGE : has
   THREAD ||--o{ EVENT : has
@@ -28,12 +29,28 @@ erDiagram
   TURN ||--o{ LLMCALL : made
 ```
 
+## `projects` — a directory, an instruction and a memory
+
+A project is the thing several conversations have in common. Its memory is not
+in this database: notes and skills are files, so a person can read and fix them
+(see [on disk](#on-disk)).
+
+| column | type | notes |
+|---|---|---|
+| `id` | text, PK | `pj_` + 8 random bytes hex. **Also a directory name**, so it stays free of separators |
+| `name` | text | what the sidebar shows |
+| `system_prompt` | text | added to the manager's prompt for every conversation in the project |
+| `workdir` | text | the directory the user chose; empty means zwai manages one |
+| `memory_enabled` | bool | whether this project remembers anything. `memory.enabled` in the config can override it off, never on |
+| `created_at`, `updated_at` | time | gorm-managed |
+
 ## `threads` — one conversation
 
 | column | type | notes |
 |---|---|---|
 | `id` | text, PK | `th_` + 8 random bytes hex. **Also the workspace directory name**, so it must stay free of separators and shell metacharacters. |
 | `title` | text | generated from the first message when the user did not supply one |
+| `project_id` | text, indexed | the project this conversation belongs to; empty for a standalone one. It decides where the tools work, what the prompt carries, and whether a review runs |
 | `provider_id` | text | which configured provider this conversation uses |
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `archived` | bool | hidden from the sidebar's default list |
@@ -99,7 +116,7 @@ What the front end renders and replays. One row per **completed** thing.
 | `kind` | see the [event table in the API docs](API.md#event-stream) |
 | `agent_id` | `manager` or a sub-agent |
 | `role` | for `spawned`, the sub-agent's role |
-| `text` | the payload |
+| `text` | the payload. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary |
 | `tool_call_id` | pairs `tool_call` with `tool_result`; agents issue several at once and they finish out of order |
 | `err` | set on `error` and on a failed `finished` |
 | `created_at` | UTC; the timeline offsets are computed against the turn's `started_at` |
@@ -143,16 +160,50 @@ This table exists so the Files panel can separate "what I gave it" from "what it
 produced" — the workspace itself does not record provenance. A name that already
 exists is saved alongside the old one rather than overwriting it.
 
+## On disk
+
+```
+$ZWAI_HOME (default ~/.zwai-swarm)/
+├── config.yaml
+├── zwai.db
+├── workspaces/
+│   └── th_ab12…/              a standalone conversation's own directory
+└── projects/
+    └── pj_cd34…/
+        ├── workspace/         only when the project has no workdir of its own
+        └── memory/
+            ├── MEMORY.md      notes, one per blank-line-separated paragraph
+            └── skills/
+                └── <skill-name>/   lowercase, digits and dashes only
+                    └── SKILL.md
+```
+
+`MEMORY.md` and `SKILL.md` are plain files, written atomically through a
+temporary file and a rename, so a crash mid-write leaves the old version rather
+than half of the new one. `SKILL.md` follows the
+[agentskills.io](https://agentskills.io) layout: YAML frontmatter with `name`
+and `description`, then the procedure as markdown.
+
+**Memory lives here, never in your working directory.** A project pointed at a
+repository must not leave files in it, and a memory that was in the repository
+would arrive in a commit, a diff and a code review.
+
 ## Lifecycle and retention
 
 - **Delete a conversation** (`DELETE /api/threads/:id`): its messages, turns,
   events, model calls and attachments are removed in one transaction, then the
-  row, then its workspace directory on disk.
+  row, then its workspace directory — **only when zwai created that directory**.
+  A conversation in a project shares the project's directory, which may be the
+  user's own repository, so it is left alone.
+- **Delete a project** (`DELETE /api/projects/:id`): its conversations are
+  deleted as above, then the project row, then the directories zwai created for
+  it — its managed workspace and its memory. A `workdir` the user supplied is
+  never touched.
 - **Nothing is pruned automatically.** Events are the only table that grows fast;
   if a database ever gets uncomfortable, delete old conversations.
 - **Backup** is copying `~/.zwai-swarm` while the app is not running. The
-  workspaces are the files themselves, so a backup that skips them loses agent
-  output.
+  workspaces and the projects' memory are files, so a backup that skips them
+  loses agent output and everything the projects learned.
 
 ## Reading it directly
 

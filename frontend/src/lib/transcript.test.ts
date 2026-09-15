@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   MANAGER_ID,
+  collapseLiveEvents,
   emptyTranscript,
   liveWorkers,
   reduceEvents,
@@ -192,6 +193,20 @@ describe("sub-agents", () => {
     const spawns = manager(state).blocks.filter((b) => b.kind === "spawn")
     expect(spawns.map((s) => s.spawn?.agentId)).toEqual(["researcher-1", "reviewer-2"])
     expect(state.turns[0].agentIds).toEqual(["researcher-1", "reviewer-2"])
+  })
+
+  it("treats a second spawn of the same id as a continuation, not a twin", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "compare two things" }),
+      ev({ kind: "spawned", agent_id: "worker-1", role: "worker", text: "worker" }),
+      ev({ kind: "finished", agent_id: "worker-1", err: "timed out" }),
+      ev({ kind: "spawned", agent_id: "worker-1", role: "worker", text: "worker" }),
+    ])
+    expect(state.agentOrder.filter((id) => id !== MANAGER_ID)).toEqual(["worker-1"])
+    expect(state.agents["worker-1"].status).toBe("running")
+    expect(state.agents["worker-1"].error).toBeUndefined()
+    const spawns = manager(state).blocks.filter((b) => b.kind === "spawn")
+    expect(spawns).toHaveLength(1)
   })
 
   // A worker still marked running when the turn ends was killed by cleanup;
@@ -432,5 +447,108 @@ describe("the progress pulse", () => {
     const after = fold([ev({ kind: "progress", seq: 0, text: "not json" })], good)
     expect(after.pulse).toBe(good.pulse)
     expect(after.agents[MANAGER_ID].blocks).toHaveLength(1)
+  })
+})
+
+describe("collapseLiveEvents", () => {
+  // Deltas carry the accumulated string, so a burst is losslessly the last
+  // snapshot. Keeping the earlier ones would be fifty React renders for the
+  // same growing string.
+  it("keeps the latest snapshot per agent and kind", () => {
+    const collapsed = collapseLiveEvents([
+      ev({ kind: "delta", text: "H" }),
+      ev({ kind: "delta", text: "He" }),
+      ev({ kind: "delta", text: "Hello" }),
+    ])
+    expect(collapsed).toHaveLength(1)
+    expect(collapsed[0].text).toBe("Hello")
+  })
+
+  it("does not reorder a tool call relative to the text around it", () => {
+    const collapsed = collapseLiveEvents([
+      ev({ kind: "delta", text: "Checking" }),
+      ev({ kind: "tool_call", text: "read({})", tool_call_id: "c1" }),
+      ev({ kind: "delta", text: "Checking now" }),
+    ])
+    expect(collapsed.map((e) => e.kind)).toEqual(["tool_call", "delta"])
+    expect(collapsed[1].text).toBe("Checking now")
+  })
+
+  it("does not mix two agents into one window", () => {
+    const collapsed = collapseLiveEvents([
+      ev({ kind: "delta", agent_id: "manager", text: "m1" }),
+      ev({ kind: "delta", agent_id: "worker-1", text: "w1" }),
+      ev({ kind: "delta", agent_id: "manager", text: "m2" }),
+    ])
+    expect(collapsed.map((e) => `${e.agent_id}:${e.text}`)).toEqual([
+      "worker-1:w1",
+      "manager:m2",
+    ])
+  })
+})
+
+describe("the memory review", () => {
+  const review = (body: unknown, err?: string) =>
+    ev({
+      kind: "memory_review",
+      agent_id: "memory-reviewer",
+      role: "memory-reviewer",
+      text: JSON.stringify(body),
+      err,
+    })
+
+  // The reviewer is not a member of the swarm. Letting it into the roster
+  // would show a worker that has nothing to display and never finishes.
+  it("does not join the roster", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "done", text: "answer" }),
+      review({ changed: true, notes: { add: 1 } }),
+    ])
+    expect(state.agentOrder).toEqual([MANAGER_ID])
+    expect(state.agents["memory-reviewer"]).toBeUndefined()
+  })
+
+  it("says what it kept, counting notes and naming skills", () => {
+    const state = fold([
+      review({
+        changed: true,
+        notes: { add: 2, replace: 1 },
+        skills: [{ name: "a-procedure", action: "create" }],
+      }),
+    ])
+    const notices = manager(state).blocks.filter((b) => b.kind === "notice")
+    expect(notices).toHaveLength(1)
+    expect(notices[0].text).toBe(
+      'Memory updated: 2 notes stored, 1 note revised, skill "a-procedure" recorded.',
+    )
+  })
+
+  // Most turns teach a project nothing. A row after every answer saying so
+  // would train the reader to ignore the ones that matter.
+  it("shows nothing when it kept nothing", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "done", text: "answer" }),
+      review({ changed: false, note: "nothing durable" }),
+    ])
+    expect(manager(state).blocks.filter((b) => b.kind === "notice")).toHaveLength(0)
+  })
+
+  // A review that fell over is worth a line: memory the user believes is
+  // being kept, and is not, is the failure they cannot see.
+  it("reports a failed review", () => {
+    const state = fold([review({ changed: false, err: "model refused" })])
+    expect(manager(state).blocks[0].text).toBe("Memory review failed: model refused")
+  })
+
+  it("survives a malformed payload without a block", () => {
+    const state = fold([ev({ kind: "memory_review", text: "{not json" })])
+    expect(manager(state)).toBeUndefined()
+  })
+
+  it("still moves the resume point, so a reconnect does not replay it", () => {
+    const state = fold([review({ changed: false })])
+    expect(state.lastSeq).toBeGreaterThan(0)
   })
 })

@@ -79,11 +79,25 @@ export default {
           "0%, 100%": { opacity: "1", transform: "scale(1)" },
           "50%": { opacity: "0.45", transform: "scale(0.82)" },
         },
+        // Live status that does not fit: one copy slides out, the duplicate
+        // takes its place, so the loop has no jump.
+        marquee: {
+          from: { transform: "translateX(0)" },
+          to: { transform: "translateX(-50%)" },
+        },
+        // Light sweeping across a live status line. The row is otherwise
+        // still, and a still row looks stuck.
+        shimmer: {
+          from: { backgroundPosition: "200% center" },
+          to: { backgroundPosition: "-200% center" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         breathe: "breathe 1.6s ease-in-out infinite",
+        marquee: "marquee 12s linear infinite",
+        shimmer: "shimmer 2.2s ease-in-out infinite",
       },
     },
   },

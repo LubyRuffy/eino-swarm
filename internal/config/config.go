@@ -26,6 +26,7 @@ type Config struct {
 	Models ModelsConfig `yaml:"models" json:"models"`
 	Swarm  SwarmConfig  `yaml:"swarm" json:"swarm"`
 	Tools  ToolsConfig  `yaml:"tools" json:"tools"`
+	Memory MemoryConfig `yaml:"memory" json:"memory"`
 	Log    LogConfig    `yaml:"log" json:"log"`
 
 	// dataDir is where this config was loaded from. Not serialized: the file
@@ -95,6 +96,10 @@ type SwarmConfig struct {
 	// pulse. It is the only thing that moves on screen while every agent is
 	// busy inside a long tool call, so it is a comfort setting, not a limit.
 	ProgressIntervalSeconds int `yaml:"progress_interval_seconds" json:"progress_interval_seconds"`
+	// DeltaCoalesceMS is how long streamed tokens wait to be sent as one
+	// event. A token every few milliseconds would redraw the whole UI; one
+	// pulse per interval keeps the screen moving without a frame per token.
+	DeltaCoalesceMS int `yaml:"delta_coalesce_ms" json:"delta_coalesce_ms"`
 }
 
 // AgentTimeout is the per-sub-agent watchdog duration.
@@ -111,6 +116,14 @@ func (s SwarmConfig) ProgressInterval() time.Duration {
 		return DefaultProgressIntervalSeconds * time.Second
 	}
 	return time.Duration(s.ProgressIntervalSeconds) * time.Second
+}
+
+// DeltaCoalesce is how long streamed tokens wait to be sent as one event.
+func (s SwarmConfig) DeltaCoalesce() time.Duration {
+	if s.DeltaCoalesceMS <= 0 {
+		return time.Duration(DefaultDeltaCoalesceMS) * time.Millisecond
+	}
+	return time.Duration(s.DeltaCoalesceMS) * time.Millisecond
 }
 
 // ProxyConfig is the outbound proxy applied to network tools.
@@ -156,6 +169,56 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// MemoryConfig governs a project's memory: the notes carried into every turn
+// and the skill documents the agents write for themselves.
+//
+// The character limit is the reason the rest of it works. Memory is injected
+// into the system prompt, so an unbounded store would grow the prompt of every
+// turn forever; a limit forces the agent to consolidate instead of accumulate.
+type MemoryConfig struct {
+	// Enabled turns the memory tools and the prompt sections on. Projects can
+	// still opt out one at a time.
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	// AutoReview runs a review after each completed turn, which is what makes
+	// memory grow without anyone being asked to maintain it.
+	AutoReview bool `yaml:"auto_review" json:"auto_review"`
+	// CharLimit bounds MEMORY.md. A write that would exceed it fails with the
+	// current entries attached, rather than silently dropping the oldest.
+	CharLimit int `yaml:"char_limit" json:"char_limit"`
+	// ReviewMaxIterations caps the reviewer's ReAct loop. It reads one
+	// conversation and writes a handful of files; a high cap only buys a
+	// runaway.
+	ReviewMaxIterations int `yaml:"review_max_iterations" json:"review_max_iterations"`
+	// SkillsIndexMax is how many skills the prompt lists. Only the name and
+	// the one-line summary are listed, so the agent pays for the index and not
+	// for every procedure it might not need.
+	SkillsIndexMax int `yaml:"skills_index_max" json:"skills_index_max"`
+}
+
+// ReviewIterations is the reviewer's iteration cap.
+func (m MemoryConfig) ReviewIterations() int {
+	if m.ReviewMaxIterations <= 0 {
+		return DefaultReviewMaxIterations
+	}
+	return m.ReviewMaxIterations
+}
+
+// Limit is the MEMORY.md character budget.
+func (m MemoryConfig) Limit() int {
+	if m.CharLimit <= 0 {
+		return DefaultMemoryCharLimit
+	}
+	return m.CharLimit
+}
+
+// IndexMax is how many skills the prompt lists.
+func (m MemoryConfig) IndexMax() int {
+	if m.SkillsIndexMax <= 0 {
+		return DefaultSkillsIndexMax
+	}
+	return m.SkillsIndexMax
 }
 
 // LogConfig configures slog.
@@ -208,11 +271,20 @@ const (
 	// A pulse every few seconds is frequent enough that a silent swarm still
 	// looks alive, and rare enough to be invisible next to streamed tokens.
 	DefaultProgressIntervalSeconds = 5
-	DefaultWebSearchResults        = 8
-	DefaultProviderID              = "default"
-	DefaultLogLevel                = "info"
-	dirPerm                        = 0o700
-	filePerm                       = 0o600
+	// One pulse per 50ms is ~20 frames a second: fast enough that streamed
+	// text still looks live, slow enough that a five-agent swarm does not
+	// spend the UI's whole budget redrawing the same markdown.
+	DefaultDeltaCoalesceMS  = 50
+	DefaultWebSearchResults = 8
+	DefaultProviderID       = "default"
+	DefaultLogLevel         = "info"
+	// About 800 tokens: enough for a dozen dense notes, small enough that
+	// every turn can afford to carry them.
+	DefaultMemoryCharLimit     = 2200
+	DefaultReviewMaxIterations = 8
+	DefaultSkillsIndexMax      = 50
+	dirPerm                    = 0o700
+	filePerm                   = 0o600
 )
 
 // Default returns the configuration a fresh install starts with. The single
@@ -238,11 +310,19 @@ func Default() *Config {
 			MaxTurns:                DefaultMaxTurns,
 			ManagerMaxIterations:    DefaultManagerIterations,
 			ProgressIntervalSeconds: DefaultProgressIntervalSeconds,
+			DeltaCoalesceMS:         DefaultDeltaCoalesceMS,
 		},
 		Tools: ToolsConfig{
 			Disabled:            []string{},
 			Enabled:             []string{},
 			WebSearchMaxResults: DefaultWebSearchResults,
+		},
+		Memory: MemoryConfig{
+			Enabled:             true,
+			AutoReview:          true,
+			CharLimit:           DefaultMemoryCharLimit,
+			ReviewMaxIterations: DefaultReviewMaxIterations,
+			SkillsIndexMax:      DefaultSkillsIndexMax,
 		},
 		Log: LogConfig{Level: DefaultLogLevel},
 	}
@@ -271,7 +351,7 @@ func Load(dataDir string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: resolve data dir: %w", err)
 	}
-	for _, d := range []string{abs, filepath.Join(abs, "workspaces")} {
+	for _, d := range []string{abs, filepath.Join(abs, workspacesDirName), filepath.Join(abs, projectsDirName)} {
 		if err := os.MkdirAll(d, dirPerm); err != nil {
 			return nil, fmt.Errorf("config: create %s: %w", d, err)
 		}
@@ -364,8 +444,23 @@ func (c *Config) normalize() {
 	if c.Swarm.ProgressIntervalSeconds <= 0 {
 		c.Swarm.ProgressIntervalSeconds = d.Swarm.ProgressIntervalSeconds
 	}
+	if c.Swarm.DeltaCoalesceMS <= 0 {
+		c.Swarm.DeltaCoalesceMS = d.Swarm.DeltaCoalesceMS
+	}
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults
+	}
+	// Only the budgets are repaired. The two switches are booleans a user may
+	// legitimately have set to false, and "repairing" a false to the default
+	// would turn memory back on behind their back.
+	if c.Memory.CharLimit <= 0 {
+		c.Memory.CharLimit = d.Memory.CharLimit
+	}
+	if c.Memory.ReviewMaxIterations <= 0 {
+		c.Memory.ReviewMaxIterations = d.Memory.ReviewMaxIterations
+	}
+	if c.Memory.SkillsIndexMax <= 0 {
+		c.Memory.SkillsIndexMax = d.Memory.SkillsIndexMax
 	}
 	// A nil slice marshals to JSON null, which the settings UI would have to
 	// guard on every read; keep the wire shape a list.
@@ -441,13 +536,50 @@ func (c *Config) Path() string { return filepath.Join(c.dataDir, FileName) }
 // DBPath is the SQLite database file's full path.
 func (c *Config) DBPath() string { return filepath.Join(c.dataDir, "zwai.db") }
 
-// WorkspacesDir is the parent of every conversation's workspace.
-func (c *Config) WorkspacesDir() string { return filepath.Join(c.dataDir, "workspaces") }
+// Directory names under the data directory. They are also what tells a
+// managed directory apart from a path the user chose: deleting a conversation
+// may remove a directory under WorkspacesDir, and never one outside it.
+const (
+	workspacesDirName = "workspaces"
+	projectsDirName   = "projects"
+	// A project's own subdirectories: the working directory zwai manages when
+	// the user did not name one, and the memory store.
+	projectWorkspaceName = "workspace"
+	projectMemoryName    = "memory"
+)
 
-// WorkspaceDir is one conversation's workspace: the sandbox agents read and
-// write files in, and the directory the Files panel shows.
+// WorkspacesDir is the parent of every conversation's own workspace.
+func (c *Config) WorkspacesDir() string { return filepath.Join(c.dataDir, workspacesDirName) }
+
+// WorkspaceDir is one conversation's workspace: the directory relative tool
+// paths resolve against and the one the Files panel shows. It is an anchor,
+// not a boundary — see the access model in internal/tools.
 func (c *Config) WorkspaceDir(threadID string) string {
 	return filepath.Join(c.WorkspacesDir(), threadID)
+}
+
+// ProjectsDir is the parent of every project's managed directory.
+func (c *Config) ProjectsDir() string { return filepath.Join(c.dataDir, projectsDirName) }
+
+// ProjectDir is one project's managed directory.
+func (c *Config) ProjectDir(projectID string) string {
+	return filepath.Join(c.ProjectsDir(), projectID)
+}
+
+// ProjectWorkspaceDir is the working directory of a project that did not name
+// one of its own.
+func (c *Config) ProjectWorkspaceDir(projectID string) string {
+	return filepath.Join(c.ProjectDir(projectID), projectWorkspaceName)
+}
+
+// ProjectMemoryDir holds a project's MEMORY.md and its skills.
+//
+// It sits under the data directory rather than inside the project's working
+// directory on purpose: the agents rewrite it after most turns, and a store
+// that lived in the user's repository would show up as unexplained changes in
+// every `git status`.
+func (c *Config) ProjectMemoryDir(projectID string) string {
+	return filepath.Join(c.ProjectDir(projectID), projectMemoryName)
 }
 
 // Save writes the config back to disk atomically, so a crash mid-write cannot
@@ -485,6 +617,7 @@ func (c *Config) Replace(next *Config) error {
 	c.Models = next.Models
 	c.Swarm = next.Swarm
 	c.Tools = next.Tools
+	c.Memory = next.Memory
 	c.Log = next.Log
 	return c.Save()
 }

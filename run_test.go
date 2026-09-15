@@ -483,13 +483,39 @@ func TestNotifyKindRoundTrip(t *testing.T) {
 	}
 }
 
+func TestClipToolResultKeepsNewlinesAndCutsOnRunes(t *testing.T) {
+	if got := clipToolResult("a\nb", 10); got != "a\nb" {
+		t.Fatalf("newlines must stay so a file body can be highlighted: %q", got)
+	}
+	if got := clipToolResult("中文很长的一段话", 4); got != "中文很长…" {
+		t.Fatalf("must cut on runes, not bytes: %q", got)
+	}
+	long := strings.Repeat("x", 80)
+	if got := clipToolResult(long, 10); got != strings.Repeat("x", 10)+"…" {
+		t.Fatalf("clip: %q", got)
+	}
+}
+
+func TestToolResultKeepsTheFileBodyReadable(t *testing.T) {
+	rec := &recorder{}
+	reg := NewRegistry()
+	restore := reg.setSink(rec.cb())
+	defer reg.setSink(restore)
+
+	body := "encoding=utf-8 path=notes.md offset=1 limit=200\n1|# heading\n2|a short paragraph"
+	reg.emitComplete("worker", "reader-1", adk.EventFromMessage(
+		schema.ToolMessage(body, "c1"), nil, schema.Tool, ""))
+
+	notes := rec.all()
+	if len(notes) != 1 || notes[0].Kind != NotifyToolResult {
+		t.Fatalf("want one tool_result, got %+v", notes)
+	}
+	if notes[0].Text != body {
+		t.Fatalf("file body was flattened or truncated:\n got %q\nwant %q", notes[0].Text, body)
+	}
+}
+
 func TestSummarizeAndMerge(t *testing.T) {
-	if got := summarize("a\nb", 10); got != "a b" {
-		t.Fatalf("summarize newline collapse: %q", got)
-	}
-	if got := summarize("中文很长的一段话", 4); got != "中文很长…" {
-		t.Fatalf("summarize must cut on runes, not bytes: %q", got)
-	}
 	idx0, idx1 := 0, 1
 	merged := mergeStreamedToolCalls([]schema.ToolCall{
 		{Index: &idx0, ID: "a", Function: schema.FunctionCall{Name: "f", Arguments: `{"x`}},

@@ -43,6 +43,32 @@ export function relativeDay(iso: string, now = new Date()): string {
   return "Earlier"
 }
 
+/** Hidden-inset traffic lights only exist on the macOS desktop window. */
+export function isMac(): boolean {
+  if (typeof navigator === "undefined") return false
+  return /Mac/.test(navigator.platform || "") || /Mac OS X/.test(navigator.userAgent)
+}
+
+const SIDEBAR_KEY = "zwai.sidebar"
+
+/** Conversation list visibility. Missing or unreadable storage means open —
+ *  hiding the list on first launch would look like the app forgot its chrome. */
+export function readSidebarOpen(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) !== "0"
+  } catch {
+    return true
+  }
+}
+
+export function writeSidebarOpen(open: boolean): void {
+  try {
+    localStorage.setItem(SIDEBAR_KEY, open ? "1" : "0")
+  } catch {
+    // A preference is not worth failing to start over.
+  }
+}
+
 /** Clock time for a timeline row. */
 export function formatTime(iso: string): string {
   const date = new Date(iso)

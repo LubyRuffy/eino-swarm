@@ -111,6 +111,11 @@ turn tn_3c6d0df94ee9e287  conversation th_cc107f8e87d220b5
 |---|---|
 | `--full` | print event text in full instead of one line each. Use it for a stack trace or a truncated answer. |
 
+A turn in a project with memory on ends with the review that followed it: a
+`memory_review` event saying what was kept, and the reviewer's own model calls
+under the agent `memory-reviewer`. The review is part of the turn, so the same
+id explains both what the swarm answered and what it wrote down.
+
 Given a **conversation** id it prints every turn of that conversation in order.
 Given an unknown id it fails with a message naming the data directory it looked
 in — usually the sign that you meant to pass `--data-dir`.

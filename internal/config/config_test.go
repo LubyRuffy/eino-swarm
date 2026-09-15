@@ -41,6 +41,92 @@ func TestLoadCreatesDefaultsOnFirstRun(t *testing.T) {
 	if cfg.WorkspaceDir("t1") != filepath.Join(cfg.WorkspacesDir(), "t1") {
 		t.Fatalf("workspace dir=%q", cfg.WorkspaceDir("t1"))
 	}
+	if _, err := os.Stat(cfg.ProjectsDir()); err != nil {
+		t.Fatalf("first run must create the projects dir: %v", err)
+	}
+}
+
+// A project's memory must land under the data directory, not inside the
+// working directory the user pointed at: the agents rewrite it after most
+// turns, and a store inside a repository would pollute every `git status`.
+func TestProjectPathsStayUnderTheDataDirectory(t *testing.T) {
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	for name, got := range map[string]string{
+		"project":   cfg.ProjectDir("pj_1"),
+		"workspace": cfg.ProjectWorkspaceDir("pj_1"),
+		"memory":    cfg.ProjectMemoryDir("pj_1"),
+	} {
+		if !strings.HasPrefix(got, cfg.ProjectsDir()+string(filepath.Separator)) {
+			t.Fatalf("%s dir %q escaped %q", name, got, cfg.ProjectsDir())
+		}
+	}
+	if cfg.ProjectWorkspaceDir("pj_1") == cfg.ProjectMemoryDir("pj_1") {
+		t.Fatal("the working directory and the memory store must not be the same directory")
+	}
+}
+
+// The two switches are the user's call. A hand-edited `false` that normalize
+// "repaired" would turn memory back on behind their back, which is exactly the
+// surprise the setting exists to prevent.
+func TestMemorySwitchesSurviveNormalizeAndBudgetsAreRepaired(t *testing.T) {
+	dir := t.TempDir()
+	raw := strings.Join([]string{
+		"memory:",
+		"  enabled: false",
+		"  auto_review: false",
+		"  char_limit: 0",
+		"  review_max_iterations: -1",
+		"  skills_index_max: 0",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Memory.Enabled || cfg.Memory.AutoReview {
+		t.Fatalf("normalize switched memory back on: %+v", cfg.Memory)
+	}
+	if cfg.Memory.CharLimit != DefaultMemoryCharLimit ||
+		cfg.Memory.ReviewMaxIterations != DefaultReviewMaxIterations ||
+		cfg.Memory.SkillsIndexMax != DefaultSkillsIndexMax {
+		t.Fatalf("memory budgets not repaired: %+v", cfg.Memory)
+	}
+
+	// A config written before this feature existed has no memory block at all,
+	// and must come up with memory on rather than half-configured.
+	fresh := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fresh, FileName), []byte("log:\n  level: info\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	older, err := Load(fresh)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !older.Memory.Enabled || !older.Memory.AutoReview {
+		t.Fatalf("an older config must default to memory on: %+v", older.Memory)
+	}
+}
+
+func TestMemoryHelpersFallBackToDefaults(t *testing.T) {
+	m := MemoryConfig{}
+	if m.Limit() != DefaultMemoryCharLimit {
+		t.Fatalf("Limit=%d", m.Limit())
+	}
+	if m.ReviewIterations() != DefaultReviewMaxIterations {
+		t.Fatalf("ReviewIterations=%d", m.ReviewIterations())
+	}
+	if m.IndexMax() != DefaultSkillsIndexMax {
+		t.Fatalf("IndexMax=%d", m.IndexMax())
+	}
+	m = MemoryConfig{CharLimit: 10, ReviewMaxIterations: 2, SkillsIndexMax: 3}
+	if m.Limit() != 10 || m.ReviewIterations() != 2 || m.IndexMax() != 3 {
+		t.Fatalf("configured values ignored: %+v", m)
+	}
 }
 
 func TestLoadSeedsBlanksFromEnvOnly(t *testing.T) {
@@ -134,6 +220,9 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	if cfg.Swarm.ProgressIntervalSeconds != DefaultProgressIntervalSeconds {
 		t.Fatalf("progress interval not repaired: %+v", cfg.Swarm)
 	}
+	if cfg.Swarm.DeltaCoalesceMS != DefaultDeltaCoalesceMS {
+		t.Fatalf("delta coalesce not repaired: %+v", cfg.Swarm)
+	}
 	if cfg.Tools.WebSearchMaxResults != DefaultWebSearchResults {
 		t.Fatalf("web search results not repaired: %d", cfg.Tools.WebSearchMaxResults)
 	}
@@ -200,6 +289,8 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	next.Swarm.MaxConcurrent = 3
 	next.Tools.Disabled = []string{"exec"}
 	next.Tools.Proxy = ProxyConfig{HTTP: "http://127.0.0.1:7890", NoProxy: "localhost"}
+	next.Memory.AutoReview = false
+	next.Memory.CharLimit = 1200
 	next.Models.Providers = []Provider{{
 		ID: "local", Label: "Local", BaseURL: "http://local.invalid/v1",
 		Model: "m", TimeoutSeconds: 30,
@@ -224,6 +315,9 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	}
 	if !reloaded.Tools.Proxy.Enabled() {
 		t.Fatal("proxy not persisted")
+	}
+	if reloaded.Memory.AutoReview || reloaded.Memory.CharLimit != 1200 {
+		t.Fatalf("memory settings not persisted: %+v", reloaded.Memory)
 	}
 	p, ok := reloaded.DefaultProvider()
 	if !ok || p.ID != "local" || p.Timeout() != 30*time.Second {
@@ -297,6 +391,13 @@ func TestSwarmAndLogHelpers(t *testing.T) {
 	s.ProgressIntervalSeconds = 2
 	if s.ProgressInterval() != 2*time.Second {
 		t.Fatalf("ProgressInterval=%v", s.ProgressInterval())
+	}
+	if s.DeltaCoalesce() != time.Duration(DefaultDeltaCoalesceMS)*time.Millisecond {
+		t.Fatalf("DeltaCoalesce=%v", s.DeltaCoalesce())
+	}
+	s.DeltaCoalesceMS = 16
+	if s.DeltaCoalesce() != 16*time.Millisecond {
+		t.Fatalf("DeltaCoalesce=%v", s.DeltaCoalesce())
 	}
 	for name, want := range map[string]int{
 		"debug": -4, "info": 0, "warn": 4, "warning": 4, "error": 8, "": 0, "bogus": 0,

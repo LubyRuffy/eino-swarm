@@ -4,12 +4,14 @@
 // synchronous and offers no communication channel between agents).
 //
 // Core idea: instead of registering sub-agents as blocking "executor" tools,
-// the host registers four lifecycle tools backed by one shared Registry:
+// the host registers five lifecycle tools backed by one shared Registry:
 //
 //	spawn_agent(role, task) -> {"agent_id": "..."}   returns immediately
-//	send_message(agent_id, text)                     delivered at the target's next turn boundary
-//	wait_agents(agent_ids, timeout_s) -> results     blocks until all finish
+//	send_message(agent_id, text)                     queued for the target's next turn
+//	wait_agents(agent_ids, timeout_s) -> results     returns when the next one finishes
 //	close_agent(agent_id)                            cancels the agent
+//	resume_agent(agent_id, task) -> {"agent_id": "...", "resumed_from": "..."}
+//	                                                 same worker, that finished worker's conversation
 //
 // Sub-agents are regular adk.ChatModelAgents running in their own goroutine;
 // if they are given the swarm's send_message tool too, agents can message each
@@ -53,17 +55,22 @@ const DefaultAgentTimeout = 10 * time.Minute
 
 // Handle is the public handle to one running sub-agent.
 type Handle struct {
-	ID       string
-	Role     string
-	done     chan struct{}
-	mu       sync.Mutex
-	inbox    []string
-	cancel   context.CancelFunc
-	result   string
-	err      error
-	spawned  time.Time
-	finished time.Time
-	activity string // latest streamed reasoning/answer tail (for progress)
+	ID    string
+	Role  string
+	done  chan struct{}
+	mu    sync.Mutex
+	inbox []string
+	// leftover steering that never hit a model call; wait_agents surfaces it
+	undelivered []string
+	history     []adk.Message // cloned each model call; resume_agent's seed
+	resumedFrom string
+	gen         int // bumps on resume so Result/Done cannot see the previous life
+	cancel      context.CancelFunc
+	result      string
+	err         error
+	spawned     time.Time
+	finished    time.Time
+	activity    string // latest streamed reasoning/answer tail (for progress)
 }
 
 // Activity returns the agent's most recent streamed text tail (thinking or
@@ -83,10 +90,18 @@ func (h *Handle) setActivity(s string) {
 // Result returns the agent's final message and error once it has finished.
 // finished is false while the agent is still running.
 func (h *Handle) Result() (result string, err error, finished bool) {
+	h.mu.Lock()
+	ch := h.done
+	gen := h.gen
+	h.mu.Unlock()
 	select {
-	case <-h.done:
+	case <-ch:
 		h.mu.Lock()
 		defer h.mu.Unlock()
+		// Resume swapped the channel; this close belongs to the previous life.
+		if h.gen != gen {
+			return "", nil, false
+		}
 		return h.result, h.err, true
 	default:
 		return "", nil, false
@@ -94,7 +109,11 @@ func (h *Handle) Result() (result string, err error, finished bool) {
 }
 
 // Done exposes the completion channel for external select loops.
-func (h *Handle) Done() <-chan struct{} { return h.done }
+func (h *Handle) Done() <-chan struct{} {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.done
+}
 
 // Elapsed returns how long the agent ran (valid only after completion).
 func (h *Handle) Elapsed() time.Duration {
@@ -179,6 +198,18 @@ type Registry struct {
 	// tool calls, assistant output) with the spawning role attached.
 	OnEvent func(role, agentID string, ev *adk.AgentEvent)
 
+	// ArchiveLimit caps finished conversations kept for resume_agent
+	// (<=0 means defaultArchiveSize). Independent of Stats(), which still
+	// forgets live handles.
+	ArchiveLimit int
+
+	// HistoryLimit caps messages snapshotted per worker for resume_agent
+	// (<=0 means defaultHistoryLimit).
+	HistoryLimit int
+
+	past    map[string]*agentPast
+	pastIDs []string
+
 	// internal hooks: invoked by Spawn on registration and by the agent
 	// goroutine on completion; Run wires these into Notifications.
 	spawnHook  func(role, agentID string)
@@ -187,7 +218,7 @@ type Registry struct {
 
 // NewRegistry creates an empty registry.
 func NewRegistry() *Registry {
-	return &Registry{agents: map[string]*Handle{}}
+	return &Registry{agents: map[string]*Handle{}, past: map[string]*agentPast{}}
 }
 
 func (r *Registry) get(id string) (*Handle, bool) {
@@ -294,6 +325,14 @@ func (r *Registry) ManagerMiddleware() adk.ChatModelAgentMiddleware {
 // and the mesh send_message tool.
 func (r *Registry) Spawn(ctx context.Context, role, task string,
 	modelOpt ModelBuilder, extraTools ...tool.BaseTool) (*Handle, error) {
+	return r.spawnAgent(ctx, role, task, modelOpt, "", extraTools...)
+}
+
+// spawnAgent is Spawn with an inbox seed applied before the worker goroutine
+// starts. fork_context uses it so the first model call cannot beat the
+// context it is supposed to inherit.
+func (r *Registry) spawnAgent(ctx context.Context, role, task string,
+	modelOpt ModelBuilder, seed string, extraTools ...tool.BaseTool) (*Handle, error) {
 
 	r.mu.Lock()
 	if r.closed {
@@ -309,119 +348,22 @@ func (r *Registry) Spawn(ctx context.Context, role, task string,
 	if hook != nil {
 		hook(role, id)
 	}
-
-	max := r.MaxConcurrent
-	if max <= 0 {
-		max = 8
-	}
-	sem := r.sem(max)
-	timeout := r.AgentTimeout
-	if timeout <= 0 {
-		timeout = DefaultAgentTimeout
-	}
-
-	// Create the lineage contexts synchronously so Close/Cancel can always
-	// reach the cancel func, even before the goroutine gets scheduled.
-	runCtx, cancel := context.WithCancel(ctx)
-	watchCtx, watchCancel := context.WithTimeout(runCtx, timeout)
-	h.mu.Lock()
-	h.cancel = cancel
-	h.mu.Unlock()
-
-	go func() {
-		defer close(h.done)
-		defer func() {
-			r.mu.Lock()
-			fh := r.finishHook
-			r.mu.Unlock()
-			if fh != nil {
-				h.mu.Lock()
-				res, e := h.result, h.err
-				h.mu.Unlock()
-				fh(role, id, res, e)
-			}
-		}()
-		sem <- struct{}{}
-		defer func() { <-sem }()
-		defer cancel()
-		defer watchCancel()
-
-		inj := &Injector{handle: h}
-		agent, err := adk.NewChatModelAgent(watchCtx, &adk.ChatModelAgentConfig{
-			Name:        id,
-			Description: "spawned sub-agent " + role,
-			Instruction: task,
-			Model:       modelOpt(role, id),
-			ToolsConfig: adk.ToolsConfig{
-				ToolsNodeConfig: compose.ToolsNodeConfig{Tools: extraTools},
-			},
-			MaxIterations: r.turnsLimit(),
-			Handlers:      []adk.ChatModelAgentMiddleware{inj},
-		})
-		if err != nil {
-			h.mu.Lock()
-			h.err = fmt.Errorf("swarm: spawn %s: %w", id, err)
-			h.finished = time.Now()
-			h.mu.Unlock()
-			return
-		}
-		runner := adk.NewRunner(watchCtx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
-		iter := runner.Run(watchCtx, []adk.Message{schema.UserMessage(task)})
-		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true}
-		final := ""
-		for {
-			ev, ok := iter.Next()
-			if !ok {
-				break
-			}
-			if ev == nil {
-				continue
-			}
-			if ev.Err != nil {
-				h.mu.Lock()
-				h.err = ev.Err
-				switch {
-				case watchCtx.Err() != nil && runCtx.Err() == nil:
-					// watchdog fired; caller ctx still alive
-					h.err = fmt.Errorf("swarm: agent %s exceeded timeout %v: %w", id, timeout, ev.Err)
-				case runCtx.Err() != nil && ctx.Err() == nil:
-					// registry closed under us
-					h.err = fmt.Errorf("swarm: agent %s cancelled: %w", id, ev.Err)
-				}
-				h.finished = time.Now()
-				h.mu.Unlock()
-				return
-			}
-			// The worker's stream is drained HERE (single reader): streamAcc
-			// accumulates it, keeps the handle's activity tail fresh for
-			// wait_agents, and emits notifications plus synthetic OnEvent
-			// events. A stream that ends without tool calls is the worker's
-			// answer; a stream with tool calls is an interim turn.
-			o := ev.Output
-			if o != nil && o.MessageOutput != nil &&
-				o.MessageOutput.IsStreaming && o.MessageOutput.MessageStream != nil {
-				answer, calls := acc.drain(o.MessageOutput.MessageStream)
-				if len(calls) == 0 && strings.TrimSpace(answer) != "" {
-					final = answer
-				}
-				continue
-			}
-			if r.OnEvent != nil {
-				r.OnEvent(role, id, ev)
-			}
-			r.emitComplete(role, id, ev)
-			if o != nil && o.MessageOutput != nil && !o.MessageOutput.IsStreaming &&
-				o.MessageOutput.Message != nil && o.MessageOutput.Message.Role == schema.Assistant &&
-				len(o.MessageOutput.Message.ToolCalls) == 0 {
-				final = o.MessageOutput.Message.Content
-			}
-		}
-		h.mu.Lock()
-		h.result = final
-		h.finished = time.Now()
-		h.mu.Unlock()
-	}()
+	r.startWorker(ctx, h, task, modelOpt, seed, extraTools)
 	return h, nil
+}
+
+// finishAgent records leftover steering and archives the conversation so a
+// later resume_agent can find it even after Stats has forgotten the handle.
+func (r *Registry) finishAgent(h *Handle) {
+	leftover := h.drainInbox()
+	h.mu.Lock()
+	h.undelivered = leftover
+	if h.finished.IsZero() {
+		h.finished = time.Now()
+	}
+	h.ensureResultLocked()
+	h.mu.Unlock()
+	r.remember(h)
 }
 
 // liveTail returns a running agent's latest activity text ("" if unknown).
@@ -460,28 +402,8 @@ func (r *Registry) turnsLimit() int {
 // message, so the worker starts with the manager's context so far.
 func (r *Registry) SpawnForked(ctx context.Context, role, task string,
 	modelOpt ModelBuilder, msgs []adk.Message, extraTools ...tool.BaseTool) (*Handle, error) {
-
-	h, err := r.Spawn(ctx, role, task, modelOpt, extraTools...)
-	if err != nil {
-		return nil, err
-	}
-	// deliver the inherited history through the injector's inbox path:
-	// each message becomes a steer-prefixed user turn on the agent's first
-	// model call, without touching public AgentTool machinery.
-	if len(msgs) > 0 {
-		var sb strings.Builder
-		for _, m := range msgs {
-			content := strings.TrimSpace(m.Content)
-			if content == "" {
-				continue
-			}
-			fmt.Fprintf(&sb, "%s: %s\n", m.Role, content)
-		}
-		if sb.Len() > 0 {
-			h.pushInbox("context inherited from manager:\n" + sb.String())
-		}
-	}
-	return h, nil
+	seed := formatContext("context inherited from manager", msgs)
+	return r.spawnAgent(ctx, role, task, modelOpt, seed, extraTools...)
 }
 
 // Stats returns (running, finished) counts; finished handles are pruned from
@@ -491,7 +413,7 @@ func (r *Registry) Stats() (running, finished int) {
 	defer r.mu.Unlock()
 	for id, h := range r.agents {
 		select {
-		case <-h.done:
+		case <-h.Done():
 			delete(r.agents, id)
 			finished++
 		default:
@@ -551,7 +473,7 @@ func (h *Handle) spawnedAt() time.Time {
 func (h *Handle) progress() AgentProgress {
 	p := AgentProgress{AgentID: h.ID, Role: h.Role}
 	select {
-	case <-h.done:
+	case <-h.Done():
 	default:
 		p.Running = true
 	}
@@ -603,7 +525,7 @@ func (r *Registry) Cleanup() int {
 	running := make([]*Handle, 0, len(r.agents))
 	for _, h := range r.agents {
 		select {
-		case <-h.done:
+		case <-h.Done():
 		default:
 			running = append(running, h)
 		}
@@ -628,6 +550,8 @@ func (r *Registry) Close() {
 		handles = append(handles, h)
 	}
 	r.agents = map[string]*Handle{}
+	r.past = map[string]*agentPast{}
+	r.pastIDs = nil
 	r.mu.Unlock()
 	for _, h := range handles {
 		h.Cancel()
@@ -640,7 +564,7 @@ func (r *Registry) sem(n int) chan struct{} {
 }
 
 // ManagerConfig returns a ready-to-use ChatModelAgentConfig for the manager:
-// it wires the four lifecycle tools and the fork_context history middleware in
+// it wires the five lifecycle tools and the fork_context history middleware in
 // one step, so callers cannot forget the Handlers wiring. Options are applied
 // left-to-right (last wins), matching Go functional-options convention.
 //
@@ -694,7 +618,7 @@ func WithMaxIterations(n int) ManagerOption {
 	return func(c *managerConfig) { c.MaxIterations = n }
 }
 
-// WithManagerTool appends extra tools to the manager alongside the four
+// WithManagerTool appends extra tools to the manager alongside the five
 // lifecycle tools (e.g. read_file so the manager can inspect results itself).
 func WithManagerTool(ts ...tool.BaseTool) ManagerOption {
 	return func(c *managerConfig) {
@@ -711,7 +635,8 @@ func WithManagerHandler(hs ...adk.ChatModelAgentMiddleware) ManagerOption {
 // Injector delivers steering messages at each turn boundary.
 type Injector struct {
 	adk.BaseChatModelAgentMiddleware
-	handle *Handle
+	handle  *Handle
+	histCap int
 }
 
 // BeforeModelRewriteState drains queued steering messages into the
@@ -724,6 +649,17 @@ func (in *Injector) BeforeModelRewriteState(ctx context.Context,
 	for _, msg := range in.handle.drainInbox() {
 		state.Messages = append(state.Messages, schema.UserMessage("[steer] "+msg))
 	}
+	in.handle.setHistory(state.Messages, in.histCap)
+	return ctx, state, nil
+}
+
+// AfterModelRewriteState clones the worker's conversation after the model
+// reply is appended, so resume_agent can continue this worker with what it
+// actually said — not just the task it was given.
+func (in *Injector) AfterModelRewriteState(ctx context.Context,
+	state *adk.ChatModelAgentState, mc *adk.TypedModelContext[*schema.Message],
+) (context.Context, *adk.ChatModelAgentState, error) {
+	in.handle.setHistory(state.Messages, in.histCap)
 	return ctx, state, nil
 }
 

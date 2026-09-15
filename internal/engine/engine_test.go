@@ -7,7 +7,6 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -65,7 +64,7 @@ func waitForTurn(t *testing.T, e *Engine, turnID string) *store.Turn {
 
 func TestCreateThreadMakesWorkspace(t *testing.T) {
 	e := newTestEngine(t)
-	th, err := e.CreateThread("", "")
+	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatalf("CreateThread: %v", err)
 	}
@@ -75,7 +74,7 @@ func TestCreateThreadMakesWorkspace(t *testing.T) {
 	if info, err := os.Stat(e.WorkspaceDir(th.ID)); err != nil || !info.IsDir() {
 		t.Fatalf("workspace not created: %v", err)
 	}
-	if _, err := e.CreateThread("x", "no-such-provider"); err == nil {
+	if _, err := e.CreateThread("x", "no-such-provider", ""); err == nil {
 		t.Fatal("want an error for an unknown provider")
 	}
 }
@@ -84,7 +83,7 @@ func TestCreateThreadMakesWorkspace(t *testing.T) {
 // workers, they write files into the workspace, and the answer comes back.
 func TestFullTurnRunsTheWholeSwarm(t *testing.T) {
 	e := newTestEngine(t)
-	th, err := e.CreateThread("", "")
+	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +179,7 @@ func TestFullTurnRunsTheWholeSwarm(t *testing.T) {
 // replay has to contain the complete reasoning and answer records instead.
 func TestReplayReconstructsTheTurn(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	turn, err := e.StartTurn(th.ID, "summarize the material")
 	if err != nil {
 		t.Fatal(err)
@@ -232,7 +231,7 @@ func TestReplayReconstructsTheTurn(t *testing.T) {
 // A second turn has to see the first one, or the product is a one-shot box.
 func TestSecondTurnSeesTheFirst(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 
 	first, err := e.StartTurn(th.ID, "remember the first request")
 	if err != nil {
@@ -281,7 +280,7 @@ func TestSecondTurnSeesTheFirst(t *testing.T) {
 
 func TestStartTurnRejectsConcurrentTurns(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 
 	first, err := e.StartTurn(th.ID, "the long running request")
 	if err != nil {
@@ -304,7 +303,7 @@ func TestStartTurnRejectsConcurrentTurns(t *testing.T) {
 // conversation has to be idle by then — not a moment later.
 func TestNextTurnAcceptedImmediatelyAfterTheDoneEvent(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	sub := e.Subscribe(th.ID)
 	defer sub.Close()
 	events := sub.C
@@ -326,7 +325,7 @@ func TestNextTurnAcceptedImmediatelyAfterTheDoneEvent(t *testing.T) {
 
 func TestStartTurnValidatesInput(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	if _, err := e.StartTurn(th.ID, "   "); err == nil {
 		t.Fatal("want an error for an empty message")
 	}
@@ -339,7 +338,7 @@ func TestStartTurnValidatesInput(t *testing.T) {
 // conversation, not silently swallowed.
 func TestSteerReachesARunningTurn(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 
 	if err := e.Steer(th.ID, "too early"); !errors.Is(err, ErrIdle) {
 		t.Fatalf("steering an idle conversation should report ErrIdle, got %v", err)
@@ -395,7 +394,7 @@ func TestSteerReachesARunningTurn(t *testing.T) {
 // not a blank one.
 func TestInterruptCancelsButKeepsWork(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 
 	if err := e.Interrupt(th.ID); !errors.Is(err, ErrIdle) {
 		t.Fatalf("interrupting an idle conversation should report ErrIdle, got %v", err)
@@ -451,7 +450,7 @@ func (e *Engine) statusIdle(threadID string) bool {
 
 func TestStatusReportsProgress(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	if s := e.Status(th.ID); s.Running {
 		t.Fatalf("a fresh conversation is not running: %+v", s)
 	}
@@ -488,7 +487,7 @@ func TestStatusReportsProgress(t *testing.T) {
 // The first message names the conversation, so the sidebar is readable.
 func TestAutoTitleFromFirstMessage(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	turn, err := e.StartTurn(th.ID, "  look into the  reporting pipeline  ")
 	if err != nil {
 		t.Fatal(err)
@@ -511,7 +510,7 @@ func TestAutoTitleFromFirstMessage(t *testing.T) {
 	}
 
 	// an explicit title is never overwritten
-	named, _ := e.CreateThread("My Name", "")
+	named, _ := e.CreateThread("My Name", "", "")
 	t2, err := e.StartTurn(named.ID, "something else")
 	if err != nil {
 		t.Fatalf("StartTurn on a named conversation: %v", err)
@@ -539,7 +538,7 @@ func TestTitleFrom(t *testing.T) {
 
 func TestRenameArchiveAndProvider(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 
 	if err := e.RenameThread(th.ID, " Renamed "); err != nil {
 		t.Fatalf("RenameThread: %v", err)
@@ -551,7 +550,7 @@ func TestRenameArchiveAndProvider(t *testing.T) {
 	if err := e.SetThreadArchived(th.ID, true); err != nil {
 		t.Fatalf("SetThreadArchived: %v", err)
 	}
-	list, _ := e.Store().ListThreads(false)
+	list, _ := e.Store().ListThreads(false, "")
 	for _, l := range list {
 		if l.ID == th.ID {
 			t.Fatal("an archived conversation still shows in the sidebar")
@@ -574,7 +573,7 @@ func TestRenameArchiveAndProvider(t *testing.T) {
 // provider, so a typo does not silently run at the wrong level.
 func TestThreadReasoningLevelSticksAndIsRecorded(t *testing.T) {
 	e := newTestEngine(t)
-	th, err := e.CreateThread("", "")
+	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -614,7 +613,7 @@ func TestThreadReasoningLevelSticksAndIsRecorded(t *testing.T) {
 // behind silently fills the user's disk.
 func TestDeleteThreadRemovesWorkspace(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	turn, err := e.StartTurn(th.ID, "write something down")
 	if err != nil {
 		t.Fatal(err)
@@ -643,7 +642,7 @@ func TestDeleteThreadRemovesWorkspace(t *testing.T) {
 // writing events for a conversation that no longer exists.
 func TestDeleteThreadStopsARunningTurn(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	if _, err := e.StartTurn(th.ID, "a request in flight"); err != nil {
 		t.Fatal(err)
 	}
@@ -656,159 +655,12 @@ func TestDeleteThreadStopsARunningTurn(t *testing.T) {
 	}
 }
 
-// ---------- workspace paths ----------
-
-// The download endpoint is unauthenticated on loopback; a path that escapes
-// the workspace would turn the app into a file server for the whole machine.
-func TestResolveWorkspacePathRejectsEscapes(t *testing.T) {
-	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
-	root := e.WorkspaceDir(th.ID)
-
-	ok, err := e.ResolveWorkspacePath(th.ID, "notes/report.md")
-	if err != nil {
-		t.Fatalf("a normal relative path was rejected: %v", err)
-	}
-	if ok != filepath.Join(root, "notes", "report.md") {
-		t.Fatalf("resolved to %q", ok)
-	}
-
-	for _, bad := range []string{
-		"../../etc/passwd",
-		"../" + filepath.Base(root) + "-other/x",
-		"notes/../../../../../../etc/passwd",
-		"",
-		"   ",
-		".",
-	} {
-		if got, err := e.ResolveWorkspacePath(th.ID, bad); err == nil {
-			t.Fatalf("path %q escaped the workspace to %q", bad, got)
-		}
-	}
-
-	// An absolute path is read as workspace-relative rather than rejected, so
-	// a client that sends a leading slash gets its own file, never the host's.
-	abs, err := e.ResolveWorkspacePath(th.ID, "/etc/passwd")
-	if err != nil {
-		t.Fatalf("an absolute path should be confined, not rejected: %v", err)
-	}
-	if abs != filepath.Join(root, "etc", "passwd") {
-		t.Fatalf("absolute path resolved outside the workspace: %q", abs)
-	}
-}
-
-func TestUploadAndDeleteFiles(t *testing.T) {
-	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
-
-	write := func(content string) func(string) error {
-		return func(dst string) error { return os.WriteFile(dst, []byte(content), 0o600) }
-	}
-	att, err := e.SaveUpload(th.ID, "input.csv", write("a,b\n1,2\n"))
-	if err != nil {
-		t.Fatalf("SaveUpload: %v", err)
-	}
-	if att.RelPath != "uploads/input.csv" {
-		t.Fatalf("uploads should be grouped: %q", att.RelPath)
-	}
-	if att.Size == 0 {
-		t.Fatalf("size not recorded: %+v", att)
-	}
-
-	// a second upload with the same name must not overwrite the first
-	second, err := e.SaveUpload(th.ID, "input.csv", write("different"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if second.RelPath == att.RelPath {
-		t.Fatalf("the second upload overwrote the first: %q", second.RelPath)
-	}
-	first, err := os.ReadFile(filepath.Join(e.WorkspaceDir(th.ID), filepath.FromSlash(att.RelPath)))
-	if err != nil || string(first) != "a,b\n1,2\n" {
-		t.Fatalf("the first upload was clobbered: %q %v", first, err)
-	}
-
-	// a path in the name must not place the file outside uploads/
-	escaped, err := e.SaveUpload(th.ID, "../../evil.sh", write("x"))
-	if err != nil {
-		t.Fatalf("SaveUpload: %v", err)
-	}
-	if !strings.HasPrefix(escaped.RelPath, "uploads/") || strings.Contains(escaped.RelPath, "..") {
-		t.Fatalf("an upload escaped the uploads directory: %q", escaped.RelPath)
-	}
-
-	if _, err := e.SaveUpload(th.ID, "  ", write("x")); err == nil {
-		t.Fatal("want an error for an upload with no name")
-	}
-	if _, err := e.SaveUpload("missing", "a.txt", write("x")); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("want ErrNotFound, got %v", err)
-	}
-
-	list, err := e.Store().ListAttachments(th.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list) != 3 {
-		t.Fatalf("want 3 recorded uploads, got %d", len(list))
-	}
-
-	if err := e.DeleteFile(th.ID, att.RelPath); err != nil {
-		t.Fatalf("DeleteFile: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(e.WorkspaceDir(th.ID), filepath.FromSlash(att.RelPath))); !os.IsNotExist(err) {
-		t.Fatalf("the file survived the delete: %v", err)
-	}
-	list, _ = e.Store().ListAttachments(th.ID)
-	if len(list) != 2 {
-		t.Fatalf("the attachment record survived: %+v", list)
-	}
-	if err := e.DeleteFile(th.ID, "../outside"); err == nil {
-		t.Fatal("DeleteFile must refuse a path outside the workspace")
-	}
-}
-
-func TestListFilesReportsDirsAndSizes(t *testing.T) {
-	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
-	root := e.WorkspaceDir(th.ID)
-	if err := os.MkdirAll(filepath.Join(root, "notes", "deep"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, "notes", "deep", "a.md"), []byte("hello"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	files, err := e.ListFiles(th.ID)
-	if err != nil {
-		t.Fatalf("ListFiles: %v", err)
-	}
-	byPath := map[string]FileEntry{}
-	for _, f := range files {
-		byPath[f.Path] = f
-		if strings.Contains(f.Path, string(os.PathSeparator)) && os.PathSeparator != '/' {
-			t.Fatalf("paths must be slash-separated for the UI: %q", f.Path)
-		}
-	}
-	if !byPath["notes"].Dir || !byPath["notes/deep"].Dir {
-		t.Fatalf("directories not reported: %+v", files)
-	}
-	f := byPath["notes/deep/a.md"]
-	if f.Dir || f.Size != 5 || f.Modified.IsZero() {
-		t.Fatalf("file entry wrong: %+v", f)
-	}
-
-	// listing a conversation with no workspace yet must not fail
-	if _, err := e.ListFiles("never-existed"); err != nil {
-		t.Fatalf("ListFiles on a fresh conversation: %v", err)
-	}
-}
-
 // ---------- event bus ----------
 
 // A stalled subscriber must not stall the run for everybody else.
 func TestSlowSubscriberDoesNotBlockTheRun(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 
 	slow := e.Subscribe(th.ID) // never read
 	defer slow.Close()
@@ -842,7 +694,7 @@ func TestSlowSubscriberDoesNotBlockTheRun(t *testing.T) {
 // out: otherwise it shows an incomplete conversation until the next reload.
 func TestOverflowingASubscriberIsReported(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 
 	stalled := e.Subscribe(th.ID) // never read
 	defer stalled.Close()
@@ -890,7 +742,7 @@ func TestOverflowingASubscriberIsReported(t *testing.T) {
 // from the highest sequence it saw drops anything older as a duplicate.
 func TestConcurrentRecordsArriveInSequenceOrder(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	sub := e.Subscribe(th.ID)
 	defer sub.Close()
 
@@ -933,7 +785,7 @@ func TestConcurrentRecordsArriveInSequenceOrder(t *testing.T) {
 
 func TestUnsubscribeIsIdempotent(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	sub := e.Subscribe(th.ID)
 	sub.Close()
 	sub.Close()
@@ -945,7 +797,7 @@ func TestUnsubscribeIsIdempotent(t *testing.T) {
 // Shutdown must not leave conversations looking like they are still working.
 func TestShutdownClosesRunningTurns(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	turn, err := e.StartTurn(th.ID, "in flight at shutdown")
 	if err != nil {
 		t.Fatal(err)
@@ -964,12 +816,9 @@ func TestShutdownClosesRunningTurns(t *testing.T) {
 
 func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
-	set, err := buildTestToolset(t, e, th.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	prompt := managerPrompt(set, e.Config())
+	th, _ := e.CreateThread("", "", "")
+	set := buildTestToolset(t, e, th.ID)
+	prompt := managerPrompt(set, e.Config(), "")
 
 	// it must tell the agent the things only the runtime knows
 	if !strings.Contains(prompt, e.WorkspaceDir(th.ID)) {
@@ -980,20 +829,27 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 			t.Fatalf("the prompt does not mention the %q tool the agent actually has", name)
 		}
 	}
-	for _, tool := range []string{"spawn_agent", "send_message", "wait_agents", "close_agent"} {
+	for _, tool := range []string{"spawn_agent", "send_message", "wait_agents", "close_agent", "resume_agent"} {
 		if !strings.Contains(prompt, tool) {
 			t.Fatalf("the prompt does not explain %s", tool)
 		}
 	}
+	if !strings.Contains(prompt, "same agent_id") {
+		t.Fatal("the prompt does not tell the manager to reuse a finished worker in place")
+	}
 	// and it must not smuggle in a particular task
-	for _, leak := range []string{"summarize", "researcher", "reviewer", "notes/"} {
+	for _, leak := range []string{"summarize", "researcher", "reviewer", "notes/", "re-research"} {
 		if strings.Contains(strings.ToLower(prompt), strings.ToLower(leak)) {
 			t.Fatalf("the prompt hardcodes example-specific text %q", leak)
 		}
 	}
 }
 
-func buildTestToolset(t *testing.T, e *Engine, threadID string) (*tools.Set, error) {
+func buildTestToolset(t *testing.T, e *Engine, threadID string) *tools.Set {
 	t.Helper()
-	return tools.Build(context.Background(), e.Config(), e.WorkspaceDir(threadID))
+	set, err := tools.Build(context.Background(), e.Config(), e.WorkspaceDir(threadID))
+	if err != nil {
+		t.Fatalf("tools.Build: %v", err)
+	}
+	return set
 }

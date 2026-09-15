@@ -1,6 +1,7 @@
 import {
   MessageSquarePlus,
   MoreHorizontal,
+  PanelLeft,
   Pencil,
   Search,
   Settings,
@@ -16,9 +17,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import { ProjectList } from "@/components/app/project-list"
 import { StatusDot } from "@/components/app/transcript"
-import type { Thread } from "@/lib/types"
-import { relativeDay } from "@/lib/utils"
+import type { Project, Thread } from "@/lib/types"
+import { cn, relativeDay } from "@/lib/utils"
 
 /** Conversations, grouped the way people remember them. */
 export function Sidebar({
@@ -31,6 +33,14 @@ export function Sidebar({
   onDelete,
   onSearch,
   onSettings,
+  onCollapse,
+  trafficInset,
+  projects,
+  selectedProjectId,
+  onSelectProject,
+  onNewProject,
+  onEditProject,
+  onDeleteProject,
 }: {
   threads: Thread[]
   activeId?: string
@@ -41,27 +51,55 @@ export function Sidebar({
   onDelete: (id: string) => void
   onSearch: () => void
   onSettings: () => void
+  onCollapse: () => void
+  projects: Project[]
+  selectedProjectId?: string
+  onSelectProject: (id?: string) => void
+  onNewProject: () => void
+  onEditProject: (project: Project) => void
+  onDeleteProject: (project: Project) => void
+  /** macOS hidden-inset traffic lights sit on this chrome row. New
+   *  conversation lives under it, so the label is never under the yellow blob. */
+  trafficInset?: boolean
 }) {
   const groups = useMemo(() => groupByDay(threads), [threads])
 
   return (
     <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       <div
-        className="flex items-center gap-1 px-3 pb-2 pt-3"
+        data-testid="sidebar-chrome"
         data-drag-region
+        className={cn(
+          "flex h-12 shrink-0 items-center gap-1 pr-2",
+          trafficInset ? "pl-traffic" : "pl-3",
+        )}
       >
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0"
+          onClick={onCollapse}
+          aria-label="Hide conversations"
+          title="Hide conversations (⌘B)"
+        >
+          <PanelLeft />
+        </Button>
+      </div>
+
+      <div className="flex items-center gap-1 px-3 pb-2">
         <Button
           variant="secondary"
           size="sm"
-          className="flex-1 justify-start gap-2"
+          className="min-w-0 flex-1 justify-start gap-2 overflow-hidden"
           onClick={onNew}
         >
-          <MessageSquarePlus />
-          New conversation
+          <MessageSquarePlus className="shrink-0" />
+          <span className="min-w-0 truncate">New conversation</span>
         </Button>
         <Button
           variant="ghost"
           size="icon-sm"
+          className="shrink-0"
           onClick={onSearch}
           title="Search conversations (⌘K)"
         >
@@ -70,9 +108,20 @@ export function Sidebar({
       </div>
 
       <div className="thin-scrollbar flex-1 overflow-y-auto px-2 pb-2">
+        <ProjectList
+          projects={projects}
+          selectedId={selectedProjectId}
+          onSelect={onSelectProject}
+          onNew={onNewProject}
+          onEdit={onEditProject}
+          onDelete={onDeleteProject}
+        />
+
         {threads.length === 0 ? (
           <p className="px-2 py-6 text-xs text-sidebar-foreground/70">
-            No conversations yet. Start one and it will appear here.
+            {selectedProjectId
+              ? "No conversations in this project yet."
+              : "No conversations yet. Start one and it will appear here."}
           </p>
         ) : (
           groups.map(([label, items]) => (

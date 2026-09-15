@@ -21,6 +21,16 @@ test("keyboard shortcuts open the palette, a conversation and the panel", async 
   await expect(page.getByRole("tab", { name: "Agents" })).toBeHidden()
   await page.keyboard.press("ControlOrMeta+\\")
   await expect(page.getByRole("tab", { name: "Agents" })).toBeVisible()
+
+  // ⌘B hides the conversation list the way Codex/Cursor hide theirs, and
+  // brings it back. New conversation lives in that list, so hiding it must
+  // not trap the user without a way to restore it.
+  await expect(page.getByRole("button", { name: "New conversation" })).toBeVisible()
+  await page.keyboard.press("ControlOrMeta+b")
+  await expect(page.getByRole("button", { name: "New conversation" })).toBeHidden()
+  await expect(page.getByRole("button", { name: "Show conversations" })).toBeVisible()
+  await page.keyboard.press("ControlOrMeta+b")
+  await expect(page.getByRole("button", { name: "New conversation" })).toBeVisible()
 })
 
 test("escape stops a running turn", async ({ page }) => {

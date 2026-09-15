@@ -10,23 +10,26 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// Tools returns the four lifecycle tools backed by r, ready to register on a
+// Tools returns the five lifecycle tools backed by r, ready to register on a
 // host/manager agent:
 //
 //	spawn_agent(role, task[, fork_context]) — start a sub-agent, returns agent_id at once
 //	send_message(agent_id, text)            — steer a running agent (mesh-safe)
 //	wait_agents(agent_ids, timeout_s)       — return when the next one finishes, with every agent's status
 //	close_agent(agent_id)                   — cancel a running agent
+//	resume_agent(agent_id, task)             — continue a finished worker in place under the same agent_id
 func (r *Registry) Tools() []tool.BaseTool {
 	return []tool.BaseTool{
-		&ctlTool{name: "spawn_agent", desc: "start a sub-agent in the background; returns its agent_id immediately", fn: r.spawn},
-		&ctlTool{name: "send_message", desc: "send a steering message to a running agent; delivered at its next turn boundary", fn: r.send},
+		&ctlTool{name: "spawn_agent", desc: "start a sub-agent in the background; returns its agent_id immediately. fork_context copies this manager conversation so far, not a previous worker's. To continue a finished or failed worker, use resume_agent on that id — do not spawn a second worker with the same role.", fn: r.spawn},
+		&ctlTool{name: "send_message", desc: "queue a steering message for a running agent; it is read at the agent's next turn. delivered:true means queued, not that a later model call consumed it. A finished agent does not receive it — use resume_agent on the same id. If the agent finishes first, wait_agents reports the text as undelivered.", fn: r.send},
 		&ctlTool{name: "wait_agents", desc: "wait until the next listed agent reaches a final status, or the timeout hits; " +
 			"returns every listed agent's status (running/done/failed), the finished ones' results, " +
+			"any steering that never reached a model call (undelivered), " +
 			"and, for those still running, their last activity. " +
 			"It returns as soon as one finishes, not once they all do, so call it again to collect the rest " +
 			"and tell the human what came back between calls.", fn: r.wait},
 		&ctlTool{name: "close_agent", desc: "cancel a running agent", fn: r.close},
+		&ctlTool{name: "resume_agent", desc: "continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead.", fn: r.resume},
 	}
 }
 
@@ -50,7 +53,7 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 		params = map[string]*schema.ParameterInfo{
 			"role":         {Type: schema.String, Required: true, Desc: "sub-agent role name"},
 			"task":         {Type: schema.String, Required: true, Desc: "task for the sub-agent"},
-			"fork_context": {Type: schema.Boolean, Desc: "inherit the manager conversation so far (Codex fork_turns)"},
+			"fork_context": {Type: schema.Boolean, Desc: "inherit this manager conversation so far, not a previous worker's. To continue a finished worker, use resume_agent on that id"},
 		}
 	case "send_message":
 		params = map[string]*schema.ParameterInfo{
@@ -64,6 +67,11 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 		}
 	case "close_agent":
 		params = map[string]*schema.ParameterInfo{"agent_id": {Type: schema.String, Required: true}}
+	case "resume_agent":
+		params = map[string]*schema.ParameterInfo{
+			"agent_id": {Type: schema.String, Required: true, Desc: "finished or failed worker to continue in place"},
+			"task":     {Type: schema.String, Required: true, Desc: "next task for that same worker"},
+		}
 	}
 	return &schema.ToolInfo{Name: t.name, Desc: t.desc, ParamsOneOf: schema.NewParamsOneOfByParams(params)}, nil
 }
@@ -192,13 +200,14 @@ func (r *Registry) wait(ctx context.Context, args string) (string, error) {
 
 // waitEntry is one agent's line in a wait_agents result.
 type waitEntry struct {
-	AgentID  string  `json:"agent_id"`
-	Role     string  `json:"role,omitempty"`
-	Status   string  `json:"status"` // running | done | failed | unknown
-	Result   string  `json:"result,omitempty"`
-	Err      string  `json:"error,omitempty"`
-	Activity string  `json:"activity,omitempty"` // last streamed tail, while running
-	Elapsed  float64 `json:"elapsed_ms,omitempty"`
+	AgentID     string   `json:"agent_id"`
+	Role        string   `json:"role,omitempty"`
+	Status      string   `json:"status"` // running | done | failed | unknown
+	Result      string   `json:"result,omitempty"`
+	Err         string   `json:"error,omitempty"`
+	Activity    string   `json:"activity,omitempty"` // last streamed tail, while running
+	Elapsed     float64  `json:"elapsed_ms,omitempty"`
+	Undelivered []string `json:"undelivered,omitempty"` // queued after the last model call
 }
 
 // waitReport is the shape wait_agents returns to the model.
@@ -234,6 +243,9 @@ func (r *Registry) waitSnapshot(ids []string, timedOut bool) waitReport {
 			e.Status = "done"
 			e.Result = result
 			e.Elapsed = float64(h.Elapsed()) / float64(time.Millisecond)
+		}
+		if done {
+			e.Undelivered = h.leftover()
 		}
 		agents = append(agents, e)
 	}

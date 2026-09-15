@@ -9,17 +9,19 @@ import {
   Terminal,
   Users,
 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
-import Markdown from "react-markdown"
-import remarkGfm from "remark-gfm"
-
+import { memo, useEffect, useMemo, useRef, useState } from "react"
+import { MemoMarkdown } from "@/components/app/markdown"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Disclosure } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
+import { ToolResultBody } from "@/components/app/tool-result"
+import { MarqueeText } from "@/components/app/marquee"
+import { viewTool } from "@/lib/tool-view"
 import { formatDuration, formatTime } from "@/lib/utils"
 import type { AgentState, Block, Pulse, TranscriptState, TurnState } from "@/lib/transcript"
 import { MANAGER_ID, liveWorkers } from "@/lib/transcript"
+import { useApp } from "@/store/app"
 
 /** The middle pane: the manager's conversation, with sub-agent activity folded
  *  in where it happened. */
@@ -54,7 +56,15 @@ export function Transcript({
   const blockCount = manager?.blocks.length ?? 0
   const lastText = manager?.blocks.at(-1)?.text.length ?? 0
   useEffect(() => {
-    if (pinned) endRef.current?.scrollIntoView({ block: "end" })
+    if (!pinned) return
+    const el = scrollerRef.current
+    if (!el) return
+    // scrollTop is a layout write we already owe; scrollIntoView would walk
+    // the ancestor chain and force a second one per token.
+    const id = window.requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight
+    })
+    return () => window.cancelAnimationFrame(id)
   }, [blockCount, lastText, pinned])
 
   if (!loaded) {
@@ -80,8 +90,6 @@ export function Transcript({
               <BlockView
                 key={b.id}
                 block={b}
-                agents={state.agents}
-                pulse={state.pulse}
                 onSelectAgent={onSelectAgent}
               />
             ))}
@@ -97,15 +105,11 @@ export function Transcript({
   )
 }
 
-function BlockView({
+const BlockView = memo(function BlockView({
   block,
-  agents,
-  pulse,
   onSelectAgent,
 }: {
   block: Block
-  agents: Record<string, AgentState>
-  pulse?: Pulse
   onSelectAgent: (id: string) => void
 }) {
   switch (block.kind) {
@@ -145,18 +149,12 @@ function BlockView({
       // it shows the sub-agents it is waiting on and what each is doing right
       // now rather than a bare "running…".
       if (block.tool?.name === "wait_agents" && block.tool.pending) {
-        return <WaitProgress block={block} agents={agents} pulse={pulse} onSelect={onSelectAgent} />
+        return <WaitProgress block={block} onSelect={onSelectAgent} />
       }
       return <ToolRow block={block} />
 
     case "spawn":
-      return (
-        <SpawnRow
-          block={block}
-          agent={block.spawn ? agents[block.spawn.agentId] : undefined}
-          onSelect={onSelectAgent}
-        />
-      )
+      return <SpawnRow block={block} onSelect={onSelectAgent} />
 
     case "error":
       return (
@@ -171,7 +169,7 @@ function BlockView({
         <p className="px-2 py-1 text-xs text-muted-foreground">{block.text}</p>
       )
   }
-}
+})
 
 function Reasoning({ block }: { block: Block }) {
   const [open, setOpen] = useState(false)
@@ -219,7 +217,7 @@ function Answer({ block }: { block: Block }) {
             <span className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-breathe bg-foreground/70" />
           </p>
         ) : (
-          <Markdown remarkPlugins={[remarkGfm]}>{block.text}</Markdown>
+          <MemoMarkdown text={block.text} />
         )}
       </div>
       {!block.streaming && block.text.length > 0 ? (
@@ -236,23 +234,27 @@ function ToolRow({ block }: { block: Block }) {
   const [open, setOpen] = useState(false)
   const tool = block.tool
   if (!tool) return null
+  const view = viewTool(tool.name, tool.args, tool.result, tool.failed)
   return (
     <Disclosure
       open={open}
       onOpenChange={setOpen}
+      failed={view.failed}
       summary={
         <>
           {tool.pending ? (
             <Loader2 className="size-3.5 shrink-0 animate-spin" />
-          ) : tool.failed ? (
+          ) : view.failed ? (
             <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
           ) : (
             <Terminal className="size-3.5 shrink-0" />
           )}
-          <span className="font-mono text-[13px] text-foreground">{tool.name}</span>
-          <span className="truncate text-[13px] text-muted-foreground">
-            {summariseArgs(tool.args)}
-          </span>
+          <span className="shrink-0 font-mono text-[13px] text-foreground">{tool.name}</span>
+          <MarqueeText
+            text={view.summary}
+            active={tool.pending}
+            className={view.failed ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}
+          />
           {open ? (
             <ChevronDown className="ml-auto size-3.5 shrink-0 opacity-60" />
           ) : (
@@ -261,24 +263,12 @@ function ToolRow({ block }: { block: Block }) {
         </>
       }
     >
-      <div className="space-y-2 border-l-2 border-border pl-3 text-[12px]">
-        {tool.args ? (
-          <pre className="thin-scrollbar max-h-48 overflow-auto rounded bg-muted p-2 font-mono">
-            {pretty(tool.args)}
-          </pre>
-        ) : null}
-        {tool.result !== undefined ? (
-          <pre
-            className={`thin-scrollbar max-h-72 overflow-auto rounded bg-muted p-2 font-mono ${
-              tool.failed ? "text-destructive" : ""
-            }`}
-          >
-            {tool.result || "(no output)"}
-          </pre>
-        ) : (
-          <p className="text-muted-foreground">running…</p>
-        )}
-      </div>
+      <ToolResultBody
+        name={tool.name}
+        args={tool.args}
+        result={tool.result}
+        failed={tool.failed}
+      />
     </Disclosure>
   )
 }
@@ -290,22 +280,27 @@ export function WaitProgress({
   onSelect,
 }: {
   block: Block
-  agents: Record<string, AgentState>
+  agents?: Record<string, AgentState>
   pulse?: Pulse
   onSelect: (id: string) => void
 }) {
+  const storedAgents = useApp((s) => s.transcript.agents)
+  const storedPulse = useApp((s) => s.transcript.pulse)
+  const liveAgents = agents ?? storedAgents
+  const livePulse = pulse ?? storedPulse
   const ids = waitAgentIds(block.tool?.args ?? "")
-  const watched = ids.map((id) => agents[id]).filter(Boolean) as AgentState[]
+  const watched = ids.map((id) => liveAgents[id]).filter(Boolean) as AgentState[]
   const running = watched.filter((a) => a.status === "running").length
-  const ages = new Map(pulse?.agents.map((a) => [a.agentId, a.elapsedMs]))
+  const ages = new Map(livePulse?.agents.map((a) => [a.agentId, a.elapsedMs]))
+  const waiting = running > 0 ? running : watched.length
   return (
     <div className="my-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
       <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
         <Loader2 className="size-3.5 shrink-0 animate-spin" />
-        <span>
-          Waiting for {running > 0 ? running : watched.length} sub-agent
-          {watched.length === 1 ? "" : "s"}
-        </span>
+        <MarqueeText
+          active
+          text={`Waiting for ${waiting} sub-agent${waiting === 1 ? "" : "s"}`}
+        />
       </div>
       <div className="mt-1.5 flex flex-col gap-0.5">
         {watched.map((a) => (
@@ -317,9 +312,11 @@ export function WaitProgress({
           >
             <StatusDot status={a.status} />
             <span className="shrink-0 font-medium">{a.role}</span>
-            <span className="truncate text-muted-foreground">
-              {a.status === "running" ? a.activity || "working…" : a.status}
-            </span>
+            <MarqueeText
+              text={a.status === "running" ? a.activity || "working…" : a.status}
+              active={a.status === "running"}
+              className="text-muted-foreground"
+            />
             {/* The age is the honest part of a silent row: it says the work is
                 still being done, and how long it has been going. */}
             {ages.has(a.id) ? (
@@ -358,6 +355,8 @@ function SpawnRow({
   onSelect: (id: string) => void
 }) {
   const id = block.spawn?.agentId
+  const stored = useApp((s) => (id ? s.transcript.agents[id] : undefined))
+  const live = agent ?? stored
   if (!id) return null
   return (
     <button
@@ -369,10 +368,12 @@ function SpawnRow({
       <span className="text-[13px]">
         Started <span className="font-medium">{block.spawn?.role}</span>
       </span>
-      <StatusDot status={agent?.status ?? "running"} />
-      <span className="truncate text-[13px] text-muted-foreground">
-        {agent?.activity}
-      </span>
+      <StatusDot status={live?.status ?? "running"} />
+      <MarqueeText
+        text={live?.activity ?? ""}
+        active={live?.status === "running"}
+        className="text-[13px] text-muted-foreground"
+      />
     </button>
   )
 }
@@ -400,7 +401,7 @@ export function Heartbeat({
     const anchored = Date.now()
     const id = window.setInterval(() => setDrift(Date.now() - anchored), 1000)
     return () => window.clearInterval(id)
-  }, [pulse, running])
+  }, [pulse?.at, running])
 
   if (!running || !pulse) return null
   return (
@@ -409,12 +410,17 @@ export function Heartbeat({
       className="mt-2 flex items-center gap-2 px-2 text-xs text-muted-foreground"
     >
       <Loader2 className="size-3 shrink-0 animate-spin" />
-      <span className="tabular-nums">Working for {formatDuration(pulse.elapsedMs + drift)}</span>
-      {workers > 0 ? (
-        <span>
-          · {workers} sub-agent{workers === 1 ? "" : "s"} running
-        </span>
-      ) : null}
+      <MarqueeText
+        active
+        className="text-xs"
+        text={
+          workers > 0
+            ? `Working for ${formatDuration(pulse.elapsedMs + drift)} · ${workers} sub-agent${
+                workers === 1 ? "" : "s"
+              } running`
+            : `Working for ${formatDuration(pulse.elapsedMs + drift)}`
+        }
+      />
     </p>
   )
 }
@@ -511,7 +517,7 @@ export function AgentTranscript({ agent }: { agent: AgentState }) {
             {b.streaming ? (
               <p className="stream-text">{b.text}</p>
             ) : (
-              <Markdown remarkPlugins={[remarkGfm]}>{b.text}</Markdown>
+              <MemoMarkdown text={b.text} />
             )}
           </div>
         ) : b.kind === "reasoning" ? (
@@ -522,22 +528,4 @@ export function AgentTranscript({ agent }: { agent: AgentState }) {
       )}
     </div>
   )
-}
-
-function summariseArgs(args: string): string {
-  if (!args) return ""
-  const flat = args.replace(/\s+/g, " ").trim()
-  // Show the first value rather than the JSON scaffolding: "read a.md" says
-  // more at a glance than `read {"file_path":…`.
-  const first = /"[^"]+"\s*:\s*"([^"]{1,60})"/.exec(flat)
-  const text = first ? first[1] : flat
-  return text.length > 60 ? `${text.slice(0, 59)}…` : text
-}
-
-function pretty(raw: string): string {
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2)
-  } catch {
-    return raw
-  }
 }

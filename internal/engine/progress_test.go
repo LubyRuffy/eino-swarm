@@ -67,7 +67,7 @@ func TestPulseWithNoSubAgentsStillCarriesTheTurnsAge(t *testing.T) {
 // already finished.
 func TestAQuietTurnPulsesUntilItEnds(t *testing.T) {
 	e := newTestEngine(t)
-	th, err := e.CreateThread("quiet", "")
+	th, err := e.CreateThread("quiet", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

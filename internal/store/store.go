@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,7 +64,7 @@ func Open(path string) (*Store, error) {
 		turnSeq:  map[string]int64{},
 		inMemory: inMemory,
 	}
-	if err := db.AutoMigrate(&Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
 	return s, nil
@@ -134,11 +135,15 @@ func (s *Store) GetThread(id string) (*Thread, error) {
 }
 
 // ListThreads returns conversations newest-activity-first, which is the order
-// the sidebar shows them in.
-func (s *Store) ListThreads(includeArchived bool) ([]Thread, error) {
+// the sidebar shows them in. An empty projectID means every conversation,
+// whichever project it is in.
+func (s *Store) ListThreads(includeArchived bool, projectID string) ([]Thread, error) {
 	q := s.db.Order("last_active_at desc")
 	if !includeArchived {
 		q = q.Where("archived = ?", false)
+	}
+	if projectID = strings.TrimSpace(projectID); projectID != "" {
+		q = q.Where("project_id = ?", projectID)
 	}
 	var out []Thread
 	if err := q.Find(&out).Error; err != nil {

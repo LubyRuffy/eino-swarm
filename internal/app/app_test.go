@@ -243,7 +243,7 @@ func TestNewClosesTurnsLeftRunningByAPreviousProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	th, err := first.Engine.CreateThread("left over", "")
+	th, err := first.Engine.CreateThread("left over", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

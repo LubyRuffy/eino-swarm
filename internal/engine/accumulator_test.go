@@ -16,12 +16,12 @@ import (
 // rules are worth pinning down directly rather than only through a full run.
 func TestAccumulatorPersistsCompleteTextNotDeltas(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	turn := &store.Turn{ThreadID: th.ID}
 	if err := e.Store().CreateTurn(turn); err != nil {
 		t.Fatal(err)
 	}
-	acc := newAccumulator(e, th.ID, turn.ID)
+	acc := newAccumulator(e, th.ID, turn.ID, 0)
 
 	agent := "researcher-1"
 	feed := func(kind swarm.NotifyKind, text string) {
@@ -90,12 +90,12 @@ func TestAccumulatorPersistsCompleteTextNotDeltas(t *testing.T) {
 // An agent cut off mid-sentence must still leave its partial text behind.
 func TestAccumulatorFlushesPartialWorkAtTheEnd(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	turn := &store.Turn{ThreadID: th.ID}
 	if err := e.Store().CreateTurn(turn); err != nil {
 		t.Fatal(err)
 	}
-	acc := newAccumulator(e, th.ID, turn.ID)
+	acc := newAccumulator(e, th.ID, turn.ID, 0)
 
 	acc.onNotify(swarm.Notification{Kind: swarm.NotifyReasoningDelta,
 		AgentID: swarm.DefaultManagerID, Text: "half a thought"})
@@ -133,12 +133,12 @@ func TestAccumulatorFlushesPartialWorkAtTheEnd(t *testing.T) {
 // UI silently shows a worker that never finished.
 func TestAccumulatorCarriesErrors(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	turn := &store.Turn{ThreadID: th.ID}
 	if err := e.Store().CreateTurn(turn); err != nil {
 		t.Fatal(err)
 	}
-	acc := newAccumulator(e, th.ID, turn.ID)
+	acc := newAccumulator(e, th.ID, turn.ID, 0)
 
 	acc.onNotify(swarm.Notification{
 		Kind: swarm.NotifyFinished, AgentID: "reviewer-2", Role: "reviewer",
@@ -164,12 +164,12 @@ func TestAccumulatorCarriesErrors(t *testing.T) {
 // new swarm event type shows up in the timeline before the UI knows about it.
 func TestAccumulatorPersistsUnknownKinds(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 	turn := &store.Turn{ThreadID: th.ID}
 	if err := e.Store().CreateTurn(turn); err != nil {
 		t.Fatal(err)
 	}
-	acc := newAccumulator(e, th.ID, turn.ID)
+	acc := newAccumulator(e, th.ID, turn.ID, 0)
 	acc.onNotify(swarm.Notification{Kind: swarm.NotifyKind(999), AgentID: "x", Text: "future"})
 
 	events, _ := e.Replay(th.ID, 0)
@@ -182,7 +182,7 @@ func TestAccumulatorPersistsUnknownKinds(t *testing.T) {
 // failure must be recorded rather than leaving a turn stuck at running.
 func TestStartTurnFailsClosedOnAnUnusableProvider(t *testing.T) {
 	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "")
+	th, _ := e.CreateThread("", "", "")
 
 	// swap the mock pool for a real one whose provider has no endpoint
 	real := newRealPoolEngine(t, e)

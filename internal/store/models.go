@@ -17,11 +17,34 @@ const (
 	TurnCancelled = "cancelled"
 )
 
+// Project groups conversations that share a working directory, a system prompt
+// and a memory store. Its ID names directories, so it must stay
+// filesystem-safe.
+type Project struct {
+	ID   string `gorm:"primaryKey;size:64" json:"id"`
+	Name string `gorm:"size:200" json:"name"`
+	// SystemPrompt is added to the manager's prompt for every conversation in
+	// this project. It is the user's text, verbatim.
+	SystemPrompt string `json:"system_prompt"`
+	// Workdir is the directory the agents work in. Empty means the managed one
+	// under the data directory, so a project is usable before anyone has a
+	// path in mind.
+	Workdir string `gorm:"size:1000" json:"workdir"`
+	// MemoryEnabled lets one project opt out of memory while the rest keep it.
+	MemoryEnabled bool      `json:"memory_enabled"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
 // Thread is one conversation. Its ID also names its workspace directory, so it
 // must stay filesystem-safe.
 type Thread struct {
-	ID         string `gorm:"primaryKey;size:64" json:"id"`
-	Title      string `gorm:"size:400" json:"title"`
+	ID    string `gorm:"primaryKey;size:64" json:"id"`
+	Title string `gorm:"size:400" json:"title"`
+	// ProjectID is empty for a conversation that belongs to no project. Those
+	// keep their own workspace directory; a project's conversations share the
+	// project's.
+	ProjectID  string `gorm:"index;size:64" json:"project_id"`
 	ProviderID string `gorm:"size:64" json:"provider_id"`
 	// ReasoningEffort is this conversation's thinking level ("", low, medium,
 	// high). Empty means the model's own default. It applies from the next turn.

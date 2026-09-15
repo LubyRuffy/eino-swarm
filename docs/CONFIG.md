@@ -42,6 +42,12 @@ tools:
         https: ""
         no_proxy: ""
     web_search_max_results: 8
+memory:
+    enabled: true
+    auto_review: true
+    char_limit: 2200
+    review_max_iterations: 8
+    skills_index_max: 50
 log:
     level: info
 ```
@@ -103,6 +109,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `max_turns` | `24` | ReAct iterations per sub-agent. A model stuck in a loop ends here instead of spinning. |
 | `manager_max_iterations` | `32` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. |
 | `progress_interval_seconds` | `5` | how often a running turn emits a progress pulse. It is the only thing that moves while every agent sits in a slow tool call, so a higher value makes a busy run look stuck for longer. Zero or negative falls back to the default; pulses cannot be switched off. |
+| `delta_coalesce_ms` | `50` | how long streamed tokens wait to be sent as one event. A token every few milliseconds would redraw the whole UI; one pulse per interval keeps the screen moving without a frame per token. Zero or negative falls back to the default. |
 
 The current values are reported in `GET /api/meta` and are part of the manager's
 system prompt, so it knows how wide it may fan out.
@@ -149,6 +156,27 @@ system prompt, so the model does not plan around a tool it cannot call.
 Tool paths resolve against the conversation's workspace, but the workspace is not
 a boundary: an absolute path or a `..` reaches outside it and `exec` runs as you.
 See the "Full access" note in the [README](../README.md).
+
+## `memory`
+
+What a project remembers between conversations, and what that costs. Memory is
+per project — these keys are the budget every project with it switched on
+shares. Nothing here applies to a conversation outside a project.
+
+| key | default | meaning |
+|---|---|---|
+| `enabled` | `true` | the master switch. Off means no project carries notes or skills and no review runs, whatever a project's own switch says. What is already stored stays readable in the Memory panel. |
+| `auto_review` | `true` | read a turn back when it finishes and keep what is worth carrying forward. Off leaves memory to the agents' own tools and the "Review now" button. Only a turn that finished cleanly is reviewed: nobody who pressed stop asked for a half-finished approach to become a skill. |
+| `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. Once it is full an agent must replace a note to add one — which is the point, and why it is small. |
+| `review_max_iterations` | `8` | how many times the review may think and write before it is stopped. It reads one conversation and makes a handful of tool calls; a large number here buys a slow, expensive review rather than a better one. |
+| `skills_index_max` | `50` | how many skills are listed in the prompt. Only names and one-line descriptions are listed; an agent opens the one it needs with `skill_view`. Beyond this cap the prompt says how many were not listed. |
+
+Numbers that are zero or negative fall back to their defaults, so a hand-edited
+file cannot leave a project with no room to remember anything.
+
+The files live in the data directory, never in your repository — see
+[DATA_MODEL.md](DATA_MODEL.md) for the layout, and edit them from the Memory
+panel rather than by hand while the app is running.
 
 ## `log`
 

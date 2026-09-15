@@ -1,4 +1,4 @@
-import type { SwarmEvent } from "./types"
+import type { ReviewOutcome, SwarmEvent } from "./types"
 
 /** A transcript is a list of blocks per agent. The event stream is flat and
  *  interleaved across agents, so the reducer's whole job is to fold it into
@@ -124,6 +124,15 @@ export function reduceEvent(
     running: state.running,
     pulse: state.pulse,
   }
+  // The memory review runs after the turn, on its own. It is not a member of
+  // the swarm, so it must not join the roster as a worker with nothing to
+  // show; and when it kept nothing — the common case — it says nothing.
+  if (ev.kind === "memory_review") {
+    const notice = reviewNotice(parseReview(ev))
+    if (notice) append(touchAgent(next, MANAGER_ID), block(ev, "notice", notice))
+    return next
+  }
+
   const agentId = ev.agent_id || MANAGER_ID
   const agent = touchAgent(next, agentId, ev.role)
 
@@ -207,18 +216,24 @@ export function reduceEvent(
 
     case "spawned": {
       const child = touchAgent(next, ev.agent_id, ev.role ?? ev.text)
-      child.status = "running"
-      child.startedAt = ev.created_at
-      child.activity = "starting"
-      addAgentToTurn(next, ev.turn_id, child.id)
-      // The spawn is recorded on the manager's transcript, because that is
-      // where the user is reading when it happens.
       const manager = touchAgent(next, MANAGER_ID)
-      append(manager, {
-        ...block(ev, "spawn", ev.role ?? ev.text ?? "sub-agent"),
-        agentId: MANAGER_ID,
-        spawn: { agentId: child.id, role: ev.role ?? ev.text ?? "sub-agent" },
-      })
+      const seen = manager.blocks.some((b) => b.kind === "spawn" && b.spawn?.agentId === child.id)
+      child.status = "running"
+      child.endedAt = undefined
+      child.error = undefined
+      child.activity = seen ? "continuing" : "starting"
+      if (!seen) child.startedAt = ev.created_at
+      addAgentToTurn(next, ev.turn_id, child.id)
+      // A resume re-emits spawned for the same id so the roster comes back
+      // to life. A second "Started" row is the bug that looks like two
+      // workers with the same name.
+      if (!seen) {
+        append(manager, {
+          ...block(ev, "spawn", ev.role ?? ev.text ?? "sub-agent"),
+          agentId: MANAGER_ID,
+          spawn: { agentId: child.id, role: ev.role ?? ev.text ?? "sub-agent" },
+        })
+      }
       break
     }
 
@@ -294,6 +309,25 @@ export function liveWorkers(state: TranscriptState): number {
   return state.agentOrder.filter(
     (id) => id !== MANAGER_ID && state.agents[id].status === "running",
   ).length
+}
+
+/** Collapse a burst of streamed events down to the latest snapshot per
+ *  agent and kind. Deltas carry the accumulated string, so keeping only the
+ *  last one of a burst is lossless and is what stops a 50-token burst from
+ *  becoming fifty React renders. Non-delta events keep their place. */
+export function collapseLiveEvents(events: SwarmEvent[]): SwarmEvent[] {
+  const seen = new Set<string>()
+  const out: SwarmEvent[] = []
+  for (let i = events.length - 1; i >= 0; i--) {
+    const ev = events[i]
+    if (ev.kind === "delta" || ev.kind === "reasoning_delta") {
+      const key = `${ev.agent_id || MANAGER_ID}:${ev.kind}`
+      if (seen.has(key)) continue
+      seen.add(key)
+    }
+    out.push(ev)
+  }
+  return out.reverse()
 }
 
 export function reduceEvents(
@@ -497,6 +531,59 @@ export function parsePulse(ev: SwarmEvent): Pulse | undefined {
       ]
     }),
   }
+}
+
+/** Read a review's outcome out of an event. A malformed one is dropped: the
+ *  review is an extra, and half a summary is worse than none. */
+export function parseReview(ev: SwarmEvent): ReviewOutcome | undefined {
+  let raw: unknown
+  try {
+    raw = JSON.parse(ev.text ?? "")
+  } catch {
+    return undefined
+  }
+  if (!raw || typeof raw !== "object") return undefined
+  const body = raw as Partial<ReviewOutcome>
+  return {
+    changed: body.changed === true,
+    notes: typeof body.notes === "object" && body.notes ? body.notes : undefined,
+    skills: Array.isArray(body.skills) ? body.skills : undefined,
+    note: typeof body.note === "string" ? body.note : undefined,
+    err: typeof body.err === "string" && body.err ? body.err : ev.err || undefined,
+  }
+}
+
+/** What the review's tool actions are called in the transcript. */
+const NOTE_VERBS: Record<string, string> = {
+  add: "stored",
+  replace: "revised",
+  remove: "removed",
+}
+const SKILL_VERBS: Record<string, string> = {
+  create: "recorded",
+  patch: "updated",
+  delete: "removed",
+}
+
+/** One line for the transcript, or nothing.
+ *
+ *  Most turns teach the project nothing, and a row saying so after every
+ *  answer would train the reader to stop looking at the ones that matter. */
+export function reviewNotice(outcome?: ReviewOutcome): string | undefined {
+  if (!outcome) return undefined
+  if (outcome.err) return `Memory review failed: ${outcome.err}`
+  if (!outcome.changed) return undefined
+  const parts: string[] = []
+  for (const action of Object.keys(NOTE_VERBS)) {
+    const n = outcome.notes?.[action] ?? 0
+    if (n > 0) parts.push(`${n} ${n === 1 ? "note" : "notes"} ${NOTE_VERBS[action]}`)
+  }
+  for (const s of outcome.skills ?? []) {
+    if (!s?.name) continue
+    parts.push(`skill "${s.name}" ${SKILL_VERBS[s.action] ?? s.action}`)
+  }
+  if (parts.length === 0) return undefined
+  return `Memory updated: ${parts.join(", ")}.`
 }
 
 function pulseStatus(raw: unknown): AgentStatus {

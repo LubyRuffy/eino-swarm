@@ -78,6 +78,16 @@ func New(opts Options) (*Server, error) {
 		api.GET("/models", s.getModels)
 		api.GET("/tools", s.getTools)
 
+		api.GET("/projects", s.listProjects)
+		api.POST("/projects", s.createProject)
+		api.GET("/projects/:id", s.getProject)
+		api.PATCH("/projects/:id", s.patchProject)
+		api.DELETE("/projects/:id", s.deleteProject)
+		api.GET("/projects/:id/memory", s.getMemory)
+		api.PUT("/projects/:id/memory", s.putMemory)
+		api.GET("/projects/:id/skills/:name", s.getSkill)
+		api.DELETE("/projects/:id/skills/:name", s.deleteSkill)
+
 		api.GET("/threads", s.listThreads)
 		api.POST("/threads", s.createThread)
 		api.GET("/threads/:id", s.getThread)
@@ -88,6 +98,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/threads/:id/turns", s.startTurn)
 		api.POST("/threads/:id/steer", s.steer)
 		api.POST("/threads/:id/interrupt", s.interrupt)
+		api.POST("/threads/:id/review", s.reviewThread)
 		api.GET("/threads/:id/turns", s.listTurns)
 
 		api.GET("/threads/:id/files", s.listFiles)
@@ -145,6 +156,10 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "busy"})
 	case errors.Is(err, engine.ErrIdle):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "idle"})
+	case errors.Is(err, engine.ErrInvalidWorkdir):
+		// Its own code so the project dialog can put the message under the
+		// working directory field instead of somewhere the user has to hunt.
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "workdir"})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}

@@ -14,7 +14,7 @@ deterministic and fast enough to run on every change.
 
 | layer | what it covers | command |
 |---|---|---|
-| Go unit tests | config, store, provider, tools, engine, server, CLI, TUI, and the swarm library | `go test -race -cover ./...` |
+| Go unit tests | config, store, memory, provider, tools, engine, server, CLI, TUI, and the swarm library | `go test -race -cover ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, upload path traversal, restart recovery | `go test ./internal/server/` |
 | Front-end unit tests | the event reducer that turns the stream into blocks, and the store's conversation targeting | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings, theme | `cd frontend && npm run e2e` |
@@ -23,14 +23,15 @@ Current Go coverage, from `go test -race -cover ./...`:
 
 | package | coverage |
 |---|---|
-| `internal/provider` | 95.9% |
-| `.` (swarm library) | 95.2% |
+| `internal/memory` | 97.9% |
+| `internal/provider` | 96.0% |
+| `.` (swarm library) | 95.0% |
 | `internal/tools` | 95.1% |
-| `internal/store` | 94.3% |
-| `internal/engine` | 89.9% |
-| `internal/config` | 89.7% |
-| `internal/server` | 88.7% |
-| `internal/tui` | 87.7% |
+| `internal/store` | 94.8% |
+| `internal/engine` | 91.4% |
+| `internal/config` | 90.6% |
+| `internal/server` | 89.9% |
+| `internal/tui` | 91.1% |
 | `internal/app` | 87.6% |
 | `cmd/zwai` | 83.5% |
 
@@ -49,6 +50,12 @@ hand — see below.
 like a real swarm run: it thinks, spawns two sub-agents (one with
 `fork_context`), has a worker call `write` to produce a file in the workspace,
 waits for both, then streams a markdown answer.
+
+It answers as a **memory reviewer** too, when the agent asking is the review
+after a turn: it stores one note and records one skill, both derived from the
+conversation it was handed, then reports in a line. Without that, a `--mock` run
+and the E2E suite would exercise projects but quietly skip the whole memory
+path — the tools, the files, the event and the panel.
 
 ```bash
 go run ./cmd/zwai web --mock --no-open --data-dir /tmp/zwai-demo
@@ -73,6 +80,10 @@ server concurrently, and the interesting bugs in it have all been ordering bugs:
 a subscriber that misses the "done" event, a runtime that is still marked busy
 when the next turn starts, a listener read while another goroutine binds it.
 
+The TUI package also covers the same tool-display rule as the desktop UI: an
+`exec` notification whose args are JSON is shown as the command, a non-zero
+exit becomes a failed block (not a JSON dump), and `web_search` lists hits.
+
 Conventions in these tests:
 
 - Every test gets its own data directory (`t.TempDir()`) and clears the
@@ -91,20 +102,26 @@ npm test          # vitest, once
 npm run test:watch
 ```
 
-Five things are tested here, three as pure logic and two in jsdom:
+Several things are tested here, some as pure logic and some in jsdom:
 
 - **`src/lib/transcript.ts`**, where the stream becomes UI: streamed text
   replaces rather than appends, a completed block folds into the streamed one
   instead of duplicating it, a tool call pairs with its result by
-  `tool_call_id`, and a progress pulse updates the live summary without leaving
-  a row in the timeline or reviving an agent that has already finished. It is a
-  pure function, so it is called directly.
+  `tool_call_id`, a progress pulse updates the live summary without leaving
+  a row in the timeline or reviving an agent that has already finished, and
+  `collapseLiveEvents` keeps only the latest snapshot per agent and kind from
+  a burst of deltas — lossless, because a delta carries the accumulated string.
+  It is a pure function, so it is called directly.
 - **`src/store/app.ts`**, against a fake API: which conversation an action lands
   in. Sending while a conversation is still being created must wait for it, or
   the turn runs in the conversation the user just left — invisibly.
 - **`src/lib/api.ts`**, against a stubbed `fetch`: the server's error message and
   code reach the UI instead of a bare status line, and a tool list that arrives
   as `null` is read as an empty list rather than crashing the settings dialog.
+- **`src/lib/marquee.ts`** and **`src/components/app/marquee.tsx`**: overflow is
+  a width comparison (jsdom cannot layout a real line), a longer line gets a
+  longer loop, and a live `MarqueeText` is marked `data-marquee="shimmer"` while
+  idle text stays `"off"`.
 - **`src/components/app/transcript.tsx`**, rendered in jsdom: while `wait_agents`
   is pending the transcript shows the sub-agents it is waiting on, each one's
   live activity and the age the latest pulse gave it — the roll-up that keeps a
@@ -117,7 +134,51 @@ Five things are tested here, three as pure logic and two in jsdom:
 - **`src/components/app/composer.tsx`**, rendered in jsdom: the thinking-level
   menu labels the empty default as "Default" and a set level by name, and it is
   absent when the server offers no levels, so an older server never draws a
-  control that would send a meaningless choice.
+  control that would send a meaningless choice. The input is owned by the
+  composer, not the app shell, so typing cannot re-render the transcript.
+- **`src/lib/tool-view.ts`**: a built-in tool's JSON args collapse to the
+  command / query / path the user needs to see, `exec` payloads become stdout
+  plus a failed flag when the exit code is not 0, and `web_search` payloads
+  become a list of hits. Assertions check structure, not any particular query.
+- **`src/lib/read-result.ts`**, a `read` tool payload becomes a file listing:
+  newline-separated bodies, and the older flattened one-liners, both recover
+  the path and the lines; other tool output is left alone.
+- **`src/components/app/tool-result.tsx`**, rendered in jsdom: a markdown `read`
+  renders headings, a non-markdown `read` keeps line numbers, `exec` shows
+  stdout (and a role=alert error when it failed), and `web_search` lists hits
+  instead of dumping JSON.
+- **`src/components/app/sidebar.tsx`**, rendered in jsdom: desktop macOS chrome
+  pads for the traffic lights and does not contain New conversation; the hide
+  toggle calls `onCollapse`. A browser does not pad.
+- **`src/components/app/header.tsx`**, rendered in jsdom: when the conversation
+  list is hidden a Show conversations control appears, the title bar pads
+  for traffic lights if they now sit on it, and a conversation in a project is
+  named after it — which directory the tools are pointed at is otherwise
+  invisible.
+- **`src/lib/stream.ts`**, against a fake `EventSource`: every kind the server
+  sends is subscribed to, a review that lands after `done` is delivered, the
+  event name wins over a disagreeing payload, and a connection that dropped on
+  its own is not reported as a failure. The first of those is a regression test:
+  a kind missing from the list is stored, traceable, and invisible until the
+  page is reloaded.
+- **`src/store/projects.ts`**, against a fake API: a project deleted elsewhere
+  stops being the sidebar's filter, a slow memory response for a project that is
+  no longer open is ignored (one project's notes under another's name is worse
+  than none), and a refused create or edit reaches the dialog so it can show the
+  message against the field that caused it.
+- **`src/components/app/project-dialog.tsx`**, rendered in jsdom: a rejected
+  working directory is shown under that field and the dialog stays open, a
+  nameless project cannot be created, and the memory switch is disabled when the
+  install has memory off.
+- **`src/components/app/memory-panel.tsx`**, rendered in jsdom: notes and their
+  budget are shown, an edit saves and a failed save stays on screen, a skill's
+  body is fetched only when it is opened, and notes that arrive from a review are
+  adopted — unless the user is mid-edit, in which case what they typed wins.
+- **`src/components/app/project-list.tsx`** and
+  **`src/components/app/delete-project-dialog.tsx`**: the selected project is
+  marked as pressed, each row's menu is named after its project, and the delete
+  dialog says that the conversations and the memory go too while the user's own
+  directory does not.
 
 ## End-to-end tests
 
@@ -143,8 +204,9 @@ that is already listening on the port.
 
 | spec | covers |
 |---|---|
-| `e2e/conversation.spec.ts` | a full swarm turn, context carried across turns, file upload appearing in the Files panel, the turn id shown for tracing |
-| `e2e/shell.spec.ts` | keyboard shortcuts, the tool catalogue on a never-saved config, settings written to the config file and read back, theme switching persisted, renaming and deleting a conversation |
+| `e2e/conversation.spec.ts` | a full swarm turn, a live status line marked as sweeping while the turn runs, context carried across turns, file upload appearing in the Files panel, the turn id shown for tracing |
+| `e2e/projects.spec.ts` | a project created from the sidebar, a conversation that lands in it and says so, the review's notes and skill appearing in the Memory tab without a reload, the review in the same trace as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload, and a deleted project taking its conversations with it |
+| `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list), the tool catalogue on a never-saved config, settings written to the config file and read back, theme switching persisted, renaming and deleting a conversation |
 
 E2E tests run against `frontend/dist`, so **run `make frontend` after changing
 anything under `frontend/src`** or you will be testing the previous bundle.

@@ -39,6 +39,10 @@
     --running: 38 92% 50%;
     --done: 142 62% 38%;
     --failed: 0 72% 46%;
+
+    /* Width of the macOS hidden-inset traffic lights. Used only in desktop
+       mode so New conversation is not sitting under the yellow blob. */
+    --traffic-light-inset: 4.75rem;
   }
 
   .dark {
@@ -174,5 +178,16 @@
   }
   .thin-scrollbar::-webkit-scrollbar-track {
     background: transparent;
+  }
+
+  .pl-traffic {
+    padding-left: var(--traffic-light-inset);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee,
+  .animate-shimmer {
+    animation: none !important;
   }
 }

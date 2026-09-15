@@ -11,7 +11,7 @@ import (
 // working for two thousand years.
 func TestIdleStatusHasNoStartTime(t *testing.T) {
 	e := newTestEngine(t)
-	th, err := e.CreateThread("", "")
+	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestIdleStatusHasNoStartTime(t *testing.T) {
 // be silently dropped. It runs as the next turn instead.
 func TestLateSteeringBecomesItsOwnTurn(t *testing.T) {
 	e := newTestEngine(t)
-	th, err := e.CreateThread("", "")
+	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

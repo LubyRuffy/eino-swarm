@@ -11,12 +11,14 @@ export function Disclosure({
   summary,
   children,
   className,
+  failed,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   summary: React.ReactNode
   children?: React.ReactNode
   className?: string
+  failed?: boolean
 }) {
   return (
     <div className={cn("group", className)}>
@@ -24,7 +26,13 @@ export function Disclosure({
         type="button"
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-invalid={failed || undefined}
+        className={cn(
+          "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          failed
+            ? "text-destructive hover:text-destructive"
+            : "text-muted-foreground hover:text-foreground",
+        )}
       >
         {summary}
       </button>

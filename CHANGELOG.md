@@ -11,6 +11,51 @@ co-working app built on it. The library API is unchanged except where noted.
 
 ### Added
 
+- **Projects, with a memory.** Conversations can be grouped into a project that
+  gives them one working directory, one instruction added to every manager
+  prompt, and a memory they share. With memory on, each finished turn is read
+  back by a reviewer agent that keeps what is worth carrying forward: short
+  notes in `MEMORY.md` under a character budget, and reusable procedures as
+  skills in `skills/<name>/SKILL.md` (the
+  [agentskills.io](https://agentskills.io) layout). Later conversations in the
+  project start with the notes in their prompt and an index of the skills, and
+  open one with `skill_view` when they need it; the manager can also write to
+  memory itself with `memory` and `skill_manage`. Sub-agents cannot — a worker
+  would be recording work the manager had not accepted yet.
+
+  Everything about it is visible and correctable: a **Memory** tab shows the
+  notes (editable), the skills (readable and deletable) and a **Review now**
+  button; the review lands under the turn's own id as a `memory_review` event,
+  so `zwai trace <id>` still tells the whole story, reviewer model calls
+  included. The files live in the data directory under
+  `projects/<id>/memory/`, never in the working directory: a project pointed at
+  a repository leaves nothing in it. New endpoints under `/api/projects`,
+  `project_id` on conversations, `?project=` on the list, and
+  `POST /api/threads/:id/review`; new config section `memory` (`enabled`,
+  `auto_review`, `char_limit`, `review_max_iterations`, `skills_index_max`),
+  editable in Settings → Memory.
+
+- **Live status lines move.** While a turn is running, the heartbeat, a pending
+  tool's arguments, a `wait_agents` roll-up and a sub-agent's activity sweep
+  (and scroll if they do not fit) instead of sitting truncated and looking
+  stuck. Hover pauses a scrolling line so it can be read. `prefers-reduced-motion`
+  turns the animation off.
+
+- **`resume_agent`.** A finished worker's conversation is archived (independent of
+  `Stats()` pruning the live handle) so the manager can continue that **same**
+  worker instead of spawning a twin with the same role. `fork_context` still
+  copies the **manager** conversation; continuing a worker is `resume_agent` and
+  keeps the original `agent_id`. `send_message` remains running-only; leftover
+  steering that never reached a model call shows up on `wait_agents` as
+  `undelivered`. The inbox seed for fork/resume is applied before the worker
+  goroutine starts, so the first model call cannot miss it.
+- **Stream coalescing.** Streamed tokens are held for
+  `swarm.delta_coalesce_ms` (default 50) and sent as the latest snapshot, so a
+  50-token-per-second model costs the UI one redraw, not fifty. The front end
+  also folds a burst of deltas into one animation frame, memoises completed
+  markdown, and keeps the composer, clock and panel width out of the
+  conversation's render path — typing and a ticking timer no longer re-parse
+  the whole transcript.
 - **A pulse while the turn runs.** A swarm whose agents are all inside a slow
   tool call streams nothing, and a busy run then looks exactly like a stuck one.
   Every `swarm.progress_interval_seconds` (default 5, editable in Settings → Swarm)
@@ -74,7 +119,7 @@ co-working app built on it. The library API is unchanged except where noted.
   and `Notification.ToolCallID` for pairing parallel tool calls with their
   results.
 - **Escape stops the running turn**, when no dialog or palette is open. Existing
-  shortcuts: `⌘K` palette, `⌘N` new conversation, `⌘\` panel, `⌘,` settings.
+  shortcuts: `⌘K` palette, `⌘N` new conversation, `⌘B` conversation list, `⌘\` panel, `⌘,` settings.
 - **Tests**: Go unit and HTTP tests with `-race` across every package, vitest for
   the stream-to-blocks reducer, and Playwright end-to-end specs driving a real
   server on the offline provider. See [docs/TESTING.md](docs/TESTING.md).
@@ -86,6 +131,29 @@ co-working app built on it. The library API is unchanged except where noted.
 
 ### Changed
 
+- **Deleting a conversation no longer deletes the directory it was working in,
+  unless zwai made that directory.** With projects, a conversation's workspace
+  can be the user's own repository, and `DeleteThread` removed it
+  unconditionally. Deleting a project removes its conversations, its memory and
+  the workspace zwai created for it — never a `workdir` the user chose.
+- **The Files panel skips dot-directories.** A project pointed at a repository
+  would otherwise spend its whole 2000-entry listing on `.git`.
+- **`engine.CreateThread` takes a project id** (`CreateThread(title,
+  providerID, projectID)`), and `store.ListThreads` takes one to filter by
+  (`ListThreads(includeArchived, projectID)`). Empty behaves exactly as before.
+- **Tool rows show what happened, not the JSON.** `exec` is the command and its
+  stdout (or a red error when `exit_code` is not 0); `web_search` is the query
+  and the hit list. Other built-in tools follow the same rule: the summary is
+  the path / pattern / URL, the body is the parsed result. The TUI uses the
+  same summaries instead of dumping `name({json})`.
+- **`resume_agent` keeps the same `agent_id`.** It used to mint a twin worker
+  with the same role, so a failed sub-agent showed up twice in the roster. It
+  now continues that worker in place; a second `spawned` event for the same id
+  is a continuation, not another "Started" row.
+- **`NotifyToolResult` keeps newlines.** It used to collapse `\n` to spaces and
+  cut to 400 runes, which made a file body unreadable in any UI. The text is now
+  the tool's stdout, clipped at 64k runes so a huge `exec` cannot fill the event
+  log. The model-facing transcript was already verbatim.
 - **`wait_agents` returns on the first finish, not the whole batch.** It used to
   block until every listed sub-agent was done (or the timeout ran out), so a
   running swarm looked frozen with no progress until the very end. It now returns
@@ -112,6 +180,26 @@ co-working app built on it. The library API is unchanged except where noted.
 
 ### Fixed
 
+- **UI**: an event kind the app renders but never subscribed to on the event
+  stream was stored, visible in `zwai trace`, and invisible on screen until the
+  page was reloaded — which is how the first memory reviews arrived. The
+  subscribed kinds are now covered by a test.
+- **UI**: expanding a `read` showed a mashed one-liner (`encoding=utf-8 path=… 1|# …`)
+  because `NotifyToolResult` collapsed newlines and cut the body to 400 runes.
+  Tool results now keep newlines (clipped at 64k runes so `exec` cannot fill the
+  event log), and a `read` row renders the file — markdown as markdown, anything
+  else with line numbers.
+- **UI**: on the macOS desktop window, hidden-inset traffic lights sat on top of
+  **New conversation**. The sidebar now has a Codex/Cursor-style chrome row
+  (lights + hide toggle); New conversation sits under it. The list can be hidden
+  and shown (`⌘B`); when it is hidden the toggle moves to the main title bar,
+  which then pads for the lights.
+- **Swarm**: `fork_context` could lose the race against the worker's first model
+  call, so the inherited manager conversation never arrived. The inbox is now
+  seeded before the goroutine starts.
+- **Swarm**: `send_message` reported `delivered: true` for text that was only
+  queued. If the worker finished without another model call, that steering
+  vanished. `wait_agents` now reports leftovers as `undelivered`.
 - **Swarm**: asking a run how it was doing could destroy its result. `Registry.Stats`
   prunes the finished sub-agents it counts, and the engine called it to answer
   `GET /api/threads/:id`, so a status poll landing between a worker finishing and
@@ -187,3 +275,17 @@ co-working app built on it. The library API is unchanged except where noted.
   sidebar specs depended on how often the suite had been run and the settings
   specs never saw a first start. It now wipes the directory before the server
   starts, and does not reuse a server that is already listening.
+
+### Deliberately not in this change
+
+Project memory covers notes and skills per project. Three neighbouring ideas
+were left out on purpose, so that what shipped is complete rather than broad:
+
+- **A profile that follows the user across projects.** Notes are per project; a
+  preference stated in one is not known in the next.
+- **Searching past conversations.** The reviewer reads the turn it just
+  followed, not the archive. Recalling an older conversation is still a matter
+  of finding it in the sidebar or `zwai trace`.
+- **A native directory picker** for a project's working directory. The field
+  takes an absolute path and the server says so when it is not one; choosing a
+  folder needs the desktop shell, not the browser.

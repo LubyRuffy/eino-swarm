@@ -11,8 +11,9 @@ export interface StreamHandlers {
 }
 
 /** The event-stream kinds the app renders. EventSource delivers by name, so
- *  each one has to be subscribed explicitly. */
-const KINDS = [
+ *  each one has to be subscribed explicitly: a kind missing from this list is
+ *  stored, traceable, and invisible until the page is reloaded. */
+export const KINDS = [
   "user_message",
   "agent_message",
   "reasoning",
@@ -26,6 +27,7 @@ const KINDS = [
   "steer",
   "cleanup",
   "progress",
+  "memory_review",
   "done",
   "error",
   "message",

@@ -6,17 +6,20 @@ import (
 	"strings"
 
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/gin-gonic/gin"
 )
 
 type createThreadRequest struct {
 	Title      string `json:"title"`
 	ProviderID string `json:"provider_id"`
+	ProjectID  string `json:"project_id"`
 }
 
 type threadView struct {
 	ID              string `json:"id"`
 	Title           string `json:"title"`
+	ProjectID       string `json:"project_id"`
 	ProviderID      string `json:"provider_id"`
 	ReasoningEffort string `json:"reasoning_effort"`
 	Archived        bool   `json:"archived"`
@@ -25,8 +28,22 @@ type threadView struct {
 	Running         bool   `json:"running"`
 }
 
+func viewThread(th *store.Thread, running bool) threadView {
+	return threadView{
+		ID:              th.ID,
+		Title:           th.Title,
+		ProjectID:       th.ProjectID,
+		ProviderID:      th.ProviderID,
+		ReasoningEffort: th.ReasoningEffort,
+		Archived:        th.Archived,
+		CreatedAt:       th.CreatedAt.Format(timeFormat),
+		LastActiveAt:    th.LastActiveAt.Format(timeFormat),
+		Running:         running,
+	}
+}
+
 func (s *Server) listThreads(c *gin.Context) {
-	threads, err := s.engine.Store().ListThreads(c.Query("archived") == "1")
+	threads, err := s.engine.Store().ListThreads(c.Query("archived") == "1", c.Query("project"))
 	if err != nil {
 		s.fail(c, err)
 		return
@@ -38,17 +55,8 @@ func (s *Server) listThreads(c *gin.Context) {
 		running[id] = true
 	}
 	out := make([]threadView, 0, len(threads))
-	for _, th := range threads {
-		out = append(out, threadView{
-			ID:              th.ID,
-			Title:           th.Title,
-			ProviderID:      th.ProviderID,
-			ReasoningEffort: th.ReasoningEffort,
-			Archived:        th.Archived,
-			CreatedAt:       th.CreatedAt.Format(timeFormat),
-			LastActiveAt:    th.LastActiveAt.Format(timeFormat),
-			Running:         running[th.ID],
-		})
+	for i := range threads {
+		out = append(out, viewThread(&threads[i], running[threads[i].ID]))
 	}
 	c.JSON(http.StatusOK, gin.H{"threads": out})
 }
@@ -61,19 +69,12 @@ func (s *Server) createThread(c *gin.Context) {
 		badRequest(c, "could not read the request body: %v", err)
 		return
 	}
-	th, err := s.engine.CreateThread(req.Title, req.ProviderID)
+	th, err := s.engine.CreateThread(req.Title, req.ProviderID, req.ProjectID)
 	if err != nil {
 		s.fail(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"thread": threadView{
-		ID:              th.ID,
-		Title:           th.Title,
-		ProviderID:      th.ProviderID,
-		ReasoningEffort: th.ReasoningEffort,
-		CreatedAt:       th.CreatedAt.Format(timeFormat),
-		LastActiveAt:    th.LastActiveAt.Format(timeFormat),
-	}})
+	c.JSON(http.StatusCreated, gin.H{"thread": viewThread(th, false)})
 }
 
 func (s *Server) getThread(c *gin.Context) {
@@ -83,16 +84,7 @@ func (s *Server) getThread(c *gin.Context) {
 	}
 	status := s.engine.Status(th.ID)
 	c.JSON(http.StatusOK, gin.H{
-		"thread": threadView{
-			ID:              th.ID,
-			Title:           th.Title,
-			ProviderID:      th.ProviderID,
-			ReasoningEffort: th.ReasoningEffort,
-			Archived:        th.Archived,
-			CreatedAt:       th.CreatedAt.Format(timeFormat),
-			LastActiveAt:    th.LastActiveAt.Format(timeFormat),
-			Running:         status.Running,
-		},
+		"thread": viewThread(th, status.Running),
 		"status": status,
 	})
 }
@@ -102,6 +94,9 @@ type patchThreadRequest struct {
 	ProviderID      *string `json:"provider_id"`
 	ReasoningEffort *string `json:"reasoning_effort"`
 	Archived        *bool   `json:"archived"`
+	// ProjectID moves a conversation into a project or, when empty, out of
+	// every project. Its files stay where they are.
+	ProjectID *string `json:"project_id"`
 }
 
 func (s *Server) patchThread(c *gin.Context) {
@@ -138,6 +133,12 @@ func (s *Server) patchThread(c *gin.Context) {
 	}
 	if req.Archived != nil {
 		if err := s.engine.SetThreadArchived(th.ID, *req.Archived); err != nil {
+			s.fail(c, err)
+			return
+		}
+	}
+	if req.ProjectID != nil {
+		if err := s.engine.MoveThread(th.ID, *req.ProjectID); err != nil {
 			s.fail(c, err)
 			return
 		}

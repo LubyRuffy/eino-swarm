@@ -8,9 +8,11 @@ import {
   Trash2,
   Upload,
 } from "lucide-react"
-import { useMemo, useRef } from "react"
+import { useMemo, useRef, useState } from "react"
 
+import { MemoryPanel, type MemoryPanelProps } from "@/components/app/memory-panel"
 import { AgentTranscript, CopyButton, StatusDot } from "@/components/app/transcript"
+import { MarqueeText } from "@/components/app/marquee"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -19,7 +21,7 @@ import { MANAGER_ID, type TranscriptState } from "@/lib/transcript"
 import type { FileEntry, Meta, Turn } from "@/lib/types"
 import { formatBytes, formatDuration, formatTime } from "@/lib/utils"
 
-export type PanelTab = "agents" | "files" | "trace"
+export type PanelTab = "agents" | "files" | "trace" | "memory"
 
 /** The right-hand panel: who is working, what they produced, and what
  *  happened — the three questions the transcript alone cannot answer. */
@@ -34,12 +36,11 @@ export function RightPanel({
   turns,
   meta,
   threadId,
+  memory,
   onUpload,
   onDeleteFile,
   onRefreshFiles,
   onReveal,
-  width,
-  onWidthChange,
 }: {
   tab: PanelTab
   onTabChange: (tab: PanelTab) => void
@@ -51,19 +52,21 @@ export function RightPanel({
   turns: Turn[]
   meta?: Meta
   threadId?: string
+  /** Absent when the open conversation is not in a project: there is no
+   *  memory to show and the tab is not rendered at all. */
+  memory?: MemoryPanelProps
   onUpload: (files: File[]) => Promise<void>
   onDeleteFile: (path: string) => void
   onRefreshFiles: () => void
   onReveal: (path?: string) => void
-  width: number
-  onWidthChange: (width: number) => void
 }) {
+  const [width, setWidth] = useState(352)
   return (
     <aside
       className="relative flex h-full shrink-0 flex-col border-l border-border bg-card"
       style={{ width }}
     >
-      <ResizeHandle width={width} onWidthChange={onWidthChange} />
+      <ResizeHandle width={width} onWidthChange={setWidth} />
       <Tabs
         value={tab}
         onValueChange={(v) => onTabChange(v as PanelTab)}
@@ -81,6 +84,7 @@ export function RightPanel({
             </TabsTrigger>
             <TabsTrigger value="files">Files</TabsTrigger>
             <TabsTrigger value="trace">Trace</TabsTrigger>
+            {memory ? <TabsTrigger value="memory">Memory</TabsTrigger> : null}
           </TabsList>
         </div>
 
@@ -108,6 +112,12 @@ export function RightPanel({
         <TabsContent value="trace" className="thin-scrollbar overflow-y-auto">
           <TraceTab turns={turns} transcript={transcript} />
         </TabsContent>
+
+        {memory ? (
+          <TabsContent value="memory" className="thin-scrollbar overflow-y-auto">
+            <MemoryPanel {...memory} />
+          </TabsContent>
+        ) : null}
       </Tabs>
     </aside>
   )
@@ -245,7 +255,11 @@ function AgentRow({
     >
       <StatusDot status={agent.status} />
       <span className="shrink-0 text-sm">{agent.role}</span>
-      <span className="truncate text-xs text-muted-foreground">{agent.activity}</span>
+      <MarqueeText
+        text={agent.activity}
+        active={agent.status === "running"}
+        className="text-xs text-muted-foreground"
+      />
     </button>
   )
 }

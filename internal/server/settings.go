@@ -41,8 +41,11 @@ func (s *Server) getMeta(c *gin.Context) {
 		DataDir:         cfg.DataDir(),
 		Capabilities: map[string]bool{
 			// The UI hides affordances it cannot deliver rather than showing
-			// buttons that fail: revealing a file needs a desktop shell.
+			// buttons that fail: revealing a file needs a desktop shell, and a
+			// project's memory switch would promise nothing while memory is
+			// off for the whole install.
 			"reveal": s.opts.Reveal != nil,
+			"memory": cfg.Memory.Enabled,
 		},
 		Swarm: cfg.Swarm,
 	})
@@ -57,9 +60,10 @@ type settingsView struct {
 		Default   string         `json:"default"`
 		Providers []providerView `json:"providers"`
 	} `json:"models"`
-	Swarm config.SwarmConfig `json:"swarm"`
-	Tools config.ToolsConfig `json:"tools"`
-	Log   config.LogConfig   `json:"log"`
+	Swarm  config.SwarmConfig  `json:"swarm"`
+	Tools  config.ToolsConfig  `json:"tools"`
+	Memory config.MemoryConfig `json:"memory"`
+	Log    config.LogConfig    `json:"log"`
 }
 
 type providerView struct {
@@ -77,6 +81,7 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.Server = cfg.Server
 	v.Swarm = cfg.Swarm
 	v.Tools = cfg.Tools
+	v.Memory = cfg.Memory
 	v.Log = cfg.Log
 	v.Models.Default = cfg.Models.Default
 	for _, p := range cfg.Models.Providers {
@@ -113,9 +118,10 @@ type putSettingsRequest struct {
 			APIKey         *string `json:"api_key"`
 		} `json:"providers"`
 	} `json:"models"`
-	Swarm *config.SwarmConfig `json:"swarm"`
-	Tools *config.ToolsConfig `json:"tools"`
-	Log   *config.LogConfig   `json:"log"`
+	Swarm  *config.SwarmConfig  `json:"swarm"`
+	Tools  *config.ToolsConfig  `json:"tools"`
+	Memory *config.MemoryConfig `json:"memory"`
+	Log    *config.LogConfig    `json:"log"`
 }
 
 func (s *Server) putSettings(c *gin.Context) {
@@ -135,6 +141,9 @@ func (s *Server) putSettings(c *gin.Context) {
 	}
 	if req.Tools != nil {
 		next.Tools = *req.Tools
+	}
+	if req.Memory != nil {
+		next.Memory = *req.Memory
 	}
 	if req.Log != nil {
 		next.Log = *req.Log

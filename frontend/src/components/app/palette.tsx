@@ -1,4 +1,4 @@
-import { MessageSquare, MessageSquarePlus, Settings, SunMoon } from "lucide-react"
+import { MessageSquare, MessageSquarePlus, PanelLeft, Settings, SunMoon } from "lucide-react"
 
 import {
   CommandDialog,
@@ -22,6 +22,7 @@ export function Palette({
   onNew,
   onSettings,
   onToggleTheme,
+  onToggleSidebar,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -30,6 +31,7 @@ export function Palette({
   onNew: () => void
   onSettings: () => void
   onToggleTheme: () => void
+  onToggleSidebar: () => void
 }) {
   const run = (fn: () => void) => {
     onOpenChange(false)
@@ -46,6 +48,11 @@ export function Palette({
             <MessageSquarePlus />
             New conversation
             <kbd className="ml-auto text-[11px] text-muted-foreground">⌘N</kbd>
+          </CommandItem>
+          <CommandItem value="toggle conversations sidebar" onSelect={() => run(onToggleSidebar)}>
+            <PanelLeft />
+            Show or hide conversations
+            <kbd className="ml-auto text-[11px] text-muted-foreground">⌘B</kbd>
           </CommandItem>
           <CommandItem value="settings" onSelect={() => run(onSettings)}>
             <Settings />

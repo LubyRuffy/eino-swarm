@@ -60,14 +60,14 @@ func TestThreadCRUD(t *testing.T) {
 	if err := s.CreateThread(arch); err != nil {
 		t.Fatal(err)
 	}
-	active, err := s.ListThreads(false)
+	active, err := s.ListThreads(false, "")
 	if err != nil {
 		t.Fatalf("ListThreads: %v", err)
 	}
 	if len(active) != 1 || active[0].ID != th.ID {
 		t.Fatalf("archived thread leaked into the active list: %+v", active)
 	}
-	all, _ := s.ListThreads(true)
+	all, _ := s.ListThreads(true, "")
 	if len(all) != 2 {
 		t.Fatalf("want 2 threads, got %d", len(all))
 	}
@@ -87,7 +87,7 @@ func TestListThreadsOrdersByActivity(t *testing.T) {
 	if err := s.TouchThread(older.ID); err != nil {
 		t.Fatalf("TouchThread: %v", err)
 	}
-	list, err := s.ListThreads(false)
+	list, err := s.ListThreads(false, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,7 +485,7 @@ func TestClosedStoreReportsErrorsEverywhere(t *testing.T) {
 	checks := map[string]func() error{
 		"CreateThread":   func() error { return s.CreateThread(&Thread{Title: "x"}) },
 		"GetThread":      func() error { _, e := s.GetThread(th.ID); return e },
-		"ListThreads":    func() error { _, e := s.ListThreads(false); return e },
+		"ListThreads":    func() error { _, e := s.ListThreads(false, ""); return e },
 		"UpdateThread":   func() error { return s.UpdateThread(th.ID, map[string]any{"title": "x"}) },
 		"DeleteThread":   func() error { return s.DeleteThread(th.ID) },
 		"AppendMessages": func() error { return s.AppendMessages(th.ID, turn.ID, []Message{{Role: "user"}}) },
@@ -506,6 +506,12 @@ func TestClosedStoreReportsErrorsEverywhere(t *testing.T) {
 		"AddAttachment":          func() error { return s.AddAttachment(&Attachment{ThreadID: th.ID, Name: "a"}) },
 		"ListAttachments":        func() error { _, e := s.ListAttachments(th.ID); return e },
 		"DeleteAttachmentByPath": func() error { return s.DeleteAttachmentByPath(th.ID, "a") },
+		"CreateProject":          func() error { return s.CreateProject(&Project{Name: "p"}) },
+		"GetProject":             func() error { _, e := s.GetProject("pj_1"); return e },
+		"ListProjects":           func() error { _, e := s.ListProjects(); return e },
+		"UpdateProject":          func() error { return s.UpdateProject("pj_1", map[string]any{"name": "x"}) },
+		"DeleteProject":          func() error { return s.DeleteProject("pj_1") },
+		"ListThreadIDsByProject": func() error { _, e := s.ListThreadIDsByProject("pj_1"); return e },
 	}
 	for name, fn := range checks {
 		if err := fn(); err == nil {

@@ -1,14 +1,27 @@
 import type {
   Attachment,
   FileEntry,
+  MemoryEntries,
   Meta,
   ModelInfo,
+  Project,
+  ProjectMemory,
   Settings,
+  Skill,
   Thread,
   ThreadStatus,
   ToolDescriptor,
   Turn,
 } from "./types"
+
+/** The fields a project dialog can send. Each is optional so a patch changes
+ *  only what the user touched. */
+export interface ProjectPatch {
+  name?: string
+  system_prompt?: string
+  workdir?: string
+  memory_enabled?: boolean
+}
 
 /** Errors from the API carry the server's message, because it is written for
  *  the person reading it — "the conversation is already running a turn" is
@@ -83,14 +96,57 @@ export const api = {
   tools: () =>
     request<{ catalog: ToolDescriptor[]; enabled: string[] }>("/api/tools"),
 
-  threads: (archived = false) =>
-    request<{ threads: Thread[] }>(
-      `/api/threads${archived ? "?archived=1" : ""}`,
-    ).then((r) => r.threads),
-  createThread: (title?: string, providerId?: string) =>
+  projects: () =>
+    request<{ projects: Project[] }>("/api/projects").then((r) => r.projects),
+  createProject: (patch: ProjectPatch) =>
+    request<{ project: Project }>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify(patch),
+    }).then((r) => r.project),
+  patchProject: (id: string, patch: ProjectPatch) =>
+    request<{ project: Project }>(`/api/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }).then((r) => r.project),
+  deleteProject: (id: string) =>
+    request<void>(`/api/projects/${id}`, { method: "DELETE" }),
+
+  memory: (projectId: string) =>
+    request<{ memory: ProjectMemory }>(`/api/projects/${projectId}/memory`).then(
+      (r) => r.memory,
+    ),
+  saveMemory: (projectId: string, text: string) =>
+    request<{ memory: MemoryEntries }>(`/api/projects/${projectId}/memory`, {
+      method: "PUT",
+      body: JSON.stringify({ text }),
+    }).then((r) => r.memory),
+  skill: (projectId: string, name: string) =>
+    request<{ skill: Skill }>(
+      `/api/projects/${projectId}/skills/${encodeURIComponent(name)}`,
+    ).then((r) => r.skill),
+  deleteSkill: (projectId: string, name: string) =>
+    request<void>(
+      `/api/projects/${projectId}/skills/${encodeURIComponent(name)}`,
+      { method: "DELETE" },
+    ),
+
+  threads: (archived = false, projectId?: string) => {
+    const params = new URLSearchParams()
+    if (archived) params.set("archived", "1")
+    if (projectId) params.set("project", projectId)
+    const query = params.toString()
+    return request<{ threads: Thread[] }>(
+      `/api/threads${query ? `?${query}` : ""}`,
+    ).then((r) => r.threads)
+  },
+  createThread: (title?: string, providerId?: string, projectId?: string) =>
     request<{ thread: Thread }>("/api/threads", {
       method: "POST",
-      body: JSON.stringify({ title, provider_id: providerId }),
+      body: JSON.stringify({
+        title,
+        provider_id: providerId,
+        project_id: projectId,
+      }),
     }).then((r) => r.thread),
   thread: (id: string) =>
     request<{ thread: Thread; status: ThreadStatus }>(`/api/threads/${id}`),
@@ -101,6 +157,7 @@ export const api = {
       archived?: boolean
       provider_id?: string
       reasoning_effort?: string
+      project_id?: string
     },
   ) =>
     request<{ thread: Thread }>(`/api/threads/${id}`, {
@@ -126,6 +183,10 @@ export const api = {
     request<{ interrupted: boolean }>(`/api/threads/${id}/interrupt`, {
       method: "POST",
     }),
+  /** Re-reads the last finished turn and curates the project's memory again.
+   *  Accepted, not done: the result arrives on the event stream. */
+  reviewThread: (id: string) =>
+    request<{ turn: Turn }>(`/api/threads/${id}/review`, { method: "POST" }),
   turns: (id: string) =>
     request<{ turns: Turn[] }>(`/api/threads/${id}/turns`).then((r) => r.turns),
 
