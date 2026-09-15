@@ -348,7 +348,16 @@ func (e *Engine) callRecorder(threadID, turnID string) provider.Recorder {
 
 // record persists an event and broadcasts it. Persisted events carry a
 // sequence number, which is what makes them replayable.
+// record persists an event and then broadcasts it.
+//
+// Persisting and broadcasting happen under one lock because workers and the
+// manager record concurrently: without it, an event assigned sequence 7 can
+// reach subscribers before sequence 6, and a client that resumes from the
+// highest sequence it has seen would discard the older one as a duplicate and
+// lose it until the next reload.
 func (e *Engine) record(ev store.Event) {
+	e.recordMu.Lock()
+	defer e.recordMu.Unlock()
 	if err := e.store.AppendEvent(&ev); err != nil {
 		e.log.Warn("could not persist an event", "thread", ev.ThreadID, "kind", ev.Kind, "err", err)
 	}

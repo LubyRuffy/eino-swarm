@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
@@ -39,8 +40,12 @@ type Engine struct {
 
 	mu       sync.Mutex
 	runtimes map[string]*runtime
-	subs     map[string]map[int]chan store.Event
+	subs     map[string]map[int]*subscriber
 	nextSub  int
+
+	// recordMu keeps a stored event's sequence number and its delivery in the
+	// same order. See record.
+	recordMu sync.Mutex
 }
 
 // New builds an engine over an already-open store and provider pool.
@@ -54,7 +59,7 @@ func New(cfg *config.Config, st *store.Store, pool *provider.Pool, log *slog.Log
 		pool:     pool,
 		log:      log,
 		runtimes: map[string]*runtime{},
-		subs:     map[string]map[int]chan store.Event{},
+		subs:     map[string]map[int]*subscriber{},
 	}
 }
 
@@ -197,31 +202,50 @@ func (e *Engine) Shutdown() {
 
 // ---------- event bus ----------
 
-// Subscribe returns a channel of this conversation's live events and a
-// function that unsubscribes.
+// Subscription is one client's view of a conversation's live events.
 //
 // The channel is buffered and lossy by design: a streaming turn emits events
-// far faster than a stalled browser tab reads them, and dropping deltas for a
-// slow client is much better than stalling the run for everyone. Only deltas
-// can be dropped — every event with a sequence number is in the database, so a
-// client that notices a gap replays it.
-func (e *Engine) Subscribe(threadID string) (<-chan store.Event, func()) {
+// far faster than a stalled browser tab reads them, and dropping events for a
+// slow client is much better than stalling the run for everyone. Dropping a
+// delta costs nothing — the complete text follows. Dropping a stored event
+// would lose it for good, so those set Lagged instead, and the reader catches
+// up from the database.
+type Subscription struct {
+	C <-chan store.Event
+
+	lagged atomic.Bool
+	once   sync.Once
+	stop   func()
+}
+
+// Lagged reports, and clears, whether stored events were dropped because this
+// client was not reading fast enough. A reader that sees it must replay from
+// the last sequence number it received.
+func (s *Subscription) Lagged() bool { return s.lagged.Swap(false) }
+
+// Close unsubscribes. It is safe to call more than once.
+func (s *Subscription) Close() { s.once.Do(s.stop) }
+
+// Subscribe registers a client for this conversation's live events.
+func (e *Engine) Subscribe(threadID string) *Subscription {
 	ch := make(chan store.Event, subscriberBuffer)
+	sub := &Subscription{C: ch}
+
 	e.mu.Lock()
 	id := e.nextSub
 	e.nextSub++
 	if e.subs[threadID] == nil {
-		e.subs[threadID] = map[int]chan store.Event{}
+		e.subs[threadID] = map[int]*subscriber{}
 	}
-	e.subs[threadID][id] = ch
+	e.subs[threadID][id] = &subscriber{ch: ch, sub: sub}
 	e.mu.Unlock()
 
-	return ch, func() {
+	sub.stop = func() {
 		e.mu.Lock()
 		if m := e.subs[threadID]; m != nil {
-			if c, ok := m[id]; ok {
+			if s, ok := m[id]; ok {
 				delete(m, id)
-				close(c)
+				close(s.ch)
 			}
 			if len(m) == 0 {
 				delete(e.subs, threadID)
@@ -229,6 +253,14 @@ func (e *Engine) Subscribe(threadID string) (<-chan store.Event, func()) {
 		}
 		e.mu.Unlock()
 	}
+	return sub
+}
+
+// subscriber pairs the delivery channel with the handle the reader watches for
+// dropped events.
+type subscriber struct {
+	ch  chan store.Event
+	sub *Subscription
 }
 
 // subscriberBuffer is deep enough to absorb a burst of streamed deltas while a
@@ -244,16 +276,20 @@ func (e *Engine) Replay(threadID string, since int64) ([]store.Event, error) {
 // broadcast fans one event out to the conversation's subscribers.
 func (e *Engine) broadcast(ev store.Event) {
 	e.mu.Lock()
-	targets := make([]chan store.Event, 0, len(e.subs[ev.ThreadID]))
-	for _, ch := range e.subs[ev.ThreadID] {
-		targets = append(targets, ch)
+	targets := make([]*subscriber, 0, len(e.subs[ev.ThreadID]))
+	for _, s := range e.subs[ev.ThreadID] {
+		targets = append(targets, s)
 	}
 	e.mu.Unlock()
-	for _, ch := range targets {
+	for _, s := range targets {
 		select {
-		case ch <- ev:
+		case s.ch <- ev:
 		default:
-			// slow client: drop. See Subscribe.
+			// Slow client. A delta is disposable; a stored event is not, so
+			// flag the gap and let the reader replay it. See Subscription.
+			if ev.Seq > 0 {
+				s.sub.lagged.Store(true)
+			}
 		}
 	}
 }
@@ -263,8 +299,8 @@ func (e *Engine) dropSubscribers(threadID string) {
 	m := e.subs[threadID]
 	delete(e.subs, threadID)
 	e.mu.Unlock()
-	for _, ch := range m {
-		close(ch)
+	for _, s := range m {
+		close(s.ch)
 	}
 }
 

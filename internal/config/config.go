@@ -22,11 +22,11 @@ const FileName = "config.yaml"
 
 // Config is the whole configuration tree.
 type Config struct {
-	Server ServerConfig `yaml:"server"`
-	Models ModelsConfig `yaml:"models"`
-	Swarm  SwarmConfig  `yaml:"swarm"`
-	Tools  ToolsConfig  `yaml:"tools"`
-	Log    LogConfig    `yaml:"log"`
+	Server ServerConfig `yaml:"server" json:"server"`
+	Models ModelsConfig `yaml:"models" json:"models"`
+	Swarm  SwarmConfig  `yaml:"swarm" json:"swarm"`
+	Tools  ToolsConfig  `yaml:"tools" json:"tools"`
+	Log    LogConfig    `yaml:"log" json:"log"`
 
 	// dataDir is where this config was loaded from. Not serialized: the file
 	// cannot meaningfully record its own location.
@@ -37,21 +37,21 @@ type Config struct {
 type ServerConfig struct {
 	// Addr is the listen address for `zwai web`. Desktop mode always binds a
 	// random loopback port instead.
-	Addr string `yaml:"addr"`
+	Addr string `yaml:"addr" json:"addr"`
 	// OpenBrowser opens the default browser when `zwai web` starts.
-	OpenBrowser bool `yaml:"open_browser"`
+	OpenBrowser bool `yaml:"open_browser" json:"open_browser"`
 }
 
 // Provider is one OpenAI-compatible endpoint the swarm can talk to.
 type Provider struct {
-	ID      string `yaml:"id"`
-	Label   string `yaml:"label"`
-	BaseURL string `yaml:"base_url"`
-	APIKey  string `yaml:"api_key"`
-	Model   string `yaml:"model"`
+	ID      string `yaml:"id" json:"id"`
+	Label   string `yaml:"label" json:"label"`
+	BaseURL string `yaml:"base_url" json:"base_url"`
+	APIKey  string `yaml:"api_key" json:"-"`
+	Model   string `yaml:"model" json:"model"`
 	// TimeoutSeconds bounds a single model call. Long swarm answers need a
 	// generous value; 0 means DefaultRequestTimeout.
-	TimeoutSeconds int `yaml:"timeout_seconds"`
+	TimeoutSeconds int `yaml:"timeout_seconds" json:"timeout_seconds"`
 }
 
 // Timeout is the provider's per-request timeout.
@@ -81,16 +81,16 @@ func (p Provider) Ready() bool {
 
 // ModelsConfig is the provider list plus which one new conversations use.
 type ModelsConfig struct {
-	Default   string     `yaml:"default"`
-	Providers []Provider `yaml:"providers"`
+	Default   string     `yaml:"default" json:"default"`
+	Providers []Provider `yaml:"providers" json:"providers"`
 }
 
 // SwarmConfig bounds the agent swarm.
 type SwarmConfig struct {
-	MaxConcurrent        int `yaml:"max_concurrent"`
-	AgentTimeoutSeconds  int `yaml:"agent_timeout_seconds"`
-	MaxTurns             int `yaml:"max_turns"`
-	ManagerMaxIterations int `yaml:"manager_max_iterations"`
+	MaxConcurrent        int `yaml:"max_concurrent" json:"max_concurrent"`
+	AgentTimeoutSeconds  int `yaml:"agent_timeout_seconds" json:"agent_timeout_seconds"`
+	MaxTurns             int `yaml:"max_turns" json:"max_turns"`
+	ManagerMaxIterations int `yaml:"manager_max_iterations" json:"manager_max_iterations"`
 }
 
 // AgentTimeout is the per-sub-agent watchdog duration.
@@ -103,9 +103,9 @@ func (s SwarmConfig) AgentTimeout() time.Duration {
 
 // ProxyConfig is the outbound proxy applied to network tools.
 type ProxyConfig struct {
-	HTTP    string `yaml:"http"`
-	HTTPS   string `yaml:"https"`
-	NoProxy string `yaml:"no_proxy"`
+	HTTP    string `yaml:"http" json:"http"`
+	HTTPS   string `yaml:"https" json:"https"`
+	NoProxy string `yaml:"no_proxy" json:"no_proxy"`
 }
 
 // Enabled reports whether any proxy is configured.
@@ -121,10 +121,10 @@ func (p ProxyConfig) Enabled() bool {
 // default, Enabled switches on one that is off by default (those need an
 // external dependency, so they are opt-in).
 type ToolsConfig struct {
-	Disabled            []string    `yaml:"disabled"`
-	Enabled             []string    `yaml:"enabled"`
-	Proxy               ProxyConfig `yaml:"proxy"`
-	WebSearchMaxResults int         `yaml:"web_search_max_results"`
+	Disabled            []string    `yaml:"disabled" json:"disabled"`
+	Enabled             []string    `yaml:"enabled" json:"enabled"`
+	Proxy               ProxyConfig `yaml:"proxy" json:"proxy"`
+	WebSearchMaxResults int         `yaml:"web_search_max_results" json:"web_search_max_results"`
 }
 
 // IsDisabled reports whether the named tool has been explicitly switched off.
@@ -149,7 +149,7 @@ func contains(list []string, want string) bool {
 // LogConfig configures slog.
 type LogConfig struct {
 	// Level is one of debug, info, warn, error.
-	Level string `yaml:"level"`
+	Level string `yaml:"level" json:"level"`
 }
 
 // Defaults, all overridable from the config file.

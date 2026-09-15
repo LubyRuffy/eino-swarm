@@ -3,11 +3,13 @@ package engine
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -86,8 +88,9 @@ func TestFullTurnRunsTheWholeSwarm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	events, unsubscribe := e.Subscribe(th.ID)
-	defer unsubscribe()
+	sub := e.Subscribe(th.ID)
+	defer sub.Close()
+	events := sub.C
 
 	turn, err := e.StartTurn(th.ID, "compare the two inputs and report back")
 	if err != nil {
@@ -302,8 +305,9 @@ func TestStartTurnRejectsConcurrentTurns(t *testing.T) {
 func TestNextTurnAcceptedImmediatelyAfterTheDoneEvent(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "")
-	events, unsubscribe := e.Subscribe(th.ID)
-	defer unsubscribe()
+	sub := e.Subscribe(th.ID)
+	defer sub.Close()
+	events := sub.C
 
 	if _, err := e.StartTurn(th.ID, "the first request"); err != nil {
 		t.Fatal(err)
@@ -764,10 +768,11 @@ func TestSlowSubscriberDoesNotBlockTheRun(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "")
 
-	_, unsubscribeSlow := e.Subscribe(th.ID) // never read
-	defer unsubscribeSlow()
-	fast, unsubscribeFast := e.Subscribe(th.ID)
-	defer unsubscribeFast()
+	slow := e.Subscribe(th.ID) // never read
+	defer slow.Close()
+	fastSub := e.Subscribe(th.ID)
+	defer fastSub.Close()
+	fast := fastSub.C
 
 	turn, err := e.StartTurn(th.ID, "keep going despite a stalled client")
 	if err != nil {
@@ -788,15 +793,109 @@ func TestSlowSubscriberDoesNotBlockTheRun(t *testing.T) {
 		t.Fatal("a stalled subscriber blocked the run")
 	}
 	waitForTurn(t, e, turn.ID)
+	_ = slow
+}
+
+// Dropping events for a stalled client is fine, but it has to be able to find
+// out: otherwise it shows an incomplete conversation until the next reload.
+func TestOverflowingASubscriberIsReported(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "")
+
+	stalled := e.Subscribe(th.ID) // never read
+	defer stalled.Close()
+	reading := e.Subscribe(th.ID)
+	defer reading.Close()
+	drained := make(chan struct{})
+	go func() {
+		defer close(drained)
+		for range reading.C {
+		}
+	}()
+
+	total := subscriberBuffer + 50
+	for i := 0; i < total; i++ {
+		e.record(store.Event{ThreadID: th.ID, Kind: "tool_call", Text: fmt.Sprint(i)})
+	}
+	if !stalled.Lagged() {
+		t.Fatal("a subscriber that overflowed was not told it missed stored events")
+	}
+	if stalled.Lagged() {
+		t.Fatal("reading the flag should clear it")
+	}
+
+	// Everything it missed is in the database, in order, so catching up
+	// rebuilds exactly what was dropped.
+	events, err := e.Replay(th.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != total {
+		t.Fatalf("stored %d events, want %d", len(events), total)
+	}
+	for i, ev := range events {
+		if ev.Seq != int64(i+1) || ev.Text != fmt.Sprint(i) {
+			t.Fatalf("event %d is out of order: seq=%d text=%q", i, ev.Seq, ev.Text)
+		}
+	}
+
+	reading.Close()
+	<-drained
+}
+
+// Sequence numbers must reach subscribers in order, even though workers and
+// the manager record events from different goroutines: a client that resumes
+// from the highest sequence it saw drops anything older as a duplicate.
+func TestConcurrentRecordsArriveInSequenceOrder(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "")
+	sub := e.Subscribe(th.ID)
+	defer sub.Close()
+
+	const writers, each = 8, 20
+	var wg sync.WaitGroup
+	for w := 0; w < writers; w++ {
+		wg.Add(1)
+		go func(w int) {
+			defer wg.Done()
+			for i := 0; i < each; i++ {
+				e.record(store.Event{ThreadID: th.ID, Kind: "tool_call",
+					AgentID: fmt.Sprintf("worker-%d", w)})
+			}
+		}(w)
+	}
+
+	seen := make([]int64, 0, writers*each)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for ev := range sub.C {
+			seen = append(seen, ev.Seq)
+			if len(seen) == writers*each {
+				return
+			}
+		}
+	}()
+	wg.Wait()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("only %d of %d events arrived", len(seen), writers*each)
+	}
+	for i, seq := range seen {
+		if seq != int64(i+1) {
+			t.Fatalf("event %d arrived with sequence %d; a resuming client would drop it", i, seq)
+		}
+	}
 }
 
 func TestUnsubscribeIsIdempotent(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "")
-	ch, unsubscribe := e.Subscribe(th.ID)
-	unsubscribe()
-	unsubscribe()
-	if _, open := <-ch; open {
+	sub := e.Subscribe(th.ID)
+	sub.Close()
+	sub.Close()
+	if _, open := <-sub.C; open {
 		t.Fatal("the channel should be closed after unsubscribing")
 	}
 }
