@@ -180,6 +180,47 @@ func TestMockPoolRunsWithNoConfiguration(t *testing.T) {
 	}
 }
 
+// An offline run is usually against a provider with nothing filled in. The
+// turn it produces still has to say what answered it, or its trace reads as
+// if the model name was lost.
+func TestMockPoolNamesItself(t *testing.T) {
+	p := NewMock(configFor(t, false))
+	prov, err := p.Resolve("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prov.Model != MockModelName {
+		t.Fatalf("model=%q want %q", prov.Model, MockModelName)
+	}
+	if prov.DisplayName() == prov.ID {
+		t.Fatalf("the offline provider needs a readable label, got %q", prov.DisplayName())
+	}
+
+	var got []CallRecord
+	build, err := p.ModelBuilder(context.Background(), "",
+		func(r CallRecord) { got = append(got, r) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := build("manager", "manager").Generate(context.Background(),
+		[]*schema.Message{schema.UserMessage("anything")}); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Model != MockModelName {
+		t.Fatalf("the recorded call does not name the provider: %+v", got)
+	}
+
+	// a real pool reports exactly what is configured, with no substitution
+	real := New(configFor(t, true))
+	realProv, err := real.Resolve("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if realProv.Model == MockModelName {
+		t.Fatal("a configured provider must not be relabelled as the mock")
+	}
+}
+
 // The scripted manager must actually drive a swarm: fan out, collect, answer.
 func TestMockManagerScriptFansOutAndAnswers(t *testing.T) {
 	m := newMockModel("manager")

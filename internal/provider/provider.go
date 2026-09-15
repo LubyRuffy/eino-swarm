@@ -89,8 +89,20 @@ func (p *Pool) Resolve(id string) (config.Provider, error) {
 	if !ok {
 		return config.Provider{}, fmt.Errorf("provider: unknown provider %q", id)
 	}
+	if p.mock {
+		// Offline runs are usually against an unconfigured provider, and a
+		// turn recorded with a blank model name is unreadable in a trace.
+		prov.Model = MockModelName
+		if prov.Label == "" {
+			prov.Label = "Offline (scripted)"
+		}
+	}
 	return prov, nil
 }
+
+// MockModelName is what the scripted provider reports as its model, so a
+// stored turn always says what produced it.
+const MockModelName = "mock"
 
 // List describes every configured provider for the settings UI.
 func (p *Pool) List() []Info {

@@ -1,100 +1,122 @@
-// Command zwai is the single entry point for the swarm UIs:
+// Command zwai runs a swarm of agents that work together on a task, in
+// whichever shell you prefer:
 //
-//	zwai tui     terminal UI (bubbletea, two panes)
-//	zwai web     browser UI (SSE live events) at http://localhost:8787
-//	zwai desktop native window wrapping the webui
+//	zwai desktop   native window (the default)
+//	zwai web       the same UI in your browser
+//	zwai tui       terminal UI for a single task
+//	zwai trace     print everything that happened in one turn
+//	zwai config    show or create the configuration file
 //
-// All frontends consume the same swarm.Notification stream; the core never
-// changes per UI.
+// Every shell runs the same engine over the same data directory, so a
+// conversation started in one is there in the others.
 package main
 
 import (
-	"context"
-	"flag"
 	"fmt"
+	"io"
 	"os"
-	"os/signal"
 	"strings"
-	"syscall"
-	"time"
-
-	"github.com/LubyRuffy/eino-swarm"
-	"github.com/LubyRuffy/eino-swarm/internal/tui"
-	"github.com/LubyRuffy/eino-swarm/internal/webui"
-	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
-	"github.com/cloudwego/eino/components/model"
 )
 
-func newRegistry(ctx context.Context) *swarm.Registry {
-	shared, err := openaimodel.NewChatModel(ctx, &openaimodel.ChatModelConfig{
-		BaseURL: envOr("OPENAI_BASE_URL", "https://ai.fofa.info:2440/v1"),
-		APIKey:  firstEnv("FOFA_AI_KEY", "OPENAI_API_KEY"),
-		Model:   envOr("OPENAI_MODEL", "deepseek-v4-flash-0731"),
-		Timeout: 5 * time.Minute,
-	})
-	if err != nil {
-		panic(err)
-	}
-	reg := swarm.NewRegistry()
-	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel { return shared }
-	return reg
-}
+// version is stamped at build time:
+//
+//	go build -ldflags "-X main.version=$(git describe --tags)" ./cmd/zwai
+var version = "dev"
 
 func main() {
-	if len(os.Args) < 2 {
-		usage()
-		os.Exit(2)
-	}
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	os.Exit(dispatch(os.Args[1:], os.Stdout, os.Stderr))
+}
 
-	switch os.Args[1] {
-	case "tui":
-		fs := flag.NewFlagSet("tui", flag.ExitOnError)
-		task := fs.String("task", "研究一下奥巴马出生那一年发生了什么大事", "goal")
-		_ = fs.Parse(os.Args[2:])
-		tui.Run(ctx, newRegistry(ctx), *task)
-	case "web":
-		fs := flag.NewFlagSet("web", flag.ExitOnError)
-		addr := fs.String("addr", envOr("ZWAI_ADDR", ":8787"), "listen address")
-		task := fs.String("task", "", "task to auto-start (empty = start idle)")
-		open := fs.Bool("open", true, "open the browser automatically")
-		_ = fs.Parse(os.Args[2:])
-		webui.Serve(ctx, newRegistry(ctx), *addr, *task, *open)
+// dispatch runs one command and returns the process exit code. main is a
+// one-liner around it so the command table can be tested without a subprocess.
+func dispatch(args []string, stdout, stderr io.Writer) int {
+	// Running the app with no arguments opens the app. Requiring a
+	// subcommand to do the obvious thing is a papercut on a desktop icon.
+	if len(args) == 0 {
+		args = []string{"desktop"}
+	}
+
+	var err error
+	switch args[0] {
 	case "desktop":
-		fs := flag.NewFlagSet("desktop", flag.ExitOnError)
-		task := fs.String("task", "", "task to auto-start")
-		_ = fs.Parse(os.Args[2:])
-		webui.Desktop(ctx, newRegistry(ctx), *task)
+		err = runDesktop(args[1:])
+	case "web":
+		err = runWeb(args[1:])
+	case "tui":
+		err = runTUI(args[1:])
+	case "trace":
+		err = runTrace(args[1:])
+	case "config":
+		err = runConfig(args[1:])
+	case "version", "--version", "-v":
+		fmt.Fprintln(stdout, "zwai", version)
+	case "help", "--help", "-h":
+		usage(stdout)
 	default:
-		usage()
-		os.Exit(2)
+		fmt.Fprintf(stderr, "zwai: unknown command %q\n\n", args[0])
+		usage(stderr)
+		return 2
 	}
-}
-
-func usage() {
-	fmt.Fprintln(os.Stderr, strings.TrimSpace(`
-zwai — Codex-style agent swarm UIs
-
-usage:
-  zwai tui     [--task "...]              terminal UI (bubbletea)
-  zwai web     [--addr :8787] [--task ..] browser UI (SSE live events)
-  zwai desktop [--task ..]               native window wrapping webui
-`))
-}
-
-func envOr(k, d string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
+	if err != nil {
+		fmt.Fprintln(stderr, "zwai:", err)
+		return 1
 	}
-	return d
+	return 0
 }
 
-func firstEnv(keys ...string) string {
-	for _, k := range keys {
-		if v := os.Getenv(k); v != "" {
-			return v
+// reorderFlags moves positional arguments behind the flags.
+//
+// Go's flag package stops parsing at the first non-flag argument, so
+// `zwai trace <id> --data-dir X` would silently ignore the flag and read the
+// wrong database. People write the id first because it is the subject of the
+// command, so accept it.
+func reorderFlags(args []string, takesValue map[string]bool) []string {
+	var flags, positional []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
+		if !strings.HasPrefix(arg, "-") || arg == "-" {
+			positional = append(positional, arg)
+			continue
+		}
+		flags = append(flags, arg)
+		name := strings.TrimLeft(arg, "-")
+		if strings.Contains(name, "=") || !takesValue[name] {
+			continue
+		}
+		if i+1 < len(args) {
+			i++
+			flags = append(flags, args[i])
 		}
 	}
-	return ""
+	return append(flags, positional...)
+}
+
+func usage(w io.Writer) {
+	fmt.Fprintln(w, strings.TrimSpace(`
+zwai — a swarm of agents that work together on your tasks
+
+usage:
+  zwai [desktop] [--data-dir DIR] [--mock]
+        open the app in a native window
+
+  zwai web [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
+        serve the same app in your browser
+
+  zwai tui --task "..." [--data-dir DIR] [--mock]
+        run one task in the terminal
+
+  zwai trace <turn-id|conversation-id> [--data-dir DIR] [--full]
+        print a turn's timeline and every model call it made
+
+  zwai config [path|init|show] [--data-dir DIR]
+        where the configuration lives, and what is in it
+
+common flags:
+  --data-dir DIR   use another data directory (default: $ZWAI_HOME or ~/.zwai-swarm)
+  --mock           run on the scripted offline provider; no model is called
+`))
 }
