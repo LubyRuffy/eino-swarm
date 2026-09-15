@@ -31,11 +31,7 @@ func main() {
 // dispatch runs one command and returns the process exit code. main is a
 // one-liner around it so the command table can be tested without a subprocess.
 func dispatch(args []string, stdout, stderr io.Writer) int {
-	// Running the app with no arguments opens the app. Requiring a
-	// subcommand to do the obvious thing is a papercut on a desktop icon.
-	if len(args) == 0 {
-		args = []string{"desktop"}
-	}
+	args = withDefaultCommand(args)
 
 	var err error
 	switch args[0] {
@@ -67,6 +63,29 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// withDefaultCommand fills in the subcommand people leave out. Opening the app
+// is the obvious thing, and requiring `desktop` in front of it is a papercut on
+// a desktop shortcut — including one that carries --data-dir or --mock.
+func withDefaultCommand(args []string) []string {
+	if len(args) == 0 {
+		return []string{"desktop"}
+	}
+	if strings.HasPrefix(args[0], "-") && !isGlobalFlag(args[0]) {
+		return append([]string{"desktop"}, args...)
+	}
+	return args
+}
+
+// isGlobalFlag reports whether a leading flag answers a question about the
+// program itself, rather than configuring the command that is about to run.
+func isGlobalFlag(arg string) bool {
+	switch arg {
+	case "--version", "-v", "--help", "-h":
+		return true
+	}
+	return false
 }
 
 // usageError is a command invoked wrongly rather than a command that failed.

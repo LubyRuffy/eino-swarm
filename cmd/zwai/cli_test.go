@@ -482,6 +482,30 @@ func TestDispatchReportsUnknownCommands(t *testing.T) {
 	}
 }
 
+// The usage line reads `zwai [desktop] [--data-dir DIR] [--mock]`, so a flag
+// with no subcommand has to open the app rather than report an unknown command.
+func TestFlagsWithNoSubcommandOpenTheApp(t *testing.T) {
+	for _, tc := range []struct {
+		in   []string
+		want []string
+	}{
+		{nil, []string{"desktop"}},
+		{[]string{"--data-dir", "/tmp/x"}, []string{"desktop", "--data-dir", "/tmp/x"}},
+		{[]string{"--mock"}, []string{"desktop", "--mock"}},
+		// asking about the program itself is not asking it to open
+		{[]string{"--version"}, []string{"--version"}},
+		{[]string{"-v"}, []string{"-v"}},
+		{[]string{"--help"}, []string{"--help"}},
+		{[]string{"-h"}, []string{"-h"}},
+		{[]string{"web", "--mock"}, []string{"web", "--mock"}},
+	} {
+		got := withDefaultCommand(tc.in)
+		if strings.Join(got, " ") != strings.Join(tc.want, " ") {
+			t.Fatalf("withDefaultCommand(%v)=%v want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
 // A failed turn is the reason people reach for trace, so the failure has to be
 // in the output — the turn's error, the failing model call, and an event that
 // belongs to the run rather than to an agent.
