@@ -20,6 +20,8 @@
 package memory
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -54,7 +56,25 @@ var (
 	ErrAmbiguous = errors.New("memory: that text matches more than one entry")
 	// ErrBadName means a skill name is not usable as a directory name.
 	ErrBadName = errors.New("memory: a skill name may only use lower-case letters, digits and hyphens")
+	// ErrConflict means the notes changed after the caller read them, so
+	// saving would erase whatever landed in between.
+	ErrConflict = errors.New("memory: these notes were changed after you loaded them")
 )
+
+// ConflictError reports an edit written against a revision that is no longer
+// current, and carries what is stored now.
+//
+// An agent writes to the same file the Memory panel edits, and a review can
+// land while an edit is open. Without this the last writer wins silently,
+// which is the one outcome nobody can recover from: the lost note is not in
+// any transcript.
+type ConflictError struct {
+	Current Snapshot
+}
+
+func (e *ConflictError) Error() string { return ErrConflict.Error() }
+
+func (e *ConflictError) Unwrap() error { return ErrConflict }
 
 // OverflowError says a write would push MEMORY.md past its limit. It carries
 // what is stored now, because the agent's next move is to consolidate and it
@@ -104,6 +124,11 @@ type Snapshot struct {
 	Entries []string `json:"entries"`
 	Chars   int      `json:"chars"`
 	Limit   int      `json:"limit"`
+	// Rev identifies this exact content. An editor sends back the revision it
+	// loaded, and a write against a stale one is refused rather than applied
+	// over someone else's. It is the content's digest, not a counter, so two
+	// stores that ended up with the same notes agree.
+	Rev string `json:"rev"`
 }
 
 // Percent is how full the store is, for the header the prompt carries: an
@@ -138,7 +163,16 @@ func (s *Store) snapshot(entries []string) Snapshot {
 		Entries: entries,
 		Chars:   utf8.RuneCountInString(text),
 		Limit:   s.limit,
+		Rev:     revisionOf(text),
 	}
+}
+
+// revisionOf fingerprints the notes. Short on purpose: it travels to the
+// browser and back on every save, and it only has to distinguish one version
+// of one small file from the next.
+func revisionOf(text string) string {
+	sum := sha256.Sum256([]byte(text))
+	return hex.EncodeToString(sum[:])[:12]
 }
 
 // Add stores one new note. An exact duplicate is accepted and changed nothing,
@@ -193,34 +227,53 @@ func (s *Store) Replace(oldText, content string) (Snapshot, error) {
 	return s.write(next, grew)
 }
 
-// Remove drops the single entry containing oldText.
-func (s *Store) Remove(oldText string) (Snapshot, error) {
+// Remove drops the single entry containing oldText and reports the entry it
+// dropped, because "removed a note" is not something a user can check and
+// "removed this note" is.
+func (s *Store) Remove(oldText string) (Snapshot, string, error) {
 	oldText = strings.TrimSpace(oldText)
 	if oldText == "" {
-		return Snapshot{Limit: s.limit}, fmt.Errorf("memory: remove needs the text to find")
+		return Snapshot{Limit: s.limit}, "", fmt.Errorf("memory: remove needs the text to find")
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap, err := s.read()
 	if err != nil {
-		return snap, err
+		return snap, "", err
 	}
 	idx, err := matchOne(snap.Entries, oldText)
 	if err != nil {
-		return snap, err
+		return snap, "", err
 	}
+	dropped := snap.Entries[idx]
 	next := append(append([]string{}, snap.Entries[:idx]...), snap.Entries[idx+1:]...)
-	return s.write(next, 0)
+	written, err := s.write(next, 0)
+	return written, dropped, err
 }
 
 // Overwrite replaces the whole store, which is what the Memory panel's editor
 // does. The limit still applies: a hand-written file that no longer fits in a
 // prompt is the same problem whoever typed it.
 func (s *Store) Overwrite(text string) (Snapshot, error) {
+	return s.OverwriteIf("", text)
+}
+
+// OverwriteIf replaces the whole store only if it still holds the revision the
+// caller last read. An empty rev overwrites whatever is there, which is what a
+// caller that never read has to do.
+func (s *Store) OverwriteIf(rev, text string) (Snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	entries := splitEntries(text)
-	return s.write(entries, 0)
+	if rev != "" {
+		current, err := s.read()
+		if err != nil {
+			return current, err
+		}
+		if current.Rev != rev {
+			return current, &ConflictError{Current: current}
+		}
+	}
+	return s.write(splitEntries(text), 0)
 }
 
 // write persists entries, refusing a result that does not fit. adding is how

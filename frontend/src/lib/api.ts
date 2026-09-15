@@ -31,6 +31,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code?: string,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message)
     this.name = "ApiError"
@@ -50,14 +51,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`
     let code: string | undefined
+    let details: Record<string, unknown> | undefined
     try {
       const body = await res.json()
+      if (body && typeof body === "object") details = body as Record<string, unknown>
       if (body?.error) message = body.error
       if (body?.code) code = body.code
     } catch {
       // a non-JSON error body is still an error; the status line will do
     }
-    throw new ApiError(message, res.status, code)
+    throw new ApiError(message, res.status, code, details)
   }
   if (res.status === 204) return undefined as T
   return (await res.json()) as T
@@ -115,10 +118,10 @@ export const api = {
     request<{ memory: ProjectMemory }>(`/api/projects/${projectId}/memory`).then(
       (r) => r.memory,
     ),
-  saveMemory: (projectId: string, text: string) =>
+  saveMemory: (projectId: string, text: string, rev?: string) =>
     request<{ memory: MemoryEntries }>(`/api/projects/${projectId}/memory`, {
       method: "PUT",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, rev }),
     }).then((r) => r.memory),
   skill: (projectId: string, name: string) =>
     request<{ skill: Skill }>(

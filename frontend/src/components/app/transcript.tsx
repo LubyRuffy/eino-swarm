@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Copy,
   Loader2,
+  Sparkles,
   Terminal,
   Users,
 } from "lucide-react"
@@ -161,6 +162,18 @@ const BlockView = memo(function BlockView({
         <div className="my-2 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <p className="stream-text">{block.text}</p>
+        </div>
+      )
+
+    case "notice":
+      if (block.quiet || !block.text) return null
+      return (
+        <div
+          data-testid="memory-notice"
+          className="my-2 flex items-start gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground"
+        >
+          <Sparkles className="mt-0.5 size-3.5 shrink-0" />
+          <p className="stream-text whitespace-pre-wrap">{block.text}</p>
         </div>
       )
 

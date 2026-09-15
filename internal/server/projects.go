@@ -161,6 +161,9 @@ func (s *Server) getMemory(c *gin.Context) {
 
 type putMemoryRequest struct {
 	Text string `json:"text"`
+	// Rev is the snapshot the editor loaded. A write against a stale one is
+	// refused rather than applied over a review that landed in between.
+	Rev string `json:"rev"`
 }
 
 // putMemory is the hand edit from the Memory panel. The character limit still
@@ -176,7 +179,19 @@ func (s *Server) putMemory(c *gin.Context) {
 		badRequest(c, "could not read the request body: %v", err)
 		return
 	}
-	snap, err := s.engine.ProjectMemory(p.ID).Overwrite(req.Text)
+	snap, err := s.engine.ProjectMemory(p.ID).OverwriteIf(req.Rev, req.Text)
+	var conflict *memory.ConflictError
+	if errors.As(err, &conflict) {
+		// 409 rather than 400: the request was fine, the world moved. The
+		// current notes come back on the same body so the panel can show
+		// both without a second round trip that could itself be stale.
+		c.JSON(http.StatusConflict, gin.H{
+			"error":  conflict.Error(),
+			"code":   "conflict",
+			"memory": conflict.Current,
+		})
+		return
+	}
 	if err != nil {
 		s.fail(c, err)
 		return

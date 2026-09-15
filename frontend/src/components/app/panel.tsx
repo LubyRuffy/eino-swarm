@@ -84,7 +84,16 @@ export function RightPanel({
             </TabsTrigger>
             <TabsTrigger value="files">Files</TabsTrigger>
             <TabsTrigger value="trace">Trace</TabsTrigger>
-            {memory ? <TabsTrigger value="memory">Memory</TabsTrigger> : null}
+            {memory ? (
+              <TabsTrigger value="memory">
+                Memory
+                {memory.unread ? (
+                  <Badge variant="warning" className="ml-1 px-1 py-0">
+                    new
+                  </Badge>
+                ) : null}
+              </TabsTrigger>
+            ) : null}
           </TabsList>
         </div>
 

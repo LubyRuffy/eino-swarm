@@ -172,8 +172,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   install has memory off.
 - **`src/components/app/memory-panel.tsx`**, rendered in jsdom: notes and their
   budget are shown, an edit saves and a failed save stays on screen, a skill's
-  body is fetched only when it is opened, and notes that arrive from a review are
-  adopted — unless the user is mid-edit, in which case what they typed wins.
+  body is fetched only when it is opened, notes that arrive from a review are
+  adopted unless the user is mid-edit — in which case a conflict banner keeps
+  what they typed and offers Reload — and a write that landed while the tab was
+  closed is a badge, not a silent panel.
 - **`src/components/app/project-list.tsx`** and
   **`src/components/app/delete-project-dialog.tsx`**: the selected project is
   marked as pressed, each row's menu is named after its project, and the delete
@@ -205,7 +207,7 @@ that is already listening on the port.
 | spec | covers |
 |---|---|
 | `e2e/conversation.spec.ts` | a full swarm turn, a live status line marked as sweeping while the turn runs, context carried across turns, file upload appearing in the Files panel, the turn id shown for tracing |
-| `e2e/projects.spec.ts` | a project created from the sidebar, a conversation that lands in it and says so, the review's notes and skill appearing in the Memory tab without a reload, the review in the same trace as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload, and a deleted project taking its conversations with it |
+| `e2e/projects.spec.ts` | a project created from the sidebar, a conversation that lands in it and says so, the review named in the transcript without opening a tab, the review's notes and skill appearing in the Memory tab without a reload, the review in the same trace as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload, and a deleted project taking its conversations with it |
 | `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list), the tool catalogue on a never-saved config, settings written to the config file and read back, theme switching persisted, renaming and deleting a conversation |
 
 E2E tests run against `frontend/dist`, so **run `make frontend` after changing

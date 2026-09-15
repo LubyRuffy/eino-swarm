@@ -80,6 +80,7 @@ func TestMemorySwitchesSurviveNormalizeAndBudgetsAreRepaired(t *testing.T) {
 		"  char_limit: 0",
 		"  review_max_iterations: -1",
 		"  skills_index_max: 0",
+		"  notifications: shouting",
 	}, "\n")
 	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
 		t.Fatal(err)
@@ -93,7 +94,8 @@ func TestMemorySwitchesSurviveNormalizeAndBudgetsAreRepaired(t *testing.T) {
 	}
 	if cfg.Memory.CharLimit != DefaultMemoryCharLimit ||
 		cfg.Memory.ReviewMaxIterations != DefaultReviewMaxIterations ||
-		cfg.Memory.SkillsIndexMax != DefaultSkillsIndexMax {
+		cfg.Memory.SkillsIndexMax != DefaultSkillsIndexMax ||
+		cfg.Memory.Notifications != DefaultMemoryNotifications {
 		t.Fatalf("memory budgets not repaired: %+v", cfg.Memory)
 	}
 
@@ -107,7 +109,8 @@ func TestMemorySwitchesSurviveNormalizeAndBudgetsAreRepaired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if !older.Memory.Enabled || !older.Memory.AutoReview {
+	if !older.Memory.Enabled || !older.Memory.AutoReview ||
+		older.Memory.Notifications != DefaultMemoryNotifications {
 		t.Fatalf("an older config must default to memory on: %+v", older.Memory)
 	}
 }
@@ -123,9 +126,18 @@ func TestMemoryHelpersFallBackToDefaults(t *testing.T) {
 	if m.IndexMax() != DefaultSkillsIndexMax {
 		t.Fatalf("IndexMax=%d", m.IndexMax())
 	}
-	m = MemoryConfig{CharLimit: 10, ReviewMaxIterations: 2, SkillsIndexMax: 3}
-	if m.Limit() != 10 || m.ReviewIterations() != 2 || m.IndexMax() != 3 {
+	if m.NotifyLevel() != DefaultMemoryNotifications {
+		t.Fatalf("NotifyLevel=%s", m.NotifyLevel())
+	}
+	m = MemoryConfig{CharLimit: 10, ReviewMaxIterations: 2, SkillsIndexMax: 3,
+		Notifications: MemoryNotifyVerbose}
+	if m.Limit() != 10 || m.ReviewIterations() != 2 || m.IndexMax() != 3 ||
+		m.NotifyLevel() != MemoryNotifyVerbose {
 		t.Fatalf("configured values ignored: %+v", m)
+	}
+	m.Notifications = "nope"
+	if m.NotifyLevel() != DefaultMemoryNotifications {
+		t.Fatal("an unknown notification mode must not go silent")
 	}
 }
 
@@ -291,6 +303,7 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	next.Tools.Proxy = ProxyConfig{HTTP: "http://127.0.0.1:7890", NoProxy: "localhost"}
 	next.Memory.AutoReview = false
 	next.Memory.CharLimit = 1200
+	next.Memory.Notifications = MemoryNotifyOff
 	next.Models.Providers = []Provider{{
 		ID: "local", Label: "Local", BaseURL: "http://local.invalid/v1",
 		Model: "m", TimeoutSeconds: 30,
@@ -316,7 +329,8 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	if !reloaded.Tools.Proxy.Enabled() {
 		t.Fatal("proxy not persisted")
 	}
-	if reloaded.Memory.AutoReview || reloaded.Memory.CharLimit != 1200 {
+	if reloaded.Memory.AutoReview || reloaded.Memory.CharLimit != 1200 ||
+		reloaded.Memory.Notifications != MemoryNotifyOff {
 		t.Fatalf("memory settings not persisted: %+v", reloaded.Memory)
 	}
 	p, ok := reloaded.DefaultProvider()

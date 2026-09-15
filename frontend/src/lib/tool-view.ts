@@ -20,6 +20,9 @@ const PRIMARY: Record<string, string[]> = {
   resume_agent: ["agent_id"],
   wait_agents: [],
   close_agent: ["agent_id"],
+  memory: ["action", "content", "old_text"],
+  skill_view: ["name"],
+  skill_manage: ["action", "name"],
 }
 
 export type SearchHit = { title: string; url: string; snippet: string }
@@ -34,6 +37,9 @@ export type ToolView = {
 
 export function summariseToolCall(name: string, args: string): string {
   const obj = parseObject(args)
+  if (name === "memory" || name === "skill_manage" || name === "skill_view") {
+    return summariseMemoryCall(name, obj, args)
+  }
   if (!obj) return flatten(args)
   const keys = PRIMARY[name]
   if (keys) {
@@ -74,7 +80,62 @@ export function viewTool(name: string, args: string, result?: string, flagged?: 
     }
   }
   const failed = Boolean(flagged || prefix)
+  if (name === "memory" || name === "skill_manage" || name === "skill_view") {
+    const mem = parseMemoryResult(result)
+    if (mem) {
+      return {
+        summary,
+        failed: Boolean(flagged || !mem.success),
+        error: mem.error || prefix,
+        body: mem.body,
+      }
+    }
+  }
   return { summary, failed, error: prefix, body: result }
+}
+
+function summariseMemoryCall(
+  name: string,
+  obj: Record<string, unknown> | undefined,
+  raw: string,
+): string {
+  if (!obj) return flatten(raw)
+  if (name === "skill_view") return asText(obj.name)
+  const action = asText(obj.action)
+  if (name === "skill_manage") {
+    return [action, asText(obj.name)].filter(Boolean).join(" · ")
+  }
+  const preview = asText(obj.content) || asText(obj.old_text)
+  return [action, preview].filter(Boolean).join(" · ")
+}
+
+function parseMemoryResult(raw: string): { success: boolean; error?: string; body: string } | undefined {
+  const obj = parseObject(raw)
+  if (!obj || typeof obj.success !== "boolean") return undefined
+  if (obj.success === false) {
+    return { success: false, error: asText(obj.error) || "refused", body: memoryFailureBody(obj) }
+  }
+  const parts: string[] = []
+  const usage = asText(obj.usage)
+  if (usage) parts.push(usage)
+  if (Array.isArray(obj.entries)) {
+    for (const e of obj.entries) {
+      const t = asText(e)
+      if (t) parts.push(t)
+    }
+  }
+  const name = asText(obj.name)
+  if (name) parts.push(name)
+  const body = asText(obj.body)
+  if (body) parts.push(body)
+  return { success: true, body: parts.join("\n") }
+}
+
+function memoryFailureBody(obj: Record<string, unknown>): string {
+  const entries = Array.isArray(obj.current_entries)
+    ? obj.current_entries.map(asText).filter(Boolean)
+    : []
+  return entries.length ? entries.join("\n") : asText(obj.error)
 }
 
 function parseRunResult(raw: string): {
@@ -166,4 +227,15 @@ function asNumber(v: unknown): number | undefined {
 
 function flatten(s: string): string {
   return s.replace(/\s+/g, " ").trim()
+}
+
+/** Tools whose successful result means the project's files on disk changed. */
+export const MEMORY_WRITE_TOOLS = new Set(["memory", "skill_manage"])
+
+/** A memory/skill tool result that actually wrote something. A duplicate add
+ *  reports success with changed: false — that is not a write. */
+export function memoryWriteLanded(result?: string): boolean {
+  const obj = parseObject(result ?? "")
+  if (!obj || obj.success !== true) return false
+  return obj.changed !== false
 }

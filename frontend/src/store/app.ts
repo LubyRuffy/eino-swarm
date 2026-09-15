@@ -6,8 +6,11 @@ import {
   emptyTranscript,
   reduceEvent,
   collapseLiveEvents,
+  parseReview,
+  toolNameOf,
   type TranscriptState,
 } from "@/lib/transcript"
+import { MEMORY_WRITE_TOOLS, memoryWriteLanded } from "@/lib/tool-view"
 import type {
   FileEntry,
   Meta,
@@ -385,6 +388,14 @@ function flushQueued(
       // The review wrote the files directly, so the panel has to re-read them
       // rather than derive the new state from the event.
       void useProjects.getState().loadMemory()
+      if (parseReview(ev)?.changed) useProjects.getState().noteMemoryWrite()
+    }
+    if (ev.kind === "tool_result") {
+      const name = toolNameOf(transcript, ev.tool_call_id)
+      if (name && MEMORY_WRITE_TOOLS.has(name) && memoryWriteLanded(ev.text)) {
+        void useProjects.getState().loadMemory()
+        useProjects.getState().noteMemoryWrite()
+      }
     }
   }
   set({ transcript, status })

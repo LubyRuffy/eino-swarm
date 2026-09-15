@@ -195,6 +195,10 @@ type MemoryConfig struct {
 	// the one-line summary are listed, so the agent pays for the index and not
 	// for every procedure it might not need.
 	SkillsIndexMax int `yaml:"skills_index_max" json:"skills_index_max"`
+	// Notifications is how chatty a completed review is in the transcript:
+	// off (nothing), on (one line naming what changed), verbose (the line
+	// plus a preview of the written text).
+	Notifications string `yaml:"notifications" json:"notifications"`
 }
 
 // ReviewIterations is the reviewer's iteration cap.
@@ -219,6 +223,24 @@ func (m MemoryConfig) IndexMax() int {
 		return DefaultSkillsIndexMax
 	}
 	return m.SkillsIndexMax
+}
+
+const (
+	MemoryNotifyOff     = "off"
+	MemoryNotifyOn      = "on"
+	MemoryNotifyVerbose = "verbose"
+)
+
+// NotifyLevel is how a completed review is announced. An unknown value is
+// treated as the default rather than as silence: a typo in the config must
+// not hide that something was stored.
+func (m MemoryConfig) NotifyLevel() string {
+	switch m.Notifications {
+	case MemoryNotifyOff, MemoryNotifyOn, MemoryNotifyVerbose:
+		return m.Notifications
+	default:
+		return DefaultMemoryNotifications
+	}
 }
 
 // LogConfig configures slog.
@@ -283,6 +305,7 @@ const (
 	DefaultMemoryCharLimit     = 2200
 	DefaultReviewMaxIterations = 8
 	DefaultSkillsIndexMax      = 50
+	DefaultMemoryNotifications = MemoryNotifyOn
 	dirPerm                    = 0o700
 	filePerm                   = 0o600
 )
@@ -323,6 +346,7 @@ func Default() *Config {
 			CharLimit:           DefaultMemoryCharLimit,
 			ReviewMaxIterations: DefaultReviewMaxIterations,
 			SkillsIndexMax:      DefaultSkillsIndexMax,
+			Notifications:       DefaultMemoryNotifications,
 		},
 		Log: LogConfig{Level: DefaultLogLevel},
 	}
@@ -461,6 +485,11 @@ func (c *Config) normalize() {
 	}
 	if c.Memory.SkillsIndexMax <= 0 {
 		c.Memory.SkillsIndexMax = d.Memory.SkillsIndexMax
+	}
+	switch c.Memory.Notifications {
+	case MemoryNotifyOff, MemoryNotifyOn, MemoryNotifyVerbose:
+	default:
+		c.Memory.Notifications = d.Memory.Notifications
 	}
 	// A nil slice marshals to JSON null, which the settings UI would have to
 	// guard on every read; keep the wire shape a list.

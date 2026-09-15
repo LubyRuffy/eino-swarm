@@ -32,8 +32,16 @@ co-working app built on it. The library API is unchanged except where noted.
   a repository leaves nothing in it. New endpoints under `/api/projects`,
   `project_id` on conversations, `?project=` on the list, and
   `POST /api/threads/:id/review`; new config section `memory` (`enabled`,
-  `auto_review`, `char_limit`, `review_max_iterations`, `skills_index_max`),
-  editable in Settings → Memory.
+  `auto_review`, `char_limit`, `review_max_iterations`, `skills_index_max`,
+  `notifications`), editable in Settings → Memory.
+
+  A write that landed is named in the transcript (`Memory updated: 1 note
+  stored`), not only in a panel the user may not have open; `verbose` adds a
+  preview of the text, `off` keeps the review and hides the line. The Memory
+  tab badges when something was stored while it was not the one on screen. A
+  save against notes a review changed in between is refused (`409 conflict`)
+  with what is stored now, so the editor can keep yours or take the new ones
+  rather than the last writer silently winning.
 
 - **Live status lines move.** While a turn is running, the heartbeat, a pending
   tool's arguments, a `wait_agents` roll-up and a sub-agent's activity sweep

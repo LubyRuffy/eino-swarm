@@ -204,6 +204,9 @@ func TestMemoryRoutesReadEditAndPrune(t *testing.T) {
 	if snap["limit"].(float64) <= 0 {
 		t.Fatalf("the panel shows a budget, so the limit must be reported: %v", snap)
 	}
+	if snap["rev"] == "" {
+		t.Fatalf("the editor needs a revision to send back: %v", snap)
+	}
 
 	edited := h.json(http.MethodPut, "/api/projects/"+id+"/memory",
 		map[string]any{"text": "a note typed by hand\n\nand a second one"}, http.StatusOK)["memory"].(map[string]any)
@@ -231,6 +234,39 @@ func TestMemoryRoutesReadEditAndPrune(t *testing.T) {
 	}
 	h.json(http.MethodDelete, "/api/projects/"+id+"/skills/a-procedure", nil, http.StatusNoContent)
 	h.json(http.MethodGet, "/api/projects/"+id+"/skills/a-procedure", nil, http.StatusNotFound)
+}
+
+// The panel and a review write the same file. The save that lands second
+// without noticing would erase the other, and the lost note is in no
+// transcript.
+func TestSavingStaleNotesIsRefusedWithWhatIsStoredNow(t *testing.T) {
+	h := newHarness(t)
+	p := h.newProject(map[string]any{"name": "P"})
+	id := p["id"].(string)
+
+	loaded := h.json(http.MethodGet, "/api/projects/"+id+"/memory", nil, http.StatusOK)["memory"].(map[string]any)
+	rev := loaded["memory"].(map[string]any)["rev"].(string)
+	if rev == "" {
+		t.Fatal("a snapshot has to identify itself for an editor to send it back")
+	}
+
+	if _, _, err := h.app.Engine.ProjectMemory(id).Add("what the review stored"); err != nil {
+		t.Fatal(err)
+	}
+
+	got := h.json(http.MethodPut, "/api/projects/"+id+"/memory",
+		map[string]any{"text": "the hand edit", "rev": rev}, http.StatusConflict)
+	if got["code"] != "conflict" {
+		t.Fatalf("a stale write must name itself a conflict: %v", got)
+	}
+	current := got["memory"].(map[string]any)
+	if !strings.Contains(current["text"].(string), "what the review stored") {
+		t.Fatalf("the refusal must carry what is stored now: %v", current)
+	}
+
+	// Retried against the current revision, it goes through.
+	h.json(http.MethodPut, "/api/projects/"+id+"/memory",
+		map[string]any{"text": "the hand edit", "rev": current["rev"]}, http.StatusOK)
 }
 
 // A project whose memory the process cannot read must fail loudly on the
@@ -344,11 +380,13 @@ func TestMemorySettingsRoundTrip(t *testing.T) {
 		"memory": map[string]any{
 			"enabled": true, "auto_review": false,
 			"char_limit": 900, "review_max_iterations": 3, "skills_index_max": 7,
+			"notifications": "verbose",
 		},
 	}, http.StatusOK)
 	reread := h.json(http.MethodGet, "/api/settings", nil, http.StatusOK)["settings"].(map[string]any)["memory"].(map[string]any)
 	if reread["auto_review"] != false || reread["char_limit"].(float64) != 900 ||
-		reread["review_max_iterations"].(float64) != 3 || reread["skills_index_max"].(float64) != 7 {
+		reread["review_max_iterations"].(float64) != 3 || reread["skills_index_max"].(float64) != 7 ||
+		reread["notifications"] != "verbose" {
 		t.Fatalf("memory settings not persisted: %v", reread)
 	}
 }

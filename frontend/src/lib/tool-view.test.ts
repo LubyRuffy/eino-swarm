@@ -73,4 +73,33 @@ describe("viewTool", () => {
     expect(view.failed).toBe(true)
     expect(view.error).toBe("timed out")
   })
+
+  it("shows a memory write as the action and the note, not the JSON", () => {
+    expect(summariseToolCall("memory", `{"action":"add","content":"User prefers terse replies"}`)).toBe(
+      "add · User prefers terse replies",
+    )
+    const view = viewTool(
+      "memory",
+      `{"action":"add","content":"User prefers terse replies"}`,
+      JSON.stringify({ success: true, changed: true, usage: "24/2200", entries: ["User prefers terse replies"] }),
+    )
+    expect(view.failed).toBe(false)
+    expect(view.body).toContain("User prefers terse replies")
+    expect(view.body).toContain("24/2200")
+  })
+
+  it("flags a refused memory write and lists what is already stored", () => {
+    const view = viewTool(
+      "memory",
+      `{"action":"add","content":"another"}`,
+      JSON.stringify({
+        success: false,
+        error: "memory is at 30/30 characters",
+        current_entries: ["the one that is already there"],
+      }),
+    )
+    expect(view.failed).toBe(true)
+    expect(view.error).toContain("30/30")
+    expect(view.body).toBe("the one that is already there")
+  })
 })

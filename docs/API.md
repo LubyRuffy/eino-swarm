@@ -15,7 +15,7 @@ desktop mode (printed on startup and used by the window).
 |---|---|
 | `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory |
 | `404` | no such conversation / turn / file / project / skill |
-| `409` | `code: "busy"` — a turn is already running; `code: "idle"` — nothing to steer, interrupt or review |
+| `409` | `code: "busy"` — a turn is already running; `code: "idle"` — nothing to steer, interrupt or review; `code: "conflict"` — the notes changed after the editor loaded them |
 | `501` | the shell cannot do this (`reveal` outside the desktop app) |
 
 ## Meta
@@ -160,7 +160,7 @@ project is removed with it.
 {"memory": {
   "dir": "/Users/me/.zwai-swarm/projects/pj_ab12…/memory",
   "enabled": true,
-  "memory": {"text": "…", "entries": ["…"], "chars": 412, "limit": 2200},
+  "memory": {"text": "…", "entries": ["…"], "chars": 412, "limit": 2200, "rev": "a1b2c3d4e5f6"},
   "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}]
 }}
 ```
@@ -173,10 +173,16 @@ agent fetches it with `skill_view`.
 
 ### `PUT /api/projects/:id/memory`
 
-Body `{"text": "…"}`, replacing the notes wholesale — the hand edit behind the
-Memory panel. Responds with the new snapshot `{"memory": {…}}`. The character
-limit still applies: notes that no longer fit in a prompt are the same problem
-whoever typed them (`400`).
+Body `{"text": "…", "rev": "a1b2c3d4e5f6"}`, replacing the notes wholesale — the
+hand edit behind the Memory panel. `rev` is the snapshot the editor loaded; a
+write against a stale one is `409` with `code: "conflict"` and the current
+snapshot in `memory`, so the panel can show both without a second round trip
+that could itself be stale. Omit `rev` and the write is unconditional, which is
+what a client that never read has to do.
+
+Responds with the new snapshot `{"memory": {…}}`. The character limit still
+applies: notes that no longer fit in a prompt are the same problem whoever
+typed them (`400`).
 
 ### `GET /api/projects/:id/skills/:name`
 
@@ -391,8 +397,13 @@ still reaches everything that happened, including the reviewer's model calls
 {
   "changed": true,
   "notes": {"add": 1, "replace": 1},
-  "skills": [{"target": "skill_manage", "action": "create", "name": "weekly-rollup"}],
+  "skills": [{"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"}],
+  "changes": [
+    {"target": "memory", "action": "add", "text": "the durable fact that was stored"},
+    {"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"}
+  ],
   "note": "Kept what this project treats as done.",
+  "notify": "on",
   "err": ""
 }
 ```
@@ -400,6 +411,12 @@ still reaches everything that happened, including the reviewer's model calls
 The event is stored even when `changed` is false: a review that left no trace
 could not be told apart from one that never ran. The turn's status is not
 affected — a failed review (`err`) costs a note, not the answer.
+
+`notify` is `off`, `on` or `verbose` — `memory.notifications` at the moment the
+review finished, stamped so a later settings change does not rewrite history.
+The transcript shows a line when something was kept (`on`), plus a preview of
+the written text (`verbose`), or nothing (`off`). Failures always show. The
+Trace tab still lists the event either way.
 
 ## Workspace files
 

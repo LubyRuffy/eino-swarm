@@ -74,6 +74,28 @@ describe("request", () => {
     await expect(api.meta()).rejects.toBeInstanceOf(ApiError)
   })
 
+  it("keeps a conflict's current notes so the editor can show both", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        respond(
+          {
+            error: "these notes were changed after you loaded them",
+            code: "conflict",
+            memory: { text: "what landed", rev: "abc", chars: 11, limit: 2200 },
+          },
+          { status: 409 },
+        ),
+      ),
+    )
+    await expect(api.saveMemory("pj_1", "mine", "old")).rejects.toMatchObject({
+      code: "conflict",
+      details: {
+        memory: { text: "what landed", rev: "abc" },
+      },
+    })
+  })
+
   it("falls back to the status line when the body is not JSON", async () => {
     vi.stubGlobal(
       "fetch",

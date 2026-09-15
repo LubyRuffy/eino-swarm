@@ -1,7 +1,14 @@
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import type { Settings } from "@/lib/types"
+import type { MemoryNotify, Settings } from "@/lib/types"
 
 /** The install-wide memory budget. Per-project memory is switched on in the
  *  project dialog; these numbers decide what it costs when it is. */
@@ -32,6 +39,29 @@ export function MemorySettings({
         disabled={!settings.memory.enabled}
         onCheckedChange={(auto_review) => update({ auto_review })}
       />
+
+      <div className="space-y-1.5">
+        <Label htmlFor="memory-notifications">After a review</Label>
+        <Select
+          value={settings.memory.notifications || "on"}
+          onValueChange={(notifications) =>
+            update({ notifications: notifications as MemoryNotify })
+          }
+        >
+          <SelectTrigger id="memory-notifications" className="h-9 text-sm">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="on">One line naming what changed</SelectItem>
+            <SelectItem value="verbose">The line, plus a preview of the text</SelectItem>
+            <SelectItem value="off">Nothing in the transcript</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          The review still runs and still writes. This only governs the line
+          that appears after the answer.
+        </p>
+      </div>
 
       <div className="space-y-1.5">
         <Label htmlFor="memory-char-limit">Notes budget (characters)</Label>

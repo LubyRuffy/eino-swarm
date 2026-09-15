@@ -186,8 +186,14 @@ type reviewOutcome struct {
 	Changed bool            `json:"changed"`
 	Notes   map[string]int  `json:"notes,omitempty"`
 	Skills  []memory.Change `json:"skills,omitempty"`
+	// Changes is every write that landed, with a preview of the text, so the
+	// transcript can say what was stored rather than only that something was.
+	Changes []memory.Change `json:"changes,omitempty"`
 	Note    string          `json:"note,omitempty"`
 	Err     string          `json:"err,omitempty"`
+	// Notify is how chatty this review should be in the transcript, stamped
+	// at record time so a later settings change does not rewrite history.
+	Notify string `json:"notify,omitempty"`
 }
 
 // runReview drives one reviewer agent to completion.
@@ -201,6 +207,7 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 		mu.Lock()
 		defer mu.Unlock()
 		outcome.Changed = true
+		outcome.Changes = append(outcome.Changes, c)
 		if c.Target == memory.ToolSkillManage {
 			outcome.Skills = append(outcome.Skills, c)
 			return
@@ -256,6 +263,7 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 	if len(outcome.Notes) == 0 {
 		outcome.Notes = nil
 	}
+	outcome.Notify = e.cfg.Memory.NotifyLevel()
 	result := outcome
 	mu.Unlock()
 	e.recordReview(threadID, turn.ID, result)
@@ -265,6 +273,9 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 // troubleshooting handle still reaches everything: a turn id in, the review
 // out, alongside the model calls it made.
 func (e *Engine) recordReview(threadID, turnID string, outcome reviewOutcome) {
+	if outcome.Notify == "" {
+		outcome.Notify = e.cfg.Memory.NotifyLevel()
+	}
 	// Strings, counters and a slice of them: this cannot fail to encode, and
 	// dropping the event would be the wrong answer if it somehow did.
 	raw, _ := json.Marshal(outcome)

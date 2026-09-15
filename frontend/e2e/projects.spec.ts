@@ -12,6 +12,10 @@ async function send(page: Page, text: string) {
   await composer(page).press("Enter")
   await expect(statusBadge(page)).toContainText("Working")
   await expect(statusBadge(page)).toContainText("Idle", { timeout: 60_000 })
+
+  // Hermes-style: a write that landed is named in the transcript, not only
+  // in a panel the user may not have open.
+  await expect(page.getByTestId("memory-notice")).toBeVisible({ timeout: 60_000 })
 }
 
 /** Creates a project and leaves it selected. The name is unique per run so a

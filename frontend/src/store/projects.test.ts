@@ -5,17 +5,33 @@ import type { Project, ProjectMemory } from "@/lib/types"
 
 // The interesting behaviour here is which project's memory ends up on screen,
 // so the API is faked and the panel is left out of it.
-const fake = vi.hoisted(() => ({
-  projects: [] as unknown[],
-  /** Per-project delay, so one response can be made to land after another. */
-  memoryDelays: {} as Record<string, number>,
-  deleted: [] as string[],
-  saved: [] as string[],
-  fail: false,
-}))
+const { fake, FakeApiError } = vi.hoisted(() => {
+  class FakeApiError extends Error {
+    constructor(
+      message: string,
+      readonly status: number,
+      readonly code?: string,
+      readonly details?: Record<string, unknown>,
+    ) {
+      super(message)
+      this.name = "ApiError"
+    }
+  }
+  return {
+    FakeApiError,
+    fake: {
+      projects: [] as unknown[],
+      memoryDelays: {} as Record<string, number>,
+      deleted: [] as string[],
+      saved: [] as string[],
+      fail: false,
+      conflict: false,
+    },
+  }
+})
 
 vi.mock("@/lib/api", () => ({
-  ApiError: class ApiError extends Error {},
+  ApiError: FakeApiError,
   api: {
     projects: async () => {
       if (fake.fail) throw new Error("server is down")
@@ -39,9 +55,14 @@ vi.mock("@/lib/api", () => ({
       if (fake.fail) throw new Error("cannot read memory")
       return memory(id)
     },
-    saveMemory: async (id: string, text: string) => {
-      fake.saved.push(`${id}:${text}`)
-      return { text, entries: [text], chars: text.length, limit: 2200 }
+    saveMemory: async (id: string, text: string, rev?: string) => {
+      fake.saved.push(`${id}:${text}:${rev ?? ""}`)
+      if (fake.conflict) {
+        throw new FakeApiError("these notes were changed after you loaded them", 409, "conflict", {
+          memory: { text: "what landed", entries: ["what landed"], chars: 11, limit: 2200, rev: "rev_now" },
+        })
+      }
+      return { text, entries: [text], chars: text.length, limit: 2200, rev: "rev_saved" }
     },
     deleteSkill: async (id: string, name: string) => {
       fake.deleted.push(`${id}/${name}`)
@@ -67,7 +88,7 @@ function memory(id: string): ProjectMemory {
   return {
     dir: `/data/projects/${id}/memory`,
     enabled: true,
-    memory: { text: id, entries: [id], chars: id.length, limit: 2200 },
+    memory: { text: id, entries: [id], chars: id.length, limit: 2200, rev: `rev_${id}` },
     skills: [],
   }
 }
@@ -78,12 +99,14 @@ beforeEach(() => {
   fake.deleted.length = 0
   fake.saved.length = 0
   fake.fail = false
+  fake.conflict = false
   useProjects.setState({
     projects: [],
     selectedId: undefined,
     memory: undefined,
     memoryProjectId: undefined,
     memoryLoading: false,
+    memoryUnread: false,
     error: undefined,
   })
 })
@@ -199,13 +222,30 @@ describe("the memory panel's data", () => {
   it("saves an edit against the project the panel is showing", async () => {
     await useProjects.getState().loadMemory("pj_a")
     await useProjects.getState().saveMemory("a corrected note")
-    expect(fake.saved).toEqual(["pj_a:a corrected note"])
+    expect(fake.saved).toEqual(["pj_a:a corrected note:rev_pj_a"])
     expect(useProjects.getState().memory?.memory.text).toBe("a corrected note")
   })
 
   it("does nothing when asked to save with no project open", async () => {
     await useProjects.getState().saveMemory("orphan")
     expect(fake.saved).toEqual([])
+  })
+
+  it("refuses a stale save and adopts what is stored now", async () => {
+    await useProjects.getState().loadMemory("pj_a")
+    fake.conflict = true
+    await expect(useProjects.getState().saveMemory("mine")).rejects.toMatchObject({
+      code: "conflict",
+    })
+    expect(useProjects.getState().memory?.memory.text).toBe("what landed")
+    expect(useProjects.getState().memory?.memory.rev).toBe("rev_now")
+  })
+
+  it("marks a write as unread until the Memory tab is opened", () => {
+    useProjects.getState().noteMemoryWrite()
+    expect(useProjects.getState().memoryUnread).toBe(true)
+    useProjects.getState().seeMemory()
+    expect(useProjects.getState().memoryUnread).toBe(false)
   })
 
   it("re-reads memory after a skill is deleted", async () => {

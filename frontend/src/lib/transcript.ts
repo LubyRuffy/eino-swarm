@@ -24,6 +24,9 @@ export interface Block {
   /** Still being streamed. Complete blocks stop showing a cursor and can be
    *  collapsed. */
   streaming?: boolean
+  /** A review the user asked not to see in the transcript. It still exists
+   *  so the Trace tab and resume point do not lose the event. */
+  quiet?: boolean
   /** Tool blocks only. */
   tool?: {
     callId: string
@@ -128,8 +131,13 @@ export function reduceEvent(
   // the swarm, so it must not join the roster as a worker with nothing to
   // show; and when it kept nothing — the common case — it says nothing.
   if (ev.kind === "memory_review") {
-    const notice = reviewNotice(parseReview(ev))
-    if (notice) append(touchAgent(next, MANAGER_ID), block(ev, "notice", notice))
+    const outcome = parseReview(ev)
+    const notice = reviewNotice(outcome)
+    if (notice) {
+      const row = block(ev, "notice", notice)
+      row.quiet = outcome?.notify === "off"
+      append(touchAgent(next, MANAGER_ID), row)
+    }
     return next
   }
 
@@ -548,9 +556,15 @@ export function parseReview(ev: SwarmEvent): ReviewOutcome | undefined {
     changed: body.changed === true,
     notes: typeof body.notes === "object" && body.notes ? body.notes : undefined,
     skills: Array.isArray(body.skills) ? body.skills : undefined,
+    changes: Array.isArray(body.changes) ? body.changes : undefined,
     note: typeof body.note === "string" ? body.note : undefined,
     err: typeof body.err === "string" && body.err ? body.err : ev.err || undefined,
+    notify: notifyOf(body.notify),
   }
+}
+
+function notifyOf(raw: unknown): ReviewOutcome["notify"] {
+  return raw === "off" || raw === "on" || raw === "verbose" ? raw : undefined
 }
 
 /** What the review's tool actions are called in the transcript. */
@@ -565,10 +579,12 @@ const SKILL_VERBS: Record<string, string> = {
   delete: "removed",
 }
 
-/** One line for the transcript, or nothing.
+/** One line for the transcript, or a short preview, or nothing.
  *
  *  Most turns teach the project nothing, and a row saying so after every
- *  answer would train the reader to stop looking at the ones that matter. */
+ *  answer would train the reader to stop looking at the ones that matter.
+ *  Failures always show: memory the user believes is being kept, and is not,
+ *  is the failure they cannot see. */
 export function reviewNotice(outcome?: ReviewOutcome): string | undefined {
   if (!outcome) return undefined
   if (outcome.err) return `Memory review failed: ${outcome.err}`
@@ -582,8 +598,26 @@ export function reviewNotice(outcome?: ReviewOutcome): string | undefined {
     if (!s?.name) continue
     parts.push(`skill "${s.name}" ${SKILL_VERBS[s.action] ?? s.action}`)
   }
-  if (parts.length === 0) return undefined
-  return `Memory updated: ${parts.join(", ")}.`
+  const head =
+    parts.length > 0 ? `Memory updated: ${parts.join(", ")}.` : "Memory updated."
+  if (outcome.notify !== "verbose") return head
+  const preview = (outcome.changes ?? [])
+    .map(changePreview)
+    .filter(Boolean)
+    .join("\n")
+  return preview ? `${head}\n${preview}` : head
+}
+
+function changePreview(c: { action?: string; name?: string; text?: string; target?: string }): string {
+  const mark =
+    c.action === "add" || c.action === "create"
+      ? "+"
+      : c.action === "remove" || c.action === "delete"
+        ? "−"
+        : "~"
+  const label = c.name ? `skill ${c.name}` : "note"
+  const text = (c.text ?? "").trim()
+  return text ? `${mark} ${label}: ${text}` : `${mark} ${label}`
 }
 
 function pulseStatus(raw: unknown): AgentStatus {
@@ -608,4 +642,16 @@ export function splitToolCall(raw: string): { name: string; args: string } {
 export function summarise(text: string, max = 80): string {
   const line = text.trim().replace(/\s+/g, " ")
   return line.length > max ? `${line.slice(0, max - 1)}…` : line
+}
+
+/** The tool a result belongs to, looked up by call id after the reducer has
+ *  paired them. Used to refresh the Memory panel the moment a write lands,
+ *  rather than waiting for the review that may never come (memory off). */
+export function toolNameOf(state: TranscriptState, callId?: string): string | undefined {
+  if (!callId) return undefined
+  for (const id of state.agentOrder) {
+    for (const b of state.agents[id]?.blocks ?? []) {
+      if (b.kind === "tool" && b.tool?.callId === callId) return b.tool.name
+    }
+  }
 }

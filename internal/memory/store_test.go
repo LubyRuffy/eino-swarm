@@ -117,17 +117,22 @@ func TestReplaceAndRemoveMatchOneEntryBySubstring(t *testing.T) {
 		t.Fatal("Replace needs both arguments")
 	}
 
-	snap, err = s.Remove("fridays")
+	snap, dropped, err := s.Remove("fridays")
 	if err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 	if len(snap.Entries) != 2 {
 		t.Fatalf("remove did not drop the entry: %+v", snap.Entries)
 	}
-	if _, err := s.Remove("fridays"); !errors.Is(err, ErrNoMatch) {
+	// The whole entry comes back, not the fragment that found it: what was
+	// deleted is the only thing that lets a user notice a wrong deletion.
+	if !strings.Contains(dropped, "fridays") || dropped == "fridays" {
+		t.Fatalf("Remove reported %q rather than the entry it dropped", dropped)
+	}
+	if _, _, err := s.Remove("fridays"); !errors.Is(err, ErrNoMatch) {
 		t.Fatalf("Remove twice err=%v", err)
 	}
-	if _, err := s.Remove(" "); err == nil {
+	if _, _, err := s.Remove(" "); err == nil {
 		t.Fatal("Remove needs text to find")
 	}
 }
@@ -233,6 +238,63 @@ func TestConcurrentWritesDoNotLoseNotes(t *testing.T) {
 	}
 }
 
+// The panel edits the same file the agents write. Without a revision check
+// the save that lands second wins, and the note it erased is in no transcript
+// and no undo: it is simply gone.
+func TestAnEditWrittenAgainstStaleNotesIsRefused(t *testing.T) {
+	s := New(filepath.Join(t.TempDir(), "memory"), 500)
+	loaded, _, err := s.Add("what the panel loaded")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Rev == "" {
+		t.Fatal("a snapshot has to identify itself for an editor to send it back")
+	}
+
+	// A review lands while the edit is open.
+	after, _, err := s.Add("what the review stored meanwhile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Rev == loaded.Rev {
+		t.Fatal("the revision must change when the notes do")
+	}
+
+	_, err = s.OverwriteIf(loaded.Rev, "the hand edit")
+	var conflict *ConflictError
+	if !errors.As(err, &conflict) || !errors.Is(err, ErrConflict) {
+		t.Fatalf("a stale write must be refused, got %v", err)
+	}
+	// The refusal carries what is there now, so the UI can show both without
+	// a second round trip that could itself be out of date.
+	if conflict.Current.Rev != after.Rev ||
+		!strings.Contains(conflict.Current.Text, "what the review stored meanwhile") {
+		t.Fatalf("the conflict did not carry the current notes: %+v", conflict.Current)
+	}
+	if got, _ := s.Read(); got.Rev != after.Rev {
+		t.Fatal("a refused write must not have changed anything")
+	}
+
+	// Retried against what is actually stored, it goes through.
+	saved, err := s.OverwriteIf(after.Rev, "the hand edit")
+	if err != nil {
+		t.Fatalf("a write against the current revision must land: %v", err)
+	}
+	if saved.Text != "the hand edit" || saved.Rev == after.Rev {
+		t.Fatalf("the retry did not take: %+v", saved)
+	}
+	// Two stores holding the same notes agree on the revision, so a client
+	// that reloads and gets identical text is not told it conflicts.
+	if revisionOf(saved.Text) != saved.Rev {
+		t.Fatal("the revision must be a function of the content")
+	}
+	// No revision means "I did not read first", which the panel never does
+	// but a script might.
+	if _, err := s.OverwriteIf("", "blind"); err != nil {
+		t.Fatalf("an unconditional overwrite must still work: %v", err)
+	}
+}
+
 func TestUnreadableStoreReportsAnError(t *testing.T) {
 	dir := t.TempDir()
 	// A directory where MEMORY.md should be is the readable stand-in for a
@@ -250,10 +312,15 @@ func TestUnreadableStoreReportsAnError(t *testing.T) {
 	if _, err := s.Replace("a", "b"); err == nil {
 		t.Fatal("want an error when the store cannot be read")
 	}
-	if _, err := s.Remove("a"); err == nil {
+	if _, _, err := s.Remove("a"); err == nil {
 		t.Fatal("want an error when the store cannot be read")
 	}
 	if _, err := s.Overwrite("a"); err == nil {
 		t.Fatal("want an error when the store cannot be written")
+	}
+	// A conditional write has to read before it can compare, so an unreadable
+	// store fails as a read failure rather than as a false conflict.
+	if _, err := s.OverwriteIf("whatever", "a"); err == nil || errors.Is(err, ErrConflict) {
+		t.Fatalf("OverwriteIf on an unreadable store err=%v", err)
 	}
 }

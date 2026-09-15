@@ -97,6 +97,9 @@ func TestMemoryToolCuratesTheStore(t *testing.T) {
 	if strings.Join(actions, ",") != "add,replace,remove" {
 		t.Fatalf("recorded changes=%v", actions)
 	}
+	if (*changes)[0].Text != "a durable fact" || (*changes)[1].Text != "a corrected fact" {
+		t.Fatalf("a change without its text cannot be shown: %+v", *changes)
+	}
 }
 
 // Every refusal has to come back as a readable result rather than a Go error:

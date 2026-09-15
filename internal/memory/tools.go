@@ -30,7 +30,17 @@ type Change struct {
 	Action string `json:"action"`
 	// Name is the skill's name, empty for memory.
 	Name string `json:"name,omitempty"`
+	// Text previews what was written or dropped, clipped.
+	//
+	// "Memory updated" tells a user something happened; it does not tell them
+	// whether it is something they want stored. Only the text does, and the
+	// transcript is where they are already looking.
+	Text string `json:"text,omitempty"`
 }
+
+// changeTextMax bounds the preview. Long enough for a note, short enough that
+// one review cannot push an answer off the screen.
+const changeTextMax = 160
 
 // Tools returns the three memory tools bound to one project's store. onChange
 // may be nil; when set it is called once per write that actually landed, and
@@ -89,6 +99,8 @@ func (t *memoryTool) InvokableRun(_ context.Context, args string, _ ...tool.Opti
 		snap    Snapshot
 		err     error
 		changed = true
+		// What the change did, for the line the user reads.
+		text = a.Content
 	)
 	action := strings.ToLower(strings.TrimSpace(a.Action))
 	switch action {
@@ -97,7 +109,7 @@ func (t *memoryTool) InvokableRun(_ context.Context, args string, _ ...tool.Opti
 	case "replace":
 		snap, err = t.store.Replace(a.OldText, a.Content)
 	case "remove":
-		snap, err = t.store.Remove(a.OldText)
+		snap, text, err = t.store.Remove(a.OldText)
 	default:
 		return failure("unknown action %q; use add, replace or remove", a.Action), nil
 	}
@@ -105,7 +117,7 @@ func (t *memoryTool) InvokableRun(_ context.Context, args string, _ ...tool.Opti
 		return memoryFailure(err), nil
 	}
 	if changed {
-		t.onChange(Change{Target: ToolMemory, Action: action})
+		t.onChange(Change{Target: ToolMemory, Action: action, Text: clipText(text)})
 	}
 	return marshal(map[string]any{
 		"success": true,
@@ -231,14 +243,16 @@ func (t *skillManageTool) InvokableRun(_ context.Context, args string, _ ...tool
 		if err != nil {
 			return failure("%s", err.Error()), nil
 		}
-		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: skill.Name})
+		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: skill.Name,
+			Text: clipText(skill.Description)})
 		return marshal(map[string]any{"success": true, "name": skill.Name}), nil
 	case "patch":
 		skill, err := t.store.PatchSkill(name, a.OldText, a.NewText)
 		if err != nil {
 			return failure("%s", err.Error()), nil
 		}
-		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: skill.Name})
+		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: skill.Name,
+			Text: clipText(a.NewText)})
 		return marshal(map[string]any{"success": true, "name": skill.Name}), nil
 	case "delete":
 		if err := t.store.DeleteSkill(name); err != nil {
@@ -261,6 +275,17 @@ func failure(format string, args ...any) string {
 }
 
 func usage(s Snapshot) string { return fmt.Sprintf("%d/%d", s.Chars, s.Limit) }
+
+// clipText flattens a written note to one bounded line for the preview. The
+// stored entry keeps its line breaks; only what is shown is squashed.
+func clipText(s string) string {
+	flat := strings.Join(strings.Fields(s), " ")
+	r := []rune(flat)
+	if len(r) <= changeTextMax {
+		return flat
+	}
+	return strings.TrimSpace(string(r[:changeTextMax])) + "…"
+}
 
 func skillNames(list []SkillInfo) []string {
 	out := make([]string, 0, len(list))

@@ -68,7 +68,7 @@ vi.mock("@/lib/api", () => {
         return {
           dir: "/tmp/mem",
           enabled: true,
-          memory: { text: "", entries: [], chars: 0, limit: 2200 },
+          memory: { text: "", entries: [], chars: 0, limit: 2200, rev: "" },
           skills: [],
         }
       },

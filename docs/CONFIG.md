@@ -48,6 +48,7 @@ memory:
     char_limit: 2200
     review_max_iterations: 8
     skills_index_max: 50
+    notifications: on
 log:
     level: info
 ```
@@ -170,6 +171,7 @@ shares. Nothing here applies to a conversation outside a project.
 | `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. Once it is full an agent must replace a note to add one — which is the point, and why it is small. |
 | `review_max_iterations` | `8` | how many times the review may think and write before it is stopped. It reads one conversation and makes a handful of tool calls; a large number here buys a slow, expensive review rather than a better one. |
 | `skills_index_max` | `50` | how many skills are listed in the prompt. Only names and one-line descriptions are listed; an agent opens the one it needs with `skill_view`. Beyond this cap the prompt says how many were not listed. |
+| `notifications` | `on` | how a completed review appears in the transcript. `on` is one line naming what changed (`Memory updated: 1 note stored`). `verbose` adds a preview of the written text. `off` writes nothing in the transcript — the review still runs, and the Trace tab still lists it. An unknown value is repaired to `on`, not to silence. |
 
 Numbers that are zero or negative fall back to their defaults, so a hand-edited
 file cannot leave a project with no room to remember anything.

@@ -82,6 +82,12 @@ func TestReviewRunsAfterADoneTurnAndIsTraceable(t *testing.T) {
 	if outcome.Notes["add"] != 1 || len(outcome.Skills) != 1 {
 		t.Fatalf("outcome does not describe what was written: %+v", outcome)
 	}
+	if len(outcome.Changes) == 0 || outcome.Changes[0].Text == "" {
+		t.Fatalf("the transcript needs a preview of what was stored: %+v", outcome.Changes)
+	}
+	if outcome.Notify == "" {
+		t.Fatalf("a review must say how chatty it is, or the UI has to guess: %+v", outcome)
+	}
 	if outcome.Note == "" {
 		t.Fatalf("the review must report a line the UI can show: %+v", outcome)
 	}

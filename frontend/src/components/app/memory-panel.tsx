@@ -1,5 +1,5 @@
 import { ChevronRight, RefreshCw, Sparkles, Trash2 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { MemoMarkdown } from "@/components/app/markdown"
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +18,11 @@ export interface MemoryPanelProps {
   onReview: () => void
   /** Only wired where the host can open a file manager. */
   onReveal?: () => void
+  /** A write landed while this tab was not the one on screen. */
+  unread?: boolean
+  /** Called while the panel is on screen, so a write that lands here is not
+   *  also a badge on the tab the user is already looking at. */
+  onSeen?: () => void
 }
 
 /** What a project has learned: the notes every turn carries, and the
@@ -35,19 +40,33 @@ export function MemoryPanel({
   onRefresh,
   onReview,
   onReveal,
+  onSeen,
 }: MemoryPanelProps) {
   const [draft, setDraft] = useState("")
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
+  const [conflict, setConflict] = useState(false)
   const text = memory?.memory.text ?? ""
+  const seen = useRef(text)
+
+  useEffect(() => {
+    onSeen?.()
+  }, [onSeen, memory?.memory.rev])
 
   useEffect(() => {
     // A review lands while the panel is open, so the stored text has to be
     // adopted — but not over something the user is in the middle of typing,
-    // which is the worse of the two failures.
-    if (dirty) return
+    // which is the worse of the two failures. That case is a conflict: show
+    // both, and let them pick.
+    if (dirty) {
+      if (seen.current !== text) setConflict(true)
+      seen.current = text
+      return
+    }
     setDraft(text)
+    setConflict(false)
+    seen.current = text
   }, [text, dirty])
 
   if (!project) {
@@ -65,11 +84,20 @@ export function MemoryPanel({
     try {
       await onSave(draft)
       setDirty(false)
+      setConflict(false)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+      if (isConflict(e)) setConflict(true)
     } finally {
       setSaving(false)
     }
+  }
+
+  const reload = () => {
+    setDraft(text)
+    setDirty(false)
+    setConflict(false)
+    setError(undefined)
   }
 
   const chars = memory?.memory.chars ?? 0
@@ -131,22 +159,30 @@ export function MemoryPanel({
             setDirty(true)
           }}
         />
+        {conflict ? (
+          <div
+            role="status"
+            className="rounded-md border border-border bg-muted/60 px-2 py-2 text-xs"
+          >
+            <p>
+              These notes were updated while you were editing. Save keeps yours;
+              Reload takes the new ones.
+            </p>
+            {text && text !== draft ? (
+              <p className="mt-1 line-clamp-3 text-muted-foreground">
+                Stored now: {text}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
         <div className="flex items-center gap-2">
           <Button size="sm" disabled={!dirty || saving} onClick={() => void save()}>
             Save notes
           </Button>
-          {dirty ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => {
-                setDraft(text)
-                setDirty(false)
-                setError(undefined)
-              }}
-            >
-              Revert
+          {dirty || conflict ? (
+            <Button size="sm" variant="ghost" onClick={reload}>
+              {conflict ? "Reload" : "Revert"}
             </Button>
           ) : null}
         </div>
@@ -184,6 +220,10 @@ export function MemoryPanel({
       </p>
     </div>
   )
+}
+
+function isConflict(e: unknown): boolean {
+  return Boolean(e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "conflict")
 }
 
 /** One skill, expanded on demand. The body is fetched when it is opened

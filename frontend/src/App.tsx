@@ -472,6 +472,8 @@ function AppPanel({
   const loadMemory = useProjects((s) => s.loadMemory)
   const saveMemory = useProjects((s) => s.saveMemory)
   const removeSkill = useProjects((s) => s.removeSkill)
+  const memoryUnread = useProjects((s) => s.memoryUnread)
+  const seeMemory = useProjects((s) => s.seeMemory)
   const project = projectOf(
     projects,
     threads.find((t) => t.id === activeId)?.project_id,
@@ -479,7 +481,10 @@ function AppPanel({
   return (
     <RightPanel
       tab={tab}
-      onTabChange={onTabChange}
+      onTabChange={(next) => {
+        if (next === "memory") seeMemory()
+        onTabChange(next)
+      }}
       transcript={transcript}
       selectedAgent={selectedAgent}
       onSelectAgent={selectAgent}
@@ -498,6 +503,8 @@ function AppPanel({
               onDeleteSkill: (name) => void removeSkill(name),
               onRefresh: () => void loadMemory(project.id),
               onReview: () => void reviewNow(),
+              unread: memoryUnread,
+              onSeen: seeMemory,
             }
           : undefined
       }

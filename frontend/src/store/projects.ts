@@ -1,7 +1,7 @@
 import { create } from "zustand"
 
-import { api, type ProjectPatch } from "@/lib/api"
-import type { Project, ProjectMemory } from "@/lib/types"
+import { api, ApiError, type ProjectPatch } from "@/lib/api"
+import type { MemoryEntries, Project, ProjectMemory } from "@/lib/types"
 
 /** Projects and the memory panel live in their own store.
  *
@@ -17,6 +17,8 @@ interface ProjectsState {
   memoryProjectId?: string
   memory?: ProjectMemory
   memoryLoading: boolean
+  /** A write landed while the Memory tab was not the one on screen. */
+  memoryUnread: boolean
   error?: string
 
   refresh: () => Promise<void>
@@ -28,14 +30,17 @@ interface ProjectsState {
   update: (id: string, patch: ProjectPatch) => Promise<Project>
   remove: (id: string) => Promise<void>
   loadMemory: (projectId?: string) => Promise<void>
-  saveMemory: (text: string) => Promise<void>
+  saveMemory: (text: string, rev?: string) => Promise<void>
   removeSkill: (name: string) => Promise<void>
+  noteMemoryWrite: () => void
+  seeMemory: () => void
   setError: (message?: string) => void
 }
 
 export const useProjects = create<ProjectsState>((set, get) => ({
   projects: [],
   memoryLoading: false,
+  memoryUnread: false,
 
   refresh: async () => {
     try {
@@ -105,15 +110,28 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     }
   },
 
-  saveMemory: async (text) => {
+  saveMemory: async (text, rev) => {
     const id = get().memoryProjectId
     if (!id) return
-    const memory = await api.saveMemory(id, text)
-    set((s) =>
-      s.memory && s.memoryProjectId === id
-        ? { memory: { ...s.memory, memory } }
-        : {},
-    )
+    const known = rev ?? get().memory?.memory.rev
+    try {
+      const memory = await api.saveMemory(id, text, known)
+      set((s) =>
+        s.memory && s.memoryProjectId === id
+          ? { memory: { ...s.memory, memory }, memoryUnread: false }
+          : {},
+      )
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "conflict") {
+        const current = snapshotOf(e.details?.memory)
+        if (current && get().memoryProjectId === id) {
+          set((s) => ({
+            memory: s.memory ? { ...s.memory, memory: current } : s.memory,
+          }))
+        }
+      }
+      throw e
+    }
   },
 
   removeSkill: async (name) => {
@@ -126,6 +144,9 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       set({ error: message(e) })
     }
   },
+
+  noteMemoryWrite: () => set({ memoryUnread: true }),
+  seeMemory: () => set({ memoryUnread: false }),
 
   setError: (error) => set({ error }),
 }))
@@ -141,4 +162,17 @@ export function projectOf(
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
+}
+
+function snapshotOf(raw: unknown): MemoryEntries | undefined {
+  if (!raw || typeof raw !== "object") return undefined
+  const body = raw as Partial<MemoryEntries>
+  if (typeof body.text !== "string") return undefined
+  return {
+    text: body.text,
+    entries: Array.isArray(body.entries) ? body.entries.map(String) : [],
+    chars: typeof body.chars === "number" ? body.chars : body.text.length,
+    limit: typeof body.limit === "number" ? body.limit : 0,
+    rev: typeof body.rev === "string" ? body.rev : "",
+  }
 }

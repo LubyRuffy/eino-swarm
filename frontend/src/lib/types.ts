@@ -56,6 +56,9 @@ export interface MemoryEntries {
   /** The prompt budget. Memory rides in every turn's system prompt, so the
    *  panel shows how much of it is spent. */
   limit: number
+  /** Identifies this exact content. The editor sends it back on save so a
+   *  review that landed in between is refused rather than overwritten. */
+  rev: string
 }
 
 export interface SkillInfo {
@@ -81,10 +84,22 @@ export interface ProjectMemory {
 export interface ReviewOutcome {
   changed: boolean
   notes?: Record<string, number>
-  skills?: { target: string; action: string; name?: string }[]
+  skills?: MemoryChange[]
+  changes?: MemoryChange[]
   note?: string
   err?: string
+  /** How chatty this review is in the transcript: off | on | verbose. */
+  notify?: MemoryNotify
 }
+
+export interface MemoryChange {
+  target: string
+  action: string
+  name?: string
+  text?: string
+}
+
+export type MemoryNotify = "off" | "on" | "verbose"
 
 export interface Thread {
   id: string
@@ -219,4 +234,5 @@ export interface MemorySettings {
   char_limit: number
   review_max_iterations: number
   skills_index_max: number
+  notifications: MemoryNotify | string
 }

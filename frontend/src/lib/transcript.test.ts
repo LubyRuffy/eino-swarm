@@ -524,6 +524,33 @@ describe("the memory review", () => {
     )
   })
 
+  it("previews what was written when the review asked to be verbose", () => {
+    const state = fold([
+      review({
+        changed: true,
+        notify: "verbose",
+        notes: { add: 1 },
+        skills: [{ name: "a-procedure", action: "create" }],
+        changes: [
+          { target: "memory", action: "add", text: "User prefers terse replies" },
+          { target: "skill_manage", action: "create", name: "a-procedure", text: "when it applies" },
+        ],
+      }),
+    ])
+    expect(manager(state).blocks[0].text).toContain("+ note: User prefers terse replies")
+    expect(manager(state).blocks[0].text).toContain("+ skill a-procedure: when it applies")
+    expect(manager(state).blocks[0].quiet).toBeFalsy()
+  })
+
+  it("keeps a silent review in the transcript so Trace can still see it", () => {
+    const state = fold([
+      review({ changed: true, notify: "off", notes: { add: 1 } }),
+    ])
+    const [row] = manager(state).blocks.filter((b) => b.kind === "notice")
+    expect(row.quiet).toBe(true)
+    expect(row.text).toMatch(/Memory updated/)
+  })
+
   // Most turns teach a project nothing. A row after every answer saying so
   // would train the reader to ignore the ones that matter.
   it("shows nothing when it kept nothing", () => {

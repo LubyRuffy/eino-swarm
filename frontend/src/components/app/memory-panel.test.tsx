@@ -25,7 +25,7 @@ const project: Project = {
 const memory: ProjectMemory = {
   dir: "/data/projects/pj_1/memory",
   enabled: true,
-  memory: { text: "one note", entries: ["one note"], chars: 8, limit: 2200 },
+  memory: { text: "one note", entries: ["one note"], chars: 8, limit: 2200, rev: "rev1" },
   skills: [{ name: "a-procedure", description: "how to do the thing", updated_at: "" }],
 }
 
@@ -139,6 +139,9 @@ describe("Memory panel", () => {
       />,
     )
     expect(box).toHaveValue("half-typed")
+    expect(
+      screen.getByText(/updated while you were editing/),
+    ).toBeInTheDocument()
   })
 
   it("puts back the stored notes when an edit is reverted", () => {
@@ -148,6 +151,40 @@ describe("Memory panel", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: "Revert" }))
     expect(screen.getByLabelText("Project notes")).toHaveValue("one note")
+  })
+
+  it("reloads the stored notes from a conflict banner", () => {
+    const { rerender } = render(
+      <MemoryPanel
+        project={project}
+        memory={memory}
+        loading={false}
+        onSave={vi.fn()}
+        onDeleteSkill={vi.fn()}
+        onRefresh={vi.fn()}
+        onReview={vi.fn()}
+      />,
+    )
+    fireEvent.change(screen.getByLabelText("Project notes"), {
+      target: { value: "half-typed" },
+    })
+    rerender(
+      <MemoryPanel
+        project={project}
+        memory={{
+          ...memory,
+          memory: { ...memory.memory, text: "what the review kept", rev: "rev2" },
+        }}
+        loading={false}
+        onSave={vi.fn()}
+        onDeleteSkill={vi.fn()}
+        onRefresh={vi.fn()}
+        onReview={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Reload" }))
+    expect(screen.getByLabelText("Project notes")).toHaveValue("what the review kept")
+    expect(screen.queryByText(/updated while you were editing/)).not.toBeInTheDocument()
   })
 
   it("keeps a failed save visible instead of pretending it landed", async () => {
