@@ -31,6 +31,7 @@ What the UI reads once at startup to decide what to render.
   "mock": false,
   "configured": true,
   "default_provider": "default",
+  "reasoning_levels": ["low", "medium", "high"],
   "data_dir": "/Users/me/.zwai-swarm",
   "capabilities": { "reveal": false },
   "swarm": { "max_concurrent": 6, "agent_timeout_seconds": 600,
@@ -40,7 +41,9 @@ What the UI reads once at startup to decide what to render.
 
 `mode` is `web` or `desktop`. `configured` is false until a default provider has
 a base URL and a model name — the UI shows a setup banner until then. `mock` is
-true when running on the scripted offline provider.
+true when running on the scripted offline provider. `reasoning_levels` is the
+ordered set of explicit thinking levels the composer offers; the empty default
+is rendered as "Default" and is not listed.
 
 ## Settings, models and tools
 
@@ -109,12 +112,15 @@ explicitly.
 
 ```json
 {"threads": [{"id": "th_ab12…", "title": "Deadline sweep", "provider_id": "default",
-              "archived": false, "created_at": "2026-09-15T11:03:12.884+08:00",
+              "reasoning_effort": "", "archived": false,
+              "created_at": "2026-09-15T11:03:12.884+08:00",
               "last_active_at": "2026-09-15T11:31:02.114+08:00", "running": true}]}
 ```
 
 `archived=1` returns the archived ones instead. `running` is computed from the
 live runtimes in one pass, so the sidebar does not poll per row.
+`reasoning_effort` is the conversation's thinking level (`""`, `low`, `medium`,
+`high`); empty means the model's own default.
 
 ### `POST /api/threads` → `201`
 
@@ -137,8 +143,11 @@ client would happily turn into a two-thousand-year elapsed time).
 
 ### `PATCH /api/threads/:id`
 
-Body may contain `title`, `provider_id`, `archived`. An empty title is rejected;
-an unknown `provider_id` is rejected. Responds like `GET`.
+Body may contain `title`, `provider_id`, `reasoning_effort`, `archived`. An
+empty title is rejected; an unknown `provider_id` is rejected. `reasoning_effort`
+is one of `""` (the model default), `low`, `medium` or `high` — a blank clears
+back to the default, and any other value is rejected the same way an unknown
+provider is. Responds like `GET`.
 
 ### `DELETE /api/threads/:id` → `204`
 
@@ -154,6 +163,7 @@ Body `{"text": "…"}`. Returns the created turn immediately:
 ```json
 {"turn": {"id": "tn_cd34…", "thread_id": "th_ab12…", "status": "running",
           "user_text": "…", "provider_id": "default", "model": "some-model",
+          "reasoning_effort": "high",
           "started_at": "2026-09-15T11:31:00.100+08:00"}}
 ```
 

@@ -80,6 +80,9 @@ func printTurn(w io.Writer, st *store.Store, turn store.Turn, full bool) error {
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  model    %s via %s\n", turn.Model, turn.ProviderID)
+	if turn.ReasoningEffort != "" {
+		fmt.Fprintf(w, "  thinking %s\n", turn.ReasoningEffort)
+	}
 	fmt.Fprintf(w, "  started  %s\n", turn.StartedAt.Local().Format(time.RFC3339))
 	if turn.DurationMS > 0 {
 		fmt.Fprintf(w, "  took     %s\n", (time.Duration(turn.DurationMS) * time.Millisecond).Round(time.Millisecond))

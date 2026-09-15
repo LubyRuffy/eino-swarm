@@ -150,6 +150,11 @@ func TestMetaTellsTheUIWhatItCanDo(t *testing.T) {
 	if got["data_dir"] == "" {
 		t.Fatal("meta should report the data directory for troubleshooting")
 	}
+	// the composer builds its thinking-level menu from this, so it must arrive
+	levels, ok := got["reasoning_levels"].([]any)
+	if !ok || len(levels) != 3 || levels[0] != "low" || levels[2] != "high" {
+		t.Fatalf("meta must offer low/medium/high thinking levels, got %v", got["reasoning_levels"])
+	}
 }
 
 // The API key must never come back out of the settings endpoint; the dialog
@@ -316,6 +321,22 @@ func TestThreadLifecycle(t *testing.T) {
 	h.json(http.MethodPatch, "/api/threads/"+id, map[string]any{"title": "  "}, http.StatusBadRequest)
 	h.json(http.MethodPatch, "/api/threads/"+id,
 		map[string]any{"provider_id": "nope"}, http.StatusBadRequest)
+
+	// the thinking level round-trips; an unknown one is rejected, the same way
+	// an unknown provider is, so a typo never runs at the wrong level
+	leveled := h.json(http.MethodPatch, "/api/threads/"+id,
+		map[string]any{"reasoning_effort": "high"}, http.StatusOK)
+	if leveled["thread"].(map[string]any)["reasoning_effort"] != "high" {
+		t.Fatalf("thinking level not kept: %v", leveled)
+	}
+	h.json(http.MethodPatch, "/api/threads/"+id,
+		map[string]any{"reasoning_effort": "bogus"}, http.StatusBadRequest)
+	// a blank level is allowed: it clears back to the model's own default
+	cleared := h.json(http.MethodPatch, "/api/threads/"+id,
+		map[string]any{"reasoning_effort": ""}, http.StatusOK)
+	if cleared["thread"].(map[string]any)["reasoning_effort"] != "" {
+		t.Fatalf("a blank level must clear to the default: %v", cleared)
+	}
 
 	// archiving takes it out of the default list but keeps it reachable
 	h.json(http.MethodPatch, "/api/threads/"+id, map[string]any{"archived": true}, http.StatusOK)

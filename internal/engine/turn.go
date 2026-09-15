@@ -131,6 +131,7 @@ func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
 	if err != nil {
 		return nil, err
 	}
+	effort := th.ReasoningEffort
 	history, err := e.replayHistory(threadID)
 	if err != nil {
 		return nil, err
@@ -141,10 +142,11 @@ func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
 	}
 
 	turn := &store.Turn{
-		ThreadID:   threadID,
-		UserText:   text,
-		ProviderID: prov.ID,
-		Model:      prov.Model,
+		ThreadID:        threadID,
+		UserText:        text,
+		ProviderID:      prov.ID,
+		Model:           prov.Model,
+		ReasoningEffort: effort,
 	}
 	if err := e.store.CreateTurn(turn); err != nil {
 		return nil, err
@@ -155,7 +157,7 @@ func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
 		return nil, err
 	}
 
-	builder, err := e.pool.ModelBuilder(context.Background(), prov.ID, e.callRecorder(threadID, turn.ID))
+	builder, err := e.pool.ModelBuilder(context.Background(), prov.ID, effort, e.callRecorder(threadID, turn.ID))
 	if err != nil {
 		_ = e.store.FinishTurn(turn.ID, store.TurnError, "", err.Error())
 		return nil, err

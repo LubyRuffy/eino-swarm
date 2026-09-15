@@ -203,6 +203,14 @@ export function App() {
                 () => store.refreshThreads(),
               )
             }}
+            reasoning={thread?.reasoning_effort ?? ""}
+            reasoningLevels={meta?.reasoning_levels ?? []}
+            onReasoningChange={(level) => {
+              if (activeId)
+                void api
+                  .patchThread(activeId, { reasoning_effort: level })
+                  .then(() => store.refreshThreads())
+            }}
             onSend={(text) => void store.send(text)}
             onStop={() => void store.interrupt()}
             onUpload={(picked) => store.upload(picked)}

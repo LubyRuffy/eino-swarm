@@ -568,6 +568,48 @@ func TestRenameArchiveAndProvider(t *testing.T) {
 	}
 }
 
+// The thinking level is a per-conversation choice, applied from the next turn
+// on and recorded on the turn so a trace shows what actually ran. A blank level
+// is the default; any other unknown value is rejected, the same as an unknown
+// provider, so a typo does not silently run at the wrong level.
+func TestThreadReasoningLevelSticksAndIsRecorded(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.ReasoningEffort != config.ReasoningDefault {
+		t.Fatalf("a new conversation must start on the default level, got %q", th.ReasoningEffort)
+	}
+	// case-insensitive, so the UI can send whatever casing it likes
+	if err := e.SetThreadReasoning(th.ID, "HIGH"); err != nil {
+		t.Fatalf("SetThreadReasoning: %v", err)
+	}
+	if err := e.SetThreadReasoning(th.ID, "nonsense"); err == nil {
+		t.Fatal("an unknown thinking level must be rejected, not silently ignored")
+	}
+	got, _ := e.Store().GetThread(th.ID)
+	if got.ReasoningEffort != config.ReasoningHigh {
+		t.Fatalf("a rejected level must leave the previous one intact, got %q", got.ReasoningEffort)
+	}
+	// a blank level clears back to the model's own default
+	if err := e.SetThreadReasoning(th.ID, ""); err != nil {
+		t.Fatalf("clearing the level must be allowed: %v", err)
+	}
+
+	if err := e.SetThreadReasoning(th.ID, config.ReasoningHigh); err != nil {
+		t.Fatalf("SetThreadReasoning: %v", err)
+	}
+	turn, err := e.StartTurn(th.ID, "do the work")
+	if err != nil {
+		t.Fatalf("StartTurn: %v", err)
+	}
+	finished := waitForTurn(t, e, turn.ID)
+	if finished.ReasoningEffort != config.ReasoningHigh {
+		t.Fatalf("the turn must record the level it ran with, got %q", finished.ReasoningEffort)
+	}
+}
+
 // Deleting a conversation must take its files with it: leaving workspaces
 // behind silently fills the user's disk.
 func TestDeleteThreadRemovesWorkspace(t *testing.T) {

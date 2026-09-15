@@ -128,7 +128,7 @@ func TestTracePrintsATurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	turn := &store.Turn{ThreadID: th.ID, UserText: "look into the thing",
-		ProviderID: "default", Model: "some-model"}
+		ProviderID: "default", Model: "some-model", ReasoningEffort: "high"}
 	if err := st.CreateTurn(turn); err != nil {
 		t.Fatal(err)
 	}
@@ -161,6 +161,8 @@ func TestTracePrintsATurn(t *testing.T) {
 	})
 	for _, want := range []string{
 		turn.ID, th.ID, "done", "some-model", "look into the thing",
+		// the thinking level the turn ran with rides the one-id trace path
+		"thinking high",
 		"spawned", "researcher-1",
 		// a failure has to be visible in the timeline, not just in the status
 		"the endpoint refused the connection",

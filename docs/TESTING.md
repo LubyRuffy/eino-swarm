@@ -28,11 +28,11 @@ Current Go coverage, from `go test -race -cover ./...`:
 | `internal/tools` | 95.1% |
 | `internal/store` | 94.3% |
 | `internal/engine` | 89.6% |
-| `internal/config` | 89.0% |
-| `internal/server` | 88.6% |
+| `internal/config` | 89.4% |
+| `internal/server` | 88.7% |
 | `internal/tui` | 87.7% |
 | `internal/app` | 87.6% |
-| `cmd/zwai` | 82.6% |
+| `cmd/zwai` | 83.5% |
 
 What is deliberately not unit-tested: `main`, `runDesktop`/`runWeb`/`runTUI` (thin
 wrappers around functions that *are* tested), `internal/desktop` (opens a native
@@ -91,7 +91,7 @@ npm test          # vitest, once
 npm run test:watch
 ```
 
-Four things are tested here, three as pure logic and one in jsdom:
+Five things are tested here, three as pure logic and two in jsdom:
 
 - **`src/lib/transcript.ts`**, where the stream becomes UI: streamed text
   replaces rather than appends, a completed block folds into the streamed one
@@ -108,6 +108,10 @@ Four things are tested here, three as pure logic and one in jsdom:
   live activity — the roll-up that keeps a running swarm from looking frozen —
   and clicking a row opens that agent. The id parser behind it is also unit
   tested for half-streamed and malformed arguments.
+- **`src/components/app/composer.tsx`**, rendered in jsdom: the thinking-level
+  menu labels the empty default as "Default" and a set level by name, and it is
+  absent when the server offers no levels, so an older server never draws a
+  control that would send a meaningless choice.
 
 ## End-to-end tests
 

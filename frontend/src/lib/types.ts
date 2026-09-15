@@ -36,6 +36,9 @@ export interface Thread {
   id: string
   title: string
   provider_id: string
+  /** This conversation's thinking level: "" (model default), low, medium,
+   *  high. Switchable in the composer, applied from the next turn. */
+  reasoning_effort: string
   archived: boolean
   created_at: string
   last_active_at: string
@@ -64,6 +67,7 @@ export interface Turn {
   error?: string
   provider_id: string
   model: string
+  reasoning_effort?: string
   started_at: string
   ended_at?: string
   duration_ms: number
@@ -110,6 +114,9 @@ export interface Meta {
   mock: boolean
   configured: boolean
   default_provider: string
+  /** The thinking levels the composer offers, in order. The empty default is
+   *  rendered as "Default" and is not in this list. */
+  reasoning_levels: string[]
   data_dir: string
   capabilities: { reveal?: boolean }
   swarm: SwarmLimits

@@ -153,17 +153,20 @@ func (p *Pool) Invalidate() {
 // ModelBuilder returns the per-agent model factory the swarm registry needs.
 // Every agent in a run shares the provider's client and gets its own
 // telemetry-recording wrapper so a trace can attribute each call to an agent.
+// effort is the conversation's thinking level, applied to every model call as
+// an option so the shared client stays cached: an empty effort sends nothing.
 //
 // The mock provider is the exception: it scripts each role differently, so it
 // builds a fresh model per agent.
-func (p *Pool) ModelBuilder(ctx context.Context, id string, rec Recorder) (func(role, agentID string) model.BaseChatModel, error) {
+func (p *Pool) ModelBuilder(ctx context.Context, id, effort string, rec Recorder) (func(role, agentID string) model.BaseChatModel, error) {
 	prov, err := p.Resolve(id)
 	if err != nil {
 		return nil, err
 	}
+	effort = config.NormalizeReasoning(effort)
 	if p.mock {
 		return func(role, agentID string) model.BaseChatModel {
-			return wrap(newMockModel(role), agentID, prov, rec)
+			return wrap(newMockModel(role), agentID, prov, effort, rec)
 		}, nil
 	}
 	if !prov.Ready() {
@@ -175,7 +178,7 @@ func (p *Pool) ModelBuilder(ctx context.Context, id string, rec Recorder) (func(
 		return nil, err
 	}
 	return func(role, agentID string) model.BaseChatModel {
-		return wrap(shared, agentID, prov, rec)
+		return wrap(shared, agentID, prov, effort, rec)
 	}, nil
 }
 
@@ -197,29 +200,48 @@ func buildOpenAI(ctx context.Context, p config.Provider) (model.BaseChatModel, e
 
 // ---------- telemetry ----------
 
-// wrap returns m instrumented to report every call to rec. A nil recorder
-// returns m untouched so there is no cost when nobody is watching.
-func wrap(m model.BaseChatModel, agentID string, p config.Provider, rec Recorder) model.BaseChatModel {
-	if rec == nil {
+// wrap returns m instrumented to report every call to rec and to carry the
+// conversation's thinking level. A model with neither a recorder nor an effort
+// is returned untouched, so there is no cost when nobody is watching and no
+// reasoning field is sent to endpoints that never asked for one.
+func wrap(m model.BaseChatModel, agentID string, p config.Provider, effort string, rec Recorder) model.BaseChatModel {
+	if rec == nil && effort == "" {
 		return m
 	}
-	return &recordingModel{inner: m, agentID: agentID, providerID: p.ID, model: p.Model, rec: rec}
+	return &recordingModel{inner: m, agentID: agentID, providerID: p.ID, model: p.Model, reasoning: effort, rec: rec}
 }
 
 // recordingModel times each request and reports its shape. It deliberately
 // records sizes rather than prompts: enough to explain a slow or failed turn
-// without copying whole conversations into the database.
+// without copying whole conversations into the database. It also injects the
+// conversation's reasoning effort as a per-call option, which keeps the shared
+// client cached instead of one instance per thinking level.
 type recordingModel struct {
 	inner      model.BaseChatModel
 	agentID    string
 	providerID string
 	model      string
+	reasoning  string
 	rec        Recorder
 }
 
+// withReasoning prepends the reasoning-effort option when one is set. It goes
+// first so an explicit caller option later in the list still wins.
+func (r *recordingModel) withReasoning(opts []model.Option) []model.Option {
+	if r.reasoning == "" {
+		return opts
+	}
+	effort := openaimodel.WithReasoningEffort(openaimodel.ReasoningEffortLevel(r.reasoning))
+	return append([]model.Option{effort}, opts...)
+}
+
 func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	opts = r.withReasoning(opts)
 	start := time.Now()
 	out, err := r.inner.Generate(ctx, in, opts...)
+	if r.rec == nil {
+		return out, err
+	}
 	rec := r.base(in, start)
 	rec.Err = err
 	if out != nil {
@@ -230,8 +252,12 @@ func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opt
 }
 
 func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	opts = r.withReasoning(opts)
 	start := time.Now()
 	stream, err := r.inner.Stream(ctx, in, opts...)
+	if r.rec == nil {
+		return stream, err
+	}
 	if err != nil {
 		rec := r.base(in, start)
 		rec.Err = err

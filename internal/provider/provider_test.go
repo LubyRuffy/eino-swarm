@@ -102,7 +102,7 @@ func TestGetCachesOneClientPerProvider(t *testing.T) {
 func TestBuilderSharesClientAndAttributesPerAgent(t *testing.T) {
 	s := &sink{}
 	p := New(configFor(t, true))
-	build, err := p.ModelBuilder(context.Background(), "", s.rec())
+	build, err := p.ModelBuilder(context.Background(), "", "", s.rec())
 	if err != nil {
 		t.Fatalf("ModelBuilder: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestBuilderSharesClientAndAttributesPerAgent(t *testing.T) {
 	}
 
 	// with no recorder the shared client is handed out bare
-	bare, err := p.ModelBuilder(context.Background(), "", nil)
+	bare, err := p.ModelBuilder(context.Background(), "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,14 +141,14 @@ func TestBuilderSharesClientAndAttributesPerAgent(t *testing.T) {
 
 func TestBuilderRefusesUnconfiguredProvider(t *testing.T) {
 	p := New(configFor(t, false))
-	_, err := p.ModelBuilder(context.Background(), "", nil)
+	_, err := p.ModelBuilder(context.Background(), "", "", nil)
 	if err == nil {
 		t.Fatal("want an error for a provider with no endpoint")
 	}
 	if !strings.Contains(err.Error(), "Settings") {
 		t.Fatalf("the error should point the user at Settings, got %q", err)
 	}
-	if _, err := p.ModelBuilder(context.Background(), "nope", nil); err == nil {
+	if _, err := p.ModelBuilder(context.Background(), "nope", "", nil); err == nil {
 		t.Fatal("want an error for an unknown provider")
 	}
 	if _, err := p.Get(context.Background(), ""); err == nil {
@@ -168,7 +168,7 @@ func TestMockPoolRunsWithNoConfiguration(t *testing.T) {
 			t.Fatalf("mock providers are always ready: %+v", i)
 		}
 	}
-	build, err := p.ModelBuilder(context.Background(), "", nil)
+	build, err := p.ModelBuilder(context.Background(), "", "", nil)
 	if err != nil {
 		t.Fatalf("ModelBuilder: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestMockPoolNamesItself(t *testing.T) {
 	}
 
 	var got []CallRecord
-	build, err := p.ModelBuilder(context.Background(), "",
+	build, err := p.ModelBuilder(context.Background(), "", "",
 		func(r CallRecord) { got = append(got, r) })
 	if err != nil {
 		t.Fatal(err)
@@ -393,13 +393,18 @@ type fakeModel struct {
 	out    *schema.Message
 	chunks []*schema.Message
 	err    error
+	// gotOpts is the number of call options the last Generate/Stream received,
+	// so a test can prove the reasoning-effort option was (or was not) added.
+	gotOpts int
 }
 
-func (f *fakeModel) Generate(context.Context, []*schema.Message, ...model.Option) (*schema.Message, error) {
+func (f *fakeModel) Generate(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	f.gotOpts = len(opts)
 	return f.out, f.err
 }
 
-func (f *fakeModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+func (f *fakeModel) Stream(_ context.Context, _ []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	f.gotOpts = len(opts)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -437,7 +442,7 @@ func (s *sink) all() []CallRecord {
 func TestTelemetryRecordsGenerate(t *testing.T) {
 	s := &sink{}
 	inner := &fakeModel{out: schema.AssistantMessage("hello", nil)}
-	m := wrap(inner, "worker-1", config.Provider{ID: "p", Model: "m"}, s.rec())
+	m := wrap(inner, "worker-1", config.Provider{ID: "p", Model: "m"}, "", s.rec())
 
 	if _, err := m.Generate(context.Background(),
 		[]*schema.Message{schema.UserMessage("hi"), schema.UserMessage("there")}); err != nil {
@@ -471,7 +476,7 @@ func TestTelemetryRecordsStreamOnDrain(t *testing.T) {
 		{Role: schema.Assistant, Content: "one "},
 		{Role: schema.Assistant, Content: "two"},
 	}}
-	m := wrap(inner, "manager", config.Provider{ID: "p", Model: "m"}, s.rec())
+	m := wrap(inner, "manager", config.Provider{ID: "p", Model: "m"}, "", s.rec())
 
 	stream, err := m.Stream(context.Background(), []*schema.Message{schema.UserMessage("go")})
 	if err != nil {
@@ -511,7 +516,7 @@ func TestTelemetryHandlesAbandonedStream(t *testing.T) {
 	for i := range chunks {
 		chunks[i] = &schema.Message{Role: schema.Assistant, Content: "x"}
 	}
-	m := wrap(&fakeModel{chunks: chunks}, "manager", config.Provider{ID: "p"}, s.rec())
+	m := wrap(&fakeModel{chunks: chunks}, "manager", config.Provider{ID: "p"}, "", s.rec())
 
 	stream, err := m.Stream(context.Background(), []*schema.Message{schema.UserMessage("go")})
 	if err != nil {
@@ -534,7 +539,7 @@ func TestTelemetryHandlesAbandonedStream(t *testing.T) {
 func TestTelemetryRecordsFailures(t *testing.T) {
 	s := &sink{}
 	boom := errors.New("endpoint refused")
-	m := wrap(&fakeModel{err: boom}, "manager", config.Provider{ID: "p"}, s.rec())
+	m := wrap(&fakeModel{err: boom}, "manager", config.Provider{ID: "p"}, "", s.rec())
 
 	if _, err := m.Generate(context.Background(), nil); !errors.Is(err, boom) {
 		t.Fatalf("Generate error not propagated: %v", err)
@@ -553,12 +558,64 @@ func TestTelemetryRecordsFailures(t *testing.T) {
 	}
 }
 
-// With no recorder there must be no wrapper at all, so an unwatched run pays
-// nothing for telemetry.
+// With no recorder and no thinking level there must be no wrapper at all, so
+// an unwatched, default-effort run pays nothing for telemetry.
 func TestWrapWithoutRecorderIsIdentity(t *testing.T) {
 	inner := &fakeModel{out: schema.AssistantMessage("x", nil)}
-	if got := wrap(inner, "a", config.Provider{}, nil); got != model.BaseChatModel(inner) {
+	if got := wrap(inner, "a", config.Provider{}, "", nil); got != model.BaseChatModel(inner) {
 		t.Fatal("wrap should return the model untouched when nobody is recording")
+	}
+}
+
+// A set thinking level must reach the model as one call option. Anything else
+// means a conversation set to think hard would silently run on the default.
+func TestReasoningEffortIsAppliedPerCall(t *testing.T) {
+	inner := &fakeModel{out: schema.AssistantMessage("ok", nil)}
+	m := wrap(inner, "worker-1", config.Provider{ID: "p", Model: "m"}, config.ReasoningHigh, nil)
+	if _, ok := m.(*recordingModel); !ok {
+		t.Fatal("a thinking level must wrap the model even without a recorder")
+	}
+	if _, err := m.Generate(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if inner.gotOpts != 1 {
+		t.Fatalf("a set thinking level must add exactly one call option, got %d", inner.gotOpts)
+	}
+}
+
+// The empty default must send nothing: a non-reasoning endpoint rejects a
+// reasoning_effort it never asked for, so an unset level cannot leak one.
+func TestNoReasoningEffortSendsNoOption(t *testing.T) {
+	s := &sink{}
+	inner := &fakeModel{out: schema.AssistantMessage("ok", nil)}
+	m := wrap(inner, "worker-1", config.Provider{ID: "p", Model: "m"}, config.ReasoningDefault, s.rec())
+	if _, err := m.Generate(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if inner.gotOpts != 0 {
+		t.Fatalf("an unset thinking level must add no call option, got %d", inner.gotOpts)
+	}
+}
+
+// A streamed call carries the thinking level too, and a reasoning-only wrapper
+// (no recorder) must still relay the stream untouched.
+func TestReasoningEffortAppliesToStream(t *testing.T) {
+	inner := &fakeModel{chunks: []*schema.Message{{Role: schema.Assistant, Content: "hi"}}}
+	m := wrap(inner, "worker-1", config.Provider{ID: "p"}, config.ReasoningMedium, nil)
+	if _, ok := m.(*recordingModel); !ok {
+		t.Fatal("a thinking level must wrap even without a recorder")
+	}
+	stream, err := m.Stream(context.Background(), []*schema.Message{schema.UserMessage("go")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if inner.gotOpts != 1 {
+		t.Fatalf("a streamed call must carry the thinking level, got %d opts", inner.gotOpts)
+	}
+	msg, err := stream.Recv()
+	if err != nil || msg.Content != "hi" {
+		t.Fatalf("the reasoning-only wrapper corrupted the stream: msg=%v err=%v", msg, err)
 	}
 }
 

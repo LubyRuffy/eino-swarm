@@ -101,3 +101,18 @@ test("shows the turn id for troubleshooting", async ({ page }) => {
   // the timeline names the agents that took part
   await expect(panel.getByText("researcher-1").first()).toBeVisible()
 })
+
+test("switches the thinking level and keeps it after a reload", async ({ page }) => {
+  await freshConversation(page)
+  const level = page.getByLabel("Thinking level")
+  // a fresh conversation starts on the model's own default
+  await expect(level).toContainText("Default")
+
+  await level.click()
+  await page.getByRole("option", { name: "High thinking" }).click()
+  await expect(level).toContainText("High")
+
+  // the choice is stored on the conversation, so a reload brings it back
+  await page.reload()
+  await expect(page.getByLabel("Thinking level")).toContainText("High")
+})

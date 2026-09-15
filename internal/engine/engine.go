@@ -124,6 +124,18 @@ func (e *Engine) SetThreadProvider(id, providerID string) error {
 	return e.store.UpdateThread(id, map[string]any{"provider_id": providerID})
 }
 
+// SetThreadReasoning switches a conversation's thinking level from its next
+// turn on. A blank level is the model's own default; any other unknown value
+// is rejected rather than silently ignored, the same way an unknown provider
+// is, so a typo in a hand-made request is a 400 and not a wrong-looking run.
+func (e *Engine) SetThreadReasoning(id, effort string) error {
+	normalized := config.NormalizeReasoning(effort)
+	if normalized == "" && strings.TrimSpace(effort) != "" {
+		return fmt.Errorf("engine: unknown thinking level %q", effort)
+	}
+	return e.store.UpdateThread(id, map[string]any{"reasoning_effort": normalized})
+}
+
 // SetThreadArchived hides or restores a conversation in the sidebar.
 func (e *Engine) SetThreadArchived(id string, archived bool) error {
 	return e.store.UpdateThread(id, map[string]any{"archived": archived})

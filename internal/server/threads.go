@@ -15,13 +15,14 @@ type createThreadRequest struct {
 }
 
 type threadView struct {
-	ID           string `json:"id"`
-	Title        string `json:"title"`
-	ProviderID   string `json:"provider_id"`
-	Archived     bool   `json:"archived"`
-	CreatedAt    string `json:"created_at"`
-	LastActiveAt string `json:"last_active_at"`
-	Running      bool   `json:"running"`
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	ProviderID      string `json:"provider_id"`
+	ReasoningEffort string `json:"reasoning_effort"`
+	Archived        bool   `json:"archived"`
+	CreatedAt       string `json:"created_at"`
+	LastActiveAt    string `json:"last_active_at"`
+	Running         bool   `json:"running"`
 }
 
 func (s *Server) listThreads(c *gin.Context) {
@@ -39,13 +40,14 @@ func (s *Server) listThreads(c *gin.Context) {
 	out := make([]threadView, 0, len(threads))
 	for _, th := range threads {
 		out = append(out, threadView{
-			ID:           th.ID,
-			Title:        th.Title,
-			ProviderID:   th.ProviderID,
-			Archived:     th.Archived,
-			CreatedAt:    th.CreatedAt.Format(timeFormat),
-			LastActiveAt: th.LastActiveAt.Format(timeFormat),
-			Running:      running[th.ID],
+			ID:              th.ID,
+			Title:           th.Title,
+			ProviderID:      th.ProviderID,
+			ReasoningEffort: th.ReasoningEffort,
+			Archived:        th.Archived,
+			CreatedAt:       th.CreatedAt.Format(timeFormat),
+			LastActiveAt:    th.LastActiveAt.Format(timeFormat),
+			Running:         running[th.ID],
 		})
 	}
 	c.JSON(http.StatusOK, gin.H{"threads": out})
@@ -65,11 +67,12 @@ func (s *Server) createThread(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"thread": threadView{
-		ID:           th.ID,
-		Title:        th.Title,
-		ProviderID:   th.ProviderID,
-		CreatedAt:    th.CreatedAt.Format(timeFormat),
-		LastActiveAt: th.LastActiveAt.Format(timeFormat),
+		ID:              th.ID,
+		Title:           th.Title,
+		ProviderID:      th.ProviderID,
+		ReasoningEffort: th.ReasoningEffort,
+		CreatedAt:       th.CreatedAt.Format(timeFormat),
+		LastActiveAt:    th.LastActiveAt.Format(timeFormat),
 	}})
 }
 
@@ -81,22 +84,24 @@ func (s *Server) getThread(c *gin.Context) {
 	status := s.engine.Status(th.ID)
 	c.JSON(http.StatusOK, gin.H{
 		"thread": threadView{
-			ID:           th.ID,
-			Title:        th.Title,
-			ProviderID:   th.ProviderID,
-			Archived:     th.Archived,
-			CreatedAt:    th.CreatedAt.Format(timeFormat),
-			LastActiveAt: th.LastActiveAt.Format(timeFormat),
-			Running:      status.Running,
+			ID:              th.ID,
+			Title:           th.Title,
+			ProviderID:      th.ProviderID,
+			ReasoningEffort: th.ReasoningEffort,
+			Archived:        th.Archived,
+			CreatedAt:       th.CreatedAt.Format(timeFormat),
+			LastActiveAt:    th.LastActiveAt.Format(timeFormat),
+			Running:         status.Running,
 		},
 		"status": status,
 	})
 }
 
 type patchThreadRequest struct {
-	Title      *string `json:"title"`
-	ProviderID *string `json:"provider_id"`
-	Archived   *bool   `json:"archived"`
+	Title           *string `json:"title"`
+	ProviderID      *string `json:"provider_id"`
+	ReasoningEffort *string `json:"reasoning_effort"`
+	Archived        *bool   `json:"archived"`
 }
 
 func (s *Server) patchThread(c *gin.Context) {
@@ -121,6 +126,12 @@ func (s *Server) patchThread(c *gin.Context) {
 	}
 	if req.ProviderID != nil {
 		if err := s.engine.SetThreadProvider(th.ID, *req.ProviderID); err != nil {
+			s.fail(c, err)
+			return
+		}
+	}
+	if req.ReasoningEffort != nil {
+		if err := s.engine.SetThreadReasoning(th.ID, *req.ReasoningEffort); err != nil {
 			s.fail(c, err)
 			return
 		}

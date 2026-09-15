@@ -24,6 +24,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   swarm library in this repository.
 - **Steering, not restarting.** Press Enter while a turn is running and your text
   is injected at the next turn boundary instead of starting over.
+- **Per-conversation model and thinking level.** When more than one endpoint is
+  configured, the composer switches models per conversation; a thinking-level
+  menu (Default / Low / Medium / High) sets how hard the models reason. Both
+  apply from the next turn.
 - **Real tools.** File read/write/edit, `ls`/`tree`/`glob`/`grep`, shell `exec`,
   web search and fetch, from [eino-tools](https://github.com/LubyRuffy/eino-tools).
 - **Nothing hardcoded.** Endpoints, models, concurrency and tool switches live in

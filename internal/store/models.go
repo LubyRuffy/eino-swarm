@@ -20,13 +20,16 @@ const (
 // Thread is one conversation. Its ID also names its workspace directory, so it
 // must stay filesystem-safe.
 type Thread struct {
-	ID           string    `gorm:"primaryKey;size:64" json:"id"`
-	Title        string    `gorm:"size:400" json:"title"`
-	ProviderID   string    `gorm:"size:64" json:"provider_id"`
-	Archived     bool      `json:"archived"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
-	LastActiveAt time.Time `gorm:"index" json:"last_active_at"`
+	ID         string `gorm:"primaryKey;size:64" json:"id"`
+	Title      string `gorm:"size:400" json:"title"`
+	ProviderID string `gorm:"size:64" json:"provider_id"`
+	// ReasoningEffort is this conversation's thinking level ("", low, medium,
+	// high). Empty means the model's own default. It applies from the next turn.
+	ReasoningEffort string    `gorm:"size:16" json:"reasoning_effort"`
+	Archived        bool      `json:"archived"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
+	LastActiveAt    time.Time `gorm:"index" json:"last_active_at"`
 }
 
 // Message is one entry of the conversation as the model sees it. This is the
@@ -49,18 +52,21 @@ type Message struct {
 // Turn is one user request and everything the swarm did to answer it. The ID
 // is the handle a user pastes into `zwai trace` to replay the whole thing.
 type Turn struct {
-	ID         string     `gorm:"primaryKey;size:64" json:"id"`
-	ThreadID   string     `gorm:"index;size:64" json:"thread_id"`
-	Seq        int64      `json:"seq"`
-	Status     string     `gorm:"size:32" json:"status"`
-	UserText   string     `json:"user_text"`
-	Final      string     `json:"final"`
-	Error      string     `json:"error,omitempty"`
-	ProviderID string     `gorm:"size:64" json:"provider_id"`
-	Model      string     `gorm:"size:128" json:"model"`
-	StartedAt  time.Time  `json:"started_at"`
-	EndedAt    *time.Time `json:"ended_at,omitempty"`
-	DurationMS int64      `json:"duration_ms"`
+	ID         string `gorm:"primaryKey;size:64" json:"id"`
+	ThreadID   string `gorm:"index;size:64" json:"thread_id"`
+	Seq        int64  `json:"seq"`
+	Status     string `gorm:"size:32" json:"status"`
+	UserText   string `json:"user_text"`
+	Final      string `json:"final"`
+	Error      string `json:"error,omitempty"`
+	ProviderID string `gorm:"size:64" json:"provider_id"`
+	Model      string `gorm:"size:128" json:"model"`
+	// ReasoningEffort records the thinking level this turn actually ran with,
+	// so a trace shows what produced the answer, not what is configured now.
+	ReasoningEffort string     `gorm:"size:16" json:"reasoning_effort,omitempty"`
+	StartedAt       time.Time  `json:"started_at"`
+	EndedAt         *time.Time `json:"ended_at,omitempty"`
+	DurationMS      int64      `json:"duration_ms"`
 }
 
 // Event is one entry of the UI timeline. Seq is per-thread and gap-free, so a

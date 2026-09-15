@@ -1,4 +1,4 @@
-import { ArrowUp, Paperclip, ShieldCheck, Square, X } from "lucide-react"
+import { ArrowUp, Brain, Paperclip, ShieldCheck, Square, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
@@ -26,6 +26,9 @@ export function Composer({
   models,
   provider,
   onProviderChange,
+  reasoning,
+  reasoningLevels,
+  onReasoningChange,
   onSend,
   onStop,
   onUpload,
@@ -38,6 +41,11 @@ export function Composer({
   models: ModelInfo[]
   provider?: string
   onProviderChange: (id: string) => void
+  /** The conversation's thinking level: "" for the model's default. */
+  reasoning?: string
+  /** Explicit levels the server offers (low/medium/high), in order. */
+  reasoningLevels: string[]
+  onReasoningChange: (level: string) => void
   onSend: (text: string) => void
   onStop: () => void
   onUpload: (files: File[]) => Promise<void>
@@ -177,6 +185,29 @@ export function Composer({
               <span className="px-1 text-xs text-muted-foreground">
                 {models[0].label || models[0].model || models[0].id}
               </span>
+            ) : null}
+
+            {reasoningLevels.length > 0 ? (
+              <Select
+                value={reasoning ? reasoning : "default"}
+                onValueChange={(v) => onReasoningChange(v === "default" ? "" : v)}
+              >
+                <SelectTrigger
+                  aria-label="Thinking level"
+                  className="h-7 w-auto gap-1.5 border-none bg-transparent px-2 shadow-none hover:bg-accent"
+                >
+                  <Brain className="size-3.5 text-muted-foreground" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="default">Default thinking</SelectItem>
+                  {reasoningLevels.map((l) => (
+                    <SelectItem key={l} value={l}>
+                      {l.charAt(0).toUpperCase() + l.slice(1)} thinking
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : null}
 
             <Tooltip>

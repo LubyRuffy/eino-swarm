@@ -96,7 +96,12 @@ export const api = {
     request<{ thread: Thread; status: ThreadStatus }>(`/api/threads/${id}`),
   patchThread: (
     id: string,
-    patch: { title?: string; archived?: boolean; provider_id?: string },
+    patch: {
+      title?: string
+      archived?: boolean
+      provider_id?: string
+      reasoning_effort?: string
+    },
   ) =>
     request<{ thread: Thread }>(`/api/threads/${id}`, {
       method: "PATCH",

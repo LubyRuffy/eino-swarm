@@ -11,6 +11,15 @@ co-working app built on it. The library API is unchanged except where noted.
 
 ### Added
 
+- **Per-conversation thinking level.** The composer now carries a thinking-level
+  menu (Default / Low / Medium / High) next to the model picker, so a
+  conversation can be told to reason harder or lighter without touching
+  settings. The choice is stored on the conversation and applied from the next
+  turn as the model's `reasoning_effort`; the empty default sends nothing, so a
+  non-reasoning endpoint is never handed a field it rejects. The level rides the
+  one-id troubleshooting path — recorded on the turn, shown in `zwai trace` and
+  the Trace tab — and the levels the UI offers arrive in `GET /api/meta` as
+  `reasoning_levels` rather than being hardcoded in the front end.
 - **The zwai app.** A single Go binary that serves a React + shadcn/ui front end
   and runs a swarm of agents per conversation, with a three-pane Codex-style
   layout: conversation list, transcript, and an Agents / Files / Trace panel.

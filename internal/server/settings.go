@@ -22,6 +22,7 @@ type metaView struct {
 	Mock            bool               `json:"mock"`
 	Configured      bool               `json:"configured"`
 	DefaultProvider string             `json:"default_provider"`
+	ReasoningLevels []string           `json:"reasoning_levels"`
 	DataDir         string             `json:"data_dir"`
 	Capabilities    map[string]bool    `json:"capabilities"`
 	Swarm           config.SwarmConfig `json:"swarm"`
@@ -36,6 +37,7 @@ func (s *Server) getMeta(c *gin.Context) {
 		Mock:            pool.IsMock(),
 		Configured:      pool.IsMock() || cfg.Configured(),
 		DefaultProvider: cfg.Models.Default,
+		ReasoningLevels: config.ReasoningEfforts(),
 		DataDir:         cfg.DataDir(),
 		Capabilities: map[string]bool{
 			// The UI hides affordances it cannot deliver rather than showing

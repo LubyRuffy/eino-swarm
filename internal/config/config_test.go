@@ -319,3 +319,26 @@ func mustAbs(t *testing.T, p string) string {
 	}
 	return abs
 }
+
+// The thinking level goes on the wire as reasoning_effort, so an unknown value
+// must collapse to the empty default rather than reaching an endpoint that
+// rejects it. Only low/medium/high survive.
+func TestNormalizeReasoningKeepsOnlyKnownLevels(t *testing.T) {
+	cases := map[string]string{
+		"low":     ReasoningLow,
+		"MEDIUM":  ReasoningMedium,
+		" high ":  ReasoningHigh,
+		"":        ReasoningDefault,
+		"extreme": ReasoningDefault,
+		"none":    ReasoningDefault,
+	}
+	for in, want := range cases {
+		if got := NormalizeReasoning(in); got != want {
+			t.Fatalf("NormalizeReasoning(%q)=%q, want %q", in, got, want)
+		}
+	}
+	if levels := ReasoningEfforts(); len(levels) != 3 ||
+		levels[0] != ReasoningLow || levels[2] != ReasoningHigh {
+		t.Fatalf("the UI needs low/medium/high in order, got %v", levels)
+	}
+}

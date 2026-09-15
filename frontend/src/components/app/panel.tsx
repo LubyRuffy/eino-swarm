@@ -411,6 +411,7 @@ function TraceTab({
       {latest ? (
         <p className="px-2 py-2 text-[11px] text-muted-foreground">
           {latest.model ? `${latest.model} · ` : ""}
+          {latest.reasoning_effort ? `${latest.reasoning_effort} thinking · ` : ""}
           {latest.status}
           {latest.duration_ms ? ` · ${formatDuration(latest.duration_ms)}` : ""}
         </p>

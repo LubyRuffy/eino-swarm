@@ -35,6 +35,7 @@ erDiagram
 | `id` | text, PK | `th_` + 8 random bytes hex. **Also the workspace directory name**, so it must stay free of separators and shell metacharacters. |
 | `title` | text | generated from the first message when the user did not supply one |
 | `provider_id` | text | which configured provider this conversation uses |
+| `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `archived` | bool | hidden from the sidebar's default list |
 | `created_at` | time | |
 | `updated_at` | time | gorm-managed |
@@ -77,6 +78,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `final` | the manager's final answer |
 | `error` | why it failed, when it did |
 | `provider_id`, `model` | what actually ran, not what is configured now — settings change |
+| `reasoning_effort` | the thinking level this turn ran with, so a trace shows what produced the answer |
 | `started_at`, `ended_at`, `duration_ms` | `ended_at` is null while running |
 
 A turn is only `running` while a process is working on it. On startup,

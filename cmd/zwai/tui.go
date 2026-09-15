@@ -82,7 +82,7 @@ func buildTUISwarm(ctx context.Context, args []string) (*swarm.Registry, string,
 		cleanup()
 		return nil, "", nil, err
 	}
-	builder, err := pool.ModelBuilder(ctx, prov.ID, nil)
+	builder, err := pool.ModelBuilder(ctx, prov.ID, "", nil)
 	if err != nil {
 		cleanup()
 		return nil, "", nil, err

@@ -87,6 +87,7 @@ zwai trace tn_3c6d0df94ee9e287
 turn tn_3c6d0df94ee9e287  conversation th_cc107f8e87d220b5
   status   done
   model    some-model via default
+  thinking high
   started  2026-09-15T11:31:00+08:00
   took     12.48s
   asked    go through the three files and pull out every deadline
