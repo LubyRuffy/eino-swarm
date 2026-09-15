@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -479,6 +480,44 @@ func TestDispatchReportsUnknownCommands(t *testing.T) {
 	}
 	if !strings.Contains(errOut.String(), "zwai:") {
 		t.Fatalf("stderr=%q", errOut.String())
+	}
+}
+
+// The built-in help is the only documentation most people read, and it drifts
+// silently: a flag added to a subcommand does not fail anything by being absent
+// from usage(). So read the flags out of this package's own source and require
+// each one to be mentioned.
+func TestUsageMentionsEveryFlag(t *testing.T) {
+	sources, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := regexp.MustCompile(`fs\.(?:String|Bool|Int)\("([a-z-]+)"`)
+
+	var help bytes.Buffer
+	usage(&help)
+	text := help.String()
+
+	seen := map[string]bool{}
+	for _, path := range sources {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range declared.FindAllStringSubmatch(string(raw), -1) {
+			seen[m[1]] = true
+		}
+	}
+	if len(seen) == 0 {
+		t.Fatal("found no flags to check; the pattern no longer matches the code")
+	}
+	for name := range seen {
+		if !strings.Contains(text, "--"+name) {
+			t.Errorf("usage() never mentions --%s:\n%s", name, text)
+		}
 	}
 }
 

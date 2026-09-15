@@ -137,14 +137,17 @@ usage:
   zwai web [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
         serve the same app in your browser
 
-  zwai tui --task "..." [--data-dir DIR] [--mock]
+  zwai tui --task "..." [--workspace DIR] [--data-dir DIR] [--mock]
         run one task in the terminal
 
   zwai trace <turn-id|conversation-id> [--data-dir DIR] [--full]
         print a turn's timeline and every model call it made
 
   zwai config [path|init|show] [--data-dir DIR]
-        where the configuration lives, and what is in it
+        where the configuration lives, and what is in it (default: show)
+
+  zwai version | help
+        also -v / --version and -h / --help
 
 common flags:
   --data-dir DIR   use another data directory (default: $ZWAI_HOME or ~/.zwai-swarm)

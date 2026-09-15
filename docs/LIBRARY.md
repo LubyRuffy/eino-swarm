@@ -152,8 +152,9 @@ result, err, _ := h.Result()
 | bounded registry | finished handles are pruned, so a long session cannot grow the map without bound |
 
 Each of those has a test: `TestCallerContextCancelReleasesAgents`,
-`TestWatchdogTimeoutReleases`, `TestMaxTurnsEndsBrokenModel`,
-`TestRegistryClose`, `TestForkContextInheritsHistory`. Run them with `-race`.
+`TestWatchdogTimeoutReleasesAgent`, `TestMaxTurnsEndsBrokenModel`,
+`TestRegistryClose`, `TestForkContextInheritsHistory`,
+`TestWaitAndCleanupEndATurn`. Run them with `-race`.
 
 ## No pre-registration
 
@@ -173,7 +174,9 @@ conversation (kept fresh by `Registry.ManagerMiddleware()` on the manager's
 | `codex-lite` | a fuller manager with tools |
 | `swarm-real` | a real endpoint, real tools |
 | `swarmwatch` | consuming the notification stream |
-| `swarm-tui` | the terminal renderer, standalone |
+
+The terminal renderer is not an example: it is `internal/tui`, reachable as
+`zwai tui`.
 
 ```bash
 go test -race ./...

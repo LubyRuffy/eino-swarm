@@ -9,6 +9,8 @@ zwai config [path|init|show] [--data-dir DIR]
 zwai version | help
 ```
 
+`version` also answers to `-v` and `--version`, `help` to `-h` and `--help`.
+
 Run it from a checkout with `go run ./cmd/zwai <subcommand>`, or build once with
 `make build` and use `./bin/zwai`.
 
@@ -121,7 +123,7 @@ The same data is available in the UI's Trace tab and over HTTP at
 |---|---|
 | `path` | print the config file's path, creating a default file if there is none |
 | `init` | create the file and say what to do next if no model is configured |
-| `show` | print the effective configuration, **with the API key redacted** |
+| `show` | print the effective configuration, **with the API key redacted**. The default, so `zwai config` on its own shows it. |
 
 `show` is what to paste into a bug report: a key that is set prints as
 `<set, hidden>`, while a key that is genuinely empty prints as `""`, so the

@@ -139,6 +139,12 @@ co-working app built on it. The library API is unchanged except where noted.
   explanation and its text sat under "tool rounds".
 - **UI**: Settings could not edit the tools' no-proxy list, which
   `internal/tools` already honoured from the config file.
+- **Docs**: `zwai help` omitted `tui --workspace`, the `-v`/`-h` aliases and the
+  fact that `zwai config` defaults to `show`. A test now reads the flags out of
+  the source and fails when `usage()` stops mentioning one.
+- **Docs**: `docs/LIBRARY.md` listed a `swarm-tui` example that was an empty
+  directory — the terminal renderer is `internal/tui` — and named a test that
+  does not exist.
 - **Tests**: the end-to-end suite kept its data directory between runs, so the
   sidebar specs depended on how often the suite had been run and the settings
   specs never saw a first start. It now wipes the directory before the server
