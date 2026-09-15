@@ -1,13 +1,11 @@
+// signal.go — the frontend-facing notification contract: event kinds, the UI
+// plugin interface, and the mapping from eino agent events to notifications.
+// The run loops themselves live in run.go.
 package swarm
 
 import (
-	"context"
-	"fmt"
-	"os"
-	"os/signal"
 	"strings"
 	"sync"
-	"syscall"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -22,21 +20,22 @@ type Callback func(Notification)
 // never changes for a new frontend; implement UI and hand it to Run.
 //
 // Implementation contract:
-//   - OnNotify is called sequentially from the swarm's event pump; heavy work
+//   - OnNotify is called from the swarm's event pump goroutine(s); heavy work
 //     or rendering should be forwarded to the UI's own goroutine.
 //   - Streaming semantics: each NotifyDelta/NotifyReasoningDelta carries the
 //     FULL accumulated text so far ("a", "ab", "abc"…), so a UI renders by
-//     overwriting the target pane — no buffering needed.
+//     overwriting the target pane — no buffering needed. The accumulator is
+//     reset at every turn boundary (NotifyTurn).
 type UI interface {
 	// OnNotify receives one event. Called from the swarm's event pump
 	// goroutine(s); implementations must not block for long.
 	OnNotify(n Notification)
-	// OnDone is called once when the run finishes (final = manager answer,
-	// err = failure).
+	// OnDone is called exactly once when the run finishes (final = manager
+	// answer, err = failure).
 	OnDone(final string, err error)
 }
 
-// CallbackUI adapts a plain function to the UI interface.
+// cbUI adapts a plain function to the UI interface.
 type cbUI struct{ fn Callback }
 
 func (c cbUI) OnNotify(n Notification) { c.fn(n) }
@@ -44,14 +43,10 @@ func (c cbUI) OnDone(final string, err error) {
 	if c.fn == nil {
 		return
 	}
-	if err != nil {
-		c.fn(Notification{Kind: NotifyError, AgentID: DefaultManagerID, Text: final, Err: err})
-		return
-	}
-	c.fn(Notification{Kind: NotifyDone, AgentID: DefaultManagerID, Text: final})
+	c.fn(doneNotif(final, err))
 }
 
-// Notification kinds delivered to the UI.
+// NotifyKind enumerates the events delivered to the UI.
 type NotifyKind int
 
 const (
@@ -61,36 +56,42 @@ const (
 	NotifyToolCall                         // a tool call was issued (Text="name(args)")
 	NotifyToolResult                       // a tool returned (Text=truncated result)
 	NotifyTurn                             // an agent started a new model turn (Text="turn N")
-	NotifyDelta                            // streamed answer text, accumulated so far
-	NotifyReasoningDelta                   // streamed reasoning, accumulated so far
+	NotifyDelta                            // streamed answer text, accumulated within the turn
+	NotifyReasoningDelta                   // streamed reasoning, accumulated within the turn
 	NotifyDone                             // manager final answer; run complete
 	NotifyError                            // fatal error; run failed
 )
 
+var notifyNames = map[NotifyKind]string{
+	NotifyAgentMessage:   "agent_message",
+	NotifySpawned:        "spawned",
+	NotifyFinished:       "finished",
+	NotifyToolCall:       "tool_call",
+	NotifyToolResult:     "tool_result",
+	NotifyTurn:           "turn",
+	NotifyDelta:          "delta",
+	NotifyReasoningDelta: "reasoning_delta",
+	NotifyDone:           "done",
+	NotifyError:          "error",
+}
+
 func (k NotifyKind) String() string {
-	switch k {
-	case NotifyAgentMessage:
-		return "agent_message"
-	case NotifySpawned:
-		return "spawned"
-	case NotifyFinished:
-		return "finished"
-	case NotifyToolCall:
-		return "tool_call"
-	case NotifyToolResult:
-		return "tool_result"
-	case NotifyTurn:
-		return "turn"
-	case NotifyDelta:
-		return "delta"
-	case NotifyReasoningDelta:
-		return "reasoning_delta"
-	case NotifyDone:
-		return "done"
-	case NotifyError:
-		return "error"
+	if s, ok := notifyNames[k]; ok {
+		return s
 	}
 	return "unknown"
+}
+
+// ParseNotifyKind is the inverse of NotifyKind.String; ok is false for an
+// unrecognized name. Frontends that persist events by name use it to read
+// them back.
+func ParseNotifyKind(s string) (NotifyKind, bool) {
+	for k, name := range notifyNames {
+		if name == s {
+			return k, true
+		}
+	}
+	return 0, false
 }
 
 // DefaultManagerID is the agent ID of the top-level manager agent created by
@@ -99,141 +100,116 @@ const DefaultManagerID = "manager"
 
 // Notification is one UI event.
 //
-// Delta semantics: NotifyDelta/NotifyReasoningDelta carry the FULL
-// accumulated text so far ("a", then "ab", then "abc") — a UI overwrites the
-// bubble per event, no buffering needed. Reasoning and answer use separate
-// accumulators (separate event kinds), so a "thinking" view and an answer
-// view render independently.
+// Delta semantics: NotifyDelta/NotifyReasoningDelta carry the FULL text
+// accumulated within the current turn ("a", then "ab", then "abc") — a UI
+// overwrites the bubble per event, no buffering needed. Reasoning and answer
+// use separate accumulators (separate event kinds), so a "thinking" view and
+// an answer view render independently. Both reset on NotifyTurn.
 type Notification struct {
 	Kind    NotifyKind
 	AgentID string // emitting agent (DefaultManagerID for the top level)
 	Role    string
-	Text    string // accumulated text / tool summary
-	Err     error  // set for NotifyError
+	Text    string // accumulated text / tool summary / result
+	Err     error  // set for NotifyError and for a failed NotifyFinished
+
+	// ToolCallID pairs NotifyToolCall with its NotifyToolResult. Agents issue
+	// several calls in one turn, so matching by position or name is wrong;
+	// match on this instead.
+	ToolCallID string
 }
 
-// msgPump accumulates one agent's streamed message. Reasoning (thinking) and
-// answer text use separate accumulators.
-type msgPump struct {
-	mu        sync.Mutex
-	sb        strings.Builder
-	reasoning strings.Builder
-	turn      int
-}
-
-func (p *msgPump) delta(chunk string) (string, bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if chunk != "" {
-		p.sb.WriteString(chunk)
-		return p.sb.String(), true
+func doneNotif(final string, err error) Notification {
+	if err != nil {
+		return Notification{Kind: NotifyError, AgentID: DefaultManagerID, Text: final, Err: err}
 	}
-	return p.sb.String(), false
+	return Notification{Kind: NotifyDone, AgentID: DefaultManagerID, Text: final}
 }
 
-func (p *msgPump) reasoningDelta(chunk string) (string, bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if chunk != "" {
-		p.reasoning.WriteString(chunk)
-		return p.reasoning.String(), true
+// asUI normalizes the accepted UI forms (nil / Callback / func / UI) into one
+// internal sink.
+func asUI(v any) UI {
+	switch u := v.(type) {
+	case nil:
+		return nil
+	case UI:
+		return u
+	case Callback:
+		return cbUI{fn: u}
+	case func(Notification):
+		return cbUI{fn: Callback(u)}
+	default:
+		// Unknown type: accept nothing. Callers pass the wrong type only by
+		// mistake; a compile-time UI/Callback is expected.
+		return nil
 	}
-	return p.reasoning.String(), false
 }
 
-func (p *msgPump) nextTurn() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.turn++
-	p.sb.Reset()
-	p.reasoning.Reset()
-	return p.turn
+// ---------- notification sink plumbing ----------
+
+// setSink installs the notification sink for one run and returns the previous
+// one so it can be restored. Nested runs on one registry are not supported;
+// the engine gives every conversation its own registry.
+func (r *Registry) setSink(fn Callback) Callback {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	prev := r.notify
+	r.notify = fn
+	return prev
 }
 
-// streamCfg carries per-run streaming wiring.
-type streamCfg struct {
-	pumps map[string]*msgPump
-	mu    sync.Mutex
+func (r *Registry) sink() Callback {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.notify
 }
 
-func (s *streamCfg) pump(agentID string) *msgPump {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	p, ok := s.pumps[agentID]
-	if !ok {
-		p = &msgPump{}
-		s.pumps[agentID] = p
+// emit delivers one notification to the current sink (no-op when headless).
+func (r *Registry) emit(n Notification) {
+	if cb := r.sink(); cb != nil {
+		cb(n)
 	}
-	return p
 }
 
-// summarize truncates tool output for notifications.
+// ---------- event mapping ----------
+
+// summarize truncates tool output for notifications, collapsing newlines so a
+// single-line UI row stays a single line.
 func summarize(s string, n int) string {
 	s = strings.ReplaceAll(s, "\n", " ")
-	if len(s) > n {
-		return s[:n] + "…"
+	r := []rune(s)
+	if len(r) > n {
+		return string(r[:n]) + "…"
 	}
 	return s
 }
 
-// emitEvent converts one agent event into UI notifications. Streaming events
-// produce accumulated deltas; complete events produce canonical
-// message/tool notifications.
-func (r *Registry) emitEvent(cb Callback, role, agentID string, sc *streamCfg, ev *adk.AgentEvent) {
-	if cb == nil || ev == nil || ev.Err != nil {
+// emitComplete maps one NON-streaming agent event to notifications. Streamed
+// assistant messages are handled by streamAcc (the single stream reader);
+// this path covers tool results and models that do not stream.
+func (r *Registry) emitComplete(role, agentID string, ev *adk.AgentEvent) {
+	if ev == nil || ev.Err != nil {
 		return
 	}
 	o := ev.Output
-	if o == nil || o.MessageOutput == nil {
+	if o == nil || o.MessageOutput == nil || o.MessageOutput.IsStreaming {
 		return
 	}
-
-	// worker events are drained by the swarm goroutine (single reader), which
-	// then calls OnEvent with complete per-chunk data; nothing to do here.
-	if o.MessageOutput.IsStreaming {
-		return
-	}
-
-	// complete-message path
 	msg := o.MessageOutput.Message
 	if msg == nil {
 		return
 	}
-	p := sc.pump(agentID)
 	switch msg.Role {
 	case schema.Assistant:
-		// Worker synthetic events (from the Spawn drain loop) arrive per
-		// chunk: reasoning chunks carry ReasoningContent, answer chunks carry
-		// accumulated Content. Route them to the right accumulators WITHOUT
-		// emitting turn/agent_message spam — the swarm goroutine emits a real
-		// turn boundary via NotifyFinished/NotifyDelta already.
-		if msg.ReasoningContent != "" && msg.Content == "" {
-			if acc, changed := p.reasoningDelta(msg.ReasoningContent); changed {
-				cb(Notification{Kind: NotifyReasoningDelta, AgentID: agentID, Role: role, Text: acc})
-			}
-			return
-		}
-		if msg.ToolCalls == nil && msg.Content != "" {
-			// accumulated answer chunk — emit as delta, not as final message
-			if acc, changed := p.delta(msg.Content); changed {
-				cb(Notification{Kind: NotifyDelta, AgentID: agentID, Role: role, Text: acc})
-			}
-			return
-		}
-		// real turn boundary (manager path or a worker's merged tool calls)
-		turnN := p.nextTurn()
-		cb(Notification{Kind: NotifyTurn, AgentID: agentID, Role: role,
-			Text: fmt.Sprintf("turn %d", turnN)})
-		if c := strings.TrimSpace(msg.Content); c != "" {
-			cb(Notification{Kind: NotifyAgentMessage, AgentID: agentID, Role: role, Text: c})
+		if c := strings.TrimSpace(msg.Content); c != "" && len(msg.ToolCalls) == 0 {
+			r.emit(Notification{Kind: NotifyAgentMessage, AgentID: agentID, Role: role, Text: c})
 		}
 		for _, tc := range mergeStreamedToolCalls(msg.ToolCalls) {
-			cb(Notification{Kind: NotifyToolCall, AgentID: agentID, Role: role,
-				Text: tc.Function.Name + "(" + tc.Function.Arguments + ")"})
+			r.emit(Notification{Kind: NotifyToolCall, AgentID: agentID, Role: role,
+				Text: tc.Function.Name + "(" + tc.Function.Arguments + ")", ToolCallID: tc.ID})
 		}
 	case schema.Tool:
-		cb(Notification{Kind: NotifyToolResult, AgentID: agentID, Role: role,
-			Text: summarize(msg.Content, 160)})
+		r.emit(Notification{Kind: NotifyToolResult, AgentID: agentID, Role: role,
+			Text: summarize(msg.Content, 400), ToolCallID: msg.ToolCallID})
 	}
 }
 
@@ -241,16 +217,23 @@ func (r *Registry) emitEvent(cb Callback, role, agentID string, sc *streamCfg, e
 // complete calls (keyed by Index when set, else by ID). Returns one entry per
 // actual call with fully concatenated name/arguments, in first-appearance order.
 func mergeStreamedToolCalls(chunks []schema.ToolCall) []schema.ToolCall {
+	if len(chunks) == 0 {
+		return nil
+	}
 	byKey := map[string]*schema.ToolCall{}
 	order := make([]string, 0, len(chunks))
 	for _, c := range chunks {
 		key := c.ID
 		if c.Index != nil {
-			key = fmt.Sprintf("i%d", *c.Index)
+			key = "i" + itoa(*c.Index)
 		}
 		e, ok := byKey[key]
 		if !ok {
 			cp := c
+			// Arguments start empty and are concatenated below, including the
+			// fragment this very chunk carries — otherwise the first chunk's
+			// fragment lands in the buffer twice.
+			cp.Function.Arguments = ""
 			byKey[key] = &cp
 			e = &cp
 			order = append(order, key)
@@ -274,197 +257,144 @@ func mergeStreamedToolCalls(chunks []schema.ToolCall) []schema.ToolCall {
 	return out
 }
 
-// Run is the entire integration surface: it wires the manager agent (with the
-// four lifecycle tools and fork_context middleware), runs EVERY agent in
-// streaming mode, converts Ctrl+C into context cancellation that cascades to
-// every spawned agent, and drives ui with lifecycle + stream events. It
-// blocks until the run ends and returns the manager's final answer.
-//
-// ui may be:
-//   - nil                        (headless run)
-//   - a Callback func(Notification) (CLI printing, tests)
-//   - any UI implementation      (bubbletea TUI, web UI, logger…)
-//
-// Run blocks until the run ends and returns the manager's final answer.
-//
-// ui may be:
-//   - nil                                  (headless run)
-//   - a Callback / func(Notification)      (CLI printing, tests)
-//   - any UI implementation                (bubbletea TUI, web UI, logger…)
-func (r *Registry) Run(ctx context.Context, task string, ui any) (string, error) {
-	return r.runUI(ctx, task, ui)
+// itoa avoids pulling strconv into the hot merge path's import set purely for
+// one small conversion.
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	neg := i < 0
+	if neg {
+		i = -i
+	}
+	var buf [20]byte
+	p := len(buf)
+	for i > 0 {
+		p--
+		buf[p] = byte('0' + i%10)
+		i /= 10
+	}
+	if neg {
+		p--
+		buf[p] = '-'
+	}
+	return string(buf[p:])
 }
 
-// RunWithCallback is Run for plain function UIs.
-func (r *Registry) RunWithCallback(ctx context.Context, task string, cb Callback) (string, error) {
-	return r.runUI(ctx, task, cb)
+// ---------- streaming accumulator ----------
+
+// streamAcc drains ONE assistant message stream for one agent. It owns that
+// agent's per-turn reasoning/answer accumulators, so NotifyDelta text is
+// correct regardless of how the provider chunks the stream, and it resets them
+// at every turn boundary. Both the manager loop and each worker goroutine own
+// one instance per agent for the whole run.
+type streamAcc struct {
+	reg     *Registry
+	agentID string
+	role    string
+	handle  *Handle // optional: keeps a worker's activity tail fresh
+
+	// rawEvents also forwards synthetic per-chunk events to Registry.OnEvent,
+	// which is the raw (non-UI) hook workers have always exposed.
+	rawEvents bool
+
+	mu     sync.Mutex
+	turn   int
+	answer strings.Builder
+	reason strings.Builder
 }
 
-// asUI normalizes the three accepted UI forms (nil / Callback / UI) into one
-// internal sink: an OnNotify func plus an OnDone hook.
-func asUI(v any) (cb Callback, done func(final string, err error)) {
-	switch u := v.(type) {
-	case nil:
-		return nil, nil
-	case Callback:
-		return u, func(final string, err error) { u(doneNotif(final, err)) }
-	case func(Notification):
-		return Callback(u), func(final string, err error) { u(doneNotif(final, err)) }
-	case UI:
-		return u.OnNotify, u.OnDone
-	default:
-		// unknown type: accept nothing silently — callers pass the wrong
-		// type only by mistake; a compile-time UI/Callback is expected.
-		return nil, nil
-	}
-}
+// drain consumes st to EOF, emitting notifications as chunks arrive, and
+// returns the turn's accumulated answer text plus its merged tool calls. A
+// turn with no tool calls is the agent's answer; a turn with tool calls is an
+// interim step whose text is commentary.
+func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []schema.ToolCall) {
+	s.beginTurn()
 
-func doneNotif(final string, err error) Notification {
-	if err != nil {
-		return Notification{Kind: NotifyError, AgentID: DefaultManagerID, Text: final, Err: err}
-	}
-	return Notification{Kind: NotifyDone, AgentID: DefaultManagerID, Text: final}
-}
-
-func (r *Registry) runUI(ctx context.Context, task string, ui any) (string, error) {
-	cb, done := asUI(ui)
-	final, err := r.run(ctx, task, cb)
-	if done != nil {
-		done(final, err)
-	}
-	return final, err
-}
-
-func (r *Registry) run(ctx context.Context, task string, cb Callback) (string, error) {
-	if r.ModelBuilder == nil {
-		return "", fmt.Errorf("swarm: ModelBuilder is required")
-	}
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	sc := &streamCfg{pumps: map[string]*msgPump{}}
-
-	shared := r.ModelBuilder(DefaultManagerID, DefaultManagerID)
-	mgr, err := adk.NewChatModelAgent(ctx, r.ManagerConfig(
-		DefaultManagerID, "swarm manager", shared,
-		WithInstruction(task),
-	))
-	if err != nil {
-		return "", err
-	}
-
-	// OnEvent fan-out: worker (Spawn path) events -> notifications.
-	prev := r.OnEvent
-	r.OnEvent = func(role, agentID string, ev *adk.AgentEvent) {
-		if prev != nil {
-			prev(role, agentID, ev)
-		}
-		r.emitEvent(cb, role, agentID, sc, ev)
-	}
-	defer func() { r.OnEvent = prev }()
-
-	// spawn/finish notifications via Spawn/SpawnForked hook points
-	baseSpawn := r.spawnHook
-	r.spawnHook = func(role, agentID string) {
-		if baseSpawn != nil {
-			baseSpawn(role, agentID)
-		}
-		if cb != nil {
-			cb(Notification{Kind: NotifySpawned, AgentID: agentID, Role: role, Text: role})
-		}
-	}
-	baseFinish := r.finishHook
-	r.finishHook = func(role, agentID, result string, err error) {
-		if baseFinish != nil {
-			baseFinish(role, agentID, result, err)
-		}
-		if cb != nil {
-			cb(Notification{Kind: NotifyFinished, AgentID: agentID, Role: role, Text: result, Err: err})
-		}
-	}
-	defer func() { r.spawnHook, r.finishHook = nil, nil }()
-
-	// manager runner in STREAMING mode — no per-agent blocking generation that
-	// can hit gateway idle timeouts on long answers.
-	//
-	// In streaming mode eino delivers each assistant message ONLY as a
-	// MessageStream; there is no separate complete-message event. So: drain
-	// each stream into the pump (emitting accumulated deltas), and when a
-	// manager stream ends without tool calls the accumulated text is the
-	// final answer.
-	var final string
-	sawFinal := false
-	iter := adk.NewRunner(ctx, adk.RunnerConfig{Agent: mgr, EnableStreaming: true}).
-		Run(ctx, []adk.Message{schema.UserMessage(task)})
+	var chunks []schema.ToolCall
 	for {
-		ev, ok := iter.Next()
-		if !ok {
-			break
+		chunk, err := st.Recv()
+		if err != nil {
+			break // io.EOF or canceled; accumulation complete
 		}
-		if ev == nil {
+		if chunk == nil {
 			continue
 		}
-		if ev.Err != nil {
-			if cb != nil {
-				cb(Notification{Kind: NotifyError, AgentID: DefaultManagerID, Err: ev.Err})
-			}
-			return "", ev.Err
+		if rc := chunk.ReasoningContent; rc != "" {
+			s.touch(lastLine(rc))
+			s.emit(Notification{Kind: NotifyReasoningDelta, Text: s.addReasoning(rc)})
+			s.raw(&schema.Message{Role: schema.Assistant, ReasoningContent: rc})
 		}
-		o := ev.Output
-		if o == nil || o.MessageOutput == nil {
-			continue
+		if c := chunk.Content; c != "" {
+			s.touch(lastLine(c))
+			acc := s.addAnswer(c)
+			s.emit(Notification{Kind: NotifyDelta, Text: acc})
+			s.raw(&schema.Message{Role: schema.Assistant, Content: acc})
 		}
-		if o.MessageOutput.IsStreaming && o.MessageOutput.MessageStream != nil {
-			p := sc.pump(DefaultManagerID)
-			var toolCalls []schema.ToolCall
-			for {
-				chunk, err := o.MessageOutput.MessageStream.Recv()
-				if err != nil {
-					break // io.EOF or canceled; accumulation complete
-				}
-				if chunk == nil {
-					continue
-				}
-				if rc := chunk.ReasoningContent; rc != "" {
-					if acc, changed := p.reasoningDelta(rc); changed && cb != nil {
-						cb(Notification{Kind: NotifyReasoningDelta, AgentID: DefaultManagerID, Text: acc})
-					}
-				}
-				if c := chunk.Content; c != "" {
-					if acc, changed := p.delta(c); changed && cb != nil {
-						cb(Notification{Kind: NotifyDelta, AgentID: DefaultManagerID, Text: acc})
-					}
-				}
-				if len(chunk.ToolCalls) > 0 {
-					toolCalls = append(toolCalls, chunk.ToolCalls...)
-				}
-			}
-			// turn boundary: flush pump. Tool calls => turn continues;
-			// otherwise this stream was the final answer.
-			p.mu.Lock()
-			acc := p.sb.String()
-			p.sb.Reset()
-			p.mu.Unlock()
-			if len(toolCalls) > 0 {
-				if cb != nil {
-					for _, tc := range mergeStreamedToolCalls(toolCalls) {
-						cb(Notification{Kind: NotifyToolCall, AgentID: DefaultManagerID,
-							Text: tc.Function.Name + "(" + tc.Function.Arguments + ")"})
-					}
-				}
-				continue
-			}
-			if strings.TrimSpace(acc) != "" {
-				final = acc
-				sawFinal = true
-				if cb != nil {
-					cb(Notification{Kind: NotifyAgentMessage, AgentID: DefaultManagerID, Text: final})
-				}
-			}
+		if len(chunk.ToolCalls) > 0 {
+			chunks = append(chunks, chunk.ToolCalls...)
 		}
 	}
-	if cb != nil && sawFinal {
-		cb(Notification{Kind: NotifyDone, AgentID: DefaultManagerID, Text: final})
+
+	calls := mergeStreamedToolCalls(chunks)
+	answer := s.answerText()
+	for _, tc := range calls {
+		s.touch(tc.Function.Name + "(" + truncStr(tc.Function.Arguments, 80) + ")")
+		s.emit(Notification{Kind: NotifyToolCall, ToolCallID: tc.ID,
+			Text: tc.Function.Name + "(" + tc.Function.Arguments + ")"})
+		s.raw(&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{tc}})
 	}
-	return final, nil
+	if len(calls) == 0 && strings.TrimSpace(answer) != "" {
+		s.emit(Notification{Kind: NotifyAgentMessage, Text: answer})
+	}
+	return answer, calls
+}
+
+func (s *streamAcc) beginTurn() {
+	s.mu.Lock()
+	s.turn++
+	turn := s.turn
+	s.answer.Reset()
+	s.reason.Reset()
+	s.mu.Unlock()
+	s.emit(Notification{Kind: NotifyTurn, Text: "turn " + itoa(turn)})
+}
+
+func (s *streamAcc) addAnswer(chunk string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.answer.WriteString(chunk)
+	return s.answer.String()
+}
+
+func (s *streamAcc) addReasoning(chunk string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.reason.WriteString(chunk)
+	return s.reason.String()
+}
+
+func (s *streamAcc) answerText() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.answer.String()
+}
+
+func (s *streamAcc) emit(n Notification) {
+	n.AgentID = s.agentID
+	n.Role = s.role
+	s.reg.emit(n)
+}
+
+func (s *streamAcc) touch(tail string) {
+	if s.handle != nil {
+		s.handle.setActivity(tail)
+	}
+}
+
+func (s *streamAcc) raw(msg *schema.Message) {
+	if !s.rawEvents || s.reg.OnEvent == nil {
+		return
+	}
+	s.reg.OnEvent(s.role, s.agentID, adk.EventFromMessage(msg, nil, schema.Assistant, ""))
 }

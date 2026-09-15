@@ -73,6 +73,12 @@ func (h *Handle) Activity() string {
 	return h.activity
 }
 
+func (h *Handle) setActivity(s string) {
+	h.mu.Lock()
+	h.activity = s
+	h.mu.Unlock()
+}
+
 // Result returns the agent's final message and error once it has finished.
 // finished is false while the agent is still running.
 func (h *Handle) Result() (result string, err error, finished bool) {
@@ -135,8 +141,17 @@ type Registry struct {
 	semOnce sync.Once
 	semCh   chan struct{}
 
-	// hist snapshots the manager conversation for spawn_agent(fork_context).
+	// hist snapshots the manager conversation for spawn_agent(fork_context)
+	// and for RunResult.Transcript. ManagerMiddleware keeps it fresh.
 	hist []adk.Message
+
+	// mgrInbox holds steering messages for the manager agent, drained by
+	// ManagerMiddleware at the manager's next turn boundary.
+	mgrInbox []string
+
+	// notify is the semantic notification sink installed for the duration of
+	// one Run/RunWith. Worker goroutines emit through it.
+	notify Callback
 
 	// MaxConcurrent caps simultaneously running sub-agents (<=0 means 8).
 	MaxConcurrent int
@@ -203,8 +218,34 @@ func (r *Registry) historySnapshot() []adk.Message {
 	return out
 }
 
+// SteerManager queues a steering message for the manager agent. Like
+// send_message to a worker it lands at the manager's next turn boundary,
+// never interrupting an in-flight model call or tool execution. It reports
+// false when the registry is closed (nothing is running to steer).
+func (r *Registry) SteerManager(text string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return false
+	}
+	r.mgrInbox = append(r.mgrInbox, text)
+	return true
+}
+
+func (r *Registry) drainManagerInbox() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.mgrInbox) == 0 {
+		return nil
+	}
+	out := r.mgrInbox
+	r.mgrInbox = nil
+	return out
+}
+
 // historyRecorder keeps the registry's snapshot of the manager conversation
-// fresh each turn so spawned agents can inherit it.
+// fresh each turn (so spawned agents can inherit it and RunWith can return it
+// as a transcript) and drains queued manager steering messages.
 type historyRecorder struct {
 	adk.BaseChatModelAgentMiddleware
 	reg *Registry
@@ -213,13 +254,28 @@ type historyRecorder struct {
 func (m *historyRecorder) BeforeModelRewriteState(ctx context.Context,
 	state *adk.ChatModelAgentState, mc *adk.TypedModelContext[*schema.Message],
 ) (context.Context, *adk.ChatModelAgentState, error) {
+	for _, msg := range m.reg.drainManagerInbox() {
+		state.Messages = append(state.Messages, schema.UserMessage("[steer] "+msg))
+	}
+	m.reg.SetHistory(state.Messages)
+	return ctx, state, nil
+}
+
+// AfterModelRewriteState re-snapshots the conversation once the model result
+// has been appended, so the recorded history includes the assistant message
+// the manager just produced — that is what makes the snapshot usable as the
+// run's full transcript.
+func (m *historyRecorder) AfterModelRewriteState(ctx context.Context,
+	state *adk.ChatModelAgentState, mc *adk.TypedModelContext[*schema.Message],
+) (context.Context, *adk.ChatModelAgentState, error) {
 	m.reg.SetHistory(state.Messages)
 	return ctx, state, nil
 }
 
 // ManagerMiddleware returns the middleware to install on the manager agent
 // (adk.ChatModelAgentConfig.Handlers) so spawn_agent(fork_context=true) can
-// inherit the manager's conversation so far — Codex's fork_turns.
+// inherit the manager's conversation so far — Codex's fork_turns — and so
+// SteerManager messages are delivered at turn boundaries.
 func (r *Registry) ManagerMiddleware() adk.ChatModelAgentMiddleware {
 	return &historyRecorder{reg: r}
 }
@@ -304,6 +360,7 @@ func (r *Registry) Spawn(ctx context.Context, role, task string,
 		}
 		runner := adk.NewRunner(watchCtx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
 		iter := runner.Run(watchCtx, []adk.Message{schema.UserMessage(task)})
+		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true}
 		final := ""
 		for {
 			ev, ok := iter.Next()
@@ -328,65 +385,27 @@ func (r *Registry) Spawn(ctx context.Context, role, task string,
 				h.mu.Unlock()
 				return
 			}
-			// the worker's stream is drained HERE (single reader); each chunk
-			// updates handle activity (progress for wait_agents) and is
-			// forwarded to OnEvent as a complete synthetic event.
+			// The worker's stream is drained HERE (single reader): streamAcc
+			// accumulates it, keeps the handle's activity tail fresh for
+			// wait_agents, and emits notifications plus synthetic OnEvent
+			// events. A stream that ends without tool calls is the worker's
+			// answer; a stream with tool calls is an interim turn.
 			o := ev.Output
 			if o != nil && o.MessageOutput != nil &&
 				o.MessageOutput.IsStreaming && o.MessageOutput.MessageStream != nil {
-				var tchunks []schema.ToolCall
-				for {
-					chunk, err := o.MessageOutput.MessageStream.Recv()
-					if err != nil {
-						break
-					}
-					if chunk == nil {
-						continue
-					}
-					if rc := chunk.ReasoningContent; rc != "" {
-						h.mu.Lock()
-						h.activity = lastLine(rc)
-						h.mu.Unlock()
-						if r.OnEvent != nil {
-							r.OnEvent(role, id, adk.EventFromMessage(
-								&schema.Message{Role: schema.Assistant, ReasoningContent: rc}, nil,
-								schema.Assistant, ""))
-						}
-					}
-					if c := chunk.Content; c != "" {
-						final += c
-						h.mu.Lock()
-						h.activity = lastLine(c)
-						h.mu.Unlock()
-						if r.OnEvent != nil {
-							r.OnEvent(role, id, adk.EventFromMessage(
-								&schema.Message{Role: schema.Assistant, Content: final}, nil,
-								schema.Assistant, ""))
-						}
-					}
-					if len(chunk.ToolCalls) > 0 {
-						tchunks = append(tchunks, chunk.ToolCalls...)
-					}
-				}
-				for _, tc := range mergeStreamedToolCalls(tchunks) {
-					summary := tc.Function.Name + "(" + truncStr(tc.Function.Arguments, 80) + ")"
-					h.mu.Lock()
-					h.activity = summary
-					h.mu.Unlock()
-					if r.OnEvent != nil {
-						r.OnEvent(role, id, adk.EventFromMessage(
-							&schema.Message{Role: schema.Assistant,
-								ToolCalls: []schema.ToolCall{tc}}, nil,
-							schema.Assistant, ""))
-					}
+				answer, calls := acc.drain(o.MessageOutput.MessageStream)
+				if len(calls) == 0 && strings.TrimSpace(answer) != "" {
+					final = answer
 				}
 				continue
 			}
 			if r.OnEvent != nil {
 				r.OnEvent(role, id, ev)
 			}
+			r.emitComplete(role, id, ev)
 			if o != nil && o.MessageOutput != nil && !o.MessageOutput.IsStreaming &&
-				o.MessageOutput.Message != nil && o.MessageOutput.Message.Role == schema.Assistant {
+				o.MessageOutput.Message != nil && o.MessageOutput.Message.Role == schema.Assistant &&
+				len(o.MessageOutput.Message.ToolCalls) == 0 {
 				final = o.MessageOutput.Message.Content
 			}
 		}

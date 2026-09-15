@@ -522,18 +522,27 @@ func TestRunCallbackSurface(t *testing.T) {
 	if len(notes) == 0 || notes[len(notes)-1].Kind != NotifyDone {
 		t.Fatalf("missing NotifyDone: %+v", notes)
 	}
-	// streaming order: delta(s) first (accumulated text), then the final
-	// agent_message, then done.
-	if notes[0].Kind != NotifyDelta || notes[0].AgentID != DefaultManagerID {
-		t.Fatalf("first notification should be a manager delta: %+v", notes[0])
+	// streaming order: the turn boundary opens the turn, then accumulated
+	// delta(s), then the sealed agent_message, then exactly one done.
+	if notes[0].Kind != NotifyTurn || notes[0].AgentID != DefaultManagerID {
+		t.Fatalf("first notification should be a manager turn: %+v", notes[0])
 	}
-	var sawMsg bool
+	if notes[1].Kind != NotifyDelta || notes[1].AgentID != DefaultManagerID {
+		t.Fatalf("second notification should be a manager delta: %+v", notes[1])
+	}
+	var sawMsg, dones int
 	for _, n := range notes {
 		if n.Kind == NotifyAgentMessage && n.AgentID == "manager" && n.Text == "MANAGER-SAYS-HI" {
-			sawMsg = true
+			sawMsg++
+		}
+		if n.Kind == NotifyDone {
+			dones++
 		}
 	}
-	if !sawMsg {
-		t.Fatalf("missing final agent_message: %+v", notes)
+	if sawMsg != 1 {
+		t.Fatalf("want exactly one final agent_message, got %d: %+v", sawMsg, notes)
+	}
+	if dones != 1 {
+		t.Fatalf("want exactly one NotifyDone, got %d: %+v", dones, notes)
 	}
 }
