@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
@@ -50,9 +49,7 @@ func runConfig(args []string) error {
 		}
 		fmt.Printf("# %s\n%s", cfg.Path(), redactKeys(string(raw)))
 	default:
-		fmt.Fprintf(os.Stderr, "zwai config: unknown subcommand %q\n", sub)
-		fmt.Fprintln(os.Stderr, "usage: zwai config [path|init|show]")
-		os.Exit(2)
+		return usageError{fmt.Sprintf("unknown config subcommand %q\nusage: zwai config [path|init|show]", sub)}
 	}
 	return nil
 }

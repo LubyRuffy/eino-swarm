@@ -91,11 +91,11 @@ func (p *Pool) Resolve(id string) (config.Provider, error) {
 	}
 	if p.mock {
 		// Offline runs are usually against an unconfigured provider, and a
-		// turn recorded with a blank model name is unreadable in a trace.
+		// turn recorded with a blank model name is unreadable in a trace. The
+		// label is overwritten too: nothing here reaches the configured
+		// endpoint, so naming it after that endpoint would be a lie.
 		prov.Model = MockModelName
-		if prov.Label == "" {
-			prov.Label = "Offline (scripted)"
-		}
+		prov.Label = "Offline (scripted)"
 	}
 	return prov, nil
 }
@@ -108,6 +108,11 @@ const MockModelName = "mock"
 func (p *Pool) List() []Info {
 	out := make([]Info, 0, len(p.cfg.Models.Providers))
 	for _, prov := range p.cfg.Models.Providers {
+		// Resolve rather than read the config directly, so an offline run
+		// names itself the same way here as it does in a stored turn.
+		if resolved, err := p.Resolve(prov.ID); err == nil {
+			prov = resolved
+		}
 		out = append(out, Info{
 			ID:    prov.ID,
 			Label: prov.DisplayName(),

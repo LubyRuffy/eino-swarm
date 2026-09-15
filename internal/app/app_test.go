@@ -1,14 +1,19 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/server"
+	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
 func swapLaunch(t *testing.T) *[]string {
@@ -148,5 +153,150 @@ func TestOpenURLPicksAPlatformCommand(t *testing.T) {
 	}
 	if (*got)[0] != want {
 		t.Fatalf("on %s the browser opens with %q, want %q", runtime.GOOS, (*got)[0], want)
+	}
+}
+
+// Serve and Shutdown are the process lifecycle: a request has to be answered
+// while it runs, and the database has to be closed when it stops.
+func TestServeAnswersRequestsThenShutsDown(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	a, err := New(Options{DataDir: t.TempDir(), Addr: "127.0.0.1:0",
+		Mock: true, NoAssets: true, Mode: server.ModeDesktop, Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	url, err := a.Listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	served := make(chan error, 1)
+	go func() { served <- a.Serve() }()
+
+	res, err := http.Get(url + "/api/meta")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), server.ModeDesktop) {
+		t.Fatalf("meta says %d %s", res.StatusCode, body)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	a.Shutdown(ctx)
+
+	select {
+	case err := <-served:
+		// a clean shutdown is not an error the caller has to handle
+		if err != nil {
+			t.Fatalf("Serve returned %v after a clean shutdown", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve did not return after Shutdown")
+	}
+	// shutting down twice must not panic on an already closed database
+	a.Shutdown(ctx)
+}
+
+// Serve with no prior Listen binds on demand, which is the shape `zwai web`
+// uses when it does not need the URL up front.
+func TestServeBindsOnDemand(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	a, err := New(Options{DataDir: t.TempDir(), Addr: "127.0.0.1:0", Mock: true, NoAssets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.URL() != "" {
+		t.Fatal("an unbound app must not claim a URL")
+	}
+	done := make(chan error, 1)
+	go func() { done <- a.Serve() }()
+	deadline := time.Now().Add(5 * time.Second)
+	for a.URL() == "" && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if a.URL() == "" {
+		t.Fatal("Serve never bound a port")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	a.Shutdown(ctx)
+	if err := <-done; err != nil {
+		t.Fatalf("Serve: %v", err)
+	}
+}
+
+// A crash leaves turns marked running. The next start has to close them, or
+// the sidebar shows a conversation working forever.
+func TestNewClosesTurnsLeftRunningByAPreviousProcess(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	dir := t.TempDir()
+
+	first, err := New(Options{DataDir: dir, Addr: "127.0.0.1:0", Mock: true, NoAssets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := first.Engine.CreateThread("left over", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Store.CreateTurn(&store.Turn{ThreadID: th.ID, UserText: "in flight"}); err != nil {
+		t.Fatal(err)
+	}
+	_ = first.Store.Close()
+
+	second, err := New(Options{DataDir: dir, Addr: "127.0.0.1:0", Mock: true, NoAssets: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { second.Engine.Shutdown(); _ = second.Store.Close() }()
+	turns, err := second.Store.ListTurns(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 1 || turns[0].Status != store.TurnCancelled {
+		t.Fatalf("stale turn not closed: %+v", turns)
+	}
+}
+
+// The default build serves the embedded bundle, and a URL bound to every
+// interface is reported as a loopback one a browser can actually open.
+func TestNewServesTheEmbeddedBundleAndReportsALoopbackURL(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	a, err := New(Options{DataDir: t.TempDir(), Addr: "0.0.0.0:0", Mock: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { a.Engine.Shutdown(); _ = a.Store.Close() }()
+	url, err := a.Listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(url, "http://127.0.0.1:") {
+		t.Fatalf("url=%q: a wildcard bind must be reported as loopback", url)
+	}
+}
+
+// A database that cannot be opened has to stop startup, not surface later as a
+// broken conversation list.
+func TestNewReportsAnUnusableDatabase(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "zwai.db"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Options{DataDir: dir, Mock: true, NoAssets: true}); err == nil {
+		t.Fatal("a directory where the database belongs should fail at startup")
 	}
 }

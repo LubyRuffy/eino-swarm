@@ -654,3 +654,28 @@ func TestRunOneShotStillWorks(t *testing.T) {
 		t.Fatal("Run did not return")
 	}
 }
+
+// Steering that arrives after the manager's last model call is never read by
+// the middleware. It must still be recoverable, so the caller can decide to run
+// it rather than lose what the user typed.
+func TestPendingSteersSurviveARunThatNeverReadsThem(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &chunkedModel{turns: []turnScript{{content: []string{"done here"}}}}
+	}
+	if _, err := reg.RunWith(context.Background(),
+		RunConfig{Instruction: "x", Task: "go"}, nil); err != nil {
+		t.Fatalf("RunWith: %v", err)
+	}
+	// queued after the only model call, so nothing will ever drain it
+	if !reg.SteerManager("also mention the caveats") {
+		t.Fatal("SteerManager refused on a live registry")
+	}
+	pending := reg.TakePendingSteers()
+	if len(pending) != 1 || pending[0] != "also mention the caveats" {
+		t.Fatalf("pending steers lost: %+v", pending)
+	}
+	if left := reg.TakePendingSteers(); len(left) != 0 {
+		t.Fatalf("taking twice returned %+v", left)
+	}
+}

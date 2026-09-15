@@ -34,29 +34,26 @@ func Run(ctx context.Context, reg *swarm.Registry, task string) {
 	tm.notifications = notifCh
 
 	finalModel, progErr := tea.NewProgram(tm, tea.WithAltScreen()).Run()
-	_ = progErr
+	if progErr != nil {
+		fmt.Fprintln(os.Stderr, "error:", progErr)
+	}
 	// altscreen restored: print a durable transcript so the run output
 	// survives after exit.
-	if fm, ok := finalModel.(swarmTUI); ok && fm.finErr != nil {
-		fmt.Fprintln(os.Stderr, "error:", fm.finErr)
+	final := finalOf(tm, finalModel)
+	fmt.Println()
+	fmt.Println(final.DumpTranscript())
+	if final.finErr != nil {
+		fmt.Fprintln(os.Stderr, "error:", final.finErr)
 		os.Exit(1)
 	}
-	fmt.Println()
-	fmt.Println(tm.DumpTranscript())
 }
 
-func envOr(k, d string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
+// finalOf picks which model to print. bubbletea works on copies of the model,
+// so a worker spawned mid-run only exists on the one it hands back; printing
+// the model we started with would lose every worker.
+func finalOf(started swarmTUI, ended tea.Model) swarmTUI {
+	if fm, ok := ended.(swarmTUI); ok {
+		return fm
 	}
-	return d
-}
-
-func firstEnv(keys ...string) string {
-	for _, k := range keys {
-		if v := os.Getenv(k); v != "" {
-			return v
-		}
-	}
-	return ""
+	return started
 }

@@ -482,6 +482,102 @@ func TestDispatchReportsUnknownCommands(t *testing.T) {
 	}
 }
 
+// A failed turn is the reason people reach for trace, so the failure has to be
+// in the output — the turn's error, the failing model call, and an event that
+// belongs to the run rather than to an agent.
+func TestTraceShowsWhatWentWrong(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "zwai.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := &store.Thread{Title: "Broken"}
+	if err := st.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	first := &store.Turn{ThreadID: th.ID, UserText: "first"}
+	if err := st.CreateTurn(first); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishTurn(first.ID, store.TurnDone, "fine", ""); err != nil {
+		t.Fatal(err)
+	}
+	second := &store.Turn{ThreadID: th.ID, UserText: "second"}
+	if err := st.CreateTurn(second); err != nil {
+		t.Fatal(err)
+	}
+	// so the recorded duration rounds to something rather than nothing
+	time.Sleep(2 * time.Millisecond)
+	// an event with no agent behind it: the engine's own bookkeeping
+	if err := st.AppendEvent(&store.Event{ThreadID: th.ID, TurnID: second.ID,
+		Kind: "cleanup", Text: "cancelled at turn end"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AppendLLMCall(&store.LLMCall{ThreadID: th.ID, TurnID: second.ID,
+		AgentID: "manager", Model: "some-model", DurationMS: 90,
+		Err: "the endpoint returned 429"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishTurn(second.ID, store.TurnError, "", "gave up after 429"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	out := captureStdout(t, func() {
+		if err := runTrace([]string{th.ID, "--data-dir", dir}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	for _, want := range []string{
+		first.ID, second.ID, // a conversation prints every turn, in order
+		"gave up after 429",                // the turn's own error, next to its status
+		"ERROR: the endpoint returned 429", // and the call that caused it
+		"cleanup",
+		"took", // a finished turn reports how long it took
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("trace is missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Index(out, first.ID) > strings.Index(out, second.ID) {
+		t.Fatalf("turns are out of order:\n%s", out)
+	}
+}
+
+// The data directory is a flag like any other: it has to work before the
+// subcommand as well as after it, and an unusable one has to be reported rather
+// than silently falling back to the real one.
+func TestConfigAcceptsTheDataDirBeforeTheSubcommand(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+
+	out := captureStdout(t, func() {
+		if err := runConfig([]string{"--data-dir", dir, "path"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if filepath.Dir(strings.TrimSpace(out)) != dir {
+		t.Fatalf("path=%q is not inside %q", strings.TrimSpace(out), dir)
+	}
+
+	// a file where the data directory should be: nothing can be written there
+	blocked := filepath.Join(dir, "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(blocked, "zwai")
+	if err := runConfig([]string{"show", "--data-dir", nested}); err == nil {
+		t.Fatal("an unusable data directory should be reported")
+	}
+	if err := runTrace([]string{"tn_1", "--data-dir", nested}); err == nil {
+		t.Fatal("trace should report an unusable data directory")
+	}
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	r, w, err := os.Pipe()
@@ -509,5 +605,65 @@ func captureStdout(t *testing.T, fn func()) string {
 	case <-time.After(10 * time.Second):
 		t.Fatal("timed out reading stdout")
 		return ""
+	}
+}
+
+// Typing the command wrong and the command failing are different things, and
+// scripts tell them apart by the exit code.
+func TestDispatchSeparatesMisuseFromFailure(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+
+	var out, errOut bytes.Buffer
+	if code := dispatch([]string{"config", "frobnicate", "--data-dir", dir}, &out, &errOut); code != 2 {
+		t.Fatalf("exit code %d, want 2 for a misspelt subcommand", code)
+	}
+	if !strings.Contains(errOut.String(), "zwai config [path|init|show]") {
+		t.Fatalf("stderr should list the subcommands:\n%s", errOut.String())
+	}
+}
+
+// --full is there for the events that matter most: a stack trace or a model
+// reply truncated to one line is useless when you are chasing a bug.
+func TestTraceFullKeepsLongTextIntact(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "zwai.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	th := &store.Thread{Title: "Long"}
+	if err := st.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	turn := &store.Turn{ThreadID: th.ID, UserText: "go"}
+	if err := st.CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	long := strings.TrimSpace(strings.Repeat("detail ", 60))
+	if err := st.AppendEvent(&store.Event{ThreadID: th.ID, TurnID: turn.ID,
+		Kind: "assistant_message", AgentID: "manager", Text: long}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	short := captureStdout(t, func() {
+		if err := runTrace([]string{turn.ID, "--data-dir", dir}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if strings.Contains(short, long) {
+		t.Fatal("without --full the event text should be shortened")
+	}
+	full := captureStdout(t, func() {
+		if err := runTrace([]string{turn.ID, "--full", "--data-dir", dir}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(full, long) {
+		t.Fatalf("--full dropped part of the text:\n%s", full)
 	}
 }

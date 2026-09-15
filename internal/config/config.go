@@ -190,7 +190,11 @@ func Default() *Config {
 			MaxTurns:             DefaultMaxTurns,
 			ManagerMaxIterations: DefaultManagerIterations,
 		},
-		Tools: ToolsConfig{WebSearchMaxResults: DefaultWebSearchResults},
+		Tools: ToolsConfig{
+			Disabled:            []string{},
+			Enabled:             []string{},
+			WebSearchMaxResults: DefaultWebSearchResults,
+		},
 		Log:   LogConfig{Level: DefaultLogLevel},
 	}
 }
@@ -310,6 +314,14 @@ func (c *Config) normalize() {
 	}
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults
+	}
+	// A nil slice marshals to JSON null, which the settings UI would have to
+	// guard on every read; keep the wire shape a list.
+	if c.Tools.Disabled == nil {
+		c.Tools.Disabled = []string{}
+	}
+	if c.Tools.Enabled == nil {
+		c.Tools.Enabled = []string{}
 	}
 	if strings.TrimSpace(c.Log.Level) == "" {
 		c.Log.Level = d.Log.Level

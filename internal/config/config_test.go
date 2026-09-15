@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,6 +154,30 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	}
 	if cfg.Models.Default != cfg.Models.Providers[0].ID {
 		t.Fatalf("default=%q", cfg.Models.Default)
+	}
+}
+
+// The settings UI reads the tool exception lists as arrays, so they must never
+// reach it as JSON null.
+func TestToolExceptionListsSerializeAsLists(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "config.yaml"), []byte("tools:\n  proxy:\n    http: \"\"\n"), 0o600); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	raw, err := json.Marshal(cfg.Tools)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if bytes.Contains(raw, []byte("null")) {
+		t.Fatalf("tools carry a null list: %s", raw)
+	}
+	if d := Default(); d.Tools.Disabled == nil || d.Tools.Enabled == nil {
+		t.Fatalf("defaults carry nil lists: %+v", d.Tools)
 	}
 }
 

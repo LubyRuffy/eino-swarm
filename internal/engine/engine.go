@@ -139,12 +139,15 @@ func (e *Engine) WorkspaceDir(threadID string) string {
 // Status is what the UI needs to render a conversation's header: whether it is
 // working, on which turn, and for how long.
 type Status struct {
-	ThreadID  string    `json:"thread_id"`
-	Running   bool      `json:"running"`
-	TurnID    string    `json:"turn_id,omitempty"`
-	StartedAt time.Time `json:"started_at,omitempty"`
-	ElapsedMS int64     `json:"elapsed_ms,omitempty"`
-	Workers   int       `json:"workers"`
+	ThreadID string `json:"thread_id"`
+	Running  bool   `json:"running"`
+	TurnID   string `json:"turn_id,omitempty"`
+	// A pointer because omitempty does nothing for a time.Time: a conversation
+	// that has never run would otherwise report the year 1, and a client that
+	// believes it computes an elapsed time two thousand years long.
+	StartedAt *time.Time `json:"started_at,omitempty"`
+	ElapsedMS int64      `json:"elapsed_ms,omitempty"`
+	Workers   int        `json:"workers"`
 }
 
 // Status reports a conversation's live state.

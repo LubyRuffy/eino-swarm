@@ -350,7 +350,7 @@ func dumpBlock(bld *strings.Builder, blk *block) {
 	case blockThinking:
 		fmt.Fprintf(bld, "\n%s%s\n", "💭 reasoning:", trunc(blk.thinkText, 400))
 	case blockTool:
-		line := "⚙ " + blk.toolName
+		line := blk.toolName
 		if blk.toolRes != "" {
 			line += " → " + firstLine(blk.toolRes)
 		}

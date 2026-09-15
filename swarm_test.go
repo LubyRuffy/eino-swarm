@@ -228,6 +228,207 @@ func TestCloseCancels(t *testing.T) {
 	}
 }
 
+// Wait and Cleanup are what a host uses to end a turn: wait for the workers it
+// asked for, then make sure nothing it forgot is left running.
+func TestWaitAndCleanupEndATurn(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &scriptedModel{turns: []func(int, []*schema.Message) *schema.Message{
+			func(turn int, msgs []*schema.Message) *schema.Message {
+				return schema.AssistantMessage("starting", []schema.ToolCall{rawCall("w1", "work", "{}")})
+			},
+			func(turn int, msgs []*schema.Message) *schema.Message {
+				return schema.AssistantMessage("DONE", nil)
+			},
+		}}
+	}
+
+	// nothing spawned yet: waiting must return at once rather than poll
+	if err := reg.Wait(context.Background(), time.Second); err != nil {
+		t.Fatalf("Wait with no agents: %v", err)
+	}
+
+	quick, err := reg.Spawn(context.Background(), "quick", "short work",
+		reg.ModelBuilder, &workTool{d: 20 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.Wait(context.Background(), 5*time.Second); err != nil {
+		t.Fatalf("Wait: %v", err)
+	}
+	if _, _, finished := quick.Result(); !finished {
+		t.Fatal("Wait returned while an agent was still running")
+	}
+
+	// a worker that outlives the turn: Wait reports the timeout rather than
+	// blocking for as long as the worker feels like taking
+	slow, err := reg.Spawn(context.Background(), "slow", "long work",
+		reg.ModelBuilder, &workTool{d: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = reg.Wait(context.Background(), 50*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "still running") {
+		t.Fatalf("Wait should report the agents it gave up on, got %v", err)
+	}
+
+	// a cancelled caller is not a timeout: it is the caller's own error
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := reg.Wait(ctx, time.Second); err == nil {
+		t.Fatal("Wait should return the caller's cancellation")
+	}
+
+	if killed := reg.Cleanup(); killed != 1 {
+		t.Fatalf("Cleanup killed %d agents, want 1", killed)
+	}
+	select {
+	case <-slow.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("Cleanup left an agent running")
+	}
+	// the registry stays usable: cleanup ends a turn, it does not end the swarm
+	if _, err := reg.Spawn(context.Background(), "after", "more work",
+		reg.ModelBuilder, &workTool{d: time.Millisecond}); err != nil {
+		t.Fatalf("Cleanup closed the registry: %v", err)
+	}
+	if killed := reg.Cleanup(); killed < 0 {
+		t.Fatal("Cleanup must not report a negative count")
+	}
+	reg.Close()
+}
+
+// The manager is a language model reading these results, so every failure has
+// to come back as something it can act on: which agent, and what went wrong.
+func TestLifecycleToolsReportFailuresToTheManager(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &scriptedModel{turns: []func(int, []*schema.Message) *schema.Message{
+			func(turn int, msgs []*schema.Message) *schema.Message {
+				return schema.AssistantMessage("starting", []schema.ToolCall{rawCall("w1", "work", "{}")})
+			},
+			func(turn int, msgs []*schema.Message) *schema.Message {
+				return schema.AssistantMessage("DONE", nil)
+			},
+		}}
+	}
+	tools := reg.Tools()
+	spawnT, sendT, waitT, closeT := invokable(t, tools[0]), invokable(t, tools[1]),
+		invokable(t, tools[2]), invokable(t, tools[3])
+	ctx := context.Background()
+
+	// malformed arguments are the model's mistake, and it has to be told which
+	// tool it got wrong
+	for name, it := range map[string]tool.InvokableTool{
+		"spawn_agent": spawnT, "send_message": sendT,
+		"wait_agents": waitT, "close_agent": closeT,
+	} {
+		_, err := it.InvokableRun(ctx, "{not json")
+		if err == nil || !strings.Contains(err.Error(), name) {
+			t.Fatalf("%s should name itself in the error, got %v", name, err)
+		}
+	}
+
+	// an id that does not exist: wait reports it per agent rather than failing
+	// the whole call, because the other ids in the same call are still useful
+	out, err := waitT.InvokableRun(ctx, `{"agent_ids":["ghost"],"timeout_s":1}`)
+	if err != nil {
+		t.Fatalf("wait_agents: %v", err)
+	}
+	if !strings.Contains(out, "unknown agent") {
+		t.Fatalf("wait_agents=%s", out)
+	}
+	if _, err := sendT.InvokableRun(ctx, `{"agent_id":"ghost","text":"hello"}`); err == nil {
+		t.Fatal("send_message to an unknown agent should fail")
+	}
+
+	// a worker that outlasts the wait: reported as still running, with whatever
+	// it was last doing, so the manager can decide to wait again or give up
+	slow, err := reg.Spawn(ctx, "slow", "long work", reg.ModelBuilder, &workTool{d: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err = waitT.InvokableRun(ctx, `{"agent_ids":["`+slow.ID+`"],"timeout_s":1}`)
+	if err != nil {
+		t.Fatalf("wait_agents: %v", err)
+	}
+	if !strings.Contains(out, "still running") {
+		t.Fatalf("a slow agent should be reported as such, got %s", out)
+	}
+	// the result field carries what it was last doing, not a finished answer
+	if !strings.Contains(out, `"result":"`) {
+		t.Fatalf("a slow agent should report its progress, got %s", out)
+	}
+
+	// steering an agent that has already answered is not an error, but the
+	// manager must not believe the message was delivered
+	quick, err := reg.Spawn(ctx, "quick", "short work", reg.ModelBuilder, &workTool{d: time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-quick.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("the quick agent never finished")
+	}
+	out, err = sendT.InvokableRun(ctx, `{"agent_id":"`+quick.ID+`","text":"one more thing"}`)
+	if err != nil {
+		t.Fatalf("send_message: %v", err)
+	}
+	if !strings.Contains(out, `"delivered":false`) || !strings.Contains(out, "already finished") {
+		t.Fatalf("send_message=%s", out)
+	}
+
+	// a cancelled manager stops waiting instead of holding the turn open
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if _, err := waitT.InvokableRun(cancelled, `{"agent_ids":["`+slow.ID+`"]}`); err == nil {
+		t.Fatal("wait_agents should return when the caller is cancelled")
+	}
+	reg.Close()
+}
+
+// Activity is the progress hint the UI shows next to a running worker, so it
+// has to be the tail of what the worker just said.
+func TestActivityReportsTheLatestTail(t *testing.T) {
+	reg := NewRegistry()
+	h := &Handle{ID: "worker-1", Role: "worker", done: make(chan struct{})}
+	if got := reg.liveTail("worker-1"); got != "" {
+		t.Fatalf("an unknown agent has no activity, got %q", got)
+	}
+	reg.mu.Lock()
+	reg.agents["worker-1"] = h
+	reg.mu.Unlock()
+
+	if got := h.Activity(); got != "" {
+		t.Fatalf("a fresh agent has no activity, got %q", got)
+	}
+	h.setActivity("reading the notes")
+	if got := reg.liveTail("worker-1"); got != "reading the notes" {
+		t.Fatalf("liveTail=%q", got)
+	}
+	h.setActivity("writing the summary")
+	if got := reg.liveTail("worker-1"); got != "writing the summary" {
+		t.Fatalf("activity should be the latest tail, got %q", got)
+	}
+}
+
+func TestTailHelpers(t *testing.T) {
+	// truncation counts runes, so a multi-byte tail is never cut in half
+	if got := truncStr("目标目标", 2); got != "目标…" {
+		t.Fatalf("truncStr=%q", got)
+	}
+	if got := truncStr("short", 10); got != "short" {
+		t.Fatalf("truncStr should leave short text alone, got %q", got)
+	}
+	if got := lastLine("first\nsecond"); got != "second" {
+		t.Fatalf("lastLine=%q", got)
+	}
+	if got := lastLine("only"); got != "only" {
+		t.Fatalf("lastLine=%q", got)
+	}
+}
+
 // ---------- resource release: caller failure paths ----------
 
 // 1) Caller ctx canceled (model call failed / SIGINT) -> agents die with it.

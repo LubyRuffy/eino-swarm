@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/frontend"
@@ -54,7 +55,11 @@ type App struct {
 	Server *server.Server
 	Logger *slog.Logger
 
-	addr     string
+	addr string
+
+	// Serve can bind lazily while another goroutine asks for the URL or shuts
+	// the process down, so the listener and the server are behind a lock.
+	mu       sync.Mutex
 	listener net.Listener
 	http     *http.Server
 }
@@ -124,6 +129,13 @@ func newLogger(cfg *config.Config) *slog.Logger {
 // real URL before anything tries to load it. Desktop mode needs that: the
 // window cannot open until the port is known.
 func (a *App) Listen() (string, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.listen()
+}
+
+// listen is Listen with the lock already held.
+func (a *App) listen() (string, error) {
 	ln, err := net.Listen("tcp", a.addr)
 	if err != nil {
 		return "", fmt.Errorf("app: listen on %s: %w", a.addr, err)
@@ -135,11 +147,17 @@ func (a *App) Listen() (string, error) {
 		// as the tab is open.
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	return a.URL(), nil
+	return a.url(), nil
 }
 
 // URL is the base URL of the listening server.
 func (a *App) URL() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.url()
+}
+
+func (a *App) url() string {
 	if a.listener == nil {
 		return ""
 	}
@@ -152,12 +170,17 @@ func (a *App) URL() string {
 
 // Serve blocks until the server stops.
 func (a *App) Serve() error {
+	a.mu.Lock()
 	if a.listener == nil {
-		if _, err := a.Listen(); err != nil {
+		if _, err := a.listen(); err != nil {
+			a.mu.Unlock()
 			return err
 		}
 	}
-	err := a.http.Serve(a.listener)
+	srv, ln := a.http, a.listener
+	a.mu.Unlock()
+
+	err := srv.Serve(ln)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
@@ -167,8 +190,11 @@ func (a *App) Serve() error {
 // Shutdown stops accepting requests, cancels running turns and closes the
 // database.
 func (a *App) Shutdown(ctx context.Context) {
-	if a.http != nil {
-		_ = a.http.Shutdown(ctx)
+	a.mu.Lock()
+	srv := a.http
+	a.mu.Unlock()
+	if srv != nil {
+		_ = srv.Shutdown(ctx)
 	}
 	a.Engine.Shutdown()
 	if err := a.Store.Close(); err != nil {

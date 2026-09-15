@@ -232,6 +232,12 @@ func (r *Registry) SteerManager(text string) bool {
 	return true
 }
 
+// TakePendingSteers removes and returns steering messages that were queued but
+// never delivered, which happens when a steer lands after the manager's last
+// model call. The caller decides what to do with them; dropping them silently
+// would lose something the user typed.
+func (r *Registry) TakePendingSteers() []string { return r.drainManagerInbox() }
+
 func (r *Registry) drainManagerInbox() []string {
 	r.mu.Lock()
 	defer r.mu.Unlock()

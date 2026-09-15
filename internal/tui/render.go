@@ -212,6 +212,9 @@ func maxInt(a, b int) int {
 }
 
 func lastLine(s string) string {
+	// Streamed text often ends on a newline. Taking what follows it would show
+	// the roster an empty activity line at exactly the moments it matters.
+	s = strings.TrimRight(s, "\n")
 	if i := strings.LastIndex(s, "\n"); i >= 0 {
 		return s[i+1:]
 	}

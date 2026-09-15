@@ -12,6 +12,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -59,10 +60,21 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 	}
 	if err != nil {
 		fmt.Fprintln(stderr, "zwai:", err)
+		var ue usageError
+		if errors.As(err, &ue) {
+			return 2
+		}
 		return 1
 	}
 	return 0
 }
+
+// usageError is a command invoked wrongly rather than a command that failed.
+// Shells and scripts read the difference off the exit code, so keep it: 2 for
+// "you typed it wrong", 1 for "it did not work".
+type usageError struct{ msg string }
+
+func (e usageError) Error() string { return e.msg }
 
 // reorderFlags moves positional arguments behind the flags.
 //

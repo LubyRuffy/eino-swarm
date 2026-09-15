@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -58,7 +59,11 @@ func newRuntime(e *Engine, threadID string) *runtime {
 func (rt *runtime) status() Status {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
-	st := Status{ThreadID: rt.threadID, Running: rt.running, TurnID: rt.turnID, StartedAt: rt.startedAt}
+	st := Status{ThreadID: rt.threadID, Running: rt.running, TurnID: rt.turnID}
+	if !rt.startedAt.IsZero() {
+		started := rt.startedAt
+		st.StartedAt = &started
+	}
 	if rt.running {
 		st.ElapsedMS = time.Since(rt.startedAt).Milliseconds()
 		if rt.reg != nil {
@@ -293,6 +298,9 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 			Kind: KindCleanup, AgentID: swarm.DefaultManagerID,
 			Text: fmt.Sprintf("stopped %d sub-agent(s) still running at the end of the turn", killed)})
 	}
+	// A steer that arrived after the manager's last model call was accepted but
+	// never read. It becomes the next turn rather than disappearing.
+	leftover := reg.TakePendingSteers()
 	reg.Close()
 
 	e.persistTranscript(rt.threadID, turn.ID, res.Transcript, inputCount)
@@ -312,7 +320,13 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	rt.release(cancel, idle)
 
 	if err := e.store.FinishTurn(turn.ID, status, res.Final, errText); err != nil {
-		e.log.Warn("could not close turn", "turn", turn.ID, "err", err)
+		if errors.Is(err, store.ErrNotFound) {
+			// The conversation was deleted while its last turn was winding
+			// down. Nothing to close, and nothing worth warning about.
+			e.log.Debug("turn vanished before it could be closed", "turn", turn.ID)
+		} else {
+			e.log.Warn("could not close turn", "turn", turn.ID, "err", err)
+		}
 	}
 	_ = e.store.TouchThread(rt.threadID)
 
@@ -325,6 +339,20 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		final.Err = errText
 	}
 	e.record(final)
+	rt.runLateSteers(status, leftover)
+}
+
+// runLateSteers turns steering that the manager never read into a turn of its
+// own. Cancelled and failed turns skip it: someone who pressed stop does not
+// want the thing they typed a moment earlier to start it all again.
+func (rt *runtime) runLateSteers(status string, leftover []string) {
+	if status != store.TurnDone || len(leftover) == 0 {
+		return
+	}
+	if _, err := rt.engine.StartTurn(rt.threadID, strings.Join(leftover, "\n")); err != nil {
+		rt.engine.log.Warn("could not run a late steer as its own turn",
+			"thread", rt.threadID, "err", err)
+	}
 }
 
 // callRecorder persists one row per model call so `zwai trace <turn>` can
