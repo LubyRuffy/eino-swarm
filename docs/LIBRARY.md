@@ -18,7 +18,7 @@ over one concurrency-safe registry:
 |---|---|
 | `spawn_agent(role, task, fork_context)` | start a sub-agent in the background; returns `{"agent_id": …}` immediately. `fork_context: true` replays the manager's conversation into it. |
 | `send_message(agent_id, text)` | steer a running agent; delivered at its **next turn boundary** via a `ChatModelAgentMiddleware` |
-| `wait_agents(agent_ids, timeout_s)` | block until all listed agents finish; returns their results as JSON |
+| `wait_agents(agent_ids, timeout_s)` | return as soon as the next listed agent reaches a final status (or the timeout); reports every agent's status (`running`/`done`/`failed`), the finished ones' results, and the running ones' last activity, plus `timed_out`. It hands control back per-finish so the manager can report progress and wait again, instead of dead-waiting on the whole batch |
 | `close_agent(agent_id)` | cancel a running agent |
 
 Give sub-agents `SendTool()` as well and any agent can message any other (a mesh

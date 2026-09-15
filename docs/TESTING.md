@@ -91,7 +91,7 @@ npm test          # vitest, once
 npm run test:watch
 ```
 
-Three things are tested here, all without the DOM:
+Four things are tested here, three as pure logic and one in jsdom:
 
 - **`src/lib/transcript.ts`**, where the stream becomes UI: streamed text
   replaces rather than appends, a completed block folds into the streamed one
@@ -103,6 +103,11 @@ Three things are tested here, all without the DOM:
 - **`src/lib/api.ts`**, against a stubbed `fetch`: the server's error message and
   code reach the UI instead of a bare status line, and a tool list that arrives
   as `null` is read as an empty list rather than crashing the settings dialog.
+- **`src/components/app/transcript.tsx`**, rendered in jsdom: while `wait_agents`
+  is pending the transcript shows the sub-agents it is waiting on and each one's
+  live activity — the roll-up that keeps a running swarm from looking frozen —
+  and clicking a row opens that agent. The id parser behind it is also unit
+  tested for half-streamed and malformed arguments.
 
 ## End-to-end tests
 

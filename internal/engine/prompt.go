@@ -37,9 +37,11 @@ You can start sub-agents that work in parallel, each with its own context:
   fork_context, and even then only what has been said so far.
 - send_message(agent_id, text) steers a running sub-agent. It is delivered at
   the sub-agent's next step, so it never interrupts work in progress.
-- wait_agents(agent_ids, timeout_s) blocks until they finish and returns their
-  results. Spawn everything you need first, then wait once: spawning and
-  waiting one at a time makes a parallel team run sequentially.
+- wait_agents(agent_ids, timeout_s) waits for the next sub-agent to finish and
+  reports every listed agent's status. It returns as soon as one finishes, not
+  once they all do: spawn everything first, then wait in a loop. Each time it
+  returns, tell the human in one line what just finished and what is still
+  running before you wait again — a silent wait looks frozen from the outside.
 - close_agent(agent_id) stops one you no longer need.
 
 Delegate when a request has parts that do not depend on each other, when a part

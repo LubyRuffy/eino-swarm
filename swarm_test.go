@@ -171,13 +171,24 @@ func TestSpawnParallelAndSteer(t *testing.T) {
 		t.Fatalf("send_message: out=%q err=%v", out, err)
 	}
 
+	// wait_agents returns the instant the first sub-agent finishes, so a
+	// manager collecting a whole batch waits in a loop. Both workers run in
+	// parallel, so the loop still clears well inside one work interval rather
+	// than the sum of two.
 	start := time.Now()
-	res, err := waitT.InvokableRun(context.Background(),
-		fmt.Sprintf(`{"agent_ids":[%q,%q],"timeout_s":5}`, ids[0], ids[1]))
-	wall := time.Since(start)
-	if err != nil {
-		t.Fatalf("wait_agents: %v", err)
+	var res string
+	for time.Since(start) < 4*time.Second {
+		r, err := waitT.InvokableRun(context.Background(),
+			fmt.Sprintf(`{"agent_ids":[%q,%q],"timeout_s":5}`, ids[0], ids[1]))
+		if err != nil {
+			t.Fatalf("wait_agents: %v", err)
+		}
+		res += r
+		if !strings.Contains(r, `"status":"running"`) {
+			break
+		}
 	}
+	wall := time.Since(start)
 	if wall > 1500*time.Millisecond {
 		t.Errorf("sub-agents appear sequential: wall=%v res=%s", wall, res)
 	}
@@ -352,12 +363,13 @@ func TestLifecycleToolsReportFailuresToTheManager(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wait_agents: %v", err)
 	}
-	if !strings.Contains(out, "still running") {
-		t.Fatalf("a slow agent should be reported as such, got %s", out)
+	if !strings.Contains(out, `"status":"running"`) {
+		t.Fatalf("a slow agent should be reported as running, got %s", out)
 	}
-	// the result field carries what it was last doing, not a finished answer
-	if !strings.Contains(out, `"result":"`) {
-		t.Fatalf("a slow agent should report its progress, got %s", out)
+	// nothing finished before the deadline, so the manager is told it timed out
+	// rather than being handed a fake final result
+	if !strings.Contains(out, `"timed_out":true`) {
+		t.Fatalf("a wait that finished nothing should report timed_out, got %s", out)
 	}
 
 	// steering an agent that has already answered is not an error, but the
@@ -385,6 +397,74 @@ func TestLifecycleToolsReportFailuresToTheManager(t *testing.T) {
 	if _, err := waitT.InvokableRun(cancelled, `{"agent_ids":["`+slow.ID+`"]}`); err == nil {
 		t.Fatal("wait_agents should return when the caller is cancelled")
 	}
+	reg.Close()
+}
+
+// A dead-waiting manager is what makes a running swarm look frozen, so
+// wait_agents must come back the moment the first sub-agent finishes and hand
+// the manager a mix of a finished result and the still-running ones — never
+// run the timeout down waiting for the whole batch.
+func TestWaitReturnsWhenTheFirstOfManyFinishes(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &scriptedModel{turns: []func(int, []*schema.Message) *schema.Message{
+			func(int, []*schema.Message) *schema.Message {
+				return schema.AssistantMessage("starting", []schema.ToolCall{rawCall("w1", "work", "{}")})
+			},
+			func(int, []*schema.Message) *schema.Message {
+				return schema.AssistantMessage("DONE", nil)
+			},
+		}}
+	}
+	waitT := invokable(t, reg.Tools()[2])
+	ctx := context.Background()
+
+	fast, err := reg.Spawn(ctx, "fast", "quick", reg.ModelBuilder, &workTool{d: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slow, err := reg.Spawn(ctx, "slow", "long", reg.ModelBuilder, &workTool{d: 30 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A generous timeout: the point is that wait returns on the first finish,
+	// not that it eventually gives up.
+	start := time.Now()
+	out, err := waitT.InvokableRun(ctx,
+		fmt.Sprintf(`{"agent_ids":[%q,%q],"timeout_s":10}`, fast.ID, slow.ID))
+	if err != nil {
+		t.Fatalf("wait_agents: %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("wait blocked for the whole batch instead of the first finish: %v", elapsed)
+	}
+
+	var rep struct {
+		Agents []struct {
+			AgentID string `json:"agent_id"`
+			Status  string `json:"status"`
+		} `json:"agents"`
+		TimedOut bool `json:"timed_out"`
+	}
+	if err := json.Unmarshal([]byte(out), &rep); err != nil {
+		t.Fatalf("wait_agents output is not JSON: %v (%s)", err, out)
+	}
+	if rep.TimedOut {
+		t.Fatalf("returning on a finish must not be reported as a timeout: %s", out)
+	}
+	status := map[string]string{}
+	for _, a := range rep.Agents {
+		status[a.AgentID] = a.Status
+	}
+	if status[fast.ID] != "done" {
+		t.Fatalf("the finished agent should be done, got %q (%s)", status[fast.ID], out)
+	}
+	if status[slow.ID] != "running" {
+		t.Fatalf("the unfinished agent should still be running, got %q (%s)", status[slow.ID], out)
+	}
+
+	slow.Cancel()
 	reg.Close()
 }
 

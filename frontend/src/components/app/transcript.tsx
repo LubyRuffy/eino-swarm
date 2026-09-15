@@ -137,6 +137,12 @@ function BlockView({
       // that follows it. The row is the better of the two, so the call is
       // dropped here; the Trace tab still lists it.
       if (block.tool?.name === "spawn_agent") return null
+      // A pending wait is the moment a swarm looks frozen from the outside, so
+      // it shows the sub-agents it is waiting on and what each is doing right
+      // now rather than a bare "running…".
+      if (block.tool?.name === "wait_agents" && block.tool.pending) {
+        return <WaitProgress block={block} agents={agents} onSelect={onSelectAgent} />
+      }
       return <ToolRow block={block} />
 
     case "spawn":
@@ -271,6 +277,61 @@ function ToolRow({ block }: { block: Block }) {
       </div>
     </Disclosure>
   )
+}
+
+export function WaitProgress({
+  block,
+  agents,
+  onSelect,
+}: {
+  block: Block
+  agents: Record<string, AgentState>
+  onSelect: (id: string) => void
+}) {
+  const ids = waitAgentIds(block.tool?.args ?? "")
+  const watched = ids.map((id) => agents[id]).filter(Boolean) as AgentState[]
+  const running = watched.filter((a) => a.status === "running").length
+  return (
+    <div className="my-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
+      <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+        <Loader2 className="size-3.5 shrink-0 animate-spin" />
+        <span>
+          Waiting for {running > 0 ? running : watched.length} sub-agent
+          {watched.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      <div className="mt-1.5 flex flex-col gap-0.5">
+        {watched.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => onSelect(a.id)}
+            className="flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-accent/60"
+          >
+            <StatusDot status={a.status} />
+            <span className="shrink-0 font-medium">{a.role}</span>
+            <span className="truncate text-muted-foreground">
+              {a.status === "running" ? a.activity || "working…" : a.status}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Read the agent ids a wait_agents call is blocking on out of its raw args. */
+export function waitAgentIds(args: string): string[] {
+  try {
+    const parsed = JSON.parse(args)
+    if (Array.isArray(parsed?.agent_ids)) {
+      return parsed.agent_ids.filter((x: unknown): x is string => typeof x === "string")
+    }
+  } catch {
+    // Half-streamed args are not valid JSON yet; the roll-up fills in once the
+    // call is complete, which for wait_agents is effectively immediate.
+  }
+  return []
 }
 
 function SpawnRow({

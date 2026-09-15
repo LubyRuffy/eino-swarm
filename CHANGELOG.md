@@ -68,6 +68,14 @@ co-working app built on it. The library API is unchanged except where noted.
 
 ### Changed
 
+- **`wait_agents` returns on the first finish, not the whole batch.** It used to
+  block until every listed sub-agent was done (or the timeout ran out), so a
+  running swarm looked frozen with no progress until the very end. It now returns
+  the moment the next sub-agent reaches a final status and reports every agent's
+  state (`running`/`done`/`failed`), the finished ones' results, and the running
+  ones' latest activity, plus `timed_out`. The manager is told to narrate what
+  came back before waiting again — the periodic feedback Codex gives. This
+  changes the tool's result shape from a flat array to `{agents, timed_out}`.
 - **The data directory is `~/.zwai-swarm`** (`ZWAI_HOME` overrides, `--data-dir`
   overrides that). `~/.zwai` belongs to a different project and is left alone.
 - **The desktop window loads a local HTTP URL** rather than a `wails://` asset
@@ -100,6 +108,12 @@ co-working app built on it. The library API is unchanged except where noted.
   boundary rather than silently remapped.
 - **Server**: a slow SSE subscriber could lose persisted events, including the one
   that says the turn finished; it is now marked lagged and caught up.
+- **Engine**: `broadcast` snapshotted its subscribers, released the lock, then
+  sent on their channels — so a subscriber could be closed (its channel closed
+  under the lock) in the gap, and the next send would panic on a closed channel.
+  The non-blocking send now stays under the same lock the subscriber lifecycle
+  uses, closing the window. Surfaced under `-race` once turns produced more
+  events per run.
 - **App**: `Serve` could bind lazily while another goroutine read the URL or shut
   the server down — a real data race, now behind a lock.
 - **Startup**: turns left `running` by a crash or a `kill` are closed as

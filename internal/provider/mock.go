@@ -146,19 +146,28 @@ func managerScript(turn int, msgs []*schema.Message) *schema.Message {
 				call("mock-spawn-2", "spawn_agent", string(review)),
 			},
 		}
-	case 2:
+	default:
 		ids := spawnedIDs(msgs)
 		if len(ids) == 0 {
 			return schema.AssistantMessage(mockAnswer(task, nil), nil)
 		}
-		args, _ := json.Marshal(map[string]any{"agent_ids": ids, "timeout_s": 60})
-		return &schema.Message{
-			Role:             schema.Assistant,
-			ReasoningContent: "Both workers are running; I will collect their results before answering.\n",
-			ToolCalls:        []schema.ToolCall{call("mock-wait-1", "wait_agents", string(args))},
+		// wait_agents returns as soon as one sub-agent finishes, so the manager
+		// waits in a loop: it answers once everyone is done and otherwise
+		// reports what just came back before waiting for the rest.
+		report := latestWaitReport(msgs)
+		if report != nil && allFinished(report) {
+			return schema.AssistantMessage(mockAnswer(task, collectResults(report)), nil)
 		}
-	default:
-		return schema.AssistantMessage(mockAnswer(task, waitedResults(msgs)), nil)
+		args, _ := json.Marshal(map[string]any{"agent_ids": ids, "timeout_s": 60})
+		content := "Both workers are running; I will report back as each finishes.\n"
+		if report != nil {
+			content = waitProgressLine(report)
+		}
+		return &schema.Message{
+			Role:      schema.Assistant,
+			Content:   content,
+			ToolCalls: []schema.ToolCall{call(fmt.Sprintf("mock-wait-%d", turn), "wait_agents", string(args))},
+		}
 	}
 }
 
@@ -258,31 +267,70 @@ func spawnedIDs(msgs []*schema.Message) []string {
 	return ids
 }
 
-// waitedResults pulls each worker's answer out of the wait_agents result.
-func waitedResults(msgs []*schema.Message) []string {
+// mockWaitReport mirrors the wait_agents result wire shape the manager reads.
+type mockWaitReport struct {
+	Agents []struct {
+		AgentID string `json:"agent_id"`
+		Status  string `json:"status"`
+		Result  string `json:"result"`
+		Err     string `json:"error"`
+	} `json:"agents"`
+	TimedOut bool `json:"timed_out"`
+}
+
+// latestWaitReport returns the most recent wait_agents tool result, or nil if
+// the manager has not waited yet.
+func latestWaitReport(msgs []*schema.Message) *mockWaitReport {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		m := msgs[i]
+		if m == nil || m.Role != schema.Tool || !strings.Contains(m.Content, `"agents"`) {
+			continue
+		}
+		var r mockWaitReport
+		if json.Unmarshal([]byte(m.Content), &r) == nil && r.Agents != nil {
+			return &r
+		}
+	}
+	return nil
+}
+
+// allFinished reports whether every sub-agent in the last wait has left the
+// running state, which is the manager's cue to stop waiting and answer.
+func allFinished(r *mockWaitReport) bool {
+	for _, e := range r.Agents {
+		if e.Status == "running" {
+			return false
+		}
+	}
+	return len(r.Agents) > 0
+}
+
+// collectResults pulls each finished worker's answer (or error) out of a wait
+// report, in the order the agents were listed.
+func collectResults(r *mockWaitReport) []string {
 	var out []string
-	for _, m := range msgs {
-		if m == nil || m.Role != schema.Tool {
-			continue
-		}
-		var entries []struct {
-			AgentID string `json:"agent_id"`
-			Result  string `json:"result"`
-			Err     string `json:"error"`
-		}
-		if json.Unmarshal([]byte(m.Content), &entries) != nil {
-			continue
-		}
-		for _, e := range entries {
-			switch {
-			case e.Err != "":
-				out = append(out, e.AgentID+": "+e.Err)
-			case e.Result != "":
-				out = append(out, e.Result)
-			}
+	for _, e := range r.Agents {
+		switch {
+		case e.Err != "":
+			out = append(out, e.AgentID+": "+e.Err)
+		case e.Result != "":
+			out = append(out, e.Result)
 		}
 	}
 	return out
+}
+
+// waitProgressLine is the one-line status the manager shows between waits.
+func waitProgressLine(r *mockWaitReport) string {
+	done, running := 0, 0
+	for _, e := range r.Agents {
+		if e.Status == "running" {
+			running++
+		} else {
+			done++
+		}
+	}
+	return fmt.Sprintf("%d finished, %d still working; waiting for the rest.\n", done, running)
 }
 
 func oneLine(s string) string {

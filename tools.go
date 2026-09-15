@@ -15,16 +15,17 @@ import (
 //
 //	spawn_agent(role, task[, fork_context]) — start a sub-agent, returns agent_id at once
 //	send_message(agent_id, text)            — steer a running agent (mesh-safe)
-//	wait_agents(agent_ids, timeout_s)       — block until all finish, returns JSON results
+//	wait_agents(agent_ids, timeout_s)       — return when the next one finishes, with every agent's status
 //	close_agent(agent_id)                   — cancel a running agent
 func (r *Registry) Tools() []tool.BaseTool {
 	return []tool.BaseTool{
 		&ctlTool{name: "spawn_agent", desc: "start a sub-agent in the background; returns its agent_id immediately", fn: r.spawn},
 		&ctlTool{name: "send_message", desc: "send a steering message to a running agent; delivered at its next turn boundary", fn: r.send},
-		&ctlTool{name: "wait_agents", desc: "wait until all listed agents finish or the timeout hits; " +
-			"returns per-agent progress (running/finished + last activity). " +
-			"Use a moderate timeout (20-60s) and call again to get fresh progress; " +
-			"report notable progress to the user between waits.", fn: r.wait},
+		&ctlTool{name: "wait_agents", desc: "wait until the next listed agent reaches a final status, or the timeout hits; " +
+			"returns every listed agent's status (running/done/failed), the finished ones' results, " +
+			"and, for those still running, their last activity. " +
+			"It returns as soon as one finishes, not once they all do, so call it again to collect the rest " +
+			"and tell the human what came back between calls.", fn: r.wait},
 		&ctlTool{name: "close_agent", desc: "cancel a running agent", fn: r.close},
 	}
 }
@@ -138,39 +139,105 @@ func (r *Registry) wait(ctx context.Context, args string) (string, error) {
 	if a.TimeoutS > 0 {
 		timeout = time.Duration(a.TimeoutS) * time.Second
 	}
-	type entry struct {
-		AgentID string  `json:"agent_id"`
-		Result  string  `json:"result,omitempty"`
-		Err     string  `json:"error,omitempty"`
-		Elapsed float64 `json:"elapsed_ms"`
-	}
-	out := make([]entry, 0, len(a.AgentIDs))
+
+	// Separate the agents still running from ones that already finished: an
+	// already-finished agent means we can answer without blocking at all.
+	var running []*Handle
+	anyFinished := false
 	for _, id := range a.AgentIDs {
 		h, ok := r.get(id)
 		if !ok {
-			out = append(out, entry{AgentID: id, Err: "unknown agent"})
 			continue
+		}
+		if _, _, done := h.Result(); done {
+			anyFinished = true
+		} else {
+			running = append(running, h)
+		}
+	}
+
+	timedOut := false
+	// Return the instant the first agent reaches a final status rather than
+	// holding the turn until the whole batch is done. That hand-back is what
+	// lets the manager report progress between waits instead of dead-waiting
+	// on one long blocking call — the behaviour that made a running swarm look
+	// frozen. It never busy-polls: with nothing finished it blocks to timeout.
+	if !anyFinished && len(running) > 0 {
+		done := make(chan struct{}, len(running))
+		stop := make(chan struct{})
+		defer close(stop)
+		for _, h := range running {
+			go func(ch <-chan struct{}) {
+				select {
+				case <-ch:
+					select {
+					case done <- struct{}{}:
+					case <-stop:
+					}
+				case <-stop:
+				}
+			}(h.Done())
 		}
 		select {
-		case <-h.Done():
 		case <-ctx.Done():
 			return "", ctx.Err()
+		case <-done:
 		case <-time.After(timeout):
-			e := entry{AgentID: id, Err: "still running"}
-			if a := r.liveTail(id); a != "" {
-				e.Result = a
-			}
-			out = append(out, e)
+			timedOut = true
+		}
+	}
+
+	return marshal(r.waitSnapshot(a.AgentIDs, timedOut)), nil
+}
+
+// waitEntry is one agent's line in a wait_agents result.
+type waitEntry struct {
+	AgentID  string  `json:"agent_id"`
+	Role     string  `json:"role,omitempty"`
+	Status   string  `json:"status"` // running | done | failed | unknown
+	Result   string  `json:"result,omitempty"`
+	Err      string  `json:"error,omitempty"`
+	Activity string  `json:"activity,omitempty"` // last streamed tail, while running
+	Elapsed  float64 `json:"elapsed_ms,omitempty"`
+}
+
+// waitReport is the shape wait_agents returns to the model.
+type waitReport struct {
+	Agents   []waitEntry `json:"agents"`
+	TimedOut bool        `json:"timed_out"` // true when the wait hit its deadline with nothing new finished
+}
+
+// waitSnapshot describes every requested agent as it stands right now: the
+// finished ones with their result, the running ones with their latest
+// activity, so the manager can narrate progress and decide whether to wait
+// again.
+func (r *Registry) waitSnapshot(ids []string, timedOut bool) waitReport {
+	agents := make([]waitEntry, 0, len(ids))
+	for _, id := range ids {
+		h, ok := r.get(id)
+		if !ok {
+			agents = append(agents, waitEntry{AgentID: id, Status: "unknown", Err: "unknown agent"})
 			continue
 		}
-		result, err, _ := h.Result()
-		e := entry{AgentID: id, Result: result, Elapsed: float64(h.Elapsed()) / float64(time.Millisecond)}
-		if err != nil {
+		result, err, done := h.Result()
+		e := waitEntry{AgentID: id, Role: h.Role}
+		switch {
+		case !done:
+			e.Status = "running"
+			e.Activity = h.Activity()
+		case err != nil:
+			e.Status = "failed"
 			e.Err = err.Error()
+			e.Result = result
+			e.Elapsed = float64(h.Elapsed()) / float64(time.Millisecond)
+		default:
+			e.Status = "done"
+			e.Result = result
+			e.Elapsed = float64(h.Elapsed()) / float64(time.Millisecond)
 		}
-		out = append(out, e)
+		agents = append(agents, e)
 	}
-	return marshal(out), nil
+	return waitReport{Agents: agents, TimedOut: timedOut}
 }
 
 func (r *Registry) close(ctx context.Context, args string) (string, error) {

@@ -272,10 +272,11 @@ func TestMockManagerScriptFansOutAndAnswers(t *testing.T) {
 		}
 	}
 
-	// turn 3 answers, quoting what the workers reported
+	// turn 3 answers once the wait reports every worker has finished, quoting
+	// what they reported
 	convo = append(convo, second,
-		schema.ToolMessage(`[{"agent_id":"researcher-1","result":"researcher done"},`+
-			`{"agent_id":"reviewer-2","result":"reviewer done"}]`, "mock-wait-1"))
+		schema.ToolMessage(`{"agents":[{"agent_id":"researcher-1","status":"done","result":"researcher done"},`+
+			`{"agent_id":"reviewer-2","status":"done","result":"reviewer done"}],"timed_out":false}`, "mock-wait-2"))
 	third, err := m.Generate(ctx, convo)
 	if err != nil {
 		t.Fatal(err)
@@ -628,13 +629,37 @@ func TestUserTextExtraction(t *testing.T) {
 	}
 }
 
-func TestWaitedResultsReportsFailures(t *testing.T) {
-	msgs := []*schema.Message{
-		schema.ToolMessage(`[{"agent_id":"a-1","result":"ok"},{"agent_id":"b-2","error":"timed out"}]`, "x"),
-		schema.ToolMessage(`not json`, "y"),
+func TestWaitReportParsingReportsProgressAndResults(t *testing.T) {
+	// a wait that came back with one worker done and one still running
+	partial := []*schema.Message{
+		schema.ToolMessage(`{"agents":[{"agent_id":"a-1","status":"done","result":"ok"},{"agent_id":"b-2","status":"running","activity":"reading"}],"timed_out":false}`, "x"),
 	}
-	got := waitedResults(msgs)
+	r := latestWaitReport(partial)
+	if r == nil {
+		t.Fatal("latestWaitReport found nothing in a real wait result")
+	}
+	if allFinished(r) {
+		t.Fatal("a report with a running agent must not read as all finished")
+	}
+	if got := waitProgressLine(r); !strings.Contains(got, "1 finished") || !strings.Contains(got, "1 still working") {
+		t.Fatalf("waitProgressLine=%q", got)
+	}
+
+	// a wait where everyone is done, one of them failed
+	done := []*schema.Message{
+		schema.ToolMessage(`{"agents":[{"agent_id":"a-1","status":"done","result":"ok"},{"agent_id":"b-2","status":"failed","error":"timed out"}],"timed_out":false}`, "y"),
+	}
+	r = latestWaitReport(done)
+	if r == nil || !allFinished(r) {
+		t.Fatalf("a report with no running agents should read as finished: %+v", r)
+	}
+	got := collectResults(r)
 	if len(got) != 2 || got[0] != "ok" || !strings.Contains(got[1], "timed out") {
-		t.Fatalf("waitedResults=%+v", got)
+		t.Fatalf("collectResults=%+v", got)
+	}
+
+	// no wait has happened yet
+	if latestWaitReport([]*schema.Message{schema.UserMessage("hi")}) != nil {
+		t.Fatal("latestWaitReport should be nil before the manager waits")
 	}
 }
