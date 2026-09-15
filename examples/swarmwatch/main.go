@@ -95,10 +95,10 @@ type managerModel struct {
 }
 
 var roleDurations = map[string]time.Duration{
-	"scout":  1 * time.Second,
-	"miner":  2 * time.Second,
+	"scout":   1 * time.Second,
+	"miner":   2 * time.Second,
 	"auditor": 3 * time.Second,
-	"writer": 4 * time.Second,
+	"writer":  4 * time.Second,
 }
 
 func (m *managerModel) Generate(ctx context.Context, input []*schema.Message, opts ...model.Option) (*schema.Message, error) {
@@ -113,7 +113,7 @@ func (m *managerModel) Generate(ctx context.Context, input []*schema.Message, op
 			calls = append(calls, schema.ToolCall{
 				ID: fmt.Sprintf("s%d", i), Type: "function",
 				Function: schema.FunctionCall{
-					Name: "spawn_agent",
+					Name:      "spawn_agent",
 					Arguments: fmt.Sprintf(`{"role":%q,"task":"work for a while"}`, role),
 				},
 			})

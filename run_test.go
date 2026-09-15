@@ -217,7 +217,6 @@ func TestManagerToolResultPairsByCallID(t *testing.T) {
 			{content: []string{"finished"}},
 		}}
 	}
-	reg.ModelBuilder = reg.ModelBuilder
 	probe := &fnTool{name: "probe", fn: func(ctx context.Context, args string) (string, error) {
 		return "result for " + args, nil
 	}}

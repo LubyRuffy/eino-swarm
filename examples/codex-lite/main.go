@@ -3,8 +3,9 @@
 // tools (spawn_agent / send_message / wait_agents / close_agent), spawning
 // sub-agents on demand — no pre-registered roles, no extra infra.
 //
-// Live:  OPENAI_BASE_URL=http://your-endpoint/v1 OPENAI_MODEL=your-model \
-//        OPENAI_API_KEY=sk-... go run ./examples/codex-lite -task "..."
+//	Live:  OPENAI_BASE_URL=http://your-endpoint/v1 OPENAI_MODEL=your-model \
+//	       OPENAI_API_KEY=sk-... go run ./examples/codex-lite -task "..."
+//
 // Demo:  go run ./examples/codex-lite -demo   (scripted models, no network)
 package main
 
@@ -19,11 +20,11 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm"
+	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
-	openaimodel "github.com/cloudwego/eino-ext/components/model/openai"
 )
 
 const managerPrompt = `You are the manager of a worker swarm.
