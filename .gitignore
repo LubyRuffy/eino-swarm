@@ -1,0 +1,35 @@
+# Go build output
+/zwai
+/swarm-real
+*.test
+*.out
+coverage.*
+
+# Node
+node_modules/
+frontend/node_modules/
+frontend/.vite/
+*.log
+npm-debug.log*
+
+# Playwright
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/.playwright/
+
+# Local data / runtime
+.zwai-swarm/
+*.db
+*.db-shm
+*.db-wal
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Wails build artifacts
+/bin/
+/build/bin/
