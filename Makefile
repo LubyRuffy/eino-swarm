@@ -17,7 +17,7 @@ help:
 	@echo "make dev        vite dev server against a running zwai web"
 	@echo "make test       go test -race -cover ./... plus the front-end unit tests"
 	@echo "make e2e        Playwright end-to-end tests on the offline provider"
-	@echo "make check      fmt, vet, test, e2e"
+	@echo "make check      formatting, vet, test, e2e"
 
 .PHONY: run
 run:
@@ -66,12 +66,18 @@ e2e: node_modules
 fmt:
 	gofmt -w $$(git ls-files '*.go')
 
+# check must not rewrite the tree it is checking, so it reports instead of fixing
+.PHONY: fmt-check
+fmt-check:
+	@unformatted=$$(gofmt -l $$(git ls-files '*.go')); \
+	if [ -n "$$unformatted" ]; then echo "gofmt needed (run make fmt):"; echo "$$unformatted"; exit 1; fi
+
 .PHONY: vet
 vet:
 	go vet ./...
 
 .PHONY: check
-check: vet test e2e
+check: fmt-check vet test e2e
 
 .PHONY: clean
 clean:

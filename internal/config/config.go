@@ -195,7 +195,7 @@ func Default() *Config {
 			Enabled:             []string{},
 			WebSearchMaxResults: DefaultWebSearchResults,
 		},
-		Log:   LogConfig{Level: DefaultLogLevel},
+		Log: LogConfig{Level: DefaultLogLevel},
 	}
 }
 
