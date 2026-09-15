@@ -35,6 +35,7 @@ package swarm
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -498,6 +499,76 @@ func (r *Registry) Stats() (running, finished int) {
 		}
 	}
 	return running, finished
+}
+
+// AgentProgress is a read-only snapshot of one sub-agent, for hosts that want
+// to report progress while a turn is still running.
+type AgentProgress struct {
+	AgentID  string
+	Role     string
+	Running  bool
+	Activity string        // latest streamed tail, while running
+	Err      string        // why it failed, once it has
+	Elapsed  time.Duration // how long it ran, or has been running so far
+}
+
+// Progress snapshots every tracked sub-agent without mutating the registry,
+// ordered by spawn time so a UI's rows do not jump around.
+//
+// Use this and not Stats for anything that polls: Stats deliberately forgets
+// finished agents to bound a long-lived registry, so a poll landing between a
+// worker finishing and wait_agents collecting it would turn a completed worker
+// into an unknown one and lose the result the manager just paid for.
+func (r *Registry) Progress() []AgentProgress {
+	r.mu.Lock()
+	handles := make([]*Handle, 0, len(r.agents))
+	for _, h := range r.agents {
+		handles = append(handles, h)
+	}
+	r.mu.Unlock()
+
+	sort.Slice(handles, func(i, j int) bool {
+		a, b := handles[i].spawnedAt(), handles[j].spawnedAt()
+		if a.Equal(b) {
+			return handles[i].ID < handles[j].ID
+		}
+		return a.Before(b)
+	})
+	out := make([]AgentProgress, 0, len(handles))
+	for _, h := range handles {
+		out = append(out, h.progress())
+	}
+	return out
+}
+
+func (h *Handle) spawnedAt() time.Time {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.spawned
+}
+
+// progress reads one handle's live state under its own lock.
+func (h *Handle) progress() AgentProgress {
+	p := AgentProgress{AgentID: h.ID, Role: h.Role}
+	select {
+	case <-h.done:
+	default:
+		p.Running = true
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	p.Activity = h.activity
+	if h.err != nil {
+		p.Err = h.err.Error()
+	}
+	// A running agent has no finish time yet, so its elapsed is measured
+	// against now — otherwise a live row would report a negative age.
+	if p.Running || h.finished.IsZero() {
+		p.Elapsed = time.Since(h.spawned)
+	} else {
+		p.Elapsed = h.finished.Sub(h.spawned)
+	}
+	return p
 }
 
 // Wait blocks until every spawned agent has finished or ctx/timeout elapses.

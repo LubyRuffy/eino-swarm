@@ -22,6 +22,10 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **Swarm, visible.** Sub-agents appear as they spawn, with live status and their
   own transcript. Built on [eino](https://github.com/cloudwego/eino) ADK and the
   swarm library in this repository.
+- **It says what it is doing, even when it is quiet.** A turn reports in every
+  few seconds while it works, so a swarm thinking hard inside a slow tool call
+  shows a ticking "Working for 1m 12s · 2 sub-agents running" instead of looking
+  frozen.
 - **Steering, not restarting.** Press Enter while a turn is running and your text
   is injected at the next turn boundary instead of starting over.
 - **Per-conversation model and thinking level.** When more than one endpoint is

@@ -368,6 +368,19 @@ function SwarmTab({
           }
         />
       </Field>
+      <Field
+        label="Progress pulse (seconds)"
+        hint="How often a running turn reports in while nothing is streaming."
+      >
+        <Input
+          type="number"
+          min={1}
+          value={settings.swarm.progress_interval_seconds}
+          onChange={(e) =>
+            update({ progress_interval_seconds: Number(e.target.value) })
+          }
+        />
+      </Field>
     </div>
   )
 }

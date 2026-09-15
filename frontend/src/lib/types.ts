@@ -14,6 +14,7 @@ export type EventKind =
   | "tool_result"
   | "steer"
   | "cleanup"
+  | "progress"
   | "done"
   | "error"
 
@@ -127,6 +128,7 @@ export interface SwarmLimits {
   agent_timeout_seconds: number
   max_turns: number
   manager_max_iterations: number
+  progress_interval_seconds: number
 }
 
 export interface ProviderSettings {

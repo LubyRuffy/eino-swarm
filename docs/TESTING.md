@@ -24,11 +24,11 @@ Current Go coverage, from `go test -race -cover ./...`:
 | package | coverage |
 |---|---|
 | `internal/provider` | 95.9% |
-| `.` (swarm library) | 95.3% |
+| `.` (swarm library) | 95.2% |
 | `internal/tools` | 95.1% |
 | `internal/store` | 94.3% |
-| `internal/engine` | 89.6% |
-| `internal/config` | 89.4% |
+| `internal/engine` | 89.9% |
+| `internal/config` | 89.7% |
 | `internal/server` | 88.7% |
 | `internal/tui` | 87.7% |
 | `internal/app` | 87.6% |
@@ -95,8 +95,10 @@ Five things are tested here, three as pure logic and two in jsdom:
 
 - **`src/lib/transcript.ts`**, where the stream becomes UI: streamed text
   replaces rather than appends, a completed block folds into the streamed one
-  instead of duplicating it, and a tool call pairs with its result by
-  `tool_call_id`. It is a pure function, so it is called directly.
+  instead of duplicating it, a tool call pairs with its result by
+  `tool_call_id`, and a progress pulse updates the live summary without leaving
+  a row in the timeline or reviving an agent that has already finished. It is a
+  pure function, so it is called directly.
 - **`src/store/app.ts`**, against a fake API: which conversation an action lands
   in. Sending while a conversation is still being created must wait for it, or
   the turn runs in the conversation the user just left — invisibly.
@@ -104,10 +106,14 @@ Five things are tested here, three as pure logic and two in jsdom:
   code reach the UI instead of a bare status line, and a tool list that arrives
   as `null` is read as an empty list rather than crashing the settings dialog.
 - **`src/components/app/transcript.tsx`**, rendered in jsdom: while `wait_agents`
-  is pending the transcript shows the sub-agents it is waiting on and each one's
-  live activity — the roll-up that keeps a running swarm from looking frozen —
-  and clicking a row opens that agent. The id parser behind it is also unit
-  tested for half-streamed and malformed arguments.
+  is pending the transcript shows the sub-agents it is waiting on, each one's
+  live activity and the age the latest pulse gave it — the roll-up that keeps a
+  running swarm from looking frozen — and clicking a row opens that agent. The
+  heartbeat line is tested separately: it reports the turn's age and the number
+  of sub-agents still working, keeps ticking on fake timers between pulses, and
+  renders nothing before the first pulse or after the turn ends. The id parser
+  behind the roll-up is also unit tested for half-streamed and malformed
+  arguments.
 - **`src/components/app/composer.tsx`**, rendered in jsdom: the thinking-level
   menu labels the empty default as "Default" and a set level by name, and it is
   absent when the server offers no levels, so an older server never draws a
@@ -142,6 +148,14 @@ that is already listening on the port.
 
 E2E tests run against `frontend/dist`, so **run `make frontend` after changing
 anything under `frontend/src`** or you will be testing the previous bundle.
+
+The progress pulse has no positive E2E assertion on purpose: a turn on the
+scripted provider finishes in about 3.6 seconds, under the 5-second default
+interval, so a test that waited for a pulse would pass or fail on timing. The
+suite asserts instead that a finished turn leaves no pulse behind — the
+regression that actually bites is an unhandled event kind landing in the
+timeline as a raw row, or the heartbeat outliving the answer. That pulses reach
+a client at all is verified in the engine and reducer tests.
 
 ## Manual checks that no automated test replaces
 

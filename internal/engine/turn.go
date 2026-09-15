@@ -67,8 +67,10 @@ func (rt *runtime) status() Status {
 	if rt.running {
 		st.ElapsedMS = time.Since(rt.startedAt).Milliseconds()
 		if rt.reg != nil {
-			running, _ := rt.reg.Stats()
-			st.Workers = running
+			// Progress, not Stats: Stats prunes the finished sub-agents it
+			// counts, so answering "how is it going" would throw away a result
+			// the manager has not collected yet.
+			st.Workers = liveWorkers(rt.reg.Progress())
 		}
 	}
 	return st
@@ -284,6 +286,11 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText})
 
 	acc := newAccumulator(e, rt.threadID, turn.ID)
+	// The pulse stops the moment the manager returns: everything after that is
+	// teardown, and a pulse arriving after the final event would make a finished
+	// turn look like it was still working.
+	beat, stopBeat := context.WithCancel(ctx)
+	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.Swarm.ProgressInterval())
 	res, runErr := reg.RunWith(ctx, swarm.RunConfig{
 		Instruction:        managerPrompt(toolset, e.cfg),
 		Messages:           messages,
@@ -291,6 +298,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		ManagerMiddlewares: nil,
 		MaxIterations:      e.cfg.Swarm.ManagerMaxIterations,
 	}, swarm.Callback(acc.onNotify))
+	stopBeat()
 	acc.flushAll()
 
 	// A turn owns its sub-agents: any worker still running when the manager

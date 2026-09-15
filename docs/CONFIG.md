@@ -102,6 +102,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `agent_timeout_seconds` | `600` | watchdog per sub-agent. A hung endpoint is force-terminated and the agent's result records the timeout. |
 | `max_turns` | `24` | ReAct iterations per sub-agent. A model stuck in a loop ends here instead of spinning. |
 | `manager_max_iterations` | `32` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. |
+| `progress_interval_seconds` | `5` | how often a running turn emits a progress pulse. It is the only thing that moves while every agent sits in a slow tool call, so a higher value makes a busy run look stuck for longer. Zero or negative falls back to the default; pulses cannot be switched off. |
 
 The current values are reported in `GET /api/meta` and are part of the manager's
 system prompt, so it knows how wide it may fan out.

@@ -37,6 +37,12 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(transcript.getByText("Two sub-agents ran in parallel")).toBeVisible()
   await expect(transcript.getByText(/Worked for/)).toBeVisible()
 
+  // The progress pulse is a live-only signal: it must leave nothing behind when
+  // the turn ends, and its payload must never surface as a transcript row —
+  // an unhandled event kind used to land in the timeline as a raw notice.
+  await expect(page.getByTestId("heartbeat")).toBeHidden()
+  await expect(transcript.getByText(/elapsed_ms/)).toBeHidden()
+
   // exactly one thought per thought: the streamed text and the stored record
   // must fold into a single row
   const thoughts = await transcript.getByText("Thought", { exact: true }).count()

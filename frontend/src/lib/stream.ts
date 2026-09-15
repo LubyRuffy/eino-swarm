@@ -25,6 +25,7 @@ const KINDS = [
   "tool_result",
   "steer",
   "cleanup",
+  "progress",
   "done",
   "error",
   "message",

@@ -1,8 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { act, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { WaitProgress, waitAgentIds } from "./transcript"
-import type { AgentState, Block } from "@/lib/transcript"
+import { Heartbeat, WaitProgress, waitAgentIds } from "./transcript"
+import type { AgentState, Block, Pulse } from "@/lib/transcript"
 
 function agent(partial: Partial<AgentState> & { id: string }): AgentState {
   return {
@@ -60,6 +60,27 @@ describe("WaitProgress", () => {
     expect(screen.getByText(/Waiting for 1 sub-agent/)).toBeInTheDocument()
   })
 
+  // A silent row is only reassuring if it says how long it has been silent, and
+  // the age has to come from the server rather than the browser's clock.
+  it("ages each row from the latest pulse", () => {
+    const agents = {
+      "a-1": agent({ id: "a-1", role: "researcher", status: "running", activity: "web_fetch" }),
+    }
+    render(
+      <WaitProgress
+        block={waitBlock(`{"agent_ids":["a-1"]}`)}
+        agents={agents}
+        pulse={{
+          at: new Date().toISOString(),
+          elapsedMs: 90000,
+          agents: [{ agentId: "a-1", status: "running", elapsedMs: 42000 }],
+        }}
+        onSelect={() => {}}
+      />,
+    )
+    expect(screen.getByText("42s")).toBeInTheDocument()
+  })
+
   it("selects the agent whose row is clicked", () => {
     const onSelect = vi.fn()
     const agents = {
@@ -74,5 +95,49 @@ describe("WaitProgress", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: /researcher/ }))
     expect(onSelect).toHaveBeenCalledWith("a-1")
+  })
+})
+
+describe("Heartbeat", () => {
+  afterEach(() => vi.useRealTimers())
+
+  function pulse(partial: Partial<Pulse> = {}): Pulse {
+    return { at: new Date().toISOString(), elapsedMs: 65000, agents: [], ...partial }
+  }
+
+  // The user's complaint that started this: a swarm that streams nothing looks
+  // dead. The pulse is the proof it is not.
+  it("says how long the run has been going and how many agents are on it", () => {
+    render(<Heartbeat pulse={pulse()} running workers={2} />)
+    expect(screen.getByText(/Working for 1m 5s/)).toBeInTheDocument()
+    expect(screen.getByText(/2 sub-agents running/)).toBeInTheDocument()
+  })
+
+  // A number that only moves every few seconds reads as a frozen screen, which
+  // is the thing being fixed, so the clock ticks locally between pulses.
+  it("keeps ticking between pulses", () => {
+    vi.useFakeTimers()
+    render(<Heartbeat pulse={pulse({ elapsedMs: 5000 })} running workers={0} />)
+    expect(screen.getByText(/Working for 5s/)).toBeInTheDocument()
+    act(() => void vi.advanceTimersByTime(3000))
+    expect(screen.getByText(/Working for 8s/)).toBeInTheDocument()
+  })
+
+  // The manager alone in one long model call has no sub-agents to count, and
+  // that is exactly when the line matters most.
+  it("drops the agent count when the manager is working alone", () => {
+    render(<Heartbeat pulse={pulse()} running workers={0} />)
+    expect(screen.queryByText(/sub-agent/)).not.toBeInTheDocument()
+  })
+
+  it("shows nothing once the turn is over", () => {
+    const { container } = render(<Heartbeat pulse={pulse()} running={false} workers={2} />)
+    expect(container).toBeEmptyDOMElement()
+  })
+
+  // Before the first pulse arrives there is nothing honest to show.
+  it("shows nothing until a pulse has arrived", () => {
+    const { container } = render(<Heartbeat running workers={0} />)
+    expect(container).toBeEmptyDOMElement()
   })
 })

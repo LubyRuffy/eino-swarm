@@ -110,6 +110,12 @@ They are broadcast live with `seq = 0`; the engine stores the completed block wh
 it settles. That is why a refresh mid-turn shows completed thoughts and the answer
 so far, without a hundred rows per paragraph.
 
+**Progress pulses are not stored either.** A `progress` event restates what the
+`spawned`, `tool_call` and `finished` rows already record, so a trace loses
+nothing by their absence — while storing one every few seconds would add
+hundreds of rows per turn that no replay needs. They too are broadcast with
+`seq = 0`.
+
 ## `llm_calls` — where the time went
 
 One row per model request. Sizes and durations, **not** prompts: enough to explain

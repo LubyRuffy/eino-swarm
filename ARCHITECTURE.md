@@ -84,6 +84,11 @@ flowchart LR
    - completed messages, tool calls, tool results, spawn/finish, steer and
      cleanup notices are **persisted with a gap-free per-conversation `seq`**,
      then broadcast.
+   Alongside them a ticker emits a `progress` pulse every
+   `swarm.progress_interval_seconds`, built from `Registry.Progress()`. It is
+   broadcast only, for the same reason a delta is: it restates events that are
+   already stored. Without it a turn whose agents are all inside a slow tool
+   call streams nothing at all and cannot be told apart from a stuck one.
 6. Turn end: `Registry.Cleanup()` kills sub-agents still running (recorded as a
    `cleanup` event), the transcript is persisted, the turn row is closed, and a
    terminal `done`/`error` event is emitted. Steering that arrived after the

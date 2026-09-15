@@ -11,6 +11,15 @@ co-working app built on it. The library API is unchanged except where noted.
 
 ### Added
 
+- **A pulse while the turn runs.** A swarm whose agents are all inside a slow
+  tool call streams nothing, and a busy run then looks exactly like a stuck one.
+  Every `swarm.progress_interval_seconds` (default 5, editable in Settings → Swarm)
+  a running turn now emits a `progress` event carrying the turn's age and each
+  sub-agent's status and age. The transcript shows a "Working for 1m 12s ·
+  2 sub-agents running" line that ticks between pulses, and the roll-up under a
+  pending `wait_agents` ages each row. Pulses are broadcast and never stored:
+  they restate events the turn already recorded, so a trace loses nothing and a
+  replay does not wade through hundreds of rows.
 - **Per-conversation thinking level.** The composer now carries a thinking-level
   menu (Default / Low / Medium / High) next to the model picker, so a
   conversation can be told to reason harder or lighter without touching
@@ -103,6 +112,12 @@ co-working app built on it. The library API is unchanged except where noted.
 
 ### Fixed
 
+- **Swarm**: asking a run how it was doing could destroy its result. `Registry.Stats`
+  prunes the finished sub-agents it counts, and the engine called it to answer
+  `GET /api/threads/:id`, so a status poll landing between a worker finishing and
+  the manager's `wait_agents` collecting it turned a completed worker into
+  "unknown agent" and lost the result. Reporting now goes through a new read-only
+  `Registry.Progress()`, which never forgets an agent.
 - **Swarm**: the manager's `tool_result` notifications were never emitted, because
   only streaming events were handled. Non-streaming tool messages now surface.
 - **Swarm**: a worker's streamed output was accumulated twice per turn, and the

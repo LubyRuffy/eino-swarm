@@ -91,6 +91,10 @@ type SwarmConfig struct {
 	AgentTimeoutSeconds  int `yaml:"agent_timeout_seconds" json:"agent_timeout_seconds"`
 	MaxTurns             int `yaml:"max_turns" json:"max_turns"`
 	ManagerMaxIterations int `yaml:"manager_max_iterations" json:"manager_max_iterations"`
+	// ProgressIntervalSeconds is how often a running turn emits a progress
+	// pulse. It is the only thing that moves on screen while every agent is
+	// busy inside a long tool call, so it is a comfort setting, not a limit.
+	ProgressIntervalSeconds int `yaml:"progress_interval_seconds" json:"progress_interval_seconds"`
 }
 
 // AgentTimeout is the per-sub-agent watchdog duration.
@@ -99,6 +103,14 @@ func (s SwarmConfig) AgentTimeout() time.Duration {
 		return DefaultAgentTimeoutSeconds * time.Second
 	}
 	return time.Duration(s.AgentTimeoutSeconds) * time.Second
+}
+
+// ProgressInterval is the gap between progress pulses during a running turn.
+func (s SwarmConfig) ProgressInterval() time.Duration {
+	if s.ProgressIntervalSeconds <= 0 {
+		return DefaultProgressIntervalSeconds * time.Second
+	}
+	return time.Duration(s.ProgressIntervalSeconds) * time.Second
 }
 
 // ProxyConfig is the outbound proxy applied to network tools.
@@ -193,11 +205,14 @@ const (
 	DefaultAgentTimeoutSeconds = 600
 	DefaultMaxTurns            = 24
 	DefaultManagerIterations   = 32
-	DefaultWebSearchResults    = 8
-	DefaultProviderID          = "default"
-	DefaultLogLevel            = "info"
-	dirPerm                    = 0o700
-	filePerm                   = 0o600
+	// A pulse every few seconds is frequent enough that a silent swarm still
+	// looks alive, and rare enough to be invisible next to streamed tokens.
+	DefaultProgressIntervalSeconds = 5
+	DefaultWebSearchResults        = 8
+	DefaultProviderID              = "default"
+	DefaultLogLevel                = "info"
+	dirPerm                        = 0o700
+	filePerm                       = 0o600
 )
 
 // Default returns the configuration a fresh install starts with. The single
@@ -218,10 +233,11 @@ func Default() *Config {
 			}},
 		},
 		Swarm: SwarmConfig{
-			MaxConcurrent:        DefaultMaxConcurrent,
-			AgentTimeoutSeconds:  DefaultAgentTimeoutSeconds,
-			MaxTurns:             DefaultMaxTurns,
-			ManagerMaxIterations: DefaultManagerIterations,
+			MaxConcurrent:           DefaultMaxConcurrent,
+			AgentTimeoutSeconds:     DefaultAgentTimeoutSeconds,
+			MaxTurns:                DefaultMaxTurns,
+			ManagerMaxIterations:    DefaultManagerIterations,
+			ProgressIntervalSeconds: DefaultProgressIntervalSeconds,
 		},
 		Tools: ToolsConfig{
 			Disabled:            []string{},
@@ -344,6 +360,9 @@ func (c *Config) normalize() {
 	}
 	if c.Swarm.ManagerMaxIterations <= 0 {
 		c.Swarm.ManagerMaxIterations = d.Swarm.ManagerMaxIterations
+	}
+	if c.Swarm.ProgressIntervalSeconds <= 0 {
+		c.Swarm.ProgressIntervalSeconds = d.Swarm.ProgressIntervalSeconds
 	}
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults

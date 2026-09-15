@@ -68,6 +68,29 @@ export interface TurnState {
   agentIds: string[]
 }
 
+/** One sub-agent as the server last saw it. Ages are measured on the server so
+ *  a client's clock, or a tab the browser had throttled, cannot invent them.
+ *  There is no activity text: what an agent is doing is already on screen from
+ *  its own events, and a silence is missing proof rather than words. */
+export interface PulseAgent {
+  agentId: string
+  role?: string
+  status: AgentStatus
+  elapsedMs: number
+}
+
+/** The latest progress pulse. While every agent sits inside a long tool call
+ *  this is the only thing that moves, and its absence is how a genuinely stuck
+ *  run tells itself apart from a busy one.
+ *
+ *  It says how long, not how many: a count taken a pulse ago would contradict
+ *  the agent rows on screen, which are updated by events as they happen. */
+export interface Pulse {
+  at: string
+  elapsedMs: number
+  agents: PulseAgent[]
+}
+
 export interface TranscriptState {
   /** Manager first, then sub-agents in spawn order. */
   agentOrder: string[]
@@ -77,6 +100,7 @@ export interface TranscriptState {
    *  from. Deltas carry 0 and never move it. */
   lastSeq: number
   running: boolean
+  pulse?: Pulse
 }
 
 export const MANAGER_ID = "manager"
@@ -98,6 +122,7 @@ export function reduceEvent(
     turns: state.turns,
     lastSeq: ev.seq > state.lastSeq ? ev.seq : state.lastSeq,
     running: state.running,
+    pulse: state.pulse,
   }
   const agentId = ev.agent_id || MANAGER_ID
   const agent = touchAgent(next, agentId, ev.role)
@@ -106,6 +131,7 @@ export function reduceEvent(
     case "user_message":
       upsertTurn(next, ev.turn_id, { userText: ev.text ?? "", status: "running", startedAt: ev.created_at })
       next.running = true
+      next.pulse = undefined
       resetManagerForNewTurn(next, ev.turn_id)
       append(agent, block(ev, "user", ev.text ?? ""))
       break
@@ -212,6 +238,18 @@ export function reduceEvent(
       append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text ?? ""))
       break
 
+    case "progress": {
+      // A pulse is a snapshot, not a fact about the timeline: it carries no
+      // sequence number and never becomes a block. It exists so a turn whose
+      // agents are all deep inside a slow tool call still shows movement.
+      // Statuses stay event-driven: a pulse built a moment before `finished`
+      // can arrive after it, and reviving a finished agent is a worse lie than
+      // an age that is a few seconds stale.
+      const pulse = parsePulse(ev)
+      if (pulse) next.pulse = pulse
+      break
+    }
+
     case "done":
     case "error": {
       const failed = ev.kind === "error"
@@ -222,6 +260,7 @@ export function reduceEvent(
         error: ev.err,
       })
       next.running = false
+      next.pulse = undefined
       for (const id of next.agentOrder) {
         const a = next.agents[id]
         closeStreaming(a, "reasoning")
@@ -246,6 +285,15 @@ export function reduceEvent(
   }
 
   return next
+}
+
+/** Sub-agents still working, as the event stream last left them. The heartbeat
+ *  counts from here rather than from the pulse: a count that is a pulse old
+ *  would claim work is still running next to a row that says it finished. */
+export function liveWorkers(state: TranscriptState): number {
+  return state.agentOrder.filter(
+    (id) => id !== MANAGER_ID && state.agents[id].status === "running",
+  ).length
 }
 
 export function reduceEvents(
@@ -418,6 +466,45 @@ function findToolBlock(agent: AgentState, callId?: string): Block | undefined {
     }
   }
   return undefined
+}
+
+/** Read a pulse out of an event. A malformed one is dropped rather than
+ *  rendered: the next pulse is seconds away, and half a snapshot would show a
+ *  turn with no agents in it. */
+export function parsePulse(ev: SwarmEvent): Pulse | undefined {
+  let raw: unknown
+  try {
+    raw = JSON.parse(ev.text ?? "")
+  } catch {
+    return undefined
+  }
+  if (!raw || typeof raw !== "object") return undefined
+  const body = raw as { elapsed_ms?: unknown; agents?: unknown }
+  const agents = Array.isArray(body.agents) ? body.agents : []
+  return {
+    at: ev.created_at,
+    elapsedMs: num(body.elapsed_ms),
+    agents: agents.flatMap((a: unknown) => {
+      const row = a as { agent_id?: unknown; role?: unknown; status?: unknown; elapsed_ms?: unknown }
+      if (typeof row?.agent_id !== "string" || !row.agent_id) return []
+      return [
+        {
+          agentId: row.agent_id,
+          role: typeof row.role === "string" ? row.role : undefined,
+          status: pulseStatus(row.status),
+          elapsedMs: num(row.elapsed_ms),
+        },
+      ]
+    }),
+  }
+}
+
+function pulseStatus(raw: unknown): AgentStatus {
+  return raw === "running" || raw === "failed" ? raw : "done"
+}
+
+function num(raw: unknown): number {
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : 0
 }
 
 /** The server sends `name({json})`; the UI shows the verb and hides the

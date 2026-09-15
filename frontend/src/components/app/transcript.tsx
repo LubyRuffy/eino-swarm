@@ -18,8 +18,8 @@ import { Button } from "@/components/ui/button"
 import { Disclosure } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatDuration, formatTime } from "@/lib/utils"
-import type { AgentState, Block, TranscriptState, TurnState } from "@/lib/transcript"
-import { MANAGER_ID } from "@/lib/transcript"
+import type { AgentState, Block, Pulse, TranscriptState, TurnState } from "@/lib/transcript"
+import { MANAGER_ID, liveWorkers } from "@/lib/transcript"
 
 /** The middle pane: the manager's conversation, with sub-agent activity folded
  *  in where it happened. */
@@ -81,6 +81,7 @@ export function Transcript({
                 key={b.id}
                 block={b}
                 agents={state.agents}
+                pulse={state.pulse}
                 onSelectAgent={onSelectAgent}
               />
             ))}
@@ -89,6 +90,7 @@ export function Transcript({
             <TurnFooter turn={state.turns.find((t) => t.id === turnId)} />
           </div>
         ))}
+        <Heartbeat pulse={state.pulse} running={state.running} workers={liveWorkers(state)} />
         <div ref={endRef} className="h-4" />
       </div>
     </div>
@@ -98,10 +100,12 @@ export function Transcript({
 function BlockView({
   block,
   agents,
+  pulse,
   onSelectAgent,
 }: {
   block: Block
   agents: Record<string, AgentState>
+  pulse?: Pulse
   onSelectAgent: (id: string) => void
 }) {
   switch (block.kind) {
@@ -141,7 +145,7 @@ function BlockView({
       // it shows the sub-agents it is waiting on and what each is doing right
       // now rather than a bare "running…".
       if (block.tool?.name === "wait_agents" && block.tool.pending) {
-        return <WaitProgress block={block} agents={agents} onSelect={onSelectAgent} />
+        return <WaitProgress block={block} agents={agents} pulse={pulse} onSelect={onSelectAgent} />
       }
       return <ToolRow block={block} />
 
@@ -282,15 +286,18 @@ function ToolRow({ block }: { block: Block }) {
 export function WaitProgress({
   block,
   agents,
+  pulse,
   onSelect,
 }: {
   block: Block
   agents: Record<string, AgentState>
+  pulse?: Pulse
   onSelect: (id: string) => void
 }) {
   const ids = waitAgentIds(block.tool?.args ?? "")
   const watched = ids.map((id) => agents[id]).filter(Boolean) as AgentState[]
   const running = watched.filter((a) => a.status === "running").length
+  const ages = new Map(pulse?.agents.map((a) => [a.agentId, a.elapsedMs]))
   return (
     <div className="my-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
       <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
@@ -313,6 +320,13 @@ export function WaitProgress({
             <span className="truncate text-muted-foreground">
               {a.status === "running" ? a.activity || "working…" : a.status}
             </span>
+            {/* The age is the honest part of a silent row: it says the work is
+                still being done, and how long it has been going. */}
+            {ages.has(a.id) ? (
+              <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                {formatDuration(ages.get(a.id) ?? 0)}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -360,6 +374,48 @@ function SpawnRow({
         {agent?.activity}
       </span>
     </button>
+  )
+}
+
+/** The bottom-of-transcript pulse: proof the run is alive, and how long it has
+ *  been going, for the stretches where nothing streams. The clock is anchored
+ *  to each pulse and interpolated locally in between, so it ticks every second
+ *  without drifting away from what the server said. */
+export function Heartbeat({
+  pulse,
+  running,
+  workers,
+}: {
+  pulse?: Pulse
+  running: boolean
+  /** Counted from the agent rows rather than from the pulse: a count that is a
+   *  pulse old would claim work is still running next to a row that says it
+   *  finished. */
+  workers: number
+}) {
+  const [drift, setDrift] = useState(0)
+  useEffect(() => {
+    if (!running || !pulse) return
+    setDrift(0)
+    const anchored = Date.now()
+    const id = window.setInterval(() => setDrift(Date.now() - anchored), 1000)
+    return () => window.clearInterval(id)
+  }, [pulse, running])
+
+  if (!running || !pulse) return null
+  return (
+    <p
+      data-testid="heartbeat"
+      className="mt-2 flex items-center gap-2 px-2 text-xs text-muted-foreground"
+    >
+      <Loader2 className="size-3 shrink-0 animate-spin" />
+      <span className="tabular-nums">Working for {formatDuration(pulse.elapsedMs + drift)}</span>
+      {workers > 0 ? (
+        <span>
+          · {workers} sub-agent{workers === 1 ? "" : "s"} running
+        </span>
+      ) : null}
+    </p>
   )
 }
 

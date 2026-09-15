@@ -19,6 +19,7 @@ import (
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/app"
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/server"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
@@ -234,13 +235,16 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 	h := newHarness(t)
 	h.json(http.MethodPut, "/api/settings", map[string]any{
 		"swarm": map[string]any{"max_concurrent": 3, "agent_timeout_seconds": 42,
-			"max_turns": 9, "manager_max_iterations": 11},
+			"max_turns": 9, "manager_max_iterations": 11, "progress_interval_seconds": 7},
 		"tools": map[string]any{"disabled": []string{"exec"}, "web_search_max_results": 5},
 		"log":   map[string]any{"level": "debug"},
 	}, http.StatusOK)
 
 	if h.app.Config.Swarm.MaxConcurrent != 3 || h.app.Config.Swarm.AgentTimeoutSeconds != 42 {
 		t.Fatalf("swarm settings not applied: %+v", h.app.Config.Swarm)
+	}
+	if h.app.Config.Swarm.ProgressIntervalSeconds != 7 {
+		t.Fatalf("progress interval not applied: %+v", h.app.Config.Swarm)
 	}
 	if !h.app.Config.Tools.IsDisabled("exec") {
 		t.Fatal("tool toggle not applied")
@@ -823,6 +827,19 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 	} {
 		if _, ok := swarm.ParseNotifyKind(want); !ok {
 			t.Fatalf("the event kind %q the UI relies on no longer exists", want)
+		}
+	}
+	// The engine's own kinds sit in the same column of the same table and are
+	// matched by the same front end, so renaming one is just as breaking.
+	for _, tc := range []struct{ got, want string }{
+		{engine.KindUser, "user_message"},
+		{engine.KindReasoning, "reasoning"},
+		{engine.KindSteer, "steer"},
+		{engine.KindCleanup, "cleanup"},
+		{engine.KindProgress, "progress"},
+	} {
+		if tc.got != tc.want {
+			t.Fatalf("the event kind %q the UI relies on is now sent as %q", tc.want, tc.got)
 		}
 	}
 }

@@ -134,6 +134,25 @@ h, _ := reg.Spawn(ctx, "researcher", "find foobar", modelBuilder, extraTools...)
 result, err, _ := h.Result()
 ```
 
+## Reporting progress
+
+A host that wants to show what a run is doing while it is doing it reads
+`Registry.Progress()`: one read-only row per tracked sub-agent, ordered by spawn
+time, with its role, whether it is still running, how long it has been at it, its
+last streamed tail (`Activity`) and, if it failed, why.
+
+```go
+for _, a := range reg.Progress() {
+    fmt.Printf("%s %s %s %s\n", a.AgentID, a.Role, a.Elapsed, a.Activity)
+}
+```
+
+**Poll `Progress`, never `Stats`.** `Stats` prunes the finished agents it counts
+so that a long-lived registry cannot grow without bound — which means a poll
+landing between a sub-agent finishing and `wait_agents` collecting it turns a
+completed agent into an unknown one, and the manager loses the result it just
+paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
+
 ## Guarantees
 
 - Steering never interrupts an in-flight model call or tool execution; messages
@@ -149,7 +168,7 @@ result, err, _ := h.Result()
 | `MaxTurns` (default 20) | a model looping forever; ends with eino's `ErrExceedMaxIterations` |
 | `Registry.Close` | cancels everything and rejects further spawns; safe even for an agent whose cancel was not yet wired, because contexts are created synchronously inside `Spawn` |
 | `Registry.Cleanup` | kills whatever is still running at the end of a turn and reports how many |
-| bounded registry | finished handles are pruned, so a long session cannot grow the map without bound |
+| bounded registry | finished handles are pruned by `Stats`, so a long session cannot grow the map without bound. Use `Progress` for reporting: it never prunes. |
 
 Each of those has a test: `TestCallerContextCancelReleasesAgents`,
 `TestWatchdogTimeoutReleasesAgent`, `TestMaxTurnsEndsBrokenModel`,

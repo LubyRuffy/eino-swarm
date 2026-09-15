@@ -109,6 +109,7 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 		"swarm:",
 		"  max_concurrent: 0",
 		"  max_turns: -3",
+		"  progress_interval_seconds: 0",
 		"tools:",
 		"  web_search_max_results: 0",
 		"log:",
@@ -127,6 +128,11 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	}
 	if cfg.Swarm.MaxConcurrent != DefaultMaxConcurrent || cfg.Swarm.MaxTurns != DefaultMaxTurns {
 		t.Fatalf("swarm bounds not repaired: %+v", cfg.Swarm)
+	}
+	// A hand-edited zero must not switch the pulse off silently: a turn that
+	// reports nothing is indistinguishable from a stuck one.
+	if cfg.Swarm.ProgressIntervalSeconds != DefaultProgressIntervalSeconds {
+		t.Fatalf("progress interval not repaired: %+v", cfg.Swarm)
 	}
 	if cfg.Tools.WebSearchMaxResults != DefaultWebSearchResults {
 		t.Fatalf("web search results not repaired: %d", cfg.Tools.WebSearchMaxResults)
@@ -282,6 +288,15 @@ func TestSwarmAndLogHelpers(t *testing.T) {
 	s.AgentTimeoutSeconds = 5
 	if s.AgentTimeout() != 5*time.Second {
 		t.Fatalf("AgentTimeout=%v", s.AgentTimeout())
+	}
+	// An unset or nonsensical pulse interval must still pulse: a turn that
+	// reports nothing is the problem the pulse exists to fix.
+	if s.ProgressInterval() != DefaultProgressIntervalSeconds*time.Second {
+		t.Fatalf("ProgressInterval=%v", s.ProgressInterval())
+	}
+	s.ProgressIntervalSeconds = 2
+	if s.ProgressInterval() != 2*time.Second {
+		t.Fatalf("ProgressInterval=%v", s.ProgressInterval())
 	}
 	for name, want := range map[string]int{
 		"debug": -4, "info": 0, "warn": 4, "warning": 4, "error": 8, "": 0, "bogus": 0,

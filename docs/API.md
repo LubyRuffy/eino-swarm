@@ -234,6 +234,7 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `turn` | an agent started a model turn (`turn N`) |
 | `steer` | guidance was accepted |
 | `cleanup` | sub-agents were stopped at the end of the turn |
+| `progress` | a pulse while the turn runs (see below); `seq` is 0, not stored |
 | `done` | the turn finished; `text` is the final answer |
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
@@ -242,8 +243,34 @@ Two rules the client depends on:
 
 1. **Deltas carry the full text so far**, so a dropped one cannot corrupt the
    rendering. Replace, do not append.
-2. **Only stored events have `seq > 0` and an SSE `id`.** Deltas are broadcast
-   live and never stored, which is why a reconnect resumes at a completed event.
+2. **Only stored events have `seq > 0` and an SSE `id`.** Deltas and progress
+   pulses are broadcast live and never stored, which is why a reconnect resumes
+   at a completed event.
+
+### Progress pulses
+
+While a turn runs the server emits a `progress` event every
+`swarm.progress_interval_seconds` (default 5). It exists for the stretches where
+every agent is inside a slow tool call and nothing streams: without it a busy
+run and a stuck one look identical. `text` is JSON:
+
+```json
+{
+  "elapsed_ms": 45120,
+  "agents": [
+    {"agent_id": "reader-1", "role": "reader", "status": "running", "elapsed_ms": 30100}
+  ]
+}
+```
+
+`status` is `running`, `done` or `failed`, and all durations are measured on the
+server. There is no activity text and no running total: what an agent is doing
+already arrives as its own events, and a total taken a pulse ago would
+contradict the `spawned`/`finished` events a client has since received. A pulse
+is a snapshot, not a fact about the timeline: it carries no sequence number, is
+never stored, and `agents` is always a list. Treat it as advisory — a pulse
+built just before a sub-agent finished can arrive just after the `finished`
+event, so it must not be used to change an agent's status.
 
 A heartbeat comment is sent every 20s. A client that falls behind is caught up
 from the database rather than dropped, so no stored event is lost.

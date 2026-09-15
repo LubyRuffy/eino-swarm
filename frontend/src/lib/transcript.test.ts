@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   MANAGER_ID,
   emptyTranscript,
+  liveWorkers,
   reduceEvents,
   splitToolCall,
   summarise,
@@ -346,5 +347,90 @@ describe("complete records after streaming", () => {
     ])
     const thoughts = manager(state).blocks.filter((b) => b.kind === "reasoning")
     expect(thoughts.map((b) => b.text)).toEqual(["First I check", "Now I answer"])
+  })
+})
+
+describe("the progress pulse", () => {
+  function beat(agents: unknown[], elapsed = 12000) {
+    return ev({
+      kind: "progress",
+      seq: 0,
+      text: JSON.stringify({ elapsed_ms: elapsed, agents }),
+    })
+  }
+
+  // The pulse is what a user reads when every agent is deep inside a slow tool
+  // call and nothing has streamed for a minute.
+  it("carries the run's age and its live sub-agents", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "compare two things" }),
+      ev({ kind: "spawned", agent_id: "reader-1", role: "reader" }),
+      beat([{ agent_id: "reader-1", role: "reader", status: "running", elapsed_ms: 8000 }]),
+    ])
+    expect(state.pulse?.elapsedMs).toBe(12000)
+    expect(state.pulse?.agents[0]).toMatchObject({
+      agentId: "reader-1",
+      status: "running",
+      elapsedMs: 8000,
+    })
+  })
+
+  // A pulse is a snapshot with no place in the timeline; the default branch
+  // would otherwise drop a "notice" block into the conversation every few
+  // seconds.
+  it("leaves no trace in the transcript", () => {
+    const before = fold([ev({ kind: "user_message", text: "hi" })])
+    const after = fold([beat([]), beat([])], before)
+    expect(after.agents[MANAGER_ID].blocks).toHaveLength(1)
+    expect(after.lastSeq).toBe(before.lastSeq)
+  })
+
+  // Pulses and events are broadcast on separate paths, so one built just before
+  // a sub-agent finished can land just after. Believing it would flip a finished
+  // agent back to running and leave it spinning forever.
+  it("cannot revive an agent that has already finished", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "spawned", agent_id: "reader-1", role: "reader" }),
+      ev({ kind: "tool_call", agent_id: "reader-1", text: "read({})", tool_call_id: "c9" }),
+      ev({ kind: "finished", agent_id: "reader-1", role: "reader", text: "found it" }),
+      beat([{ agent_id: "reader-1", role: "reader", status: "running", elapsed_ms: 9000 }]),
+    ])
+    expect(state.agents["reader-1"].status).toBe("done")
+    expect(state.agents["reader-1"].activity).toBe("done")
+  })
+
+  // The heartbeat's count has to follow the events, not the pulse, or it will
+  // contradict the rows next to it for as long as an interval lasts.
+  it("counts live sub-agents from the events, and never the manager", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "spawned", agent_id: "reader-1", role: "reader" }),
+      ev({ kind: "spawned", agent_id: "writer-2", role: "writer" }),
+      beat([]),
+    ])
+    expect(liveWorkers(state)).toBe(2)
+    const after = fold([ev({ kind: "finished", agent_id: "reader-1", text: "done" })], state)
+    expect(liveWorkers(after)).toBe(1)
+    expect(liveWorkers(fold([ev({ kind: "done", text: "answered" })], after))).toBe(0)
+  })
+
+  it("goes away when the turn does", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      beat([]),
+      ev({ kind: "done", text: "answered" }),
+    ])
+    expect(state.pulse).toBeUndefined()
+  })
+
+  // A malformed pulse is dropped rather than rendered: showing a turn with no
+  // agents in it is worse than showing the previous pulse for another few
+  // seconds.
+  it("ignores a payload it cannot read", () => {
+    const good = fold([ev({ kind: "user_message", text: "hi" }), beat([])])
+    const after = fold([ev({ kind: "progress", seq: 0, text: "not json" })], good)
+    expect(after.pulse).toBe(good.pulse)
+    expect(after.agents[MANAGER_ID].blocks).toHaveLength(1)
   })
 })
