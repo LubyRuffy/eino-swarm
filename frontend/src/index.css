@@ -1,0 +1,178 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* The whole palette lives here. Components reference tokens only, so light
+   and dark cannot drift apart and a theme change is one file. */
+@layer base {
+  :root {
+    --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+      "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+
+    --background: 0 0% 100%;
+    --foreground: 240 10% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 8%;
+    --primary: 240 6% 12%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 12%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --accent: 240 5% 94%;
+    --accent-foreground: 240 6% 12%;
+    --destructive: 0 72% 46%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 240 5% 65%;
+    --radius: 0.65rem;
+
+    --sidebar: 240 5% 97%;
+    --sidebar-foreground: 240 6% 20%;
+    --sidebar-accent: 240 5% 92%;
+    --sidebar-border: 240 6% 89%;
+
+    --running: 38 92% 50%;
+    --done: 142 62% 38%;
+    --failed: 0 72% 46%;
+  }
+
+  .dark {
+    --background: 240 8% 6%;
+    --foreground: 0 0% 95%;
+    --card: 240 7% 9%;
+    --card-foreground: 0 0% 95%;
+    --popover: 240 7% 10%;
+    --popover-foreground: 0 0% 95%;
+    --primary: 0 0% 96%;
+    --primary-foreground: 240 8% 10%;
+    --secondary: 240 5% 15%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 240 5% 15%;
+    --muted-foreground: 240 5% 62%;
+    --accent: 240 5% 18%;
+    --accent-foreground: 0 0% 95%;
+    --destructive: 0 70% 56%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 18%;
+    --input: 240 5% 20%;
+    --ring: 240 5% 40%;
+
+    --sidebar: 240 8% 8%;
+    --sidebar-foreground: 240 5% 78%;
+    --sidebar-accent: 240 5% 15%;
+    --sidebar-border: 240 5% 16%;
+
+    --running: 38 92% 56%;
+    --done: 142 58% 48%;
+    --failed: 0 70% 58%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    /* The desktop window has no browser chrome, so an accidental overscroll
+       would detach the whole UI from the title bar. */
+    overscroll-behavior: none;
+  }
+
+  /* The desktop window hides its title bar, so the app's own header has to be
+     the drag handle. In a browser this attribute means nothing. */
+  [data-drag-region] {
+    --wails-draggable: drag;
+  }
+
+  [data-drag-region] button,
+  [data-drag-region] a,
+  [data-drag-region] input,
+  [data-drag-region] [role="button"] {
+    --wails-draggable: no-drag;
+  }
+}
+
+@layer components {
+  /* Rendered markdown from the model. Prose plugins bring a lot of opinions
+     and a lot of kilobytes; these are the few rules the answers actually
+     need. */
+  .md {
+    @apply text-[15px] leading-7;
+  }
+  .md > * + * {
+    @apply mt-3;
+  }
+  .md h1 {
+    @apply text-xl font-semibold mt-5;
+  }
+  .md h2 {
+    @apply text-lg font-semibold mt-5;
+  }
+  .md h3 {
+    @apply text-base font-semibold mt-4;
+  }
+  .md ul {
+    @apply list-disc pl-5 space-y-1;
+  }
+  .md ol {
+    @apply list-decimal pl-5 space-y-1;
+  }
+  .md a {
+    @apply underline underline-offset-2 hover:text-foreground;
+  }
+  .md blockquote {
+    @apply border-l-2 border-border pl-3 text-muted-foreground;
+  }
+  .md code {
+    @apply font-mono text-[13px] bg-muted rounded px-1 py-0.5;
+  }
+  .md pre {
+    @apply bg-muted rounded-md p-3 overflow-x-auto;
+  }
+  .md pre code {
+    @apply bg-transparent p-0;
+  }
+  .md table {
+    @apply w-full text-sm border-collapse;
+  }
+  .md th,
+  .md td {
+    @apply border border-border px-2 py-1 text-left align-top;
+  }
+
+  /* Streamed text is appended character by character; without this, a long
+     unbroken token widens the whole column. */
+  .stream-text {
+    @apply whitespace-pre-wrap break-words;
+  }
+}
+
+/* Scrollbars: the default macOS overlay bar disappears in a dark webview, and
+   a chat that looks unscrollable is a chat people think is broken. */
+@layer utilities {
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full border-4 border-solid border-transparent bg-clip-content;
+  }
+  .thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
