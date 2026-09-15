@@ -115,18 +115,31 @@ func (p ProxyConfig) Enabled() bool {
 
 // ToolsConfig controls the agents' toolset.
 //
-// Disabled records exceptions rather than listing what is on, so a tool added
-// in a later release is available without anyone editing their config file.
+// Both lists record exceptions to a tool's default rather than enumerating the
+// whole toolset, so a tool added in a later release behaves sensibly without
+// anyone editing their config file: Disabled switches off a tool that is on by
+// default, Enabled switches on one that is off by default (those need an
+// external dependency, so they are opt-in).
 type ToolsConfig struct {
 	Disabled            []string    `yaml:"disabled"`
+	Enabled             []string    `yaml:"enabled"`
 	Proxy               ProxyConfig `yaml:"proxy"`
 	WebSearchMaxResults int         `yaml:"web_search_max_results"`
 }
 
-// IsDisabled reports whether the named tool has been switched off.
+// IsDisabled reports whether the named tool has been explicitly switched off.
 func (t ToolsConfig) IsDisabled(name string) bool {
-	for _, d := range t.Disabled {
-		if d == name {
+	return contains(t.Disabled, name)
+}
+
+// IsEnabled reports whether the named tool has been explicitly switched on.
+func (t ToolsConfig) IsEnabled(name string) bool {
+	return contains(t.Enabled, name)
+}
+
+func contains(list []string, want string) bool {
+	for _, v := range list {
+		if v == want {
 			return true
 		}
 	}
