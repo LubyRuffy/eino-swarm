@@ -52,8 +52,9 @@ export function RightPanel({
   turns: Turn[]
   meta?: Meta
   threadId?: string
-  /** Absent when the open conversation is not in a project: there is no
-   *  memory to show and the tab is not rendered at all. */
+  /** Absent when there is no project to show memory for: the open
+   *  conversation is not in one, and the sidebar has not asked to open a
+   *  project's skill either. */
   memory?: MemoryPanelProps
   onUpload: (files: File[]) => Promise<void>
   onDeleteFile: (path: string) => void

@@ -164,23 +164,26 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/store/projects.ts`**, against a fake API: a project deleted elsewhere
   stops being the sidebar's filter, a slow memory response for a project that is
   no longer open is ignored (one project's notes under another's name is worse
-  than none), and a refused create or edit reaches the dialog so it can show the
-  message against the field that caused it.
+  than none), a refused create or edit reaches the dialog so it can show the
+  message against the field that caused it, and a memory reload copies the skill
+  index onto the project so the sidebar list updates without a second listing.
 - **`src/components/app/project-dialog.tsx`**, rendered in jsdom: a rejected
   working directory is shown under that field and the dialog stays open, a
   nameless project cannot be created, and the memory switch is disabled when the
   install has memory off.
-- **`src/components/app/memory-panel.tsx`**, rendered in jsdom: notes and their
-  budget are shown, an edit saves and a failed save stays on screen, a skill's
-  body is fetched only when it is opened, notes that arrive from a review are
-  adopted unless the user is mid-edit — in which case a conflict banner keeps
-  what they typed and offers Reload — and a write that landed while the tab was
-  closed is a badge, not a silent panel.
 - **`src/components/app/project-list.tsx`** and
   **`src/components/app/delete-project-dialog.tsx`**: the selected project is
-  marked as pressed, each row's menu is named after its project, and the delete
-  dialog says that the conversations and the memory go too while the user's own
-  directory does not.
+  marked as pressed, each row's menu is named after its project, skills recorded
+  for a project are listed under it (capped; the rest is a pointer at Memory),
+  and the delete dialog says that the conversations and the memory go too while
+  the user's own directory does not.
+- **`src/components/app/memory-panel.tsx`**, rendered in jsdom: notes and their
+  budget are shown, an edit saves and a failed save stays on screen, a skill's
+  body is fetched only when it is opened, a skill named by the sidebar is opened
+  and fetched on arrival, notes that arrive from a review are adopted unless the
+  user is mid-edit — in which case a conflict banner keeps what they typed and
+  offers Reload — and a write that landed while the tab was closed is a badge,
+  not a silent panel.
 
 ## End-to-end tests
 
@@ -206,8 +209,8 @@ that is already listening on the port.
 
 | spec | covers |
 |---|---|
-| `e2e/conversation.spec.ts` | a full swarm turn, a live status line marked as sweeping while the turn runs, context carried across turns, file upload appearing in the Files panel, the turn id shown for tracing |
-| `e2e/projects.spec.ts` | a project created from the sidebar, a conversation that lands in it and says so, the review named in the transcript without opening a tab, the review's notes and skill appearing in the Memory tab without a reload, the review in the same trace as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload, and a deleted project taking its conversations with it |
+| `e2e/conversation.spec.ts` | a full swarm turn, a live status line marked as sweeping while the turn runs, context carried across turns, file upload appearing in the Files panel, the turn id shown for tracing, and the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error |
+| `e2e/projects.spec.ts` | a project created from the sidebar, a conversation that lands in it and says so, the review named in the transcript without opening a tab, the review's skill appearing under the project in the sidebar, clicking it opening the Memory tab with that skill expanded, the notes in the panel without a reload, the review in the same trace as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload, and a deleted project taking its conversations with it |
 | `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list), the tool catalogue on a never-saved config, settings written to the config file and read back, theme switching persisted, renaming and deleting a conversation |
 
 E2E tests run against `frontend/dist`, so **run `make frontend` after changing

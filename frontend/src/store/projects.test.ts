@@ -26,6 +26,7 @@ const { fake, FakeApiError } = vi.hoisted(() => {
       saved: [] as string[],
       fail: false,
       conflict: false,
+      skills: {} as Record<string, { name: string; description: string; updated_at: string }[]>,
     },
   }
 })
@@ -89,7 +90,7 @@ function memory(id: string): ProjectMemory {
     dir: `/data/projects/${id}/memory`,
     enabled: true,
     memory: { text: id, entries: [id], chars: id.length, limit: 2200, rev: `rev_${id}` },
-    skills: [],
+    skills: fake.skills[id] ?? [],
   }
 }
 
@@ -100,6 +101,7 @@ beforeEach(() => {
   fake.saved.length = 0
   fake.fail = false
   fake.conflict = false
+  fake.skills = {}
   useProjects.setState({
     projects: [],
     selectedId: undefined,
@@ -246,6 +248,18 @@ describe("the memory panel's data", () => {
     expect(useProjects.getState().memoryUnread).toBe(true)
     useProjects.getState().seeMemory()
     expect(useProjects.getState().memoryUnread).toBe(false)
+  })
+
+  it("copies skills onto the project so the sidebar can list them", async () => {
+    fake.projects = [project("a")]
+    fake.skills = {
+      pj_a: [{ name: "a-procedure", description: "when it applies", updated_at: "" }],
+    }
+    await useProjects.getState().refresh()
+    await useProjects.getState().loadMemory("pj_a")
+    expect(useProjects.getState().projects[0].skills?.map((s) => s.name)).toEqual([
+      "a-procedure",
+    ])
   })
 
   it("re-reads memory after a skill is deleted", async () => {

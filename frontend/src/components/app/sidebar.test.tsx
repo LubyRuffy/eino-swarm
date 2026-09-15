@@ -16,6 +16,7 @@ const noop = {
   onNewProject: vi.fn(),
   onEditProject: vi.fn(),
   onDeleteProject: vi.fn(),
+  onOpenSkill: vi.fn(),
 }
 
 describe("Sidebar chrome", () => {

@@ -19,7 +19,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { ProjectList } from "@/components/app/project-list"
 import { StatusDot } from "@/components/app/transcript"
-import type { Project, Thread } from "@/lib/types"
+import type { Project, SkillInfo, Thread } from "@/lib/types"
 import { cn, relativeDay } from "@/lib/utils"
 
 /** Conversations, grouped the way people remember them. */
@@ -41,6 +41,7 @@ export function Sidebar({
   onNewProject,
   onEditProject,
   onDeleteProject,
+  onOpenSkill,
 }: {
   threads: Thread[]
   activeId?: string
@@ -58,6 +59,7 @@ export function Sidebar({
   onNewProject: () => void
   onEditProject: (project: Project) => void
   onDeleteProject: (project: Project) => void
+  onOpenSkill: (project: Project, skill?: SkillInfo) => void
   /** macOS hidden-inset traffic lights sit on this chrome row. New
    *  conversation lives under it, so the label is never under the yellow blob. */
   trafficInset?: boolean
@@ -115,6 +117,7 @@ export function Sidebar({
           onNew={onNewProject}
           onEdit={onEditProject}
           onDelete={onDeleteProject}
+          onOpenSkill={onOpenSkill}
         />
 
         {threads.length === 0 ? (

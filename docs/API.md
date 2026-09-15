@@ -126,12 +126,18 @@ conversations. See [CONFIG.md](CONFIG.md) for the budgets and
                "resolved_workdir": "/Users/me/work/report",
                "memory_enabled": true,
                "memory_dir": "/Users/me/.zwai-swarm/projects/pj_ab12…/memory",
+               "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
                "created_at": "…", "updated_at": "…"}]}
 ```
 
 `workdir` is what the user chose and is empty when zwai manages the directory;
 `resolved_workdir` is where the agents actually work, so no client has to derive
-a path.
+a path. `skills` is the same index the Memory panel and the prompt use — names
+and one-line descriptions, never bodies — so the sidebar can list them under
+the project without a round-trip per row. An unreadable memory store is an
+empty list on this endpoint rather than a failed listing: hiding every project
+because one directory is broken would be the worse failure. Bodies stay behind
+`GET /api/projects/:id/skills/:name`.
 
 ### `POST /api/projects` → `201`
 

@@ -45,6 +45,9 @@ export interface Project {
   resolved_workdir: string
   memory_enabled: boolean
   memory_dir: string
+  /** Names and one-line descriptions, for the sidebar listing. Bodies stay
+   *  behind `GET /skills/:name`, the same way the prompt does not inline them. */
+  skills?: SkillInfo[]
   created_at: string
   updated_at: string
 }

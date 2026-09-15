@@ -23,6 +23,9 @@ export interface MemoryPanelProps {
   /** Called while the panel is on screen, so a write that lands here is not
    *  also a badge on the tab the user is already looking at. */
   onSeen?: () => void
+  /** Skill name the sidebar asked to open. The body is fetched the same way
+   *  a click would: it is not in the list payload. */
+  focusSkill?: string
 }
 
 /** What a project has learned: the notes every turn carries, and the
@@ -41,6 +44,7 @@ export function MemoryPanel({
   onReview,
   onReveal,
   onSeen,
+  focusSkill,
 }: MemoryPanelProps) {
   const [draft, setDraft] = useState("")
   const [dirty, setDirty] = useState(false)
@@ -199,6 +203,7 @@ export function MemoryPanel({
               projectId={project.id}
               name={skill.name}
               description={skill.description}
+              startOpen={skill.name === focusSkill}
               onDelete={() => onDeleteSkill(skill.name)}
             />
           ))
@@ -233,16 +238,38 @@ function SkillRow({
   projectId,
   name,
   description,
+  startOpen,
   onDelete,
 }: {
   projectId: string
   name: string
   description: string
+  startOpen?: boolean
   onDelete: () => void
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(Boolean(startOpen))
   const [skill, setSkill] = useState<Skill>()
   const [error, setError] = useState<string>()
+
+  useEffect(() => {
+    // The sidebar sent the user here. Opening without fetching would show
+    // "Loading…" forever, and fetching without opening would hide the body
+    // they came to read.
+    if (!startOpen) return
+    let cancelled = false
+    setOpen(true)
+    void api.skill(projectId, name).then(
+      (got) => {
+        if (!cancelled) setSkill(got)
+      },
+      (e) => {
+        if (!cancelled) setError(e instanceof Error ? e.message : String(e))
+      },
+    )
+    return () => {
+      cancelled = true
+    }
+  }, [startOpen, projectId, name])
 
   const toggle = async () => {
     const next = !open

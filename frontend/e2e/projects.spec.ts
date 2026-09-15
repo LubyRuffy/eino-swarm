@@ -50,18 +50,21 @@ test("a project carries what one conversation learned into the next", async ({
   const first = `Trace the ${Date.now()} material and summarise it`
   await send(page, first)
 
-  // The review runs after the turn, on its own, and the panel re-reads the
-  // files when its event arrives.
-  await openMemory(page)
+  // The review runs after the turn, on its own. The skill it recorded has to
+  // show up under the project in the sidebar — that is how you find it without
+  // opening the Memory tab first.
+  const sidebarSkill = page.getByRole("button", { name: /^Open skill / })
+  await expect(sidebarSkill).toBeVisible({ timeout: 60_000 })
+  const skillName = ((await sidebarSkill.getAttribute("aria-label")) ?? "").replace(
+    /^Open skill /,
+    "",
+  )
+  expect(skillName).not.toBe("")
+  await sidebarSkill.click()
+  await expect(page.getByRole("tab", { name: "Memory", selected: true })).toBeVisible()
   await expect(notes(page)).toHaveValue(new RegExp(escape(first)), {
     timeout: 60_000,
   })
-  const skill = page.getByRole("button", { expanded: false }).last()
-  await expect(skill).toBeVisible()
-  const skillName = (await skill.textContent()) ?? ""
-
-  // Opening a skill fetches its body, which is deliberately not in the list.
-  await skill.click()
   await expect(page.getByRole("button", { expanded: true })).toBeVisible()
 
   // One id still reaches the whole run: the review is recorded on the turn it

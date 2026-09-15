@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
 import { MANAGER_ID } from "@/lib/transcript"
-import type { Project } from "@/lib/types"
+import type { Project, SkillInfo } from "@/lib/types"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { useApp } from "@/store/app"
 import { projectOf, useProjects } from "@/store/projects"
@@ -53,6 +53,10 @@ function AppShell() {
   const [prefill, setPrefill] = useState("")
   const [prefillToken, setPrefillToken] = useState(0)
   const [focusSignal, setFocusSignal] = useState(0)
+  const [focusSkill, setFocusSkill] = useState<{
+    projectId: string
+    name?: string
+  }>()
 
   const running = useApp((s) => s.status.running)
   const interrupt = useApp((s) => s.interrupt)
@@ -142,6 +146,16 @@ function AppShell() {
           onNewProject={() => setProjectDialog({ open: true })}
           onEditProject={(project) => setProjectDialog({ open: true, project })}
           onDeleteProject={setDoomedProject}
+          onOpenSkill={(project, skill) => {
+            // The list is the directory; the Memory tab is the document.
+            // Selecting the project loads its notes so the panel is not
+            // still showing whatever conversation happened to be open.
+            void useApp.getState().selectProject(project.id)
+            useProjects.getState().seeMemory()
+            setPanelOpen(true)
+            setPanelTab("memory")
+            setFocusSkill({ projectId: project.id, name: skill?.name })
+          }}
         />
       ) : null}
 
@@ -165,7 +179,14 @@ function AppShell() {
       </main>
 
       {panelOpen ? (
-        <AppPanel tab={panelTab} onTabChange={setPanelTab} />
+        <AppPanel
+          tab={panelTab}
+          onTabChange={(tab) => {
+            if (tab !== "memory") setFocusSkill(undefined)
+            setPanelTab(tab)
+          }}
+          focusSkill={focusSkill}
+        />
       ) : null}
 
       <AppPalette
@@ -259,6 +280,7 @@ function AppSidebar({
   onNewProject,
   onEditProject,
   onDeleteProject,
+  onOpenSkill,
 }: {
   onNew: () => void
   onSearch: () => void
@@ -267,6 +289,7 @@ function AppSidebar({
   onNewProject: () => void
   onEditProject: (project: Project) => void
   onDeleteProject: (project: Project) => void
+  onOpenSkill: (project: Project, skill?: SkillInfo) => void
 }) {
   const threads = useApp((s) => s.threads)
   const activeId = useApp((s) => s.activeId)
@@ -297,6 +320,7 @@ function AppSidebar({
       onNewProject={onNewProject}
       onEditProject={onEditProject}
       onDeleteProject={onDeleteProject}
+      onOpenSkill={onOpenSkill}
     />
   )
 }
@@ -449,9 +473,11 @@ function AppComposer({
 function AppPanel({
   tab,
   onTabChange,
+  focusSkill,
 }: {
   tab: PanelTab
   onTabChange: (tab: PanelTab) => void
+  focusSkill?: { projectId: string; name?: string }
 }) {
   const transcript = useApp((s) => s.transcript)
   const selectedAgent = useApp((s) => s.selectedAgent)
@@ -474,10 +500,20 @@ function AppPanel({
   const removeSkill = useProjects((s) => s.removeSkill)
   const memoryUnread = useProjects((s) => s.memoryUnread)
   const seeMemory = useProjects((s) => s.seeMemory)
-  const project = projectOf(
+  const memoryProjectId = useProjects((s) => s.memoryProjectId)
+  const conversationProject = projectOf(
     projects,
     threads.find((t) => t.id === activeId)?.project_id,
   )
+  // A click on a sidebar skill is a request to look at that project's
+  // memory, even when the open conversation belongs to another one — or
+  // to none. The conversation's project is the default the rest of the
+  // time, so merely filtering the list does not swap the notes under you.
+  const project =
+    (focusSkill ? projectOf(projects, focusSkill.projectId) : undefined) ??
+    conversationProject
+  const memoryForProject =
+    project && memoryProjectId === project.id ? memory : undefined
   return (
     <RightPanel
       tab={tab}
@@ -497,14 +533,15 @@ function AppPanel({
         project
           ? {
               project,
-              memory,
-              loading: memoryLoading,
+              memory: memoryForProject,
+              loading: memoryLoading || memoryProjectId !== project.id,
               onSave: saveMemory,
               onDeleteSkill: (name) => void removeSkill(name),
               onRefresh: () => void loadMemory(project.id),
               onReview: () => void reviewNow(),
               unread: memoryUnread,
               onSeen: seeMemory,
+              focusSkill: focusSkill?.name,
             }
           : undefined
       }

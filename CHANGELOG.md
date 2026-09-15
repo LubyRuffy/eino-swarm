@@ -41,7 +41,10 @@ co-working app built on it. The library API is unchanged except where noted.
   tab badges when something was stored while it was not the one on screen. A
   save against notes a review changed in between is refused (`409 conflict`)
   with what is stored now, so the editor can keep yours or take the new ones
-  rather than the last writer silently winning.
+  rather than the last writer silently winning. The sidebar lists each
+  project's skills under its name (`GET /api/projects` carries the index);
+  clicking one opens that skill in the Memory tab. Past eight names the row
+  points at the tab for the rest.
 
 - **Live status lines move.** While a turn is running, the heartbeat, a pending
   tool's arguments, a `wait_agents` roll-up and a sub-agent's activity sweep
@@ -188,6 +191,9 @@ co-working app built on it. The library API is unchanged except where noted.
 
 ### Fixed
 
+- **Engine**: closing a turn used to mark it finished *before* recording `done`,
+  so a reload that raced `FinishTurn` could replay a complete swarm missing its
+  last row. The terminal event is now stored first.
 - **UI**: an event kind the app renders but never subscribed to on the event
   stream was stored, visible in `zwai trace`, and invisible on screen until the
   page was reloaded — which is how the first memory reviews arrived. The

@@ -67,7 +67,7 @@ flowchart LR
 | `internal/desktop` | wails3 single window pointed at the local server URL. |
 | `internal/tui` | terminal renderer for `zwai tui`, on the same swarm and config. |
 | `cmd/zwai` | subcommand table: `desktop`, `web`, `tui`, `trace`, `config`. |
-| `frontend/` | React + TypeScript + Tailwind + shadcn/ui, embedded via `frontend/embed.go`. |
+| `frontend/` | React + TypeScript + Tailwind + shadcn/ui, embedded via `frontend/embed.go`. The project list is `GET /api/projects` including each project's skill index (names and one-line descriptions), so the sidebar can list them without a round-trip per row; bodies stay behind `GET /api/projects/:id/skills/:name`. |
 
 ## A turn, end to end
 
@@ -109,8 +109,8 @@ flowchart LR
    already stored. Without it a turn whose agents are all inside a slow tool
    call streams nothing at all and cannot be told apart from a stuck one.
 6. Turn end: `Registry.Cleanup()` kills sub-agents still running (recorded as a
-   `cleanup` event), the transcript is persisted, the turn row is closed, and a
-   terminal `done`/`error` event is emitted. Steering that arrived after the
+   `cleanup` event), the transcript is persisted, a terminal `done`/`error`
+   event is recorded, then the turn row is closed. Steering that arrived after the
    manager's last model call is not dropped — it starts a follow-up turn.
 7. **Review** (project conversations with memory on, `memory.auto_review`): a
    goroutine hands the finished conversation to a single reviewer agent — one

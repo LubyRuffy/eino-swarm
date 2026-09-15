@@ -103,7 +103,15 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       // The panel may have moved on while this was in flight; showing one
       // project's notes under another's name is worse than showing none.
       if (get().memoryProjectId !== id) return
-      set({ memory, memoryLoading: false })
+      set((s) => ({
+        memory,
+        memoryLoading: false,
+        // The sidebar lists skills under the project. A review that just
+        // wrote one would otherwise leave the row looking empty until reload.
+        projects: s.projects.map((p) =>
+          p.id === id ? { ...p, skills: memory.skills } : p,
+        ),
+      }))
     } catch (e) {
       if (get().memoryProjectId !== id) return
       set({ memoryLoading: false, error: message(e) })

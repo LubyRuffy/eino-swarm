@@ -56,6 +56,9 @@ func TestProjectRoutesRoundTrip(t *testing.T) {
 	if p["memory_enabled"] != true {
 		t.Fatalf("a project should default to the configured memory setting: %v", p)
 	}
+	if _, ok := p["skills"].([]any); !ok {
+		t.Fatalf("the sidebar iterates skills, so they must arrive as a list: %v", p["skills"])
+	}
 
 	list := h.json(http.MethodGet, "/api/projects", nil, http.StatusOK)["projects"].([]any)
 	if len(list) != 1 {
@@ -228,6 +231,19 @@ func TestMemoryRoutesReadEditAndPrune(t *testing.T) {
 	if _, err := h.app.Engine.ProjectMemory(id).WriteSkill("a-procedure", "when it applies", "steps"); err != nil {
 		t.Fatal(err)
 	}
+	// The sidebar lists skills under the project, so the project list itself
+	// has to carry them rather than making the UI round-trip per row.
+	listed := h.json(http.MethodGet, "/api/projects", nil, http.StatusOK)["projects"].([]any)
+	var listedSkills []any
+	for _, raw := range listed {
+		row := raw.(map[string]any)
+		if row["id"] == id {
+			listedSkills, _ = row["skills"].([]any)
+		}
+	}
+	if len(listedSkills) != 1 || listedSkills[0].(map[string]any)["name"] != "a-procedure" {
+		t.Fatalf("project list did not carry the skill: %v", listedSkills)
+	}
 	skill := h.json(http.MethodGet, "/api/projects/"+id+"/skills/a-procedure", nil, http.StatusOK)["skill"].(map[string]any)
 	if skill["name"] != "a-procedure" || !strings.Contains(skill["body"].(string), "steps") {
 		t.Fatalf("skill=%v", skill)
@@ -288,6 +304,17 @@ func TestAnUnreadableMemoryStoreIsReportedNotHidden(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.json(http.MethodGet, "/api/projects/"+id+"/memory", nil, http.StatusBadRequest)
+
+	// The sidebar still has to list the project: hiding every project
+	// because one skills directory is broken would be the worse failure.
+	listed := h.json(http.MethodGet, "/api/projects", nil, http.StatusOK)["projects"].([]any)
+	if len(listed) != 1 {
+		t.Fatalf("projects=%v", listed)
+	}
+	skills, ok := listed[0].(map[string]any)["skills"].([]any)
+	if !ok || len(skills) != 0 {
+		t.Fatalf("a broken skills dir must arrive as an empty list: %v", listed[0])
+	}
 }
 
 // The end of the path a user actually walks: a turn in a project runs, the

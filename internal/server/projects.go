@@ -21,8 +21,13 @@ type projectView struct {
 	ResolvedWorkdir string `json:"resolved_workdir"`
 	MemoryEnabled   bool   `json:"memory_enabled"`
 	MemoryDir       string `json:"memory_dir"`
-	CreatedAt       string `json:"created_at"`
-	UpdatedAt       string `json:"updated_at"`
+	// Skills is the index the sidebar lists under the project: names and
+	// one-line descriptions, not the bodies. An unreadable store is an empty
+	// list rather than a failed listing — hiding every project because one
+	// memory directory is broken would be the worse failure.
+	Skills    []memory.SkillInfo `json:"skills"`
+	CreatedAt string             `json:"created_at"`
+	UpdatedAt string             `json:"updated_at"`
 }
 
 func (s *Server) viewProject(p *store.Project) projectView {
@@ -34,9 +39,18 @@ func (s *Server) viewProject(p *store.Project) projectView {
 		ResolvedWorkdir: s.engine.ProjectWorkdir(p),
 		MemoryEnabled:   p.MemoryEnabled,
 		MemoryDir:       s.engine.ProjectMemory(p.ID).Dir(),
+		Skills:          s.projectSkills(p.ID),
 		CreatedAt:       p.CreatedAt.Format(timeFormat),
 		UpdatedAt:       p.UpdatedAt.Format(timeFormat),
 	}
+}
+
+func (s *Server) projectSkills(projectID string) []memory.SkillInfo {
+	list, err := s.engine.ProjectMemory(projectID).ListSkills()
+	if err != nil || list == nil {
+		return []memory.SkillInfo{}
+	}
+	return list
 }
 
 func (s *Server) listProjects(c *gin.Context) {

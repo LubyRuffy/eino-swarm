@@ -212,6 +212,19 @@ describe("Memory panel", () => {
     expect(api.skill).toHaveBeenCalledWith("pj_1", "a-procedure")
   })
 
+  it("opens the named skill when the sidebar sent the user here", async () => {
+    vi.mocked(api.skill).mockResolvedValue({
+      name: "a-procedure",
+      description: "how to do the thing",
+      updated_at: "",
+      body: "## Steps",
+    })
+    renderPanel({ focusSkill: "a-procedure" })
+    expect(screen.getByRole("button", { expanded: true })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText("Steps")).toBeInTheDocument())
+    expect(api.skill).toHaveBeenCalledWith("pj_1", "a-procedure")
+  })
+
   it("asks for a review and a reload on request", () => {
     const { onReview, onRefresh, onDeleteSkill } = renderPanel()
     fireEvent.click(

@@ -135,15 +135,16 @@ step-by-step procedures the agents wrote for themselves. The next conversation i
 that project starts with the notes in its prompt and an index of the skills, and
 opens a skill when it needs one.
 
-The **Memory** tab shows both. Notes are editable, skills can be read and
-deleted, and **Review now** re-reads the last finished turn. A write that landed
-is also named in the transcript itself (`Memory updated: …`), so you do not have
-to have the tab open to notice. If you were mid-edit when a review wrote, the
-panel says so and lets you keep yours or take the new ones — the last save does
-not silently win. Correcting a wrong note there matters: it would otherwise be
-repeated in every future conversation. Notes are budgeted (`memory.char_limit`,
-default 2200 characters) because they ride in every prompt — once full, something
-has to be replaced to make room.
+The sidebar lists each project's skills under its name. Click one to open it in
+the **Memory** tab. Notes are editable, skills can be read and deleted, and
+**Review now** re-reads the last finished turn. A write that landed is also named
+in the transcript itself (`Memory updated: …`), so you do not have to have the
+tab open to notice. If you were mid-edit when a review wrote, the panel says so
+and lets you keep yours or take the new ones — the last save does not silently
+win. Correcting a wrong note there matters: it would otherwise be repeated in
+every future conversation. Notes are budgeted (`memory.char_limit`, default 2200
+characters) because they ride in every prompt — once full, something has to be
+replaced to make room.
 
 Memory lives in the data directory, never in your working directory, so a project
 pointed at a repository leaves nothing in it. Deleting a project deletes its
