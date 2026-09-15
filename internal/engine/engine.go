@@ -278,13 +278,14 @@ func (e *Engine) Replay(threadID string, since int64) ([]store.Event, error) {
 
 // broadcast fans one event out to the conversation's subscribers.
 func (e *Engine) broadcast(ev store.Event) {
+	// The send stays under the same lock that Subscribe/Close use, so a
+	// subscriber cannot be closed between being chosen as a target and being
+	// sent to — sending on that closed channel would panic. It is safe to hold
+	// the lock here because the send is non-blocking: a slow client is flagged
+	// and skipped rather than waited on.
 	e.mu.Lock()
-	targets := make([]*subscriber, 0, len(e.subs[ev.ThreadID]))
+	defer e.mu.Unlock()
 	for _, s := range e.subs[ev.ThreadID] {
-		targets = append(targets, s)
-	}
-	e.mu.Unlock()
-	for _, s := range targets {
 		select {
 		case s.ch <- ev:
 		default:
