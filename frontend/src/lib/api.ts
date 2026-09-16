@@ -12,7 +12,10 @@ import type {
   ThreadStatus,
   ToolDescriptor,
   Turn,
+  Followup,
+  UsageSnapshot,
 } from "./types"
+import type { SendImage } from "./paste-image"
 
 /** The fields a project dialog can send. Each is optional so a patch changes
  *  only what the user touched. */
@@ -66,6 +69,24 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await res.json()) as T
 }
 
+function turnBody(
+  text: string,
+  images?: SendImage[],
+  files?: string[],
+  fromEventSeq?: number,
+) {
+  const body: {
+    text: string
+    images?: SendImage[]
+    files?: string[]
+    from_event_seq?: number
+  } = { text }
+  if (images && images.length > 0) body.images = images
+  if (files && files.length > 0) body.files = files
+  if (fromEventSeq && fromEventSeq > 0) body.from_event_seq = fromEventSeq
+  return body
+}
+
 // A config written by an older build can still carry null tool lists, and the
 // settings UI reads them as arrays.
 function withToolLists(s: Settings): Settings {
@@ -76,6 +97,7 @@ function withToolLists(s: Settings): Settings {
       disabled: s.tools.disabled ?? [],
       enabled: s.tools.enabled ?? [],
     },
+    ui: { locale: s.ui?.locale || "system" },
   }
 }
 
@@ -96,6 +118,18 @@ export const api = {
     request<{ models: ModelInfo[]; default: string; mock: boolean }>(
       "/api/models",
     ),
+  discoverModels: (body: {
+    provider_id?: string
+    base_url?: string
+    api_key?: string
+  }) =>
+    request<{ models: string[]; context_windows?: Record<string, number> }>(
+      "/api/models/discover",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
   tools: () =>
     request<{ catalog: ToolDescriptor[]; enabled: string[] }>("/api/tools"),
 
@@ -113,6 +147,11 @@ export const api = {
     }).then((r) => r.project),
   deleteProject: (id: string) =>
     request<void>(`/api/projects/${id}`, { method: "DELETE" }),
+  reorderProjects: (ids: string[]) =>
+    request<{ projects: Project[] }>("/api/projects/reorder", {
+      method: "PUT",
+      body: JSON.stringify({ ids }),
+    }).then((r) => r.projects),
 
   memory: (projectId: string) =>
     request<{ memory: ProjectMemory }>(`/api/projects/${projectId}/memory`).then(
@@ -152,39 +191,86 @@ export const api = {
       }),
     }).then((r) => r.thread),
   thread: (id: string) =>
-    request<{ thread: Thread; status: ThreadStatus }>(`/api/threads/${id}`),
+    request<{ thread: Thread; status: ThreadStatus; usage?: UsageSnapshot }>(
+      `/api/threads/${id}`,
+    ),
   patchThread: (
     id: string,
     patch: {
       title?: string
       archived?: boolean
       provider_id?: string
+      model?: string
       reasoning_effort?: string
       project_id?: string
+      goal?: string
+      goal_edit?: boolean
+      goal_resume?: boolean
+      pinned?: boolean
     },
   ) =>
     request<{ thread: Thread }>(`/api/threads/${id}`, {
       method: "PATCH",
       body: JSON.stringify(patch),
     }).then((r) => r.thread),
+  compactThread: (id: string) =>
+    request<{ thread: Thread; status: ThreadStatus; usage?: UsageSnapshot }>(
+      `/api/threads/${id}/compact`,
+      { method: "POST" },
+    ),
   deleteThread: (id: string) =>
     request<void>(`/api/threads/${id}`, { method: "DELETE" }),
+  reorderThreads: (ids: string[], projectId?: string) => {
+    const params = new URLSearchParams()
+    if (projectId) params.set("project", projectId)
+    const query = params.toString()
+    return request<{ threads: Thread[] }>(
+      `/api/threads/reorder${query ? `?${query}` : ""}`,
+      { method: "PUT", body: JSON.stringify({ ids }) },
+    ).then((r) => r.threads)
+  },
 
-  startTurn: (id: string, text: string) =>
+  startTurn: (
+    id: string,
+    text: string,
+    images?: SendImage[],
+    files?: string[],
+    fromEventSeq?: number,
+  ) =>
     request<{ turn: Turn }>(`/api/threads/${id}/turns`, {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify(turnBody(text, images, files, fromEventSeq)),
     }).then((r) => r.turn),
-  /** One gesture for the composer: the server starts a turn when nothing is
-   *  running and steers the manager when something is. */
-  steer: (id: string, text: string) =>
+  /** Injects into a running turn. Idle conversations start a turn instead,
+   *  so a Steer click that lost the race still lands. */
+  steer: (id: string, text: string, images?: SendImage[], files?: string[]) =>
     request<{ steered: boolean; turn?: Turn }>(`/api/threads/${id}/steer`, {
       method: "POST",
+      body: JSON.stringify(turnBody(text, images, files)),
+    }),
+  followups: (id: string) =>
+    request<{ followups: Followup[] }>(`/api/threads/${id}/followups`).then(
+      (r) => r.followups ?? [],
+    ),
+  enqueueFollowup: (id: string, text: string) =>
+    request<{ followup: Followup }>(`/api/threads/${id}/followups`, {
+      method: "POST",
       body: JSON.stringify({ text }),
+    }).then((r) => r.followup),
+  deleteFollowup: (id: string, fid: string) =>
+    request<void>(`/api/threads/${id}/followups/${fid}`, { method: "DELETE" }),
+  steerFollowup: (id: string, fid: string) =>
+    request<{ steered: boolean }>(`/api/threads/${id}/followups/${fid}/steer`, {
+      method: "POST",
     }),
   interrupt: (id: string) =>
     request<{ interrupted: boolean }>(`/api/threads/${id}/interrupt`, {
       method: "POST",
+    }),
+  continueTurn: (id: string, proceed: boolean) =>
+    request<{ continued: boolean }>(`/api/threads/${id}/continue`, {
+      method: "POST",
+      body: JSON.stringify({ continue: proceed }),
     }),
   /** Re-reads the last finished turn and curates the project's memory again.
    *  Accepted, not done: the result arrives on the event stream. */
@@ -207,6 +293,8 @@ export const api = {
   },
   downloadURL: (id: string, path: string) =>
     `/api/threads/${id}/download/${path.split("/").map(encodeURIComponent).join("/")}`,
+  inputImageURL: (id: string, imageId: string) =>
+    `/api/threads/${id}/input-images/${encodeURIComponent(imageId)}`,
   deleteFile: (id: string, path: string) =>
     request<void>(
       `/api/threads/${id}/download/${path.split("/").map(encodeURIComponent).join("/")}`,
@@ -216,6 +304,11 @@ export const api = {
     request<{ revealed: string }>(`/api/threads/${id}/reveal`, {
       method: "POST",
       body: JSON.stringify({ path: path ?? "" }),
+    }),
+  openURL: (url: string) =>
+    request<{ opened: string }>("/api/open", {
+      method: "POST",
+      body: JSON.stringify({ url }),
     }),
 
   trace: (turnId: string) =>

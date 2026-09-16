@@ -154,3 +154,173 @@ func TestListFilesReportsDirsAndSizes(t *testing.T) {
 		t.Fatalf("ListFiles on a fresh conversation: %v", err)
 	}
 }
+
+func TestListFilesSkipsDependencyTrees(t *testing.T) {
+	// A project pointed at a repository would otherwise spend the 2000-entry
+	// cap on .git / node_modules / vendor before the panel lists anything
+	// the human recognizes. Agents can still read those paths.
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	root := e.WorkspaceDir(th.ID)
+	hidden := []string{
+		filepath.Join(root, ".git", "objects", "pack"),
+		filepath.Join(root, "node_modules", "left-pad"),
+		filepath.Join(root, "vendor", "mod"),
+	}
+	for _, dir := range hidden {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "blob"), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, "readme.md"), []byte("hi"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "pkg"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "pkg", "a.go"), []byte("package pkg"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := e.ListFiles(th.ID)
+	if err != nil {
+		t.Fatalf("ListFiles: %v", err)
+	}
+	byPath := map[string]FileEntry{}
+	for _, f := range files {
+		byPath[f.Path] = f
+	}
+	if _, ok := byPath["readme.md"]; !ok {
+		t.Fatalf("visible file missing: %+v", files)
+	}
+	if !byPath["pkg"].Dir {
+		t.Fatalf("visible directory missing: %+v", files)
+	}
+	for _, p := range []string{".git", "node_modules", "vendor"} {
+		if _, ok := byPath[p]; ok {
+			t.Fatalf("listing included %s: %+v", p, files)
+		}
+	}
+}
+
+func writeUpload(content string) func(string) error {
+	return func(dst string) error { return os.WriteFile(dst, []byte(content), 0o600) }
+}
+
+func TestStartTurnNamesThisTurnsUploadsNotLeftovers(t *testing.T) {
+	// Uploads share one folder for the whole conversation. A later "what is
+	// this" has to name the files on THIS send, or the model scavenges an
+	// older archive sitting next to them and the human thinks the app
+	// opened the wrong file.
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	leftover, err := e.SaveUpload(th.ID, "leftover.bin", writeUpload("old"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := e.SaveUpload(th.ID, "current.csv", writeUpload("a,b\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	turn, err := e.StartTurnInput(th.ID, UserInput{
+		Text:  "what is this",
+		Files: []string{current.RelPath, current.RelPath},
+	})
+	if err != nil {
+		t.Fatalf("StartTurnInput: %v", err)
+	}
+	if !strings.Contains(turn.UserText, current.RelPath) {
+		t.Fatalf("this turn's upload must be named on the message: %q", turn.UserText)
+	}
+	if strings.Count(turn.UserText, current.RelPath) != 1 {
+		t.Fatalf("a path listed twice on the wire is still one attachment: %q", turn.UserText)
+	}
+	if strings.Contains(turn.UserText, leftover.RelPath) {
+		t.Fatalf("an older upload must not be presented as this message's file: %q", turn.UserText)
+	}
+	if !strings.Contains(turn.UserText, "what is this") {
+		t.Fatalf("the caption still has to be there: %q", turn.UserText)
+	}
+
+	list, err := e.Store().ListAttachments(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPath := map[string]string{}
+	for _, a := range list {
+		byPath[a.RelPath] = a.TurnID
+	}
+	if byPath[current.RelPath] != turn.ID {
+		t.Fatalf("this turn's upload should be bound to the turn, got %q", byPath[current.RelPath])
+	}
+	if byPath[leftover.RelPath] != "" {
+		t.Fatalf("a leftover upload is not this turn's: %q", byPath[leftover.RelPath])
+	}
+
+	finished := waitForTurn(t, e, turn.ID)
+	msgs, err := e.Store().ListMessages(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var user string
+	for _, m := range msgs {
+		if m.Role == "user" {
+			user = m.Content
+			break
+		}
+	}
+	if user != finished.UserText {
+		t.Fatalf("replay must see the same named files as the timeline: %q vs %q", user, finished.UserText)
+	}
+}
+
+func TestAFileAloneStillStartsATurn(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	att, err := e.SaveUpload(th.ID, "current.csv", writeUpload("a,b\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := e.StartTurnInput(th.ID, UserInput{Files: []string{att.RelPath}})
+	if err != nil {
+		t.Fatalf("a file with no caption still has to start a turn: %v", err)
+	}
+	if !strings.Contains(turn.UserText, att.RelPath) {
+		t.Fatalf("the message has to name the file: %q", turn.UserText)
+	}
+	waitForTurn(t, e, turn.ID)
+}
+
+func TestAttachedFileMustBeAHumanUpload(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	ghost := filepath.Join(e.WorkspaceDir(th.ID), "uploads", "ghost.csv")
+	if err := os.MkdirAll(filepath.Dir(ghost), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(ghost, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.StartTurnInput(th.ID, UserInput{
+		Text:  "what is this",
+		Files: []string{"uploads/ghost.csv"},
+	}); err == nil {
+		t.Fatal("an agent-written path must not ride in as a human attachment")
+	}
+	if _, err := e.StartTurnInput(th.ID, UserInput{
+		Text:  "what is this",
+		Files: []string{"notes/report.md"},
+	}); err == nil {
+		t.Fatal("only uploads/ can be attached to a message")
+	}
+	if _, err := e.StartTurnInput(th.ID, UserInput{
+		Text:  "what is this",
+		Files: []string{"uploads/../notes/x"},
+	}); err == nil {
+		t.Fatal("a traversal must not attach a file outside uploads/")
+	}
+}

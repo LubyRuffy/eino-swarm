@@ -123,6 +123,9 @@ func TestDeletingAProjectTakesItsConversationsWithIt(t *testing.T) {
 	if err := s.AddAttachment(&Attachment{ThreadID: th.ID, Name: "a", RelPath: "uploads/a"}); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := s.EnqueueFollowup(th.ID, "later"); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := s.DeleteProject(p.ID); err != nil {
 		t.Fatalf("DeleteProject: %v", err)
@@ -136,6 +139,7 @@ func TestDeletingAProjectTakesItsConversationsWithIt(t *testing.T) {
 		"events":      len(mustEvents(t, s, th.ID)),
 		"llm_calls":   len(mustCalls(t, s, turn.ID)),
 		"attachments": len(mustAttachments(t, s, th.ID)),
+		"followups":   len(mustFollowups(t, s, th.ID)),
 	} {
 		if count != 0 {
 			t.Fatalf("%s left behind: %d", name, count)
@@ -252,6 +256,15 @@ func mustCalls(t *testing.T, s *Store, turnID string) []LLMCall {
 func mustAttachments(t *testing.T, s *Store, threadID string) []Attachment {
 	t.Helper()
 	out, err := s.ListAttachments(threadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func mustFollowups(t *testing.T, s *Store, threadID string) []Followup {
+	t.Helper()
+	out, err := s.ListFollowups(threadID)
 	if err != nil {
 		t.Fatal(err)
 	}

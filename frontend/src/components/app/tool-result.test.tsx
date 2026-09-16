@@ -27,7 +27,7 @@ describe("ToolResultBody", () => {
     const result = [
       "encoding=utf-8 path=main.go offset=1 limit=200",
       "1|package main",
-      "2|func main() {}",
+      "2|func Hello() {}",
     ].join("\n")
     render(
       <ToolResultBody
@@ -36,9 +36,28 @@ describe("ToolResultBody", () => {
         result={result}
       />,
     )
-    expect(screen.getByText("package main")).toBeInTheDocument()
+    expect(screen.getByText("package")).toHaveClass("text-syntax-keyword")
+    expect(screen.getByText("main")).toHaveClass("text-syntax-command")
+    expect(screen.getByText("func")).toHaveClass("text-syntax-keyword")
+    expect(screen.getByText("Hello")).toHaveClass("text-syntax-command")
     expect(screen.getByText("1")).toBeInTheDocument()
     expect(screen.getByText("2")).toBeInTheDocument()
+  })
+
+  it("does not guess a language for an unknown suffix", () => {
+    const result = [
+      "encoding=utf-8 path=notes.txt offset=1 limit=200",
+      "1|package main",
+    ].join("\n")
+    render(
+      <ToolResultBody
+        name="read"
+        args={`{"file_path":"notes.txt"}`}
+        result={result}
+      />,
+    )
+    expect(screen.getByText("package main")).toBeInTheDocument()
+    expect(document.querySelector(".text-syntax-keyword")).toBeNull()
   })
 
   it("shows command stdout, not the JSON envelope", () => {
@@ -49,10 +68,40 @@ describe("ToolResultBody", () => {
         result={JSON.stringify({ exit_code: 0, stdout: "ok\nline", stderr: "", failed: false })}
       />,
     )
-    const pre = document.querySelector("pre")
-    expect(pre?.textContent).toBe("ok\nline")
+    expect(screen.getByTestId("tool-output").textContent).toBe("ok\nline")
     expect(screen.queryByText(/exit_code/)).not.toBeInTheDocument()
     expect(screen.queryByText(/"command"/)).not.toBeInTheDocument()
+  })
+
+  it("shows the full wrapped command, not a truncated one-liner", () => {
+    const command = "cd /tmp/workspace/pkg && for d in alpha beta gamma; do echo $d; done"
+    render(
+      <ToolResultBody
+        name="exec"
+        args={JSON.stringify({ command })}
+        result={JSON.stringify({ exit_code: 0, stdout: "alpha\nbeta", stderr: "", failed: false })}
+      />,
+    )
+    const cmd = screen.getByTestId("shell-command")
+    expect(cmd.textContent).toContain(command)
+    expect(cmd.className).toMatch(/whitespace-pre-wrap/)
+    expect(cmd.className).not.toMatch(/\btruncate\b/)
+    expect(screen.getByText("cd")).toHaveClass("text-syntax-command")
+    expect(screen.getByText("&&")).toHaveClass("text-syntax-operator")
+    expect(screen.getByTestId("tool-output").textContent).toBe("alpha\nbeta")
+  })
+
+  it("keeps a heredoc body when the row is expanded", () => {
+    const command = "cat <<END\nline one\nline two\nEND"
+    render(
+      <ToolResultBody
+        name="exec"
+        args={JSON.stringify({ command })}
+        result={JSON.stringify({ exit_code: 0, stdout: "ok", stderr: "", failed: false })}
+      />,
+    )
+    expect(screen.getByTestId("shell-command").textContent).toContain("line one")
+    expect(screen.getByTestId("shell-command").textContent).toContain("line two")
   })
 
   it("shows a failed command as an error, not a grey dump", () => {

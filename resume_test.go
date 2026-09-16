@@ -168,6 +168,48 @@ func TestResumeSeesFinishedWorkersHistory(t *testing.T) {
 	}
 }
 
+// resume_agent starts a new run under the same id, so the spawned event has
+// to carry the new Instruction — the chrome would otherwise keep showing the
+// first task.
+func TestResumeReemitsSpawnedWithTheNewInstruction(t *testing.T) {
+	reg := NewRegistry()
+	reg.WorkerPreamble = "OS: testhost"
+	reg.ModelBuilder = oneShot("first")
+	var got []string
+	reg.setHooks(func(role, agentID, instruction string) {
+		got = append(got, instruction)
+	}, nil)
+	h, err := reg.Spawn(context.Background(), "w", "first task", reg.ModelBuilder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-h.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not finish")
+	}
+
+	reg.ModelBuilder = oneShot("second")
+	nh, err := reg.Resume(context.Background(), h.ID, "continue", reg.ModelBuilder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-nh.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("resumed worker did not finish")
+	}
+	if len(got) != 2 {
+		t.Fatalf("want spawn then resume, got %d: %v", len(got), got)
+	}
+	if !strings.Contains(got[0], "first task") || !strings.Contains(got[0], "OS: testhost") {
+		t.Fatalf("first instruction=%q", got[0])
+	}
+	if !strings.Contains(got[1], "continue") || strings.Contains(got[1], "first task") {
+		t.Fatalf("resume must send the new task, got %q", got[1])
+	}
+}
+
 func TestResumeAfterFailureKeepsTheSameID(t *testing.T) {
 	reg := NewRegistry()
 	reg.ModelBuilder = oneShot("first")

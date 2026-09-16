@@ -135,7 +135,8 @@ func TestTracePrintsATurn(t *testing.T) {
 	}
 	for _, ev := range []store.Event{
 		{ThreadID: th.ID, TurnID: turn.ID, Kind: "user_message", AgentID: "manager", Text: "look into the thing"},
-		{ThreadID: th.ID, TurnID: turn.ID, Kind: "spawned", AgentID: "researcher-1", Text: "researcher"},
+		{ThreadID: th.ID, TurnID: turn.ID, Kind: "spawned", AgentID: "researcher-1",
+			Role: "researcher", Text: "## Environment\n\nhost facts for this worker"},
 		{ThreadID: th.ID, TurnID: turn.ID, Kind: "error", AgentID: "researcher-1", Err: "the endpoint refused the connection"},
 	} {
 		ev := ev
@@ -145,7 +146,8 @@ func TestTracePrintsATurn(t *testing.T) {
 	}
 	if err := st.AppendLLMCall(&store.LLMCall{ThreadID: th.ID, TurnID: turn.ID,
 		AgentID: "manager", Model: "some-model", InputMsgs: 3, InputChars: 120,
-		OutputChars: 40, DurationMS: 250}); err != nil {
+		OutputChars: 40, PromptTokens: 90, CompletionTokens: 12, TotalTokens: 102,
+		CachedTokens: 20, DurationMS: 250}); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.FinishTurn(turn.ID, store.TurnDone, "all done", ""); err != nil {
@@ -164,10 +166,10 @@ func TestTracePrintsATurn(t *testing.T) {
 		turn.ID, th.ID, "done", "some-model", "look into the thing",
 		// the thinking level the turn ran with rides the one-id trace path
 		"thinking high",
-		"spawned", "researcher-1",
+		"spawned", "researcher-1", "## Environment",
 		// a failure has to be visible in the timeline, not just in the status
 		"the endpoint refused the connection",
-		"model calls (1)", "250ms",
+		"model calls (1)", "250ms", "90/12 tok", "cache 20",
 	} {
 		if !strings.Contains(byTurn, want) {
 			t.Fatalf("trace is missing %q:\n%s", want, byTurn)
@@ -240,6 +242,7 @@ func TestTUIBuildsTheConfiguredSwarm(t *testing.T) {
 	}
 	cfg.Swarm.MaxConcurrent = 3
 	cfg.Swarm.MaxTurns = 7
+	cfg.Swarm.ManagerMaxIterations = 9
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -257,15 +260,18 @@ func TestTUIBuildsTheConfiguredSwarm(t *testing.T) {
 	if text != "look into the thing" {
 		t.Fatalf("task=%q", text)
 	}
-	if reg.MaxConcurrent != 3 || reg.MaxTurns != 7 {
-		t.Fatalf("the swarm ignored the configuration: concurrent=%d turns=%d",
-			reg.MaxConcurrent, reg.MaxTurns)
+	if reg.MaxConcurrent != 3 || reg.MaxTurns != 7 || reg.ManagerMaxIterations != 9 {
+		t.Fatalf("the swarm ignored the configuration: concurrent=%d turns=%d iters=%d",
+			reg.MaxConcurrent, reg.MaxTurns, reg.ManagerMaxIterations)
 	}
 	if len(reg.SubAgentTools) == 0 {
 		t.Fatal("sub-agents were given no tools")
 	}
 	if reg.ModelBuilder == nil || reg.ModelBuilder("worker", "worker-1") == nil {
 		t.Fatal("no model builder")
+	}
+	if !strings.Contains(reg.WorkerPreamble, "OS:") {
+		t.Fatal("the terminal swarm would not tell workers which OS they are on")
 	}
 
 	// words after the flags are part of the task, so quoting is optional
@@ -278,6 +284,38 @@ func TestTUIBuildsTheConfiguredSwarm(t *testing.T) {
 	defer cleanup2()
 	if text != "summarise the notes" {
 		t.Fatalf("task=%q", text)
+	}
+}
+
+func TestTUIGoalRidesInTheSession(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	setup, err := assembleTUI(context.Background(), []string{
+		"--mock", "--data-dir", t.TempDir(), "--task", "look into the thing",
+		"--goal", "keep the standing objective",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.cleanup()
+	if setup.session.Task != "look into the thing" {
+		t.Fatalf("task=%q", setup.session.Task)
+	}
+	if !strings.Contains(setup.session.Extra, "## Goal") ||
+		!strings.Contains(setup.session.Extra, "keep the standing objective") ||
+		!strings.Contains(setup.session.Extra, engine.ToolCompleteGoal) ||
+		!strings.Contains(setup.session.Extra, engine.ToolBlockGoal) {
+		t.Fatalf("goal extra=%q", setup.session.Extra)
+	}
+	if len(setup.session.ManagerTools) != 2 {
+		t.Fatalf("complete_goal and block_goal must be on the manager, got %d", len(setup.session.ManagerTools))
+	}
+	if setup.session.ShouldContinue == nil || setup.session.ContinueTask == "" {
+		t.Fatal("a --goal run must auto-continue until complete_goal")
+	}
+	if setup.session.MaxContinues <= 0 {
+		t.Fatal("auto-continue cap missing")
 	}
 }
 
@@ -337,7 +375,8 @@ func TestDesktopStartsALocalServer(t *testing.T) {
 	resp.Body.Close()
 	// the desktop shell advertises what only it can do
 	if !strings.Contains(string(body), `"mode":"desktop"`) ||
-		!strings.Contains(string(body), `"reveal":true`) {
+		!strings.Contains(string(body), `"reveal":true`) ||
+		!strings.Contains(string(body), `"open_url":true`) {
 		t.Fatalf("meta=%s", body)
 	}
 
@@ -387,7 +426,7 @@ func TestWebServesAndShutsDownCleanly(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"mode":"web"`) {
 		t.Fatalf("meta: %d %s", resp.StatusCode, body)
 	}
-	// start a turn so shutdown has something in flight to clean up
+	// start a turn so shutdown has something in flight to abandon
 	resp, err = http.Post(url+"/api/threads", "application/json", strings.NewReader("{}"))
 	if err != nil {
 		t.Fatal(err)
@@ -417,7 +456,8 @@ func TestWebServesAndShutsDownCleanly(t *testing.T) {
 		t.Fatal("the server is still serving after shutdown")
 	}
 
-	// nothing is left looking like it is still working
+	// Quit is not a user Stop: leftover turns stay running so the next start
+	// continues them. A turn that finished before the signal landed is done.
 	st, err := store.Open(filepath.Join(dir, "zwai.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -431,8 +471,8 @@ func TestWebServesAndShutsDownCleanly(t *testing.T) {
 		t.Fatal("the turn was not recorded")
 	}
 	for _, turn := range turns {
-		if turn.Status == store.TurnRunning {
-			t.Fatalf("a turn survived shutdown as running: %+v", turn)
+		if turn.Status == store.TurnCancelled {
+			t.Fatalf("quit recorded a user stop: %+v", turn)
 		}
 	}
 }

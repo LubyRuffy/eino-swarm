@@ -1,13 +1,6 @@
-import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import type { Project } from "@/lib/types"
+import { useT } from "@/lib/use-t"
 
 /** Deleting a project takes its conversations with it, which is not what the
  *  word suggests — so it is spelled out, along with what survives. */
@@ -21,33 +14,21 @@ export function DeleteProjectDialog({
   onOpenChange: (open: boolean) => void
   onConfirm: (project: Project) => void
 }) {
+  const t = useT()
   return (
-    <Dialog open={Boolean(project)} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Delete {project?.name}?</DialogTitle>
-          <DialogDescription>
-            Its conversations and everything it remembered are deleted with it.
-            {project?.workdir
-              ? " The files in its working directory are left alone."
-              : ""}
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              if (project) onConfirm(project)
-              onOpenChange(false)
-            }}
-          >
-            Delete project
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <ConfirmDeleteDialog
+      open={Boolean(project)}
+      title={t("project.deleteTitle", { name: project?.name ?? "" })}
+      description={
+        t("project.deleteDesc") +
+        (project?.workdir ? t("project.deleteKeepFiles") : "")
+      }
+      confirmLabel={t("project.deleteConfirm")}
+      cancelLabel={t("project.cancel")}
+      onOpenChange={onOpenChange}
+      onConfirm={() => {
+        if (project) onConfirm(project)
+      }}
+    />
   )
 }

@@ -705,3 +705,97 @@ func TestPendingSteersSurviveARunThatNeverReadsThem(t *testing.T) {
 		t.Fatalf("taking twice returned %+v", left)
 	}
 }
+
+func TestWorkerInstructionWithoutPreambleIsTheTask(t *testing.T) {
+	r := NewRegistry()
+	if got := r.workerInstruction("do it"); got != "do it" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestWorkerPreamblePrefixesTheTask(t *testing.T) {
+	r := NewRegistry()
+	r.WorkerPreamble = "  OS: testhost  "
+	got := r.workerInstruction("do it")
+	if got != "OS: testhost\n\ndo it" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+// Workers do not see the manager prompt. Without a preamble they invent the
+// wrong userland; the host has to hand those facts over as Instruction.
+func TestWorkerPreambleLandsOnTheWorkerSystemPrompt(t *testing.T) {
+	var seen []*schema.Message
+	reg := NewRegistry()
+	reg.WorkerPreamble = "OS: testhost"
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		if role == DefaultManagerID {
+			return &chunkedModel{turns: []turnScript{
+				{calls: []schema.ToolCall{
+					rawCall("s1", "spawn_agent", `{"role":"reader","task":"read it"}`),
+				}},
+				{calls: []schema.ToolCall{
+					rawCall("w1", "wait_agents", `{"agent_ids":["reader-1"],"timeout_s":5}`),
+				}},
+				{content: []string{"done"}},
+			}}
+		}
+		return &chunkedModel{turns: []turnScript{{
+			content: []string{"ok"},
+			inspect: func(msgs []*schema.Message) { seen = msgs },
+		}}}
+	}
+	if _, err := reg.RunWith(context.Background(),
+		RunConfig{Instruction: "delegate", Task: "go"}, nil); err != nil {
+		t.Fatalf("RunWith: %v", err)
+	}
+	if len(seen) == 0 {
+		t.Fatal("the worker was never called")
+	}
+	var sys string
+	for _, m := range seen {
+		if m != nil && m.Role == schema.System {
+			sys = m.Content
+			break
+		}
+	}
+	if !strings.Contains(sys, "OS: testhost") || !strings.Contains(sys, "read it") {
+		t.Fatalf("worker system prompt=%q", sys)
+	}
+}
+
+// The spawned event is the only place a host can recover what a worker was
+// actually told. Text used to repeat the role; that made a prompt viewer lie.
+func TestSpawnedNotificationCarriesTheWorkerInstruction(t *testing.T) {
+	rec := &recorder{}
+	reg := NewRegistry()
+	reg.WorkerPreamble = "OS: testhost"
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		if role == DefaultManagerID {
+			return &chunkedModel{turns: []turnScript{
+				{calls: []schema.ToolCall{
+					rawCall("s1", "spawn_agent", `{"role":"reader","task":"read it"}`),
+				}},
+				{calls: []schema.ToolCall{
+					rawCall("w1", "wait_agents", `{"agent_ids":["reader-1"],"timeout_s":5}`),
+				}},
+				{content: []string{"done"}},
+			}}
+		}
+		return &chunkedModel{turns: []turnScript{{content: []string{"ok"}}}}
+	}
+	if _, err := reg.RunWith(context.Background(),
+		RunConfig{Instruction: "delegate", Task: "go"}, rec.cb()); err != nil {
+		t.Fatalf("RunWith: %v", err)
+	}
+	spawned := rec.ofKind(NotifySpawned)
+	if len(spawned) != 1 || spawned[0].Role != "reader" {
+		t.Fatalf("want one spawned reader: %+v", spawned)
+	}
+	if spawned[0].Text == spawned[0].Role {
+		t.Fatal("spawned text is still the role; the instruction never made the event")
+	}
+	if !strings.Contains(spawned[0].Text, "OS: testhost") || !strings.Contains(spawned[0].Text, "read it") {
+		t.Fatalf("spawned instruction=%q", spawned[0].Text)
+	}
+}

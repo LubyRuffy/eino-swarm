@@ -137,7 +137,7 @@ usage:
   zwai web [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
         serve the same app in your browser
 
-  zwai tui --task "..." [--workspace DIR] [--data-dir DIR] [--mock]
+  zwai tui --task "..." [--goal "..."] [--workspace DIR] [--data-dir DIR] [--mock]
         run one task in the terminal
 
   zwai trace <turn-id|conversation-id> [--data-dir DIR] [--full]

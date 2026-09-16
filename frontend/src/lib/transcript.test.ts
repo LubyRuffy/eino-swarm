@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest"
 
 import {
   MANAGER_ID,
+  PENDING_EDIT_ID,
   collapseLiveEvents,
   emptyTranscript,
   liveWorkers,
+  placePendingEdit,
   reduceEvents,
+  reviewPanelHint,
+  rewindTranscript,
+  splitQueuedSteers,
   splitToolCall,
   summarise,
   type TranscriptState,
@@ -25,6 +30,7 @@ function ev(partial: Partial<SwarmEvent> & { kind: string }): SwarmEvent {
     text: partial.text,
     tool_call_id: partial.tool_call_id,
     err: partial.err,
+    images: partial.images,
     created_at: partial.created_at ?? new Date(1700000000000 + seq * 1000).toISOString(),
   }
 }
@@ -134,6 +140,65 @@ describe("tool calls", () => {
     const [tool] = manager(state).blocks.filter((b) => b.kind === "tool")
     expect(tool.tool?.pending).toBe(true)
     expect(tool.tool?.name).toBe("web_search")
+  })
+
+  // Interrupt kills in-flight tools without a tool_result. Leaving them
+  // pending keeps the spinner next to a row that already says the turn stopped.
+  it("closes tools left pending when the turn is interrupted", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "tool_call", text: "exec({})", tool_call_id: "c1" }),
+      ev({ kind: "tool_call", text: "exec({})", tool_call_id: "c2" }),
+      ev({ kind: "error", err: "interrupted" }),
+    ])
+    const tools = manager(state).blocks.filter((b) => b.kind === "tool")
+    expect(tools).toHaveLength(2)
+    expect(tools.every((t) => t.tool?.pending === false)).toBe(true)
+    expect(tools.every((t) => t.tool?.failed === true)).toBe(true)
+    expect(tools.every((t) => t.tool?.result === "interrupted")).toBe(true)
+    expect(state.running).toBe(false)
+  })
+
+  it("closes tools left pending when the turn ends cleanly", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "tool_call", text: "exec({})", tool_call_id: "c1" }),
+      ev({ kind: "done", text: "finished early" }),
+    ])
+    const [tool] = manager(state).blocks.filter((b) => b.kind === "tool")
+    expect(tool.tool?.pending).toBe(false)
+    expect(tool.tool?.failed).toBe(true)
+  })
+
+  it("does not mark a completed tool failed when the turn is interrupted", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "tool_call", text: "exec({})", tool_call_id: "c1" }),
+      ev({ kind: "tool_result", text: "ok", tool_call_id: "c1" }),
+      ev({ kind: "tool_call", text: "exec({})", tool_call_id: "c2" }),
+      ev({ kind: "error", err: "interrupted" }),
+    ])
+    const tools = manager(state).blocks.filter((b) => b.kind === "tool")
+    expect(tools[0].tool).toMatchObject({ pending: false, failed: false, result: "ok" })
+    expect(tools[1].tool).toMatchObject({ pending: false, failed: true, result: "interrupted" })
+  })
+
+  it("closes a worker's pending tools when that agent finishes", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "spawned", agent_id: "worker-1", role: "worker" }),
+      ev({
+        kind: "tool_call",
+        agent_id: "worker-1",
+        text: "exec({})",
+        tool_call_id: "c1",
+      }),
+      ev({ kind: "finished", agent_id: "worker-1", err: "cancelled" }),
+    ])
+    const [tool] = state.agents["worker-1"].blocks.filter((b) => b.kind === "tool")
+    expect(tool.tool?.pending).toBe(false)
+    expect(tool.tool?.failed).toBe(true)
+    expect(tool.tool?.result).toBe("cancelled")
   })
 
   it("marks a failed call", () => {
@@ -271,12 +336,131 @@ describe("turns", () => {
     expect(steer?.text).toBe("focus on the second part")
   })
 
+  it("queues a steer that the manager has not read yet", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "look into this" }),
+      ev({ kind: "tool_call", text: "exec({})", tool_call_id: "c1" }),
+      ev({ kind: "steer", text: "focus on the second part" }),
+    ])
+    const { body, queued } = splitQueuedSteers(manager(state).blocks, true)
+    expect(queued.map((b) => b.text)).toEqual(["focus on the second part"])
+    expect(body.some((b) => b.kind === "steer")).toBe(false)
+    expect(body.some((b) => b.kind === "tool")).toBe(true)
+  })
+
+  it("keeps a steer in the body once a later model round has started", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "look into this" }),
+      ev({ kind: "tool_call", text: "exec({})", tool_call_id: "c1" }),
+      ev({ kind: "steer", text: "focus on the second part" }),
+      ev({ kind: "agent_message", text: "adjusted" }),
+    ])
+    const { body, queued } = splitQueuedSteers(manager(state).blocks, true)
+    expect(queued).toEqual([])
+    expect(body.filter((b) => b.kind === "steer").map((b) => b.text)).toEqual([
+      "focus on the second part",
+    ])
+  })
+
+  it("does not treat a spawn row as having consumed the steer", () => {
+    // spawn_agent finishing is the current tool, not the next model call.
+    const state = fold([
+      ev({ kind: "user_message", text: "look into this" }),
+      ev({ kind: "tool_call", text: "spawn_agent({})", tool_call_id: "c1" }),
+      ev({ kind: "steer", text: "focus on the second part" }),
+      ev({ kind: "spawned", agent_id: "w1", text: "researcher" }),
+    ])
+    const { queued } = splitQueuedSteers(manager(state).blocks, true)
+    expect(queued.map((b) => b.text)).toEqual(["focus on the second part"])
+  })
+
+  it("leaves a previous turn's steer in that turn", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "first request", turn_id: "tn_1" }),
+      ev({ kind: "tool_call", text: "exec({})", tool_call_id: "c1", turn_id: "tn_1" }),
+      ev({ kind: "steer", text: "focus on the second part", turn_id: "tn_1" }),
+      ev({ kind: "done", text: "ok", turn_id: "tn_1" }),
+      ev({ kind: "user_message", text: "next request", turn_id: "tn_2" }),
+    ])
+    const { body, queued } = splitQueuedSteers(manager(state).blocks, true)
+    expect(queued).toEqual([])
+    expect(body.filter((b) => b.kind === "steer")).toHaveLength(1)
+  })
+
+  it("does not float steers once the turn has finished", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "look into this" }),
+      ev({ kind: "tool_call", text: "exec({})", tool_call_id: "c1" }),
+      ev({ kind: "steer", text: "focus on the second part" }),
+      ev({ kind: "done", text: "ok" }),
+    ])
+    const { body, queued } = splitQueuedSteers(manager(state).blocks, false)
+    expect(queued).toEqual([])
+    expect(body.some((b) => b.kind === "steer")).toBe(true)
+  })
+
   it("surfaces end-of-turn cleanup", () => {
     const state = fold([
       ev({ kind: "user_message", text: "hi" }),
       ev({ kind: "cleanup", text: "stopped 1 sub-agent(s) still running" }),
     ])
     expect(manager(state).blocks.some((b) => b.kind === "notice")).toBe(true)
+  })
+
+  it("keeps the partial transcript when a crashed turn is resumed", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "agent_message", text: "partial" }),
+      ev({ kind: "resumed", text: "the previous run was interrupted; continuing" }),
+    ])
+    expect(state.running).toBe(true)
+    expect(state.turns[0]?.status).toBe("running")
+    expect(manager(state).blocks.filter((b) => b.kind === "user")).toHaveLength(1)
+    expect(manager(state).blocks.some((b) => b.kind === "answer" && b.text === "partial")).toBe(true)
+    const notice = manager(state).blocks.find((b) => b.kind === "notice")
+    expect(notice?.text).toMatch(/interrupted|continuing/)
+    expect(JSON.stringify(notice)).not.toMatch(/notes\.md|summarize|look into this/)
+  })
+
+  it("marks a conversation working when resume is the first event replayed", () => {
+    const state = fold([
+      ev({ kind: "resumed", turn_id: "tn_1", text: "the previous run was interrupted; continuing" }),
+    ])
+    expect(state.running).toBe(true)
+    expect(state.turns[0]?.status).toBe("running")
+  })
+
+  it("pauses at the tool-round cap until the human extends it", () => {
+    const paused = fold([
+      ev({ kind: "user_message", text: "look into this" }),
+      ev({
+        kind: "max_iterations",
+        text: JSON.stringify({ limit: 200, extend_by: 200 }),
+      }),
+    ])
+    const card = manager(paused).blocks.find((b) => b.kind === "confirm")
+    expect(card?.confirm).toEqual({
+      limit: 200,
+      extendBy: 200,
+      pending: true,
+    })
+    expect(JSON.stringify(card)).not.toMatch(/look into this|notes\.md|ChatModel/)
+
+    const continued = fold(
+      [ev({ kind: "max_iterations_continued", text: "continuing for another 200 tool rounds" })],
+      paused,
+    )
+    const after = manager(continued).blocks.find((b) => b.kind === "confirm")
+    expect(after?.confirm?.pending).toBe(false)
+    expect(after?.confirm?.continued).toBe(true)
+
+    const stopped = fold(
+      [ev({ kind: "error", err: "stopped after 200 tool rounds" })],
+      paused,
+    )
+    const declined = manager(stopped).blocks.find((b) => b.kind === "confirm")
+    expect(declined?.confirm?.pending).toBe(false)
+    expect(declined?.confirm?.continued).toBe(false)
   })
 })
 
@@ -485,6 +669,28 @@ describe("collapseLiveEvents", () => {
       "manager:m2",
     ])
   })
+
+  it("keeps only the latest usage pulse in a burst", () => {
+    const collapsed = collapseLiveEvents([
+      ev({ kind: "usage", text: '{"context_tokens":1}' }),
+      ev({ kind: "delta", text: "hi" }),
+      ev({ kind: "usage", text: '{"context_tokens":9}' }),
+    ])
+    expect(collapsed.map((e) => e.kind)).toEqual(["delta", "usage"])
+    expect(collapsed[1].text).toBe('{"context_tokens":9}')
+  })
+})
+
+describe("usage pulses", () => {
+  it("leave no row in the transcript", () => {
+    const before = fold([ev({ kind: "user_message", text: "hi" })])
+    const after = fold(
+      [ev({ kind: "usage", seq: 0, text: '{"context_tokens":12}' })],
+      before,
+    )
+    expect(after.agents[MANAGER_ID].blocks).toHaveLength(1)
+    expect(after.agents[MANAGER_ID].blocks[0].kind).toBe("user")
+  })
 })
 
 describe("the memory review", () => {
@@ -562,6 +768,14 @@ describe("the memory review", () => {
     expect(manager(state).blocks.filter((b) => b.kind === "notice")).toHaveLength(0)
   })
 
+  it("still answers a click that kept nothing", () => {
+    expect(reviewPanelHint({ changed: false })).toMatch(/nothing new to keep/)
+    expect(reviewPanelHint({ changed: true })).toBe("Review finished.")
+    expect(reviewPanelHint({ changed: false, err: "model refused" })).toBe(
+      "Memory review failed: model refused",
+    )
+  })
+
   // A review that fell over is worth a line: memory the user believes is
   // being kept, and is not, is the failure they cannot see.
   it("reports a failed review", () => {
@@ -577,5 +791,173 @@ describe("the memory review", () => {
   it("still moves the resume point, so a reconnect does not replay it", () => {
     const state = fold([review({ changed: false })])
     expect(state.lastSeq).toBeGreaterThan(0)
+  })
+})
+
+describe("standing objective and compact notices", () => {
+  it("sets a notice on the manager without minting a worker", () => {
+    const state = fold([
+      ev({ kind: "goal", text: "keep going", agent_id: "manager" }),
+    ])
+    expect(manager(state).blocks[0].text).toBe("Standing objective set.")
+    expect(state.agentOrder).toEqual([MANAGER_ID])
+  })
+
+  it("says when the objective is cleared", () => {
+    const state = fold([ev({ kind: "goal", text: "" })])
+    expect(manager(state).blocks[0].text).toBe("Standing objective cleared.")
+  })
+
+  it("notices complete, continue and cap without minting workers", () => {
+    const complete = fold([ev({ kind: "goal_complete", agent_id: "manager" })])
+    expect(manager(complete).blocks[0].text).toBe("Standing objective completed.")
+    const continued = fold([ev({ kind: "goal_continued", text: "Continuing the standing objective." })])
+    expect(manager(continued).blocks[0].text).toBe("Continuing the standing objective.")
+    const capped = fold([ev({ kind: "goal_capped", text: '{"auto_turns":12,"cap":12}' })])
+    expect(manager(capped).blocks[0].text).toMatch(/Stopped auto-continuing/)
+    expect(capped.agentOrder).toEqual([MANAGER_ID])
+    const blocked = fold([ev({ kind: "goal_blocked", text: '{"reason":"needs an external change"}' })])
+    expect(manager(blocked).blocks[0].text).toMatch(/blocked/)
+    const edited = fold([ev({ kind: "goal_edited", text: "keep going" })])
+    expect(manager(edited).blocks[0].text).toBe("Standing objective updated.")
+    const resumed = fold([ev({ kind: "goal_resumed", text: "Resuming the standing objective." })])
+    expect(manager(resumed).blocks[0].text).toBe("Resuming the standing objective.")
+  })
+
+  it("does not paste the briefing JSON into the transcript", () => {
+    const state = fold([
+      ev({
+        kind: "compacted",
+        agent_id: "compact-summarizer",
+        text: '{"summary":"Prior work: folded","through_seq":9}',
+      }),
+    ])
+    expect(manager(state).blocks[0].text).toBe(
+      "Earlier turns were folded into a briefing. The transcript is unchanged.",
+    )
+    expect(manager(state).blocks[0].text).not.toMatch(/through_seq/)
+    expect(manager(state).blocks[0].text).not.toMatch(/Prior work/)
+    expect(state.agents["compact-summarizer"]).toBeUndefined()
+  })
+
+  it("surfaces a failed compact as the recorded error", () => {
+    const state = fold([
+      ev({ kind: "compacted", err: "the model returned nothing usable as a briefing" }),
+    ])
+    expect(manager(state).blocks[0].text).toBe(
+      "the model returned nothing usable as a briefing",
+    )
+  })
+})
+
+describe("a generated conversation title", () => {
+  // The default branch would paste the name into the transcript as a notice
+  // and invent a "title-namer" worker in the roster.
+  it("leaves no trace in the transcript", () => {
+    const before = fold([ev({ kind: "user_message", text: "hi" })])
+    const after = fold(
+      [
+        ev({
+          kind: "title",
+          agent_id: "title-namer",
+          text: "Weekly status",
+        }),
+      ],
+      before,
+    )
+    expect(after.agents[MANAGER_ID].blocks.filter((b) => b.kind !== "title")).toHaveLength(1)
+    expect(after.agentOrder).toEqual([MANAGER_ID])
+    expect(after.agents["title-namer"]).toBeUndefined()
+    const title = after.agents[MANAGER_ID].blocks.find((b) => b.kind === "title")
+    expect(title?.text).toBe("Weekly status")
+    expect(title?.agentId).toBe("title-namer")
+    expect(title?.quiet).toBe(true)
+    expect(after.lastSeq).toBeGreaterThan(before.lastSeq)
+  })
+})
+
+describe("pasted images", () => {
+  it("keeps image refs on the user and steer blocks so thumbs can render", () => {
+    const refs = [{ id: "img_ab", name: "clip.png", mime: "image/png" }]
+    const state = fold([
+      ev({ kind: "user_message", text: "look", images: refs }),
+      ev({ kind: "steer", text: "and this", images: refs }),
+    ])
+    const user = manager(state).blocks.find((b) => b.kind === "user")
+    const steer = manager(state).blocks.find((b) => b.kind === "steer")
+    expect(user?.images).toEqual(refs)
+    expect(steer?.images).toEqual(refs)
+  })
+})
+
+describe("rewind", () => {
+  it("drops the named message and everything after it", () => {
+    const state = fold([
+      ev({ kind: "user_message", seq: 1, turn_id: "tn_1", text: "first" }),
+      ev({ kind: "agent_message", seq: 2, turn_id: "tn_1", text: "answer one" }),
+      ev({ kind: "done", seq: 3, turn_id: "tn_1", text: "answer one" }),
+      ev({ kind: "user_message", seq: 4, turn_id: "tn_2", text: "second" }),
+      ev({ kind: "agent_message", seq: 5, turn_id: "tn_2", text: "answer two" }),
+    ])
+    const after = fold([ev({ kind: "rewound", seq: 0, text: "4" })], state)
+    const texts = manager(after).blocks.map((b) => b.text)
+    expect(texts).toContain("first")
+    expect(texts).not.toContain("second")
+    expect(texts).not.toContain("answer two")
+    expect(after.turns.map((t) => t.id)).toEqual(["tn_1"])
+    expect(after.running).toBe(false)
+    expect(after.pulse).toBeUndefined()
+    expect(after.lastSeq).toBe(state.lastSeq)
+  })
+
+  it("keeps a pending edit at the cut so the bubble does not vanish", () => {
+    const state = fold([
+      ev({ kind: "user_message", seq: 1, turn_id: "tn_1", text: "first" }),
+      ev({ kind: "agent_message", seq: 2, turn_id: "tn_1", text: "answer one" }),
+      ev({ kind: "done", seq: 3, turn_id: "tn_1", text: "answer one" }),
+      ev({ kind: "user_message", seq: 4, turn_id: "tn_2", text: "second" }),
+      ev({ kind: "agent_message", seq: 5, turn_id: "tn_2", text: "answer two" }),
+    ])
+    const pending = placePendingEdit(rewindTranscript(state, 4), "edited")
+    expect(manager(pending).blocks.map((b) => b.text)).toEqual([
+      "first",
+      "answer one",
+      "edited",
+    ])
+    expect(pending.running).toBe(true)
+    const afterRewound = fold([ev({ kind: "rewound", seq: 0, text: "4" })], pending)
+    expect(manager(afterRewound).blocks.map((b) => b.text)).toEqual([
+      "first",
+      "answer one",
+      "edited",
+    ])
+    expect(afterRewound.running).toBe(true)
+    const afterUser = fold(
+      [ev({ kind: "user_message", seq: 10, turn_id: "tn_3", text: "edited" })],
+      afterRewound,
+    )
+    expect(
+      manager(afterUser)
+        .blocks.filter((b) => b.kind === "user")
+        .map((b) => b.text),
+    ).toEqual(["first", "edited"])
+    expect(manager(afterUser).blocks.some((b) => b.id === PENDING_EDIT_ID)).toBe(false)
+    expect(manager(afterUser).blocks.map((b) => b.text)).not.toContain("second")
+    expect(manager(afterUser).blocks.map((b) => b.text)).not.toContain("answer two")
+  })
+
+  it("drops live deltas whose seq is zero", () => {
+    const state = fold([
+      ev({ kind: "user_message", seq: 1, text: "first" }),
+      ev({ kind: "delta", text: "streaming" }),
+    ])
+    const after = fold([ev({ kind: "rewound", seq: 0, text: "1" })], state)
+    expect(manager(after).blocks).toEqual([])
+  })
+
+  it("ignores a cut that is not a sequence number", () => {
+    const before = fold([ev({ kind: "user_message", seq: 1, text: "first" })])
+    const after = fold([ev({ kind: "rewound", seq: 0, text: "nope" })], before)
+    expect(after).toEqual(before)
   })
 })

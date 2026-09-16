@@ -32,8 +32,14 @@ func TestPromptCarriesTheProjectInstructionAndTheNotes(t *testing.T) {
 	if !strings.Contains(out, "55%") || !strings.Contains(out, "55/100") {
 		t.Fatalf("usage header missing:\n%s", out)
 	}
+	if strings.Contains(out, "will be refused") {
+		t.Fatalf("a store at 55%% must not use the pressure wording:\n%s", out)
+	}
 	if !strings.Contains(out, ToolMemory) {
 		t.Fatalf("the prompt must name the tool that maintains the notes:\n%s", out)
+	}
+	if !strings.Contains(out, "status that will change") || !strings.Contains(out, "reduces the character count") {
+		t.Fatalf("the prompt must say a growing replace still has to fit:\n%s", out)
 	}
 }
 
@@ -67,6 +73,17 @@ func TestPromptListsSkillNamesAndSummariesOnly(t *testing.T) {
 	empty := PromptSections("", Snapshot{Limit: 100}, nil, 50, true)
 	if !strings.Contains(empty, "No skills recorded yet") || !strings.Contains(empty, "nothing yet") {
 		t.Fatalf("a fresh project should say so plainly:\n%s", empty)
+	}
+	// skill_view and the workspace are two stores that look the same on disk.
+	// The prompt has to say so even when the index is empty, or a listing of
+	// the workspace becomes a missing-name call.
+	for _, p := range []string{out, empty} {
+		if !strings.Contains(p, "does not open workspace files") {
+			t.Fatalf("the prompt must keep skill_view off workspace files:\n%s", p)
+		}
+	}
+	if strings.Contains(empty, "Call "+ToolSkillView) {
+		t.Fatalf("an empty index must not invite a view:\n%s", empty)
 	}
 }
 
@@ -128,9 +145,26 @@ func TestReviewPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 			t.Fatalf("the reviewer must be told about %q:\n%s", want, p)
 		}
 	}
-	for _, want := range []string{"not continuing", "nothing worth storing", "write nothing"} {
+	for _, want := range []string{"not continuing", "nothing worth storing", "write nothing", "do not retry"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("the reviewer must be allowed to store nothing (%q missing):\n%s", want, p)
 		}
+	}
+}
+
+// At high fill the prompt has to say a growing write will be refused. The
+// usage header alone is a percentage a model treats as "still some room",
+// and then replace-with-more-detail is the next five failed calls.
+func TestPromptAtHighFillForbidsGrowingWrites(t *testing.T) {
+	out := PromptSections("", Snapshot{
+		Entries: []string{"a stored note that already fills most of the budget"},
+		Chars:   80,
+		Limit:   100,
+	}, nil, 50, true)
+	if !strings.Contains(out, "80%") {
+		t.Fatalf("usage header missing:\n%s", out)
+	}
+	if !strings.Contains(out, "will be refused") || !strings.Contains(out, "replacing a note with a longer one") {
+		t.Fatalf("a store at 80%% must say a growing write will be refused:\n%s", out)
 	}
 }

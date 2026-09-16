@@ -1,4 +1,4 @@
-import { MessageSquare, MessageSquarePlus, PanelLeft, Settings, SunMoon } from "lucide-react"
+import { Languages, MessageSquare, MessageSquarePlus, PanelLeft, Search, Settings, SunMoon } from "lucide-react"
 
 import {
   CommandDialog,
@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/command"
 import type { Thread } from "@/lib/types"
 import { relativeDay } from "@/lib/utils"
+import { useT } from "@/lib/use-t"
 
 /** ⌘K: jump to a conversation, or run the two or three things worth a
  *  keystroke. Search lives here rather than in the sidebar so the sidebar can
@@ -22,7 +23,9 @@ export function Palette({
   onNew,
   onSettings,
   onToggleTheme,
+  onToggleLocale,
   onToggleSidebar,
+  onFind,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -31,8 +34,11 @@ export function Palette({
   onNew: () => void
   onSettings: () => void
   onToggleTheme: () => void
+  onToggleLocale: () => void
   onToggleSidebar: () => void
+  onFind: () => void
 }) {
+  const t = useT()
   const run = (fn: () => void) => {
     onOpenChange(false)
     fn()
@@ -40,41 +46,53 @@ export function Palette({
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="Search conversations, or type a command…" />
+      <CommandInput placeholder={t("palette.placeholder")} />
       <CommandList>
-        <CommandEmpty>Nothing matches that.</CommandEmpty>
-        <CommandGroup heading="Actions">
-          <CommandItem value="new conversation" onSelect={() => run(onNew)}>
+        <CommandEmpty>{t("palette.empty")}</CommandEmpty>
+        <CommandGroup heading={t("palette.actions")}>
+          <CommandItem value="new conversation 新对话" onSelect={() => run(onNew)}>
             <MessageSquarePlus />
-            New conversation
+            {t("palette.new")}
             <kbd className="ml-auto text-[11px] text-muted-foreground">⌘N</kbd>
           </CommandItem>
-          <CommandItem value="toggle conversations sidebar" onSelect={() => run(onToggleSidebar)}>
+          <CommandItem value="find in conversation 查找" onSelect={() => run(onFind)}>
+            <Search />
+            {t("palette.find")}
+            <kbd className="ml-auto text-[11px] text-muted-foreground">⌘F</kbd>
+          </CommandItem>
+          <CommandItem value="toggle conversations sidebar 会话" onSelect={() => run(onToggleSidebar)}>
             <PanelLeft />
-            Show or hide conversations
+            {t("palette.toggleSidebar")}
             <kbd className="ml-auto text-[11px] text-muted-foreground">⌘B</kbd>
           </CommandItem>
-          <CommandItem value="settings" onSelect={() => run(onSettings)}>
+          <CommandItem value="settings 设置" onSelect={() => run(onSettings)}>
             <Settings />
-            Settings
+            {t("palette.settings")}
           </CommandItem>
-          <CommandItem value="theme appearance" onSelect={() => run(onToggleTheme)}>
+          <CommandItem value="theme appearance 主题" onSelect={() => run(onToggleTheme)}>
             <SunMoon />
-            Switch between light and dark
+            {t("palette.theme")}
+          </CommandItem>
+          <CommandItem
+            value="language 语言 中文 english 切换"
+            onSelect={() => run(onToggleLocale)}
+          >
+            <Languages />
+            {t("palette.language")}
           </CommandItem>
         </CommandGroup>
         {threads.length > 0 ? (
-          <CommandGroup heading="Conversations">
-            {threads.map((t) => (
+          <CommandGroup heading={t("palette.conversations")}>
+            {threads.map((thread) => (
               <CommandItem
-                key={t.id}
-                value={`${t.title} ${t.id}`}
-                onSelect={() => run(() => onOpen(t.id))}
+                key={thread.id}
+                value={`${thread.title} ${thread.id}`}
+                onSelect={() => run(() => onOpen(thread.id))}
               >
                 <MessageSquare />
-                <span className="truncate">{t.title || "Untitled"}</span>
+                <span className="truncate">{thread.title || t("palette.untitled")}</span>
                 <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
-                  {relativeDay(t.last_active_at)}
+                  {relativeDay(thread.last_active_at, new Date(), t.locale)}
                 </span>
               </CommandItem>
             ))}

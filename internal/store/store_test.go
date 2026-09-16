@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func open(t *testing.T) *Store {
@@ -45,6 +46,28 @@ func TestThreadCRUD(t *testing.T) {
 	if got.Title != "renamed" {
 		t.Fatalf("rename did not stick: %q", got.Title)
 	}
+	if err := s.UpdateThread(th.ID, map[string]any{"model": "alpha"}); err != nil {
+		t.Fatalf("UpdateThread model: %v", err)
+	}
+	got, _ = s.GetThread(th.ID)
+	if got.Model != "alpha" {
+		t.Fatalf("conversation model did not stick: %q", got.Model)
+	}
+	now := time.Now().UTC()
+	if err := s.UpdateThread(th.ID, map[string]any{"pinned": true, "pinned_at": now}); err != nil {
+		t.Fatalf("UpdateThread pin: %v", err)
+	}
+	got, _ = s.GetThread(th.ID)
+	if !got.Pinned || got.PinnedAt == nil {
+		t.Fatalf("pin did not stick: %+v", got)
+	}
+	if err := s.UpdateThread(th.ID, map[string]any{"pinned": false, "pinned_at": nil}); err != nil {
+		t.Fatalf("UpdateThread unpin: %v", err)
+	}
+	got, _ = s.GetThread(th.ID)
+	if got.Pinned || got.PinnedAt != nil {
+		t.Fatalf("unpin did not clear: %+v", got)
+	}
 	if err := s.UpdateThread(th.ID, nil); err != nil {
 		t.Fatalf("an empty patch is a no-op, not an error: %v", err)
 	}
@@ -70,6 +93,56 @@ func TestThreadCRUD(t *testing.T) {
 	all, _ := s.ListThreads(true, "")
 	if len(all) != 2 {
 		t.Fatalf("want 2 threads, got %d", len(all))
+	}
+}
+
+// ApplyAutoTitle is a compare-and-swap: a user rename in between must win,
+// otherwise a slow namer puts the generated name back over what they typed.
+func TestApplyAutoTitleOnlyWhileMachineOwned(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "placeholder", TitleAuto: true, ProviderID: "p1"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := s.ApplyAutoTitle(th.ID, " Generated name ")
+	if err != nil || !ok {
+		t.Fatalf("ApplyAutoTitle: ok=%v err=%v", ok, err)
+	}
+	got, _ := s.GetThread(th.ID)
+	if got.Title != "Generated name" || got.TitleAuto {
+		t.Fatalf("landed title=%+v", got)
+	}
+	ok, err = s.ApplyAutoTitle(th.ID, "second try")
+	if err != nil || ok {
+		t.Fatalf("a second apply must not overwrite: ok=%v err=%v", ok, err)
+	}
+	got, _ = s.GetThread(th.ID)
+	if got.Title != "Generated name" {
+		t.Fatalf("second apply overwrote: %q", got.Title)
+	}
+
+	owned := &Thread{Title: "placeholder", TitleAuto: true, ProviderID: "p1"}
+	if err := s.CreateThread(owned); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateThread(owned.ID, map[string]any{"title": "Mine", "title_auto": false}); err != nil {
+		t.Fatal(err)
+	}
+	ok, err = s.ApplyAutoTitle(owned.ID, "generated")
+	if err != nil || ok {
+		t.Fatalf("rename must beat the namer: ok=%v err=%v", ok, err)
+	}
+	got, _ = s.GetThread(owned.ID)
+	if got.Title != "Mine" {
+		t.Fatalf("namer overwrote a rename: %q", got.Title)
+	}
+	ok, err = s.ApplyAutoTitle("missing", "x")
+	if err != nil || ok {
+		t.Fatalf("missing id: ok=%v err=%v", ok, err)
+	}
+	ok, err = s.ApplyAutoTitle(th.ID, "  ")
+	if err != nil || ok {
+		t.Fatalf("blank title: ok=%v err=%v", ok, err)
 	}
 }
 
@@ -302,8 +375,44 @@ func TestTurnLifecycle(t *testing.T) {
 	}
 }
 
-// A crash leaves turns marked running; a restart must close them or the UI
-// shows a conversation as working forever.
+// Startup asks for every turn still marked running so it can continue them
+// rather than pretending the user stopped them.
+func TestListRunningTurns(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	running := &Turn{ThreadID: th.ID, UserText: "still going"}
+	if err := s.CreateTurn(running); err != nil {
+		t.Fatal(err)
+	}
+	done := &Turn{ThreadID: th.ID, UserText: "finished"}
+	if err := s.CreateTurn(done); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTurn(done.ID, TurnDone, "x", ""); err != nil {
+		t.Fatal(err)
+	}
+	cancelled := &Turn{ThreadID: th.ID, UserText: "stopped"}
+	if err := s.CreateTurn(cancelled); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.FinishTurn(cancelled.ID, TurnCancelled, "", "interrupted"); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.ListRunningTurns()
+	if err != nil {
+		t.Fatalf("ListRunningTurns: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != running.ID || got[0].Status != TurnRunning {
+		t.Fatalf("want the one unfinished turn, got %+v", got)
+	}
+}
+
+// A crash leaves turns marked running. The method still exists as a bulk
+// cancel; startup no longer uses it — it resumes those turns instead.
 func TestMarkStaleTurnsCancelled(t *testing.T) {
 	s := open(t)
 	th := &Thread{Title: "t"}
@@ -436,6 +545,59 @@ func TestAttachments(t *testing.T) {
 	}
 }
 
+func TestBindAttachmentTurn(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	att := &Attachment{ThreadID: th.ID, Name: "a.csv", RelPath: "uploads/a.csv", Size: 3}
+	if err := s.AddAttachment(att); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.BindAttachmentTurn(th.ID, att.RelPath, "tn_1"); err != nil {
+		t.Fatalf("BindAttachmentTurn: %v", err)
+	}
+	list, err := s.ListAttachments(th.ID)
+	if err != nil || len(list) != 1 || list[0].TurnID != "tn_1" {
+		t.Fatalf("turn not bound: %+v %v", list, err)
+	}
+	if err := s.BindAttachmentTurn(th.ID, "uploads/missing.csv", "tn_1"); err == nil {
+		t.Fatal("binding a path that was never uploaded must fail")
+	}
+}
+
+func TestPastedImageRefsRoundTrip(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	turn := &Turn{ThreadID: th.ID}
+	if err := s.CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	refs := []ImageRef{{ID: "img_ab12", Name: "clip.png", MIME: "image/png"}}
+	if err := s.AppendMessages(th.ID, turn.ID, []Message{
+		{Role: "user", Content: "look", Images: refs},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AppendEvent(&Event{
+		ThreadID: th.ID, TurnID: turn.ID, Kind: "user_message", Text: "look", Images: refs,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	msgs, err := s.ListMessages(th.ID)
+	if err != nil || len(msgs) != 1 || len(msgs[0].Images) != 1 || msgs[0].Images[0].ID != "img_ab12" {
+		t.Fatalf("message images did not round-trip: %+v %v", msgs, err)
+	}
+	evts, err := s.ListEvents(th.ID, 0, 0)
+	if err != nil || len(evts) != 1 || len(evts[0].Images) != 1 || evts[0].Images[0].MIME != "image/png" {
+		t.Fatalf("event images did not round-trip: %+v %v", evts, err)
+	}
+}
+
 func TestOpenInMemoryAndDBHandle(t *testing.T) {
 	s, err := Open(":memory:")
 	if err != nil {
@@ -483,17 +645,18 @@ func TestClosedStoreReportsErrorsEverywhere(t *testing.T) {
 	}
 
 	checks := map[string]func() error{
-		"CreateThread":   func() error { return s.CreateThread(&Thread{Title: "x"}) },
-		"GetThread":      func() error { _, e := s.GetThread(th.ID); return e },
-		"ListThreads":    func() error { _, e := s.ListThreads(false, ""); return e },
-		"UpdateThread":   func() error { return s.UpdateThread(th.ID, map[string]any{"title": "x"}) },
-		"DeleteThread":   func() error { return s.DeleteThread(th.ID) },
-		"AppendMessages": func() error { return s.AppendMessages(th.ID, turn.ID, []Message{{Role: "user"}}) },
-		"ListMessages":   func() error { _, e := s.ListMessages(th.ID); return e },
-		"CreateTurn":     func() error { return s.CreateTurn(&Turn{ThreadID: th.ID}) },
-		"FinishTurn":     func() error { return s.FinishTurn(turn.ID, TurnDone, "", "") },
-		"GetTurn":        func() error { _, e := s.GetTurn(turn.ID); return e },
-		"ListTurns":      func() error { _, e := s.ListTurns(th.ID); return e },
+		"CreateThread":     func() error { return s.CreateThread(&Thread{Title: "x"}) },
+		"GetThread":        func() error { _, e := s.GetThread(th.ID); return e },
+		"ListThreads":      func() error { _, e := s.ListThreads(false, ""); return e },
+		"UpdateThread":     func() error { return s.UpdateThread(th.ID, map[string]any{"title": "x"}) },
+		"DeleteThread":     func() error { return s.DeleteThread(th.ID) },
+		"AppendMessages":   func() error { return s.AppendMessages(th.ID, turn.ID, []Message{{Role: "user"}}) },
+		"ListMessages":     func() error { _, e := s.ListMessages(th.ID); return e },
+		"CreateTurn":       func() error { return s.CreateTurn(&Turn{ThreadID: th.ID}) },
+		"FinishTurn":       func() error { return s.FinishTurn(turn.ID, TurnDone, "", "") },
+		"GetTurn":          func() error { _, e := s.GetTurn(turn.ID); return e },
+		"ListTurns":        func() error { _, e := s.ListTurns(th.ID); return e },
+		"ListRunningTurns": func() error { _, e := s.ListRunningTurns(); return e },
 		"MarkStaleTurnsCancelled": func() error {
 			_, e := s.MarkStaleTurnsCancelled()
 			return e
@@ -503,6 +666,7 @@ func TestClosedStoreReportsErrorsEverywhere(t *testing.T) {
 		"ListTurnEvents":         func() error { _, e := s.ListTurnEvents(turn.ID); return e },
 		"AppendLLMCall":          func() error { return s.AppendLLMCall(&LLMCall{ThreadID: th.ID}) },
 		"ListLLMCalls":           func() error { _, e := s.ListLLMCalls(turn.ID); return e },
+		"SummarizeUsage":         func() error { _, e := s.SummarizeUsage(th.ID, turn.ID); return e },
 		"AddAttachment":          func() error { return s.AddAttachment(&Attachment{ThreadID: th.ID, Name: "a"}) },
 		"ListAttachments":        func() error { _, e := s.ListAttachments(th.ID); return e },
 		"DeleteAttachmentByPath": func() error { return s.DeleteAttachmentByPath(th.ID, "a") },
@@ -512,6 +676,9 @@ func TestClosedStoreReportsErrorsEverywhere(t *testing.T) {
 		"UpdateProject":          func() error { return s.UpdateProject("pj_1", map[string]any{"name": "x"}) },
 		"DeleteProject":          func() error { return s.DeleteProject("pj_1") },
 		"ListThreadIDsByProject": func() error { _, e := s.ListThreadIDsByProject("pj_1"); return e },
+		"ReorderThreads":         func() error { return s.ReorderThreads([]string{th.ID}) },
+		"ReorderProjects":        func() error { return s.ReorderProjects([]string{"pj_1"}) },
+		"TouchThread":            func() error { return s.TouchThread(th.ID) },
 	}
 	for name, fn := range checks {
 		if err := fn(); err == nil {

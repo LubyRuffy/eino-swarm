@@ -57,21 +57,36 @@ describe("Memory panel", () => {
     expect(screen.getByText("8/2200")).toBeInTheDocument()
     expect(screen.getByText("a-procedure")).toBeInTheDocument()
     expect(screen.getByText("how to do the thing")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Save notes" })).not.toBeInTheDocument()
   })
 
   // Memory a user cannot correct is memory that repeats its mistake in every
-  // future conversation.
+  // future conversation. Save is not a fixture of the pane: it appears for
+  // an edit and leaves once there is nothing left to write.
   it("saves an edit and then has nothing to save", async () => {
     const { onSave } = renderPanel()
-    expect(screen.getByRole("button", { name: "Save notes" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: "Save notes" })).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Project notes"), {
       target: { value: "a corrected note" },
     })
     fireEvent.click(screen.getByRole("button", { name: "Save notes" }))
     await waitFor(() => expect(onSave).toHaveBeenCalledWith("a corrected note"))
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Save notes" })).toBeDisabled(),
+      expect(screen.queryByRole("button", { name: "Save notes" })).not.toBeInTheDocument(),
     )
+  })
+
+  it("hides Save again when the draft matches what is stored", () => {
+    renderPanel()
+    fireEvent.change(screen.getByLabelText("Project notes"), {
+      target: { value: "a corrected note" },
+    })
+    expect(screen.getByRole("button", { name: "Save notes" })).toBeEnabled()
+    fireEvent.change(screen.getByLabelText("Project notes"), {
+      target: { value: "one note" },
+    })
+    expect(screen.queryByRole("button", { name: "Save notes" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Revert" })).not.toBeInTheDocument()
   })
 
   // A review lands while the panel is open. A textarea that kept its first
@@ -151,6 +166,7 @@ describe("Memory panel", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: "Revert" }))
     expect(screen.getByLabelText("Project notes")).toHaveValue("one note")
+    expect(screen.queryByRole("button", { name: "Save notes" })).not.toBeInTheDocument()
   })
 
   it("reloads the stored notes from a conflict banner", () => {
@@ -234,9 +250,84 @@ describe("Memory panel", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Delete the skill a-procedure" }),
     )
+    expect(onDeleteSkill).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Delete skill" }))
     expect(onReview).toHaveBeenCalled()
     expect(onRefresh).toHaveBeenCalled()
     expect(onDeleteSkill).toHaveBeenCalledWith("a-procedure")
+  })
+
+  it("spins and says so while a review is in flight", () => {
+    renderPanel({ reviewing: true })
+    expect(screen.getByTestId("review-status")).toHaveTextContent(/last finished turn/)
+    expect(
+      screen.getByRole("button", { name: "Review this conversation now" }),
+    ).toBeDisabled()
+  })
+
+  it("reports a review that kept nothing", () => {
+    renderPanel({ reviewHint: "Review finished — nothing new to keep." })
+    expect(screen.getByTestId("review-status")).toHaveTextContent(/nothing new to keep/)
+  })
+
+  it("caps the notes box so Skills are not pushed off the pane", () => {
+    renderPanel()
+    expect(screen.getByLabelText("Project notes")).toHaveClass("max-h-36")
+    expect(screen.getByTestId("skills-list")).toHaveClass("overflow-auto")
+  })
+
+  it("keeps an opened skill's body inside its card instead of overlaying the list", async () => {
+    vi.mocked(api.skill).mockResolvedValue({
+      name: "a-procedure",
+      description: "how to do the thing",
+      updated_at: "",
+      body: "## Steps\n\n`/data/unbroken-token-that-used-to-widen-the-pane`",
+    })
+    renderPanel({
+      memory: {
+        ...memory,
+        skills: [
+          { name: "a-procedure", description: "how to do the thing", updated_at: "" },
+          { name: "another-procedure", description: "a later one", updated_at: "" },
+        ],
+      },
+    })
+    fireEvent.click(screen.getByText("a-procedure"))
+    const body = await screen.findByTestId("skill-body")
+    expect(body).toHaveClass("overflow-auto")
+    expect(body).toHaveClass("min-w-0")
+    expect(body).toHaveClass("break-words")
+    expect(body).toHaveClass("max-h-72")
+    const card = body.closest("[data-testid=skill-card]")
+    expect(card).toHaveClass("overflow-hidden")
+    expect(card).toHaveClass("min-w-0")
+    expect(card?.contains(body)).toBe(true)
+    // Still in the list, after this card — not a floating layer on top of it.
+    const sibling = screen.getByText("another-procedure")
+    expect(
+      body.compareDocumentPosition(sibling) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+  })
+
+  it("shows the whole skill description instead of clipping it", () => {
+    renderPanel({
+      memory: {
+        ...memory,
+        skills: [
+          {
+            name: "a-procedure",
+            description:
+              "when the query is slow, decide whether the store or the client is the cause",
+            updated_at: "",
+          },
+        ],
+      },
+    })
+    const description = screen.getByText(/when the query is slow/)
+    expect(description).toHaveTextContent(
+      "when the query is slow, decide whether the store or the client is the cause",
+    )
+    expect(description.className).not.toMatch(/\btruncate\b/)
   })
 
   it("says so when the conversation is not in a project", () => {

@@ -16,8 +16,22 @@ export type EventKind =
   | "cleanup"
   | "progress"
   | "memory_review"
+  | "max_iterations"
+  | "max_iterations_continued"
+  | "title"
   | "done"
   | "error"
+  | "resumed"
+  | "goal"
+  | "goal_complete"
+  | "goal_continued"
+  | "goal_capped"
+  | "goal_blocked"
+  | "goal_edited"
+  | "goal_resumed"
+  | "compacted"
+  | "usage"
+  | "rewound"
 
 export interface SwarmEvent {
   thread_id: string
@@ -31,7 +45,16 @@ export interface SwarmEvent {
   text?: string
   tool_call_id?: string
   err?: string
+  /** Pasted vision inputs. Handles, not pixels — the bytes live under GET
+   *  /input-images/:image_id. */
+  images?: ImageRef[]
   created_at: string
+}
+
+export interface ImageRef {
+  id: string
+  name?: string
+  mime: string
 }
 
 export interface Project {
@@ -48,6 +71,8 @@ export interface Project {
   /** Names and one-line descriptions, for the sidebar listing. Bodies stay
    *  behind `GET /skills/:name`, the same way the prompt does not inline them. */
   skills?: SkillInfo[]
+  /** 0 until the user drags the row; then the pinned sidebar order. */
+  sort_rank?: number
   created_at: string
   updated_at: string
 }
@@ -110,15 +135,51 @@ export interface Thread {
   /** Empty for a conversation that belongs to no project. */
   project_id: string
   provider_id: string
+  /** Empty follows this provider's configured default. Set from the composer. */
+  model?: string
   /** This conversation's thinking level: "" (model default), low, medium,
    *  high. Switchable in the composer, applied from the next turn. */
   reasoning_effort: string
+  /** Standing objective from /goal. Empty means none. */
+  goal?: string
+  /** True after complete_goal. The text stays so the banner can show it. */
+  goal_complete?: boolean
+  /** True after block_goal. Auto-continue stops until resume or a human message. */
+  goal_blocked?: boolean
+  goal_block_reason?: string
+  /** True after consecutive auto-continues hit the cap. */
+  goal_capped?: boolean
+  goal_auto_turns?: number
+  /** When the current objective was set. Banner elapsed clock. */
+  goal_started_at?: string
+  /** True after /compact folded earlier replay into a briefing. */
+  compacted?: boolean
+  /** Replay size for the /compact hint when no token window is known. */
+  context_chars?: number
+  context_budget?: number
   archived: boolean
+  /** 0 until the user drags the row; then the pinned sidebar order. */
+  sort_rank?: number
+  /** True when this conversation is tracked in the sidebar Pinned section.
+   *  Pinning is for project topics you want to keep an eye on. */
+  pinned?: boolean
+  /** When it was pinned, so the newest pin sits at the top. Empty when not. */
+  pinned_at?: string
   created_at: string
   last_active_at: string
   /** Set by the server from its live runtimes, so the sidebar can show a
    *  conversation working even while another one is on screen. */
   running: boolean
+}
+
+/** A message typed while a turn was already running. It waits for that turn
+ *  to finish; Steer pulls it into the current turn instead. */
+export interface Followup {
+  id: string
+  thread_id: string
+  seq: number
+  text: string
+  created_at: string
 }
 
 export interface ThreadStatus {
@@ -129,6 +190,9 @@ export interface ThreadStatus {
   turn_id?: string
   started_at?: string
   workers?: number
+  /** True while the manager is paused at its tool-round cap waiting for the
+   *  human to extend the turn. Still `running`. */
+  awaiting_continue?: boolean
 }
 
 export interface Turn {
@@ -168,9 +232,14 @@ export interface Attachment {
 
 export interface ModelInfo {
   id: string
+  provider_id: string
+  provider_label: string
   label: string
   model: string
   ready: boolean
+  default?: boolean
+  /** Token limit for this name. 0 means the endpoint never said. */
+  context_window?: number
 }
 
 export interface ToolDescriptor {
@@ -192,8 +261,10 @@ export interface Meta {
    *  rendered as "Default" and is not in this list. */
   reasoning_levels: string[]
   data_dir: string
-  capabilities: { reveal?: boolean; memory?: boolean }
+  capabilities: { reveal?: boolean; memory?: boolean; open_url?: boolean }
   swarm: SwarmLimits
+  /** Chrome language: system, en, or zh. */
+  locale?: string
 }
 
 export interface SwarmLimits {
@@ -203,6 +274,18 @@ export interface SwarmLimits {
   manager_max_iterations: number
   progress_interval_seconds: number
   delta_coalesce_ms: number
+  auto_title: boolean
+  /** Empty follows this conversation's model. */
+  title_provider?: string
+  title_model?: string
+  compact_provider?: string
+  compact_model?: string
+  /** Rune count treated as 100% full on the /compact hint. */
+  context_char_budget?: number
+  /** Recent replay messages that stay verbatim after /compact. */
+  compact_keep_messages?: number
+  /** Consecutive engine-started turns that may pursue an open /goal. */
+  goal_max_auto_turns?: number
 }
 
 export interface ProviderSettings {
@@ -210,7 +293,10 @@ export interface ProviderSettings {
   label: string
   base_url: string
   model: string
+  catalog?: string[]
   timeout_seconds: number
+  context_window?: number
+  model_context?: Record<string, number>
   has_api_key: boolean
   ready: boolean
   /** Only ever sent, never received: the server does not hand keys back. */
@@ -229,6 +315,25 @@ export interface Settings {
   }
   memory: MemorySettings
   log: { level: string }
+  ui?: { locale: string }
+}
+
+export interface TokenTotals {
+  prompt_tokens: number
+  completion_tokens: number
+  cached_tokens: number
+  reasoning_tokens: number
+  total_tokens: number
+  calls: number
+}
+
+/** Live token snapshot for the composer meter. `context_tokens` is the last
+ *  manager prompt; the window comes from the selected model. */
+export interface UsageSnapshot {
+  context_tokens: number
+  context_window: number
+  turn: TokenTotals
+  thread: TokenTotals
 }
 
 export interface MemorySettings {

@@ -41,7 +41,17 @@ const TabsContent = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <TabsPrimitive.Content
     ref={ref}
-    className={cn("flex-1 overflow-hidden focus-visible:outline-none", className)}
+    className={cn(
+      // min-h-0 lets a flex-1 pane shrink below its content so Files,
+      // Trace and Memory can scroll instead of clipping at the window.
+      "flex-1 min-h-0 overflow-hidden focus-visible:outline-none",
+      className,
+      // After `className`: the Agents pane passes `flex` so a worker log can
+      // fill it. Tailwind's [hidden] rule and .flex have equal specificity,
+      // so an inactive flex pane ate half the Memory tab. The important
+      // hidden has to win that fight without wiping `flex` on the active pane.
+      "data-[state=inactive]:!hidden",
+    )}
     {...props}
   />
 ))

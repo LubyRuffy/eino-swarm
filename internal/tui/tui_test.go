@@ -10,6 +10,7 @@ import (
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cloudwego/eino/schema"
 )
 
 // feed drives the model with a whole run's worth of notifications.
@@ -494,5 +495,45 @@ func TestTheTranscriptComesFromTheModelBubbleteaReturns(t *testing.T) {
 	// A program that failed before producing a model still prints something.
 	if got := finalOf(started, nil).DumpTranscript(); !strings.Contains(got, "manager transcript") {
 		t.Fatalf("no fallback transcript:\n%s", got)
+	}
+}
+
+func TestRunConfigPrefixesTheHostEnvironment(t *testing.T) {
+	cfg := runConfig(nil, "do the thing")
+	if cfg.Instruction != "do the thing" || cfg.Task != "do the thing" {
+		t.Fatalf("empty preamble should leave the task alone: %+v", cfg)
+	}
+	reg := swarm.NewRegistry()
+	reg.WorkerPreamble = "OS: testhost"
+	cfg = runConfig(reg, "do the thing")
+	if cfg.Task != "do the thing" {
+		t.Fatalf("task=%q", cfg.Task)
+	}
+	if cfg.Instruction != "OS: testhost\n\ndo the thing" {
+		t.Fatalf("instruction=%q", cfg.Instruction)
+	}
+}
+
+func TestSessionConfigPrefixesTheGoalAndKeepsTools(t *testing.T) {
+	reg := swarm.NewRegistry()
+	reg.WorkerPreamble = "OS: testhost"
+	s := Session{
+		Registry:     reg,
+		Extra:        "## Goal\n\nkeep going",
+		ManagerTools: nil,
+	}
+	cfg := sessionConfig(s, "do the thing", nil)
+	if !strings.HasPrefix(cfg.Instruction, "## Goal") {
+		t.Fatalf("goal must lead the instruction:\n%s", cfg.Instruction)
+	}
+	if !strings.Contains(cfg.Instruction, "do the thing") {
+		t.Fatal("task vanished")
+	}
+	msgs := dropSystem([]*schema.Message{
+		schema.SystemMessage("old"),
+		schema.UserMessage("keep"),
+	})
+	if len(msgs) != 1 || msgs[0].Content != "keep" {
+		t.Fatalf("dropSystem=%+v", msgs)
 	}
 }

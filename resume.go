@@ -141,7 +141,7 @@ func (r *Registry) Resume(ctx context.Context, fromID, task string,
 	hook := r.spawnHook
 	r.mu.Unlock()
 	if hook != nil {
-		hook(h.Role, h.ID)
+		hook(h.Role, h.ID, r.workerInstruction(task))
 	}
 	seed := formatContext("conversation so far", past.History)
 	r.startWorker(ctx, h, task, modelOpt, seed, extraTools)

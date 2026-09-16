@@ -23,13 +23,15 @@ import (
 
 // Errors callers are expected to distinguish.
 var (
-	// ErrBusy means the conversation is already running a turn. The UI steers
-	// instead of starting a second one.
+	// ErrBusy means the conversation is already running a turn. The UI queues
+	// a follow-up instead of starting a second one.
 	ErrBusy = errors.New("engine: the conversation is already running a turn")
 	// ErrIdle means there is nothing running to steer or interrupt.
 	ErrIdle = errors.New("engine: the conversation is not running")
 	// ErrNotFound means no such conversation.
 	ErrNotFound = store.ErrNotFound
+	// ErrNotRewindable means the named event is not a user_message.
+	ErrNotRewindable = errors.New("engine: only a user message can be edited and resent")
 )
 
 // Engine is the process-wide runtime.
@@ -47,12 +49,20 @@ type Engine struct {
 	// recordMu keeps a stored event's sequence number and its delivery in the
 	// same order. See record.
 	recordMu sync.Mutex
+	// droppedTurns are turn ids removed by a rewind. Late title/review
+	// events for those ids must not land after the cut. Guarded by recordMu.
+	droppedTurns map[string]struct{}
 
 	// memory holds one store per project, shared so its lock means something.
 	memory projectMemory
 	// reviews tracks the post-turn memory reviews still running, so shutdown
 	// can wait for a write instead of killing it halfway.
 	reviews reviewPool
+	// titles tracks the conversation namers still running, for the same
+	// reason: a title call that is cut off just leaves the placeholder, and
+	// one that never finishes must not keep the window open.
+	titles   titlePool
+	compacts compactPool
 }
 
 // New builds an engine over an already-open store and provider pool.
@@ -61,14 +71,17 @@ func New(cfg *config.Config, st *store.Store, pool *provider.Pool, log *slog.Log
 		log = slog.Default()
 	}
 	return &Engine{
-		cfg:      cfg,
-		store:    st,
-		pool:     pool,
-		log:      log,
-		runtimes: map[string]*runtime{},
-		subs:     map[string]map[int]*subscriber{},
-		memory:   projectMemory{stores: map[string]*memory.Store{}},
-		reviews:  newReviewPool(),
+		cfg:          cfg,
+		store:        st,
+		pool:         pool,
+		log:          log,
+		runtimes:     map[string]*runtime{},
+		subs:         map[string]map[int]*subscriber{},
+		droppedTurns: map[string]struct{}{},
+		memory:       projectMemory{stores: map[string]*memory.Store{}},
+		reviews:      newReviewPool(),
+		titles:       newTitlePool(),
+		compacts:     newCompactPool(),
 	}
 }
 
@@ -102,8 +115,10 @@ func (e *Engine) CreateThread(title, providerID, projectID string) (*store.Threa
 			return nil, err
 		}
 	}
+	title = strings.TrimSpace(title)
 	th := &store.Thread{
-		Title:      strings.TrimSpace(title),
+		Title:      title,
+		TitleAuto:  title == "",
 		ProviderID: providerID,
 		ProjectID:  projectID,
 	}
@@ -136,6 +151,7 @@ func (e *Engine) DeleteThread(id string) error {
 			e.log.Warn("could not remove workspace", "thread", id, "path", ws, "err", err)
 		}
 	}
+	e.removeInputImages(id)
 	e.dropSubscribers(id)
 	return nil
 }
@@ -148,18 +164,27 @@ func (e *Engine) ownsWorkspace(dir string) bool {
 	return dir != root && strings.HasPrefix(dir, root+string(os.PathSeparator))
 }
 
-// RenameThread sets a conversation's title.
+// RenameThread sets a conversation's title. It takes ownership: a namer
+// still in flight must not put the generated name back afterwards.
 func (e *Engine) RenameThread(id, title string) error {
-	return e.store.UpdateThread(id, map[string]any{"title": strings.TrimSpace(title)})
+	return e.store.UpdateThread(id, map[string]any{
+		"title":      strings.TrimSpace(title),
+		"title_auto": false,
+	})
 }
 
-// SetThreadProvider switches which model a conversation uses from its next
-// turn on.
-func (e *Engine) SetThreadProvider(id, providerID string) error {
-	if _, err := e.pool.Resolve(providerID); err != nil {
+// SetThreadProvider switches which endpoint a conversation uses from its next
+// turn on. An empty model follows that provider's default; a set model is the
+// name the composer picked.
+func (e *Engine) SetThreadProvider(id, providerID, model string) error {
+	prov, err := e.pool.ResolveModel(providerID, model)
+	if err != nil {
 		return err
 	}
-	return e.store.UpdateThread(id, map[string]any{"provider_id": providerID})
+	return e.store.UpdateThread(id, map[string]any{
+		"provider_id": prov.ID,
+		"model":       strings.TrimSpace(model),
+	})
 }
 
 // SetThreadReasoning switches a conversation's thinking level from its next
@@ -177,6 +202,20 @@ func (e *Engine) SetThreadReasoning(id, effort string) error {
 // SetThreadArchived hides or restores a conversation in the sidebar.
 func (e *Engine) SetThreadArchived(id string, archived bool) error {
 	return e.store.UpdateThread(id, map[string]any{"archived": archived})
+}
+
+// SetThreadPinned tracks or drops a conversation at the top of the sidebar.
+// The time is what orders the Pinned section; clearing the flag also
+// clears the time so an old pin cannot float back.
+func (e *Engine) SetThreadPinned(id string, pinned bool) error {
+	fields := map[string]any{"pinned": pinned}
+	if pinned {
+		now := time.Now().UTC()
+		fields["pinned_at"] = now
+	} else {
+		fields["pinned_at"] = nil
+	}
+	return e.store.UpdateThread(id, fields)
 }
 
 // WorkspaceDir is where a conversation's agents work.
@@ -217,6 +256,10 @@ type Status struct {
 	StartedAt *time.Time `json:"started_at,omitempty"`
 	ElapsedMS int64      `json:"elapsed_ms,omitempty"`
 	Workers   int        `json:"workers"`
+	// AwaitingContinue is true when the manager hit its tool-round cap and
+	// the turn is paused for the human to extend it. The turn is still
+	// running: a second request is steering, not a new turn.
+	AwaitingContinue bool `json:"awaiting_continue,omitempty"`
 }
 
 // Status reports a conversation's live state.
@@ -249,8 +292,9 @@ func (e *Engine) Running() []string {
 	return out
 }
 
-// Shutdown interrupts every running turn and marks them cancelled, so a
-// restarted app does not show conversations frozen mid-answer.
+// Shutdown stops every in-memory run but leaves unfinished turns marked
+// running, so the next start continues them. A user Interrupt is the only
+// path that records cancelled.
 //
 // Memory reviews are refused from here on and the ones already running are
 // waited for, briefly: a review that is cut off mid-write would leave a note
@@ -259,6 +303,12 @@ func (e *Engine) Shutdown() {
 	if !e.reviews.stop(reviewShutdownGrace) {
 		e.log.Warn("a memory review was still running at shutdown; its notes may be incomplete")
 	}
+	if !e.titles.stop(reviewShutdownGrace) {
+		e.log.Warn("a conversation was still being named at shutdown; it keeps its placeholder")
+	}
+	if !e.compacts.stop(reviewShutdownGrace) {
+		e.log.Warn("a compact was still running at shutdown; later turns keep the previous briefing")
+	}
 	e.mu.Lock()
 	rts := make([]*runtime, 0, len(e.runtimes))
 	for _, rt := range e.runtimes {
@@ -266,16 +316,11 @@ func (e *Engine) Shutdown() {
 	}
 	e.mu.Unlock()
 	for _, rt := range rts {
-		rt.interrupt()
+		rt.abandon()
 	}
 	for _, rt := range rts {
 		rt.waitIdle(5 * time.Second)
 		rt.close()
-	}
-	if n, err := e.store.MarkStaleTurnsCancelled(); err != nil {
-		e.log.Warn("could not close stale turns", "err", err)
-	} else if n > 0 {
-		e.log.Info("closed turns left running by shutdown", "count", n)
 	}
 }
 
@@ -428,46 +473,14 @@ type FileEntry struct {
 const maxWorkspaceEntries = 2000
 
 // ListFiles walks a conversation's workspace, returning workspace-relative
-// paths sorted so directories group with their contents.
+// paths. The walk is breadth-first so a fat directory that sorts early
+// cannot hide later siblings from the Files panel.
 func (e *Engine) ListFiles(threadID string) ([]FileEntry, error) {
 	root := e.WorkspaceDir(threadID)
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		return nil, fmt.Errorf("engine: workspace: %w", err)
 	}
-	var out []FileEntry
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // unreadable entries are skipped, not fatal
-		}
-		if path == root {
-			return nil
-		}
-		rel, relErr := filepath.Rel(root, path)
-		if relErr != nil {
-			return nil
-		}
-		// A project's directory is often a repository, and `.git` alone holds
-		// thousands of files: without this the cap below is spent before the
-		// panel reaches anything the user recognizes. Dot-directories are
-		// skipped in the listing only — the agents still read and write them.
-		if d.IsDir() && strings.HasPrefix(d.Name(), ".") {
-			return filepath.SkipDir
-		}
-		if len(out) >= maxWorkspaceEntries {
-			return filepath.SkipAll
-		}
-		entry := FileEntry{Path: filepath.ToSlash(rel), Name: d.Name(), Dir: d.IsDir()}
-		if info, statErr := d.Info(); statErr == nil {
-			entry.Size = info.Size()
-			entry.Modified = info.ModTime()
-		}
-		out = append(out, entry)
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("engine: list workspace: %w", err)
-	}
-	return out, nil
+	return listWorkspace(root, maxWorkspaceEntries), nil
 }
 
 // ResolveWorkspacePath turns a client-supplied relative path into an absolute

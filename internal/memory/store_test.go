@@ -108,10 +108,18 @@ func TestReplaceAndRemoveMatchOneEntryBySubstring(t *testing.T) {
 	if _, err := s.Replace("nothing like this", "x"); !errors.Is(err, ErrNoMatch) {
 		t.Fatalf("Replace with no match err=%v", err)
 	}
+	var miss *MatchError
+	if _, err := s.Replace("nothing like this", "x"); !errors.As(err, &miss) || len(miss.Entries) != 3 {
+		t.Fatalf("a miss must list what is stored so the next substring is copied, not guessed: %+v err=%v", miss, err)
+	}
 	if _, err := s.Replace("s", "x"); !errors.Is(err, ErrAmbiguous) {
 		// A single letter is in all three entries; editing one of them at
 		// random would silently destroy the others' meaning.
 		t.Fatalf("Replace with several matches err=%v", err)
+	}
+	var amb *MatchError
+	if _, err := s.Replace("s", "x"); !errors.As(err, &amb) || len(amb.Matching) < 2 {
+		t.Fatalf("ambiguous must list the matching notes: %+v err=%v", amb, err)
 	}
 	if _, err := s.Replace("", "x"); err == nil {
 		t.Fatal("Replace needs both arguments")
@@ -159,6 +167,9 @@ func TestAFullStoreRefusesTheWriteAndReportsWhatIsStored(t *testing.T) {
 	if !strings.Contains(overflow.Error(), "25/30") {
 		t.Fatalf("overflow message=%q", overflow.Error())
 	}
+	if !strings.Contains(overflow.Error(), "Do not retry") || overflow.OverBy() <= 0 {
+		t.Fatalf("overflow must say not to retry the same write and by how far it missed: %+v %q", overflow, overflow.Error())
+	}
 
 	// The refused write must not have landed.
 	snap, _ := s.Read()
@@ -167,9 +178,19 @@ func TestAFullStoreRefusesTheWriteAndReportsWhatIsStored(t *testing.T) {
 	}
 
 	// Swapping an entry for a longer one can overflow too, which is why
-	// replace is bounded as well.
+	// replace is bounded as well. The error has to name the matched note:
+	// without it a model treats overflow as a miss and retries replace.
 	if _, err := s.Replace("0123", strings.Repeat("x", 40)); !errors.As(err, &overflow) {
 		t.Fatalf("Replace past the limit err=%v", err)
+	}
+	if overflow.Matched == "" || overflow.OverBy() <= 0 {
+		t.Fatalf("replace overflow must name the matched note and how far over: %+v", overflow)
+	}
+	if !strings.Contains(overflow.Error(), "matched note was not changed") {
+		t.Fatalf("replace overflow must distinguish a size miss from a match miss: %q", overflow.Error())
+	}
+	if (&OverflowError{Usage: 10, Limit: 30, WouldBe: 20}).OverBy() != 0 {
+		t.Fatal("a write that still fits is not over the limit")
 	}
 	// Shrinking always fits.
 	if _, err := s.Replace("0123", "short"); err != nil {
@@ -264,6 +285,9 @@ func TestAnEditWrittenAgainstStaleNotesIsRefused(t *testing.T) {
 	var conflict *ConflictError
 	if !errors.As(err, &conflict) || !errors.Is(err, ErrConflict) {
 		t.Fatalf("a stale write must be refused, got %v", err)
+	}
+	if conflict.Error() != ErrConflict.Error() {
+		t.Fatalf("conflict.Error=%q", conflict.Error())
 	}
 	// The refusal carries what is there now, so the UI can show both without
 	// a second round trip that could itself be out of date.

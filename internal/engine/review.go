@@ -215,7 +215,7 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 		outcome.Notes[c.Action]++
 	}
 
-	builder, err := e.pool.ModelBuilder(ctx, turn.ProviderID, turn.ReasoningEffort,
+	builder, err := e.pool.ModelBuilder(ctx, turn.ProviderID, turn.Model, turn.ReasoningEffort,
 		e.callRecorder(threadID, turn.ID))
 	if err != nil {
 		e.recordReview(threadID, turn.ID, reviewOutcome{Err: err.Error()})

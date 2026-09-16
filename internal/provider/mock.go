@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -36,6 +37,10 @@ func newMockModel(role string) model.BaseChatModel {
 		return &mockModel{script: managerScript}
 	case reviewerRole:
 		return &mockModel{script: reviewerScript}
+	case titleRole:
+		return &mockModel{script: titleNamerScript}
+	case compactRole:
+		return &mockModel{script: compactSummarizerScript}
 	default:
 		return &mockModel{script: workerScript(role)}
 	}
@@ -46,6 +51,16 @@ const (
 	// reviewerRole must match the engine's review agent id, or a mock run
 	// exercises the swarm and quietly skips the memory review.
 	reviewerRole = "memory-reviewer"
+	// titleRole must match the engine's conversation namer, or a mock run
+	// would treat the namer as a worker and try to write files.
+	titleRole = "title-namer"
+	// compactRole must match the engine's conversation summarizer, or a mock
+	// compact would be treated as a worker and try to write files.
+	compactRole = "compact-summarizer"
+	// completeGoalToolName must match the engine's manager-only tool, or a
+	// mock run with a standing objective would never mark it done and the
+	// runtime would auto-continue until the cap.
+	completeGoalToolName = "complete_goal"
 )
 
 // mockScript maps a turn number and the conversation so far to the message the
@@ -70,7 +85,9 @@ func (m *mockModel) Generate(ctx context.Context, in []*schema.Message, _ ...mod
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return m.script(m.nextTurn(), in), nil
+	out := m.script(m.nextTurn(), in)
+	attachMockUsage(in, out)
+	return out, nil
 }
 
 func (m *mockModel) Stream(ctx context.Context, in []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
@@ -102,6 +119,7 @@ func (m *mockModel) Stream(ctx context.Context, in []*schema.Message, _ ...model
 		if len(out.ToolCalls) > 0 {
 			send(&schema.Message{Role: schema.Assistant, ToolCalls: out.ToolCalls})
 		}
+		send(&schema.Message{Role: schema.Assistant, ResponseMeta: usageMeta(in, out)})
 	}()
 	return sr, nil
 }
@@ -135,8 +153,11 @@ func splitWords(s string) []string {
 // them, then answer in markdown quoting what came back.
 func managerScript(turn int, msgs []*schema.Message) *schema.Message {
 	task := lastUserText(msgs)
-	switch turn {
-	case 1:
+	ids := spawnedIDs(msgs)
+	// Spawn only when this conversation has no workers yet. A continued run
+	// starts a new model instance whose turn counter is 1 again; re-spawning
+	// would fan out forever instead of finishing the work already in flight.
+	if len(ids) == 0 {
 		plan, _ := json.Marshal(map[string]any{
 			"role": "researcher",
 			"task": "Collect what is needed for: " + task,
@@ -155,28 +176,35 @@ func managerScript(turn int, msgs []*schema.Message) *schema.Message {
 				call("mock-spawn-2", "spawn_agent", string(review)),
 			},
 		}
-	default:
-		ids := spawnedIDs(msgs)
-		if len(ids) == 0 {
-			return schema.AssistantMessage(mockAnswer(task, nil), nil)
+	}
+	// wait_agents returns as soon as one sub-agent finishes, so the manager
+	// waits in a loop: it answers once everyone is done and otherwise
+	// reports what just came back before waiting for the rest.
+	report := latestWaitReport(msgs)
+	if report != nil && allFinished(report) {
+		if mockShouldCompleteGoal(msgs) {
+			args, _ := json.Marshal(map[string]any{
+				"summary": "the standing objective is satisfied",
+			})
+			return &schema.Message{
+				Role:    schema.Assistant,
+				Content: "The standing objective is satisfied.\n",
+				ToolCalls: []schema.ToolCall{
+					call(fmt.Sprintf("mock-complete-%d", turn), completeGoalToolName, string(args)),
+				},
+			}
 		}
-		// wait_agents returns as soon as one sub-agent finishes, so the manager
-		// waits in a loop: it answers once everyone is done and otherwise
-		// reports what just came back before waiting for the rest.
-		report := latestWaitReport(msgs)
-		if report != nil && allFinished(report) {
-			return schema.AssistantMessage(mockAnswer(task, collectResults(report)), nil)
-		}
-		args, _ := json.Marshal(map[string]any{"agent_ids": ids, "timeout_s": 60})
-		content := "Both workers are running; I will report back as each finishes.\n"
-		if report != nil {
-			content = waitProgressLine(report)
-		}
-		return &schema.Message{
-			Role:      schema.Assistant,
-			Content:   content,
-			ToolCalls: []schema.ToolCall{call(fmt.Sprintf("mock-wait-%d", turn), "wait_agents", string(args))},
-		}
+		return schema.AssistantMessage(mockAnswer(task, collectResults(report)), nil)
+	}
+	args, _ := json.Marshal(map[string]any{"agent_ids": ids, "timeout_s": 60})
+	content := "Both workers are running; I will report back as each finishes.\n"
+	if report != nil {
+		content = waitProgressLine(report)
+	}
+	return &schema.Message{
+		Role:      schema.Assistant,
+		Content:   content,
+		ToolCalls: []schema.ToolCall{call(fmt.Sprintf("mock-wait-%d", turn), "wait_agents", string(args))},
 	}
 }
 
@@ -270,6 +298,65 @@ func reviewerScript(turn int, msgs []*schema.Message) *schema.Message {
 	}
 }
 
+// ---------- title namer script ----------
+
+// mockTitleMaxRunes is shorter than the engine's placeholder cap, so a
+// generated mock title is visibly not the truncated request — which is the
+// whole point of generating one.
+const mockTitleMaxRunes = 24
+
+// titleNamerScript returns a short sidebar label derived from the request.
+// Nothing here may encode a particular task: the same text would otherwise
+// show up in screenshots and test expectations as if the product had decided it.
+func titleNamerScript(_ int, msgs []*schema.Message) *schema.Message {
+	return schema.AssistantMessage(mockTitle(titleRequest(msgs)), nil)
+}
+
+const mockBriefingMaxRunes = 160
+
+// compactSummarizerScript returns a short briefing derived from the messages
+// it was handed. Same rule as the namer: nothing here may encode a particular
+// task, or it would leak into tests as if the product had decided it.
+func compactSummarizerScript(_ int, msgs []*schema.Message) *schema.Message {
+	return schema.AssistantMessage(mockBriefing(lastUserText(msgs)), nil)
+}
+
+func mockBriefing(src string) string {
+	flat := strings.Join(strings.Fields(src), " ")
+	if flat == "" {
+		return "Prior conversation, folded."
+	}
+	r := []rune(flat)
+	if len(r) > mockBriefingMaxRunes {
+		flat = strings.TrimSpace(string(r[:mockBriefingMaxRunes]))
+	}
+	return "Prior work: " + flat
+}
+
+func titleRequest(msgs []*schema.Message) string {
+	text := lastUserText(msgs)
+	for _, line := range strings.Split(text, "\n") {
+		if rest, ok := strings.CutPrefix(line, "User: "); ok {
+			if t := strings.TrimSpace(rest); t != "" {
+				return t
+			}
+		}
+	}
+	return text
+}
+
+func mockTitle(task string) string {
+	flat := strings.Join(strings.Fields(task), " ")
+	if flat == "" {
+		return "Conversation"
+	}
+	r := []rune(flat)
+	if len(r) > mockTitleMaxRunes {
+		return strings.TrimSpace(string(r[:mockTitleMaxRunes]))
+	}
+	return flat
+}
+
 // ---------- helpers ----------
 
 func call(id, name, args string) schema.ToolCall {
@@ -277,10 +364,101 @@ func call(id, name, args string) schema.ToolCall {
 		Function: schema.FunctionCall{Name: name, Arguments: args}}
 }
 
+// completeOpenGoal is whether the scripted manager calls complete_goal when
+// the prompt still has an open standing objective. Tests that need to
+// observe auto-continue turn it off; --mock otherwise would spin until the cap.
+var (
+	completeOpenGoalMu sync.Mutex
+	completeOpenGoal   = true
+)
+
+// SetCompleteOpenGoal controls whether the scripted manager marks an open
+// standing objective done. Tests that need auto-continue call this with false
+// and restore true in Cleanup.
+func SetCompleteOpenGoal(v bool) {
+	completeOpenGoalMu.Lock()
+	completeOpenGoal = v
+	completeOpenGoalMu.Unlock()
+}
+
+func completeOpenGoalEnabled() bool {
+	completeOpenGoalMu.Lock()
+	defer completeOpenGoalMu.Unlock()
+	return completeOpenGoal
+}
+
+func mockShouldCompleteGoal(msgs []*schema.Message) bool {
+	if !completeOpenGoalEnabled() || alreadyCalledCompleteGoal(msgs) {
+		return false
+	}
+	for _, m := range msgs {
+		if m == nil || m.Role != schema.System {
+			continue
+		}
+		if strings.Contains(m.Content, completeGoalToolName) &&
+			!strings.Contains(m.Content, "was completed") {
+			return true
+		}
+	}
+	return false
+}
+
+func alreadyCalledCompleteGoal(msgs []*schema.Message) bool {
+	for _, m := range msgs {
+		if m == nil {
+			continue
+		}
+		for _, c := range m.ToolCalls {
+			if c.Function.Name == completeGoalToolName {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func attachMockUsage(in []*schema.Message, out *schema.Message) {
+	if out == nil {
+		return
+	}
+	if out.ResponseMeta == nil {
+		out.ResponseMeta = &schema.ResponseMeta{}
+	}
+	out.ResponseMeta.Usage = mockTokenUsage(in, out)
+}
+
+func usageMeta(in []*schema.Message, out *schema.Message) *schema.ResponseMeta {
+	return &schema.ResponseMeta{Usage: mockTokenUsage(in, out)}
+}
+
+func mockTokenUsage(in []*schema.Message, out *schema.Message) *schema.TokenUsage {
+	prompt := 0
+	for _, m := range in {
+		prompt += messageRunes(m)
+	}
+	completion := messageRunes(out)
+	return &schema.TokenUsage{
+		PromptTokens:     prompt,
+		CompletionTokens: completion,
+		TotalTokens:      prompt + completion,
+	}
+}
+
+func messageRunes(m *schema.Message) int {
+	if m == nil {
+		return 0
+	}
+	n := utf8.RuneCountInString(m.Content) + utf8.RuneCountInString(m.ReasoningContent)
+	for _, c := range m.ToolCalls {
+		n += utf8.RuneCountInString(c.Function.Arguments)
+	}
+	return n
+}
+
 func lastUserText(msgs []*schema.Message) string {
 	for i := len(msgs) - 1; i >= 0; i-- {
 		if msgs[i] != nil && msgs[i].Role == schema.User {
-			if t := strings.TrimSpace(strings.TrimPrefix(msgs[i].Content, "[steer] ")); t != "" {
+			if t := strings.TrimSpace(strings.TrimPrefix(plainUserText(msgs[i]), "[steer]")); t != "" {
 				return t
 			}
 		}
@@ -290,11 +468,27 @@ func lastUserText(msgs []*schema.Message) string {
 
 func firstUserText(msgs []*schema.Message) string {
 	for _, m := range msgs {
-		if m != nil && m.Role == schema.User && strings.TrimSpace(m.Content) != "" {
-			return strings.TrimSpace(m.Content)
+		if m != nil && m.Role == schema.User {
+			if t := strings.TrimSpace(plainUserText(m)); t != "" {
+				return t
+			}
 		}
 	}
 	return "(no task)"
+}
+
+func plainUserText(m *schema.Message) string {
+	if t := strings.TrimSpace(m.Content); t != "" {
+		return t
+	}
+	for _, p := range m.UserInputMultiContent {
+		if p.Type == schema.ChatMessagePartTypeText {
+			if t := strings.TrimSpace(p.Text); t != "" {
+				return t
+			}
+		}
+	}
+	return ""
 }
 
 // spawnedIDs harvests the agent ids the spawn tool handed back, exactly as a

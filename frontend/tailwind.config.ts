@@ -54,6 +54,23 @@ export default {
         running: "hsl(var(--running))",
         done: "hsl(var(--done))",
         failed: "hsl(var(--failed))",
+        file: {
+          folder: "hsl(var(--file-folder))",
+          code: "hsl(var(--file-code))",
+          doc: "hsl(var(--file-doc))",
+          config: "hsl(var(--file-config))",
+          image: "hsl(var(--file-image))",
+        },
+        syntax: {
+          keyword: "hsl(var(--syntax-keyword))",
+          command: "hsl(var(--syntax-command))",
+          string: "hsl(var(--syntax-string))",
+          comment: "hsl(var(--syntax-comment))",
+          operator: "hsl(var(--syntax-operator))",
+          flag: "hsl(var(--syntax-flag))",
+          variable: "hsl(var(--syntax-variable))",
+          prompt: "hsl(var(--syntax-prompt))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

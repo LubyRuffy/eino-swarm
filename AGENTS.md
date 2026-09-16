@@ -64,7 +64,7 @@ not stale. Touched anything user-visible → the E2E suite.
   provider, and keep its script generic.
 - Every feature must be reachable through the one-id troubleshooting path: a turn
   id in, the whole run out (`zwai trace <id>`, `GET /api/trace/:turn`, the Trace
-  tab). A new event kind that is not recorded there is not finished.
+  tab's Full log). A new event kind that is not recorded there is not finished.
 
 ## Front-end rules
 

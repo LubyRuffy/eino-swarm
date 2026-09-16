@@ -35,14 +35,16 @@ func (s *Store) GetProject(id string) (*Project, error) {
 	return &p, nil
 }
 
-// ListProjects returns every project, newest first, which is the order the
-// sidebar shows them in.
+// ListProjects returns every project in sidebar order. Rank 0 is never
+// dragged: those rows interleave by last update with ranked rows. A
+// conversation in a project bumps UpdatedAt, so last used still wins
+// among unranked rows.
 func (s *Store) ListProjects() ([]Project, error) {
 	var out []Project
-	if err := s.db.Order("created_at desc").Find(&out).Error; err != nil {
+	if err := s.db.Order("sort_rank asc, updated_at desc").Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("store: list projects: %w", err)
 	}
-	return out, nil
+	return interleaveByTime(out, func(p Project) int { return p.SortRank }, func(p Project) time.Time { return p.UpdatedAt }), nil
 }
 
 // UpdateProject applies a field patch to one project. Unknown ids report
@@ -75,7 +77,7 @@ func (s *Store) DeleteProject(id string) error {
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if len(threadIDs) > 0 {
-			for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}} {
+			for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}} {
 				if err := tx.Where("thread_id IN ?", threadIDs).Delete(m).Error; err != nil {
 					return err
 				}
@@ -94,6 +96,7 @@ func (s *Store) DeleteProject(id string) error {
 		delete(s.evtSeq, tid)
 		delete(s.msgSeq, tid)
 		delete(s.turnSeq, tid)
+		delete(s.followupSeq, tid)
 	}
 	s.mu.Unlock()
 	return nil

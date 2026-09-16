@@ -38,24 +38,43 @@ export type ToolView = {
 export function summariseToolCall(name: string, args: string): string {
   const obj = parseObject(args)
   if (name === "memory" || name === "skill_manage" || name === "skill_view") {
-    return summariseMemoryCall(name, obj, args)
+    return flatten(summariseMemoryCall(name, obj, args))
   }
   if (!obj) return flatten(args)
   const keys = PRIMARY[name]
   if (keys) {
     const parts = keys.map((k) => asText(obj[k])).filter(Boolean)
-    if (parts.length) return parts.join(" · ")
+    if (parts.length) return flatten(parts.join(" · "))
     return ""
   }
   for (const k of ["command", "query", "url", "file_path", "path", "pattern", "code", "text"]) {
     const v = asText(obj[k])
-    if (v) return v
+    if (v) return flatten(v)
   }
   for (const v of Object.values(obj)) {
     const t = asText(v)
-    if (t) return t
+    if (t) return flatten(t)
   }
   return flatten(args)
+}
+
+/** The raw exec invocation, newlines kept. The one-line summary flattens
+ *  this; the expanded body must not, or a heredoc becomes unreadable. */
+export function execCommand(args: string): string {
+  const obj = parseObject(args)
+  if (obj) return asText(obj.command)
+  return args.trim()
+}
+
+/** The collapsed tool row is what a human sees without opening it. A refused
+ *  memory write that only shows the note being stored looks like a mystery;
+ *  the refusal is the thing they need. */
+export function toolRowSummary(view: ToolView): string {
+  if (!view.failed || !view.error) return view.summary
+  const err = flatten(view.error)
+  if (!view.summary) return err
+  if (view.summary.includes(err)) return view.summary
+  return flatten(`${view.summary} · ${err}`)
 }
 
 export function viewTool(name: string, args: string, result?: string, flagged?: boolean): ToolView {
@@ -135,7 +154,14 @@ function memoryFailureBody(obj: Record<string, unknown>): string {
   const entries = Array.isArray(obj.current_entries)
     ? obj.current_entries.map(asText).filter(Boolean)
     : []
-  return entries.length ? entries.join("\n") : asText(obj.error)
+  if (entries.length) return entries.join("\n")
+  const available = Array.isArray(obj.available)
+    ? obj.available.map(asText).filter(Boolean)
+    : []
+  // Repeating error as the body is how a refused skill_view showed the same
+  // line twice. Extra context (what is stored / which skills exist) is the
+  // only thing the body is for.
+  return available.join("\n")
 }
 
 function parseRunResult(raw: string): {

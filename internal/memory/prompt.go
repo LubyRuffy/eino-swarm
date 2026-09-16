@@ -5,6 +5,12 @@ import (
 	"strings"
 )
 
+// PressurePercent is when the prompt stops implying that replace will make
+// room and says a growing write will be refused. Below this, the general
+// budget rule is enough; at this fill, a longer replacement is the next
+// refusal waiting to happen.
+const PressurePercent = 80
+
 // PromptSections renders what a project adds to the manager's system prompt:
 // the user's own instruction, the notes, and an index of the skills.
 //
@@ -51,14 +57,21 @@ func PromptSections(systemPrompt string, snap Snapshot, skills []SkillInfo, inde
 	b.WriteString(`This block is a snapshot from the start of this turn. Use the ` + ToolMemory + ` tool to
 keep it true: store a durable fact, a stated preference, a convention or a
 correction the human made, and remove one that has gone stale. Leave out
-anything specific to this request and anything you could look up again. When
-the store is nearly full, consolidate overlapping notes instead of adding.
+anything specific to this request, anything you could look up again, and any
+status that will change again this conversation. A replace that grows a note
+still has to fit the budget; when usage is high, the only write that lands is
+one that reduces the character count.
 
 `)
+	if snap.Percent() >= PressurePercent {
+		fmt.Fprintf(&b, "The store is at %d%% of its budget (%d/%d). A write that increases the character count will be refused, including replacing a note with a longer one. Shorten or drop notes before storing anything new.\n\n",
+			snap.Percent(), snap.Chars, snap.Limit)
+	}
 
 	b.WriteString("## Skills\n\n")
 	if len(skills) == 0 {
-		b.WriteString("No skills recorded yet.\n")
+		b.WriteString("No skills recorded yet. " + ToolSkillView +
+			" opens only names from this index, so it has nothing to open until one is recorded.\n")
 	} else {
 		shown := skills
 		if indexMax > 0 && len(shown) > indexMax {
@@ -73,11 +86,16 @@ the store is nearly full, consolidate overlapping notes instead of adding.
 		}
 		fmt.Fprintf(&b, "\nCall %s(name) to read one in full before doing work it may already cover.\n", ToolSkillView)
 	}
-	fmt.Fprintf(&b, `Use %s to record a procedure worth following again: a workflow with several
+	// skill_view looks in this project's memory, not the workspace. The same
+	// SKILL.md layout often lives in the repository for other tools; treating
+	// a directory listing as an index entry is how a missing-name call happens.
+	fmt.Fprintf(&b, `A procedure found as a file in the workspace is a file — read it; %s does not open workspace files.
+
+Use %s to record a procedure worth following again: a workflow with several
 steps that worked, a recovery from a failure, a correction you were given.
 Patch the skill that already covers a subject rather than adding a second one.
 
-`, ToolSkillManage)
+`, ToolSkillView, ToolSkillManage)
 
 	return b.String()
 }
@@ -101,8 +119,10 @@ project, and write it yourself:
 - %s — a durable fact about the environment, a preference the human stated, a
   convention this project follows, or a correction you were given. One or two
   short notes at most, and only when they would change how a later conversation
-  behaves. The store is bounded: if a write does not fit, consolidate
-  overlapping notes with replace or drop stale ones with remove, then retry.
+  behaves. Leave out a status that will change again. The store is bounded: a
+  write that grows it past the limit is refused, including replace with a
+  longer note. If a write does not fit, the result says by how many characters;
+  do not retry the same text — shorten the note or drop a stale one first.
 - %s — a procedure worth following again: several steps that worked, a recovery
   from a failure, a workaround for something that behaved unexpectedly. Patch
   the skill that already covers the subject instead of creating a near-duplicate;

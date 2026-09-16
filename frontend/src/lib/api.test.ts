@@ -115,3 +115,93 @@ describe("request", () => {
     })
   })
 })
+
+describe("threads", () => {
+  it("posts compact against the conversation", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/threads/th_1/compact")
+      expect(init?.method).toBe("POST")
+      return respond({
+        thread: { id: "th_1", compacted: true },
+        status: { running: false },
+      })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const got = await api.compactThread("th_1")
+    expect(got.thread.compacted).toBe(true)
+  })
+
+  it("asks the desktop shell to open a URL", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/open")
+      expect(init?.method).toBe("POST")
+      expect(JSON.parse(String(init?.body))).toEqual({
+        url: "https://example.invalid/docs",
+      })
+      return respond({ opened: "https://example.invalid/docs" })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const got = await api.openURL("https://example.invalid/docs")
+    expect(got.opened).toBe("https://example.invalid/docs")
+  })
+
+  it("patches a standing objective", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        expect(url).toBe("/api/threads/th_1")
+        expect(init?.method).toBe("PATCH")
+        expect(JSON.parse(String(init?.body))).toEqual({ goal: "keep going" })
+        return respond({ thread: { id: "th_1", goal: "keep going" } })
+      }),
+    )
+    const thread = await api.patchThread("th_1", { goal: "keep going" })
+    expect(thread.goal).toBe("keep going")
+  })
+
+  it("patches an in-place goal edit and a resume", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+        if (body.goal_edit) {
+          expect(body).toEqual({ goal: "keep going, tighter", goal_edit: true })
+          return respond({ thread: { id: "th_1", goal: "keep going, tighter" } })
+        }
+        expect(body).toEqual({ goal_resume: true })
+        return respond({ thread: { id: "th_1", goal: "keep going", running: true } })
+      }),
+    )
+    const edited = await api.patchThread("th_1", {
+      goal: "keep going, tighter",
+      goal_edit: true,
+    })
+    expect(edited.goal).toBe("keep going, tighter")
+    const resumed = await api.patchThread("th_1", { goal_resume: true })
+    expect(resumed.running).toBe(true)
+  })
+
+  it("pins a dragged conversation order", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/threads/reorder?project=pj_1")
+      expect(init?.method).toBe("PUT")
+      expect(JSON.parse(String(init?.body))).toEqual({ ids: ["th_2", "th_1"] })
+      return respond({ threads: [{ id: "th_2" }, { id: "th_1" }] })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const threads = await api.reorderThreads(["th_2", "th_1"], "pj_1")
+    expect(threads.map((t) => t.id)).toEqual(["th_2", "th_1"])
+  })
+
+  it("pins a dragged project order", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/projects/reorder")
+      expect(init?.method).toBe("PUT")
+      expect(JSON.parse(String(init?.body))).toEqual({ ids: ["pj_b", "pj_a"] })
+      return respond({ projects: [{ id: "pj_b" }, { id: "pj_a" }] })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const projects = await api.reorderProjects(["pj_b", "pj_a"])
+    expect(projects.map((p) => p.id)).toEqual(["pj_b", "pj_a"])
+  })
+})

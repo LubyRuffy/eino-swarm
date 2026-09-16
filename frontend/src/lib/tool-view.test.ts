@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { summariseToolCall, viewTool } from "./tool-view"
+import { execCommand, summariseToolCall, toolRowSummary, viewTool } from "./tool-view"
 
 describe("summariseToolCall", () => {
   it("shows the command, not the JSON envelope", () => {
@@ -21,6 +21,25 @@ describe("summariseToolCall", () => {
 
   it("falls back to flattened text when args are not JSON", () => {
     expect(summariseToolCall("exec", "echo hi")).toBe("echo hi")
+  })
+
+  it("flattens a multiline command for the one-line summary", () => {
+    expect(summariseToolCall("exec", JSON.stringify({ command: "echo hi\n&& ls" }))).toBe(
+      "echo hi && ls",
+    )
+  })
+})
+
+describe("execCommand", () => {
+  it("keeps newlines so expand can show the whole invocation", () => {
+    expect(execCommand(JSON.stringify({ command: "cat <<END\nline\nEND", cwd: "." }))).toBe(
+      "cat <<END\nline\nEND",
+    )
+  })
+
+  it("is empty when there is no command", () => {
+    expect(execCommand(`{"cwd":"."}`)).toBe("")
+    expect(execCommand("")).toBe("")
   })
 })
 
@@ -101,5 +120,63 @@ describe("viewTool", () => {
     expect(view.failed).toBe(true)
     expect(view.error).toContain("30/30")
     expect(view.body).toBe("the one that is already there")
+  })
+
+  it("shows a missing skill once, and lists the ones that exist", () => {
+    const view = viewTool(
+      "skill_view",
+      `{"name":"absent"}`,
+      JSON.stringify({
+        success: false,
+        error: 'no skill named "absent". skill_view only opens skills recorded in this project\'s memory',
+        available: ["present"],
+      }),
+    )
+    expect(view.failed).toBe(true)
+    expect(view.error).toContain("absent")
+    expect(view.body).toBe("present")
+    expect(view.body).not.toContain("no skill named")
+  })
+
+  it("does not repeat a missing-skill error when nothing is recorded", () => {
+    const view = viewTool(
+      "skill_view",
+      `{"name":"absent"}`,
+      JSON.stringify({
+        success: false,
+        error: 'no skill named "absent". skill_view only opens skills recorded in this project\'s memory',
+        available: [],
+      }),
+    )
+    expect(view.failed).toBe(true)
+    expect(view.error).toContain("absent")
+    expect(view.body).toBe("")
+  })
+})
+
+describe("toolRowSummary", () => {
+  it("puts a memory refusal on the collapsed row, not just the note that did not land", () => {
+    const view = viewTool(
+      "memory",
+      `{"action":"replace","content":"a longer status"}`,
+      JSON.stringify({
+        success: false,
+        error: "memory is at 2200/2200 characters; this write exceeds the limit by 40. Do not retry the same write.",
+        current_entries: ["the one that is already there"],
+      }),
+    )
+    const row = toolRowSummary(view)
+    expect(row).toContain("replace")
+    expect(row).toContain("Do not retry")
+    expect(row).toContain("2200/2200")
+  })
+
+  it("leaves a successful row as the action and the note", () => {
+    const view = viewTool(
+      "memory",
+      `{"action":"add","content":"a durable fact"}`,
+      JSON.stringify({ success: true, changed: true, usage: "14/2200", entries: ["a durable fact"] }),
+    )
+    expect(toolRowSummary(view)).toBe("add · a durable fact")
   })
 })

@@ -19,6 +19,8 @@ frontend/playwright-report/
 frontend/blob-report/
 frontend/.playwright/
 frontend/.e2e-data/
+frontend/.e2e-data-*/
+frontend/test-results-drop/
 
 # Local data / runtime
 .zwai-swarm/

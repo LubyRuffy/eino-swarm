@@ -148,13 +148,26 @@ func TestMetaTellsTheUIWhatItCanDo(t *testing.T) {
 	if caps["reveal"] != false {
 		t.Fatalf("web mode must not advertise reveal: %v", caps)
 	}
+	if caps["open_url"] != false {
+		t.Fatalf("web mode must not advertise open_url: %v", caps)
+	}
 	if got["data_dir"] == "" {
 		t.Fatal("meta should report the data directory for troubleshooting")
+	}
+	if got["locale"] != "system" {
+		t.Fatalf("a fresh install follows the system language, got %v", got["locale"])
 	}
 	// the composer builds its thinking-level menu from this, so it must arrive
 	levels, ok := got["reasoning_levels"].([]any)
 	if !ok || len(levels) != 3 || levels[0] != "low" || levels[2] != "high" {
 		t.Fatalf("meta must offer low/medium/high thinking levels, got %v", got["reasoning_levels"])
+	}
+	swarm, ok := got["swarm"].(map[string]any)
+	if !ok {
+		t.Fatalf("no swarm limits: %v", got)
+	}
+	if swarm["manager_max_iterations"] != float64(200) || swarm["max_turns"] != float64(200) {
+		t.Fatalf("the documented defaults are 200, got %v", swarm)
 	}
 }
 
@@ -215,6 +228,33 @@ func TestSettingsNeverReturnsTheAPIKey(t *testing.T) {
 		t.Fatalf("the model was not updated: %q", prov.Model)
 	}
 
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"models": map[string]any{
+			"default": "default",
+			"providers": []map[string]any{{
+				"id": "default", "label": "Renamed", "base_url": "http://endpoint.invalid/v1",
+				"model": "m2", "catalog": []string{"m2", "m3"}, "timeout_seconds": 60,
+			}},
+		},
+	}, http.StatusOK)
+	prov, _ = h.app.Config.Provider("default")
+	if len(prov.Catalog) != 2 || prov.Catalog[1] != "m3" {
+		t.Fatalf("catalog not saved: %v", prov.Catalog)
+	}
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"models": map[string]any{
+			"default": "default",
+			"providers": []map[string]any{{
+				"id": "default", "label": "Renamed", "base_url": "http://endpoint.invalid/v1",
+				"model": "m2", "timeout_seconds": 60,
+			}},
+		},
+	}, http.StatusOK)
+	prov, _ = h.app.Config.Provider("default")
+	if len(prov.Catalog) != 2 {
+		t.Fatalf("omitting catalog wiped it: %v", prov.Catalog)
+	}
+
 	// an explicit empty string clears it
 	h.json(http.MethodPut, "/api/settings", map[string]any{
 		"models": map[string]any{
@@ -236,7 +276,8 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 	h.json(http.MethodPut, "/api/settings", map[string]any{
 		"swarm": map[string]any{"max_concurrent": 3, "agent_timeout_seconds": 42,
 			"max_turns": 9, "manager_max_iterations": 11, "progress_interval_seconds": 7,
-			"delta_coalesce_ms": 16},
+			"delta_coalesce_ms": 16, "auto_title": true,
+			"title_provider": "default", "title_model": "tiny"},
 		"tools": map[string]any{"disabled": []string{"exec"}, "web_search_max_results": 5},
 		"log":   map[string]any{"level": "debug"},
 	}, http.StatusOK)
@@ -249,6 +290,12 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 	}
 	if h.app.Config.Swarm.DeltaCoalesceMS != 16 {
 		t.Fatalf("delta coalesce not applied: %+v", h.app.Config.Swarm)
+	}
+	if !h.app.Config.Swarm.AutoTitle {
+		t.Fatal("auto_title not applied")
+	}
+	if h.app.Config.Swarm.TitleProvider != "default" || h.app.Config.Swarm.TitleModel != "tiny" {
+		t.Fatalf("title pin not applied: %+v", h.app.Config.Swarm)
 	}
 	if !h.app.Config.Tools.IsDisabled("exec") {
 		t.Fatal("tool toggle not applied")
@@ -269,6 +316,39 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("garbage body accepted: %d", resp.StatusCode)
+	}
+}
+
+// A language switch is a PUT of only ui, so it must not wipe swarm settings,
+// and GET /api/meta must report the pin so the next load paints Chinese
+// before Settings is opened.
+func TestLocaleRoundTripsThroughSettingsAndMeta(t *testing.T) {
+	h := newHarness(t)
+	before := h.app.Config.Swarm.MaxConcurrent
+	out := h.json(http.MethodPut, "/api/settings", map[string]any{
+		"ui": map[string]any{"locale": "zh"},
+	}, http.StatusOK)
+	settings, _ := out["settings"].(map[string]any)
+	ui, _ := settings["ui"].(map[string]any)
+	if ui["locale"] != "zh" {
+		t.Fatalf("settings did not echo the language: %v", out)
+	}
+	if h.app.Config.UI.Locale != "zh" {
+		t.Fatalf("locale not stored: %+v", h.app.Config.UI)
+	}
+	if h.app.Config.Swarm.MaxConcurrent != before {
+		t.Fatalf("a language PUT must not rewrite swarm: %+v", h.app.Config.Swarm)
+	}
+	meta := h.json(http.MethodGet, "/api/meta", nil, http.StatusOK)
+	if meta["locale"] != "zh" {
+		t.Fatalf("meta must report the pin so boot can apply it: %v", meta["locale"])
+	}
+
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"ui": map[string]any{"locale": "nope"},
+	}, http.StatusOK)
+	if h.app.Config.UI.Locale != "system" {
+		t.Fatalf("junk must become system, got %q", h.app.Config.UI.Locale)
 	}
 }
 
@@ -296,6 +376,28 @@ func TestModelsAndToolsEndpoints(t *testing.T) {
 		if first[field] == nil || first[field] == "" {
 			t.Fatalf("catalog entries must be renderable: %v", first)
 		}
+	}
+
+	listed := models["models"].([]any)[0].(map[string]any)
+	for _, field := range []string{"id", "provider_id", "model"} {
+		if listed[field] == nil || listed[field] == "" {
+			t.Fatalf("selectable models must be addressable: %v", listed)
+		}
+	}
+	discovered := h.json(http.MethodPost, "/api/models/discover",
+		map[string]any{"provider_id": "default"}, http.StatusOK)
+	names := discovered["models"].([]any)
+	if len(names) == 0 {
+		t.Fatal("offline discover must still return a catalog")
+	}
+	h.json(http.MethodPost, "/api/models/discover",
+		map[string]any{"provider_id": "nope"}, http.StatusBadRequest)
+	// a row that has not been saved yet still lists against the URL in the form
+	unsaved := h.json(http.MethodPost, "/api/models/discover",
+		map[string]any{"provider_id": "nope", "base_url": "http://endpoint.invalid/v1"},
+		http.StatusOK)
+	if len(unsaved["models"].([]any)) == 0 {
+		t.Fatal("discover against an unsaved URL returned nothing")
 	}
 }
 
@@ -346,6 +448,36 @@ func TestThreadLifecycle(t *testing.T) {
 		t.Fatalf("a blank level must clear to the default: %v", cleared)
 	}
 
+	picked := h.json(http.MethodPatch, "/api/threads/"+id,
+		map[string]any{"model": "other"}, http.StatusOK)
+	if picked["thread"].(map[string]any)["model"] != "other" {
+		t.Fatalf("conversation model not kept: %v", picked)
+	}
+
+	pinned := h.json(http.MethodPatch, "/api/threads/"+id,
+		map[string]any{"pinned": true}, http.StatusOK)
+	body := pinned["thread"].(map[string]any)
+	if body["pinned"] != true {
+		t.Fatalf("pin did not stick: %v", pinned)
+	}
+	if body["pinned_at"] == nil || body["pinned_at"] == "" {
+		t.Fatalf("a pin must carry a time so the sidebar can order it: %v", pinned)
+	}
+	listed := h.json(http.MethodGet, "/api/threads", nil, http.StatusOK)
+	row := listed["threads"].([]any)[0].(map[string]any)
+	if row["pinned"] != true {
+		t.Fatalf("the list must show a pin without another round trip: %v", listed)
+	}
+	unpinned := h.json(http.MethodPatch, "/api/threads/"+id,
+		map[string]any{"pinned": false}, http.StatusOK)
+	clearedPin := unpinned["thread"].(map[string]any)
+	if clearedPin["pinned"] != false {
+		t.Fatalf("unpin did not stick: %v", unpinned)
+	}
+	if _, ok := clearedPin["pinned_at"]; ok && clearedPin["pinned_at"] != nil && clearedPin["pinned_at"] != "" {
+		t.Fatalf("unpin must drop the time: %v", unpinned)
+	}
+
 	// archiving takes it out of the default list but keeps it reachable
 	h.json(http.MethodPatch, "/api/threads/"+id, map[string]any{"archived": true}, http.StatusOK)
 	list = h.json(http.MethodGet, "/api/threads", nil, http.StatusOK)
@@ -377,11 +509,18 @@ func TestUnknownThreadIs404Everywhere(t *testing.T) {
 		{http.MethodDelete, "/api/threads/nope", nil},
 		{http.MethodPost, "/api/threads/nope/turns", map[string]any{"text": "hi"}},
 		{http.MethodPost, "/api/threads/nope/steer", map[string]any{"text": "hi"}},
+		{http.MethodGet, "/api/threads/nope/followups", nil},
+		{http.MethodPost, "/api/threads/nope/followups", map[string]any{"text": "hi"}},
+		{http.MethodDelete, "/api/threads/nope/followups/fu_x", nil},
+		{http.MethodPost, "/api/threads/nope/followups/fu_x/steer", nil},
 		{http.MethodPost, "/api/threads/nope/interrupt", nil},
+		{http.MethodPost, "/api/threads/nope/continue", map[string]any{"continue": true}},
+		{http.MethodPost, "/api/threads/nope/compact", nil},
 		{http.MethodGet, "/api/threads/nope/files", nil},
 		{http.MethodGet, "/api/threads/nope/turns", nil},
 		{http.MethodGet, "/api/threads/nope/events", nil},
 		{http.MethodGet, "/api/threads/nope/download/a.txt", nil},
+		{http.MethodGet, "/api/threads/nope/input-images/img_ab", nil},
 	} {
 		h.json(tc.method, tc.path, tc.body, http.StatusNotFound)
 	}
@@ -455,12 +594,52 @@ func TestSteerFallsBackToStartingATurn(t *testing.T) {
 	h.json(http.MethodPost, "/api/threads/"+id+"/interrupt", nil, http.StatusConflict)
 }
 
+func TestContinueTurnEndpoint(t *testing.T) {
+	h := newHarness(t)
+	id := h.newThread()
+	h.json(http.MethodPost, "/api/threads/"+id+"/continue",
+		map[string]any{"continue": true}, http.StatusConflict)
+	h.json(http.MethodPost, "/api/threads/"+id+"/continue", map[string]any{}, http.StatusBadRequest)
+
+	h.app.Config.Swarm.ManagerMaxIterations = 1
+	h.json(http.MethodPost, "/api/threads/"+id+"/turns",
+		map[string]any{"text": "look into this"}, http.StatusAccepted)
+
+	deadline := time.Now().Add(15 * time.Second)
+	var waiting bool
+	for time.Now().Before(deadline) {
+		got := h.json(http.MethodGet, "/api/threads/"+id, nil, http.StatusOK)
+		status, _ := got["status"].(map[string]any)
+		if status["awaiting_continue"] == true {
+			waiting = true
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !waiting {
+		t.Fatal("the turn never paused at the tool-round cap")
+	}
+	h.json(http.MethodPost, "/api/threads/"+id+"/continue",
+		map[string]any{"continue": false}, http.StatusAccepted)
+	turn := h.waitTurnDone(id)
+	if turn.Status != store.TurnCancelled {
+		t.Fatalf("status=%s err=%s", turn.Status, turn.Error)
+	}
+	if strings.Contains(turn.Error, "NodeRunError") {
+		t.Fatalf("the graph dump leaked through the API: %s", turn.Error)
+	}
+}
+
 // ---------- event stream ----------
 
 // The stream has to replay history and then go live from one subscription, or
 // everything that happens between the two is lost.
 func TestEventStreamReplaysThenGoesLive(t *testing.T) {
 	h := newHarness(t)
+	// The namer records after `done`. This test is about the turn's own
+	// timeline; a title event landing between the live close and the
+	// resume would look like a duplicate.
+	h.app.Config.Swarm.AutoTitle = false
 	id := h.newThread()
 
 	h.json(http.MethodPost, "/api/threads/"+id+"/turns",
@@ -505,6 +684,7 @@ func TestEventStreamReplaysThenGoesLive(t *testing.T) {
 // honour it or every reconnect duplicates the whole conversation.
 func TestEventStreamHonoursLastEventID(t *testing.T) {
 	h := newHarness(t)
+	h.app.Config.Swarm.AutoTitle = false
 	id := h.newThread()
 	h.json(http.MethodPost, "/api/threads/"+id+"/turns",
 		map[string]any{"text": "produce a result"}, http.StatusAccepted)
@@ -525,6 +705,55 @@ func TestEventStreamHonoursLastEventID(t *testing.T) {
 		if kind != "ready" && n > 0 {
 			t.Fatalf("Last-Event-ID was ignored; got %q again: %v", kind, kinds)
 		}
+	}
+}
+
+func TestEventStreamCarriesTheGeneratedTitle(t *testing.T) {
+	h := newHarness(t)
+	id := h.newThread()
+	created := h.json(http.MethodPost, "/api/threads/"+id+"/turns",
+		map[string]any{"text": "look into the reporting pipeline"}, http.StatusAccepted)
+	turn := created["turn"].(map[string]any)
+	turnID := turn["id"].(string)
+	h.waitForTitleEvent(turnID)
+
+	events, err := h.app.Engine.Replay(id, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var title store.Event
+	for _, ev := range events {
+		if ev.Kind == engine.KindTitle {
+			title = ev
+			break
+		}
+	}
+	if title.Seq == 0 || title.Text == "" || title.AgentID != engine.TitleAgentID {
+		t.Fatalf("stored title event=%+v", title)
+	}
+
+	got := h.json(http.MethodGet, "/api/threads/"+id, nil, http.StatusOK)
+	th := got["thread"].(map[string]any)
+	if th["title"] != title.Text {
+		t.Fatalf("GET thread title=%v event=%q", th["title"], title.Text)
+	}
+	if title.Text == "look into the reporting pipeline" {
+		t.Fatal("the conversation is still quoting the request")
+	}
+
+	trace := h.json(http.MethodGet, "/api/trace/"+turnID, nil, http.StatusOK)
+	found := false
+	for _, raw := range trace["events"].([]any) {
+		ev := raw.(map[string]any)
+		if ev["kind"] == engine.KindTitle {
+			found = true
+			if ev["text"] != title.Text || ev["agent_id"] != engine.TitleAgentID {
+				t.Fatalf("trace title=%v", ev)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("zwai trace would miss the namer; the title event is not on the turn")
 	}
 }
 
@@ -753,6 +982,9 @@ func TestAppListenAndShutdown(t *testing.T) {
 	if meta["capabilities"].(map[string]any)["reveal"] != true {
 		t.Fatalf("desktop mode should advertise reveal: %v", meta)
 	}
+	if meta["capabilities"].(map[string]any)["open_url"] != true {
+		t.Fatalf("desktop mode should advertise open_url: %v", meta)
+	}
 
 	a.Shutdown(newShortContext())
 	if _, err := http.Get(url + "/api/meta"); err == nil {
@@ -792,7 +1024,8 @@ func TestRestartRecoversConversations(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(100 * time.Millisecond)
-	// simulate a kill: close the database without letting the engine finish
+	// Quit: in-memory run stops, the turn stays unfinished for the next start.
+	first.Engine.Shutdown()
 	_ = first.Store.Close()
 
 	second, err := app.New(app.Options{DataDir: dir, Mock: true, NoAssets: true})
@@ -812,13 +1045,24 @@ func TestRestartRecoversConversations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if len(turns) == 0 {
+		t.Fatal("the turn did not survive the restart")
+	}
+	// The leftover is either already running again or already finished; it
+	// must not have been recorded as a user stop.
 	for _, turn := range turns {
-		if turn.Status == store.TurnRunning {
-			t.Fatalf("a turn is still marked running after a restart: %+v", turn)
+		if turn.Status == store.TurnCancelled {
+			t.Fatalf("a crash was recorded as a stop: %+v", turn)
 		}
 	}
-	if second.Engine.Status(th.ID).Running {
-		t.Fatal("the restarted engine thinks the conversation is working")
+	if !second.Engine.Status(th.ID).Running {
+		got, err := second.Store.GetTurn(turns[0].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != store.TurnDone {
+			t.Fatalf("the leftover turn was neither resumed nor finished: %+v", got)
+		}
 	}
 }
 
@@ -842,6 +1086,20 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindCleanup, "cleanup"},
 		{engine.KindProgress, "progress"},
 		{engine.KindMemoryReview, "memory_review"},
+		{engine.KindTitle, "title"},
+		{engine.KindMaxIterations, "max_iterations"},
+		{engine.KindMaxIterationsContinued, "max_iterations_continued"},
+		{engine.KindResumed, "resumed"},
+		{engine.KindGoal, "goal"},
+		{engine.KindGoalComplete, "goal_complete"},
+		{engine.KindGoalContinued, "goal_continued"},
+		{engine.KindGoalCapped, "goal_capped"},
+		{engine.KindGoalBlocked, "goal_blocked"},
+		{engine.KindGoalEdited, "goal_edited"},
+		{engine.KindGoalResumed, "goal_resumed"},
+		{engine.KindCompacted, "compacted"},
+		{engine.KindUsage, "usage"},
+		{engine.KindRewound, "rewound"},
 	} {
 		if tc.got != tc.want {
 			t.Fatalf("the event kind %q the UI relies on is now sent as %q", tc.want, tc.got)

@@ -49,21 +49,14 @@ func TestResolveAndList(t *testing.T) {
 	}
 
 	list := p.List()
-	if len(list) != 2 {
-		t.Fatalf("want 2 providers, got %d", len(list))
+	if len(list) != 1 {
+		t.Fatalf("an endpoint with no catalog still lists its default; blank listed %d", len(list))
 	}
-	byID := map[string]Info{}
-	for _, i := range list {
-		byID[i.ID] = i
+	if list[0].ProviderID != cfg.Models.Default || !list[0].Ready || !list[0].Default {
+		t.Fatalf("default row: %+v", list[0])
 	}
-	if !byID[cfg.Models.Default].Ready {
-		t.Fatal("a fully configured provider should report ready")
-	}
-	if byID["blank"].Ready {
-		t.Fatal("a provider with no endpoint must not report ready")
-	}
-	if byID["blank"].Label != "Blank" {
-		t.Fatalf("label=%q", byID["blank"].Label)
+	if list[0].ID != ChoiceID(cfg.Models.Default, "some-model") {
+		t.Fatalf("id=%q", list[0].ID)
 	}
 	if p.IsMock() {
 		t.Fatal("a real pool is not a mock")
@@ -74,11 +67,11 @@ func TestResolveAndList(t *testing.T) {
 // endpoint should mean one connection pool, not a dozen.
 func TestGetCachesOneClientPerProvider(t *testing.T) {
 	p := New(configFor(t, true))
-	first, err := p.Get(context.Background(), "")
+	first, err := p.Get(context.Background(), "", "")
 	if err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	second, err := p.Get(context.Background(), "")
+	second, err := p.Get(context.Background(), "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,12 +81,20 @@ func TestGetCachesOneClientPerProvider(t *testing.T) {
 
 	// settings changes must take effect without a restart
 	p.Invalidate()
-	third, err := p.Get(context.Background(), "")
+	third, err := p.Get(context.Background(), "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if third == first {
 		t.Fatal("Invalidate did not drop the cached client")
+	}
+
+	other, err := p.Get(context.Background(), "", "other-model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other == first {
+		t.Fatal("a different model on the same endpoint needs its own client")
 	}
 }
 
@@ -102,7 +103,7 @@ func TestGetCachesOneClientPerProvider(t *testing.T) {
 func TestBuilderSharesClientAndAttributesPerAgent(t *testing.T) {
 	s := &sink{}
 	p := New(configFor(t, true))
-	build, err := p.ModelBuilder(context.Background(), "", "", s.rec())
+	build, err := p.ModelBuilder(context.Background(), "", "", "", s.rec())
 	if err != nil {
 		t.Fatalf("ModelBuilder: %v", err)
 	}
@@ -130,7 +131,7 @@ func TestBuilderSharesClientAndAttributesPerAgent(t *testing.T) {
 	}
 
 	// with no recorder the shared client is handed out bare
-	bare, err := p.ModelBuilder(context.Background(), "", "", nil)
+	bare, err := p.ModelBuilder(context.Background(), "", "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,17 +142,17 @@ func TestBuilderSharesClientAndAttributesPerAgent(t *testing.T) {
 
 func TestBuilderRefusesUnconfiguredProvider(t *testing.T) {
 	p := New(configFor(t, false))
-	_, err := p.ModelBuilder(context.Background(), "", "", nil)
+	_, err := p.ModelBuilder(context.Background(), "", "", "", nil)
 	if err == nil {
 		t.Fatal("want an error for a provider with no endpoint")
 	}
 	if !strings.Contains(err.Error(), "Settings") {
 		t.Fatalf("the error should point the user at Settings, got %q", err)
 	}
-	if _, err := p.ModelBuilder(context.Background(), "nope", "", nil); err == nil {
+	if _, err := p.ModelBuilder(context.Background(), "nope", "", "", nil); err == nil {
 		t.Fatal("want an error for an unknown provider")
 	}
-	if _, err := p.Get(context.Background(), ""); err == nil {
+	if _, err := p.Get(context.Background(), "", ""); err == nil {
 		t.Fatal("Get must refuse an unconfigured provider")
 	}
 }
@@ -168,14 +169,14 @@ func TestMockPoolRunsWithNoConfiguration(t *testing.T) {
 			t.Fatalf("mock providers are always ready: %+v", i)
 		}
 	}
-	build, err := p.ModelBuilder(context.Background(), "", "", nil)
+	build, err := p.ModelBuilder(context.Background(), "", "", "", nil)
 	if err != nil {
 		t.Fatalf("ModelBuilder: %v", err)
 	}
 	if build("manager", "manager") == nil {
 		t.Fatal("nil manager model")
 	}
-	if _, err := p.Get(context.Background(), ""); err != nil {
+	if _, err := p.Get(context.Background(), "", ""); err != nil {
 		t.Fatalf("Get on a mock pool: %v", err)
 	}
 }
@@ -197,7 +198,7 @@ func TestMockPoolNamesItself(t *testing.T) {
 	}
 
 	var got []CallRecord
-	build, err := p.ModelBuilder(context.Background(), "", "",
+	build, err := p.ModelBuilder(context.Background(), "", "", "",
 		func(r CallRecord) { got = append(got, r) })
 	if err != nil {
 		t.Fatal(err)
@@ -208,6 +209,9 @@ func TestMockPoolNamesItself(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Model != MockModelName {
 		t.Fatalf("the recorded call does not name the provider: %+v", got)
+	}
+	if got[0].PromptTokens <= 0 || got[0].TotalTokens <= 0 {
+		t.Fatalf("the scripted provider must still report usage: %+v", got[0])
 	}
 
 	// a real pool reports exactly what is configured, with no substitution
@@ -291,19 +295,26 @@ func TestMockManagerScriptFansOutAndAnswers(t *testing.T) {
 	}
 }
 
-func TestMockManagerAnswersEvenWithNoWorkers(t *testing.T) {
+func TestMockManagerContinuesWithoutRespawning(t *testing.T) {
+	// A continued run builds a new model whose turn counter is 1 again. If
+	// that first call spawned, every extension would fan out forever.
 	m := newMockModel("manager")
 	ctx := context.Background()
-	if _, err := m.Generate(ctx, []*schema.Message{schema.UserMessage("q")}); err != nil {
-		t.Fatal(err)
-	}
-	// no spawn results came back: rather than waiting on nothing, answer
-	out, err := m.Generate(ctx, []*schema.Message{schema.UserMessage("q")})
+	out, err := m.Generate(ctx, []*schema.Message{
+		schema.UserMessage("look into this"),
+		schema.ToolMessage(`{"agent_id":"researcher-1"}`, "mock-spawn-1"),
+		schema.ToolMessage(`{"agent_id":"reviewer-2"}`, "mock-spawn-2"),
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.ToolCalls) != 0 || !strings.Contains(out.Content, "No sub-agent results") {
-		t.Fatalf("want a direct answer, got %+v / %q", out.ToolCalls, out.Content)
+	if len(out.ToolCalls) != 1 || out.ToolCalls[0].Function.Name != "wait_agents" {
+		t.Fatalf("a continued run must wait, not spawn: %+v", out.ToolCalls)
+	}
+	for _, leak := range []string{"spawn_agent"} {
+		if strings.Contains(out.Content, leak) {
+			t.Fatalf("spawned on a continued run: %s", out.Content)
+		}
 	}
 }
 
@@ -378,6 +389,63 @@ func TestMockReviewerCuratesMemoryFromTheConversation(t *testing.T) {
 	}
 	if len(second.ToolCalls) != 0 || second.Content == "" {
 		t.Fatalf("the reviewer must finish with a line, not another tool call: %+v", second)
+	}
+}
+
+func TestMockTitleNamerNamesTheConversation(t *testing.T) {
+	m := newMockModel("title-namer")
+	out, err := m.Generate(context.Background(), []*schema.Message{
+		schema.SystemMessage("Name this conversation."),
+		schema.UserMessage("User: look into the reporting pipeline\n\nAssistant: here is what I found"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Content == "" || strings.Contains(out.Content, "look into the reporting pipeline") {
+		t.Fatalf("the mock title must be a short label, not the request: %q", out.Content)
+	}
+	if !strings.Contains(out.Content, "look into") {
+		t.Fatalf("the mock title must still come from the request: %q", out.Content)
+	}
+	if len(out.ToolCalls) != 0 {
+		t.Fatalf("the namer is not a worker: %+v", out.ToolCalls)
+	}
+}
+
+func TestMockCompactSummarizerStaysDerived(t *testing.T) {
+	m := newMockModel("compact-summarizer")
+	out, err := m.Generate(context.Background(), []*schema.Message{
+		schema.SystemMessage("Write a briefing."),
+		schema.UserMessage("Human: look into the reporting pipeline\n\nAssistant: here is what I found"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(out.Content, "Prior work:") {
+		t.Fatalf("mock briefing=%q", out.Content)
+	}
+	if len(out.ToolCalls) != 0 {
+		t.Fatalf("the summarizer is not a worker: %+v", out.ToolCalls)
+	}
+	if mockBriefing("   ") != "Prior conversation, folded." {
+		t.Fatalf("blank=%q", mockBriefing("   "))
+	}
+}
+
+func TestMockTitleFallsBackWhenTheRequestIsBlank(t *testing.T) {
+	if got := mockTitle("   "); got != "Conversation" {
+		t.Fatalf("blank=%q", got)
+	}
+	long := strings.Repeat("字", mockTitleMaxRunes+8)
+	if got := mockTitle(long); got != strings.Repeat("字", mockTitleMaxRunes) {
+		t.Fatalf("clipped=%q", got)
+	}
+}
+
+func TestTitleRequestReadsABareUserMessage(t *testing.T) {
+	got := titleRequest([]*schema.Message{schema.UserMessage("just a question")})
+	if got != "just a question" {
+		t.Fatalf("got %q", got)
 	}
 }
 
@@ -508,6 +576,65 @@ func TestTelemetryRecordsGenerate(t *testing.T) {
 	}
 	if r.Err != nil {
 		t.Fatalf("unexpected error: %v", r.Err)
+	}
+}
+
+func TestTelemetryRecordsEndpointUsage(t *testing.T) {
+	s := &sink{}
+	inner := &fakeModel{out: &schema.Message{
+		Role:    schema.Assistant,
+		Content: "hello",
+		ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{
+			PromptTokens:            12,
+			CompletionTokens:        3,
+			TotalTokens:             15,
+			PromptTokenDetails:      schema.PromptTokenDetails{CachedTokens: 4},
+			CompletionTokensDetails: schema.CompletionTokensDetails{ReasoningTokens: 2},
+		}},
+	}}
+	m := wrap(inner, "manager", config.Provider{ID: "p", Model: "m"}, "", s.rec())
+	if _, err := m.Generate(context.Background(), []*schema.Message{schema.UserMessage("hi")}); err != nil {
+		t.Fatal(err)
+	}
+	r := s.all()[0]
+	if r.PromptTokens != 12 || r.CompletionTokens != 3 || r.TotalTokens != 15 {
+		t.Fatalf("usage not recorded: %+v", r)
+	}
+	if r.CachedTokens != 4 || r.ReasoningTokens != 2 {
+		t.Fatalf("usage details dropped: %+v", r)
+	}
+}
+
+func TestTelemetryRecordsStreamedUsageFromTheLastChunk(t *testing.T) {
+	s := &sink{}
+	inner := &fakeModel{chunks: []*schema.Message{
+		{Role: schema.Assistant, Content: "one "},
+		{Role: schema.Assistant, Content: "two"},
+		{Role: schema.Assistant, ResponseMeta: &schema.ResponseMeta{Usage: &schema.TokenUsage{
+			PromptTokens: 9, CompletionTokens: 2, TotalTokens: 11,
+		}}},
+	}}
+	m := wrap(inner, "manager", config.Provider{ID: "p", Model: "m"}, "", s.rec())
+	stream, err := m.Stream(context.Background(), []*schema.Message{schema.UserMessage("go")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := stream.Recv(); err != nil {
+			break
+		}
+	}
+	stream.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	for len(s.all()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	recs := s.all()
+	if len(recs) != 1 {
+		t.Fatalf("want 1 record, got %d", len(recs))
+	}
+	if recs[0].PromptTokens != 9 || recs[0].CompletionTokens != 2 || recs[0].TotalTokens != 11 {
+		t.Fatalf("streamed usage not recorded: %+v", recs[0])
 	}
 }
 
@@ -727,6 +854,15 @@ func TestUserTextExtraction(t *testing.T) {
 	}
 	if got := firstUserText(msgs); got != "first" {
 		t.Fatalf("firstUserText=%q", got)
+	}
+	multi := []*schema.Message{{
+		Role: schema.User,
+		UserInputMultiContent: []schema.MessageInputPart{
+			{Type: schema.ChatMessagePartTypeText, Text: "from the image caption"},
+		},
+	}}
+	if got := lastUserText(multi); got != "from the image caption" {
+		t.Fatalf("a multimodal caption must still drive the script: %q", got)
 	}
 }
 

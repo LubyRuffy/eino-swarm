@@ -62,6 +62,11 @@ type App struct {
 	mu       sync.Mutex
 	listener net.Listener
 	http     *http.Server
+	// httpStop cancels every in-flight request, including the event stream.
+	// Without it, Shutdown waits out the whole deadline for a connection that
+	// is designed never to end — Cmd+Q freezes the window, then Wails warns
+	// that the window it just closed is already gone.
+	httpStop context.CancelFunc
 }
 
 // New assembles everything. The caller owns Close.
@@ -76,14 +81,6 @@ func New(opts Options) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	// A previous process that was killed leaves turns marked running; closing
-	// them here is why a restarted app never shows a conversation frozen
-	// mid-answer.
-	if n, err := st.MarkStaleTurnsCancelled(); err != nil {
-		logger.Warn("could not close turns left over from a previous run", "err", err)
-	} else if n > 0 {
-		logger.Info("closed turns left over from a previous run", "count", n)
-	}
 
 	pool := provider.New(cfg)
 	if opts.Mock {
@@ -91,6 +88,13 @@ func New(opts Options) (*App, error) {
 		logger.Info("running on the scripted offline provider; no model will be called")
 	}
 	eng := engine.New(cfg, st, pool, logger)
+	// A previous process that was killed (or quit) leaves turns marked
+	// running. Continue them here: a crash is not a user Stop.
+	if n, err := eng.ResumeOrphanedTurns(); err != nil {
+		logger.Warn("could not resume turns left over from a previous run", "err", err)
+	} else if n > 0 {
+		logger.Info("resumed turns left over from a previous run", "count", n)
+	}
 
 	assets := opts.Assets
 	if assets == nil && !opts.NoAssets {
@@ -103,6 +107,7 @@ func New(opts Options) (*App, error) {
 		Mode:    opts.Mode,
 		Assets:  assets,
 		Reveal:  revealFor(opts.Mode),
+		OpenURL: openURLFor(opts.Mode),
 	})
 	if err != nil {
 		_ = st.Close()
@@ -141,11 +146,14 @@ func (a *App) listen() (string, error) {
 		return "", fmt.Errorf("app: listen on %s: %w", a.addr, err)
 	}
 	a.listener = ln
+	reqCtx, stop := context.WithCancel(context.Background())
+	a.httpStop = stop
 	a.http = &http.Server{
 		Handler: a.Server.Handler(),
 		// No write timeout: the event stream is a response that lasts as long
 		// as the tab is open.
 		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return reqCtx },
 	}
 	return a.url(), nil
 }
@@ -187,14 +195,21 @@ func (a *App) Serve() error {
 	return err
 }
 
-// Shutdown stops accepting requests, cancels running turns and closes the
-// database.
+// Shutdown stops accepting requests, abandons in-memory runs (the turns stay
+// unfinished so the next start can continue them) and closes the database.
 func (a *App) Shutdown(ctx context.Context) {
 	a.mu.Lock()
 	srv := a.http
+	stop := a.httpStop
+	a.httpStop = nil
 	a.mu.Unlock()
+	if stop != nil {
+		stop()
+	}
 	if srv != nil {
-		_ = srv.Shutdown(ctx)
+		if err := srv.Shutdown(ctx); err != nil {
+			_ = srv.Close()
+		}
 	}
 	a.Engine.Shutdown()
 	if err := a.Store.Close(); err != nil {
@@ -237,6 +252,15 @@ func revealFor(mode string) func(string) error {
 		return nil
 	}
 	return revealPath
+}
+
+// openURLFor is the desktop-only browser hook. A web server must not spawn
+// windows on the host; the tab already has a browser.
+func openURLFor(mode string) func(string) error {
+	if mode != server.ModeDesktop {
+		return nil
+	}
+	return openURL
 }
 
 func revealPath(path string) error {

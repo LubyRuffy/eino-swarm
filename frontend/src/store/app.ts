@@ -1,24 +1,40 @@
 import { create } from "zustand"
 
+import { applyPinnedOrder } from "@/lib/reorder"
 import { ApiError, api } from "@/lib/api"
+import {
+  applyLocale,
+  normalizeLocalePref,
+  readLocalePref,
+  writeLocalePref,
+  type LocalePref,
+} from "@/lib/i18n"
+import type { SendImage } from "@/lib/paste-image"
 import { subscribeEvents } from "@/lib/stream"
 import {
   emptyTranscript,
   reduceEvent,
   collapseLiveEvents,
   parseReview,
+  MANAGER_ID,
+  placePendingEdit,
+  rewindTranscript,
   toolNameOf,
   type TranscriptState,
 } from "@/lib/transcript"
 import { MEMORY_WRITE_TOOLS, memoryWriteLanded } from "@/lib/tool-view"
+import { mergeModelContext, parseUsage } from "@/lib/usage"
 import type {
+  Attachment,
   FileEntry,
+  Followup,
   Meta,
   ModelInfo,
   SwarmEvent,
   Thread,
   ThreadStatus,
   Turn,
+  UsageSnapshot,
 } from "@/lib/types"
 import { useProjects } from "./projects"
 
@@ -32,33 +48,51 @@ interface AppState {
   transcript: TranscriptState
   status: ThreadStatus
   turns: Turn[]
+  followups: Followup[]
   files: FileEntry[]
   workspace: string
+  usage?: UsageSnapshot
   /** Undefined until the first stream has replayed, so the transcript can
    *  show a skeleton instead of an empty conversation. */
   loaded: boolean
   connected: boolean
   error?: string
   theme: Theme
+  locale: LocalePref
   /** Which sub-agent the right-hand panel is showing, if any. */
   selectedAgent?: string
 
   boot: () => Promise<void>
   refreshThreads: () => Promise<void>
+  /** Re-lists every endpoint and writes the catalogs. Does not reboot the
+   *  conversation — boot() would yank the open thread. */
+  refreshCatalogs: () => Promise<void>
   openThread: (id: string) => Promise<void>
-  /** Lands in projectId, or in the project the sidebar has selected. */
+  /** Lands in projectId. Omit it and the conversation sits in Recents. */
   newThread: (projectId?: string) => Promise<string | undefined>
-  /** Filters the sidebar to one project and loads its memory. */
+  /** Highlights a project and loads its memory. Does not filter the list. */
   selectProject: (projectId?: string) => Promise<void>
+  pinThread: (id: string, pinned: boolean) => Promise<void>
   reviewNow: () => Promise<void>
   renameThread: (id: string, title: string) => Promise<void>
   deleteThread: (id: string) => Promise<void>
-  send: (text: string) => Promise<void>
+  reorderThreads: (ids: string[]) => Promise<void>
+  send: (text: string, images?: SendImage[], opts?: { steer?: boolean; files?: string[]; fromEventSeq?: number }) => Promise<void>
+  setGoal: (text: string) => Promise<void>
+  editGoal: (text: string) => Promise<void>
+  resumeGoal: () => Promise<void>
+  compactThread: () => Promise<void>
   interrupt: () => Promise<void>
-  upload: (files: File[]) => Promise<void>
+  steerFollowup: (id: string) => Promise<void>
+  deleteFollowup: (id: string) => Promise<void>
+  clearFollowups: () => Promise<void>
+  refreshFollowups: () => Promise<void>
+  extendTurn: (proceed: boolean) => Promise<void>
+  upload: (files: File[]) => Promise<Attachment[]>
   refreshFiles: () => Promise<void>
   removeFile: (path: string) => Promise<void>
   setTheme: (t: Theme) => void
+  setLocale: (pref: LocalePref, opts?: { persist?: boolean }) => void
   selectAgent: (id?: string) => void
   setError: (message?: string) => void
 }
@@ -85,14 +119,17 @@ export const useApp = create<AppState>((set, get) => ({
   transcript: emptyTranscript(),
   status: { running: false },
   turns: [],
+  followups: [],
   files: [],
   workspace: "",
   loaded: false,
   connected: false,
   theme: readTheme(),
+  locale: readLocalePref(),
 
   boot: async () => {
     applyTheme(get().theme)
+    applyLocale(get().locale)
     try {
       const [meta, models, threads] = await Promise.all([
         api.meta(),
@@ -101,6 +138,9 @@ export const useApp = create<AppState>((set, get) => ({
         useProjects.getState().refresh(),
       ])
       set({ meta, models: models.models, threads })
+      if (meta.locale) {
+        get().setLocale(normalizeLocalePref(meta.locale), { persist: false })
+      }
       if (threads.length > 0) await get().openThread(threads[0].id)
     } catch (e) {
       set({ error: message(e) })
@@ -109,7 +149,48 @@ export const useApp = create<AppState>((set, get) => ({
 
   refreshThreads: async () => {
     try {
-      set({ threads: await api.threads(false, useProjects.getState().selectedId) })
+      set({ threads: await api.threads() })
+    } catch (e) {
+      set({ error: message(e) })
+    }
+  },
+
+  refreshCatalogs: async () => {
+    try {
+      const settings = await api.settings()
+      const providers = []
+      for (const p of settings.models.providers) {
+        // GET never returns the key; do not PUT an empty one or we wipe it.
+        const rest = { ...p }
+        delete rest.api_key
+        if (!p.base_url.trim()) {
+          providers.push(rest)
+          continue
+        }
+        try {
+          const listed = await api.discoverModels({
+            provider_id: p.id,
+            base_url: p.base_url,
+          })
+          providers.push({
+            ...rest,
+            catalog: listed.models,
+            model: p.model || listed.models[0] || "",
+            model_context: mergeModelContext(
+              p.model_context,
+              listed.context_windows,
+            ),
+          })
+        } catch (e) {
+          providers.push(rest)
+          set({ error: message(e) })
+        }
+      }
+      await api.saveSettings({
+        models: { default: settings.models.default, providers },
+      })
+      const listed = await api.models()
+      set({ models: listed.models })
     } catch (e) {
       set({ error: message(e) })
     }
@@ -117,20 +198,30 @@ export const useApp = create<AppState>((set, get) => ({
 
   selectProject: async (projectId) => {
     useProjects.getState().select(projectId)
-    await get().refreshThreads()
     await useProjects.getState().loadMemory(projectId)
   },
 
   reviewNow: async () => {
     const id = get().activeId
-    if (!id) return
+    if (!id) {
+      useProjects.getState().endReview("Open a conversation first.")
+      return
+    }
+    useProjects.getState().beginReview()
     try {
-      await api.reviewThread(id)
+      const { turn } = await api.reviewThread(id)
+      if (turn?.id) useProjects.getState().awaitReview(turn.id)
     } catch (e) {
-      // Nothing to review is an answer, not a failure worth an alert.
-      if (!(e instanceof ApiError && e.code === "idle")) {
-        set({ error: message(e) })
+      // Idle is an answer: no finished turn, or memory is off. The banner
+      // would make it look like the app broke; the panel is where they clicked.
+      if (e instanceof ApiError && e.code === "idle") {
+        useProjects.getState().endReview(
+          "Nothing to review. Finish a turn in this project first.",
+        )
+        return
       }
+      useProjects.getState().endReview()
+      set({ error: message(e) })
     }
   },
 
@@ -143,10 +234,12 @@ export const useApp = create<AppState>((set, get) => ({
       activeId: id,
       transcript: emptyTranscript(),
       turns: [],
+      followups: [],
       files: [],
       loaded: false,
       selectedAgent: undefined,
       status: { running: false },
+      usage: undefined,
     })
 
     unsubscribe = subscribeEvents(id, {
@@ -163,14 +256,22 @@ export const useApp = create<AppState>((set, get) => ({
     })
 
     try {
-      const [{ thread, status }, turns] = await Promise.all([
+      const [{ thread, status, usage }, turns, followups] = await Promise.all([
         api.thread(id),
         api.turns(id),
+        api.followups(id),
       ])
-      set({ status, turns })
-      // The Memory tab belongs to the project, not the conversation, so it is
-      // loaded per conversation opened rather than kept from the sidebar's
-      // filter: a conversation can be in a project that is not selected.
+      set((s) => ({
+        status,
+        turns,
+        followups,
+        usage,
+        threads: s.threads.map((t) => (t.id === thread.id ? { ...t, ...thread } : t)),
+      }))
+      // The Memory tab belongs to the project, not the conversation. Opening
+      // a Recents chat must drop the previous project's highlight or the
+      // folder would still look selected.
+      useProjects.getState().select(thread.project_id || undefined)
       if (thread.project_id) {
         void useProjects.getState().loadMemory(thread.project_id)
       }
@@ -182,8 +283,7 @@ export const useApp = create<AppState>((set, get) => ({
   newThread: async (projectId) => {
     creating = (async () => {
       try {
-        const project = projectId ?? useProjects.getState().selectedId
-        const thread = await api.createThread(undefined, undefined, project)
+        const thread = await api.createThread(undefined, undefined, projectId)
         set((s) => ({ threads: [thread, ...s.threads] }))
         await get().openThread(thread.id)
         return thread.id
@@ -196,6 +296,17 @@ export const useApp = create<AppState>((set, get) => ({
       return await creating
     } finally {
       creating = undefined
+    }
+  },
+
+  pinThread: async (id, pinned) => {
+    try {
+      const updated = await api.patchThread(id, { pinned })
+      set((s) => ({
+        threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
+      }))
+    } catch (e) {
+      set({ error: message(e) })
     }
   },
 
@@ -218,7 +329,7 @@ export const useApp = create<AppState>((set, get) => ({
       if (get().activeId === id) {
         unsubscribe?.()
         unsubscribe = undefined
-        set({ activeId: undefined, transcript: emptyTranscript(), loaded: false })
+        set({ activeId: undefined, transcript: emptyTranscript(), loaded: false, followups: [] })
         if (remaining.length > 0) await get().openThread(remaining[0].id)
       }
     } catch (e) {
@@ -226,22 +337,185 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  send: async (text) => {
+  reorderThreads: async (ids) => {
+    set({ threads: applyPinnedOrder(get().threads, ids) })
+    try {
+      const listed = await api.reorderThreads(ids)
+      set({ threads: listed })
+    } catch (e) {
+      set({ error: message(e) })
+      await get().refreshThreads()
+    }
+  },
+
+  send: async (text, images, opts) => {
+    if (opts?.fromEventSeq) {
+      const id = get().activeId
+      if (!id) return
+      const from = opts.fromEventSeq
+      const cut = get().transcript.agents[MANAGER_ID]?.blocks.find(
+        (b) => b.kind === "user" && b.seq === from,
+      )
+      // Before any await: this bubble stays with the new text, everything
+      // below it is gone. Waiting on currentThread first would paint the
+      // unedited bubble for a frame, which is the opposite of Codex.
+      set((s) => ({
+        transcript: placePendingEdit(
+          rewindTranscript(s.transcript, from),
+          text,
+          cut?.images,
+        ),
+        followups: [],
+        status: { ...s.status, running: true },
+        error: undefined,
+      }))
+      try {
+        await api.startTurn(id, text, images, opts.files, from)
+        void get().refreshFollowups()
+        void get().refreshThreads()
+      } catch (e) {
+        set({ error: message(e) })
+        set({ activeId: undefined })
+        await get().openThread(id)
+      }
+      return
+    }
     let id = await currentThread(get)
     if (!id) {
       id = await get().newThread()
       if (!id) return
     }
     try {
-      // One call for both cases: the server steers a running turn and starts
-      // a new one otherwise, so the composer never has to race the status it
-      // last saw.
-      await api.steer(id, text)
+      // Pasted images have nowhere to wait: the follow-up row is text. They
+      // inject now rather than being dropped on the floor.
+      const queue =
+        !opts?.steer &&
+        get().status.running &&
+        !(images && images.length > 0) &&
+        !(opts?.files && opts.files.length > 0)
+      if (queue) {
+        try {
+          const item = await api.enqueueFollowup(id, text)
+          set((s) => ({ followups: [...s.followups, item] }))
+          return
+        } catch (e) {
+          if (!(e instanceof ApiError && e.code === "idle")) throw e
+        }
+      }
+      await api.steer(id, text, images, opts?.files)
       set({ status: { ...get().status, running: true } })
+      void get().refreshFollowups()
       void get().refreshThreads()
     } catch (e) {
       set({ error: message(e) })
     }
+  },
+
+  setGoal: async (text) => {
+    let id = await currentThread(get)
+    if (!id) {
+      id = await get().newThread()
+      if (!id) return
+    }
+    try {
+      const updated = await api.patchThread(id, { goal: text })
+      set((s) => ({
+        threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
+        error: undefined,
+      }))
+    } catch (e) {
+      set({ error: message(e) })
+    }
+  },
+
+  editGoal: async (text) => {
+    const id = get().activeId
+    if (!id) return
+    try {
+      const updated = await api.patchThread(id, { goal: text, goal_edit: true })
+      set((s) => ({
+        threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
+        error: undefined,
+      }))
+    } catch (e) {
+      set({ error: message(e) })
+    }
+  },
+
+  resumeGoal: async () => {
+    const id = get().activeId
+    if (!id) return
+    try {
+      const updated = await api.patchThread(id, { goal_resume: true })
+      set((s) => ({
+        threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
+        status: updated.running ? { ...s.status, running: true } : s.status,
+        error: undefined,
+      }))
+    } catch (e) {
+      set({ error: message(e) })
+    }
+  },
+
+  compactThread: async () => {
+    const id = get().activeId
+    if (!id) return
+    try {
+      const got = await api.compactThread(id)
+      set((s) => ({
+        threads: s.threads.map((t) => (t.id === id ? { ...t, ...got.thread } : t)),
+        usage: got.usage ?? s.usage,
+        error: undefined,
+      }))
+    } catch (e) {
+      set({ error: message(e) })
+    }
+  },
+
+  refreshFollowups: async () => {
+    const id = get().activeId
+    if (!id) {
+      set({ followups: [] })
+      return
+    }
+    try {
+      set({ followups: await api.followups(id) })
+    } catch (e) {
+      set({ error: message(e) })
+    }
+  },
+
+  steerFollowup: async (fid) => {
+    const id = get().activeId
+    if (!id) return
+    try {
+      await api.steerFollowup(id, fid)
+      set((s) => ({ followups: s.followups.filter((f) => f.id !== fid) }))
+    } catch (e) {
+      void get().refreshFollowups()
+      if (!(e instanceof ApiError && e.code === "idle")) {
+        set({ error: message(e) })
+      }
+    }
+  },
+
+  deleteFollowup: async (fid) => {
+    const id = get().activeId
+    if (!id) return
+    try {
+      await api.deleteFollowup(id, fid)
+      set((s) => ({ followups: s.followups.filter((f) => f.id !== fid) }))
+    } catch (e) {
+      void get().refreshFollowups()
+      if (!(e instanceof ApiError && e.status === 404)) {
+        set({ error: message(e) })
+      }
+    }
+  },
+
+  clearFollowups: async () => {
+    const items = get().followups
+    await Promise.all(items.map((f) => get().deleteFollowup(f.id)))
   },
 
   interrupt: async () => {
@@ -257,17 +531,31 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
+  extendTurn: async (proceed) => {
+    const id = get().activeId
+    if (!id) return
+    try {
+      await api.continueTurn(id, proceed)
+    } catch (e) {
+      if (!(e instanceof ApiError && e.code === "idle")) {
+        set({ error: message(e) })
+      }
+    }
+  },
+
   upload: async (files) => {
     let id = await currentThread(get)
     if (!id) {
       id = await get().newThread()
-      if (!id) return
+      if (!id) return []
     }
     try {
-      await api.upload(id, files)
+      const saved = await api.upload(id, files)
       await get().refreshFiles()
+      return saved
     } catch (e) {
       set({ error: message(e) })
+      return []
     }
   },
 
@@ -303,6 +591,15 @@ export const useApp = create<AppState>((set, get) => ({
     set({ theme })
   },
 
+  setLocale: (pref, opts) => {
+    const locale = normalizeLocalePref(pref)
+    writeLocalePref(locale)
+    applyLocale(locale)
+    set({ locale })
+    if (opts?.persist === false) return
+    void api.saveSettings({ ui: { locale } }).catch(() => undefined)
+  },
+
   selectAgent: (selectedAgent) => set({ selectedAgent }),
   setError: (error) => set({ error }),
 }))
@@ -331,7 +628,12 @@ function queueEvent(
     queuedThread = threadId
   }
   queued.push(ev)
-  if (ev.kind === "done" || ev.kind === "error" || ev.kind === "user_message") {
+  if (ev.kind === "done" || ev.kind === "error" || ev.kind === "user_message" ||
+      ev.kind === "max_iterations" || ev.kind === "max_iterations_continued" ||
+      ev.kind === "resumed" || ev.kind === "goal" || ev.kind === "goal_complete" ||
+      ev.kind === "goal_continued" || ev.kind === "goal_capped" || ev.kind === "goal_blocked" ||
+      ev.kind === "goal_edited" || ev.kind === "goal_resumed" || ev.kind === "compacted" ||
+      ev.kind === "rewound") {
     flushQueued(set, get)
     return
   }
@@ -369,10 +671,12 @@ function flushQueued(
 
   let transcript = state.transcript
   let status = state.status
+  let threads = state.threads
+  let usage = state.usage
   let closed = false
   for (const ev of events) {
     transcript = reduceEvent(transcript, ev)
-    if (ev.kind === "user_message") {
+    if (ev.kind === "user_message" || ev.kind === "resumed") {
       status = {
         ...status,
         running: true,
@@ -380,15 +684,90 @@ function flushQueued(
         started_at: ev.created_at,
       }
     }
+    if (ev.kind === "max_iterations") {
+      status = { ...status, running: true, awaiting_continue: true, turn_id: ev.turn_id }
+    }
+    if (ev.kind === "max_iterations_continued") {
+      status = { ...status, running: true, awaiting_continue: false }
+    }
     if (ev.kind === "done" || ev.kind === "error") {
       status = { running: false }
       closed = true
     }
+    if (ev.kind === "title" && ev.text && !ev.err) {
+      const title = ev.text
+      threads = threads.map((t) => (t.id === threadId ? { ...t, title } : t))
+    }
+    if (ev.kind === "goal") {
+      threads = threads.map((t) =>
+        t.id === threadId
+          ? {
+              ...t,
+              goal: ev.text ?? "",
+              goal_complete: false,
+              goal_capped: false,
+              goal_blocked: false,
+              goal_block_reason: "",
+            }
+          : t,
+      )
+    }
+    if (ev.kind === "goal_edited") {
+      threads = threads.map((t) =>
+        t.id === threadId ? { ...t, goal: ev.text ?? "" } : t,
+      )
+    }
+    if (ev.kind === "goal_complete") {
+      threads = threads.map((t) =>
+        t.id === threadId
+          ? { ...t, goal_complete: true, goal_capped: false, goal_blocked: false, goal_block_reason: "" }
+          : t,
+      )
+    }
+    if (ev.kind === "goal_capped") {
+      threads = threads.map((t) =>
+        t.id === threadId ? { ...t, goal_capped: true } : t,
+      )
+    }
+    if (ev.kind === "goal_blocked") {
+      threads = threads.map((t) =>
+        t.id === threadId
+          ? {
+              ...t,
+              goal_blocked: true,
+              goal_capped: false,
+              goal_block_reason: parseGoalReason(ev.text),
+            }
+          : t,
+      )
+    }
+    if (ev.kind === "goal_resumed") {
+      threads = threads.map((t) =>
+        t.id === threadId
+          ? { ...t, goal_blocked: false, goal_capped: false, goal_block_reason: "" }
+          : t,
+      )
+      status = { ...status, running: true, turn_id: ev.turn_id }
+    }
+    if (ev.kind === "goal_continued") {
+      status = { ...status, running: true, turn_id: ev.turn_id }
+    }
+    if (ev.kind === "compacted" && !ev.err) {
+      threads = threads.map((t) =>
+        t.id === threadId ? { ...t, compacted: true } : t,
+      )
+    }
+    if (ev.kind === "usage") {
+      const next = parseUsage(ev.text)
+      if (next) usage = next
+    }
     if (ev.kind === "memory_review") {
       // The review wrote the files directly, so the panel has to re-read them
       // rather than derive the new state from the event.
+      const outcome = parseReview(ev)
       void useProjects.getState().loadMemory()
-      if (parseReview(ev)?.changed) useProjects.getState().noteMemoryWrite()
+      if (outcome?.changed) useProjects.getState().noteMemoryWrite()
+      useProjects.getState().finishReview(ev.turn_id, outcome)
     }
     if (ev.kind === "tool_result") {
       const name = toolNameOf(transcript, ev.tool_call_id)
@@ -398,14 +777,26 @@ function flushQueued(
       }
     }
   }
-  set({ transcript, status })
+  set({ transcript, status, threads, usage })
   if (closed) {
     void get().refreshFiles()
     void get().refreshThreads()
+    void get().refreshFollowups()
     void api
       .turns(threadId)
       .then((turns) => set({ turns }))
       .catch(() => undefined)
+  }
+}
+
+function parseGoalReason(text?: string): string {
+  const raw = text?.trim() ?? ""
+  if (!raw) return ""
+  try {
+    const v = JSON.parse(raw) as { reason?: unknown }
+    return typeof v.reason === "string" ? v.reason : ""
+  } catch {
+    return raw
   }
 }
 

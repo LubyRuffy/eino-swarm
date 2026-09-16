@@ -1,5 +1,4 @@
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -9,137 +8,141 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import type { MemoryNotify, Settings } from "@/lib/types"
+import { useT } from "@/lib/use-t"
+
+import {
+  Field,
+  SettingsPage,
+  SettingsSection,
+  settingsMatch,
+} from "./settings-field"
 
 /** The install-wide memory budget. Per-project memory is switched on in the
  *  project dialog; these numbers decide what it costs when it is. */
 export function MemorySettings({
   settings,
   onChange,
+  query = "",
 }: {
   settings: Settings
   onChange: (s: Settings) => void
+  query?: string
 }) {
+  const t = useT()
   const update = (patch: Partial<Settings["memory"]>) =>
     onChange({ ...settings, memory: { ...settings.memory, ...patch } })
 
   return (
-    <div className="space-y-4">
-      <Toggle
-        id="memory-enabled"
-        label="Remember anything at all"
-        hint="Off means no project carries notes or skills, whatever its own switch says."
-        checked={settings.memory.enabled}
-        onCheckedChange={(enabled) => update({ enabled })}
-      />
-      <Toggle
-        id="memory-auto-review"
-        label="Review a conversation when it finishes"
-        hint="A finished turn is read back so durable facts and reusable procedures are kept. Off means memory only changes when an agent or you write to it."
-        checked={settings.memory.auto_review}
-        disabled={!settings.memory.enabled}
-        onCheckedChange={(auto_review) => update({ auto_review })}
-      />
-
-      <div className="space-y-1.5">
-        <Label htmlFor="memory-notifications">After a review</Label>
-        <Select
-          value={settings.memory.notifications || "on"}
-          onValueChange={(notifications) =>
-            update({ notifications: notifications as MemoryNotify })
-          }
+    <SettingsPage
+      title={t("settings.memory.title")}
+      description={t("settings.memory.desc")}
+    >
+      <SettingsSection title={t("settings.memory.when")}>
+        <Field
+          query={query}
+          label={t("settings.memory.enabled")}
+          hint={t("settings.memory.enabledHint")}
         >
-          <SelectTrigger id="memory-notifications" className="h-9 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="on">One line naming what changed</SelectItem>
-            <SelectItem value="verbose">The line, plus a preview of the text</SelectItem>
-            <SelectItem value="off">Nothing in the transcript</SelectItem>
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">
-          The review still runs and still writes. This only governs the line
-          that appears after the answer.
-        </p>
-      </div>
+          <Switch
+            checked={settings.memory.enabled}
+            onCheckedChange={(enabled) => update({ enabled })}
+          />
+        </Field>
+        <Field
+          query={query}
+          label={t("settings.memory.autoReview")}
+          hint={t("settings.memory.autoReviewHint")}
+        >
+          <Switch
+            checked={settings.memory.auto_review}
+            disabled={!settings.memory.enabled}
+            onCheckedChange={(auto_review) => update({ auto_review })}
+          />
+        </Field>
+        {settingsMatch(
+          query,
+          t("settings.memory.after"),
+          "notifications",
+          "transcript",
+        ) ? (
+          <div
+            className="flex items-start justify-between gap-6 px-4 py-3.5"
+            data-settings-row=""
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium">{t("settings.memory.after")}</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                {t("settings.memory.afterHint")}
+              </p>
+            </div>
+            <div className="w-64 shrink-0">
+              <Select
+                value={settings.memory.notifications || "on"}
+                onValueChange={(notifications) =>
+                  update({ notifications: notifications as MemoryNotify })
+                }
+              >
+                <SelectTrigger
+                  aria-label={t("settings.memory.after")}
+                  className="h-9 text-sm"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="on">{t("settings.memory.notifyOn")}</SelectItem>
+                  <SelectItem value="verbose">
+                    {t("settings.memory.notifyVerbose")}
+                  </SelectItem>
+                  <SelectItem value="off">{t("settings.memory.notifyOff")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        ) : null}
+      </SettingsSection>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="memory-char-limit">Notes budget (characters)</Label>
-        <Input
-          id="memory-char-limit"
-          type="number"
-          min={200}
-          value={settings.memory.char_limit}
-          onChange={(e) => update({ char_limit: Number(e.target.value) })}
-        />
-        <p className="text-xs text-muted-foreground">
-          Every note is in the prompt of every turn in the project, so this is
-          a per-turn cost. Once it is full, an agent must replace a note to add
-          one.
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="memory-review-iterations">Review tool rounds</Label>
-        <Input
-          id="memory-review-iterations"
-          type="number"
-          min={1}
-          value={settings.memory.review_max_iterations}
-          onChange={(e) =>
-            update({ review_max_iterations: Number(e.target.value) })
-          }
-        />
-        <p className="text-xs text-muted-foreground">
-          How many times the review may think and write before it is stopped.
-        </p>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="memory-skills-index">Skills listed in the prompt</Label>
-        <Input
-          id="memory-skills-index"
-          type="number"
-          min={1}
-          value={settings.memory.skills_index_max}
-          onChange={(e) => update({ skills_index_max: Number(e.target.value) })}
-        />
-        <p className="text-xs text-muted-foreground">
-          Only names and one-line descriptions are listed; an agent opens the
-          one it needs.
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function Toggle({
-  id,
-  label,
-  hint,
-  checked,
-  disabled,
-  onCheckedChange,
-}: {
-  id: string
-  label: string
-  hint: string
-  checked: boolean
-  disabled?: boolean
-  onCheckedChange: (on: boolean) => void
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="min-w-0">
-        <Label htmlFor={id}>{label}</Label>
-        <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
-      </div>
-      <Switch
-        id={id}
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={onCheckedChange}
-      />
-    </div>
+      <SettingsSection title={t("settings.memory.budget")}>
+        <Field
+          query={query}
+          label={t("settings.memory.charLimit")}
+          hint={t("settings.memory.charLimitHint")}
+        >
+          <Input
+            type="number"
+            min={200}
+            value={settings.memory.char_limit}
+            onChange={(e) => update({ char_limit: Number(e.target.value) })}
+          />
+        </Field>
+        <Field
+          query={query}
+          label={t("settings.memory.reviewRounds")}
+          hint={t("settings.memory.reviewRoundsHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.memory.review_max_iterations}
+            onChange={(e) =>
+              update({ review_max_iterations: Number(e.target.value) })
+            }
+          />
+        </Field>
+        <Field
+          query={query}
+          label={t("settings.memory.skillsIndex")}
+          hint={t("settings.memory.skillsIndexHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.memory.skills_index_max}
+            onChange={(e) =>
+              update({ skills_index_max: Number(e.target.value) })
+            }
+          />
+        </Field>
+      </SettingsSection>
+    </SettingsPage>
   )
 }

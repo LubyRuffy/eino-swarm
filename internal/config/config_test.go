@@ -41,6 +41,12 @@ func TestLoadCreatesDefaultsOnFirstRun(t *testing.T) {
 	if cfg.WorkspaceDir("t1") != filepath.Join(cfg.WorkspacesDir(), "t1") {
 		t.Fatalf("workspace dir=%q", cfg.WorkspaceDir("t1"))
 	}
+	if _, err := os.Stat(cfg.InputsDir()); err != nil {
+		t.Fatalf("first run must create the pasted-images dir: %v", err)
+	}
+	if cfg.ThreadInputsDir("t1") != filepath.Join(cfg.InputsDir(), "t1") {
+		t.Fatalf("thread inputs dir=%q", cfg.ThreadInputsDir("t1"))
+	}
 	if _, err := os.Stat(cfg.ProjectsDir()); err != nil {
 		t.Fatalf("first run must create the projects dir: %v", err)
 	}
@@ -112,6 +118,108 @@ func TestMemorySwitchesSurviveNormalizeAndBudgetsAreRepaired(t *testing.T) {
 	if !older.Memory.Enabled || !older.Memory.AutoReview ||
 		older.Memory.Notifications != DefaultMemoryNotifications {
 		t.Fatalf("an older config must default to memory on: %+v", older.Memory)
+	}
+	if !older.Swarm.AutoTitle {
+		t.Fatal("an older config must keep naming conversations")
+	}
+}
+
+func TestAutoTitleFalseSurvivesNormalize(t *testing.T) {
+	dir := t.TempDir()
+	raw := "swarm:\n  auto_title: false\n"
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Swarm.AutoTitle {
+		t.Fatal("normalize switched auto-title back on")
+	}
+}
+
+func TestResolveTitleFollowsTheConversationUnlessPinned(t *testing.T) {
+	const convProvider = "conv"
+	const convModel = "heavy"
+	auto := SwarmConfig{}
+	p, m := auto.ResolveTitle(convProvider, convModel)
+	if p != convProvider || m != convModel {
+		t.Fatalf("empty pin must follow the conversation: %q %q", p, m)
+	}
+
+	nameOnly := SwarmConfig{TitleModel: "tiny"}
+	p, m = nameOnly.ResolveTitle(convProvider, convModel)
+	if p != convProvider || m != "tiny" {
+		t.Fatalf("a model with no provider must stay on the conversation's endpoint: %q %q", p, m)
+	}
+
+	provOnly := SwarmConfig{TitleProvider: "other"}
+	p, m = provOnly.ResolveTitle(convProvider, convModel)
+	if p != "other" || m != "" {
+		t.Fatalf("a provider with no model must use that endpoint's default: %q %q", p, m)
+	}
+
+	pinned := SwarmConfig{TitleProvider: "other", TitleModel: "tiny"}
+	p, m = pinned.ResolveTitle(convProvider, convModel)
+	if p != "other" || m != "tiny" {
+		t.Fatalf("a full pin must win: %q %q", p, m)
+	}
+
+	compact := SwarmConfig{CompactProvider: "other", CompactModel: "tiny"}
+	p, m = compact.ResolveCompact(convProvider, convModel)
+	if p != "other" || m != "tiny" {
+		t.Fatalf("compact pin must win: %q %q", p, m)
+	}
+	autoC := SwarmConfig{}
+	p, m = autoC.ResolveCompact(convProvider, convModel)
+	if p != convProvider || m != convModel {
+		t.Fatalf("empty compact pin must follow the conversation: %q %q", p, m)
+	}
+}
+
+func TestUnknownTitleProviderIsCleared(t *testing.T) {
+	dir := t.TempDir()
+	raw := "swarm:\n  title_provider: gone\n  title_model: tiny\n"
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Swarm.TitleProvider != "" || cfg.Swarm.TitleModel != "" {
+		t.Fatalf("a deleted endpoint must not stay pinned: %+v", cfg.Swarm)
+	}
+}
+
+func TestUnknownCompactProviderIsCleared(t *testing.T) {
+	dir := t.TempDir()
+	raw := "swarm:\n  compact_provider: gone\n  compact_model: tiny\n"
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Swarm.CompactProvider != "" || cfg.Swarm.CompactModel != "" {
+		t.Fatalf("a deleted compact endpoint must not stay pinned: %+v", cfg.Swarm)
+	}
+}
+
+func TestManagerIterationsFallsBackToDefault(t *testing.T) {
+	if (SwarmConfig{}).ManagerIterations() != DefaultManagerIterations {
+		t.Fatalf("empty config: %d", SwarmConfig{}.ManagerIterations())
+	}
+	if (SwarmConfig{ManagerMaxIterations: -3}).ManagerIterations() != DefaultManagerIterations {
+		t.Fatal("a negative cap must not disable the limit")
+	}
+	if got := (SwarmConfig{ManagerMaxIterations: 50}).ManagerIterations(); got != 50 {
+		t.Fatalf("got %d", got)
+	}
+	if DefaultManagerIterations != 200 {
+		t.Fatalf("the documented default is 200, got %d", DefaultManagerIterations)
 	}
 }
 
@@ -235,6 +343,18 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	if cfg.Swarm.DeltaCoalesceMS != DefaultDeltaCoalesceMS {
 		t.Fatalf("delta coalesce not repaired: %+v", cfg.Swarm)
 	}
+	if cfg.Swarm.ContextCharBudget != DefaultContextCharBudget {
+		t.Fatalf("context budget not repaired: %+v", cfg.Swarm)
+	}
+	if cfg.Swarm.CompactKeepMessages != DefaultCompactKeepMessages {
+		t.Fatalf("compact keep not repaired: %+v", cfg.Swarm)
+	}
+	if cfg.Swarm.GoalMaxAutoTurns != DefaultGoalMaxAutoTurns {
+		t.Fatalf("goal auto-continue cap not repaired: %+v", cfg.Swarm)
+	}
+	if !cfg.Swarm.AutoTitle {
+		t.Fatal("an older config without auto_title must keep naming conversations")
+	}
 	if cfg.Tools.WebSearchMaxResults != DefaultWebSearchResults {
 		t.Fatalf("web search results not repaired: %d", cfg.Tools.WebSearchMaxResults)
 	}
@@ -299,6 +419,9 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	next.Server.Addr = "127.0.0.1:9999"
 	next.Server.OpenBrowser = false
 	next.Swarm.MaxConcurrent = 3
+	next.Swarm.AutoTitle = false
+	next.Swarm.TitleProvider = "local"
+	next.Swarm.TitleModel = "tiny"
 	next.Tools.Disabled = []string{"exec"}
 	next.Tools.Proxy = ProxyConfig{HTTP: "http://127.0.0.1:7890", NoProxy: "localhost"}
 	next.Memory.AutoReview = false
@@ -322,6 +445,12 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	}
 	if reloaded.Swarm.MaxConcurrent != 3 {
 		t.Fatalf("swarm not persisted: %+v", reloaded.Swarm)
+	}
+	if reloaded.Swarm.AutoTitle {
+		t.Fatal("auto_title false did not survive the round trip")
+	}
+	if reloaded.Swarm.TitleProvider != "local" || reloaded.Swarm.TitleModel != "tiny" {
+		t.Fatalf("title pin did not survive the round trip: %+v", reloaded.Swarm)
 	}
 	if !reloaded.Tools.IsDisabled("exec") || reloaded.Tools.IsDisabled("read") {
 		t.Fatalf("tool toggles not persisted: %+v", reloaded.Tools.Disabled)
@@ -371,6 +500,14 @@ func TestProviderHelpers(t *testing.T) {
 	if p.DisplayName() != "Nice Name" {
 		t.Fatalf("DisplayName=%q", p.DisplayName())
 	}
+	p.Label = ""
+	if p.GroupName() != "x" {
+		t.Fatalf("an unnamed provider groups as its id, not the model, got %q", p.GroupName())
+	}
+	p.Label = "Nice Name"
+	if p.GroupName() != "Nice Name" {
+		t.Fatalf("GroupName=%q", p.GroupName())
+	}
 	if p.Timeout() != DefaultRequestTimeout {
 		t.Fatalf("Timeout=%v", p.Timeout())
 	}
@@ -385,6 +522,123 @@ func TestProviderHelpers(t *testing.T) {
 	}
 	if _, ok := cfg.Provider(""); !ok {
 		t.Fatal("empty id must resolve to the default provider")
+	}
+
+	if p.EndpointReady() && !p.Ready() {
+		t.Fatal("a default model is still required to run a turn")
+	}
+}
+
+// A provider is one endpoint, not one model: the catalog is what the composer
+// lists, and the default is just the name new conversations start on.
+func TestProviderCatalogDedupesAndIncludesTheDefault(t *testing.T) {
+	p := Provider{
+		Model:   "alpha",
+		Catalog: []string{" beta ", "alpha", "", "gamma", "beta"},
+	}
+	got := p.Models()
+	want := []string{"beta", "alpha", "gamma"}
+	if len(got) != len(want) {
+		t.Fatalf("Models=%v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("Models=%v want %v", got, want)
+		}
+	}
+
+	blank := Provider{}
+	if names := blank.Models(); len(names) != 0 {
+		t.Fatalf("an empty provider listed models: %v", names)
+	}
+
+	dir := t.TempDir()
+	raw := strings.Join([]string{
+		"models:",
+		"  providers:",
+		"    - id: default",
+		"      catalog:",
+		"        - one",
+		"        - one",
+		"        - two",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Models.Providers[0].Catalog; len(got) != 2 || got[0] != "one" || got[1] != "two" {
+		t.Fatalf("catalog not cleaned on load: %v", got)
+	}
+	if cfg.Models.Providers[0].Catalog == nil {
+		t.Fatal("catalog must be a list, not null")
+	}
+}
+
+func TestCompactBudgetsRepairFromZero(t *testing.T) {
+	if (SwarmConfig{}).ContextBudget() != DefaultContextCharBudget {
+		t.Fatal("a zero budget must repair")
+	}
+	if (SwarmConfig{}).CompactKeep() != DefaultCompactKeepMessages {
+		t.Fatal("a zero keep must repair")
+	}
+	if (SwarmConfig{}).GoalAutoTurns() != DefaultGoalMaxAutoTurns {
+		t.Fatal("a zero goal auto-continue cap must repair")
+	}
+	s := SwarmConfig{ContextCharBudget: 12_000, CompactKeepMessages: 3}
+	if s.ContextBudget() != 12_000 || s.CompactKeep() != 3 {
+		t.Fatalf("explicit values must stick: %+v", s)
+	}
+}
+
+func TestProviderWindowPrefersADiscoveredNameOverTheFallback(t *testing.T) {
+	p := Provider{
+		Model:         "alpha",
+		ContextWindow: 8000,
+		ModelContext:  map[string]int{"alpha": 32000, "beta": 16000},
+	}
+	if got := p.WindowFor("alpha"); got != 32000 {
+		t.Fatalf("named window=%d", got)
+	}
+	if got := p.WindowFor(""); got != 32000 {
+		t.Fatalf("empty name should follow the default model: %d", got)
+	}
+	if got := p.WindowFor("gamma"); got != 8000 {
+		t.Fatalf("unknown name should use the fallback: %d", got)
+	}
+	if got := (Provider{}).WindowFor("alpha"); got != 0 {
+		t.Fatalf("unknown must stay 0, not invent a window: %d", got)
+	}
+}
+
+func TestNormalizeDropsJunkContextWindows(t *testing.T) {
+	dir := t.TempDir()
+	raw := strings.Join([]string{
+		"models:",
+		"  providers:",
+		"    - id: default",
+		"      context_window: -12",
+		"      model_context:",
+		"        alpha: 128000",
+		"        \"\": 9",
+		"        junk: 0",
+		"        beta: -3",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	p := cfg.Models.Providers[0]
+	if p.ContextWindow != 0 {
+		t.Fatalf("negative fallback survived: %d", p.ContextWindow)
+	}
+	if len(p.ModelContext) != 1 || p.ModelContext["alpha"] != 128000 {
+		t.Fatalf("junk windows not pruned: %v", p.ModelContext)
 	}
 }
 
@@ -472,3 +726,48 @@ func TestNormalizeReasoningKeepsOnlyKnownLevels(t *testing.T) {
 		t.Fatalf("the UI needs low/medium/high in order, got %v", levels)
 	}
 }
+
+// Chrome language is a preference, not a third protocol. Junk, blanks and a
+// config written before this key existed must all come up as follow-the-system
+// rather than a blank UI or an invented language.
+func TestUILocaleNormalizesToSystemEnOrZh(t *testing.T) {
+	cases := map[string]string{
+		"en":     LocaleEn,
+		"ZH":     LocaleZh,
+		" zh ":   LocaleZh,
+		"system": LocaleSystem,
+		"":       LocaleSystem,
+		"fr":     LocaleSystem,
+		"zh-CN":  LocaleSystem,
+	}
+	for in, want := range cases {
+		if got := NormalizeLocale(in); got != want {
+			t.Fatalf("NormalizeLocale(%q)=%q, want %q", in, got, want)
+		}
+	}
+
+	fresh := t.TempDir()
+	if err := os.WriteFile(filepath.Join(fresh, FileName), []byte("log:\n  level: info\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	older, err := Load(fresh)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if older.UI.Locale != LocaleSystem {
+		t.Fatalf("an older config must follow the system language: %+v", older.UI)
+	}
+
+	pinned := t.TempDir()
+	if err := os.WriteFile(filepath.Join(pinned, FileName), []byte("ui:\n  locale: zh\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(pinned)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got.UI.Locale != LocaleZh {
+		t.Fatalf("a pinned language must survive load: %+v", got.UI)
+	}
+}
+

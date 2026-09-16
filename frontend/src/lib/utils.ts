@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+import { t, type Locale } from "@/lib/i18n"
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -31,16 +33,16 @@ export function formatDuration(ms: number): string {
 }
 
 /** Sidebar grouping: people look for "yesterday", not for a date. */
-export function relativeDay(iso: string, now = new Date()): string {
+export function relativeDay(iso: string, now = new Date(), locale: Locale = "en"): string {
   const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return "Earlier"
+  if (Number.isNaN(date.getTime())) return t(locale, "time.earlier")
   const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
   const days = Math.round((startOf(now) - startOf(date)) / 86_400_000)
-  if (days <= 0) return "Today"
-  if (days === 1) return "Yesterday"
-  if (days < 7) return "This week"
-  if (days < 30) return "This month"
-  return "Earlier"
+  if (days <= 0) return t(locale, "time.today")
+  if (days === 1) return t(locale, "time.yesterday")
+  if (days < 7) return t(locale, "time.week")
+  if (days < 30) return t(locale, "time.month")
+  return t(locale, "time.earlier")
 }
 
 /** Hidden-inset traffic lights only exist on the macOS desktop window. */
@@ -74,4 +76,17 @@ export function formatTime(iso: string): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ""
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
+/** Calendar time under a user bubble. Seconds belong on the turn footer,
+ *  not on every message. */
+export function formatMessageTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ""
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
 }

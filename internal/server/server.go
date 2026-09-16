@@ -39,6 +39,10 @@ type Options struct {
 	// supplies it; in a browser the download endpoint is the way to get a file
 	// out, so the UI hides the affordance when this is absent.
 	Reveal func(path string) error
+	// OpenURL opens an http(s) URL in the platform browser. Only the desktop
+	// shell supplies it; a browser tab uses window.open instead, so a web
+	// server never spawns windows on the host.
+	OpenURL func(url string) error
 }
 
 // Server owns the router.
@@ -73,13 +77,16 @@ func New(opts Options) (*Server, error) {
 	api := r.Group("/api")
 	{
 		api.GET("/meta", s.getMeta)
+		api.POST("/open", s.openURL)
 		api.GET("/settings", s.getSettings)
 		api.PUT("/settings", s.putSettings)
 		api.GET("/models", s.getModels)
+		api.POST("/models/discover", s.discoverModels)
 		api.GET("/tools", s.getTools)
 
 		api.GET("/projects", s.listProjects)
 		api.POST("/projects", s.createProject)
+		api.PUT("/projects/reorder", s.reorderProjects)
 		api.GET("/projects/:id", s.getProject)
 		api.PATCH("/projects/:id", s.patchProject)
 		api.DELETE("/projects/:id", s.deleteProject)
@@ -90,6 +97,7 @@ func New(opts Options) (*Server, error) {
 
 		api.GET("/threads", s.listThreads)
 		api.POST("/threads", s.createThread)
+		api.PUT("/threads/reorder", s.reorderThreads)
 		api.GET("/threads/:id", s.getThread)
 		api.PATCH("/threads/:id", s.patchThread)
 		api.DELETE("/threads/:id", s.deleteThread)
@@ -97,14 +105,21 @@ func New(opts Options) (*Server, error) {
 		api.GET("/threads/:id/events", s.streamEvents)
 		api.POST("/threads/:id/turns", s.startTurn)
 		api.POST("/threads/:id/steer", s.steer)
+		api.GET("/threads/:id/followups", s.listFollowups)
+		api.POST("/threads/:id/followups", s.enqueueFollowup)
+		api.DELETE("/threads/:id/followups/:fid", s.deleteFollowup)
+		api.POST("/threads/:id/followups/:fid/steer", s.steerFollowup)
 		api.POST("/threads/:id/interrupt", s.interrupt)
+		api.POST("/threads/:id/continue", s.continueTurn)
 		api.POST("/threads/:id/review", s.reviewThread)
+		api.POST("/threads/:id/compact", s.compactThread)
 		api.GET("/threads/:id/turns", s.listTurns)
 
 		api.GET("/threads/:id/files", s.listFiles)
 		api.POST("/threads/:id/files", s.uploadFiles)
 		api.GET("/threads/:id/download/*path", s.downloadFile)
 		api.DELETE("/threads/:id/download/*path", s.deleteFile)
+		api.GET("/threads/:id/input-images/:image_id", s.getInputImage)
 		api.POST("/threads/:id/reveal", s.reveal)
 
 		api.GET("/trace/:turn", s.getTrace)
@@ -156,10 +171,14 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "busy"})
 	case errors.Is(err, engine.ErrIdle):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "idle"})
+	case errors.Is(err, engine.ErrNothingToCompact):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "nothing_to_compact"})
 	case errors.Is(err, engine.ErrInvalidWorkdir):
 		// Its own code so the project dialog can put the message under the
 		// working directory field instead of somewhere the user has to hunt.
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "workdir"})
+	case errors.Is(err, store.ErrInvalidReorder):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}

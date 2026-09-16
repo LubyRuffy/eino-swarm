@@ -115,6 +115,15 @@ func printTurn(w io.Writer, st *store.Store, turn store.Turn, full bool) error {
 		totalMS += c.DurationMS
 		line := fmt.Sprintf("    %-18s %-22s %5d msgs  in %6d ch  out %6d ch  %6dms",
 			c.AgentID, c.Model, c.InputMsgs, c.InputChars, c.OutputChars, c.DurationMS)
+		if c.PromptTokens > 0 || c.CompletionTokens > 0 || c.TotalTokens > 0 {
+			line += fmt.Sprintf("  %d/%d tok", c.PromptTokens, c.CompletionTokens)
+			if c.CachedTokens > 0 {
+				line += fmt.Sprintf("  cache %d", c.CachedTokens)
+			}
+			if c.ReasoningTokens > 0 {
+				line += fmt.Sprintf("  think %d", c.ReasoningTokens)
+			}
+		}
 		if c.Err != "" {
 			line += "  ERROR: " + c.Err
 		}

@@ -5,26 +5,29 @@ import (
 	"strings"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 )
 
 // managerPrompt builds the manager agent's system prompt.
 //
-// It is generated rather than stored as a constant because three things it has
+// It is generated rather than stored as a constant because four things it has
 // to state are only known at runtime: which tools this build and configuration
-// actually registered, where this conversation's workspace is, and what the
-// swarm's concurrency budget is. A prompt that advertises a tool the agent does
-// not have produces failed tool calls; one that omits the workspace path makes
-// the agent write files wherever it happens to be.
+// actually registered, where this conversation's workspace is, what the
+// swarm's concurrency budget is, and which OS/shell/date the tools will run
+// on. A prompt that advertises a tool the agent does not have produces failed
+// tool calls; one that omits the workspace path makes the agent write files
+// wherever it happens to be; one that omits the host makes it emit flags this
+// userland does not have.
 //
 // It must stay task-agnostic. Nothing about any particular request belongs
 // here: the prompt describes capabilities and conventions, the user's message
 // supplies the task.
 //
-// extra carries what a project adds — its own instruction, its notes and its
-// skills index — and is empty for a conversation that belongs to no project.
-// It goes last, after the generic sections, so the project's instruction is
-// the most recent thing the model read.
+// extra carries what this conversation adds on top of the generic manager
+// prompt: a compact briefing, a project's instruction/notes/skills, and a
+// standing goal. It goes last so those are the most recent thing the model
+// read. Empty for a conversation that has none of those.
 func managerPrompt(set *tools.Set, cfg *config.Config, extra string) string {
 	var b strings.Builder
 
@@ -62,6 +65,9 @@ single small step — a team of one is slower than doing it.
 
 	fmt.Fprintf(&b, "You can have %d sub-agents running at once.\n\n", cfg.Swarm.MaxConcurrent)
 
+	b.WriteString(HostEnvironmentPrompt())
+	b.WriteString("\n")
+
 	b.WriteString("## Working files\n\n")
 	fmt.Fprintf(&b, "This conversation has a workspace directory: %s\n", set.WorkspaceDir)
 	fmt.Fprintf(&b, `Relative paths in tool calls resolve there, so prefer them over absolute
@@ -71,7 +77,18 @@ human in the Files panel and can be downloaded. Your sub-agents share this
 workspace, so tell them where to put their output and read it back from there
 instead of asking them to repeat it in their reply.
 
+When a user message lists attached files, those are the files they just added
+for that request. Read those first. Other files already in the uploads
+directory are from earlier in the conversation; open them only when the
+request refers to them.
+
 `, uploadsDir)
+
+	b.WriteString(`Images attached to a message arrive as visual input on that
+message, not as files in the workspace. Look at them there. Do not search the
+workspace for a copy.
+
+`)
 
 	if len(set.Names) > 0 {
 		b.WriteString("## Tools\n\nBesides the delegation tools you have: ")
@@ -94,4 +111,59 @@ and answer with what you do have rather than pretending it succeeded.
 	}
 
 	return b.String()
+}
+
+// conversationExtra is the per-conversation tail of the manager prompt.
+// Compact first (old context), then the project, then the goal so a standing
+// objective is the last thing the model read.
+func conversationExtra(th *store.Thread, pc *projectContext) string {
+	var parts []string
+	if th != nil {
+		if s := compactSection(th.CompactSummary); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	if pc != nil {
+		if s := strings.TrimSpace(pc.promptSections()); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	if th != nil {
+		if s := goalSection(th.Goal, th.GoalComplete, th.GoalBlocked, th.GoalBlockReason); s != "" {
+			parts = append(parts, s)
+		}
+	}
+	return strings.Join(parts, "\n")
+}
+
+func compactSection(summary string) string {
+	summary = strings.TrimSpace(summary)
+	if summary == "" {
+		return ""
+	}
+	return "## Earlier conversation\n\nThe human folded earlier turns into the briefing below. Continue from it; do not ask them to repeat it.\n\n" + summary + "\n"
+}
+
+func goalSection(goal string, complete, blocked bool, reason string) string {
+	goal = strings.TrimSpace(goal)
+	if goal == "" {
+		return ""
+	}
+	if complete {
+		return "## Goal\n\nThe standing objective below was completed. Do not keep pursuing it unless the human sets a new one.\n\n" + goal + "\n"
+	}
+	if blocked {
+		body := "## Goal\n\nThe standing objective below is blocked. Do not keep pursuing it until the human resumes it or changes it. Meaningful progress needs them or an external change.\n\n"
+		if r := strings.TrimSpace(reason); r != "" {
+			body += r + "\n\n"
+		}
+		return body + goal + "\n"
+	}
+	return "## Goal\n\nThe human set a standing objective for this conversation. Keep pursuing it across turns until you call complete_goal or block_goal, or they change or clear it. Later messages steer; they do not replace this objective unless they say so. Do not ask whether to continue. Do not call complete_goal until the objective is actually satisfied. Do not keep retrying a path that cannot work.\n\ncomplete_goal(summary?) records that the objective is done. The runtime then stops starting new turns for it.\n\nblock_goal(reason?) records that the same obstacle has already been retried and meaningful progress needs the human or an external change. The runtime then stops starting new turns until they resume.\n\n" + goal + "\n"
+}
+
+// GoalPrompt is the standing-objective section for hosts that are not the
+// conversation engine (the one-shot TUI). Empty goal yields empty.
+func GoalPrompt(goal string, complete bool) string {
+	return strings.TrimSpace(goalSection(goal, complete, false, ""))
 }

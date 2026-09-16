@@ -71,9 +71,12 @@ func (t *memoryTool) Info(context.Context) (*schema.ToolInfo, error) {
 		Name: ToolMemory,
 		Desc: "Curate the notes carried into every future conversation in this project. " +
 			"Store durable facts about the environment, the human's stated preferences, " +
-			"conventions and corrections — not this conversation's working details, and not " +
-			"anything that can be looked up again. The store is bounded: when a write does not " +
-			"fit, the result lists what is stored so you can consolidate with replace/remove and retry.",
+			"conventions and corrections — not this conversation's working details, not a " +
+			"status that will change again, and not anything that can be looked up again. " +
+			"The store is bounded: a write that would grow it past the limit is refused, " +
+			"including replace with a longer note. The result includes over_by and the " +
+			"current notes. Do not retry the same content; shorten or drop notes until " +
+			"over_by characters are free, then retry.",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"action": {Type: schema.String, Required: true,
 				Desc: "add, replace or remove",
@@ -81,7 +84,7 @@ func (t *memoryTool) Info(context.Context) (*schema.ToolInfo, error) {
 			"content": {Type: schema.String,
 				Desc: "the note to store; required for add and replace"},
 			"old_text": {Type: schema.String,
-				Desc: "a short substring that identifies exactly one existing note; required for replace and remove"},
+				Desc: "a short substring that identifies exactly one existing note; required for replace and remove. If several notes match, the result lists them — pass a longer unique substring."},
 		}),
 	}, nil
 }
@@ -128,17 +131,35 @@ func (t *memoryTool) InvokableRun(_ context.Context, args string, _ ...tool.Opti
 }
 
 // memoryFailure turns a store error into something the model can act on. An
-// overflow in particular has to carry the current entries: the agent's next
-// move is to consolidate, and it cannot do that blind.
+// overflow in particular has to carry the current entries and how far over
+// the limit the write landed: "consolidate with replace" without those numbers
+// is how a model retries the same longer note until the turn budget runs out.
 func memoryFailure(err error) string {
 	var overflow *OverflowError
 	if errors.As(err, &overflow) {
-		return marshal(map[string]any{
+		out := map[string]any{
 			"success":         false,
 			"error":           overflow.Error(),
 			"usage":           fmt.Sprintf("%d/%d", overflow.Usage, overflow.Limit),
+			"over_by":         overflow.OverBy(),
 			"current_entries": overflow.Entries,
-		})
+		}
+		if overflow.Matched != "" {
+			out["matched"] = overflow.Matched
+		}
+		return marshal(out)
+	}
+	var match *MatchError
+	if errors.As(err, &match) {
+		out := map[string]any{
+			"success":         false,
+			"error":           match.Error(),
+			"current_entries": match.Entries,
+		}
+		if len(match.Matching) > 0 {
+			out["matching"] = match.Matching
+		}
+		return marshal(out)
 	}
 	return failure("%s", err.Error())
 }
@@ -150,9 +171,10 @@ type skillViewTool struct{ store *Store }
 func (t *skillViewTool) Info(context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: ToolSkillView,
-		Desc: "Read one of this project's skills in full. The system prompt lists only each " +
-			"skill's name and summary; open the ones that look relevant before starting work " +
-			"that a stored procedure already covers.",
+		Desc: "Read one recorded project skill in full. The system prompt lists only each " +
+			"skill's name and summary; open a listed name before starting work that procedure " +
+			"already covers. Names not in that index cannot be opened here — a procedure in " +
+			"the workspace is a file.",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"name": {Type: schema.String, Required: true, Desc: "the skill's name, as listed in the prompt"},
 		}),
@@ -171,8 +193,10 @@ func (t *skillViewTool) InvokableRun(_ context.Context, args string, _ ...tool.O
 		if errors.Is(err, ErrNoMatch) {
 			names, _ := t.store.ListSkills()
 			return marshal(map[string]any{
-				"success":   false,
-				"error":     fmt.Sprintf("no skill named %q", a.Name),
+				"success": false,
+				"error": fmt.Sprintf(
+					"no skill named %q. %s only opens skills recorded in this project's memory (the names in the system prompt), not files in the workspace",
+					a.Name, ToolSkillView),
 				"available": skillNames(names),
 			}), nil
 		}

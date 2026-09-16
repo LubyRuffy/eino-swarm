@@ -31,15 +31,31 @@ type runtime struct {
 	startedAt time.Time
 	running   bool
 	idle      chan struct{} // closed when the current turn finishes
+	// continueCh is set only while the manager is paused at its tool-round
+	// cap. true extends the run; false (or interrupt) ends it. Buffered so
+	// Interrupt cannot block on a receiver that has not reached the select.
+	continueCh chan bool
+	// abandoned is set when the process is dying. The in-memory run stops,
+	// but the turn stays running in the database so the next start continues
+	// it. Distinct from interrupt(), which is a user stop.
+	abandoned bool
 }
 
 // release marks the runtime idle. It runs before the turn's terminal event is
 // published, because a client that reacts to that event by sending the next
-// message must not be told the conversation is still busy. Calling it twice is
-// harmless, which is what lets the panic path share it.
-func (rt *runtime) release(cancel context.CancelFunc, idle chan struct{}) {
-	cancel()
+// message must not be told the conversation is still busy. Calling it twice
+// for the same turn is harmless. A follow-up or leftover steer that already
+// occupied this runtime is left alone: wiping it would cancel the next turn
+// from the previous run's defer.
+func (rt *runtime) release(cancel context.CancelFunc, idle chan struct{}, turnID string) {
+	if cancel != nil {
+		cancel()
+	}
 	rt.mu.Lock()
+	if rt.turnID != turnID {
+		rt.mu.Unlock()
+		return
+	}
 	wasRunning := rt.running
 	rt.running = false
 	rt.cancel = nil
@@ -66,6 +82,7 @@ func (rt *runtime) status() Status {
 	}
 	if rt.running {
 		st.ElapsedMS = time.Since(rt.startedAt).Milliseconds()
+		st.AwaitingContinue = rt.continueCh != nil
 		if rt.reg != nil {
 			// Progress, not Stats: Stats prunes the finished sub-agents it
 			// counts, so answering "how is it going" would throw away a result
@@ -80,10 +97,51 @@ func (rt *runtime) interrupt() {
 	rt.mu.Lock()
 	cancel := rt.cancel
 	running := rt.running
+	ch := rt.continueCh
+	rt.mu.Unlock()
+	if ch != nil {
+		select {
+		case ch <- false:
+		default:
+		}
+	}
+	if running && cancel != nil {
+		cancel()
+	}
+}
+
+// abandon cancels the in-memory run without treating it as a user stop.
+// Sending false on continueCh would end a paused turn as "declined the cap".
+func (rt *runtime) abandon() {
+	rt.mu.Lock()
+	rt.abandoned = true
+	cancel := rt.cancel
+	running := rt.running
 	rt.mu.Unlock()
 	if running && cancel != nil {
 		cancel()
 	}
+}
+
+func (rt *runtime) takeAbandoned() bool {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	v := rt.abandoned
+	rt.abandoned = false
+	return v
+}
+
+// occupy claims the runtime for a turn. false means another turn is already
+// live; the caller must not start a second goroutine.
+func (rt *runtime) occupy(reg *swarm.Registry, cancel context.CancelFunc, turnID string, idle chan struct{}) bool {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.running {
+		return false
+	}
+	rt.reg, rt.cancel, rt.turnID, rt.startedAt, rt.running, rt.idle = reg, cancel, turnID, time.Now(), true, idle
+	rt.abandoned = false
+	return true
 }
 
 func (rt *runtime) waitIdle(d time.Duration) {
@@ -106,30 +164,72 @@ func (rt *runtime) close() {
 	}
 }
 
+// newTurnRegistry is the one place a conversation's swarm is wired, so a
+// resumed turn cannot forget WorkerPreamble the way a copy-pasted block would.
+func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set) *swarm.Registry {
+	reg := swarm.NewRegistry()
+	reg.ModelBuilder = builder
+	reg.MaxConcurrent = e.cfg.Swarm.MaxConcurrent
+	reg.AgentTimeout = e.cfg.Swarm.AgentTimeout()
+	reg.MaxTurns = e.cfg.Swarm.MaxTurns
+	reg.SubAgentTools = toolset.Tools
+	reg.WorkerPreamble = HostEnvironmentPrompt()
+	return reg
+}
+
 // ---------- public turn API ----------
 
 // StartTurn begins a new turn on a conversation. It returns as soon as the
 // turn is recorded and running: the answer arrives through the event stream,
 // because a turn routinely outlives any HTTP request.
 func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return nil, fmt.Errorf("engine: an empty message has nothing to answer")
-	}
+	return e.StartTurnInput(threadID, UserInput{Text: text})
+}
+
+func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, error) {
 	th, err := e.store.GetThread(threadID)
 	if err != nil {
 		return nil, err
 	}
 
-	rt := e.runtimeFor(threadID)
-	rt.mu.Lock()
-	if rt.running {
-		rt.mu.Unlock()
-		return nil, ErrBusy
+	var keep []store.ImageRef
+	if in.FromEventSeq > 0 {
+		if in.ContinueGoal {
+			return nil, fmt.Errorf("engine: a standing-objective continuation cannot replace a message")
+		}
+		keep, err = e.peekRewind(threadID, in.FromEventSeq)
+		if err != nil {
+			return nil, err
+		}
 	}
-	rt.mu.Unlock()
 
-	prov, err := e.pool.Resolve(th.ProviderID)
+	rt := e.runtimeFor(threadID)
+	if in.FromEventSeq == 0 {
+		rt.mu.Lock()
+		busy := rt.running
+		rt.mu.Unlock()
+		if busy {
+			return nil, ErrBusy
+		}
+	}
+	caption := strings.TrimSpace(in.Text)
+	text, files, err := e.hydrateUserInput(threadID, in, "engine: an empty message has nothing to answer")
+	if err != nil {
+		return nil, err
+	}
+	if text == "" && len(in.Images) == 0 && len(keep) == 0 {
+		return nil, fmt.Errorf("engine: an empty message has nothing to answer")
+	}
+	if in.FromEventSeq > 0 {
+		if err := e.applyRewind(threadID, in.FromEventSeq); err != nil {
+			return nil, err
+		}
+	}
+	if !in.ContinueGoal && hasOpenGoal(th) {
+		resetGoalBudget(e, th)
+	}
+
+	prov, err := e.pool.ResolveModel(th.ProviderID, th.Model)
 	if err != nil {
 		return nil, err
 	}
@@ -146,6 +246,17 @@ func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
 	if err != nil {
 		return nil, err
 	}
+	refs, err := e.saveInputImages(threadID, in.Images)
+	if err != nil {
+		return nil, err
+	}
+	if len(refs) == 0 {
+		refs = keep
+	}
+	modelImages := in.Images
+	if len(modelImages) == 0 && len(keep) > 0 {
+		modelImages = e.loadImageInputs(threadID, keep)
+	}
 
 	turn := &store.Turn{
 		ThreadID:        threadID,
@@ -153,48 +264,46 @@ func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
 		ProviderID:      prov.ID,
 		Model:           prov.Model,
 		ReasoningEffort: effort,
+		GoalContinue:    in.ContinueGoal,
 	}
 	if err := e.store.CreateTurn(turn); err != nil {
 		return nil, err
 	}
+	if err := e.bindAttachmentTurns(files, turn.ID); err != nil {
+		_ = e.store.FinishTurn(turn.ID, store.TurnError, "", err.Error())
+		return nil, err
+	}
 	if err := e.store.AppendMessages(threadID, turn.ID, []store.Message{
-		{Role: string(schema.User), Content: text},
+		{Role: string(schema.User), Content: text, Images: refs},
 	}); err != nil {
 		return nil, err
 	}
 
-	builder, err := e.pool.ModelBuilder(context.Background(), prov.ID, effort, e.callRecorder(threadID, turn.ID))
+	builder, err := e.pool.ModelBuilder(context.Background(), prov.ID, prov.Model, effort, e.callRecorder(threadID, turn.ID))
 	if err != nil {
 		_ = e.store.FinishTurn(turn.ID, store.TurnError, "", err.Error())
 		return nil, err
 	}
 
-	reg := swarm.NewRegistry()
-	reg.ModelBuilder = builder
-	reg.MaxConcurrent = e.cfg.Swarm.MaxConcurrent
-	reg.AgentTimeout = e.cfg.Swarm.AgentTimeout()
-	reg.MaxTurns = e.cfg.Swarm.MaxTurns
-	reg.SubAgentTools = toolset.Tools
+	reg := e.newTurnRegistry(builder, toolset)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	idle := make(chan struct{})
 
-	rt.mu.Lock()
-	if rt.running { // lost a race with a concurrent StartTurn
-		rt.mu.Unlock()
+	if !rt.occupy(reg, cancel, turn.ID, idle) {
 		cancel()
 		reg.Close()
 		_ = e.store.FinishTurn(turn.ID, store.TurnCancelled, "", ErrBusy.Error())
 		return nil, ErrBusy
 	}
-	rt.reg, rt.cancel, rt.turnID, rt.startedAt, rt.running, rt.idle = reg, cancel, turn.ID, time.Now(), true, idle
-	rt.mu.Unlock()
 
 	_ = e.store.TouchThread(threadID)
-	e.autoTitle(th, text)
+	if !in.ContinueGoal {
+		e.autoTitle(th, titleFromInput(caption, modelImages, files))
+	}
 
-	messages := append(history, schema.UserMessage(text))
-	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages))
+	messages := append(history, BuildUserMessage(text, modelImages))
+	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), refs, false)
 	return turn, nil
 }
 
@@ -203,10 +312,10 @@ func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
 // When nothing is running it is not an error to ask — the caller gets ErrIdle
 // and can start a turn instead.
 func (e *Engine) Steer(threadID, text string) error {
-	text = strings.TrimSpace(text)
-	if text == "" {
-		return fmt.Errorf("engine: nothing to steer with")
-	}
+	return e.SteerInput(threadID, UserInput{Text: text})
+}
+
+func (e *Engine) SteerInput(threadID string, in UserInput) error {
 	if _, err := e.store.GetThread(threadID); err != nil {
 		return err
 	}
@@ -222,20 +331,36 @@ func (e *Engine) Steer(threadID, text string) error {
 	if !running || reg == nil {
 		return ErrIdle
 	}
-	if !reg.SteerManager(text) {
+	text, files, err := e.hydrateUserInput(threadID, in, "engine: nothing to steer with")
+	if err != nil {
+		return err
+	}
+	if err := e.bindAttachmentTurns(files, turnID); err != nil {
+		return err
+	}
+	refs, err := e.saveInputImages(threadID, in.Images)
+	if err != nil {
+		return err
+	}
+	msg := BuildUserMessage("[steer] "+text, in.Images)
+	if !reg.SteerManagerMessage(msg) {
 		return ErrIdle
 	}
 	// The steer is part of the conversation, so it is both persisted as a
 	// message and shown in the timeline.
 	if err := e.store.AppendMessages(threadID, turnID, []store.Message{
-		{Role: string(schema.User), Content: "[steer] " + text},
+		{Role: string(schema.User), Content: "[steer] " + text, Images: refs},
 	}); err != nil {
 		return err
 	}
 	e.record(store.Event{
 		ThreadID: threadID, TurnID: turnID,
 		Kind: KindSteer, AgentID: swarm.DefaultManagerID, Text: text,
+		Images: refs,
 	})
+	// A steer while the manager is paused at its cap is the human still
+	// talking to it: keep the text and treat that as "yes, continue".
+	rt.signalContinue(true)
 	return nil
 }
 
@@ -263,20 +388,23 @@ func (e *Engine) Interrupt(threadID string) error {
 // KindSteer and KindCleanup are engine-level event kinds, alongside the ones
 // the swarm library emits.
 const (
-	KindSteer     = "steer"
-	KindCleanup   = "cleanup"
-	KindReasoning = "reasoning"
-	KindUser      = "user_message"
+	KindSteer                  = "steer"
+	KindCleanup                = "cleanup"
+	KindReasoning              = "reasoning"
+	KindUser                   = "user_message"
+	KindMaxIterations          = "max_iterations"
+	KindMaxIterationsContinued = "max_iterations_continued"
+	KindResumed                = "resumed"
 )
 
 func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan struct{},
 	turn *store.Turn, reg *swarm.Registry, toolset *tools.Set, pc *projectContext,
-	messages []adk.Message, inputCount int,
+	messages []adk.Message, inputCount int, images []store.ImageRef, resumed bool,
 ) {
 	e := rt.engine
 	defer func() {
 		r := recover()
-		rt.release(cancel, idle)
+		rt.release(cancel, idle, turn.ID)
 		if r != nil {
 			e.log.Error("turn panicked", "turn", turn.ID, "panic", r)
 			_ = e.store.FinishTurn(turn.ID, store.TurnError, "", fmt.Sprintf("internal error: %v", r))
@@ -286,8 +414,25 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		}
 	}()
 
-	e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
-		Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText})
+	if resumed {
+		if !e.turnHasKind(turn.ID, KindUser) && !e.turnHasKind(turn.ID, KindGoalContinued) {
+			if turn.GoalContinue {
+				e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+					Kind: KindGoalContinued, AgentID: swarm.DefaultManagerID, Text: goalContinuedNotice})
+			} else if strings.TrimSpace(turn.UserText) != "" || len(images) > 0 {
+				e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+					Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText, Images: images})
+			}
+		}
+		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+			Kind: KindResumed, AgentID: swarm.DefaultManagerID, Text: resumeNotice})
+	} else if turn.GoalContinue {
+		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+			Kind: KindGoalContinued, AgentID: swarm.DefaultManagerID, Text: goalContinuedNotice})
+	} else {
+		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+			Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText, Images: images})
+	}
 
 	acc := newAccumulator(e, rt.threadID, turn.ID, e.cfg.Swarm.DeltaCoalesce())
 	// The pulse stops the moment the manager returns: everything after that is
@@ -295,13 +440,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// turn look like it was still working.
 	beat, stopBeat := context.WithCancel(ctx)
 	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.Swarm.ProgressInterval())
-	res, runErr := reg.RunWith(ctx, swarm.RunConfig{
-		Instruction:        managerPrompt(toolset, e.cfg, pc.promptSections()),
-		Messages:           messages,
-		ManagerTools:       pc.managerTools(toolset),
-		ManagerMiddlewares: nil,
-		MaxIterations:      e.cfg.Swarm.ManagerMaxIterations,
-	}, swarm.Callback(acc.onNotify))
+	res, runErr := rt.runManager(ctx, turn, reg, acc, toolset, pc, messages)
 	stopBeat()
 	acc.flushAll()
 
@@ -314,10 +453,16 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	}
 	// A steer that arrived after the manager's last model call was accepted but
 	// never read. It becomes the next turn rather than disappearing.
-	leftover := reg.TakePendingSteers()
+	leftover := reg.TakePendingSteerMessages()
 	reg.Close()
 
 	e.persistTranscript(rt.threadID, turn.ID, res.Transcript, inputCount)
+
+	// The process is exiting: keep the row running so the next start continues
+	// it. A user Interrupt takes the switch below and records cancelled.
+	if rt.takeAbandoned() {
+		return
+	}
 
 	// Read the outcome before releasing, because releasing cancels the
 	// context and would make every turn look interrupted.
@@ -325,13 +470,28 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	switch {
 	case ctx.Err() != nil:
 		status, errText = store.TurnCancelled, "interrupted"
+	case isLimitStop(runErr):
+		// The human declined to extend: keep the partial answer, do not
+		// surface eino's NodeRunError as if the process crashed.
+		status, errText = store.TurnCancelled, runErr.Error()
 	case runErr != nil:
-		status, errText = store.TurnError, runErr.Error()
+		status, errText = store.TurnError, publicTurnError(runErr)
 	}
 
 	// Idle before the terminal event: the UI starts its next turn the moment
-	// it sees "done".
-	rt.release(cancel, idle)
+	// it sees "done". Record that event before FinishTurn so a client that
+	// polls the turn status cannot Replay a finished turn missing its last row.
+	rt.release(cancel, idle, turn.ID)
+
+	final := store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+		AgentID: swarm.DefaultManagerID, Text: res.Final}
+	if status == store.TurnDone {
+		final.Kind = swarm.NotifyDone.String()
+	} else {
+		final.Kind = swarm.NotifyError.String()
+		final.Err = errText
+	}
+	e.record(final)
 
 	if err := e.store.FinishTurn(turn.ID, status, res.Final, errText); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
@@ -343,34 +503,53 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		}
 	}
 	_ = e.store.TouchThread(rt.threadID)
-
-	final := store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
-		AgentID: swarm.DefaultManagerID, Text: res.Final}
-	if status == store.TurnDone {
-		final.Kind = swarm.NotifyDone.String()
-	} else {
-		final.Kind = swarm.NotifyError.String()
-		final.Err = errText
-	}
-	e.record(final)
 	// The review reads the conversation and curates the project's memory. It
 	// runs after the terminal event on purpose: nobody is waiting for it, and
 	// a turn must never look slower because something is being learned from it.
 	e.scheduleReview(rt.threadID, turn, status, pc, messages, res)
-	rt.runLateSteers(status, leftover)
+	if !turn.GoalContinue {
+		e.scheduleTitle(rt.threadID, turn, status, turn.UserText, res.Final)
+	}
+	started := rt.runLateSteerMessages(status, leftover)
+	if !started {
+		started = rt.flushFollowup(status)
+	}
+	if !started {
+		rt.continueGoal(status)
+	}
 }
 
 // runLateSteers turns steering that the manager never read into a turn of its
 // own. Cancelled and failed turns skip it: someone who pressed stop does not
 // want the thing they typed a moment earlier to start it all again.
 func (rt *runtime) runLateSteers(status string, leftover []string) {
-	if status != store.TurnDone || len(leftover) == 0 {
-		return
+	msgs := make([]*schema.Message, 0, len(leftover))
+	for _, s := range leftover {
+		msgs = append(msgs, schema.UserMessage("[steer] "+s))
 	}
-	if _, err := rt.engine.StartTurn(rt.threadID, strings.Join(leftover, "\n")); err != nil {
+	rt.runLateSteerMessages(status, msgs)
+}
+
+func (rt *runtime) runLateSteerMessages(status string, leftover []*schema.Message) bool {
+	if status != store.TurnDone || len(leftover) == 0 {
+		return false
+	}
+	var texts []string
+	var images []ImageInput
+	for _, m := range leftover {
+		t := strings.TrimSpace(strings.TrimPrefix(userMessageText(m), "[steer] "))
+		if t != "" {
+			texts = append(texts, t)
+		}
+		images = append(images, imagesFromMessage(m)...)
+	}
+	if _, err := rt.engine.StartTurnInput(rt.threadID, UserInput{
+		Text: strings.Join(texts, "\n"), Images: images,
+	}); err != nil {
 		rt.engine.log.Warn("could not run a late steer as its own turn",
 			"thread", rt.threadID, "err", err)
 	}
+	return true
 }
 
 // callRecorder persists one row per model call so `zwai trace <turn>` can
@@ -381,19 +560,22 @@ func (e *Engine) callRecorder(threadID, turnID string) provider.Recorder {
 			ThreadID: threadID, TurnID: turnID, AgentID: r.AgentID,
 			ProviderID: r.ProviderID, Model: r.Model,
 			InputMsgs: r.InputMsgs, InputChars: r.InputChars, OutputChars: r.OutputChars,
-			DurationMS: r.Duration.Milliseconds(),
+			PromptTokens: r.PromptTokens, CompletionTokens: r.CompletionTokens,
+			TotalTokens: r.TotalTokens, CachedTokens: r.CachedTokens,
+			ReasoningTokens: r.ReasoningTokens,
+			DurationMS:      r.Duration.Milliseconds(),
 		}
 		if r.Err != nil {
 			rec.Err = r.Err.Error()
 		}
 		if err := e.store.AppendLLMCall(rec); err != nil {
 			e.log.Warn("could not record a model call", "turn", turnID, "err", err)
+			return
 		}
+		e.emitUsage(threadID, turnID)
 	}
 }
 
-// record persists an event and broadcasts it. Persisted events carry a
-// sequence number, which is what makes them replayable.
 // record persists an event and then broadcasts it.
 //
 // Persisting and broadcasting happen under one lock because workers and the
@@ -403,11 +585,43 @@ func (e *Engine) callRecorder(threadID, turnID string) provider.Recorder {
 // lose it until the next reload.
 func (e *Engine) record(ev store.Event) {
 	e.recordMu.Lock()
-	defer e.recordMu.Unlock()
+	if ev.TurnID != "" {
+		if _, dropped := e.droppedTurns[ev.TurnID]; dropped {
+			e.recordMu.Unlock()
+			return
+		}
+	}
 	if err := e.store.AppendEvent(&ev); err != nil {
 		e.log.Warn("could not persist an event", "thread", ev.ThreadID, "kind", ev.Kind, "err", err)
 	}
 	e.broadcast(ev)
+	e.recordMu.Unlock()
+	// After the lock: manager answers used to wait for persistTranscript at
+	// turn end. A crash before that left the UI with a conversation the next
+	// model call could not see. Store them with the event so resume has the
+	// same text. Doing it outside recordMu keeps a slow write from stalling
+	// every other event.
+	if ev.Kind == swarm.NotifyAgentMessage.String() && isManagerAgent(ev.AgentID) {
+		e.persistManagerAnswer(ev.ThreadID, ev.TurnID, ev.Text)
+	}
+}
+
+func isManagerAgent(id string) bool {
+	return id == "" || id == swarm.DefaultManagerID
+}
+
+func (e *Engine) persistManagerAnswer(threadID, turnID, text string) {
+	if strings.TrimSpace(text) == "" {
+		return
+	}
+	if _, err := e.store.GetTurn(turnID); errors.Is(err, store.ErrNotFound) {
+		return
+	}
+	if err := e.store.AppendMessages(threadID, turnID, []store.Message{
+		{Role: string(schema.Assistant), Content: text, AgentID: swarm.DefaultManagerID},
+	}); err != nil {
+		e.log.Warn("could not persist assistant message", "turn", turnID, "err", err)
+	}
 }
 
 // emit broadcasts an event without persisting it. Used for streamed deltas:
@@ -604,6 +818,7 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 	if len(transcript) <= start {
 		return
 	}
+	have := e.storedAssistantText(threadID, turnID)
 	var rows []store.Message
 	for _, m := range transcript[start:] {
 		if m == nil {
@@ -620,14 +835,55 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 				row.ToolCalls = string(raw)
 			}
 		}
-		if row.Role == string(schema.User) && strings.HasPrefix(row.Content, "[steer] ") {
+		if row.Role == string(schema.User) && strings.HasPrefix(strings.TrimSpace(row.Content), "[steer]") {
 			continue // already stored by Steer
+		}
+		if row.Role == string(schema.User) && row.Content == resumeCue {
+			continue // injected for the model on resume, not a human message
+		}
+		if row.Role == string(schema.Assistant) {
+			key := strings.TrimSpace(row.Content)
+			if key != "" && have[key] {
+				continue // already stored with the agent_message event
+			}
+			if key != "" {
+				have[key] = true
+			}
 		}
 		rows = append(rows, row)
 	}
 	if err := e.store.AppendMessages(threadID, turnID, rows); err != nil {
 		e.log.Warn("could not persist transcript", "turn", turnID, "err", err)
 	}
+}
+
+func (e *Engine) storedAssistantText(threadID, turnID string) map[string]bool {
+	if m := e.assistantTextByTurn(threadID)[turnID]; m != nil {
+		return m
+	}
+	return map[string]bool{}
+}
+
+func (e *Engine) assistantTextByTurn(threadID string) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	rows, err := e.store.ListMessages(threadID)
+	if err != nil {
+		return out
+	}
+	for _, m := range rows {
+		if schema.RoleType(m.Role) != schema.Assistant {
+			continue
+		}
+		key := strings.TrimSpace(m.Content)
+		if key == "" {
+			continue
+		}
+		if out[m.TurnID] == nil {
+			out[m.TurnID] = map[string]bool{}
+		}
+		out[m.TurnID][key] = true
+	}
+	return out
 }
 
 // replayHistory rebuilds the conversation to hand to the next turn.
@@ -639,58 +895,88 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 // its answer. Dropping a tool call and its results together also keeps the
 // message sequence valid for providers that require the pairing.
 func (e *Engine) replayHistory(threadID string) ([]adk.Message, error) {
+	th, err := e.store.GetThread(threadID)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := e.store.ListMessages(threadID)
 	if err != nil {
 		return nil, err
 	}
+	skipThrough := int64(0)
+	if strings.TrimSpace(th.CompactSummary) != "" {
+		skipThrough = th.CompactThroughSeq
+	}
 	out := make([]adk.Message, 0, len(rows))
+	liveTurns := map[string]struct{}{}
+	seen := map[string]struct{}{}
 	for _, r := range rows {
+		if skipThrough > 0 && r.Seq <= skipThrough {
+			continue
+		}
+		liveTurns[r.TurnID] = struct{}{}
 		switch schema.RoleType(r.Role) {
 		case schema.User:
-			if strings.TrimSpace(r.Content) != "" {
-				out = append(out, schema.UserMessage(r.Content))
+			if strings.TrimSpace(r.Content) != "" || len(r.Images) > 0 {
+				out = append(out, e.schemaUser(r))
+				if key := strings.TrimSpace(r.Content); key != "" {
+					seen[key] = struct{}{}
+				}
 			}
 		case schema.Assistant:
 			if strings.TrimSpace(r.Content) != "" {
 				out = append(out, schema.AssistantMessage(r.Content, nil))
+				seen[strings.TrimSpace(r.Content)] = struct{}{}
 			}
 		default:
 			// system messages come from the instruction; tool traffic is
 			// intentionally not replayed
 		}
 	}
+	return e.appendMissingEventAnswers(threadID, liveTurns, seen, out)
+}
+
+// appendMissingEventAnswers folds manager answers that landed on the event
+// log but never made it into the messages table — a force-quit before
+// persistTranscript. Compacted text stays folded: an answer already stored
+// for that turn, even below the compact watermark, is not written again
+// (that would mint a new seq and undo /compact). Only live turns are
+// considered, and text already in replay is not repeated.
+func (e *Engine) appendMissingEventAnswers(threadID string, liveTurns map[string]struct{}, seen map[string]struct{}, out []adk.Message) ([]adk.Message, error) {
+	if len(liveTurns) == 0 {
+		return out, nil
+	}
+	stored := e.assistantTextByTurn(threadID)
+	events, err := e.store.ListEvents(threadID, 0, 0)
+	if err != nil {
+		return nil, err
+	}
+	kind := swarm.NotifyAgentMessage.String()
+	for _, ev := range events {
+		if ev.Kind != kind || !isManagerAgent(ev.AgentID) {
+			continue
+		}
+		if _, ok := liveTurns[ev.TurnID]; !ok {
+			continue
+		}
+		text := strings.TrimSpace(ev.Text)
+		if text == "" {
+			continue
+		}
+		if stored[ev.TurnID][text] {
+			continue
+		}
+		if _, ok := seen[text]; ok {
+			continue
+		}
+		out = append(out, schema.AssistantMessage(ev.Text, nil))
+		seen[text] = struct{}{}
+		if stored[ev.TurnID] == nil {
+			stored[ev.TurnID] = map[string]bool{}
+		}
+		stored[ev.TurnID][text] = true
+		// Write it down so the next force-quit does not depend on this scan.
+		e.persistManagerAnswer(threadID, ev.TurnID, ev.Text)
+	}
 	return out, nil
-}
-
-// autoTitle names a conversation from its first message, the way Codex does,
-// so the sidebar is readable without asking the user to name anything.
-func (e *Engine) autoTitle(th *store.Thread, text string) {
-	if strings.TrimSpace(th.Title) != "" {
-		return
-	}
-	title := titleFrom(text)
-	if title == "" {
-		return
-	}
-	if err := e.store.UpdateThread(th.ID, map[string]any{"title": title}); err != nil {
-		e.log.Warn("could not set the conversation title", "thread", th.ID, "err", err)
-	} else {
-		th.Title = title
-	}
-}
-
-// titleMaxRunes keeps sidebar titles to one line at the narrowest supported
-// sidebar width.
-const titleMaxRunes = 48
-
-func titleFrom(text string) string {
-	flat := strings.Join(strings.Fields(text), " ")
-	if flat == "" {
-		return ""
-	}
-	r := []rune(flat)
-	if len(r) <= titleMaxRunes {
-		return flat
-	}
-	return strings.TrimSpace(string(r[:titleMaxRunes])) + "…"
 }

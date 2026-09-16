@@ -1,12 +1,14 @@
-import { ChevronRight, RefreshCw, Sparkles, Trash2 } from "lucide-react"
+import { ChevronRight, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { MemoMarkdown } from "@/components/app/markdown"
+import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 import type { Project, ProjectMemory, Skill } from "@/lib/types"
+import { useT } from "@/lib/use-t"
 
 export interface MemoryPanelProps {
   project?: Project
@@ -16,6 +18,10 @@ export interface MemoryPanelProps {
   onDeleteSkill: (name: string) => void
   onRefresh: () => void
   onReview: () => void
+  /** A click is in flight; the matching memory_review has not arrived. */
+  reviewing?: boolean
+  /** What the last click decided, once it has an answer. */
+  reviewHint?: string
   /** Only wired where the host can open a file manager. */
   onReveal?: () => void
   /** A write landed while this tab was not the one on screen. */
@@ -42,15 +48,19 @@ export function MemoryPanel({
   onDeleteSkill,
   onRefresh,
   onReview,
+  reviewing,
+  reviewHint,
   onReveal,
   onSeen,
   focusSkill,
 }: MemoryPanelProps) {
+  const t = useT()
   const [draft, setDraft] = useState("")
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string>()
   const [conflict, setConflict] = useState(false)
+  const [doomedSkill, setDoomedSkill] = useState<string>()
   const text = memory?.memory.text ?? ""
   const seen = useRef(text)
 
@@ -76,8 +86,7 @@ export function MemoryPanel({
   if (!project) {
     return (
       <p className="p-4 text-sm text-muted-foreground">
-        This conversation is not in a project, so it has nothing to remember
-        between conversations.
+        {t("memory.noProject")}
       </p>
     )
   }
@@ -108,8 +117,8 @@ export function MemoryPanel({
   const limit = memory?.memory.limit ?? 0
 
   return (
-    <div className="flex flex-col gap-4 p-3">
-      <div className="flex items-center gap-2">
+    <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 p-3">
+      <div className="flex shrink-0 items-center gap-2">
         <p className="min-w-0 flex-1 truncate text-sm font-medium">
           {project.name}
         </p>
@@ -117,50 +126,62 @@ export function MemoryPanel({
           variant="ghost"
           size="icon-sm"
           onClick={onReview}
-          aria-label="Review this conversation now"
-          title="Review this conversation now"
+          disabled={reviewing}
+          aria-busy={reviewing}
+          aria-label={t("memory.reviewNow")}
+          title={t("memory.reviewNow")}
         >
-          <Sparkles />
+          {reviewing ? <Loader2 className="animate-spin" /> : <Sparkles />}
         </Button>
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={onRefresh}
-          aria-label="Reload memory"
-          title="Reload memory"
+          aria-label={t("memory.reload")}
+          title={t("memory.reload")}
         >
           <RefreshCw />
         </Button>
       </div>
 
-      {memory && !memory.enabled ? (
-        <p className="rounded-md border border-border p-2 text-xs text-muted-foreground">
-          Memory is switched off for this project. What is already stored stays
-          here and is not used.
+      {reviewing || reviewHint ? (
+        <p role="status" data-testid="review-status" className="text-xs text-muted-foreground">
+          {reviewing ? t("memory.reviewing") : reviewHint}
         </p>
       ) : null}
 
-      <section className="grid gap-2">
+      {memory && !memory.enabled ? (
+        <p className="rounded-md border border-border p-2 text-xs text-muted-foreground">
+          {t("memory.off")}
+        </p>
+      ) : null}
+
+      <section className="grid shrink-0 gap-2">
         <div className="flex items-center gap-2">
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Notes
+            {t("memory.notes")}
           </h3>
           <Badge variant={chars > limit * 0.9 ? "warning" : "outline"}>
             {chars}/{limit}
           </Badge>
         </div>
         <p className="text-xs text-muted-foreground">
-          Carried into every conversation in this project. One note per
-          paragraph.
+          {t("memory.notesHint")}
         </p>
         <Textarea
-          aria-label="Project notes"
-          rows={8}
+          aria-label={t("memory.notesLabel")}
+          // A tall notes box used to push Skills off the window, and the pane
+          // could not scroll. Cap the box; leftover notes scroll inside it.
+          rows={5}
+          className="max-h-36 overflow-y-auto"
           value={draft}
           disabled={loading}
           onChange={(e) => {
-            setDraft(e.target.value)
-            setDirty(true)
+            const next = e.target.value
+            setDraft(next)
+            // Compare to what is stored, not "did a key fire": typing back
+            // to the saved text is not an edit, so Save stays gone.
+            setDirty(next !== text)
           }}
         />
         {conflict ? (
@@ -169,60 +190,80 @@ export function MemoryPanel({
             className="rounded-md border border-border bg-muted/60 px-2 py-2 text-xs"
           >
             <p>
-              These notes were updated while you were editing. Save keeps yours;
-              Reload takes the new ones.
+              {t("memory.conflict")}
             </p>
             {text && text !== draft ? (
               <p className="mt-1 line-clamp-3 text-muted-foreground">
-                Stored now: {text}
+                {t("memory.storedNow", { text })}
               </p>
             ) : null}
           </div>
         ) : null}
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
-        <div className="flex items-center gap-2">
-          <Button size="sm" disabled={!dirty || saving} onClick={() => void save()}>
-            Save notes
-          </Button>
-          {dirty || conflict ? (
+        {dirty || conflict ? (
+          <div className="flex items-center gap-2">
+            {dirty ? (
+              <Button size="sm" disabled={saving} onClick={() => void save()}>
+                {t("memory.saveNotes")}
+              </Button>
+            ) : null}
             <Button size="sm" variant="ghost" onClick={reload}>
-              {conflict ? "Reload" : "Revert"}
+              {conflict ? t("memory.reloadNotes") : t("memory.revert")}
             </Button>
-          ) : null}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="flex min-h-0 flex-1 flex-col gap-2">
+        <h3 className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t("memory.skills")}
+        </h3>
+        <div
+          data-testid="skills-list"
+          className="thin-scrollbar min-h-0 min-w-0 flex-1 overflow-auto"
+        >
+          {memory && memory.skills.length > 0 ? (
+            <div className="grid min-w-0 gap-2">
+              {memory.skills.map((skill) => (
+                <SkillRow
+                  key={skill.name}
+                  projectId={project.id}
+                  name={skill.name}
+                  description={skill.description}
+                  startOpen={skill.name === focusSkill}
+                  onDelete={() => setDoomedSkill(skill.name)}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              {t("memory.noSkills")}
+            </p>
+          )}
         </div>
       </section>
 
-      <section className="grid gap-2">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Skills
-        </h3>
-        {memory && memory.skills.length > 0 ? (
-          memory.skills.map((skill) => (
-            <SkillRow
-              key={skill.name}
-              projectId={project.id}
-              name={skill.name}
-              description={skill.description}
-              startOpen={skill.name === focusSkill}
-              onDelete={() => onDeleteSkill(skill.name)}
-            />
-          ))
-        ) : (
-          <p className="text-xs text-muted-foreground">
-            No procedures recorded yet. They appear here when a conversation
-            produces one worth following again.
-          </p>
-        )}
-      </section>
-
-      <p className="break-all text-xs text-muted-foreground">
+      <p className="shrink-0 break-all text-xs text-muted-foreground">
         {memory?.dir ?? project.memory_dir}
         {onReveal ? (
           <Button variant="link" size="sm" onClick={onReveal}>
-            Show in Finder
+            {t("memory.showInFinder")}
           </Button>
         ) : null}
       </p>
+      <ConfirmDeleteDialog
+        open={Boolean(doomedSkill)}
+        title={t("skill.deleteTitle", { name: doomedSkill ?? "" })}
+        description={t("skill.deleteDesc")}
+        confirmLabel={t("skill.deleteConfirm")}
+        cancelLabel={t("confirm.cancel")}
+        onOpenChange={(open) => {
+          if (!open) setDoomedSkill(undefined)
+        }}
+        onConfirm={() => {
+          if (doomedSkill) onDeleteSkill(doomedSkill)
+        }}
+      />
     </div>
   )
 }
@@ -247,6 +288,7 @@ function SkillRow({
   startOpen?: boolean
   onDelete: () => void
 }) {
+  const t = useT()
   const [open, setOpen] = useState(Boolean(startOpen))
   const [skill, setSkill] = useState<Skill>()
   const [error, setError] = useState<string>()
@@ -283,20 +325,23 @@ function SkillRow({
   }
 
   return (
-    <div className="rounded-md border border-border">
-      <div className="flex items-center gap-1 px-2 py-1.5">
+    <div
+      data-testid="skill-card"
+      className="relative w-full min-w-0 overflow-hidden rounded-md border border-border bg-card"
+    >
+      <div className="flex items-start gap-1 px-2 py-1.5">
         <button
           type="button"
           onClick={() => void toggle()}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 items-start gap-2 text-left"
         >
           <ChevronRight
-            className={`size-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
+            className={`mt-0.5 size-3.5 shrink-0 transition-transform ${open ? "rotate-90" : ""}`}
           />
-          <span className="min-w-0">
+          <span className="min-w-0 flex-1">
             <span className="block truncate text-sm">{name}</span>
-            <span className="block truncate text-xs text-muted-foreground">
+            <span className="block text-xs leading-snug text-muted-foreground">
               {description}
             </span>
           </span>
@@ -305,20 +350,23 @@ function SkillRow({
           variant="ghost"
           size="icon-sm"
           onClick={onDelete}
-          aria-label={`Delete the skill ${name}`}
-          title="Delete"
+          aria-label={t("memory.deleteSkill", { name })}
+          title={t("memory.delete")}
         >
           <Trash2 />
         </Button>
       </div>
       {open ? (
-        <div className="md thin-scrollbar max-h-72 overflow-auto border-t border-border px-2 py-2 text-sm [&>:first-child]:mt-0">
+        <div
+          data-testid="skill-body"
+          className="md thin-scrollbar max-h-72 min-w-0 overflow-auto break-words border-t border-border px-2 py-2 text-sm [&>:first-child]:mt-0"
+        >
           {error ? (
             <p className="text-xs text-destructive">{error}</p>
           ) : skill ? (
             <MemoMarkdown text={skill.body} />
           ) : (
-            <p className="text-xs text-muted-foreground">Loading…</p>
+            <p className="text-xs text-muted-foreground">{t("memory.loading")}</p>
           )}
         </div>
       ) : null}

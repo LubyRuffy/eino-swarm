@@ -27,11 +27,12 @@ var ErrNotFound = errors.New("store: not found")
 type Store struct {
 	db *gorm.DB
 
-	mu       sync.Mutex
-	evtSeq   map[string]int64
-	msgSeq   map[string]int64
-	turnSeq  map[string]int64
-	inMemory bool
+	mu          sync.Mutex
+	evtSeq      map[string]int64
+	msgSeq      map[string]int64
+	turnSeq     map[string]int64
+	followupSeq map[string]int64
+	inMemory    bool
 }
 
 // Open opens (creating if needed) the database at path and migrates it. A path
@@ -58,13 +59,14 @@ func Open(path string) (*Store, error) {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
 	s := &Store{
-		db:       db,
-		evtSeq:   map[string]int64{},
-		msgSeq:   map[string]int64{},
-		turnSeq:  map[string]int64{},
-		inMemory: inMemory,
+		db:          db,
+		evtSeq:      map[string]int64{},
+		msgSeq:      map[string]int64{},
+		turnSeq:     map[string]int64{},
+		followupSeq: map[string]int64{},
+		inMemory:    inMemory,
 	}
-	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
 	return s, nil
@@ -118,7 +120,7 @@ func (s *Store) CreateThread(t *Thread) error {
 	if err := s.db.Create(t).Error; err != nil {
 		return fmt.Errorf("store: create thread: %w", err)
 	}
-	return nil
+	return s.bumpProject(t.ProjectID)
 }
 
 // GetThread loads one conversation.
@@ -134,11 +136,11 @@ func (s *Store) GetThread(id string) (*Thread, error) {
 	return &t, nil
 }
 
-// ListThreads returns conversations newest-activity-first, which is the order
-// the sidebar shows them in. An empty projectID means every conversation,
-// whichever project it is in.
+// ListThreads returns conversations in sidebar order. Rank 0 is never
+// dragged: those rows interleave by last activity with ranked rows, so a
+// stale unranked conversation cannot sit above one that just ran.
 func (s *Store) ListThreads(includeArchived bool, projectID string) ([]Thread, error) {
-	q := s.db.Order("last_active_at desc")
+	q := s.db.Order("sort_rank asc, last_active_at desc")
 	if !includeArchived {
 		q = q.Where("archived = ?", false)
 	}
@@ -149,7 +151,7 @@ func (s *Store) ListThreads(includeArchived bool, projectID string) ([]Thread, e
 	if err := q.Find(&out).Error; err != nil {
 		return nil, fmt.Errorf("store: list threads: %w", err)
 	}
-	return out, nil
+	return interleaveByTime(out, func(th Thread) int { return th.SortRank }, func(th Thread) time.Time { return th.LastActiveAt }), nil
 }
 
 // UpdateThread applies a field patch to one conversation and refreshes
@@ -169,10 +171,39 @@ func (s *Store) UpdateThread(id string, fields map[string]any) error {
 	return nil
 }
 
-// TouchThread marks a conversation as just active so it sorts to the top.
+// ApplyAutoTitle sets the title only while the conversation is still
+// machine-named. A user rename in between is a no-op (ok=false), not an
+// error: the namer lost the race and must not clobber the sidebar.
+func (s *Store) ApplyAutoTitle(id, title string) (bool, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return false, nil
+	}
+	fields := map[string]any{
+		"title":      title,
+		"title_auto": false,
+		"updated_at": time.Now().UTC(),
+	}
+	res := s.db.Model(&Thread{}).Where("id = ? AND title_auto = ?", id, true).Updates(fields)
+	if res.Error != nil {
+		return false, fmt.Errorf("store: apply auto title: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// TouchThread marks a conversation as just active so it sorts to the top of
+// the auto-ordered rows. A project it belongs to is bumped the same way, so
+// the project list follows last use rather than creation.
 func (s *Store) TouchThread(id string) error {
 	now := time.Now().UTC()
-	return s.UpdateThread(id, map[string]any{"last_active_at": now})
+	if err := s.UpdateThread(id, map[string]any{"last_active_at": now}); err != nil {
+		return err
+	}
+	th, err := s.GetThread(id)
+	if err != nil {
+		return err
+	}
+	return s.bumpProject(th.ProjectID)
 }
 
 // DeleteThread removes a conversation and everything attached to it. The
@@ -182,7 +213,7 @@ func (s *Store) DeleteThread(id string) error {
 		return err
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}} {
+		for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}} {
 			if err := tx.Where("thread_id = ?", id).Delete(m).Error; err != nil {
 				return err
 			}
@@ -196,6 +227,7 @@ func (s *Store) DeleteThread(id string) error {
 	delete(s.evtSeq, id)
 	delete(s.msgSeq, id)
 	delete(s.turnSeq, id)
+	delete(s.followupSeq, id)
 	s.mu.Unlock()
 	return nil
 }
@@ -301,8 +333,19 @@ func (s *Store) ListTurns(threadID string) ([]Turn, error) {
 	return out, nil
 }
 
-// MarkStaleTurnsCancelled closes turns left running by a crash or a kill, so a
-// restarted app does not show a conversation as forever working.
+// ListRunningTurns returns every turn still marked running, oldest first.
+// A previous process that died leaves these behind; startup resumes them.
+func (s *Store) ListRunningTurns() ([]Turn, error) {
+	var out []Turn
+	if err := s.db.Where("status = ?", TurnRunning).Order("started_at asc").Find(&out).Error; err != nil {
+		return nil, fmt.Errorf("store: list running turns: %w", err)
+	}
+	return out, nil
+}
+
+// MarkStaleTurnsCancelled bulk-cancels every running turn. Startup no longer
+// calls this — it resumes those turns — but the method stays for tests and
+// for a deliberate wipe.
 func (s *Store) MarkStaleTurnsCancelled() (int64, error) {
 	now := time.Now().UTC()
 	res := s.db.Model(&Turn{}).Where("status = ?", TurnRunning).Updates(map[string]any{
@@ -400,6 +443,21 @@ func (s *Store) DeleteAttachmentByPath(threadID, relPath string) error {
 	if err := s.db.Where("thread_id = ? AND rel_path = ?", threadID, relPath).
 		Delete(&Attachment{}).Error; err != nil {
 		return fmt.Errorf("store: delete attachment: %w", err)
+	}
+	return nil
+}
+
+// BindAttachmentTurn records that a previously uploaded file belongs to this
+// turn, so a later send can tell this request's files from leftovers.
+func (s *Store) BindAttachmentTurn(threadID, relPath, turnID string) error {
+	res := s.db.Model(&Attachment{}).
+		Where("thread_id = ? AND rel_path = ?", threadID, relPath).
+		Update("turn_id", turnID)
+	if res.Error != nil {
+		return fmt.Errorf("store: bind attachment: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return fmt.Errorf("store: bind attachment: no such upload")
 	}
 	return nil
 }

@@ -136,8 +136,12 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 	if len(cfg.ManagerMiddlewares) > 0 {
 		opts = append(opts, WithManagerHandler(cfg.ManagerMiddlewares...))
 	}
-	if cfg.MaxIterations > 0 {
-		opts = append(opts, WithMaxIterations(cfg.MaxIterations))
+	n := cfg.MaxIterations
+	if n <= 0 {
+		n = r.ManagerMaxIterations
+	}
+	if n > 0 {
+		opts = append(opts, WithMaxIterations(n))
 	}
 
 	mgr, err := adk.NewChatModelAgent(ctx, r.ManagerConfig(
@@ -149,8 +153,8 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 	// spawn/finish notifications ride the Spawn/SpawnForked hook points, so a
 	// worker appears in the UI the moment the manager asks for it.
 	baseSpawn, baseFinish := r.setHooks(
-		func(role, agentID string) {
-			r.emit(Notification{Kind: NotifySpawned, AgentID: agentID, Role: role, Text: role})
+		func(role, agentID, instruction string) {
+			r.emit(Notification{Kind: NotifySpawned, AgentID: agentID, Role: role, Text: instruction})
 		},
 		func(role, agentID, result string, err error) {
 			r.emit(Notification{Kind: NotifyFinished, AgentID: agentID, Role: role, Text: result, Err: err})
@@ -206,9 +210,9 @@ func (r *Registry) resetHistory() {
 
 // setHooks swaps the spawn/finish hooks atomically and returns the previous
 // pair, so exec can restore them with a single deferred call.
-func (r *Registry) setHooks(spawn func(role, agentID string),
+func (r *Registry) setHooks(spawn func(role, agentID, instruction string),
 	finish func(role, agentID, result string, err error),
-) (func(role, agentID string), func(role, agentID, result string, err error)) {
+) (func(role, agentID, instruction string), func(role, agentID, result string, err error)) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	ps, pf := r.spawnHook, r.finishHook

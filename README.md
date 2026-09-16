@@ -15,10 +15,50 @@ uploads, downloads and the live event stream have exactly one implementation.
 │   Yesterday   │  │ tool  read notes.md       │  │ researcher  done │
 │   Earlier     │  │ Started 2 sub-agents      │  │ writer    active │
 │               │  └───────────────────────────┘  │                  │
-│ ⚙ settings    │  [ ask anything…      ] [ ➤ ]   │ output.md   4 KB │
+│ ⚙ settings    │     [ ask anything…     ➤ ]   │ output.md   4 KB │
 └───────────────┴─────────────────────────────────┴──────────────────┘
 ```
 
+- **Jump inside a long conversation.** Once you have sent two messages, a short
+  tick cluster sits in the middle of the transcript's left edge. Hover it for a
+  list of your own turns; click one to scroll there. Auto-follow unpins so a
+  live stream does not yank you back to the bottom. Opening another conversation
+  from the list lands at its latest turn, not the top of the history. New tokens while you are
+  reading light a jump-to-latest control; click it to return and follow again.
+- **A ring on the composer shows how full the last manager prompt is.** Hover
+  it for the compact count against this model's window, plus this-turn billed
+  in/out. The numbers come from the endpoint, not a guessed tokenizer. Discover
+  fills per-model windows when the listing includes them; Settings edits
+  each name, with a fallback only for names that still have none. Until one
+  is set the arc still grows (it is not an empty circle)
+  and the label stays a count, not a fake percentage.
+- **Paste a screenshot into the box.** It lands as a thumbnail you can drop
+  before sending, and goes to the model as visual input — not as a file in the
+  workspace. Dragging a file onto the box does the same split: images become
+  thumbs, other files become workspace attachments, same as the paperclip.
+  Sending names those files on the message, so the model reads what you just
+  attached instead of an older leftover sitting in the same folder.
+- **Copy or edit a sent message.** Copy and a pencil sit under each of your
+  bubbles, with the time you sent it. Copy takes the text. Edit opens the bubble
+  in place (Cancel / Send). Sending keeps that bubble, clears everything below
+  it, and starts again at that position — it is not a composer prefill, and
+  it is not a new turn on top.
+- **Deletes ask first.** A conversation, project, provider, workspace file,
+  skill, or queued message opens a confirm. Cancel leaves it. A chip on the
+  composer that has not been sent yet still drops immediately.
+- **Quote a passage into the next message.** Select text in the transcript (or a
+  sub-agent's log) and **Add to chat**. It lands as an annotation on the
+  composer — hover to read, edit or drop it — and is sent with whatever you type
+  next, instead of being dumped into the box.
+- **Slash commands in the composer.** Type `/` at the start of the box for the
+  same palette Cursor and Codex use. **goal** pins a standing objective this
+  conversation keeps pursuing until the manager calls `complete_goal` (or you
+  clear it from the banner). If it hits an obstacle it cannot pass, it calls
+  `block_goal` and stops instead of retrying forever — **Start** resumes,
+  the text is editable in place, and a live turn is told immediately. The
+  runtime starts the next turn itself; a queued follow-up still wins. **compact** folds earlier turns into a briefing for later
+  prompts; the transcript you see does not change. Pin a cheaper summarizer
+  under Settings → Models the same way as the conversation namer.
 - **Swarm, visible.** Sub-agents appear as they spawn, with live status and their
   own transcript. Built on [eino](https://github.com/cloudwego/eino) ADK and the
   swarm library in this repository.
@@ -27,27 +67,56 @@ uploads, downloads and the live event stream have exactly one implementation.
   shows a ticking "Working for 1m 12s · 2 sub-agents running" instead of looking
   frozen. While it is running, that line — and the live tool / sub-agent rows —
   sweep, and scroll if the text does not fit.
+- **Thinking stays a 10-line window.** While the model is reasoning, the block
+  caps at ten lines and follows new tokens; earlier lines stay reachable by
+  scrolling, with a fade at the top so it is obvious they are there. The
+  **Thinking** label sweeps like the other live status lines. Click the row to
+  hide it while it is still running. After it finishes it collapses to **Thought**.
 - **It stays live without freezing the window.** Streamed tokens are folded into
-  one event every few milliseconds, completed markdown is not re-parsed on
-  every token, and typing in the composer does not rebuild the conversation.
-- **Steering, not restarting.** Press Enter while a turn is running and your text
-  is injected at the next turn boundary instead of starting over.
+  one event every few milliseconds, answers render as markdown as they arrive
+  (finished ones are not re-parsed on every token), and typing in the composer
+  does not rebuild the conversation.
+- **Steering, not restarting.** Enter while a turn is running **queues** a
+  follow-up for after this one finishes (refresh-safe). **Steer** on that row, or
+  ⌘Enter, injects into the current turn at the next model boundary — it does not
+  kill an in-flight tool. Stop is what cancels. If the manager hits its
+  tool-round limit, the transcript asks whether to add another slice rather than
+  dying with a graph error.
+- **Unfinished work survives a crash.** Kill the process, quit the window, or
+  lose power mid-turn: the next start continues every leftover conversation,
+  with the answers already on screen still in the model's context. Pressing
+  **Stop** is the one thing that does not come back.
 - **Projects that remember.** Group conversations under one working directory and
   one instruction, and let them keep what they learn: after each turn the project
   writes down durable facts and records reusable procedures as skills, which
   every later conversation in that project starts with.
-- **Per-conversation model and thinking level.** When more than one endpoint is
-  configured, the composer switches models per conversation; a thinking-level
-  menu (Default / Low / Medium / High) sets how hard the models reason. Both
-  apply from the next turn.
+- **Conversations name themselves.** The first message is a placeholder so the
+  sidebar is readable at once; after the first reply a short title replaces it.
+  A name you type is never overwritten. Switch it off in Settings → Swarm, or
+  pin a cheaper model under Settings → Models when an endpoint lists more than
+  one.
+- **Per-conversation model and thinking level.** Settings → Models lists
+  providers as rows (open one for URL, key, default). The composer picker
+  groups models by provider, searches, refreshes the catalog, and jumps
+  to Edit providers. A thinking-level menu (Default / Low / Medium / High)
+  sets how hard the models reason. Both apply from the next turn. A
+  thought that is still streaming is not cut off by the request timeout;
+  raise it in Settings → Models if the endpoint stays silent.
 - **Real tools.** File read/write/edit, `ls`/`tree`/`glob`/`grep`, shell `exec`,
   web search and fetch, from [eino-tools](https://github.com/LubyRuffy/eino-tools).
   The transcript shows the command or query, not the JSON envelope; a failed
-  `exec` is a red error, not a grey dump.
-- **Nothing hardcoded.** Endpoints, models, concurrency and tool switches live in
-  one YAML file, editable from Settings.
+  `exec` is a red error, not a grey dump. Opening an `exec` row wraps the full
+  command with shell highlighting instead of leaving it cut off. Opening a
+  `read` paints the file from its suffix (Go, TypeScript, Python, …) instead
+  of a grey dump; markdown still renders as prose. Agents are
+  told which OS, shell and date they are on, so they stop emitting GNU-only
+  flags on a Mac.
+- **Links leave the app.** A markdown URL opens in a new browser tab (`zwai web`)
+  or the system browser (`zwai desktop`). It does not replace the window.
 - **One-id troubleshooting.** Copy a turn id from the UI and
-  `zwai trace <id>` replays the whole run: timeline, tool calls, model calls.
+  `zwai trace <id>` replays the whole run: timeline, tool calls, model calls
+  with billed tokens. The Trace tab shows the same turn's status and cost; open
+  **Full log** for the on-screen timeline.
 
 ## Quick start
 
@@ -67,8 +136,13 @@ go run ./cmd/zwai web
 ```
 
 First launch writes `~/.zwai-swarm/config.yaml` and shows a setup banner until a
-model is configured. Fill in **Settings → Models** (base URL, API key, model
-name), or seed it from the environment before the first start:
+model is configured. Open **Settings** (⌘,) — a full-page sheet, sections in the
+left rail (on the desktop window, **Back to app** sits below the traffic
+lights). Edits write themselves; **Back to app** flushes the last keystroke.
+Chrome language is **Settings → General**, the **中 / EN** control in the title
+bar, or ⌘K → Switch language. Agents still answer in the language you are using.
+Fill in **Models** (base URL, API key, discover models, pick a
+default), or seed it from the environment before the first start:
 
 ```bash
 export OPENAI_BASE_URL=https://your-endpoint/v1
@@ -102,24 +176,50 @@ What you get:
 1. **A plan, then sub-agents.** The manager spawns workers (`fork_context` when a
    worker needs this conversation so far; `resume_agent` when more work depends
    on a finished worker — same id, not a twin with the same name) and you see each one appear.
+   Open one in the Agents tab to read the system prompt it was given.
 2. **A workspace.** Every conversation has its own directory
    (`~/.zwai-swarm/workspaces/<thread-id>/`). Uploads land in `uploads/`, agent
-   output lands next to it, and the **Files** tab lists it all with download
-   (and, in the desktop app, "Show in Finder"). Expand a `read` in the transcript
-   to see the file: markdown is rendered, other files keep their line numbers.
-3. **Steering.** Type while it works — "skip the third file, it's a duplicate" —
-   and the manager picks it up at its next turn instead of after finishing.
-4. **A reason for everything.** The **Trace** tab and `zwai trace <turn-id>` show
-   the ordered timeline plus every model call with its size and duration.
+   output lands next to it, and the **Files** tab shows a collapsible tree —
+   filter at the top, directories expand like a file explorer, download on
+   hover (and, in the desktop app, "Show in Finder"). The tree is the workspace
+   root, listed breadth-first so a large generated folder cannot hide the rest.
+   Expand a `read` in the transcript to see the file: markdown is rendered,
+   other files keep their line numbers.
+3. **Steering.** Type while it works. The nudge sits under the working line
+   until the manager's next model call — it is queued, not inserted into the
+   current tool. Steering that arrives after the last model call becomes a
+   follow-up turn.
+4. **Quote the conversation.** Select a passage and **Add to chat** when you want
+   the next message to point at it. Hover the annotation to edit or drop the
+   quote; send with an empty box if the quote is the whole request.
+5. **What this turn cost.** The **Trace** tab shows status, duration, billed
+   tokens, and the turn id (`zwai trace <id>` replays the full dump). The event
+   log stays folded until you open **Full log**.
 
-Keyboard: `⌘K` command palette · `⌘N` new conversation · `⌘B` hide or show the
-conversation list · `⌘\` toggle the right panel · `⌘,` settings · `Esc` stop the
-running turn.
+Keyboard: Enter sends (while a turn is running it queues a follow-up; an IME
+confirmation — keeping leftover Latin as typed — is not a send) · `/` at the
+start of the box opens built-in commands · ⌘Enter steers
+the draft into the current turn · Shift+Enter a newline · `⌘K` command palette · `⌘N` new
+conversation · `⌘F` find in the open conversation · `⌘B` hide or show the
+conversation list · `⌘\` toggle the right panel · `⌘,` settings · `Esc` stop
+the running turn (or close find first, if that bar is open). Drag the border
+of the conversation list or the right panel to resize them. Conversations
+and projects sort by last update; drag a row to pin a custom order (a click
+still opens it). On the
+desktop window, drag the title bar to move it; double-click to zoom or restore,
+like Finder.
 
 ### Projects
 
 Work that comes back — one repository, one report, one recurring chore — belongs
-in a project. **New project** at the top of the conversation list asks for three
+in a project. The title bar prefixes the conversation name with the project's
+(`project · title`) so you can see which directory the tools are pointed at.
+The project list follows last use, not creation; drag a row to pin it.
+**New conversation** at the top of the list is Recents. Hover a project for a
+new-conversation control on the row itself — it starts one in that folder.
+Click a folder to collapse its topics. Pin a topic from the row menu to keep
+it in **Pinned** at the top.
+**New project** at the top of the conversation list asks for three
 things:
 
 - **an instruction**, added to the system prompt of every conversation in the
@@ -135,21 +235,28 @@ step-by-step procedures the agents wrote for themselves. The next conversation i
 that project starts with the notes in its prompt and an index of the skills, and
 opens a skill when it needs one.
 
-The sidebar lists each project's skills under its name. Click one to open it in
-the **Memory** tab. Notes are editable, skills can be read and deleted, and
-**Review now** re-reads the last finished turn. A write that landed is also named
-in the transcript itself (`Memory updated: …`), so you do not have to have the
-tab open to notice. If you were mid-edit when a review wrote, the panel says so
+The sidebar lists each project's conversations under its name. Click the
+folder to collapse it. Pin a topic from the row menu to keep it in **Pinned**
+at the top. Conversations that belong to no project sit in **Recents**;
+**New conversation** lands there. Skills are behind **View skills** on the
+project menu, which opens the **Memory** tab. Notes are editable — **Save notes** appears only after
+the draft differs from what is stored — skills can be read and deleted, and
+**Review now** (the sparkles on the Memory tab) re-reads the last finished turn.
+The panel says when it is reading, and what it decided — including when it kept
+nothing. A write that landed is also named in the transcript itself
+(`Memory updated: …`), so you do not have to have the tab open to notice. If you were mid-edit when a review wrote, the panel says so
 and lets you keep yours or take the new ones — the last save does not silently
 win. Correcting a wrong note there matters: it would otherwise be repeated in
 every future conversation. Notes are budgeted (`memory.char_limit`, default 2200
-characters) because they ride in every prompt — once full, something has to be
-replaced to make room.
+characters) because they ride in every prompt — once full, a write that would
+grow the notes is refused, even a replace with a longer note. Something
+shorter has to land first.
 
 Memory lives in the data directory, never in your working directory, so a project
-pointed at a repository leaves nothing in it. Deleting a project deletes its
-conversations and its memory; files in a working directory you chose are left
-alone. See [docs/CONFIG.md](docs/CONFIG.md) for the budgets.
+pointed at a repository leaves nothing in it. A procedure that already lives in
+the repository is a file there, not one of these skills. Deleting a project
+deletes its conversations and its memory; files in a working directory you chose
+are left alone. See [docs/CONFIG.md](docs/CONFIG.md) for the budgets.
 
 ## Common ways to run it
 

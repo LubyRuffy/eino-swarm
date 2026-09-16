@@ -8,7 +8,8 @@ $ZWAI_HOME (default ~/.zwai-swarm)/config.yaml     mode 0600
 
 `zwai config path` prints it, `zwai config show` prints its effective contents
 with the API key redacted. Everything in it is editable from **Settings** in the
-app, and a `PUT /api/settings` rewrites the file atomically — a crash mid-write
+app: each control writes itself (debounced; **Back to app** flushes). A
+`PUT /api/settings` rewrites the file atomically — a crash mid-write
 cannot leave a truncated file that fails to parse on the next start.
 
 Nothing in the binary hardcodes an endpoint or a model name. If it is not in this
@@ -28,12 +29,27 @@ models:
           base_url: https://your-endpoint/v1
           api_key: sk-…
           model: your-model
+          catalog:
+            - your-model
+            - your-other-model
           timeout_seconds: 300
+          context_window: 0
+          model_context: {}
 swarm:
     max_concurrent: 6
     agent_timeout_seconds: 600
-    max_turns: 24
-    manager_max_iterations: 32
+    max_turns: 200
+    manager_max_iterations: 200
+    progress_interval_seconds: 5
+    delta_coalesce_ms: 50
+    auto_title: true
+    title_provider: ""
+    title_model: ""
+    compact_provider: ""
+    compact_model: ""
+    context_char_budget: 80000
+    compact_keep_messages: 6
+    goal_max_auto_turns: 12
 tools:
     disabled: []
     enabled: []
@@ -51,6 +67,8 @@ memory:
     notifications: on
 log:
     level: info
+ui:
+    locale: system
 ```
 
 Any key you leave out, set to zero or set to an empty string is repaired with its
@@ -69,21 +87,29 @@ full machine access. Do that only on a network you control.
 ## `models`
 
 `providers` is a list of OpenAI-compatible endpoints; `default` names the one new
-conversations use. Each conversation remembers its own provider, so you can move
-a long conversation to a bigger model without changing the default.
+conversations use. Each conversation remembers its own provider **and** model, so
+you can switch names in the composer without adding an endpoint per model.
+Settings → Models shows that list collapsed: open a row to edit URL, key,
+default model, and timeout. **Add a provider** sits under the list and opens
+the new row.
 
 | key | meaning |
 |---|---|
 | `id` | stable identifier, referenced by `models.default` and by each conversation. Blank or duplicate ids are renamed to `provider-N` on load. |
-| `label` | what the UI shows. Falls back to `model`, then `id`. |
+| `label` | name of this provider in Settings and as the composer group heading. Empty groups by `id`. Never the default model — that made one endpoint look like a pile of unrelated names. |
 | `base_url` | the endpoint, including any `/v1`. |
 | `api_key` | may be empty: local endpoints frequently need none. Never returned by the API — the settings dialog sees only a "set / not set" flag. |
-| `model` | the model name to request. |
-| `timeout_seconds` | per model call. Default `300`. Swarm answers are long; a tight timeout shows up as a turn that fails halfway. |
+| `model` | the default model name new conversations start on. Switch per conversation in the composer. |
+| `catalog` | names this endpoint listed the last time you clicked **Discover models**. The composer offers every name here; you do not add a provider row per model. Empty until you discover (or type a default). |
+| `timeout_seconds` | how long we wait for the next byte (headers or a stream chunk). Default `300`. A thinking model that is still producing tokens is not killed; a silent endpoint is. |
+| `context_window` | fallback token limit for **names that have no row of their own**. `0` means unknown: the composer ring then shows a count (not a fake 0%) and a saturating arc scaled by `swarm.context_char_budget`. Never invented from a model name. Do not put one model's limit here — that would pin every other name on the endpoint to the same number. |
+| `model_context` | per-name windows. Settings lists one field per catalog name; **Discover models** fills a value when the listing included `context_length` / `max_model_len` / `context_window` / `max_context_length` / `max_input_tokens` / `n_ctx` / `max_seq_len`, including one nesting under `top_provider` / `meta` / `limits` / `parameters`. Empty for endpoints that only return names. Output caps are not copied. |
 
 A provider is **ready** when it has both `base_url` and `model`. Until the default
 provider is ready, `GET /api/meta` reports `configured: false` and the UI shows a
-setup banner instead of pretending a turn can run.
+setup banner instead of pretending a turn can run. Listing models only needs the
+base URL (`POST /api/models/discover`); the request is capped at 15 seconds so a
+hung endpoint cannot freeze Settings.
 
 ### First-run seeding
 
@@ -107,10 +133,18 @@ The limits that keep a swarm from running away. All of them apply per turn.
 |---|---|---|
 | `max_concurrent` | `6` | sub-agents running at the same time. Raise it for wide fan-out work; every one of them is a model call in flight. |
 | `agent_timeout_seconds` | `600` | watchdog per sub-agent. A hung endpoint is force-terminated and the agent's result records the timeout. |
-| `max_turns` | `24` | ReAct iterations per sub-agent. A model stuck in a loop ends here instead of spinning. |
-| `manager_max_iterations` | `32` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. |
+| `max_turns` | `200` | ReAct iterations per sub-agent. A model stuck in a loop ends here instead of spinning. |
+| `manager_max_iterations` | `200` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. Reaching the cap **pauses** the turn and asks whether to add another slice of this size, rather than failing with eino's iteration error. |
 | `progress_interval_seconds` | `5` | how often a running turn emits a progress pulse. It is the only thing that moves while every agent sits in a slow tool call, so a higher value makes a busy run look stuck for longer. Zero or negative falls back to the default; pulses cannot be switched off. |
 | `delta_coalesce_ms` | `50` | how long streamed tokens wait to be sent as one event. A token every few milliseconds would redraw the whole UI; one pulse per interval keeps the screen moving without a frame per token. Zero or negative falls back to the default. |
+| `auto_title` | `true` | after the first finished turn, ask the model for a short sidebar name instead of leaving the truncated first message. Off keeps the placeholder. A title the user typed is never overwritten. An older config file without the key stays on. |
+| `title_provider` | empty | endpoint the namer calls. Empty follows the conversation's provider. An id that is no longer in `providers` is cleared on load. |
+| `title_model` | empty | model name the namer calls. Empty (with an empty provider) follows the conversation's model. A name with no provider stays on the conversation's endpoint. Pin one in Settings → Models when an endpoint lists more than one name. |
+| `compact_provider` | empty | endpoint `/compact` calls. Same empty-means-follow rule as `title_provider`. A deleted id is cleared on load. |
+| `compact_model` | empty | model name `/compact` calls. Same pin rules as `title_model`. Pin one in Settings → Models. |
+| `context_char_budget` | `80000` | rune count treated as 100% full on the `/compact` hint when the model has not reported a token window. Zero or negative is repaired to the default. |
+| `compact_keep_messages` | `6` | recent user/assistant replay messages that stay verbatim after `/compact`. The rest become the briefing. Zero or negative is repaired to the default. |
+| `goal_max_auto_turns` | `12` | consecutive engine-started turns that may pursue an open `/goal` without another human message. Zero or negative is repaired to the default. A human message or resume resets the count. `block_goal` stops auto-continue without waiting for the cap. |
 
 The current values are reported in `GET /api/meta` and are part of the manager's
 system prompt, so it knows how wide it may fan out.
@@ -168,10 +202,10 @@ shares. Nothing here applies to a conversation outside a project.
 |---|---|---|
 | `enabled` | `true` | the master switch. Off means no project carries notes or skills and no review runs, whatever a project's own switch says. What is already stored stays readable in the Memory panel. |
 | `auto_review` | `true` | read a turn back when it finishes and keep what is worth carrying forward. Off leaves memory to the agents' own tools and the "Review now" button. Only a turn that finished cleanly is reviewed: nobody who pressed stop asked for a half-finished approach to become a skill. |
-| `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. Once it is full an agent must replace a note to add one — which is the point, and why it is small. |
+| `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. A write that would grow past this is refused — including replacing a note with a longer one. The tool result says by how many characters (`over_by`) and lists what is stored, so the agent shortens or drops a note rather than retrying the same text. Small on purpose. |
 | `review_max_iterations` | `8` | how many times the review may think and write before it is stopped. It reads one conversation and makes a handful of tool calls; a large number here buys a slow, expensive review rather than a better one. |
-| `skills_index_max` | `50` | how many skills are listed in the prompt. Only names and one-line descriptions are listed; an agent opens the one it needs with `skill_view`. Beyond this cap the prompt says how many were not listed. |
-| `notifications` | `on` | how a completed review appears in the transcript. `on` is one line naming what changed (`Memory updated: 1 note stored`). `verbose` adds a preview of the written text. `off` writes nothing in the transcript — the review still runs, and the Trace tab still lists it. An unknown value is repaired to `on`, not to silence. |
+| `skills_index_max` | `50` | how many skills are listed in the prompt. Only names and one-line descriptions are listed; an agent opens the one it needs with `skill_view`. Beyond this cap the prompt says how many were not listed. `skill_view` opens only this index — a procedure sitting in the workspace is a file. |
+| `notifications` | `on` | how a completed review appears in the transcript. `on` is one line naming what changed (`Memory updated: 1 note stored`). `verbose` adds a preview of the written text. `off` writes nothing in the transcript — the review still runs, and the Trace tab's Full log still lists it. An unknown value is repaired to `on`, not to silence. |
 
 Numbers that are zero or negative fall back to their defaults, so a hand-edited
 file cannot leave a project with no room to remember anything.
@@ -187,6 +221,16 @@ panel rather than by hand while the app is running.
 | `level` | `info` | `debug`, `info`, `warn` or `error`. `debug` adds one line per HTTP request and per event-stream decision — that plus `zwai trace` is usually enough to explain a bad turn. |
 
 Logs go to stderr. Anything unrecognized falls back to `info`.
+
+## `ui`
+
+Chrome only. Agents still answer in the language you are using.
+
+| key | default | meaning |
+|---|---|---|
+| `locale` | `system` | `system`, `en` or `zh`. `system` follows the browser (`zh*` → Chinese, everything else English). The title-bar control pins `en` or `zh`. Desktop binds a random loopback, so this lives in the file rather than in `localStorage` alone. Junk becomes `system`. |
+
+Theme stays in the browser; language is first-class config so a new window keeps it.
 
 ## Multiple instances
 

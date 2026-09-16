@@ -31,14 +31,21 @@ func TestEndpointsFailCleanlyWithoutADatabase(t *testing.T) {
 	}{
 		{http.MethodGet, "/api/threads", nil},
 		{http.MethodPost, "/api/threads", map[string]any{"title": "x"}},
+		{http.MethodPut, "/api/threads/reorder", map[string]any{"ids": []string{id}}},
+		{http.MethodPut, "/api/projects/reorder", map[string]any{"ids": []string{"pj_1"}}},
 		{http.MethodGet, "/api/threads/" + id, nil},
 		{http.MethodPatch, "/api/threads/" + id, map[string]any{"title": "y"}},
 		{http.MethodDelete, "/api/threads/" + id, nil},
 		{http.MethodGet, "/api/threads/" + id + "/turns", nil},
 		{http.MethodPost, "/api/threads/" + id + "/turns", map[string]any{"text": "go"}},
 		{http.MethodPost, "/api/threads/" + id + "/steer", map[string]any{"text": "go"}},
+		{http.MethodGet, "/api/threads/" + id + "/followups", nil},
+		{http.MethodPost, "/api/threads/" + id + "/followups", map[string]any{"text": "go"}},
 		{http.MethodPost, "/api/threads/" + id + "/interrupt", nil},
+		{http.MethodPost, "/api/threads/" + id + "/continue", map[string]any{"continue": true}},
+		{http.MethodPost, "/api/threads/" + id + "/compact", nil},
 		{http.MethodGet, "/api/threads/" + id + "/files", nil},
+		{http.MethodGet, "/api/threads/" + id + "/input-images/img_deadbeef", nil},
 		{http.MethodGet, "/api/threads/" + id + "/events", nil},
 		{http.MethodGet, "/api/trace/anything", nil},
 	} {
@@ -64,7 +71,10 @@ func TestMalformedBodiesAreRejected(t *testing.T) {
 		"/api/threads",
 		"/api/threads/" + id + "/turns",
 		"/api/threads/" + id + "/steer",
+		"/api/threads/" + id + "/followups",
+		"/api/threads/" + id + "/continue",
 		"/api/threads/" + id + "/reveal",
+		"/api/open",
 	} {
 		resp := h.do(http.MethodPost, path, "\"not an object\"")
 		resp.Body.Close()

@@ -98,6 +98,9 @@ func TestSettingsViewHidesKeysAndReportsReadiness(t *testing.T) {
 	if b.HasAPIKey || b.Ready {
 		t.Fatalf("an empty provider is not ready: %+v", b)
 	}
+	if a.Catalog == nil || b.Catalog == nil {
+		t.Fatal("catalog must be a list, not null")
+	}
 	// the view type has no field that could carry the key at all
 	if strings.Contains(strings.ToLower(a.Label+a.BaseURL+a.Model), "k") && a.Model == "k" {
 		t.Fatal("the key ended up in another field")

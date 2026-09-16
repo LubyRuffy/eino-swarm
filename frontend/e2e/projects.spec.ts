@@ -18,8 +18,10 @@ async function send(page: Page, text: string) {
   await expect(page.getByTestId("memory-notice")).toBeVisible({ timeout: 60_000 })
 }
 
-/** Creates a project and leaves it selected. The name is unique per run so a
- *  leftover data directory cannot make a later run pass for the wrong reason. */
+async function startInProject(page: Page, name: string) {
+  await page.getByRole("button", { name: `New conversation in ${name}` }).click()
+}
+
 async function createProject(page: Page, name: string) {
   await page.goto("/")
   await page.getByRole("button", { name: "New project" }).click()
@@ -42,39 +44,61 @@ test("a project carries what one conversation learned into the next", async ({
   const project = `Project ${Date.now()}`
   await createProject(page, project)
 
-  // A conversation started while a project is selected belongs to it, and
+  // A conversation started from the project row belongs to it, and
   // says so: which directory the tools are pointed at is otherwise invisible.
-  await page.getByRole("button", { name: "New conversation" }).click()
+  await startInProject(page, project)
   await expect(page.getByTestId("thread-project")).toHaveText(project)
+  // Project name prefixes the title on one line. Stacking them in the 48px
+  // bar made the chrome look cramped; a second copy of the model name used to
+  // sit on the right of the same row.
+  const projectBox = await page.getByTestId("thread-project").boundingBox()
+  const titleBox = await page.getByTestId("thread-title").boundingBox()
+  expect(projectBox).not.toBeNull()
+  expect(titleBox).not.toBeNull()
+  expect(projectBox!.x).toBeLessThan(titleBox!.x)
+  expect(Math.abs(projectBox!.y - titleBox!.y)).toBeLessThan(4)
 
   const first = `Trace the ${Date.now()} material and summarise it`
   await send(page, first)
 
-  // The review runs after the turn, on its own. The skill it recorded has to
-  // show up under the project in the sidebar — that is how you find it without
-  // opening the Memory tab first.
-  const sidebarSkill = page.getByRole("button", { name: /^Open skill / })
-  await expect(sidebarSkill).toBeVisible({ timeout: 60_000 })
-  const skillName = ((await sidebarSkill.getAttribute("aria-label")) ?? "").replace(
-    /^Open skill /,
-    "",
-  )
-  expect(skillName).not.toBe("")
-  await sidebarSkill.click()
+  // The review runs after the turn, on its own. Skills live behind the
+  // project menu so the folder stays a directory, not a catalogue.
+  await page.getByRole("button", { name: `Project options for ${project}` }).click()
+  await page.getByRole("menuitem", { name: "View skills" }).click()
   await expect(page.getByRole("tab", { name: "Memory", selected: true })).toBeVisible()
   await expect(notes(page)).toHaveValue(new RegExp(escape(first)), {
     timeout: 60_000,
   })
-  await expect(page.getByRole("button", { expanded: true })).toBeVisible()
+  const skillCard = page.getByTestId("skill-card")
+  await expect(skillCard).toBeVisible({ timeout: 60_000 })
+  const skillName = ((await skillCard.locator("button").first().textContent()) ?? "").trim()
+  expect(skillName).not.toBe("")
+  await skillCard.locator("button").first().click()
+  const skillToggle = skillCard.locator("button").first()
+  await expect(skillToggle).toHaveAttribute("aria-expanded", "true")
+  await expect(skillToggle).toBeInViewport()
+  const skillBody = page.getByTestId("skill-body")
+  await expect(skillBody).toBeVisible()
+  const bodyBox = await skillBody.boundingBox()
+  const cardBox = await skillCard.boundingBox()
+  expect(bodyBox).not.toBeNull()
+  expect(cardBox).not.toBeNull()
+  // The body used to paint over the Files tree (and the next skill). It has
+  // to stay inside its card.
+  expect(bodyBox!.x).toBeGreaterThanOrEqual(cardBox!.x - 1)
+  expect(bodyBox!.x + bodyBox!.width).toBeLessThanOrEqual(cardBox!.x + cardBox!.width + 1)
+  expect(bodyBox!.y).toBeGreaterThanOrEqual(cardBox!.y - 1)
+  expect(bodyBox!.y + bodyBox!.height).toBeLessThanOrEqual(cardBox!.y + cardBox!.height + 1)
 
   // One id still reaches the whole run: the review is recorded on the turn it
-  // reviewed, so it shows up in the same trace as the work.
+  // reviewed, so it shows up in the same trace as the work — behind Full log.
   await page.getByRole("tab", { name: "Trace" }).click()
-  await expect(page.getByRole("tabpanel").getByText(/Memory updated/)).toBeVisible()
+  await page.getByTestId("trace-log-toggle").click()
+  await expect(page.getByTestId("trace-log").getByText(/Memory updated/)).toBeVisible()
 
   // A second conversation in the same project starts with the first one's
   // skill already there — that is the feature.
-  await page.getByRole("button", { name: "New conversation" }).click()
+  await startInProject(page, project)
   await expect(page.getByTestId("thread-project")).toHaveText(project)
   await openMemory(page)
   await expect(notes(page)).toHaveValue(new RegExp(escape(first)))
@@ -82,9 +106,11 @@ test("a project carries what one conversation learned into the next", async ({
   await expect(page.getByText(skillName.slice(0, 12), { exact: false }).first()).toBeVisible()
 
   // A note the user corrects must stay corrected: memory nobody can fix is
-  // memory that repeats its mistake in every later conversation.
+  // memory that repeats its mistake in every later conversation. Save is not
+  // on the pane until there is something to write.
+  await expect(page.getByRole("button", { name: "Save notes", exact: true })).toHaveCount(0)
   await notes(page).fill("A note the user wrote by hand")
-  await page.getByRole("button", { name: "Save notes" }).click()
+  await page.getByRole("button", { name: "Save notes", exact: true }).click()
   await page.reload()
   await openMemory(page)
   await expect(notes(page)).toHaveValue("A note the user wrote by hand")
@@ -96,18 +122,117 @@ test("a project carries what one conversation learned into the next", async ({
   await page.getByRole("button", { name: "Delete project" }).click()
 
   await expect(projectRow(page, project)).toBeHidden()
-  await expect(page.getByRole("button", { name: "All conversations" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  )
+})
+
+test("the Memory tab does not leave a blank Agents pane above the notes", async ({
+  page,
+}) => {
+  const project = `Project ${Date.now()}`
+  await createProject(page, project)
+  await startInProject(page, project)
+  await openMemory(page)
+
+  const tablist = page.getByRole("tablist")
+  const heading = page.getByRole("heading", { name: "Notes" })
+  await expect(heading).toBeVisible()
+  const tabBox = await tablist.boundingBox()
+  const notesBox = await heading.boundingBox()
+  expect(tabBox).not.toBeNull()
+  expect(notesBox).not.toBeNull()
+  // Project name + padding sit between the tabs and Notes. A leaked Agents
+  // shell was half the column — hundreds of pixels.
+  expect(notesBox!.y - (tabBox!.y + tabBox!.height)).toBeLessThan(120)
+  // Notes used to eat the pane; Skills were clipped at the window with no
+  // way to scroll them into view.
+  await expect(page.getByRole("heading", { name: "Skills" })).toBeInViewport()
+  await expect(page.getByTestId("skills-list")).toBeInViewport()
+  // Tailwind .flex used to beat [hidden], so Files sat beside Memory and a
+  // skill body covered the file names. Inactive panes must not paint.
+  await expect(
+    page.locator('[role="tabpanel"][data-state="inactive"]').first(),
+  ).toHaveCSS("display", "none")
+})
+
+test("Review now says when there is nothing to review", async ({ page }) => {
+  const project = `Project ${Date.now()}`
+  await createProject(page, project)
+  await startInProject(page, project)
+  await openMemory(page)
+  await page.getByRole("button", { name: "Review this conversation now" }).click()
+  await expect(page.getByTestId("review-status")).toContainText(/nothing to review/i)
 })
 
 test("a conversation outside a project has no memory to show", async ({ page }) => {
   await page.goto("/")
-  await page.getByRole("button", { name: "All conversations" }).click()
-  await page.getByRole("button", { name: "New conversation" }).click()
+  await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(page.getByTestId("thread-project")).toBeHidden()
   await expect(page.getByRole("tab", { name: "Memory" })).toBeHidden()
+})
+
+test("hovering a project starts a conversation in it, not in Recents", async ({
+  page,
+}) => {
+  const project = `Project ${Date.now()}`
+  await createProject(page, project)
+
+  const startIn = page.getByRole("button", { name: `New conversation in ${project}` })
+  await expect(startIn).toHaveCSS("opacity", "0")
+  await projectRow(page, project).hover()
+  await expect(startIn).toHaveCSS("opacity", "1")
+  await startIn.click()
+
+  await expect(page.getByTestId("thread-project")).toHaveText(project)
+  await expect(projectRow(page, project)).toHaveAttribute("aria-pressed", "true")
+})
+
+test("a project topic can be pinned to the top and stays there after reload", async ({
+  page,
+}) => {
+  const project = `Project ${Date.now()}`
+  await createProject(page, project)
+  await startInProject(page, project)
+  const row = page.getByTestId("project-threads").getByTestId("thread-row").first()
+  await row.hover()
+  await row.getByRole("button", { name: "More" }).click()
+  await page.getByRole("menuitem", { name: "Pin" }).click()
+  await expect(page.getByTestId("pinned-list")).toBeVisible()
+  await page.reload()
+  await expect(page.getByTestId("pinned-list")).toBeVisible()
+})
+
+test("dragging a project pins that order across reload", async ({ page }) => {
+  const older = `Zebra ${Date.now()}`
+  const newer = `Alpha ${Date.now()}`
+  await createProject(page, older)
+  await createProject(page, newer)
+  await expect(page.getByTestId("project-row").nth(0)).toContainText(newer)
+  await page.evaluate(() => {
+    const rows = Array.from(document.querySelectorAll('[data-testid="project-row"]'))
+    const source = rows[1]
+    const target = rows[0]
+    if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
+      throw new Error("missing project row")
+    }
+    const handle = source.querySelector("[data-drag-handle]")
+    if (!(handle instanceof HTMLElement)) {
+      throw new Error("missing drag handle")
+    }
+    handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+    const dt = new DataTransfer()
+    source.dispatchEvent(
+      new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: dt }),
+    )
+    target.dispatchEvent(
+      new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt }),
+    )
+    target.dispatchEvent(
+      new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }),
+    )
+    source.dispatchEvent(new DragEvent("dragend", { bubbles: true, dataTransfer: dt }))
+  })
+  await expect(page.getByTestId("project-row").nth(0)).toContainText(older)
+  await page.reload()
+  await expect(page.getByTestId("project-row").nth(0)).toContainText(older)
 })
 
 function escape(text: string): string {

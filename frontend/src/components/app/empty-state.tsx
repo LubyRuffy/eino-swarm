@@ -1,38 +1,40 @@
 import { FileText, Layers, Search } from "lucide-react"
 
+import { useT } from "@/lib/use-t"
+
 /** Shown before the first message. Its job is to answer "what do I type?",
  *  so the examples describe shapes of work rather than a canned prompt. */
 export function EmptyState({ onPick }: { onPick: (text: string) => void }) {
+  const t = useT()
   const ideas = [
     {
       icon: Search,
-      title: "Research something broad",
-      hint: "Several sub-agents look into different angles at once.",
-      text: "Research a topic from several angles and give me one merged brief with sources.",
+      title: t("empty.research.title"),
+      hint: t("empty.research.hint"),
+      text: t("empty.research.text"),
     },
     {
       icon: FileText,
-      title: "Work through files",
-      hint: "Attach files with the paperclip, then say what to do with them.",
-      text: "Go through the files in the workspace and summarise what each one contains.",
+      title: t("empty.files.title"),
+      hint: t("empty.files.hint"),
+      text: t("empty.files.text"),
     },
     {
       icon: Layers,
-      title: "Split a big task",
-      hint: "Say the goal; it decides how many workers it needs.",
-      text: "Break this goal into parallel pieces, work them in parallel, then combine the results.",
+      title: t("empty.split.title"),
+      hint: t("empty.split.hint"),
+      text: t("empty.split.text"),
     },
   ]
 
   return (
-    <div className="flex flex-1 items-center justify-center px-6 py-10">
+    <div className="flex flex-1 items-center justify-center px-6 pt-10 pb-composer">
       <div className="w-full max-w-2xl">
         <h1 className="text-center text-2xl font-semibold tracking-tight">
-          What should we work on?
+          {t("empty.title")}
         </h1>
         <p className="mt-2 text-center text-sm text-muted-foreground">
-          Describe the outcome you want. It delegates to sub-agents when the
-          work is worth splitting up, and you can steer it while it runs.
+          {t("empty.lead")}
         </p>
         <div className="mt-8 grid gap-2 sm:grid-cols-3">
           {ideas.map(({ icon: Icon, title, hint, text }) => (

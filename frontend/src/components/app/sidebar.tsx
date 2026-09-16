@@ -1,28 +1,32 @@
-import {
-  MessageSquarePlus,
-  MoreHorizontal,
-  PanelLeft,
-  Pencil,
-  Search,
-  Settings,
-  Trash2,
-} from "lucide-react"
+import { MessageSquarePlus, Search, Settings } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import { ProjectList } from "@/components/app/project-list"
-import { StatusDot } from "@/components/app/transcript"
+import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
+import { ResizeHandle } from "@/components/app/resize-handle"
+import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
+import { reorderById } from "@/lib/reorder"
+import {
+  isProjectExpanded,
+  readProjectExpanded,
+  writeProjectExpanded,
+} from "@/lib/sidebar-collapse"
+import { sidebarBuckets } from "@/lib/sidebar-groups"
+import {
+  SIDEBAR_WIDTH_MAX,
+  SIDEBAR_WIDTH_MIN,
+  SIDEBAR_WIDTH_VAR,
+  applySidebarWidth,
+  hydrateSidebarWidth,
+  paintSidebarWidth,
+} from "@/lib/sidebar-width"
+import { useSortableList } from "@/lib/sortable"
 import type { Project, SkillInfo, Thread } from "@/lib/types"
-import { cn, relativeDay } from "@/lib/utils"
+import { useT } from "@/lib/use-t"
 
-/** Conversations, grouped the way people remember them. */
+/** Conversations, grouped the way people remember them: pins to watch,
+ *  project folders, Recents for everything else. */
 export function Sidebar({
   threads,
   activeId,
@@ -33,15 +37,17 @@ export function Sidebar({
   onDelete,
   onSearch,
   onSettings,
-  onCollapse,
-  trafficInset,
   projects,
   selectedProjectId,
   onSelectProject,
   onNewProject,
+  onNewInProject,
   onEditProject,
   onDeleteProject,
   onOpenSkill,
+  onReorder,
+  onReorderProjects,
+  onPin,
 }: {
   threads: Thread[]
   activeId?: string
@@ -52,43 +58,62 @@ export function Sidebar({
   onDelete: (id: string) => void
   onSearch: () => void
   onSettings: () => void
-  onCollapse: () => void
   projects: Project[]
   selectedProjectId?: string
   onSelectProject: (id?: string) => void
   onNewProject: () => void
+  onNewInProject: (project: Project) => void
   onEditProject: (project: Project) => void
   onDeleteProject: (project: Project) => void
   onOpenSkill: (project: Project, skill?: SkillInfo) => void
-  /** macOS hidden-inset traffic lights sit on this chrome row. New
-   *  conversation lives under it, so the label is never under the yellow blob. */
-  trafficInset?: boolean
+  onReorder: (ids: string[]) => void
+  onReorderProjects: (ids: string[]) => void
+  onPin: (id: string, pinned: boolean) => void
 }) {
-  const groups = useMemo(() => groupByDay(threads), [threads])
+  const t = useT()
+  const buckets = useMemo(() => sidebarBuckets(threads), [threads])
+  const [startWidth] = useState(hydrateSidebarWidth)
+  const [doomed, setDoomed] = useState<Thread>()
+  const [expanded, setExpanded] = useState(readProjectExpanded)
+  const activeProjectId = threads.find((th) => th.id === activeId)?.project_id
+  const openByProject = useMemo(() => {
+    const next: Record<string, boolean> = {}
+    for (const project of projects) {
+      next[project.id] = isProjectExpanded(project.id, {
+        activeProjectId,
+        selectedId: selectedProjectId,
+        overrides: expanded,
+      })
+    }
+    return next
+  }, [projects, activeProjectId, selectedProjectId, expanded])
+  const recentsSortable = useSortableList((from, to) => {
+    onReorder(reorderById(buckets.recents, from, to).map((th) => th.id))
+  })
+  const askDelete = (id: string) => {
+    const hit = threads.find((th) => th.id === id)
+    if (hit) setDoomed(hit)
+  }
 
   return (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
-      <div
-        data-testid="sidebar-chrome"
-        data-drag-region
-        className={cn(
-          "flex h-12 shrink-0 items-center gap-1 pr-2",
-          trafficInset ? "pl-traffic" : "pl-3",
-        )}
-      >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          onClick={onCollapse}
-          aria-label="Hide conversations"
-          title="Hide conversations (⌘B)"
-        >
-          <PanelLeft />
-        </Button>
-      </div>
-
-      <div className="flex items-center gap-1 px-3 pb-2">
+    // The resize strip hangs 4px into the transcript. This column is the
+    // earlier flex sibling; without a stacking context the main column
+    // paints over that overlap and the drag dies.
+    <aside
+      data-testid="conversation-list"
+      className="relative z-10 flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar"
+      style={{ width: `var(${SIDEBAR_WIDTH_VAR}, ${startWidth}px)` }}
+    >
+      <ResizeHandle
+        width={startWidth}
+        onWidthChange={paintSidebarWidth}
+        onWidthCommit={applySidebarWidth}
+        edge="right"
+        label={t("sidebar.resize")}
+        min={SIDEBAR_WIDTH_MIN}
+        max={SIDEBAR_WIDTH_MAX}
+      />
+      <div className="flex items-center gap-1 px-3 pb-2 pt-3">
         <Button
           variant="secondary"
           size="sm"
@@ -96,169 +121,112 @@ export function Sidebar({
           onClick={onNew}
         >
           <MessageSquarePlus className="shrink-0" />
-          <span className="min-w-0 truncate">New conversation</span>
+          <span className="min-w-0 truncate">{t("sidebar.newConversation")}</span>
         </Button>
         <Button
           variant="ghost"
           size="icon-sm"
           className="shrink-0"
           onClick={onSearch}
-          title="Search conversations (⌘K)"
+          title={t("sidebar.search")}
         >
           <Search />
         </Button>
       </div>
 
       <div className="thin-scrollbar flex-1 overflow-y-auto px-2 pb-2">
+        {buckets.pinned.length > 0 ? (
+          <section className="mb-2" data-testid="pinned-list">
+            <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
+              {t("sidebar.pinned")}
+            </p>
+            {buckets.pinned.map((thread) => (
+              <SidebarThreadRow
+                key={thread.id}
+                thread={thread}
+                active={thread.id === activeId}
+                running={thread.running || thread.id === runningId}
+                onOpen={onOpen}
+                onRename={onRename}
+                onDelete={askDelete}
+                onPin={onPin}
+              />
+            ))}
+          </section>
+        ) : null}
+
         <ProjectList
           projects={projects}
+          threadsByProject={buckets.byProject}
+          expanded={openByProject}
           selectedId={selectedProjectId}
+          activeId={activeId}
+          runningId={runningId}
           onSelect={onSelectProject}
+          onToggle={(id) => {
+            const next = { ...expanded, [id]: !openByProject[id] }
+            setExpanded(next)
+            writeProjectExpanded(next)
+          }}
           onNew={onNewProject}
+          onNewConversation={onNewInProject}
           onEdit={onEditProject}
           onDelete={onDeleteProject}
           onOpenSkill={onOpenSkill}
+          onReorder={onReorderProjects}
+          onOpenThread={onOpen}
+          onRenameThread={onRename}
+          onDeleteThread={askDelete}
+          onReorderThreads={onReorder}
+          onPinThread={onPin}
         />
 
-        {threads.length === 0 ? (
+        {buckets.recents.length > 0 ? (
+          <section className="mb-2" data-testid="recents-list">
+            <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
+              {t("sidebar.recents")}
+            </p>
+            {buckets.recents.map((thread) => (
+              <SidebarThreadRow
+                key={thread.id}
+                thread={thread}
+                active={thread.id === activeId}
+                running={thread.running || thread.id === runningId}
+                drag={recentsSortable.bind(thread.id)}
+                onOpen={onOpen}
+                onRename={onRename}
+                onDelete={askDelete}
+              />
+            ))}
+          </section>
+        ) : threads.length === 0 ? (
           <p className="px-2 py-6 text-xs text-sidebar-foreground/70">
-            {selectedProjectId
-              ? "No conversations in this project yet."
-              : "No conversations yet. Start one and it will appear here."}
+            {t("sidebar.empty")}
           </p>
-        ) : (
-          groups.map(([label, items]) => (
-            <div key={label} className="mb-2">
-              <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
-                {label}
-              </p>
-              {items.map((thread) => (
-                <Row
-                  key={thread.id}
-                  thread={thread}
-                  active={thread.id === activeId}
-                  running={thread.running || thread.id === runningId}
-                  onOpen={onOpen}
-                  onRename={onRename}
-                  onDelete={onDelete}
-                />
-              ))}
-            </div>
-          ))
-        )}
+        ) : null}
       </div>
 
       <div className="flex items-center justify-between border-t border-sidebar-border px-3 py-2">
         <Button variant="ghost" size="sm" className="gap-2" onClick={onSettings}>
           <Settings />
-          Settings
+          {t("sidebar.settings")}
         </Button>
       </div>
-    </aside>
-  )
-}
-
-function Row({
-  thread,
-  active,
-  running,
-  onOpen,
-  onRename,
-  onDelete,
-}: {
-  thread: Thread
-  active: boolean
-  running: boolean
-  onOpen: (id: string) => void
-  onRename: (id: string, title: string) => void
-  onDelete: (id: string) => void
-}) {
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(thread.title)
-
-  if (editing) {
-    const commit = () => {
-      const title = draft.trim()
-      if (title && title !== thread.title) onRename(thread.id, title)
-      setEditing(false)
-    }
-    return (
-      <Input
-        autoFocus
-        value={draft}
-        className="my-0.5 h-8 text-sm"
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") commit()
-          if (e.key === "Escape") {
-            setDraft(thread.title)
-            setEditing(false)
-          }
+      <ConfirmDeleteDialog
+        open={Boolean(doomed)}
+        title={t("thread.deleteTitle", {
+          name: doomed?.title?.trim() || t("sidebar.untitled"),
+        })}
+        description={t("thread.deleteDesc")}
+        confirmLabel={t("thread.deleteConfirm")}
+        cancelLabel={t("confirm.cancel")}
+        onOpenChange={(open) => {
+          if (!open) setDoomed(undefined)
+        }}
+        onConfirm={() => {
+          if (doomed) onDelete(doomed.id)
         }}
       />
-    )
-  }
-
-  return (
-    <div
-      className={`group flex items-center gap-1 rounded-md px-2 py-1.5 text-sm transition-colors ${
-        active
-          ? "bg-sidebar-accent text-foreground"
-          : "text-sidebar-foreground hover:bg-sidebar-accent/60"
-      }`}
-    >
-      <button
-        type="button"
-        onClick={() => onOpen(thread.id)}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-      >
-        {running ? <StatusDot status="running" /> : null}
-        <span className="truncate">{thread.title || "Untitled"}</span>
-      </button>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
-            title="More"
-          >
-            <MoreHorizontal />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem
-            onSelect={() => {
-              setDraft(thread.title)
-              setEditing(true)
-            }}
-          >
-            <Pencil />
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem destructive onSelect={() => onDelete(thread.id)}>
-            <Trash2 />
-            Delete
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
+    </aside>
   )
-}
-
-const ORDER = ["Today", "Yesterday", "This week", "This month", "Earlier"]
-
-function groupByDay(threads: Thread[]): [string, Thread[]][] {
-  const buckets = new Map<string, Thread[]>()
-  for (const t of threads) {
-    const label = relativeDay(t.last_active_at)
-    const list = buckets.get(label) ?? []
-    list.push(t)
-    buckets.set(label, list)
-  }
-  return ORDER.filter((label) => buckets.has(label)).map((label) => [
-    label,
-    buckets.get(label)!,
-  ])
 }

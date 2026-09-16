@@ -36,7 +36,7 @@ reg.ModelBuilder = func(role, agentID string) model.BaseChatModel { return share
 final, err := reg.Run(ctx, task, func(n swarm.Notification) {
     switch n.Kind {
     case swarm.NotifyAgentMessage: // manager or worker completed a message
-    case swarm.NotifySpawned:      // a sub-agent started (n.Role, n.AgentID)
+    case swarm.NotifySpawned:      // a sub-agent started (n.Role, n.AgentID, n.Text=instruction)
     case swarm.NotifyDone:         // run finished; n.Text is the final answer
     case swarm.NotifyError:        // fatal; n.Err
     }
@@ -67,10 +67,13 @@ res, err := reg.RunWith(ctx, swarm.RunConfig{
 `RunWith` does **not** install signal handling — that belongs to a `main`, not to
 a library call inside a server. This is what zwai's engine uses.
 
-Steering the manager itself (not just a worker) is `reg.SteerManager(text)`;
-it is injected before the manager's next model call. Anything queued but never
-read is recoverable with `reg.TakePendingSteers()`, so a message typed a moment
-before the run ended is not silently lost.
+Steering the manager itself (not just a worker) is `reg.SteerManager(text)`.
+A pasted image rides with `reg.SteerManagerMessage(msg)` so the inbox holds
+`*schema.Message`, not bare strings. Both land before the manager's next model
+call. Anything queued but never read is recoverable with
+`reg.TakePendingSteers()` (captions) or `reg.TakePendingSteerMessages()` (the
+messages themselves, images included), so a send that arrived a moment before
+the run ended is not silently lost.
 
 ## Notifications
 
@@ -88,7 +91,7 @@ type Notification struct {
 | kind | `Text` |
 |---|---|
 | `NotifyAgentMessage` | a completed assistant message |
-| `NotifySpawned` | the sub-agent's role (`AgentID` is its id) |
+| `NotifySpawned` | the worker's system prompt (`Role` is the role, `AgentID` is its id). Older hosts may still send the role in `Text` |
 | `NotifyFinished` | its result; `Err` set when it failed |
 | `NotifyToolCall` | `name(args)` |
 | `NotifyToolResult` | the tool's stdout, **newlines kept**, clipped at 64k runes so a huge `exec` cannot blow up the event log |
@@ -116,7 +119,11 @@ reg := &swarm.Registry{
     MaxConcurrent: 8,
     ModelBuilder: func(role, agentID string) model.BaseChatModel { return shared },
     SubAgentTools: []tool.BaseTool{searchTool, fetchTool},
+    // Optional. Prepended to every sub-agent's Instruction so workers know
+    // facts they cannot see in the manager prompt (OS, shell, date).
+    WorkerPreamble: hostEnv,
 }
+```
 
 manager, _ := adk.NewChatModelAgent(ctx, reg.ManagerConfig(
     "manager", "swarm manager", managerModel,
@@ -172,6 +179,7 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 | context lineage | an agent's context derives from its spawner's, so a dead host cancels everything it spawned. No orphan goroutines. |
 | `AgentTimeout` (default 10m) | a hung model or endpoint; the handle's error records the timeout |
 | `MaxTurns` (default 20) | a model looping forever; ends with eino's `ErrExceedMaxIterations` |
+| `ManagerMaxIterations` | the manager's ReAct cap when `RunConfig.MaxIterations` is unset; `<=0` keeps eino's own default |
 | `Registry.Close` | cancels everything and rejects further spawns; safe even for an agent whose cancel was not yet wired, because contexts are created synchronously inside `Spawn` |
 | `Registry.Cleanup` | kills whatever is still running at the end of a turn and reports how many |
 | bounded registry | finished handles are pruned by `Stats`, so a long session cannot grow the map without bound. Use `Progress` for reporting: it never prunes. Finished conversations stay in a separate archive (default 32) for `resume_agent`. |

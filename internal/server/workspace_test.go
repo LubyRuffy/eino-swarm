@@ -246,3 +246,52 @@ func TestRevealOnDesktop(t *testing.T) {
 		t.Fatalf("desktop mode must advertise reveal: %v", meta)
 	}
 }
+
+func TestTurnNamesThisTurnsUploadsNotLeftovers(t *testing.T) {
+	// Same folder holds every upload in the conversation. The turn body has
+	// to name the files on this send, or the model treats an older leftover
+	// as "the" file.
+	h := newHarness(t)
+	id := h.newThread()
+
+	old := h.upload(id, map[string]string{"leftover.bin": "old"})
+	old.Body.Close()
+	cur := h.upload(id, map[string]string{"current.csv": "a,b\n"})
+	raw, _ := io.ReadAll(cur.Body)
+	cur.Body.Close()
+	var uploaded struct {
+		Files []store.Attachment `json:"files"`
+	}
+	if err := json.Unmarshal(raw, &uploaded); err != nil {
+		t.Fatal(err)
+	}
+	if len(uploaded.Files) != 1 {
+		t.Fatalf("uploads=%+v", uploaded.Files)
+	}
+
+	got := h.json(http.MethodPost, "/api/threads/"+id+"/turns", map[string]any{
+		"text":  "what is this",
+		"files": []string{uploaded.Files[0].RelPath},
+	}, http.StatusAccepted)
+	turn, _ := got["turn"].(map[string]any)
+	text, _ := turn["user_text"].(string)
+	if !strings.Contains(text, uploaded.Files[0].RelPath) {
+		t.Fatalf("this send's file must be named on the turn: %q", text)
+	}
+	if strings.Contains(text, "leftover.bin") {
+		t.Fatalf("a leftover upload must not be named as this message's file: %q", text)
+	}
+	h.waitTurnDone(id)
+
+	h.json(http.MethodPost, "/api/threads/"+id+"/turns", map[string]any{
+		"text":  "what is this",
+		"files": []string{"notes/report.md"},
+	}, http.StatusBadRequest)
+
+	alone := h.json(http.MethodPost, "/api/threads/"+id+"/turns", map[string]any{
+		"files": []string{uploaded.Files[0].RelPath},
+	}, http.StatusAccepted)
+	if alone["turn"] == nil {
+		t.Fatal("a file with no caption still has to start a turn")
+	}
+}

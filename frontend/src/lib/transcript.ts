@@ -1,4 +1,4 @@
-import type { ReviewOutcome, SwarmEvent } from "./types"
+import type { ImageRef, ReviewOutcome, SwarmEvent } from "./types"
 
 /** A transcript is a list of blocks per agent. The event stream is flat and
  *  interleaved across agents, so the reducer's whole job is to fold it into
@@ -13,7 +13,9 @@ export type BlockKind =
   | "tool"
   | "spawn"
   | "notice"
+  | "confirm"
   | "error"
+  | "title"
 
 export interface Block {
   id: string
@@ -25,7 +27,7 @@ export interface Block {
    *  collapsed. */
   streaming?: boolean
   /** A review the user asked not to see in the transcript. It still exists
-   *  so the Trace tab and resume point do not lose the event. */
+   *  so the Trace tab's Full log and resume point do not lose the event. */
   quiet?: boolean
   /** Tool blocks only. */
   tool?: {
@@ -39,9 +41,18 @@ export interface Block {
   }
   /** Spawn blocks only: which sub-agent was started. */
   spawn?: { agentId: string; role: string }
+  /** Confirm blocks only: the manager hit its tool-round cap. */
+  confirm?: {
+    limit: number
+    extendBy: number
+    pending: boolean
+    continued?: boolean
+  }
   turnId: string
   seq: number
   at: string
+  /** Pasted vision inputs on user / steer blocks. */
+  images?: ImageRef[]
 }
 
 export type AgentStatus = "running" | "done" | "failed"
@@ -53,6 +64,9 @@ export interface AgentState {
   /** The last thing this agent did, for the one-line summary in the roster. */
   activity: string
   blocks: Block[]
+  /** The system prompt this worker was started with. Absent on older events
+   *  that only stored the role name. */
+  instruction?: string
   startedAt?: string
   endedAt?: string
   result?: string
@@ -119,6 +133,11 @@ export function reduceEvent(
   state: TranscriptState,
   ev: SwarmEvent,
 ): TranscriptState {
+  if (ev.kind === "rewound") {
+    const from = Number.parseInt(String(ev.text ?? ""), 10)
+    if (!Number.isFinite(from) || from <= 0) return state
+    return rewindTranscript(state, from)
+  }
   const next: TranscriptState = {
     agentOrder: state.agentOrder,
     agents: { ...state.agents },
@@ -140,6 +159,55 @@ export function reduceEvent(
     }
     return next
   }
+  // A generated title is metadata for the sidebar, not a chat row. It still
+  // lives on the manager as a quiet block so the Trace tab's Full log can show it
+  // without inventing a "title-namer" worker in the roster.
+  if (ev.kind === "title") {
+    const row = block(ev, "title", ev.text || ev.err || "")
+    row.quiet = true
+    append(touchAgent(next, MANAGER_ID), row)
+    return next
+  }
+  if (ev.kind === "resumed") {
+    next.running = true
+    upsertTurn(next, ev.turn_id, { status: "running" })
+    if (ev.text) append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text))
+    return next
+  }
+  // /goal and /compact are conversation metadata. They must not mint a
+  // compact-summarizer (or similar) worker in the roster.
+  if (ev.kind === "goal") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", goalNotice(ev.text)))
+    return next
+  }
+  if (ev.kind === "goal_complete") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", "Standing objective completed."))
+    return next
+  }
+  if (ev.kind === "goal_continued") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text?.trim() || "Continuing the standing objective."))
+    return next
+  }
+  if (ev.kind === "goal_capped") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", "Stopped auto-continuing: the standing objective is still open."))
+    return next
+  }
+  if (ev.kind === "goal_blocked") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", "Standing objective blocked: progress needs you or an external change."))
+    return next
+  }
+  if (ev.kind === "goal_edited") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", "Standing objective updated."))
+    return next
+  }
+  if (ev.kind === "goal_resumed") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text?.trim() || "Resuming the standing objective."))
+    return next
+  }
+  if (ev.kind === "compacted") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", compactNotice(ev)))
+    return next
+  }
 
   const agentId = ev.agent_id || MANAGER_ID
   const agent = touchAgent(next, agentId, ev.role)
@@ -150,6 +218,7 @@ export function reduceEvent(
       next.running = true
       next.pulse = undefined
       resetManagerForNewTurn(next, ev.turn_id)
+      agent.blocks = agent.blocks.filter((b) => b.id !== PENDING_EDIT_ID)
       append(agent, block(ev, "user", ev.text ?? ""))
       break
 
@@ -224,6 +293,8 @@ export function reduceEvent(
 
     case "spawned": {
       const child = touchAgent(next, ev.agent_id, ev.role ?? ev.text)
+      const instruction = recordedInstruction(ev.role, ev.text)
+      if (instruction) child.instruction = instruction
       const manager = touchAgent(next, MANAGER_ID)
       const seen = manager.blocks.some((b) => b.kind === "spawn" && b.spawn?.agentId === child.id)
       child.status = "running"
@@ -237,7 +308,7 @@ export function reduceEvent(
       // workers with the same name.
       if (!seen) {
         append(manager, {
-          ...block(ev, "spawn", ev.role ?? ev.text ?? "sub-agent"),
+          ...block(ev, "spawn", instruction ?? ev.role ?? ev.text ?? "sub-agent"),
           agentId: MANAGER_ID,
           spawn: { agentId: child.id, role: ev.role ?? ev.text ?? "sub-agent" },
         })
@@ -254,12 +325,43 @@ export function reduceEvent(
       child.activity = ev.err ? "failed" : "done"
       closeStreaming(child, "reasoning")
       closeStreaming(child, "answer")
+      closePendingTools(child, ev.err)
       break
     }
 
     case "cleanup":
       append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text ?? ""))
       break
+
+    case "max_iterations": {
+      const payload = parseIterationLimit(ev)
+      append(touchAgent(next, MANAGER_ID), {
+        ...block(ev, "confirm", ev.text ?? ""),
+        confirm: {
+          limit: payload?.limit ?? 0,
+          extendBy: payload?.extendBy ?? 0,
+          pending: true,
+        },
+      })
+      break
+    }
+
+    case "max_iterations_continued": {
+      const manager = touchAgent(next, MANAGER_ID)
+      const blocks = manager.blocks.slice()
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        if (blocks[i].kind === "confirm" && blocks[i].confirm?.pending) {
+          blocks[i] = {
+            ...blocks[i],
+            text: ev.text ?? blocks[i].text,
+            confirm: { ...blocks[i].confirm!, pending: false, continued: true },
+          }
+          break
+        }
+      }
+      manager.blocks = blocks
+      break
+    }
 
     case "progress": {
       // A pulse is a snapshot, not a fact about the timeline: it carries no
@@ -273,6 +375,11 @@ export function reduceEvent(
       break
     }
 
+    case "usage":
+      // Token counts live on the composer, not in the transcript. A notice
+      // per model call would bury the answer under billing.
+      break
+
     case "done":
     case "error": {
       const failed = ev.kind === "error"
@@ -284,10 +391,23 @@ export function reduceEvent(
       })
       next.running = false
       next.pulse = undefined
+      const manager = touchAgent(next, MANAGER_ID)
+      const blocks = manager.blocks.slice()
+      for (let i = blocks.length - 1; i >= 0; i--) {
+        if (blocks[i].kind === "confirm" && blocks[i].confirm?.pending) {
+          blocks[i] = {
+            ...blocks[i],
+            confirm: { ...blocks[i].confirm!, pending: false, continued: false },
+          }
+          break
+        }
+      }
+      manager.blocks = blocks
       for (const id of next.agentOrder) {
         const a = next.agents[id]
         closeStreaming(a, "reasoning")
         closeStreaming(a, "answer")
+        closePendingTools(a, ev.err)
         if (a.status === "running") {
           a.status = failed ? "failed" : "done"
           a.activity = failed ? "stopped" : "done"
@@ -319,6 +439,44 @@ export function liveWorkers(state: TranscriptState): number {
   ).length
 }
 
+/** The manager started another round. Tool results patch a row that already
+ *  exists, so they do not count — that is the current round finishing, not
+ *  the next one reading the inbox. */
+function isModelRound(b: Block): boolean {
+  return b.kind === "reasoning" || b.kind === "answer" || b.kind === "tool"
+}
+
+/** Pull unread steering out of the turn body. Steering is queued for the next
+ *  model call; leaving the bubble where the user typed it parks it above
+ *  "Working for…" and reads as already applied. A later round on the same
+ *  turn consumes it and it stays in chronological order. A finished turn
+ *  keeps the event order so history does not jump. */
+export function splitQueuedSteers(
+  blocks: Block[],
+  running: boolean,
+): { body: Block[]; queued: Block[] } {
+  if (!running || blocks.length === 0) {
+    return { body: blocks, queued: [] }
+  }
+  const turnId = blocks[blocks.length - 1].turnId
+  let lastRound = -1
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i]
+    if (b.turnId === turnId && isModelRound(b)) lastRound = i
+  }
+  const body: Block[] = []
+  const queued: Block[] = []
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i]
+    if (b.kind === "steer" && b.turnId === turnId && i > lastRound) {
+      queued.push(b)
+    } else {
+      body.push(b)
+    }
+  }
+  return { body, queued }
+}
+
 /** Collapse a burst of streamed events down to the latest snapshot per
  *  agent and kind. Deltas carry the accumulated string, so keeping only the
  *  last one of a burst is lossless and is what stops a 50-token burst from
@@ -333,6 +491,10 @@ export function collapseLiveEvents(events: SwarmEvent[]): SwarmEvent[] {
       if (seen.has(key)) continue
       seen.add(key)
     }
+    if (ev.kind === "usage") {
+      if (seen.has("usage")) continue
+      seen.add("usage")
+    }
     out.push(ev)
   }
   return out.reverse()
@@ -343,6 +505,102 @@ export function reduceEvents(
   events: SwarmEvent[],
 ): TranscriptState {
   return events.reduce(reduceEvent, state)
+}
+
+/** Local placeholder so an in-place edit does not blink out between Send
+ *  and the replacement user_message. Seq stays 0 so a later rewind still
+ *  treats it as not-yet-stored. */
+export const PENDING_EDIT_ID = "pending-edit"
+
+/** Drop the named user message and everything after it. lastSeq stays: the
+ *  next stored event is assigned past the high-water mark, so a live
+ *  EventSource Last-Event-ID still lands on new rows instead of ghosts.
+ *  A pending edit at this position is kept so the bubble itself stays put. */
+export function rewindTranscript(
+  state: TranscriptState,
+  fromSeq: number,
+): TranscriptState {
+  if (!(fromSeq > 0)) return state
+  const keep = (b: Block) =>
+    (b.seq > 0 && b.seq < fromSeq) || b.id === PENDING_EDIT_ID
+  const agents: Record<string, AgentState> = {}
+  const agentOrder: string[] = []
+  for (const id of state.agentOrder) {
+    const agent = state.agents[id]
+    if (!agent) continue
+    const blocks = agent.blocks.filter(keep)
+    if (id !== MANAGER_ID && blocks.length === 0) continue
+    agents[id] = {
+      ...agent,
+      blocks,
+      status: "done",
+      activity: "",
+    }
+    agentOrder.push(id)
+  }
+  if (!agents[MANAGER_ID]) {
+    agents[MANAGER_ID] = {
+      id: MANAGER_ID,
+      role: MANAGER_ID,
+      status: "done",
+      activity: "",
+      blocks: [],
+    }
+    agentOrder.unshift(MANAGER_ID)
+  }
+  const keptTurns = new Set<string>()
+  let pending = false
+  for (const agent of Object.values(agents)) {
+    for (const b of agent.blocks) {
+      keptTurns.add(b.turnId)
+      if (b.id === PENDING_EDIT_ID) pending = true
+    }
+  }
+  if (pending && agents[MANAGER_ID]) {
+    agents[MANAGER_ID] = { ...agents[MANAGER_ID], status: "running" }
+  }
+  return {
+    agentOrder,
+    agents,
+    turns: state.turns.filter((t) => keptTurns.has(t.id)),
+    lastSeq: state.lastSeq,
+    running: pending,
+    pulse: undefined,
+  }
+}
+
+/** Put the edited text back at the cut so Send looks like Codex: this
+ *  bubble stays, everything below is gone. The real user_message replaces
+ *  this row when it lands. */
+export function placePendingEdit(
+  state: TranscriptState,
+  text: string,
+  images?: ImageRef[],
+): TranscriptState {
+  const next: TranscriptState = {
+    agentOrder: state.agentOrder.includes(MANAGER_ID)
+      ? state.agentOrder
+      : [MANAGER_ID, ...state.agentOrder],
+    agents: { ...state.agents },
+    turns: state.turns,
+    lastSeq: state.lastSeq,
+    running: true,
+    pulse: undefined,
+  }
+  const agent = touchAgent(next, MANAGER_ID)
+  agent.blocks = agent.blocks.filter((b) => b.id !== PENDING_EDIT_ID)
+  agent.status = "running"
+  append(agent, {
+    id: PENDING_EDIT_ID,
+    kind: "user",
+    agentId: MANAGER_ID,
+    text,
+    images,
+    turnId: PENDING_EDIT_ID,
+    seq: 0,
+    at: "",
+  })
+  return next
 }
 
 /** The manager's transcript is per turn: the previous turn's blocks stay in
@@ -357,6 +615,16 @@ function resetManagerForNewTurn(state: TranscriptState, _turnId: string) {
       state.agents[id] = { ...a, status: "done", activity: "done" }
     }
   }
+}
+
+/** Older spawned events stored the role in `text`. The instruction only
+ *  exists when `role` is set and `text` is something else — the system prompt
+ *  that worker actually received. */
+function recordedInstruction(role?: string, text?: string): string | undefined {
+  const prompt = (text ?? "").trim()
+  const name = (role ?? "").trim()
+  if (!prompt || !name || prompt === name) return undefined
+  return prompt
 }
 
 function touchAgent(
@@ -429,6 +697,7 @@ function block(ev: SwarmEvent, kind: BlockKind, text: string): Block {
     turnId: ev.turn_id,
     seq: ev.seq,
     at: ev.created_at,
+    images: ev.images,
   }
 }
 
@@ -477,6 +746,28 @@ function closeStreaming(agent: AgentState, kind: "reasoning" | "answer") {
   agent.blocks = blocks
 }
 
+/** A call with no result when the turn (or the agent) ends was killed, not
+ *  left running. The spinner is keyed off `pending`; leaving it true next to
+ *  an "interrupted" banner is the lie the Stop button used to leave behind.
+ *  `result` must be a string or the expanded body still says "running…". */
+function closePendingTools(agent: AgentState, reason?: string) {
+  let changed = false
+  const blocks = agent.blocks.map((b) => {
+    if (b.kind !== "tool" || !b.tool?.pending) return b
+    changed = true
+    return {
+      ...b,
+      tool: {
+        ...b.tool,
+        pending: false,
+        failed: true,
+        result: b.tool.result ?? reason ?? "",
+      },
+    }
+  })
+  if (changed) agent.blocks = blocks
+}
+
 function lastOpenIndex(blocks: Block[], kind: BlockKind): number {
   for (let i = blocks.length - 1; i >= 0; i--) {
     if (blocks[i].kind === kind && blocks[i].streaming) return i
@@ -508,6 +799,22 @@ function findToolBlock(agent: AgentState, callId?: string): Block | undefined {
     }
   }
   return undefined
+}
+
+/** Read the cap payload out of a max_iterations event. A malformed one still
+ *  renders as a card; the numbers just show as zero rather than crashing. */
+export function parseIterationLimit(
+  ev: SwarmEvent,
+): { limit: number; extendBy: number } | undefined {
+  let raw: unknown
+  try {
+    raw = JSON.parse(ev.text ?? "")
+  } catch {
+    return undefined
+  }
+  if (!raw || typeof raw !== "object") return undefined
+  const body = raw as { limit?: unknown; extend_by?: unknown }
+  return { limit: num(body.limit), extendBy: num(body.extend_by) }
 }
 
 /** Read a pulse out of an event. A malformed one is dropped rather than
@@ -585,6 +892,31 @@ const SKILL_VERBS: Record<string, string> = {
  *  answer would train the reader to stop looking at the ones that matter.
  *  Failures always show: memory the user believes is being kept, and is not,
  *  is the failure they cannot see. */
+/** /goal is recorded even when it clears. The banner holds the text; this
+ *  line is only the fact that it changed. */
+export function goalNotice(text?: string): string {
+  return text?.trim() ? "Standing objective set." : "Standing objective cleared."
+}
+
+/** The briefing itself lives in the next turn's prompt, not in this row.
+ *  Dumping the JSON payload here would paste a summary the human did not ask
+ *  to read in the transcript. */
+export function compactNotice(ev: { text?: string; err?: string }): string {
+  if (ev.err) return ev.err
+  return "Earlier turns were folded into a briefing. The transcript is unchanged."
+}
+
+/** What the Memory panel says after someone asked for a review.
+ *
+ *  Auto-review stays quiet when it kept nothing — a line after every answer
+ *  would train people to ignore the ones that matter. A click is a request
+ *  for an answer, so the panel always says what happened. */
+export function reviewPanelHint(outcome?: ReviewOutcome): string {
+  if (outcome?.err) return `Memory review failed: ${outcome.err}`
+  if (!outcome?.changed) return "Review finished — nothing new to keep."
+  return "Review finished."
+}
+
 export function reviewNotice(outcome?: ReviewOutcome): string | undefined {
   if (!outcome) return undefined
   if (outcome.err) return `Memory review failed: ${outcome.err}`

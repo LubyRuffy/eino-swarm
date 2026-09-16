@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -65,6 +66,12 @@ func TestRevealIsWiredOnlyForDesktop(t *testing.T) {
 	}
 	if revealFor(server.ModeDesktop) == nil {
 		t.Fatal("the desktop shell needs the reveal hook")
+	}
+	if openURLFor(server.ModeWeb) != nil {
+		t.Fatal("a web server must not spawn a browser on the host")
+	}
+	if openURLFor(server.ModeDesktop) == nil {
+		t.Fatal("the desktop shell needs the open-url hook")
 	}
 
 	dir := t.TempDir()
@@ -201,6 +208,67 @@ func TestServeAnswersRequestsThenShutsDown(t *testing.T) {
 	a.Shutdown(ctx)
 }
 
+// The desktop window always has an EventSource open. A graceful Shutdown that
+// waited for that connection would freeze Cmd+Q for the whole grace period,
+// then Wails would log "Window #1 not found" for the events queued while the
+// main thread was blocked.
+func TestShutdownDoesNotWaitForTheEventStream(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	a, err := New(Options{DataDir: t.TempDir(), Addr: "127.0.0.1:0",
+		Mock: true, NoAssets: true, Mode: server.ModeDesktop, Version: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	url, err := a.Listen()
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = a.Serve() }()
+
+	resp, err := http.Post(url+"/api/threads", "application/json", strings.NewReader("{}"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var created struct {
+		Thread struct {
+			ID string `json:"id"`
+		} `json:"thread"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if created.Thread.ID == "" {
+		t.Fatal("create thread returned no id")
+	}
+
+	stream, err := http.Get(url + "/api/threads/" + created.Thread.ID + "/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Body.Close()
+	if stream.StatusCode != http.StatusOK {
+		t.Fatalf("events: %d", stream.StatusCode)
+	}
+	// Block until the handler is actually sitting in its loop, or we might
+	// cancel a request that has not started yet and miss the regression.
+	buf := make([]byte, 16)
+	if _, err := stream.Body.Read(buf); err != nil {
+		t.Fatalf("event stream never started: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	start := time.Now()
+	a.Shutdown(ctx)
+	elapsed := time.Since(start)
+	if elapsed > time.Second {
+		t.Fatalf("shutdown waited %s for the event stream; Cmd+Q would freeze the window", elapsed)
+	}
+}
+
 // Serve with no prior Listen binds on demand, which is the shape `zwai web`
 // uses when it does not need the URL up front.
 func TestServeBindsOnDemand(t *testing.T) {
@@ -231,9 +299,9 @@ func TestServeBindsOnDemand(t *testing.T) {
 	}
 }
 
-// A crash leaves turns marked running. The next start has to close them, or
-// the sidebar shows a conversation working forever.
-func TestNewClosesTurnsLeftRunningByAPreviousProcess(t *testing.T) {
+// A crash leaves turns marked running. The next start continues them instead
+// of recording a stop the user never made.
+func TestNewResumesTurnsLeftRunningByAPreviousProcess(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
@@ -247,7 +315,13 @@ func TestNewClosesTurnsLeftRunningByAPreviousProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Store.CreateTurn(&store.Turn{ThreadID: th.ID, UserText: "in flight"}); err != nil {
+	turn := &store.Turn{ThreadID: th.ID, UserText: "in flight", ProviderID: th.ProviderID, Model: th.Model}
+	if err := first.Store.CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Store.AppendMessages(th.ID, turn.ID, []store.Message{
+		{Role: "user", Content: turn.UserText},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	_ = first.Store.Close()
@@ -257,12 +331,25 @@ func TestNewClosesTurnsLeftRunningByAPreviousProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { second.Engine.Shutdown(); _ = second.Store.Close() }()
-	turns, err := second.Store.ListTurns(th.ID)
-	if err != nil {
-		t.Fatal(err)
+
+	if !second.Engine.Status(th.ID).Running {
+		t.Fatal("the leftover turn was not restarted")
 	}
-	if len(turns) != 1 || turns[0].Status != store.TurnCancelled {
-		t.Fatalf("stale turn not closed: %+v", turns)
+
+	deadline := time.Now().Add(30 * time.Second)
+	var got *store.Turn
+	for time.Now().Before(deadline) {
+		got, err = second.Store.GetTurn(turn.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != store.TurnRunning {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got == nil || got.Status != store.TurnDone {
+		t.Fatalf("leftover turn did not finish after resume: %+v", got)
 	}
 }
 

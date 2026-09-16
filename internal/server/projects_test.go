@@ -435,3 +435,21 @@ func (h *harness) waitForReviewEvent(turnID string) {
 	}
 	h.t.Fatalf("turn %s was never reviewed", turnID)
 }
+
+func (h *harness) waitForTitleEvent(turnID string) {
+	h.t.Helper()
+	deadline := time.Now().Add(40 * time.Second)
+	for time.Now().Before(deadline) {
+		events, err := h.app.Store.ListTurnEvents(turnID)
+		if err != nil {
+			h.t.Fatal(err)
+		}
+		for _, ev := range events {
+			if ev.Kind == engine.KindTitle {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	h.t.Fatalf("turn %s was never named", turnID)
+}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
@@ -26,6 +27,7 @@ type metaView struct {
 	DataDir         string             `json:"data_dir"`
 	Capabilities    map[string]bool    `json:"capabilities"`
 	Swarm           config.SwarmConfig `json:"swarm"`
+	Locale          string             `json:"locale"`
 }
 
 func (s *Server) getMeta(c *gin.Context) {
@@ -41,13 +43,16 @@ func (s *Server) getMeta(c *gin.Context) {
 		DataDir:         cfg.DataDir(),
 		Capabilities: map[string]bool{
 			// The UI hides affordances it cannot deliver rather than showing
-			// buttons that fail: revealing a file needs a desktop shell, and a
+			// buttons that fail: revealing a file needs a desktop shell,
+			// opening a URL in the system browser does too, and a
 			// project's memory switch would promise nothing while memory is
 			// off for the whole install.
-			"reveal": s.opts.Reveal != nil,
-			"memory": cfg.Memory.Enabled,
+			"reveal":   s.opts.Reveal != nil,
+			"open_url": s.opts.OpenURL != nil,
+			"memory":   cfg.Memory.Enabled,
 		},
-		Swarm: cfg.Swarm,
+		Swarm:  cfg.Swarm,
+		Locale: cfg.UI.Locale,
 	})
 }
 
@@ -64,16 +69,20 @@ type settingsView struct {
 	Tools  config.ToolsConfig  `json:"tools"`
 	Memory config.MemoryConfig `json:"memory"`
 	Log    config.LogConfig    `json:"log"`
+	UI     config.UIConfig     `json:"ui"`
 }
 
 type providerView struct {
-	ID             string `json:"id"`
-	Label          string `json:"label"`
-	BaseURL        string `json:"base_url"`
-	Model          string `json:"model"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
-	HasAPIKey      bool   `json:"has_api_key"`
-	Ready          bool   `json:"ready"`
+	ID             string         `json:"id"`
+	Label          string         `json:"label"`
+	BaseURL        string         `json:"base_url"`
+	Model          string         `json:"model"`
+	Catalog        []string       `json:"catalog"`
+	TimeoutSeconds int            `json:"timeout_seconds"`
+	ContextWindow  int            `json:"context_window"`
+	ModelContext   map[string]int `json:"model_context"`
+	HasAPIKey      bool           `json:"has_api_key"`
+	Ready          bool           `json:"ready"`
 }
 
 func toSettingsView(cfg *config.Config) settingsView {
@@ -83,14 +92,26 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.Tools = cfg.Tools
 	v.Memory = cfg.Memory
 	v.Log = cfg.Log
+	v.UI = cfg.UI
 	v.Models.Default = cfg.Models.Default
 	for _, p := range cfg.Models.Providers {
+		catalog := p.Catalog
+		if catalog == nil {
+			catalog = []string{}
+		}
+		windows := p.ModelContext
+		if windows == nil {
+			windows = map[string]int{}
+		}
 		v.Models.Providers = append(v.Models.Providers, providerView{
 			ID:             p.ID,
 			Label:          p.Label,
 			BaseURL:        p.BaseURL,
 			Model:          p.Model,
+			Catalog:        catalog,
 			TimeoutSeconds: p.TimeoutSeconds,
+			ContextWindow:  p.ContextWindow,
+			ModelContext:   windows,
 			HasAPIKey:      p.APIKey != "",
 			Ready:          p.Ready(),
 		})
@@ -110,18 +131,22 @@ type putSettingsRequest struct {
 	Models *struct {
 		Default   string `json:"default"`
 		Providers []struct {
-			ID             string  `json:"id"`
-			Label          string  `json:"label"`
-			BaseURL        string  `json:"base_url"`
-			Model          string  `json:"model"`
-			TimeoutSeconds int     `json:"timeout_seconds"`
-			APIKey         *string `json:"api_key"`
+			ID             string          `json:"id"`
+			Label          string          `json:"label"`
+			BaseURL        string          `json:"base_url"`
+			Model          string          `json:"model"`
+			Catalog        *[]string       `json:"catalog"`
+			TimeoutSeconds int             `json:"timeout_seconds"`
+			ContextWindow  *int            `json:"context_window"`
+			ModelContext   *map[string]int `json:"model_context"`
+			APIKey         *string         `json:"api_key"`
 		} `json:"providers"`
 	} `json:"models"`
 	Swarm  *config.SwarmConfig  `json:"swarm"`
 	Tools  *config.ToolsConfig  `json:"tools"`
 	Memory *config.MemoryConfig `json:"memory"`
 	Log    *config.LogConfig    `json:"log"`
+	UI     *config.UIConfig     `json:"ui"`
 }
 
 func (s *Server) putSettings(c *gin.Context) {
@@ -148,16 +173,32 @@ func (s *Server) putSettings(c *gin.Context) {
 	if req.Log != nil {
 		next.Log = *req.Log
 	}
+	if req.UI != nil {
+		next.UI = *req.UI
+	}
 	if req.Models != nil {
-		existing := map[string]string{}
+		existing := map[string]config.Provider{}
 		for _, p := range cfg.Models.Providers {
-			existing[p.ID] = p.APIKey
+			existing[p.ID] = p
 		}
 		providers := make([]config.Provider, 0, len(req.Models.Providers))
 		for _, p := range req.Models.Providers {
-			key := existing[p.ID]
+			prev := existing[p.ID]
+			key := prev.APIKey
 			if p.APIKey != nil {
 				key = *p.APIKey
+			}
+			catalog := prev.Catalog
+			if p.Catalog != nil {
+				catalog = *p.Catalog
+			}
+			window := prev.ContextWindow
+			if p.ContextWindow != nil {
+				window = *p.ContextWindow
+			}
+			modelCtx := prev.ModelContext
+			if p.ModelContext != nil {
+				modelCtx = *p.ModelContext
 			}
 			providers = append(providers, config.Provider{
 				ID:             p.ID,
@@ -165,7 +206,10 @@ func (s *Server) putSettings(c *gin.Context) {
 				BaseURL:        p.BaseURL,
 				APIKey:         key,
 				Model:          p.Model,
+				Catalog:        catalog,
 				TimeoutSeconds: p.TimeoutSeconds,
+				ContextWindow:  window,
+				ModelContext:   modelCtx,
 			})
 		}
 		if len(providers) == 0 {
@@ -190,6 +234,51 @@ func (s *Server) getModels(c *gin.Context) {
 		"default": s.engine.Config().Models.Default,
 		"mock":    s.engine.Providers().IsMock(),
 	})
+}
+
+type discoverModelsRequest struct {
+	ProviderID string  `json:"provider_id"`
+	BaseURL    string  `json:"base_url"`
+	APIKey     *string `json:"api_key"`
+}
+
+func (s *Server) discoverModels(c *gin.Context) {
+	var req discoverModelsRequest
+	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
+		badRequest(c, "could not read the request body: %v", err)
+		return
+	}
+	cfg := s.engine.Config()
+	prov := config.Provider{
+		BaseURL: strings.TrimSpace(req.BaseURL),
+	}
+	if id := strings.TrimSpace(req.ProviderID); id != "" {
+		if stored, ok := cfg.Provider(id); ok {
+			prov = stored
+			if req.BaseURL != "" {
+				prov.BaseURL = strings.TrimSpace(req.BaseURL)
+			}
+		} else if prov.BaseURL == "" {
+			// An id we do not know, with no URL, cannot be listed. A URL
+			// still can: Settings lets you Discover on a row you have not
+			// saved yet, the same way you can type a default before Save.
+			badRequest(c, "unknown provider %q", id)
+			return
+		}
+	}
+	if req.APIKey != nil {
+		prov.APIKey = *req.APIKey
+	}
+	cat, err := s.engine.Providers().Discover(c.Request.Context(), prov)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	windows := cat.Windows
+	if windows == nil {
+		windows = map[string]int{}
+	}
+	c.JSON(http.StatusOK, gin.H{"models": cat.Names, "context_windows": windows})
 }
 
 func (s *Server) getTools(c *gin.Context) {

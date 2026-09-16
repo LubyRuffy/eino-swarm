@@ -40,9 +40,43 @@
     --done: 142 62% 38%;
     --failed: 0 72% 46%;
 
-    /* Width of the macOS hidden-inset traffic lights. Used only in desktop
-       mode so New conversation is not sitting under the yellow blob. */
+    /* In-conversation find. Distinct from --running: a hit is not "working". */
+    --find: 48 96% 72%;
+    --find-foreground: 240 10% 8%;
+    --find-active: 32 98% 58%;
+    --find-active-foreground: 240 10% 8%;
+
+    /* Files tree glyphs. Distinct enough to scan, quiet enough that a
+       repository listing does not turn into a sticker sheet. */
+    --file-folder: 38 80% 42%;
+    --file-code: 211 70% 42%;
+    --file-doc: 252 40% 48%;
+    --file-config: 28 75% 42%;
+    --file-image: 152 40% 36%;
+
+    /* Shell highlighting on exec rows. Same hues as the file glyphs so
+       light/dark stay in one family; a hardcoded theme would break one of them. */
+    --syntax-keyword: 252 45% 46%;
+    --syntax-command: 211 72% 38%;
+    --syntax-string: 152 48% 32%;
+    --syntax-comment: 240 4% 50%;
+    --syntax-operator: 28 70% 40%;
+    --syntax-flag: 211 40% 40%;
+    --syntax-variable: 38 80% 38%;
+    --syntax-prompt: 252 40% 52%;
+
+    /* Width of the macOS traffic lights plus a gap. The desktop shell
+       overwrites this from the native button frames; the fallback is only
+       for the first paint and for unit tests. */
     --traffic-light-inset: 4.75rem;
+
+    /* Visible lines of a live thought. Keep THOUGHT_VISIBLE_LINES in sync. */
+    --thought-lines: 10;
+
+    /* Space the transcript leaves under the last line so it is not hiding
+       behind the composer. The composer overwrites this from its own height;
+       the fallback is only the first paint and jsdom. */
+    --composer-pad: 7.5rem;
   }
 
   .dark {
@@ -74,6 +108,26 @@
     --running: 38 92% 56%;
     --done: 142 58% 48%;
     --failed: 0 70% 58%;
+
+    --find: 48 70% 38%;
+    --find-foreground: 0 0% 98%;
+    --find-active: 32 90% 52%;
+    --find-active-foreground: 240 10% 8%;
+
+    --file-folder: 40 75% 62%;
+    --file-code: 210 70% 68%;
+    --file-doc: 250 45% 72%;
+    --file-config: 32 70% 62%;
+    --file-image: 152 40% 56%;
+
+    --syntax-keyword: 252 55% 78%;
+    --syntax-command: 211 75% 72%;
+    --syntax-string: 152 45% 62%;
+    --syntax-comment: 240 5% 55%;
+    --syntax-operator: 32 70% 62%;
+    --syntax-flag: 211 50% 70%;
+    --syntax-variable: 40 75% 62%;
+    --syntax-prompt: 252 50% 75%;
   }
 
   * {
@@ -93,8 +147,9 @@
     overscroll-behavior: none;
   }
 
-  /* The desktop window hides its title bar, so the app's own header has to be
-     the drag handle. In a browser this attribute means nothing. */
+  /* The desktop window hides its title bar. Dragging the top 48px is native
+     (InvisibleTitleBarHeight); a double-click zoom is JS, and it looks at
+     this variable so buttons in the chrome do not zoom the window. */
   [data-drag-region] {
     --wails-draggable: drag;
   }
@@ -102,7 +157,8 @@
   [data-drag-region] button,
   [data-drag-region] a,
   [data-drag-region] input,
-  [data-drag-region] [role="button"] {
+  [data-drag-region] [role="button"],
+  [data-no-drag] {
     --wails-draggable: no-drag;
   }
 }
@@ -160,6 +216,60 @@
   .stream-text {
     @apply whitespace-pre-wrap break-words;
   }
+
+  /* A thought is a 10-line window, not a wall. leading-6 is 1.5rem. */
+  .thought-scroll {
+    max-height: calc(var(--thought-lines) * 1.5rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Wash the top of a thought that is pinned at the bottom, so it does
+     not look like the reasoning starts mid-sentence. Token, not a hex:
+     the pane is --background in the transcript and --card in Agents. */
+  .thought-fade {
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--background)) 0%,
+      hsl(var(--background) / 0) 100%
+    );
+  }
+  .bg-card .thought-fade {
+    background: linear-gradient(
+      to bottom,
+      hsl(var(--card)) 0%,
+      hsl(var(--card) / 0) 100%
+    );
+  }
+
+  /* Wash the transcript into the composer so the last lines sit under the
+     box instead of dying against a hairline. Token, not a hex. */
+  .composer-fade {
+    background: linear-gradient(
+      to top,
+      hsl(var(--background)) 18%,
+      hsl(var(--background) / 0) 100%
+    );
+  }
+
+  /* Inactive tab panes. Tailwind's .flex and the [hidden] preflight have
+     equal specificity, so an Agents/Files pane that stayed display:flex
+     sat beside Memory and a skill body painted over the file names.
+     !important beats .flex; the attribute is what Radix actually sets. */
+  [role="tabpanel"][data-state="inactive"] {
+    display: none !important;
+  }
+}
+
+/* CSS Custom Highlight: find paints Ranges without wrapping markdown text
+   nodes, which React would otherwise throw away on the next token. */
+::highlight(zwai-find) {
+  background-color: hsl(var(--find));
+  color: hsl(var(--find-foreground));
+}
+::highlight(zwai-find-current) {
+  background-color: hsl(var(--find-active));
+  color: hsl(var(--find-active-foreground));
 }
 
 /* Scrollbars: the default macOS overlay bar disappears in a dark webview, and
@@ -182,6 +292,10 @@
 
   .pl-traffic {
     padding-left: var(--traffic-light-inset);
+  }
+
+  .pb-composer {
+    padding-bottom: var(--composer-pad);
   }
 }
 

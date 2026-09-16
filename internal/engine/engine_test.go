@@ -21,10 +21,14 @@ import (
 
 func newTestEngine(t *testing.T) *Engine {
 	t.Helper()
+	return newTestEngineAt(t, t.TempDir())
+}
+
+func newTestEngineAt(t *testing.T, dir string) *Engine {
+	t.Helper()
 	t.Setenv("OPENAI_BASE_URL", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
-	dir := t.TempDir()
 	cfg, err := config.Load(dir)
 	if err != nil {
 		t.Fatalf("config.Load: %v", err)
@@ -42,6 +46,25 @@ func newTestEngine(t *testing.T) *Engine {
 	e := New(cfg, st, provider.NewMock(cfg), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	t.Cleanup(e.Shutdown)
 	return e
+}
+
+func replayDump(t *testing.T, e *Engine, threadID string) string {
+	t.Helper()
+	hist, err := e.replayHistory(threadID)
+	if err != nil {
+		t.Fatalf("replayHistory: %v", err)
+	}
+	var b strings.Builder
+	for _, m := range hist {
+		if m == nil {
+			continue
+		}
+		b.WriteString(string(m.Role))
+		b.WriteString(": ")
+		b.WriteString(m.Content)
+		b.WriteString("\n")
+	}
+	return b.String()
 }
 
 // waitForTurn blocks until the turn leaves the running state.
@@ -278,6 +301,33 @@ func TestSecondTurnSeesTheFirst(t *testing.T) {
 	}
 }
 
+// Force-quit is not a compact. A later process must still feed the last
+// finished exchange into the next turn, or the model looks like it forgot.
+func TestReopenedEngineReplaysTheLastFinishedTurn(t *testing.T) {
+	dir := t.TempDir()
+	first := newTestEngineAt(t, dir)
+	th, err := first.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn, err := first.StartTurn(th.ID, "remember the first request")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForTurn(t, first, turn.ID)
+	first.Shutdown()
+	_ = first.Store().Close()
+
+	second := newTestEngineAt(t, dir)
+	dump := replayDump(t, second, th.ID)
+	if !strings.Contains(dump, "remember the first request") {
+		t.Fatalf("reopened engine lost the last user message:\n%s", dump)
+	}
+	if !strings.Contains(dump, "assistant:") {
+		t.Fatalf("reopened engine lost the last answer:\n%s", dump)
+	}
+}
+
 func TestStartTurnRejectsConcurrentTurns(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
@@ -484,42 +534,25 @@ func TestStatusReportsProgress(t *testing.T) {
 	waitForTurn(t, e, turn.ID)
 }
 
-// The first message names the conversation, so the sidebar is readable.
+// The first message is a placeholder so the sidebar is readable at once.
 func TestAutoTitleFromFirstMessage(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
+	if !th.TitleAuto {
+		t.Fatal("an untitled conversation must still be machine-named")
+	}
 	turn, err := e.StartTurn(th.ID, "  look into the  reporting pipeline  ")
 	if err != nil {
 		t.Fatal(err)
 	}
 	got, _ := e.Store().GetThread(th.ID)
 	if got.Title != "look into the reporting pipeline" {
-		t.Fatalf("title=%q", got.Title)
+		t.Fatalf("placeholder=%q", got.Title)
+	}
+	if !got.TitleAuto {
+		t.Fatal("the placeholder must stay machine-owned so the namer can replace it")
 	}
 	waitForTurn(t, e, turn.ID)
-
-	// a later message must not rename it
-	next, err := e.StartTurn(th.ID, "a different follow-up entirely")
-	if err != nil {
-		t.Fatalf("second StartTurn: %v", err)
-	}
-	waitForTurn(t, e, next.ID)
-	got, _ = e.Store().GetThread(th.ID)
-	if got.Title != "look into the reporting pipeline" {
-		t.Fatalf("the title was overwritten by a later turn: %q", got.Title)
-	}
-
-	// an explicit title is never overwritten
-	named, _ := e.CreateThread("My Name", "", "")
-	t2, err := e.StartTurn(named.ID, "something else")
-	if err != nil {
-		t.Fatalf("StartTurn on a named conversation: %v", err)
-	}
-	waitForTurn(t, e, t2.ID)
-	got, _ = e.Store().GetThread(named.ID)
-	if got.Title != "My Name" {
-		t.Fatalf("an explicit title was replaced: %q", got.Title)
-	}
 }
 
 func TestTitleFrom(t *testing.T) {
@@ -556,10 +589,27 @@ func TestRenameArchiveAndProvider(t *testing.T) {
 			t.Fatal("an archived conversation still shows in the sidebar")
 		}
 	}
-	if err := e.SetThreadProvider(th.ID, e.Config().Models.Default); err != nil {
+	if err := e.SetThreadPinned(th.ID, true); err != nil {
+		t.Fatalf("SetThreadPinned: %v", err)
+	}
+	got, _ = e.Store().GetThread(th.ID)
+	if !got.Pinned || got.PinnedAt == nil || got.PinnedAt.IsZero() {
+		t.Fatalf("a pin must stick with a time: %+v", got)
+	}
+	if err := e.SetThreadPinned(th.ID, false); err != nil {
+		t.Fatalf("unpin: %v", err)
+	}
+	got, _ = e.Store().GetThread(th.ID)
+	if got.Pinned || got.PinnedAt != nil {
+		t.Fatalf("unpin must clear the flag and the time: %+v", got)
+	}
+	if err := e.SetThreadPinned("missing", true); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+	if err := e.SetThreadProvider(th.ID, e.Config().Models.Default, ""); err != nil {
 		t.Fatalf("SetThreadProvider: %v", err)
 	}
-	if err := e.SetThreadProvider(th.ID, "nope"); err == nil {
+	if err := e.SetThreadProvider(th.ID, "nope", ""); err == nil {
 		t.Fatal("want an error for an unknown provider")
 	}
 	if err := e.RenameThread("missing", "x"); !errors.Is(err, ErrNotFound) {
@@ -606,6 +656,41 @@ func TestThreadReasoningLevelSticksAndIsRecorded(t *testing.T) {
 	finished := waitForTurn(t, e, turn.ID)
 	if finished.ReasoningEffort != config.ReasoningHigh {
 		t.Fatalf("the turn must record the level it ran with, got %q", finished.ReasoningEffort)
+	}
+}
+
+// The composer picks a catalog name on a conversation; the next turn has to
+// record that name, not the provider's configured default.
+func TestThreadModelSticksAndIsRecorded(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.Model != "" {
+		t.Fatalf("a new conversation follows the provider default until someone picks, got %q", th.Model)
+	}
+	if err := e.SetThreadProvider(th.ID, e.Config().Models.Default, "other"); err != nil {
+		t.Fatalf("SetThreadProvider: %v", err)
+	}
+	got, err := e.Store().GetThread(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Model != "other" {
+		t.Fatalf("model=%q", got.Model)
+	}
+	if err := e.SetThreadProvider(th.ID, "nope", "other"); err == nil {
+		t.Fatal("want an error for an unknown provider")
+	}
+
+	turn, err := e.StartTurn(th.ID, "do the work")
+	if err != nil {
+		t.Fatalf("StartTurn: %v", err)
+	}
+	finished := waitForTurn(t, e, turn.ID)
+	if finished.Model != "other" {
+		t.Fatalf("the turn must record the selected model, got %q", finished.Model)
 	}
 }
 
@@ -794,26 +879,6 @@ func TestUnsubscribeIsIdempotent(t *testing.T) {
 	}
 }
 
-// Shutdown must not leave conversations looking like they are still working.
-func TestShutdownClosesRunningTurns(t *testing.T) {
-	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "", "")
-	turn, err := e.StartTurn(th.ID, "in flight at shutdown")
-	if err != nil {
-		t.Fatal(err)
-	}
-	time.Sleep(80 * time.Millisecond)
-	e.Shutdown()
-
-	got, err := e.Store().GetTurn(turn.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Status == store.TurnRunning {
-		t.Fatalf("a turn survived shutdown as running: %+v", got)
-	}
-}
-
 func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
@@ -834,11 +899,14 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 			t.Fatalf("the prompt does not explain %s", tool)
 		}
 	}
-	if !strings.Contains(prompt, "same agent_id") {
-		t.Fatal("the prompt does not tell the manager to reuse a finished worker in place")
+	if !strings.Contains(prompt, "visual input") {
+		t.Fatal("the prompt must say pasted images arrive on the message, not on disk")
+	}
+	if !strings.Contains(prompt, "lists attached files") {
+		t.Fatal("the prompt must say files named on a message are this request's uploads")
 	}
 	// and it must not smuggle in a particular task
-	for _, leak := range []string{"summarize", "researcher", "reviewer", "notes/", "re-research"} {
+	for _, leak := range []string{"summarize", "researcher", "reviewer", "notes/", "re-research", "xlsx", "spreadsheet"} {
 		if strings.Contains(strings.ToLower(prompt), strings.ToLower(leak)) {
 			t.Fatalf("the prompt hardcodes example-specific text %q", leak)
 		}

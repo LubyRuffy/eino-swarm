@@ -142,11 +142,71 @@ func TestMemoryToolReportsRefusalsAsResults(t *testing.T) {
 	if !ok || len(entries) != 1 {
 		t.Fatalf("a full store must list what it holds: %v", res)
 	}
-	if !strings.Contains(res["error"].(string), "Consolidate") {
-		t.Fatalf("the refusal must say what to do next: %v", res["error"])
+	if !strings.Contains(res["error"].(string), "Do not retry") {
+		t.Fatalf("the refusal must stop the same write being sent again: %v", res["error"])
+	}
+	if res["over_by"] == nil || res["over_by"] == float64(0) {
+		t.Fatalf("the refusal must say how many characters to free: %v", res)
 	}
 	if got := len(*changes); got != 1 {
 		t.Fatalf("refused writes were recorded as changes: %d", got)
+	}
+}
+
+// A replace that grows a full store is the usual retry loop: the model thinks
+// replace always fits because it is not add. The result has to name the
+// matched note and how many characters to free, or the next call is the same
+// note with more detail.
+func TestMemoryToolReplaceOverflowNamesTheMatchedNote(t *testing.T) {
+	_, tools, _ := toolset(t, 30)
+	mem := tools[ToolMemory]
+	run(t, mem, map[string]any{"action": "add", "content": "0123456789012345678901234"})
+	res := run(t, mem, map[string]any{
+		"action": "replace", "old_text": "0123", "content": strings.Repeat("x", 40),
+	})
+	if res["success"] != false {
+		t.Fatalf("a longer replacement must not fit: %v", res)
+	}
+	if res["matched"] != "0123456789012345678901234" {
+		t.Fatalf("replace overflow must name the note it found: %v", res)
+	}
+	if res["over_by"] == nil || res["over_by"] == float64(0) {
+		t.Fatalf("replace overflow must say how many characters to free: %v", res)
+	}
+	errText, _ := res["error"].(string)
+	if !strings.Contains(errText, "Do not retry") || !strings.Contains(errText, "matched note was not changed") {
+		t.Fatalf("replace overflow must not look like a miss: %v", res["error"])
+	}
+}
+
+// A replace/remove that misses has to list the notes, the way a full store
+// does: guessing a second substring without seeing them is the same failure
+// as consolidating blind.
+func TestMemoryToolAMissListsWhatIsStored(t *testing.T) {
+	_, tools, _ := toolset(t, 500)
+	mem := tools[ToolMemory]
+	run(t, mem, map[string]any{"action": "add", "content": "tabs, not spaces"})
+	run(t, mem, map[string]any{"action": "add", "content": "builds run from the makefile"})
+
+	res := run(t, mem, map[string]any{"action": "replace", "old_text": "nothing like this", "content": "x"})
+	if res["success"] != false {
+		t.Fatalf("miss=%v", res)
+	}
+	entries, ok := res["current_entries"].([]any)
+	if !ok || len(entries) != 2 {
+		t.Fatalf("a miss must list what is stored: %v", res)
+	}
+	if !strings.Contains(res["error"].(string), "current_entries") {
+		t.Fatalf("a miss must point at the list: %v", res["error"])
+	}
+
+	res = run(t, mem, map[string]any{"action": "remove", "old_text": "s"})
+	if res["success"] != false {
+		t.Fatalf("ambiguous=%v", res)
+	}
+	matching, ok := res["matching"].([]any)
+	if !ok || len(matching) < 2 {
+		t.Fatalf("ambiguous must list the matching notes: %v", res)
 	}
 }
 
@@ -216,6 +276,28 @@ func TestViewingAMissingSkillListsTheOnesThatExist(t *testing.T) {
 	available, ok := res["available"].([]any)
 	if !ok || len(available) != 1 || available[0] != "present" {
 		t.Fatalf("available=%v", res)
+	}
+	errText, _ := res["error"].(string)
+	if !strings.Contains(errText, "not files in the workspace") {
+		t.Fatalf("a miss must say skill_view is not the workspace: %v", res)
+	}
+}
+
+// A name found by listing the workspace is the usual miss: nothing is recorded
+// yet, so guessing a second name is worse than being told to read the file.
+func TestViewingAMissingSkillWhenNoneAreRecordedPointsAtTheWorkspace(t *testing.T) {
+	_, tools, _ := toolset(t, 500)
+	res := run(t, tools[ToolSkillView], map[string]any{"name": "from-the-workspace"})
+	if res["success"] != false {
+		t.Fatalf("view=%v", res)
+	}
+	available, ok := res["available"].([]any)
+	if !ok || len(available) != 0 {
+		t.Fatalf("available=%v", res)
+	}
+	errText, _ := res["error"].(string)
+	if !strings.Contains(errText, "from-the-workspace") || !strings.Contains(errText, "not files in the workspace") {
+		t.Fatalf("empty-store miss=%v", res)
 	}
 }
 

@@ -1,25 +1,19 @@
-import {
-  ArrowLeft,
-  Download,
-  File as FileIcon,
-  Folder,
-  FolderOpen,
-  RefreshCw,
-  Trash2,
-  Upload,
-} from "lucide-react"
-import { useMemo, useRef, useState } from "react"
+import { ArrowLeft } from "lucide-react"
+import { useState } from "react"
 
+import { AgentPromptButton } from "@/components/app/agent-prompt"
+import { FilesTab } from "@/components/app/files-tab"
 import { MemoryPanel, type MemoryPanelProps } from "@/components/app/memory-panel"
-import { AgentTranscript, CopyButton, StatusDot } from "@/components/app/transcript"
+import { ResizeHandle } from "@/components/app/resize-handle"
+import { TraceTab } from "@/components/app/trace-tab"
+import { AgentTranscript, StatusDot } from "@/components/app/transcript"
 import { MarqueeText } from "@/components/app/marquee"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { api } from "@/lib/api"
 import { MANAGER_ID, type TranscriptState } from "@/lib/transcript"
-import type { FileEntry, Meta, Turn } from "@/lib/types"
-import { formatBytes, formatDuration, formatTime } from "@/lib/utils"
+import type { FileEntry, Meta, Turn, UsageSnapshot } from "@/lib/types"
+import { useT } from "@/lib/use-t"
 
 export type PanelTab = "agents" | "files" | "trace" | "memory"
 
@@ -41,6 +35,7 @@ export function RightPanel({
   onDeleteFile,
   onRefreshFiles,
   onReveal,
+  usage,
 }: {
   tab: PanelTab
   onTabChange: (tab: PanelTab) => void
@@ -56,18 +51,27 @@ export function RightPanel({
    *  conversation is not in one, and the sidebar has not asked to open a
    *  project's skill either. */
   memory?: MemoryPanelProps
-  onUpload: (files: File[]) => Promise<void>
+  onUpload: (files: File[]) => Promise<unknown>
   onDeleteFile: (path: string) => void
   onRefreshFiles: () => void
   onReveal: (path?: string) => void
+  usage?: UsageSnapshot | null
 }) {
+  const t = useT()
   const [width, setWidth] = useState(352)
   return (
     <aside
-      className="relative flex h-full shrink-0 flex-col border-l border-border bg-card"
+      className="relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-card"
       style={{ width }}
     >
-      <ResizeHandle width={width} onWidthChange={setWidth} />
+      <ResizeHandle
+        width={width}
+        onWidthChange={setWidth}
+        edge="left"
+        label={t("panel.resize")}
+        min={260}
+        max={640}
+      />
       <Tabs
         value={tab}
         onValueChange={(v) => onTabChange(v as PanelTab)}
@@ -76,21 +80,21 @@ export function RightPanel({
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <TabsList>
             <TabsTrigger value="agents">
-              Agents
+              {t("panel.agents")}
               {countRunning(transcript) > 0 ? (
                 <Badge variant="warning" className="ml-1 px-1 py-0">
                   {countRunning(transcript)}
                 </Badge>
               ) : null}
             </TabsTrigger>
-            <TabsTrigger value="files">Files</TabsTrigger>
-            <TabsTrigger value="trace">Trace</TabsTrigger>
+            <TabsTrigger value="files">{t("panel.files")}</TabsTrigger>
+            <TabsTrigger value="trace">{t("panel.trace")}</TabsTrigger>
             {memory ? (
               <TabsTrigger value="memory">
-                Memory
+                {t("panel.memory")}
                 {memory.unread ? (
                   <Badge variant="warning" className="ml-1 px-1 py-0">
-                    new
+                    {t("panel.memoryNew")}
                   </Badge>
                 ) : null}
               </TabsTrigger>
@@ -98,80 +102,53 @@ export function RightPanel({
           </TabsList>
         </div>
 
-        <TabsContent value="agents" className="thin-scrollbar overflow-y-auto">
-          <AgentsTab
-            transcript={transcript}
-            selected={selectedAgent}
-            onSelect={onSelectAgent}
-          />
-        </TabsContent>
-
-        <TabsContent value="files" className="thin-scrollbar overflow-y-auto">
-          <FilesTab
-            files={files}
-            workspace={workspace}
-            threadId={threadId}
-            canReveal={Boolean(meta?.capabilities?.reveal)}
-            onUpload={onUpload}
-            onDelete={onDeleteFile}
-            onRefresh={onRefreshFiles}
-            onReveal={onReveal}
-          />
-        </TabsContent>
-
-        <TabsContent value="trace" className="thin-scrollbar overflow-y-auto">
-          <TraceTab turns={turns} transcript={transcript} />
-        </TabsContent>
-
-        {memory ? (
-          <TabsContent value="memory" className="thin-scrollbar overflow-y-auto">
-            <MemoryPanel {...memory} />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <TabsContent
+            value="agents"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"
+          >
+            <AgentsTab
+              transcript={transcript}
+              selected={selectedAgent}
+              onSelect={onSelectAgent}
+            />
           </TabsContent>
-        ) : null}
+
+          <TabsContent
+            value="files"
+            className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"
+          >
+            <FilesTab
+              files={files}
+              workspace={workspace}
+              threadId={threadId}
+              canReveal={Boolean(meta?.capabilities?.reveal)}
+              onUpload={onUpload}
+              onDelete={onDeleteFile}
+              onRefresh={onRefreshFiles}
+              onReveal={onReveal}
+            />
+          </TabsContent>
+
+          <TabsContent
+            value="trace"
+            className="thin-scrollbar min-h-0 flex-1 overflow-auto bg-card"
+          >
+            <TraceTab turns={turns} transcript={transcript} usage={usage} />
+          </TabsContent>
+
+          {memory ? (
+            <TabsContent
+              value="memory"
+              className="flex min-h-0 flex-1 flex-col overflow-hidden bg-card"
+            >
+              <MemoryPanel {...memory} />
+            </TabsContent>
+          ) : null}
+        </div>
       </Tabs>
     </aside>
   )
-}
-
-/** Dragging the border is the discoverable way to resize a panel, and the
- *  keyboard arrows are the accessible one. */
-function ResizeHandle({
-  width,
-  onWidthChange,
-}: {
-  width: number
-  onWidthChange: (width: number) => void
-}) {
-  return (
-    <div
-      role="separator"
-      aria-orientation="vertical"
-      aria-label="Resize the side panel"
-      tabIndex={0}
-      onPointerDown={(e) => {
-        e.currentTarget.setPointerCapture(e.pointerId)
-        const startX = e.clientX
-        const startWidth = width
-        const move = (ev: PointerEvent) =>
-          onWidthChange(clampWidth(startWidth - (ev.clientX - startX)))
-        const up = () => {
-          window.removeEventListener("pointermove", move)
-          window.removeEventListener("pointerup", up)
-        }
-        window.addEventListener("pointermove", move)
-        window.addEventListener("pointerup", up)
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "ArrowLeft") onWidthChange(clampWidth(width + 24))
-        if (e.key === "ArrowRight") onWidthChange(clampWidth(width - 24))
-      }}
-      className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize hover:bg-ring/40 focus-visible:bg-ring/60 focus-visible:outline-none"
-    />
-  )
-}
-
-function clampWidth(px: number): number {
-  return Math.min(640, Math.max(260, Math.round(px)))
 }
 
 function AgentsTab({
@@ -183,26 +160,48 @@ function AgentsTab({
   selected?: string
   onSelect: (id?: string) => void
 }) {
+  const t = useT()
   const workers = transcript.agentOrder.filter((id) => id !== MANAGER_ID)
 
   if (selected && transcript.agents[selected]) {
     const agent = transcript.agents[selected]
+    // Chrome sits outside the scroller: a sticky bar inside it lets the
+    // transcript paint through the back button the moment you drag-scroll.
     return (
-      <div>
-        <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card px-2 py-2">
-          <Button variant="ghost" size="icon-sm" onClick={() => onSelect(undefined)}>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div
+          data-testid="agent-chrome"
+          className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-2 py-2"
+        >
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onSelect(undefined)}
+            aria-label={t("panel.back")}
+          >
             <ArrowLeft />
           </Button>
-          <StatusDot status={agent.status} />
-          <span className="truncate text-sm font-medium">{agent.role}</span>
-          <span className="truncate text-xs text-muted-foreground">{agent.id}</span>
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <StatusDot status={agent.status} />
+            <span className="truncate text-sm font-medium">{agent.role}</span>
+            <span className="truncate text-xs text-muted-foreground">{agent.id}</span>
+          </div>
+          {agent.instruction ? (
+            <AgentPromptButton instruction={agent.instruction} />
+          ) : null}
         </div>
-        {agent.error ? (
-          <p className="mx-2 mt-2 rounded border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
-            {agent.error}
-          </p>
-        ) : null}
-        <AgentTranscript agent={agent} />
+        <div
+          data-testid="agent-scroller"
+          data-quote-source=""
+          className="thin-scrollbar min-h-0 flex-1 overflow-y-auto"
+        >
+          {agent.error ? (
+            <p className="mx-2 mt-2 rounded border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+              {agent.error}
+            </p>
+          ) : null}
+          <AgentTranscript agent={agent} />
+        </div>
       </div>
     )
   }
@@ -210,8 +209,7 @@ function AgentsTab({
   if (workers.length === 0) {
     return (
       <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-        No sub-agents yet. The manager starts them when a task is worth
-        splitting up.
+        {t("panel.noAgents")}
       </p>
     )
   }
@@ -220,16 +218,16 @@ function AgentsTab({
   const finished = workers.filter((id) => transcript.agents[id].status !== "running")
 
   return (
-    <div className="p-2">
+    <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
       {active.length > 0 ? (
-        <Section title={`Active (${active.length})`}>
+        <Section title={t("panel.active", { n: active.length })}>
           {active.map((id) => (
             <AgentRow key={id} agent={transcript.agents[id]} onSelect={onSelect} />
           ))}
         </Section>
       ) : null}
       {finished.length > 0 ? (
-        <Section title={`Done (${finished.length})`}>
+        <Section title={t("panel.done", { n: finished.length })}>
           {finished.map((id) => (
             <AgentRow key={id} agent={transcript.agents[id]} onSelect={onSelect} />
           ))}
@@ -272,210 +270,6 @@ function AgentRow({
       />
     </button>
   )
-}
-
-function FilesTab({
-  files,
-  workspace,
-  threadId,
-  canReveal,
-  onUpload,
-  onDelete,
-  onRefresh,
-  onReveal,
-}: {
-  files: FileEntry[]
-  workspace: string
-  threadId?: string
-  canReveal: boolean
-  onUpload: (files: File[]) => Promise<void>
-  onDelete: (path: string) => void
-  onRefresh: () => void
-  onReveal: (path?: string) => void
-}) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const sorted = useMemo(
-    () =>
-      // Directory before its contents, then alphabetical, so the tree reads
-      // top-down the way the paths are nested.
-      [...files].sort((a, b) => a.path.localeCompare(b.path)),
-    [files],
-  )
-
-  return (
-    <div className="p-2">
-      <div className="flex items-center gap-1 px-1 pb-2">
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          className="hidden"
-          onChange={async (e) => {
-            const picked = Array.from(e.target.files ?? [])
-            e.target.value = ""
-            if (picked.length > 0) await onUpload(picked)
-          }}
-        />
-        <Button variant="ghost" size="sm" className="gap-1.5" onClick={() => inputRef.current?.click()}>
-          <Upload />
-          Upload
-        </Button>
-        <Button variant="ghost" size="icon-sm" onClick={onRefresh} title="Refresh">
-          <RefreshCw />
-        </Button>
-        {canReveal ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => onReveal()}
-            title="Show the workspace in the file manager"
-          >
-            <FolderOpen />
-          </Button>
-        ) : null}
-        {workspace ? (
-          <CopyButton text={workspace} className="ml-auto" />
-        ) : null}
-      </div>
-
-      {sorted.length === 0 ? (
-        <p className="px-3 py-8 text-center text-xs text-muted-foreground">
-          Nothing here yet. Upload files for the agents to work on, or wait for
-          them to produce some.
-        </p>
-      ) : (
-        <ul>
-          {sorted.map((f) => (
-            <li
-              key={f.path}
-              className="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent/60"
-              // Nesting is shown by indentation rather than by repeating the
-              // parent directory on every row.
-              style={{ paddingLeft: 8 + depthOf(f.path) * 14 }}
-            >
-              {f.dir ? (
-                <Folder className="size-3.5 shrink-0 text-muted-foreground" />
-              ) : (
-                <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              )}
-              <span className="min-w-0 flex-1 truncate text-[13px]" title={f.path}>
-                {f.name}
-              </span>
-              {f.uploaded ? (
-                <Badge variant="outline" className="shrink-0 px-1 py-0 text-[10px]">
-                  yours
-                </Badge>
-              ) : null}
-              {!f.dir ? (
-                <span className="shrink-0 text-[11px] text-muted-foreground">
-                  {formatBytes(f.size)}
-                </span>
-              ) : null}
-              {!f.dir && threadId ? (
-                <div className="flex shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
-                  <Button variant="ghost" size="icon-sm" asChild title="Download">
-                    <a href={api.downloadURL(threadId, f.path)} download>
-                      <Download />
-                    </a>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    title="Delete"
-                    onClick={() => onDelete(f.path)}
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  )
-}
-
-function depthOf(path: string): number {
-  return path.split("/").length - 1
-}
-
-function TraceTab({
-  turns,
-  transcript,
-}: {
-  turns: Turn[]
-  transcript: TranscriptState
-}) {
-  const latest = turns.at(-1)
-  const current = transcript.turns.at(-1)
-  const turnId = current?.id ?? latest?.id
-
-  if (!turnId) {
-    return (
-      <p className="px-4 py-8 text-center text-xs text-muted-foreground">
-        Nothing has run in this conversation yet.
-      </p>
-    )
-  }
-
-  const rows = collectRows(transcript, turnId)
-
-  return (
-    <div className="p-2">
-      <div className="flex items-center gap-1 rounded-md bg-muted/60 px-2 py-1.5">
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          Turn
-        </span>
-        <code className="min-w-0 flex-1 truncate font-mono text-[11px]">{turnId}</code>
-        {/* The id is the whole troubleshooting story: `zwai trace <id>`. */}
-        <CopyButton text={turnId} label="Copy" />
-      </div>
-
-      {latest ? (
-        <p className="px-2 py-2 text-[11px] text-muted-foreground">
-          {latest.model ? `${latest.model} · ` : ""}
-          {latest.reasoning_effort ? `${latest.reasoning_effort} thinking · ` : ""}
-          {latest.status}
-          {latest.duration_ms ? ` · ${formatDuration(latest.duration_ms)}` : ""}
-        </p>
-      ) : null}
-
-      <ul className="space-y-0.5">
-        {rows.map((row, i) => (
-          <li
-            key={`${row.at}-${i}`}
-            className="flex items-start gap-2 rounded px-2 py-1 text-[12px] hover:bg-accent/60"
-          >
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-              {formatTime(row.at)}
-            </span>
-            <span className="shrink-0 font-medium">{row.kind}</span>
-            <span className="shrink-0 text-muted-foreground">{row.agent}</span>
-            <span className="min-w-0 flex-1 truncate text-muted-foreground">
-              {row.text}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function collectRows(transcript: TranscriptState, turnId: string) {
-  const rows: { at: string; kind: string; agent: string; text: string }[] = []
-  for (const id of transcript.agentOrder) {
-    for (const b of transcript.agents[id].blocks) {
-      if (b.turnId !== turnId) continue
-      rows.push({
-        at: b.at,
-        kind: b.kind === "tool" ? (b.tool?.name ?? "tool") : b.kind,
-        agent: id,
-        text: b.kind === "tool" ? (b.tool?.args ?? "") : b.text,
-      })
-    }
-  }
-  return rows.sort((a, b) => a.at.localeCompare(b.at))
 }
 
 function countRunning(transcript: TranscriptState): number {

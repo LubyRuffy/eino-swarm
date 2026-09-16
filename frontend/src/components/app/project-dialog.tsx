@@ -15,6 +15,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { ApiError, type ProjectPatch } from "@/lib/api"
 import type { Project } from "@/lib/types"
+import { useT } from "@/lib/use-t"
 
 /** Create or edit one project: its instruction, its working directory and
  *  whether it remembers anything. */
@@ -34,6 +35,7 @@ export function ProjectDialog({
   onOpenChange: (open: boolean) => void
   onSave: (patch: ProjectPatch) => Promise<Project>
 }) {
+  const t = useT()
   const [name, setName] = useState("")
   const [prompt, setPrompt] = useState("")
   const [workdir, setWorkdir] = useState("")
@@ -81,16 +83,15 @@ export function ProjectDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle>{project ? "Edit project" : "New project"}</DialogTitle>
+          <DialogTitle>{project ? t("project.edit") : t("project.new")}</DialogTitle>
           <DialogDescription>
-            Conversations in a project share a working directory, an
-            instruction, and what earlier conversations learned.
+            {t("project.desc")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4">
           <div className="grid gap-1.5">
-            <Label htmlFor="project-name">Name</Label>
+            <Label htmlFor="project-name">{t("project.name")}</Label>
             <Input
               id="project-name"
               autoFocus
@@ -100,7 +101,7 @@ export function ProjectDialog({
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="project-prompt">Instruction</Label>
+            <Label htmlFor="project-prompt">{t("project.instruction")}</Label>
             <Textarea
               id="project-prompt"
               rows={4}
@@ -108,16 +109,16 @@ export function ProjectDialog({
               onChange={(e) => setPrompt(e.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Added to the system prompt of every conversation in this project.
+              {t("project.instructionHint")}
             </p>
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="project-workdir">Working directory</Label>
+            <Label htmlFor="project-workdir">{t("project.workdir")}</Label>
             <Input
               id="project-workdir"
               value={workdir}
-              placeholder="Leave empty and zwai manages one"
+              placeholder={t("project.workdirPlaceholder")}
               onChange={(e) => setWorkdir(e.target.value)}
               aria-invalid={Boolean(workdirError)}
             />
@@ -125,23 +126,22 @@ export function ProjectDialog({
               <p className="text-xs text-destructive">{workdirError}</p>
             ) : (
               <p className="text-xs text-muted-foreground">
-                An absolute path that already exists. The agents read and write
-                it directly, with your permissions.
+                {t("project.workdirHint")}
               </p>
             )}
           </div>
 
           <div className="flex items-start justify-between gap-4 rounded-md border border-border p-3">
             <div className="min-w-0">
-              <Label htmlFor="project-memory">Memory</Label>
+              <Label htmlFor="project-memory">{t("project.memory")}</Label>
               <p className="mt-1 text-xs text-muted-foreground">
                 {memoryAvailable
-                  ? "After each conversation, keep what is worth carrying forward: notes and reusable procedures."
-                  : "Memory is switched off for this install; turn it on in Settings first."}
+                  ? t("project.memoryOn")
+                  : t("project.memoryOff")}
               </p>
               {project ? (
                 <p className="mt-1 break-all text-xs text-muted-foreground">
-                  Stored in {project.memory_dir}
+                  {t("project.storedIn", { path: project.memory_dir })}
                 </p>
               ) : null}
             </div>
@@ -158,13 +158,13 @@ export function ProjectDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("project.cancel")}
           </Button>
           <Button
             disabled={saving || name.trim() === ""}
             onClick={() => void submit()}
           >
-            {project ? "Save" : "Create project"}
+            {project ? t("project.save") : t("project.create")}
           </Button>
         </DialogFooter>
       </DialogContent>

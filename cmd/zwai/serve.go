@@ -75,8 +75,8 @@ func startDesktopServer(args []string) (desktop.Options, *app.App, error) {
 }
 
 func runWeb(args []string) error {
-	// Ctrl-C has to cancel running turns and close the database, or the next
-	// start finds conversations that look like they are still working.
+	// Ctrl-C has to stop in-memory runs and close the database. Unfinished
+	// turns stay marked running so the next start continues them.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(stop)

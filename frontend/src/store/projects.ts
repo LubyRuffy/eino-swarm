@@ -1,7 +1,9 @@
 import { create } from "zustand"
 
+import { applyPinnedOrder } from "@/lib/reorder"
 import { api, ApiError, type ProjectPatch } from "@/lib/api"
-import type { MemoryEntries, Project, ProjectMemory } from "@/lib/types"
+import { reviewPanelHint } from "@/lib/transcript"
+import type { MemoryEntries, Project, ProjectMemory, ReviewOutcome } from "@/lib/types"
 
 /** Projects and the memory panel live in their own store.
  *
@@ -19,16 +21,27 @@ interface ProjectsState {
   memoryLoading: boolean
   /** A write landed while the Memory tab was not the one on screen. */
   memoryUnread: boolean
+  /** True between a "Review now" click and the matching memory_review event. */
+  reviewing: boolean
+  /** What the last click decided, once it has an answer. */
+  reviewHint?: string
+  /** The turn a click is waiting on. Absent means the next review event. */
+  pendingReviewTurnId?: string
   error?: string
 
   refresh: () => Promise<void>
   select: (id?: string) => void
+  beginReview: () => void
+  awaitReview: (turnId: string) => void
+  endReview: (hint?: string) => void
+  finishReview: (turnId: string, outcome?: ReviewOutcome) => void
   /** create and update throw on refusal: the dialog shows the server's
    *  message against the field it names, which an error swallowed into the
    *  store could not do. */
   create: (patch: ProjectPatch) => Promise<Project>
   update: (id: string, patch: ProjectPatch) => Promise<Project>
   remove: (id: string) => Promise<void>
+  reorder: (ids: string[]) => Promise<void>
   loadMemory: (projectId?: string) => Promise<void>
   saveMemory: (text: string, rev?: string) => Promise<void>
   removeSkill: (name: string) => Promise<void>
@@ -41,14 +54,38 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   projects: [],
   memoryLoading: false,
   memoryUnread: false,
+  reviewing: false,
+
+  beginReview: () =>
+    set({ reviewing: true, reviewHint: undefined, pendingReviewTurnId: undefined }),
+
+  awaitReview: (turnId) => {
+    if (!get().reviewing) return
+    set({ pendingReviewTurnId: turnId })
+  },
+
+  endReview: (reviewHint) =>
+    set({ reviewing: false, reviewHint, pendingReviewTurnId: undefined }),
+
+  finishReview: (turnId, outcome) => {
+    if (!get().reviewing) return
+    const pending = get().pendingReviewTurnId
+    // A click that has not yet heard which turn was accepted still owns the
+    // next review event: the job can finish before the 202 body is parsed.
+    if (pending && pending !== turnId) return
+    set({
+      reviewing: false,
+      reviewHint: reviewPanelHint(outcome),
+      pendingReviewTurnId: undefined,
+    })
+  },
 
   refresh: async () => {
     try {
       const projects = await api.projects()
       set((s) => ({
         projects,
-        // A project deleted in another window must not stay selected, or the
-        // sidebar filters by an id the server has never heard of.
+        // A project deleted in another window must not stay selected.
         selectedId: projects.some((p) => p.id === s.selectedId)
           ? s.selectedId
           : undefined,
@@ -91,6 +128,16 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     }
   },
 
+  reorder: async (ids) => {
+    set({ projects: applyPinnedOrder(get().projects, ids) })
+    try {
+      set({ projects: await api.reorderProjects(ids) })
+    } catch (e) {
+      set({ error: message(e) })
+      await get().refresh()
+    }
+  },
+
   loadMemory: async (projectId) => {
     const id = projectId ?? get().memoryProjectId
     if (!id) {
@@ -106,8 +153,8 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       set((s) => ({
         memory,
         memoryLoading: false,
-        // The sidebar lists skills under the project. A review that just
-        // wrote one would otherwise leave the row looking empty until reload.
+        // Skills stay behind the Memory tab. A review that just wrote one
+        // would otherwise leave the panel looking empty until reload.
         projects: s.projects.map((p) =>
           p.id === id ? { ...p, skills: memory.skills } : p,
         ),

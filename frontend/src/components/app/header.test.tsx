@@ -3,6 +3,10 @@ import { describe, expect, it, vi } from "vitest"
 
 import { Header } from "./header"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import {
+  SIDEBAR_WIDTH_DEFAULT,
+  SIDEBAR_WIDTH_VAR,
+} from "@/lib/sidebar-width"
 import type { ThreadStatus } from "@/lib/types"
 
 const idle: ThreadStatus = { running: false }
@@ -18,6 +22,7 @@ function renderHeader(props: Partial<Parameters<typeof Header>[0]> = {}) {
         onTogglePanel={vi.fn()}
         onToggleSidebar={vi.fn()}
         onToggleTheme={vi.fn()}
+        onToggleLocale={vi.fn()}
         dark={false}
         {...props}
       />
@@ -26,48 +31,103 @@ function renderHeader(props: Partial<Parameters<typeof Header>[0]> = {}) {
 }
 
 describe("Header sidebar toggle", () => {
-  // When the list is gone the traffic lights sit on this bar, and the only
-  // way back is a control that lives next to them — same as Cursor.
-  it("offers to show the conversations when the sidebar is hidden", () => {
+  // The toggle lives in the window title bar, next to the traffic lights,
+  // whether the list is open or not — the Codex/Cursor chrome, not a
+  // padded row inside the sidebar.
+  it("offers to hide the conversations while the list is open", () => {
+    const onToggleSidebar = vi.fn()
+    renderHeader({ sidebarOpen: true, onToggleSidebar })
+    fireEvent.click(screen.getByRole("button", { name: "Hide conversations" }))
+    expect(onToggleSidebar).toHaveBeenCalled()
+  })
+
+  it("offers to show the conversations when the list is hidden", () => {
     const onToggleSidebar = vi.fn()
     renderHeader({ sidebarOpen: false, onToggleSidebar })
     fireEvent.click(screen.getByRole("button", { name: "Show conversations" }))
     expect(onToggleSidebar).toHaveBeenCalled()
   })
 
-  it("pads for traffic lights when the sidebar is gone on desktop", () => {
-    renderHeader({ sidebarOpen: false, trafficInset: true })
-    expect(screen.getByRole("banner")).toHaveClass("pl-traffic")
+  it("keeps the leading cluster as wide as the sidebar so the title starts with the transcript", () => {
+    renderHeader({ sidebarOpen: true })
+    expect(screen.getByTestId("titlebar-leading").style.width).toBe(
+      `var(${SIDEBAR_WIDTH_VAR}, ${SIDEBAR_WIDTH_DEFAULT}px)`,
+    )
   })
 
-  it("does not show a second toggle while the sidebar is open", () => {
-    renderHeader({ sidebarOpen: true })
-    expect(screen.queryByRole("button", { name: "Show conversations" })).not.toBeInTheDocument()
+  it("does not reserve the sidebar column once the list is gone", () => {
+    renderHeader({ sidebarOpen: false })
+    expect(screen.getByTestId("titlebar-leading").style.width).toBe("")
+  })
+
+  it("pads for traffic lights on the desktop title bar", () => {
+    renderHeader({ trafficInset: true })
+    expect(screen.getByTestId("titlebar-leading")).toHaveClass("pl-traffic")
+  })
+
+  it("does not pad in a browser, where there are no traffic lights", () => {
+    renderHeader({ trafficInset: false })
+    expect(screen.getByTestId("titlebar-leading")).not.toHaveClass("pl-traffic")
+  })
+
+  it("marks the bar as window chrome so a double-click can zoom", () => {
+    renderHeader()
+    expect(screen.getByRole("banner")).toHaveAttribute("data-drag-region")
   })
 })
 
 describe("Header project chip", () => {
   // Which directory the tools are pointed at is otherwise invisible, and it
   // is the difference between editing a scratch folder and editing a repo.
-  it("names the project the conversation belongs to", () => {
-    renderHeader({
-      project: {
-        id: "pj_1",
-        name: "Anchored",
-        system_prompt: "",
-        workdir: "/home/me/repo",
-        resolved_workdir: "/home/me/repo",
-        memory_enabled: true,
-        memory_dir: "/data/projects/pj_1/memory",
-        created_at: "",
-        updated_at: "",
-      },
-    })
-    expect(screen.getByTestId("thread-project")).toHaveTextContent("Anchored")
+  // Two stacked lines in a 48px bar made the title look cramped; the prefix
+  // has to stay on the same line as the conversation name.
+  const project = {
+    id: "pj_1",
+    name: "Anchored",
+    system_prompt: "",
+    workdir: "/home/me/repo",
+    resolved_workdir: "/home/me/repo",
+    memory_enabled: true,
+    memory_dir: "/data/projects/pj_1/memory",
+    created_at: "",
+    updated_at: "",
+  }
+
+  it("prefixes the title with the project name on one line", () => {
+    renderHeader({ project })
+    const name = screen.getByTestId("thread-project")
+    const title = screen.getByTestId("thread-title")
+    expect(name).toHaveTextContent("Anchored")
+    expect(title).toHaveTextContent("New conversation")
+    expect(name.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(title.parentElement).toContainElement(name)
+    expect(title).toHaveClass("truncate")
+    expect(title.parentElement).toHaveClass("items-center")
   })
 
   it("shows nothing for a conversation with no project", () => {
     renderHeader()
     expect(screen.queryByTestId("thread-project")).not.toBeInTheDocument()
+    expect(screen.getByTestId("thread-title")).toHaveTextContent("New conversation")
+  })
+})
+
+describe("Header status", () => {
+  it("says Waiting when the manager is paused at the tool-round cap", () => {
+    renderHeader({
+      status: {
+        running: true,
+        awaiting_continue: true,
+        started_at: new Date(Date.now() - 5000).toISOString(),
+      },
+    })
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("Waiting")
+  })
+
+  it("offers a language switch next to the theme control", () => {
+    const onToggleLocale = vi.fn()
+    renderHeader({ onToggleLocale })
+    fireEvent.click(screen.getByRole("button", { name: "Switch language" }))
+    expect(onToggleLocale).toHaveBeenCalled()
   })
 })

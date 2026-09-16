@@ -12,6 +12,7 @@ export function Disclosure({
   children,
   className,
   failed,
+  testId,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -19,11 +20,13 @@ export function Disclosure({
   children?: React.ReactNode
   className?: string
   failed?: boolean
+  testId?: string
 }) {
   return (
     <div className={cn("group", className)}>
       <button
         type="button"
+        data-testid={testId}
         onClick={() => onOpenChange(!open)}
         aria-expanded={open}
         aria-invalid={failed || undefined}

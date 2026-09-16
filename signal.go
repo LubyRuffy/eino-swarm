@@ -51,7 +51,7 @@ type NotifyKind int
 
 const (
 	NotifyAgentMessage   NotifyKind = iota // an assistant message completed
-	NotifySpawned                          // a worker was spawned (Text=role, AgentID set)
+	NotifySpawned                          // a worker was spawned (Text=system prompt, Role=role, AgentID set)
 	NotifyFinished                         // a worker finished (Text=result; Err set on failure)
 	NotifyToolCall                         // a tool call was issued (Text="name(args)")
 	NotifyToolResult                       // a tool returned (Text=clipped result, newlines kept)

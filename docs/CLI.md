@@ -3,7 +3,7 @@
 ```
 zwai [desktop] [--data-dir DIR] [--mock]
 zwai web  [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
-zwai tui  --task "..." [--workspace DIR] [--data-dir DIR] [--mock]
+zwai tui  --task "..." [--goal "..."] [--workspace DIR] [--data-dir DIR] [--mock]
 zwai trace <turn-id|conversation-id> [--full] [--data-dir DIR]
 zwai config [path|init|show] [--data-dir DIR]
 zwai version | help
@@ -34,11 +34,22 @@ Three conveniences worth knowing:
 
 Opens the app in a native window (Wails 3). The window loads a local HTTP server
 on a **random loopback port** — a fixed port would collide with whatever else you
-run, and the window is told the URL anyway. Closing the window cancels running
-turns and closes the database, with a 5s grace period for in-flight requests.
+run, and the window is told the URL anyway. Closing the window abandons
+in-memory runs and closes the database. Unfinished turns stay `running` so the
+next start continues them; a user **Stop** is the only path that records
+`cancelled`. The live event stream is cancelled immediately so the window does
+not freeze; a stuck REST call still has a 5s ceiling.
 
 Desktop is the only mode that can show a file in the platform file manager; the
-UI hides that control everywhere else.
+UI hides that control everywhere else. On macOS the hidden title bar
+drags like a native window; double-click zooms or restores it. The traffic
+lights are centred in that bar next to the sidebar toggle. Full-page
+Settings keeps the same empty strip so **Back to app** is not under the
+lights. The Dock (and the
+Windows / Linux taskbar) uses the embedded app icon even under `go run`: a
+naked binary has no `.app` bundle, so the PNG has to be set at runtime, inset
+to Apple's 824/1024 icon grid, and the corners rounded here — macOS will not
+apply its squircle or content margin to a loose executable.
 
 ## `zwai web`
 
@@ -49,9 +60,9 @@ Serves the same app over HTTP and opens your browser.
 | `--addr HOST:PORT` | the configured `server.addr` (`127.0.0.1:8787`) | listen address. `:0` or `127.0.0.1:0` picks a free port and prints it. |
 | `--no-open` | off | do not open a browser. Also honoured: `server.open_browser: false`. |
 
-The URL is printed on startup. `Ctrl-C` shuts down cleanly: running turns are
-cancelled and recorded as `cancelled`, so the next start does not show
-conversations frozen mid-answer.
+The URL is printed on startup. `Ctrl-C` shuts down cleanly: in-memory runs stop
+and unfinished turns stay `running`, so the next start continues them. A user
+**Stop** in the UI is the only path that records `cancelled`.
 
 ```bash
 zwai web --addr 0.0.0.0:8787   # reachable from your LAN — see the warning below
@@ -64,11 +75,13 @@ zwai web --addr 0.0.0.0:8787   # reachable from your LAN — see the warning bel
 ## `zwai tui`
 
 One task, one terminal, no UI — the same swarm, the same config, the same
-toolset, so a task that misbehaves in the app can be reproduced here.
+toolset, and the same host snapshot in the prompt (OS, shell, date), so a
+task that misbehaves in the app can be reproduced here.
 
 | flag | meaning |
 |---|---|
 | `--task "..."` | the task. Words after the flags also count as the task, so quoting is optional: `zwai tui summarise the notes`. |
+| `--goal "..."` | standing objective for this one-shot run. The manager gets `complete_goal` and `block_goal` and, if it does not call either, the TUI starts another run (up to `swarm.goal_max_auto_turns`) instead of exiting. The app's `/goal` is the same runtime on a saved conversation. |
 | `--workspace DIR` | the directory relative tool paths resolve against. Default: a temporary directory that is removed on exit. |
 
 Nothing is written to the database in this mode; use the app when you want the
@@ -97,12 +110,12 @@ turn tn_3c6d0df94ee9e287  conversation th_cc107f8e87d220b5
       120ms reasoning      manager            three files, one table…
       480ms tool_call      manager            ls(uploads)
       512ms tool_result    manager            uploads/a.md uploads/b.md…
-      1.1s  spawned        researcher-1       researcher
+      1.1s  spawned        researcher-1       ## Environment  ⏎ The tools run on this machine…
       …
 
   model calls (7)
-    manager            some-model             6 msgs  in   4210 ch  out 880 ch   2210ms
-    researcher-1       some-model             4 msgs  in   2100 ch  out 640 ch   1980ms
+    manager            some-model             6 msgs  in   4210 ch  out 880 ch   2210ms  90/12 tok  cache 20
+    researcher-1       some-model             4 msgs  in   2100 ch  out 640 ch   1980ms  40/8 tok
     …
     total              9.8s
 ```
@@ -120,8 +133,9 @@ Given a **conversation** id it prints every turn of that conversation in order.
 Given an unknown id it fails with a message naming the data directory it looked
 in — usually the sign that you meant to pass `--data-dir`.
 
-The same data is available in the UI's Trace tab and over HTTP at
-`GET /api/trace/:turn`.
+The same data is available over HTTP at `GET /api/trace/:turn`. The UI Trace
+tab shows that turn's status, error and billed tokens; **Full log** is the
+on-screen timeline, folded by default so a long run is not a sidebar syslog.
 
 ## `zwai config`
 

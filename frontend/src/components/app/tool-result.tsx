@@ -1,6 +1,9 @@
 import { MemoMarkdown } from "@/components/app/markdown"
+import { ShellCommand } from "@/components/app/shell-command"
+import { SourceListing } from "@/components/app/source-code"
 import { isMarkdownPath, parseReadResult, type ReadListing } from "@/lib/read-result"
-import { viewTool, type SearchHit } from "@/lib/tool-view"
+import { execCommand, viewTool, type SearchHit } from "@/lib/tool-view"
+import { useT } from "@/lib/use-t"
 
 /** Expanded tool output. Built-in tools are shown as what they did — a
  *  command, a query, a file — not the JSON envelope the model spoke. */
@@ -15,16 +18,19 @@ export function ToolResultBody({
   result?: string
   failed?: boolean
 }) {
+  const t = useT()
   const listing = name === "read" && result ? parseReadResult(result) : undefined
   const view = viewTool(name, args, result, failed)
+  const command = name === "exec" ? execCommand(args) : ""
   return (
     <div
       className={`space-y-2 border-l-2 pl-3 text-[12px] ${
         view.failed ? "border-destructive" : "border-border"
       }`}
     >
+      {command ? <ShellCommand command={command} /> : null}
       {result === undefined ? (
-        <p className="text-muted-foreground">running…</p>
+        <p className="text-muted-foreground">{t("tool.running")}</p>
       ) : listing ? (
         <FileBody listing={listing} failed={view.failed} />
       ) : (
@@ -39,6 +45,7 @@ function ParsedBody({
 }: {
   view: ReturnType<typeof viewTool>
 }) {
+  const t = useT()
   return (
     <div className="space-y-2">
       {view.failed && view.error ? (
@@ -52,7 +59,8 @@ function ParsedBody({
       {view.hits ? <SearchHits hits={view.hits} /> : null}
       {view.body ? (
         <pre
-          className={`thin-scrollbar max-h-72 overflow-auto rounded bg-muted p-2 font-mono ${
+          data-testid="tool-output"
+          className={`thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono ${
             view.failed && !view.error ? "text-destructive" : ""
           }`}
         >
@@ -60,7 +68,7 @@ function ParsedBody({
         </pre>
       ) : null}
       {!view.body && !view.hits && !view.error ? (
-        <p className="text-muted-foreground">(no output)</p>
+        <p className="text-muted-foreground">{t("tool.noOutput")}</p>
       ) : null}
     </div>
   )
@@ -83,6 +91,7 @@ function SearchHits({ hits }: { hits: SearchHit[] }) {
 }
 
 function FileBody({ listing, failed }: { listing: ReadListing; failed?: boolean }) {
+  const t = useT()
   const empty = listing.lines.length === 0
   return (
     <div
@@ -94,28 +103,13 @@ function FileBody({ listing, failed }: { listing: ReadListing; failed?: boolean 
         <span className="opacity-70"> · {listing.encoding}</span>
       </p>
       {empty ? (
-        <p className="px-2 py-2 text-muted-foreground">(empty file)</p>
+        <p className="px-2 py-2 text-muted-foreground">{t("tool.emptyFile")}</p>
       ) : isMarkdownPath(listing.path) ? (
         <div className="md thin-scrollbar max-h-72 overflow-auto px-3 py-2 [&>:first-child]:mt-0">
           <MemoMarkdown text={listing.body} />
         </div>
       ) : (
-        <div className="thin-scrollbar max-h-72 overflow-auto">
-          <table className="w-full font-mono">
-            <tbody>
-              {listing.lines.map((line) => (
-                <tr key={line.n} className="align-top">
-                  <td className="select-none whitespace-nowrap px-2 py-0 text-right text-muted-foreground">
-                    {line.n}
-                  </td>
-                  <td className="stream-text w-full whitespace-pre-wrap py-0 pr-2">
-                    {line.text}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SourceListing path={listing.path} lines={listing.lines} body={listing.body} />
       )}
     </div>
   )

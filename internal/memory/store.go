@@ -80,17 +80,58 @@ func (e *ConflictError) Unwrap() error { return ErrConflict }
 // what is stored now, because the agent's next move is to consolidate and it
 // cannot do that without seeing the entries.
 type OverflowError struct {
-	Usage   int
-	Limit   int
-	Adding  int
+	Usage int
+	Limit int
+	// Adding is how many characters this write introduced (the new note
+	// for add, the growth for replace). Kept so a caller can see the size
+	// of the attempted change, not only how far over the limit it landed.
+	Adding int
+	// WouldBe is the character count the refused write would have produced.
+	WouldBe int
+	// Matched is the existing note a refused replace found. Empty for add
+	// and overwrite: those never selected an entry.
+	Matched string
 	Entries []string
 }
 
 func (e *OverflowError) Error() string {
-	return fmt.Sprintf("memory is at %d/%d characters; this write of %d would not fit. "+
-		"Consolidate first: replace overlapping entries with shorter ones or remove stale ones, then retry.",
-		e.Usage, e.Limit, e.Adding)
+	over := e.OverBy()
+	msg := fmt.Sprintf("memory is at %d/%d characters; this write exceeds the limit by %d. Do not retry the same write.",
+		e.Usage, e.Limit, over)
+	if e.Matched != "" {
+		return msg + fmt.Sprintf(" The matched note was not changed. Replace it with a shorter note or remove another note first — the stored notes must shrink by at least %d characters.", over)
+	}
+	return msg + fmt.Sprintf(" Shorten or remove existing notes until at least %d characters are free, then retry.", over)
 }
+
+// OverBy is how many characters the refused write ran past the limit.
+// That number is what the agent has to free before anything new will land.
+func (e *OverflowError) OverBy() int {
+	if e.WouldBe <= e.Limit {
+		return 0
+	}
+	return e.WouldBe - e.Limit
+}
+
+// MatchError is a replace/remove that did not name exactly one note. It
+// carries what is stored (and, when several notes matched, which ones) so
+// the agent can copy a unique substring instead of guessing again.
+type MatchError struct {
+	Err      error
+	Text     string
+	Entries  []string
+	Matching []string
+}
+
+func (e *MatchError) Error() string {
+	if errors.Is(e.Err, ErrAmbiguous) {
+		return fmt.Sprintf("memory: %q matches %d notes; pass a longer unique substring from one of them",
+			e.Text, len(e.Matching))
+	}
+	return fmt.Sprintf("memory: nothing matches %q. Copy a unique substring from current_entries", e.Text)
+}
+
+func (e *MatchError) Unwrap() error { return e.Err }
 
 // Store is one project's memory directory.
 //
@@ -218,13 +259,19 @@ func (s *Store) Replace(oldText, content string) (Snapshot, error) {
 	if err != nil {
 		return snap, err
 	}
+	matched := snap.Entries[idx]
 	next := append([]string{}, snap.Entries...)
-	grew := utf8.RuneCountInString(content) - utf8.RuneCountInString(next[idx])
+	grew := utf8.RuneCountInString(content) - utf8.RuneCountInString(matched)
 	next[idx] = content
 	if grew < 0 {
 		grew = 0
 	}
-	return s.write(next, grew)
+	written, err := s.write(next, grew)
+	var overflow *OverflowError
+	if errors.As(err, &overflow) {
+		overflow.Matched = matched
+	}
+	return written, err
 }
 
 // Remove drops the single entry containing oldText and reports the entry it
@@ -286,6 +333,7 @@ func (s *Store) write(entries []string, adding int) (Snapshot, error) {
 			Usage:   current.Chars,
 			Limit:   s.limit,
 			Adding:  adding,
+			WouldBe: next.Chars,
 			Entries: current.Entries,
 		}
 	}
@@ -304,19 +352,23 @@ func (s *Store) memoryPath() string { return filepath.Join(s.dir, MemoryFile) }
 // matchOne finds the one entry containing text. Both failures are the model's
 // to fix, so they are separate errors rather than one "not applied".
 func matchOne(entries []string, text string) (int, error) {
-	found := -1
+	var hits []int
 	for i, e := range entries {
 		if strings.Contains(e, text) {
-			if found >= 0 {
-				return 0, ErrAmbiguous
-			}
-			found = i
+			hits = append(hits, i)
 		}
 	}
-	if found < 0 {
-		return 0, ErrNoMatch
+	if len(hits) == 0 {
+		return 0, &MatchError{Err: ErrNoMatch, Text: text, Entries: entries}
 	}
-	return found, nil
+	if len(hits) > 1 {
+		matched := make([]string, len(hits))
+		for i, idx := range hits {
+			matched[i] = entries[idx]
+		}
+		return 0, &MatchError{Err: ErrAmbiguous, Text: text, Entries: entries, Matching: matched}
+	}
+	return hits[0], nil
 }
 
 // splitEntries reads the file back into entries. A blank line separates them,

@@ -167,7 +167,7 @@ type Registry struct {
 
 	// mgrInbox holds steering messages for the manager agent, drained by
 	// ManagerMiddleware at the manager's next turn boundary.
-	mgrInbox []string
+	mgrInbox []*schema.Message
 
 	// notify is the semantic notification sink installed for the duration of
 	// one Run/RunWith. Worker goroutines emit through it.
@@ -186,6 +186,10 @@ type Registry struct {
 	// ErrExceedMaxIterations instead of spinning forever.
 	MaxTurns int
 
+	// ManagerMaxIterations caps the manager's ReAct loop when RunConfig
+	// does not set MaxIterations (<=0 keeps eino's own default).
+	ManagerMaxIterations int
+
 	// ModelBuilder builds each sub-agent's chat model. Return one shared
 	// instance to reuse a single client/endpoint across the swarm.
 	ModelBuilder ModelBuilder
@@ -193,6 +197,12 @@ type Registry struct {
 	// SubAgentTools are registered on every spawned sub-agent in addition to
 	// the swarm's send_message tool (e.g. web_search/web_fetch for workers).
 	SubAgentTools []tool.BaseTool
+
+	// WorkerPreamble is prepended to every sub-agent's Instruction. The task
+	// stays the user message. Empty keeps the previous behaviour: Instruction
+	// is the task. Hosts use this for facts workers cannot see in the manager
+	// prompt — OS, shell, date — so they do not invent the wrong userland.
+	WorkerPreamble string
 
 	// OnEvent, if set, receives every inner agent event (streamed lifecycle,
 	// tool calls, assistant output) with the spawning role attached.
@@ -212,7 +222,7 @@ type Registry struct {
 
 	// internal hooks: invoked by Spawn on registration and by the agent
 	// goroutine on completion; Run wires these into Notifications.
-	spawnHook  func(role, agentID string)
+	spawnHook  func(role, agentID, instruction string)
 	finishHook func(role, agentID, result string, err error)
 }
 
@@ -255,22 +265,46 @@ func (r *Registry) historySnapshot() []adk.Message {
 // never interrupting an in-flight model call or tool execution. It reports
 // false when the registry is closed (nothing is running to steer).
 func (r *Registry) SteerManager(text string) bool {
+	return r.SteerManagerMessage(schema.UserMessage("[steer] " + text))
+}
+
+// SteerManagerMessage queues an already-built user message, which is how a
+// pasted image rides along with the steering text. False when nothing is
+// running to steer.
+func (r *Registry) SteerManagerMessage(msg *schema.Message) bool {
+	if msg == nil {
+		return false
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
 		return false
 	}
-	r.mgrInbox = append(r.mgrInbox, text)
+	r.mgrInbox = append(r.mgrInbox, msg)
 	return true
 }
 
 // TakePendingSteers removes and returns steering messages that were queued but
 // never delivered, which happens when a steer lands after the manager's last
 // model call. The caller decides what to do with them; dropping them silently
-// would lose something the user typed.
-func (r *Registry) TakePendingSteers() []string { return r.drainManagerInbox() }
+// would lose something the user typed. Captions only — use
+// TakePendingSteerMessages when the queued item may carry images.
+func (r *Registry) TakePendingSteers() []string {
+	msgs := r.drainManagerInbox()
+	out := make([]string, 0, len(msgs))
+	for _, m := range msgs {
+		out = append(out, strings.TrimSpace(strings.TrimPrefix(steerCaption(m), "[steer]")))
+	}
+	return out
+}
 
-func (r *Registry) drainManagerInbox() []string {
+// TakePendingSteerMessages is TakePendingSteers with the full messages, so a
+// pasted image is not stripped off when a late steer becomes its own turn.
+func (r *Registry) TakePendingSteerMessages() []*schema.Message {
+	return r.drainManagerInbox()
+}
+
+func (r *Registry) drainManagerInbox() []*schema.Message {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if len(r.mgrInbox) == 0 {
@@ -279,6 +313,23 @@ func (r *Registry) drainManagerInbox() []string {
 	out := r.mgrInbox
 	r.mgrInbox = nil
 	return out
+}
+
+func steerCaption(m *schema.Message) string {
+	if m == nil {
+		return ""
+	}
+	if t := strings.TrimSpace(m.Content); t != "" {
+		return t
+	}
+	for _, p := range m.UserInputMultiContent {
+		if p.Type == schema.ChatMessagePartTypeText {
+			if t := strings.TrimSpace(p.Text); t != "" {
+				return t
+			}
+		}
+	}
+	return ""
 }
 
 // historyRecorder keeps the registry's snapshot of the manager conversation
@@ -293,7 +344,7 @@ func (m *historyRecorder) BeforeModelRewriteState(ctx context.Context,
 	state *adk.ChatModelAgentState, mc *adk.TypedModelContext[*schema.Message],
 ) (context.Context, *adk.ChatModelAgentState, error) {
 	for _, msg := range m.reg.drainManagerInbox() {
-		state.Messages = append(state.Messages, schema.UserMessage("[steer] "+msg))
+		state.Messages = append(state.Messages, msg)
 	}
 	m.reg.SetHistory(state.Messages)
 	return ctx, state, nil
@@ -346,7 +397,7 @@ func (r *Registry) spawnAgent(ctx context.Context, role, task string,
 	hook := r.spawnHook
 	r.mu.Unlock()
 	if hook != nil {
-		hook(role, id)
+		hook(role, id, r.workerInstruction(task))
 	}
 	r.startWorker(ctx, h, task, modelOpt, seed, extraTools)
 	return h, nil

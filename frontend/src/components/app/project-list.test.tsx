@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { ProjectList } from "./project-list"
-import type { Project } from "@/lib/types"
+import type { Project, Thread } from "@/lib/types"
 
 const projects: Project[] = [
   {
@@ -18,49 +18,104 @@ const projects: Project[] = [
   },
 ]
 
+function topic(partial: Partial<Thread> & { id: string; title: string }): Thread {
+  return {
+    project_id: "pj_1",
+    provider_id: "default",
+    reasoning_effort: "",
+    archived: false,
+    created_at: "2026-09-16T00:00:00Z",
+    last_active_at: "2026-09-16T12:00:00Z",
+    running: false,
+    sort_rank: 0,
+    ...partial,
+  }
+}
+
 function renderList(props: Partial<Parameters<typeof ProjectList>[0]> = {}) {
   const handlers = {
+    threadsByProject: {} as Record<string, Thread[]>,
+    expanded: { pj_1: true },
     onSelect: vi.fn(),
+    onToggle: vi.fn(),
     onNew: vi.fn(),
+    onNewConversation: vi.fn(),
     onEdit: vi.fn(),
     onDelete: vi.fn(),
     onOpenSkill: vi.fn(),
+    onReorder: vi.fn(),
+    onOpenThread: vi.fn(),
+    onRenameThread: vi.fn(),
+    onDeleteThread: vi.fn(),
+    onReorderThreads: vi.fn(),
+    onPinThread: vi.fn(),
   }
   render(<ProjectList projects={projects} {...handlers} {...props} />)
   return handlers
 }
 
 describe("Project list", () => {
-  it("selects a project and clears the filter again", () => {
-    const { onSelect } = renderList({ selectedId: "pj_1" })
-    expect(screen.getByRole("button", { name: "First" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
+  // The sidebar scrollport already has px-2. Wrapping this section in
+  // another one pushed Projects 8px further in than Recents.
+  it("shares the conversation list gutter instead of adding its own", () => {
+    renderList()
+    expect(screen.getByTestId("project-list")).not.toHaveClass("px-2")
+  })
+
+  it("toggles a project folder instead of filtering the whole list", () => {
+    const { onSelect, onToggle } = renderList({ selectedId: "pj_1" })
+    expect(screen.queryByRole("button", { name: "All conversations" })).not.toBeInTheDocument()
+    const row = screen.getByRole("button", { name: "First" })
+    expect(row).toHaveAttribute("aria-pressed", "true")
+    expect(row).toHaveAttribute("aria-expanded", "true")
+    fireEvent.click(row)
+    expect(onToggle).toHaveBeenCalledWith("pj_1")
+    expect(onSelect).toHaveBeenCalledWith("pj_1")
+  })
+
+  it("nests conversations under an expanded project and hides them when collapsed", () => {
+    const threads = [topic({ id: "th_1", title: "A topic" })]
+    const { rerender } = renderWith(
+      { threadsByProject: { pj_1: threads }, expanded: { pj_1: true } },
     )
-    fireEvent.click(screen.getByRole("button", { name: "All conversations" }))
-    expect(onSelect).toHaveBeenCalledWith(undefined)
+    expect(screen.getByTestId("project-threads")).toBeInTheDocument()
+    expect(screen.getByText("A topic")).toBeInTheDocument()
+    rerender({ threadsByProject: { pj_1: threads }, expanded: { pj_1: false } })
+    expect(screen.queryByTestId("project-threads")).not.toBeInTheDocument()
+    expect(screen.queryByText("A topic")).not.toBeInTheDocument()
   })
 
   it("offers a new project and a menu on each row", () => {
     const { onNew } = renderList()
     fireEvent.click(screen.getByRole("button", { name: "New project" }))
     expect(onNew).toHaveBeenCalled()
-    // Every row's menu is named after its project: two projects would
-    // otherwise give the same nameless trigger twice, to a screen reader and
-    // to the E2E suite alike.
     expect(
       screen.getByRole("button", { name: "Project options for First" }),
     ).toBeInTheDocument()
   })
 
-  // With nothing in the list, the section has to say what a project is for;
-  // an empty heading tells nobody anything.
+  // The row is the directory. Reaching past it to the list's New conversation
+  // would land work in Recents instead of this folder.
+  it("starts a conversation in the project the row names", () => {
+    const { onNewConversation, onSelect } = renderList()
+    fireEvent.click(
+      screen.getByRole("button", { name: "New conversation in First" }),
+    )
+    expect(onNewConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "pj_1", name: "First" }),
+    )
+    expect(onSelect).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole("button", { name: "New conversation in First" }),
+    ).toHaveClass("opacity-0", "group-hover:opacity-100")
+  })
+
   it("explains what a project is when there are none", () => {
     renderList({ projects: [] })
     expect(screen.getByText(/one working directory/)).toBeInTheDocument()
   })
 
-  it("lists skills under the project that recorded them", () => {
+  it("opens skills from the row menu instead of listing them under the name", () => {
     const { onOpenSkill } = renderList({
       projects: [
         {
@@ -69,44 +124,77 @@ describe("Project list", () => {
         },
       ],
     })
-    expect(screen.getByTestId("project-skills")).toBeInTheDocument()
-    // The count is visual; putting it in the accessible name would make
-    // getByRole("button", { name: "First" }) miss after the first skill.
-    expect(screen.getByRole("button", { name: "First" })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Open skill a-procedure" }))
+    expect(screen.queryByTestId("project-skills")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Open skill a-procedure" })).not.toBeInTheDocument()
+    fireEvent.keyDown(
+      screen.getByRole("button", { name: "Project options for First" }),
+      { key: "ArrowDown" },
+    )
+    fireEvent.click(screen.getByRole("menuitem", { name: "View skills" }))
     expect(onOpenSkill).toHaveBeenCalledWith(
       expect.objectContaining({ id: "pj_1" }),
-      expect.objectContaining({ name: "a-procedure" }),
     )
   })
 
-  it("does not invent an empty skills list under a project that has none", () => {
-    renderList()
-    expect(screen.queryByTestId("project-skills")).not.toBeInTheDocument()
-  })
-
-  it("caps the sidebar list and points at Memory for the rest", () => {
-    const { onOpenSkill } = renderList({
-      projects: [
-        {
-          ...projects[0],
-          skills: Array.from({ length: 9 }, (_, i) => ({
-            name: `skill-${i + 1}`,
-            description: "",
-            updated_at: "",
-          })),
-        },
-      ],
+  it("reports the new project order after a drop", () => {
+    const second: Project = { ...projects[0], id: "pj_2", name: "Second" }
+    const { onReorder } = renderList({
+      projects: [...projects, second],
+      expanded: { pj_1: false, pj_2: false },
     })
-    expect(screen.getByRole("button", { name: "Open skill skill-1" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Open skill skill-8" })).toBeInTheDocument()
-    expect(
-      screen.queryByRole("button", { name: "Open skill skill-9" }),
-    ).not.toBeInTheDocument()
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show remaining skills for First" }),
-    )
-    expect(onOpenSkill).toHaveBeenCalledWith(expect.objectContaining({ id: "pj_1" }))
-    expect(onOpenSkill.mock.calls[0][1]).toBeUndefined()
+    const rows = screen.getAllByTestId("project-row")
+    const data: Record<string, string> = {}
+    const dt = {
+      setData: (type: string, value: string) => {
+        data[type] = value
+      },
+      getData: (type: string) => data[type] ?? "",
+      effectAllowed: "move",
+      dropEffect: "move",
+    }
+    fireEvent.mouseDown(rows[1].querySelector("[data-drag-handle]")!)
+    fireEvent.dragStart(rows[1], { dataTransfer: dt })
+    fireEvent.dragOver(rows[0], { dataTransfer: dt })
+    fireEvent.drop(rows[0], { dataTransfer: dt })
+    expect(onReorder).toHaveBeenCalledWith(["pj_2", "pj_1"])
+  })
+
+  it("selects on the first click of the name even if a dragstart races it", () => {
+    const { onSelect, onReorder, onToggle } = renderList()
+    const row = screen.getByTestId("project-row")
+    const name = screen.getByRole("button", { name: "First" })
+    fireEvent.mouseDown(name)
+    expect(row.draggable).toBe(false)
+    fireEvent.dragStart(row)
+    fireEvent.click(name)
+    expect(onSelect).toHaveBeenCalledWith("pj_1")
+    expect(onToggle).toHaveBeenCalledWith("pj_1")
+    expect(onReorder).not.toHaveBeenCalled()
   })
 })
+
+function renderWith(props: Partial<Parameters<typeof ProjectList>[0]>) {
+  const handlers = {
+    threadsByProject: {} as Record<string, Thread[]>,
+    expanded: { pj_1: true },
+    onSelect: vi.fn(),
+    onToggle: vi.fn(),
+    onNew: vi.fn(),
+    onNewConversation: vi.fn(),
+    onEdit: vi.fn(),
+    onDelete: vi.fn(),
+    onOpenSkill: vi.fn(),
+    onReorder: vi.fn(),
+    onOpenThread: vi.fn(),
+    onRenameThread: vi.fn(),
+    onDeleteThread: vi.fn(),
+    onReorderThreads: vi.fn(),
+    onPinThread: vi.fn(),
+  }
+  const view = render(<ProjectList projects={projects} {...handlers} {...props} />)
+  return {
+    ...handlers,
+    rerender: (next: Partial<Parameters<typeof ProjectList>[0]>) =>
+      view.rerender(<ProjectList projects={projects} {...handlers} {...props} {...next} />),
+  }
+}

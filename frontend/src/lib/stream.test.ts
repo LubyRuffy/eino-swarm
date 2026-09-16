@@ -56,8 +56,22 @@ const wireKinds: EventKind[] = [
   "cleanup",
   "progress",
   "memory_review",
+  "max_iterations",
+  "max_iterations_continued",
+  "title",
   "done",
   "error",
+  "resumed",
+  "goal",
+  "goal_complete",
+  "goal_continued",
+  "goal_capped",
+  "goal_blocked",
+  "goal_edited",
+  "goal_resumed",
+  "compacted",
+  "usage",
+  "rewound",
 ]
 
 describe("the event stream", () => {
@@ -82,6 +96,19 @@ describe("the event stream", () => {
       "done",
       "memory_review",
     ])
+  })
+
+  it("delivers a generated title after the turn has finished", () => {
+    const onEvent = vi.fn()
+    subscribeEvents("th_1", { onEvent })
+    FakeEventSource.last.deliver("done", { kind: "done", seq: 40 })
+    FakeEventSource.last.deliver("title", {
+      kind: "title",
+      seq: 41,
+      agent_id: "title-namer",
+      text: "Weekly status",
+    })
+    expect(onEvent.mock.calls.map(([ev]) => ev.kind)).toEqual(["done", "title"])
   })
 
   // The event name is the authority: a payload whose kind disagrees with the

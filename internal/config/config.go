@@ -28,10 +28,18 @@ type Config struct {
 	Tools  ToolsConfig  `yaml:"tools" json:"tools"`
 	Memory MemoryConfig `yaml:"memory" json:"memory"`
 	Log    LogConfig    `yaml:"log" json:"log"`
+	UI     UIConfig     `yaml:"ui" json:"ui"`
 
 	// dataDir is where this config was loaded from. Not serialized: the file
 	// cannot meaningfully record its own location.
 	dataDir string `yaml:"-"`
+}
+
+// UIConfig is chrome the webview remembers: language, not agent behaviour.
+// Agents still answer in the language the human is using.
+type UIConfig struct {
+	// Locale is system, en or zh. system follows the browser.
+	Locale string `yaml:"locale" json:"locale"`
 }
 
 // ServerConfig covers the HTTP surface both UIs are served from.
@@ -50,12 +58,40 @@ type Provider struct {
 	BaseURL string `yaml:"base_url" json:"base_url"`
 	APIKey  string `yaml:"api_key" json:"-"`
 	Model   string `yaml:"model" json:"model"`
-	// TimeoutSeconds bounds a single model call. Long swarm answers need a
-	// generous value; 0 means DefaultRequestTimeout.
+	// Catalog is the last discovered list of model names this endpoint
+	// serves. The composer offers these without a provider row per name.
+	// Empty means only Model is available until someone discovers.
+	Catalog []string `yaml:"catalog" json:"catalog"`
+	// TimeoutSeconds is how long we wait for the next byte from the model
+	// (response headers or a stream chunk). 0 means DefaultRequestTimeout.
+	// A call that is still streaming is not cut off; a silent endpoint is.
 	TimeoutSeconds int `yaml:"timeout_seconds" json:"timeout_seconds"`
+	// ContextWindow is the fallback token limit for this endpoint. Used when
+	// a name is missing from ModelContext — never invented from the name.
+	ContextWindow int `yaml:"context_window" json:"context_window"`
+	// ModelContext is per-name windows, usually filled by Discover when the
+	// listing included them. Empty for endpoints that only return names.
+	ModelContext map[string]int `yaml:"model_context,omitempty" json:"model_context,omitempty"`
 }
 
-// Timeout is the provider's per-request timeout.
+// WindowFor is this model's token limit: a discovered per-name value, else
+// the provider fallback, else unknown (0). Zero means the UI shows a count
+// without pretending to know how full the window is.
+func (p Provider) WindowFor(model string) int {
+	name := strings.TrimSpace(model)
+	if name == "" {
+		name = strings.TrimSpace(p.Model)
+	}
+	if n := p.ModelContext[name]; n > 0 {
+		return n
+	}
+	if p.ContextWindow > 0 {
+		return p.ContextWindow
+	}
+	return 0
+}
+
+// Timeout is how long a model call may stay silent.
 func (p Provider) Timeout() time.Duration {
 	if p.TimeoutSeconds <= 0 {
 		return DefaultRequestTimeout
@@ -74,10 +110,64 @@ func (p Provider) DisplayName() string {
 	return p.ID
 }
 
+// GroupName is the composer heading for this provider's models. It is the
+// label the user typed, or the id — never the default model, which would
+// make one endpoint look like a pile of unrelated names.
+func (p Provider) GroupName() string {
+	if s := strings.TrimSpace(p.Label); s != "" {
+		return s
+	}
+	return p.ID
+}
+
 // Ready reports whether this provider has enough configuration to be called.
 // An API key is not required: local endpoints frequently have none.
 func (p Provider) Ready() bool {
-	return strings.TrimSpace(p.BaseURL) != "" && strings.TrimSpace(p.Model) != ""
+	return p.EndpointReady() && strings.TrimSpace(p.Model) != ""
+}
+
+// EndpointReady reports whether the URL is set, which is enough to list
+// models. A turn still needs Ready: a default model to actually call.
+func (p Provider) EndpointReady() bool {
+	return strings.TrimSpace(p.BaseURL) != ""
+}
+
+// Models is the names the UI can pick from: the discovered catalog, with the
+// configured default included even if discovery never ran or missed it.
+func (p Provider) Models() []string {
+	return uniqueModels(append(append([]string{}, p.Catalog...), p.Model))
+}
+
+func uniqueModels(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}
+
+func cleanModelContext(in map[string]int) map[string]int {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(in))
+	for k, v := range in {
+		k = strings.TrimSpace(k)
+		if k == "" || v <= 0 {
+			continue
+		}
+		out[k] = v
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // ModelsConfig is the provider list plus which one new conversations use.
@@ -100,6 +190,32 @@ type SwarmConfig struct {
 	// event. A token every few milliseconds would redraw the whole UI; one
 	// pulse per interval keeps the screen moving without a frame per token.
 	DeltaCoalesceMS int `yaml:"delta_coalesce_ms" json:"delta_coalesce_ms"`
+	// AutoTitle asks the model for a short sidebar name after the first
+	// finished turn. Off leaves the truncated first message. A name the
+	// user typed is never overwritten either way.
+	AutoTitle bool `yaml:"auto_title" json:"auto_title"`
+	// TitleProvider and TitleModel pin which endpoint names conversations.
+	// Both empty follows the conversation's own model so a cheap namer is
+	// opt-in. A provider with an empty model name uses that provider's
+	// configured default.
+	TitleProvider string `yaml:"title_provider" json:"title_provider"`
+	TitleModel    string `yaml:"title_model" json:"title_model"`
+	// CompactProvider and CompactModel pin which endpoint folds older replay.
+	// Same empty-means-follow-the-conversation rule as the namer.
+	CompactProvider string `yaml:"compact_provider" json:"compact_provider"`
+	CompactModel    string `yaml:"compact_model" json:"compact_model"`
+	// ContextCharBudget is how many runes of replay+goal+briefing count as
+	// "full" for the /compact hint. Zero or negative is repaired to the default
+	// so the percentage cannot silently vanish.
+	ContextCharBudget int `yaml:"context_char_budget" json:"context_char_budget"`
+	// CompactKeepMessages is how many recent user/assistant replay messages
+	// stay verbatim when the human runs /compact. The rest become the briefing.
+	CompactKeepMessages int `yaml:"compact_keep_messages" json:"compact_keep_messages"`
+	// GoalMaxAutoTurns is how many consecutive engine-started turns may
+	// pursue an open standing objective without another human message.
+	// Zero or negative is repaired to the default so a hand-edit cannot
+	// leave a goal looping forever or refusing to continue at all.
+	GoalMaxAutoTurns int `yaml:"goal_max_auto_turns" json:"goal_max_auto_turns"`
 }
 
 // AgentTimeout is the per-sub-agent watchdog duration.
@@ -124,6 +240,67 @@ func (s SwarmConfig) DeltaCoalesce() time.Duration {
 		return time.Duration(DefaultDeltaCoalesceMS) * time.Millisecond
 	}
 	return time.Duration(s.DeltaCoalesceMS) * time.Millisecond
+}
+
+// ManagerIterations is the manager's ReAct cap, and the amount a confirmed
+// continuation adds. Zero or negative falls back to the default so a
+// hand-edited file cannot leave a turn with no rounds at all.
+func (s SwarmConfig) ManagerIterations() int {
+	if s.ManagerMaxIterations <= 0 {
+		return DefaultManagerIterations
+	}
+	return s.ManagerMaxIterations
+}
+
+// ContextBudget is the rune count that the /compact hint treats as full.
+func (s SwarmConfig) ContextBudget() int {
+	if s.ContextCharBudget <= 0 {
+		return DefaultContextCharBudget
+	}
+	return s.ContextCharBudget
+}
+
+// CompactKeep is how many recent replay messages stay verbatim.
+func (s SwarmConfig) CompactKeep() int {
+	if s.CompactKeepMessages <= 0 {
+		return DefaultCompactKeepMessages
+	}
+	return s.CompactKeepMessages
+}
+
+// ResolveTitle is which endpoint names a conversation. Empty provider and
+// model follow the conversation; a model with no provider stays on the
+// conversation's endpoint; a provider with no model uses that endpoint's
+// configured default.
+func (s SwarmConfig) ResolveTitle(providerID, model string) (string, string) {
+	return resolveAuxiliary(s.TitleProvider, s.TitleModel, providerID, model)
+}
+
+// ResolveCompact is which endpoint folds older replay. Same pin rules as
+// ResolveTitle: empty follows the conversation.
+func (s SwarmConfig) ResolveCompact(providerID, model string) (string, string) {
+	return resolveAuxiliary(s.CompactProvider, s.CompactModel, providerID, model)
+}
+
+func resolveAuxiliary(pinProvider, pinModel, fallbackProvider, fallbackModel string) (string, string) {
+	p := strings.TrimSpace(pinProvider)
+	m := strings.TrimSpace(pinModel)
+	if p == "" {
+		p = fallbackProvider
+	}
+	if m == "" && strings.TrimSpace(pinProvider) == "" && strings.TrimSpace(pinModel) == "" {
+		m = fallbackModel
+	}
+	return p, m
+}
+
+// GoalAutoTurns is how many consecutive engine-started turns may pursue an
+// open standing objective. Zero or negative falls back to the default.
+func (s SwarmConfig) GoalAutoTurns() int {
+	if s.GoalMaxAutoTurns <= 0 {
+		return DefaultGoalMaxAutoTurns
+	}
+	return s.GoalMaxAutoTurns
 }
 
 // ProxyConfig is the outbound proxy applied to network tools.
@@ -249,6 +426,26 @@ type LogConfig struct {
 	Level string `yaml:"level" json:"level"`
 }
 
+// UI languages. system follows the browser; en and zh pin the chrome.
+const (
+	LocaleSystem = "system"
+	LocaleEn     = "en"
+	LocaleZh     = "zh"
+)
+
+// NormalizeLocale maps any input to a known preference. Junk becomes system
+// so a typo cannot blank the UI or invent a third language.
+func NormalizeLocale(s string) string {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case LocaleEn:
+		return LocaleEn
+	case LocaleZh:
+		return LocaleZh
+	default:
+		return LocaleSystem
+	}
+}
+
 // Reasoning-effort levels. These are the OpenAI `reasoning_effort` values, not
 // an app setting, so they live as constants rather than in the config file. An
 // empty level means "let the model decide": no reasoning_effort is sent, which
@@ -284,28 +481,40 @@ func NormalizeReasoning(s string) string {
 
 // Defaults, all overridable from the config file.
 const (
-	DefaultAddr                = "127.0.0.1:8787"
+	DefaultAddr = "127.0.0.1:8787"
+	// DefaultRequestTimeout is how long a model call may stay silent.
 	DefaultRequestTimeout      = 5 * time.Minute
 	DefaultMaxConcurrent       = 6
 	DefaultAgentTimeoutSeconds = 600
-	DefaultMaxTurns            = 24
-	DefaultManagerIterations   = 32
+	DefaultMaxTurns            = 200
+	DefaultManagerIterations   = 200
 	// A pulse every few seconds is frequent enough that a silent swarm still
 	// looks alive, and rare enough to be invisible next to streamed tokens.
 	DefaultProgressIntervalSeconds = 5
 	// One pulse per 50ms is ~20 frames a second: fast enough that streamed
 	// text still looks live, slow enough that a five-agent swarm does not
 	// spend the UI's whole budget redrawing the same markdown.
-	DefaultDeltaCoalesceMS  = 50
+	DefaultDeltaCoalesceMS = 50
+	// ~20k tokens of conversation the model still has to re-read. Past this
+	// the /compact command starts looking urgent; the human still chooses.
+	DefaultContextCharBudget   = 80_000
+	DefaultCompactKeepMessages = 6
+	// Enough consecutive auto-turns to finish a real objective; not enough
+	// to burn a weekend if the manager never calls complete_goal.
+	DefaultGoalMaxAutoTurns = 12
 	DefaultWebSearchResults = 8
 	DefaultProviderID       = "default"
 	DefaultLogLevel         = "info"
+	// Listing models is a cheap GET; a chat-length timeout would leave the
+	// Settings dialog spinning on a hung endpoint.
+	DefaultDiscoverTimeout = 15 * time.Second
 	// About 800 tokens: enough for a dozen dense notes, small enough that
 	// every turn can afford to carry them.
 	DefaultMemoryCharLimit     = 2200
 	DefaultReviewMaxIterations = 8
 	DefaultSkillsIndexMax      = 50
 	DefaultMemoryNotifications = MemoryNotifyOn
+	DefaultLocale              = LocaleSystem
 	dirPerm                    = 0o700
 	filePerm                   = 0o600
 )
@@ -324,6 +533,7 @@ func Default() *Config {
 				BaseURL:        "",
 				APIKey:         "",
 				Model:          "",
+				Catalog:        []string{},
 				TimeoutSeconds: int(DefaultRequestTimeout / time.Second),
 			}},
 		},
@@ -334,6 +544,10 @@ func Default() *Config {
 			ManagerMaxIterations:    DefaultManagerIterations,
 			ProgressIntervalSeconds: DefaultProgressIntervalSeconds,
 			DeltaCoalesceMS:         DefaultDeltaCoalesceMS,
+			AutoTitle:               true,
+			ContextCharBudget:       DefaultContextCharBudget,
+			CompactKeepMessages:     DefaultCompactKeepMessages,
+			GoalMaxAutoTurns:        DefaultGoalMaxAutoTurns,
 		},
 		Tools: ToolsConfig{
 			Disabled:            []string{},
@@ -349,6 +563,7 @@ func Default() *Config {
 			Notifications:       DefaultMemoryNotifications,
 		},
 		Log: LogConfig{Level: DefaultLogLevel},
+		UI:  UIConfig{Locale: DefaultLocale},
 	}
 }
 
@@ -375,7 +590,12 @@ func Load(dataDir string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("config: resolve data dir: %w", err)
 	}
-	for _, d := range []string{abs, filepath.Join(abs, workspacesDirName), filepath.Join(abs, projectsDirName)} {
+	for _, d := range []string{
+		abs,
+		filepath.Join(abs, workspacesDirName),
+		filepath.Join(abs, projectsDirName),
+		filepath.Join(abs, inputsDirName),
+	} {
 		if err := os.MkdirAll(d, dirPerm); err != nil {
 			return nil, fmt.Errorf("config: create %s: %w", d, err)
 		}
@@ -471,6 +691,15 @@ func (c *Config) normalize() {
 	if c.Swarm.DeltaCoalesceMS <= 0 {
 		c.Swarm.DeltaCoalesceMS = d.Swarm.DeltaCoalesceMS
 	}
+	if c.Swarm.ContextCharBudget <= 0 {
+		c.Swarm.ContextCharBudget = d.Swarm.ContextCharBudget
+	}
+	if c.Swarm.CompactKeepMessages <= 0 {
+		c.Swarm.CompactKeepMessages = d.Swarm.CompactKeepMessages
+	}
+	if c.Swarm.GoalMaxAutoTurns <= 0 {
+		c.Swarm.GoalMaxAutoTurns = d.Swarm.GoalMaxAutoTurns
+	}
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults
 	}
@@ -502,6 +731,7 @@ func (c *Config) normalize() {
 	if strings.TrimSpace(c.Log.Level) == "" {
 		c.Log.Level = d.Log.Level
 	}
+	c.UI.Locale = NormalizeLocale(c.UI.Locale)
 	if len(c.Models.Providers) == 0 {
 		c.Models.Providers = d.Models.Providers
 	}
@@ -518,9 +748,28 @@ func (c *Config) normalize() {
 		if p.TimeoutSeconds <= 0 {
 			p.TimeoutSeconds = int(DefaultRequestTimeout / time.Second)
 		}
+		if p.ContextWindow < 0 {
+			p.ContextWindow = 0
+		}
+		p.Catalog = uniqueModels(p.Catalog)
+		p.ModelContext = cleanModelContext(p.ModelContext)
 	}
 	if c.providerIndex(c.Models.Default) < 0 {
 		c.Models.Default = c.Models.Providers[0].ID
+	}
+	c.Swarm.TitleProvider = strings.TrimSpace(c.Swarm.TitleProvider)
+	c.Swarm.TitleModel = strings.TrimSpace(c.Swarm.TitleModel)
+	if c.Swarm.TitleProvider != "" && c.providerIndex(c.Swarm.TitleProvider) < 0 {
+		// A deleted endpoint must not keep naming conversations against a
+		// ghost id; fall back to the conversation's own model.
+		c.Swarm.TitleProvider = ""
+		c.Swarm.TitleModel = ""
+	}
+	c.Swarm.CompactProvider = strings.TrimSpace(c.Swarm.CompactProvider)
+	c.Swarm.CompactModel = strings.TrimSpace(c.Swarm.CompactModel)
+	if c.Swarm.CompactProvider != "" && c.providerIndex(c.Swarm.CompactProvider) < 0 {
+		c.Swarm.CompactProvider = ""
+		c.Swarm.CompactModel = ""
 	}
 }
 
@@ -571,6 +820,10 @@ func (c *Config) DBPath() string { return filepath.Join(c.dataDir, "zwai.db") }
 const (
 	workspacesDirName = "workspaces"
 	projectsDirName   = "projects"
+	// Pasted images live here, not in the workspace: a project pointed at a
+	// repository must not grow screenshot files, and vision input is not a
+	// working file.
+	inputsDirName = "inputs"
 	// A project's own subdirectories: the working directory zwai manages when
 	// the user did not name one, and the memory store.
 	projectWorkspaceName = "workspace"
@@ -585,6 +838,15 @@ func (c *Config) WorkspacesDir() string { return filepath.Join(c.dataDir, worksp
 // not a boundary — see the access model in internal/tools.
 func (c *Config) WorkspaceDir(threadID string) string {
 	return filepath.Join(c.WorkspacesDir(), threadID)
+}
+
+// InputsDir holds pasted images for every conversation.
+func (c *Config) InputsDir() string { return filepath.Join(c.dataDir, inputsDirName) }
+
+// ThreadInputsDir is one conversation's pasted images. Named by thread id so
+// deleting the conversation can take them with it without walking the table.
+func (c *Config) ThreadInputsDir(threadID string) string {
+	return filepath.Join(c.InputsDir(), threadID)
 }
 
 // ProjectsDir is the parent of every project's managed directory.
@@ -648,6 +910,7 @@ func (c *Config) Replace(next *Config) error {
 	c.Tools = next.Tools
 	c.Memory = next.Memory
 	c.Log = next.Log
+	c.UI = next.UI
 	return c.Save()
 }
 

@@ -12,6 +12,16 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+// workerInstruction is what a sub-agent gets as its system prompt. The task
+// is always there; WorkerPreamble rides in front when the host set one.
+func (r *Registry) workerInstruction(task string) string {
+	p := strings.TrimSpace(r.WorkerPreamble)
+	if p == "" {
+		return task
+	}
+	return p + "\n\n" + task
+}
+
 // startWorker runs h's goroutine. Spawn and resume both land here so a
 // continued worker does not mint a second id — the roster row is the identity.
 func (r *Registry) startWorker(ctx context.Context, h *Handle, task string,
@@ -65,7 +75,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task string,
 		agent, err := adk.NewChatModelAgent(watchCtx, &adk.ChatModelAgentConfig{
 			Name:        id,
 			Description: "spawned sub-agent " + role,
-			Instruction: task,
+			Instruction: r.workerInstruction(task),
 			Model:       modelOpt(role, id),
 			ToolsConfig: adk.ToolsConfig{
 				ToolsNodeConfig: compose.ToolsNodeConfig{Tools: extraTools},

@@ -27,6 +27,7 @@ const { fake, FakeApiError } = vi.hoisted(() => {
       fail: false,
       conflict: false,
       skills: {} as Record<string, { name: string; description: string; updated_at: string }[]>,
+      reordered: [] as string[],
     },
   }
 })
@@ -49,6 +50,14 @@ vi.mock("@/lib/api", () => ({
     deleteProject: async (id: string) => {
       if (fake.fail) throw new Error("server is down")
       fake.deleted.push(id)
+    },
+    reorderProjects: async (ids: string[]) => {
+      fake.reordered = ids
+      if (fake.fail) throw new Error("server is down")
+      return ids.map((id) => {
+        const found = (fake.projects as Project[]).find((p) => p.id === id)
+        return found ?? project(id)
+      })
     },
     memory: async (id: string) => {
       const delay = fake.memoryDelays[id] ?? 0
@@ -102,6 +111,7 @@ beforeEach(() => {
   fake.fail = false
   fake.conflict = false
   fake.skills = {}
+  fake.reordered = []
   useProjects.setState({
     projects: [],
     selectedId: undefined,
@@ -109,6 +119,9 @@ beforeEach(() => {
     memoryProjectId: undefined,
     memoryLoading: false,
     memoryUnread: false,
+    reviewing: false,
+    reviewHint: undefined,
+    pendingReviewTurnId: undefined,
     error: undefined,
   })
 })
@@ -140,6 +153,14 @@ describe("the project list", () => {
   it("shows a new project without waiting for a reload", async () => {
     await useProjects.getState().create({ name: "fresh" })
     expect(useProjects.getState().projects.map((p) => p.name)).toEqual(["fresh"])
+  })
+
+  it("pins a dragged project order", async () => {
+    fake.projects = [project("a"), project("b")]
+    await useProjects.getState().refresh()
+    await useProjects.getState().reorder(["pj_b", "pj_a"])
+    expect(fake.reordered).toEqual(["pj_b", "pj_a"])
+    expect(useProjects.getState().projects.map((p) => p.id)).toEqual(["pj_b", "pj_a"])
   })
 
   // The dialog needs the server's message to put it against the field that
@@ -271,6 +292,42 @@ describe("the memory panel's data", () => {
   it("ignores a skill deletion with no project open", async () => {
     await useProjects.getState().removeSkill("a-procedure")
     expect(fake.deleted).toEqual([])
+  })
+})
+
+describe("a Review now click", () => {
+  // Auto-review is silent when it kept nothing. A click is a request for an
+  // answer, so the panel has to say so even then — otherwise the sparkles
+  // look broken.
+  it("shows a hint when the review kept nothing", () => {
+    useProjects.getState().beginReview()
+    expect(useProjects.getState().reviewing).toBe(true)
+    useProjects.getState().finishReview("tn_1", { changed: false })
+    expect(useProjects.getState().reviewing).toBe(false)
+    expect(useProjects.getState().reviewHint).toMatch(/nothing new to keep/)
+  })
+
+  it("still answers if the event arrives before the 202 names the turn", () => {
+    useProjects.getState().beginReview()
+    useProjects.getState().finishReview("tn_early", { changed: true })
+    expect(useProjects.getState().reviewing).toBe(false)
+    expect(useProjects.getState().reviewHint).toBe("Review finished.")
+    useProjects.getState().awaitReview("tn_early")
+    expect(useProjects.getState().reviewing).toBe(false)
+  })
+
+  it("ignores a review for a different turn once it knows which one it asked for", () => {
+    useProjects.getState().beginReview()
+    useProjects.getState().awaitReview("tn_1")
+    useProjects.getState().finishReview("tn_other", { changed: true })
+    expect(useProjects.getState().reviewing).toBe(true)
+    useProjects.getState().finishReview("tn_1", { changed: false })
+    expect(useProjects.getState().reviewing).toBe(false)
+  })
+
+  it("does not steal an auto-review that nobody clicked", () => {
+    useProjects.getState().finishReview("tn_1", { changed: true })
+    expect(useProjects.getState().reviewHint).toBeUndefined()
   })
 })
 
