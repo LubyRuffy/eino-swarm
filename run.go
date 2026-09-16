@@ -51,6 +51,15 @@ type RunConfig struct {
 
 	// MaxIterations caps the manager's ReAct loop (<=0 keeps the default).
 	MaxIterations int
+
+	// RestoreWorkers are leftover sub-agents from a previous process, started
+	// under their existing ids after the spawn hook is installed so the roster
+	// comes back. Empty for a fresh turn.
+	RestoreWorkers []RestoredWorker
+
+	// FinishedWorkers are sub-agents that already completed in that previous
+	// process. wait_agents / resume_agent still need to find them.
+	FinishedWorkers []FinishedWorker
 }
 
 // RunResult is what one manager run produced.
@@ -161,6 +170,10 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 		},
 	)
 	defer r.setHooks(baseSpawn, baseFinish)
+
+	if err := r.applyRunWorkers(ctx, cfg); err != nil {
+		return RunResult{}, err
+	}
 
 	// The manager runs in STREAMING mode too: no blocking generation that can
 	// hit a gateway idle timeout on a long answer. In streaming mode eino

@@ -108,6 +108,7 @@ func New(opts Options) (*Server, error) {
 		api.GET("/threads/:id/followups", s.listFollowups)
 		api.POST("/threads/:id/followups", s.enqueueFollowup)
 		api.DELETE("/threads/:id/followups/:fid", s.deleteFollowup)
+		api.PATCH("/threads/:id/followups/:fid", s.requeueFollowup)
 		api.POST("/threads/:id/followups/:fid/steer", s.steerFollowup)
 		api.POST("/threads/:id/interrupt", s.interrupt)
 		api.POST("/threads/:id/continue", s.continueTurn)

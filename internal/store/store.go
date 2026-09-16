@@ -58,6 +58,15 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("store: sql db: %w", err)
+	}
+	// One connection. SQLite serializes writers; a GORM pool of N turns a
+	// turn still flushing events into SQLITE_BUSY on rewind/truncate. This
+	// process is the only client of the file.
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
 	s := &Store{
 		db:          db,
 		evtSeq:      map[string]int64{},
@@ -89,13 +98,18 @@ func (s *Store) Close() error {
 // counter from the database the first time a key is seen.
 func (s *Store) nextSeq(counters map[string]int64, key string, seed func() int64) int64 {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	cur, ok := counters[key]
 	if !ok {
+		s.mu.Unlock()
 		cur = seed()
+		s.mu.Lock()
+		if existing, raced := counters[key]; raced {
+			cur = existing
+		}
 	}
 	cur++
 	counters[key] = cur
+	s.mu.Unlock()
 	return cur
 }
 

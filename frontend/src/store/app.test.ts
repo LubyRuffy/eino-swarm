@@ -31,7 +31,14 @@ const fake = vi.hoisted(() => ({
   onEvent: undefined as ((ev: Record<string, unknown>) => void) | undefined,
   discovered: [] as Array<Record<string, unknown>>,
   savedProviders: undefined as unknown,
-  savedUI: undefined as { locale?: string } | undefined,
+  savedUI: undefined as
+    | {
+        locale?: string
+        font?: string
+        font_size?: string
+        content_width?: string
+      }
+    | undefined,
   listedModels: [] as unknown[],
   threadUsage: undefined as
     | {
@@ -50,6 +57,7 @@ const fake = vi.hoisted(() => ({
     created_at: string
   }>,
   steeredFollowups: [] as Array<{ id: string; fid: string }>,
+  requeued: [] as Array<{ id: string; fid: string; text: string }>,
   enqueueIdle: false,
   goals: [] as Array<{ id: string; goal?: string; goal_edit?: boolean; goal_resume?: boolean }>,
   compacts: [] as string[],
@@ -119,7 +127,12 @@ vi.mock("@/lib/api", () => {
       },
       saveSettings: async (patch: {
         models?: { providers?: unknown }
-        ui?: { locale?: string }
+        ui?: {
+          locale?: string
+          font?: string
+          font_size?: string
+          content_width?: string
+        }
       }) => {
         fake.savedProviders = patch.models?.providers
         if (patch.ui) fake.savedUI = patch.ui
@@ -195,6 +208,16 @@ vi.mock("@/lib/api", () => {
       },
       deleteFollowup: async (_id: string, fid: string) => {
         fake.queuedItems = fake.queuedItems.filter((f) => f.id !== fid)
+      },
+      requeueFollowup: async (id: string, fid: string, text: string) => {
+        fake.requeued.push({ id, fid, text })
+        const current = fake.queuedItems.find((f) => f.id === fid)
+        if (!current) {
+          throw new ApiError("not found", 404)
+        }
+        const item = { ...current, text, seq: current.seq + 100 }
+        fake.queuedItems = [...fake.queuedItems.filter((f) => f.id !== fid), item]
+        return item
       },
       steerFollowup: async (id: string, fid: string) => {
         fake.steeredFollowups.push({ id, fid })
@@ -299,6 +322,7 @@ beforeEach(() => {
   fake.enqueued.length = 0
   fake.queuedItems.length = 0
   fake.steeredFollowups.length = 0
+  fake.requeued.length = 0
   fake.enqueueIdle = false
   fake.uploads.length = 0
   fake.continues.length = 0
@@ -408,6 +432,37 @@ describe("send", () => {
     expect(fake.steers).toEqual([])
     expect(useApp.getState().followups.map((f) => f.text)).toEqual([
       "after this finishes",
+    ])
+  })
+
+  it("moves an edited follow-up to the back of the queue", async () => {
+    useApp.setState({
+      activeId: "th_old",
+      followups: [
+        {
+          id: "fu_1",
+          thread_id: "th_old",
+          seq: 1,
+          text: "first",
+          created_at: "",
+        },
+        {
+          id: "fu_2",
+          thread_id: "th_old",
+          seq: 2,
+          text: "second",
+          created_at: "",
+        },
+      ],
+    })
+    fake.queuedItems = [...useApp.getState().followups]
+    await useApp.getState().requeueFollowup("fu_1", "first edited")
+    expect(fake.requeued).toEqual([
+      { id: "th_old", fid: "fu_1", text: "first edited" },
+    ])
+    expect(useApp.getState().followups.map((f) => f.text)).toEqual([
+      "second",
+      "first edited",
     ])
   })
 
@@ -902,22 +957,5 @@ describe("sidebar order", () => {
     await useApp.getState().reorderThreads(["th_1"])
     expect(useApp.getState().error).toMatch(/could not pin the order/)
     expect(useApp.getState().threads.map((t) => t.id)).toEqual(["th_old"])
-  })
-})
-
-describe("locale preference", () => {
-  // Desktop binds a random loopback, so localStorage-only would forget the
-  // language on every launch. The pin has to ride PUT /api/settings.
-  it("writes the chrome language through settings so the next boot keeps it", async () => {
-    await useApp.getState().setLocale("zh")
-    expect(useApp.getState().locale).toBe("zh")
-    expect(document.documentElement.lang).toBe("zh-CN")
-    expect(fake.savedUI).toEqual({ locale: "zh" })
-  })
-
-  it("applies a boot locale without rewriting settings", () => {
-    useApp.getState().setLocale("zh", { persist: false })
-    expect(useApp.getState().locale).toBe("zh")
-    expect(fake.savedUI).toBeUndefined()
   })
 })

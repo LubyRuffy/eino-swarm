@@ -60,8 +60,8 @@ describe("Sidebar chrome", () => {
         {...noop}
       />,
     )
-    expect(screen.getByText("Projects")).toHaveClass("px-2")
-    expect(screen.getByText("Recents")).toHaveClass("px-2")
+    expect(screen.getByRole("button", { name: "Projects" })).toHaveClass("px-2", "h-7")
+    expect(screen.getByRole("button", { name: "Recents" })).toHaveClass("px-2", "h-7")
     expect(screen.queryByText("Today")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "All conversations" })).not.toBeInTheDocument()
     expect(screen.getByTestId("project-list")).not.toHaveClass("px-2")
@@ -281,6 +281,83 @@ describe("Sidebar pin and folders", () => {
       key: "ArrowDown",
     })
     expect(screen.queryByRole("menuitem", { name: "Pin" })).not.toBeInTheDocument()
+  })
+
+  // Recents has no folder glyph, but it still reserves the icon slot so
+  // the title lines up with a project name.
+  it("does not mark Recents with a project-topic icon", () => {
+    render(<Sidebar threads={[thread("th_1", "Loose")]} activeId="th_1" {...noop} />)
+    expect(screen.getByTestId("thread-row")).toHaveAttribute("aria-current", "true")
+    expect(screen.getByTestId("thread-row")).toHaveClass("h-7")
+    expect(screen.queryByTestId("thread-kind")).not.toBeInTheDocument()
+    expect(screen.getByTestId("row-kind")).toHaveClass("size-4")
+    expect(
+      screen.getByRole("button", { name: "Recents" }).querySelector("[data-testid=section-fold]"),
+    ).toHaveClass("opacity-0")
+    expect(
+      screen.getByRole("button", { name: "Projects" }).querySelector("[data-testid=section-fold]"),
+    ).toHaveClass("opacity-0")
+  })
+
+  it("folds Recents on the section header and remembers it", () => {
+    const { unmount } = render(
+      <Sidebar threads={[thread("th_1", "Hello")]} {...noop} />,
+    )
+    const recents = screen.getByRole("button", { name: "Recents" })
+    expect(recents).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByText("Hello")).toBeInTheDocument()
+    fireEvent.click(recents)
+    expect(screen.queryByTestId("thread-row")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Recents" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    )
+    expect(
+      screen.getByRole("button", { name: "Recents" }).querySelector("[data-testid=section-fold]"),
+    ).toHaveClass("opacity-100")
+    unmount()
+    render(<Sidebar threads={[thread("th_1", "Hello")]} {...noop} />)
+    expect(screen.queryByTestId("thread-row")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Recents" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    )
+  })
+
+  it("folds Pinned and Projects the same way", () => {
+    const project = {
+      id: "pj_1",
+      name: "First",
+      system_prompt: "",
+      workdir: "",
+      resolved_workdir: "/data/projects/pj_1/workspace",
+      memory_enabled: true,
+      memory_dir: "/data/projects/pj_1/memory",
+      created_at: "",
+      updated_at: "",
+    }
+    render(
+      <Sidebar
+        threads={[
+          thread("th_watch", "Watch this", {
+            project_id: "pj_1",
+            pinned: true,
+            pinned_at: "2026-09-16T12:00:00Z",
+          }),
+          thread("th_loose", "Loose"),
+        ]}
+        {...noop}
+        projects={[project]}
+        selectedProjectId="pj_1"
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Pinned" }))
+    expect(screen.getByTestId("pinned-list").querySelector('[data-testid="thread-row"]')).toBeNull()
+    expect(screen.getByRole("button", { name: "First" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Projects" }))
+    expect(screen.queryByRole("button", { name: "First" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument()
+    expect(screen.getByText("Loose")).toBeInTheDocument()
   })
 })
 

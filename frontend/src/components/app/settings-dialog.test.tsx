@@ -71,9 +71,11 @@ function renderDialog(props: Partial<Parameters<typeof SettingsDialog>[0]> = {})
       open
       theme="system"
       locale="system"
+      appearance={{ font: "system", fontSize: "medium", contentWidth: "comfortable" }}
       onOpenChange={vi.fn()}
       onThemeChange={vi.fn()}
       onLocaleChange={vi.fn()}
+      onAppearanceChange={vi.fn()}
       onSaved={vi.fn()}
       {...props}
     />,
@@ -216,6 +218,9 @@ describe("Settings dialog", () => {
     )
     expect(vi.mocked(api.saveSettings).mock.calls[0][0].ui).toEqual({
       locale: "system",
+      font: "system",
+      font_size: "medium",
+      content_width: "comfortable",
     })
   })
 
@@ -234,7 +239,12 @@ describe("Settings dialog", () => {
     await waitFor(() => expect(api.saveSettings).toHaveBeenCalled())
     const patch = vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0]
     expect(patch?.memory?.enabled).toBe(false)
-    expect(patch?.ui).toEqual({ locale: "zh" })
+    expect(patch?.ui).toEqual({
+      locale: "zh",
+      font: "system",
+      font_size: "medium",
+      content_width: "comfortable",
+    })
   })
 
   it("flushes a pending edit when leaving", async () => {
@@ -280,5 +290,21 @@ describe("Settings dialog", () => {
     )
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
     expect(screen.getByRole("dialog")).toBeInTheDocument()
+  })
+
+  it("offers font, size and conversation width on General", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add a provider" }),
+      ).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole("tab", { name: "General" }))
+    expect(screen.getByLabelText("Font")).toHaveTextContent("System")
+    expect(screen.getByLabelText("Font size")).toHaveTextContent("Medium")
+    expect(screen.getByLabelText("Conversation width")).toHaveTextContent(
+      "Comfortable",
+    )
   })
 })

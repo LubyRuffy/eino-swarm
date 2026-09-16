@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"sync"
 	"testing"
 )
 
@@ -232,6 +233,33 @@ func TestGetEventAfterCloseIsAnError(t *testing.T) {
 	if err := s.TruncateFromEventSeq(th.ID, user.Seq); err == nil {
 		t.Fatal("a closed store must not truncate")
 	}
+}
+
+// Rewind used to SQLITE_BUSY when a turn was still flushing events. One
+// connection is the lock; this is the user-visible failure it prevented.
+func TestTruncateDoesNotBusyAgainstAWriter(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	turn := seedTurn(t, s, th.ID, "user_message", "first")
+	user, err := firstUserEvent(s, turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 40; i++ {
+			_ = s.AppendEvent(&Event{ThreadID: th.ID, TurnID: turn.ID, Kind: "delta"})
+		}
+	}()
+	if err := s.TruncateFromEventSeq(th.ID, user.Seq); err != nil {
+		t.Fatalf("truncate against a writer: %v", err)
+	}
+	wg.Wait()
 }
 
 func firstUserEvent(s *Store, turnID string) (*Event, error) {

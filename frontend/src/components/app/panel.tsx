@@ -263,6 +263,7 @@ function AgentRow({
     >
       <StatusDot status={agent.status} />
       <span className="shrink-0 text-sm">{agent.role}</span>
+      <span className="shrink-0 truncate text-xs text-muted-foreground">{agent.id}</span>
       <MarqueeText
         text={agent.activity}
         active={agent.status === "running"}

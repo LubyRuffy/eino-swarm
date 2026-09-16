@@ -16,7 +16,7 @@ over one concurrency-safe registry:
 
 | tool | semantics |
 |---|---|
-| `spawn_agent(role, task, fork_context)` | start a sub-agent in the background; returns `{"agent_id": …}` immediately. `fork_context: true` replays **this manager conversation** into it, not a previous worker's. |
+| `spawn_agent(role, task, fork_context)` | start a sub-agent in the background; returns `{"agent_id": …}` immediately. **One worker per role:** a later call with the same role while it is running queues the new task (`steered`) instead of minting a twin; if it already finished, continues that same id (`resumed_from`). `fork_context: true` only applies when this role has no worker yet, and then replays **this manager conversation** into it. |
 | `send_message(agent_id, text)` | steer a **running** agent; queued for its **next turn boundary**. `delivered: true` means queued, not that a later model call consumed it. A finished agent does not receive it. |
 | `wait_agents(agent_ids, timeout_s)` | return as soon as the next listed agent reaches a final status (or the timeout); reports every agent's status (`running`/`done`/`failed`), the finished ones' results, leftover steering that never reached a model call (`undelivered`), and the running ones' last activity, plus `timed_out`. It hands control back per-finish so the manager can report progress and wait again, instead of dead-waiting on the whole batch |
 | `close_agent(agent_id)` | cancel a running agent |
@@ -66,6 +66,12 @@ res, err := reg.RunWith(ctx, swarm.RunConfig{
 
 `RunWith` does **not** install signal handling — that belongs to a `main`, not to
 a library call inside a server. This is what zwai's engine uses.
+
+A host that is restarting an unfinished run can put leftover workers on
+`RunConfig.RestoreWorkers` / `FinishedWorkers`. They are applied after the
+spawn hook is installed, so the roster sees the same `agent_id`s come back.
+`Registry.Restore` and `Registry.PlantFinished` are the same operations for a
+host that is not going through `RunWith`.
 
 Steering the manager itself (not just a worker) is `reg.SteerManager(text)`.
 A pasted image rides with `reg.SteerManagerMessage(msg)` so the inbox holds
@@ -172,6 +178,10 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 - `resume_agent` continues a finished worker's conversation on the **same** id.
   `fork_context` is the manager's conversation, not a previous worker's findings.
   A still-running worker is steered with `send_message`, not resumed.
+- `Restore` / `RunConfig.RestoreWorkers` restarts a worker that was still
+  running when the previous process died, under the same id. `PlantFinished`
+  puts an already-completed worker back so `wait_agents` does not report
+  unknown after a restart.
 - Sub-agents never outlive their lineage, even when nobody calls `close_agent`:
 
 | mechanism | what it catches |
@@ -191,20 +201,22 @@ Each of those has a test: `TestCallerContextCancelReleasesAgents`,
 `TestWaitAndCleanupEndATurn`, `TestResumeSeesFinishedWorkersHistory`,
 `TestResumeAfterFailureKeepsTheSameID`,
 `TestResumeStillWorksAfterStatsPrune`,
+`TestSpawnAgentReusesAFinishedWorkerWithTheSameRole`,
+`TestSpawnAgentSteersARunningWorkerWithTheSameRole`,
 `TestUndeliveredSteerSurfacesWhenTheAgentFinishes`. Run them with `-race`.
 
 ## No pre-registration
 
 `spawn_agent(role, task, fork_context)` takes the role and task the model invents
 at runtime and `ModelBuilder` constructs the agent on the fly — matching Codex's
-`spawn_agent(task_name, message)`. `fork_context: true` replays the manager's
-conversation (kept fresh by `Registry.ManagerMiddleware()` on the manager's
-`Handlers`) into the new agent, the `fork_turns` equivalent. Continuing a
-finished worker is `resume_agent(agent_id, task)`: the **same** id, that
-worker's conversation as the seed. A second worker with the same role is a
-bug — the roster identity is the id. Inbox seed is applied **before** the worker
-goroutine starts, so the first model call cannot lose the race against
-`fork_context` / resume.
+`spawn_agent(task_name, message)`. A later `spawn_agent` with the same role does
+not mint a twin: a running worker is steered with the new task; a finished one
+continues in place. `fork_context: true` replays the manager's conversation (kept
+fresh by `Registry.ManagerMiddleware()` on the manager's `Handlers`) into a
+worker that does not exist yet, the `fork_turns` equivalent. Continuing a
+**specific** leftover id is `resume_agent(agent_id, task)`. The roster identity
+is the id. Inbox seed is applied **before** the worker goroutine starts, so the
+first model call cannot lose the race against `fork_context` / resume.
 
 ## Examples
 

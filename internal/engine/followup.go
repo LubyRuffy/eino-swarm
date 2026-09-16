@@ -42,6 +42,20 @@ func (e *Engine) DeleteFollowup(threadID, id string) error {
 	return e.store.DeleteFollowup(threadID, id)
 }
 
+// RequeueFollowup saves an edited waiting message at the back of the FIFO.
+// The queue can outlive the turn that created it (Stop leaves rows), so this
+// does not require a running turn.
+func (e *Engine) RequeueFollowup(threadID, id, text string) (*store.Followup, error) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, fmt.Errorf("engine: an empty follow-up has nothing to wait for")
+	}
+	if _, err := e.store.GetThread(threadID); err != nil {
+		return nil, err
+	}
+	return e.store.RequeueFollowup(threadID, id, text)
+}
+
 // SteerFollowup pulls a waiting message into the running turn at the next
 // model boundary. It does not cancel an in-flight tool. If the turn has
 // already ended, the row is put back so a refresh still shows it.

@@ -72,13 +72,17 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	used := 0
 	var res swarm.RunResult
 	var runErr error
+	restore, planted := rt.takeWorkerRestore()
 	for {
 		res, runErr = reg.RunWith(ctx, swarm.RunConfig{
-			Instruction:   instruction,
-			Messages:      messages,
-			ManagerTools:  managerTools,
-			MaxIterations: budget,
+			Instruction:     instruction,
+			Messages:        messages,
+			ManagerTools:    managerTools,
+			MaxIterations:   budget,
+			RestoreWorkers:  restore,
+			FinishedWorkers: planted,
 		}, swarm.Callback(acc.onNotify))
+		restore, planted = nil, nil
 		used += budget
 		if !isMaxIterations(runErr) {
 			return res, runErr

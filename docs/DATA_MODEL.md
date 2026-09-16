@@ -132,9 +132,12 @@ A turn stays `running` until it finishes, errors, or the user stops it. A
 crash, a kill, or quitting the app leaves the row running; the next start
 calls `ResumeOrphanedTurns` and continues every leftover on the same turn id
 (`resumed` on the timeline), replaying manager answers already stored on
-`messages` or still only on the event log. A user **Stop** is `cancelled` and is not
-resumed. `MarkStaleTurnsCancelled` still exists as a bulk wipe; startup does
-not call it.
+`messages` or still only on the event log, and restarting sub-agents that
+had `spawned` without `finished` under the same `agent_id`. Follow-ups in
+`followups` stay queued until that leftover turn finishes cleanly. Unread
+`[steer]` rows stay on the leftover turn. A user **Stop** is
+`cancelled` and is not resumed. `MarkStaleTurnsCancelled` still exists as a bulk
+wipe; startup does not call it.
 
 ## `events` — the UI timeline
 
@@ -212,16 +215,19 @@ exists is saved alongside the old one rather than overwriting it.
 
 Typed while a turn is already running. They are **not** steering: the manager
 does not see them until this turn finishes cleanly and the engine starts the
-oldest one as the next turn. **Steer** on a row (or ⌘Enter on a new draft)
+oldest one as the next turn. Submitting an edit of a waiting row assigns a
+new `seq` at the back of that FIFO. **Steer** on a row (or ⌘Enter on a new draft)
 pulls that text into the current turn at the next model boundary instead.
-Cancelled and failed turns leave the queue alone. Deleting the conversation
+Cancelled and failed turns leave the queue alone. A crash, a kill, or quitting
+the app also leaves the rows: they are not in-memory, so the next start still
+lists them and flushes them after the leftover turn finishes cleanly. Deleting the conversation
 deletes leftover rows.
 
 | column | notes |
 |---|---|
 | `id` | `fu_` + hex |
 | `thread_id` | indexed |
-| `seq` | per-conversation FIFO; an unshift after a lost `StartTurn` race uses a value in front of whatever is still waiting |
+| `seq` | per-conversation FIFO; an unshift after a lost `StartTurn` race uses a value in front of whatever is still waiting; submitting an edit assigns a new seq at the back |
 | `text` | what will be sent |
 | `created_at` | |
 
@@ -229,7 +235,7 @@ deletes leftover rows.
 
 ```
 $ZWAI_HOME (default ~/.zwai-swarm)/
-├── config.yaml                ui.locale is the chrome language (system/en/zh)
+├── config.yaml                ui.locale / ui.font / ui.font_size / ui.content_width
 ├── zwai.db
 ├── inputs/
 │   └── th_ab12…/              pasted images, named by `img_` id

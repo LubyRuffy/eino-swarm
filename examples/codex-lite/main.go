@@ -34,9 +34,10 @@ next turn boundary; wait_agents(agent_ids, timeout_s) blocks for results;
 close_agent(agent_id) cancels one; resume_agent(agent_id, task) continues that
 finished worker in place under the same id.
 Spawn independent work in ONE message (multiple spawn_agent calls run in
-parallel). Use fork_context:true when a worker needs this conversation so far.
-Use resume_agent when more work depends on what a finished worker already did;
-do not spawn a second worker with the same role.
+parallel). Use fork_context:true only for a role that does not exist yet.
+A later spawn_agent with the same role continues that worker in place — while
+it is running the new task is queued; after it finished it resumes. Use
+resume_agent when you mean a specific leftover agent_id.
 Always wait_agents before answering. Stop when the goal is met.`
 
 func main() {

@@ -15,6 +15,7 @@ import type {
   Followup,
   UsageSnapshot,
 } from "./types"
+import { normalizeUISettings } from "./appearance"
 import type { SendImage } from "./paste-image"
 
 /** The fields a project dialog can send. Each is optional so a patch changes
@@ -97,7 +98,7 @@ function withToolLists(s: Settings): Settings {
       disabled: s.tools.disabled ?? [],
       enabled: s.tools.enabled ?? [],
     },
-    ui: { locale: s.ui?.locale || "system" },
+    ui: normalizeUISettings(s.ui),
   }
 }
 
@@ -259,6 +260,11 @@ export const api = {
     }).then((r) => r.followup),
   deleteFollowup: (id: string, fid: string) =>
     request<void>(`/api/threads/${id}/followups/${fid}`, { method: "DELETE" }),
+  requeueFollowup: (id: string, fid: string, text: string) =>
+    request<{ followup: Followup }>(`/api/threads/${id}/followups/${fid}`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
+    }).then((r) => r.followup),
   steerFollowup: (id: string, fid: string) =>
     request<{ steered: boolean }>(`/api/threads/${id}/followups/${fid}/steer`, {
       method: "POST",

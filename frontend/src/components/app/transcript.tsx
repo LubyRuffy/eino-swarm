@@ -169,7 +169,7 @@ export function Transcript({
           navItems.length >= TURN_NAV_MIN && "pl-10 sm:pl-12",
         )}
       >
-        <div className="mx-auto flex max-w-3xl flex-col gap-1">
+        <div className="content-column flex flex-col gap-1">
           {groupByTurn(body).map(([turnId, blocks]) => (
             <div key={turnId} className="flex scroll-mt-6 flex-col gap-1" data-turn-nav={turnId}>
               {blocks.map((b) => (
@@ -860,7 +860,7 @@ function UserMessage({
               aria-label={t("transcript.editMessage")}
               value={draft}
               rows={4}
-              className="min-h-[4.5rem] px-1 py-1 text-[15px] leading-6 text-secondary-foreground"
+              className="min-h-[4.5rem] px-1 py-1 text-[0.9375rem] leading-6 text-secondary-foreground"
               onChange={(e) => setDraft(e.target.value)}
               onCompositionStart={() => {
                 cancelIme.current?.()
@@ -902,7 +902,7 @@ function UserMessage({
           <>
             <div
               data-testid="user-message"
-              className="rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-[15px] leading-6 text-secondary-foreground"
+              className="rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-[0.9375rem] leading-6 text-secondary-foreground"
             >
               <InputThumbs
                 threadId={threadId}

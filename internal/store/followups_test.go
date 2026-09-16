@@ -80,6 +80,64 @@ func TestFollowupsQueueInOrderAndLeaveWithTheConversation(t *testing.T) {
 	}
 }
 
+func TestRequeueFollowupMovesToTheBack(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.EnqueueFollowup(th.ID, "first in line")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.EnqueueFollowup(th.ID, "second in line")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.RequeueFollowup(th.ID, first.ID, "first edited")
+	if err != nil {
+		t.Fatalf("RequeueFollowup: %v", err)
+	}
+	if got.ID != first.ID || got.Text != "first edited" {
+		t.Fatalf("requeue rewrote the row: %+v", got)
+	}
+	list, err := s.ListFollowups(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 || list[0].ID != second.ID || list[1].ID != first.ID || list[1].Text != "first edited" {
+		t.Fatalf("edit did not go to the back: %+v", list)
+	}
+	if _, err := s.RequeueFollowup(th.ID, "fu_missing", "x"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing follow-up: %v", err)
+	}
+	if _, err := s.RequeueFollowup("missing", first.ID, "x"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing conversation: %v", err)
+	}
+
+	// nextSeq only seeds from MAX(seq) when this conversation is not in the
+	// in-memory counter; a restart of the process looks like that.
+	delete(s.followupSeq, th.ID)
+	moved, err := s.RequeueFollowup(th.ID, second.ID, "second again")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved.Seq <= second.Seq {
+		t.Fatalf("seeded requeue did not bump seq: old=%d new=%d", second.Seq, moved.Seq)
+	}
+
+	sqlDB, err := s.db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sqlDB.Exec("PRAGMA query_only = ON"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.RequeueFollowup(th.ID, first.ID, "blocked"); err == nil {
+		t.Fatal("a read-only database must not rewrite a follow-up")
+	}
+}
+
 func TestUnshiftPutsAFollowupBackAtTheFront(t *testing.T) {
 	s := open(t)
 	th := &Thread{Title: "t"}

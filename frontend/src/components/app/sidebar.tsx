@@ -5,12 +5,16 @@ import { Button } from "@/components/ui/button"
 import { ProjectList } from "@/components/app/project-list"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import { ResizeHandle } from "@/components/app/resize-handle"
+import { SidebarSection } from "@/components/app/sidebar-section"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
 import { reorderById } from "@/lib/reorder"
 import {
   isProjectExpanded,
   readProjectExpanded,
+  readSectionExpanded,
   writeProjectExpanded,
+  writeSectionExpanded,
+  type SectionId,
 } from "@/lib/sidebar-collapse"
 import { sidebarBuckets } from "@/lib/sidebar-groups"
 import {
@@ -75,6 +79,12 @@ export function Sidebar({
   const [startWidth] = useState(hydrateSidebarWidth)
   const [doomed, setDoomed] = useState<Thread>()
   const [expanded, setExpanded] = useState(readProjectExpanded)
+  const [sections, setSections] = useState(readSectionExpanded)
+  const toggleSection = (id: SectionId) => {
+    const next = { ...sections, [id]: !sections[id] }
+    setSections(next)
+    writeSectionExpanded(next)
+  }
   const activeProjectId = threads.find((th) => th.id === activeId)?.project_id
   const openByProject = useMemo(() => {
     const next: Record<string, boolean> = {}
@@ -136,10 +146,12 @@ export function Sidebar({
 
       <div className="thin-scrollbar flex-1 overflow-y-auto px-2 pb-2">
         {buckets.pinned.length > 0 ? (
-          <section className="mb-2" data-testid="pinned-list">
-            <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
-              {t("sidebar.pinned")}
-            </p>
+          <SidebarSection
+            testId="pinned-list"
+            label={t("sidebar.pinned")}
+            open={sections.pinned}
+            onToggle={() => toggleSection("pinned")}
+          >
             {buckets.pinned.map((thread) => (
               <SidebarThreadRow
                 key={thread.id}
@@ -152,16 +164,17 @@ export function Sidebar({
                 onPin={onPin}
               />
             ))}
-          </section>
+          </SidebarSection>
         ) : null}
 
         <ProjectList
           projects={projects}
           threadsByProject={buckets.byProject}
           expanded={openByProject}
-          selectedId={selectedProjectId}
           activeId={activeId}
           runningId={runningId}
+          sectionOpen={sections.projects}
+          onToggleSection={() => toggleSection("projects")}
           onSelect={onSelectProject}
           onToggle={(id) => {
             const next = { ...expanded, [id]: !openByProject[id] }
@@ -182,10 +195,12 @@ export function Sidebar({
         />
 
         {buckets.recents.length > 0 ? (
-          <section className="mb-2" data-testid="recents-list">
-            <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
-              {t("sidebar.recents")}
-            </p>
+          <SidebarSection
+            testId="recents-list"
+            label={t("sidebar.recents")}
+            open={sections.recents}
+            onToggle={() => toggleSection("recents")}
+          >
             {buckets.recents.map((thread) => (
               <SidebarThreadRow
                 key={thread.id}
@@ -198,7 +213,7 @@ export function Sidebar({
                 onDelete={askDelete}
               />
             ))}
-          </section>
+          </SidebarSection>
         ) : threads.length === 0 ? (
           <p className="px-2 py-6 text-xs text-sidebar-foreground/70">
             {t("sidebar.empty")}

@@ -37,10 +37,9 @@ Decision rule, applied BEFORE anything else:
   spawn_agent for each IN ONE assistant message (they run in parallel).
 - After spawning: wait_agents on all ids, then synthesize a compact answer
   (max 200 words) from the workers' results. Do not answer the parts yourself.
-- If a worker fails, resume_agent that id with a tighter task. Do not spawn a
-  second worker with the same role.
-- If more work depends on a finished worker, resume_agent that id instead of
-  spawning a blank one. fork_context copies this conversation, not a worker's.
+- If a worker fails or needs another pass, spawn_agent with the same role
+  (or resume_agent that id). That continues the same worker; it does not start
+  a second one. fork_context only applies when that role has no worker yet.
 
 When you decide no worker is needed, just reply directly — that is the
 correct behavior, not laziness.`

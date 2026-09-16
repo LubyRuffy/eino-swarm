@@ -77,6 +77,11 @@
        behind the composer. The composer overwrites this from its own height;
        the fallback is only the first paint and jsdom. */
     --composer-pad: 7.5rem;
+
+    /* Conversation column. comfortable is max-w-3xl; Settings overwrites
+       this when the human picks full width. */
+    --content-max: 48rem;
+    --ui-font-size: 16px;
   }
 
   .dark {
@@ -140,6 +145,10 @@
     height: 100%;
   }
 
+  html {
+    font-size: var(--ui-font-size, 16px);
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
     /* The desktop window has no browser chrome, so an accidental overscroll
@@ -164,11 +173,19 @@
 }
 
 @layer components {
+  /* Conversation column. --content-max is 48rem (max-w-3xl) until Settings
+     overwrites it to none. */
+  .content-column {
+    width: 100%;
+    max-width: var(--content-max, 48rem);
+    margin-inline: auto;
+  }
+
   /* Rendered markdown from the model. Prose plugins bring a lot of opinions
      and a lot of kilobytes; these are the few rules the answers actually
-     need. */
+     need. Sizes are rem so Settings → Font size scales the answer too. */
   .md {
-    @apply text-[15px] leading-7;
+    @apply text-[0.9375rem] leading-7;
   }
   .md > * + * {
     @apply mt-3;
@@ -195,7 +212,7 @@
     @apply border-l-2 border-border pl-3 text-muted-foreground;
   }
   .md code {
-    @apply font-mono text-[13px] bg-muted rounded px-1 py-0.5;
+    @apply font-mono text-[0.8125rem] bg-muted rounded px-1 py-0.5;
   }
   .md pre {
     @apply bg-muted rounded-md p-3 overflow-x-auto;

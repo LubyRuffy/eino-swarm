@@ -69,6 +69,9 @@ log:
     level: info
 ui:
     locale: system
+    font: system
+    font_size: medium
+    content_width: comfortable
 ```
 
 Any key you leave out, set to zero or set to an empty string is repaired with its
@@ -229,8 +232,12 @@ Chrome only. Agents still answer in the language you are using.
 | key | default | meaning |
 |---|---|---|
 | `locale` | `system` | `system`, `en` or `zh`. `system` follows the browser (`zh*` → Chinese, everything else English). The title-bar control pins `en` or `zh`. Desktop binds a random loopback, so this lives in the file rather than in `localStorage` alone. Junk becomes `system`. |
+| `font` | `system` | `system`, `serif` or `mono`. `system` is the UI sans stack. The whole window uses it. Junk becomes `system`. |
+| `font_size` | `medium` | `small`, `medium` or `large`. Scales the window from the CSS root (14 / 16 / 18px). Junk becomes `medium`. |
+| `content_width` | `comfortable` | `comfortable` keeps the current reading column (`max-w-3xl`). `full` fills the space between the sidebars. Junk becomes `comfortable`. |
 
-Theme stays in the browser; language is first-class config so a new window keeps it.
+Theme stays in the browser; language, typeface and column width are first-class
+config so a new window keeps them.
 
 ## Multiple instances
 

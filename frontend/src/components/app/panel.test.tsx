@@ -141,6 +141,21 @@ describe("Agents tab chrome", () => {
     fireEvent.click(screen.getByRole("button", { name: /worker/ }))
     expect(onSelectAgent).toHaveBeenCalledWith("worker-1")
   })
+
+  it("shows each worker id so same-role rows are distinct", () => {
+    render(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([
+          agent({ id: "reviewer-1", role: "worker", status: "done" }),
+          agent({ id: "reviewer-2", role: "worker", status: "done" }),
+        ])}
+        {...noop}
+      />,
+    )
+    expect(screen.getByRole("button", { name: /reviewer-1/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /reviewer-2/ })).toBeInTheDocument()
+  })
 })
 
 describe("inactive tab panels", () => {

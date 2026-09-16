@@ -3,7 +3,9 @@ import { afterEach, describe, expect, it } from "vitest"
 import {
   isProjectExpanded,
   readProjectExpanded,
+  readSectionExpanded,
   writeProjectExpanded,
+  writeSectionExpanded,
 } from "./sidebar-collapse"
 
 afterEach(() => {
@@ -65,5 +67,40 @@ describe("project expand storage", () => {
     expect(readProjectExpanded()).toEqual({})
     localStorage.setItem("zwai.sidebar.project-expanded", "[]")
     expect(readProjectExpanded()).toEqual({})
+  })
+})
+
+describe("section expand storage", () => {
+  it("starts with Pinned, Projects and Recents open", () => {
+    expect(readSectionExpanded()).toEqual({
+      pinned: true,
+      projects: true,
+      recents: true,
+    })
+  })
+
+  it("round-trips a fold and treats garbage as the open default", () => {
+    writeSectionExpanded({ pinned: true, projects: false, recents: false })
+    expect(readSectionExpanded()).toEqual({
+      pinned: true,
+      projects: false,
+      recents: false,
+    })
+    localStorage.setItem("zwai.sidebar.section-expanded", "nope")
+    expect(readSectionExpanded().recents).toBe(true)
+    localStorage.setItem("zwai.sidebar.section-expanded", "[]")
+    expect(readSectionExpanded().projects).toBe(true)
+  })
+
+  it("ignores unknown keys and non-booleans so a future field cannot collapse Recents", () => {
+    localStorage.setItem(
+      "zwai.sidebar.section-expanded",
+      JSON.stringify({ recents: false, extra: true, pinned: "nope" }),
+    )
+    expect(readSectionExpanded()).toEqual({
+      pinned: true,
+      projects: true,
+      recents: false,
+    })
   })
 })

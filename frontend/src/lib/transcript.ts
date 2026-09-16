@@ -171,7 +171,11 @@ export function reduceEvent(
   if (ev.kind === "resumed") {
     next.running = true
     upsertTurn(next, ev.turn_id, { status: "running" })
-    if (ev.text) append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text))
+    const manager = touchAgent(next, MANAGER_ID)
+    if (ev.text) append(manager, block(ev, "notice", ev.text))
+    // Crash/quit is not "decline the cap". The turn is running again, so a
+    // leftover confirm would look like it is still waiting for a click.
+    settlePendingConfirm(manager, true)
     return next
   }
   // /goal and /compact are conversation metadata. They must not mint a
@@ -346,22 +350,9 @@ export function reduceEvent(
       break
     }
 
-    case "max_iterations_continued": {
-      const manager = touchAgent(next, MANAGER_ID)
-      const blocks = manager.blocks.slice()
-      for (let i = blocks.length - 1; i >= 0; i--) {
-        if (blocks[i].kind === "confirm" && blocks[i].confirm?.pending) {
-          blocks[i] = {
-            ...blocks[i],
-            text: ev.text ?? blocks[i].text,
-            confirm: { ...blocks[i].confirm!, pending: false, continued: true },
-          }
-          break
-        }
-      }
-      manager.blocks = blocks
+    case "max_iterations_continued":
+      settlePendingConfirm(touchAgent(next, MANAGER_ID), true, ev.text)
       break
-    }
 
     case "progress": {
       // A pulse is a snapshot, not a fact about the timeline: it carries no
@@ -391,18 +382,7 @@ export function reduceEvent(
       })
       next.running = false
       next.pulse = undefined
-      const manager = touchAgent(next, MANAGER_ID)
-      const blocks = manager.blocks.slice()
-      for (let i = blocks.length - 1; i >= 0; i--) {
-        if (blocks[i].kind === "confirm" && blocks[i].confirm?.pending) {
-          blocks[i] = {
-            ...blocks[i],
-            confirm: { ...blocks[i].confirm!, pending: false, continued: false },
-          }
-          break
-        }
-      }
-      manager.blocks = blocks
+      settlePendingConfirm(touchAgent(next, MANAGER_ID), false)
       for (const id of next.agentOrder) {
         const a = next.agents[id]
         closeStreaming(a, "reasoning")
@@ -776,6 +756,21 @@ function lastOpenIndex(blocks: Block[], kind: BlockKind): number {
     if (blocks[i].kind === "tool" || blocks[i].kind === "spawn") return -1
   }
   return -1
+}
+
+function settlePendingConfirm(agent: AgentState, continued: boolean, text?: string) {
+  const blocks = agent.blocks.slice()
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (blocks[i].kind === "confirm" && blocks[i].confirm?.pending) {
+      blocks[i] = {
+        ...blocks[i],
+        text: text ?? blocks[i].text,
+        confirm: { ...blocks[i].confirm!, pending: false, continued },
+      }
+      break
+    }
+  }
+  agent.blocks = blocks
 }
 
 function openId(ev: SwarmEvent, kind: string): string {

@@ -55,19 +55,19 @@ flowchart LR
 
 | package | responsibility |
 |---|---|
-| `.` (root) | the swarm library: `Registry`, `spawn_agent`/`send_message`/`wait_agents`/`close_agent`/`resume_agent`, `RunWith` → `RunResult{Final, Transcript}`, `Notification` stream. Usable on its own — see [docs/LIBRARY.md](docs/LIBRARY.md). |
+| `.` (root) | the swarm library: `Registry`, `spawn_agent`/`send_message`/`wait_agents`/`close_agent`/`resume_agent`, `Restore`/`PlantFinished` for leftover workers, `RunWith` → `RunResult{Final, Transcript}`, `Notification` stream. Usable on its own — see [docs/LIBRARY.md](docs/LIBRARY.md). |
 | `internal/config` | `config.yaml` under the data directory: load, normalize, atomic save, `OPENAI_*` seeding on first run. Nothing else in the tree hardcodes an endpoint or model. |
 | `internal/store` | gorm + pure-Go SQLite. Conversations, transcript messages, turns, the event timeline, model-call records, attachments, follow-ups waiting for the current turn. Sidebar lists conversations and projects by `sort_rank` then last activity (`last_active_at` / `updated_at`); unranked rows interleave by activity so they cannot sit above ranked work that just ran. A drop pins ranks. See [docs/DATA_MODEL.md](docs/DATA_MODEL.md). |
 | `internal/provider` | builds eino chat models from config, lists an endpoint's catalog (`GET {base_url}/models`), records per-call telemetry, and provides the scripted offline provider used by `--mock` and the tests. The provider request timeout is idle time between bytes, not the whole streamed body: a thinking model that is still emitting tokens is not cut off. |
 | `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. |
 | `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the three agent tools (`memory`, `skill_view`, `skill_manage`), the prompt sections they are rendered into, and the reviewer's instruction. Owns the files; knows nothing about conversations. |
-| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, interrupts, resumes leftover turns after a crash or quit, folds earlier replay on `/compact` (optional pinned summarizer), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a clear/interrupt, or `swarm.goal_max_auto_turns`, converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), and runs the post-turn memory review. |
+| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, folds earlier replay on `/compact` (optional pinned summarizer), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a clear/interrupt, or `swarm.goal_max_auto_turns`, converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), and runs the post-turn memory review. |
 | `internal/server` | gin: REST, SSE, upload/download, trace, embedded assets. See [docs/API.md](docs/API.md). |
 | `internal/app` | wiring shared by both shells, plus listen/serve/shutdown, `openURL` and `revealPath`. |
 | `internal/desktop` | wails3 single window pointed at the local server URL. Hidden title bar (no NSToolbar); traffic lights are centred in the 48px HTML header and the front end pads to the zoom button's measured right edge. The top 48px drags natively. A title-bar double-click is a front-end `wails:drag:doubleclick` — Wails will not zoom on the second mousedown itself, because that races the drag. The Dock / taskbar mark is an embedded PNG, inset to Apple's 824/1024 icon grid, rounded to a macOS squircle at runtime, and handed to Wails as `application.Options.Icon`, so `go run` on macOS does not keep the generic Unix-exec glyph, a square canvas, or a tile larger than a bundled `.app`. Quit cancels the event stream so the window is not frozen waiting for it. |
 | `internal/tui` | terminal renderer for `zwai tui`, on the same swarm and config. |
 | `cmd/zwai` | subcommand table: `desktop`, `web`, `tui`, `trace`, `config`. |
-| `frontend/` | React + TypeScript + Tailwind + shadcn/ui, embedded via `frontend/embed.go`. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, and Recents for conversations with no project. Folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). |
+| `frontend/` | React + TypeScript + Tailwind + shadcn/ui, embedded via `frontend/embed.go`. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.font_size` / `ui.content_width` the same way. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, and Recents for conversations with no project. A project folder icon is the fold control (hover swaps it for a chevron). Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). |
 
 ## A turn, end to end
 
@@ -79,7 +79,9 @@ flowchart LR
    `from_event_seq`, which interrupts, truncates from that `user_message`,
    and starts again at that position. Ordinary Enter while running **queues a
    follow-up** (`POST /api/threads/:id/followups`) that starts as the next turn
-   after a clean finish. **Steer** / ⌘Enter injects into the current turn
+   after a clean finish. Clicking a waiting row and submitting the edit
+   (`PATCH …/followups/:fid`) keeps the same id and puts it at the back of
+   the FIFO. **Steer** / ⌘Enter injects into the current turn
    (`POST /api/threads/:id/steer` or `…/followups/:fid/steer`) at the next
    model boundary — it does not kill an in-flight tool, and it does not
    rewind. Pasted images cannot wait in the queue (the row is text) and
@@ -165,7 +167,15 @@ flowchart LR
    is launched again on the same id, with a `resumed` event on the timeline,
    feeding replay from stored messages plus any manager answers that only
    made it onto the event log (those are written into `messages` on replay, so
-   a second crash does not depend on scanning events). A user **Stop**
+   a second crash does not depend on scanning events). Sub-agents that were
+   still running are started again under the same `agent_id` from their event
+   log (an in-flight tool call is not replayed mid-call). Workers that already
+   `finished` are planted so `wait_agents` / `resume_agent` still resolve the
+   id. A quit does not record `cleanup` or `finished` for those in-flight
+   workers — that would make the next start treat them as done. Follow-ups
+   waiting in `followups` stay queued and run after the leftover turn finishes
+   cleanly. Unread `[steer]` messages stay in the leftover turn (a dangling
+   tool call is dropped; the steer is not). A user **Stop**
    (`cancelled`) is not resumed.
    Two running rows on one conversation keep the later one.
 8. **Review** (project conversations with memory on, `memory.auto_review`): a
@@ -302,6 +312,9 @@ renders as prose, and an unknown suffix stays plain numbered lines.
 The UI treats both as a red error, not a grey success.
 `resume_agent` continues a finished worker under the same `agent_id`; a second
 `spawned` event for that id is a continuation, not a second roster row.
+`spawn_agent` with a role that already exists continues that worker
+(new task, same id): queued as steering while it is running, resumed after
+it finished. `fork_context` does not mint a twin for an existing role.
 Live status text (heartbeat, pending tools, wait roll-up, sub-agent activity) is
 rendered by `MarqueeText`: a sweep while the work is in progress, a scroll if
 the line overflows, truncation once it is idle.

@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -98,16 +97,10 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 	if err != nil {
 		return err
 	}
-	history, err := e.replayHistory(turn.ThreadID)
+	messages, err := e.resumeConversation(turn)
 	if err != nil {
 		return err
 	}
-	text := strings.TrimSpace(turn.UserText)
-	if text == "" && !hasUserMessage(history) {
-		return fmt.Errorf("engine: leftover turn has no request to continue")
-	}
-	messages := resumeMessages(history, text)
-
 	pc, err := e.projectContextFor(th)
 	if err != nil {
 		return err
@@ -144,6 +137,7 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 		reg.Close()
 		return ErrBusy
 	}
+	rt.setWorkerRestore(e.workersFromTurn(turn))
 
 	_ = e.store.TouchThread(turn.ThreadID)
 	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), e.imagesForTurn(turn), true)

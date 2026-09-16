@@ -27,7 +27,7 @@ async function createProject(page: Page, name: string) {
   await page.getByRole("button", { name: "New project" }).click()
   await page.getByLabel("Name").fill(name)
   await page.getByRole("button", { name: "Create project" }).click()
-  await expect(projectRow(page, name)).toHaveAttribute("aria-pressed", "true")
+  await expect(projectRow(page, name)).toBeVisible()
 }
 
 /** The row itself, not the menu button beside it that is named after it. */
@@ -174,15 +174,35 @@ test("hovering a project starts a conversation in it, not in Recents", async ({
 }) => {
   const project = `Project ${Date.now()}`
   await createProject(page, project)
+  const wrap = page.getByTestId("project-wrap").filter({ hasText: project })
+
+  await expect(wrap.getByTestId("project-fold")).toBeHidden()
+  await expect(wrap.getByTestId("project-folder")).toBeVisible()
 
   const startIn = page.getByRole("button", { name: `New conversation in ${project}` })
   await expect(startIn).toHaveCSS("opacity", "0")
   await projectRow(page, project).hover()
   await expect(startIn).toHaveCSS("opacity", "1")
+  await expect(wrap.getByTestId("project-fold")).toBeVisible()
+  await expect(wrap.getByTestId("project-folder")).toBeHidden()
   await startIn.click()
 
   await expect(page.getByTestId("thread-project")).toHaveText(project)
-  await expect(projectRow(page, project)).toHaveAttribute("aria-pressed", "true")
+  await expect(projectRow(page, project)).not.toHaveAttribute("aria-pressed")
+  await expect(
+    wrap.getByTestId("thread-row").first(),
+  ).toHaveAttribute("aria-current", "true")
+
+  const folder = await wrap.getByTestId("project-kind").boundingBox()
+  const topicKind = await wrap.getByTestId("row-kind").boundingBox()
+  const projectName = await wrap.getByTestId("project-row").getByTestId("row-label").boundingBox()
+  const topicName = await wrap.getByTestId("thread-row").getByTestId("row-label").boundingBox()
+  expect(folder).not.toBeNull()
+  expect(topicKind).not.toBeNull()
+  expect(projectName).not.toBeNull()
+  expect(topicName).not.toBeNull()
+  expect(Math.abs(folder!.x - topicKind!.x)).toBeLessThan(2)
+  expect(Math.abs(projectName!.x - topicName!.x)).toBeLessThan(2)
 })
 
 test("a project topic can be pinned to the top and stays there after reload", async ({

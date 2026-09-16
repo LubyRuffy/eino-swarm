@@ -1,8 +1,9 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-# dist/ is committed so a fresh clone can `go run ./cmd/zwai desktop` without a
-# Node toolchain. Rebuild it with `make frontend` after touching frontend/src.
+# dist/ is a Vite artefact, not source. Rebuild it with `make frontend` after
+# touching frontend/src. A sentinel in dist/ keeps `go:embed` compiling on a
+# clone that has not built the UI yet.
 FRONTEND := frontend
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
@@ -19,16 +20,20 @@ help:
 	@echo "make e2e        Playwright end-to-end tests on the offline provider"
 	@echo "make check      formatting, vet, test, e2e"
 
+.PHONY: ensure-frontend
+ensure-frontend:
+	@if [ ! -f $(FRONTEND)/dist/index.html ]; then $(MAKE) frontend; fi
+
 .PHONY: run
-run:
+run: ensure-frontend
 	go run ./cmd/zwai desktop
 
 .PHONY: web
-web:
+web: ensure-frontend
 	go run ./cmd/zwai web
 
 .PHONY: mock
-mock:
+mock: ensure-frontend
 	go run ./cmd/zwai web --mock
 
 .PHONY: build
@@ -59,7 +64,7 @@ test-web: node_modules
 	cd $(FRONTEND) && npm run test
 
 .PHONY: e2e
-e2e: node_modules
+e2e: frontend
 	cd $(FRONTEND) && npx playwright install chromium && npm run e2e
 
 .PHONY: fmt

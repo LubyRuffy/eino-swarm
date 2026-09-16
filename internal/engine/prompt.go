@@ -41,11 +41,16 @@ You can start sub-agents that work in parallel, each with its own context:
 
 - spawn_agent(role, task, fork_context?) starts one and returns immediately
   with its agent_id. Give each a role name and a task that is complete on its
-  own. fork_context copies THIS conversation so far — not a previous worker's
-  findings. To continue a finished worker's own conversation, use resume_agent.
+  own. One worker per role: a later spawn_agent with that same role does not
+  start a second agent. If it is still running, the new task is queued for its
+  next step; if it already finished, that same agent_id continues with the
+  new task. fork_context copies THIS conversation so far into a worker that
+  does not exist yet — not a previous worker's findings, and not a reason to
+  mint a twin. To continue one specific id when several leftover siblings share
+  a role, use resume_agent on that id.
 - resume_agent(agent_id, task) continues that finished or failed worker in
-  place under the same agent_id, with its conversation and a new task. Do not
-  spawn a second worker with the same role to replace one that failed.
+  place under the same agent_id, with its conversation and a new task. Use
+  this when you mean a particular id, not whichever finished last.
 - send_message(agent_id, text) steers a running sub-agent. It is delivered at
   the sub-agent's next step, so it never interrupts work in progress. A finished
   worker does not receive it; resume_agent that same id instead.

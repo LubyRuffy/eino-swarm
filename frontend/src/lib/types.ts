@@ -263,8 +263,10 @@ export interface Meta {
   data_dir: string
   capabilities: { reveal?: boolean; memory?: boolean; open_url?: boolean }
   swarm: SwarmLimits
-  /** Chrome language: system, en, or zh. */
+  /** Chrome language: system, en, or zh. Kept next to `ui` so older clients
+   *  that only read this field still pin the dictionary. */
   locale?: string
+  ui?: UISettings
 }
 
 export interface SwarmLimits {
@@ -315,7 +317,15 @@ export interface Settings {
   }
   memory: MemorySettings
   log: { level: string }
-  ui?: { locale: string }
+  ui?: UISettings
+}
+
+/** Chrome stored in config.yaml. Tokens, not CSS — the front end maps them. */
+export interface UISettings {
+  locale: string
+  font: string
+  font_size: string
+  content_width: string
 }
 
 export interface TokenTotals {

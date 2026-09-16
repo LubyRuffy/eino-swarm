@@ -757,6 +757,10 @@ func TestUILocaleNormalizesToSystemEnOrZh(t *testing.T) {
 	if older.UI.Locale != LocaleSystem {
 		t.Fatalf("an older config must follow the system language: %+v", older.UI)
 	}
+	if older.UI.Font != DefaultFont || older.UI.FontSize != DefaultFontSize ||
+		older.UI.ContentWidth != DefaultContentWidth {
+		t.Fatalf("an older config must keep the current column and type: %+v", older.UI)
+	}
 
 	pinned := t.TempDir()
 	if err := os.WriteFile(filepath.Join(pinned, FileName), []byte("ui:\n  locale: zh\n"), 0o600); err != nil {
@@ -770,4 +774,3 @@ func TestUILocaleNormalizesToSystemEnOrZh(t *testing.T) {
 		t.Fatalf("a pinned language must survive load: %+v", got.UI)
 	}
 }
-

@@ -184,6 +184,45 @@ func TestLateSteerBeatsAQueuedFollowup(t *testing.T) {
 	}
 }
 
+func TestRequeueFollowupMovesToTheBackOfTheQueue(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := e.Store().EnqueueFollowup(th.ID, "first in line")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := e.Store().EnqueueFollowup(th.ID, "second in line")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.RequeueFollowup(th.ID, first.ID, "  first edited  ")
+	if err != nil {
+		t.Fatalf("RequeueFollowup: %v", err)
+	}
+	if got.Text != "first edited" {
+		t.Fatalf("trimmed text: %+v", got)
+	}
+	left, err := e.ListFollowups(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 2 || left[0].ID != second.ID || left[1].ID != first.ID || left[1].Text != "first edited" {
+		t.Fatalf("edit did not go to the back: %+v", left)
+	}
+	if _, err := e.RequeueFollowup(th.ID, first.ID, "   "); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("empty requeue: %v", err)
+	}
+	if _, err := e.RequeueFollowup(th.ID, "fu_missing", "x"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing follow-up: %v", err)
+	}
+	if _, err := e.RequeueFollowup("missing", first.ID, "x"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("missing conversation: %v", err)
+	}
+}
+
 func TestEnqueueFollowupWhileIdleIsIdle(t *testing.T) {
 	e := newTestEngine(t)
 	th, err := e.CreateThread("", "", "")
@@ -266,5 +305,52 @@ func TestFlushFollowupSkipsCancelledTurns(t *testing.T) {
 	turns, _ := e.Store().ListTurns(th.ID)
 	if len(turns) != 0 {
 		t.Fatalf("non-done flush started a turn: %+v", turns)
+	}
+}
+
+func TestQueuedFollowupsSurviveACrashAndRunAfterResume(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := plantUnfinishedTurn(t, e, th.ID, "continue the leftover request")
+	first, err := e.Store().EnqueueFollowup(th.ID, "after this finishes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := e.Store().EnqueueFollowup(th.ID, "then that")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := e.ResumeOrphanedTurns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("resumed %d, want 1", n)
+	}
+	left, err := e.ListFollowups(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 2 || left[0].ID != first.ID || left[1].ID != second.ID {
+		t.Fatalf("crash drained the queue: %+v", left)
+	}
+
+	waitForTurn(t, e, turn.ID)
+	turns := waitForTurnCount(t, e, th.ID, 3)
+	waitForTurn(t, e, turns[1].ID)
+	waitForTurn(t, e, turns[2].ID)
+	if turns[1].UserText != "after this finishes" || turns[2].UserText != "then that" {
+		t.Fatalf("queued follow-ups did not run after resume: %+v", turns)
+	}
+	left, err = e.ListFollowups(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left) != 0 {
+		t.Fatalf("flushed follow-ups still queued: %+v", left)
 	}
 }

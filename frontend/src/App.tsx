@@ -619,6 +619,7 @@ function AppComposer({
   const followups = useApp((s) => s.followups)
   const steerFollowup = useApp((s) => s.steerFollowup)
   const deleteFollowup = useApp((s) => s.deleteFollowup)
+  const requeueFollowup = useApp((s) => s.requeueFollowup)
   const clearFollowups = useApp((s) => s.clearFollowups)
   const upload = useApp((s) => s.upload)
   const refreshThreads = useApp((s) => s.refreshThreads)
@@ -663,6 +664,7 @@ function AppComposer({
       followups={followups}
       onSteerFollowup={(id) => void steerFollowup(id)}
       onDeleteFollowup={(id) => void deleteFollowup(id)}
+      onRequeueFollowup={(id, text) => void requeueFollowup(id, text)}
       onClearFollowups={() => void clearFollowups()}
       usage={usage}
       goal={thread?.goal}
@@ -826,6 +828,10 @@ function AppSettings({
   const setTheme = useApp((s) => s.setTheme)
   const locale = useApp((s) => s.locale)
   const setLocale = useApp((s) => s.setLocale)
+  const font = useApp((s) => s.font)
+  const fontSize = useApp((s) => s.fontSize)
+  const contentWidth = useApp((s) => s.contentWidth)
+  const setAppearance = useApp((s) => s.setAppearance)
   const refreshAfterSettings = useCallback(() => {
     // boot() would reopen threads[0] and yank the conversation that is
     // sitting under this sheet. Meta + models is what Settings changed.
@@ -842,6 +848,8 @@ function AppSettings({
       onThemeChange={setTheme}
       locale={locale}
       onLocaleChange={setLocale}
+      appearance={{ font, fontSize, contentWidth }}
+      onAppearanceChange={setAppearance}
       onSaved={refreshAfterSettings}
       trafficInset={trafficInset}
     />

@@ -160,6 +160,30 @@ func TestAccumulatorCarriesErrors(t *testing.T) {
 	}
 }
 
+func TestAccumulatorDropsFinishedAfterQuit(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	turn := &store.Turn{ThreadID: th.ID}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	e.runtimeFor(th.ID).abandon()
+	acc := newAccumulator(e, th.ID, turn.ID, 0)
+	acc.onNotify(swarm.Notification{
+		Kind: swarm.NotifyFinished, AgentID: "worker-1", Role: "worker",
+		Text: "", Err: errors.New("cancelled"),
+	})
+	events, err := e.Replay(th.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range events {
+		if ev.Kind == swarm.NotifyFinished.String() {
+			t.Fatalf("quit recorded a cancelled worker as finished: %+v", ev)
+		}
+	}
+}
+
 // Unknown notification kinds must still be persisted rather than dropped, so a
 // new swarm event type shows up in the timeline before the UI knows about it.
 func TestAccumulatorPersistsUnknownKinds(t *testing.T) {

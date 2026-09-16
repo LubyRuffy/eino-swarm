@@ -34,6 +34,14 @@ frontend/test-results-drop/
 .vscode/*
 !.vscode/extensions.json
 
+# Scratch from running the app against this checkout
+/notes/
+
 # Wails build artifacts
 /bin/
 /build/bin/
+
+# Vite output. Keep a sentinel so `go:embed all:dist` still compiles
+# before `make frontend` has run.
+frontend/dist/*
+!frontend/dist/.gitkeep

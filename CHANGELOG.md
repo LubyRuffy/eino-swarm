@@ -7,9 +7,59 @@ tagged a release yet.
 ## [Unreleased]
 
 The repository grew from a swarm orchestration library into a desktop
-co-working app built on it. The library API is unchanged except where noted.
+co-working app built on it. The library API is unchanged except where noted
+(`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`).
+
+### Changed
+
+- **`frontend/dist` is a build artefact.** It is gitignored. A clone
+  needs Node once (`make frontend`, or `make run` / `make e2e` which
+  build it). `go:embed` still compiles because `dist/.gitkeep` stays in
+  the tree; without `index.html` the binary serves the API only.
+
+- **Folder fold lives in the folder icon.** Hovering a project swaps
+  the directory for a chevron in the same slot; the mouse leaving
+  puts the folder back. Conversation titles — Recents, Pinned, nested
+  topics — keep an empty icon slot so they share a column with the
+  project name. Section headers hide their chevron until hover while
+  they are open.
+
+- **Sidebar rows are shorter.** Conversation and folder rows are a
+  fixed `h-7` with compact menus, instead of padding around a 28px
+  button. Nested topics stack closer, the way the list is meant to be
+  scanned.
+
+- **Open conversation is the row, not the folder.** A project folder
+  no longer paints as selected when one of its topics is open. The
+  current topic keeps the accent, so it does not look like the
+  directory is the thing you selected.
+
+- **Pinned, Projects and Recents fold from the section header.** Same
+  disclosure as a project folder (chevron after the name). The fold is
+  remembered in `localStorage` so a reload is not a reset. **New project**
+  stays on the Projects row and does not toggle the section.
+
+- **`spawn_agent` is one worker per role.** A later `spawn_agent` with the
+  same role does not mint a twin — including when the manager keeps going
+  and nobody hit Stop. If that worker is still running, the new task is
+  queued for its next turn; if it already finished, it continues in place
+  under the same `agent_id`. `fork_context` only applies on the first worker
+  for that role. `resume_agent(agent_id, …)` still targets a specific leftover
+  sibling. The roster shows the id next to the role.
+
+### Fixed
+
+- **Rewind does not hit a locked database.** SQLite is one connection
+  for the process, so truncating a conversation while a turn is still
+  flushing events no longer returns `SQLITE_BUSY`.
 
 ### Added
+
+- **Font, size and conversation width.** Settings → General: system / serif /
+  mono, small / medium / large, and whether the transcript fills the space
+  between the sidebars or stays the current reading column. Preference is
+  `ui.font` / `ui.font_size` / `ui.content_width` in `config.yaml` so a
+  desktop window on a random port still remembers it.
 
 - **Sub-agent system prompt.** Opening a worker in the Agents tab shows the
   instruction it was started with (host snapshot plus the task). The
@@ -116,12 +166,14 @@ co-working app built on it. The library API is unchanged except where noted.
   running turn. `⌘G` / `F3` step while it is open.
 
 - **Follow-up queue vs Steer.** Enter while a turn is running queues a message
-  for after this turn finishes (`followups` table, `GET/POST/DELETE
-  /api/threads/:id/followups`). **Steer** on that row, or ⌘Enter on a new draft,
-  injects into the current turn at the next model boundary without killing an
-  in-flight tool (`POST …/followups/:fid/steer`). Stop and errors leave the
-  queue in place; a late unread steer still takes the next turn ahead of it.
-  Refresh does not lose waiting text.
+  for after this turn finishes (`followups` table, `GET/POST/DELETE/PATCH
+  /api/threads/:id/followups`). Click a waiting row to edit it; submitting
+  that edit keeps the id and puts it at the back of the FIFO. **Steer** on
+  that row, or ⌘Enter on a new draft, injects into the current turn at the
+  next model boundary without killing an in-flight tool
+  (`POST …/followups/:fid/steer`). Stop and errors leave the queue in place;
+  a late unread steer still takes the next turn ahead of it. Refresh does
+  not lose waiting text.
 
 - **Host environment in the system prompt.** Every turn injects the live OS,
   architecture, kernel, shell, date, timezone, user and home into the manager
@@ -144,9 +196,13 @@ co-working app built on it. The library API is unchanged except where noted.
 
 - **Unfinished turns resume after a crash or quit.** A turn left `running` by a
   killed process, a power loss, or closing the app is continued on the next
-  start — same turn id, a `resumed` event on the timeline. A user **Stop** stays
-  `cancelled`. `ResumeOrphanedTurns` at startup; shutdown no longer bulk-cancels
-  leftovers.
+  start — same turn id, a `resumed` event on the timeline. Sub-agents that were
+  still running are restarted under the same ids so the manager can wait for
+  them instead of spawning replacements. Follow-ups waiting in the queue stay
+  there and run after that leftover turn finishes. Unread steering is kept even
+  if a tool call was in flight. A leftover tool-round confirm is dismissed
+  because the turn is running again. A user **Stop** stays `cancelled`.
+  `ResumeOrphanedTurns` at startup; shutdown no longer bulk-cancels leftovers.
 
 - **Quote selected text into the next message.** Select a passage in the
   transcript (or a sub-agent's log) and **Add to chat**. The snippet lands as an
@@ -454,12 +510,18 @@ co-working app built on it. The library API is unchanged except where noted.
   [docs/LIBRARY.md](docs/LIBRARY.md).
 - The demo `internal/webui` (Chrome `--app`, one global registry, hardcoded
   colours, no persistence) was removed in favour of `frontend/` +
-  `internal/server`. `frontend/dist` is committed so a fresh clone runs without a
-  Node toolchain.
+  `internal/server`. The UI is embedded from `frontend/dist` at build time.
 - A 25 MB `swarm-real` binary was removed from the repository and a `.gitignore`
   added.
 
 ### Fixed
+
+- **Force-quit no longer drops in-flight sub-agents.** Restarting the app
+  while a turn is still working used to continue only the manager. Workers
+  that had `spawned` without `finished` start again under the same
+  `agent_id`; already-finished ones stay resolvable for `wait_agents` /
+  `resume_agent`. A quit does not record end-of-turn `cleanup` or a
+  cancelled `finished` for those workers.
 
 - **Desktop Dock icon was larger than a real `.app`.** `setApplicationIconImage`
   does not apply Apple's 824/1024 content grid, so a full-bleed PNG filled

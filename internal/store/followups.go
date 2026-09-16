@@ -112,6 +112,25 @@ func (s *Store) PopFollowup(threadID string) (*Followup, error) {
 	return out, nil
 }
 
+// RequeueFollowup rewrites a waiting message and puts it at the back of the
+// FIFO. Submitting an edit must not keep the old place in line: the user
+// just re-sent it.
+func (s *Store) RequeueFollowup(threadID, id, text string) (*Followup, error) {
+	f, err := s.GetFollowup(threadID, id)
+	if err != nil {
+		return nil, err
+	}
+	f.Text = text
+	f.Seq = s.nextSeq(s.followupSeq, threadID, func() int64 {
+		return s.maxSeq(&Followup{}, "seq", threadID)
+	})
+	if err := s.db.Model(&Followup{}).Where("id = ? AND thread_id = ?", id, threadID).
+		Updates(map[string]any{"text": f.Text, "seq": f.Seq}).Error; err != nil {
+		return nil, fmt.Errorf("store: requeue follow-up: %w", err)
+	}
+	return f, nil
+}
+
 // UnshiftFollowup puts a popped message back at the front of the queue, which
 // is how a follow-up survives a StartTurn that lost the race to another run.
 func (s *Store) UnshiftFollowup(f *Followup) error {

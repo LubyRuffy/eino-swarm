@@ -407,6 +407,29 @@ describe("turns", () => {
     expect(manager(state).blocks.some((b) => b.kind === "notice")).toBe(true)
   })
 
+  it("keeps leftover sub-agents running when the turn is resumed", () => {
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({
+        kind: "spawned",
+        agent_id: "worker-1",
+        role: "worker",
+        text: "do the assigned work",
+      }),
+      ev({ kind: "resumed", text: "the previous run was interrupted; continuing" }),
+      ev({
+        kind: "spawned",
+        agent_id: "worker-1",
+        role: "worker",
+        text: "do the assigned work",
+      }),
+    ])
+    expect(state.agents["worker-1"].status).toBe("running")
+    expect(state.agents["worker-1"].activity).toBe("continuing")
+    expect(manager(state).blocks.filter((b) => b.kind === "spawn")).toHaveLength(1)
+    expect(JSON.stringify(state)).not.toMatch(/notes\.md|summarize|look into this/)
+  })
+
   it("keeps the partial transcript when a crashed turn is resumed", () => {
     const state = fold([
       ev({ kind: "user_message", text: "hi" }),
@@ -428,6 +451,24 @@ describe("turns", () => {
     ])
     expect(state.running).toBe(true)
     expect(state.turns[0]?.status).toBe("running")
+  })
+
+  it("clears a leftover tool-round prompt when the crashed turn is resumed", () => {
+    const paused = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({
+        kind: "max_iterations",
+        text: JSON.stringify({ limit: 200, extend_by: 200 }),
+      }),
+    ])
+    const resumed = fold(
+      [ev({ kind: "resumed", text: "the previous run was interrupted; continuing" })],
+      paused,
+    )
+    const card = manager(resumed).blocks.find((b) => b.kind === "confirm")
+    expect(card?.confirm?.pending).toBe(false)
+    expect(card?.confirm?.continued).toBe(true)
+    expect(resumed.running).toBe(true)
   })
 
   it("pauses at the tool-round cap until the human extends it", () => {

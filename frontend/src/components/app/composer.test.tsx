@@ -212,6 +212,9 @@ describe("Composer chrome", () => {
     renderComposer()
     expect(screen.getByTestId("composer-fade")).toBeInTheDocument()
     expect(screen.getByTestId("composer").className).not.toMatch(/border-t/)
+    expect(
+      screen.getByTestId("composer").querySelector(".content-column"),
+    ).not.toBeNull()
   })
 })
 

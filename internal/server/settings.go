@@ -28,6 +28,7 @@ type metaView struct {
 	Capabilities    map[string]bool    `json:"capabilities"`
 	Swarm           config.SwarmConfig `json:"swarm"`
 	Locale          string             `json:"locale"`
+	UI              config.UIConfig    `json:"ui"`
 }
 
 func (s *Server) getMeta(c *gin.Context) {
@@ -53,6 +54,7 @@ func (s *Server) getMeta(c *gin.Context) {
 		},
 		Swarm:  cfg.Swarm,
 		Locale: cfg.UI.Locale,
+		UI:     cfg.UI,
 	})
 }
 
@@ -174,7 +176,9 @@ func (s *Server) putSettings(c *gin.Context) {
 		next.Log = *req.Log
 	}
 	if req.UI != nil {
-		next.UI = *req.UI
+		// A language-only PUT must not reset the typeface. Blank fields
+		// keep what is already stored; Normalize maps junk to defaults.
+		next.UI = config.MergeUI(cfg.UI, *req.UI)
 	}
 	if req.Models != nil {
 		existing := map[string]config.Provider{}

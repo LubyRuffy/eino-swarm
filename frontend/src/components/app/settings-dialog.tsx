@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api } from "@/lib/api"
+import type { Appearance } from "@/lib/appearance"
 import type { LocalePref } from "@/lib/i18n"
 import { SettingsPersist } from "@/lib/settings-persist"
 import type { Meta, Settings, ToolDescriptor } from "@/lib/types"
@@ -47,7 +48,7 @@ function sections(t: Translate) {
       id: "general",
       label: t("settings.nav.general"),
       icon: Palette,
-      keys: "appearance theme light dark log level data directory version language locale 语言 中文 english 外观 主题",
+      keys: "appearance theme light dark font size serif mono width full comfortable log level data directory version language locale 语言 中文 english 外观 主题 字体 字号 铺满 宽度",
     },
     {
       id: "models",
@@ -112,6 +113,8 @@ export function SettingsDialog({
   trafficInset,
   locale,
   onLocaleChange,
+  appearance,
+  onAppearanceChange,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -124,6 +127,8 @@ export function SettingsDialog({
   trafficInset?: boolean
   locale: LocalePref
   onLocaleChange: (l: LocalePref) => void
+  appearance: Appearance
+  onAppearanceChange: (patch: Partial<Appearance>) => void
 }) {
   const t = useT()
   const nav = useMemo(() => sections(t), [t.locale])
@@ -334,6 +339,8 @@ export function SettingsDialog({
                       onThemeChange={onThemeChange}
                       locale={locale}
                       onLocaleChange={onLocaleChange}
+                      appearance={appearance}
+                      onAppearanceChange={onAppearanceChange}
                       meta={meta}
                       settings={settings}
                       onChange={apply}

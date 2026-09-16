@@ -1,9 +1,20 @@
+import { writeFileSync } from "node:fs"
 import path from "node:path"
 import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 
+function keepEmbedSentinel() {
+  return {
+    name: "keep-embed-sentinel",
+    closeBundle() {
+      // emptyOutDir wipes this; go:embed all:dist needs the directory to exist
+      writeFileSync(path.resolve(__dirname, "dist/.gitkeep"), "")
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), keepEmbedSentinel()],
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
   },
@@ -22,8 +33,7 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
-    // The bundle is committed so `go run ./cmd/zwai desktop` works on a fresh
-    // clone; sourcemaps would triple the diff for no benefit to users.
+    // Sourcemaps would triple the artefact size for no benefit to users.
     sourcemap: false,
   },
 })

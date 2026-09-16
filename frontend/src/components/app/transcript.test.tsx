@@ -248,6 +248,7 @@ describe("Transcript follow", () => {
     expect(screen.queryByTestId("transcript")).not.toBeInTheDocument()
     rerender(<Transcript state={twoTurns()} loaded onSelectAgent={() => {}} />)
     const el = screen.getByTestId("transcript")
+    expect(el.querySelector(".content-column")).not.toBeNull()
     mockScrollBox(el, { scrollHeight: 2000, clientHeight: 400 })
     await flushFollow()
     expect(el.scrollTop).toBe(2000)

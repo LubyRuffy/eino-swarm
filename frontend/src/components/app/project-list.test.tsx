@@ -49,6 +49,7 @@ function renderList(props: Partial<Parameters<typeof ProjectList>[0]> = {}) {
     onDeleteThread: vi.fn(),
     onReorderThreads: vi.fn(),
     onPinThread: vi.fn(),
+    onToggleSection: vi.fn(),
   }
   render(<ProjectList projects={projects} {...handlers} {...props} />)
   return handlers
@@ -63,10 +64,10 @@ describe("Project list", () => {
   })
 
   it("toggles a project folder instead of filtering the whole list", () => {
-    const { onSelect, onToggle } = renderList({ selectedId: "pj_1" })
+    const { onSelect, onToggle } = renderList()
     expect(screen.queryByRole("button", { name: "All conversations" })).not.toBeInTheDocument()
     const row = screen.getByRole("button", { name: "First" })
-    expect(row).toHaveAttribute("aria-pressed", "true")
+    expect(row).not.toHaveAttribute("aria-pressed")
     expect(row).toHaveAttribute("aria-expanded", "true")
     fireEvent.click(row)
     expect(onToggle).toHaveBeenCalledWith("pj_1")
@@ -83,6 +84,71 @@ describe("Project list", () => {
     rerender({ threadsByProject: { pj_1: threads }, expanded: { pj_1: false } })
     expect(screen.queryByTestId("project-threads")).not.toBeInTheDocument()
     expect(screen.queryByText("A topic")).not.toBeInTheDocument()
+  })
+
+  it("marks the open conversation, not the folder", () => {
+    renderList({
+      threadsByProject: {
+        pj_1: [
+          topic({ id: "th_open", title: "Open topic" }),
+          topic({ id: "th_other", title: "Other topic" }),
+        ],
+      },
+      expanded: { pj_1: true },
+      activeId: "th_open",
+    })
+    expect(screen.getByRole("button", { name: "First" })).not.toHaveAttribute("aria-pressed")
+    expect(screen.getByTestId("project-row").className.split(/\s+/)).not.toContain(
+      "bg-sidebar-accent",
+    )
+    const openRow = screen.getByText("Open topic").closest("[data-testid=thread-row]")
+    const otherRow = screen.getByText("Other topic").closest("[data-testid=thread-row]")
+    expect(openRow).toHaveAttribute("aria-current", "true")
+    expect(openRow?.querySelector("[data-testid=thread-kind]")).toBeNull()
+    expect(otherRow).not.toHaveAttribute("aria-current")
+    expect(otherRow?.querySelector("[data-testid=thread-kind]")).toBeNull()
+  })
+
+  // One icon slot: the folder, swapped for a chevron on hover. Recents
+  // uses the same empty slot so titles share a column with the name.
+  it("uses the folder slot for fold, and lines topic names under the project name", () => {
+    renderList({
+      threadsByProject: {
+        pj_1: [
+          topic({ id: "th_open", title: "Open topic" }),
+          topic({ id: "th_other", title: "Other topic" }),
+        ],
+      },
+      expanded: { pj_1: true },
+      activeId: "th_open",
+    })
+    expect(screen.queryByTestId("row-chevron")).not.toBeInTheDocument()
+    expect(screen.getByTestId("project-folder")).toHaveClass("group-hover:hidden")
+    expect(screen.getByTestId("project-fold")).toHaveClass("hidden", "group-hover:block")
+    expect(screen.getByTestId("project-kind")).toHaveClass("size-4")
+    const kinds = screen.getAllByTestId("row-kind")
+    expect(kinds).toHaveLength(2)
+    for (const slot of kinds) expect(slot).toHaveClass("size-4")
+    expect(screen.getByTestId("project-row")).toHaveClass("pl-2")
+    for (const row of screen.getAllByTestId("thread-row")) {
+      expect(row).toHaveClass("pl-2")
+      expect(row).not.toHaveClass("pl-5")
+    }
+    expect(
+      screen.getByTestId("project-row").querySelector("[data-testid=row-label]"),
+    ).toHaveTextContent("First")
+  })
+
+  // py-1.5 around a 28px menu button stacked each row to 40px.
+  it("keeps folder and topic rows at the compact height", () => {
+    renderList({
+      threadsByProject: { pj_1: [topic({ id: "th_1", title: "A topic" })] },
+      expanded: { pj_1: true },
+    })
+    expect(screen.getByTestId("project-row")).toHaveClass("h-7")
+    expect(screen.getByTestId("thread-row")).toHaveClass("h-7")
+    expect(screen.getByTestId("project-row")).not.toHaveClass("py-1.5")
+    expect(screen.getByTestId("thread-row")).not.toHaveClass("py-1.5")
   })
 
   it("offers a new project and a menu on each row", () => {
@@ -108,6 +174,25 @@ describe("Project list", () => {
     expect(
       screen.getByRole("button", { name: "New conversation in First" }),
     ).toHaveClass("opacity-0", "group-hover:opacity-100")
+  })
+
+  it("folds the folder list from the Projects header without creating one", () => {
+    const { onToggleSection, onNew } = renderList()
+    const header = screen.getByRole("button", { name: "Projects" })
+    expect(header).toHaveAttribute("aria-expanded", "true")
+    fireEvent.click(header)
+    expect(onToggleSection).toHaveBeenCalled()
+    expect(onNew).not.toHaveBeenCalled()
+  })
+
+  it("hides every folder when the Projects section is collapsed", () => {
+    renderList({ sectionOpen: false })
+    expect(screen.queryByRole("button", { name: "First" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Projects" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    )
+    expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument()
   })
 
   it("explains what a project is when there are none", () => {
@@ -190,6 +275,7 @@ function renderWith(props: Partial<Parameters<typeof ProjectList>[0]>) {
     onDeleteThread: vi.fn(),
     onReorderThreads: vi.fn(),
     onPinThread: vi.fn(),
+    onToggleSection: vi.fn(),
   }
   const view = render(<ProjectList projects={projects} {...handlers} {...props} />)
   return {

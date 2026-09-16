@@ -41,7 +41,9 @@ What the UI reads once at startup to decide what to render.
              "compact_provider": "", "compact_model": "",
              "context_char_budget": 80000, "compact_keep_messages": 6,
              "goal_max_auto_turns": 12},
-  "locale": "system"
+  "locale": "system",
+  "ui": {"locale": "system", "font": "system", "font_size": "medium",
+         "content_width": "comfortable"}
 }
 ```
 
@@ -55,7 +57,10 @@ install has memory off, rather than offering something that will not happen.
 `capabilities.open_url` is true only in the desktop app, where an http(s) link
 is opened with the system browser instead of inside the webview. `locale` is
 `system`, `en` or `zh` — the chrome language from `ui.locale`. The UI applies it
-on boot without writing it back.
+on boot without writing it back. `ui` is the rest of the chrome: `font`
+(`system` / `serif` / `mono`), `font_size` (`small` / `medium` / `large`), and
+`content_width` (`comfortable` / `full`). `locale` is also at the top level so
+an older client that only reads that field still pins the dictionary.
 
 ## Settings, models and tools
 
@@ -85,7 +90,8 @@ provider carries `has_api_key` and `ready` instead.
   "memory": {"enabled": true, "auto_review": true, "char_limit": 2200,
              "review_max_iterations": 8, "skills_index_max": 50},
   "log": {"level": "info"},
-  "ui": {"locale": "system"}
+  "ui": {"locale": "system", "font": "system", "font_size": "medium",
+           "content_width": "comfortable"}
 }}
 ```
 
@@ -94,8 +100,11 @@ provider carries `has_api_key` and `ready` instead.
 Every top-level section is optional; omitted sections keep their current value.
 The file is rewritten atomically and the model pool is invalidated, so the next
 turn uses the new endpoint without a restart. A language-only write is
-`{"ui":{"locale":"zh"}}` and must not wipe swarm or models. Unknown locale
-values become `system`.
+`{"ui":{"locale":"zh"}}` and must not wipe swarm, models, the typeface, or the
+conversation column. Unknown locale values become `system`; unknown `font` /
+`font_size` / `content_width` become `system` / `medium` / `comfortable`.
+Omitted ui fields keep what is stored, so a language PUT cannot reset the
+typeface.
 
 Per provider, `api_key` is three-valued:
 
@@ -471,8 +480,11 @@ finishing still lands.
 
 A follow-up is a message typed while a turn was already running. It waits for
 that turn to finish cleanly, then starts as the next turn. Cancelled and failed
-turns leave the queue in place. Refresh does not lose it: the rows live on the
-conversation. Pasted images are not queued (the row is text-only) — they steer.
+turns leave the queue in place. Refresh, a crash, or quitting the app does not
+lose it: the rows live on the conversation and run after a leftover turn
+finishes. Editing a waiting row and submitting it moves that message to the
+back of the FIFO. Pasted images are not queued (the row is text-only) — they
+steer.
 
 ### `GET /api/threads/:id/followups`
 
@@ -496,6 +508,18 @@ running — the composer then starts a turn instead. `400` for an empty body.
 ### `DELETE /api/threads/:id/followups/:fid` → `204`
 
 Drops one waiting message. `404` if it was already flushed or never existed.
+
+### `PATCH /api/threads/:id/followups/:fid` → `200`
+
+Body `{"text": "…"}`. Saves an edited waiting message and moves it to the back
+of the FIFO (new `seq`, same id). Empty text is `400`. `404` if it was already
+flushed. The conversation does not have to be running: leftover rows after Stop
+are still editable.
+
+```json
+{"followup": {"id": "fu_ab12…", "thread_id": "th_ab12…", "seq": 3, "text": "…",
+              "created_at": "…"}}
+```
 
 ### `POST /api/threads/:id/followups/:fid/steer` → `202`
 
@@ -574,12 +598,12 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `agent_message` | a completed assistant message |
 | `tool_call` | `Text` is `name(args)`, paired by `tool_call_id` |
 | `tool_result` | the result, paired by `tool_call_id`. Newlines are kept so the UI can render a file body; clipped at 64k runes |
-| `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. Older rows stored the role in `text` too |
+| `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished |
 | `finished` | a sub-agent finished; `err` set when it failed |
 | `turn` | an agent started a model turn (`turn N`) |
 | `steer` | guidance was accepted. `images` as on `user_message` when the steer carried a paste |
 | `cleanup` | sub-agents were stopped at the end of the turn |
-| `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated |
+| `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated. Leftover sub-agents are started again under the same `agent_id` (a second `spawned` for that id is the roster coming back, not a twin). Unread `steer` rows stay on the turn. A leftover `max_iterations` confirm is no longer pending |
 | `progress` | a pulse while the turn runs (see below); `seq` is 0, not stored |
 | `usage` | a live token snapshot after each model call (see below); `seq` is 0, not stored |
 | `memory_review` | the post-turn review of a project's memory finished (see below) |

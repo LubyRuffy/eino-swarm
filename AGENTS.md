@@ -77,8 +77,10 @@ not stale. Touched anything user-visible → the E2E suite.
   the tests are.
 - Labels must be associated with their inputs (`id`/`aria-label`). Playwright's
   `getByLabel` failing is usually a real accessibility bug, not a test problem.
-- `frontend/dist` is committed so a fresh clone can `go run` without Node. A pull
-  request that changes `src` and not `dist` ships a UI nobody can see.
+- `frontend/dist` is a Vite artefact and is gitignored. After editing
+  `frontend/src`, run `make frontend` (or `make run` / `make e2e`, which build
+  it) so the embedded bundle is not stale. A sentinel `dist/.gitkeep` stays
+  in git so `go:embed` still compiles before the first build.
 
 ## Backend rules
 
@@ -130,8 +132,9 @@ feature.
 
 - Commit in coherent slices with a scope: `feat(engine): …`, `fix(server): …`,
   `docs: …`. A commit should build and pass tests on its own.
-- `frontend/dist` is tracked. Build artefacts (`bin/`, `*.tsbuildinfo`,
-  `test-results/`) and anything under a data directory are not.
+- `frontend/dist` is gitignored (except `dist/.gitkeep`). Build artefacts
+  (`bin/`, `*.tsbuildinfo`, `test-results/`) and anything under a data
+  directory are not tracked.
 - The data directory is `~/.zwai-swarm` (`ZWAI_HOME` overrides). Never write to
   `~/.zwai`; that belongs to another project. Tests always use `t.TempDir()`.
 - `examples/` must keep compiling: it is the library's public surface.

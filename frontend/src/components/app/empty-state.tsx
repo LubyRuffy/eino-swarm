@@ -28,8 +28,8 @@ export function EmptyState({ onPick }: { onPick: (text: string) => void }) {
   ]
 
   return (
-    <div className="flex flex-1 items-center justify-center px-6 pt-10 pb-composer">
-      <div className="w-full max-w-2xl">
+    <div className="flex w-full min-h-0 flex-1 flex-col justify-center px-6 pt-10 pb-composer">
+      <div className="content-column">
         <h1 className="text-center text-2xl font-semibold tracking-tight">
           {t("empty.title")}
         </h1>

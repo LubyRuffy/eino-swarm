@@ -9,6 +9,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
+import {
+  SidebarGripSlot,
+  SidebarKindSlot,
+  sidebarRowClass,
+} from "@/components/app/sidebar-slots"
 import { StatusDot } from "@/components/app/transcript"
 import { useSortableList } from "@/lib/sortable"
 import type { Thread } from "@/lib/types"
@@ -17,13 +22,14 @@ import { cn } from "@/lib/utils"
 
 type DragBind = ReturnType<ReturnType<typeof useSortableList>["bind"]>
 
-/** One conversation in the sidebar: Recents, a project folder, or Pinned. */
+/** One conversation in the sidebar: Recents, a project folder, or Pinned.
+ *  Every title keeps a size-4 slot in front so Recents, Pinned and nested
+ *  topics share a column with the project name. */
 export function SidebarThreadRow({
   thread,
   active,
   running,
   drag,
-  indent,
   onOpen,
   onRename,
   onDelete,
@@ -33,7 +39,6 @@ export function SidebarThreadRow({
   active: boolean
   running: boolean
   drag?: DragBind
-  indent?: boolean
   onOpen: (id: string) => void
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
@@ -50,11 +55,11 @@ export function SidebarThreadRow({
       if (title && title !== thread.title) onRename(thread.id, title)
       setEditing(false)
     }
-    return (
+    const field = (
       <Input
         autoFocus
         value={draft}
-        className={cn("my-0.5 h-8 text-sm", indent && "ml-4")}
+        className="h-7 text-sm"
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {
@@ -66,6 +71,12 @@ export function SidebarThreadRow({
         }}
       />
     )
+    return (
+      <div className={sidebarRowClass}>
+        <SidebarKindSlot />
+        <div className="min-w-0 flex-1">{field}</div>
+      </div>
+    )
   }
 
   return (
@@ -73,10 +84,10 @@ export function SidebarThreadRow({
       {...drag}
       data-testid="thread-row"
       data-id={thread.id}
+      aria-current={active ? "true" : undefined}
       className={cn(
-        "group flex select-none items-center gap-1 rounded-md py-1.5 pr-2 text-sm transition-colors",
+        sidebarRowClass,
         drag && "cursor-grab data-[dragging=true]:cursor-grabbing",
-        indent ? "pl-5" : "pl-2",
         "data-[dragging=true]:opacity-60 data-[over=true]:bg-sidebar-accent",
         active
           ? "bg-sidebar-accent text-foreground"
@@ -84,28 +95,26 @@ export function SidebarThreadRow({
       )}
     >
       {drag ? (
-        <span
-          data-drag-handle
-          className="flex cursor-grab items-center self-stretch opacity-0 group-hover:opacity-50"
-          aria-hidden="true"
-          onClick={() => onOpen(thread.id)}
-        >
+        <SidebarGripSlot handle onClick={() => onOpen(thread.id)}>
           <GripVertical className="size-3.5 shrink-0" />
-        </span>
+        </SidebarGripSlot>
       ) : null}
       <button
         type="button"
         onClick={() => onOpen(thread.id)}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        className="flex min-w-0 flex-1 items-center gap-1 text-left"
       >
+        <SidebarKindSlot />
+        <span data-testid="row-label" className="truncate">
+          {thread.title || t("sidebar.untitled")}
+        </span>
         {running ? <StatusDot status="running" /> : null}
-        <span className="truncate">{thread.title || t("sidebar.untitled")}</span>
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon-xs"
             data-no-drag
             className="opacity-0 transition-opacity group-hover:opacity-100 data-[state=open]:opacity-100"
             title={t("sidebar.more")}

@@ -48,8 +48,8 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
 
   // the manager delegates, and both workers show up in the roster
   const roster = page.getByRole("tabpanel").first()
-  await expect(roster.getByText("researcher")).toBeVisible()
-  await expect(roster.getByText("reviewer")).toBeVisible()
+  await expect(roster.getByText("researcher", { exact: true })).toBeVisible()
+  await expect(roster.getByText("reviewer", { exact: true })).toBeVisible()
 
   // the transcript shows the delegation and then an answer
   const transcript = page.getByTestId("transcript")
@@ -76,7 +76,7 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
 
   // Opening a worker must not put its chrome inside the scroller: a sticky
   // bar there covers the back button the moment the transcript is dragged.
-  await roster.getByText("researcher").click()
+  await roster.getByText("researcher", { exact: true }).click()
   await expect(page.getByTestId("agent-chrome")).toBeVisible()
   await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible()
   await expect(page.getByTestId("agent-scroller")).toBeVisible()
@@ -90,7 +90,7 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await page.getByRole("button", { name: "Close" }).click()
   await expect(prompt).toBeHidden()
   await page.getByRole("button", { name: "Back to agents" }).click()
-  await expect(roster.getByText("reviewer")).toBeVisible()
+  await expect(roster.getByText("reviewer", { exact: true })).toBeVisible()
 
   // The progress pulse is a live-only signal: it must leave nothing behind when
   // the turn ends, and its payload must never surface as a transcript row —
@@ -325,6 +325,28 @@ test("Enter while working queues until the turn finishes", async ({ page }) => {
     page.getByTestId("transcript").getByText(later, { exact: true }),
   ).toBeVisible({ timeout: 60_000 })
   await expect(page.getByTestId("followup-queue")).toHaveCount(0)
+})
+
+test("editing a queued follow-up moves it to the back", async ({ page }) => {
+  await freshConversation(page)
+  await send(page, "Look at this from two angles and merge the findings")
+  const first = "queued first"
+  const second = "queued second"
+  await composer(page).fill(first)
+  await composer(page).press("Enter")
+  await composer(page).fill(second)
+  await composer(page).press("Enter")
+  const tray = page.getByTestId("followup-queue")
+  await expect(tray).toContainText(first)
+  await expect(tray).toContainText(second)
+  await tray.getByRole("button", { name: `Edit queued message: ${first}` }).click()
+  const edit = tray.getByTestId("followup-edit")
+  await edit.fill("queued first edited")
+  await edit.press("Enter")
+  await expect(tray.getByTestId("followup-edit")).toHaveCount(0)
+  const rows = tray.locator("li")
+  await expect(rows.nth(0)).toContainText(second)
+  await expect(rows.nth(1)).toContainText("queued first edited")
 })
 
 test("uploads a file into the workspace and offers it back", async ({ page }) => {

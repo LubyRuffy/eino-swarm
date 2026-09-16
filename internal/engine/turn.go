@@ -39,6 +39,9 @@ type runtime struct {
 	// but the turn stays running in the database so the next start continues
 	// it. Distinct from interrupt(), which is a user stop.
 	abandoned bool
+	// leftover workers from a crashed process, consumed by the first RunWith.
+	restore []swarm.RestoredWorker
+	planted []swarm.FinishedWorker
 }
 
 // release marks the runtime idle. It runs before the turn's terminal event is
@@ -123,14 +126,6 @@ func (rt *runtime) abandon() {
 	}
 }
 
-func (rt *runtime) takeAbandoned() bool {
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	v := rt.abandoned
-	rt.abandoned = false
-	return v
-}
-
 // occupy claims the runtime for a turn. false means another turn is already
 // live; the caller must not start a second goroutine.
 func (rt *runtime) occupy(reg *swarm.Registry, cancel context.CancelFunc, turnID string, idle chan struct{}) bool {
@@ -140,7 +135,10 @@ func (rt *runtime) occupy(reg *swarm.Registry, cancel context.CancelFunc, turnID
 		return false
 	}
 	rt.reg, rt.cancel, rt.turnID, rt.startedAt, rt.running, rt.idle = reg, cancel, turnID, time.Now(), true, idle
+	// Only a new turn clears quit-abandoned. Clearing it when run()
+	// returns would let a late finished from a killed worker look completed.
 	rt.abandoned = false
+	rt.restore, rt.planted = nil, nil
 	return true
 }
 
@@ -445,8 +443,11 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	acc.flushAll()
 
 	// A turn owns its sub-agents: any worker still running when the manager
-	// stops is a leak, both of goroutines and of the user's tokens.
-	if killed := reg.Cleanup(); killed > 0 {
+	// stops is a leak, both of goroutines and of the user's tokens. A quit
+	// is not the end of the turn — do not record cleanup, or the next start
+	// cannot tell those workers were still live.
+	killed := reg.Cleanup()
+	if killed > 0 && !rt.isAbandoned() {
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 			Kind: KindCleanup, AgentID: swarm.DefaultManagerID,
 			Text: fmt.Sprintf("stopped %d sub-agent(s) still running at the end of the turn", killed)})
@@ -460,7 +461,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 
 	// The process is exiting: keep the row running so the next start continues
 	// it. A user Interrupt takes the switch below and records cancelled.
-	if rt.takeAbandoned() {
+	if rt.isAbandoned() {
 		return
 	}
 
@@ -684,6 +685,11 @@ func (a *accumulator) event(n swarm.Notification, kind string) store.Event {
 }
 
 func (a *accumulator) onNotify(n swarm.Notification) {
+	if n.Kind == swarm.NotifyFinished && a.engine.isAbandoned(a.threadID) {
+		// Quit cancelled in-flight workers; recording finished would make
+		// the next start treat them as done instead of restoring them.
+		return
+	}
 	if n.Role != "" {
 		a.mu.Lock()
 		a.roles[n.AgentID] = n.Role
@@ -841,6 +847,9 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 		if row.Role == string(schema.User) && row.Content == resumeCue {
 			continue // injected for the model on resume, not a human message
 		}
+		if row.Role == string(schema.User) && row.Content == resumeWorkersCue {
+			continue
+		}
 		if row.Role == string(schema.Assistant) {
 			key := strings.TrimSpace(row.Content)
 			if key != "" && have[key] {
@@ -895,45 +904,7 @@ func (e *Engine) assistantTextByTurn(threadID string) map[string]map[string]bool
 // its answer. Dropping a tool call and its results together also keeps the
 // message sequence valid for providers that require the pairing.
 func (e *Engine) replayHistory(threadID string) ([]adk.Message, error) {
-	th, err := e.store.GetThread(threadID)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := e.store.ListMessages(threadID)
-	if err != nil {
-		return nil, err
-	}
-	skipThrough := int64(0)
-	if strings.TrimSpace(th.CompactSummary) != "" {
-		skipThrough = th.CompactThroughSeq
-	}
-	out := make([]adk.Message, 0, len(rows))
-	liveTurns := map[string]struct{}{}
-	seen := map[string]struct{}{}
-	for _, r := range rows {
-		if skipThrough > 0 && r.Seq <= skipThrough {
-			continue
-		}
-		liveTurns[r.TurnID] = struct{}{}
-		switch schema.RoleType(r.Role) {
-		case schema.User:
-			if strings.TrimSpace(r.Content) != "" || len(r.Images) > 0 {
-				out = append(out, e.schemaUser(r))
-				if key := strings.TrimSpace(r.Content); key != "" {
-					seen[key] = struct{}{}
-				}
-			}
-		case schema.Assistant:
-			if strings.TrimSpace(r.Content) != "" {
-				out = append(out, schema.AssistantMessage(r.Content, nil))
-				seen[strings.TrimSpace(r.Content)] = struct{}{}
-			}
-		default:
-			// system messages come from the instruction; tool traffic is
-			// intentionally not replayed
-		}
-	}
-	return e.appendMissingEventAnswers(threadID, liveTurns, seen, out)
+	return e.replayHistorySkipping(threadID, "")
 }
 
 // appendMissingEventAnswers folds manager answers that landed on the event

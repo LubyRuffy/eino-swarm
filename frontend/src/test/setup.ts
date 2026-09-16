@@ -40,5 +40,11 @@ afterEach(async () => {
   // Imported lazily so a store test's `vi.mock("@/lib/api")` still wins.
   // A static import here would bind the real client before the mock exists.
   const { useApp } = await import("@/store/app")
-  useApp.setState({ locale: "en", theme: "system" })
+  const { applyAppearance, defaultAppearance } = await import("@/lib/appearance")
+  applyAppearance(defaultAppearance())
+  useApp.setState({
+    locale: "en",
+    theme: "system",
+    ...defaultAppearance(),
+  })
 })

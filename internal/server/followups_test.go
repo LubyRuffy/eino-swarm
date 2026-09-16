@@ -117,3 +117,40 @@ func TestDeleteFollowupAndIdleEnqueue(t *testing.T) {
 	h.json(http.MethodPost, "/api/threads/"+id+"/interrupt", nil, http.StatusAccepted)
 	h.waitTurnDone(id)
 }
+
+func TestRequeueFollowupMovesToTheBackThroughTheAPI(t *testing.T) {
+	h := newHarness(t)
+	id := h.newThread()
+	h.json(http.MethodPost, "/api/threads/"+id+"/turns",
+		map[string]any{"text": "do the first piece"}, http.StatusAccepted)
+	first := enqueueWhileRunning(t, h, id, "first in line")
+	second := enqueueWhileRunning(t, h, id, "second in line")
+	fid, _ := first["id"].(string)
+
+	patched := h.json(http.MethodPatch, "/api/threads/"+id+"/followups/"+fid,
+		map[string]any{"text": "  first edited  "}, http.StatusOK)
+	fu, _ := patched["followup"].(map[string]any)
+	if fu["id"] != fid || fu["text"] != "first edited" {
+		t.Fatalf("requeue body: %v", patched)
+	}
+	listed := h.json(http.MethodGet, "/api/threads/"+id+"/followups", nil, http.StatusOK)
+	rows, _ := listed["followups"].([]any)
+	if len(rows) != 2 {
+		t.Fatalf("want two queued follow-ups, got %v", listed)
+	}
+	a, _ := rows[0].(map[string]any)
+	b, _ := rows[1].(map[string]any)
+	if a["id"] != second["id"] || a["text"] != "second in line" {
+		t.Fatalf("front after edit: %v", a)
+	}
+	if b["id"] != fid || b["text"] != "first edited" {
+		t.Fatalf("back after edit: %v", b)
+	}
+
+	h.json(http.MethodPatch, "/api/threads/"+id+"/followups/"+fid,
+		map[string]any{"text": "   "}, http.StatusBadRequest)
+	h.json(http.MethodPatch, "/api/threads/"+id+"/followups/fu_missing",
+		map[string]any{"text": "x"}, http.StatusNotFound)
+	h.json(http.MethodPost, "/api/threads/"+id+"/interrupt", nil, http.StatusAccepted)
+	h.waitTurnDone(id)
+}

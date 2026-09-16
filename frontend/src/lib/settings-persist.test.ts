@@ -54,7 +54,33 @@ describe("persistPayload", () => {
   it("keeps the locale with the rest of the document", () => {
     const patch = persistPayload(base, "zh")
     expect(patch.memory).toEqual(base.memory)
-    expect(patch.ui).toEqual({ locale: "zh" })
+    expect(patch.ui).toEqual({
+      locale: "zh",
+      font: "system",
+      font_size: "medium",
+      content_width: "comfortable",
+    })
+  })
+
+  it("keeps a typeface already on the document", () => {
+    const patch = persistPayload(
+      {
+        ...base,
+        ui: {
+          locale: "en",
+          font: "serif",
+          font_size: "large",
+          content_width: "full",
+        },
+      },
+      "zh",
+    )
+    expect(patch.ui).toEqual({
+      locale: "zh",
+      font: "serif",
+      font_size: "large",
+      content_width: "full",
+    })
   })
 })
 
@@ -127,7 +153,12 @@ describe("SettingsPersist", () => {
     persist.setLocale("zh")
     await persist.flush()
     expect(write).toHaveBeenCalledTimes(1)
-    expect(write.mock.calls[0][0].ui).toEqual({ locale: "zh" })
+    expect(write.mock.calls[0][0].ui).toEqual({
+      locale: "zh",
+      font: "system",
+      font_size: "medium",
+      content_width: "comfortable",
+    })
     expect(write.mock.calls[0][0].log).toEqual({ level: "debug" })
   })
 

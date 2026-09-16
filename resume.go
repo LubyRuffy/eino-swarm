@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/cloudwego/eino/adk"
@@ -124,6 +125,78 @@ func (r *Registry) recall(id string) (*agentPast, error) {
 	}
 }
 
+// runningID is the oldest still-running worker with this role, if any.
+// spawn_agent delivers a new task to it instead of minting a twin.
+func (r *Registry) runningID(role string) string {
+	if role == "" {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var best *Handle
+	for _, h := range r.agents {
+		if h.Role != role {
+			continue
+		}
+		if _, _, done := h.Result(); done {
+			continue
+		}
+		if best == nil || h.spawned.Before(best.spawned) {
+			best = h
+		}
+	}
+	if best == nil {
+		return ""
+	}
+	return best.ID
+}
+
+// reusableFinishedID is the latest finished worker with this role, if any.
+// spawn_agent uses it so a second task with the same role continues that
+// agent instead of minting a twin. A still-running sibling is handled by
+// runningID first. fork_context does not mint a twin when this returns an id.
+func (r *Registry) reusableFinishedID(role string) string {
+	if role == "" {
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.pastIDs) - 1; i >= 0; i-- {
+		p := r.past[r.pastIDs[i]]
+		if p != nil && p.Role == role {
+			if h, ok := r.agents[p.ID]; ok {
+				if _, _, done := h.Result(); !done {
+					continue
+				}
+			}
+			return p.ID
+		}
+	}
+	for _, h := range r.agents {
+		if h.Role != role {
+			continue
+		}
+		if _, _, done := h.Result(); done {
+			return h.ID
+		}
+	}
+	return ""
+}
+
+func (r *Registry) lockRole(role string) *sync.Mutex {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.roleMu == nil {
+		r.roleMu = map[string]*sync.Mutex{}
+	}
+	m := r.roleMu[role]
+	if m == nil {
+		m = &sync.Mutex{}
+		r.roleMu[role] = m
+	}
+	return m
+}
+
 // Resume continues a finished (or failed) worker under the same agent_id,
 // seeding the next run with that worker's conversation. A second roster row
 // with the same role is a bug: the identity is the id, not a fresh spawn.
@@ -144,7 +217,7 @@ func (r *Registry) Resume(ctx context.Context, fromID, task string,
 		hook(h.Role, h.ID, r.workerInstruction(task))
 	}
 	seed := formatContext("conversation so far", past.History)
-	r.startWorker(ctx, h, task, modelOpt, seed, extraTools)
+	r.startWorker(ctx, h, task, r.workerInstruction(task), modelOpt, seed, extraTools)
 	return h, nil
 }
 

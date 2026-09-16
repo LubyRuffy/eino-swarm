@@ -220,6 +220,12 @@ type Registry struct {
 	past    map[string]*agentPast
 	pastIDs []string
 
+	// roleMu serializes spawn_agent per role so two same-role calls cannot
+	// race into twins. Different roles still start in parallel — a global
+	// lock would deadlock eino's ToolsNode (one spawn's hook waiting for
+	// the sibling call that is blocked on the same mutex).
+	roleMu map[string]*sync.Mutex
+
 	// internal hooks: invoked by Spawn on registration and by the agent
 	// goroutine on completion; Run wires these into Notifications.
 	spawnHook  func(role, agentID, instruction string)
@@ -399,7 +405,7 @@ func (r *Registry) spawnAgent(ctx context.Context, role, task string,
 	if hook != nil {
 		hook(role, id, r.workerInstruction(task))
 	}
-	r.startWorker(ctx, h, task, modelOpt, seed, extraTools)
+	r.startWorker(ctx, h, task, r.workerInstruction(task), modelOpt, seed, extraTools)
 	return h, nil
 }
 

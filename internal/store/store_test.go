@@ -244,6 +244,40 @@ func TestEventSequenceIsGapFreeAndReplayable(t *testing.T) {
 	}
 }
 
+func TestConcurrentEventWritesDoNotBusyTheDatabase(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	const n = 40
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func(i int) {
+			defer wg.Done()
+			if err := s.AppendEvent(&Event{
+				ThreadID: th.ID, Kind: "delta", Text: strings.Repeat("x", i+1),
+			}); err != nil {
+				errs <- err
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("concurrent append: %v", err)
+	}
+	events, err := s.ListEvents(th.ID, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != n {
+		t.Fatalf("got %d events, want %d", len(events), n)
+	}
+}
+
 func TestSequencesResumeAfterReopen(t *testing.T) {
 	dir := t.TempDir()
 	dbPath := filepath.Join(dir, "zwai.db")

@@ -77,14 +77,17 @@ uploads, downloads and the live event stream have exactly one implementation.
   (finished ones are not re-parsed on every token), and typing in the composer
   does not rebuild the conversation.
 - **Steering, not restarting.** Enter while a turn is running **queues** a
-  follow-up for after this one finishes (refresh-safe). **Steer** on that row, or
-  ⌘Enter, injects into the current turn at the next model boundary — it does not
-  kill an in-flight tool. Stop is what cancels. If the manager hits its
-  tool-round limit, the transcript asks whether to add another slice rather than
-  dying with a graph error.
+  follow-up for after this one finishes (refresh-safe). Click a waiting row to
+  edit it; submitting that edit sends it to the back of the queue. **Steer** on
+  that row, or ⌘Enter, injects into the current turn at the next model boundary
+  — it does not kill an in-flight tool. Stop is what cancels. If the manager
+  hits its tool-round limit, the transcript asks whether to add another slice
+  rather than dying with a graph error.
 - **Unfinished work survives a crash.** Kill the process, quit the window, or
   lose power mid-turn: the next start continues every leftover conversation,
-  with the answers already on screen still in the model's context. Pressing
+  with the answers already on screen still in the model's context, any
+  sub-agents that were still working restarted under the same ids, and queued
+  follow-ups still waiting to run after that turn. Pressing
   **Stop** is the one thing that does not come back.
 - **Projects that remember.** Group conversations under one working directory and
   one instruction, and let them keep what they learn: after each turn the project
@@ -120,19 +123,19 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 ## Quick start
 
-Requirements: Go 1.26+. The desktop window uses [Wails 3](https://wails.io) and
-needs a C toolchain (macOS: Xcode Command Line Tools; Linux: `webkit2gtk` dev
-packages). `frontend/dist` is committed, so no Node toolchain is needed to run.
+Requirements: Go 1.26+ and Node.js (for the UI bundle). The desktop window uses
+[Wails 3](https://wails.io) and needs a C toolchain (macOS: Xcode Command Line
+Tools; Linux: `webkit2gtk` dev packages).
 
 ```bash
 git clone https://github.com/LubyRuffy/eino-swarm
 cd eino-swarm
 
-# native window (the default subcommand)
-go run ./cmd/zwai desktop
+# builds frontend/dist if needed, then opens the native window
+make run
 
 # or the same app in your browser
-go run ./cmd/zwai web
+make web
 ```
 
 First launch writes `~/.zwai-swarm/config.yaml` and shows a setup banner until a
@@ -141,6 +144,8 @@ left rail (on the desktop window, **Back to app** sits below the traffic
 lights). Edits write themselves; **Back to app** flushes the last keystroke.
 Chrome language is **Settings → General**, the **中 / EN** control in the title
 bar, or ⌘K → Switch language. Agents still answer in the language you are using.
+Font, size, and whether the conversation fills the space between the sidebars
+or stays the current reading column are also **Settings → General**.
 Fill in **Models** (base URL, API key, discover models, pick a
 default), or seed it from the environment before the first start:
 
@@ -174,9 +179,10 @@ Ask for something that has parts, because that is when a swarm beats one agent:
 What you get:
 
 1. **A plan, then sub-agents.** The manager spawns workers (`fork_context` when a
-   worker needs this conversation so far; `resume_agent` when more work depends
-   on a finished worker — same id, not a twin with the same name) and you see each one appear.
-   Open one in the Agents tab to read the system prompt it was given.
+   new worker needs this conversation so far). A later task for the same role
+   stays on that agent — new description, same `agent_id` — whether it is still
+   running or already finished. `resume_agent` targets a specific leftover
+   sibling. Open one in the Agents tab to read the system prompt it was given.
 2. **A workspace.** Every conversation has its own directory
    (`~/.zwai-swarm/workspaces/<thread-id>/`). Uploads land in `uploads/`, agent
    output lands next to it, and the **Files** tab shows a collapsible tree —
@@ -217,7 +223,10 @@ in a project. The title bar prefixes the conversation name with the project's
 The project list follows last use, not creation; drag a row to pin it.
 **New conversation** at the top of the list is Recents. Hover a project for a
 new-conversation control on the row itself — it starts one in that folder.
-Click a folder to collapse its topics. Pin a topic from the row menu to keep
+Click a folder to collapse its topics — hover swaps the directory
+icon for a chevron in the same place. Click **Pinned**, **Projects**, or
+**Recents** to fold the whole section (the arrow after the name shows
+on hover while the section is open). Pin a topic from the row menu to keep
 it in **Pinned** at the top.
 **New project** at the top of the conversation list asks for three
 things:
@@ -236,7 +245,9 @@ that project starts with the notes in its prompt and an index of the skills, and
 opens a skill when it needs one.
 
 The sidebar lists each project's conversations under its name. Click the
-folder to collapse it. Pin a topic from the row menu to keep it in **Pinned**
+folder to collapse it. The open conversation is marked; the folder is not.
+Click **Pinned**, **Projects**, or **Recents** to fold
+that section. Pin a topic from the row menu to keep it in **Pinned**
 at the top. Conversations that belong to no project sit in **Recents**;
 **New conversation** lands there. Skills are behind **View skills** on the
 project menu, which opens the **Memory** tab. Notes are editable — **Save notes** appears only after
@@ -321,7 +332,8 @@ make build       # ./bin/zwai
 ```
 
 The front end is React + TypeScript + Tailwind + shadcn/ui under `frontend/`.
-`frontend/dist` is committed on purpose; `make build` refreshes it.
+`frontend/dist` is a build artefact; `make run` / `make build` / `make e2e`
+refresh it.
 
 Rules for changing this code — coverage bars, prompt hygiene, documentation
 duties — are in [AGENTS.md](AGENTS.md). Read it before opening a pull request.

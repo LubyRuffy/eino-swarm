@@ -1,6 +1,17 @@
 import { create } from "zustand"
 
 import { applyPinnedOrder } from "@/lib/reorder"
+import {
+  applyAppearance,
+  normalizeAppearance,
+  normalizeUISettings,
+  readAppearance,
+  writeAppearance,
+  type Appearance,
+  type ContentWidthPref,
+  type FontPref,
+  type FontSizePref,
+} from "@/lib/appearance"
 import { ApiError, api } from "@/lib/api"
 import {
   applyLocale,
@@ -59,6 +70,9 @@ interface AppState {
   error?: string
   theme: Theme
   locale: LocalePref
+  font: FontPref
+  fontSize: FontSizePref
+  contentWidth: ContentWidthPref
   /** Which sub-agent the right-hand panel is showing, if any. */
   selectedAgent?: string
 
@@ -85,6 +99,7 @@ interface AppState {
   interrupt: () => Promise<void>
   steerFollowup: (id: string) => Promise<void>
   deleteFollowup: (id: string) => Promise<void>
+  requeueFollowup: (id: string, text: string) => Promise<void>
   clearFollowups: () => Promise<void>
   refreshFollowups: () => Promise<void>
   extendTurn: (proceed: boolean) => Promise<void>
@@ -93,6 +108,7 @@ interface AppState {
   removeFile: (path: string) => Promise<void>
   setTheme: (t: Theme) => void
   setLocale: (pref: LocalePref, opts?: { persist?: boolean }) => void
+  setAppearance: (patch: Partial<Appearance>, opts?: { persist?: boolean }) => void
   selectAgent: (id?: string) => void
   setError: (message?: string) => void
 }
@@ -126,10 +142,16 @@ export const useApp = create<AppState>((set, get) => ({
   connected: false,
   theme: readTheme(),
   locale: readLocalePref(),
+  ...readAppearance(),
 
   boot: async () => {
     applyTheme(get().theme)
     applyLocale(get().locale)
+    applyAppearance({
+      font: get().font,
+      fontSize: get().fontSize,
+      contentWidth: get().contentWidth,
+    })
     try {
       const [meta, models, threads] = await Promise.all([
         api.meta(),
@@ -138,8 +160,12 @@ export const useApp = create<AppState>((set, get) => ({
         useProjects.getState().refresh(),
       ])
       set({ meta, models: models.models, threads })
-      if (meta.locale) {
-        get().setLocale(normalizeLocalePref(meta.locale), { persist: false })
+      if (meta.ui) {
+        get().setAppearance(normalizeAppearance(meta.ui), { persist: false })
+      }
+      const locale = meta.ui?.locale || meta.locale
+      if (locale) {
+        get().setLocale(normalizeLocalePref(locale), { persist: false })
       }
       if (threads.length > 0) await get().openThread(threads[0].id)
     } catch (e) {
@@ -513,6 +539,20 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
+  requeueFollowup: async (fid, text) => {
+    const id = get().activeId
+    if (!id) return
+    try {
+      const item = await api.requeueFollowup(id, fid, text)
+      set((s) => ({
+        followups: [...s.followups.filter((f) => f.id !== fid), item],
+      }))
+    } catch (e) {
+      void get().refreshFollowups()
+      set({ error: message(e) })
+    }
+  },
+
   clearFollowups: async () => {
     const items = get().followups
     await Promise.all(items.map((f) => get().deleteFollowup(f.id)))
@@ -597,7 +637,20 @@ export const useApp = create<AppState>((set, get) => ({
     applyLocale(locale)
     set({ locale })
     if (opts?.persist === false) return
-    void api.saveSettings({ ui: { locale } }).catch(() => undefined)
+    persistChrome(get())
+  },
+
+  setAppearance: (patch, opts) => {
+    const next = normalizeAppearance({
+      font: patch.font ?? get().font,
+      font_size: patch.fontSize ?? get().fontSize,
+      content_width: patch.contentWidth ?? get().contentWidth,
+    })
+    writeAppearance(next)
+    applyAppearance(next)
+    set(next)
+    if (opts?.persist === false) return
+    persistChrome(get())
   },
 
   selectAgent: (selectedAgent) => set({ selectedAgent }),
@@ -682,6 +735,7 @@ function flushQueued(
         running: true,
         turn_id: ev.turn_id,
         started_at: ev.created_at,
+        awaiting_continue: ev.kind === "resumed" ? false : status.awaiting_continue,
       }
     }
     if (ev.kind === "max_iterations") {
@@ -802,6 +856,24 @@ function parseGoalReason(text?: string): string {
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
+}
+
+function persistChrome(state: {
+  locale: LocalePref
+  font: FontPref
+  fontSize: FontSizePref
+  contentWidth: ContentWidthPref
+}) {
+  void api
+    .saveSettings({
+      ui: normalizeUISettings({
+        locale: state.locale,
+        font: state.font,
+        font_size: state.fontSize,
+        content_width: state.contentWidth,
+      }),
+    })
+    .catch(() => undefined)
 }
 
 function readTheme(): Theme {

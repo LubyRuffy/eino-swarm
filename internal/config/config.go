@@ -35,13 +35,6 @@ type Config struct {
 	dataDir string `yaml:"-"`
 }
 
-// UIConfig is chrome the webview remembers: language, not agent behaviour.
-// Agents still answer in the language the human is using.
-type UIConfig struct {
-	// Locale is system, en or zh. system follows the browser.
-	Locale string `yaml:"locale" json:"locale"`
-}
-
 // ServerConfig covers the HTTP surface both UIs are served from.
 type ServerConfig struct {
 	// Addr is the listen address for `zwai web`. Desktop mode always binds a
@@ -426,26 +419,6 @@ type LogConfig struct {
 	Level string `yaml:"level" json:"level"`
 }
 
-// UI languages. system follows the browser; en and zh pin the chrome.
-const (
-	LocaleSystem = "system"
-	LocaleEn     = "en"
-	LocaleZh     = "zh"
-)
-
-// NormalizeLocale maps any input to a known preference. Junk becomes system
-// so a typo cannot blank the UI or invent a third language.
-func NormalizeLocale(s string) string {
-	switch strings.ToLower(strings.TrimSpace(s)) {
-	case LocaleEn:
-		return LocaleEn
-	case LocaleZh:
-		return LocaleZh
-	default:
-		return LocaleSystem
-	}
-}
-
 // Reasoning-effort levels. These are the OpenAI `reasoning_effort` values, not
 // an app setting, so they live as constants rather than in the config file. An
 // empty level means "let the model decide": no reasoning_effort is sent, which
@@ -514,7 +487,6 @@ const (
 	DefaultReviewMaxIterations = 8
 	DefaultSkillsIndexMax      = 50
 	DefaultMemoryNotifications = MemoryNotifyOn
-	DefaultLocale              = LocaleSystem
 	dirPerm                    = 0o700
 	filePerm                   = 0o600
 )
@@ -563,7 +535,12 @@ func Default() *Config {
 			Notifications:       DefaultMemoryNotifications,
 		},
 		Log: LogConfig{Level: DefaultLogLevel},
-		UI:  UIConfig{Locale: DefaultLocale},
+		UI: UIConfig{
+			Locale:       DefaultLocale,
+			Font:         DefaultFont,
+			FontSize:     DefaultFontSize,
+			ContentWidth: DefaultContentWidth,
+		},
 	}
 }
 
@@ -731,7 +708,7 @@ func (c *Config) normalize() {
 	if strings.TrimSpace(c.Log.Level) == "" {
 		c.Log.Level = d.Log.Level
 	}
-	c.UI.Locale = NormalizeLocale(c.UI.Locale)
+	c.UI.Normalize()
 	if len(c.Models.Providers) == 0 {
 		c.Models.Providers = d.Models.Providers
 	}

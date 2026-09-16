@@ -82,6 +82,7 @@ export function Composer({
   followups,
   onSteerFollowup,
   onDeleteFollowup,
+  onRequeueFollowup,
   onClearFollowups,
   usage,
   goal,
@@ -126,6 +127,7 @@ export function Composer({
   followups?: Followup[]
   onSteerFollowup?: (id: string) => void
   onDeleteFollowup?: (id: string) => void
+  onRequeueFollowup?: (id: string, text: string) => void
   onClearFollowups?: () => void
   usage?: UsageSnapshot | null
   goal?: string
@@ -359,7 +361,7 @@ export function Composer({
       />
       <div
         ref={dockRef}
-        className="pointer-events-auto relative z-10 mx-auto max-w-3xl px-4 pb-3 sm:px-8"
+        className="pointer-events-auto relative z-10 content-column px-4 pb-3 sm:px-8"
       >
         <GoalBanner
           goal={goal ?? ""}
@@ -391,6 +393,7 @@ export function Composer({
             items={followups ?? []}
             onSteer={(id) => onSteerFollowup?.(id)}
             onDelete={(id) => onDeleteFollowup?.(id)}
+            onRequeue={(id, next) => onRequeueFollowup?.(id, next)}
             onClear={() => onClearFollowups?.()}
           />
           <div className="relative">
@@ -431,7 +434,7 @@ export function Composer({
                   ? t("composer.placeholderRunning")
                   : t("composer.placeholder")
             }
-            className="max-h-[200px] min-h-[44px] px-4 py-3 text-[15px]"
+            className="max-h-[200px] min-h-[44px] px-4 py-3 text-[0.9375rem]"
             onChange={(e) => setText(e.target.value)}
             onPaste={(e) => {
               const files = filesFromClipboard(e.clipboardData)

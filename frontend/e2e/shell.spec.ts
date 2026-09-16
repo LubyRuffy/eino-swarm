@@ -88,6 +88,57 @@ test("Projects and Recents share one left gutter", async ({ page }) => {
   expect(folderBox).not.toBeNull()
   expect(threadBox).not.toBeNull()
   expect(Math.abs(folderBox!.x - threadBox!.x)).toBeLessThan(2)
+
+  await page.getByRole("button", { name: "New project" }).click()
+  const name = `Align ${Date.now()}`
+  await page.getByLabel("Name").fill(name)
+  await page.getByRole("button", { name: "Create project" }).click()
+  // Recents already has rows from earlier specs; the gutter is the same on
+  // every row, so the first is enough. The new folder is the one we named.
+  const recentName = await page
+    .getByTestId("recents-list")
+    .getByTestId("row-label")
+    .first()
+    .boundingBox()
+  const projectName = await page
+    .getByTestId("project-row")
+    .filter({ hasText: name })
+    .getByTestId("row-label")
+    .boundingBox()
+  expect(recentName).not.toBeNull()
+  expect(projectName).not.toBeNull()
+  expect(Math.abs(recentName!.x - projectName!.x)).toBeLessThan(2)
+})
+
+test("collapsing Recents hides its conversations across reload", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "New conversation", exact: true }).click()
+  await expect(
+    page.getByTestId("recents-list").getByTestId("thread-row").first(),
+  ).toBeVisible()
+  const recentsFold = page.getByRole("button", { name: "Recents" }).locator("[data-testid=section-fold]")
+  await expect(recentsFold).toHaveCSS("opacity", "0")
+  await page.getByRole("button", { name: "Recents" }).hover()
+  await expect(recentsFold).toHaveCSS("opacity", "1")
+  await page.getByRole("button", { name: "Recents" }).click()
+  await expect(
+    page.getByTestId("recents-list").getByTestId("thread-row"),
+  ).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "Recents" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  )
+  await expect(recentsFold).toHaveCSS("opacity", "1")
+  await page.reload()
+  await expect(page.getByRole("button", { name: "Recents" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  )
+  await expect(
+    page.getByTestId("recents-list").getByTestId("thread-row"),
+  ).toHaveCount(0)
 })
 
 test("the composer sits on the transcript without a dock hairline", async ({
@@ -446,6 +497,58 @@ test("switches the chrome language and restores English", async ({
     if (await zh.isVisible()) await zh.click()
     await expect(page.getByRole("button", { name: "Switch language" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("lang", "en")
+  }
+})
+
+test("font and conversation width round-trip through settings", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/")
+  try {
+    await page.getByRole("button", { name: "Settings" }).click()
+    const dialog = page.getByRole("dialog")
+    await dialog.getByRole("tab", { name: "General" }).click()
+    await dialog.getByRole("combobox", { name: "Font", exact: true }).click()
+    await page.getByRole("option", { name: "Serif" }).click()
+    await dialog.getByRole("combobox", { name: "Font size" }).click()
+    await page.getByRole("option", { name: "Large" }).click()
+    await dialog.getByRole("combobox", { name: "Conversation width" }).click()
+    await page.getByRole("option", { name: "Full width" }).click()
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+
+    const root = page.locator("html")
+    await expect(root).toHaveAttribute("data-font", "serif")
+    await expect(root).toHaveAttribute("data-font-size", "large")
+    await expect(root).toHaveAttribute("data-content-width", "full")
+    await expect(root).toHaveCSS("font-size", "18px")
+
+    const saved = await (await request.get("/api/settings")).json()
+    expect(saved.settings.ui.font).toBe("serif")
+    expect(saved.settings.ui.font_size).toBe("large")
+    expect(saved.settings.ui.content_width).toBe("full")
+
+    await page.getByRole("button", { name: "Settings" }).click()
+    await page.getByRole("dialog").getByRole("tab", { name: "General" }).click()
+    await expect(
+      page.getByRole("dialog").getByRole("combobox", { name: "Font", exact: true }),
+    ).toContainText("Serif")
+    await expect(
+      page.getByRole("dialog").getByRole("combobox", { name: "Conversation width" }),
+    ).toContainText("Full width")
+    await page.getByRole("dialog").getByRole("button", { name: "Back to app" }).click()
+  } finally {
+    await request.put("/api/settings", {
+      data: {
+        ui: {
+          locale: "system",
+          font: "system",
+          font_size: "medium",
+          content_width: "comfortable",
+        },
+      },
+    })
   }
 })
 

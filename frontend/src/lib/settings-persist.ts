@@ -1,3 +1,4 @@
+import { normalizeUISettings } from "./appearance"
 import type { Settings } from "./types"
 
 /** Wait after the last edit before rewriting config.yaml. Toggles still
@@ -10,7 +11,7 @@ export function persistPayload(
 ): Partial<Settings> {
   return {
     ...settings,
-    ui: { locale: locale || settings.ui?.locale || "system" },
+    ui: normalizeUISettings(settings.ui, locale),
   }
 }
 

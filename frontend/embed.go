@@ -1,7 +1,8 @@
-// Package frontend embeds the built web UI so a single binary serves it, and
-// so `go run ./cmd/zwai desktop` works on a fresh clone without a Node
-// toolchain. That is why dist/ is committed: run `make frontend` after
-// changing anything under src/.
+// Package frontend embeds the built web UI so a single binary serves it.
+// dist/ is produced by `make frontend` (Vite) and is not committed. A
+// sentinel file keeps the directory in git so `go:embed all:dist` still
+// compiles on a clone that has not built the UI yet; Assets() then returns
+// nil until index.html exists.
 package frontend
 
 import (

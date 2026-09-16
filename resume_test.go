@@ -502,3 +502,246 @@ func TestRememberIsIdempotentAndIgnoresClose(t *testing.T) {
 		t.Fatal("remember after Close should drop the archive")
 	}
 }
+
+func TestReusableFinishedIDSkipsEmptyAndRunning(t *testing.T) {
+	reg := NewRegistry()
+	if got := reg.reusableFinishedID(""); got != "" {
+		t.Fatalf("empty role must not match, got %q", got)
+	}
+
+	doneCh := make(chan struct{})
+	running := &Handle{ID: "w-1", Role: "w", done: make(chan struct{})}
+	reg.mu.Lock()
+	reg.agents = map[string]*Handle{"w-1": running}
+	reg.past = map[string]*agentPast{"w-1": {ID: "w-1", Role: "w"}}
+	reg.pastIDs = []string{"w-1"}
+	reg.mu.Unlock()
+	if got := reg.reusableFinishedID("w"); got != "" {
+		t.Fatalf("a running worker is not reusable, got %q", got)
+	}
+
+	close(running.done)
+	if got := reg.reusableFinishedID("w"); got != "w-1" {
+		t.Fatalf("finished archive entry should be reusable, got %q", got)
+	}
+
+	reg.mu.Lock()
+	reg.past = nil
+	reg.pastIDs = nil
+	reg.agents["w-1"] = &Handle{ID: "w-1", Role: "w", done: doneCh}
+	reg.mu.Unlock()
+	close(doneCh)
+	if got := reg.reusableFinishedID("w"); got != "w-1" {
+		t.Fatalf("finished handle still in the live map must be reusable, got %q", got)
+	}
+}
+
+func TestRunningIDPicksTheOldestLiveWorker(t *testing.T) {
+	reg := NewRegistry()
+	if got := reg.runningID(""); got != "" {
+		t.Fatalf("empty role must not match, got %q", got)
+	}
+	older := &Handle{ID: "w-1", Role: "w", done: make(chan struct{}), spawned: time.Unix(1, 0)}
+	newer := &Handle{ID: "w-2", Role: "w", done: make(chan struct{}), spawned: time.Unix(2, 0)}
+	doneCh := make(chan struct{})
+	close(doneCh)
+	finished := &Handle{ID: "w-0", Role: "w", done: doneCh, spawned: time.Unix(0, 0)}
+	other := &Handle{ID: "x-1", Role: "x", done: make(chan struct{}), spawned: time.Unix(0, 0)}
+	reg.mu.Lock()
+	reg.agents = map[string]*Handle{"w-0": finished, "w-1": older, "w-2": newer, "x-1": other}
+	reg.mu.Unlock()
+	if got := reg.runningID("w"); got != "w-1" {
+		t.Fatalf("runningID should pick the oldest live worker, got %q", got)
+	}
+	if got := reg.runningID("x"); got != "x-1" {
+		t.Fatalf("runningID should see the other role, got %q", got)
+	}
+}
+
+func TestSpawnAgentRequiresATask(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		t.Fatal("must not mint a worker without a task")
+		return nil
+	}
+	spawnT := invokable(t, reg.Tools()[0])
+	if _, err := spawnT.InvokableRun(context.Background(), `{"role":"w"}`); err == nil {
+		t.Fatal("empty task must fail rather than mint a twin")
+	}
+	if _, err := spawnT.InvokableRun(context.Background(), `{"role":"w","task":"   "}`); err == nil {
+		t.Fatal("whitespace task must fail rather than mint a twin")
+	}
+}
+
+func TestSpawnAgentSteersARunningWorkerWithTheSameRole(t *testing.T) {
+	reg := NewRegistry()
+	started := make(chan struct{})
+	block := make(chan struct{})
+	var once sync.Once
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &scriptedModel{turns: []func(int, []*schema.Message) *schema.Message{
+			func(turn int, msgs []*schema.Message) *schema.Message {
+				once.Do(func() { close(started) })
+				<-block
+				return schema.AssistantMessage("ok", nil)
+			},
+		}}
+	}
+	spawnT := invokable(t, reg.Tools()[0])
+	out1, err := spawnT.InvokableRun(context.Background(), `{"role":"w","task":"a"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-started
+	out2, err := spawnT.InvokableRun(context.Background(), `{"role":"w","task":"b"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	close(block)
+	var a, b struct {
+		AgentID     string `json:"agent_id"`
+		ResumedFrom string `json:"resumed_from"`
+		Steered     string `json:"steered"`
+	}
+	if err := json.Unmarshal([]byte(out1), &a); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(out2), &b); err != nil {
+		t.Fatal(err)
+	}
+	if a.AgentID == "" || a.AgentID != b.AgentID || b.Steered != "true" {
+		t.Fatalf("a running same-role spawn must steer in place, first=%+v second=%+v", a, b)
+	}
+	if b.ResumedFrom != "" {
+		t.Fatalf("a still-running worker is steered, not resumed, got %+v", b)
+	}
+	h, ok := reg.get(a.AgentID)
+	if !ok {
+		t.Fatal("worker vanished")
+	}
+	waitDone(t, h)
+	if leftover := h.leftover(); len(leftover) != 1 || leftover[0] != "b" {
+		t.Fatalf("the new task should queue as steering, leftover=%v", leftover)
+	}
+}
+
+func TestSpawnAgentSameRoleInParallelSharesOneID(t *testing.T) {
+	reg := NewRegistry()
+	block := make(chan struct{})
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &scriptedModel{turns: []func(int, []*schema.Message) *schema.Message{
+			func(turn int, msgs []*schema.Message) *schema.Message {
+				<-block
+				return schema.AssistantMessage("ok", nil)
+			},
+		}}
+	}
+	spawnT := invokable(t, reg.Tools()[0])
+	out := make([]string, 2)
+	errs := make([]error, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	for i := 0; i < 2; i++ {
+		go func(i int) {
+			defer wg.Done()
+			out[i], errs[i] = spawnT.InvokableRun(context.Background(),
+				fmt.Sprintf(`{"role":"w","task":"t%d"}`, i))
+		}(i)
+	}
+	wg.Wait()
+	close(block)
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("spawn %d: %v", i, err)
+		}
+	}
+	var first, second struct {
+		AgentID string `json:"agent_id"`
+		Steered string `json:"steered"`
+	}
+	if err := json.Unmarshal([]byte(out[0]), &first); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(out[1]), &second); err != nil {
+		t.Fatal(err)
+	}
+	if first.AgentID == "" || first.AgentID != second.AgentID {
+		t.Fatalf("parallel same-role spawns must share one id, got %q %q", first.AgentID, second.AgentID)
+	}
+	if (first.Steered == "true") == (second.Steered == "true") {
+		t.Fatalf("exactly one of the parallel calls should steer, got %+v %+v", first, second)
+	}
+}
+
+func TestSpawnAgentReusesAFinishedWorkerWithTheSameRole(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = oneShot("ok")
+	spawnT := invokable(t, reg.Tools()[0])
+	out, err := spawnT.InvokableRun(context.Background(), `{"role":"w","task":"first"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first struct {
+		AgentID string `json:"agent_id"`
+	}
+	if err := json.Unmarshal([]byte(out), &first); err != nil {
+		t.Fatal(err)
+	}
+	h, ok := reg.get(first.AgentID)
+	if !ok {
+		t.Fatal("first spawn vanished")
+	}
+	waitDone(t, h)
+
+	out, err = spawnT.InvokableRun(context.Background(), `{"role":"w","task":"second"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var second struct {
+		AgentID     string `json:"agent_id"`
+		ResumedFrom string `json:"resumed_from"`
+	}
+	if err := json.Unmarshal([]byte(out), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second.AgentID != first.AgentID || second.ResumedFrom != first.AgentID {
+		t.Fatalf("same-role spawn after stop should continue in place, first=%q second=%+v", first.AgentID, second)
+	}
+}
+
+func TestForkContextDoesNotMintATwinForAnExistingRole(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = oneShot("ok")
+	spawnT := invokable(t, reg.Tools()[0])
+	out, err := spawnT.InvokableRun(context.Background(), `{"role":"w","task":"first"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var first struct {
+		AgentID string `json:"agent_id"`
+	}
+	if err := json.Unmarshal([]byte(out), &first); err != nil {
+		t.Fatal(err)
+	}
+	h, ok := reg.get(first.AgentID)
+	if !ok {
+		t.Fatal("first spawn vanished")
+	}
+	waitDone(t, h)
+
+	out, err = spawnT.InvokableRun(context.Background(), `{"role":"w","task":"forked","fork_context":true}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var second struct {
+		AgentID     string `json:"agent_id"`
+		ResumedFrom string `json:"resumed_from"`
+		Forked      string `json:"forked"`
+	}
+	if err := json.Unmarshal([]byte(out), &second); err != nil {
+		t.Fatal(err)
+	}
+	if second.AgentID != first.AgentID || second.ResumedFrom != first.AgentID || second.Forked != "" {
+		t.Fatalf("fork_context must not mint a twin for a finished role, first=%q second=%+v", first.AgentID, second)
+	}
+}

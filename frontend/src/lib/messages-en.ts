@@ -114,6 +114,8 @@ export const en = {
   "queue.clear": "Clear queue",
   "queue.steer": "Steer",
   "queue.steerNamed": "Steer: {text}",
+  "queue.edit": "Edit queued message",
+  "queue.editNamed": "Edit queued message: {text}",
   "queue.removeNamed": "Remove queued message: {text}",
 
   "goal.pursuing": "Pursuing",
@@ -310,6 +312,22 @@ export const en = {
   "settings.general.langSystem": "Match the system",
   "settings.general.langEn": "English",
   "settings.general.langZh": "中文",
+  "settings.general.font": "Font",
+  "settings.general.fontHint":
+    "Used everywhere in the window. Serif for long reading; mono for code-heavy work.",
+  "settings.general.fontSystem": "System",
+  "settings.general.fontSerif": "Serif",
+  "settings.general.fontMono": "Mono",
+  "settings.general.fontSize": "Font size",
+  "settings.general.fontSizeHint": "Scales the whole window, including chrome.",
+  "settings.general.fontSizeSmall": "Small",
+  "settings.general.fontSizeMedium": "Medium",
+  "settings.general.fontSizeLarge": "Large",
+  "settings.general.contentWidth": "Conversation width",
+  "settings.general.contentWidthHint":
+    "Keep the current reading column, or fill the space between the sidebars.",
+  "settings.general.contentWidthComfortable": "Comfortable",
+  "settings.general.contentWidthFull": "Full width",
   "settings.general.logs": "Logs",
   "settings.general.logLevel": "Log level",
   "settings.general.logHint":

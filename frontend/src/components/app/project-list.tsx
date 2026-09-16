@@ -10,6 +10,12 @@ import {
   Trash2,
 } from "lucide-react"
 
+import { SidebarSection } from "@/components/app/sidebar-section"
+import {
+  SidebarGripSlot,
+  SidebarKindSlot,
+  sidebarRowClass,
+} from "@/components/app/sidebar-slots"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
 import { Button } from "@/components/ui/button"
 import {
@@ -36,7 +42,6 @@ export function ProjectList({
   projects,
   threadsByProject,
   expanded,
-  selectedId,
   activeId,
   runningId,
   onSelect,
@@ -52,13 +57,16 @@ export function ProjectList({
   onDeleteThread,
   onReorderThreads,
   onPinThread,
+  sectionOpen = true,
+  onToggleSection,
 }: {
   projects: Project[]
   threadsByProject: Record<string, Thread[]>
   expanded: Record<string, boolean>
-  selectedId?: string
   activeId?: string
   runningId?: string
+  sectionOpen?: boolean
+  onToggleSection?: () => void
   onSelect: (id: string) => void
   onToggle: (id: string) => void
   onNew: () => void
@@ -78,29 +86,29 @@ export function ProjectList({
     onReorder(reorderById(projects, from, to).map((p) => p.id))
   })
   return (
-    <div className="pb-2" data-testid="project-list">
-      <div className="flex items-center justify-between pr-2">
-        <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
-          {t("projects.title")}
-        </p>
+    <SidebarSection
+      testId="project-list"
+      label={t("projects.title")}
+      open={sectionOpen}
+      onToggle={() => onToggleSection?.()}
+      actions={
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon-xs"
           onClick={onNew}
           aria-label={t("projects.new")}
           title={t("projects.new")}
         >
           <FolderPlus />
         </Button>
-      </div>
-
+      }
+    >
       {projects.map((project) => (
         <ProjectRow
           key={project.id}
           project={project}
           threads={threadsByProject[project.id] ?? []}
           open={Boolean(expanded[project.id])}
-          active={project.id === selectedId}
           activeId={activeId}
           runningId={runningId}
           drag={sortable.bind(project.id)}
@@ -123,7 +131,7 @@ export function ProjectList({
           {t("projects.empty")}
         </p>
       ) : null}
-    </div>
+    </SidebarSection>
   )
 }
 
@@ -131,7 +139,6 @@ function ProjectRow({
   project,
   threads,
   open,
-  active,
   activeId,
   runningId,
   drag,
@@ -150,7 +157,6 @@ function ProjectRow({
   project: Project
   threads: Thread[]
   open: boolean
-  active: boolean
   activeId?: string
   runningId?: string
   drag: ReturnType<ReturnType<typeof useSortableList>["bind"]>
@@ -171,49 +177,53 @@ function ProjectRow({
     onReorderThreads(reorderById(threads, from, to).map((th) => th.id))
   })
   return (
-    <div className="mb-0.5">
+    <div className="mb-0.5" data-testid="project-wrap" data-id={project.id}>
       <div
         {...drag}
         data-testid="project-row"
         data-id={project.id}
         className={cn(
-          "group flex cursor-grab select-none items-center gap-1 rounded-md px-2 py-1.5 text-sm transition-colors",
+          sidebarRowClass,
+          "cursor-grab text-sidebar-foreground hover:bg-sidebar-accent/60",
           "data-[dragging=true]:cursor-grabbing data-[dragging=true]:opacity-60 data-[over=true]:bg-sidebar-accent",
-          active
-            ? "bg-sidebar-accent text-foreground"
-            : "text-sidebar-foreground hover:bg-sidebar-accent/60",
         )}
       >
-        <span
-          data-drag-handle
-          className="flex cursor-grab items-center self-stretch opacity-0 group-hover:opacity-50"
-          aria-hidden="true"
+        <SidebarGripSlot
+          handle
           onClick={() => {
             onToggle(project.id)
             onSelect(project.id)
           }}
         >
           <GripVertical className="size-3.5 shrink-0" />
-        </span>
+        </SidebarGripSlot>
         <button
           type="button"
           onClick={() => {
             onToggle(project.id)
             onSelect(project.id)
           }}
-          aria-pressed={active}
           aria-expanded={open}
-          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+          className="flex min-w-0 flex-1 items-center gap-1 text-left"
         >
-          <ChevronRight
-            className={cn(
-              "size-3 shrink-0 text-sidebar-foreground/50 transition-transform",
-              open && "rotate-90",
-            )}
-            aria-hidden="true"
-          />
-          <Folder className="size-4 shrink-0" aria-hidden="true" />
-          <span className="truncate">{project.name}</span>
+          <SidebarKindSlot testId="project-kind">
+            <Folder
+              data-testid="project-folder"
+              className="size-4 shrink-0 group-hover:hidden group-focus-within:hidden"
+              aria-hidden="true"
+            />
+            <ChevronRight
+              data-testid="project-fold"
+              className={cn(
+                "hidden size-4 shrink-0 text-sidebar-foreground/50 group-hover:block group-focus-within:block",
+                open && "rotate-90",
+              )}
+              aria-hidden="true"
+            />
+          </SidebarKindSlot>
+          <span data-testid="row-label" className="truncate">
+            {project.name}
+          </span>
           {threads.length > 0 ? (
             <span className="shrink-0 text-[11px] text-sidebar-foreground/50" aria-hidden="true">
               {threads.length}
@@ -224,7 +234,7 @@ function ProjectRow({
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              size="icon-sm"
+              size="icon-xs"
               data-no-drag
               className={rowActionClass}
               aria-label={t("projects.options", { name: project.name })}
@@ -250,7 +260,7 @@ function ProjectRow({
         </DropdownMenu>
         <Button
           variant="ghost"
-          size="icon-sm"
+          size="icon-xs"
           data-no-drag
           className={rowActionClass}
           aria-label={t("projects.newIn", { name: project.name })}
@@ -269,7 +279,6 @@ function ProjectRow({
               active={thread.id === activeId}
               running={thread.running || thread.id === runningId}
               drag={sortable.bind(thread.id)}
-              indent
               onOpen={onOpenThread}
               onRename={onRenameThread}
               onDelete={onDeleteThread}
