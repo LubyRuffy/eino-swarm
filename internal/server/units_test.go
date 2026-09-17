@@ -78,6 +78,45 @@ func TestParseSince(t *testing.T) {
 	}
 }
 
+func TestParseLogLimit(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		want  int
+	}{
+		{"", defaultLogLimit},
+		{"abc", defaultLogLimit},
+		{"0", defaultLogLimit},
+		{"-3", defaultLogLimit},
+		{"24", 24},
+		{"200", maxLogLimit},
+		{"9999", maxLogLimit},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/?limit="+tc.query, nil)
+		if got := parseLogLimit(c); got != tc.want {
+			t.Fatalf("limit %q: got %d want %d", tc.query, got, tc.want)
+		}
+	}
+}
+
+func TestParseBefore(t *testing.T) {
+	for _, tc := range []struct {
+		query string
+		want  int64
+	}{
+		{"", 0},
+		{"abc", 0},
+		{"-1", 0},
+		{"12", 12},
+	} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/?before="+tc.query, nil)
+		if got := parseBefore(c); got != tc.want {
+			t.Fatalf("before %q: got %d want %d", tc.query, got, tc.want)
+		}
+	}
+}
+
 func TestSettingsViewHidesKeysAndReportsReadiness(t *testing.T) {
 	cfg := config.Default()
 	cfg.Models = config.ModelsConfig{

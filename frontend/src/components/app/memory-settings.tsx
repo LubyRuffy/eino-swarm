@@ -116,6 +116,18 @@ export function MemorySettings({
         </Field>
         <Field
           query={query}
+          label={t("settings.memory.entryMax")}
+          hint={t("settings.memory.entryMaxHint")}
+        >
+          <Input
+            type="number"
+            min={80}
+            value={settings.memory.entry_max}
+            onChange={(e) => update({ entry_max: Number(e.target.value) })}
+          />
+        </Field>
+        <Field
+          query={query}
           label={t("settings.memory.reviewRounds")}
           hint={t("settings.memory.reviewRoundsHint")}
         >

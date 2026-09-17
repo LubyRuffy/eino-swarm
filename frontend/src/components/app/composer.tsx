@@ -25,7 +25,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { clearComposerPad, syncComposerPad } from "@/lib/composer-chrome"
+import { clearComposerPad, resizeComposerArea, syncComposerPad } from "@/lib/composer-chrome"
 import {
   filesFromDataTransfer,
   isFileDrag,
@@ -56,6 +56,7 @@ import { formatQuotedMessage, type Quote } from "@/lib/quote"
 import type { Attachment, Followup, ModelInfo, UsageSnapshot } from "@/lib/types"
 import { windowForSelection } from "@/lib/usage"
 import { useT, type Translate } from "@/lib/use-t"
+import { useApp } from "@/store/app"
 
 /** The composer. Enter while a turn is running queues a follow-up for after
  *  it finishes. ⌘Enter (or Steer on a queued row) injects into this turn. */
@@ -191,11 +192,10 @@ export function Composer({
   }, [prefillToken, prefill])
 
   // Grow with the text, but stop before the composer eats the conversation.
+  // IME preedit fires onChange; measuring with height:auto there jumps the
+  // candidate window and feels like a stuck key.
   useEffect(() => {
-    const el = areaRef.current
-    if (!el) return
-    el.style.height = "auto"
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+    resizeComposerArea(areaRef.current, { composing: composingRef.current })
   }, [text])
 
   useEffect(() => {
@@ -208,16 +208,10 @@ export function Composer({
   const quoted = quotes ?? []
   const meterWindow = windowForSelection(models, provider, model)
   const draft = slashDraft(text)
+  // Hints (the compact %) live in ComposerSlashMenu so a usage pulse cannot
+  // re-render this textarea mid-IME. Keyboard handling only needs the ids.
   const slashItems = draft
-    ? withSlashHints(filterSlashCommands(draft.query, localizedSlashCommands(t.locale)), {
-        compact: compactHint(
-          usage?.context_tokens,
-          usage?.context_window || meterWindow,
-          contextChars ?? 0,
-          contextBudget ?? 0,
-          t.locale,
-        ),
-      })
+    ? filterSlashCommands(draft.query, localizedSlashCommands(t.locale))
     : []
   const slashOpen = slashItems.length > 0
 
@@ -239,7 +233,11 @@ export function Composer({
   }
 
   const submit = async (opts?: { steer?: boolean }) => {
-    if (slashOpen) {
+    const slash = parseSlashSubmit(text)
+    // A glued `/goal…` argument must not be eaten as a menu pick. Codex
+    // dispatches inline args the same way: the rest is the objective, not
+    // another keystroke of command name.
+    if (slashOpen && !slash?.arg) {
       const cmd = slashItems[Math.min(slashIndex, slashItems.length - 1)]
       if (cmd) pickCommand(cmd)
       return
@@ -252,7 +250,6 @@ export function Composer({
       onSetGoal?.(next)
       return
     }
-    const slash = parseSlashSubmit(text)
     if (slash) {
       if (slash.id === "compact") {
         setText("")
@@ -361,7 +358,7 @@ export function Composer({
       />
       <div
         ref={dockRef}
-        className="pointer-events-auto relative z-10 content-column px-4 pb-3 sm:px-8"
+        className="pointer-events-auto relative z-10 content-column content-gutter pb-3"
       >
         <GoalBanner
           goal={goal ?? ""}
@@ -397,10 +394,14 @@ export function Composer({
             onClear={() => onClearFollowups?.()}
           />
           <div className="relative">
-            {slashOpen ? (
-              <SlashMenu
-                items={slashItems}
+            {draft && slashOpen ? (
+              <ComposerSlashMenu
+                query={draft.query}
                 activeIndex={Math.min(slashIndex, slashItems.length - 1)}
+                usage={usage}
+                window={meterWindow}
+                contextChars={contextChars ?? 0}
+                contextBudget={contextBudget ?? 0}
                 onHover={setSlashIndex}
                 onSelect={pickCommand}
               />
@@ -451,6 +452,7 @@ export function Composer({
               cancelImeSettle.current = afterImeSettles(() => {
                 composingRef.current = false
                 cancelImeSettle.current = null
+                resizeComposerArea(areaRef.current)
               })
             }}
             onKeyDown={(e) => {
@@ -568,7 +570,7 @@ export function Composer({
             </Tooltip>
 
             <div className="ml-auto flex items-center gap-1">
-              <ContextMeter
+              <ComposerContextMeter
                 usage={usage}
                 window={meterWindow}
                 scale={contextBudget ?? 0}
@@ -611,6 +613,65 @@ export function Composer({
         </div>
       </div>
     </div>
+  )
+}
+
+/** Isolated so a live `usage` pulse (one per model call) cannot rewrite the
+ *  controlled textarea while a CJK IME is composing. */
+function ComposerContextMeter({
+  usage,
+  window,
+  scale,
+}: {
+  usage?: UsageSnapshot | null
+  window: number
+  scale: number
+}) {
+  const live = useApp((s) => s.usage)
+  return <ContextMeter usage={usage ?? live} window={window} scale={scale} />
+}
+
+function ComposerSlashMenu({
+  query,
+  activeIndex,
+  usage,
+  window,
+  contextChars,
+  contextBudget,
+  onHover,
+  onSelect,
+}: {
+  query: string
+  activeIndex: number
+  usage?: UsageSnapshot | null
+  window: number
+  contextChars: number
+  contextBudget: number
+  onHover: (index: number) => void
+  onSelect: (cmd: SlashCommand) => void
+}) {
+  const t = useT()
+  const live = useApp((s) => s.usage)
+  const snap = usage ?? live
+  const items = withSlashHints(
+    filterSlashCommands(query, localizedSlashCommands(t.locale)),
+    {
+      compact: compactHint(
+        snap?.context_tokens,
+        snap?.context_window || window,
+        contextChars,
+        contextBudget,
+        t.locale,
+      ),
+    },
+  )
+  return (
+    <SlashMenu
+      items={items}
+      activeIndex={Math.min(activeIndex, Math.max(0, items.length - 1))}
+      onHover={onHover}
+      onSelect={onSelect}
+    />
   )
 }
 

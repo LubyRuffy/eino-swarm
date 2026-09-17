@@ -17,7 +17,7 @@ over one concurrency-safe registry:
 | tool | semantics |
 |---|---|
 | `spawn_agent(role, task, fork_context)` | start a sub-agent in the background; returns `{"agent_id": …}` immediately. **One worker per role:** a later call with the same role while it is running queues the new task (`steered`) instead of minting a twin; if it already finished, continues that same id (`resumed_from`). `fork_context: true` only applies when this role has no worker yet, and then replays **this manager conversation** into it. |
-| `send_message(agent_id, text)` | steer a **running** agent; queued for its **next turn boundary**. `delivered: true` means queued, not that a later model call consumed it. A finished agent does not receive it. |
+| `send_message(agent_id, text)` | steer a **running** agent, or the host when `agent_id` is `manager`. Queued for the target's **next turn boundary**. `agent_id` is the id `spawn_agent` returned, that worker's role, or `manager`. `delivered: true` means queued. A finished or unknown target returns `delivered: false` with `notified: manager` when a **worker** sent it — the host gets the text and should take the next step. A Go error here is a `NodeRunError` that kills the caller. |
 | `wait_agents(agent_ids, timeout_s)` | return as soon as the next listed agent reaches a final status (or the timeout); reports every agent's status (`running`/`done`/`failed`), the finished ones' results, leftover steering that never reached a model call (`undelivered`), and the running ones' last activity, plus `timed_out`. It hands control back per-finish so the manager can report progress and wait again, instead of dead-waiting on the whole batch |
 | `close_agent(agent_id)` | cancel a running agent |
 | `resume_agent(agent_id, task)` | continue a finished or failed worker **in place** under the same `agent_id`, seeded with that worker's conversation. Returns `{"agent_id": …, "resumed_from": …}` with the same id. Rejects a still-running id (`send_message` instead). Survives `Stats()` pruning the live handle. Do not `spawn_agent` a second worker with the same role to replace one that failed. |
@@ -66,6 +66,19 @@ res, err := reg.RunWith(ctx, swarm.RunConfig{
 
 `RunWith` does **not** install signal handling — that belongs to a `main`, not to
 a library call inside a server. This is what zwai's engine uses.
+Hitting `MaxIterations` still returns the transcript **including tool results
+from that last round**, so the next `RunWith` can continue instead of repeating
+the same calls. `SetHistory` keeps wrap-appended tool results that a later
+model-step snapshot would otherwise drop.
+
+`RunConfig.ManagerMiddlewares` are appended after the swarm's history recorder
+and steering injector. eino's `adk/middlewares/summarization` is fine on a
+manager that uses `spawn_agent` **if** Finalize keeps the in-flight ReAct
+tail and rehydrates worker ids from `spawned`/`finished` (or
+`RestoreWorkers` / `FinishedWorkers`). `DefaultFinalize` does neither.
+zwai's auto-compact uses eino's Generate with a task-agnostic
+`UserInstruction` and that custom Finalize. The keep-or-delete scorecard is
+`TestCompactEffectComparedWithEinoDefault` — structure, not briefing prose.
 
 A host that is restarting an unfinished run can put leftover workers on
 `RunConfig.RestoreWorkers` / `FinishedWorkers`. They are applied after the
@@ -75,8 +88,10 @@ host that is not going through `RunWith`.
 
 Steering the manager itself (not just a worker) is `reg.SteerManager(text)`.
 A pasted image rides with `reg.SteerManagerMessage(msg)` so the inbox holds
-`*schema.Message`, not bare strings. Both land before the manager's next model
-call. Anything queued but never read is recoverable with
+`*schema.Message`, not bare strings. Put the caption in
+`UserInputMultiContent` only; OpenAI cannot marshal `Content` on the same
+message. `SteerManager` and `SteerManagerMessage` both land before the
+manager's next model call. Anything queued but never read is recoverable with
 `reg.TakePendingSteers()` (captions) or `reg.TakePendingSteerMessages()` (the
 messages themselves, images included), so a send that arrived a moment before
 the run ended is not silently lost.
@@ -171,10 +186,14 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 
 - Steering never interrupts an in-flight model call or tool execution; messages
   land at the next turn boundary (the same semantics as Codex steering).
-- `send_message` to a finished agent returns `{"delivered": false}` rather than an
-  error: the caller lost a race, it did not make a mistake. `delivered: true`
-  means the text was queued. If the agent finishes before another model call,
-  `wait_agents` reports that text as `undelivered`.
+- `send_message` to a finished or unknown agent returns `{"delivered": false}`
+  rather than an error. When a **worker** sends that miss, the host manager is
+  notified with the text (`notified: manager`) so the worker can finish with a
+  final answer instead of inventing another id. `send_message(manager, …)`
+  delivers to the host the same way. `delivered: true` means the text was
+  queued for that agent. If a running agent finishes before another model call,
+  `wait_agents` reports leftover steering as `undelivered`. `agent_id` may be
+  the worker's role; an invented suffix is not resolved by similarity.
 - `resume_agent` continues a finished worker's conversation on the **same** id.
   `fork_context` is the manager's conversation, not a previous worker's findings.
   A still-running worker is steered with `send_message`, not resumed.
@@ -182,11 +201,11 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
   running when the previous process died, under the same id. `PlantFinished`
   puts an already-completed worker back so `wait_agents` does not report
   unknown after a restart.
-- Sub-agents never outlive their lineage, even when nobody calls `close_agent`:
+- Sub-agents never outlive Close/Cleanup/Handle.Cancel, even when nobody calls `close_agent`:
 
 | mechanism | what it catches |
 |---|---|
-| context lineage | an agent's context derives from its spawner's, so a dead host cancels everything it spawned. No orphan goroutines. |
+| Spawn context | **not** the worker lifetime. Cancelling the manager (a `/goal` session yield) must not kill in-flight sub-agents. |
 | `AgentTimeout` (default 10m) | a hung model or endpoint; the handle's error records the timeout |
 | `MaxTurns` (default 20) | a model looping forever; ends with eino's `ErrExceedMaxIterations` |
 | `ManagerMaxIterations` | the manager's ReAct cap when `RunConfig.MaxIterations` is unset; `<=0` keeps eino's own default |
@@ -194,7 +213,8 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 | `Registry.Cleanup` | kills whatever is still running at the end of a turn and reports how many |
 | bounded registry | finished handles are pruned by `Stats`, so a long session cannot grow the map without bound. Use `Progress` for reporting: it never prunes. Finished conversations stay in a separate archive (default 32) for `resume_agent`. |
 
-Each of those has a test: `TestCallerContextCancelReleasesAgents`,
+Each of those has a test: `TestCallerContextCancelDoesNotReleaseAgents`,
+`TestWorkerSurvivesParentContextCancel`,
 `TestWatchdogTimeoutReleasesAgent`, `TestMaxTurnsEndsBrokenModel`,
 `TestRegistryClose`, `TestForkContextInheritsHistory`,
 `TestForkContextSeedsBeforeFirstModelCall`,
@@ -230,7 +250,7 @@ first model call cannot lose the race against `fork_context` / resume.
 | `swarmwatch` | consuming the notification stream |
 
 The terminal renderer is not an example: it is `internal/tui`, reachable as
-`zwai tui`.
+`zwai tui` (interactive) or `zwai tui --task "…"` (one-shot).
 
 ```bash
 go test -race ./...

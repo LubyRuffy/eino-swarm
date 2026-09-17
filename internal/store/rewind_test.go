@@ -136,9 +136,19 @@ func TestTruncateFromEventSeqClearsABriefingThatCoveredDeletedMessages(t *testin
 	}
 	turn := seedTurn(t, s, th.ID, "user_message", "first")
 	msgs, _ := s.ListMessages(th.ID)
+	events, _ := s.ListTurnEvents(turn.ID)
+	var eventThrough int64
+	for _, ev := range events {
+		if ev.Seq > eventThrough {
+			eventThrough = ev.Seq
+		}
+	}
 	if err := s.UpdateThread(th.ID, map[string]any{
-		"compact_summary":     "briefing",
-		"compact_through_seq": msgs[len(msgs)-1].Seq,
+		"compact_summary":            "briefing",
+		"compact_through_seq":        msgs[len(msgs)-1].Seq,
+		"session_memory":             "session briefing",
+		"session_memory_through_seq": eventThrough,
+		"session_memory_tokens":      12_000,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -152,6 +162,9 @@ func TestTruncateFromEventSeqClearsABriefingThatCoveredDeletedMessages(t *testin
 	got, _ := s.GetThread(th.ID)
 	if got.CompactSummary != "" || got.CompactThroughSeq != 0 {
 		t.Fatalf("briefing still points at deleted messages: %+v", got)
+	}
+	if got.SessionMemory != "" || got.SessionMemoryThroughSeq != 0 || got.SessionMemoryTokens != 0 {
+		t.Fatalf("session briefing still points at deleted events: %+v", got)
 	}
 }
 
@@ -170,9 +183,19 @@ func TestTruncateFromEventSeqKeepsABriefingOfEarlierTurns(t *testing.T) {
 			through = m.Seq
 		}
 	}
+	events, _ := s.ListTurnEvents(first.ID)
+	var eventThrough int64
+	for _, ev := range events {
+		if ev.Seq > eventThrough {
+			eventThrough = ev.Seq
+		}
+	}
 	if err := s.UpdateThread(th.ID, map[string]any{
-		"compact_summary":     "briefing",
-		"compact_through_seq": through,
+		"compact_summary":            "briefing",
+		"compact_through_seq":        through,
+		"session_memory":             "session briefing",
+		"session_memory_through_seq": eventThrough,
+		"session_memory_tokens":      12_000,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -186,6 +209,156 @@ func TestTruncateFromEventSeqKeepsABriefingOfEarlierTurns(t *testing.T) {
 	got, _ := s.GetThread(th.ID)
 	if got.CompactSummary != "briefing" || got.CompactThroughSeq != through {
 		t.Fatalf("an earlier briefing was cleared: %+v", got)
+	}
+	if got.SessionMemory != "session briefing" || got.SessionMemoryThroughSeq != eventThrough {
+		t.Fatalf("an earlier session briefing was cleared: %+v", got)
+	}
+}
+
+func TestTruncateFromEventSeqClearsSessionMemoryWhenCompactWasNeverSet(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	turn := seedTurn(t, s, th.ID, "user_message", "first")
+	events, _ := s.ListTurnEvents(turn.ID)
+	var through int64
+	for _, ev := range events {
+		if ev.Seq > through {
+			through = ev.Seq
+		}
+	}
+	if err := s.UpdateThread(th.ID, map[string]any{
+		"session_memory":             "session briefing",
+		"session_memory_through_seq": through,
+		"session_memory_tokens":      12_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	user, err := firstUserEvent(s, turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TruncateFromEventSeq(th.ID, user.Seq); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetThread(th.ID)
+	if got.SessionMemory != "" || got.SessionMemoryThroughSeq != 0 || got.SessionMemoryTokens != 0 {
+		t.Fatalf("session briefing still points at deleted events: %+v", got)
+	}
+}
+
+func TestTruncateFromEventSeqIgnoresAnEmptyCompactStamp(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	turn := seedTurn(t, s, th.ID, "user_message", "first")
+	events, _ := s.ListTurnEvents(turn.ID)
+	var through int64
+	for _, ev := range events {
+		if ev.Seq > through {
+			through = ev.Seq
+		}
+	}
+	if err := s.UpdateThread(th.ID, map[string]any{
+		"compact_through_seq":        99,
+		"compact_summary":            "",
+		"session_memory":             "session briefing",
+		"session_memory_through_seq": through,
+		"session_memory_tokens":      12_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	user, err := firstUserEvent(s, turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TruncateFromEventSeq(th.ID, user.Seq); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetThread(th.ID)
+	if got.CompactThroughSeq != 99 {
+		t.Fatalf("an empty compact stamp must not be rewritten: %+v", got)
+	}
+	if got.SessionMemory != "" || got.SessionMemoryThroughSeq != 0 {
+		t.Fatalf("session briefing still points at deleted events: %+v", got)
+	}
+}
+
+func TestTruncateFromEventSeqKeepsCompactWhenOnlySessionMemoryBroke(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	first := seedTurn(t, s, th.ID, "user_message", "first")
+	second := seedTurn(t, s, th.ID, "user_message", "second")
+	msgs, _ := s.ListMessages(th.ID)
+	var through int64
+	for _, m := range msgs {
+		if m.TurnID == first.ID && m.Seq > through {
+			through = m.Seq
+		}
+	}
+	events, _ := s.ListTurnEvents(second.ID)
+	var eventThrough int64
+	for _, ev := range events {
+		if ev.Seq > eventThrough {
+			eventThrough = ev.Seq
+		}
+	}
+	if err := s.UpdateThread(th.ID, map[string]any{
+		"compact_summary":            "briefing",
+		"compact_through_seq":        through,
+		"session_memory":             "session briefing",
+		"session_memory_through_seq": eventThrough,
+		"session_memory_tokens":      12_000,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	user, err := firstUserEvent(s, second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TruncateFromEventSeq(th.ID, user.Seq); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetThread(th.ID)
+	if got.CompactSummary != "briefing" || got.CompactThroughSeq != through {
+		t.Fatalf("an earlier compact briefing was cleared: %+v", got)
+	}
+	if got.SessionMemory != "" || got.SessionMemoryThroughSeq != 0 {
+		t.Fatalf("session briefing still points at deleted events: %+v", got)
+	}
+}
+
+func TestTruncateFromEventSeqIgnoresAZeroSessionMemoryStamp(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	turn := seedTurn(t, s, th.ID, "user_message", "first")
+	if err := s.UpdateThread(th.ID, map[string]any{
+		"session_memory":             "stale text without a stamp",
+		"session_memory_through_seq": 0,
+		"session_memory_tokens":      12,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	user, err := firstUserEvent(s, turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.TruncateFromEventSeq(th.ID, user.Seq); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetThread(th.ID)
+	if got.SessionMemory != "stale text without a stamp" || got.SessionMemoryThroughSeq != 0 {
+		t.Fatalf("an unstamped leftover must not be treated as a broken briefing: %+v", got)
 	}
 }
 
@@ -229,6 +402,9 @@ func TestGetEventAfterCloseIsAnError(t *testing.T) {
 	}
 	if _, err := s.GetEvent(th.ID, user.Seq); err == nil {
 		t.Fatal("a closed store must not pretend the event is there")
+	}
+	if _, err := s.ListFollowups(th.ID); err == nil {
+		t.Fatal("a closed store must not list follow-ups")
 	}
 	if err := s.TruncateFromEventSeq(th.ID, user.Seq); err == nil {
 		t.Fatal("a closed store must not truncate")

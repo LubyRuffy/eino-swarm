@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -39,8 +42,11 @@ func newMockModel(role string) model.BaseChatModel {
 		return &mockModel{script: reviewerScript}
 	case titleRole:
 		return &mockModel{script: titleNamerScript}
-	case compactRole:
-		return &mockModel{script: compactSummarizerScript}
+	case compactRole, sessionMemoryRole:
+		// Briefings are not a chat stream. Pacing them like the manager
+		// would add seconds of fake tokens to every /compact and session
+		// refresh in --mock and the test suite.
+		return &mockModel{script: compactSummarizerScript, instant: true}
 	default:
 		return &mockModel{script: workerScript(role)}
 	}
@@ -57,6 +63,9 @@ const (
 	// compactRole must match the engine's conversation summarizer, or a mock
 	// compact would be treated as a worker and try to write files.
 	compactRole = "compact-summarizer"
+	// sessionMemoryRole must match the engine's rolling session briefing, or
+	// a mock run would treat that summarizer as a worker and try to write files.
+	sessionMemoryRole = "session-memory"
 	// completeGoalToolName must match the engine's manager-only tool, or a
 	// mock run with a standing objective would never mark it done and the
 	// runtime would auto-continue until the cap.
@@ -68,7 +77,8 @@ const (
 type mockScript func(turn int, msgs []*schema.Message) *schema.Message
 
 type mockModel struct {
-	script mockScript
+	script  mockScript
+	instant bool
 
 	mu   sync.Mutex
 	turn int
@@ -85,6 +95,9 @@ func (m *mockModel) Generate(ctx context.Context, in []*schema.Message, _ ...mod
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := mockCallFailure(); err != nil {
+		return nil, err
+	}
 	out := m.script(m.nextTurn(), in)
 	attachMockUsage(in, out)
 	return out, nil
@@ -94,15 +107,24 @@ func (m *mockModel) Stream(ctx context.Context, in []*schema.Message, _ ...model
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	if err := mockCallFailure(); err != nil {
+		return nil, err
+	}
 	out := m.script(m.nextTurn(), in)
 	sr, sw := schema.Pipe[*schema.Message](8)
 	go func() {
 		defer sw.Close()
 		send := func(msg *schema.Message) bool {
-			select {
-			case <-ctx.Done():
-				return false
-			case <-time.After(mockChunkDelay):
+			if m.instant {
+				if ctx.Err() != nil {
+					return false
+				}
+			} else {
+				select {
+				case <-ctx.Done():
+					return false
+				case <-time.After(mockChunkDelay):
+				}
 			}
 			return !sw.Send(msg, nil)
 		}
@@ -204,7 +226,7 @@ func managerScript(turn int, msgs []*schema.Message) *schema.Message {
 	return &schema.Message{
 		Role:      schema.Assistant,
 		Content:   content,
-		ToolCalls: []schema.ToolCall{call(fmt.Sprintf("mock-wait-%d", turn), "wait_agents", string(args))},
+		ToolCalls: []schema.ToolCall{call(nextWaitCallID(msgs), "wait_agents", string(args))},
 	}
 }
 
@@ -235,8 +257,26 @@ func mockAnswer(task string, results []string) string {
 // workerScript makes each worker do real work: one write into the conversation
 // workspace, then a short report. The file is what proves the tool layer is
 // wired to the right directory.
+// mockWorkerPause is how E2E keeps wait_agents pending long enough to Steer.
+// Unit tests leave the env unset so they stay fast.
+func mockWorkerPause() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("ZWAI_MOCK_WORKER_DELAY_MS"))
+	if raw == "" {
+		return 0
+	}
+	ms, err := strconv.Atoi(raw)
+	if err != nil || ms <= 0 {
+		return 0
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
 func workerScript(role string) mockScript {
+	pause := mockWorkerPause()
 	return func(turn int, msgs []*schema.Message) *schema.Message {
+		if turn == 1 && pause > 0 {
+			time.Sleep(pause)
+		}
 		task := firstUserText(msgs)
 		switch turn {
 		case 1:
@@ -271,19 +311,23 @@ func workerScript(role string) mockScript {
 // screenshots and test expectations as if the product had decided it.
 func reviewerScript(turn int, msgs []*schema.Message) *schema.Message {
 	task := oneLine(firstUserText(msgs))
+	tag := conversationTag(task)
+	clip := clipRunes(task, 96)
 	switch turn {
 	case 1:
 		note, _ := json.Marshal(map[string]any{
 			"action":  "add",
-			"content": "A conversation in this project covered: " + task,
+			"content": "Covered [" + tag + "]: " + clip,
 		})
 		skill, _ := json.Marshal(map[string]any{
 			"action":      "create",
-			"name":        safeName(task),
-			"description": "Recorded from a conversation about: " + task,
-			"content": "1. Read what is already in the workspace.\n" +
-				"2. Fan the work out to sub-agents and collect their results.\n" +
-				"3. Report back with the result first.\n",
+			"name":        "recorded-" + tag,
+			"description": "After conversation " + tag,
+			// The note already carries the clip. Putting it in the body
+			// too is the exact twin the overlap check exists to stop, and
+			// three concurrent reviews would then refuse each other's
+			// creates. The tag is enough to keep the writes derived.
+			"content": "For " + tag + ":\n1. Inspect the workspace.\n2. Collect results.\n3. Report first.\n",
 		})
 		return &schema.Message{
 			Role:             schema.Assistant,
@@ -326,11 +370,29 @@ func mockBriefing(src string) string {
 	if flat == "" {
 		return "Prior conversation, folded."
 	}
-	r := []rune(flat)
-	if len(r) > mockBriefingMaxRunes {
-		flat = strings.TrimSpace(string(r[:mockBriefingMaxRunes]))
+	const prefix = "Prior work: "
+	srcN := utf8.RuneCountInString(src)
+	maxOut := mockBriefingMaxRunes
+	if srcN > 0 && srcN-1 < maxOut {
+		maxOut = srcN - 1
 	}
-	return "Prior work: " + flat
+	if maxOut < 1 {
+		return ""
+	}
+	prefixN := utf8.RuneCountInString(prefix)
+	if maxOut <= prefixN {
+		out := "ok"
+		if utf8.RuneCountInString(out) > maxOut {
+			return string([]rune(out)[:maxOut])
+		}
+		return out
+	}
+	bodyN := maxOut - prefixN
+	r := []rune(flat)
+	if len(r) > bodyN {
+		flat = strings.TrimSpace(string(r[:bodyN]))
+	}
+	return prefix + flat
 }
 
 func titleRequest(msgs []*schema.Message) string {
@@ -385,6 +447,25 @@ func completeOpenGoalEnabled() bool {
 	completeOpenGoalMu.Lock()
 	defer completeOpenGoalMu.Unlock()
 	return completeOpenGoal
+}
+
+var (
+	mockFailMu  sync.Mutex
+	mockFailErr error
+)
+
+// SetMockFailure makes every scripted model call return err. Tests that
+// need a crashed turn call this and restore nil in Cleanup.
+func SetMockFailure(err error) {
+	mockFailMu.Lock()
+	mockFailErr = err
+	mockFailMu.Unlock()
+}
+
+func mockCallFailure() error {
+	mockFailMu.Lock()
+	defer mockFailMu.Unlock()
+	return mockFailErr
 }
 
 func mockShouldCompleteGoal(msgs []*schema.Message) bool {
@@ -493,6 +574,21 @@ func plainUserText(m *schema.Message) string {
 
 // spawnedIDs harvests the agent ids the spawn tool handed back, exactly as a
 // real manager has to read them out of its own tool results.
+func nextWaitCallID(msgs []*schema.Message) string {
+	n := 0
+	for _, m := range msgs {
+		if m == nil || m.Role != schema.Assistant {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			if tc.Function.Name == "wait_agents" {
+				n++
+			}
+		}
+	}
+	return fmt.Sprintf("mock-wait-%d", n+1)
+}
+
 func spawnedIDs(msgs []*schema.Message) []string {
 	var ids []string
 	for _, m := range msgs {
@@ -582,6 +678,23 @@ func oneLine(s string) string {
 		return string(r[:160]) + "…"
 	}
 	return s
+}
+
+func clipRunes(s string, max int) string {
+	r := []rune(s)
+	if max <= 0 || len(r) <= max {
+		return s
+	}
+	return string(r[:max])
+}
+
+// conversationTag distinguishes two reviews of similar transcripts so the
+// memory tools do not treat them as one subject. The clip still carries
+// words from the conversation; the tag is what keeps the writes unique.
+func conversationTag(s string) string {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	return fmt.Sprintf("%08x", h.Sum32())
 }
 
 // safeName reduces a model-invented role to something usable as a file name.

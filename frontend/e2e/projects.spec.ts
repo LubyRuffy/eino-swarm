@@ -176,15 +176,15 @@ test("hovering a project starts a conversation in it, not in Recents", async ({
   await createProject(page, project)
   const wrap = page.getByTestId("project-wrap").filter({ hasText: project })
 
-  await expect(wrap.getByTestId("project-fold")).toBeHidden()
-  await expect(wrap.getByTestId("project-folder")).toBeVisible()
+  await expect(wrap.getByTestId("project-folder")).toHaveAttribute("data-open", "true")
+  await expect(wrap.getByTestId("project-fold")).toHaveCount(0)
+  await expect(wrap.locator("[data-drag-handle]")).toHaveCount(0)
 
   const startIn = page.getByRole("button", { name: `New conversation in ${project}` })
   await expect(startIn).toHaveCSS("opacity", "0")
   await projectRow(page, project).hover()
   await expect(startIn).toHaveCSS("opacity", "1")
-  await expect(wrap.getByTestId("project-fold")).toBeVisible()
-  await expect(wrap.getByTestId("project-folder")).toBeHidden()
+  await expect(wrap.getByTestId("project-folder")).toHaveAttribute("data-open", "true")
   await startIn.click()
 
   await expect(page.getByTestId("thread-project")).toHaveText(project)
@@ -203,6 +203,12 @@ test("hovering a project starts a conversation in it, not in Recents", async ({
   expect(topicName).not.toBeNull()
   expect(Math.abs(folder!.x - topicKind!.x)).toBeLessThan(2)
   expect(Math.abs(projectName!.x - topicName!.x)).toBeLessThan(2)
+
+  await projectRow(page, project).click()
+  await expect(wrap.getByTestId("project-folder")).toHaveAttribute("data-open", "false")
+  await expect(wrap.getByTestId("project-threads")).toHaveCount(0)
+  await projectRow(page, project).click()
+  await expect(wrap.getByTestId("project-folder")).toHaveAttribute("data-open", "true")
 })
 
 test("a project topic can be pinned to the top and stays there after reload", async ({
@@ -233,11 +239,7 @@ test("dragging a project pins that order across reload", async ({ page }) => {
     if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
       throw new Error("missing project row")
     }
-    const handle = source.querySelector("[data-drag-handle]")
-    if (!(handle instanceof HTMLElement)) {
-      throw new Error("missing drag handle")
-    }
-    handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+    source.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
     const dt = new DataTransfer()
     source.dispatchEvent(
       new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: dt }),

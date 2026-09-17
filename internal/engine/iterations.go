@@ -46,13 +46,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	acc *accumulator, toolset *tools.Set, pc *projectContext, messages []adk.Message,
 ) (swarm.RunResult, error) {
 	e := rt.engine
-	extra := pc.promptSections()
 	var th *store.Thread
 	if got, err := e.store.GetThread(rt.threadID); err == nil {
 		th = got
-		extra = conversationExtra(th, pc)
 	}
-	instruction := managerPrompt(toolset, e.cfg, extra)
+	instruction := ManagerPrompt(toolset, e.cfg, managerExtra(e.cfg, th, pc))
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.
@@ -69,23 +67,54 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		)
 	}
 	budget := e.cfg.Swarm.ManagerIterations()
+	if pursuingGoal(th) {
+		budget = e.cfg.Swarm.GoalSessionIterations()
+	}
 	used := 0
 	var res swarm.RunResult
 	var runErr error
 	restore, planted := rt.takeWorkerRestore()
+	defer func() { rt.setSessionUsed(used) }()
 	for {
 		res, runErr = reg.RunWith(ctx, swarm.RunConfig{
-			Instruction:     instruction,
-			Messages:        messages,
-			ManagerTools:    managerTools,
-			MaxIterations:   budget,
-			RestoreWorkers:  restore,
-			FinishedWorkers: planted,
+			Instruction:        instruction,
+			Messages:           messages,
+			ManagerTools:       managerTools,
+			MaxIterations:      budget,
+			RestoreWorkers:     restore,
+			FinishedWorkers:    planted,
+			ManagerMiddlewares: e.autoCompactHandlers(rt.threadID, turn.ID, th),
 		}, swarm.Callback(acc.onNotify))
 		restore, planted = nil, nil
 		used += budget
 		if !isMaxIterations(runErr) {
 			return res, runErr
+		}
+		// Session cancel (time) and Interrupt share this ctx. Returning
+		// eino's cap here would mark the turn as a graph error.
+		if ctx.Err() != nil {
+			return res, ctx.Err()
+		}
+		if got, err := e.store.GetThread(rt.threadID); err == nil {
+			th = got
+		}
+		if pursuingGoal(th) {
+			// eino needs a finite ReAct slice. That is not a /goal
+			// session boundary: keep this turn, keep the registry, do
+			// not spend goal_max_auto_turns. The time cap still ends
+			// the session.
+			messages = stitchManagerToolResults(
+				nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
+				rt.engine.managerToolResults(turn.ID),
+			)
+			budget = e.cfg.Swarm.GoalSessionIterations()
+			continue
+		}
+		if closedStandingGoal(th) {
+			// complete_goal / block_goal landed mid-slice. Asking to
+			// extend would pop the non-goal confirm card on a turn
+			// that already stopped pursuing.
+			return res, nil
 		}
 		extend := e.cfg.Swarm.ManagerIterations()
 		if !rt.waitToExtend(ctx, turn, used, extend) {
@@ -94,14 +123,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			}
 			return res, limitStopError{Used: used}
 		}
-		next := messagesWithoutSystem(res.Transcript)
-		if len(next) == 0 {
-			next = messages
-		}
-		for _, m := range reg.TakePendingSteerMessages() {
-			next = append(next, m)
-		}
-		messages = next
+		messages = nextManagerMessages(res, messages, reg.TakePendingSteerMessages())
 		budget = extend
 	}
 }
@@ -179,6 +201,111 @@ func (rt *runtime) signalContinue(proceed bool) bool {
 	default:
 		return false
 	}
+}
+
+// nextManagerMessages feeds the previous transcript back into the next
+// ReAct slice. Instruction regenerates the system prompt; unread steers
+// land at the end so they are the last thing the manager reads.
+func nextManagerMessages(res swarm.RunResult, fallback []adk.Message, extra []*schema.Message) []adk.Message {
+	next := messagesWithoutSystem(res.Transcript)
+	if len(next) == 0 {
+		next = fallback
+	}
+	if len(extra) == 0 {
+		return next
+	}
+	out := make([]adk.Message, len(next), len(next)+len(extra))
+	copy(out, next)
+	for _, m := range extra {
+		out = append(out, m)
+	}
+	return out
+}
+
+// stitchManagerToolResults puts manager tool_result rows back next to the
+// assistant call that produced them. eino's iteration cap is a ChatModel
+// preprocessor failure: AfterModel can snapshot the call, then SetHistory
+// on the capped next step wipes the wrap-appended results. Without this a
+// /goal slice re-reads a stale wait_agents report forever.
+func stitchManagerToolResults(msgs []adk.Message, results []store.Event) []adk.Message {
+	if len(results) == 0 {
+		return msgs
+	}
+	byID := make(map[string]store.Event, len(results))
+	order := make([]string, 0, len(results))
+	for _, ev := range results {
+		id := strings.TrimSpace(ev.ToolCallID)
+		if id == "" {
+			continue
+		}
+		if _, ok := byID[id]; !ok {
+			order = append(order, id)
+		}
+		byID[id] = ev
+	}
+	if len(byID) == 0 {
+		return msgs
+	}
+	placed := make(map[string]bool, len(byID))
+	out := make([]adk.Message, 0, len(msgs)+len(byID))
+	for _, m := range msgs {
+		if m != nil && m.Role == schema.Tool {
+			id := strings.TrimSpace(m.ToolCallID)
+			if ev, ok := byID[id]; ok {
+				if placed[id] {
+					continue
+				}
+				out = append(out, schema.ToolMessage(ev.Text, id))
+				placed[id] = true
+				continue
+			}
+		}
+		out = append(out, m)
+		if m == nil || m.Role != schema.Assistant || len(m.ToolCalls) == 0 {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			id := strings.TrimSpace(tc.ID)
+			if id == "" || placed[id] {
+				continue
+			}
+			ev, ok := byID[id]
+			if !ok {
+				continue
+			}
+			out = append(out, schema.ToolMessage(ev.Text, id))
+			placed[id] = true
+		}
+	}
+	for _, id := range order {
+		if placed[id] {
+			continue
+		}
+		out = append(out, schema.ToolMessage(byID[id].Text, id))
+		placed[id] = true
+	}
+	return out
+}
+
+func (e *Engine) managerToolResults(turnID string) []store.Event {
+	if e == nil || turnID == "" {
+		return nil
+	}
+	events, err := e.store.ListTurnEvents(turnID)
+	if err != nil {
+		return nil
+	}
+	var out []store.Event
+	for _, ev := range events {
+		if ev.Kind != swarm.NotifyToolResult.String() {
+			continue
+		}
+		if ev.AgentID != "" && ev.AgentID != swarm.DefaultManagerID {
+			continue
+		}
+		out = append(out, ev)
+	}
+	return out
 }
 
 // messagesWithoutSystem drops leading system messages so a continued run can

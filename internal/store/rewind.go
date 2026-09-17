@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 )
@@ -83,12 +84,32 @@ func (s *Store) clearBrokenCompact(tx *gorm.DB, threadID string) error {
 	if err := tx.First(&th, "id = ?", threadID).Error; err != nil {
 		return err
 	}
-	if th.CompactThroughSeq <= 0 || th.CompactSummary == "" {
+	if th.CompactThroughSeq > 0 && th.CompactSummary != "" {
+		var n int64
+		if err := tx.Model(&Message{}).
+			Where("thread_id = ? AND seq = ?", threadID, th.CompactThroughSeq).
+			Count(&n).Error; err != nil {
+			return err
+		}
+		if n == 0 {
+			if err := tx.Model(&Thread{}).Where("id = ?", threadID).Updates(map[string]any{
+				"compact_summary":     "",
+				"compact_through_seq": 0,
+			}).Error; err != nil {
+				return err
+			}
+		}
+	}
+	return s.clearBrokenSessionMemory(tx, threadID, &th)
+}
+
+func (s *Store) clearBrokenSessionMemory(tx *gorm.DB, threadID string, th *Thread) error {
+	if th.SessionMemoryThroughSeq <= 0 || strings.TrimSpace(th.SessionMemory) == "" {
 		return nil
 	}
 	var n int64
-	if err := tx.Model(&Message{}).
-		Where("thread_id = ? AND seq = ?", threadID, th.CompactThroughSeq).
+	if err := tx.Model(&Event{}).
+		Where("thread_id = ? AND seq = ?", threadID, th.SessionMemoryThroughSeq).
 		Count(&n).Error; err != nil {
 		return err
 	}
@@ -96,7 +117,8 @@ func (s *Store) clearBrokenCompact(tx *gorm.DB, threadID string) error {
 		return nil
 	}
 	return tx.Model(&Thread{}).Where("id = ?", threadID).Updates(map[string]any{
-		"compact_summary":     "",
-		"compact_through_seq": 0,
+		"session_memory":             "",
+		"session_memory_through_seq": 0,
+		"session_memory_tokens":      0,
 	}).Error
 }

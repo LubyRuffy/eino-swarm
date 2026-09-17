@@ -63,6 +63,7 @@ type Engine struct {
 	// one that never finishes must not keep the window open.
 	titles   titlePool
 	compacts compactPool
+	sessions sessionMemoryPool
 }
 
 // New builds an engine over an already-open store and provider pool.
@@ -82,6 +83,7 @@ func New(cfg *config.Config, st *store.Store, pool *provider.Pool, log *slog.Log
 		reviews:      newReviewPool(),
 		titles:       newTitlePool(),
 		compacts:     newCompactPool(),
+		sessions:     newSessionMemoryPool(),
 	}
 }
 
@@ -309,6 +311,7 @@ func (e *Engine) Shutdown() {
 	if !e.compacts.stop(reviewShutdownGrace) {
 		e.log.Warn("a compact was still running at shutdown; later turns keep the previous briefing")
 	}
+	e.sessions.stop()
 	e.mu.Lock()
 	rts := make([]*runtime, 0, len(e.runtimes))
 	for _, rt := range e.runtimes {

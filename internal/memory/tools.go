@@ -71,12 +71,13 @@ func (t *memoryTool) Info(context.Context) (*schema.ToolInfo, error) {
 		Name: ToolMemory,
 		Desc: "Curate the notes carried into every future conversation in this project. " +
 			"Store durable facts about the environment, the human's stated preferences, " +
-			"conventions and corrections — not this conversation's working details, not a " +
-			"status that will change again, and not anything that can be looked up again. " +
-			"The store is bounded: a write that would grow it past the limit is refused, " +
-			"including replace with a longer note. The result includes over_by and the " +
-			"current notes. Do not retry the same content; shorten or drop notes until " +
-			"over_by characters are free, then retry.",
+			"conventions and corrections — one or two sentences, not a procedure, not this " +
+			"conversation's working details, not a remaining count or other status that will " +
+			"change again, and not anything that can be looked up again. A note that restates " +
+			"a recorded skill is refused. The store is bounded by a total and by a per-note " +
+			"cap: a write that would grow it past either is refused, including replace with a " +
+			"longer note. The result includes over_by or entry_max and the current notes. " +
+			"Do not retry the same content; shorten, drop notes, or record a procedure as a skill.",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"action": {Type: schema.String, Required: true,
 				Desc: "add, replace or remove",
@@ -148,6 +149,24 @@ func memoryFailure(err error) string {
 			out["matched"] = overflow.Matched
 		}
 		return marshal(out)
+	}
+	var tooLongErr *EntryTooLongError
+	if errors.As(err, &tooLongErr) {
+		return marshal(map[string]any{
+			"success":   false,
+			"error":     tooLongErr.Error(),
+			"chars":     tooLongErr.Chars,
+			"entry_max": tooLongErr.Max,
+		})
+	}
+	var restates *NoteSkillOverlapError
+	if errors.As(err, &restates) {
+		return marshal(map[string]any{
+			"success":              false,
+			"error":                restates.Error(),
+			"existing":             restates.Name,
+			"existing_description": restates.Description,
+		})
 	}
 	var match *MatchError
 	if errors.As(err, &match) {
@@ -224,7 +243,9 @@ func (t *skillManageTool) Info(context.Context) (*schema.ToolInfo, error) {
 			"conversation can follow it instead of working it out again. Worth recording: a " +
 			"multi-step workflow that succeeded, a recovery from a failure, a correction the " +
 			"human made. Not worth recording: a single tool call, or anything specific to one " +
-			"request. Patch an existing skill rather than adding a second one on the same subject.",
+			"request. One subject is one skill. Call skill_view on any index entry that might " +
+			"already cover the subject; a create that collides is refused and names the " +
+			"existing skill — patch that one (or delete it first).",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"action": {Type: schema.String, Required: true,
 				Desc: "create, patch or delete",
@@ -265,6 +286,17 @@ func (t *skillManageTool) InvokableRun(_ context.Context, args string, _ ...tool
 	case "create":
 		skill, err := t.store.WriteSkill(name, a.Description, a.Content)
 		if err != nil {
+			var dup *DuplicateSkillError
+			if errors.As(err, &dup) {
+				names, _ := t.store.ListSkills()
+				return marshal(map[string]any{
+					"success":              false,
+					"error":                dup.Error(),
+					"existing":             dup.Name,
+					"existing_description": dup.Description,
+					"available":            skillNames(names),
+				}), nil
+			}
 			return failure("%s", err.Error()), nil
 		}
 		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: skill.Name,

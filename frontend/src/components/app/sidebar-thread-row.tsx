@@ -1,4 +1,4 @@
-import { GripVertical, MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react"
+import { MoreHorizontal, Pencil, Pin, PinOff, Trash2 } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -9,11 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
-import {
-  SidebarGripSlot,
-  SidebarKindSlot,
-  sidebarRowClass,
-} from "@/components/app/sidebar-slots"
+import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots"
 import { StatusDot } from "@/components/app/transcript"
 import { useSortableList } from "@/lib/sortable"
 import type { Thread } from "@/lib/types"
@@ -23,8 +19,8 @@ import { cn } from "@/lib/utils"
 type DragBind = ReturnType<ReturnType<typeof useSortableList>["bind"]>
 
 /** One conversation in the sidebar: Recents, a project folder, or Pinned.
- *  Every title keeps a size-4 slot in front so Recents, Pinned and nested
- *  topics share a column with the project name. */
+ *  The leading size-4 slot is the folder column — empty, or a progress
+ *  dot when the turn is running — so titles line up with the project name. */
 export function SidebarThreadRow({
   thread,
   active,
@@ -87,28 +83,24 @@ export function SidebarThreadRow({
       aria-current={active ? "true" : undefined}
       className={cn(
         sidebarRowClass,
-        drag && "cursor-grab data-[dragging=true]:cursor-grabbing",
+        drag && "data-[dragging=true]:cursor-grabbing",
         "data-[dragging=true]:opacity-60 data-[over=true]:bg-sidebar-accent",
         active
           ? "bg-sidebar-accent text-foreground"
           : "text-sidebar-foreground hover:bg-sidebar-accent/60",
       )}
     >
-      {drag ? (
-        <SidebarGripSlot handle onClick={() => onOpen(thread.id)}>
-          <GripVertical className="size-3.5 shrink-0" />
-        </SidebarGripSlot>
-      ) : null}
       <button
         type="button"
         onClick={() => onOpen(thread.id)}
         className="flex min-w-0 flex-1 items-center gap-1 text-left"
       >
-        <SidebarKindSlot />
+        <SidebarKindSlot>
+          {running ? <StatusDot status="running" /> : null}
+        </SidebarKindSlot>
         <span data-testid="row-label" className="truncate">
           {thread.title || t("sidebar.untitled")}
         </span>
-        {running ? <StatusDot status="running" /> : null}
       </button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

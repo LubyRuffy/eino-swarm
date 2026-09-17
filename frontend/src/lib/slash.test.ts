@@ -22,6 +22,12 @@ describe("slashDraft", () => {
     expect(slashDraft("/goal ")).toBeNull()
     expect(slashDraft(" /goal")).toBeNull()
   })
+
+  it("closes once a known command already has its argument, even without a space", () => {
+    expect(slashDraft("/goalkeep")).toEqual({ query: "goalkeep" })
+    expect(slashDraft("/goal持续推进")).toBeNull()
+    expect(slashDraft("／goal持续推进")).toBeNull()
+  })
 })
 
 describe("filterSlashCommands", () => {
@@ -52,6 +58,23 @@ describe("parseSlashSubmit", () => {
     })
     expect(parseSlashSubmit("/nope")).toBeNull()
     expect(parseSlashSubmit("goal")).toBeNull()
+  })
+
+  it("still reads the command when the objective is glued on without a space", () => {
+    expect(parseSlashSubmit("/goal持续推进")).toEqual({
+      id: "goal",
+      arg: "持续推进",
+    })
+    expect(parseSlashSubmit("/GOAL持续推进")).toEqual({
+      id: "goal",
+      arg: "持续推进",
+    })
+    expect(parseSlashSubmit("／goal keep going")).toEqual({
+      id: "goal",
+      arg: "keep going",
+    })
+    expect(parseSlashSubmit("/goals")).toBeNull()
+    expect(parseSlashSubmit("/compacted")).toBeNull()
   })
 })
 

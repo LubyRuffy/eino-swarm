@@ -3,7 +3,7 @@
 //
 //	zwai desktop   native window (the default)
 //	zwai web       the same UI in your browser
-//	zwai tui       terminal UI for a single task
+//	zwai tui       terminal UI: composer, --task one-shot, --goal starts immediately
 //	zwai trace     print everything that happened in one turn
 //	zwai config    show or create the configuration file
 //
@@ -137,8 +137,8 @@ usage:
   zwai web [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
         serve the same app in your browser
 
-  zwai tui --task "..." [--goal "..."] [--workspace DIR] [--data-dir DIR] [--mock]
-        run one task in the terminal
+  zwai tui [--task "..."] [--goal "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
+        terminal swarm: omit --task for a composer; --goal starts that objective immediately
 
   zwai trace <turn-id|conversation-id> [--data-dir DIR] [--full]
         print a turn's timeline and every model call it made

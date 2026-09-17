@@ -109,22 +109,21 @@ describe("Project list", () => {
     expect(otherRow?.querySelector("[data-testid=thread-kind]")).toBeNull()
   })
 
-  // One icon slot: the folder, swapped for a chevron on hover. Recents
-  // uses the same empty slot so titles share a column with the name.
-  it("uses the folder slot for fold, and lines topic names under the project name", () => {
-    renderList({
-      threadsByProject: {
-        pj_1: [
-          topic({ id: "th_open", title: "Open topic" }),
-          topic({ id: "th_other", title: "Other topic" }),
-        ],
-      },
+  // The directory glyph is the fold: open folder vs closed folder.
+  // Topic titles keep the same size-4 slot so they sit under the name.
+  it("swaps the folder glyph with expand, and lines topic names under the project name", () => {
+    const threads = [
+      topic({ id: "th_open", title: "Open topic" }),
+      topic({ id: "th_other", title: "Other topic" }),
+    ]
+    const { rerender } = renderWith({
+      threadsByProject: { pj_1: threads },
       expanded: { pj_1: true },
       activeId: "th_open",
     })
     expect(screen.queryByTestId("row-chevron")).not.toBeInTheDocument()
-    expect(screen.getByTestId("project-folder")).toHaveClass("group-hover:hidden")
-    expect(screen.getByTestId("project-fold")).toHaveClass("hidden", "group-hover:block")
+    expect(screen.queryByTestId("project-fold")).not.toBeInTheDocument()
+    expect(screen.getByTestId("project-folder")).toHaveAttribute("data-open", "true")
     expect(screen.getByTestId("project-kind")).toHaveClass("size-4")
     const kinds = screen.getAllByTestId("row-kind")
     expect(kinds).toHaveLength(2)
@@ -137,6 +136,31 @@ describe("Project list", () => {
     expect(
       screen.getByTestId("project-row").querySelector("[data-testid=row-label]"),
     ).toHaveTextContent("First")
+    rerender({ threadsByProject: { pj_1: threads }, expanded: { pj_1: false } })
+    expect(screen.getByTestId("project-folder")).toHaveAttribute("data-open", "false")
+  })
+
+  it("puts a running conversation's progress in the folder column", () => {
+    renderList({
+      threadsByProject: {
+        pj_1: [topic({ id: "th_busy", title: "Busy topic", running: true })],
+      },
+      expanded: { pj_1: true },
+      runningId: "th_busy",
+    })
+    const row = screen.getByTestId("thread-row")
+    const kind = row.querySelector("[data-testid=row-kind]")
+    expect(kind?.querySelector("[aria-label]")).toHaveAttribute("aria-label", "running")
+    expect(row.querySelector("[data-testid=row-label]")?.nextElementSibling).toBeNull()
+  })
+
+  it("does not paint a drag grip on the folder or its topics", () => {
+    renderList({
+      threadsByProject: { pj_1: [topic({ id: "th_1", title: "A topic" })] },
+      expanded: { pj_1: true },
+    })
+    expect(screen.getByTestId("project-row").querySelector("[data-drag-handle]")).toBeNull()
+    expect(screen.getByTestId("thread-row").querySelector("[data-drag-handle]")).toBeNull()
   })
 
   // py-1.5 around a 28px menu button stacked each row to 40px.
@@ -237,7 +261,7 @@ describe("Project list", () => {
       effectAllowed: "move",
       dropEffect: "move",
     }
-    fireEvent.mouseDown(rows[1].querySelector("[data-drag-handle]")!)
+    fireEvent.mouseDown(rows[1])
     fireEvent.dragStart(rows[1], { dataTransfer: dt })
     fireEvent.dragOver(rows[0], { dataTransfer: dt })
     fireEvent.drop(rows[0], { dataTransfer: dt })

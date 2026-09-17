@@ -58,6 +58,7 @@ const base: Settings = {
     enabled: true,
     auto_review: true,
     char_limit: 1,
+    entry_max: 1,
     review_max_iterations: 1,
     skills_index_max: 1,
     notifications: "on",
@@ -111,6 +112,8 @@ describe("Settings dialog", () => {
 
     expect(screen.getByRole("dialog").className).toMatch(/\bh-dvh\b/)
     expect(screen.getByRole("button", { name: "Back to app" })).toBeInTheDocument()
+    // modal={false}: Radix otherwise walks the conversation to aria-hide it.
+    expect(document.querySelector(".bg-black\\/60")).toBeNull()
     expect(screen.queryByTestId("settings-titlebar")).toBeNull()
     expect(screen.getByLabelText("Search settings")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull()
@@ -122,6 +125,7 @@ describe("Settings dialog", () => {
       "Swarm",
       "Tools",
       "Memory",
+      "Personality",
       "General",
     ] as const) {
       fireEvent.click(screen.getByRole("tab", { name }))
@@ -170,6 +174,10 @@ describe("Settings dialog", () => {
     expect(
       screen.getByLabelText("Messages to keep when compacting"),
     ).toBeInTheDocument()
+    expect(screen.getByLabelText("Auto-compact at (tokens)")).toBeInTheDocument()
+    expect(
+      screen.queryByLabelText("Compact timeout (seconds)"),
+    ).not.toBeInTheDocument()
     expect(
       screen.getByLabelText("Goal auto-continue turns"),
     ).toBeInTheDocument()
@@ -211,6 +219,9 @@ describe("Settings dialog", () => {
       name: "Remember anything at all",
     })
     expect(toggle).toBeChecked()
+    expect(
+      screen.getByLabelText("Per-note cap (characters)"),
+    ).toBeInTheDocument()
     await user.click(toggle)
     await waitFor(() => expect(api.saveSettings).toHaveBeenCalled())
     expect(vi.mocked(api.saveSettings).mock.calls[0][0].memory?.enabled).toBe(
@@ -222,6 +233,24 @@ describe("Settings dialog", () => {
       font_size: "medium",
       content_width: "comfortable",
     })
+  })
+
+  it("writes personality without a Save button", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add a provider" }),
+      ).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole("tab", { name: "Personality" }))
+    const box = await screen.findByLabelText("Personal preferences")
+    fireEvent.change(box, { target: { value: "prefer compact replies" } })
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalled())
+    expect(
+      vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0].personality
+        ?.instructions,
+    ).toBe("prefer compact replies")
   })
 
   it("writes the chrome language with the rest of the document", async () => {
@@ -304,7 +333,7 @@ describe("Settings dialog", () => {
     expect(screen.getByLabelText("Font")).toHaveTextContent("System")
     expect(screen.getByLabelText("Font size")).toHaveTextContent("Medium")
     expect(screen.getByLabelText("Conversation width")).toHaveTextContent(
-      "Comfortable",
+      "Standard",
     )
   })
 })

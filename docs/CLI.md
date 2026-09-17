@@ -3,7 +3,7 @@
 ```
 zwai [desktop] [--data-dir DIR] [--mock]
 zwai web  [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
-zwai tui  --task "..." [--goal "..."] [--workspace DIR] [--data-dir DIR] [--mock]
+zwai tui  [--task "..."] [--goal "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
 zwai trace <turn-id|conversation-id> [--full] [--data-dir DIR]
 zwai config [path|init|show] [--data-dir DIR]
 zwai version | help
@@ -61,8 +61,9 @@ Serves the same app over HTTP and opens your browser.
 | `--no-open` | off | do not open a browser. Also honoured: `server.open_browser: false`. |
 
 The URL is printed on startup. `Ctrl-C` shuts down cleanly: in-memory runs stop
-and unfinished turns stay `running`, so the next start continues them. A user
-**Stop** in the UI is the only path that records `cancelled`.
+and unfinished turns stay `running`, so the next start continues them. In-flight
+tool calls the previous process never finished are marked stopped, not left
+spinning. A user **Stop** in the UI is the only path that records `cancelled`.
 
 ```bash
 zwai web --addr 0.0.0.0:8787   # reachable from your LAN — see the warning below
@@ -74,18 +75,39 @@ zwai web --addr 0.0.0.0:8787   # reachable from your LAN — see the warning bel
 
 ## `zwai tui`
 
-One task, one terminal, no UI — the same swarm, the same config, the same
-toolset, and the same host snapshot in the prompt (OS, shell, date), so a
-task that misbehaves in the app can be reproduced here.
-
-| flag | meaning |
-|---|---|
-| `--task "..."` | the task. Words after the flags also count as the task, so quoting is optional: `zwai tui summarise the notes`. |
-| `--goal "..."` | standing objective for this one-shot run. The manager gets `complete_goal` and `block_goal` and, if it does not call either, the TUI starts another run (up to `swarm.goal_max_auto_turns`) instead of exiting. The app's `/goal` is the same runtime on a saved conversation. |
-| `--workspace DIR` | the directory relative tool paths resolve against. Default: a temporary directory that is removed on exit. |
+The same swarm, the same config, the same toolset, and the same manager
+prompt as the app (OS, shell, date, delegation policy, advertised tools).
+The typed task is the user message, not the system prompt — otherwise the
+manager thinks it has no `web_search` and spawns a worker just to search.
+When `personality.instructions` is set, that
+section is prepended to the manager instruction the same way the app does
+(before `--goal`, so a standing objective is still last). Launch it with no task and it stays open at a
+composer, the way the other terminal CLIs do: type a task, Enter sends, the
+transcript stays, the next Enter is the next turn. The idle composer parks
+the real terminal cursor at the insert point so CJK IME preedit follows the
+committed text (a painted block caret left the hardware cursor at column 0,
+which is where the IME attached). Type `/` for a Codex-style command popup
+(`/goal`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; `/quit` appears once you
+type it). `/goal <objective>` starts that text as the next turn (a CJK
+objective glued to the name, or a fullwidth `／`, still counts). Enter on `/model` or `/reason` opens the catalog / thinking-level
+picker. The transcript follows the live edge: a finished answer stays
+on screen instead of folding to its first line, and a folded thought
+previews the last line that was streaming. `--task` is the one-shot path for reproducing a misbehaving UI run —
+it starts immediately and exits when that run finishes. `--goal` without `--task`
+is the same start: the objective is the first user message, auto-continues until
+`complete_goal` / `block_goal`, then the composer comes back. Pass both only when
+the first user line should differ from the standing objective.
 
 Nothing is written to the database in this mode; use the app when you want the
 conversation kept.
+
+| flag | meaning |
+|---|---|
+| `--task "..."` | run this task immediately, then exit. Words after the flags also count as the task, so quoting is optional: `zwai tui summarise the notes`. Omit it to wait at the composer (`ctrl+c` leaves), unless `--goal` is set. |
+| `--goal "..."` | standing objective. The manager gets `complete_goal` and `block_goal` and, if it does not call either, the TUI starts another run (up to `swarm.goal_max_auto_turns`) instead of returning the composer / exiting. A failed run blocks the objective the same way `block_goal` does. Each run is capped by `swarm.goal_session_max_seconds`. `swarm.goal_session_max_iterations` is only eino's ReAct slice — hitting it extends the same run without spending the auto-continue budget. The app's `/goal` is the same pursuit on a saved conversation. Omit `--task` and the objective is also the first user message — it starts immediately. Pass `--task` (or leftover words) only when the first line should steer, not restate the objective. |
+| `--model NAME` | the model name this session sends. Default: the provider's configured model. The catalog is whatever Settings last discovered (plus that default). Interactive sessions also switch with `/model` and `/model NAME`. |
+| `--reasoning LEVEL` | thinking level for this session: empty/`default`, `low`, `medium`, or `high`. Empty sends no `reasoning_effort`, so a non-reasoning endpoint is not handed a field it rejects. Interactive sessions cycle with `shift+tab` or `/reason LEVEL`. |
+| `--workspace DIR` | the directory relative tool paths resolve against. Default: a temporary directory that is removed on exit. |
 
 ## `zwai trace`
 

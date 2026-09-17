@@ -23,7 +23,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   tick cluster sits in the middle of the transcript's left edge. Hover it for a
   list of your own turns; click one to scroll there. Auto-follow unpins so a
   live stream does not yank you back to the bottom. Opening another conversation
-  from the list lands at its latest turn, not the top of the history. New tokens while you are
+  from the list lands at its latest turn — and lights that tick — not the top
+  of the history. A long log loads from the live edge first; older turns appear
+  when you scroll up. New tokens while you are
   reading light a jump-to-latest control; click it to return and follow again.
 - **A ring on the composer shows how full the last manager prompt is.** Hover
   it for the compact count against this model's window, plus this-turn billed
@@ -51,13 +53,29 @@ uploads, downloads and the live event stream have exactly one implementation.
   composer — hover to read, edit or drop it — and is sent with whatever you type
   next, instead of being dumped into the box.
 - **Slash commands in the composer.** Type `/` at the start of the box for the
-  same palette Cursor and Codex use. **goal** pins a standing objective this
+  same palette Cursor and Codex use. **goal** sets a standing objective and
+  starts pursuing it in this turn. Codex cuts the command name at a space;
+  an IME objective glued to `/goal` (or typed with a fullwidth `／`) is still
+  the command, never a user message. A raw `POST /turns` of that line is
+  intercepted the same way. The
   conversation keeps pursuing until the manager calls `complete_goal` (or you
-  clear it from the banner). If it hits an obstacle it cannot pass, it calls
-  `block_goal` and stops instead of retrying forever — **Start** resumes,
+  clear it from the banner). A live turn is steered so this round sees the
+  new text. Long pursuits split into sessions when the time
+  cap lands, so the transcript reads as a sequence of
+  "Worked for …" blocks; hitting the manager tool-round slice keeps the
+  same turn going instead of cutting a session. In-flight sub-agents survive
+  a time cut. If it hits an
+  obstacle it cannot pass, it calls
+  `block_goal` and stops instead of retrying forever — a crashed turn does
+  the same. **Start** resumes after a block, a cap, or a stop,
   the text is editable in place, and a live turn is told immediately. The
   runtime starts the next turn itself; a queued follow-up still wins. **compact** folds earlier turns into a briefing for later
-  prompts; the transcript you see does not change. Pin a cheaper summarizer
+  prompts; the transcript you see does not change. Old tool results that can
+  be re-read are cleared first. The briefing prefers a rolling session
+  summary extracted from the event log, so a long `/goal` does not teach
+  the project's memory from a compacted view. The same fold also runs
+  on its own once a manager call would exceed **Settings → Swarm → Auto-compact
+  at (tokens)** (default 80 000). Pin a cheaper summarizer
   under Settings → Models the same way as the conversation namer.
 - **Swarm, visible.** Sub-agents appear as they spawn, with live status and their
   own transcript. Built on [eino](https://github.com/cloudwego/eino) ADK and the
@@ -87,7 +105,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   lose power mid-turn: the next start continues every leftover conversation,
   with the answers already on screen still in the model's context, any
   sub-agents that were still working restarted under the same ids, and queued
-  follow-ups still waiting to run after that turn. Pressing
+  follow-ups still waiting to run after that turn. A tool call that was in
+  flight when the process died is marked stopped, not left spinning. Pressing
   **Stop** is the one thing that does not come back.
 - **Projects that remember.** Group conversations under one working directory and
   one instruction, and let them keep what they learn: after each turn the project
@@ -144,8 +163,13 @@ left rail (on the desktop window, **Back to app** sits below the traffic
 lights). Edits write themselves; **Back to app** flushes the last keystroke.
 Chrome language is **Settings → General**, the **中 / EN** control in the title
 bar, or ⌘K → Switch language. Agents still answer in the language you are using.
-Font, size, and whether the conversation fills the space between the sidebars
-or stays the current reading column are also **Settings → General**.
+Font and size are **Settings → General**. Conversation width is the title-bar
+control (standard reading column vs wide, filling the space between the
+sidebars), **Settings → General**, or ⌘K. How you want the manager to work
+with you — tone, language habits, standing preferences — is
+**Settings → Personality**. It is added to every conversation's
+system prompt. A project's instruction is the business context; when the two
+conflict, the project wins.
 Fill in **Models** (base URL, API key, discover models, pick a
 default), or seed it from the environment before the first start:
 
@@ -171,7 +195,9 @@ end-to-end tests run on and the fastest way to see the UI work.
 
 ## Using it
 
-Ask for something that has parts, because that is when a swarm beats one agent:
+The manager fans out when parallel work would save time or improve quality —
+you do not have to ask it to. Spawning one worker and waiting is not that:
+it is an extra hop. A request with independent parts is the clearest win:
 
 > Go through the three files I just uploaded, pull out every deadline, and leave me
 > a single summary.md with one table.
@@ -223,8 +249,8 @@ in a project. The title bar prefixes the conversation name with the project's
 The project list follows last use, not creation; drag a row to pin it.
 **New conversation** at the top of the list is Recents. Hover a project for a
 new-conversation control on the row itself — it starts one in that folder.
-Click a folder to collapse its topics — hover swaps the directory
-icon for a chevron in the same place. Click **Pinned**, **Projects**, or
+Click a folder to collapse its topics — the directory icon is closed
+when collapsed and open when expanded. Click **Pinned**, **Projects**, or
 **Recents** to fold the whole section (the arrow after the name shows
 on hover while the section is open). Pin a topic from the row menu to keep
 it in **Pinned** at the top.
@@ -232,7 +258,9 @@ it in **Pinned** at the top.
 things:
 
 - **an instruction**, added to the system prompt of every conversation in the
-  project, so you stop repeating how you want things done;
+  project, so you stop repeating how you want this work done. It is the
+  business context. Settings → Personality is how you like to be worked with;
+  when the two conflict, this project wins;
 - **a working directory**, an absolute path that already exists. Every
   conversation in the project reads and writes it directly, with your
   permissions. Leave it empty and zwai keeps one for you;
@@ -259,9 +287,12 @@ nothing. A write that landed is also named in the transcript itself
 and lets you keep yours or take the new ones — the last save does not silently
 win. Correcting a wrong note there matters: it would otherwise be repeated in
 every future conversation. Notes are budgeted (`memory.char_limit`, default 2200
-characters) because they ride in every prompt — once full, a write that would
+characters; one agent note is also capped at `memory.entry_max`, default 360)
+because they ride in every prompt — once full, a write that would
 grow the notes is refused, even a replace with a longer note. Something
-shorter has to land first.
+shorter has to land first. Creating a skill that already covers the same
+subject is refused: the result names the existing skill so the next call is
+a patch, not a second name.
 
 Memory lives in the data directory, never in your working directory, so a project
 pointed at a repository leaves nothing in it. A procedure that already lives in
@@ -275,7 +306,10 @@ are left alone. See [docs/CONFIG.md](docs/CONFIG.md) for the budgets.
 zwai                        # same as `zwai desktop`
 zwai web --addr :9000       # serve on another port
 zwai web --no-open          # do not open a browser
-zwai tui --task "..."       # one task, in the terminal, no UI
+zwai tui                    # interactive terminal; type / for commands
+zwai tui --goal "..."       # standing objective; starts immediately, composer stays after
+zwai tui --task "..."       # one task, then exit — handy for reproducing a UI run
+zwai tui --model NAME --reasoning high   # same session, pinned model and thinking level
 zwai trace tn_ab12…         # replay one turn; also accepts a conversation id
 zwai trace th_cd34… --full  # untruncated event text
 zwai config path            # where the config file is

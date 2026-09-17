@@ -277,7 +277,9 @@ func buildOpenAI(ctx context.Context, p config.Provider) (model.BaseChatModel, e
 	if err != nil {
 		return nil, fmt.Errorf("provider: build %q: %w", p.ID, err)
 	}
-	return m, nil
+	// eino-ext copies Message.Content onto ChatCompletionMessage even when
+	// UserInputMultiContent is set; go-openai then refuses to marshal.
+	return &exclusiveContentModel{inner: m}, nil
 }
 
 // ---------- telemetry ----------

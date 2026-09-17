@@ -10,19 +10,164 @@ The repository grew from a swarm orchestration library into a desktop
 co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`).
 
+### Added
+
+- **Tail-first conversation history.** Opening a conversation fetches
+  `GET /api/threads/:id/log` for one viewport of the live edge, then
+  the event stream resumes after that seq. Scrolling up pages older
+  events. The left jump rail still lists every human turn.
+
+- **Rolling session memory.** A conversation-local briefing is refreshed
+  from the event log (token/tool breakpoints, or when compact is about
+  to run) and recorded as `session_memory`. `/compact`, auto-compact,
+  and a `/goal` session cut copy that view instead of re-summarizing a
+  folded ADK transcript. The chat ignores the event the way it ignores
+  a generated title.
+
+- **Wide layout from the title bar.** The conversation still defaults to
+  the reading column. A title-bar control (and ⌘K) switches to a wide
+  layout that fills the space between the sidebars. Same
+  `ui.content_width` as Settings → General.
+
+- **Global personality.** **Settings → Personality** stores install-wide
+  preferences (tone, language habits) in `config.yaml` and adds them to
+  every manager system prompt, including `zwai tui`. Empty omits the
+  section. A project's instruction is the business context and wins on a
+  conflict. Sub-agents do not see it.
+
+- **Interactive `zwai tui`.** No `--task` opens a composer and keeps the
+  session, like the other terminal CLIs. Enter sends the next turn on the
+  same transcript; `ctrl+c` leaves. `--task` is still the one-shot path
+  that starts immediately and exits when that run finishes. The idle
+  composer parks the real terminal cursor at the insert point so CJK
+  IME preedit follows the committed text. Typing `/` opens a Codex-style
+  command popup (rounded surface, name + description, prefix filter,
+  `/model` and `/reason` pickers, `/help` / `/clear` / `/exit`).
+  `shift+tab` still cycles thinking level; `--model` / `--reasoning` set
+  the same choice for a one-shot run.
+
+- **Memory quality is enforced in the tools, not only in the reviewer prompt.**
+  `skill_manage` create that collides with an existing skill (edition suffix,
+  shared summary, copied body) is refused and names the skill to patch.
+  `memory` add/replace refuses a note longer than `memory.entry_max` (default
+  360) and a note that restates a recorded skill — the summary or the
+  steps. The Memory panel's editor still uses the total notes budget only.
+
+- **`/goal` work sessions.** A standing objective no longer welds itself
+  into one turn until 200 manager rounds. Each pursuit turn ends when
+  `swarm.goal_session_max_seconds` (default 600) lands, records
+  `goal_session` (`reason=time`), and auto-continues immediately.
+  `swarm.goal_session_max_iterations` (default 40) is eino's ReAct slice:
+  hitting it extends the same turn without a confirm, a session cut, or
+  spending `goal_max_auto_turns`. Context at or above
+  `swarm.goal_auto_compact_percent` (default 80) is compacted first.
+  In-flight sub-agents are parked across sessions instead of killed.
+  Finished session turns fold in the transcript the way Codex's
+  "Worked for …" rows do. Goal pursuit no longer pops the
+  `max_iterations` confirm. Sub-agents spawned during a session
+  survive manager-context cancel (`Handle.Cancel` / `Cleanup` /
+    `Close` still stop them).
+
+### Fixed
+
+- **Switching conversations lights the latest jump-rail tick.** The
+  opener follows the live edge; measuring at scrollTop 0 before that
+  jump used to leave the first tick current.
+
+- **`/goal` session wrap-up stays off the transcript.** The cue 30s
+  before the time cap is still delivered to the in-flight manager, but
+  it is no longer recorded as a `steer` (or a stored user message), so
+  it cannot show up as a 引导 bubble. Replay of older sessions hides
+  the same text. An unread wrap still cannot become a human turn.
+
+- **A compact briefing that is a transcript dump is refused.** The
+  summarizer used to persist a `Tool:`/`Human:`/`Assistant:` replay or
+  pasted exec JSON as `compact_summary` / `session_memory`. That briefing
+  is now rejected: the thread fields stay, the event carries `err`, ADK
+  state is not folded.
+
+- **Session memory on a long `/goal` no longer tries to swallow the whole
+  event log in 15s.** Refresh is incremental and newest-first under a rune
+  cap (tool results clipped harder than answers), on the provider idle
+  timeout. A failed refresh does not stamp `through_seq`. A failed or
+  refused refresh does stamp `session_memory_tokens`, so auto-compact
+  cannot resend the same payload on every Generate. `/compact` and
+  auto-compact summarizer input is capped the same way. A stored
+  transcript dump is omitted from the manager prompt.
+
+- **A `/goal` session cut hands off usable state.** Wrap-up manager
+  answers are copied into session memory; heat is `goal_auto_compact_percent`
+  of `min(model window, auto_compact_tokens)` rather than 80% of a
+  million-token window; a moved session briefing still folds when the meter
+  is cold. The wrap cue names `block_goal` when the same obstacle was
+  retried; it does not call the tool itself.
+
 ### Changed
+
+- **`/goal` is a slash command at every layer, not a user task.** Codex
+  `parse_slash_name` cuts the name at whitespace, so a CJK objective glued
+  to `/goal` (IME never inserts that space) became an unknown name and a
+  chat line. The parser now splits on the ASCII identifier, accepts the
+  fullwidth solidus `／`, and the engine intercepts `POST /turns` the same
+  way Codex dispatches `SlashCommand::Goal`. Idle starts the turn; a live
+  turn is steered. `zwai tui` `/goal` is in the catalog and sends the
+  objective, not the slash line.
+
+- **`/goal` tool-round slices stay on the same turn.** Hitting
+  `swarm.goal_session_max_iterations` no longer records `goal_session`
+  (`reason=iterations`) or spends `goal_max_auto_turns`. The same turn
+  extends in place (no confirm card). The time cap is still the session
+  cut. Historical `reason=iterations` events still replay as a notice.
+
+- **Memory extract stays on the append-only event log.** Post-turn
+  auto-review reads this turn's events (and a clipped session briefing),
+  never the compacted ADK transcript. If the manager already wrote with
+  `memory` or `skill_manage`, auto-review is skipped; **Review now** still
+  runs. Rewind clears a session briefing whose through-seq landed in the
+  deleted range.
+
+- **Auto-compact clears old tool results first.** Replayable catalog
+  results (file bodies, listings) older than the last three are replaced
+  with a placeholder before a full fold. Spawn/memory/lifecycle results
+  stay. There is no idle Phase-2 distillation.
+
+- **Compact streams the briefing, like Codex, and has no second timeout.**
+  `/compact` and auto-compact used a one-shot Generate behind a swarm
+  deadline. That second clock is gone: the briefing drains Stream, and
+  silence uses the provider idle timeout (`timeout_seconds`). eino's
+  summarizer still calls Generate — a wrapper streams underneath.
+
+- **Manager prompt prefers proactive swarming.** Spawn when it would save
+  time or improve quality, without waiting for the human to ask — Codex
+  Ultra, not explicit-request-only. A one-worker wait is not a win (an
+  extra hop, not a swarm). Solo remains the path for a greeting or a
+  one-step lookup. Parallel workers still need distinct roles (one worker
+  per role). An open `/goal` repeats that prior.
+
+- **Auto-compact uses eino's summarizer.** The coding-agent default prompt
+  is replaced via `UserInstruction`. Worker ids are re-injected from
+  `spawned`/`finished` events after the fold, not kept inside compactable
+  messages. The in-flight ReAct tail still stays in ADK state.
+  `autocompact_invariants_test.go` fails the build if those come back.
+
+- **`zwai tui --goal` starts immediately.** The objective is the first
+  user message when `--task` is omitted. Requiring a second flag just
+  to kick the first turn was a footgun. `--task` (or leftover words)
+  still wins as the first line, and is still the one-shot exit path.
+  After `complete_goal` / `block_goal`, an interactive `--goal` session
+  returns the composer.
 
 - **`frontend/dist` is a build artefact.** It is gitignored. A clone
   needs Node once (`make frontend`, or `make run` / `make e2e` which
   build it). `go:embed` still compiles because `dist/.gitkeep` stays in
   the tree; without `index.html` the binary serves the API only.
 
-- **Folder fold lives in the folder icon.** Hovering a project swaps
-  the directory for a chevron in the same slot; the mouse leaving
-  puts the folder back. Conversation titles — Recents, Pinned, nested
-  topics — keep an empty icon slot so they share a column with the
-  project name. Section headers hide their chevron until hover while
-  they are open.
+- **Project folders open and close as a directory.** An expanded
+  project shows an open-folder glyph; a collapsed one shows a closed
+  folder. The same icon column holds a running conversation's
+  progress, so the dot lines up with the directory rather than
+  trailing the title. Drag-to-reorder still works from the title
+  (past 8px); the grip glyph is gone so it does not crowd the row.
 
 - **Sidebar rows are shorter.** Conversation and folder rows are a
   fixed `h-7` with compact menus, instead of padding around a 28px
@@ -47,13 +192,125 @@ co-working app built on it. The library API is unchanged except where noted
   for that role. `resume_agent(agent_id, …)` still targets a specific leftover
   sibling. The roster shows the id next to the role.
 
-### Fixed
+- **Composer typing no longer stalls during a live `/goal`.** Folded
+  session turns stayed in the React tree, so every token re-created
+  every past answer. A `usage` pulse (one per model call) re-rendered
+  the controlled textarea and `height: auto` on IME preedit jumped the
+  candidate window. Folded work stays unmounted; the ring reads usage
+  in a child; the box does not measure itself while composing.
+
+- **Closing a `/goal` mid-slice no longer asks to extend.** `complete_goal`
+  or `block_goal` during a ReAct slice used to fall through to the non-goal
+  confirm card (`max_iterations`) and stall the turn. The slice now ends
+  cleanly; auto-continue stays off.
+
+- **A `/goal` ReAct slice keeps tool results.** eino's iteration cap is a
+  ChatModel preprocessor failure, so the history snapshot used to drop the
+  last round's tool results and the next slice re-issued the same calls
+  (workers never finished; the turn sat on Working). The transcript now
+  records each result as it lands, `SetHistory` keeps wrap-appended
+  results that the capped next step would wipe, and the engine stitches
+  manager `tool_result` events into the next slice — inserting a missing
+  result or refreshing a stale one when a later wait reused the same
+  call id.
+
+- **A short session-memory extract no longer refuses its briefing.** The
+  rolling briefing compared length against an already-short extract, so
+  a restatement of the last request (including `--mock`) stored nothing
+  and auto-compact had no briefing to fold. Transcript-dump rejection
+  still applies; length/tail checks stay on `/compact` of a long
+  transcript.
+
+- **A session-memory force refresh no longer re-summarizes its own trace event.**
+  The `session_memory` row is recorded after the through-seq stamp. Treating
+  it as new work made every `/goal` cut and auto-compact spend a second
+  summarizer call on the briefing it just wrote.
+
+- **`zwai tui` no longer swallows the live answer.** Finished text
+  stayed folded to the first line, and a full pane cropped the bottom
+  (where tokens arrive). Answers stay readable; the pane follows the
+  live edge; a folded thought previews the last line they were watching.
+
+- **Manager no longer treats a one-worker wait as a swarm.** Spawning a
+  single sub-agent and then idling is an extra hop, not a time or quality
+  win. The prompt now says so; a one-step lookup stays on the manager.
+
+- **`zwai tui` uses the app manager prompt and workspace tools.** The
+  typed task is the user message. The manager used to get only the five
+  swarm tools and a system prompt that was the task itself, so it spawned
+  a worker for a one-step lookup it could have run.
+
+- **Opening Settings no longer stalls on a long conversation.** The sheet is
+  not a modal Dialog (`hideOthers` walked every transcript node) and the
+  conversation stays mounted without re-rendering on the click. `GET /api/settings`
+  was never the wait.
+
+- **A crashed `/goal` turn is blocked, not still Pursuing.** A `NodeRunError`
+  (or any other failed turn) used to leave the banner on 进行中 and, when
+  the crash was mis-read as a session yield, kick another auto-continue
+  into the same failure. The objective is now `goal_blocked`, auto-continue
+  stops, and the composer goes idle so the human can resume.
+
+- **Pasting an image with a caption no longer crashes ChatModel.** OpenAI
+  refuses to marshal `Content` and `MultiContent` on the same message.
+  A vision send keeps the caption only in `UserInputMultiContent`, and the
+  OpenAI client drops a leftover dual-set `Content` so a later concat cannot
+  revive `[NodeRunError] can't use both Content and MultiContent`.
+
+- **Collapsed `/goal` session rows stay one line.** Duration does not wrap
+  (CJK used to split 「工作了」 around the chevron). The preview truncates
+  with an ellipsis. The user bubble stays outside the fold; a session that
+  just finished collapses itself.
+
+- **TUI CJK IME no longer types at the front of the prompt.** bubbletea v1
+  homes the hardware cursor to column 0 of the last line after each frame;
+  IME preedit follows that cursor. The idle composer now re-parks the real
+  cursor at the insert point and does not blink-repaint, so composition
+  stays after the committed text.
+
+- **A killed in-flight tool no longer keeps spinning after resume.** Force-quit
+  still continues the leftover turn, but a `tool_call` that never got a
+  result is closed first (`tool_result` with `err`) so the previous `exec`
+  does not look live. Leftover sub-agents stay running; they are restarted
+  under the same ids.
+
+- **`send_message` hands a missed sibling to the manager.** An unknown or
+  finished target no longer kills the worker (`NodeRunError`), and a worker
+  that misses does not get a roster to retry against. The host is notified
+  with the text (`notified: manager`); `send_message(manager, …)` is the
+  same path on purpose. The worker finishes `done`; `wait_agents` reports it.
+
+- **Working clock no longer freezes at 1s on a standing-objective auto-continue.**
+  `done` cleared `started_at`; `goal_continued` / `goal_resumed` only set
+  `running`, so the title-bar badge clamped a missing clock to 1s for the
+  whole next turn. The banner's Pursuing timer was already right; this one
+  now starts from the continue event.
 
 - **Rewind does not hit a locked database.** SQLite is one connection
   for the process, so truncating a conversation while a turn is still
   flushing events no longer returns `SQLITE_BUSY`.
 
+- **An unread /goal session wrap-up does not start a human turn.** The
+  wrap steer is for the in-flight manager. If the time cap lands first,
+  leftover wrap text used to become a new `user_message` and reset the
+  auto-continue cap, so a short session never settled.
+
+- **Compression no longer dies at 60 seconds.** Auto-compact and `/compact`
+  wrapped the briefing Generate in a hardcoded minute, shorter than the
+  provider idle timeout (default 5 minutes). A slow endpoint failed with
+  `context deadline exceeded` while the UI still said compressing. Compact
+  now streams and uses the provider idle timeout instead.
+
 ### Added
+
+- **Auto-compact at a token budget.** When a manager call would exceed
+  `swarm.auto_compact_tokens` (Settings → Swarm, default 80 000), older
+  replay is folded into a briefing before the next Generate. The transcript
+  is unchanged; the UI shows compressing, then the token counts. `/compact`
+  still works by hand. The summarizer is eino's middleware with the
+  task-agnostic compact prompt; Finalize keeps the in-flight ReAct tail
+  and rehydrates worker ids from `spawned`/`finished` events. `TestCompactEffectComparedWithEinoDefault`
+  is the keep-or-delete scorecard (structure, not briefing prose).
 
 - **Font, size and conversation width.** Settings → General: system / serif /
   mono, small / medium / large, and whether the transcript fills the space

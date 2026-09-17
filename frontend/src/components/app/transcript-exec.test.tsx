@@ -151,4 +151,46 @@ describe("Transcript exec rows", () => {
     expect(screen.queryByText("running…")).not.toBeInTheDocument()
     expect(screen.getByText("interrupted")).toBeInTheDocument()
   })
+
+  it("stops spinning an exec that was still open when the crashed turn is resumed", () => {
+    const at = "2024-01-01T00:00:00Z"
+    const state = reduceEvents(emptyTranscript(), [
+      {
+        thread_id: "th",
+        turn_id: "t1",
+        seq: 1,
+        kind: "user_message",
+        agent_id: "manager",
+        text: "go",
+        created_at: at,
+      },
+      {
+        thread_id: "th",
+        turn_id: "t1",
+        seq: 2,
+        kind: "tool_call",
+        agent_id: "manager",
+        text: 'exec({"command":"sleep 30"})',
+        tool_call_id: "c1",
+        created_at: at,
+      },
+      {
+        thread_id: "th",
+        turn_id: "t1",
+        seq: 3,
+        kind: "resumed",
+        agent_id: "manager",
+        text: "the previous run was interrupted; continuing",
+        created_at: at,
+      },
+    ])
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(document.querySelector(".animate-spin")).toBeNull()
+    expect(screen.queryByText("running…")).not.toBeInTheDocument()
+    const row = screen.getByRole("button", { name: /exec/ })
+    expect(row).toHaveAttribute("aria-invalid", "true")
+    fireEvent.click(row)
+    expect(screen.getByText("the previous process stopped")).toBeInTheDocument()
+  })
 })
+

@@ -399,19 +399,20 @@ func TestMemorySettingsRoundTrip(t *testing.T) {
 	if !ok {
 		t.Fatalf("settings do not include memory: %v", got)
 	}
-	if mem["char_limit"].(float64) <= 0 {
+	if mem["char_limit"].(float64) <= 0 || mem["entry_max"].(float64) <= 0 {
 		t.Fatalf("memory settings=%v", mem)
 	}
 
 	h.json(http.MethodPut, "/api/settings", map[string]any{
 		"memory": map[string]any{
 			"enabled": true, "auto_review": false,
-			"char_limit": 900, "review_max_iterations": 3, "skills_index_max": 7,
+			"char_limit": 900, "entry_max": 200, "review_max_iterations": 3, "skills_index_max": 7,
 			"notifications": "verbose",
 		},
 	}, http.StatusOK)
 	reread := h.json(http.MethodGet, "/api/settings", nil, http.StatusOK)["settings"].(map[string]any)["memory"].(map[string]any)
 	if reread["auto_review"] != false || reread["char_limit"].(float64) != 900 ||
+		reread["entry_max"].(float64) != 200 ||
 		reread["review_max_iterations"].(float64) != 3 || reread["skills_index_max"].(float64) != 7 ||
 		reread["notifications"] != "verbose" {
 		t.Fatalf("memory settings not persisted: %v", reread)

@@ -41,6 +41,9 @@ func TestPromptCarriesTheProjectInstructionAndTheNotes(t *testing.T) {
 	if !strings.Contains(out, "status that will change") || !strings.Contains(out, "reduces the character count") {
 		t.Fatalf("the prompt must say a growing replace still has to fit:\n%s", out)
 	}
+	if !strings.Contains(out, "one or two sentences") || !strings.Contains(out, "collides") {
+		t.Fatalf("the manager must see the same quality bar the tools enforce:\n%s", out)
+	}
 }
 
 // Only names and summaries. Inlining every procedure would make the prompt
@@ -145,7 +148,7 @@ func TestReviewPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 			t.Fatalf("the reviewer must be told about %q:\n%s", want, p)
 		}
 	}
-	for _, want := range []string{"not continuing", "nothing worth storing", "write nothing", "do not retry"} {
+	for _, want := range []string{"not continuing", "nothing worth storing", "write nothing", "do not retry", "collides", "remaining count", "one or two"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("the reviewer must be allowed to store nothing (%q missing):\n%s", want, p)
 		}

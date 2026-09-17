@@ -33,11 +33,14 @@ export interface SlashSubmit {
 }
 
 /** A draft that is still naming a command: `/` plus optional letters, no space.
- *  `/goal foo` is a submit, not a menu. */
+ *  `/goal foo` is a submit, not a menu. A CJK objective glued to the name is
+ *  too: Codex cuts the name at whitespace, so `/goal持续推进` becomes an
+ *  unknown name and a user task. Cursor's `/goal` skill is identifier + rest. */
 export function slashDraft(text: string): { query: string } | null {
-  if (!text.startsWith("/")) return null
+  if (!hasSlashPrefix(text)) return null
+  if (parseSlashSubmit(text)?.arg) return null
   if (/\s/.test(text)) return null
-  return { query: text.slice(1) }
+  return { query: text.slice(slashPrefixLength(text)) }
 }
 
 export function filterSlashCommands(
@@ -55,15 +58,41 @@ export function filterSlashCommands(
 }
 
 export function parseSlashSubmit(text: string): SlashSubmit | null {
+  const parsed = splitSlash(text)
+  if (!parsed) return null
+  const found = SLASH_COMMANDS.find((c) => c.name === parsed.name)
+  if (!found) return null
+  return { id: found.id, arg: parsed.arg }
+}
+
+/** Codex `parse_slash_name` stops at whitespace. We stop at the first rune
+ *  that is not `[A-Za-z0-9_-]`, so an IME objective glued to `/goal` is
+ *  still the command. `/goals` stays a user message. */
+export function splitSlash(
+  text: string,
+): { name: string; arg: string } | null {
   const trimmed = text.trim()
-  if (!trimmed.startsWith("/")) return null
-  const rest = trimmed.slice(1)
-  const space = rest.search(/\s/)
-  const name = (space === -1 ? rest : rest.slice(0, space)).toLowerCase()
-  const arg = space === -1 ? "" : rest.slice(space).trim()
-  const cmd = SLASH_COMMANDS.find((c) => c.name === name)
-  if (!cmd) return null
-  return { id: cmd.id, arg }
+  const n = slashPrefixLength(trimmed)
+  if (n <= 0) return null
+  const rest = trimmed.slice(n)
+  let i = 0
+  while (i < rest.length && isCommandNameChar(rest[i] as string)) i += 1
+  if (i === 0) return null
+  return { name: rest.slice(0, i).toLowerCase(), arg: rest.slice(i).trim() }
+}
+
+function hasSlashPrefix(text: string): boolean {
+  return slashPrefixLength(text) > 0
+}
+
+function slashPrefixLength(text: string): number {
+  if (text.startsWith("/")) return 1
+  if (text.startsWith("／")) return 1
+  return 0
+}
+
+function isCommandNameChar(ch: string): boolean {
+  return /[A-Za-z0-9_-]/.test(ch)
 }
 
 export function localizedSlashCommands(locale: Locale): SlashCommand[] {

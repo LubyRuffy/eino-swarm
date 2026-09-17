@@ -1,9 +1,8 @@
 import {
   BookOpen,
-  ChevronRight,
   Folder,
+  FolderOpen,
   FolderPlus,
-  GripVertical,
   MessageSquarePlus,
   MoreHorizontal,
   Pencil,
@@ -11,11 +10,7 @@ import {
 } from "lucide-react"
 
 import { SidebarSection } from "@/components/app/sidebar-section"
-import {
-  SidebarGripSlot,
-  SidebarKindSlot,
-  sidebarRowClass,
-} from "@/components/app/sidebar-slots"
+import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
 import { Button } from "@/components/ui/button"
 import {
@@ -184,19 +179,10 @@ function ProjectRow({
         data-id={project.id}
         className={cn(
           sidebarRowClass,
-          "cursor-grab text-sidebar-foreground hover:bg-sidebar-accent/60",
+          "text-sidebar-foreground hover:bg-sidebar-accent/60",
           "data-[dragging=true]:cursor-grabbing data-[dragging=true]:opacity-60 data-[over=true]:bg-sidebar-accent",
         )}
       >
-        <SidebarGripSlot
-          handle
-          onClick={() => {
-            onToggle(project.id)
-            onSelect(project.id)
-          }}
-        >
-          <GripVertical className="size-3.5 shrink-0" />
-        </SidebarGripSlot>
         <button
           type="button"
           onClick={() => {
@@ -207,19 +193,21 @@ function ProjectRow({
           className="flex min-w-0 flex-1 items-center gap-1 text-left"
         >
           <SidebarKindSlot testId="project-kind">
-            <Folder
-              data-testid="project-folder"
-              className="size-4 shrink-0 group-hover:hidden group-focus-within:hidden"
-              aria-hidden="true"
-            />
-            <ChevronRight
-              data-testid="project-fold"
-              className={cn(
-                "hidden size-4 shrink-0 text-sidebar-foreground/50 group-hover:block group-focus-within:block",
-                open && "rotate-90",
-              )}
-              aria-hidden="true"
-            />
+            {open ? (
+              <FolderOpen
+                data-testid="project-folder"
+                data-open="true"
+                className="size-4 shrink-0"
+                aria-hidden="true"
+              />
+            ) : (
+              <Folder
+                data-testid="project-folder"
+                data-open="false"
+                className="size-4 shrink-0"
+                aria-hidden="true"
+              />
+            )}
           </SidebarKindSlot>
           <span data-testid="row-label" className="truncate">
             {project.name}

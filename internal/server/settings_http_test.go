@@ -168,7 +168,8 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 		"swarm": map[string]any{"max_concurrent": 3, "agent_timeout_seconds": 42,
 			"max_turns": 9, "manager_max_iterations": 11, "progress_interval_seconds": 7,
 			"delta_coalesce_ms": 16, "auto_title": true,
-			"title_provider": "default", "title_model": "tiny"},
+			"title_provider": "default", "title_model": "tiny",
+			"auto_compact_tokens": 12000},
 		"tools": map[string]any{"disabled": []string{"exec"}, "web_search_max_results": 5},
 		"log":   map[string]any{"level": "debug"},
 	}, http.StatusOK)
@@ -187,6 +188,9 @@ func TestSettingsPersistAndValidate(t *testing.T) {
 	}
 	if h.app.Config.Swarm.TitleProvider != "default" || h.app.Config.Swarm.TitleModel != "tiny" {
 		t.Fatalf("title pin not applied: %+v", h.app.Config.Swarm)
+	}
+	if h.app.Config.Swarm.AutoCompactTokens != 12000 {
+		t.Fatalf("auto-compact token budget not applied: %+v", h.app.Config.Swarm)
 	}
 	if !h.app.Config.Tools.IsDisabled("exec") {
 		t.Fatal("tool toggle not applied")
@@ -349,5 +353,44 @@ func TestModelsAndToolsEndpoints(t *testing.T) {
 		http.StatusOK)
 	if len(unsaved["models"].([]any)) == 0 {
 		t.Fatal("discover against an unsaved URL returned nothing")
+	}
+}
+
+// Personality is install-wide: a PUT must persist it, an omitted section
+// must keep it, and an empty string must clear it.
+func TestPersonalitySettingsRoundTrip(t *testing.T) {
+	h := newHarness(t)
+	got := h.json(http.MethodGet, "/api/settings", nil, http.StatusOK)["settings"].(map[string]any)
+	persona, ok := got["personality"].(map[string]any)
+	if !ok {
+		t.Fatalf("settings do not include personality: %v", got)
+	}
+	if persona["instructions"] != "" {
+		t.Fatalf("a fresh install has no personality, got %v", persona)
+	}
+
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"personality": map[string]any{"instructions": "prefer compact replies"},
+	}, http.StatusOK)
+	reread := h.json(http.MethodGet, "/api/settings", nil, http.StatusOK)["settings"].(map[string]any)["personality"].(map[string]any)
+	if reread["instructions"] != "prefer compact replies" {
+		t.Fatalf("personality not persisted: %v", reread)
+	}
+
+	before := h.app.Config.Swarm.MaxConcurrent
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"swarm": map[string]any{"max_concurrent": before},
+	}, http.StatusOK)
+	kept := h.json(http.MethodGet, "/api/settings", nil, http.StatusOK)["settings"].(map[string]any)["personality"].(map[string]any)
+	if kept["instructions"] != "prefer compact replies" {
+		t.Fatalf("omitting personality wiped it: %v", kept)
+	}
+
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"personality": map[string]any{"instructions": ""},
+	}, http.StatusOK)
+	cleared := h.json(http.MethodGet, "/api/settings", nil, http.StatusOK)["settings"].(map[string]any)["personality"].(map[string]any)
+	if cleared["instructions"] != "" {
+		t.Fatalf("empty instructions did not clear personality: %v", cleared)
 	}
 }

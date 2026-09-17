@@ -17,6 +17,11 @@ import (
 // front end matches on the kind, but the text is what a trace shows.
 const resumeNotice = "the previous run was interrupted; continuing"
 
+// resumeToolStopped is the tool_result for an in-flight call the previous
+// process never finished. Keep in sync with the front-end reducer: a killed
+// exec must not keep spinning. Task-agnostic on purpose.
+const resumeToolStopped = "the previous process stopped"
+
 // resumeCue is appended for the model only. The workspace still has whatever
 // the previous process wrote; this tells the manager to pick up from there
 // rather than treat the original request as brand new.
@@ -54,6 +59,7 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 				Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID,
 				Err: err.Error(),
 			})
+			e.blockOpenGoalOnTurnError(t.ThreadID)
 			continue
 		}
 		n++
@@ -202,4 +208,64 @@ func (e *Engine) turnHasKind(turnID, kind string) bool {
 		}
 	}
 	return false
+}
+
+type orphanedToolCall struct {
+	AgentID    string
+	Role       string
+	ToolCallID string
+}
+
+func orphanedToolCalls(events []store.Event) []orphanedToolCall {
+	open := make(map[string]orphanedToolCall)
+	order := make([]string, 0)
+	for _, ev := range events {
+		id := strings.TrimSpace(ev.ToolCallID)
+		if id == "" {
+			continue
+		}
+		switch ev.Kind {
+		case swarm.NotifyToolCall.String():
+			if _, ok := open[id]; !ok {
+				order = append(order, id)
+			}
+			open[id] = orphanedToolCall{AgentID: ev.AgentID, Role: ev.Role, ToolCallID: id}
+		case swarm.NotifyToolResult.String():
+			delete(open, id)
+		}
+	}
+	out := make([]orphanedToolCall, 0, len(open))
+	for _, id := range order {
+		if c, ok := open[id]; ok {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+func (e *Engine) closeOrphanedToolCalls(turn *store.Turn) {
+	if e == nil || turn == nil {
+		return
+	}
+	events, err := e.store.ListTurnEvents(turn.ID)
+	if err != nil {
+		e.log.Warn("could not list in-flight tools for resume", "turn", turn.ID, "err", err)
+		return
+	}
+	for _, c := range orphanedToolCalls(events) {
+		agent := c.AgentID
+		if agent == "" {
+			agent = swarm.DefaultManagerID
+		}
+		e.record(store.Event{
+			ThreadID:   turn.ThreadID,
+			TurnID:     turn.ID,
+			Kind:       swarm.NotifyToolResult.String(),
+			AgentID:    agent,
+			Role:       c.Role,
+			ToolCallID: c.ToolCallID,
+			Text:       resumeToolStopped,
+			Err:        resumeToolStopped,
+		})
+	}
 }

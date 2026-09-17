@@ -2,13 +2,15 @@
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
   "header.idle": "Idle",
-  "header.working": "Working · ",
-  "header.waiting": "Waiting · ",
+  "header.working": "Working",
+  "header.waiting": "Waiting",
   "header.newConversation": "New conversation",
   "header.hideConversations": "Hide conversations",
   "header.showConversations": "Show conversations",
   "header.switchTheme": "Switch theme",
   "header.switchLanguage": "Switch language",
+  "header.switchToWide": "Switch to wide layout",
+  "header.switchToStandard": "Switch to standard layout",
   "header.togglePanel": "Toggle side panel",
   "header.copyTurn": "Copy the turn id — `zwai trace <id>` replays it",
   "header.reconnecting": "Reconnecting",
@@ -54,6 +56,7 @@ export const en = {
   "palette.settings": "Settings",
   "palette.theme": "Switch between light and dark",
   "palette.language": "Switch language",
+  "palette.width": "Switch between standard and wide",
   "palette.conversations": "Conversations",
   "palette.untitled": "Untitled",
 
@@ -277,8 +280,15 @@ export const en = {
     "Standing objective blocked: progress needs you or an external change.",
   "notice.goalEdited": "Standing objective updated.",
   "notice.goalResumed": "Resuming the standing objective.",
+  "notice.goalSessionTime": "Work session ended after the time cap.",
+  "notice.goalSessionIters": "Work session ended after the tool-round cap.",
+  "notice.goalSession": "Work session ended.",
   "notice.compacted":
     "Earlier turns were folded into a briefing. The transcript is unchanged.",
+  "notice.compressing": "Compressing conversation context…",
+  "notice.autoCompacted":
+    "Context compressed ({before} → {after} tokens). The transcript is unchanged.",
+  "notice.autoCompactedPlain": "Context compressed. The transcript is unchanged.",
   "notice.reviewQuiet": "Review finished — nothing new to keep.",
   "notice.reviewDone": "Review finished.",
   "notice.reviewFailed": "Memory review failed: {err}",
@@ -293,6 +303,7 @@ export const en = {
   "settings.storedFallback": "the data directory",
 
   "settings.nav.general": "General",
+  "settings.nav.personality": "Personality",
   "settings.nav.models": "Models",
   "settings.nav.swarm": "Swarm",
   "settings.nav.tools": "Tools",
@@ -325,9 +336,9 @@ export const en = {
   "settings.general.fontSizeLarge": "Large",
   "settings.general.contentWidth": "Conversation width",
   "settings.general.contentWidthHint":
-    "Keep the current reading column, or fill the space between the sidebars.",
-  "settings.general.contentWidthComfortable": "Comfortable",
-  "settings.general.contentWidthFull": "Full width",
+    "Standard keeps a reading column. Wide fills the space between the sidebars.",
+  "settings.general.contentWidthComfortable": "Standard",
+  "settings.general.contentWidthFull": "Wide",
   "settings.general.logs": "Logs",
   "settings.general.logLevel": "Log level",
   "settings.general.logHint":
@@ -376,7 +387,7 @@ export const en = {
     "Used only when a name has no window of its own. Do not put one model's limit here.",
   "settings.models.timeout": "Request timeout (seconds)",
   "settings.models.timeoutHint":
-    "How long to wait for the next byte from the model. A call that is still streaming is not cut off; a silent endpoint is.",
+    "How long to wait for the next byte from the model. A call that is still streaming is not cut off; a silent endpoint is. Compact uses the same timeout.",
 
   "settings.aux.title": "Auxiliary models",
   "settings.aux.desc":
@@ -423,9 +434,21 @@ export const en = {
   "settings.swarm.keep": "Messages to keep when compacting",
   "settings.swarm.keepHint":
     "Recent user and assistant messages that stay verbatim. Everything older becomes the briefing.",
+  "settings.swarm.autoCompact": "Auto-compact at (tokens)",
+  "settings.swarm.autoCompactHint":
+    "When a manager call would exceed this many prompt tokens, older messages are folded into a briefing. The transcript is unchanged.",
   "settings.swarm.goalTurns": "Goal auto-continue turns",
   "settings.swarm.goalTurnsHint":
     "How many consecutive turns the runtime may start to pursue an open /goal without another human message.",
+  "settings.swarm.goalSessionSeconds": "Goal session length (seconds)",
+  "settings.swarm.goalSessionSecondsHint":
+    "How long one /goal turn may run before the runtime ends it and starts the next session.",
+  "settings.swarm.goalSessionIters": "Goal session tool rounds",
+  "settings.swarm.goalSessionItersHint":
+    "Manager tool-round slice while pursuing a /goal. Hitting it keeps the same turn going — no confirm, no new session. The time cap still ends the session.",
+  "settings.swarm.goalCompactPct": "Goal auto-compact at (%)",
+  "settings.swarm.goalCompactPctHint":
+    "When context is at least this full, compact before starting the next /goal session.",
 
   "settings.tools.title": "Tools",
   "settings.tools.desc":
@@ -457,12 +480,22 @@ export const en = {
   "settings.memory.charLimit": "Notes budget (characters)",
   "settings.memory.charLimitHint":
     "Every note is in the prompt of every turn in the project, so this is a per-turn cost. Once it is full, an agent must replace a note to add one.",
+  "settings.memory.entryMax": "Per-note cap (characters)",
+  "settings.memory.entryMaxHint":
+    "Agent writes longer than this are refused. A procedure or a runbook belongs in a skill, where only the summary rides in the prompt. Editing notes by hand still uses the total budget.",
   "settings.memory.reviewRounds": "Review tool rounds",
   "settings.memory.reviewRoundsHint":
     "How many times the review may think and write before it is stopped.",
   "settings.memory.skillsIndex": "Skills listed in the prompt",
   "settings.memory.skillsIndexHint":
     "Only names and one-line descriptions are listed; an agent opens the one it needs.",
+
+  "settings.personality.title": "Personality",
+  "settings.personality.desc":
+    "How you want the manager to work with you in every conversation. A project's instruction is the business context; when the two conflict, the project wins.",
+  "settings.personality.instructions": "Personal preferences",
+  "settings.personality.hint":
+    "Added to the system prompt of every conversation. Leave blank and nothing is added.",
 
   "project.edit": "Edit project",
   "project.new": "New project",
@@ -471,7 +504,7 @@ export const en = {
   "project.name": "Name",
   "project.instruction": "Instruction",
   "project.instructionHint":
-    "Added to the system prompt of every conversation in this project.",
+    "Added to the system prompt of every conversation in this project. When it conflicts with Settings → Personality, this project wins.",
   "project.workdir": "Working directory",
   "project.workdirPlaceholder": "Leave empty and zwai manages one",
   "project.workdirHint":

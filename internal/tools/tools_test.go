@@ -232,3 +232,15 @@ func indexOf(haystack, needle string) int {
 	}
 	return -1
 }
+
+// Compaction may clear catalog tool results; it must not treat a missing
+// name, or a lifecycle/memory tool, as something it can re-fetch.
+func TestReplayableResultIsTheCatalog(t *testing.T) {
+	if ReplayableResult("") || ReplayableResult("spawn_agent") || ReplayableResult("memory") {
+		t.Fatal("non-catalog tools must keep their results")
+	}
+	name := Catalog()[0].Name
+	if !ReplayableResult(name) {
+		t.Fatalf("%q is in the catalog and must be replayable", name)
+	}
+}

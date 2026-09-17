@@ -22,6 +22,7 @@ import {
 } from "@/lib/i18n"
 import type { SendImage } from "@/lib/paste-image"
 import { subscribeEvents } from "@/lib/stream"
+import { logPageSize, type ThreadLog } from "@/lib/thread-log"
 import {
   emptyTranscript,
   reduceEvent,
@@ -48,6 +49,15 @@ import type {
   UsageSnapshot,
 } from "@/lib/types"
 import { useProjects } from "./projects"
+import {
+  applyTail,
+  historyNewestSeq,
+  loadOlderHistory,
+  loadUntilTurnHistory,
+  rememberRewind,
+  rememberStored,
+  resetThreadHistory,
+} from "./thread-history"
 
 export type Theme = "light" | "dark" | "system"
 
@@ -66,6 +76,9 @@ interface AppState {
   /** Undefined until the first stream has replayed, so the transcript can
    *  show a skeleton instead of an empty conversation. */
   loaded: boolean
+  /** Older event pages exist above the loaded tail. */
+  historyHasMore: boolean
+  historyLoading: boolean
   connected: boolean
   error?: string
   theme: Theme
@@ -82,6 +95,10 @@ interface AppState {
    *  conversation — boot() would yank the open thread. */
   refreshCatalogs: () => Promise<void>
   openThread: (id: string) => Promise<void>
+  /** Fetch an older page of the event log. Sized from the scroller height. */
+  loadOlder: (clientHeight?: number) => Promise<void>
+  /** Keep paging until this turn's user row is in the transcript. */
+  loadUntilTurn: (turnId: string, clientHeight?: number) => Promise<boolean>
   /** Lands in projectId. Omit it and the conversation sits in Recents. */
   newThread: (projectId?: string) => Promise<string | undefined>
   /** Highlights a project and loads its memory. Does not filter the list. */
@@ -139,6 +156,8 @@ export const useApp = create<AppState>((set, get) => ({
   files: [],
   workspace: "",
   loaded: false,
+  historyHasMore: false,
+  historyLoading: false,
   connected: false,
   theme: readTheme(),
   locale: readLocalePref(),
@@ -256,6 +275,7 @@ export const useApp = create<AppState>((set, get) => ({
     dropQueued()
     unsubscribe?.()
     unsubscribe = undefined
+    resetThreadHistory()
     set({
       activeId: id,
       transcript: emptyTranscript(),
@@ -263,22 +283,11 @@ export const useApp = create<AppState>((set, get) => ({
       followups: [],
       files: [],
       loaded: false,
+      historyHasMore: false,
+      historyLoading: false,
       selectedAgent: undefined,
       status: { running: false },
       usage: undefined,
-    })
-
-    unsubscribe = subscribeEvents(id, {
-      onEvent: (ev) => queueEvent(set, get, id, ev),
-      onReady: ({ status }) => {
-        set((s) => ({
-          loaded: true,
-          connected: true,
-          status: status ?? s.status,
-        }))
-        void get().refreshFiles()
-      },
-      onClose: (reason) => set({ connected: reason !== "error" }),
     })
 
     try {
@@ -287,13 +296,41 @@ export const useApp = create<AppState>((set, get) => ({
         api.turns(id),
         api.followups(id),
       ])
-      set((s) => ({
-        status,
-        turns,
-        followups,
-        usage,
-        threads: s.threads.map((t) => (t.id === thread.id ? { ...t, ...thread } : t)),
-      }))
+      if (get().activeId !== id) return
+      let since = 0
+      let haveTail = false
+      let log: ThreadLog = { events: [], has_more: false }
+      try {
+        log = await api.threadLog(id, { limit: logPageSize(0) })
+        haveTail = true
+      } catch {
+        // SSE still replays from the start so a missing log endpoint
+        // does not leave the skeleton up forever.
+      }
+      if (get().activeId !== id) return
+      if (haveTail) {
+        const transcript = applyTail(id, log.events ?? [])
+        since = historyNewestSeq()
+        set((s) => ({
+          loaded: true,
+          connected: true,
+          transcript,
+          historyHasMore: Boolean(log.has_more),
+          status,
+          turns,
+          followups,
+          usage,
+          threads: s.threads.map((t) => (t.id === thread.id ? { ...t, ...thread } : t)),
+        }))
+      } else {
+        set((s) => ({
+          status,
+          turns,
+          followups,
+          usage,
+          threads: s.threads.map((t) => (t.id === thread.id ? { ...t, ...thread } : t)),
+        }))
+      }
       // The Memory tab belongs to the project, not the conversation. Opening
       // a Recents chat must drop the previous project's highlight or the
       // folder would still look selected.
@@ -301,10 +338,35 @@ export const useApp = create<AppState>((set, get) => ({
       if (thread.project_id) {
         void useProjects.getState().loadMemory(thread.project_id)
       }
+      unsubscribe = subscribeEvents(
+        id,
+        {
+          onEvent: (ev) => queueEvent(set, get, id, ev),
+          onReady: ({ status: live }) => {
+            set((s) => ({
+              loaded: true,
+              connected: true,
+              status: live ?? s.status,
+              historyHasMore: since > 0 ? s.historyHasMore : false,
+            }))
+            void get().refreshFiles()
+          },
+          onClose: (reason) => set({ connected: reason !== "error" }),
+        },
+        since,
+      )
     } catch (e) {
+      if (get().activeId !== id) return
       set({ error: message(e) })
     }
   },
+
+  loadOlder: async (clientHeight) => {
+    await loadOlderHistory(get, set, message, clientHeight)
+  },
+
+  loadUntilTurn: async (turnId, clientHeight) =>
+    loadUntilTurnHistory(get, turnId, clientHeight),
 
   newThread: async (projectId) => {
     creating = (async () => {
@@ -385,6 +447,7 @@ export const useApp = create<AppState>((set, get) => ({
       // Before any await: this bubble stays with the new text, everything
       // below it is gone. Waiting on currentThread first would paint the
       // unedited bubble for a frame, which is the opposite of Codex.
+      rememberRewind(id, from)
       set((s) => ({
         transcript: placePendingEdit(
           rewindTranscript(s.transcript, from),
@@ -392,7 +455,7 @@ export const useApp = create<AppState>((set, get) => ({
           cut?.images,
         ),
         followups: [],
-        status: { ...s.status, running: true },
+        status: withRunningClock(s.status),
         error: undefined,
       }))
       try {
@@ -429,7 +492,7 @@ export const useApp = create<AppState>((set, get) => ({
         }
       }
       await api.steer(id, text, images, opts?.files)
-      set({ status: { ...get().status, running: true } })
+      set({ status: withRunningClock(get().status) })
       void get().refreshFollowups()
       void get().refreshThreads()
     } catch (e) {
@@ -443,12 +506,18 @@ export const useApp = create<AppState>((set, get) => ({
       id = await get().newThread()
       if (!id) return
     }
+    const running = get().status.running
     try {
       const updated = await api.patchThread(id, { goal: text })
       set((s) => ({
         threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
         error: undefined,
       }))
+      // Codex / Cursor: `/goal <objective>` is the first unit of work, not a
+      // pin that waits for another Enter. A live turn is steered by the
+      // engine; starting a second one here would 409 or queue the objective.
+      const objective = updated.goal?.trim() || text.trim()
+      if (objective && !running) await get().send(objective)
     } catch (e) {
       set({ error: message(e) })
     }
@@ -475,7 +544,7 @@ export const useApp = create<AppState>((set, get) => ({
       const updated = await api.patchThread(id, { goal_resume: true })
       set((s) => ({
         threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
-        status: updated.running ? { ...s.status, running: true } : s.status,
+        status: updated.running ? withRunningClock(s.status) : s.status,
         error: undefined,
       }))
     } catch (e) {
@@ -685,7 +754,8 @@ function queueEvent(
       ev.kind === "max_iterations" || ev.kind === "max_iterations_continued" ||
       ev.kind === "resumed" || ev.kind === "goal" || ev.kind === "goal_complete" ||
       ev.kind === "goal_continued" || ev.kind === "goal_capped" || ev.kind === "goal_blocked" ||
-      ev.kind === "goal_edited" || ev.kind === "goal_resumed" || ev.kind === "compacted" ||
+      ev.kind === "goal_edited" || ev.kind === "goal_resumed" || ev.kind === "goal_session" ||
+      ev.kind === "compacted" ||
       ev.kind === "rewound") {
     flushQueued(set, get)
     return
@@ -728,15 +798,18 @@ function flushQueued(
   let usage = state.usage
   let closed = false
   for (const ev of events) {
+    rememberStored(threadId, ev)
+    if (ev.kind === "rewound") {
+      const from = Number.parseInt(String(ev.text ?? ""), 10)
+      if (Number.isFinite(from) && from > 0) rememberRewind(threadId, from)
+    }
     transcript = reduceEvent(transcript, ev)
     if (ev.kind === "user_message" || ev.kind === "resumed") {
-      status = {
-        ...status,
-        running: true,
+      status = withRunningClock(status, {
         turn_id: ev.turn_id,
         started_at: ev.created_at,
         awaiting_continue: ev.kind === "resumed" ? false : status.awaiting_continue,
-      }
+      })
     }
     if (ev.kind === "max_iterations") {
       status = { ...status, running: true, awaiting_continue: true, turn_id: ev.turn_id }
@@ -801,12 +874,18 @@ function flushQueued(
           ? { ...t, goal_blocked: false, goal_capped: false, goal_block_reason: "" }
           : t,
       )
-      status = { ...status, running: true, turn_id: ev.turn_id }
+      status = withRunningClock(status, {
+        turn_id: ev.turn_id,
+        started_at: ev.created_at,
+      })
     }
     if (ev.kind === "goal_continued") {
-      status = { ...status, running: true, turn_id: ev.turn_id }
+      status = withRunningClock(status, {
+        turn_id: ev.turn_id,
+        started_at: ev.created_at,
+      })
     }
-    if (ev.kind === "compacted" && !ev.err) {
+    if (ev.kind === "compacted" && !ev.err && (ev.seq ?? 0) > 0) {
       threads = threads.map((t) =>
         t.id === threadId ? { ...t, compacted: true } : t,
       )
@@ -856,6 +935,22 @@ function parseGoalReason(text?: string): string {
 
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
+}
+
+/** Claim the conversation is mid-turn. `done` wipes `started_at`; a later
+ *  `goal_continued` that only sets `running` leaves the header clamped at 1s
+ *  for the whole auto-continue, which is how a 10-hour pursuit reads as a
+ *  one-second job. */
+function withRunningClock(
+  status: ThreadStatus,
+  extra: Partial<ThreadStatus> = {},
+): ThreadStatus {
+  return {
+    ...status,
+    ...extra,
+    running: true,
+    started_at: extra.started_at ?? status.started_at ?? new Date().toISOString(),
+  }
 }
 
 function persistChrome(state: {

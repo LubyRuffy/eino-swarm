@@ -175,7 +175,7 @@ describe("Sidebar order", () => {
   })
 
   // A draggable row used to swallow the first click on the title whenever
-  // the pointer moved a pixel. Opening is a click; reorder is the grip.
+  // the pointer moved a pixel. Opening is a click; reorder is a title drag.
   it("opens on the first click of the title even if a dragstart races it", () => {
     render(
       <Sidebar
@@ -193,17 +193,16 @@ describe("Sidebar order", () => {
     expect(noop.onReorder).not.toHaveBeenCalled()
   })
 
-  it("opens from a click on the grip so the handle is not a dead zone", () => {
+  it("does not paint a drag grip on Recents", () => {
     render(
       <Sidebar
         threads={[thread("th_a", "Alpha"), thread("th_b", "Beta")]}
         {...noop}
       />,
     )
-    fireEvent.click(
-      screen.getAllByTestId("thread-row")[0].querySelector("[data-drag-handle]")!,
-    )
-    expect(noop.onOpen).toHaveBeenCalledWith("th_a")
+    for (const row of screen.getAllByTestId("thread-row")) {
+      expect(row.querySelector("[data-drag-handle]")).toBeNull()
+    }
   })
 })
 
@@ -275,6 +274,19 @@ describe("Sidebar pin and folders", () => {
     expect(noop.onPin).toHaveBeenCalledWith("th_1", true)
   })
 
+  it("puts Recents running progress in the folder column", () => {
+    render(
+      <Sidebar
+        threads={[thread("th_1", "Loose", { running: true })]}
+        runningId="th_1"
+        {...noop}
+      />,
+    )
+    const kind = screen.getByTestId("row-kind")
+    expect(kind.querySelector("[aria-label]")).toHaveAttribute("aria-label", "running")
+    expect(screen.getByTestId("row-label").nextElementSibling).toBeNull()
+  })
+
   it("does not offer pin on a Recents conversation", () => {
     render(<Sidebar threads={[thread("th_1", "Loose")]} {...noop} />)
     fireEvent.keyDown(screen.getByRole("button", { name: "More" }), {
@@ -291,6 +303,7 @@ describe("Sidebar pin and folders", () => {
     expect(screen.getByTestId("thread-row")).toHaveClass("h-7")
     expect(screen.queryByTestId("thread-kind")).not.toBeInTheDocument()
     expect(screen.getByTestId("row-kind")).toHaveClass("size-4")
+    expect(screen.getByTestId("row-kind")).toBeEmptyDOMElement()
     expect(
       screen.getByRole("button", { name: "Recents" }).querySelector("[data-testid=section-fold]"),
     ).toHaveClass("opacity-0")

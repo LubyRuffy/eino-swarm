@@ -170,14 +170,14 @@ func extForMIME(mime string) string {
 }
 
 // BuildUserMessage is the multimodal user turn the model actually sees.
-// Content stays the caption so traces and the offline script can still read
-// it; UserInputMultiContent is what an OpenAI-compatible endpoint uses for
-// vision. Image-only sends leave Content empty.
+// OpenAI-compatible clients refuse to marshal Content and MultiContent on
+// the same message, so a vision send keeps the caption in a text part only.
+// Traces and the offline script read it via userMessageText. Image-only
+// sends have no text part.
 func BuildUserMessage(text string, images []ImageInput) *schema.Message {
 	text = strings.TrimSpace(text)
-	msg := schema.UserMessage(text)
 	if len(images) == 0 {
-		return msg
+		return schema.UserMessage(text)
 	}
 	parts := make([]schema.MessageInputPart, 0, len(images)+1)
 	if text != "" {
@@ -200,8 +200,7 @@ func BuildUserMessage(text string, images []ImageInput) *schema.Message {
 			},
 		})
 	}
-	msg.UserInputMultiContent = parts
-	return msg
+	return &schema.Message{Role: schema.User, UserInputMultiContent: parts}
 }
 
 func userMessageText(m *schema.Message) string {

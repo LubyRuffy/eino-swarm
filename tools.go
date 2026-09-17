@@ -11,6 +11,12 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
+// sendMessageDesc is what the model reads for send_message. A miss used to be
+// a Go error; eino's ToolNode turns that into NodeRunError and kills the worker.
+// A miss now notifies the host manager so the worker can finish instead of
+// inventing another id.
+const sendMessageDesc = "queue a steering message. agent_id is the id spawn_agent returned, that worker's role, or manager (the host). delivered:true means queued for that agent. If the target is missing or already finished, the host is notified with your text and notified:manager is returned — finish with a final answer; do not invent ids."
+
 // Tools returns the five lifecycle tools backed by r, ready to register on a
 // host/manager agent:
 //
@@ -22,7 +28,7 @@ import (
 func (r *Registry) Tools() []tool.BaseTool {
 	return []tool.BaseTool{
 		&ctlTool{name: "spawn_agent", desc: "start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's.", fn: r.spawn},
-		&ctlTool{name: "send_message", desc: "queue a steering message for a running agent; it is read at the agent's next turn. delivered:true means queued, not that a later model call consumed it. A finished agent does not receive it — use resume_agent on the same id. If the agent finishes first, wait_agents reports the text as undelivered.", fn: r.send},
+		&ctlTool{name: "send_message", desc: sendMessageDesc, fn: r.send},
 		&ctlTool{name: "wait_agents", desc: "wait until the next listed agent reaches a final status, or the timeout hits; " +
 			"returns every listed agent's status (running/done/failed), the finished ones' results, " +
 			"any steering that never reached a model call (undelivered), " +
@@ -37,7 +43,39 @@ func (r *Registry) Tools() []tool.BaseTool {
 // SendTool returns only the send_message tool, for registering inside
 // sub-agents so they can message their siblings (mesh topology).
 func (r *Registry) SendTool() tool.BaseTool {
-	return &ctlTool{name: "send_message", desc: "send a steering message to another agent in the swarm", fn: r.send}
+	return r.sendToolFor("", "")
+}
+
+func (r *Registry) sendToolFor(fromID, fromRole string) tool.BaseTool {
+	return &ctlTool{name: "send_message", desc: sendMessageDesc, fn: func(ctx context.Context, args string) (string, error) {
+		return r.sendFrom(ctx, fromID, fromRole, args)
+	}}
+}
+
+func (r *Registry) bindSendCaller(tools []tool.BaseTool, id, role string) []tool.BaseTool {
+	if id == "" {
+		return tools
+	}
+	out := make([]tool.BaseTool, len(tools))
+	for i, t := range tools {
+		if toolName(t) == "send_message" {
+			out[i] = r.sendToolFor(id, role)
+			continue
+		}
+		out[i] = t
+	}
+	return out
+}
+
+func toolName(t tool.BaseTool) string {
+	if t == nil {
+		return ""
+	}
+	info, err := t.Info(context.Background())
+	if err != nil || info == nil {
+		return ""
+	}
+	return info.Name
 }
 
 // ctlTool is a minimal invokable tool driven by a closure.
@@ -58,7 +96,7 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 		}
 	case "send_message":
 		params = map[string]*schema.ParameterInfo{
-			"agent_id": {Type: schema.String, Required: true},
+			"agent_id": {Type: schema.String, Required: true, Desc: "the target's agent_id, its role, or manager"},
 			"text":     {Type: schema.String, Required: true},
 		}
 	case "wait_agents":
@@ -141,6 +179,10 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 }
 
 func (r *Registry) send(ctx context.Context, args string) (string, error) {
+	return r.sendFrom(ctx, "", "", args)
+}
+
+func (r *Registry) sendFrom(ctx context.Context, fromID, fromRole, args string) (string, error) {
 	var a struct {
 		AgentID string `json:"agent_id"`
 		Text    string `json:"text"`
@@ -148,15 +190,130 @@ func (r *Registry) send(ctx context.Context, args string) (string, error) {
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
 		return "", fmt.Errorf("send_message: %w", err)
 	}
-	h, ok := r.get(a.AgentID)
-	if !ok {
-		return "", fmt.Errorf("send_message: unknown agent %q", a.AgentID)
+	a.AgentID = strings.TrimSpace(a.AgentID)
+	a.Text = strings.TrimSpace(a.Text)
+	if a.AgentID == "" {
+		return marshal(r.undelivered(fromID, fromRole, "", a.Text, "agent_id is required")), nil
+	}
+	if a.AgentID == DefaultManagerID {
+		return marshal(r.deliverToManager(fromID, fromRole, a.Text)), nil
+	}
+	h, resolved, knownFinished := r.resolveSendTarget(a.AgentID)
+	if h == nil {
+		reason := "unknown agent"
+		if knownFinished {
+			reason = "already finished"
+		}
+		rep := r.undelivered(fromID, fromRole, a.AgentID, a.Text, reason)
+		if knownFinished && resolved != "" && resolved != a.AgentID {
+			rep.ResolvedID = resolved
+		}
+		return marshal(rep), nil
+	}
+	rep := sendReport{AgentID: a.AgentID}
+	if resolved != a.AgentID {
+		rep.ResolvedID = resolved
 	}
 	if _, _, finished := h.Result(); finished {
-		return marshal(map[string]any{"agent_id": a.AgentID, "delivered": false, "reason": "already finished"}), nil
+		rep.Delivered = false
+		rep.Reason = "already finished"
+		rep.Notified = r.notifyHost(fromID, fromRole, resolved, a.Text, "already finished")
+		return marshal(rep), nil
 	}
 	h.pushInbox(a.Text)
-	return marshal(map[string]any{"agent_id": a.AgentID, "delivered": true}), nil
+	rep.Delivered = true
+	return marshal(rep), nil
+}
+
+type sendReport struct {
+	AgentID    string `json:"agent_id,omitempty"`
+	ResolvedID string `json:"resolved_id,omitempty"`
+	Delivered  bool   `json:"delivered"`
+	Reason     string `json:"reason,omitempty"`
+	Notified   string `json:"notified,omitempty"`
+}
+
+func (r *Registry) undelivered(fromID, fromRole, intended, text, reason string) sendReport {
+	rep := sendReport{AgentID: intended, Delivered: false, Reason: reason}
+	rep.Notified = r.notifyHost(fromID, fromRole, intended, text, reason)
+	return rep
+}
+
+func (r *Registry) deliverToManager(fromID, fromRole, text string) sendReport {
+	body := text
+	if fromID != "" && fromID != DefaultManagerID {
+		body = formatFrom(fromID, fromRole, text)
+	}
+	if !r.SteerManager(body) {
+		return sendReport{AgentID: DefaultManagerID, Delivered: false, Reason: "registry closed"}
+	}
+	return sendReport{AgentID: DefaultManagerID, Delivered: true}
+}
+
+func (r *Registry) notifyHost(fromID, fromRole, intended, text, reason string) string {
+	if fromID == "" || fromID == DefaultManagerID {
+		return ""
+	}
+	if strings.TrimSpace(text) == "" {
+		return ""
+	}
+	if !r.SteerManager(formatHandoff(fromID, fromRole, intended, reason, text)) {
+		return ""
+	}
+	return DefaultManagerID
+}
+
+func formatFrom(fromID, fromRole, text string) string {
+	if fromRole != "" {
+		return "from " + fromID + " (" + fromRole + "): " + text
+	}
+	return "from " + fromID + ": " + text
+}
+
+func formatHandoff(fromID, fromRole, intended, reason, text string) string {
+	var b strings.Builder
+	b.WriteString("from ")
+	b.WriteString(fromID)
+	if fromRole != "" {
+		b.WriteString(" (")
+		b.WriteString(fromRole)
+		b.WriteString(")")
+	}
+	b.WriteString(": undelivered")
+	if intended != "" {
+		b.WriteString(" to ")
+		b.WriteString(intended)
+	}
+	if reason != "" {
+		b.WriteString(" (")
+		b.WriteString(reason)
+		b.WriteString(")")
+	}
+	b.WriteString(": ")
+	b.WriteString(text)
+	return b.String()
+}
+
+// resolveSendTarget accepts the id spawn_agent returned, or that worker's
+// role. An invented suffix is not a match — guessing peer-99 must not steer
+// peer-1.
+func (r *Registry) resolveSendTarget(id string) (*Handle, string, bool) {
+	if h, ok := r.get(id); ok {
+		return h, h.ID, false
+	}
+	if rid := r.runningID(id); rid != "" {
+		if h, ok := r.get(rid); ok {
+			return h, rid, false
+		}
+	}
+	if fid := r.reusableFinishedID(id); fid != "" {
+		if h, ok := r.get(fid); ok {
+			return h, fid, false
+		}
+		// Stats() dropped the live handle; the worker still finished under this role.
+		return nil, fid, true
+	}
+	return nil, "", false
 }
 
 func (r *Registry) wait(ctx context.Context, args string) (string, error) {

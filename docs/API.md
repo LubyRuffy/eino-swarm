@@ -40,7 +40,9 @@ What the UI reads once at startup to decide what to render.
              "auto_title": true, "title_provider": "", "title_model": "",
              "compact_provider": "", "compact_model": "",
              "context_char_budget": 80000, "compact_keep_messages": 6,
-             "goal_max_auto_turns": 12},
+             "auto_compact_tokens": 80000,
+             "goal_max_auto_turns": 12, "goal_session_max_seconds": 600,
+             "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80},
   "locale": "system",
   "ui": {"locale": "system", "font": "system", "font_size": "medium",
          "content_width": "comfortable"}
@@ -84,11 +86,15 @@ provider carries `has_api_key` and `ready` instead.
             "auto_title": true, "title_provider": "", "title_model": "",
             "compact_provider": "", "compact_model": "",
             "context_char_budget": 80000, "compact_keep_messages": 6,
-            "goal_max_auto_turns": 12},
+            "auto_compact_tokens": 80000,
+            "goal_max_auto_turns": 12, "goal_session_max_seconds": 600,
+            "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80},
   "tools": {"disabled": [], "enabled": [], "web_search_max_results": 8,
             "proxy": {"http": "", "https": "", "no_proxy": ""}},
   "memory": {"enabled": true, "auto_review": true, "char_limit": 2200,
-             "review_max_iterations": 8, "skills_index_max": 50},
+             "entry_max": 360, "review_max_iterations": 8,
+             "skills_index_max": 50, "notifications": "on"},
+  "personality": {"instructions": ""},
   "log": {"level": "info"},
   "ui": {"locale": "system", "font": "system", "font_size": "medium",
            "content_width": "comfortable"}
@@ -314,12 +320,13 @@ not poll per row. `reasoning_effort` is the conversation's thinking level (`""`,
 `low`, `medium`, `high`); empty means the model's own default. `project_id` is empty for
 a conversation that belongs to no project. `goal` is the standing objective from
 `/goal` (empty when none). `goal_complete` is true after the manager called
-`complete_goal`; `goal_blocked` is true after `block_goal` (progress needs the
+`complete_goal`; `goal_blocked` is true after `block_goal` or after a pursuing
+turn fails (progress needs the
 human or an external change); `goal_capped` is true after consecutive
 auto-continues hit `swarm.goal_max_auto_turns`. The objective text stays in
 every case so the banner can show it. `goal_block_reason` is the optional
 one-line reason from `block_goal`. `goal_started_at` is when the current
-objective was set (not edited). `compacted` is true after `/compact` has folded
+objective was set (not edited). `compacted` is true after `/compact` or auto-compact has folded
 earlier replay into a briefing; the event log is unchanged.
 
 ### `POST /api/threads` → `201`
@@ -380,7 +387,10 @@ it works in its own workspace again. `pinned` tracks a conversation at the top
 of the sidebar (`pinned_at` is set on pin and cleared on unpin). `goal` is the standing objective (empty
 clears it); it is recorded as a `goal` event, resets completion/block/cap/auto-continue
 counts, and is pursued from the next model round until `complete_goal`,
-`block_goal`, or a clear. Clearing also interrupts a running turn. `goal_edit: true`
+`block_goal`, or a clear. The composer starts that round immediately when
+idle. Clearing also interrupts a running turn. Setting while a turn is
+running steers the new text into this turn's context, not only the next.
+`goal_edit: true`
 with `goal` changes the text without reopening pursuit (a completed goal is
 still reopened). A running turn is steered so the new text is in this turn's
 context, not only the next. `goal_resume: true` starts the next turn for an
@@ -391,14 +401,32 @@ rejected. Responds like `GET`.
 
 Folds older replay into a briefing for later turns. The transcript the human
 sees does not change: events stay. Recent messages
-(`swarm.compact_keep_messages`, default 6) stay verbatim. The summarizer follows
-the conversation's model unless `swarm.compact_provider` / `swarm.compact_model`
-pin a different one (same empty-means-follow rule as the conversation namer).
+(`swarm.compact_keep_messages`, default 6) stay verbatim. When the conversation
+already has a rolling session briefing (`session_memory` on the thread), that
+text is copied as the compact view and the compact summarizer is not called
+(including a `/goal` wrap-up when there is not enough replay to fold).
+A briefing that is a `Tool:`/`Human:`/`Assistant:` transcript or pasted exec
+JSON is refused: the thread is unchanged and `compacted` carries `err`.
+Otherwise the summarizer follows the conversation's model unless
+`swarm.compact_provider` / `swarm.compact_model` pin a different one (same
+empty-means-follow rule as the conversation namer). The summarizer is streamed.
+Silence between chunks uses that endpoint's `timeout_seconds` (idle, next
+byte), same as any other model call. A timeout is recorded on the `compacted`
+event and the thread is unchanged.
 Responds like `GET`.
 
+The same fold also runs **during a turn**, before a manager model call, when
+billed or estimated prompt tokens exceed `swarm.auto_compact_tokens` (default
+80000). Older replayable tool results are cleared first; if that is not
+enough, the session briefing is caught up and copied in, and only then is
+eino's summarizer used. That path is not this endpoint: the UI hears a live
+`compacted` event (`seq` 0, `phase: "start"`) and then a stored one with
+`auto: true` and the token counts.
+
 `409` with `code: "busy"` while a turn is running. `409` with
-`code: "nothing_to_compact"` when there is not enough replay to fold (already
-short, or already compacted through the same tail).
+`code: "nothing_to_compact"` when there is not enough replay to fold and no
+accepted session briefing to copy (already short, or already compacted through
+the same tail).
 
 ### `DELETE /api/threads/:id` → `204`
 
@@ -431,10 +459,18 @@ send (always under `uploads/`). They are named on the user message so the
 model reads those first instead of scavenging older leftovers in the same
 folder. Unknown, escaped, or non-upload paths are `400`. At most 32 files.
 
+A `text` that is `/goal <objective>` is the slash command, not a chat line.
+The name is the ASCII identifier after `/` (or the fullwidth solidus `／`);
+the rest is the objective, space optional so a glued CJK IME string still
+matches. That pins the standing objective and starts pursuit when idle, or
+steers the live turn. The stored `user_text` is the objective. Bare `/goal`
+is `400`. `/goals …` is still an ordinary message.
+
 `from_event_seq`, when set, names a stored `user_message` to replace. That
 event and everything after it is deleted (later turns, their messages and
 model-call rows, and any queued follow-up). A compact briefing whose
-`compact_through_seq` landed in the deleted range is cleared. Sequence
+`compact_through_seq` landed in the deleted range is cleared, and so is a
+session briefing whose `session_memory_through_seq` did. Sequence
 counters are **not** wound back, so a live `Last-Event-ID` still lands on new
 events. A running turn is interrupted first, so this is not `409 busy`. A
 seq that is not a `user_message` is `400`; a missing seq is `404`. Original
@@ -556,13 +592,32 @@ Every turn of the conversation, oldest first. This is what renders the
 ### `POST /api/threads/:id/review` → `202`
 
 Reviews the conversation's most recent completed turn again, curating the
-project's memory from it. Answers with the turn being reviewed
+project's memory from it. The reviewer reads the stored event log (and the
+rolling session briefing), not a compacted ADK transcript. Auto-review after
+a turn is skipped when the manager already wrote with `memory` or
+`skill_manage`; this endpoint still runs. Answers with the turn being reviewed
 (`{"turn": {…}}`), not the outcome: the review is a background job and its
 result arrives on the event stream as `memory_review`, the same way a turn's
 answer does. `409 idle` when the conversation is in no project, has memory off,
 or has no finished turn to read.
 
 ## Event stream
+
+### `GET /api/threads/:id/log?before=<seq>&limit=<n>`
+
+JSON page of stored events, **newest page, oldest-first inside it**. `before`
+omitted or `0` means the live edge. Each later call with `before` set to the
+first seq of the previous page walks upward. `limit` defaults to 80 and is
+clamped to 200. Response:
+
+```json
+{"events":[{ "seq": 12, "kind": "user_message", "…" : "…" }], "has_more": true}
+```
+
+The front end opens a conversation with one viewport of this tail, then
+`GET /api/threads/:id/events?since=<last seq>` for live. Scrolling up fetches
+the next older page. An empty conversation is `"events":[]` with
+`has_more: false`.
 
 ### `GET /api/threads/:id/events?since=<seq>`
 
@@ -601,23 +656,25 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished |
 | `finished` | a sub-agent finished; `err` set when it failed |
 | `turn` | an agent started a model turn (`turn N`) |
-| `steer` | guidance was accepted. `images` as on `user_message` when the steer carried a paste |
+| `steer` | human guidance was accepted. `images` as on `user_message` when the steer carried a paste. The `/goal` session wrap-up cue is **not** this event — it is delivered to the in-flight manager only |
 | `cleanup` | sub-agents were stopped at the end of the turn |
-| `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated. Leftover sub-agents are started again under the same `agent_id` (a second `spawned` for that id is the roster coming back, not a twin). Unread `steer` rows stay on the turn. A leftover `max_iterations` confirm is no longer pending |
+| `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated. In-flight `tool_call` rows that never got a result are closed first (`tool_result` with `err`: `the previous process stopped`) so a killed `exec` does not keep spinning. Leftover sub-agents are started again under the same `agent_id` (a second `spawned` for that id is the roster coming back, not a twin). Unread `steer` rows stay on the turn. A leftover `max_iterations` confirm is no longer pending |
 | `progress` | a pulse while the turn runs (see below); `seq` is 0, not stored |
 | `usage` | a live token snapshot after each model call (see below); `seq` is 0, not stored |
 | `memory_review` | the post-turn review of a project's memory finished (see below) |
 | `max_iterations` | the manager hit `swarm.manager_max_iterations`; `text` is `{"limit":N,"extend_by":N}` and the turn is still running |
 | `max_iterations_continued` | the human extended the turn; `text` names how many extra rounds |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
+| `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
 | `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}` |
-| `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message` |
+| `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
 | `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns`; `text` is JSON `{auto_turns,cap}`. A later human message or resume resets the budget |
-| `goal_blocked` | the manager called `block_goal`; auto-continue stops. `text` is JSON `{reason}`. A later human message or resume clears it |
+| `goal_blocked` | the manager called `block_goal`, or a pursuing turn failed; auto-continue stops. `text` is JSON `{reason}`. A later human message or resume clears it |
 | `goal_edited` | the human changed the objective text in place; `text` is the new objective. Status stays put. A running turn is also steered |
-| `goal_resumed` | the human started pursuit again after a block, a cap, or an idle open goal |
-| `compacted` | earlier replay was folded into a briefing. `text` is JSON `{summary,through_seq,chars_before,chars_after}`; `err` is set when the summarizer failed and the thread is unchanged. The transcript notice is generic — the briefing is for later prompts, not a chat row |
+| `goal_resumed` | the human started pursuit again after a block, a cap, or an idle open goal. Same Working-clock rule as `goal_continued` |
+| `goal_session` | a `/goal` turn was forced to end so the next session can start. `text` is JSON `{reason,elapsed_ms,rounds}` where `reason` is `time` (current cuts) or `iterations` (older builds that treated eino's ReAct slice as a session boundary). The turn is `done`, not cancelled. In-flight sub-agents are parked for the next session |
+| `compacted` | earlier replay was folded into a briefing, either by `/compact` or automatically at `swarm.auto_compact_tokens`. `text` is JSON `{summary,through_seq,chars_before?,chars_after?,auto?,tokens_before?,tokens_after?,phase?}`. `phase: "start"` is live only (`seq` 0) and means compression is in flight. A stored auto event has `auto: true` and the token counts. `err` is set when the summarizer failed and the thread is unchanged. The transcript notice is generic — the briefing is for later prompts, not a chat row |
 | `rewound` | a live client should drop rows from `text` (the cut seq) onward. `seq` is 0, not stored — a reload already has the truncated log |
 | `done` | the turn finished; `text` is the final answer |
 | `error` | the turn failed; `err` explains |
@@ -699,8 +756,11 @@ still reaches everything that happened, including the reviewer's model calls
 ```
 
 The event is stored even when `changed` is false: a review that left no trace
-could not be told apart from one that never ran. The turn's status is not
-affected — a failed review (`err`) costs a note, not the answer.
+could not be told apart from one that never ran. A `skill_manage` create that
+collides, or a `memory` write that exceeds `entry_max` or restates a skill
+(summary or steps), is a tool refusal — it does not appear in `changes`. The
+turn's status is not affected — a failed review (`err`) costs a note, not the
+answer.
 
 `notify` is `off`, `on` or `verbose` — `memory.notifications` at the moment the
 review finished, stamped so a later settings change does not rewrite history.

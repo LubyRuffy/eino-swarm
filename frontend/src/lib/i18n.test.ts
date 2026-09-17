@@ -85,6 +85,21 @@ describe("localizeNotice", () => {
     expect(localizeNotice("Memory review failed: boom", "zh")).toBe(
       "记忆复盘失败：boom",
     )
+    expect(localizeNotice("Compressing conversation context…", "zh")).toBe(
+      "正在压缩会话上下文…",
+    )
+    expect(localizeNotice("Work session ended after the time cap.", "zh")).toBe(
+      "工作会话因时长上限结束。",
+    )
+    expect(
+      localizeNotice("Work session ended after the tool-round cap.", "zh"),
+    ).toBe("工作会话因工具回合上限结束。")
+    expect(
+      localizeNotice(
+        "Context compressed (91200 → 1400 tokens). The transcript is unchanged.",
+        "zh",
+      ),
+    ).toBe("已压缩上下文（91200 → 1400 tokens）。你看到的记录不变。")
     expect(localizeNotice("a model wrote this", "zh")).toBe("a model wrote this")
   })
 })

@@ -1,4 +1,12 @@
-import { Moon, PanelLeft, PanelRight, Sun, WifiOff } from "lucide-react"
+import {
+  FoldHorizontal,
+  Moon,
+  PanelLeft,
+  PanelRight,
+  Sun,
+  UnfoldHorizontal,
+  WifiOff,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 
 import { CopyButton } from "@/components/app/transcript"
@@ -13,6 +21,7 @@ import {
   SIDEBAR_WIDTH_DEFAULT,
   SIDEBAR_WIDTH_VAR,
 } from "@/lib/sidebar-width"
+import type { ContentWidthPref } from "@/lib/appearance"
 import type { Meta, Project, Thread, ThreadStatus } from "@/lib/types"
 import { cn, formatDuration } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
@@ -33,6 +42,8 @@ export function Header({
   onToggleSidebar,
   onToggleTheme,
   onToggleLocale,
+  onToggleContentWidth,
+  contentWidth,
   dark,
 }: {
   thread?: Thread
@@ -51,6 +62,8 @@ export function Header({
   onToggleSidebar: () => void
   onToggleTheme: () => void
   onToggleLocale: () => void
+  onToggleContentWidth: () => void
+  contentWidth: ContentWidthPref
   dark: boolean
 }) {
   const t = useT()
@@ -69,6 +82,10 @@ export function Header({
   const listLabel = sidebarOpen
     ? t("header.hideConversations")
     : t("header.showConversations")
+  const wide = contentWidth === "full"
+  const widthLabel = wide
+    ? t("header.switchToStandard")
+    : t("header.switchToWide")
   return (
     <header
       data-drag-region
@@ -136,11 +153,14 @@ export function Header({
           <Badge variant="warning" data-testid="status-badge">
             <span className="size-1.5 animate-breathe rounded-full bg-running" />
             {/* A running clock counts in seconds; "Working · 0ms" reads like a
-                bug even when it is the truth. */}
+                bug even when it is the truth. Missing started_at used to
+                clamp to 1s forever — that is a lie, not a clock. */}
             {status.awaiting_continue
               ? t("header.waiting")
               : t("header.working")}
-            {formatDuration(Math.max(elapsedMs, 1000))}
+            {status.started_at
+              ? ` · ${formatDuration(Math.max(elapsedMs, 1000))}`
+              : null}
           </Badge>
         ) : (
           <Badge variant="outline" data-testid="status-badge">
@@ -194,6 +214,17 @@ export function Header({
             className="px-1.5 text-[11px] font-medium"
           >
             {t("header.languageMark")}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onToggleContentWidth}
+            title={widthLabel}
+            aria-label={widthLabel}
+            aria-pressed={wide}
+            className={wide ? "text-foreground" : "text-muted-foreground"}
+          >
+            {wide ? <FoldHorizontal /> : <UnfoldHorizontal />}
           </Button>
           <Button
             variant="ghost"

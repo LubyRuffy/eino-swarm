@@ -5,6 +5,7 @@ import {
   Loader2,
   Palette,
   Search,
+  UserRound,
   Workflow,
   Wrench,
 } from "lucide-react"
@@ -13,6 +14,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { MemorySettings } from "@/components/app/memory-settings"
 import { ModelsTab } from "@/components/app/model-settings"
 import { GeneralTab } from "@/components/app/settings-general"
+import { PersonalityTab } from "@/components/app/settings-personality"
 import { SwarmTab } from "@/components/app/settings-swarm"
 import { ToolsTab } from "@/components/app/settings-tools"
 import { settingsMatch } from "@/components/app/settings-field"
@@ -48,7 +50,13 @@ function sections(t: Translate) {
       id: "general",
       label: t("settings.nav.general"),
       icon: Palette,
-      keys: "appearance theme light dark font size serif mono width full comfortable log level data directory version language locale 语言 中文 english 外观 主题 字体 字号 铺满 宽度",
+      keys: "appearance theme light dark font size serif mono width full wide standard comfortable log level data directory version language locale 语言 中文 english 外观 主题 字体 字号 铺满 宽屏 标准 宽度",
+    },
+    {
+      id: "personality",
+      label: t("settings.nav.personality"),
+      icon: UserRound,
+      keys: "personality preferences tone style voice 人设 个性化 偏好 语气",
     },
     {
       id: "models",
@@ -207,6 +215,10 @@ export function SettingsDialog({
 
   return (
     <Dialog
+      // Full-page sheet, not a popup. modal's hideOthers walks every node
+      // under the conversation; a long transcript made opening Settings
+      // stall for seconds before the spinner even meant anything.
+      modal={false}
       open={open}
       onOpenChange={(next) => {
         if (next) onOpenChange(true)
@@ -215,6 +227,7 @@ export function SettingsDialog({
     >
       <DialogContent
         hideClose
+        onPointerDownOutside={(e) => e.preventDefault()}
         className="inset-0 left-0 top-0 flex h-dvh max-h-dvh w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none sm:rounded-none data-[state=open]:zoom-in-100"
       >
         {trafficInset ? <SettingsTitlebar /> : null}
@@ -304,6 +317,13 @@ export function SettingsDialog({
                 </p>
               ) : (
                 <>
+                  <TabsContent value="personality" className={settingsScrollTab}>
+                    <PersonalityTab
+                      settings={settings}
+                      onChange={apply}
+                      query={query}
+                    />
+                  </TabsContent>
                   <TabsContent value="models" className={settingsScrollTab}>
                     <ModelsTab
                       settings={settings}

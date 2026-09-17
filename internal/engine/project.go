@@ -176,7 +176,7 @@ func (e *Engine) ProjectMemory(projectID string) *memory.Store {
 	if s, ok := e.memory.stores[projectID]; ok {
 		return s
 	}
-	s := memory.New(e.cfg.ProjectMemoryDir(projectID), e.cfg.Memory.Limit())
+	s := memory.NewLimited(e.cfg.ProjectMemoryDir(projectID), e.cfg.Memory.Limit(), e.cfg.Memory.EntryLimit())
 	e.memory.stores[projectID] = s
 	return s
 }

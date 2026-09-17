@@ -18,3 +18,17 @@ export function clearComposerPad(from: HTMLElement | null): void {
   if (!(stage instanceof HTMLElement)) return
   stage.style.removeProperty(COMPOSER_PAD_VAR)
 }
+
+/** Grow the box with the draft. Skip while an IME is composing: `height:auto`
+ *  forces a layout and the candidate window jumps on every preedit key. */
+export const COMPOSER_AREA_MAX_PX = 200
+
+export function resizeComposerArea(
+  el: HTMLTextAreaElement | null,
+  opts?: { composing?: boolean; maxPx?: number },
+): void {
+  if (!el || opts?.composing) return
+  const maxPx = opts?.maxPx ?? COMPOSER_AREA_MAX_PX
+  el.style.height = "auto"
+  el.style.height = `${Math.min(el.scrollHeight, maxPx)}px`
+}

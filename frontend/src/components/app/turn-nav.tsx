@@ -17,35 +17,46 @@ export function TurnNav({
   items,
   scrollerRef,
   onJump,
+  pinned = false,
 }: {
   items: TurnNavItem[]
   scrollerRef: RefObject<HTMLElement | null>
   onJump: (id: string) => void
+  /** Following the live edge: the latest turn, even before layout has
+   *  scrolled the opener to the bottom. */
+  pinned?: boolean
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   const [hovered, setHovered] = useState<string>()
-  const [active, setActive] = useState<string>()
+  const [active, setActive] = useState<string | undefined>(() => items.at(-1)?.id)
 
   const itemKey = items.map((i) => `${i.id}\0${i.text}`).join("\n")
   const itemsRef = useRef(items)
   itemsRef.current = items
+  const ticksRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
     const root = scrollerRef.current
     if (!root) return
     const measure = () => {
       const list = itemsRef.current
-      const offsets = list.map((item) => {
-        const el = root.querySelector(turnNavSelector(item.id))
-        return el instanceof HTMLElement ? offsetInScroller(el, root) : 0
-      })
+      if (pinned) {
+        setActive(list.at(-1)?.id)
+        return
+      }
       setActive(
         activeNavId(
-          list.map((item, i) => ({ id: item.id, top: offsets[i] ?? 0 })),
+          list.map((item) => {
+            const el = root.querySelector(turnNavSelector(item.id))
+            return el instanceof HTMLElement
+              ? { id: item.id, top: offsetInScroller(el, root) }
+              : { id: item.id }
+          }),
           root.scrollTop,
           root.clientHeight,
           root.scrollHeight,
+          pinned,
         ),
       )
     }
@@ -64,11 +75,23 @@ export function TurnNav({
       root.removeEventListener("scroll", measure)
     }
     // itemKey is id+text; a streamed answer must not rebuild the rail.
-  }, [scrollerRef, itemKey])
+  }, [scrollerRef, itemKey, pinned])
+
+  useLayoutEffect(() => {
+    if (!active) return
+    const escaped =
+      typeof CSS !== "undefined" && typeof CSS.escape === "function"
+        ? CSS.escape(active)
+        : active.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+    const tick = ticksRef.current?.querySelector(`[data-turn-nav-tick="${escaped}"]`)
+    if (tick instanceof HTMLElement && typeof tick.scrollIntoView === "function") {
+      tick.scrollIntoView({ block: "nearest" })
+    }
+  }, [active])
 
   if (items.length < TURN_NAV_MIN) return null
 
-  const highlight = hovered ?? active ?? items[0]?.id
+  const highlight = hovered ?? active ?? items.at(-1)?.id
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
@@ -108,7 +131,10 @@ export function TurnNav({
     >
       <div className="relative flex w-8 flex-col items-center py-1.5">
         <div className="absolute inset-y-1.5 left-1/2 w-px -translate-x-1/2 bg-muted-foreground/30" />
-        <div className="relative flex max-h-48 flex-col items-center gap-2 overflow-y-auto">
+        <div
+          ref={ticksRef}
+          className="relative flex max-h-48 flex-col items-center gap-2 overflow-y-auto"
+        >
           {items.map((item) => {
             const current = item.id === active
             const hot = item.id === highlight

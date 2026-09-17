@@ -193,6 +193,17 @@ describe("threads", () => {
     expect(threads.map((t) => t.id)).toEqual(["th_2", "th_1"])
   })
 
+  it("asks for a tail page of the event log", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      expect(url).toBe("/api/threads/th_1/log?before=40&limit=24")
+      return respond({ events: [{ seq: 12 }], has_more: true })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const page = await api.threadLog("th_1", { before: 40, limit: 24 })
+    expect(page.has_more).toBe(true)
+    expect(page.events[0]?.seq).toBe(12)
+  })
+
   it("pins a dragged project order", async () => {
     const fetch = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("/api/projects/reorder")

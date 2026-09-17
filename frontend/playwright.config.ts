@@ -25,7 +25,8 @@ export default defineConfig({
     // The wipe belongs here rather than in globalSetup: Playwright starts the
     // web server first, so a setup hook would delete the directory the server
     // had already opened.
-    command: `rm -rf ${dataDir} && go run ../cmd/zwai web --addr 127.0.0.1:${port} --no-open --mock --data-dir ${dataDir}`,
+    // Workers pause so wait_agents stays pending long enough to Steer.
+    command: `rm -rf ${dataDir} && ZWAI_MOCK_WORKER_DELAY_MS=1500 go run ../cmd/zwai web --addr 127.0.0.1:${port} --no-open --mock --data-dir ${dataDir}`,
     url: `http://127.0.0.1:${port}/api/meta`,
     // Never reuse: a server left over from a previous run holds an open handle
     // to the database this run just deleted.

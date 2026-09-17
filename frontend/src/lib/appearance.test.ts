@@ -10,6 +10,7 @@ import {
   normalizeFontSize,
   normalizeUISettings,
   readAppearance,
+  toggleContentWidth,
   writeAppearance,
 } from "./appearance"
 
@@ -94,6 +95,13 @@ describe("appearance storage", () => {
   })
 })
 
+describe("toggleContentWidth", () => {
+  it("flips the reading column and the wide fill", () => {
+    expect(toggleContentWidth("comfortable")).toBe("full")
+    expect(toggleContentWidth("full")).toBe("comfortable")
+  })
+})
+
 describe("applyAppearance", () => {
   it("writes CSS variables and data attributes the column class reads", () => {
     applyAppearance({ font: "serif", fontSize: "large", contentWidth: "full" })
@@ -104,10 +112,12 @@ describe("applyAppearance", () => {
     expect(root.style.getPropertyValue("--font-sans")).toMatch(/serif/)
     expect(root.style.getPropertyValue("--ui-font-size")).toBe("18px")
     expect(root.style.getPropertyValue("--content-max")).toBe("none")
+    expect(root.style.getPropertyValue("--content-gutter")).toBe("1rem")
 
     applyAppearance(defaultAppearance())
     expect(root.dataset.font).toBe("system")
     expect(root.style.getPropertyValue("--ui-font-size")).toBe("16px")
     expect(root.style.getPropertyValue("--content-max")).toBe("48rem")
+    expect(root.style.getPropertyValue("--content-gutter")).toBe("2rem")
   })
 })

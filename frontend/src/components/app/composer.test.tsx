@@ -215,6 +215,9 @@ describe("Composer chrome", () => {
     expect(
       screen.getByTestId("composer").querySelector(".content-column"),
     ).not.toBeNull()
+    expect(
+      screen.getByTestId("composer").querySelector(".content-gutter"),
+    ).not.toBeNull()
   })
 })
 
@@ -504,6 +507,35 @@ describe("Composer slash commands", () => {
     expect(screen.getByTestId("slash-command-compact")).toBeTruthy()
   })
 
+  it("puts the compact fill on the menu from the usage snapshot", () => {
+    renderComposer({
+      usage: {
+        context_tokens: 25600,
+        context_window: 256000,
+        turn: {
+          prompt_tokens: 25600,
+          completion_tokens: 0,
+          cached_tokens: 0,
+          reasoning_tokens: 0,
+          total_tokens: 25600,
+          calls: 1,
+        },
+        thread: {
+          prompt_tokens: 25600,
+          completion_tokens: 0,
+          cached_tokens: 0,
+          reasoning_tokens: 0,
+          total_tokens: 25600,
+          calls: 1,
+        },
+      },
+    })
+    fireEvent.change(screen.getByTestId("composer-input"), {
+      target: { value: "/" },
+    })
+    expect(screen.getByTestId("slash-command-compact").textContent).toMatch(/10%/)
+  })
+
   it("filters as the name is typed", () => {
     renderComposer()
     fireEvent.change(screen.getByTestId("composer-input"), {
@@ -547,6 +579,39 @@ describe("Composer slash commands", () => {
     const onSend = vi.fn()
     const onSetGoal = vi.fn()
     renderComposer({ onSend, onSetGoal })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "/goal keep going" } })
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSetGoal).toHaveBeenCalledWith("keep going")
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("submits /goal when the objective is glued on without a space", () => {
+    const onSend = vi.fn()
+    const onSetGoal = vi.fn()
+    renderComposer({ onSend, onSetGoal })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "/goal持续推进" } })
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSetGoal).toHaveBeenCalledWith("持续推进")
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("submits /goal when the slash is the fullwidth IME solidus", () => {
+    const onSend = vi.fn()
+    const onSetGoal = vi.fn()
+    renderComposer({ onSend, onSetGoal })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "／goal keep going" } })
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSetGoal).toHaveBeenCalledWith("keep going")
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("does not queue a /goal submit while a turn is running", () => {
+    const onSend = vi.fn()
+    const onSetGoal = vi.fn()
+    renderComposer({ running: true, onSend, onSetGoal })
     const input = screen.getByTestId("composer-input")
     fireEvent.change(input, { target: { value: "/goal keep going" } })
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })

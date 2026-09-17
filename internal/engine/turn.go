@@ -42,6 +42,13 @@ type runtime struct {
 	// leftover workers from a crashed process, consumed by the first RunWith.
 	restore []swarm.RestoredWorker
 	planted []swarm.FinishedWorker
+	// parked is a swarm left running across /goal sessions so in-flight
+	// sub-agents are not killed when the manager's turn ends.
+	parked *swarm.Registry
+	// sessionTimers end a /goal turn at the time cap (and steer a wrap-up).
+	sessionTimers  []*time.Timer
+	sessionStarted time.Time
+	sessionUsed    int
 }
 
 // release marks the runtime idle. It runs before the turn's terminal event is
@@ -83,15 +90,19 @@ func (rt *runtime) status() Status {
 		started := rt.startedAt
 		st.StartedAt = &started
 	}
+	reg := rt.reg
+	if reg == nil {
+		reg = rt.parked
+	}
+	if reg != nil {
+		// Progress, not Stats: Stats prunes the finished sub-agents it
+		// counts, so answering "how is it going" would throw away a result
+		// the manager has not collected yet.
+		st.Workers = liveWorkers(reg.Progress())
+	}
 	if rt.running {
 		st.ElapsedMS = time.Since(rt.startedAt).Milliseconds()
 		st.AwaitingContinue = rt.continueCh != nil
-		if rt.reg != nil {
-			// Progress, not Stats: Stats prunes the finished sub-agents it
-			// counts, so answering "how is it going" would throw away a result
-			// the manager has not collected yet.
-			st.Workers = liveWorkers(rt.reg.Progress())
-		}
 	}
 	return st
 }
@@ -135,6 +146,8 @@ func (rt *runtime) occupy(reg *swarm.Registry, cancel context.CancelFunc, turnID
 		return false
 	}
 	rt.reg, rt.cancel, rt.turnID, rt.startedAt, rt.running, rt.idle = reg, cancel, turnID, time.Now(), true, idle
+	rt.sessionUsed = 0
+	rt.sessionStarted = time.Time{}
 	// Only a new turn clears quit-abandoned. Clearing it when run()
 	// returns would let a late finished from a killed worker look completed.
 	rt.abandoned = false
@@ -155,10 +168,15 @@ func (rt *runtime) waitIdle(d time.Duration) {
 func (rt *runtime) close() {
 	rt.mu.Lock()
 	reg := rt.reg
+	parked := rt.parked
 	rt.reg = nil
+	rt.parked = nil
 	rt.mu.Unlock()
 	if reg != nil {
 		reg.Close()
+	}
+	if parked != nil {
+		parked.Close()
 	}
 }
 
@@ -202,6 +220,15 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	}
 
 	rt := e.runtimeFor(threadID)
+	if turn, done, err := e.applySlashGoal(threadID, &in); err != nil {
+		return nil, err
+	} else if done {
+		return turn, nil
+	}
+	th, err = e.store.GetThread(threadID)
+	if err != nil {
+		return nil, err
+	}
 	if in.FromEventSeq == 0 {
 		rt.mu.Lock()
 		busy := rt.running
@@ -283,14 +310,25 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 		return nil, err
 	}
 
-	reg := e.newTurnRegistry(builder, toolset)
+	reg := rt.takeParkedRegistry()
+	reused := reg != nil
+	if reused {
+		reg.ModelBuilder = builder
+		reg.SubAgentTools = toolset.Tools
+	} else {
+		reg = e.newTurnRegistry(builder, toolset)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	idle := make(chan struct{})
 
 	if !rt.occupy(reg, cancel, turn.ID, idle) {
 		cancel()
-		reg.Close()
+		if reused {
+			rt.parkRegistry(reg)
+		} else {
+			reg.Close()
+		}
 		_ = e.store.FinishTurn(turn.ID, store.TurnCancelled, "", ErrBusy.Error())
 		return nil, ErrBusy
 	}
@@ -300,7 +338,11 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 		e.autoTitle(th, titleFromInput(caption, modelImages, files))
 	}
 
-	messages := append(history, BuildUserMessage(text, modelImages))
+	messages := history
+	if reused && liveWorkers(reg.Progress()) > 0 {
+		messages = append(messages, schema.UserMessage(parkedWorkersCue))
+	}
+	messages = append(messages, BuildUserMessage(text, modelImages))
 	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), refs, false)
 	return turn, nil
 }
@@ -363,7 +405,9 @@ func (e *Engine) SteerInput(threadID string, in UserInput) error {
 }
 
 // Interrupt cancels a running turn. Everything produced so far is kept: an
-// interrupted turn is a turn with a short answer, not a lost one.
+// interrupted turn is a turn with a short answer, not a lost one. An idle
+// conversation with parked /goal workers is also stopped: those would
+// otherwise keep burning tokens after the manager has already finished.
 func (e *Engine) Interrupt(threadID string) error {
 	if _, err := e.store.GetThread(threadID); err != nil {
 		return err
@@ -374,11 +418,14 @@ func (e *Engine) Interrupt(threadID string) error {
 	if rt == nil {
 		return ErrIdle
 	}
-	if !rt.status().Running {
-		return ErrIdle
+	if rt.status().Running {
+		rt.interrupt()
+		return nil
 	}
-	rt.interrupt()
-	return nil
+	if rt.reapParked() {
+		return nil
+	}
+	return ErrIdle
 }
 
 // ---------- the run itself ----------
@@ -409,6 +456,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 			e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 				Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID,
 				Err: fmt.Sprintf("internal error: %v", r)})
+			rt.blockOpenGoalOnTurnError()
 		}
 	}()
 
@@ -422,6 +470,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 					Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText, Images: images})
 			}
 		}
+		e.closeOrphanedToolCalls(turn)
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 			Kind: KindResumed, AgentID: swarm.DefaultManagerID, Text: resumeNotice})
 	} else if turn.GoalContinue {
@@ -436,47 +485,47 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// The pulse stops the moment the manager returns: everything after that is
 	// teardown, and a pulse arriving after the final event would make a finished
 	// turn look like it was still working.
+	sessionCtx, sessionCancel := context.WithCancel(ctx)
+	defer sessionCancel()
+	rt.armGoalSession(sessionCancel)
 	beat, stopBeat := context.WithCancel(ctx)
 	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.Swarm.ProgressInterval())
-	res, runErr := rt.runManager(ctx, turn, reg, acc, toolset, pc, messages)
+	res, runErr := rt.runManager(sessionCtx, turn, reg, acc, toolset, pc, messages)
+	rt.stopGoalSession()
 	stopBeat()
 	acc.flushAll()
 
-	// A turn owns its sub-agents: any worker still running when the manager
-	// stops is a leak, both of goroutines and of the user's tokens. A quit
-	// is not the end of the turn — do not record cleanup, or the next start
-	// cannot tell those workers were still live.
-	killed := reg.Cleanup()
-	if killed > 0 && !rt.isAbandoned() {
-		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
-			Kind: KindCleanup, AgentID: swarm.DefaultManagerID,
-			Text: fmt.Sprintf("stopped %d sub-agent(s) still running at the end of the turn", killed)})
-	}
-	// A steer that arrived after the manager's last model call was accepted but
-	// never read. It becomes the next turn rather than disappearing.
 	leftover := reg.TakePendingSteerMessages()
-	reg.Close()
-
 	e.persistTranscript(rt.threadID, turn.ID, res.Transcript, inputCount)
 
 	// The process is exiting: keep the row running so the next start continues
 	// it. A user Interrupt takes the switch below and records cancelled.
 	if rt.isAbandoned() {
+		_ = reg.Cleanup()
+		reg.Close()
 		return
 	}
 
 	// Read the outcome before releasing, because releasing cancels the
-	// context and would make every turn look interrupted.
-	status, errText := store.TurnDone, ""
-	switch {
-	case ctx.Err() != nil:
-		status, errText = store.TurnCancelled, "interrupted"
-	case isLimitStop(runErr):
-		// The human declined to extend: keep the partial answer, do not
-		// surface eino's NodeRunError as if the process crashed.
-		status, errText = store.TurnCancelled, runErr.Error()
-	case runErr != nil:
-		status, errText = store.TurnError, publicTurnError(runErr)
+	// interrupt context and would make every turn look interrupted.
+	status, errText, yield := rt.turnOutcome(ctx, sessionCtx, runErr)
+	if yield != nil {
+		rt.recordGoalSession(turn, yield)
+	}
+	if rt.shouldPark(status) {
+		rt.parkRegistry(reg)
+	} else {
+		// A turn owns its sub-agents unless a /goal session is handing them
+		// to the next turn. A quit is not the end of the turn — do not
+		// record cleanup, or the next start cannot tell those workers were
+		// still live.
+		killed := reg.Cleanup()
+		if killed > 0 {
+			e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+				Kind: KindCleanup, AgentID: swarm.DefaultManagerID,
+				Text: fmt.Sprintf("stopped %d sub-agent(s) still running at the end of the turn", killed)})
+		}
+		reg.Close()
 	}
 
 	// Idle before the terminal event: the UI starts its next turn the moment
@@ -503,11 +552,19 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 			e.log.Warn("could not close turn", "turn", turn.ID, "err", err)
 		}
 	}
+	if status == store.TurnError {
+		rt.blockOpenGoalOnTurnError()
+	}
 	_ = e.store.TouchThread(rt.threadID)
-	// The review reads the conversation and curates the project's memory. It
+	// Session briefing first, from the event log, so compact and the
+	// reviewer do not have to re-summarize a folded ADK transcript.
+	if err := e.syncSessionMemory(context.Background(), rt.threadID, turn.ID, false); err != nil {
+		e.log.Warn("could not refresh the session briefing", "turn", turn.ID, "err", err)
+	}
+	// The review reads the event log and curates the project's memory. It
 	// runs after the terminal event on purpose: nobody is waiting for it, and
 	// a turn must never look slower because something is being learned from it.
-	e.scheduleReview(rt.threadID, turn, status, pc, messages, res)
+	e.scheduleReview(rt.threadID, turn, status, pc, res.Final)
 	if !turn.GoalContinue {
 		e.scheduleTitle(rt.threadID, turn, status, turn.UserText, res.Final)
 	}
@@ -535,14 +592,9 @@ func (rt *runtime) runLateSteerMessages(status string, leftover []*schema.Messag
 	if status != store.TurnDone || len(leftover) == 0 {
 		return false
 	}
-	var texts []string
-	var images []ImageInput
-	for _, m := range leftover {
-		t := strings.TrimSpace(strings.TrimPrefix(userMessageText(m), "[steer] "))
-		if t != "" {
-			texts = append(texts, t)
-		}
-		images = append(images, imagesFromMessage(m)...)
+	texts, images := keepHumanSteers(leftover)
+	if len(texts) == 0 && len(images) == 0 {
+		return false
 	}
 	if _, err := rt.engine.StartTurnInput(rt.threadID, UserInput{
 		Text: strings.Join(texts, "\n"), Images: images,
@@ -595,16 +647,14 @@ func (e *Engine) record(ev store.Event) {
 	if err := e.store.AppendEvent(&ev); err != nil {
 		e.log.Warn("could not persist an event", "thread", ev.ThreadID, "kind", ev.Kind, "err", err)
 	}
-	e.broadcast(ev)
-	e.recordMu.Unlock()
-	// After the lock: manager answers used to wait for persistTranscript at
-	// turn end. A crash before that left the UI with a conversation the next
-	// model call could not see. Store them with the event so resume has the
-	// same text. Doing it outside recordMu keeps a slow write from stalling
-	// every other event.
+	// Store the manager answer before the event is visible. A client that
+	// reacts to agent_message by reading replay (or a crash right after the
+	// broadcast) would otherwise miss the on-screen text.
 	if ev.Kind == swarm.NotifyAgentMessage.String() && isManagerAgent(ev.AgentID) {
 		e.persistManagerAnswer(ev.ThreadID, ev.TurnID, ev.Text)
 	}
+	e.broadcast(ev)
+	e.recordMu.Unlock()
 }
 
 func isManagerAgent(id string) bool {
@@ -634,197 +684,18 @@ func (e *Engine) emit(ev store.Event) {
 	e.broadcast(ev)
 }
 
-// ---------- accumulator ----------
-
-// accumulator converts the swarm's notification stream into the event stream.
-//
-// Streamed text arrives as a growing accumulated string per agent; the UI
-// wants that live, but a reload needs one complete record instead of ten
-// thousand partial ones. So deltas are broadcast only, and the accumulator
-// persists the finished text at each turn boundary.
-type accumulator struct {
-	engine   *Engine
-	threadID string
-	turnID   string
-
-	mu        sync.Mutex
-	reasoning map[string]string
-	answer    map[string]string
-	roles     map[string]string
-
-	// live holds the latest streamed delta per agent and kind until the
-	// coalesce timer fires. Without it a 50-token-per-second model would
-	// redraw the UI fifty times a second, once per token.
-	coalesce  time.Duration
-	live      map[string]store.Event
-	liveTimer map[string]*time.Timer
-}
-
-func newAccumulator(e *Engine, threadID, turnID string, coalesce time.Duration) *accumulator {
-	return &accumulator{
-		engine: e, threadID: threadID, turnID: turnID,
-		reasoning: map[string]string{},
-		answer:    map[string]string{},
-		roles:     map[string]string{},
-		coalesce:  coalesce,
-		live:      map[string]store.Event{},
-		liveTimer: map[string]*time.Timer{},
-	}
-}
-
-func (a *accumulator) event(n swarm.Notification, kind string) store.Event {
-	ev := store.Event{
-		ThreadID: a.threadID, TurnID: a.turnID,
-		Kind: kind, AgentID: n.AgentID, Role: n.Role,
-		Text: n.Text, ToolCallID: n.ToolCallID,
-	}
-	if n.Err != nil {
-		ev.Err = n.Err.Error()
-	}
-	return ev
-}
-
-func (a *accumulator) onNotify(n swarm.Notification) {
-	if n.Kind == swarm.NotifyFinished && a.engine.isAbandoned(a.threadID) {
-		// Quit cancelled in-flight workers; recording finished would make
-		// the next start treat them as done instead of restoring them.
-		return
-	}
-	if n.Role != "" {
-		a.mu.Lock()
-		a.roles[n.AgentID] = n.Role
-		a.mu.Unlock()
-	}
-	switch n.Kind {
-	case swarm.NotifyReasoningDelta:
-		a.setReasoning(n.AgentID, n.Text)
-		a.pushLive(n)
-
-	case swarm.NotifyDelta:
-		// answer text has started, so the thinking for this turn is complete
-		a.flushKind(n.AgentID, swarm.NotifyReasoningDelta.String())
-		a.flushReasoning(n.AgentID)
-		a.setAnswer(n.AgentID, n.Text)
-		a.pushLive(n)
-
-	case swarm.NotifyToolCall:
-		// an interim turn: persist its thinking and its commentary, then the call
-		a.flushAgentLive(n.AgentID)
-		a.flushReasoning(n.AgentID)
-		a.flushAnswer(n.AgentID)
-		a.engine.record(a.event(n, n.Kind.String()))
-
-	case swarm.NotifyAgentMessage:
-		// the swarm already hands over the complete text, so the pending
-		// accumulator is dropped rather than persisted twice
-		a.dropLive(n.AgentID)
-		a.flushReasoning(n.AgentID)
-		a.clearAnswer(n.AgentID)
-		a.engine.record(a.event(n, n.Kind.String()))
-
-	case swarm.NotifyTurn:
-		a.engine.emit(a.event(n, n.Kind.String()))
-
-	case swarm.NotifyDone, swarm.NotifyError:
-		// the run loop writes the final event itself, once the turn's status
-		// is known; emitting here too would duplicate it
-		a.flushAgentLive(n.AgentID)
-		a.flushAgent(n.AgentID)
-
-	case swarm.NotifyFinished:
-		a.flushAgentLive(n.AgentID)
-		a.flushAgent(n.AgentID)
-		a.engine.record(a.event(n, n.Kind.String()))
-
-	default:
-		a.engine.record(a.event(n, n.Kind.String()))
-	}
-}
-
-func (a *accumulator) setReasoning(agentID, text string) {
-	a.mu.Lock()
-	a.reasoning[agentID] = text
-	a.mu.Unlock()
-}
-
-func (a *accumulator) setAnswer(agentID, text string) {
-	a.mu.Lock()
-	a.answer[agentID] = text
-	a.mu.Unlock()
-}
-
-func (a *accumulator) clearAnswer(agentID string) {
-	a.mu.Lock()
-	delete(a.answer, agentID)
-	a.mu.Unlock()
-}
-
-func (a *accumulator) take(m map[string]string, agentID string) (string, string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	text := m[agentID]
-	delete(m, agentID)
-	return text, a.roles[agentID]
-}
-
-func (a *accumulator) flushReasoning(agentID string) {
-	text, role := a.take(a.reasoning, agentID)
-	if strings.TrimSpace(text) == "" {
-		return
-	}
-	a.engine.record(store.Event{
-		ThreadID: a.threadID, TurnID: a.turnID,
-		Kind: KindReasoning, AgentID: agentID, Role: role, Text: text,
-	})
-}
-
-func (a *accumulator) flushAnswer(agentID string) {
-	text, role := a.take(a.answer, agentID)
-	if strings.TrimSpace(text) == "" {
-		return
-	}
-	a.engine.record(store.Event{
-		ThreadID: a.threadID, TurnID: a.turnID,
-		Kind: swarm.NotifyAgentMessage.String(), AgentID: agentID, Role: role, Text: text,
-	})
-}
-
-func (a *accumulator) flushAgent(agentID string) {
-	a.flushReasoning(agentID)
-	a.flushAnswer(agentID)
-}
-
-// flushAll persists whatever was still streaming when the turn ended. Without
-// it, interrupting a turn mid-answer loses the partial answer on reload — the
-// user would see text on screen that vanishes when they come back.
-func (a *accumulator) flushAll() {
-	a.flushAllLive()
-	a.mu.Lock()
-	ids := make([]string, 0, len(a.reasoning)+len(a.answer))
-	for id := range a.reasoning {
-		ids = append(ids, id)
-	}
-	for id := range a.answer {
-		ids = append(ids, id)
-	}
-	a.mu.Unlock()
-	for _, id := range ids {
-		a.flushAgent(id)
-	}
-}
-
 // ---------- transcript ----------
 
 // persistTranscript stores the messages this turn added. The transcript the
 // swarm returns starts with the system instruction and then replays the input
 // messages, so only the tail past them is new.
 func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Message, inputCount int) {
-	// +1 for the leading system instruction
-	start := inputCount + 1
+	start := compactPersistStart(transcript, inputCount)
 	if len(transcript) <= start {
 		return
 	}
 	have := e.storedAssistantText(threadID, turnID)
+	haveUsers := e.storedUserText(threadID, turnID)
 	var rows []store.Message
 	for _, m := range transcript[start:] {
 		if m == nil {
@@ -841,13 +712,22 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 				row.ToolCalls = string(raw)
 			}
 		}
+		if isCompactBriefingMessage(m) {
+			continue
+		}
 		if row.Role == string(schema.User) && strings.HasPrefix(strings.TrimSpace(row.Content), "[steer]") {
 			continue // already stored by Steer
+		}
+		if row.Role == string(schema.User) && haveUsers[strings.TrimSpace(row.Content)] {
+			continue
 		}
 		if row.Role == string(schema.User) && row.Content == resumeCue {
 			continue // injected for the model on resume, not a human message
 		}
 		if row.Role == string(schema.User) && row.Content == resumeWorkersCue {
+			continue
+		}
+		if row.Role == string(schema.User) && row.Content == parkedWorkersCue {
 			continue
 		}
 		if row.Role == string(schema.Assistant) {

@@ -38,9 +38,11 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 		timeout = DefaultAgentTimeout
 	}
 
-	// Lineage contexts are created synchronously so Close/Cancel can always
-	// reach the cancel func, even before the goroutine gets scheduled.
-	runCtx, cancel := context.WithCancel(ctx)
+	// Workers outlive one manager ReAct loop. A /goal session yield cancels
+	// the manager's context; tying the worker to that context would kill
+	// in-flight work the next session still needs. Handle.Cancel / Cleanup /
+	// Close still stop them.
+	runCtx, cancel := context.WithCancel(context.Background())
 	watchCtx, watchCancel := context.WithTimeout(runCtx, timeout)
 	h.mu.Lock()
 	h.cancel = cancel
@@ -51,6 +53,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 		// fork_context used to lose the race against the first model call.
 		h.pushInbox(seed)
 	}
+	extraTools = r.bindSendCaller(extraTools, id, role)
 
 	go func() {
 		defer close(done)

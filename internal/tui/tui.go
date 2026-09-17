@@ -20,6 +20,7 @@ const (
 	blockThinking blockKind = iota // reasoning stream (auto-collapse on end)
 	blockAnswer                    // assistant text (final or interim)
 	blockTool                      // tool call + result summary
+	blockUser                      // typed task in an interactive session
 )
 
 type block struct {
@@ -75,6 +76,13 @@ func (a *agentState) closeThinking() {
 	}
 }
 
+// sealAnswer ends the live answer cursor so the next delta cannot overwrite
+// this block. The text stays; folding it to the first line is how a streamed
+// body vanished the moment the model finished.
+func (a *agentState) sealAnswer() {
+	a.curAnswer = nil
+}
+
 // ---------- swarm->UI state ----------
 
 type swarmTUI struct {
@@ -89,11 +97,26 @@ type swarmTUI struct {
 	finErr   error
 	// notifications from the swarm, bridged into Update
 	notifications <-chan notificationMsg
+
+	// Interactive session: the composer is open when idle. One-shot --task
+	// runs leave these zero and keep the original keybindings.
+	interactive bool
+	busy        bool
+	input       string
+	prompts     chan string
+	choice      *Switcher
+	notice      string
+	ime         *imeAnchor
+	slashIndex  int
+	slashQuery  string
 }
 
 // notificationMsg wraps a swarm.Notification as a bubbletea message.
+// idle is a local signal (not a wire kind): the session loop finished a
+// turn and is waiting for the next typed task.
 type notificationMsg struct {
 	swarm.Notification
+	idle bool
 }
 
 func newModel(reg *swarm.Registry) swarmTUI {
@@ -142,9 +165,7 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 	case swarm.NotifyTurn:
 		// turn boundary: the previous answer block is complete; the next
 		// delta/answer opens a fresh block (keeps chronological order).
-		if a.curAnswer != nil {
-			a.curAnswer = nil
-		}
+		a.sealAnswer()
 		a.closeThinking()
 	case swarm.NotifyReasoningDelta:
 		blk := a.ensureThink()
@@ -157,9 +178,10 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 		a.closeThinking()
 		blk := a.ensureAnswer()
 		blk.answer = n.Text
-		blk.open = false // finished message collapses to one line
+		a.sealAnswer()
 	case swarm.NotifyToolCall:
 		a.closeThinking()
+		a.sealAnswer()
 		name := toolNameOf(n.Text)
 		blk := &block{
 			kind:     blockTool,
@@ -178,13 +200,14 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 			a.curTool.open = false // done: collapse to summary line
 			a.curTool = nil
 		}
+	case swarm.NotifyError:
+		a.finished = true
+		a.finErr = n.Err
 	case swarm.NotifyFinished:
 		a.finished = true
 		a.finErr = n.Err
 		a.closeThinking()
-		if a.curAnswer != nil {
-			a.curAnswer.open = false // final message collapses to summary
-		}
+		a.sealAnswer()
 		for _, b := range a.blocks {
 			if b.kind == blockTool {
 				b.open = false // run over: fold all tool blocks
@@ -210,7 +233,12 @@ func toolArgsOf(s string) string {
 
 // ---------- bubbletea model ----------
 
-func (m swarmTUI) Init() tea.Cmd { return tickCmd() }
+func (m swarmTUI) Init() tea.Cmd {
+	if m.interactive {
+		return tea.Batch(tickCmd(), tea.ShowCursor)
+	}
+	return tickCmd()
+}
 
 type tickMsg struct{}
 
@@ -221,56 +249,36 @@ func tickCmd() tea.Cmd {
 func (m swarmTUI) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tickMsg:
-		// drain pending notifications (non-blocking) then RE-SCHEDULE the
-		// tick — without this the UI freezes after the first tick and the
-		// swarm goroutine blocks when the channel buffer fills.
-		for {
-			select {
-			case n, ok := <-m.notifications:
-				if !ok {
-					return m, tea.Quit
-				}
-				m.apply(n.Notification)
-				continue
-			default:
-			}
-			break
-		}
-		return m, tickCmd()
+		return m.onTick()
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
-			m.quitting = true
-			return m, tea.Quit
-		case "tab", "right":
-			if m.selected < len(m.agents)-1 {
-				m.selected++
-			} else {
-				m.selected = -1
-			}
-		case "left":
-			if m.selected == -1 {
-				m.selected = len(m.agents) - 1
-			} else {
-				m.selected--
-			}
-		case "esc":
-			m.selected = -1
-		case "t": // toggle all thinking blocks in current view
-			m.toggleThinking(m.currentAgent())
-		case "enter": // toggle expanded blocks under cursor (simple: last tool)
-			m.toggleTool(m.currentAgent())
-		}
-		if len(msg.String()) == 1 && msg.String() >= "1" && msg.String() <= "9" {
-			idx := int(msg.String()[0] - '1')
-			if idx < len(m.agents) {
-				m.selected = idx
-			}
-		}
+		return m.onKey(msg)
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	}
 	return m, nil
+}
+
+func (m swarmTUI) onTick() (tea.Model, tea.Cmd) {
+	// drain pending notifications (non-blocking) then RE-SCHEDULE the
+	// tick — without this the UI freezes after the first tick and the
+	// swarm goroutine blocks when the channel buffer fills.
+	for {
+		select {
+		case n, ok := <-m.notifications:
+			if !ok {
+				return m, tea.Quit
+			}
+			if n.idle {
+				m.busy = false
+				continue
+			}
+			m.apply(n.Notification)
+			continue
+		default:
+		}
+		break
+	}
+	return m, tickCmd()
 }
 
 func (m *swarmTUI) currentAgent() *agentState {
@@ -379,5 +387,7 @@ func dumpBlock(bld *strings.Builder, blk *block) {
 		}
 	case blockAnswer:
 		fmt.Fprintln(bld, strings.TrimSpace(blk.answer))
+	case blockUser:
+		fmt.Fprintln(bld, "> "+strings.TrimSpace(blk.answer))
 	}
 }

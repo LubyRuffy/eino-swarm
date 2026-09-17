@@ -19,10 +19,11 @@
 //
 // # Lifecycle / resource release
 //
-// Sub-agents derive their run context from the Spawn caller's context:
-// canceling the host (model call failed, SIGINT, client disconnect) cancels
-// every agent it spawned — no orphans. Two further guards cover the case
-// where nobody ever calls close_agent:
+// Sub-agents run on their own cancellable context, not the Spawn caller's.
+// A /goal session yield cancels the manager without killing in-flight
+// workers; Handle.Cancel, Registry.Cleanup, Registry.Close, and AgentTimeout
+// still stop them. Two further guards cover the case where nobody ever calls
+// close_agent:
 //
 //   - AgentTimeout: a watchdog context caps each sub-agent's lifetime
 //     (default 10m via DefaultAgentTimeout);
@@ -254,8 +255,30 @@ func (r *Registry) SetHistory(msgs []adk.Message) {
 	cp := make([]adk.Message, len(msgs))
 	copy(cp, msgs)
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	// eino's ExceedMaxIterations is a ChatModel preprocessor failure.
+	// BeforeModel still runs and would replace hist with a snapshot that
+	// dropped the wrap-appended tool results of the round that just
+	// finished. Keep those results so the next RunWith does not re-issue
+	// the same calls.
+	have := make(map[string]bool, len(cp)+len(r.hist))
+	for _, m := range cp {
+		if m != nil && m.Role == schema.Tool && strings.TrimSpace(m.ToolCallID) != "" {
+			have[m.ToolCallID] = true
+		}
+	}
+	for _, m := range r.hist {
+		if m == nil || m.Role != schema.Tool {
+			continue
+		}
+		id := strings.TrimSpace(m.ToolCallID)
+		if id == "" || have[id] {
+			continue
+		}
+		cp = append(cp, m)
+		have[id] = true
+	}
 	r.hist = cp
-	r.mu.Unlock()
 }
 
 func (r *Registry) historySnapshot() []adk.Message {
@@ -367,6 +390,61 @@ func (m *historyRecorder) AfterModelRewriteState(ctx context.Context,
 	return ctx, state, nil
 }
 
+// WrapInvokableToolCall snapshots each tool result as it lands. eino's
+// ExceedMaxIterations is a ChatModel preprocessor failure: AfterModel has
+// the assistant call, but the next BeforeModel never runs, so without this
+// the returned transcript would drop the results and a /goal slice would
+// re-issue the same calls.
+func (m *historyRecorder) WrapInvokableToolCall(ctx context.Context,
+	endpoint adk.InvokableToolCallEndpoint, tc *adk.ToolContext,
+) (adk.InvokableToolCallEndpoint, error) {
+	return func(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
+		out, err := endpoint(ctx, argumentsInJSON, opts...)
+		m.reg.appendHistoryToolResult(tc, out, err)
+		return out, err
+	}, nil
+}
+
+func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
+	endpoint adk.StreamableToolCallEndpoint, tc *adk.ToolContext,
+) (adk.StreamableToolCallEndpoint, error) {
+	return func(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (*schema.StreamReader[string], error) {
+		sr, err := endpoint(ctx, argumentsInJSON, opts...)
+		if err != nil {
+			return nil, err
+		}
+		var b strings.Builder
+		for {
+			chunk, recvErr := sr.Recv()
+			if recvErr != nil {
+				break
+			}
+			b.WriteString(chunk)
+		}
+		m.reg.appendHistoryToolResult(tc, b.String(), nil)
+		return schema.StreamReaderFromArray([]string{b.String()}), nil
+	}, nil
+}
+
+func (r *Registry) appendHistoryToolResult(tc *adk.ToolContext, content string, runErr error) {
+	if tc == nil || strings.TrimSpace(tc.CallID) == "" {
+		return
+	}
+	text := content
+	if runErr != nil && strings.TrimSpace(text) == "" {
+		text = runErr.Error()
+	}
+	msg := schema.ToolMessage(text, tc.CallID, schema.WithToolName(tc.Name))
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, m := range r.hist {
+		if m != nil && m.Role == schema.Tool && m.ToolCallID == tc.CallID {
+			return
+		}
+	}
+	r.hist = append(r.hist, msg)
+}
+
 // ManagerMiddleware returns the middleware to install on the manager agent
 // (adk.ChatModelAgentConfig.Handlers) so spawn_agent(fork_context=true) can
 // inherit the manager's conversation so far — Codex's fork_turns — and so
@@ -377,9 +455,11 @@ func (r *Registry) ManagerMiddleware() adk.ChatModelAgentMiddleware {
 
 // Spawn starts a sub-agent in the background and returns its handle
 // immediately. The agent's context derives from ctx: if the Spawn caller is
-// canceled, the agent is canceled with it (parent death propagates). extraTools
-// are appended to the sub-agent's toolset on top of Registry.SubAgentTools
-// and the mesh send_message tool.
+// extraTools are appended to the sub-agent's toolset on top of
+// Registry.SubAgentTools and the mesh send_message tool. The worker does not
+// die with ctx: a /goal session yield cancels the manager without killing
+// in-flight sub-agents. Handle.Cancel, Cleanup, Close, and AgentTimeout still
+// stop them.
 func (r *Registry) Spawn(ctx context.Context, role, task string,
 	modelOpt ModelBuilder, extraTools ...tool.BaseTool) (*Handle, error) {
 	return r.spawnAgent(ctx, role, task, modelOpt, "", extraTools...)

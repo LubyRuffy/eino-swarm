@@ -1,4 +1,4 @@
-import { Languages, MessageSquare, MessageSquarePlus, PanelLeft, Search, Settings, SunMoon } from "lucide-react"
+import { Languages, MessageSquare, MessageSquarePlus, PanelLeft, Search, Settings, SunMoon, UnfoldHorizontal } from "lucide-react"
 
 import {
   CommandDialog,
@@ -24,6 +24,7 @@ export function Palette({
   onSettings,
   onToggleTheme,
   onToggleLocale,
+  onToggleContentWidth,
   onToggleSidebar,
   onFind,
 }: {
@@ -35,6 +36,7 @@ export function Palette({
   onSettings: () => void
   onToggleTheme: () => void
   onToggleLocale: () => void
+  onToggleContentWidth: () => void
   onToggleSidebar: () => void
   onFind: () => void
 }) {
@@ -79,6 +81,13 @@ export function Palette({
           >
             <Languages />
             {t("palette.language")}
+          </CommandItem>
+          <CommandItem
+            value="width wide standard full comfortable 宽屏 标准 铺满"
+            onSelect={() => run(onToggleContentWidth)}
+          >
+            <UnfoldHorizontal />
+            {t("palette.width")}
           </CommandItem>
         </CommandGroup>
         {threads.length > 0 ? (

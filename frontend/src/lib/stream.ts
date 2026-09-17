@@ -1,11 +1,12 @@
-import type { SwarmEvent } from "./types"
+import type { SwarmEvent, ThreadStatus } from "./types"
 
 export interface StreamHandlers {
   onEvent: (ev: SwarmEvent) => void
   /** Fired once the replay is finished, so the UI can drop its loading state.
    *  Carries the live status because a conversation may already be working
-   *  when the tab opens. */
-  onReady?: (payload: { seq: number; status?: { running: boolean } }) => void
+   *  when the tab opens. `started_at` is the current turn, not the standing
+   *  objective — that clock lives on `goal_started_at`. */
+  onReady?: (payload: { seq: number; status?: ThreadStatus }) => void
   onOpen?: () => void
   onClose?: (reason: "error" | "closed") => void
 }
@@ -31,6 +32,7 @@ export const KINDS = [
   "max_iterations",
   "max_iterations_continued",
   "title",
+  "session_memory",
   "done",
   "error",
   "resumed",
@@ -41,6 +43,7 @@ export const KINDS = [
   "goal_blocked",
   "goal_edited",
   "goal_resumed",
+  "goal_session",
   "compacted",
   "usage",
   "rewound",

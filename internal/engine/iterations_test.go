@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
-
-	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
 func TestIsMaxIterationsUnwrapsTheGraphError(t *testing.T) {
@@ -29,6 +29,129 @@ func TestIsMaxIterationsUnwrapsTheGraphError(t *testing.T) {
 	}
 	if isMaxIterations(errors.New("the endpoint refused the connection")) {
 		t.Fatal("an unrelated failure is not a cap")
+	}
+}
+
+func TestClosedStandingGoal(t *testing.T) {
+	if closedStandingGoal(nil) {
+		t.Fatal("nil is not a closed goal")
+	}
+	if closedStandingGoal(&store.Thread{}) {
+		t.Fatal("no goal is not a closed goal")
+	}
+	if closedStandingGoal(&store.Thread{Goal: "keep going"}) {
+		t.Fatal("open pursuit is not closed")
+	}
+	if closedStandingGoal(&store.Thread{Goal: "keep going", GoalCapped: true}) {
+		t.Fatal("a cap still pursues this turn")
+	}
+	if !closedStandingGoal(&store.Thread{Goal: "keep going", GoalComplete: true}) {
+		t.Fatal("complete is closed")
+	}
+	if !closedStandingGoal(&store.Thread{Goal: "keep going", GoalBlocked: true}) {
+		t.Fatal("blocked is closed")
+	}
+}
+
+func TestNextManagerMessagesPrefersTheTranscriptAndAppendsSteers(t *testing.T) {
+	res := swarm.RunResult{
+		Transcript: []adk.Message{
+			schema.SystemMessage("coordinate the team"),
+			schema.UserMessage("the request"),
+			schema.AssistantMessage("working", nil),
+		},
+	}
+	fallback := []adk.Message{schema.UserMessage("stale")}
+	steer := schema.UserMessage("[steer] keep going")
+	out := nextManagerMessages(res, fallback, []*schema.Message{steer})
+	if len(out) != 3 || out[0].Role != schema.User || out[1].Role != schema.Assistant || out[2] != steer {
+		t.Fatalf("got %+v", out)
+	}
+	empty := nextManagerMessages(swarm.RunResult{}, fallback, nil)
+	if len(empty) != 1 || empty[0] != fallback[0] {
+		t.Fatalf("empty transcript must keep the fallback: %+v", empty)
+	}
+}
+
+func TestStitchManagerToolResultsFillsDroppedWaitResults(t *testing.T) {
+	spawnAsst := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{ID: "spawn-1"}}}
+	waitAsst := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{ID: "wait-1"}}}
+	existing := []adk.Message{
+		schema.UserMessage("start the work"),
+		spawnAsst,
+		schema.ToolMessage(`{"agent_id":"researcher-1"}`, "spawn-1"),
+		waitAsst,
+	}
+	out := stitchManagerToolResults(existing, []store.Event{
+		{ToolCallID: "spawn-1", Text: `{"agent_id":"researcher-1"}`},
+		{ToolCallID: "wait-1", Text: `{"agents":[{"status":"done"}]}`},
+		{ToolCallID: "", Text: "ignore"},
+	})
+	if len(out) != 5 {
+		t.Fatalf("got %d messages: %+v", len(out), out)
+	}
+	if out[4].Role != schema.Tool || out[4].ToolCallID != "wait-1" {
+		t.Fatalf("wait result must follow its call: %+v", out[4])
+	}
+	if stitchManagerToolResults(existing, nil)[0] != existing[0] {
+		t.Fatal("no results must keep the same slice")
+	}
+	if got := stitchManagerToolResults(existing, []store.Event{{Text: "no id"}}); len(got) != len(existing) {
+		t.Fatalf("blank call ids must not invent messages: %+v", got)
+	}
+	orphan := stitchManagerToolResults(
+		[]adk.Message{nil, schema.UserMessage("start the work"),
+			&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{ID: ""}}}},
+		[]store.Event{{ToolCallID: "wait-2", Text: `{"agents":[]}`}},
+	)
+	if len(orphan) != 4 || orphan[3].ToolCallID != "wait-2" {
+		t.Fatalf("a result without its call still has to land: %+v", orphan)
+	}
+}
+
+func TestStitchManagerToolResultsRefreshesAStaleWait(t *testing.T) {
+	waitAsst := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{ID: "wait-1"}}}
+	existing := []adk.Message{
+		schema.UserMessage("start the work"),
+		waitAsst,
+		schema.ToolMessage(`{"agents":[{"status":"running"}]}`, "wait-1"),
+	}
+	out := stitchManagerToolResults(existing, []store.Event{
+		{ToolCallID: "wait-1", Text: `{"agents":[{"status":"running"}]}`},
+		{ToolCallID: "wait-1", Text: `{"agents":[{"status":"done"}]}`},
+	})
+	if len(out) != 3 {
+		t.Fatalf("got %d messages: %+v", len(out), out)
+	}
+	if out[2].Content != `{"agents":[{"status":"done"}]}` {
+		t.Fatalf("a reused wait id must take the latest event: %q", out[2].Content)
+	}
+}
+
+func TestManagerToolResultsIgnoresWorkersAndEmptyTurns(t *testing.T) {
+	if (*Engine)(nil).managerToolResults("tn_x") != nil {
+		t.Fatal("a nil engine has no events")
+	}
+	e := newTestEngine(t)
+	if got := e.managerToolResults(""); got != nil {
+		t.Fatalf("empty turn: %+v", got)
+	}
+	th, _ := e.CreateThread("", "", "")
+	turn := &store.Turn{ThreadID: th.ID, UserText: "x"}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	e.record(store.Event{ThreadID: th.ID, TurnID: turn.ID, Kind: swarm.NotifyToolResult.String(),
+		AgentID: swarm.DefaultManagerID, ToolCallID: "c1", Text: "manager result"})
+	e.record(store.Event{ThreadID: th.ID, TurnID: turn.ID, Kind: swarm.NotifyToolResult.String(),
+		AgentID: "", ToolCallID: "c0", Text: "also manager"})
+	e.record(store.Event{ThreadID: th.ID, TurnID: turn.ID, Kind: swarm.NotifyToolResult.String(),
+		AgentID: "researcher-1", ToolCallID: "c2", Text: "worker result"})
+	e.record(store.Event{ThreadID: th.ID, TurnID: turn.ID, Kind: swarm.NotifyAgentMessage.String(),
+		AgentID: swarm.DefaultManagerID, Text: "not a result"})
+	got := e.managerToolResults(turn.ID)
+	if len(got) != 2 || got[0].ToolCallID != "c1" || got[1].ToolCallID != "c0" {
+		t.Fatalf("want manager results only: %+v", got)
 	}
 }
 

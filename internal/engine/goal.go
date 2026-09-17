@@ -27,9 +27,8 @@ const KindGoalContinued = "goal_continued"
 // or an explicit resume resets the budget.
 const KindGoalCapped = "goal_capped"
 
-// KindGoalBlocked is recorded when the manager calls block_goal: the
-// same obstacle has already been retried and progress needs the human
-// or an external change. Auto-continue stops until they resume.
+// KindGoalBlocked is recorded when the manager calls block_goal, or when
+// a pursuing turn fails. Auto-continue stops until the human resumes.
 const KindGoalBlocked = "goal_blocked"
 
 // KindGoalEdited is recorded when the human changes the objective text
@@ -54,10 +53,17 @@ const goalMaxRunes = 2000
 const goalContinuedNotice = "Continuing the standing objective."
 const goalResumedNotice = "Resuming the standing objective."
 
+// goalBlockedByFailedTurn is the banner reason when a pursuing turn dies
+// before the manager can call block_goal. Generic on purpose: the error
+// dump already sits on the transcript's error event.
+const goalBlockedByFailedTurn = "the last turn failed"
+
 // SetThreadGoal stores a standing objective for later turns. An empty value
 // clears it. A new value (including replacing a completed one) opens pursuit
 // again and resets the auto-continue budget. Clearing interrupts a running
 // turn: the human is aborting the pursuit, not waiting for the current answer.
+// Setting while a turn is running steers the new text in so this turn sees
+// it, not only the next.
 func (e *Engine) SetThreadGoal(id, goal string) error {
 	th, err := e.store.GetThread(id)
 	if err != nil {
@@ -86,8 +92,13 @@ func (e *Engine) SetThreadGoal(id, goal string) error {
 		Kind: KindGoal, AgentID: swarm.DefaultManagerID,
 		Text: goal,
 	})
-	if clearing && e.Status(id).Running {
+	if clearing {
 		_ = e.Interrupt(id)
+	} else if e.Status(id).Running {
+		// Same as an in-place edit: this turn already has a prompt. Without
+		// a steer, `/goal` during a run looks like it did nothing until the
+		// next session.
+		e.steerGoalEdit(id, goal)
 	}
 	return nil
 }
@@ -254,6 +265,12 @@ func hasOpenGoal(th *store.Thread) bool {
 
 func pursuingGoal(th *store.Thread) bool {
 	return hasOpenGoal(th) && !th.GoalBlocked
+}
+
+// closedStandingGoal is complete or blocked: the text is still there, but
+// this turn must not keep the ReAct loop or ask the human to extend it.
+func closedStandingGoal(th *store.Thread) bool {
+	return th != nil && strings.TrimSpace(th.Goal) != "" && !pursuingGoal(th)
 }
 
 func resetGoalBudget(e *Engine, th *store.Thread) {

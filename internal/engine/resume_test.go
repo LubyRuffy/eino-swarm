@@ -246,6 +246,9 @@ func TestResumeOrphanedTurnsClosesATurnItCannotRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
+		t.Fatal(err)
+	}
 	// No request and no transcript: there is nothing to continue, and leaving
 	// the row running would freeze the conversation.
 	turn := plantUnfinishedTurn(t, e, th.ID, "")
@@ -263,6 +266,13 @@ func TestResumeOrphanedTurnsClosesATurnItCannotRestart(t *testing.T) {
 	}
 	if got.Status == store.TurnRunning {
 		t.Fatalf("an unresumable turn is still marked running: %+v", got)
+	}
+	th, err = e.Store().GetThread(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !th.GoalBlocked || th.GoalBlockReason != goalBlockedByFailedTurn {
+		t.Fatalf("a leftover that cannot restart must block the objective, got %+v", th)
 	}
 }
 

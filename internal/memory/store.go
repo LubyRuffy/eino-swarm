@@ -139,17 +139,33 @@ func (e *MatchError) Unwrap() error { return e.Err }
 // turn can both be writing, and a read-modify-write on a shared file is how
 // one of them loses an entry.
 type Store struct {
-	dir   string
-	limit int
-	mu    sync.Mutex
+	dir      string
+	limit    int
+	entryMax int
+	mu       sync.Mutex
 }
 
 // New returns the store rooted at dir, bounding MEMORY.md at limit characters.
+// Agent writes have no per-note cap until NewLimited sets one; tests that only
+// exercise the total budget keep calling this.
 func New(dir string, limit int) *Store {
+	return NewLimited(dir, limit, 0)
+}
+
+// NewLimited is New plus a per-note cap for Add/Replace. Zero entryMax means
+// only the total budget applies. The Memory panel's Overwrite is not capped
+// per entry: a person editing the file is spending the budget on purpose.
+func NewLimited(dir string, limit, entryMax int) *Store {
 	if limit <= 0 {
 		limit = 1
 	}
-	return &Store{dir: dir, limit: limit}
+	if entryMax < 0 {
+		entryMax = 0
+	}
+	if entryMax > limit {
+		entryMax = limit
+	}
+	return &Store{dir: dir, limit: limit, entryMax: entryMax}
 }
 
 // Dir is the directory this store lives in, which the UI shows so a user can
@@ -158,6 +174,9 @@ func (s *Store) Dir() string { return s.dir }
 
 // Limit is the character budget for MEMORY.md.
 func (s *Store) Limit() int { return s.limit }
+
+// EntryMax is the per-note cap agent writes must fit. Zero means none.
+func (s *Store) EntryMax() int { return s.entryMax }
 
 // Snapshot is MEMORY.md as the prompt and the UI see it.
 type Snapshot struct {
@@ -224,6 +243,9 @@ func (s *Store) Add(content string) (Snapshot, bool, error) {
 	if content == "" {
 		return Snapshot{Limit: s.limit}, false, fmt.Errorf("memory: an empty note has nothing to remember")
 	}
+	if err := tooLong(content, s.entryMax); err != nil {
+		return Snapshot{Limit: s.limit}, false, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap, err := s.read()
@@ -234,6 +256,9 @@ func (s *Store) Add(content string) (Snapshot, bool, error) {
 		if e == content {
 			return snap, false, nil
 		}
+	}
+	if err := s.noteRestatesASkill(content); err != nil {
+		return snap, false, err
 	}
 	next := append(append([]string{}, snap.Entries...), content)
 	written, err := s.write(next, utf8.RuneCountInString(content))
@@ -249,10 +274,16 @@ func (s *Store) Replace(oldText, content string) (Snapshot, error) {
 	if oldText == "" || content == "" {
 		return Snapshot{Limit: s.limit}, fmt.Errorf("memory: replace needs the text to find and the text to store")
 	}
+	if err := tooLong(content, s.entryMax); err != nil {
+		return Snapshot{Limit: s.limit}, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap, err := s.read()
 	if err != nil {
+		return snap, err
+	}
+	if err := s.noteRestatesASkill(content); err != nil {
 		return snap, err
 	}
 	idx, err := matchOne(snap.Entries, oldText)

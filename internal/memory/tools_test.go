@@ -350,3 +350,80 @@ func TestToolsWorkWithoutAChangeRecorder(t *testing.T) {
 		t.Fatalf("store=%+v", snap.Entries)
 	}
 }
+
+func TestSkillManageRefusesANearDuplicateCreate(t *testing.T) {
+	_, tools, changes := toolset(t, 2000)
+	manage := tools[ToolSkillManage]
+	run(t, manage, map[string]any{
+		"action": "create", "name": "weekly-rollup",
+		"description": "when cutting a weekly summary of finished work after each period",
+		"content":     "1. gather the finished items\n2. write the summary",
+	})
+	res := run(t, manage, map[string]any{
+		"action": "create", "name": "weekly-rollup-loop",
+		"description": "when cutting a weekly summary of remaining work after each period",
+		"content":     "1. gather remaining items\n2. write the summary",
+	})
+	if res["success"] != false {
+		t.Fatalf("duplicate create must be a result, not a write: %v", res)
+	}
+	if res["existing"] != "weekly-rollup" {
+		t.Fatalf("the refusal must name the skill to patch: %v", res)
+	}
+	errText, _ := res["error"].(string)
+	if !strings.Contains(errText, "skill_view") || !strings.Contains(errText, "Do not create another") {
+		t.Fatalf("the refusal must stop a suffix retry: %v", res["error"])
+	}
+	available, ok := res["available"].([]any)
+	if !ok || len(available) != 1 || available[0] != "weekly-rollup" {
+		t.Fatalf("available=%v", res)
+	}
+	if got := len(*changes); got != 1 {
+		t.Fatalf("a refused create was recorded as a change: %d", got)
+	}
+}
+
+func TestMemoryToolRefusesARunbookNoteAndARestatedSkill(t *testing.T) {
+	s := NewLimited(filepath.Join(t.TempDir(), "memory"), 2000, 40)
+	var changes []Change
+	byName := map[string]tool.InvokableTool{}
+	for _, bt := range Tools(s, func(c Change) { changes = append(changes, c) }) {
+		info, _ := bt.Info(context.Background())
+		byName[info.Name] = bt.(tool.InvokableTool)
+	}
+
+	res := run(t, byName[ToolMemory], map[string]any{"action": "add", "content": strings.Repeat("a", 41)})
+	if res["success"] != false || res["entry_max"] != float64(40) {
+		t.Fatalf("per-note cap=%v", res)
+	}
+	if !strings.Contains(res["error"].(string), "Do not retry") {
+		t.Fatalf("the refusal must stop the same runbook being sent again: %v", res["error"])
+	}
+	if len(changes) != 0 {
+		t.Fatalf("a refused runbook was recorded as a change: %+v", changes)
+	}
+
+	open := New(filepath.Join(t.TempDir(), "memory"), 2000)
+	changes = nil
+	byName = map[string]tool.InvokableTool{}
+	for _, bt := range Tools(open, func(c Change) { changes = append(changes, c) }) {
+		info, _ := bt.Info(context.Background())
+		byName[info.Name] = bt.(tool.InvokableTool)
+	}
+	mem, manage := byName[ToolMemory], byName[ToolSkillManage]
+	run(t, manage, map[string]any{
+		"action": "create", "name": "weekly-rollup",
+		"description": "when cutting a weekly summary of finished work after each period",
+		"content":     "1. gather the finished items\n2. write the summary",
+	})
+	res = run(t, mem, map[string]any{
+		"action":  "add",
+		"content": "later conversations cut a weekly summary of finished work after each period",
+	})
+	if res["success"] != false || res["existing"] != "weekly-rollup" {
+		t.Fatalf("restated skill=%v", res)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("refused notes were recorded as changes: %+v", changes)
+	}
+}

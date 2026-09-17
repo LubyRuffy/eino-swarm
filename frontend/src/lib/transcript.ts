@@ -1,4 +1,14 @@
-import type { ImageRef, ReviewOutcome, SwarmEvent } from "./types"
+import type { ImageRef, SwarmEvent } from "./types"
+import {
+  compactNotice,
+  goalNotice,
+  goalSessionNotice,
+  isGoalSessionWrapSteer,
+} from "./transcript-notices"
+import { parseReview, reviewNotice } from "./transcript-review"
+
+export { compactNotice, goalNotice, goalSessionNotice }
+export { parseReview, reviewNotice, reviewPanelHint } from "./transcript-review"
 
 /** A transcript is a list of blocks per agent. The event stream is flat and
  *  interleaved across agents, so the reducer's whole job is to fold it into
@@ -16,6 +26,7 @@ export type BlockKind =
   | "confirm"
   | "error"
   | "title"
+  | "session_memory"
 
 export interface Block {
   id: string
@@ -83,6 +94,8 @@ export interface TurnState {
   error?: string
   /** Sub-agents spawned during this turn, in the order they appeared. */
   agentIds: string[]
+  /** True when this turn is a /goal work session (auto-continue or a forced yield). */
+  session?: boolean
 }
 
 /** One sub-agent as the server last saw it. Ages are measured on the server so
@@ -168,6 +181,15 @@ export function reduceEvent(
     append(touchAgent(next, MANAGER_ID), row)
     return next
   }
+  // Rolling session briefing: compact and the reviewer read it. The chat
+  // does not — inventing a "session-memory" worker would be the same bug
+  // as a title-namer row.
+  if (ev.kind === "session_memory") {
+    const row = block(ev, "session_memory", ev.text || ev.err || "")
+    row.quiet = true
+    append(touchAgent(next, MANAGER_ID), row)
+    return next
+  }
   if (ev.kind === "resumed") {
     next.running = true
     upsertTurn(next, ev.turn_id, { status: "running" })
@@ -176,6 +198,13 @@ export function reduceEvent(
     // Crash/quit is not "decline the cap". The turn is running again, so a
     // leftover confirm would look like it is still waiting for a click.
     settlePendingConfirm(manager, true)
+    // The process that issued these calls is gone. Leaving them pending
+    // keeps the spinner next to a row that is no longer doing anything.
+    // Keep leftover workers running: they are restarted under the same id.
+    for (const id of next.agentOrder) {
+      const agent = next.agents[id]
+      if (agent) closePendingTools(agent, resumeToolStopped)
+    }
     return next
   }
   // /goal and /compact are conversation metadata. They must not mint a
@@ -189,7 +218,12 @@ export function reduceEvent(
     return next
   }
   if (ev.kind === "goal_continued") {
-    append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text?.trim() || "Continuing the standing objective."))
+    next.running = true
+    upsertTurn(next, ev.turn_id, { status: "running", startedAt: ev.created_at, session: true })
+    resetManagerForNewTurn(next, ev.turn_id)
+    const manager = touchAgent(next, MANAGER_ID)
+    manager.status = "running"
+    append(manager, block(ev, "notice", ev.text?.trim() || "Continuing the standing objective."))
     return next
   }
   if (ev.kind === "goal_capped") {
@@ -205,7 +239,16 @@ export function reduceEvent(
     return next
   }
   if (ev.kind === "goal_resumed") {
-    append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text?.trim() || "Resuming the standing objective."))
+    next.running = true
+    upsertTurn(next, ev.turn_id, { status: "running", startedAt: ev.created_at })
+    const manager = touchAgent(next, MANAGER_ID)
+    manager.status = "running"
+    append(manager, block(ev, "notice", ev.text?.trim() || "Resuming the standing objective."))
+    return next
+  }
+  if (ev.kind === "goal_session") {
+    upsertTurn(next, ev.turn_id, { session: true })
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", goalSessionNotice(ev.text)))
     return next
   }
   if (ev.kind === "compacted") {
@@ -227,7 +270,9 @@ export function reduceEvent(
       break
 
     case "steer":
-      append(agent, block(ev, "steer", ev.text ?? ""))
+      if (!isGoalSessionWrapSteer(ev.text)) {
+        append(agent, block(ev, "steer", ev.text ?? ""))
+      }
       break
 
     case "reasoning_delta":
@@ -726,6 +771,10 @@ function closeStreaming(agent: AgentState, kind: "reasoning" | "answer") {
   agent.blocks = blocks
 }
 
+/** Stable with engine.resumeToolStopped. The wire event is English; a
+ *  crashed exec must not keep saying "running…". */
+const resumeToolStopped = "the previous process stopped"
+
 /** A call with no result when the turn (or the agent) ends was killed, not
  *  left running. The spinner is keyed off `pending`; leaving it true next to
  *  an "interrupted" banner is the lie the Stop button used to leave behind.
@@ -841,110 +890,6 @@ export function parsePulse(ev: SwarmEvent): Pulse | undefined {
       ]
     }),
   }
-}
-
-/** Read a review's outcome out of an event. A malformed one is dropped: the
- *  review is an extra, and half a summary is worse than none. */
-export function parseReview(ev: SwarmEvent): ReviewOutcome | undefined {
-  let raw: unknown
-  try {
-    raw = JSON.parse(ev.text ?? "")
-  } catch {
-    return undefined
-  }
-  if (!raw || typeof raw !== "object") return undefined
-  const body = raw as Partial<ReviewOutcome>
-  return {
-    changed: body.changed === true,
-    notes: typeof body.notes === "object" && body.notes ? body.notes : undefined,
-    skills: Array.isArray(body.skills) ? body.skills : undefined,
-    changes: Array.isArray(body.changes) ? body.changes : undefined,
-    note: typeof body.note === "string" ? body.note : undefined,
-    err: typeof body.err === "string" && body.err ? body.err : ev.err || undefined,
-    notify: notifyOf(body.notify),
-  }
-}
-
-function notifyOf(raw: unknown): ReviewOutcome["notify"] {
-  return raw === "off" || raw === "on" || raw === "verbose" ? raw : undefined
-}
-
-/** What the review's tool actions are called in the transcript. */
-const NOTE_VERBS: Record<string, string> = {
-  add: "stored",
-  replace: "revised",
-  remove: "removed",
-}
-const SKILL_VERBS: Record<string, string> = {
-  create: "recorded",
-  patch: "updated",
-  delete: "removed",
-}
-
-/** One line for the transcript, or a short preview, or nothing.
- *
- *  Most turns teach the project nothing, and a row saying so after every
- *  answer would train the reader to stop looking at the ones that matter.
- *  Failures always show: memory the user believes is being kept, and is not,
- *  is the failure they cannot see. */
-/** /goal is recorded even when it clears. The banner holds the text; this
- *  line is only the fact that it changed. */
-export function goalNotice(text?: string): string {
-  return text?.trim() ? "Standing objective set." : "Standing objective cleared."
-}
-
-/** The briefing itself lives in the next turn's prompt, not in this row.
- *  Dumping the JSON payload here would paste a summary the human did not ask
- *  to read in the transcript. */
-export function compactNotice(ev: { text?: string; err?: string }): string {
-  if (ev.err) return ev.err
-  return "Earlier turns were folded into a briefing. The transcript is unchanged."
-}
-
-/** What the Memory panel says after someone asked for a review.
- *
- *  Auto-review stays quiet when it kept nothing — a line after every answer
- *  would train people to ignore the ones that matter. A click is a request
- *  for an answer, so the panel always says what happened. */
-export function reviewPanelHint(outcome?: ReviewOutcome): string {
-  if (outcome?.err) return `Memory review failed: ${outcome.err}`
-  if (!outcome?.changed) return "Review finished — nothing new to keep."
-  return "Review finished."
-}
-
-export function reviewNotice(outcome?: ReviewOutcome): string | undefined {
-  if (!outcome) return undefined
-  if (outcome.err) return `Memory review failed: ${outcome.err}`
-  if (!outcome.changed) return undefined
-  const parts: string[] = []
-  for (const action of Object.keys(NOTE_VERBS)) {
-    const n = outcome.notes?.[action] ?? 0
-    if (n > 0) parts.push(`${n} ${n === 1 ? "note" : "notes"} ${NOTE_VERBS[action]}`)
-  }
-  for (const s of outcome.skills ?? []) {
-    if (!s?.name) continue
-    parts.push(`skill "${s.name}" ${SKILL_VERBS[s.action] ?? s.action}`)
-  }
-  const head =
-    parts.length > 0 ? `Memory updated: ${parts.join(", ")}.` : "Memory updated."
-  if (outcome.notify !== "verbose") return head
-  const preview = (outcome.changes ?? [])
-    .map(changePreview)
-    .filter(Boolean)
-    .join("\n")
-  return preview ? `${head}\n${preview}` : head
-}
-
-function changePreview(c: { action?: string; name?: string; text?: string; target?: string }): string {
-  const mark =
-    c.action === "add" || c.action === "create"
-      ? "+"
-      : c.action === "remove" || c.action === "delete"
-        ? "−"
-        : "~"
-  const label = c.name ? `skill ${c.name}` : "note"
-  const text = (c.text ?? "").trim()
-  return text ? `${mark} ${label}: ${text}` : `${mark} ${label}`
 }
 
 function pulseStatus(raw: unknown): AgentStatus {

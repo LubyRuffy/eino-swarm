@@ -17,6 +17,7 @@ import type {
 } from "./types"
 import { normalizeUISettings } from "./appearance"
 import type { SendImage } from "./paste-image"
+import type { ThreadLog } from "./thread-log"
 
 /** The fields a project dialog can send. Each is optional so a patch changes
  *  only what the user touched. */
@@ -284,6 +285,14 @@ export const api = {
     request<{ turn: Turn }>(`/api/threads/${id}/review`, { method: "POST" }),
   turns: (id: string) =>
     request<{ turns: Turn[] }>(`/api/threads/${id}/turns`).then((r) => r.turns),
+  /** Newest stored events, oldest first. `before` pages upward from a seq. */
+  threadLog: (id: string, opts?: { before?: number; limit?: number }) => {
+    const params = new URLSearchParams()
+    if (opts?.before && opts.before > 0) params.set("before", String(opts.before))
+    if (opts?.limit && opts.limit > 0) params.set("limit", String(opts.limit))
+    const query = params.toString()
+    return request<ThreadLog>(`/api/threads/${id}/log${query ? `?${query}` : ""}`)
+  },
 
   files: (id: string) =>
     request<{ workspace: string; files: FileEntry[] }>(

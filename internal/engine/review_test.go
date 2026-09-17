@@ -2,13 +2,13 @@ package engine
 
 import (
 	"encoding/json"
-
 	"errors"
-	swarm "github.com/LubyRuffy/eino-swarm"
 	"strings"
 	"testing"
 	"time"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -356,7 +356,7 @@ func TestAnEmptyTurnIsNotReviewed(t *testing.T) {
 	if err := e.Store().CreateTurn(turn); err != nil {
 		t.Fatal(err)
 	}
-	e.scheduleReview(th.ID, turn, store.TurnDone, pc, nil, swarm.RunResult{})
+	e.scheduleReview(th.ID, turn, store.TurnDone, pc, "")
 	e.reviews.stop(2 * time.Second)
 
 	events, err := e.Store().ListTurnEvents(turn.ID)
@@ -482,47 +482,116 @@ func TestAFailedReviewIsStillRecorded(t *testing.T) {
 	}
 }
 
-// The reviewer reads a transcript, not a conversation it is continuing: the
-// tool calls are in it, because a skill is a procedure and the procedure is in
-// the calls, but every part is clipped so the review cannot cost more than the
-// turn it reviews.
-func TestTheReviewerSeesTheWorkflowAndNothingUnbounded(t *testing.T) {
-	huge := strings.Repeat("x", reviewMaxCharsPerMessage*3)
-	input := []adk.Message{
-		schema.SystemMessage("an instruction nobody needs to review"),
-		schema.UserMessage("the request"),
+// Compact folds what the next Generate sees. The automatic reviewer must
+// still read the event log, or a /goal session that auto-compacted would
+// store the briefing instead of the work.
+func TestReviewReadsTheEventLogNotACompactedTranscript(t *testing.T) {
+	e := newTestEngine(t)
+	p, th := projectThread(t, e)
+	turn := &store.Turn{ThreadID: th.ID, UserText: "keep going", Final: "done"}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
 	}
-	transcript := []adk.Message{
-		schema.SystemMessage("instruction"),
-		schema.SystemMessage("replayed"),
-		schema.UserMessage("replayed"),
-		{Role: schema.Assistant, Content: "working on it", ToolCalls: []schema.ToolCall{{
-			Function: schema.FunctionCall{Name: "a_tool", Arguments: `{"path":"somewhere"}`},
-		}}},
-		schema.ToolMessage(huge, "call-1"),
+	const marker = "the-secret-recovery-steps"
+	e.record(store.Event{ThreadID: th.ID, TurnID: turn.ID, Kind: KindUser, Text: "keep going"})
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: turn.ID,
+		Kind: swarm.NotifyToolCall.String(), AgentID: swarm.DefaultManagerID,
+		Text: "exec({cmd:" + marker + "})",
+	})
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: turn.ID,
+		Kind: swarm.NotifyToolResult.String(), Text: "it worked after " + marker,
+	})
+	pc, err := e.projectContextFor(th)
+	if err != nil {
+		t.Fatal(err)
 	}
-	out := renderConversation(input, transcript, "the final answer")
+	e.scheduleReview(th.ID, turn, store.TurnDone, pc, "done")
+	waitForReview(t, e, turn.ID)
+	snap, err := e.ProjectMemory(p.ID).Read()
+	if err != nil || len(snap.Entries) == 0 {
+		t.Fatalf("memory=%+v err=%v", snap, err)
+	}
+	joined := strings.Join(snap.Entries, "\n")
+	if !strings.Contains(joined, "keep going") && !strings.Contains(joined, marker) {
+		t.Fatalf("the review must see the event log, got %q", joined)
+	}
+}
 
-	if !strings.Contains(out, "the request") || !strings.Contains(out, "the final answer") {
-		t.Fatalf("the reviewer must see the request and the answer:\n%s", out)
+func TestReviewIsSkippedWhenTheManagerAlreadyWroteMemory(t *testing.T) {
+	e := newTestEngine(t)
+	p, th := projectThread(t, e)
+	turn := &store.Turn{ThreadID: th.ID, UserText: "keep going"}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(out, "called a_tool") {
-		t.Fatalf("the reviewer must see the workflow:\n%s", out)
+	e.record(store.Event{ThreadID: th.ID, TurnID: turn.ID, Kind: KindUser, Text: "keep going"})
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: turn.ID, AgentID: swarm.DefaultManagerID,
+		Kind: swarm.NotifyToolCall.String(), ToolCallID: "c-mem",
+		Text: memory.ToolMemory + "({action:add})",
+	})
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: turn.ID,
+		Kind: swarm.NotifyToolResult.String(), ToolCallID: "c-mem", Text: "stored",
+	})
+	pc, err := e.projectContextFor(th)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(out, "an instruction nobody needs to review") {
-		t.Fatalf("the system prompt must not be replayed to the reviewer:\n%s", out)
+	e.scheduleReview(th.ID, turn, store.TurnDone, pc, "done")
+	e.reviews.stop(2 * time.Second)
+	events, err := e.Store().ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if len([]rune(out)) > reviewMaxChars+1000 {
-		t.Fatalf("the transcript handed to the reviewer is unbounded: %d characters", len([]rune(out)))
+	for _, ev := range events {
+		if ev.Kind == KindMemoryReview {
+			t.Fatalf("the automatic reviewer ran after the manager already wrote: %s", ev.Text)
+		}
 	}
-	if strings.Contains(out, huge) {
-		t.Fatal("a large tool result reached the reviewer whole")
+	if snap, _ := e.ProjectMemory(p.ID).Read(); len(snap.Entries) != 0 {
+		t.Fatalf("a skipped review still wrote notes: %+v", snap.Entries)
 	}
+}
 
-	// An empty conversation renders nothing, which is what stops a review from
-	// running at all rather than making a model call with nothing in it.
-	if body := renderConversation(nil, nil, "   "); body != "" {
-		t.Fatalf("an empty conversation rendered %q", body)
+func TestReviewNowStillRunsAfterTheManagerWrote(t *testing.T) {
+	e := newTestEngine(t)
+	_, th := projectThread(t, e)
+	turn, err := e.StartTurn(th.ID, "a request")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForTurn(t, e, turn.ID); got.Status != store.TurnDone {
+		t.Fatalf("turn status=%q", got.Status)
+	}
+	waitForReview(t, e, turn.ID)
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: turn.ID, AgentID: swarm.DefaultManagerID,
+		Kind: swarm.NotifyToolCall.String(), ToolCallID: "late-mem",
+		Text: memory.ToolMemory + "({action:add})",
+	})
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: turn.ID,
+		Kind: swarm.NotifyToolResult.String(), ToolCallID: "late-mem", Text: "stored",
+	})
+	if _, err := e.ReviewTurn(th.ID); err != nil {
+		t.Fatalf("Review now must still run: %v", err)
+	}
+	e.reviews.stop(30 * time.Second)
+	events, err := e.Store().ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, ev := range events {
+		if ev.Kind == KindMemoryReview {
+			n++
+		}
+	}
+	if n < 2 {
+		t.Fatalf("Review now should leave a second review event, got %d", n)
 	}
 }
 

@@ -4,6 +4,8 @@ import { describe, expect, it, vi } from "vitest"
 import { TurnNav } from "./turn-nav"
 import type { TurnNavItem } from "@/lib/turn-nav"
 
+HTMLElement.prototype.scrollIntoView = function () {}
+
 const items: TurnNavItem[] = [
   { id: "tn_a", text: "first request" },
   { id: "tn_b", text: "second request" },
@@ -70,5 +72,15 @@ describe("TurnNav", () => {
     expect(onJump).toHaveBeenCalledWith("tn_b")
     fireEvent.keyDown(screen.getByTestId("turn-nav"), { key: "Home" })
     expect(onJump).toHaveBeenCalledWith("tn_a")
+  })
+
+  it("lights the latest tick while following the live edge", () => {
+    const scroller = { current: document.createElement("div") }
+    render(
+      <TurnNav items={items} scrollerRef={scroller} onJump={vi.fn()} pinned />,
+    )
+    const ticks = screen.getAllByRole("button")
+    expect(ticks[1]).toHaveAttribute("aria-current", "true")
+    expect(ticks[0]).not.toHaveAttribute("aria-current")
   })
 })

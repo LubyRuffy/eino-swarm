@@ -178,9 +178,13 @@ export function GeneralTab({
             t("settings.general.contentWidth"),
             "width",
             "full",
+            "wide",
+            "standard",
             "comfortable",
             "column",
             "铺满",
+            "宽屏",
+            "标准",
             "宽度",
           ]}
           label={t("settings.general.contentWidth")}

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { Header } from "./header"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -23,6 +23,8 @@ function renderHeader(props: Partial<Parameters<typeof Header>[0]> = {}) {
         onToggleSidebar={vi.fn()}
         onToggleTheme={vi.fn()}
         onToggleLocale={vi.fn()}
+        onToggleContentWidth={vi.fn()}
+        contentWidth="comfortable"
         dark={false}
         {...props}
       />
@@ -113,6 +115,10 @@ describe("Header project chip", () => {
 })
 
 describe("Header status", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it("says Waiting when the manager is paused at the tool-round cap", () => {
     renderHeader({
       status: {
@@ -124,10 +130,48 @@ describe("Header status", () => {
     expect(screen.getByTestId("status-badge")).toHaveTextContent("Waiting")
   })
 
+  it("counts elapsed time from when the turn started, including hours", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-01-01T10:10:06.000Z"))
+    renderHeader({
+      status: {
+        running: true,
+        started_at: "2026-01-01T00:00:00.000Z",
+      },
+    })
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("Working · 10h 10m")
+  })
+
+  it("does not invent a one-second clock when the start time is missing", () => {
+    renderHeader({ status: { running: true } })
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("Working")
+    expect(screen.getByTestId("status-badge")).not.toHaveTextContent("1s")
+  })
+
   it("offers a language switch next to the theme control", () => {
     const onToggleLocale = vi.fn()
     renderHeader({ onToggleLocale })
     fireEvent.click(screen.getByRole("button", { name: "Switch language" }))
     expect(onToggleLocale).toHaveBeenCalled()
+  })
+})
+
+describe("Header conversation width", () => {
+  // Settings already stores comfortable/full; the title-bar control is how
+  // a human actually finds it. Pressed means the column is already wide.
+  it("offers to switch to the wide column from the reading width", () => {
+    const onToggleContentWidth = vi.fn()
+    renderHeader({ onToggleContentWidth, contentWidth: "comfortable" })
+    const btn = screen.getByRole("button", { name: "Switch to wide layout" })
+    expect(btn).toHaveAttribute("aria-pressed", "false")
+    fireEvent.click(btn)
+    expect(onToggleContentWidth).toHaveBeenCalled()
+  })
+
+  it("offers to switch back to the reading column while wide", () => {
+    renderHeader({ contentWidth: "full" })
+    expect(
+      screen.getByRole("button", { name: "Switch to standard layout" }),
+    ).toHaveAttribute("aria-pressed", "true")
   })
 })

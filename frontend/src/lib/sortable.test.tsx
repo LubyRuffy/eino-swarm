@@ -96,6 +96,15 @@ describe("useSortableList", () => {
     expect(onMove).toHaveBeenCalledWith("b", "a")
   })
 
+  it("ignores a dragstart that has no dataTransfer", () => {
+    const onMove = vi.fn()
+    render(<Harness onMove={onMove} />)
+    const start = createEvent.dragStart(screen.getByTestId("row-b"))
+    fireEvent(screen.getByTestId("row-b"), start)
+    expect(start.defaultPrevented).toBe(true)
+    expect(onMove).not.toHaveBeenCalled()
+  })
+
   it("does not arm HTML5 draggable on a title press", () => {
     const onMove = vi.fn()
     render(<Harness onMove={onMove} />)

@@ -87,7 +87,13 @@ type Thread struct {
 	// what the model sees, not what the transcript shows.
 	CompactSummary    string `json:"compact_summary"`
 	CompactThroughSeq int64  `json:"compact_through_seq"`
-	Archived          bool   `json:"archived"`
+	// SessionMemory is a rolling briefing of this conversation, updated from
+	// the event log before compact. CompactSummary is what later turns see;
+	// this field is the source of that briefing and of the post-turn review.
+	SessionMemory           string `json:"session_memory"`
+	SessionMemoryThroughSeq int64  `json:"session_memory_through_seq"`
+	SessionMemoryTokens     int    `json:"session_memory_tokens"`
+	Archived                bool   `json:"archived"`
 	// Pinned is a conversation the user is tracking at the top of the sidebar.
 	// PinnedAt is when they pinned it; nil when they have not.
 	Pinned   bool       `json:"pinned"`

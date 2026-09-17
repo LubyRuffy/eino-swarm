@@ -30,6 +30,13 @@ func TestReadingAnEmptyStoreIsNotAnError(t *testing.T) {
 	if New("x", 0).Limit() <= 0 {
 		t.Fatal("a nonsensical limit must still leave a usable store")
 	}
+	capped := NewLimited("x", 80, 400)
+	if capped.Limit() != 80 || capped.EntryMax() != 80 {
+		t.Fatalf("a per-note cap above the total must clamp: limit=%d entry=%d", capped.Limit(), capped.EntryMax())
+	}
+	if NewLimited("x", 80, -1).EntryMax() != 0 {
+		t.Fatal("a negative per-note cap means none")
+	}
 }
 
 // The store has to survive the process: what the agent wrote last turn is the
@@ -346,5 +353,51 @@ func TestUnreadableStoreReportsAnError(t *testing.T) {
 	// store fails as a read failure rather than as a false conflict.
 	if _, err := s.OverwriteIf("whatever", "a"); err == nil || errors.Is(err, ErrConflict) {
 		t.Fatalf("OverwriteIf on an unreadable store err=%v", err)
+	}
+}
+
+// Agent writes that would ride in every turn at runbook length are refused.
+// The panel's Overwrite is the person's editor and still uses the total budget.
+func TestAgentNotesAreCappedPerEntryAndMustNotRestateASkill(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "memory")
+	s := NewLimited(dir, 2000, 40)
+	if _, _, err := s.Add(strings.Repeat("a", 41)); !errors.Is(err, ErrEntryTooLong) {
+		t.Fatalf("a 41-rune note must miss a 40 cap: %v", err)
+	}
+	if _, _, err := s.Add(strings.Repeat("a", 40)); err != nil {
+		t.Fatalf("a note at the cap must fit: %v", err)
+	}
+	if _, err := s.Replace("aaa", strings.Repeat("b", 41)); !errors.Is(err, ErrEntryTooLong) {
+		t.Fatalf("replace must honour the same cap: %v", err)
+	}
+
+	open := New(dir, 2000)
+	if _, err := open.Overwrite(strings.Repeat("hand-written runbook ", 20)); err != nil {
+		t.Fatalf("a person editing the file still has the total budget: %v", err)
+	}
+
+	s = New(filepath.Join(t.TempDir(), "memory"), 2000)
+	if _, err := s.WriteSkill("weekly-rollup",
+		"when cutting a weekly summary of finished work after each period",
+		"1. gather the finished items\n2. write the summary"); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := s.Add("later conversations cut a weekly summary of finished work after each period")
+	if !errors.Is(err, ErrNoteSkillOverlap) {
+		t.Fatalf("a note that restates a skill must be refused: %v", err)
+	}
+	if _, err := s.Replace("anything", "later conversations cut a weekly summary of finished work after each period"); !errors.Is(err, ErrNoteSkillOverlap) {
+		t.Fatalf("replace restating a skill err=%v", err)
+	}
+
+	s = New(filepath.Join(t.TempDir(), "memory"), 2000)
+	if _, err := s.WriteSkill("shell-dispatch",
+		"when a complex command is mangled by the local shell",
+		"Write the command to a file first. Run it through the dispatcher. Never inline a heredoc, a pipeline or nested quotes."); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = s.Add("Write the command to a file first and run it through the dispatcher; never inline a heredoc, a pipeline or nested quotes.")
+	if !errors.Is(err, ErrNoteSkillOverlap) {
+		t.Fatalf("a note that copies the steps must be refused: %v", err)
 	}
 }

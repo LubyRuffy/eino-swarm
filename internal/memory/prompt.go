@@ -56,11 +56,12 @@ func PromptSections(systemPrompt string, snap Snapshot, skills []SkillInfo, inde
 	}
 	b.WriteString(`This block is a snapshot from the start of this turn. Use the ` + ToolMemory + ` tool to
 keep it true: store a durable fact, a stated preference, a convention or a
-correction the human made, and remove one that has gone stale. Leave out
-anything specific to this request, anything you could look up again, and any
-status that will change again this conversation. A replace that grows a note
-still has to fit the budget; when usage is high, the only write that lands is
-one that reduces the character count.
+correction the human made, in one or two sentences, and remove one that has
+gone stale. Leave out anything specific to this request, a remaining count or
+other status that will change again, and any procedure — those belong in a
+skill. A note that restates a recorded skill is refused. A replace that grows
+a note still has to fit the budget and the per-note cap; when usage is high,
+the only write that lands is one that reduces the character count.
 
 `)
 	if snap.Percent() >= PressurePercent {
@@ -93,7 +94,8 @@ one that reduces the character count.
 
 Use %s to record a procedure worth following again: a workflow with several
 steps that worked, a recovery from a failure, a correction you were given.
-Patch the skill that already covers a subject rather than adding a second one.
+One subject is one skill. A create that collides with an existing skill is
+refused and names that skill — patch that one rather than adding a second name.
 
 `, ToolSkillView, ToolSkillManage)
 
@@ -113,24 +115,30 @@ func ReviewPrompt() string {
 assistant that held it. You are not continuing the work and you are not
 replying to the human — nobody is waiting for your answer.
 
+Most conversations produce nothing worth storing. Restating the request, the
+answer, a remaining count, a list of completed items, a commit identifier, or
+facts that are easy to look up again makes the store worse. When there is
+nothing to keep, write nothing and say so in one line.
+
 Decide what, if anything, is worth carrying into future conversations in this
 project, and write it yourself:
 
-- %s — a durable fact about the environment, a preference the human stated, a
-  convention this project follows, or a correction you were given. One or two
-  short notes at most, and only when they would change how a later conversation
-  behaves. Leave out a status that will change again. The store is bounded: a
-  write that grows it past the limit is refused, including replace with a
-  longer note. If a write does not fit, the result says by how many characters;
-  do not retry the same text — shorten the note or drop a stale one first.
-- %s — a procedure worth following again: several steps that worked, a recovery
-  from a failure, a workaround for something that behaved unexpectedly. Patch
-  the skill that already covers the subject instead of creating a near-duplicate;
-  call %s first when you are not sure what one contains.
-
-Most conversations produce nothing worth storing. Restating the request, the
-answer, or facts that are easy to look up again makes the store worse. When
-there is nothing to keep, write nothing and say so in one line.
+- %s — one or two short sentences: a durable fact about the environment, a
+  preference the human stated, a convention this project follows, or a
+  correction you were given, and only when they would change how a later
+  conversation behaves. Leave out a status that will change again. A runbook,
+  a connection sequence, or a multi-step recovery is a skill, not a note. The
+  store is bounded by a total and by a per-note cap: a write that grows past
+  either is refused, including replace with a longer note. If a write does not
+  fit, the result says why; do not retry the same text — shorten the note,
+  drop a stale one, or record a procedure as a skill.
+- %s — a procedure worth following again: several steps that worked, a
+  recovery from a failure, a workaround for something that behaved
+  unexpectedly. One subject is one skill. Before creating, call %s on every
+  index entry whose name or summary might already cover the subject. A create
+  that collides is refused and names the existing skill — patch that one, or
+  delete it first. Do not add a second skill whose name is the first plus a
+  suffix.
 
 Finish with one short line naming what you stored, or that you stored nothing.`,
 		ToolMemory, ToolSkillManage, ToolSkillView)

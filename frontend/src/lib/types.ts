@@ -19,6 +19,7 @@ export type EventKind =
   | "max_iterations"
   | "max_iterations_continued"
   | "title"
+  | "session_memory"
   | "done"
   | "error"
   | "resumed"
@@ -29,6 +30,7 @@ export type EventKind =
   | "goal_blocked"
   | "goal_edited"
   | "goal_resumed"
+  | "goal_session"
   | "compacted"
   | "usage"
   | "rewound"
@@ -188,6 +190,9 @@ export interface ThreadStatus {
   /** The current turn while running, and the last one afterwards, which is
    *  what the header offers to copy for `zwai trace`. */
   turn_id?: string
+  /** Current turn start. Title-bar Working clock. Absent when idle.
+   *  `goal_continued` is a new turn and a new clock; the standing-objective
+   *  age is `goal_started_at` on the thread. */
   started_at?: string
   workers?: number
   /** True while the manager is paused at its tool-round cap waiting for the
@@ -286,8 +291,16 @@ export interface SwarmLimits {
   context_char_budget?: number
   /** Recent replay messages that stay verbatim after /compact. */
   compact_keep_messages?: number
+  /** Prompt tokens that trigger in-turn compression. */
+  auto_compact_tokens?: number
   /** Consecutive engine-started turns that may pursue an open /goal. */
   goal_max_auto_turns?: number
+  /** Wall time of one /goal session before the runtime starts the next. */
+  goal_session_max_seconds?: number
+  /** Manager tool rounds of one /goal session. */
+  goal_session_max_iterations?: number
+  /** Context fullness (1-100) that compact-before-continue uses. */
+  goal_auto_compact_percent?: number
 }
 
 export interface ProviderSettings {
@@ -316,8 +329,14 @@ export interface Settings {
     web_search_max_results: number
   }
   memory: MemorySettings
+  personality?: PersonalitySettings
   log: { level: string }
   ui?: UISettings
+}
+
+/** Install-wide personal preferences added to every manager prompt. */
+export interface PersonalitySettings {
+  instructions: string
 }
 
 /** Chrome stored in config.yaml. Tokens, not CSS — the front end maps them. */
@@ -350,6 +369,7 @@ export interface MemorySettings {
   enabled: boolean
   auto_review: boolean
   char_limit: number
+  entry_max: number
   review_max_iterations: number
   skills_index_max: number
   notifications: MemoryNotify | string

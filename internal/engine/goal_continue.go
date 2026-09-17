@@ -19,18 +19,20 @@ func GoalContinueText() string {
 
 // continueGoal starts the next turn when a standing objective is still open.
 // Follow-ups and unread steers already claimed the next turn; this only runs
-// after a clean finish with nothing queued. Stop, errors, and a completed,
-// blocked, or capped goal do nothing.
+// after a clean finish with nothing queued. Stop, errors (which also block
+// the objective), and a completed, blocked, or capped goal do nothing.
 func (rt *runtime) continueGoal(status string) {
 	if status != store.TurnDone {
 		return
 	}
 	th, err := rt.engine.store.GetThread(rt.threadID)
 	if err != nil || !pursuingGoal(th) {
+		rt.reapParked()
 		return
 	}
 	capN := rt.engine.cfg.Swarm.GoalAutoTurns()
 	if th.GoalCapped || th.GoalAutoTurns >= capN {
+		rt.reapParked()
 		rt.markGoalCapped(th, capN)
 		return
 	}
@@ -42,6 +44,8 @@ func (rt *runtime) continueGoal(status string) {
 			"thread", rt.threadID, "err", err)
 		return
 	}
+
+	rt.engine.compactBeforeGoalContinue(rt.threadID)
 
 	var startErr error
 	for attempt := 0; attempt < 8; attempt++ {
@@ -69,6 +73,24 @@ func (rt *runtime) continueGoal(status string) {
 	if !errors.Is(startErr, ErrBusy) {
 		rt.engine.log.Warn("could not auto-continue the standing objective",
 			"thread", rt.threadID, "err", startErr)
+	}
+}
+
+// blockOpenGoalOnTurnError stops auto-continue when a pursuing turn dies.
+// The manager never got to call block_goal; leaving the banner on Pursuing
+// and kicking another session is how a ChatModel crash loops forever.
+func (rt *runtime) blockOpenGoalOnTurnError() {
+	rt.engine.blockOpenGoalOnTurnError(rt.threadID)
+}
+
+func (e *Engine) blockOpenGoalOnTurnError(threadID string) {
+	th, err := e.store.GetThread(threadID)
+	if err != nil || !pursuingGoal(th) {
+		return
+	}
+	if err := e.BlockThreadGoal(threadID, goalBlockedByFailedTurn); err != nil {
+		e.log.Warn("could not block the standing objective after a failed turn",
+			"thread", threadID, "err", err)
 	}
 }
 

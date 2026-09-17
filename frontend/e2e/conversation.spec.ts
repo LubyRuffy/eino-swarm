@@ -197,6 +197,9 @@ test("switching conversations lands at the latest turn", async ({ page }) => {
   const firstAsk = "Switch back and land on the latest turn of this conversation"
   await send(page, firstAsk)
   await waitForIdle(page)
+  const secondAsk = "Second task: stay on the live edge after switching back"
+  await send(page, secondAsk)
+  await waitForIdle(page)
   const title = page.getByTestId("thread-title")
   await expect(title).not.toHaveText("New conversation")
   await expect(title).not.toHaveText(/…/, { timeout: 15_000 })
@@ -211,13 +214,16 @@ test("switching conversations lands at the latest turn", async ({ page }) => {
   })
 
   await page.locator("aside").getByRole("button", { name: first, exact: true }).click()
-  await expect(transcript.getByText(`Request: ${firstAsk}`)).toBeVisible()
+  await expect(transcript.getByText(`Request: ${secondAsk}`)).toBeVisible()
   const pos = await transcript.evaluate((el) => ({
     overflow: el.scrollHeight - el.clientHeight,
     fromBottom: el.scrollHeight - el.scrollTop - el.clientHeight,
   }))
   expect(pos.overflow).toBeGreaterThan(80)
   expect(pos.fromBottom).toBeLessThanOrEqual(40)
+  await expect(
+    page.getByTestId("turn-nav").locator("[data-turn-nav-tick]").last(),
+  ).toHaveAttribute("aria-current", "true")
 })
 
 test("names a conversation after the first turn", async ({ page }) => {
@@ -280,37 +286,40 @@ test("carries context across turns", async ({ page }) => {
 test("pins unread steering under the working line", async ({ page }) => {
   await freshConversation(page)
   await send(page, "Look at this from two angles and merge the findings")
-  // wait_agents is the long tool: Steer injects here, it does not start a turn.
-  await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
+  // Type while it is still spawning. wait_agents returns on the first
+  // finish, so the old tray round-trip (Enter → Steer click) lost the
+  // unread window and the pin never painted.
   const nudge = "prefer the shorter path"
   await composer(page).fill(nudge)
-  await composer(page).press("Enter")
-  const tray = page.getByTestId("followup-queue")
-  await expect(tray).toContainText(nudge)
-  await tray.getByRole("button", { name: `Steer: ${nudge}` }).click()
-  await expect(tray).toHaveCount(0)
+  await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
+  await composer(page).press("ControlOrMeta+Enter")
   const transcript = page.getByTestId("transcript")
-  const queued = transcript.getByTestId("queued-steers")
-  await expect(queued).toContainText(nudge)
+  // Pin and position have to be the same snapshot: a later model round
+  // unmounts queued-steers in well under the next await.
+  await expect
+    .poll(async () => {
+      return transcript.evaluate((el, text) => {
+        const queuedEl = el.querySelector('[data-testid="queued-steers"]')
+        if (!queuedEl || !(queuedEl.textContent ?? "").includes(text)) {
+          return "waiting"
+        }
+        const pulse = el.querySelector('[data-testid="heartbeat"]')
+        if (pulse) {
+          return pulse.compareDocumentPosition(queuedEl) & Node.DOCUMENT_POSITION_FOLLOWING
+            ? "after-pulse"
+            : "before-pulse"
+        }
+        const wait = Array.from(el.querySelectorAll("[data-marquee]")).find((n) =>
+          (n.textContent ?? "").includes("Waiting for"),
+        )
+        if (!wait) return "after-body"
+        return wait.compareDocumentPosition(queuedEl) & Node.DOCUMENT_POSITION_FOLLOWING
+          ? "after-wait"
+          : "before-wait"
+      }, nudge)
+    })
+    .toMatch(/^after-/)
   await expect(statusBadge(page)).toContainText("Working")
-  const order = await transcript.evaluate((el) => {
-    const queuedEl = el.querySelector('[data-testid="queued-steers"]')
-    if (!queuedEl) return "missing-queued"
-    const pulse = el.querySelector('[data-testid="heartbeat"]')
-    if (pulse) {
-      return pulse.compareDocumentPosition(queuedEl) & Node.DOCUMENT_POSITION_FOLLOWING
-        ? "after-pulse"
-        : "before-pulse"
-    }
-    const wait = Array.from(el.querySelectorAll("[data-marquee]")).find((n) =>
-      (n.textContent ?? "").includes("Waiting for"),
-    )
-    if (!wait) return "after-body"
-    return wait.compareDocumentPosition(queuedEl) & Node.DOCUMENT_POSITION_FOLLOWING
-      ? "after-wait"
-      : "before-wait"
-  })
-  expect(["after-pulse", "after-wait", "after-body"]).toContain(order)
 })
 
 test("Enter while working queues until the turn finishes", async ({ page }) => {
@@ -710,7 +719,7 @@ test("goal command pins a standing objective", async ({ page }) => {
   await composer(page).press("Enter")
   await expect(page.getByTestId("goal-banner")).toContainText("keep going")
   await expect(page.getByTestId("goal-banner")).toContainText("Pursuing")
-  await expect(statusBadge(page)).toContainText("Idle")
+  await expect(statusBadge(page)).toContainText("Working")
   await page.getByRole("button", { name: "Clear goal" }).click()
   await expect(page.getByTestId("goal-banner")).toHaveCount(0)
 })
@@ -720,7 +729,6 @@ test("a standing objective completes after the scripted run", async ({ page }) =
   await composer(page).fill("/goal keep going")
   await composer(page).press("Enter")
   await expect(page.getByTestId("goal-banner")).toContainText("Pursuing")
-  await send(page, "Look at this from two angles and merge the findings")
   await waitForIdle(page)
   await expect(page.getByTestId("goal-banner")).toContainText("Done")
   await expect(page.getByTestId("transcript")).toContainText(
@@ -729,14 +737,35 @@ test("a standing objective completes after the scripted run", async ({ page }) =
   await expect(page.getByTestId("user-message")).toHaveCount(1)
 })
 
-test("start pursues a standing objective without a human message", async ({
+test("a standing objective is not paused by the tool-round slice", async ({
+  page,
+  request,
+}) => {
+  const { settings } = await (await request.get("/api/settings")).json()
+  await request.put("/api/settings", {
+    data: { swarm: { ...settings.swarm, goal_session_max_iterations: 1, goal_max_auto_turns: 1 } },
+  })
+  try {
+    await freshConversation(page)
+    await composer(page).fill("/goal keep going")
+    await composer(page).press("Enter")
+    await waitForIdle(page)
+    await expect(page.getByTestId("goal-banner")).toContainText("Done")
+    await expect(page.getByTestId("goal-banner")).not.toContainText("Paused")
+    await expect(page.getByTestId("goal-session")).toHaveCount(0)
+    await expect(page.getByTestId("user-message")).toHaveCount(1)
+  } finally {
+    await request.put("/api/settings", { data: { swarm: settings.swarm } })
+  }
+})
+
+test("a slash goal starts pursuing without a second human message", async ({
   page,
 }) => {
   await freshConversation(page)
   await composer(page).fill("/goal keep going")
   await composer(page).press("Enter")
   await expect(page.getByTestId("goal-banner")).toContainText("Pursuing")
-  await page.getByRole("button", { name: "Start goal" }).click()
   await expect(statusBadge(page)).toContainText("Working")
   await waitForIdle(page)
   await expect(page.getByTestId("goal-banner")).toContainText("Done")
@@ -754,6 +783,38 @@ test("the standing objective can be edited in place", async ({ page }) => {
   await expect(page.getByTestId("transcript")).toContainText(
     "Standing objective updated.",
   )
+})
+
+test("auto-compacts when prompt tokens pass the configured budget", async ({
+  page,
+  request,
+}) => {
+  const { settings } = await (await request.get("/api/settings")).json()
+  await request.put("/api/settings", {
+    data: {
+      swarm: {
+        ...settings.swarm,
+        compact_keep_messages: 2,
+        auto_compact_tokens: 200,
+      },
+    },
+  })
+  try {
+    await freshConversation(page)
+    await send(page, "the first request")
+    await waitForIdle(page)
+    const before = await page.getByTestId("user-message").count()
+    await send(page, "the second request")
+    await expect(page.getByTestId("transcript")).toContainText(
+      "Context compressed",
+      { timeout: 60_000 },
+    )
+    await waitForIdle(page)
+    await expect(page.getByTestId("transcript")).toContainText("tokens")
+    await expect(page.getByTestId("user-message")).toHaveCount(before + 1)
+  } finally {
+    await request.put("/api/settings", { data: { swarm: settings.swarm } })
+  }
 })
 
 test("compact folds earlier turns without rewriting the transcript", async ({

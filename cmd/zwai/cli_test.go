@@ -221,11 +221,167 @@ func TestEventTextPrefersTheError(t *testing.T) {
 	}
 }
 
-func TestTUINeedsATask(t *testing.T) {
-	_, _, _, err := buildTUISwarm(context.Background(),
+func TestTUIWithoutATaskOpensAnInteractiveSession(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	setup, err := assembleTUI(context.Background(),
 		[]string{"--data-dir", t.TempDir(), "--mock"})
-	if err == nil || !strings.Contains(err.Error(), "task") {
-		t.Fatalf("err=%v, want a message about the missing task", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.cleanup()
+	if setup.session.Task != "" {
+		t.Fatalf("task=%q, want empty so the composer can wait", setup.session.Task)
+	}
+	if !setup.session.Interactive {
+		t.Fatal("zwai tui with no task must open an interactive session")
+	}
+	if setup.session.Switcher == nil || setup.session.Switcher.CurrentModel() == "" {
+		t.Fatal("an interactive session must expose the current model")
+	}
+}
+
+func TestTUIGoalWithoutATaskStartsTheObjective(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	setup, err := assembleTUI(context.Background(), []string{
+		"--mock", "--data-dir", t.TempDir(), "--goal", "keep the standing objective",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.cleanup()
+	if setup.session.Task != "keep the standing objective" {
+		t.Fatalf("a --goal is the first task, got %q", setup.session.Task)
+	}
+	if !setup.session.Interactive {
+		t.Fatal("omitting --task must keep the composer after the pursuit")
+	}
+	if !strings.Contains(setup.session.Extra, "keep the standing objective") {
+		t.Fatalf("goal extra=%q", setup.session.Extra)
+	}
+	if setup.session.ShouldContinue == nil {
+		t.Fatal("a --goal run must auto-continue until complete_goal")
+	}
+}
+
+func TestTUIGoalKeepsLeftoverWordsAsTheTask(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	setup, err := assembleTUI(context.Background(), []string{
+		"--mock", "--data-dir", t.TempDir(), "--goal", "keep the standing objective",
+		"steer", "this", "way",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.cleanup()
+	if setup.session.Task != "steer this way" {
+		t.Fatalf("leftover words are the first task, got %q", setup.session.Task)
+	}
+	if setup.session.Interactive {
+		t.Fatal("leftover words are a --task: one-shot, then exit")
+	}
+	if !strings.Contains(setup.session.Extra, "keep the standing objective") {
+		t.Fatalf("goal extra=%q", setup.session.Extra)
+	}
+}
+
+func TestTUICarriesPersonalityBeforeAGoal(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	dir := t.TempDir()
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Personality.Instructions = "prefer compact replies"
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	setup, err := assembleTUI(context.Background(), []string{
+		"--mock", "--data-dir", dir, "--goal", "keep the standing objective",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.cleanup()
+	extra := setup.session.Extra
+	if !strings.Contains(extra, "prefer compact replies") {
+		t.Fatalf("personality missing from tui extra=%q", extra)
+	}
+	if !strings.Contains(extra, "keep the standing objective") {
+		t.Fatalf("goal missing from tui extra=%q", extra)
+	}
+	if i, j := strings.Index(extra, "prefer compact replies"), strings.Index(extra, "keep the standing objective"); i < 0 || j < i {
+		t.Fatalf("personality must precede the goal: %q", extra)
+	}
+}
+
+func TestTUIHonorsModelAndReasoningFlags(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	dir := t.TempDir()
+	cfg, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg.Models.Providers[0].Model = "alpha"
+	cfg.Models.Providers[0].Catalog = []string{"alpha", "beta"}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	setup, err := assembleTUI(context.Background(), []string{
+		"--mock", "--data-dir", dir, "--model", "beta", "--reasoning", "high",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.cleanup()
+	if setup.session.Switcher == nil {
+		t.Fatal("missing switcher")
+	}
+	if setup.session.Switcher.CurrentModel() != "beta" {
+		t.Fatalf("model=%q", setup.session.Switcher.CurrentModel())
+	}
+	if setup.session.Switcher.CurrentReasoning() != config.ReasoningHigh {
+		t.Fatalf("reasoning=%q", setup.session.Switcher.CurrentReasoning())
+	}
+
+	_, err = assembleTUI(context.Background(), []string{
+		"--mock", "--data-dir", dir, "--model", "missing",
+	})
+	if err == nil || !strings.Contains(err.Error(), "missing") {
+		t.Fatalf("unknown model err=%v", err)
+	}
+	_, err = assembleTUI(context.Background(), []string{
+		"--mock", "--data-dir", dir, "--reasoning", "bogus",
+	})
+	if err == nil || !strings.Contains(err.Error(), "bogus") {
+		t.Fatalf("unknown reasoning err=%v", err)
+	}
+}
+
+func TestTUIFlagHelpersNormalizeKnownValues(t *testing.T) {
+	got, err := tuiReasoningFlag("default")
+	if err != nil || got != "" {
+		t.Fatalf("default reasoning=%q err=%v", got, err)
+	}
+	got, err = tuiReasoningFlag("MEDIUM")
+	if err != nil || got != config.ReasoningMedium {
+		t.Fatalf("medium=%q err=%v", got, err)
+	}
+	name, ok := pickSessionModel("BETA", []string{"beta"})
+	if !ok || name != "beta" || !catalogHas([]string{"beta"}, "beta") {
+		t.Fatalf("catalog fold=%q ok=%v", name, ok)
+	}
+	if _, ok = pickSessionModel("", []string{"beta"}); ok {
+		t.Fatal("blank model names are not in the catalog")
 	}
 }
 
@@ -302,20 +458,29 @@ func TestTUIGoalRidesInTheSession(t *testing.T) {
 	if setup.session.Task != "look into the thing" {
 		t.Fatalf("task=%q", setup.session.Task)
 	}
+	if setup.session.Interactive {
+		t.Fatal("a --task run must still be one-shot")
+	}
 	if !strings.Contains(setup.session.Extra, "## Goal") ||
 		!strings.Contains(setup.session.Extra, "keep the standing objective") ||
 		!strings.Contains(setup.session.Extra, engine.ToolCompleteGoal) ||
 		!strings.Contains(setup.session.Extra, engine.ToolBlockGoal) {
 		t.Fatalf("goal extra=%q", setup.session.Extra)
 	}
-	if len(setup.session.ManagerTools) != 2 {
-		t.Fatalf("complete_goal and block_goal must be on the manager, got %d", len(setup.session.ManagerTools))
+	if len(setup.session.ManagerTools) < 3 {
+		t.Fatalf("manager must keep workspace tools plus complete_goal/block_goal, got %d", len(setup.session.ManagerTools))
 	}
 	if setup.session.ShouldContinue == nil || setup.session.ContinueTask == "" {
 		t.Fatal("a --goal run must auto-continue until complete_goal")
 	}
 	if setup.session.MaxContinues <= 0 {
 		t.Fatal("auto-continue cap missing")
+	}
+	if setup.session.MaxIterations <= 0 {
+		t.Fatal("a --goal run must use the session iteration cap")
+	}
+	if setup.session.RunTimeout <= 0 {
+		t.Fatal("a --goal run must use the session timeout")
 	}
 }
 

@@ -103,6 +103,7 @@ func New(opts Options) (*Server, error) {
 		api.DELETE("/threads/:id", s.deleteThread)
 
 		api.GET("/threads/:id/events", s.streamEvents)
+		api.GET("/threads/:id/log", s.listLog)
 		api.POST("/threads/:id/turns", s.startTurn)
 		api.POST("/threads/:id/steer", s.steer)
 		api.GET("/threads/:id/followups", s.listFollowups)

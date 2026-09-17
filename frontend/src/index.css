@@ -78,9 +78,10 @@
        the fallback is only the first paint and jsdom. */
     --composer-pad: 7.5rem;
 
-    /* Conversation column. comfortable is max-w-3xl; Settings overwrites
-       this when the human picks full width. */
+    /* Conversation column. comfortable is max-w-3xl; Settings / the title
+       bar overwrite this when the human picks full width. */
     --content-max: 48rem;
+    --content-gutter: 2rem;
     --ui-font-size: 16px;
   }
 
@@ -174,11 +175,22 @@
 
 @layer components {
   /* Conversation column. --content-max is 48rem (max-w-3xl) until Settings
-     overwrites it to none. */
+     or the title-bar control overwrites it to none. */
   .content-column {
     width: 100%;
     max-width: var(--content-max, 48rem);
     margin-inline: auto;
+  }
+
+  /* Phone keeps 1rem. sm+ uses --content-gutter so full width can sit
+     flush against the sidebars without a second Tailwind breakpoint. */
+  .content-gutter {
+    padding-inline: 1rem;
+  }
+  @media (min-width: 640px) {
+    .content-gutter {
+      padding-inline: var(--content-gutter, 2rem);
+    }
   }
 
   /* Rendered markdown from the model. Prose plugins bring a lot of opinions

@@ -3,13 +3,15 @@ import type { en } from "./messages-en"
 /** Chinese UI chrome. Every key in messages-en.ts must have a string here. */
 export const zh: { [K in keyof typeof en]: string } = {
   "header.idle": "空闲",
-  "header.working": "工作中 · ",
-  "header.waiting": "等待中 · ",
+  "header.working": "工作中",
+  "header.waiting": "等待中",
   "header.newConversation": "新对话",
   "header.hideConversations": "隐藏会话列表",
   "header.showConversations": "显示会话列表",
   "header.switchTheme": "切换主题",
   "header.switchLanguage": "切换语言",
+  "header.switchToWide": "切换到宽屏",
+  "header.switchToStandard": "切换到标准宽度",
   "header.togglePanel": "切换侧栏",
   "header.copyTurn": "复制回合 id — `zwai trace <id>` 可回放",
   "header.reconnecting": "重连中",
@@ -55,6 +57,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "palette.settings": "设置",
   "palette.theme": "切换浅色 / 深色",
   "palette.language": "切换语言",
+  "palette.width": "切换标准 / 宽屏",
   "palette.conversations": "会话",
   "palette.untitled": "未命名",
 
@@ -263,7 +266,13 @@ export const zh: { [K in keyof typeof en]: string } = {
   "notice.goalBlocked": "目标已卡住：需要你或外部条件才能继续。",
   "notice.goalEdited": "目标已更新。",
   "notice.goalResumed": "继续追求目标。",
+  "notice.goalSessionTime": "工作会话因时长上限结束。",
+  "notice.goalSessionIters": "工作会话因工具回合上限结束。",
+  "notice.goalSession": "工作会话结束。",
   "notice.compacted": "更早的回合已折进简报。你看到的记录不变。",
+  "notice.compressing": "正在压缩会话上下文…",
+  "notice.autoCompacted": "已压缩上下文（{before} → {after} tokens）。你看到的记录不变。",
+  "notice.autoCompactedPlain": "已压缩上下文。你看到的记录不变。",
   "notice.reviewQuiet": "复盘结束 — 没有新内容要保留。",
   "notice.reviewDone": "复盘结束。",
   "notice.reviewFailed": "记忆复盘失败：{err}",
@@ -278,6 +287,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.storedFallback": "数据目录",
 
   "settings.nav.general": "通用",
+  "settings.nav.personality": "个性化",
   "settings.nav.models": "模型",
   "settings.nav.swarm": "集群",
   "settings.nav.tools": "工具",
@@ -307,9 +317,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.general.fontSizeLarge": "大",
   "settings.general.contentWidth": "内容宽度",
   "settings.general.contentWidthHint":
-    "保持现在的阅读栏，或铺满两侧栏之间的空间。",
-  "settings.general.contentWidthComfortable": "适中",
-  "settings.general.contentWidthFull": "铺满",
+    "标准保持阅读栏宽度。宽屏铺满两侧栏之间的空间。",
+  "settings.general.contentWidthComfortable": "标准",
+  "settings.general.contentWidthFull": "宽屏",
   "settings.general.logs": "日志",
   "settings.general.logLevel": "日志级别",
   "settings.general.logHint": "写在数据目录里，和数据库放在一起。",
@@ -357,7 +367,7 @@ export const zh: { [K in keyof typeof en]: string } = {
     "只在某个名字没有自己的窗口时用。别把某一个模型的上限填在这里。",
   "settings.models.timeout": "请求超时（秒）",
   "settings.models.timeoutHint":
-    "等多久才等到模型的下一个字节。还在往外流的调用不会被砍；一直哑巴的接口会。",
+    "等多久才等到模型的下一个字节。还在往外流的调用不会被砍；一直哑巴的接口会。压缩也走这个超时。",
 
   "settings.aux.title": "辅助模型",
   "settings.aux.desc": "这些活默认跟会话模型走，除非你钉死一个。",
@@ -398,9 +408,21 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.swarm.keep": "压缩时保留的消息数",
   "settings.swarm.keepHint":
     "最近的用户和助手消息保持原文。更早的变成简报。",
+  "settings.swarm.autoCompact": "自动压缩阈值（tokens）",
+  "settings.swarm.autoCompactHint":
+    "主管一次调用的 prompt tokens 超过这个数，就把更早的消息折进简报。你看到的记录不变。",
   "settings.swarm.goalTurns": "目标自动续跑回合",
   "settings.swarm.goalTurnsHint":
     "没有新的人工消息时，运行时最多自己开多少轮去追一个未完成的 /goal。",
+  "settings.swarm.goalSessionSeconds": "目标会话时长（秒）",
+  "settings.swarm.goalSessionSecondsHint":
+    "一轮 /goal 最多跑多久，到点就收工并立刻开下一会话。",
+  "settings.swarm.goalSessionIters": "目标会话工具回合",
+  "settings.swarm.goalSessionItersHint":
+    "追 /goal 时主管每一段工具回合。到了就同一轮接着干，不弹确认、不切会话。会话仍按时长上限收工。",
+  "settings.swarm.goalCompactPct": "目标自动压缩阈值（%）",
+  "settings.swarm.goalCompactPctHint":
+    "上下文至少这么满时，开下一轮 /goal 会话前先 compact。",
 
   "settings.tools.title": "工具",
   "settings.tools.desc": "代理可以调用什么。以后版本新加的工具会沿用它自己的默认。",
@@ -430,18 +452,29 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.memory.charLimit": "笔记预算（字符）",
   "settings.memory.charLimitHint":
     "每条笔记都在项目每一轮的提示词里，所以这是按轮计费。满了之后，代理必须替换一条才能再加。",
+  "settings.memory.entryMax": "单条笔记上限（字符）",
+  "settings.memory.entryMaxHint":
+    "代理写入超过这个长度会被拒绝。流程和 runbook 放进技能，提示词里只留一行摘要。人手改笔记仍走总预算。",
   "settings.memory.reviewRounds": "复盘工具回合",
   "settings.memory.reviewRoundsHint": "复盘最多可以思考并写入多少次后停下。",
   "settings.memory.skillsIndex": "提示词里列出的技能数",
   "settings.memory.skillsIndexHint":
     "只列名称和一行说明；代理打开它需要的那一个。",
 
+  "settings.personality.title": "个性化",
+  "settings.personality.desc":
+    "每次会话里，你希望经理怎么跟你协作。项目指令是业务场景；两边冲突时以项目为准。",
+  "settings.personality.instructions": "个人偏好",
+  "settings.personality.hint":
+    "会加进每次会话的系统提示。留空则不加。",
+
   "project.edit": "编辑项目",
   "project.new": "新建项目",
   "project.desc": "同一项目里的会话共享工作目录、一条指令，以及先前会话学到的东西。",
   "project.name": "名称",
   "project.instruction": "指令",
-  "project.instructionHint": "会加进这个项目里每次会话的系统提示。",
+  "project.instructionHint":
+    "会加进这个项目里每次会话的系统提示。与设置里的个性化冲突时，以本项目为准。",
   "project.workdir": "工作目录",
   "project.workdirPlaceholder": "留空则由 zwai 管理",
   "project.workdirHint":

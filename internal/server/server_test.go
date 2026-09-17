@@ -245,6 +245,7 @@ func TestUnknownThreadIs404Everywhere(t *testing.T) {
 		{http.MethodGet, "/api/threads/nope/files", nil},
 		{http.MethodGet, "/api/threads/nope/turns", nil},
 		{http.MethodGet, "/api/threads/nope/events", nil},
+		{http.MethodGet, "/api/threads/nope/log", nil},
 		{http.MethodGet, "/api/threads/nope/download/a.txt", nil},
 		{http.MethodGet, "/api/threads/nope/input-images/img_ab", nil},
 	} {
@@ -884,6 +885,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindProgress, "progress"},
 		{engine.KindMemoryReview, "memory_review"},
 		{engine.KindTitle, "title"},
+		{engine.KindSessionMemory, "session_memory"},
 		{engine.KindMaxIterations, "max_iterations"},
 		{engine.KindMaxIterationsContinued, "max_iterations_continued"},
 		{engine.KindResumed, "resumed"},
@@ -894,6 +896,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindGoalBlocked, "goal_blocked"},
 		{engine.KindGoalEdited, "goal_edited"},
 		{engine.KindGoalResumed, "goal_resumed"},
+		{engine.KindGoalSession, "goal_session"},
 		{engine.KindCompacted, "compacted"},
 		{engine.KindUsage, "usage"},
 		{engine.KindRewound, "rewound"},

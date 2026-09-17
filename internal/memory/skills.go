@@ -99,6 +99,9 @@ func (s *Store) WriteSkill(name, description, body string) (Skill, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.rejectDuplicateSkill(name, description, body); err != nil {
+		return Skill{}, err
+	}
 	if err := writeAtomic(s.skillPath(name), renderSkill(name, description, body)); err != nil {
 		return Skill{}, err
 	}
@@ -156,6 +159,58 @@ func (s *Store) skillsDir() string { return filepath.Join(s.dir, SkillsDir) }
 
 func (s *Store) skillPath(name string) string {
 	return filepath.Join(s.skillsDir(), name, SkillFile)
+}
+
+// rejectDuplicateSkill refuses a create that would mint a second procedure
+// for a subject already stored. Overwriting the same name is how a skill is
+// rewritten; colliding with a different name is how the index fills with
+// twins the manager cannot tell apart.
+func (s *Store) rejectDuplicateSkill(name, description, body string) error {
+	entries, err := os.ReadDir(s.skillsDir())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("memory: list skills: %w", err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == name || ValidSkillName(e.Name()) != nil {
+			continue
+		}
+		other, err := s.readSkill(e.Name())
+		if err != nil {
+			continue
+		}
+		if why := skillOverlap(name, description, body, other); why != "" {
+			return &DuplicateSkillError{Name: other.Name, Description: other.Description, Reason: why}
+		}
+	}
+	return nil
+}
+
+// noteRestatesASkill refuses a note that is already a recorded procedure.
+// The notes ride in every turn; the skill's summary is already there.
+func (s *Store) noteRestatesASkill(note string) error {
+	entries, err := os.ReadDir(s.skillsDir())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("memory: list skills: %w", err)
+	}
+	for _, e := range entries {
+		if !e.IsDir() || ValidSkillName(e.Name()) != nil {
+			continue
+		}
+		skill, err := s.readSkill(e.Name())
+		if err != nil {
+			continue
+		}
+		if noteOverlapsSkill(note, skill) {
+			return &NoteSkillOverlapError{Name: skill.Name, Description: skill.Description}
+		}
+	}
+	return nil
 }
 
 // ValidSkillName reports whether name can be a directory under the skills

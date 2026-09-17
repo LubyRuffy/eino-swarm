@@ -21,14 +21,22 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
     "notice.goalBlocked",
   "Standing objective updated.": "notice.goalEdited",
   "Resuming the standing objective.": "notice.goalResumed",
+  "Work session ended after the time cap.": "notice.goalSessionTime",
+  "Work session ended after the tool-round cap.": "notice.goalSessionIters",
+  "Work session ended.": "notice.goalSession",
   "Earlier turns were folded into a briefing. The transcript is unchanged.":
     "notice.compacted",
+  "Compressing conversation context…": "notice.compressing",
+  "Context compressed. The transcript is unchanged.":
+    "notice.autoCompactedPlain",
   "Review finished — nothing new to keep.": "notice.reviewQuiet",
   "Review finished.": "notice.reviewDone",
   "Memory updated.": "notice.memoryUpdated",
 }
 
 const REVIEW_FAIL_PREFIX = "Memory review failed: "
+const AUTO_COMPACT_RE =
+  /^Context compressed \((\d+) → (\d+) tokens\)\. The transcript is unchanged\.$/
 
 /** Chrome preference: a pinned language, or follow the browser. Junk becomes
  *  system so a hand-edited config cannot blank the UI. */
@@ -104,6 +112,13 @@ export function localizeNotice(text: string, locale: Locale): string {
   if (text.startsWith(REVIEW_FAIL_PREFIX)) {
     return t(locale, "notice.reviewFailed", {
       err: text.slice(REVIEW_FAIL_PREFIX.length),
+    })
+  }
+  const auto = AUTO_COMPACT_RE.exec(text)
+  if (auto) {
+    return t(locale, "notice.autoCompacted", {
+      before: auto[1],
+      after: auto[2],
     })
   }
   return text

@@ -244,6 +244,62 @@ func TestEventSequenceIsGapFreeAndReplayable(t *testing.T) {
 	}
 }
 
+func TestListTailEventsPagesFromTheEnd(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		if err := s.AppendEvent(&Event{ThreadID: th.ID, Kind: "delta", Text: strings.Repeat("x", i+1)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	page, hasMore, err := s.ListTailEvents(th.ID, 0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasMore {
+		t.Fatal("older rows must still exist")
+	}
+	if len(page) != 2 || page[0].Seq != 4 || page[1].Seq != 5 {
+		t.Fatalf("tail page=%+v", page)
+	}
+
+	older, hasMore, err := s.ListTailEvents(th.ID, page[0].Seq, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasMore || len(older) != 2 || older[0].Seq != 2 || older[1].Seq != 3 {
+		t.Fatalf("older page hasMore=%v %+v", hasMore, older)
+	}
+
+	rest, hasMore, err := s.ListTailEvents(th.ID, older[0].Seq, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore || len(rest) != 1 || rest[0].Seq != 1 {
+		t.Fatalf("first page hasMore=%v %+v", hasMore, rest)
+	}
+
+	empty, hasMore, err := s.ListTailEvents(th.ID, 1, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore || len(empty) != 0 {
+		t.Fatalf("nothing before seq 1: hasMore=%v %+v", hasMore, empty)
+	}
+
+	none, hasMore, err := s.ListTailEvents(th.ID, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasMore || len(none) != 0 {
+		t.Fatalf("limit 0 is empty, not the whole log: hasMore=%v n=%d", hasMore, len(none))
+	}
+}
+
 func TestConcurrentEventWritesDoNotBusyTheDatabase(t *testing.T) {
 	s := open(t)
 	th := &Thread{Title: "t"}
@@ -697,6 +753,7 @@ func TestClosedStoreReportsErrorsEverywhere(t *testing.T) {
 		},
 		"AppendEvent":            func() error { return s.AppendEvent(&Event{ThreadID: th.ID, Kind: "delta"}) },
 		"ListEvents":             func() error { _, e := s.ListEvents(th.ID, 0, 0); return e },
+		"ListTailEvents":         func() error { _, _, e := s.ListTailEvents(th.ID, 0, 2); return e },
 		"ListTurnEvents":         func() error { _, e := s.ListTurnEvents(turn.ID); return e },
 		"AppendLLMCall":          func() error { return s.AppendLLMCall(&LLMCall{ThreadID: th.ID}) },
 		"ListLLMCalls":           func() error { _, e := s.ListLLMCalls(turn.ID); return e },
@@ -738,6 +795,13 @@ func TestNewIDIsUniqueAndPathSafe(t *testing.T) {
 			t.Fatalf("duplicate id %q", id)
 		}
 		seen[id] = true
+	}
+}
+
+func TestApplyTurnUpdateMissingTurnIsNotFound(t *testing.T) {
+	s := open(t)
+	if err := s.applyTurnUpdate("tu_missing", map[string]any{"status": TurnDone}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
 	}
 }
 

@@ -3,12 +3,10 @@ package engine
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
 
-	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
@@ -95,12 +93,20 @@ func (p *reviewPool) stop(wait time.Duration) bool {
 // reliable to learn from, and someone who pressed stop did not ask for its
 // half-finished approach to become a skill.
 func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string,
-	pc *projectContext, input []adk.Message, res swarm.RunResult,
+	pc *projectContext, final string,
 ) {
 	if !e.cfg.Memory.AutoReview || status != store.TurnDone || !pc.memoryLive() {
 		return
 	}
-	transcript := renderConversation(input, res.Transcript, res.Final)
+	events, err := e.store.ListTurnEvents(turn.ID)
+	if err != nil {
+		e.log.Warn("could not read events for the memory review", "turn", turn.ID, "err", err)
+		return
+	}
+	if managerWroteMemory(events) {
+		return
+	}
+	transcript := renderReviewFromEvents(events, e.sessionMemoryOf(threadID), final)
 	if strings.TrimSpace(transcript) == "" {
 		return
 	}
@@ -152,13 +158,14 @@ func (e *Engine) ReviewTurn(threadID string) (*store.Turn, error) {
 	if latest == nil {
 		return nil, ErrIdle
 	}
-	// Replayed from the stored transcript rather than from a live run, so a
-	// conversation can be reviewed again long after its turn ended.
-	history, err := e.replayHistory(threadID)
+	// Replayed from the stored event log rather than from compacted ADK
+	// state, so a conversation can be reviewed again long after its turn
+	// ended and after compact has folded what the model sees.
+	events, err := e.store.ListTurnEvents(latest.ID)
 	if err != nil {
 		return nil, err
 	}
-	transcript := renderConversation(history, nil, latest.Final)
+	transcript := renderReviewFromEvents(events, e.sessionMemoryOf(threadID), latest.Final)
 	if strings.TrimSpace(transcript) == "" {
 		return nil, ErrIdle
 	}
@@ -301,70 +308,6 @@ func messageText(ev *adk.AgentEvent) string {
 		return ""
 	}
 	return strings.TrimSpace(out.Message.Content)
-}
-
-// renderConversation turns a finished turn into the text the reviewer reads.
-//
-// It is one message rather than a replayed conversation on purpose: the
-// reviewer is reading a transcript, not continuing it, and a model handed its
-// own prior messages tends to answer the human again instead of reviewing.
-// Tool calls are included — a skill is a procedure, and the procedure is in
-// the tool calls — but every part is clipped, because a turn that read a large
-// file would otherwise make the review cost more than the work.
-func renderConversation(input []adk.Message, transcript []adk.Message, final string) string {
-	var b strings.Builder
-	budget := reviewMaxChars
-	wrote := false
-
-	write := func(role, text string) {
-		text = strings.TrimSpace(text)
-		if text == "" || budget <= 0 {
-			return
-		}
-		if !wrote {
-			b.WriteString("Conversation to review:\n\n")
-			wrote = true
-		}
-		text = clip(text, reviewMaxCharsPerMessage)
-		if len(text) > budget {
-			text = clip(text, budget)
-		}
-		budget -= len(text)
-		fmt.Fprintf(&b, "%s: %s\n\n", role, text)
-	}
-
-	for _, m := range input {
-		if m == nil || m.Role == schema.System {
-			continue
-		}
-		write(string(m.Role), m.Content)
-	}
-	// The transcript the swarm returns starts with the instruction and replays
-	// the input, so only the tail past them is this turn's own work.
-	if start := len(input) + 1; len(transcript) > start {
-		for _, m := range transcript[start:] {
-			if m == nil || m.Role == schema.System {
-				continue
-			}
-			write(string(m.Role), describeMessage(m))
-		}
-	}
-	write("final answer", final)
-	return b.String()
-}
-
-// describeMessage renders a transcript entry, naming the tools a step used so
-// the reviewer can see the workflow rather than only its conclusions.
-func describeMessage(m adk.Message) string {
-	var parts []string
-	if text := strings.TrimSpace(m.Content); text != "" {
-		parts = append(parts, text)
-	}
-	for _, tc := range m.ToolCalls {
-		parts = append(parts, fmt.Sprintf("[called %s with %s]",
-			tc.Function.Name, clip(tc.Function.Arguments, 300)))
-	}
-	return strings.Join(parts, "\n")
 }
 
 func clip(s string, max int) string {

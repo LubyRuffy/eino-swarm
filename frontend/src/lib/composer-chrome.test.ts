@@ -4,6 +4,7 @@ import {
   COMPOSER_PAD_VAR,
   COMPOSER_STAGE_ATTR,
   clearComposerPad,
+  resizeComposerArea,
   syncComposerPad,
 } from "./composer-chrome"
 
@@ -55,5 +56,23 @@ describe("clearComposerPad", () => {
     syncComposerPad(child, 144)
     clearComposerPad(child)
     expect(stage.style.getPropertyValue(COMPOSER_PAD_VAR)).toBe("")
+  })
+})
+
+describe("resizeComposerArea", () => {
+  // height:auto on every preedit key is what made CJK IME feel stuck: the
+  // candidate window jumped and the main thread laid out the transcript pad.
+  it("does not touch the box while an IME is composing", () => {
+    const el = document.createElement("textarea")
+    el.style.height = "48px"
+    resizeComposerArea(el, { composing: true })
+    expect(el.style.height).toBe("48px")
+  })
+
+  it("caps the grown height so the composer cannot eat the conversation", () => {
+    const el = document.createElement("textarea")
+    Object.defineProperty(el, "scrollHeight", { value: 480, configurable: true })
+    resizeComposerArea(el, { maxPx: 200 })
+    expect(el.style.height).toBe("200px")
   })
 })

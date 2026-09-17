@@ -331,6 +331,67 @@ test("settings round-trip through the config file", async ({ page }) => {
   await page.getByRole("dialog").getByRole("button", { name: "Back to app" }).click()
 })
 
+test("per-note memory cap round-trips through settings", async ({
+  page,
+  request,
+}) => {
+  const { settings } = await (await request.get("/api/settings")).json()
+  try {
+    await page.goto("/")
+    await page.getByRole("button", { name: "Settings" }).click()
+    const dialog = page.getByRole("dialog")
+    await dialog.getByRole("tab", { name: "Memory" }).click()
+    const cap = dialog.getByLabel("Per-note cap (characters)")
+    await expect(cap).toHaveValue(String(settings.memory.entry_max))
+    await cap.fill("280")
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+
+    const saved = await (await request.get("/api/settings")).json()
+    expect(saved.settings.memory.entry_max).toBe(280)
+
+    await page.getByRole("button", { name: "Settings" }).click()
+    await page.getByRole("dialog").getByRole("tab", { name: "Memory" }).click()
+    await expect(
+      page.getByRole("dialog").getByLabel("Per-note cap (characters)"),
+    ).toHaveValue("280")
+    await page.getByRole("dialog").getByRole("button", { name: "Back to app" }).click()
+  } finally {
+    await request.put("/api/settings", { data: { memory: settings.memory } })
+  }
+})
+
+test("personality round-trips through settings", async ({ page, request }) => {
+  const { settings } = await (await request.get("/api/settings")).json()
+  try {
+    await page.goto("/")
+    await page.getByRole("button", { name: "Settings" }).click()
+    const dialog = page.getByRole("dialog")
+    await dialog.getByRole("tab", { name: "Personality" }).click()
+    const box = dialog.getByLabel("Personal preferences")
+    await expect(box).toHaveValue(settings.personality?.instructions ?? "")
+    await box.fill("prefer compact replies")
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+
+    const saved = await (await request.get("/api/settings")).json()
+    expect(saved.settings.personality.instructions).toBe(
+      "prefer compact replies",
+    )
+
+    await page.getByRole("button", { name: "Settings" }).click()
+    await page.getByRole("dialog").getByRole("tab", { name: "Personality" }).click()
+    await expect(
+      page.getByRole("dialog").getByLabel("Personal preferences"),
+    ).toHaveValue("prefer compact replies")
+    await page.getByRole("dialog").getByRole("button", { name: "Back to app" }).click()
+  } finally {
+    await request.put("/api/settings", {
+      data: { personality: settings.personality ?? { instructions: "" } },
+    })
+  }
+})
+
 test("pins a title-generation model when more than one name is listed", async ({
   page,
   request,
@@ -435,7 +496,7 @@ test("Back to app stays on screen when Swarm is taller than the window", async (
   expect(box!.y).toBeGreaterThanOrEqual(0)
   expect(box!.y + box!.height).toBeLessThanOrEqual(700)
 
-  const last = dialog.getByLabel("Goal auto-continue turns")
+  const last = dialog.getByLabel("Goal auto-compact at (%)")
   await last.scrollIntoViewIfNeeded()
   const lastBox = await last.boundingBox()
   const backBox = await back.boundingBox()
@@ -464,6 +525,56 @@ test("the Models tab does not clip the add-endpoint button's border", async ({
   // no bottom border. The scrollport keeps padding under the last control.
   expect(room).toBeGreaterThanOrEqual(1)
 })
+
+test("switches conversation width from the title bar and fills the pane", async ({
+  page,
+  request,
+}) => {
+  // comfortable is a 48rem column; without a wide pane the two modes look
+  // the same. Collapse the right panel so the fill is visible.
+  await page.goto("/")
+  try {
+    await page.keyboard.press("ControlOrMeta+\\")
+    await expect(page.getByRole("tab", { name: "Agents" })).toBeHidden()
+
+    const root = page.locator("html")
+    await expect(root).toHaveAttribute("data-content-width", "comfortable")
+
+    const before = await columnFill(page)
+    await page.getByRole("button", { name: "Switch to wide layout" }).click()
+    await expect(root).toHaveAttribute("data-content-width", "full")
+    await expect(
+      page.getByRole("button", { name: "Switch to standard layout" }),
+    ).toHaveAttribute("aria-pressed", "true")
+
+    const after = await columnFill(page)
+    expect(after).toBeGreaterThan(before)
+    expect(after).toBeGreaterThan(0.9)
+
+    await page.reload()
+    await expect(root).toHaveAttribute("data-content-width", "full")
+
+    await page.getByRole("button", { name: "Switch to standard layout" }).click()
+    await expect(root).toHaveAttribute("data-content-width", "comfortable")
+  } finally {
+    await request.put("/api/settings", {
+      data: { ui: { content_width: "comfortable" } },
+    })
+  }
+})
+
+async function columnFill(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const col = document.querySelector(".content-column")
+    const stage = document.querySelector('[data-testid="composer-stage"]')
+    if (!(col instanceof HTMLElement) || !(stage instanceof HTMLElement)) {
+      return 0
+    }
+    const cw = col.getBoundingClientRect().width
+    const sw = stage.getBoundingClientRect().width
+    return sw > 0 ? cw / sw : 0
+  })
+}
 
 test("switches theme and remembers it", async ({ page }) => {
   await page.goto("/")
@@ -514,7 +625,7 @@ test("font and conversation width round-trip through settings", async ({
     await dialog.getByRole("combobox", { name: "Font size" }).click()
     await page.getByRole("option", { name: "Large" }).click()
     await dialog.getByRole("combobox", { name: "Conversation width" }).click()
-    await page.getByRole("option", { name: "Full width" }).click()
+    await page.getByRole("option", { name: "Wide" }).click()
     await dialog.getByRole("button", { name: "Back to app" }).click()
     await expect(dialog).toBeHidden()
 
@@ -536,7 +647,7 @@ test("font and conversation width round-trip through settings", async ({
     ).toContainText("Serif")
     await expect(
       page.getByRole("dialog").getByRole("combobox", { name: "Conversation width" }),
-    ).toContainText("Full width")
+    ).toContainText("Wide")
     await page.getByRole("dialog").getByRole("button", { name: "Back to app" }).click()
   } finally {
     await request.put("/api/settings", {
@@ -656,11 +767,7 @@ async function html5Reorder(
       if (!(source instanceof HTMLElement) || !(target instanceof HTMLElement)) {
         throw new Error("missing row")
       }
-      const handle = source.querySelector("[data-drag-handle]")
-      if (!(handle instanceof HTMLElement)) {
-        throw new Error("missing drag handle")
-      }
-      handle.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
+      source.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }))
       const dt = new DataTransfer()
       source.dispatchEvent(
         new DragEvent("dragstart", { bubbles: true, cancelable: true, dataTransfer: dt }),

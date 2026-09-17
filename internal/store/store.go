@@ -403,6 +403,32 @@ func (s *Store) ListEvents(threadID string, since int64, limit int) ([]Event, er
 	return out, nil
 }
 
+// ListTailEvents returns the newest events before `before` (before <= 0 means
+// from the end), oldest first. hasMore is true when older rows still exist —
+// a reconnecting UI asks for a viewport of the live edge, then pages up.
+func (s *Store) ListTailEvents(threadID string, before int64, limit int) ([]Event, bool, error) {
+	if limit <= 0 {
+		return []Event{}, false, nil
+	}
+	q := s.db.Where("thread_id = ?", threadID)
+	if before > 0 {
+		q = q.Where("seq < ?", before)
+	}
+	var newest []Event
+	if err := q.Order("seq desc").Limit(limit + 1).Find(&newest).Error; err != nil {
+		return nil, false, fmt.Errorf("store: list tail events: %w", err)
+	}
+	hasMore := len(newest) > limit
+	if hasMore {
+		newest = newest[:limit]
+	}
+	out := make([]Event, len(newest))
+	for i, ev := range newest {
+		out[len(newest)-1-i] = ev
+	}
+	return out, hasMore, nil
+}
+
 // ListTurnEvents returns one turn's events, oldest first — the trace view.
 func (s *Store) ListTurnEvents(turnID string) ([]Event, error) {
 	var out []Event

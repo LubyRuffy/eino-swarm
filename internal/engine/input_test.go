@@ -153,8 +153,11 @@ func TestBuildUserMessagePutsImagesOnUserInputMultiContent(t *testing.T) {
 	if msg.Role != schema.User {
 		t.Fatalf("role=%s", msg.Role)
 	}
-	if msg.Content != "look" {
-		t.Fatalf("text still lives on Content so traces stay readable: %q", msg.Content)
+	if msg.Content != "" {
+		t.Fatalf("Content+MultiContent cannot both be set for OpenAI: %q", msg.Content)
+	}
+	if userMessageText(msg) != "look" {
+		t.Fatalf("caption must still be readable from the text part: %q", userMessageText(msg))
 	}
 	if len(msg.UserInputMultiContent) != 2 {
 		t.Fatalf("want text + image parts, got %+v", msg.UserInputMultiContent)

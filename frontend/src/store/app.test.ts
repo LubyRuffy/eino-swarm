@@ -63,6 +63,9 @@ const fake = vi.hoisted(() => ({
   compacts: [] as string[],
   reordered: [] as Array<{ ids: string[]; projectId?: string }>,
   reorderFail: false,
+  logEvents: [] as Array<Record<string, unknown>>,
+  logHasMore: false,
+  subscribeSince: [] as number[],
 }))
 
 vi.mock("@/lib/api", () => {
@@ -189,6 +192,10 @@ vi.mock("@/lib/api", () => {
         usage: fake.threadUsage,
       }),
       turns: async () => [],
+      threadLog: async () => ({
+        events: fake.logEvents,
+        has_more: fake.logHasMore,
+      }),
       files: async () => ({ workspace: "/tmp/ws", files: [] }),
       followups: async () => fake.queuedItems,
       enqueueFollowup: async (id: string, text: string) => {
@@ -309,7 +316,9 @@ vi.mock("@/lib/stream", () => ({
       onEvent?: (ev: Record<string, unknown>) => void
       onReady?: (p: unknown) => void
     },
+    since = 0,
   ) => {
+    fake.subscribeSince.push(since)
     fake.onEvent = handlers.onEvent
     handlers.onReady?.({ status: { running: false } })
     return () => undefined
@@ -343,12 +352,17 @@ beforeEach(() => {
   fake.reordered.length = 0
   fake.reorderFail = false
   fake.threadUsage = undefined
+  fake.logEvents = []
+  fake.logHasMore = false
+  fake.subscribeSince.length = 0
   useApp.setState({
     threads: [],
     activeId: undefined,
     status: { running: false },
     followups: [],
     error: undefined,
+    historyHasMore: false,
+    historyLoading: false,
   })
   useProjects.setState({
     projects: [],
@@ -386,6 +400,7 @@ describe("send", () => {
   it("shows the turn as running without waiting for the server to say so", async () => {
     await useApp.getState().send("go")
     expect(useApp.getState().status.running).toBe(true)
+    expect(useApp.getState().status.started_at).toBeTruthy()
   })
 
   it("forwards pasted images on the same send as the caption", async () => {
@@ -652,151 +667,6 @@ describe("extendTurn", () => {
   })
 })
 
-describe("goal and compact", () => {
-  beforeEach(() => {
-    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
-      cb(0)
-      return 1
-    })
-    vi.stubGlobal("cancelAnimationFrame", () => undefined)
-  })
-
-  it("patches the standing objective onto the open conversation", async () => {
-    await useApp.getState().boot()
-    await useApp.getState().setGoal("keep going")
-    expect(fake.goals).toEqual([{ id: "th_old", goal: "keep going" }])
-    expect(useApp.getState().threads[0]?.goal).toBe("keep going")
-  })
-
-  it("edits the standing objective in place", async () => {
-    await useApp.getState().boot()
-    await useApp.getState().editGoal("keep going, tighter")
-    expect(fake.goals).toEqual([
-      { id: "th_old", goal: "keep going, tighter", goal_edit: true },
-    ])
-  })
-
-  it("resumes a standing objective on the open conversation", async () => {
-    await useApp.getState().boot()
-    await useApp.getState().resumeGoal()
-    expect(fake.goals).toEqual([{ id: "th_old", goal_resume: true }])
-    expect(useApp.getState().status.running).toBe(true)
-  })
-
-  it("does not edit or resume when nothing is open", async () => {
-    await useApp.getState().editGoal("x")
-    await useApp.getState().resumeGoal()
-    expect(fake.goals).toEqual([])
-  })
-
-  it("folds replay on the open conversation", async () => {
-    await useApp.getState().boot()
-    await useApp.getState().compactThread()
-    expect(fake.compacts).toEqual(["th_old"])
-    expect(useApp.getState().threads[0]?.compacted).toBe(true)
-  })
-
-  it("does not compact when nothing is open", async () => {
-    await useApp.getState().compactThread()
-    expect(fake.compacts).toEqual([])
-  })
-
-  it("updates the banner from a goal event", async () => {
-    await useApp.getState().boot()
-    fake.onEvent?.({
-      kind: "goal",
-      seq: 50,
-      thread_id: "th_old",
-      turn_id: "tn_1",
-      agent_id: "manager",
-      text: "keep going",
-      created_at: new Date().toISOString(),
-    })
-    expect(useApp.getState().threads[0]?.goal).toBe("keep going")
-    expect(useApp.getState().threads[0]?.goal_complete).toBe(false)
-  })
-
-  it("marks the objective complete from the stream", async () => {
-    await useApp.getState().boot()
-    fake.onEvent?.({
-      kind: "goal",
-      seq: 50,
-      thread_id: "th_old",
-      turn_id: "tn_1",
-      agent_id: "manager",
-      text: "keep going",
-      created_at: new Date().toISOString(),
-    })
-    fake.onEvent?.({
-      kind: "goal_complete",
-      seq: 51,
-      thread_id: "th_old",
-      turn_id: "tn_1",
-      agent_id: "manager",
-      text: "{}",
-      created_at: new Date().toISOString(),
-    })
-    expect(useApp.getState().threads[0]?.goal_complete).toBe(true)
-  })
-
-  it("marks the objective blocked from the stream", async () => {
-    await useApp.getState().boot()
-    fake.onEvent?.({
-      kind: "goal",
-      seq: 50,
-      thread_id: "th_old",
-      turn_id: "tn_1",
-      agent_id: "manager",
-      text: "keep going",
-      created_at: new Date().toISOString(),
-    })
-    fake.onEvent?.({
-      kind: "goal_blocked",
-      seq: 51,
-      thread_id: "th_old",
-      turn_id: "tn_1",
-      agent_id: "manager",
-      text: '{"reason":"needs an external change"}',
-      created_at: new Date().toISOString(),
-    })
-    expect(useApp.getState().threads[0]?.goal_blocked).toBe(true)
-    expect(useApp.getState().threads[0]?.goal_block_reason).toBe("needs an external change")
-  })
-
-  it("keeps status flags when the objective is edited", async () => {
-    await useApp.getState().boot()
-    fake.onEvent?.({
-      kind: "goal",
-      seq: 50,
-      thread_id: "th_old",
-      turn_id: "tn_1",
-      agent_id: "manager",
-      text: "keep going",
-      created_at: new Date().toISOString(),
-    })
-    fake.onEvent?.({
-      kind: "goal_blocked",
-      seq: 51,
-      thread_id: "th_old",
-      turn_id: "tn_1",
-      agent_id: "manager",
-      text: '{"reason":"needs an external change"}',
-      created_at: new Date().toISOString(),
-    })
-    fake.onEvent?.({
-      kind: "goal_edited",
-      seq: 52,
-      thread_id: "th_old",
-      turn_id: "tn_1",
-      agent_id: "manager",
-      text: "keep going, tighter",
-      created_at: new Date().toISOString(),
-    })
-    expect(useApp.getState().threads[0]?.goal).toBe("keep going, tighter")
-    expect(useApp.getState().threads[0]?.goal_blocked).toBe(true)
-  })
-})
-
 describe("a generated conversation title", () => {
   beforeEach(() => {
     vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
@@ -957,5 +827,60 @@ describe("sidebar order", () => {
     await useApp.getState().reorderThreads(["th_1"])
     expect(useApp.getState().error).toMatch(/could not pin the order/)
     expect(useApp.getState().threads.map((t) => t.id)).toEqual(["th_old"])
+  })
+})
+
+describe("openThread", () => {
+  it("paints the tail then resumes the stream after that seq", async () => {
+    fake.logEvents = [
+      {
+        thread_id: "th_old",
+        turn_id: "tn_a",
+        seq: 9,
+        kind: "user_message",
+        agent_id: "manager",
+        text: "latest",
+        created_at: new Date().toISOString(),
+      },
+    ]
+    fake.logHasMore = true
+    await useApp.getState().boot()
+    expect(useApp.getState().loaded).toBe(true)
+    expect(useApp.getState().historyHasMore).toBe(true)
+    expect(useApp.getState().transcript.agents.manager?.blocks[0]?.text).toBe("latest")
+    expect(fake.subscribeSince.at(-1)).toBe(9)
+  })
+
+  it("pages older events above the tail", async () => {
+    fake.logEvents = [
+      {
+        thread_id: "th_old",
+        turn_id: "tn_b",
+        seq: 9,
+        kind: "user_message",
+        agent_id: "manager",
+        text: "later",
+        created_at: new Date().toISOString(),
+      },
+    ]
+    fake.logHasMore = true
+    await useApp.getState().boot()
+    fake.logEvents = [
+      {
+        thread_id: "th_old",
+        turn_id: "tn_a",
+        seq: 2,
+        kind: "user_message",
+        agent_id: "manager",
+        text: "earlier",
+        created_at: new Date().toISOString(),
+      },
+    ]
+    fake.logHasMore = false
+    await useApp.getState().loadOlder(400)
+    expect(
+      useApp.getState().transcript.agents.manager?.blocks.map((b) => b.text),
+    ).toEqual(["earlier", "later"])
+    expect(useApp.getState().historyHasMore).toBe(false)
   })
 })

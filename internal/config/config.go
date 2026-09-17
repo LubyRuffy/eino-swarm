@@ -22,13 +22,14 @@ const FileName = "config.yaml"
 
 // Config is the whole configuration tree.
 type Config struct {
-	Server ServerConfig `yaml:"server" json:"server"`
-	Models ModelsConfig `yaml:"models" json:"models"`
-	Swarm  SwarmConfig  `yaml:"swarm" json:"swarm"`
-	Tools  ToolsConfig  `yaml:"tools" json:"tools"`
-	Memory MemoryConfig `yaml:"memory" json:"memory"`
-	Log    LogConfig    `yaml:"log" json:"log"`
-	UI     UIConfig     `yaml:"ui" json:"ui"`
+	Server      ServerConfig      `yaml:"server" json:"server"`
+	Models      ModelsConfig      `yaml:"models" json:"models"`
+	Swarm       SwarmConfig       `yaml:"swarm" json:"swarm"`
+	Tools       ToolsConfig       `yaml:"tools" json:"tools"`
+	Memory      MemoryConfig      `yaml:"memory" json:"memory"`
+	Personality PersonalityConfig `yaml:"personality" json:"personality"`
+	Log         LogConfig         `yaml:"log" json:"log"`
+	UI          UIConfig          `yaml:"ui" json:"ui"`
 
 	// dataDir is where this config was loaded from. Not serialized: the file
 	// cannot meaningfully record its own location.
@@ -58,6 +59,7 @@ type Provider struct {
 	// TimeoutSeconds is how long we wait for the next byte from the model
 	// (response headers or a stream chunk). 0 means DefaultRequestTimeout.
 	// A call that is still streaming is not cut off; a silent endpoint is.
+	// Compact uses this idle clock; there is no second swarm compact timeout.
 	TimeoutSeconds int `yaml:"timeout_seconds" json:"timeout_seconds"`
 	// ContextWindow is the fallback token limit for this endpoint. Used when
 	// a name is missing from ModelContext — never invented from the name.
@@ -204,11 +206,30 @@ type SwarmConfig struct {
 	// CompactKeepMessages is how many recent user/assistant replay messages
 	// stay verbatim when the human runs /compact. The rest become the briefing.
 	CompactKeepMessages int `yaml:"compact_keep_messages" json:"compact_keep_messages"`
+	// AutoCompactTokens is how many prompt tokens may sit on a manager call
+	// before the next one is rewritten: older messages become a briefing,
+	// the recent tail stays. Zero or negative is repaired to the default so
+	// a long ReAct loop cannot silently skip compression. The same pin as
+	// /compact (compact_provider / compact_model) does the summary.
+	AutoCompactTokens int `yaml:"auto_compact_tokens" json:"auto_compact_tokens"`
 	// GoalMaxAutoTurns is how many consecutive engine-started turns may
 	// pursue an open standing objective without another human message.
 	// Zero or negative is repaired to the default so a hand-edit cannot
 	// leave a goal looping forever or refusing to continue at all.
 	GoalMaxAutoTurns int `yaml:"goal_max_auto_turns" json:"goal_max_auto_turns"`
+	// GoalSessionMaxSeconds is how long one /goal turn may run before the
+	// runtime ends it as done and starts the next session. Zero or negative
+	// is repaired to the default.
+	GoalSessionMaxSeconds int `yaml:"goal_session_max_seconds" json:"goal_session_max_seconds"`
+	// GoalSessionMaxIterations is the manager ReAct slice while a /goal
+	// is open. Hitting it extends the same turn (no confirm, no session
+	// cut). The time cap still ends the session. Zero or negative is
+	// repaired to the default.
+	GoalSessionMaxIterations int `yaml:"goal_session_max_iterations" json:"goal_session_max_iterations"`
+	// GoalAutoCompactPercent is how full context must be (0-100) before an
+	// auto-continue compact runs. Zero or negative is repaired to the
+	// default; above 100 is clamped.
+	GoalAutoCompactPercent int `yaml:"goal_auto_compact_percent" json:"goal_auto_compact_percent"`
 }
 
 // AgentTimeout is the per-sub-agent watchdog duration.
@@ -261,6 +282,15 @@ func (s SwarmConfig) CompactKeep() int {
 	return s.CompactKeepMessages
 }
 
+// AutoCompactLimit is the prompt-token budget that triggers in-turn
+// compression. Zero or negative falls back to the default.
+func (s SwarmConfig) AutoCompactLimit() int {
+	if s.AutoCompactTokens <= 0 {
+		return DefaultAutoCompactTokens
+	}
+	return s.AutoCompactTokens
+}
+
 // ResolveTitle is which endpoint names a conversation. Empty provider and
 // model follow the conversation; a model with no provider stays on the
 // conversation's endpoint; a provider with no model uses that endpoint's
@@ -294,6 +324,35 @@ func (s SwarmConfig) GoalAutoTurns() int {
 		return DefaultGoalMaxAutoTurns
 	}
 	return s.GoalMaxAutoTurns
+}
+
+// GoalSessionDuration is how long one standing-objective turn may run.
+func (s SwarmConfig) GoalSessionDuration() time.Duration {
+	if s.GoalSessionMaxSeconds <= 0 {
+		return time.Duration(DefaultGoalSessionMaxSeconds) * time.Second
+	}
+	return time.Duration(s.GoalSessionMaxSeconds) * time.Second
+}
+
+// GoalSessionIterations is the manager ReAct slice while a standing
+// objective is open. Zero or negative falls back to the default.
+func (s SwarmConfig) GoalSessionIterations() int {
+	if s.GoalSessionMaxIterations <= 0 {
+		return DefaultGoalSessionMaxIterations
+	}
+	return s.GoalSessionMaxIterations
+}
+
+// GoalCompactPercent is the context fullness (1-100) that triggers compact
+// before a goal auto-continue. Zero or negative falls back to the default.
+func (s SwarmConfig) GoalCompactPercent() int {
+	if s.GoalAutoCompactPercent <= 0 {
+		return DefaultGoalAutoCompactPercent
+	}
+	if s.GoalAutoCompactPercent > 100 {
+		return 100
+	}
+	return s.GoalAutoCompactPercent
 }
 
 // ProxyConfig is the outbound proxy applied to network tools.
@@ -339,78 +398,6 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
-}
-
-// MemoryConfig governs a project's memory: the notes carried into every turn
-// and the skill documents the agents write for themselves.
-//
-// The character limit is the reason the rest of it works. Memory is injected
-// into the system prompt, so an unbounded store would grow the prompt of every
-// turn forever; a limit forces the agent to consolidate instead of accumulate.
-type MemoryConfig struct {
-	// Enabled turns the memory tools and the prompt sections on. Projects can
-	// still opt out one at a time.
-	Enabled bool `yaml:"enabled" json:"enabled"`
-	// AutoReview runs a review after each completed turn, which is what makes
-	// memory grow without anyone being asked to maintain it.
-	AutoReview bool `yaml:"auto_review" json:"auto_review"`
-	// CharLimit bounds MEMORY.md. A write that would exceed it fails with the
-	// current entries attached, rather than silently dropping the oldest.
-	CharLimit int `yaml:"char_limit" json:"char_limit"`
-	// ReviewMaxIterations caps the reviewer's ReAct loop. It reads one
-	// conversation and writes a handful of files; a high cap only buys a
-	// runaway.
-	ReviewMaxIterations int `yaml:"review_max_iterations" json:"review_max_iterations"`
-	// SkillsIndexMax is how many skills the prompt lists. Only the name and
-	// the one-line summary are listed, so the agent pays for the index and not
-	// for every procedure it might not need.
-	SkillsIndexMax int `yaml:"skills_index_max" json:"skills_index_max"`
-	// Notifications is how chatty a completed review is in the transcript:
-	// off (nothing), on (one line naming what changed), verbose (the line
-	// plus a preview of the written text).
-	Notifications string `yaml:"notifications" json:"notifications"`
-}
-
-// ReviewIterations is the reviewer's iteration cap.
-func (m MemoryConfig) ReviewIterations() int {
-	if m.ReviewMaxIterations <= 0 {
-		return DefaultReviewMaxIterations
-	}
-	return m.ReviewMaxIterations
-}
-
-// Limit is the MEMORY.md character budget.
-func (m MemoryConfig) Limit() int {
-	if m.CharLimit <= 0 {
-		return DefaultMemoryCharLimit
-	}
-	return m.CharLimit
-}
-
-// IndexMax is how many skills the prompt lists.
-func (m MemoryConfig) IndexMax() int {
-	if m.SkillsIndexMax <= 0 {
-		return DefaultSkillsIndexMax
-	}
-	return m.SkillsIndexMax
-}
-
-const (
-	MemoryNotifyOff     = "off"
-	MemoryNotifyOn      = "on"
-	MemoryNotifyVerbose = "verbose"
-)
-
-// NotifyLevel is how a completed review is announced. An unknown value is
-// treated as the default rather than as silence: a typo in the config must
-// not hide that something was stored.
-func (m MemoryConfig) NotifyLevel() string {
-	switch m.Notifications {
-	case MemoryNotifyOff, MemoryNotifyOn, MemoryNotifyVerbose:
-		return m.Notifications
-	default:
-		return DefaultMemoryNotifications
-	}
 }
 
 // LogConfig configures slog.
@@ -472,18 +459,30 @@ const (
 	// the /compact command starts looking urgent; the human still chooses.
 	DefaultContextCharBudget   = 80_000
 	DefaultCompactKeepMessages = 6
+	// Below a million-token window, but high enough that a short turn is
+	// left alone. Past this, each extra ReAct round is mostly re-reading.
+	DefaultAutoCompactTokens = 80_000
 	// Enough consecutive auto-turns to finish a real objective; not enough
 	// to burn a weekend if the manager never calls complete_goal.
 	DefaultGoalMaxAutoTurns = 12
-	DefaultWebSearchResults = 8
-	DefaultProviderID       = "default"
-	DefaultLogLevel         = "info"
+	// About ten minutes of wall time for one /goal session. eino still
+	// needs a finite ReAct slice (40); that slice extends in place until
+	// this clock, complete_goal, or the human stops it.
+	DefaultGoalSessionMaxSeconds    = 600
+	DefaultGoalSessionMaxIterations = 40
+	DefaultGoalAutoCompactPercent   = 80
+	DefaultWebSearchResults         = 8
+	DefaultProviderID               = "default"
+	DefaultLogLevel                 = "info"
 	// Listing models is a cheap GET; a chat-length timeout would leave the
 	// Settings dialog spinning on a hung endpoint.
 	DefaultDiscoverTimeout = 15 * time.Second
 	// About 800 tokens: enough for a dozen dense notes, small enough that
 	// every turn can afford to carry them.
-	DefaultMemoryCharLimit     = 2200
+	DefaultMemoryCharLimit = 2200
+	// One or two sentences. A runbook that would eat a quarter of the notes
+	// budget belongs in a skill, where only the summary rides in the prompt.
+	DefaultMemoryEntryMax      = 360
 	DefaultReviewMaxIterations = 8
 	DefaultSkillsIndexMax      = 50
 	DefaultMemoryNotifications = MemoryNotifyOn
@@ -510,16 +509,20 @@ func Default() *Config {
 			}},
 		},
 		Swarm: SwarmConfig{
-			MaxConcurrent:           DefaultMaxConcurrent,
-			AgentTimeoutSeconds:     DefaultAgentTimeoutSeconds,
-			MaxTurns:                DefaultMaxTurns,
-			ManagerMaxIterations:    DefaultManagerIterations,
-			ProgressIntervalSeconds: DefaultProgressIntervalSeconds,
-			DeltaCoalesceMS:         DefaultDeltaCoalesceMS,
-			AutoTitle:               true,
-			ContextCharBudget:       DefaultContextCharBudget,
-			CompactKeepMessages:     DefaultCompactKeepMessages,
-			GoalMaxAutoTurns:        DefaultGoalMaxAutoTurns,
+			MaxConcurrent:            DefaultMaxConcurrent,
+			AgentTimeoutSeconds:      DefaultAgentTimeoutSeconds,
+			MaxTurns:                 DefaultMaxTurns,
+			ManagerMaxIterations:     DefaultManagerIterations,
+			ProgressIntervalSeconds:  DefaultProgressIntervalSeconds,
+			DeltaCoalesceMS:          DefaultDeltaCoalesceMS,
+			AutoTitle:                true,
+			ContextCharBudget:        DefaultContextCharBudget,
+			CompactKeepMessages:      DefaultCompactKeepMessages,
+			AutoCompactTokens:        DefaultAutoCompactTokens,
+			GoalMaxAutoTurns:         DefaultGoalMaxAutoTurns,
+			GoalSessionMaxSeconds:    DefaultGoalSessionMaxSeconds,
+			GoalSessionMaxIterations: DefaultGoalSessionMaxIterations,
+			GoalAutoCompactPercent:   DefaultGoalAutoCompactPercent,
 		},
 		Tools: ToolsConfig{
 			Disabled:            []string{},
@@ -530,6 +533,7 @@ func Default() *Config {
 			Enabled:             true,
 			AutoReview:          true,
 			CharLimit:           DefaultMemoryCharLimit,
+			EntryMax:            DefaultMemoryEntryMax,
 			ReviewMaxIterations: DefaultReviewMaxIterations,
 			SkillsIndexMax:      DefaultSkillsIndexMax,
 			Notifications:       DefaultMemoryNotifications,
@@ -674,8 +678,22 @@ func (c *Config) normalize() {
 	if c.Swarm.CompactKeepMessages <= 0 {
 		c.Swarm.CompactKeepMessages = d.Swarm.CompactKeepMessages
 	}
+	if c.Swarm.AutoCompactTokens <= 0 {
+		c.Swarm.AutoCompactTokens = d.Swarm.AutoCompactTokens
+	}
 	if c.Swarm.GoalMaxAutoTurns <= 0 {
 		c.Swarm.GoalMaxAutoTurns = d.Swarm.GoalMaxAutoTurns
+	}
+	if c.Swarm.GoalSessionMaxSeconds <= 0 {
+		c.Swarm.GoalSessionMaxSeconds = d.Swarm.GoalSessionMaxSeconds
+	}
+	if c.Swarm.GoalSessionMaxIterations <= 0 {
+		c.Swarm.GoalSessionMaxIterations = d.Swarm.GoalSessionMaxIterations
+	}
+	if c.Swarm.GoalAutoCompactPercent <= 0 {
+		c.Swarm.GoalAutoCompactPercent = d.Swarm.GoalAutoCompactPercent
+	} else if c.Swarm.GoalAutoCompactPercent > 100 {
+		c.Swarm.GoalAutoCompactPercent = 100
 	}
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults
@@ -685,6 +703,11 @@ func (c *Config) normalize() {
 	// would turn memory back on behind their back.
 	if c.Memory.CharLimit <= 0 {
 		c.Memory.CharLimit = d.Memory.CharLimit
+	}
+	if c.Memory.EntryMax <= 0 {
+		c.Memory.EntryMax = d.Memory.EntryMax
+	} else if c.Memory.EntryMax > c.Memory.CharLimit {
+		c.Memory.EntryMax = c.Memory.CharLimit
 	}
 	if c.Memory.ReviewMaxIterations <= 0 {
 		c.Memory.ReviewMaxIterations = d.Memory.ReviewMaxIterations
@@ -886,6 +909,7 @@ func (c *Config) Replace(next *Config) error {
 	c.Swarm = next.Swarm
 	c.Tools = next.Tools
 	c.Memory = next.Memory
+	c.Personality = next.Personality
 	c.Log = next.Log
 	c.UI = next.UI
 	return c.Save()

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/cloudwego/eino/components/model"
@@ -318,6 +319,26 @@ func TestMockManagerContinuesWithoutRespawning(t *testing.T) {
 	}
 }
 
+func TestMockWaitCallIDsStayUniqueAfterAContinuedRun(t *testing.T) {
+	// Each RunWith is a new model whose turn counter is 1. Reusing
+	// mock-wait-1 would hide a later wait_agents result behind the first.
+	firstID := nextWaitCallID([]*schema.Message{
+		schema.UserMessage("look into this"),
+		schema.ToolMessage(`{"agent_id":"researcher-1"}`, "mock-spawn-1"),
+	})
+	secondID := nextWaitCallID([]*schema.Message{
+		schema.UserMessage("look into this"),
+		schema.ToolMessage(`{"agent_id":"researcher-1"}`, "mock-spawn-1"),
+		&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
+			call(firstID, "wait_agents", "{}"),
+		}},
+		schema.ToolMessage(`{"agents":[{"status":"running"}]}`, firstID),
+	})
+	if firstID == "" || firstID == secondID {
+		t.Fatalf("continued waits must not reuse %q / %q", firstID, secondID)
+	}
+}
+
 func TestMockWorkerWritesIntoTheWorkspace(t *testing.T) {
 	m := newMockModel("researcher")
 	ctx := context.Background()
@@ -379,8 +400,12 @@ func TestMockReviewerCuratesMemoryFromTheConversation(t *testing.T) {
 	if !ok {
 		t.Fatalf("no skill_manage call: %v", names)
 	}
-	if !strings.Contains(skill, `"action":"create"`) || !strings.Contains(skill, "collect the inputs") {
-		t.Fatalf("the skill must come from the conversation: %s", skill)
+	if !strings.Contains(skill, `"action":"create"`) || !strings.Contains(skill, "recorded-") ||
+		!strings.Contains(skill, "After conversation") {
+		t.Fatalf("the skill must be derived from this conversation, not a baked-in procedure: %s", skill)
+	}
+	if strings.Contains(skill, "collect the inputs") {
+		t.Fatal("the skill must not restate the request; that belongs in the note")
 	}
 
 	second, err := m.Generate(ctx, append(convo, first, schema.ToolMessage(`{"success":true}`, "x")))
@@ -429,6 +454,44 @@ func TestMockCompactSummarizerStaysDerived(t *testing.T) {
 	}
 	if mockBriefing("   ") != "Prior conversation, folded." {
 		t.Fatalf("blank=%q", mockBriefing("   "))
+	}
+}
+
+func TestMockBriefingStaysShorterThanTheSource(t *testing.T) {
+	src := "Human: keep going\n\nAssistant: still unfinished"
+	got := mockBriefing(src)
+	if got == "" {
+		t.Fatal("a usable source must still produce a briefing")
+	}
+	if utf8.RuneCountInString(got) >= utf8.RuneCountInString(src) {
+		t.Fatalf("mock briefing %q is not shorter than %q", got, src)
+	}
+	if strings.HasPrefix(got, "Tool:") || strings.HasPrefix(got, "Human:") || strings.HasPrefix(got, "Assistant:") {
+		t.Fatalf("mock briefing looked like a transcript: %q", got)
+	}
+	tiny := "keep going"
+	got = mockBriefing(tiny)
+	if utf8.RuneCountInString(got) >= utf8.RuneCountInString(tiny) {
+		t.Fatalf("tiny source briefing %q is not shorter than %q", got, tiny)
+	}
+}
+
+func TestMockBriefingStreamDoesNotPaceLikeTheManager(t *testing.T) {
+	for _, role := range []string{"compact-summarizer", "session-memory"} {
+		m := newMockModel(role)
+		start := time.Now()
+		sr, err := m.Stream(context.Background(), []*schema.Message{
+			schema.UserMessage(strings.Repeat("word ", 40)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := schema.ConcatMessageStream(sr); err != nil {
+			t.Fatal(err)
+		}
+		if time.Since(start) > 200*time.Millisecond {
+			t.Fatalf("%s briefing stream was paced like a chat: %s", role, time.Since(start))
+		}
 	}
 }
 
@@ -496,6 +559,18 @@ func TestMockRespectsCancellation(t *testing.T) {
 	}
 	if _, err := m.Stream(ctx, []*schema.Message{schema.UserMessage("x")}); err == nil {
 		t.Fatal("Stream must respect a canceled context")
+	}
+}
+
+func TestMockFailureStopsGenerateAndStream(t *testing.T) {
+	SetMockFailure(errors.New("chat model refused the request"))
+	t.Cleanup(func() { SetMockFailure(nil) })
+	m := newMockModel("manager")
+	if _, err := m.Generate(context.Background(), []*schema.Message{schema.UserMessage("x")}); err == nil {
+		t.Fatal("Generate must surface the injected failure")
+	}
+	if _, err := m.Stream(context.Background(), []*schema.Message{schema.UserMessage("x")}); err == nil {
+		t.Fatal("Stream must surface the injected failure")
 	}
 }
 

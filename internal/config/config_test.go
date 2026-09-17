@@ -84,6 +84,7 @@ func TestMemorySwitchesSurviveNormalizeAndBudgetsAreRepaired(t *testing.T) {
 		"  enabled: false",
 		"  auto_review: false",
 		"  char_limit: 0",
+		"  entry_max: 0",
 		"  review_max_iterations: -1",
 		"  skills_index_max: 0",
 		"  notifications: shouting",
@@ -99,6 +100,7 @@ func TestMemorySwitchesSurviveNormalizeAndBudgetsAreRepaired(t *testing.T) {
 		t.Fatalf("normalize switched memory back on: %+v", cfg.Memory)
 	}
 	if cfg.Memory.CharLimit != DefaultMemoryCharLimit ||
+		cfg.Memory.EntryMax != DefaultMemoryEntryMax ||
 		cfg.Memory.ReviewMaxIterations != DefaultReviewMaxIterations ||
 		cfg.Memory.SkillsIndexMax != DefaultSkillsIndexMax ||
 		cfg.Memory.Notifications != DefaultMemoryNotifications {
@@ -116,11 +118,27 @@ func TestMemorySwitchesSurviveNormalizeAndBudgetsAreRepaired(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	if !older.Memory.Enabled || !older.Memory.AutoReview ||
-		older.Memory.Notifications != DefaultMemoryNotifications {
+		older.Memory.Notifications != DefaultMemoryNotifications ||
+		older.Memory.EntryMax != DefaultMemoryEntryMax {
 		t.Fatalf("an older config must default to memory on: %+v", older.Memory)
 	}
 	if !older.Swarm.AutoTitle {
 		t.Fatal("an older config must keep naming conversations")
+	}
+}
+
+func TestEntryMaxAboveTheNotesBudgetIsClamped(t *testing.T) {
+	dir := t.TempDir()
+	raw := "memory:\n  char_limit: 200\n  entry_max: 900\n"
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Memory.EntryMax != 200 {
+		t.Fatalf("a per-note cap above the total must clamp: %+v", cfg.Memory)
 	}
 }
 
@@ -237,11 +255,18 @@ func TestMemoryHelpersFallBackToDefaults(t *testing.T) {
 	if m.NotifyLevel() != DefaultMemoryNotifications {
 		t.Fatalf("NotifyLevel=%s", m.NotifyLevel())
 	}
-	m = MemoryConfig{CharLimit: 10, ReviewMaxIterations: 2, SkillsIndexMax: 3,
+	if m.EntryLimit() != DefaultMemoryEntryMax {
+		t.Fatalf("EntryLimit=%d", m.EntryLimit())
+	}
+	m = MemoryConfig{CharLimit: 10, EntryMax: 50, ReviewMaxIterations: 2, SkillsIndexMax: 3,
 		Notifications: MemoryNotifyVerbose}
-	if m.Limit() != 10 || m.ReviewIterations() != 2 || m.IndexMax() != 3 ||
+	if m.Limit() != 10 || m.EntryLimit() != 10 || m.ReviewIterations() != 2 || m.IndexMax() != 3 ||
 		m.NotifyLevel() != MemoryNotifyVerbose {
 		t.Fatalf("configured values ignored: %+v", m)
+	}
+	m.EntryMax = 8
+	if m.EntryLimit() != 8 {
+		t.Fatalf("EntryLimit should keep a cap under the total: %d", m.EntryLimit())
 	}
 	m.Notifications = "nope"
 	if m.NotifyLevel() != DefaultMemoryNotifications {
@@ -352,6 +377,14 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	if cfg.Swarm.GoalMaxAutoTurns != DefaultGoalMaxAutoTurns {
 		t.Fatalf("goal auto-continue cap not repaired: %+v", cfg.Swarm)
 	}
+	if cfg.Swarm.GoalSessionMaxSeconds != DefaultGoalSessionMaxSeconds ||
+		cfg.Swarm.GoalSessionMaxIterations != DefaultGoalSessionMaxIterations ||
+		cfg.Swarm.GoalAutoCompactPercent != DefaultGoalAutoCompactPercent {
+		t.Fatalf("goal session bounds not repaired: %+v", cfg.Swarm)
+	}
+	if cfg.Swarm.AutoCompactTokens != DefaultAutoCompactTokens {
+		t.Fatalf("auto-compact token budget not repaired: %+v", cfg.Swarm)
+	}
 	if !cfg.Swarm.AutoTitle {
 		t.Fatal("an older config without auto_title must keep naming conversations")
 	}
@@ -422,11 +455,13 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	next.Swarm.AutoTitle = false
 	next.Swarm.TitleProvider = "local"
 	next.Swarm.TitleModel = "tiny"
+	next.Swarm.AutoCompactTokens = 12_000
 	next.Tools.Disabled = []string{"exec"}
 	next.Tools.Proxy = ProxyConfig{HTTP: "http://127.0.0.1:7890", NoProxy: "localhost"}
 	next.Memory.AutoReview = false
 	next.Memory.CharLimit = 1200
 	next.Memory.Notifications = MemoryNotifyOff
+	next.Personality.Instructions = "prefer compact replies"
 	next.Models.Providers = []Provider{{
 		ID: "local", Label: "Local", BaseURL: "http://local.invalid/v1",
 		Model: "m", TimeoutSeconds: 30,
@@ -449,6 +484,9 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	if reloaded.Swarm.AutoTitle {
 		t.Fatal("auto_title false did not survive the round trip")
 	}
+	if reloaded.Swarm.AutoCompactTokens != 12_000 {
+		t.Fatalf("auto-compact token budget not persisted: %+v", reloaded.Swarm)
+	}
 	if reloaded.Swarm.TitleProvider != "local" || reloaded.Swarm.TitleModel != "tiny" {
 		t.Fatalf("title pin did not survive the round trip: %+v", reloaded.Swarm)
 	}
@@ -461,6 +499,9 @@ func TestSaveAndReplaceRoundTrip(t *testing.T) {
 	if reloaded.Memory.AutoReview || reloaded.Memory.CharLimit != 1200 ||
 		reloaded.Memory.Notifications != MemoryNotifyOff {
 		t.Fatalf("memory settings not persisted: %+v", reloaded.Memory)
+	}
+	if reloaded.Personality.Instructions != "prefer compact replies" {
+		t.Fatalf("personality not persisted: %+v", reloaded.Personality)
 	}
 	p, ok := reloaded.DefaultProvider()
 	if !ok || p.ID != "local" || p.Timeout() != 30*time.Second {
@@ -587,8 +628,23 @@ func TestCompactBudgetsRepairFromZero(t *testing.T) {
 	if (SwarmConfig{}).GoalAutoTurns() != DefaultGoalMaxAutoTurns {
 		t.Fatal("a zero goal auto-continue cap must repair")
 	}
-	s := SwarmConfig{ContextCharBudget: 12_000, CompactKeepMessages: 3}
-	if s.ContextBudget() != 12_000 || s.CompactKeep() != 3 {
+	if (SwarmConfig{}).GoalSessionDuration() != time.Duration(DefaultGoalSessionMaxSeconds)*time.Second {
+		t.Fatal("a zero goal session duration must repair")
+	}
+	if (SwarmConfig{}).GoalSessionIterations() != DefaultGoalSessionMaxIterations {
+		t.Fatal("a zero goal session iteration cap must repair")
+	}
+	if (SwarmConfig{}).GoalCompactPercent() != DefaultGoalAutoCompactPercent {
+		t.Fatal("a zero goal compact percent must repair")
+	}
+	if (SwarmConfig{GoalAutoCompactPercent: 140}).GoalCompactPercent() != 100 {
+		t.Fatal("a compact percent over 100 must clamp")
+	}
+	if (SwarmConfig{}).AutoCompactLimit() != DefaultAutoCompactTokens {
+		t.Fatal("a zero auto-compact token budget must repair")
+	}
+	s := SwarmConfig{ContextCharBudget: 12_000, CompactKeepMessages: 3, AutoCompactTokens: 12_000}
+	if s.ContextBudget() != 12_000 || s.CompactKeep() != 3 || s.AutoCompactLimit() != 12_000 {
 		t.Fatalf("explicit values must stick: %+v", s)
 	}
 }

@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"strings"
@@ -19,9 +19,9 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 )
 
-// runTUI runs one task in the terminal. It is the same swarm the app runs,
-// with the same configuration and the same toolset — only the presentation
-// differs — so a task that misbehaves in the UI can be reproduced here.
+// runTUI runs the terminal swarm. With --task it is a one-shot reproduction
+// of the app; without one it stays open at a composer. --goal without --task
+// starts immediately, then keeps that composer after the pursuit ends.
 func runTUI(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -47,17 +47,22 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 	fs := flag.NewFlagSet("tui", flag.ExitOnError)
 	task := fs.String("task", "", "the task to work on")
 	goal := fs.String("goal", "", "standing objective to pursue until complete_goal or block_goal")
+	modelName := fs.String("model", "", "model name for this session (default: the provider's configured model)")
+	reasoning := fs.String("reasoning", "", "thinking level: default, low, medium, high")
 	dataDir := fs.String("data-dir", "", "data directory")
 	mock := fs.Bool("mock", false, "run on the scripted offline provider")
 	workspace := fs.String("workspace", "", "directory the agents may read and write (default: a temporary one)")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{
-		"task": true, "goal": true, "data-dir": true, "workspace": true,
+		"task": true, "goal": true, "model": true, "reasoning": true, "data-dir": true, "workspace": true,
 	})); err != nil {
 		return nil, err
 	}
-	text := strings.TrimSpace(*task + " " + strings.Join(fs.Args(), " "))
+	// --goal with no --task is still work: the objective is the first user
+	// message. Asking for both just to start was a footgun.
+	explicit := strings.TrimSpace(*task + " " + strings.Join(fs.Args(), " "))
+	text := explicit
 	if text == "" {
-		return nil, errors.New(`tui needs a task: zwai tui --task "..."`)
+		text = strings.TrimSpace(*goal)
 	}
 
 	cfg, err := config.Load(*dataDir)
@@ -71,6 +76,23 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 	prov, err := pool.Resolve("")
 	if err != nil {
 		return nil, err
+	}
+
+	effort, err := tuiReasoningFlag(*reasoning)
+	if err != nil {
+		return nil, err
+	}
+	model := strings.TrimSpace(*modelName)
+	catalog := prov.Models()
+	if model == "" {
+		model = strings.TrimSpace(prov.Model)
+	} else if got, ok := pickSessionModel(model, catalog); ok {
+		model = got
+	} else if len(catalog) > 0 {
+		return nil, fmt.Errorf("tui: unknown model %q", model)
+	}
+	if model != "" && !catalogHas(catalog, model) {
+		catalog = append(append([]string{}, catalog...), model)
 	}
 
 	dir := *workspace
@@ -89,7 +111,7 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 		cleanup()
 		return nil, err
 	}
-	builder, err := pool.ModelBuilder(ctx, prov.ID, "", "", nil)
+	builder, err := pool.ModelBuilder(ctx, prov.ID, model, effort, nil)
 	if err != nil {
 		cleanup()
 		return nil, err
@@ -104,22 +126,54 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 	reg.SubAgentTools = toolset.Tools
 	reg.WorkerPreamble = engine.HostEnvironmentPrompt()
 
-	session := tui.Session{Registry: reg, Task: text}
+	// Same slice backing would hand complete_goal to every worker. Copy for
+	// the manager; workers keep the workspace tools only.
+	managerTools := append([]tool.BaseTool(nil), toolset.Tools...)
+
+	sw := &tui.Switcher{
+		Model:     model,
+		Reasoning: effort,
+		Catalog:   catalog,
+		Levels:    append([]string{""}, config.ReasoningEfforts()...),
+		Rebuild: func(nextModel, nextEffort string) error {
+			b, err := pool.ModelBuilder(ctx, prov.ID, nextModel, nextEffort, nil)
+			if err != nil {
+				return err
+			}
+			reg.ModelBuilder = b
+			return nil
+		},
+	}
+
+	// Empty explicit task is not an error: the TUI waits at the composer.
+	// --task (or leftover words) is the one-shot path that starts immediately
+	// and exits. --goal alone starts immediately but keeps the composer.
+	session := tui.Session{
+		Registry:     reg,
+		Task:         text,
+		Interactive:  explicit == "",
+		Switcher:     sw,
+		ManagerTools: managerTools,
+	}
+	session.Extra = engine.PersonalityPrompt(cfg.Personality.Instructions)
 	if g := strings.TrimSpace(*goal); g != "" {
 		done := &atomic.Bool{}
-		session.Extra = engine.GoalPrompt(g, false)
+		session.Extra = engine.JoinPromptSections(session.Extra, engine.GoalPrompt(g, false))
 		stop := func(string) (string, error) {
 			done.Store(true)
 			return `{"ok":true}`, nil
 		}
-		session.ManagerTools = []tool.BaseTool{
+		session.ManagerTools = append(session.ManagerTools,
 			engine.CompleteGoalTool(stop),
 			engine.BlockGoalTool(stop),
-		}
+		)
 		session.ShouldContinue = func() bool { return !done.Load() }
 		session.ContinueTask = engine.GoalContinueText()
 		session.MaxContinues = cfg.Swarm.GoalAutoTurns()
+		session.MaxIterations = cfg.Swarm.GoalSessionIterations()
+		session.RunTimeout = cfg.Swarm.GoalSessionDuration()
 	}
+	session.Instruction = engine.ManagerPrompt(toolset, cfg, session.Extra)
 
 	return &tuiSetup{
 		session: session,
@@ -137,4 +191,40 @@ func buildTUISwarm(ctx context.Context, args []string) (*swarm.Registry, string,
 		return nil, "", nil, err
 	}
 	return setup.session.Registry, setup.session.Task, setup.cleanup, nil
+}
+
+func tuiReasoningFlag(s string) (string, error) {
+	s = strings.TrimSpace(s)
+	if s == "" || strings.EqualFold(s, "default") {
+		return "", nil
+	}
+	for _, l := range config.ReasoningEfforts() {
+		if strings.EqualFold(s, l) {
+			return l, nil
+		}
+	}
+	return "", fmt.Errorf("tui: unknown reasoning level %q", s)
+}
+
+func pickSessionModel(name string, catalog []string) (string, bool) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", false
+	}
+	for _, m := range catalog {
+		if m == name {
+			return m, true
+		}
+	}
+	for _, m := range catalog {
+		if strings.EqualFold(m, name) {
+			return m, true
+		}
+	}
+	return "", false
+}
+
+func catalogHas(catalog []string, name string) bool {
+	_, ok := pickSessionModel(name, catalog)
+	return ok
 }

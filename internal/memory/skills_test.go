@@ -250,3 +250,33 @@ func TestUnreadableSkillsDirectoryReportsAnError(t *testing.T) {
 		t.Fatal("want an error when a skill cannot be written")
 	}
 }
+
+// A second skill on the same subject is how the index fills with twins the
+// manager cannot tell apart. Overwriting the same name is a rewrite, not a twin.
+func TestWriteSkillRefusesANearDuplicateAndAllowsARewrite(t *testing.T) {
+	s := New(filepath.Join(t.TempDir(), "memory"), 500)
+	if _, err := s.WriteSkill("weekly-rollup",
+		"when cutting a weekly summary of finished work after each period",
+		"1. gather the finished items\n2. write the summary"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := s.WriteSkill("weekly-rollup-loop",
+		"when cutting a weekly summary of remaining work after each period",
+		"1. gather remaining items\n2. write the summary")
+	var dup *DuplicateSkillError
+	if !errors.As(err, &dup) || dup.Name != "weekly-rollup" {
+		t.Fatalf("edition suffix must be refused as a duplicate: %+v err=%v", dup, err)
+	}
+
+	if _, err := s.WriteSkill("weekly-rollup",
+		"when cutting a weekly summary of finished work after each period",
+		"1. gather\n2. write\n3. send"); err != nil {
+		t.Fatalf("rewriting the same name must still work: %v", err)
+	}
+
+	if _, err := s.WriteSkill("release-check",
+		"when tagging after the verification checks have passed",
+		"1. run the checks\n2. tag"); err != nil {
+		t.Fatalf("an unrelated subject must still store: %v", err)
+	}
+}

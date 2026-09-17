@@ -67,11 +67,12 @@ type settingsView struct {
 		Default   string         `json:"default"`
 		Providers []providerView `json:"providers"`
 	} `json:"models"`
-	Swarm  config.SwarmConfig  `json:"swarm"`
-	Tools  config.ToolsConfig  `json:"tools"`
-	Memory config.MemoryConfig `json:"memory"`
-	Log    config.LogConfig    `json:"log"`
-	UI     config.UIConfig     `json:"ui"`
+	Swarm       config.SwarmConfig       `json:"swarm"`
+	Tools       config.ToolsConfig       `json:"tools"`
+	Memory      config.MemoryConfig      `json:"memory"`
+	Personality config.PersonalityConfig `json:"personality"`
+	Log         config.LogConfig         `json:"log"`
+	UI          config.UIConfig          `json:"ui"`
 }
 
 type providerView struct {
@@ -93,6 +94,7 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.Swarm = cfg.Swarm
 	v.Tools = cfg.Tools
 	v.Memory = cfg.Memory
+	v.Personality = cfg.Personality
 	v.Log = cfg.Log
 	v.UI = cfg.UI
 	v.Models.Default = cfg.Models.Default
@@ -144,11 +146,12 @@ type putSettingsRequest struct {
 			APIKey         *string         `json:"api_key"`
 		} `json:"providers"`
 	} `json:"models"`
-	Swarm  *config.SwarmConfig  `json:"swarm"`
-	Tools  *config.ToolsConfig  `json:"tools"`
-	Memory *config.MemoryConfig `json:"memory"`
-	Log    *config.LogConfig    `json:"log"`
-	UI     *config.UIConfig     `json:"ui"`
+	Swarm       *config.SwarmConfig       `json:"swarm"`
+	Tools       *config.ToolsConfig       `json:"tools"`
+	Memory      *config.MemoryConfig      `json:"memory"`
+	Personality *config.PersonalityConfig `json:"personality"`
+	Log         *config.LogConfig         `json:"log"`
+	UI          *config.UIConfig          `json:"ui"`
 }
 
 func (s *Server) putSettings(c *gin.Context) {
@@ -171,6 +174,9 @@ func (s *Server) putSettings(c *gin.Context) {
 	}
 	if req.Memory != nil {
 		next.Memory = *req.Memory
+	}
+	if req.Personality != nil {
+		next.Personality = *req.Personality
 	}
 	if req.Log != nil {
 		next.Log = *req.Log

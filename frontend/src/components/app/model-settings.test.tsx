@@ -49,6 +49,7 @@ const base: Settings = {
     enabled: true,
     auto_review: true,
     char_limit: 1,
+    entry_max: 1,
     review_max_iterations: 1,
     skills_index_max: 1,
     notifications: "on",

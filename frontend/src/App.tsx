@@ -1,5 +1,6 @@
 import { AlertTriangle, X } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { create } from "zustand"
 
 import { Composer } from "@/components/app/composer"
 import { DeleteProjectDialog } from "@/components/app/delete-project-dialog"
@@ -16,6 +17,7 @@ import { Transcript } from "@/components/app/transcript"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
+import { toggleContentWidth } from "@/lib/appearance"
 import { attachExternalLinkHandler } from "@/lib/external-links"
 import { findShortcut } from "@/lib/find"
 import { appendQuote, type Quote } from "@/lib/quote"
@@ -25,6 +27,15 @@ import { toggleLocalePref, useT } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { useApp } from "@/store/app"
 import { projectOf, useProjects } from "@/store/projects"
+
+/** Settings is a full-page sheet. Keeping `open` off AppShell's state is
+ *  the difference between painting the conversation and not: a setState
+ *  here used to re-render a 10k-block transcript on the same click. */
+const useSettingsSheet = create<{ open: boolean }>(() => ({ open: false }))
+
+function openSettings() {
+  useSettingsSheet.setState({ open: true })
+}
 
 export function App() {
   const boot = useApp((s) => s.boot)
@@ -56,13 +67,14 @@ export function App() {
 }
 
 /** Chrome that must not re-render on every streamed token: sidebar, header,
- *  composer, and the panel subscribe to the slices they actually show. */
+ *  composer, and the panel subscribe to the slices they actually show.
+ *  The composer's usage ring subscribes in a child so a token/usage pulse
+ *  cannot rewrite the textarea while a CJK IME is composing. */
 function AppShell() {
   const [panelOpen, setPanelOpen] = useState(true)
   const [sidebarOpen, setSidebarOpen] = useState(readSidebarOpen)
   const [panelTab, setPanelTab] = useState<PanelTab>("agents")
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const [projectDialog, setProjectDialog] = useState<ProjectDialogState>()
   const [doomedProject, setDoomedProject] = useState<Project>()
   const [prefill, setPrefill] = useState("")
@@ -94,6 +106,7 @@ function AppShell() {
   const setTheme = useApp((s) => s.setTheme)
   const theme = useApp((s) => s.theme)
   const setLocale = useApp((s) => s.setLocale)
+  const setAppearance = useApp((s) => s.setAppearance)
   const selectAgent = useApp((s) => s.selectAgent)
   const activeId = useApp((s) => s.activeId)
   const mode = useApp((s) => s.meta?.mode)
@@ -148,6 +161,12 @@ function AppShell() {
     setLocale(toggleLocalePref(useApp.getState().locale))
   }, [setLocale])
 
+  const toggleWidth = useCallback(() => {
+    setAppearance({
+      contentWidth: toggleContentWidth(useApp.getState().contentWidth),
+    })
+  }, [setAppearance])
+
   const openAgent = useCallback(
     (id: string) => {
       selectAgent(id)
@@ -169,7 +188,10 @@ function AppShell() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const dialogOpen =
-        paletteOpen || settingsOpen || Boolean(projectDialog) || Boolean(doomedProject)
+        paletteOpen ||
+        useSettingsSheet.getState().open ||
+        Boolean(projectDialog) ||
+        Boolean(doomedProject)
       const findAction = findShortcut(e, findOpen)
       if (findAction && !dialogOpen) {
         e.preventDefault()
@@ -210,7 +232,7 @@ function AppShell() {
         setPanelOpen((open) => !open)
       } else if (e.key === ",") {
         e.preventDefault()
-        setSettingsOpen(true)
+        openSettings()
       }
     }
     // Capture: ⌘F has to beat the webview's own find bar.
@@ -227,13 +249,13 @@ function AppShell() {
     projectDialog,
     running,
     selectFindQuery,
-    settingsOpen,
     startThread,
     toggleSidebar,
   ])
 
   return (
     <>
+      <SettingsIdleChrome>
       <AppHeader
         panelOpen={panelOpen}
         sidebarOpen={sidebarOpen}
@@ -242,13 +264,14 @@ function AppShell() {
         onToggleSidebar={toggleSidebar}
         onToggleTheme={toggleTheme}
         onToggleLocale={toggleLocale}
+        onToggleContentWidth={toggleWidth}
       />
       <div className="flex min-h-0 min-w-0 flex-1">
         {sidebarOpen ? (
           <AppSidebar
             onNew={() => void startThread()}
             onSearch={() => setPaletteOpen(true)}
-            onSettings={() => setSettingsOpen(true)}
+            onSettings={openSettings}
             onNewProject={() => setProjectDialog({ open: true })}
             onNewInProject={(project) => void startThreadInProject(project)}
             onEditProject={(project) => setProjectDialog({ open: true, project })}
@@ -267,7 +290,7 @@ function AppShell() {
         ) : null}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <ConfiguredBanner onConfigure={() => setSettingsOpen(true)} />
+          <ConfiguredBanner onConfigure={openSettings} />
           <ErrorBanner />
           {/* The composer paints on this stage; it writes --composer-pad here
               so the last transcript line can scroll out from under the box. */}
@@ -291,7 +314,7 @@ function AppShell() {
               focusSignal={focusSignal}
               quotes={quotes}
               onQuotesChange={setQuotes}
-              onEditProviders={() => setSettingsOpen(true)}
+              onEditProviders={openSettings}
             />
             {findOpen ? (
               <FindBar
@@ -325,17 +348,12 @@ function AppShell() {
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
         onNew={() => void startThread()}
-        onSettings={() => setSettingsOpen(true)}
+        onSettings={openSettings}
         onToggleTheme={toggleTheme}
         onToggleLocale={toggleLocale}
+        onToggleContentWidth={toggleWidth}
         onToggleSidebar={toggleSidebar}
         onFind={openFind}
-      />
-
-      <AppSettings
-        open={settingsOpen}
-        onOpenChange={setSettingsOpen}
-        trafficInset={trafficLights}
       />
 
       <AppProjectDialog
@@ -351,7 +369,23 @@ function AppShell() {
           if (!open) setDoomedProject(undefined)
         }}
       />
+      </SettingsIdleChrome>
+
+      <AppSettings trafficInset={trafficLights} />
     </>
+  )
+}
+
+function SettingsIdleChrome({ children }: { children: ReactNode }) {
+  const open = useSettingsSheet((s) => s.open)
+  return (
+    <div
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+      hidden={open}
+      inert={open || undefined}
+    >
+      {children}
+    </div>
   )
 }
 
@@ -475,6 +509,7 @@ function AppHeader({
   onToggleSidebar,
   onToggleTheme,
   onToggleLocale,
+  onToggleContentWidth,
 }: {
   panelOpen: boolean
   sidebarOpen: boolean
@@ -483,6 +518,7 @@ function AppHeader({
   onToggleSidebar: () => void
   onToggleTheme: () => void
   onToggleLocale: () => void
+  onToggleContentWidth: () => void
 }) {
   const threads = useApp((s) => s.threads)
   const activeId = useApp((s) => s.activeId)
@@ -490,6 +526,7 @@ function AppHeader({
   const meta = useApp((s) => s.meta)
   const connected = useApp((s) => s.connected)
   const theme = useApp((s) => s.theme)
+  const contentWidth = useApp((s) => s.contentWidth)
   const projects = useProjects((s) => s.projects)
   const thread = threads.find((t) => t.id === activeId)
   return (
@@ -506,6 +543,8 @@ function AppHeader({
       onToggleSidebar={onToggleSidebar}
       onToggleTheme={onToggleTheme}
       onToggleLocale={onToggleLocale}
+      onToggleContentWidth={onToggleContentWidth}
+      contentWidth={contentWidth}
       dark={isDark(theme)}
     />
   )
@@ -609,9 +648,11 @@ function AppComposer({
   onQuotesChange: (quotes: Quote[]) => void
   onEditProviders: () => void
 }) {
+  // Do not select `usage` here. That pulse is one object per model call and
+  // would re-render the controlled textarea while a CJK IME is composing.
   const running = useApp((s) => s.status.running)
   const models = useApp((s) => s.models)
-  const threads = useApp((s) => s.threads)
+  const thread = useApp((s) => s.threads.find((row) => row.id === s.activeId))
   const activeId = useApp((s) => s.activeId)
   const meta = useApp((s) => s.meta)
   const send = useApp((s) => s.send)
@@ -625,12 +666,10 @@ function AppComposer({
   const refreshThreads = useApp((s) => s.refreshThreads)
   const refreshCatalogs = useApp((s) => s.refreshCatalogs)
   const newThread = useApp((s) => s.newThread)
-  const usage = useApp((s) => s.usage)
   const setGoal = useApp((s) => s.setGoal)
   const editGoal = useApp((s) => s.editGoal)
   const resumeGoal = useApp((s) => s.resumeGoal)
   const compactThread = useApp((s) => s.compactThread)
-  const thread = threads.find((t) => t.id === activeId)
   return (
     <Composer
       running={running}
@@ -666,7 +705,6 @@ function AppComposer({
       onDeleteFollowup={(id) => void deleteFollowup(id)}
       onRequeueFollowup={(id, text) => void requeueFollowup(id, text)}
       onClearFollowups={() => void clearFollowups()}
-      usage={usage}
       goal={thread?.goal}
       goalComplete={thread?.goal_complete}
       goalBlocked={thread?.goal_blocked}
@@ -784,6 +822,7 @@ function AppPalette({
   onSettings,
   onToggleTheme,
   onToggleLocale,
+  onToggleContentWidth,
   onToggleSidebar,
   onFind,
 }: {
@@ -793,6 +832,7 @@ function AppPalette({
   onSettings: () => void
   onToggleTheme: () => void
   onToggleLocale: () => void
+  onToggleContentWidth: () => void
   onToggleSidebar: () => void
   onFind: () => void
 }) {
@@ -808,6 +848,7 @@ function AppPalette({
       onSettings={onSettings}
       onToggleTheme={onToggleTheme}
       onToggleLocale={onToggleLocale}
+      onToggleContentWidth={onToggleContentWidth}
       onToggleSidebar={onToggleSidebar}
       onFind={onFind}
     />
@@ -815,14 +856,14 @@ function AppPalette({
 }
 
 function AppSettings({
-  open,
-  onOpenChange,
   trafficInset,
 }: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
   trafficInset: boolean
 }) {
+  const open = useSettingsSheet((s) => s.open)
+  const onOpenChange = useCallback((next: boolean) => {
+    useSettingsSheet.setState({ open: next })
+  }, [])
   const meta = useApp((s) => s.meta)
   const theme = useApp((s) => s.theme)
   const setTheme = useApp((s) => s.setTheme)

@@ -835,62 +835,6 @@ describe("the memory review", () => {
   })
 })
 
-describe("standing objective and compact notices", () => {
-  it("sets a notice on the manager without minting a worker", () => {
-    const state = fold([
-      ev({ kind: "goal", text: "keep going", agent_id: "manager" }),
-    ])
-    expect(manager(state).blocks[0].text).toBe("Standing objective set.")
-    expect(state.agentOrder).toEqual([MANAGER_ID])
-  })
-
-  it("says when the objective is cleared", () => {
-    const state = fold([ev({ kind: "goal", text: "" })])
-    expect(manager(state).blocks[0].text).toBe("Standing objective cleared.")
-  })
-
-  it("notices complete, continue and cap without minting workers", () => {
-    const complete = fold([ev({ kind: "goal_complete", agent_id: "manager" })])
-    expect(manager(complete).blocks[0].text).toBe("Standing objective completed.")
-    const continued = fold([ev({ kind: "goal_continued", text: "Continuing the standing objective." })])
-    expect(manager(continued).blocks[0].text).toBe("Continuing the standing objective.")
-    const capped = fold([ev({ kind: "goal_capped", text: '{"auto_turns":12,"cap":12}' })])
-    expect(manager(capped).blocks[0].text).toMatch(/Stopped auto-continuing/)
-    expect(capped.agentOrder).toEqual([MANAGER_ID])
-    const blocked = fold([ev({ kind: "goal_blocked", text: '{"reason":"needs an external change"}' })])
-    expect(manager(blocked).blocks[0].text).toMatch(/blocked/)
-    const edited = fold([ev({ kind: "goal_edited", text: "keep going" })])
-    expect(manager(edited).blocks[0].text).toBe("Standing objective updated.")
-    const resumed = fold([ev({ kind: "goal_resumed", text: "Resuming the standing objective." })])
-    expect(manager(resumed).blocks[0].text).toBe("Resuming the standing objective.")
-  })
-
-  it("does not paste the briefing JSON into the transcript", () => {
-    const state = fold([
-      ev({
-        kind: "compacted",
-        agent_id: "compact-summarizer",
-        text: '{"summary":"Prior work: folded","through_seq":9}',
-      }),
-    ])
-    expect(manager(state).blocks[0].text).toBe(
-      "Earlier turns were folded into a briefing. The transcript is unchanged.",
-    )
-    expect(manager(state).blocks[0].text).not.toMatch(/through_seq/)
-    expect(manager(state).blocks[0].text).not.toMatch(/Prior work/)
-    expect(state.agents["compact-summarizer"]).toBeUndefined()
-  })
-
-  it("surfaces a failed compact as the recorded error", () => {
-    const state = fold([
-      ev({ kind: "compacted", err: "the model returned nothing usable as a briefing" }),
-    ])
-    expect(manager(state).blocks[0].text).toBe(
-      "the model returned nothing usable as a briefing",
-    )
-  })
-})
-
 describe("a generated conversation title", () => {
   // The default branch would paste the name into the transcript as a notice
   // and invent a "title-namer" worker in the roster.
@@ -914,6 +858,28 @@ describe("a generated conversation title", () => {
     expect(title?.agentId).toBe("title-namer")
     expect(title?.quiet).toBe(true)
     expect(after.lastSeq).toBeGreaterThan(before.lastSeq)
+  })
+})
+
+describe("a rolling session briefing", () => {
+  it("leaves no chat row and no session-memory worker", () => {
+    const before = fold([ev({ kind: "user_message", text: "hi" })])
+    const after = fold(
+      [
+        ev({
+          kind: "session_memory",
+          agent_id: "session-memory",
+          text: '{"summary":"prior work","through_seq":12}',
+        }),
+      ],
+      before,
+    )
+    expect(after.agents[MANAGER_ID].blocks.filter((b) => b.kind !== "title" && b.kind !== "session_memory")).toHaveLength(1)
+    expect(after.agentOrder).toEqual([MANAGER_ID])
+    expect(after.agents["session-memory"]).toBeUndefined()
+    const row = after.agents[MANAGER_ID].blocks.find((b) => b.kind === "session_memory")
+    expect(row?.quiet).toBe(true)
+    expect(row?.agentId).toBe("session-memory")
   })
 })
 

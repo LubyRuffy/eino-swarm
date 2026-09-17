@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -91,6 +92,7 @@ func TestGoalContinuesUntilCompleteGoal(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 8
+	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
@@ -128,6 +130,7 @@ func TestGoalStopsAtTheAutoContinueCap(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 1
+	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
@@ -160,6 +163,7 @@ func TestAHumanMessageResetsTheGoalAutoContinueBudget(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 1
+	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
@@ -188,6 +192,7 @@ func TestFollowupBeatsGoalAutoContinue(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 8
+	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
@@ -255,7 +260,10 @@ func TestCompleteGoalToolNameIsStable(t *testing.T) {
 }
 
 func TestGoalContinueTextStaysGeneric(t *testing.T) {
-	for _, body := range []string{GoalContinueText(), GoalPrompt("keep going", false), GoalPrompt("keep going", true), goalUpdatedSteer("keep going")} {
+	for _, body := range []string{
+		GoalContinueText(), GoalPrompt("keep going", false), GoalPrompt("keep going", true),
+		goalUpdatedSteer("keep going"), goalSessionWrapSteer(), parkedWorkersCue,
+	} {
 		for _, leak := range []string{"notes.md", "researcher", "re-research", "elasticsearch"} {
 			if strings.Contains(strings.ToLower(body), leak) {
 				t.Fatalf("%q leaked into %q", leak, body)
@@ -281,7 +289,10 @@ func waitSettled(t *testing.T, e *Engine, threadID string) {
 		last = time.Now()
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatal("conversation did not settle")
+	st := e.Status(threadID)
+	turns, _ := e.Store().ListTurns(threadID)
+	t.Fatalf("conversation did not settle: running=%v turn=%s turns=%d",
+		st.Running, st.TurnID, len(turns))
 }
 
 func hasKind(t *testing.T, e *Engine, threadID, kind string) bool {
@@ -427,6 +438,96 @@ func TestContinueGoalNoopsWhenItShouldNotStart(t *testing.T) {
 	got, _ := e.Store().GetThread(th.ID)
 	if got.GoalAutoTurns != 0 {
 		t.Fatalf("busy start must revert the auto-continue count, got %d", got.GoalAutoTurns)
+	}
+}
+
+func TestAFailedTurnBlocksAnOpenGoalAndDoesNotAutoContinue(t *testing.T) {
+	provider.SetCompleteOpenGoal(false)
+	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
+	provider.SetMockFailure(errors.New("chat model refused the request"))
+	t.Cleanup(func() { provider.SetMockFailure(nil) })
+
+	e := newTestEngine(t)
+	e.Config().Swarm.GoalMaxAutoTurns = 8
+	th, _ := e.CreateThread("", "", "")
+	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
+		t.Fatal(err)
+	}
+	turn, err := e.StartTurn(th.ID, "start the work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := waitForTurn(t, e, turn.ID)
+	if got.Status != store.TurnError {
+		t.Fatalf("status=%s err=%s", got.Status, got.Error)
+	}
+	waitSettled(t, e, th.ID)
+
+	th, err = e.Store().GetThread(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !th.GoalBlocked || th.GoalBlockReason != goalBlockedByFailedTurn || th.GoalComplete {
+		t.Fatalf("a crashed turn must block the objective, got %+v", th)
+	}
+	if !hasKind(t, e, th.ID, KindGoalBlocked) {
+		t.Fatal("missing goal_blocked event")
+	}
+	turns, err := e.Store().ListTurns(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 1 {
+		t.Fatalf("auto-continue after a crash is the death loop, got %d turns", len(turns))
+	}
+	if e.Status(th.ID).Running {
+		t.Fatal("the composer must go idle once the crash is recorded")
+	}
+}
+
+func TestAnInterruptedTurnDoesNotBlockTheGoal(t *testing.T) {
+	provider.SetCompleteOpenGoal(false)
+	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
+
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
+		t.Fatal(err)
+	}
+	turn, err := e.StartTurn(th.ID, "start the work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if e.Status(th.ID).Running {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := e.Interrupt(th.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitForTurn(t, e, turn.ID)
+	waitSettled(t, e, th.ID)
+	got, err := e.Store().GetThread(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GoalBlocked {
+		t.Fatal("Stop is not a blocked objective; the human can resume")
+	}
+	if hasKind(t, e, th.ID, KindGoalBlocked) {
+		t.Fatal("interrupt must not emit goal_blocked")
+	}
+}
+
+func TestBlockOpenGoalOnTurnErrorNoopsWithoutAGoal(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	e.runtimeFor(th.ID).blockOpenGoalOnTurnError()
+	if hasKind(t, e, th.ID, KindGoalBlocked) {
+		t.Fatal("no standing objective to block")
 	}
 }
 
@@ -668,12 +769,49 @@ func TestEditThreadGoalSteersARunningTurn(t *testing.T) {
 	}
 }
 
+func TestSetThreadGoalSteersARunningTurn(t *testing.T) {
+	provider.SetCompleteOpenGoal(false)
+	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
+
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	if _, err := e.StartTurn(th.ID, "start the work"); err != nil {
+		t.Fatal(err)
+	}
+	set := false
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if e.Status(th.ID).Running {
+			if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
+				t.Fatal(err)
+			}
+			set = true
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !set {
+		t.Fatal("the turn finished before the standing objective could be set")
+	}
+	if err := e.CompleteThreadGoal(th.ID, ""); err != nil {
+		t.Fatal(err)
+	}
+	waitSettled(t, e, th.ID)
+	if !hasKind(t, e, th.ID, KindGoal) {
+		t.Fatal("missing goal event")
+	}
+	if !hasKind(t, e, th.ID, KindSteer) {
+		t.Fatal("a live /goal must steer so this turn sees the objective")
+	}
+}
+
 func TestAHumanMessageClearsABlockedGoal(t *testing.T) {
 	provider.SetCompleteOpenGoal(false)
 	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 1
+	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)

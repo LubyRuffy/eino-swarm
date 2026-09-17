@@ -4,9 +4,11 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	tea "github.com/charmbracelet/bubbletea"
@@ -298,8 +300,8 @@ func TestTickDrainsNotificationsAndStopsOnClose(t *testing.T) {
 	m := newModel(nil)
 	m.notifications = ch
 
-	ch <- notificationMsg{swarm.Notification{Kind: swarm.NotifySpawned, AgentID: "w1", Role: "researcher"}}
-	ch <- notificationMsg{swarm.Notification{Kind: swarm.NotifyDelta, AgentID: "w1", Text: "working"}}
+	ch <- notificationMsg{Notification: swarm.Notification{Kind: swarm.NotifySpawned, AgentID: "w1", Role: "researcher"}}
+	ch <- notificationMsg{Notification: swarm.Notification{Kind: swarm.NotifyDelta, AgentID: "w1", Text: "working"}}
 	next, cmd := m.Update(tickMsg{})
 	m = next.(swarmTUI)
 	if len(m.agents) != 1 || len(m.agents[0].blocks) != 1 {
@@ -463,6 +465,14 @@ func press(t *testing.T, m swarmTUI, key string) swarmTUI {
 	return next.(swarmTUI)
 }
 
+func typeKeys(t *testing.T, m swarmTUI, text string) swarmTUI {
+	t.Helper()
+	for _, r := range text {
+		m = press(t, m, string(r))
+	}
+	return m
+}
+
 // keyMsg builds the tea.KeyMsg whose String() is key.
 func keyMsg(key string) tea.KeyMsg {
 	switch key {
@@ -476,6 +486,18 @@ func keyMsg(key string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyEsc}
 	case "enter":
 		return tea.KeyMsg{Type: tea.KeyEnter}
+	case "backspace":
+		return tea.KeyMsg{Type: tea.KeyBackspace}
+	case "ctrl+c":
+		return tea.KeyMsg{Type: tea.KeyCtrlC}
+	case "ctrl+h":
+		return tea.KeyMsg{Type: tea.KeyCtrlH}
+	case "shift+tab":
+		return tea.KeyMsg{Type: tea.KeyShiftTab}
+	case "up":
+		return tea.KeyMsg{Type: tea.KeyUp}
+	case "down":
+		return tea.KeyMsg{Type: tea.KeyDown}
 	default:
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 	}
@@ -518,13 +540,17 @@ func TestSessionConfigPrefixesTheGoalAndKeepsTools(t *testing.T) {
 	reg := swarm.NewRegistry()
 	reg.WorkerPreamble = "OS: testhost"
 	s := Session{
-		Registry:     reg,
-		Extra:        "## Goal\n\nkeep going",
-		ManagerTools: nil,
+		Registry:      reg,
+		Extra:         "## Goal\n\nkeep going",
+		ManagerTools:  nil,
+		MaxIterations: 40,
 	}
 	cfg := sessionConfig(s, "do the thing", nil)
 	if !strings.HasPrefix(cfg.Instruction, "## Goal") {
 		t.Fatalf("goal must lead the instruction:\n%s", cfg.Instruction)
+	}
+	if cfg.MaxIterations != 40 {
+		t.Fatalf("session iteration cap=%d", cfg.MaxIterations)
 	}
 	if !strings.Contains(cfg.Instruction, "do the thing") {
 		t.Fatal("task vanished")
@@ -535,5 +561,377 @@ func TestSessionConfigPrefixesTheGoalAndKeepsTools(t *testing.T) {
 	})
 	if len(msgs) != 1 || msgs[0].Content != "keep" {
 		t.Fatalf("dropSystem=%+v", msgs)
+	}
+}
+
+func TestSessionConfigKeepsAStableInstructionOffTheTask(t *testing.T) {
+	prompt := "You are the manager.\nBesides the delegation tools you have: web_search."
+	s := Session{
+		Instruction:  prompt,
+		Extra:        "## Goal\n\nkeep going",
+		ManagerTools: nil,
+	}
+	cfg := sessionConfig(s, "look into the thing", nil)
+	if cfg.Instruction != prompt {
+		t.Fatalf("instruction must stay the app prompt, not the typed task:\n%s", cfg.Instruction)
+	}
+	if cfg.Task != "look into the thing" {
+		t.Fatalf("task=%q", cfg.Task)
+	}
+	if strings.Contains(cfg.Instruction, "## Goal") {
+		t.Fatal("Extra must not be prepended twice when Instruction is already complete")
+	}
+}
+
+func TestInteractiveComposerSendsTheTypedTask(t *testing.T) {
+	prompts := make(chan string, 1)
+	m := newModel(nil)
+	m.interactive = true
+	m.prompts = prompts
+
+	m = typeKeys(t, m, "look into it")
+	if m.input != "look into it" {
+		t.Fatalf("input=%q", m.input)
+	}
+	next, cmd := m.Update(keyMsg("enter"))
+	m = next.(swarmTUI)
+	if m.input != "" || !m.busy {
+		t.Fatalf("after enter input=%q busy=%v", m.input, m.busy)
+	}
+	if cmd == nil {
+		t.Fatal("enter must hand the text to the session loop")
+	}
+	if msg := cmd(); msg != nil {
+		t.Fatalf("submit cmd should be silent, got %T", msg)
+	}
+	if got := <-prompts; got != "look into it" {
+		t.Fatalf("prompt=%q", got)
+	}
+	users := blocksOfKind(m.manager, blockUser)
+	if len(users) != 1 || users[0].answer != "look into it" {
+		t.Fatalf("the typed task never landed in the transcript: %+v", users)
+	}
+	dump := m.DumpTranscript()
+	if !strings.Contains(dump, "> look into it") {
+		t.Fatalf("the durable transcript hid the human line:\n%s", dump)
+	}
+}
+
+func TestEmptyEnterDoesNotStartATurn(t *testing.T) {
+	prompts := make(chan string, 1)
+	m := newModel(nil)
+	m.interactive = true
+	m.prompts = prompts
+	next, cmd := m.Update(keyMsg("enter"))
+	m = next.(swarmTUI)
+	if m.busy || cmd != nil {
+		t.Fatal("a blank enter started a turn")
+	}
+	select {
+	case got := <-prompts:
+		t.Fatalf("blank enter sent %q", got)
+	default:
+	}
+}
+
+func TestInteractiveQIsALetterAndCtrlCQuits(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.prompts = make(chan string, 1)
+	m = press(t, m, "q")
+	if m.quitting || m.input != "q" {
+		t.Fatalf("q should be typed while the composer is open, quitting=%v input=%q", m.quitting, m.input)
+	}
+	m = press(t, m, "ctrl+c")
+	if !m.quitting {
+		t.Fatal("ctrl+c must quit")
+	}
+}
+
+func TestInteractiveBackspaceEditsTheComposer(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.prompts = make(chan string, 1)
+	m = press(t, m, "backspace")
+	if m.input != "" {
+		t.Fatalf("empty backspace=%q", m.input)
+	}
+	m = typeKeys(t, m, "ab")
+	m = press(t, m, "ctrl+h")
+	if m.input != "a" {
+		t.Fatalf("input=%q", m.input)
+	}
+}
+
+func TestInteractiveSlashSwitchesModelWithoutStartingATurn(t *testing.T) {
+	prompts := make(chan string, 1)
+	m := newModel(nil)
+	m.interactive = true
+	m.prompts = prompts
+	m.choice = &Switcher{
+		Model:   "alpha",
+		Catalog: []string{"alpha", "beta"},
+		Levels:  reasoningCycle([]string{"low", "medium", "high"}),
+	}
+	m = typeKeys(t, m, "/model beta")
+	next, cmd := m.Update(keyMsg("enter"))
+	m = next.(swarmTUI)
+	if cmd != nil || m.busy {
+		t.Fatal("/model must not start a swarm turn")
+	}
+	if m.choice.CurrentModel() != "beta" {
+		t.Fatalf("model=%q", m.choice.CurrentModel())
+	}
+	if !strings.Contains(m.notice, "beta") {
+		t.Fatalf("notice=%q", m.notice)
+	}
+	select {
+	case got := <-prompts:
+		t.Fatalf("slash leaked a prompt %q", got)
+	default:
+	}
+	m = typeKeys(t, m, "/model missing")
+	m = press(t, m, "enter")
+	if m.choice.CurrentModel() != "beta" || !strings.Contains(m.notice, "missing") {
+		t.Fatalf("unknown model notice=%q model=%q", m.notice, m.choice.CurrentModel())
+	}
+}
+
+func TestShiftTabCyclesReasoningOnTheStatusLine(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.prompts = make(chan string, 1)
+	m.choice = &Switcher{
+		Model:     "alpha",
+		Reasoning: "",
+		Catalog:   []string{"alpha"},
+		Levels:    reasoningCycle([]string{"low", "medium", "high"}),
+	}
+	m.width, m.height = 80, 24
+	if view := m.View(); !strings.Contains(view, "alpha") || !strings.Contains(view, "default") {
+		t.Fatalf("status missing from idle view:\n%s", view)
+	}
+	m = press(t, m, "shift+tab")
+	if m.choice.CurrentReasoning() != "low" {
+		t.Fatalf("reason=%q", m.choice.CurrentReasoning())
+	}
+	if !strings.Contains(m.View(), "low") {
+		t.Fatalf("cycled level missing:\n%s", m.View())
+	}
+	m = typeKeys(t, m, "/reason high")
+	m = press(t, m, "enter")
+	if m.choice.CurrentReasoning() != "high" || m.busy {
+		t.Fatalf("reason=%q busy=%v", m.choice.CurrentReasoning(), m.busy)
+	}
+}
+
+func TestSlashBareModelAndReasonOpenAPicker(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.prompts = make(chan string, 1)
+	m.width, m.height = 80, 24
+	m.choice = &Switcher{
+		Model:     "alpha",
+		Reasoning: "",
+		Catalog:   []string{"alpha", "beta"},
+		Levels:    reasoningCycle([]string{"low", "medium", "high"}),
+	}
+	m = typeKeys(t, m, "/model")
+	m = press(t, m, "enter")
+	if m.input != "/model " || m.choice.CurrentModel() != "alpha" {
+		t.Fatalf("bare /model should open the picker, input=%q model=%q", m.input, m.choice.CurrentModel())
+	}
+	m = press(t, m, "down")
+	m = press(t, m, "enter")
+	if m.choice.CurrentModel() != "beta" {
+		t.Fatalf("picker select model=%q", m.choice.CurrentModel())
+	}
+	m = typeKeys(t, m, "/think")
+	m = press(t, m, "enter")
+	if m.input != "/reason " {
+		t.Fatalf("bare /think should open the reason picker, input=%q", m.input)
+	}
+	m = press(t, m, "esc")
+	m = typeKeys(t, m, "/reasoning default")
+	m = press(t, m, "enter")
+	if m.choice.CurrentReasoning() != "" {
+		t.Fatalf("default reason=%q", m.choice.CurrentReasoning())
+	}
+	m = typeKeys(t, m, "/reason bogus")
+	m = press(t, m, "enter")
+	if !strings.Contains(m.notice, "bogus") {
+		t.Fatalf("unknown reason notice=%q", m.notice)
+	}
+	m.busy = true
+	m = press(t, m, "shift+tab")
+	if m.choice.CurrentReasoning() != "low" {
+		t.Fatalf("shift+tab while running should still queue the next level, got %q", m.choice.CurrentReasoning())
+	}
+	m.busy = false
+	m.choice = nil
+	m = press(t, m, "shift+tab")
+	m = press(t, m, "esc")
+	m = typeKeys(t, m, "/model")
+	m = press(t, m, "enter")
+	if !strings.Contains(m.notice, "no model switcher") && m.input != "/model " {
+		t.Fatalf("nil switcher notice=%q input=%q", m.notice, m.input)
+	}
+}
+
+func TestInteractiveComposerKeepsAgentKeys(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.prompts = make(chan string, 1)
+	feed(&m, swarm.Notification{Kind: swarm.NotifySpawned, AgentID: "w1", Role: "a"})
+	m = press(t, m, "tab")
+	if m.selected != 0 {
+		t.Fatalf("tab should still walk the roster while typing, selected=%d", m.selected)
+	}
+	m = press(t, m, "esc")
+	if m.selected != -1 {
+		t.Fatalf("esc should return to the manager, selected=%d", m.selected)
+	}
+}
+
+func TestInteractiveBusyViewSaysTheTurnIsRunning(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.busy = true
+	m.width, m.height = 80, 24
+	if view := m.View(); !strings.Contains(view, "running") {
+		t.Fatalf("busy composer is missing:\n%s", view)
+	}
+}
+
+func TestSubmitWithoutAPromptChannelIsANoop(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.input = "look into it"
+	next, cmd := m.Update(keyMsg("enter"))
+	m = next.(swarmTUI)
+	if m.busy || cmd != nil {
+		t.Fatal("a composer with nowhere to send must not start a turn")
+	}
+}
+
+func TestInteractiveBusyEnterStillTogglesTools(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.busy = true
+	feed(&m,
+		swarm.Notification{Kind: swarm.NotifyToolCall, AgentID: swarm.DefaultManagerID, Text: "ls(.)"},
+		swarm.Notification{Kind: swarm.NotifyToolResult, AgentID: swarm.DefaultManagerID, Text: "one file"},
+	)
+	m = press(t, m, "enter")
+	if !blocksOfKind(m.manager, blockTool)[0].open {
+		t.Fatal("enter during a run should still unfold tools, not try to send")
+	}
+}
+
+func TestInteractiveViewShowsTheComposer(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.width, m.height = 80, 24
+	view := m.View()
+	if !strings.Contains(view, "type a task") {
+		t.Fatalf("idle composer is missing:\n%s", view)
+	}
+	if strings.Contains(view, "q quit") {
+		t.Fatal("q must not quit while the composer is capturing letters")
+	}
+	m.input = "hello"
+	if view = m.View(); !strings.Contains(view, "hello") {
+		t.Fatalf("typed text is missing:\n%s", view)
+	}
+}
+
+func TestOpenComposerWithATaskLooksBusy(t *testing.T) {
+	m := newModel(nil)
+	m.width, m.height = 80, 24
+	ch := m.openComposer("keep the standing objective")
+	t.Cleanup(func() { close(ch) })
+	if !m.interactive || !m.busy || m.prompts == nil {
+		t.Fatalf("interactive=%v busy=%v prompts=%v", m.interactive, m.busy, m.prompts != nil)
+	}
+	view := m.View()
+	if strings.Contains(view, "Waiting for a task") {
+		t.Fatalf("a launched goal must not idle at the composer:\n%s", view)
+	}
+	if !strings.Contains(view, "keep the standing objective") {
+		t.Fatalf("the first user message must show:\n%s", view)
+	}
+	if !strings.Contains(view, "running") {
+		t.Fatalf("busy composer is missing:\n%s", view)
+	}
+}
+
+func TestOpenComposerWithoutATaskWaits(t *testing.T) {
+	m := newModel(nil)
+	m.width, m.height = 80, 24
+	ch := m.openComposer("  ")
+	t.Cleanup(func() { close(ch) })
+	if m.busy {
+		t.Fatal("an empty launch must wait at the composer")
+	}
+	if !strings.Contains(m.View(), "Waiting for a task") {
+		t.Fatalf("idle pane is missing:\n%s", m.View())
+	}
+}
+
+func TestTickIdleClearsBusySoTheComposerReturns(t *testing.T) {
+	ch := make(chan notificationMsg, 1)
+	m := newModel(nil)
+	m.interactive = true
+	m.busy = true
+	m.notifications = ch
+	ch <- notificationMsg{idle: true}
+	next, cmd := m.Update(tickMsg{})
+	m = next.(swarmTUI)
+	if m.busy {
+		t.Fatal("idle must re-enable the composer")
+	}
+	if cmd == nil {
+		t.Fatal("the tick must reschedule itself or the UI freezes")
+	}
+}
+
+func TestInteractiveErrorShowsInThePane(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m.width, m.height = 80, 24
+	m.apply(swarm.Notification{
+		Kind: swarm.NotifyError, AgentID: swarm.DefaultManagerID,
+		Err: errors.New("the endpoint refused"),
+	})
+	pane := m.pane(m.manager, 80, 30)
+	if !strings.Contains(pane, "the endpoint refused") {
+		t.Fatalf("a failed turn must stay visible in the composer session:\n%s", pane)
+	}
+}
+
+func TestSessionHitCapContinuesInsteadOfFailing(t *testing.T) {
+	parent, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	run, stop := context.WithCancel(parent)
+	stop()
+	if !sessionHitCap(parent, run, errors.New("context canceled"), time.Second) {
+		t.Fatal("a session timeout must be a yield, not a fatal error")
+	}
+	if sessionHitCap(parent, parent, errors.New("exceed max iteration"), 0) {
+		t.Fatal("eino's ReAct slice is not a session time yield")
+	}
+	if !sessionHitIterationCap(parent, errors.New("exceed max iteration")) {
+		t.Fatal("a ReAct slice must be recognized so --goal can extend in place")
+	}
+	if sessionHitIterationCap(parent, errors.New("the endpoint refused")) {
+		t.Fatal("a real error is not a ReAct slice")
+	}
+	if sessionHitCap(parent, parent, errors.New("the endpoint refused"), time.Second) {
+		t.Fatal("a real error must not look like a session yield")
+	}
+	dead, stopParent := context.WithCancel(context.Background())
+	stopParent()
+	if sessionHitCap(dead, dead, errors.New("context canceled"), time.Second) {
+		t.Fatal("an interrupt of the parent is not a session yield")
 	}
 }

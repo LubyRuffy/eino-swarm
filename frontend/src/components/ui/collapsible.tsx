@@ -11,6 +11,7 @@ export function Disclosure({
   summary,
   children,
   className,
+  summaryClassName,
   failed,
   testId,
 }: {
@@ -19,11 +20,12 @@ export function Disclosure({
   summary: React.ReactNode
   children?: React.ReactNode
   className?: string
+  summaryClassName?: string
   failed?: boolean
   testId?: string
 }) {
   return (
-    <div className={cn("group", className)}>
+    <div className={cn("group min-w-0", className)}>
       <button
         type="button"
         data-testid={testId}
@@ -31,15 +33,16 @@ export function Disclosure({
         aria-expanded={open}
         aria-invalid={failed || undefined}
         className={cn(
-          "flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           failed
             ? "text-destructive hover:text-destructive"
             : "text-muted-foreground hover:text-foreground",
+          summaryClassName,
         )}
       >
         {summary}
       </button>
-      {open && children ? <div className="mt-1 pl-2">{children}</div> : null}
+      {open && children ? <div className="mt-1 min-w-0 pl-2">{children}</div> : null}
     </div>
   )
 }

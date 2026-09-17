@@ -61,21 +61,27 @@ flowchart LR
 | `internal/provider` | builds eino chat models from config, lists an endpoint's catalog (`GET {base_url}/models`), records per-call telemetry, and provides the scripted offline provider used by `--mock` and the tests. The provider request timeout is idle time between bytes, not the whole streamed body: a thinking model that is still emitting tokens is not cut off. |
 | `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. |
 | `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the three agent tools (`memory`, `skill_view`, `skill_manage`), the prompt sections they are rendered into, and the reviewer's instruction. Owns the files; knows nothing about conversations. |
-| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, folds earlier replay on `/compact` (optional pinned summarizer), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a clear/interrupt, or `swarm.goal_max_auto_turns`, converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), and runs the post-turn memory review. |
+| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn, a clear/interrupt, or `swarm.goal_max_auto_turns`, converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), and runs the post-turn memory review from the event log (skipped when the manager already wrote). |
 | `internal/server` | gin: REST, SSE, upload/download, trace, embedded assets. See [docs/API.md](docs/API.md). |
 | `internal/app` | wiring shared by both shells, plus listen/serve/shutdown, `openURL` and `revealPath`. |
 | `internal/desktop` | wails3 single window pointed at the local server URL. Hidden title bar (no NSToolbar); traffic lights are centred in the 48px HTML header and the front end pads to the zoom button's measured right edge. The top 48px drags natively. A title-bar double-click is a front-end `wails:drag:doubleclick` — Wails will not zoom on the second mousedown itself, because that races the drag. The Dock / taskbar mark is an embedded PNG, inset to Apple's 824/1024 icon grid, rounded to a macOS squircle at runtime, and handed to Wails as `application.Options.Icon`, so `go run` on macOS does not keep the generic Unix-exec glyph, a square canvas, or a tile larger than a bundled `.app`. Quit cancels the event stream so the window is not frozen waiting for it. |
-| `internal/tui` | terminal renderer for `zwai tui`, on the same swarm and config. |
+| `internal/slash` | shared composer-command parse: leading `/` or fullwidth `／`, ASCII identifier name, rest is the argument. Used by the engine and the TUI so a glued CJK `/goal` cannot become a user task. |
+| `internal/tui` | terminal renderer for `zwai tui`, on the same swarm, config, manager prompt and workspace tools as the app. No `--task` opens a composer and keeps the session; `--task` is the one-shot reproduction path. `--goal` without `--task` starts immediately (the objective is the first user message) and still keeps the composer after pursuit ends. `/` opens a Codex-style command popup (`/goal`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; aliases stay hidden until typed). `/goal <objective>` starts that text as the next turn. Enter on `/model` or `/reason` opens a picker. The idle composer parks the real terminal cursor at the insert point so IME preedit is not drawn at column 0 (bubbletea v1 homes the hardware cursor after each frame). |
 | `cmd/zwai` | subcommand table: `desktop`, `web`, `tui`, `trace`, `config`. |
-| `frontend/` | React + TypeScript + Tailwind + shadcn/ui, embedded via `frontend/embed.go`. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.font_size` / `ui.content_width` the same way. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, and Recents for conversations with no project. A project folder icon is the fold control (hover swaps it for a chevron). Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). |
+| `frontend/` | React + TypeScript + Tailwind + shadcn/ui, embedded via `frontend/embed.go`. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.font_size` / `ui.content_width` the same way. The title-bar width control (and ⌘K) flips `content_width` between the reading column and a fill that sits against the sidebars. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, and Recents for conversations with no project. A project folder icon is the fold control (open vs closed directory). A running conversation's progress occupies that same column. Reorder is a title drag past 8px, with no grip glyph. Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). |
 
 ## A turn, end to end
 
 1. **`POST /api/threads/:id/turns`** → `engine.StartTurn`. Body is
    `{text, images?, files?, from_event_seq?}`. Pasted images are decoded,
    sniffed, stored under `$ZWAI_HOME/inputs/<thread>/` and sent as eino
-   `UserInputMultiContent`, not as workspace files. One turn per conversation
+   `UserInputMultiContent` (caption in a text part, not also on `Content` —
+   OpenAI cannot marshal both), not as workspace files. A `/goal <objective>`
+   body (identifier split, glued CJK, fullwidth `／`) pins the standing
+   objective and starts or steers; the stored user message is the objective.
+   One turn per conversation
    at a time; a second request while one runs returns `409` — except
+   a live `/goal`, which steers this turn, and
    `from_event_seq`, which interrupts, truncates from that `user_message`,
    and starts again at that position. Ordinary Enter while running **queues a
    follow-up** (`POST /api/threads/:id/followups`) that starts as the next turn
@@ -87,8 +93,9 @@ flowchart LR
    rewind. Pasted images cannot wait in the queue (the row is text) and
    inject now instead.
 2. The runtime loads the conversation's transcript from the database (reduced
-   to user/assistant messages, so context stays bounded; `/compact` further
-   skips `seq <= compact_through_seq` and injects the briefing into the manager
+   to user/assistant messages, so context stays bounded; `/compact` and
+   in-turn auto-compact further
+   skip `seq <= compact_through_seq` and inject the briefing into the manager
    extra). Manager `agent_message` events are stored as assistant rows as they
    land, and replay also folds any that only exist on the event log — a
    force-quit used to leave the UI with answers the next model call could not
@@ -103,28 +110,88 @@ flowchart LR
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home). It is
    task-agnostic: no example task, filename or domain word is baked into it.
-   A standing `/goal` and a `/compact` briefing ride last in that extra so they
-   are the most recent thing the model read. While a `/goal` is open the manager
+   Delegation is proactive (Codex Ultra): spawn when it would save time or
+   improve quality; do not wait for an explicit request. A single worker
+   that the manager then waits on is not a speed win — that path is only
+   for isolating a large or noisy job. Solo work is the path for a greeting
+   or a one-step lookup. Parallel workers need distinct roles — one worker
+   per role.
+   When `personality.instructions` is set, a Personality section is appended
+   next: personal preferences, not a task. A project's instruction, notes and
+   skills index follow it, then a standing `/goal` and a `/compact` briefing
+   so those are the most recent thing the model read. If personality and a
+   project instruction conflict, the project wins. Empty personality omits
+   the section. Sub-agents do not receive it.
+   While a `/goal` is open the manager
    also gets `complete_goal` and `block_goal` (manager-only, like the memory
    tools). After a clean `done`, if nothing is queued, the runtime starts the
-   next turn itself until `complete_goal`, `block_goal`, a clear/interrupt, or
-   `swarm.goal_max_auto_turns`. A human message or `PATCH` `goal_resume`
+   next turn itself until `complete_goal`, `block_goal`, a failed turn, a
+   clear/interrupt, or
+   `swarm.goal_max_auto_turns`. A `/goal` turn is itself a **session**:
+   `swarm.goal_session_max_seconds` ends it as `done` (`goal_session`) rather
+   than asking to extend past `manager_max_iterations`. Thirty seconds before
+   that cap the manager is queued a wrap-up cue in-process — not a `steer`
+   event, not a transcript bubble. The cue names `complete_goal` when the
+   objective is actually done, and `block_goal` when the same obstacle was
+   retried without new evidence (it does not call the tool itself).
+   `swarm.goal_session_max_iterations` is only eino's ReAct slice — hitting
+   it extends the same turn (no confirm, no new session, no auto-continue
+   spent). In-flight sub-agents are parked
+   on the registry and handed to the next session. Before the next start the
+   engine copies this session's last manager answers into the rolling
+   session briefing, refreshes that briefing from new events (capped,
+   newest-first, on the provider idle timeout — not a 15s cap; a failed
+   refresh stamps the token watermark so the next Generate does not
+   resend the same payload), then
+   folds when context is at or above `swarm.goal_auto_compact_percent` of
+   `min(model window, swarm.auto_compact_tokens)`, or when the session
+   briefing has moved since the last compact. A million-token window is
+   not the denominator. A
+   human message or `PATCH` `goal_resume`
    clears a block or cap and starts again. An in-place edit (`PATCH` `goal_edit`)
    keeps the current status and, if a turn is running, steers the new text in.
    On a project conversation it also carries the project's instruction, its
    notes with how full they are, and an index of its skills — names and
    one-line descriptions only — and the manager gets the three memory tools on
-   top of the toolset. A write that would exceed the notes budget is refused
-   with the current notes, how many characters over, and (for replace) the
-   matched note, so the manager shortens or drops rather than retrying the
-   same text. Sub-agents do not get the memory tools: a worker that
+   top of the toolset. A write that would exceed the notes budget or the
+   per-note cap is refused with the current notes, how many characters over,
+   and (for replace) the matched note, so the manager shortens or drops rather
+   than retrying the same text. A create that collides with an existing skill
+   is refused and names that skill — patch, do not mint a twin. A note that
+   restates a recorded skill is refused the same way. Sub-agents do not get the memory tools: a worker that
    wrote to the project's memory would be writing about work the manager had
    not yet accepted. They do get the same host snapshot as `WorkerPreamble`,
    because they run the same `exec` and would otherwise invent the wrong
    userland. The `spawned` event stores that instruction in `text` so the
    Agents tab, a reload, and `zwai trace` can show what the worker was
    actually told.
-4. `Registry.RunWith` drives the manager. It spawns sub-agents, which run
+4. `Registry.RunWith` drives the manager. Before each manager Generate,
+   `BeforeModelRewriteState` middleware first clears older **replayable**
+   tool results (file bodies, listings — not spawn/memory) once billed or
+   estimated prompt tokens exceed `swarm.auto_compact_tokens`. If that is
+   not enough, it folds older messages into a briefing. The preferred
+   briefing is the conversation's rolling **session memory** (refreshed
+   from the event log at token/tool breakpoints, newest events that fit a
+   hard rune cap, tool results clipped harder than answers). A briefing that
+   is a `Tool:`/`Human:`/`Assistant:` transcript or pasted exec JSON is
+   refused: `compact_summary` / `session_memory` stay, the `compacted` /
+   `session_memory` event carries `err`, ADK state is not folded. Only when
+   the session briefing is empty
+   does it call eino's `adk/middlewares/summarization` with
+   `UserInstruction` set to the same task-agnostic compact prompt (the
+   default coding-agent template is not used). `DefaultFinalize` is not:
+   it would drop the in-flight ReAct tail. The briefing is streamed
+   (Codex-style) even though eino calls Generate — a wrapper drains
+   Stream. Silence between chunks uses the provider idle timeout
+   (`timeout_seconds`). After the briefing, spawn/resume
+   identity is rehydrated from this turn's `spawned` / `finished` events —
+   not salvaged from compactable messages — and summarizer errors are
+   swallowed (recorded, turn continues uncompacted). The keep-or-delete
+   comparison is `TestCompactEffectComparedWithEinoDefault`. The transcript
+   the human sees does not change: compact is a view, the event log stays
+   the extract source. A live `compacted` event (`seq` 0,
+   `phase: start`) is the compressing notice; the stored event has
+   `auto: true` and the token counts. It spawns sub-agents, which run
    concurrently under `MaxConcurrent`, each with a watchdog timeout. If the
    manager hits `swarm.manager_max_iterations`, the turn **pauses** (still
    running) and emits `max_iterations`. `POST /api/threads/:id/continue` with
@@ -149,14 +216,24 @@ flowchart LR
    broadcast only, for the same reason a delta is: it restates events that are
    already stored. Without it a turn whose agents are all inside a slow tool
    call streams nothing at all and cannot be told apart from a stuck one.
-   Each model call also broadcasts a `usage` pulse (`seq = 0`, not stored):
-   last manager prompt vs the selected model's window, plus billed totals for
-   this turn and the conversation. The numbers live on `llm_calls`; the pulse
-   is so the composer ring moves without waiting for a reload.
+  Each model call also broadcasts a `usage` pulse (`seq = 0`, not stored):
+  last manager prompt vs the selected model's window, plus billed totals for
+  this turn and the conversation. The numbers live on `llm_calls`; the pulse
+  is so the composer ring moves without waiting for a reload. The ring is a
+  child of the composer, not the textarea's parent, so the pulse cannot
+  interrupt CJK IME composition.
 6. Turn end: `Registry.Cleanup()` kills sub-agents still running (recorded as a
    `cleanup` event), the remaining transcript (tool traffic, anything not
    already stored with an `agent_message`) is persisted, a terminal `done`/`error`
-   event is recorded, then the turn row is closed. Steering that arrived after the
+   event is recorded, then the turn row is closed. A rolling session briefing
+   (`session_memory`) is refreshed from the event log when the token/tool
+   gate says so, so later compact and the reviewer do not have to
+   re-summarize a folded ADK transcript. The summarizer sees only events
+   after `session_memory_through_seq`, newest-first up to a rune cap
+   (tool results clipped harder than answers), on that endpoint's
+   `timeout_seconds` — a 15s wait is not reused. A later catch-up ignores that
+   trace row — it is newer than the through-seq stamp, but it is not new
+   work. Steering that arrived after the
    manager's last model call is not dropped — it starts a follow-up turn, and
    takes that slot ahead of anything waiting in the follow-up table. A clean
    `done` then pops the oldest queued follow-up and starts it; Stop and errors
@@ -169,7 +246,9 @@ flowchart LR
    made it onto the event log (those are written into `messages` on replay, so
    a second crash does not depend on scanning events). Sub-agents that were
    still running are started again under the same `agent_id` from their event
-   log (an in-flight tool call is not replayed mid-call). Workers that already
+   log (an in-flight tool call is not replayed mid-call; a `tool_result` with
+   `err` is recorded first so the transcript does not keep spinning a call
+   the previous process no longer owns). Workers that already
    `finished` are planted so `wait_agents` / `resume_agent` still resolve the
    id. A quit does not record `cleanup` or `finished` for those in-flight
    workers — that would make the next start treat them as done. Follow-ups
@@ -179,16 +258,23 @@ flowchart LR
    (`cancelled`) is not resumed.
    Two running rows on one conversation keep the later one.
 8. **Review** (project conversations with memory on, `memory.auto_review`): a
-   goroutine hands the finished conversation to a single reviewer agent — one
-   `adk.ChatModelAgent` with the memory tools, not a swarm — which stores what
-   is worth carrying forward. Its model calls are recorded under the same turn
-   id as `memory-reviewer`, and one `memory_review` event says what changed. The
-   transcript it reads is clipped per message and in total, so a turn that read
-  a large file cannot make the review cost more than the work. Reviews of one
-  project are serialized: two turns finishing together would each read the same
-  bounded notes, both decide there is room, and one would lose its entry. Only
-  a turn that finished cleanly is reviewed, and `Shutdown` waits for the ones
-  in flight before exiting.
+   goroutine hands the finished turn's **event log** (plus the rolling session
+   briefing, clipped so it cannot spend the whole budget) to a single reviewer
+   agent — one `adk.ChatModelAgent` with the memory tools, not a swarm — which
+   stores what is worth carrying forward. It does not read the compacted ADK
+   transcript: that view is for the next Generate. If the manager already
+   wrote with `memory` or `skill_manage` this turn, auto-review stays out of
+   the way; **Review now** still runs. Its model calls are recorded under the
+   same turn id as `memory-reviewer`, and one `memory_review` event says what
+   changed. The log it reads is clipped per message and in total, so a turn
+   that read a large file cannot make the review cost more than the work. The
+   tools refuse a second skill on the same subject, a note longer than
+   `memory.entry_max`, and a note that restates a recorded skill — the
+   instruction alone did not stop the store filling with twins. Reviews of one
+   project are serialized: two turns finishing together would each read the same
+   bounded notes, both decide there is room, and one would lose its entry. Only
+   a turn that finished cleanly is reviewed, and `Shutdown` waits for the ones
+   in flight before exiting.
 9. **Title** (untitled conversations, `swarm.auto_title`): a goroutine asks the
    configured namer (the conversation's model, or `swarm.title_provider` /
    `swarm.title_model` when pinned) for a short sidebar name. The first message
@@ -207,7 +293,12 @@ event or showing a duplicate:
 - **`GET /api/threads/:id/events` replays first, then goes live**, from a
   subscription taken *before* the replay. Subscribing afterwards would drop
   whatever happened in between — for a streaming turn, the interesting part.
-  Duplicates from the overlap are filtered by `seq`.
+  Duplicates from the overlap are filtered by `seq`. The UI no longer waits
+  for that full replay to paint: `GET /api/threads/:id/log` returns one
+  viewport of the live edge as JSON, the transcript renders that, and the
+  stream resumes with `?since=` at that high-water mark. Scrolling up pages
+  older events. Find and a jump to an unloaded turn keep paging until the
+  row exists.
 - **A slow subscriber is marked lagged, not dropped.** When its channel is full
   a persisted event sets a flag instead of vanishing; the connection notices on
   a short tick and catches up from the database. The event that says the turn
@@ -223,7 +314,9 @@ The front end folds this stream into blocks per agent in
 order). A turn that ends (`done` / `error`, including a user interrupt) or an
 agent that `finished` closes any tool still `pending`: interrupt cancels
 in-flight calls without a `tool_result`, and leaving them pending keeps the
-spinner next to a row that already says the turn stopped. That reducer is
+spinner next to a row that already says the turn stopped. A `resumed` event
+does the same for calls the previous process never finished — the turn is
+still running, the dead `exec` is not. That reducer is
 pure and unit-tested; the store around it only moves data.
 Unread steering is split out of the turn body (`splitQueuedSteers`) and rendered
 under the live working line: the event is recorded when the text is accepted,
@@ -236,6 +329,10 @@ Answer blocks render as markdown while they stream (`MemoMarkdown` with
 `streaming`); `closeIncompleteMarkdown` closes trailing `**` / `` ` `` / `~~`
 so a half-typed marker does not flash as punctuation. Completed answers are
 memoised so a later token does not re-parse the rest of the conversation.
+**Settings is a full-page sheet, not a modal.** Opening it must not re-render
+the transcript or run Radix `hideOthers` across it — a long conversation made
+that click stall for seconds. `frontend/src/App.tsx` keeps the open flag off
+the shell's state; the dialog is `modal={false}`.
 A live thought is a 10-line scrolling box (`frontend/src/lib/thought-scroll.ts`)
 that follows new tokens and fades at the top once earlier lines have left the
 viewport; the **Thinking** label uses `MarqueeText` so it sweeps rather than
@@ -244,7 +341,9 @@ are still arriving (`thoughtExpanded`) — streaming must not force it back open
 Two or more user turns grow a compact tick cluster in the middle of the left
 edge of the transcript (`frontend/src/lib/turn-nav.ts`): hover lists those
 messages, click scrolls to the turn. The active tick is the turn that owns
-the viewport, snapping to the latest when the scroller is at the bottom.
+the viewport, snapping to the latest when the scroller is at the bottom
+or still following the live edge — measuring at scrollTop 0 on open used
+to light the first tick while the reader was looking at the last turn.
 A thought's top fade stays inside that thought's stacking context so it cannot
 cover the ticks. Jumping cancels auto-follow in the same click
 so a live token cannot yank the viewport back to the bottom.
@@ -281,7 +380,14 @@ running turn.
 The composer overlays the bottom of the transcript: a fade, not a hairline,
 so the last lines sit under the box (`frontend/src/lib/composer-chrome.ts`).
 `--composer-pad` on the conversation stage is the box's height, so follow and
-a jump still leave the last message readable.
+a jump still leave the last message readable. The box does not measure itself
+while a CJK IME is composing (`resizeComposerArea`): `height: auto` on every
+preedit key jumped the candidate window. A `usage` pulse updates only the
+ring (`ComposerContextMeter`), not the textarea — rewriting a controlled
+field mid-composition is what made typing feel stuck during a live turn.
+Finished `/goal` sessions stay folded and **unmounted** until opened
+(`GoalSessionTurn`); mounting every past answer on each token is what
+starved the composer on a long objective.
 A ring on the composer (`frontend/src/components/app/context-meter.tsx`) shows
 how full the last manager prompt was versus this model's token window. Hover
 it for the compact count and this-turn billed in/out/cached/thinking. The window

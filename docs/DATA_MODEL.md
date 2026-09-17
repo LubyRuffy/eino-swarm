@@ -59,13 +59,16 @@ in this database: notes and skills are files, so a person can read and fix them
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
 | `goal_complete` | bool | true after `complete_goal`. The text stays so the banner can show what was achieved; auto-continue stops |
-| `goal_blocked` | bool | true after `block_goal`. Auto-continue stops until the human resumes or sends a message |
+| `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn fails. Auto-continue stops until the human resumes or sends a message |
 | `goal_block_reason` | text | optional one-line reason from `block_goal` |
 | `goal_started_at` | time | when the current objective was set (not edited). Nil when there is no goal |
 | `goal_auto_turns` | int | consecutive runtime-started turns that kept pursuing an open goal. A human message resets it |
 | `goal_capped` | bool | true after `goal_auto_turns` hit `swarm.goal_max_auto_turns`. A later human message or resume clears it and resets the budget |
-| `compact_summary` | text | briefing that replaces earlier replay in the next turn's prompt. Empty means no fold yet |
-| `compact_through_seq` | int64 | last event seq included in that briefing. Replay skips `seq <=` this when a summary is set |
+| `compact_summary` | text | briefing that replaces earlier replay in the next turn's prompt. Empty means no fold yet. Copied from `session_memory` when that is set and accepted. A transcript dump is not stored, and a previously stored dump is omitted from the next manager prompt |
+| `compact_through_seq` | int64 | last **message** seq included in that briefing. Replay skips `seq <=` this when a summary is set |
+| `session_memory` | text | rolling briefing of this conversation, updated from the event log at token/tool breakpoints (newest events that fit a rune cap). Compact copies it; the post-turn reviewer reads it. Empty until the first accepted refresh |
+| `session_memory_through_seq` | int64 | last **event** seq included in that briefing. Advanced only on an accepted refresh. A rewind that deletes that event clears the three session-memory columns |
+| `session_memory_tokens` | int | estimated event-log tokens at the last refresh attempt (accepted or failed), so the next gate knows how far the window has grown and a failed refresh cannot resend the same payload |
 | `archived` | bool | hidden from the sidebar's default list |
 | `pinned` | bool | tracked in the sidebar Pinned section |
 | `pinned_at` | time | when it was pinned; nil when it is not. Newest pin sits at the top |
@@ -104,10 +107,17 @@ event scan. An answer already stored for that turn — including below
 `compact_through_seq` — is not rewritten; that would mint a new seq and
 undo `/compact`.
 `/compact` is a second, optional fold: older
-of those replay messages become a briefing on the thread (`compact_summary`);
-events stay, so the transcript the human sees does not change. Compacted
+of those replay messages become a briefing on the thread (`compact_summary`),
+copied from `session_memory` when that briefing exists;
+events stay, so the transcript the human sees does not change. The same
+columns are written mid-turn when a manager call would exceed
+`swarm.auto_compact_tokens` (after older replayable tool results are cleared). Compacted
 answers are not unfolded from the event log, even when later messages of
-the same turn are still live.
+the same turn are still live. Worker identity is **not** in this table: it
+lives on `spawned` / `finished` events. After a fold, synthetic
+`spawn_agent` pairs are re-injected from those events so the next Generate
+still has the ids. The in-flight ReAct tail stays in ADK state; that is
+not roster data.
 
 ## `turns` — one request and everything done to answer it
 
@@ -125,7 +135,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `error` | why it failed, when it did |
 | `provider_id`, `model` | what actually ran, not what is configured now — settings change |
 | `reasoning_effort` | the thinking level this turn ran with, so a trace shows what produced the answer |
-| `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message` |
+| `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message`. A session time cap (`goal_session` `reason=time`) still ends the turn as `done` so the next session can start |
 | `started_at`, `ended_at`, `duration_ms` | `ended_at` is null while running |
 
 A turn stays `running` until it finishes, errors, or the user stops it. A
@@ -133,7 +143,10 @@ crash, a kill, or quitting the app leaves the row running; the next start
 calls `ResumeOrphanedTurns` and continues every leftover on the same turn id
 (`resumed` on the timeline), replaying manager answers already stored on
 `messages` or still only on the event log, and restarting sub-agents that
-had `spawned` without `finished` under the same `agent_id`. Follow-ups in
+had `spawned` without `finished` under the same `agent_id`. An in-flight
+`tool_call` with no `tool_result` is closed on that timeline before `resumed`
+(`err` is `the previous process stopped`) so a killed process does not leave
+the call looking live. Follow-ups in
 `followups` stay queued until that leftover turn finishes cleanly. Unread
 `[steer]` rows stay on the leftover turn. A user **Stop** is
 `cancelled` and is not resumed. `MarkStaleTurnsCancelled` still exists as a bulk
@@ -142,6 +155,9 @@ wipe; startup does not call it.
 ## `events` — the UI timeline
 
 What the front end renders and replays. One row per **completed** thing.
+`GET /api/threads/:id/log` reads this table from the newest seq backward so
+opening a conversation does not replay the whole log; `?since=` on the event
+stream still walks forward.
 
 | column | notes |
 |---|---|
@@ -157,6 +173,10 @@ What the front end renders and replays. One row per **completed** thing.
 | `err` | set on `error` and on a failed `finished` |
 | `images` | JSON array of `{id,name,mime}` on `user_message` and `steer` when the send carried pasted images. Never the pixels |
 | `created_at` | UTC; the timeline offsets are computed against the turn's `started_at` |
+
+`spawned` and `finished` are the worker roster. Auto-compact re-injects
+those ids into the next Generate after a fold. Do not treat `messages`
+as the source of truth for who is alive.
 
 **Streaming deltas are deliberately not stored.** `delta` and `reasoning_delta`
 carry the full text so far, so storing each would store the answer once per token.
@@ -255,7 +275,11 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
 temporary file and a rename, so a crash mid-write leaves the old version rather
 than half of the new one. `SKILL.md` follows the
 [agentskills.io](https://agentskills.io) layout: YAML frontmatter with `name`
-and `description`, then the procedure as markdown.
+and `description`, then the procedure as markdown. Agent writes to `MEMORY.md`
+are also capped per paragraph (`memory.entry_max`); a create that collides with
+an existing skill is refused; a note that restates a skill's summary or steps
+is refused. Hand-edits and the Memory panel still use the
+total `char_limit` only.
 
 **Memory lives here, never in your working directory.** A project pointed at a
 repository must not leave files in it, and a memory that was in the repository

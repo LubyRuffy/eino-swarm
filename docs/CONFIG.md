@@ -49,7 +49,11 @@ swarm:
     compact_model: ""
     context_char_budget: 80000
     compact_keep_messages: 6
+    auto_compact_tokens: 80000
     goal_max_auto_turns: 12
+    goal_session_max_seconds: 600
+    goal_session_max_iterations: 40
+    goal_auto_compact_percent: 80
 tools:
     disabled: []
     enabled: []
@@ -62,9 +66,12 @@ memory:
     enabled: true
     auto_review: true
     char_limit: 2200
+    entry_max: 360
     review_max_iterations: 8
     skills_index_max: 50
     notifications: on
+personality:
+    instructions: ""
 log:
     level: info
 ui:
@@ -104,7 +111,7 @@ the new row.
 | `api_key` | may be empty: local endpoints frequently need none. Never returned by the API — the settings dialog sees only a "set / not set" flag. |
 | `model` | the default model name new conversations start on. Switch per conversation in the composer. |
 | `catalog` | names this endpoint listed the last time you clicked **Discover models**. The composer offers every name here; you do not add a provider row per model. Empty until you discover (or type a default). |
-| `timeout_seconds` | how long we wait for the next byte (headers or a stream chunk). Default `300`. A thinking model that is still producing tokens is not killed; a silent endpoint is. |
+| `timeout_seconds` | how long we wait for the next byte (headers or a stream chunk). Default `300`. A thinking model that is still producing tokens is not killed; a silent endpoint is. Compact (`/compact` and auto-compact) uses this same idle clock — there is no separate swarm compact timeout. |
 | `context_window` | fallback token limit for **names that have no row of their own**. `0` means unknown: the composer ring then shows a count (not a fake 0%) and a saturating arc scaled by `swarm.context_char_budget`. Never invented from a model name. Do not put one model's limit here — that would pin every other name on the endpoint to the same number. |
 | `model_context` | per-name windows. Settings lists one field per catalog name; **Discover models** fills a value when the listing included `context_length` / `max_model_len` / `context_window` / `max_context_length` / `max_input_tokens` / `n_ctx` / `max_seq_len`, including one nesting under `top_provider` / `meta` / `limits` / `parameters`. Empty for endpoints that only return names. Output caps are not copied. |
 
@@ -134,7 +141,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 
 | key | default | meaning |
 |---|---|---|
-| `max_concurrent` | `6` | sub-agents running at the same time. Raise it for wide fan-out work; every one of them is a model call in flight. |
+| `max_concurrent` | `6` | sub-agents running at the same time. The manager prompt tells the model to use this budget when the work has that many independent parts. Raise it for wide fan-out; every one of them is a model call in flight. |
 | `agent_timeout_seconds` | `600` | watchdog per sub-agent. A hung endpoint is force-terminated and the agent's result records the timeout. |
 | `max_turns` | `200` | ReAct iterations per sub-agent. A model stuck in a loop ends here instead of spinning. |
 | `manager_max_iterations` | `200` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. Reaching the cap **pauses** the turn and asks whether to add another slice of this size, rather than failing with eino's iteration error. |
@@ -146,8 +153,12 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `compact_provider` | empty | endpoint `/compact` calls. Same empty-means-follow rule as `title_provider`. A deleted id is cleared on load. |
 | `compact_model` | empty | model name `/compact` calls. Same pin rules as `title_model`. Pin one in Settings → Models. |
 | `context_char_budget` | `80000` | rune count treated as 100% full on the `/compact` hint when the model has not reported a token window. Zero or negative is repaired to the default. |
-| `compact_keep_messages` | `6` | recent user/assistant replay messages that stay verbatim after `/compact`. The rest become the briefing. Zero or negative is repaired to the default. |
-| `goal_max_auto_turns` | `12` | consecutive engine-started turns that may pursue an open `/goal` without another human message. Zero or negative is repaired to the default. A human message or resume resets the count. `block_goal` stops auto-continue without waiting for the cap. |
+| `compact_keep_messages` | `6` | recent user/assistant replay messages that stay verbatim after `/compact` or auto-compact. The rest become the briefing. Zero or negative is repaired to the default. |
+| `auto_compact_tokens` | `80000` | prompt tokens on a manager call that trigger in-turn compression. Older replayable tool results are cleared first; if that is not enough, older messages become a briefing and the recent tail stays. The briefing prefers the rolling session memory (refreshed from the event log, newest events that fit a hard rune cap, tool results clipped harder than answers); the same pin as `/compact` (`compact_provider` / `compact_model`) does the summary only when that is empty, and that summarizer call is itself newest-first under the same rune cap. A briefing that is a transcript dump or pasted tool JSON is refused: the thread fields stay, the `compacted` / `session_memory` event carries `err`, and a stored dump is not copied into the next manager prompt. A failed session-memory refresh stamps the token watermark so the next Generate does not resend the same payload. Zero or negative is repaired to the default so a long ReAct loop cannot silently skip compression. The briefing is streamed; silence uses that endpoint's `timeout_seconds` (idle), same as any other model call. Session-memory refresh uses that same idle timeout, not a 15s cap. |
+| `goal_max_auto_turns` | `12` | consecutive engine-started turns that may pursue an open `/goal` without another human message. Zero or negative is repaired to the default. A human message or resume resets the count. `block_goal` and a failed turn stop auto-continue without waiting for the cap. |
+| `goal_session_max_seconds` | `600` | wall time of one `/goal` turn. The runtime then ends it as `done` (`goal_session` `reason=time`) and starts the next session immediately. Zero or negative is repaired to the default. |
+| `goal_session_max_iterations` | `40` | manager ReAct slice while a `/goal` is open. Hitting it extends the same turn (no confirm, no `goal_session`, no auto-continue spent). The time cap still ends the session. |
+| `goal_auto_compact_percent` | `80` | when context is at least this full (tokens vs `min(model window, auto_compact_tokens)`, else chars vs `context_char_budget`), compact before the next auto-continue. A million-token window is not the denominator. The rolling session briefing is caught up first (this session's last manager answers, then a bounded incremental refresh) so the fold copies that view; a session briefing that has moved since the last compact also folds even when the meter is still cold. Zero or negative is repaired to the default; above 100 is clamped. |
 
 The current values are reported in `GET /api/meta` and are part of the manager's
 system prompt, so it knows how wide it may fan out.
@@ -204,8 +215,9 @@ shares. Nothing here applies to a conversation outside a project.
 | key | default | meaning |
 |---|---|---|
 | `enabled` | `true` | the master switch. Off means no project carries notes or skills and no review runs, whatever a project's own switch says. What is already stored stays readable in the Memory panel. |
-| `auto_review` | `true` | read a turn back when it finishes and keep what is worth carrying forward. Off leaves memory to the agents' own tools and the "Review now" button. Only a turn that finished cleanly is reviewed: nobody who pressed stop asked for a half-finished approach to become a skill. |
+| `auto_review` | `true` | read a turn's event log when it finishes and keep what is worth carrying forward. Off leaves memory to the agents' own tools and the "Review now" button. Only a turn that finished cleanly is reviewed: nobody who pressed stop asked for a half-finished approach to become a skill. Auto-review is skipped when the manager already wrote with `memory` or `skill_manage` this turn; "Review now" still runs. |
 | `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. A write that would grow past this is refused — including replacing a note with a longer one. The tool result says by how many characters (`over_by`) and lists what is stored, so the agent shortens or drops a note rather than retrying the same text. Small on purpose. |
+| `entry_max` | `360` | how long **one** note may get on an agent write (`memory` add/replace). A runbook that would eat a quarter of the budget belongs in a skill, where only the summary rides in the prompt. A note that restates a recorded skill — the summary or the steps — is refused the same way. The Memory panel's editor still uses `char_limit` only: a person who pastes a longer note is spending that budget on purpose. Zero or negative is repaired to the default; a value above `char_limit` is clamped. |
 | `review_max_iterations` | `8` | how many times the review may think and write before it is stopped. It reads one conversation and makes a handful of tool calls; a large number here buys a slow, expensive review rather than a better one. |
 | `skills_index_max` | `50` | how many skills are listed in the prompt. Only names and one-line descriptions are listed; an agent opens the one it needs with `skill_view`. Beyond this cap the prompt says how many were not listed. `skill_view` opens only this index — a procedure sitting in the workspace is a file. |
 | `notifications` | `on` | how a completed review appears in the transcript. `on` is one line naming what changed (`Memory updated: 1 note stored`). `verbose` adds a preview of the written text. `off` writes nothing in the transcript — the review still runs, and the Trace tab's Full log still lists it. An unknown value is repaired to `on`, not to silence. |
@@ -216,6 +228,16 @@ file cannot leave a project with no room to remember anything.
 The files live in the data directory, never in your repository — see
 [DATA_MODEL.md](DATA_MODEL.md) for the layout, and edit them from the Memory
 panel rather than by hand while the app is running.
+
+## `personality`
+
+Install-wide personal preferences for how the manager works with you: tone,
+language habits, standing likes. It is **not** a task and **not** a project's
+business context. Edit it in **Settings → Personality**.
+
+| key | default | meaning |
+|---|---|---|
+| `instructions` | empty | added to the manager's system prompt of **every** conversation. Empty omits the section entirely, so a blank setting costs no tokens. The text sits before a project's instruction; when the two conflict, the project wins. Sub-agents do not see it — they get a task from the manager, the same way they do not see the project instruction. `zwai tui` prepends the same section to its Extra. |
 
 ## `log`
 
@@ -234,7 +256,7 @@ Chrome only. Agents still answer in the language you are using.
 | `locale` | `system` | `system`, `en` or `zh`. `system` follows the browser (`zh*` → Chinese, everything else English). The title-bar control pins `en` or `zh`. Desktop binds a random loopback, so this lives in the file rather than in `localStorage` alone. Junk becomes `system`. |
 | `font` | `system` | `system`, `serif` or `mono`. `system` is the UI sans stack. The whole window uses it. Junk becomes `system`. |
 | `font_size` | `medium` | `small`, `medium` or `large`. Scales the window from the CSS root (14 / 16 / 18px). Junk becomes `medium`. |
-| `content_width` | `comfortable` | `comfortable` keeps the current reading column (`max-w-3xl`). `full` fills the space between the sidebars. Junk becomes `comfortable`. |
+| `content_width` | `comfortable` | `comfortable` keeps the reading column (`max-w-3xl`). `full` fills the space between the sidebars. The title-bar control and ⌘K toggle the same preference. Junk becomes `comfortable`. |
 
 Theme stays in the browser; language, typeface and column width are first-class
 config so a new window keeps them.

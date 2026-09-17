@@ -51,6 +51,18 @@ const CONTENT_MAX: Record<ContentWidthPref, string> = {
   full: "none",
 }
 
+/** Side inset of the conversation column. full is a hair so text does not
+ *  kiss the sidebar; comfortable keeps the current sm:px-8 gutter. */
+const CONTENT_GUTTER: Record<ContentWidthPref, string> = {
+  comfortable: "2rem",
+  full: "1rem",
+}
+
+/** Title-bar / ⌘K flip. The stored tokens stay comfortable / full. */
+export function toggleContentWidth(pref: ContentWidthPref): ContentWidthPref {
+  return pref === "full" ? "comfortable" : "full"
+}
+
 export function normalizeFont(value: string | undefined | null): FontPref {
   switch ((value ?? "").trim().toLowerCase()) {
     case "serif":
@@ -156,6 +168,7 @@ export function applyAppearance(pref: Appearance): void {
   root.style.setProperty("--font-sans", FONT_STACKS[pref.font])
   root.style.setProperty("--ui-font-size", FONT_SIZES[pref.fontSize])
   root.style.setProperty("--content-max", CONTENT_MAX[pref.contentWidth])
+  root.style.setProperty("--content-gutter", CONTENT_GUTTER[pref.contentWidth])
   root.dataset.font = pref.font
   root.dataset.fontSize = pref.fontSize
   root.dataset.contentWidth = pref.contentWidth

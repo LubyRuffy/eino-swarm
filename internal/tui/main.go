@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/LubyRuffy/eino-swarm"
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,15 +21,26 @@ import (
 
 // Session is one terminal run. The one-shot helper is Run; a standing
 // objective uses RunSession so complete_goal can keep the same TUI open
-// across auto-continues.
+// across auto-continues. Interactive is the Claude/Codex-style composer:
+// zwai tui with no --task waits for typed turns instead of exiting.
+// --goal with no --task still Interactive, but Task is the objective so
+// the first turn starts immediately.
 type Session struct {
-	Registry       *swarm.Registry
-	Task           string
+	Registry *swarm.Registry
+	Task     string
+	// Instruction is the manager's system prompt. Empty falls back to the
+	// host snapshot plus the task, which is only for tests that do not
+	// assemble a real toolset.
+	Instruction    string
 	Extra          string
 	ManagerTools   []tool.BaseTool
 	ShouldContinue func() bool
 	ContinueTask   string
 	MaxContinues   int
+	MaxIterations  int
+	RunTimeout     time.Duration
+	Interactive    bool
+	Switcher       *Switcher
 }
 
 // Run starts the bubbletea TUI for one swarm run.
@@ -39,41 +51,30 @@ func Run(ctx context.Context, reg *swarm.Registry, task string) {
 // RunSession starts the TUI and, when ShouldContinue says so, feeds the
 // previous transcript back for another RunWith instead of exiting. The
 // one-shot TUI has no conversation store; this is how a --goal keeps going.
+// Interactive mode keeps the altscreen open after a turn and waits for the
+// next typed task. Leaving the TUI cancels the session loop so it cannot
+// sit blocked on the composer channel.
 func RunSession(ctx context.Context, s Session) {
+	ctx, stop := context.WithCancel(ctx)
+	defer stop()
+
 	tm := newModel(s.Registry)
 	notifCh := make(chan notificationMsg, 512)
-	go func() {
-		defer close(notifCh)
-		task := s.Task
-		var messages []adk.Message
-		extraRuns := 0
-		for {
-			cfg := sessionConfig(s, task, messages)
-			res, runErr := s.Registry.RunWith(ctx, cfg, func(n swarm.Notification) {
-				notifCh <- notificationMsg{Notification: n}
-			})
-			if runErr != nil {
-				notifCh <- notificationMsg{Notification: swarm.Notification{
-					Kind: swarm.NotifyError, AgentID: swarm.DefaultManagerID, Err: runErr}}
-				return
-			}
-			if s.ShouldContinue == nil || !s.ShouldContinue() {
-				return
-			}
-			if extraRuns >= s.MaxContinues {
-				return
-			}
-			extraRuns++
-			messages = dropSystem(res.Transcript)
-			if text := strings.TrimSpace(s.ContinueTask); text != "" {
-				messages = append(messages, schema.UserMessage(text))
-				task = text
-			}
-		}
-	}()
+	var prompts chan string
+	if s.Interactive {
+		prompts = tm.openComposer(s.Task)
+	}
+	tm.choice = s.Switcher
+	go pumpSession(ctx, s, registryRun(s.Registry), notifCh, prompts)
 	tm.notifications = notifCh
 
-	finalModel, progErr := tea.NewProgram(tm, tea.WithAltScreen()).Run()
+	opts := []tea.ProgramOption{tea.WithAltScreen()}
+	if s.Interactive {
+		tm.ime = &imeAnchor{}
+		opts = append(opts, tea.WithOutput(newIMEWriter(os.Stdout, tm.ime)))
+	}
+
+	finalModel, progErr := tea.NewProgram(tm, opts...).Run()
 	if progErr != nil {
 		fmt.Fprintln(os.Stderr, "error:", progErr)
 	}
@@ -88,9 +89,29 @@ func RunSession(ctx context.Context, s Session) {
 	}
 }
 
-// runConfig is the one-shot RunWith payload. The TUI uses the task as the
-// manager instruction; WorkerPreamble has to ride in front or the manager
-// would not know which OS it is on either.
+// openComposer arms the idle prompt. A non-empty task means this session
+// already has work, so mark busy and show that first user line — otherwise
+// --goal flashes "Waiting for a task" until the first token.
+func (m *swarmTUI) openComposer(task string) chan string {
+	prompts := make(chan string)
+	m.interactive = true
+	m.prompts = prompts
+	if text := strings.TrimSpace(task); text != "" {
+		m.busy = true
+		m.manager.blocks = append(m.manager.blocks, &block{
+			kind:    blockUser,
+			agentID: m.manager.id,
+			answer:  text,
+			open:    true,
+		})
+	}
+	return prompts
+}
+
+// runConfig is the fallback RunWith payload when Session.Instruction is
+// empty. The app and zwai tui set Instruction to engine.ManagerPrompt;
+// stuffing the user task into the system prompt is how the manager used
+// to think it had no tools.
 func runConfig(reg *swarm.Registry, task string) swarm.RunConfig {
 	instruction := task
 	if reg != nil {
@@ -102,15 +123,41 @@ func runConfig(reg *swarm.Registry, task string) swarm.RunConfig {
 }
 
 func sessionConfig(s Session, task string, messages []adk.Message) swarm.RunConfig {
-	cfg := runConfig(s.Registry, task)
-	if extra := strings.TrimSpace(s.Extra); extra != "" {
-		cfg.Instruction = extra + "\n\n" + cfg.Instruction
+	cfg := swarm.RunConfig{Task: task, ManagerTools: s.ManagerTools}
+	if s.MaxIterations > 0 {
+		cfg.MaxIterations = s.MaxIterations
 	}
-	cfg.ManagerTools = s.ManagerTools
 	if len(messages) > 0 {
 		cfg.Messages = messages
 	}
+	if inst := strings.TrimSpace(s.Instruction); inst != "" {
+		cfg.Instruction = inst
+		return cfg
+	}
+	cfg.Instruction = runConfig(s.Registry, task).Instruction
+	if extra := strings.TrimSpace(s.Extra); extra != "" {
+		cfg.Instruction = extra + "\n\n" + cfg.Instruction
+	}
 	return cfg
+}
+
+// sessionHitCap reports a /goal run that ended because this session's time
+// cap landed. The parent context is still alive, so this is not a user
+// interrupt — RunSession should continue rather than treat it as a fatal
+// error. eino's ReAct slice is not a session cap; sessionHitIterationCap
+// extends the same run without spending MaxContinues.
+func sessionHitCap(parent, run context.Context, runErr error, timeout time.Duration) bool {
+	if parent.Err() != nil || runErr == nil {
+		return false
+	}
+	return timeout > 0 && run.Err() != nil
+}
+
+func sessionHitIterationCap(parent context.Context, runErr error) bool {
+	if parent.Err() != nil || runErr == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(runErr.Error()), "max iteration")
 }
 
 func dropSystem(msgs []adk.Message) []adk.Message {

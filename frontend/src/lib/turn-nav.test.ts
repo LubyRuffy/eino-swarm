@@ -7,8 +7,10 @@ import {
   prefersInstantScroll,
   previewText,
   offsetInScroller,
+  resolveTurnNavItems,
   scrollTurnIntoView,
   turnNavItems,
+  turnNavItemsFromTurns,
   turnNavSelector,
 } from "./turn-nav"
 
@@ -50,6 +52,27 @@ describe("turnNavItems", () => {
   })
 })
 
+describe("turnNavItemsFromTurns", () => {
+  it("skips auto-continue sessions that have no human request", () => {
+    const items = turnNavItemsFromTurns([
+      { id: "tn_a", user_text: "first request" },
+      { id: "tn_b", user_text: "kept going", goal_continue: true },
+      { id: "tn_c", user_text: "second request" },
+    ])
+    expect(items.map((i) => i.id)).toEqual(["tn_a", "tn_c"])
+  })
+})
+
+describe("resolveTurnNavItems", () => {
+  it("uses the turn list when the loaded slice is only a tail", () => {
+    const items = resolveTurnNavItems([user("tn_c", "second request")], [
+      { id: "tn_a", user_text: "first request" },
+      { id: "tn_c", user_text: "second request" },
+    ])
+    expect(items.map((i) => i.id)).toEqual(["tn_a", "tn_c"])
+  })
+})
+
 describe("previewText", () => {
   it("collapses whitespace so a tick stays one line", () => {
     expect(previewText("hello\n\n  world")).toBe("hello world")
@@ -79,6 +102,21 @@ describe("activeNavId", () => {
   it("pins the latest turn when the scroller is at the bottom", () => {
     // Last row still sits below the top probe because of composer padding.
     expect(activeNavId(items, 900, 300, 1200)).toBe("tn_c")
+  })
+
+  it("pins the latest turn while following the live edge", () => {
+    expect(activeNavId(items, 0, 300, 1200, true)).toBe("tn_c")
+  })
+
+  it("skips turns that have not been mounted yet", () => {
+    expect(
+      activeNavId(
+        [{ id: "tn_a" }, { id: "tn_b" }, { id: "tn_c", top: 800 }],
+        700,
+        300,
+        1200,
+      ),
+    ).toBe("tn_c")
   })
 
   it("is empty when there is nothing to jump to", () => {

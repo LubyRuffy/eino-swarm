@@ -276,6 +276,7 @@ func (e *Engine) thisTurnMessages(turn *store.Turn) ([]adk.Message, error) {
 	if err != nil {
 		return nil, err
 	}
+	skipThrough := e.compactWatermark(turn.ThreadID)
 	out := make([]adk.Message, 0, len(rows))
 	seen := map[string]struct{}{}
 	hasTools := false
@@ -283,7 +284,13 @@ func (e *Engine) thisTurnMessages(turn *store.Turn) ([]adk.Message, error) {
 		if r.TurnID != turn.ID {
 			continue
 		}
-		if r.Role == string(schema.User) && (r.Content == resumeCue || r.Content == resumeWorkersCue) {
+		if skipThrough > 0 && r.Seq <= skipThrough {
+			if key := strings.TrimSpace(r.Content); key != "" {
+				seen[key] = struct{}{}
+			}
+			continue
+		}
+		if r.Role == string(schema.User) && (r.Content == resumeCue || r.Content == resumeWorkersCue || r.Content == parkedWorkersCue) {
 			continue
 		}
 		msg := e.storedToSchema(r)

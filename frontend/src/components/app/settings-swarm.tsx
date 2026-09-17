@@ -152,6 +152,20 @@ export function SwarmTab({
         </Field>
         <Field
           query={query}
+          label={t("settings.swarm.autoCompact")}
+          hint={t("settings.swarm.autoCompactHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.swarm.auto_compact_tokens}
+            onChange={(e) =>
+              update({ auto_compact_tokens: Number(e.target.value) })
+            }
+          />
+        </Field>
+        <Field
+          query={query}
           label={t("settings.swarm.goalTurns")}
           hint={t("settings.swarm.goalTurnsHint")}
         >
@@ -161,6 +175,49 @@ export function SwarmTab({
             value={settings.swarm.goal_max_auto_turns}
             onChange={(e) =>
               update({ goal_max_auto_turns: Number(e.target.value) })
+            }
+          />
+        </Field>
+        <Field
+          query={query}
+          label={t("settings.swarm.goalSessionSeconds")}
+          hint={t("settings.swarm.goalSessionSecondsHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.swarm.goal_session_max_seconds}
+            onChange={(e) =>
+              update({ goal_session_max_seconds: Number(e.target.value) })
+            }
+          />
+        </Field>
+        <Field
+          query={query}
+          label={t("settings.swarm.goalSessionIters")}
+          hint={t("settings.swarm.goalSessionItersHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.swarm.goal_session_max_iterations}
+            onChange={(e) =>
+              update({ goal_session_max_iterations: Number(e.target.value) })
+            }
+          />
+        </Field>
+        <Field
+          query={query}
+          label={t("settings.swarm.goalCompactPct")}
+          hint={t("settings.swarm.goalCompactPctHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            max={100}
+            value={settings.swarm.goal_auto_compact_percent}
+            onChange={(e) =>
+              update({ goal_auto_compact_percent: Number(e.target.value) })
             }
           />
         </Field>

@@ -48,6 +48,7 @@ func TestEndpointsFailCleanlyWithoutADatabase(t *testing.T) {
 		{http.MethodGet, "/api/threads/" + id + "/files", nil},
 		{http.MethodGet, "/api/threads/" + id + "/input-images/img_deadbeef", nil},
 		{http.MethodGet, "/api/threads/" + id + "/events", nil},
+		{http.MethodGet, "/api/threads/" + id + "/log", nil},
 		{http.MethodGet, "/api/trace/anything", nil},
 	} {
 		resp := h.do(tc.method, tc.path, tc.body)

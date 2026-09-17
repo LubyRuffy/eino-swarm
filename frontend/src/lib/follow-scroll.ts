@@ -210,5 +210,5 @@ export function useTranscriptFollow({
     return () => window.cancelAnimationFrame(followRaf.current)
   }, [growthKey, loaded, dispatchFollow, scrollToLatest, scrollerRef])
 
-  return { showJump: shouldShowJump(follow), jumpToLatest, unpin }
+  return { showJump: shouldShowJump(follow), jumpToLatest, unpin, pinned: follow.pinned }
 }

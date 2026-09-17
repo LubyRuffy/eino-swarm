@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strings"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-tools/edit"
@@ -71,6 +72,23 @@ var catalog = []Descriptor{
 	{Name: webfetch.ToolName, Title: "Fetch page", Summary: "Fetch a web page and extract its text.", Group: GroupWeb, Network: true},
 	{Name: pythonrunner.ToolName, Title: "Run Python", Summary: "Run a Python snippet. Needs Python on PATH.", Group: GroupShell, DefaultOff: true},
 	{Name: screenshot.ToolName, Title: "Screenshot", Summary: "Capture a screenshot. Needs platform capture support.", Group: GroupShell, DefaultOff: true},
+}
+
+// ReplayableResult is a tool whose output is a file body, a listing, a
+// search hit or a command dump — something the agent can fetch again.
+// Compaction may replace older results with a placeholder. Lifecycle and
+// memory tools are not in the catalog, so they stay intact.
+func ReplayableResult(name string) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false
+	}
+	for _, d := range catalog {
+		if d.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // Catalog returns every tool this build can construct, in a stable order.

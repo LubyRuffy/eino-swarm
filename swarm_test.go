@@ -349,8 +349,12 @@ func TestLifecycleToolsReportFailuresToTheManager(t *testing.T) {
 	if !strings.Contains(out, "unknown agent") {
 		t.Fatalf("wait_agents=%s", out)
 	}
-	if _, err := sendT.InvokableRun(ctx, `{"agent_id":"ghost","text":"hello"}`); err == nil {
-		t.Fatal("send_message to an unknown agent should fail")
+	out, err = sendT.InvokableRun(ctx, `{"agent_id":"ghost","text":"hello"}`)
+	if err != nil {
+		t.Fatalf("send_message to an unknown agent must not fail the caller: %v", err)
+	}
+	if !strings.Contains(out, `"delivered":false`) || !strings.Contains(out, "unknown agent") {
+		t.Fatalf("send_message=%s", out)
 	}
 
 	// a worker that outlasts the wait: reported as still running, with whatever
@@ -511,8 +515,9 @@ func TestTailHelpers(t *testing.T) {
 
 // ---------- resource release: caller failure paths ----------
 
-// 1) Caller ctx canceled (model call failed / SIGINT) -> agents die with it.
-func TestCallerContextCancelReleasesAgents(t *testing.T) {
+// 1) Caller ctx canceled (manager session yield) must not kill workers.
+// Close still does — otherwise a host that forgot Cleanup would leak them.
+func TestCallerContextCancelDoesNotReleaseAgents(t *testing.T) {
 	reg := NewRegistry()
 	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
 		return &scriptedModel{turns: workerTurns(nil)}
@@ -527,16 +532,18 @@ func TestCallerContextCancelReleasesAgents(t *testing.T) {
 	if running, _ := reg.Stats(); running != 1 {
 		t.Fatalf("expected 1 running agent, got %d", running)
 	}
-	cancelCaller() // host dies without close_agent
+	cancelCaller()
 
 	select {
 	case <-h.Done():
-	case <-time.After(2 * time.Second):
-		t.Fatal("agent not released after caller context cancel")
+		t.Fatal("cancelling Spawn's context must not kill the worker")
+	case <-time.After(150 * time.Millisecond):
 	}
-	_, err, finished := h.Result()
-	if !finished || err == nil {
-		t.Fatalf("expected finished-with-error after caller cancel (finished=%v err=%v)", finished, err)
+	reg.Close()
+	select {
+	case <-h.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close must still stop the worker")
 	}
 }
 
@@ -825,5 +832,117 @@ func TestRunCallbackSurface(t *testing.T) {
 	}
 	if dones != 1 {
 		t.Fatalf("want exactly one NotifyDone, got %d: %+v", dones, notes)
+	}
+}
+
+func TestWorkerSurvivesParentContextCancel(t *testing.T) {
+	reg := NewRegistry()
+	parent, cancel := context.WithCancel(context.Background())
+	h, err := reg.Spawn(parent, "slow", "long work",
+		func(role, id string) model.BaseChatModel {
+			return &scriptedModel{turns: []func(int, []*schema.Message) *schema.Message{
+				func(turn int, msgs []*schema.Message) *schema.Message {
+					return schema.AssistantMessage("starting", []schema.ToolCall{rawCall("w1", "work", "{}")})
+				},
+			}}
+		}, &workTool{d: 2 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(80 * time.Millisecond)
+	cancel()
+	select {
+	case <-h.Done():
+		t.Fatal("cancelling the spawn context must not kill the worker")
+	case <-time.After(150 * time.Millisecond):
+	}
+	h.Cancel()
+	select {
+	case <-h.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("Handle.Cancel must still stop the worker")
+	}
+}
+
+func TestSetHistoryKeepsDroppedToolResults(t *testing.T) {
+	reg := NewRegistry()
+	reg.appendHistoryToolResult(&adk.ToolContext{Name: "wait_agents", CallID: "wait-1"}, `{"agents":[]}`, nil)
+	reg.SetHistory([]adk.Message{
+		schema.UserMessage("start the work"),
+		schema.AssistantMessage("waiting", nil),
+	})
+	got := reg.historySnapshot()
+	if len(got) != 3 || got[2].Role != schema.Tool || got[2].ToolCallID != "wait-1" {
+		t.Fatalf("a later snapshot must not drop the wrap-appended result: %+v", got)
+	}
+	reg.SetHistory([]adk.Message{
+		schema.UserMessage("start the work"),
+		schema.ToolMessage(`{"agents":[{"status":"done"}]}`, "wait-1"),
+	})
+	got = reg.historySnapshot()
+	if len(got) != 2 || got[1].Content != `{"agents":[{"status":"done"}]}` {
+		t.Fatalf("an already-present result must not duplicate: %+v", got)
+	}
+}
+
+func TestAppendHistoryToolResult(t *testing.T) {
+	reg := NewRegistry()
+	reg.appendHistoryToolResult(nil, "x", nil)
+	reg.appendHistoryToolResult(&adk.ToolContext{Name: "work", CallID: ""}, "x", nil)
+	if len(reg.historySnapshot()) != 0 {
+		t.Fatal("nil or empty call id must not invent a tool result")
+	}
+	tc := &adk.ToolContext{Name: "work", CallID: "tc-1"}
+	reg.appendHistoryToolResult(tc, "done", nil)
+	reg.appendHistoryToolResult(tc, "again", nil)
+	got := reg.historySnapshot()
+	if len(got) != 1 || got[0].Role != schema.Tool || got[0].Content != "done" || got[0].ToolCallID != "tc-1" {
+		t.Fatalf("want one result, got %+v", got)
+	}
+	reg.appendHistoryToolResult(&adk.ToolContext{Name: "work", CallID: "tc-2"}, "", fmt.Errorf("tool refused"))
+	got = reg.historySnapshot()
+	if len(got) != 2 || got[1].Content != "tool refused" {
+		t.Fatalf("an empty error result must keep the error text: %+v", got)
+	}
+}
+
+func TestWrapStreamableToolCallRecordsTheResult(t *testing.T) {
+	reg := NewRegistry()
+	mw := &historyRecorder{reg: reg}
+	wrapped, err := mw.WrapStreamableToolCall(context.Background(),
+		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+			return schema.StreamReaderFromArray([]string{"hel", "lo"}), nil
+		}, &adk.ToolContext{Name: "work", CallID: "tc-s"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sr, err := wrapped(context.Background(), "{}")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b strings.Builder
+	for {
+		chunk, recvErr := sr.Recv()
+		if recvErr != nil {
+			break
+		}
+		b.WriteString(chunk)
+	}
+	if b.String() != "hello" {
+		t.Fatalf("replayed stream=%q", b.String())
+	}
+	got := reg.historySnapshot()
+	if len(got) != 1 || got[0].Content != "hello" || got[0].ToolCallID != "tc-s" {
+		t.Fatalf("missing streamed tool result: %+v", got)
+	}
+	fail, err := mw.WrapStreamableToolCall(context.Background(),
+		func(context.Context, string, ...tool.Option) (*schema.StreamReader[string], error) {
+			return nil, fmt.Errorf("no stream")
+		}, &adk.ToolContext{Name: "work", CallID: "tc-fail"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fail(context.Background(), "{}"); err == nil {
+		t.Fatal("want the endpoint error")
 	}
 }

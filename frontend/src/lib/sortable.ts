@@ -42,8 +42,9 @@ function swallowNextClick() {
 /** Reorder rows the way Codex does: a click selects, a drag past
  *  SORT_ACTIVATE_PX moves. HTML5 `draggable` is never armed on the row —
  *  that API cannot wait for a threshold, so Chrome/WKWebView would eat
- *  the first click. Synthetic dragstart (tests, Playwright) still works
- *  from the grip so the old event sequence keeps passing.
+ *  the first click. There is no grip glyph; synthetic dragstart (tests,
+ *  Playwright) still works from the row, or from a `[data-drag-handle]`
+ *  when a harness still mounts one.
  *
  *  The dragging id lives in a ref as well as state: pointermove and
  *  dragover fire before React re-renders, and a stale closure would treat
@@ -142,7 +143,7 @@ export function useSortableList(onMove: (fromId: string, toId: string) => void) 
           armedRef.current = !hasHandle || fromHandle(e.target) ? id : undefined
         },
         onDragStart: (e: DragEvent<HTMLElement>) => {
-          if (disabled || fromNoDrag(e.target)) {
+          if (disabled || fromNoDrag(e.target) || !e.dataTransfer) {
             e.preventDefault()
             return
           }

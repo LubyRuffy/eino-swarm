@@ -883,7 +883,7 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	set := buildTestToolset(t, e, th.ID)
-	prompt := managerPrompt(set, e.Config(), "")
+	prompt := ManagerPrompt(set, e.Config(), "")
 
 	// it must tell the agent the things only the runtime knows
 	if !strings.Contains(prompt, e.WorkspaceDir(th.ID)) {
@@ -899,11 +899,29 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 			t.Fatalf("the prompt does not explain %s", tool)
 		}
 	}
+	if !strings.Contains(prompt, "notified:manager") {
+		t.Fatal("the manager must be told it receives a missed handoff")
+	}
 	if !strings.Contains(prompt, "visual input") {
 		t.Fatal("the prompt must say pasted images arrive on the message, not on disk")
 	}
 	if !strings.Contains(prompt, "lists attached files") {
 		t.Fatal("the prompt must say files named on a message are this request's uploads")
+	}
+	if !strings.Contains(prompt, "save time or improve quality") {
+		t.Fatal("the manager must spawn when a swarm would save time or improve quality")
+	}
+	if !strings.Contains(prompt, "do not wait for the human to ask") {
+		t.Fatal("delegation is proactive; the human should not have to request a swarm")
+	}
+	if !strings.Contains(prompt, "Spawning one worker and then waiting") {
+		t.Fatal("a one-worker wait must be called out as slower, not as a swarm win")
+	}
+	if strings.Contains(prompt, "Proactive multi-agent work is the default") {
+		t.Fatal("unconditional spawn-first came back")
+	}
+	if strings.Contains(prompt, "you answer directly when a request is small") {
+		t.Fatal("the conservative solo-first policy came back")
 	}
 	// and it must not smuggle in a particular task
 	for _, leak := range []string{"summarize", "researcher", "reviewer", "notes/", "re-research", "xlsx", "spreadsheet"} {

@@ -20,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ToolResultBody } from "@/components/app/tool-result"
 import { ShellCommand } from "@/components/app/shell-command"
 import { MarqueeText } from "@/components/app/marquee"
+import { GoalSessionTurn, groupByTurn } from "@/components/app/transcript-session"
 import { TurnNav } from "@/components/app/turn-nav"
 import { InputThumbs } from "@/components/app/input-thumbs"
 import { execCommand, toolRowSummary, viewTool } from "@/lib/tool-view"
@@ -35,13 +36,14 @@ import {
   scrollRangeIntoView,
 } from "@/lib/find-dom"
 import { useTranscriptFollow } from "@/lib/follow-scroll"
+import { useHistoryWindow } from "@/lib/use-history-window"
 import { localizeNotice } from "@/lib/i18n"
-import { TURN_NAV_MIN, scrollTurnIntoView, turnNavItems } from "@/lib/turn-nav"
-import { cn, formatDuration, formatMessageTime, formatTime } from "@/lib/utils"
+import { TURN_NAV_MIN, resolveTurnNavItems, scrollTurnIntoView } from "@/lib/turn-nav"
+import { cn, formatDuration, formatMessageTime } from "@/lib/utils"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
 import { useT } from "@/lib/use-t"
 import { Textarea } from "@/components/ui/textarea"
-import type { AgentState, Block, Pulse, TranscriptState, TurnState } from "@/lib/transcript"
+import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript"
 import { MANAGER_ID, liveWorkers, splitQueuedSteers } from "@/lib/transcript"
 import { useApp } from "@/store/app"
 
@@ -75,8 +77,22 @@ export function Transcript({
   const endRef = useRef<HTMLDivElement>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const blocks = manager?.blocks ?? EMPTY_BLOCKS
-  const navItems = turnNavItems(blocks)
-  const { body, queued } = splitQueuedSteers(blocks, state.running)
+  const apiTurns = useApp((s) => s.turns)
+  const navItems = useMemo(
+    () => resolveTurnNavItems(blocks, apiTurns),
+    [blocks, apiTurns],
+  )
+  const { body, queued } = useMemo(
+    () => splitQueuedSteers(blocks, state.running),
+    [blocks, state.running],
+  )
+  const groups = useMemo(() => groupByTurn(body), [body])
+  const turnById = useMemo(
+    () => new Map(state.turns.map((row) => [row.id, row])),
+    [state.turns],
+  )
+  const beginEdit = useCallback((seq: number) => setEditingSeq(seq), [])
+  const cancelEdit = useCallback(() => setEditingSeq(null), [])
   const revealIds = useMemo(
     () => new Set(revealBlockIds(blocks, findQuery)),
     [blocks, findQuery],
@@ -91,23 +107,39 @@ export function Transcript({
     }
     return undefined
   }, [blocks])
-  const { showJump, jumpToLatest, unpin } = useTranscriptFollow({
+  const { showJump, jumpToLatest, unpin, pinned } = useTranscriptFollow({
     scrollerRef,
     loaded,
     threadId,
     growthKey: `${blockCount}:${lastText}`,
     lastUserId,
   })
+  const historyHasMore = useApp((s) => s.historyHasMore)
+  const historyLoading = useApp((s) => s.historyLoading)
+  const loadOlder = useApp((s) => s.loadOlder)
+  const loadUntilTurn = useApp((s) => s.loadUntilTurn)
+  const sentinelRef = useHistoryWindow({
+    scrollerRef,
+    loaded,
+    hasMore: historyHasMore,
+    loading: historyLoading,
+    pinned,
+    growthKey: `${blockCount}:${lastText}`,
+    loadOlder,
+  })
 
   const jumpTo = useCallback(
     (id: string) => {
-      // Follow uses a rAF; a jump must cancel it in the same click, not after
-      // setState, or the next token yanks the viewport back to the bottom.
+      // Cancel follow in this click or the next token yanks back to the bottom.
       unpin()
       const el = scrollerRef.current
-      if (el) scrollTurnIntoView(el, id)
+      if (el && scrollTurnIntoView(el, id)) return
+      void loadUntilTurn(id, el?.clientHeight).then((found) => {
+        const root = scrollerRef.current
+        if (found && root) scrollTurnIntoView(root, id)
+      })
     },
-    [unpin],
+    [unpin, loadUntilTurn],
   )
 
   const paintFind = useCallback(
@@ -159,36 +191,39 @@ export function Transcript({
 
   return (
     <div className="relative flex min-h-0 flex-1">
-      <TurnNav items={navItems} scrollerRef={scrollerRef} onJump={jumpTo} />
+      <TurnNav items={navItems} scrollerRef={scrollerRef} onJump={jumpTo} pinned={pinned} />
       <div
         ref={scrollerRef}
         data-testid="transcript"
         data-quote-source=""
         className={cn(
-          "thin-scrollbar min-h-0 flex-1 overflow-y-auto [overflow-anchor:none] px-4 pt-6 sm:px-8 pb-composer",
+          "thin-scrollbar content-gutter min-h-0 flex-1 overflow-y-auto [overflow-anchor:none] pt-6 pb-composer",
           navItems.length >= TURN_NAV_MIN && "pl-10 sm:pl-12",
         )}
       >
-        <div className="content-column flex flex-col gap-1">
-          {groupByTurn(body).map(([turnId, blocks]) => (
-            <div key={turnId} className="flex scroll-mt-6 flex-col gap-1" data-turn-nav={turnId}>
-              {blocks.map((b) => (
+        <div className="content-column flex min-w-0 flex-col gap-1">
+          {historyHasMore ? (
+            <div ref={sentinelRef} data-testid="history-sentinel" className="h-4" />
+          ) : null}
+          {groups.map(([turnId, turnBlocks]) => (
+            <GoalSessionTurn
+              key={turnId}
+              turnId={turnId}
+              blocks={turnBlocks}
+              turn={turnById.get(turnId)}
+              renderBlock={(b) => (
                 <BlockView
-                  key={b.id}
                   block={b}
                   threadId={threadId}
                   reveal={revealIds.has(b.id)}
                   onSelectAgent={onSelectAgent}
                   onResendUser={onResendUser}
                   editing={editingSeq === b.seq}
-                  onBeginEdit={() => setEditingSeq(b.seq)}
-                  onCancelEdit={() => setEditingSeq(null)}
+                  onBeginEdit={beginEdit}
+                  onCancelEdit={cancelEdit}
                 />
-              ))}
-              {/* Each turn ends with its own "Worked for …", so a conversation
-                  reads as a sequence rather than one long block. */}
-              <TurnFooter turn={state.turns.find((t) => t.id === turnId)} />
-            </div>
+              )}
+            />
           ))}
           <Heartbeat pulse={state.pulse} running={state.running} workers={liveWorkers(state)} />
           {queued.length > 0 ? (
@@ -207,8 +242,8 @@ export function Transcript({
                   onSelectAgent={onSelectAgent}
                   onResendUser={onResendUser}
                   editing={editingSeq === b.seq}
-                  onBeginEdit={() => setEditingSeq(b.seq)}
-                  onCancelEdit={() => setEditingSeq(null)}
+                  onBeginEdit={beginEdit}
+                  onCancelEdit={cancelEdit}
                 />
               ))}
             </div>
@@ -249,7 +284,7 @@ const BlockView = memo(function BlockView({
   onSelectAgent: (id: string) => void
   onResendUser?: (text: string, seq: number) => void
   editing?: boolean
-  onBeginEdit?: () => void
+  onBeginEdit?: (seq: number) => void
   onCancelEdit?: () => void
 }) {
   const t = useT()
@@ -260,7 +295,9 @@ const BlockView = memo(function BlockView({
           block={block}
           threadId={threadId}
           editing={editing}
-          onBeginEdit={onResendUser ? onBeginEdit : undefined}
+          onBeginEdit={
+            onResendUser && onBeginEdit ? () => onBeginEdit(block.seq) : undefined
+          }
           onCancelEdit={onCancelEdit}
           onResend={onResendUser}
         />
@@ -332,6 +369,10 @@ const BlockView = memo(function BlockView({
 
     case "title":
       // Sidebar metadata. The Trace tab's Full log lists it; the chat does not.
+      return null
+
+    case "session_memory":
+      // Compact/review briefing. Same Full-log-only treatment as a title.
       return null
 
     default:
@@ -738,35 +779,6 @@ export function StatusDot({ status }: { status: AgentState["status"] }) {
         status === "running" ? "animate-breathe" : ""
       }`}
     />
-  )
-}
-
-function groupByTurn(blocks: Block[]): [string, Block[]][] {
-  const groups: [string, Block[]][] = []
-  for (const b of blocks) {
-    const last = groups.at(-1)
-    if (last && last[0] === b.turnId) last[1].push(b)
-    else groups.push([b.turnId, [b]])
-  }
-  return groups
-}
-
-function TurnFooter({ turn }: { turn?: TurnState }) {
-  const t = useT()
-  if (!turn || turn.status === "running" || !turn.endedAt || !turn.startedAt) return null
-  const ms = new Date(turn.endedAt).getTime() - new Date(turn.startedAt).getTime()
-  return (
-    <p
-      data-find-ignore=""
-      className="mt-2 flex items-center gap-2 px-2 text-xs text-muted-foreground"
-    >
-      <span>
-        {turn.status === "done" ? t("transcript.workedFor") : t("transcript.stoppedAfter")}{" "}
-        {formatDuration(ms)}
-      </span>
-      <span className="opacity-50">·</span>
-      <span>{formatTime(turn.endedAt)}</span>
-    </p>
   )
 }
 

@@ -26,9 +26,9 @@ type projectView struct {
 	// list rather than a failed listing — hiding every project because one
 	// memory directory is broken would be the worse failure.
 	Skills    []memory.SkillInfo `json:"skills"`
-	SortRank  int                 `json:"sort_rank"`
-	CreatedAt string              `json:"created_at"`
-	UpdatedAt string              `json:"updated_at"`
+	SortRank  int                `json:"sort_rank"`
+	CreatedAt string             `json:"created_at"`
+	UpdatedAt string             `json:"updated_at"`
 }
 
 func (s *Server) viewProject(p *store.Project) projectView {

@@ -304,6 +304,34 @@ func TestRunWithTranscriptFeedsNextTurn(t *testing.T) {
 	}
 }
 
+func TestRunWithMaxIterationsKeepsToolResultsInTranscript(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &chunkedModel{turns: []turnScript{{
+			content: []string{"working"},
+			calls:   []schema.ToolCall{rawCall("tc-1", "slow", "{}")},
+		}}}
+	}
+	res, err := reg.RunWith(context.Background(), RunConfig{
+		Instruction:   "do work",
+		Task:          "start",
+		MaxIterations: 1,
+		ManagerTools:  []tool.BaseTool{&fnTool{name: "slow", fn: func(context.Context, string) (string, error) { return "slow done", nil }}},
+	}, nil)
+	if err == nil {
+		t.Fatal("want eino's iteration cap")
+	}
+	var sawTool bool
+	for _, m := range res.Transcript {
+		if m != nil && m.Role == schema.Tool && m.ToolCallID == "tc-1" && strings.Contains(m.Content, "slow done") {
+			sawTool = true
+		}
+	}
+	if !sawTool {
+		t.Fatalf("the capped transcript must keep the tool result: %+v", res.Transcript)
+	}
+}
+
 // SteerManager is the manager-side twin of send_message: guidance lands at the
 // next turn boundary, never mid-tool.
 func TestSteerManagerLandsAtTurnBoundary(t *testing.T) {
