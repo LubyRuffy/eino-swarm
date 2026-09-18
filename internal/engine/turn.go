@@ -251,6 +251,9 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 		if in.ContinueGoal {
 			return nil, fmt.Errorf("engine: a standing-objective continuation cannot replace a message")
 		}
+		if in.ContinueSchedule {
+			return nil, fmt.Errorf("engine: a scheduled check cannot replace a message")
+		}
 		keep, err = e.peekRewind(threadID, in.FromEventSeq)
 		if err != nil {
 			return nil, err
@@ -273,7 +276,7 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 		return nil, err
 	}
 	if in.FromEventSeq == 0 {
-		if !in.ContinueGoal && !in.ImplementPlan && rt.awaitingAnswer() {
+		if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && rt.awaitingAnswer() {
 			if err := e.AnswerTurnText(threadID, in.Text); err != nil {
 				return nil, err
 			}
@@ -303,7 +306,7 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 			return nil, err
 		}
 	}
-	if !in.ContinueGoal && !in.ImplementPlan && hasOpenGoal(th) {
+	if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule && hasOpenGoal(th) {
 		resetGoalBudget(e, th)
 	}
 
@@ -340,12 +343,14 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	}
 
 	turn := &store.Turn{
-		ThreadID:        threadID,
-		UserText:        text,
-		ProviderID:      prov.ID,
-		Model:           prov.Model,
-		ReasoningEffort: effort,
-		GoalContinue:    in.ContinueGoal,
+		ThreadID:         threadID,
+		UserText:         text,
+		ProviderID:       prov.ID,
+		Model:            prov.Model,
+		ReasoningEffort:  effort,
+		GoalContinue:     in.ContinueGoal,
+		ScheduleContinue: in.ContinueSchedule,
+		ScheduleRunID:    in.ScheduleRunID,
 	}
 	if err := e.store.CreateTurn(turn); err != nil {
 		return nil, err
@@ -396,7 +401,7 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	}
 
 	_ = e.store.TouchThread(threadID)
-	if !in.ContinueGoal && !in.ImplementPlan {
+	if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule {
 		e.autoTitle(th, titleFromInput(caption, modelImages, files))
 	}
 
@@ -514,10 +519,14 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	}()
 
 	if resumed {
-		if !e.turnHasKind(turn.ID, KindUser) && !e.turnHasKind(turn.ID, KindGoalContinued) {
+		if !e.turnHasKind(turn.ID, KindUser) && !e.turnHasKind(turn.ID, KindGoalContinued) &&
+			!e.turnHasKind(turn.ID, KindScheduleFired) {
 			if turn.GoalContinue {
 				e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 					Kind: KindGoalContinued, AgentID: swarm.DefaultManagerID, Text: goalContinuedNotice})
+			} else if turn.ScheduleContinue {
+				e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+					Kind: KindScheduleFired, AgentID: swarm.DefaultManagerID, Text: scheduleFiredNotice})
 			} else if strings.TrimSpace(turn.UserText) != "" || len(images) > 0 {
 				e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 					Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText, Images: images})
@@ -530,6 +539,9 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	} else if turn.GoalContinue {
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 			Kind: KindGoalContinued, AgentID: swarm.DefaultManagerID, Text: goalContinuedNotice})
+	} else if turn.ScheduleContinue {
+		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+			Kind: KindScheduleFired, AgentID: swarm.DefaultManagerID, Text: scheduleFiredNotice})
 	} else if rt.recordingPlanImplement() {
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 			Kind: KindPlanImplemented, AgentID: swarm.DefaultManagerID, Text: planImplementedNotice})

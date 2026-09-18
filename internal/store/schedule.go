@@ -173,6 +173,56 @@ func (s *Store) CountActive() (int, error) {
 	return countActive(s.db)
 }
 
+// ListRuns returns every fire of one schedule, oldest first.
+func (s *Store) ListRuns(scheduleID string) ([]ScheduleRun, error) {
+	var out []ScheduleRun
+	err := s.db.Where("schedule_id = ?", scheduleID).Order("created_at asc, id asc").Find(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("store: list schedule runs: %w", err)
+	}
+	return out, nil
+}
+
+// CountRunningRuns is how many fires this process has claimed and not yet
+// finished. The ticker uses it as the concurrent-fire cap.
+func (s *Store) CountRunningRuns() (int, error) {
+	var n int64
+	if err := s.db.Model(&ScheduleRun{}).Where("status = ?", ScheduleRunRunning).Count(&n).Error; err != nil {
+		return 0, fmt.Errorf("store: count running schedule runs: %w", err)
+	}
+	return int(n), nil
+}
+
+// HasRunningRun is true when this wait already has a claimed fire. Two ticks
+// must not start two turns for one row.
+func (s *Store) HasRunningRun(scheduleID string) (bool, error) {
+	var n int64
+	err := s.db.Model(&ScheduleRun{}).
+		Where("schedule_id = ? AND status = ?", scheduleID, ScheduleRunRunning).
+		Limit(1).Count(&n).Error
+	if err != nil {
+		return false, fmt.Errorf("store: has running schedule run: %w", err)
+	}
+	return n > 0, nil
+}
+
+// SetRunTurn binds the turn the fire started. Claim happens before
+// CreateTurn, so the id lands afterwards.
+func (s *Store) SetRunTurn(id, turnID string) error {
+	now := time.Now().UTC()
+	res := s.db.Model(&ScheduleRun{}).Where("id = ?", id).Updates(map[string]any{
+		"turn_id":    turnID,
+		"updated_at": now,
+	})
+	if res.Error != nil {
+		return fmt.Errorf("store: bind schedule run turn: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // CreateRun inserts a fire, filling in the id and timestamps.
 func (s *Store) CreateRun(run *ScheduleRun) error {
 	if run.ID == "" {

@@ -324,6 +324,10 @@ func TestNewResumesTurnsLeftRunningByAPreviousProcess(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// Stop the ticker without finishing the leftover row: this test is a
+	// crash, but the process stays alive and must not keep polling a
+	// database we are about to close.
+	first.Engine.Shutdown()
 	_ = first.Store.Close()
 
 	second, err := New(Options{DataDir: dir, Addr: "127.0.0.1:0", Mock: true, NoAssets: true})

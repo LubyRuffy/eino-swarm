@@ -439,6 +439,53 @@ func TestCreateRunRoundTripsAndFinishMarksFindings(t *testing.T) {
 	if gotSkip.Status != ScheduleRunSkippedBusy || gotSkip.TurnID != "" {
 		t.Fatalf("skipped run=%+v", gotSkip)
 	}
+
+	listed, err := s.ListRuns(sch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 3 {
+		t.Fatalf("ListRuns=%d", len(listed))
+	}
+	n, err := s.CountRunningRuns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 0 {
+		t.Fatalf("finished runs still counted as running: %d", n)
+	}
+	has, err := s.HasRunningRun(sch.ID)
+	if err != nil || has {
+		t.Fatalf("HasRunningRun=%v err=%v", has, err)
+	}
+	live := &ScheduleRun{ScheduleID: sch.ID, ThreadID: th.ID, Status: ScheduleRunRunning}
+	if err := s.CreateRun(live); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetRunTurn(live.ID, turn.ID); err != nil {
+		t.Fatal(err)
+	}
+	gotLive, err := s.GetRun(live.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotLive.TurnID != turn.ID {
+		t.Fatalf("bound turn=%q", gotLive.TurnID)
+	}
+	n, err = s.CountRunningRuns()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("running=%d", n)
+	}
+	has, err = s.HasRunningRun(sch.ID)
+	if err != nil || !has {
+		t.Fatalf("HasRunningRun=%v err=%v", has, err)
+	}
+	if err := s.SetRunTurn("srun_missing", turn.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("SetRunTurn missing err=%v", err)
+	}
 }
 
 // Missing ids must report ErrNotFound so HTTP can 404 instead of looking

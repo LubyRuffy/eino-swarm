@@ -82,7 +82,7 @@ func (e *Engine) readPlanFile(threadID string) string {
 // applySlashPlan intercepts `/plan` the way `/goal` is intercepted: it is
 // never a chat line. A live turn cannot switch tool tables, so it is rejected.
 func (e *Engine) applySlashPlan(threadID string, in *UserInput) (turn *store.Turn, done bool, err error) {
-	if in == nil || in.ContinueGoal || in.ImplementPlan {
+	if in == nil || in.ContinueGoal || in.ImplementPlan || in.ContinueSchedule {
 		return nil, false, nil
 	}
 	arg, ok := slash.Lookup(in.Text, "plan")

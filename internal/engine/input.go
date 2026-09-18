@@ -57,6 +57,9 @@ type UserInput struct {
 	// ScheduleID is the wait that started this turn when ContinueSchedule
 	// is set.
 	ScheduleID string
+	// ScheduleRunID is the claimed fire bound onto the stored turn so
+	// report_schedule can finish the right row.
+	ScheduleRunID string
 	// FromEventSeq, when set, truncates the conversation at that user_message
 	// and starts again from there. It is a rewind, not a new turn on top.
 	FromEventSeq int64

@@ -67,6 +67,15 @@ type Engine struct {
 	titles   titlePool
 	compacts compactPool
 	sessions sessionMemoryPool
+
+	// now is the wall clock the ticker reads. Tests install a fake so a
+	// wait does not sleep a real cadence. Default is time.Now.
+	now func() time.Time
+
+	schedMu   sync.Mutex
+	schedStop chan struct{}
+	schedWG   sync.WaitGroup
+	fireMu    sync.Mutex
 }
 
 // New builds an engine over an already-open store and provider pool.
@@ -313,6 +322,7 @@ func (e *Engine) Running() []string {
 // waited for, briefly: a review that is cut off mid-write would leave a note
 // half stored, and a review that never finishes must not keep the app open.
 func (e *Engine) Shutdown() {
+	e.StopScheduler()
 	if !e.reviews.stop(reviewShutdownGrace) {
 		e.log.Warn("a memory review was still running at shutdown; its notes may be incomplete")
 	}
