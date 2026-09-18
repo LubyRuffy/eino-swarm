@@ -20,14 +20,19 @@ a query each would be absurd.
 ```mermaid
 erDiagram
   PROJECT ||--o{ THREAD : groups
+  PROJECT ||--o{ SCHEDULE : pins
   THREAD ||--o{ TURN : has
   THREAD ||--o{ MESSAGE : has
   THREAD ||--o{ EVENT : has
   THREAD ||--o{ ATTACHMENT : has
   THREAD ||--o{ FOLLOWUP : queues
+  THREAD ||--o{ SCHEDULE : originates
+  THREAD ||--o{ SCHEDULE : wakes
+  THREAD ||--o{ SCHEDULERUN : ran
   TURN ||--o{ EVENT : produced
   TURN ||--o{ MESSAGE : produced
   TURN ||--o{ LLMCALL : made
+  SCHEDULE ||--o{ SCHEDULERUN : fires
 ```
 
 ## `projects` — a directory, an instruction and a memory
@@ -140,6 +145,9 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `provider_id`, `model` | what actually ran, not what is configured now — settings change |
 | `reasoning_effort` | the thinking level this turn ran with, so a trace shows what produced the answer |
 | `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message` |
+| `schedule_run_id` | set when this turn is a scheduled fire; empty for every other origin. Trace joins the run through it |
+| `quiet` | true when a scheduled turn had nothing to report. The row stays for `zwai trace`; the transcript hides the bubbles |
+| `schedule_continue` | true when the engine started this turn because a schedule fired. The timeline records `schedule_fired`, not `user_message` |
 | `started_at`, `ended_at`, `duration_ms` | `ended_at` is null while running |
 
 A turn stays `running` until it finishes, errors, or the user stops it. A
@@ -267,6 +275,45 @@ deletes leftover rows.
 | `text` | what will be sent |
 | `created_at` | |
 
+## `schedules` — a wall-clock wait
+
+A schedule is either a **thread wake** (lands on an existing conversation) or a
+**standalone** job (mints a new conversation per fire). `next_run_at` is stored
+UTC. Cadence columns (`delay_s`, `every_s`, `cron`) are persisted as given; the
+engine enforces that exactly one is set.
+
+| column | notes |
+|---|---|
+| `id` | `sch_` + 8 random bytes hex. Filesystem-safe, same family as thread ids |
+| `kind` | `thread` or `standalone` |
+| `origin_thread_id` | conversation that created it. Standalone fires do **not** reuse it |
+| `thread_id` | wakes only: the conversation to wake. Empty on standalone rows |
+| `project_id` | standalone workspace; empty means that fire gets its own directory |
+| `provider_id`, `model`, `reasoning_effort` | standalone; wakes use the target conversation's model |
+| `title`, `prompt` | display name + durable per-run instruction (user text) |
+| `delay_s`, `every_s`, `cron` | one-shot delay, interval, or 5-field cron. Engine layer |
+| `status` | `active`, `paused`, `done`, `cancelled` |
+| `next_run_at`, `last_run_at` | UTC. Due = `status=active` AND `next_run_at <= now` |
+| `run_count`, `max_runs`, `until_at` | `0` / null means until cancelled |
+| `created_by` | `human` or `manager` |
+| `created_at`, `updated_at` | |
+
+Deleting a conversation **cancels** wakes whose `thread_id` is that
+conversation. Standalone rows that only have `origin_thread_id` stay `active`.
+
+## `schedule_runs` — one fire (or a skipped tick)
+
+| column | notes |
+|---|---|
+| `id` | `srun_` + hex |
+| `schedule_id` | which schedule fired |
+| `thread_id` | the conversation that ran: the wake target, or the conversation minted for a standalone fire |
+| `turn_id` | the turn that ran, when one started. Empty on a skip |
+| `status` | `skipped_busy`, `running`, `findings`, `quiet`, `error` |
+| `summary` | short findings text the inbox shows. Empty on quiet |
+| `unread` | true for `findings` and `error`. Quiet runs are not unread |
+| `created_at`, `updated_at`, `ended_at` | `ended_at` is null while `running` |
+
 ## On disk
 
 ```
@@ -313,13 +360,15 @@ file; the agent `read`s it rather than opening it as a recorded skill.
 - **Delete a conversation** (`DELETE /api/threads/:id`): its messages, turns,
   events, model calls, attachments and follow-ups are removed in one transaction, then the
   row, then its workspace directory — **only when zwai created that directory** —
-  and its `inputs/` folder and `$ZWAI_HOME/plans/<id>/`. A conversation in a project shares the project's
+  and its `inputs/` folder and `$ZWAI_HOME/plans/<id>/`. Wakes whose `thread_id`
+  is that conversation are cancelled in the same transaction; standalone
+  schedules that only originated there stay. A conversation in a project shares the project's
   directory, which may be the user's own repository, so the workspace is left
   alone; pasted images still go because they never lived there.
-- **Delete a project** (`DELETE /api/projects/:id`): its conversations are
-  deleted as above, then the project row, then the directories zwai created for
-  it — its managed workspace and its memory. A `workdir` the user supplied is
-  never touched.
+- **Delete a project** (`DELETE /api/projects/:id`): its conversations' messages,
+  turns, events, model calls, attachments and follow-ups are removed, then the
+  project row, then the directories zwai created for it — its managed workspace
+  and its memory. A `workdir` the user supplied is never touched.
 - **Nothing is pruned automatically.** Events are the only table that grows fast;
   if a database ever gets uncomfortable, delete old conversations.
 - **Backup** is copying `~/.zwai-swarm` while the app is not running. The

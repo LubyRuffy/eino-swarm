@@ -75,7 +75,7 @@ func Open(path string) (*Store, error) {
 		followupSeq: map[string]int64{},
 		inMemory:    inMemory,
 	}
-	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
 	return s, nil
@@ -220,13 +220,18 @@ func (s *Store) TouchThread(id string) error {
 	return s.bumpProject(th.ProjectID)
 }
 
-// DeleteThread removes a conversation and everything attached to it. The
-// workspace directory is the caller's to delete: the store owns rows, not files.
+// DeleteThread removes a conversation and everything attached to it. Wakes
+// that targeted it are cancelled; standalone jobs that only originated here
+// stay. The workspace directory is the caller's to delete: the store owns
+// rows, not files.
 func (s *Store) DeleteThread(id string) error {
 	if _, err := s.GetThread(id); err != nil {
 		return err
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := cancelWakesForThread(tx, id); err != nil {
+			return err
+		}
 		for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}} {
 			if err := tx.Where("thread_id = ?", id).Delete(m).Error; err != nil {
 				return err
