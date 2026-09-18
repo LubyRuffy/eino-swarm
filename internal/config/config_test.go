@@ -344,6 +344,9 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 		"  max_concurrent: 0",
 		"  max_turns: -3",
 		"  progress_interval_seconds: 0",
+		"  schedule_min_interval_seconds: 0",
+		"  schedule_tick_ms: -1",
+		"  schedule_max_active: 0",
 		// leftover wall-clock key: Load must ignore it, not fail
 		"  goal_session_max_seconds: -3",
 		"tools:",
@@ -381,6 +384,11 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	}
 	if cfg.Swarm.GoalMaxAutoTurns != DefaultGoalMaxAutoTurns {
 		t.Fatalf("goal auto-continue cap not repaired: %+v", cfg.Swarm)
+	}
+	if cfg.Swarm.ScheduleMinIntervalSeconds != DefaultScheduleMinIntervalSeconds ||
+		cfg.Swarm.ScheduleTickMS != DefaultScheduleTickMS ||
+		cfg.Swarm.ScheduleMaxActive != DefaultScheduleMaxActive {
+		t.Fatalf("schedule caps not repaired: %+v", cfg.Swarm)
 	}
 	if cfg.Swarm.GoalSessionMaxIterations != DefaultGoalSessionMaxIterations ||
 		cfg.Swarm.GoalAutoCompactPercent != DefaultGoalAutoCompactPercent {
@@ -644,6 +652,45 @@ func TestProviderCatalogDedupesAndIncludesTheDefault(t *testing.T) {
 	}
 	if cfg.Models.Providers[0].Catalog == nil {
 		t.Fatal("catalog must be a list, not null")
+	}
+}
+
+func TestSwarmScheduleDefaultsRepairZero(t *testing.T) {
+	cfg := Default()
+	if cfg.Swarm.ScheduleMinInterval() != DefaultScheduleMinIntervalSeconds*time.Second {
+		t.Fatalf("min interval=%s", cfg.Swarm.ScheduleMinInterval())
+	}
+	if cfg.Swarm.ScheduleTick() != time.Duration(DefaultScheduleTickMS)*time.Millisecond {
+		t.Fatalf("tick=%s", cfg.Swarm.ScheduleTick())
+	}
+	if cfg.Swarm.MaxActiveSchedules() != DefaultScheduleMaxActive {
+		t.Fatalf("max active=%d", cfg.Swarm.MaxActiveSchedules())
+	}
+	zero := SwarmConfig{}
+	if zero.ScheduleMinInterval() != DefaultScheduleMinIntervalSeconds*time.Second ||
+		zero.ScheduleTick() != time.Duration(DefaultScheduleTickMS)*time.Millisecond ||
+		zero.MaxActiveSchedules() != DefaultScheduleMaxActive {
+		t.Fatal("zero values must repair")
+	}
+	neg := SwarmConfig{
+		ScheduleMinIntervalSeconds: -3,
+		ScheduleTickMS:             -1,
+		ScheduleMaxActive:          -8,
+	}
+	if neg.ScheduleMinInterval() != DefaultScheduleMinIntervalSeconds*time.Second ||
+		neg.ScheduleTick() != time.Duration(DefaultScheduleTickMS)*time.Millisecond ||
+		neg.MaxActiveSchedules() != DefaultScheduleMaxActive {
+		t.Fatal("negative values must repair")
+	}
+	custom := SwarmConfig{
+		ScheduleMinIntervalSeconds: 45,
+		ScheduleTickMS:             250,
+		ScheduleMaxActive:          4,
+	}
+	if custom.ScheduleMinInterval() != 45*time.Second ||
+		custom.ScheduleTick() != 250*time.Millisecond ||
+		custom.MaxActiveSchedules() != 4 {
+		t.Fatalf("explicit values must stick: %+v", custom)
 	}
 }
 

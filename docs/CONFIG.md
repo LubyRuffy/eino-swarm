@@ -53,6 +53,9 @@ swarm:
     goal_max_auto_turns: 12
     goal_session_max_iterations: 40
     goal_auto_compact_percent: 80
+    schedule_min_interval_seconds: 30
+    schedule_tick_ms: 1000
+    schedule_max_active: 32
 tools:
     disabled: []
     enabled: []
@@ -157,6 +160,9 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `goal_max_auto_turns` | `12` | consecutive engine-started turns that may pursue an open `/goal` without another human message. Zero or negative is repaired to the default. A human message or resume resets the count. `block_goal` and a failed turn stop auto-continue without waiting for the cap. A truncated tool-call JSON, a `429`, or a dropped stream retries inside the same turn twice before that failure counts. |
 | `goal_session_max_iterations` | `40` | manager ReAct slice while a `/goal` is open. Hitting it extends the same turn (no confirm, no `goal_session`, no auto-continue spent). |
 | `goal_auto_compact_percent` | `80` | when context is at least this full (tokens vs `min(model window, auto_compact_tokens)`, else chars vs `context_char_budget`), compact before the next auto-continue. A million-token window is not the denominator. The rolling session briefing is caught up first (this session's last manager answers, then a bounded incremental refresh) so the fold copies that view; a session briefing that has moved since the last compact also folds even when the meter is still cold. Zero or negative is repaired to the default; above 100 is clamped. |
+| `schedule_min_interval_seconds` | `30` | shortest cadence a schedule may use, in seconds. Zero or negative is repaired to the default so a hand-edit cannot arm a sub-second loop. |
+| `schedule_tick_ms` | `1000` | how often the process looks for due schedules. Zero or negative is repaired to the default so the ticker cannot silently stop. |
+| `schedule_max_active` | `32` | schedule runs that may execute at once. Overflow waits for the next tick. Zero or negative is repaired to the default so a hand-edit cannot refuse every fire or unbounded fan-out. |
 
 A leftover `goal_session_max_seconds` from older builds is ignored on load; the next save omits it.
 

@@ -225,6 +225,19 @@ type SwarmConfig struct {
 	// auto-continue compact runs. Zero or negative is repaired to the
 	// default; above 100 is clamped.
 	GoalAutoCompactPercent int `yaml:"goal_auto_compact_percent" json:"goal_auto_compact_percent"`
+	// ScheduleMinIntervalSeconds is the shortest cadence a schedule may
+	// use. Zero or negative is repaired to the default so a hand-edit
+	// cannot arm a sub-second loop.
+	ScheduleMinIntervalSeconds int `yaml:"schedule_min_interval_seconds" json:"schedule_min_interval_seconds"`
+	// ScheduleTickMS is how often the engine looks for due schedules.
+	// Zero or negative is repaired to the default so the ticker cannot
+	// silently stop.
+	ScheduleTickMS int `yaml:"schedule_tick_ms" json:"schedule_tick_ms"`
+	// ScheduleMaxActive is how many schedule runs may execute at once.
+	// Overflow waits for the next tick. Zero or negative is repaired to
+	// the default so a hand-edit cannot refuse every fire or unbounded
+	// fan-out.
+	ScheduleMaxActive int `yaml:"schedule_max_active" json:"schedule_max_active"`
 }
 
 // AgentTimeout is the per-sub-agent watchdog duration.
@@ -342,6 +355,33 @@ func (s SwarmConfig) GoalCompactPercent() int {
 	return s.GoalAutoCompactPercent
 }
 
+// ScheduleMinInterval is the shortest cadence a schedule may use. Zero
+// or negative falls back to the default.
+func (s SwarmConfig) ScheduleMinInterval() time.Duration {
+	if s.ScheduleMinIntervalSeconds <= 0 {
+		return DefaultScheduleMinIntervalSeconds * time.Second
+	}
+	return time.Duration(s.ScheduleMinIntervalSeconds) * time.Second
+}
+
+// ScheduleTick is how often the engine looks for due schedules. Zero or
+// negative falls back to the default.
+func (s SwarmConfig) ScheduleTick() time.Duration {
+	if s.ScheduleTickMS <= 0 {
+		return time.Duration(DefaultScheduleTickMS) * time.Millisecond
+	}
+	return time.Duration(s.ScheduleTickMS) * time.Millisecond
+}
+
+// MaxActiveSchedules is how many schedule runs may execute at once. Zero
+// or negative falls back to the default.
+func (s SwarmConfig) MaxActiveSchedules() int {
+	if s.ScheduleMaxActive <= 0 {
+		return DefaultScheduleMaxActive
+	}
+	return s.ScheduleMaxActive
+}
+
 // ProxyConfig is the outbound proxy applied to network tools.
 type ProxyConfig struct {
 	HTTP    string `yaml:"http" json:"http"`
@@ -454,9 +494,16 @@ const (
 	DefaultGoalMaxAutoTurns         = 12
 	DefaultGoalSessionMaxIterations = 40
 	DefaultGoalAutoCompactPercent   = 80
-	DefaultWebSearchResults         = 8
-	DefaultProviderID               = "default"
-	DefaultLogLevel                 = "info"
+	// Floor for a schedule cadence so a hand-edit cannot arm a loop
+	// faster than a human can cancel it.
+	DefaultScheduleMinIntervalSeconds = 30
+	// Once a second is frequent enough that a due wake is not a minute
+	// late, and rare enough that idle SQLite lookups stay cheap.
+	DefaultScheduleTickMS    = 1000
+	DefaultScheduleMaxActive = 32
+	DefaultWebSearchResults  = 8
+	DefaultProviderID        = "default"
+	DefaultLogLevel          = "info"
 	// Listing models is a cheap GET; a chat-length timeout would leave the
 	// Settings dialog spinning on a hung endpoint.
 	DefaultDiscoverTimeout = 15 * time.Second
@@ -492,19 +539,22 @@ func Default() *Config {
 			}},
 		},
 		Swarm: SwarmConfig{
-			MaxConcurrent:            DefaultMaxConcurrent,
-			AgentTimeoutSeconds:      DefaultAgentTimeoutSeconds,
-			MaxTurns:                 DefaultMaxTurns,
-			ManagerMaxIterations:     DefaultManagerIterations,
-			ProgressIntervalSeconds:  DefaultProgressIntervalSeconds,
-			DeltaCoalesceMS:          DefaultDeltaCoalesceMS,
-			AutoTitle:                true,
-			ContextCharBudget:        DefaultContextCharBudget,
-			CompactKeepMessages:      DefaultCompactKeepMessages,
-			AutoCompactTokens:        DefaultAutoCompactTokens,
-			GoalMaxAutoTurns:         DefaultGoalMaxAutoTurns,
-			GoalSessionMaxIterations: DefaultGoalSessionMaxIterations,
-			GoalAutoCompactPercent:   DefaultGoalAutoCompactPercent,
+			MaxConcurrent:              DefaultMaxConcurrent,
+			AgentTimeoutSeconds:        DefaultAgentTimeoutSeconds,
+			MaxTurns:                   DefaultMaxTurns,
+			ManagerMaxIterations:       DefaultManagerIterations,
+			ProgressIntervalSeconds:    DefaultProgressIntervalSeconds,
+			DeltaCoalesceMS:            DefaultDeltaCoalesceMS,
+			AutoTitle:                  true,
+			ContextCharBudget:          DefaultContextCharBudget,
+			CompactKeepMessages:        DefaultCompactKeepMessages,
+			AutoCompactTokens:          DefaultAutoCompactTokens,
+			GoalMaxAutoTurns:           DefaultGoalMaxAutoTurns,
+			GoalSessionMaxIterations:   DefaultGoalSessionMaxIterations,
+			GoalAutoCompactPercent:     DefaultGoalAutoCompactPercent,
+			ScheduleMinIntervalSeconds: DefaultScheduleMinIntervalSeconds,
+			ScheduleTickMS:             DefaultScheduleTickMS,
+			ScheduleMaxActive:          DefaultScheduleMaxActive,
 		},
 		Tools: ToolsConfig{
 			Disabled:            []string{},
@@ -673,6 +723,15 @@ func (c *Config) normalize() {
 		c.Swarm.GoalAutoCompactPercent = d.Swarm.GoalAutoCompactPercent
 	} else if c.Swarm.GoalAutoCompactPercent > 100 {
 		c.Swarm.GoalAutoCompactPercent = 100
+	}
+	if c.Swarm.ScheduleMinIntervalSeconds <= 0 {
+		c.Swarm.ScheduleMinIntervalSeconds = d.Swarm.ScheduleMinIntervalSeconds
+	}
+	if c.Swarm.ScheduleTickMS <= 0 {
+		c.Swarm.ScheduleTickMS = d.Swarm.ScheduleTickMS
+	}
+	if c.Swarm.ScheduleMaxActive <= 0 {
+		c.Swarm.ScheduleMaxActive = d.Swarm.ScheduleMaxActive
 	}
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults
