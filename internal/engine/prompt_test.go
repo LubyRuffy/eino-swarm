@@ -81,6 +81,9 @@ func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
 		"You can have 6 sub-agents running at once",
 		"Use that budget when the work has that many independent parts",
 		"Two writers on the same path conflict",
+		"schedule_wake",
+		"do not wait for the human to remind",
+		"report_schedule",
 	} {
 		if !strings.Contains(prompt, need) {
 			t.Fatalf("missing %q:\n%s", need, prompt)
@@ -104,6 +107,9 @@ func TestOpenGoalPrefersProactiveDelegation(t *testing.T) {
 	}
 	if !strings.Contains(open, "Spawning one worker and then waiting is not a win") {
 		t.Fatal("an open goal must not treat a one-worker wait as a swarm")
+	}
+	if !strings.Contains(open, "A pending wake is the next turn") {
+		t.Fatal("an open goal must not imply every ended wait-turn auto-continues immediately")
 	}
 	done := goalSection("keep going", true, false, "")
 	if strings.Contains(done, "Prefer sub-agents") {
@@ -131,9 +137,59 @@ func TestManagerPromptSaysWorkersShareWorkspaceTools(t *testing.T) {
 	}
 }
 
+func TestManagerPromptWaitingCopyStaysGeneric(t *testing.T) {
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	for _, need := range []string{
+		"## Waiting",
+		"schedule_wake",
+		"do not wait for the human to remind",
+		"report_schedule",
+		"schedule_task",
+	} {
+		if !strings.Contains(prompt, need) {
+			t.Fatalf("missing %q:\n%s", need, prompt)
+		}
+	}
+	ask := strings.Index(prompt, "## Asking the human")
+	wait := strings.Index(prompt, "## Waiting")
+	if ask < 0 || wait < ask {
+		t.Fatalf("Waiting must follow Asking the human:\n%s", prompt)
+	}
+	for _, leak := range []string{"deploy", "pull request", "cron job"} {
+		if strings.Contains(strings.ToLower(prompt), leak) {
+			t.Fatalf("Waiting copy leaked %q:\n%s", leak, prompt)
+		}
+	}
+	if managerPromptHasCIToken(prompt) {
+		t.Fatal(`Waiting copy leaked "CI"`)
+	}
+}
+
+// "CI" as a token, not the letters inside "specific".
+func managerPromptHasCIToken(s string) bool {
+	lower := strings.ToLower(s)
+	for i := 0; i+2 <= len(lower); i++ {
+		if lower[i:i+2] != "ci" {
+			continue
+		}
+		if i > 0 && managerPromptIdentByte(lower[i-1]) {
+			continue
+		}
+		if i+2 < len(lower) && managerPromptIdentByte(lower[i+2]) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func managerPromptIdentByte(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '_'
+}
+
 func TestConversationExtraPutsPlanAfterTheGoal(t *testing.T) {
 	th := &store.Thread{Goal: "keep going", PlanMode: true, PlanMarkdown: "# Plan\n"}
-	extra := conversationExtra(th, nil)
+	extra := conversationExtra(th, nil, "")
 	if i, j := strings.Index(extra, "## Goal"), strings.Index(extra, "## Plan"); i < 0 || j < i {
 		t.Fatalf("plan must come after the goal:\n%s", extra)
 	}
@@ -141,7 +197,7 @@ func TestConversationExtraPutsPlanAfterTheGoal(t *testing.T) {
 
 func TestConversationExtraPutsGoalLast(t *testing.T) {
 	th := &store.Thread{Goal: "keep going", CompactSummary: "briefing"}
-	extra := conversationExtra(th, nil)
+	extra := conversationExtra(th, nil, "")
 	if !strings.Contains(extra, "## Earlier conversation") || !strings.Contains(extra, "briefing") {
 		t.Fatalf("missing briefing:\n%s", extra)
 	}
@@ -158,12 +214,169 @@ func TestConversationExtraOmitsATranscriptCompactSummary(t *testing.T) {
 		Goal:           "keep going",
 		CompactSummary: `Tool: {"elapsed_ms":1,"full_command":"ls","truncated":false}`,
 	}
-	extra := conversationExtra(th, nil)
+	extra := conversationExtra(th, nil, "")
 	if strings.Contains(extra, "Earlier conversation") || strings.Contains(extra, "elapsed_ms") {
 		t.Fatalf("a stored dump must not be fed to the manager:\n%s", extra)
 	}
 	if !strings.Contains(extra, "keep going") {
 		t.Fatalf("the goal vanished:\n%s", extra)
+	}
+}
+
+func TestConversationExtraListsOpenWakes(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	sch, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := conversationExtra(th, nil, e.scheduleLines(th.ID))
+	if !strings.Contains(extra, "## Scheduled") {
+		t.Fatalf("open wakes must land in extra:\n%s", extra)
+	}
+	if !strings.Contains(extra, sch.ID) {
+		t.Fatalf("missing id:\n%s", extra)
+	}
+	if !strings.Contains(extra, sch.NextRunAt.UTC().Format(time.RFC3339)) {
+		t.Fatalf("missing next:\n%s", extra)
+	}
+	if !strings.Contains(extra, "cadence=every") {
+		t.Fatalf("missing cadence type:\n%s", extra)
+	}
+	if !strings.Contains(extra, scheduleWaitPrompt) {
+		t.Fatalf("missing prompt head:\n%s", extra)
+	}
+}
+
+func TestConversationExtraOmitsInactiveAndForeignWakes(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	other, _ := e.CreateThread("", "", "")
+	own, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: other.ID,
+		Prompt: "Continue the other wait.", EveryS: 60,
+		CreatedBy: store.ScheduleCreatedManager,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleStandalone, OriginThreadID: th.ID,
+		Prompt: "Continue the independent job.", EveryS: 60,
+		CreatedBy: store.ScheduleCreatedHuman,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	paused, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: "Continue the paused wait.", EveryS: 120,
+		CreatedBy: store.ScheduleCreatedManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().UpdateSchedule(paused.ID, map[string]any{"status": store.SchedulePaused}); err != nil {
+		t.Fatal(err)
+	}
+	extra := conversationExtra(th, nil, e.scheduleLines(th.ID))
+	if !strings.Contains(extra, own.ID) {
+		t.Fatalf("the active wake vanished:\n%s", extra)
+	}
+	if strings.Contains(extra, other.ID) {
+		t.Fatalf("another conversation's wake leaked:\n%s", extra)
+	}
+	if strings.Contains(extra, "independent job") {
+		t.Fatalf("a standalone job is not a wake on this thread:\n%s", extra)
+	}
+	if strings.Contains(extra, paused.ID) || strings.Contains(extra, "paused wait") {
+		t.Fatalf("a paused wake must not occupy extra:\n%s", extra)
+	}
+}
+
+func TestEmptyScheduleLinesAddNothing(t *testing.T) {
+	th := &store.Thread{Goal: "keep going"}
+	extra := conversationExtra(th, nil, "  \n")
+	if strings.Contains(extra, "## Scheduled") {
+		t.Fatalf("blank schedule lines must omit the heading:\n%s", extra)
+	}
+}
+
+func TestScheduleLinesEmptyWhenNothingIsArmed(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	if got := e.scheduleLines(th.ID); got != "" {
+		t.Fatalf("an idle conversation leaked wakes:\n%s", got)
+	}
+	if got := e.scheduleLines(""); got != "" {
+		t.Fatalf("blank id leaked %q", got)
+	}
+	var none *Engine
+	if got := none.scheduleLines("th_x"); got != "" {
+		t.Fatalf("nil engine leaked %q", got)
+	}
+}
+
+func TestScheduleSectionFormatsCadenceTypes(t *testing.T) {
+	next := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	got := scheduleSection([]store.Schedule{
+		{ID: "sch_delay", DelayS: 30, NextRunAt: next, Prompt: scheduleWaitPrompt},
+		{ID: "sch_cron", Cron: "expr", NextRunAt: next, Prompt: scheduleWaitPrompt},
+		{ID: "sch_none", NextRunAt: next, Prompt: scheduleWaitPrompt},
+	})
+	if got == "" {
+		t.Fatal("rows must emit a section")
+	}
+	if !strings.Contains(got, "cadence=delay") || !strings.Contains(got, "cadence=cron") {
+		t.Fatalf("cadence types missing:\n%s", got)
+	}
+	if !strings.Contains(got, "next=2026-09-18T12:00:00Z") {
+		t.Fatalf("next missing:\n%s", got)
+	}
+	if scheduleSection(nil) != "" {
+		t.Fatal("no rows must omit the heading")
+	}
+}
+
+func TestPromptHeadIsOneLineAndTruncates(t *testing.T) {
+	if got := promptHead("  Continue\nthe wait.  "); got != "Continue the wait." {
+		t.Fatalf("got %q", got)
+	}
+	long := strings.Repeat("wait ", 40)
+	got := promptHead(long)
+	if strings.ContainsAny(got, "\n\r") {
+		t.Fatal("head must be one line")
+	}
+	if !strings.HasSuffix(got, "…") {
+		t.Fatalf("want truncated, got %q", got)
+	}
+	if r := []rune(got); len(r) != schedulePromptHeadRunes+1 {
+		t.Fatalf("len=%d", len(r))
+	}
+}
+
+func TestManagerExtraKeepsScheduleLinesWithoutAThread(t *testing.T) {
+	extra := managerExtra(&config.Config{}, nil, nil, "## Scheduled\n\n- id=sch_x\n")
+	if !strings.Contains(extra, "## Scheduled") || !strings.Contains(extra, "sch_x") {
+		t.Fatalf("schedule lines dropped:\n%s", extra)
+	}
+}
+
+func TestConversationExtraPutsScheduledBeforeThePlan(t *testing.T) {
+	th := &store.Thread{Goal: "keep going", PlanMode: true, PlanMarkdown: "# Plan\n"}
+	extra := conversationExtra(th, nil, "## Scheduled\n\n- id=sch_x next=x cadence=every prompt=head\n")
+	if i, j := strings.Index(extra, "## Scheduled"), strings.Index(extra, "## Plan"); i < 0 || j < i {
+		t.Fatalf("plan must stay last:\n%s", extra)
 	}
 }
 
@@ -212,7 +425,7 @@ func TestEmptyPersonalityAddsNothingToTheManagerPrompt(t *testing.T) {
 	if got := PersonalityPrompt("  \n\t"); got != "" {
 		t.Fatalf("blank personality must omit the section, got %q", got)
 	}
-	extra := managerExtra(&config.Config{}, nil, nil)
+	extra := managerExtra(&config.Config{}, nil, nil, "")
 	if extra != "" {
 		t.Fatalf("empty config must add nothing, got %q", extra)
 	}
@@ -228,7 +441,7 @@ func TestPersonalityLandsBeforeTheProjectInstruction(t *testing.T) {
 	cfg := &config.Config{Personality: config.PersonalityConfig{Instructions: persona}}
 	pc := &projectContext{sections: "## This project\n\n" + project + "\n"}
 	th := &store.Thread{CompactSummary: "briefing", Goal: "keep going"}
-	extra := managerExtra(cfg, th, pc)
+	extra := managerExtra(cfg, th, pc, "")
 	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, cfg, extra)
 
 	if !strings.Contains(prompt, persona) {

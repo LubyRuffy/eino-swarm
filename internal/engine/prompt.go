@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -32,9 +33,9 @@ import (
 //
 // extra carries what this conversation adds on top of the generic manager
 // prompt: personal preferences, a compact briefing, a project's
-// instruction/notes/skills, and a standing goal. It goes last so those are
-// the most recent thing the model read. Empty for a conversation that has
-// none of those.
+// instruction/notes/skills, a standing goal, and open wakes. It goes last
+// so those are the most recent thing the model read. Empty for a
+// conversation that has none of those.
 func ManagerPrompt(set *tools.Set, cfg *config.Config, extra string) string {
 	var b strings.Builder
 
@@ -144,6 +145,25 @@ use this to confirm an obvious next step.
 
 `)
 
+	b.WriteString(`## Waiting
+
+When progress is gated on time or a condition that is not worth polling in this
+turn, call schedule_wake and end the turn. Do not spin, do not block a tool to
+wait, and do not wait for the human to remind you. Do not schedule work that
+can finish now. Do not use a wake instead of ask_user.
+
+Busy ticks are skipped; choose a cadence that can miss a beat. A pending wake
+pauses /goal auto-continue until it fires.
+
+schedule_task only when the human asked for an independent recurring job, or
+after ask_user confirms the spec — never from a scheduled or auto-continued
+turn.
+
+On a scheduled turn: do the check, then report_schedule. Empty findings
+archives the run. Cancel when the wait is over.
+
+`)
+
 	b.WriteString(`## Answering
 
 Write in Markdown. Answer in the language the human is using. Lead with the
@@ -199,25 +219,28 @@ func JoinPromptSections(parts ...string) string {
 
 // managerExtra is the tail handed to ManagerPrompt: personality first, then
 // the per-conversation extra, so a project's instruction is read later and
-// wins when the two conflict.
-func managerExtra(cfg *config.Config, th *store.Thread, pc *projectContext) string {
+// wins when the two conflict. scheduleLines is the open-wake section for
+// this conversation; it is folded into the conversation extra so the model
+// can upsert instead of minting a second wait.
+func managerExtra(cfg *config.Config, th *store.Thread, pc *projectContext, scheduleLines string) string {
 	var persona string
 	if cfg != nil {
 		persona = PersonalityPrompt(cfg.Personality.Instructions)
 	}
 	var conv string
 	if th != nil {
-		conv = conversationExtra(th, pc)
+		conv = conversationExtra(th, pc, scheduleLines)
+		scheduleLines = ""
 	} else if pc != nil {
 		conv = pc.promptSections()
 	}
-	return JoinPromptSections(persona, conv)
+	return JoinPromptSections(persona, conv, scheduleLines)
 }
 
 // conversationExtra is the per-conversation tail of the manager prompt.
-// Compact first (old context), then the project, then the goal, then the plan
-// so a live plan is the last thing the model read.
-func conversationExtra(th *store.Thread, pc *projectContext) string {
+// Compact first (old context), then the project, then the goal, then open
+// wakes, then the plan so a live plan is the last thing the model read.
+func conversationExtra(th *store.Thread, pc *projectContext, scheduleLines string) string {
 	var parts []string
 	if th != nil {
 		if s := compactSection(th.CompactSummary); s != "" {
@@ -233,6 +256,11 @@ func conversationExtra(th *store.Thread, pc *projectContext) string {
 		if s := goalSection(th.Goal, th.GoalComplete, th.GoalBlocked, th.GoalBlockReason); s != "" {
 			parts = append(parts, s)
 		}
+	}
+	if s := strings.TrimSpace(scheduleLines); s != "" {
+		parts = append(parts, s)
+	}
+	if th != nil {
 		if s := planSection(th.PlanMode, th.PlanMarkdown); s != "" {
 			parts = append(parts, s)
 		}
@@ -263,11 +291,80 @@ func goalSection(goal string, complete, blocked bool, reason string) string {
 		}
 		return body + goal + "\n"
 	}
-	return "## Goal\n\nThe human set a standing objective for this conversation. Keep pursuing it across turns until you call complete_goal or block_goal, or they change or clear it. Later messages steer; they do not replace this objective unless they say so. Do not ask whether to continue. Do not wait for a free-form chat line. To ask a material question, call ask_user; that pauses this turn. Do not use complete_goal or block_goal to ask.\n\nA turn ends when you stop calling tools and write a progress report. That does not shrink the objective; the runtime starts the next turn. End a turn when a deliverable slice is done, when you are polling a live process or job that is still running, or when the next useful action needs a fresh turn. Do not keep calling tools only to hold the turn open. A verified wait polls a handle that is confirmed live now; an observation timeout is not terminal — re-poll or inspect state, do not restart because observation expired.\n\nDo not call complete_goal until current evidence proves the objective is satisfied. Do not keep retrying a path that cannot work. Prefer sub-agents whenever they would save time or improve quality. Spawning one worker and then waiting is not a win unless it isolates a large or noisy job.\n\ncomplete_goal(summary?) records that the objective is done. The runtime then stops starting new turns for it.\n\nblock_goal(reason?) records that the same genuine blocker has already repeated for at least three consecutive turns, counting the original turn and automatic continuations, and meaningful progress needs the human or an external change. The runtime then stops starting new turns until they resume. Do not call this because the work is hard, slow, or uncertain. After a resume, treat the blocked audit as fresh.\n\n" + goal + "\n"
+	return "## Goal\n\nThe human set a standing objective for this conversation. Keep pursuing it across turns until you call complete_goal or block_goal, or they change or clear it. Later messages steer; they do not replace this objective unless they say so. Do not ask whether to continue. Do not wait for a free-form chat line. To ask a material question, call ask_user; that pauses this turn. Do not use complete_goal or block_goal to ask.\n\nA turn ends when you stop calling tools and write a progress report. That does not shrink the objective. A pending wake is the next turn; the runtime does not auto-continue while one is armed. Without a wake, the runtime starts the next turn. End a turn when a deliverable slice is done, when you are polling a live process or job that is still running, or when the next useful action needs a fresh turn. Do not keep calling tools only to hold the turn open. A verified wait polls a handle that is confirmed live now; an observation timeout is not terminal — re-poll or inspect state, do not restart because observation expired.\n\nDo not call complete_goal until current evidence proves the objective is satisfied. Do not keep retrying a path that cannot work. Prefer sub-agents whenever they would save time or improve quality. Spawning one worker and then waiting is not a win unless it isolates a large or noisy job.\n\ncomplete_goal(summary?) records that the objective is done. The runtime then stops starting new turns for it.\n\nblock_goal(reason?) records that the same genuine blocker has already repeated for at least three consecutive turns, counting the original turn and automatic continuations, and meaningful progress needs the human or an external change. The runtime then stops starting new turns until they resume. Do not call this because the work is hard, slow, or uncertain. After a resume, treat the blocked audit as fresh.\n\n" + goal + "\n"
 }
 
 // GoalPrompt is the standing-objective section for hosts that are not the
 // conversation engine (the one-shot TUI). Empty goal yields empty.
 func GoalPrompt(goal string, complete bool) string {
 	return strings.TrimSpace(goalSection(goal, complete, false, ""))
+}
+
+const schedulePromptHeadRunes = 80
+
+// scheduleLines is the ## Scheduled extra for this conversation's active
+// wakes. Empty when none are armed. Standalone jobs originated here stay
+// out: they are not waits on this thread.
+func (e *Engine) scheduleLines(threadID string) string {
+	if e == nil || e.store == nil || threadID == "" {
+		return ""
+	}
+	rows, err := e.store.ListSchedules()
+	if err != nil {
+		return ""
+	}
+	return scheduleSection(threadActiveWakes(rows, threadID))
+}
+
+func threadActiveWakes(rows []store.Schedule, threadID string) []store.Schedule {
+	if threadID == "" {
+		return nil
+	}
+	var out []store.Schedule
+	for _, row := range rows {
+		if row.Kind != store.ScheduleThread || row.ThreadID != threadID || row.Status != store.ScheduleActive {
+			continue
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+func scheduleSection(rows []store.Schedule) string {
+	if len(rows) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("## Scheduled\n\nOpen waits on this conversation. Upsert by id instead of creating a second.\n\n")
+	for _, row := range rows {
+		fmt.Fprintf(&b, "- id=%s next=%s cadence=%s prompt=%s\n",
+			row.ID,
+			row.NextRunAt.UTC().Format(time.RFC3339),
+			cadenceType(row),
+			promptHead(row.Prompt),
+		)
+	}
+	return b.String()
+}
+
+func cadenceType(row store.Schedule) string {
+	switch {
+	case strings.TrimSpace(row.Cron) != "":
+		return "cron"
+	case row.EveryS != 0:
+		return "every"
+	case row.DelayS != 0:
+		return "delay"
+	default:
+		return ""
+	}
+}
+
+func promptHead(prompt string) string {
+	prompt = strings.Join(strings.Fields(prompt), " ")
+	r := []rune(prompt)
+	if len(r) <= schedulePromptHeadRunes {
+		return prompt
+	}
+	return string(r[:schedulePromptHeadRunes]) + "…"
 }

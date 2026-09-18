@@ -27,7 +27,7 @@ func TestSetThreadGoalRidesInLaterPrompts(t *testing.T) {
 	if got.GoalStartedAt == nil || got.GoalStartedAt.IsZero() {
 		t.Fatal("setting a goal must stamp when it started")
 	}
-	extra := conversationExtra(got, nil)
+	extra := conversationExtra(got, nil, "")
 	if !strings.Contains(extra, "## Goal") || !strings.Contains(extra, got.Goal) {
 		t.Fatalf("later turns would not see the goal:\n%s", extra)
 	}
@@ -46,7 +46,7 @@ func TestSetThreadGoalRidesInLaterPrompts(t *testing.T) {
 	if got.Goal != "" {
 		t.Fatalf("clear left %q", got.Goal)
 	}
-	if extra := conversationExtra(got, nil); extra != "" {
+	if extra := conversationExtra(got, nil, ""); extra != "" {
 		t.Fatalf("a cleared goal still injects:\n%s", extra)
 	}
 	if got.GoalStartedAt != nil {
@@ -749,7 +749,7 @@ func TestEditThreadGoalKeepsABlockAndNotifiesLaterPrompts(t *testing.T) {
 	if got.Goal != "keep going, with a tighter stop" || !got.GoalBlocked {
 		t.Fatalf("edit must keep the block: %+v", got)
 	}
-	extra := conversationExtra(got, nil)
+	extra := conversationExtra(got, nil, "")
 	if !strings.Contains(extra, got.Goal) || !strings.Contains(extra, "needs an external change") {
 		t.Fatalf("later turns would not see the edited blocked goal:\n%s", extra)
 	}

@@ -133,6 +133,12 @@ flowchart LR
    human-originated (`!GoalContinue && !ScheduleContinue && !ImplementPlan`).
    `report_schedule` fails unless `ScheduleContinue`; empty findings are
    quiet. Workers get JSON deny stubs (`workers cannot schedule`).
+   The manager prompt has a generic `## Waiting` section after Asking the
+   human: gated progress calls `schedule_wake` and ends the turn; it must
+   not spin, block a tool, or wait for the human to remind it. Open wakes
+   for this conversation are injected in extra (`## Scheduled`) so the
+   model can upsert. A pending wake is the next `/goal` turn — ending a
+   wait-turn does not imply an immediate auto-continue.
 3. The manager's system prompt is generated per turn from the live toolset, the
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home).    It is
@@ -150,7 +156,8 @@ flowchart LR
    per role.
    When `personality.instructions` is set, a Personality section is appended
    next: personal preferences, not a task. A project's instruction, notes and
-   skills index follow it, then a standing `/goal`, an open `/plan` (or the
+   skills index follow it, then a standing `/goal`, open wakes on this
+   conversation, an open `/plan` (or the
    accepted plan body on the execute turn), and a `/compact` briefing
    so those are the most recent thing the model read. If personality and a
    project instruction conflict, the project wins. Empty personality omits
@@ -166,7 +173,8 @@ flowchart LR
    until the human hits Start or sends a message — the banner Play control
    is resume, not a gap between auto-continue sessions. A `/goal` turn ends
    when the manager stops calling tools (a final assistant message with no
-   further tools). The runtime then starts the next turn. Token pressure
+   further tools). The runtime then starts the next turn, unless a pending
+   wake is armed — that wake is the next turn. Token pressure
    compact in place; it is not a turn boundary.
    A continuation that finishes with no counted tool activity records
    `goal_idle` and stops auto-continue until a human message or resume.

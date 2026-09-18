@@ -20,6 +20,14 @@ co-working app built on it. The library API is unchanged except where noted
   findings return `{ok,quiet}`). Workers get a JSON deny stub. The ticker
   that fires due waits is not in this change.
 
+- **Waiting on the manager prompt.** When progress is gated on time or a
+  condition that is not worth polling in this turn, the manager is told to
+  call `schedule_wake` and end the turn — not to spin, block a tool, or wait
+  for the human to remind it. Open wakes for this conversation land in extra
+  (`## Scheduled`: id, next, cadence type, prompt head) so it can upsert.
+  `schedule_task` only when the human asked, or after `ask_user`. A scheduled
+  turn reports through `report_schedule`.
+
 - **Live `exec` output.** While a shell command still runs, Web and TUI stream
   stdout/stderr into the pending tool row (`tool_delta`, broadcast only, keyed
   by `tool_call_id`). The model still gets one JSON `tool_result`. A `\r` in
@@ -342,6 +350,9 @@ co-working app built on it. The library API is unchanged except where noted
   retried; it does not call the tool itself.
 
 ### Changed
+
+- **An open `/goal` no longer promises an immediate auto-continue after every
+  wait-turn.** A pending wake is the next turn until it fires.
 
 - **`ask_user` is a question dialog, not a chip row.** Numbered choices,
   a radio list, Other only after that row is picked, then Submit. Same

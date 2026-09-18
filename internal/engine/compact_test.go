@@ -80,7 +80,7 @@ func TestCompactFoldsOlderReplayAndKeepsRecent(t *testing.T) {
 		t.Fatalf("the kept tail vanished:\n%s", joined.String())
 	}
 
-	extra := conversationExtra(got, nil)
+	extra := conversationExtra(got, nil, "")
 	if !strings.Contains(extra, got.CompactSummary) {
 		t.Fatal("later turns would not see the briefing")
 	}

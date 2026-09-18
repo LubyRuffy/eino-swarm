@@ -133,6 +133,11 @@ this conversation, `schedule_task` refuses a `GoalContinue` /
 `ScheduleContinue` / plan-implement turn, empty `report_schedule` findings
 are quiet, garbage arguments come back as JSON `ok:false`, Info text stays
 generic, and workers get a deny stub.
+`internal/engine/prompt_test.go` is why the manager prompt has `## Waiting`
+(`schedule_wake`, do not wait for the human to remind, `report_schedule`)
+without CI / deploy / pull-request / cron-job samples, why an open `/goal`
+names a pending wake as the next turn, and why extra lists this
+conversation's active wakes from a real `CreateSchedule` row.
 `internal/engine/plan_test.go` is why planning unmounts write/exec,
 `propose_plan` writes the file, Implement remounts those tools,
 deleting a conversation takes `PLAN.md` with it, and

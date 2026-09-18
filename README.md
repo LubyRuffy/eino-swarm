@@ -61,7 +61,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   follow-up.
 - **Scheduled waits.** The manager can arm a wake on this conversation
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
-  Cancel by id. A scheduled check reports through `report_schedule`; empty
+  When progress is gated on time or a condition not worth polling now, it is
+  told to wake and end the turn instead of spinning or asking you to remind
+  it. Cancel by id. A scheduled check reports through `report_schedule`; empty
   findings stay quiet. Workers cannot schedule.
 - **`/plan` before changing anything.** Planning unmounts write/edit/exec
   (and similar). The manager explores, asks, and writes `$ZWAI_HOME/plans/<thread>/PLAN.md`.
