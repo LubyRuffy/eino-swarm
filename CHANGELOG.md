@@ -178,6 +178,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A scheduled check with no `schedule_report` and an empty `done` hides
+  the fired chip.** The engine already archives that turn as quiet; the
+  transcript reducer only quieted empty `schedule_report` payloads, so
+  the "Scheduled check." notice stayed. Empty or whitespace `done` after
+  a fired chip now marks the turn quiet and drops its chat bubbles.
+  Non-empty `done` is findings. Ordinary empty `done` is unchanged.
+
 - **Inbox create and the schedule ticker share one frozen cap.**
   `StartScheduler` already snapshotted `schedule_max_active` /
   `schedule_min_interval_seconds` (and now the default provider) so a

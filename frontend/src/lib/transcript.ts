@@ -211,7 +211,7 @@ export function reduceEvent(
     retractedSteers: state.retractedSteers,
     quietTurns: state.quietTurns?.slice(),
   }
-  if (applyScheduleEvent(next, ev)) return sealQuietTurns(next)
+  if (applyScheduleEvent(next, ev)) return sealQuietTurns(next, ev)
   if (ev.kind === "steer_preempted") {
     return next
   }
@@ -592,7 +592,7 @@ export function reduceEvent(
       append(agent, block(ev, "notice", ev.text ?? ev.kind))
   }
 
-  return sealQuietTurns(next)
+  return sealQuietTurns(next, ev)
 }
 
 /** Sub-agents still working, as the event stream last left them. The heartbeat
@@ -722,7 +722,7 @@ export function placePendingEdit(
     running: true,
     pulse: undefined,
     retractedSteers: state.retractedSteers,
-    quietTurns: state.quietTurns,
+    quietTurns: state.quietTurns?.slice(),
   }
   const agent = touchAgent(next, MANAGER_ID)
   agent.blocks = agent.blocks.filter((b) => b.id !== PENDING_EDIT_ID)

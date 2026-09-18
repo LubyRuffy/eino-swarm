@@ -56,11 +56,25 @@ export function applyScheduleEvent(state: TranscriptState, ev: SwarmEvent): bool
   }
 }
 
-/** Later deltas / answers for a quiet turn_id must not grow the bubbles back. */
-export function sealQuietTurns(state: TranscriptState): TranscriptState {
+/** Later deltas / answers for a quiet turn_id must not grow the bubbles back.
+ *  Pass the current event: an empty `done` after a fired chip is the omitted-report
+ *  quiet path. Ordinary empty `done` has no notice on that turn and stays visible. */
+export function sealQuietTurns(state: TranscriptState, ev?: SwarmEvent): TranscriptState {
+  if (ev && isOmittedQuietDone(state, ev)) {
+    markQuiet(state, ev.turn_id)
+    dropQuietChat(state, ev.turn_id)
+  }
   for (const id of state.quietTurns ?? []) dropQuietChat(state, id)
   hideScheduledCheckUser(state)
   return state
+}
+
+function isOmittedQuietDone(state: TranscriptState, ev: SwarmEvent): boolean {
+  if (ev.kind !== "done" || (ev.text?.trim() ?? "") !== "") return false
+  if (!ev.turn_id) return false
+  return Object.values(state.agents).some((agent) =>
+    agent.blocks.some((b) => b.turnId === ev.turn_id && b.kind === "notice"),
+  )
 }
 
 function isQuietReport(text?: string): boolean {

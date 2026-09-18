@@ -207,4 +207,61 @@ describe("scheduled-task transcript notices", () => {
     expect(state.quietTurns).toContain("tn_e")
     expect(chatKinds(state, "tn_e").filter((b) => b.kind === "answer")).toEqual([])
   })
+
+  it("quiets a scheduled turn that finished empty without a report", () => {
+    const quiet = fold([
+      ev({ kind: "schedule_fired", turn_id: "tn_q", text: "Scheduled check." }),
+      ev({ kind: "done", turn_id: "tn_q", text: "" }),
+    ])
+    expect(quiet.quietTurns ?? []).toContain("tn_q")
+    expect(quiet.turns.find((t) => t.id === "tn_q")?.quiet).toBe(true)
+    const leftover = (manager(quiet).blocks ?? []).filter((b) => b.turnId === "tn_q")
+    expect(
+      leftover.filter((b) => ["notice", "user", "answer", "tool", "reasoning"].includes(b.kind)),
+    ).toEqual([])
+
+    const later = fold(
+      [
+        ev({ kind: "delta", turn_id: "tn_q", text: "late" }),
+        ev({ kind: "agent_message", turn_id: "tn_q", text: "late" }),
+      ],
+      quiet,
+    )
+    expect(
+      chatKinds(later, "tn_q").filter((b) =>
+        ["notice", "user", "answer", "tool", "reasoning"].includes(b.kind),
+      ),
+    ).toEqual([])
+  })
+
+  it("quiets a scheduled turn whose done text is only whitespace", () => {
+    const quiet = fold([
+      ev({ kind: "schedule_fired", turn_id: "tn_w", text: "Scheduled check." }),
+      ev({ kind: "done", turn_id: "tn_w", text: "  \n" }),
+    ])
+    expect(quiet.quietTurns ?? []).toContain("tn_w")
+    expect(chatKinds(quiet, "tn_w").filter((b) => b.kind === "notice")).toEqual([])
+  })
+
+  it("keeps the fired chip when an omitted report still has a final", () => {
+    const state = fold([
+      ev({ kind: "schedule_fired", turn_id: "tn_f", text: "Scheduled check." }),
+      ev({ kind: "done", turn_id: "tn_f", text: "one thing changed" }),
+    ])
+    const blocks = chatKinds(state, "tn_f")
+    expect(blocks.map((b) => b.kind)).toEqual(["notice"])
+    expect(blocks[0].text).toBe("Scheduled check.")
+    expect(state.quietTurns ?? []).not.toContain("tn_f")
+    expect(state.turns.find((t) => t.id === "tn_f")?.quiet).not.toBe(true)
+  })
+
+  it("does not quiet an ordinary empty done", () => {
+    const state = fold([
+      ev({ kind: "user_message", turn_id: "tn_o", text: "hello" }),
+      ev({ kind: "done", turn_id: "tn_o", text: "" }),
+    ])
+    expect(state.quietTurns ?? []).not.toContain("tn_o")
+    expect(state.turns.find((t) => t.id === "tn_o")?.quiet).not.toBe(true)
+    expect(chatKinds(state, "tn_o").some((b) => b.kind === "user")).toBe(true)
+  })
 })

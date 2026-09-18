@@ -476,6 +476,7 @@ POST   /api/schedules/runs/:rid/read
 - `schedule` → notice (not a user bubble)
 - `schedule_fired` → running turn, notice chip, **not** kind user
 - `schedule_report` with empty findings → mark that `turn_id` quiet; drop user/answer/tool bubbles for it (keep events out of the chat list)
+- empty / whitespace `done` after `schedule_fired` with no `schedule_report` → same quiet drop (`sealQuietTurns(state, ev)`). Non-empty `done` is findings (keep the chip). Ordinary empty `done` is not quiet.
 - `schedule_skipped` → no block
 - `schedule_cancelled` → notice
 
