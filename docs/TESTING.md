@@ -403,10 +403,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   `done` keeps the wait notice, and an ordinary empty `done` stays
   visible. `compact-notice.test.tsx` clicks that icon. `schedule-notice.test.tsx`
   cancels an armed wait when `detail` is a `sch_` id and does not treat a
-  cancelled notice as a briefing. `schedule-inbox.test.tsx` /
+  cancelled notice as a briefing.   `schedule-inbox.test.tsx` /
   `schedule-banner.test.tsx` / `app-schedule.test.ts` cover the sidebar
-  section, pause/run-now/create labels, unread badge, busy run-now error, and
-  the composer wake banner. A `session_memory` event is
+  dialog trigger (`aria-haspopup="dialog"`, unread in the accessible name),
+  pause/run-now/create labels, unread badge, busy run-now `skipped_busy` as a
+  labelled alert inside the inbox dialog, and the composer wake banner. A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /
   `goal_continued` turns fold behind a one-line Worked-for row in

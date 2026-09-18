@@ -14,17 +14,18 @@ co-working app built on it. The library API is unchanged except where noted
 ### Added
 
 - **Scheduled inbox, wake banner, and Swarm caps.** The sidebar **Scheduled**
-  section (`data-testid="schedule-inbox"`) opens a dialog: list waits
-  (pause/resume/cancel/Run now), create a standalone job (title, prompt,
-  exactly one of delay / interval / cron, optional project), and open unread
-  findings in that fire's conversation. An active thread wake on the open
-  conversation gets a composer banner (next check + cancel). An armed
-  `schedule` notice Cancel is `DELETE /api/schedules/:id`. Settings → Swarm
-  edits `schedule_min_interval_seconds` / `schedule_tick_ms` /
+  control (`data-testid="schedule-inbox"`, `aria-haspopup="dialog"`) opens a
+  dialog: list waits (pause/resume/cancel/Run now), create a standalone job
+  (title, prompt, exactly one of delay / interval / cron, optional project),
+  and open unread findings in that fire's conversation. Unread counts belong
+  in the trigger's accessible name, not only the badge. An active thread wake
+  on the open conversation gets a composer banner (next check + cancel). An
+  armed `schedule` notice Cancel is `DELETE /api/schedules/:id`. Settings →
+  Swarm edits `schedule_min_interval_seconds` / `schedule_tick_ms` /
   `schedule_max_active` (defaults 30 / 1000 / 32) as part of the whole swarm
   object so a PUT cannot zero the Go struct. Chrome strings are in `en`/`zh`.
-  Run-now while busy sets a localized error (`skipped_busy`) instead of
-  crashing the store.
+  Run-now while busy sets a localized error (`skipped_busy`) inside the inbox
+  dialog.
 
 - **Scheduled-task inbox HTTP API.** Same-origin `GET/POST /api/schedules`,
   get/patch/delete one wait, `POST /api/schedules/:id/run` (202, even when
@@ -190,6 +191,14 @@ co-working app built on it. The library API is unchanged except where noted
     `Close` still stop them).
 
 ### Fixed
+
+- **Scheduled is a dialog trigger; busy run-now errors show in the inbox.**
+  The sidebar control used a collapsed `SidebarSection`, so a screen reader
+  heard a fold and the chevron lied. It is now `aria-haspopup="dialog"` with
+  `aria-expanded` tied to the inbox, no chevron, and unread in the accessible
+  name (`Scheduled, 2 unread`). Run-now `skipped_busy` used to set `store.error`
+  behind the dialog overlay; the dialog now shows that string as a labelled
+  `role="alert"`, and closing the inbox clears it.
 
 - **Empty `done` only quiets fired scheduled turns.** The reducer used to
   treat any notice on the turn as `schedule_fired`, so arming a wait,

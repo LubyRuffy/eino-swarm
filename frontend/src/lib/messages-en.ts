@@ -37,6 +37,7 @@ export const en = {
   "sidebar.delete": "Delete",
   "sidebar.pinned": "Pinned",
   "sidebar.scheduled": "Scheduled",
+  "sidebar.scheduledUnread": "Scheduled, {n} unread",
   "sidebar.recents": "Recents",
   "sidebar.pin": "Pin",
   "sidebar.unpin": "Unpin",
@@ -373,6 +374,7 @@ export const en = {
   "schedule.openFindings": "Open findings",
   "schedule.skippedBusy": "The conversation is already running a turn.",
   "schedule.waiting": "Waiting",
+  "schedule.error": "Error",
 
   "settings.title": "Settings",
   "settings.back": "Back to app",

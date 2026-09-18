@@ -38,6 +38,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "sidebar.delete": "删除",
   "sidebar.pinned": "置顶",
   "sidebar.scheduled": "定时",
+  "sidebar.scheduledUnread": "定时，{n} 条未读",
   "sidebar.recents": "最近",
   "sidebar.pin": "置顶",
   "sidebar.unpin": "取消置顶",
@@ -354,6 +355,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "schedule.openFindings": "打开发现",
   "schedule.skippedBusy": "当前会话正在进行回合。",
   "schedule.waiting": "等待中",
+  "schedule.error": "错误",
 
   "settings.title": "设置",
   "settings.back": "返回应用",

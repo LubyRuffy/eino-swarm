@@ -27,6 +27,39 @@ import { useProjects } from "@/store/projects"
 
 type Cadence = "delay" | "every" | "cron"
 
+/** Sidebar control that opens the inbox. A fold chevron here would lie:
+ *  this is a dialog trigger, not a collapsed disclosure. */
+export function ScheduleInboxTrigger() {
+  const t = useT()
+  const unread = useApp((s) => s.scheduleUnread)
+  const open = useApp((s) => s.scheduleInboxOpen)
+  const openInbox = useApp((s) => s.openScheduleInbox)
+  const name =
+    unread > 0 ? t("sidebar.scheduledUnread", { n: unread }) : t("sidebar.scheduled")
+  return (
+    <section className="mb-2">
+      <button
+        type="button"
+        data-testid="schedule-inbox"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={name}
+        onClick={() => openInbox()}
+        className="flex h-7 w-full items-center gap-2 px-2 text-left text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60"
+      >
+        <span className="min-w-0 flex-1 truncate" aria-hidden="true">
+          {t("sidebar.scheduled")}
+        </span>
+        {unread > 0 ? (
+          <Badge data-testid="schedule-unread" aria-hidden="true">
+            {unread}
+          </Badge>
+        ) : null}
+      </button>
+    </section>
+  )
+}
+
 function formatWhen(iso: string): string {
   const at = new Date(iso)
   if (Number.isNaN(at.getTime())) return iso
@@ -38,6 +71,7 @@ export function ScheduleInbox() {
   const t = useT()
   const open = useApp((s) => s.scheduleInboxOpen)
   const close = useApp((s) => s.closeScheduleInbox)
+  const error = useApp((s) => s.error)
   const schedules = useApp((s) => s.schedules)
   const patchSchedule = useApp((s) => s.patchSchedule)
   const deleteSchedule = useApp((s) => s.deleteSchedule)
@@ -100,6 +134,15 @@ export function ScheduleInbox() {
           <DialogTitle>{t("schedule.inboxTitle")}</DialogTitle>
           <DialogDescription>{t("schedule.inboxHint")}</DialogDescription>
         </DialogHeader>
+        {error ? (
+          <div
+            role="alert"
+            aria-label={t("schedule.error")}
+            className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </div>
+        ) : null}
         {schedules.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("schedule.empty")}</p>
         ) : (

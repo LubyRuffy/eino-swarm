@@ -35,13 +35,10 @@ type ScheduleHost = {
   error?: string
 }
 
+type ScheduleStatePatch = Partial<ScheduleSlice> & Partial<Pick<ScheduleHost, "error">>
+
 type SetSchedule = (
-  partial:
-    | Partial<ScheduleSlice>
-    | Partial<Pick<ScheduleHost, "error">>
-    | ((
-        s: ScheduleSlice & ScheduleHost,
-      ) => Partial<ScheduleSlice> | Partial<Pick<ScheduleHost, "error">>),
+  partial: ScheduleStatePatch | ((s: ScheduleSlice & ScheduleHost) => ScheduleStatePatch),
 ) => void
 
 /** Inbox actions. Kept out of app.ts so that file stays under 1000 lines. */
@@ -120,6 +117,6 @@ export function scheduleActions(
       void get().refreshSchedules()
     },
 
-    closeScheduleInbox: () => set({ scheduleInboxOpen: false }),
+    closeScheduleInbox: () => set({ scheduleInboxOpen: false, error: undefined }),
   }
 }

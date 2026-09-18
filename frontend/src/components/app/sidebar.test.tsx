@@ -49,6 +49,9 @@ describe("Sidebar chrome", () => {
 
   it("always offers the Scheduled inbox section", () => {
     render(<Sidebar threads={[]} {...noop} />)
+    const trigger = screen.getByRole("button", { name: /Scheduled/ })
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog")
+    expect(trigger.querySelector("[data-testid=section-fold]")).toBeNull()
     expect(screen.getByTestId("schedule-inbox")).toBeInTheDocument()
   })
 

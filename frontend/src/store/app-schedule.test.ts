@@ -188,6 +188,15 @@ describe("schedule store", () => {
     )
   })
 
+  it("clears that error when the inbox closes", async () => {
+    fake.runBusy = true
+    await useApp.getState().runScheduleNow("sch_1")
+    useApp.getState().openScheduleInbox()
+    useApp.getState().closeScheduleInbox()
+    expect(useApp.getState().scheduleInboxOpen).toBe(false)
+    expect(useApp.getState().error).toBeUndefined()
+  })
+
   it("refreshes waits when the live stream arms, reports, or cancels one", async () => {
     await useApp.getState().boot()
     const afterBoot = fake.listed

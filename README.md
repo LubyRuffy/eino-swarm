@@ -63,7 +63,7 @@ uploads, downloads and the live event stream have exactly one implementation.
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   When progress is gated on time or a condition not worth polling now, it is
   told to wake and end the turn instead of spinning or asking you to remind
-  it. The sidebar **Scheduled** section is the inbox: pause, resume, cancel,
+  it. The sidebar **Scheduled** control opens the inbox dialog: pause, resume, cancel,
   Run now, or add a standalone job. An active wake on the open conversation
   shows a banner with the next check and Cancel. Cancel by id also works from
   the armed-wait notice. A scheduled check reports through `report_schedule`;
