@@ -59,6 +59,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   every card. The same ReAct turn continues after the answer. Workers cannot
   ask. While a card is waiting, Enter in the composer is Other, not a
   follow-up.
+- **Scheduled waits.** The manager can arm a wake on this conversation
+  (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
+  Cancel by id. A scheduled check reports through `report_schedule`; empty
+  findings stay quiet. Workers cannot schedule.
 - **`/plan` before changing anything.** Planning unmounts write/edit/exec
   (and similar). The manager explores, asks, and writes `$ZWAI_HOME/plans/<thread>/PLAN.md`.
   Edit it on the banner, then **Implement** to remount those tools and start

@@ -215,6 +215,7 @@ func (e *Engine) wireWorkerSurface(reg *swarm.Registry, toolset *tools.Set, pc *
 	workers = append(workers, AskUserTool(func(context.Context, []AskQuestion) (AskAnswers, error) {
 		return nil, fmt.Errorf("workers cannot ask")
 	}))
+	workers = append(workers, denyScheduleTools()...)
 	reg.SubAgentTools = workers
 	reg.WorkerPreamble = JoinPromptSections(HostEnvironmentPrompt(), pc.workerPreambleTail())
 	reg.ToolOutputBinder = tools.BindExecOutput

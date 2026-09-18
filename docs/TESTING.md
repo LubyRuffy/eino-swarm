@@ -128,6 +128,11 @@ user task; `/goals` still is. `/plan` is the same parse; a live turn is
 turn until an answer, idle answers are `ErrIdle`, a wrong `call_id` is
 `ErrAskMismatch`, interrupt cancels the wait, resume re-arms an orphaned
 questionnaire instead of swallowing it, and a worker call fails in JSON.
+`internal/engine/schedule_tool_test.go` is why `schedule_wake` upserts on
+this conversation, `schedule_task` refuses a `GoalContinue` /
+`ScheduleContinue` / plan-implement turn, empty `report_schedule` findings
+are quiet, garbage arguments come back as JSON `ok:false`, Info text stays
+generic, and workers get a deny stub.
 `internal/engine/plan_test.go` is why planning unmounts write/exec,
 `propose_plan` writes the file, Implement remounts those tools,
 deleting a conversation takes `PLAN.md` with it, and

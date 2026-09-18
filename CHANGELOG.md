@@ -13,6 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Manager schedule tools.** The manager can arm a wait on this conversation
+  (`schedule_wake`; optional id upserts instead of minting a second), arm an
+  independent job on a human-originated turn (`schedule_task`), cancel by id
+  (`cancel_schedule`), and report a scheduled check (`report_schedule`; empty
+  findings return `{ok,quiet}`). Workers get a JSON deny stub. The ticker
+  that fires due waits is not in this change.
+
 - **Live `exec` output.** While a shell command still runs, Web and TUI stream
   stdout/stderr into the pending tool row (`tool_delta`, broadcast only, keyed
   by `tool_call_id`). The model still gets one JSON `tool_result`. A `\r` in

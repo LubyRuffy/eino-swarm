@@ -25,7 +25,8 @@ over one concurrency-safe registry:
 Give sub-agents `SendTool()` as well and any agent can message any other (a mesh
 rather than a star).
 
-HITL tools (`ask_user`, `propose_plan`, `complete_goal`, `block_goal`) are
+HITL tools (`ask_user`, `propose_plan`, `complete_goal`, `block_goal`,
+`schedule_wake`, `schedule_task`, `cancel_schedule`, `report_schedule`) are
 **not** on `Registry.Tools()`. The app engine and TUI bind them on the manager
 only. A library consumer that does not ask a human does not get them.
 

@@ -74,6 +74,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		)
 	}
 	managerTools = append(managerTools, AskUserTool(rt.waitAsk))
+	managerTools = append(managerTools, rt.managerScheduleTools(turn)...)
 	budget := e.cfg.Swarm.ManagerIterations()
 	if pursuingGoal(th) {
 		budget = e.cfg.Swarm.GoalSessionIterations()

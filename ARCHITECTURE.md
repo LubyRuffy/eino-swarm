@@ -127,6 +127,12 @@ flowchart LR
    `$ZWAI_HOME/plans/<thread>/PLAN.md` and emits `plan_updated`. Implement
    clears the flag, remounts those tools, and starts an execute turn with a
    generic cue (it does not resume a paused `/goal`).
+   The manager also gets `schedule_wake`, `schedule_task`, `cancel_schedule`,
+   and `report_schedule` next to `ask_user`. `schedule_wake` upserts a wait
+   on this conversation. `schedule_task` fails unless the current turn is
+   human-originated (`!GoalContinue && !ScheduleContinue && !ImplementPlan`).
+   `report_schedule` fails unless `ScheduleContinue`; empty findings are
+   quiet. Workers get JSON deny stubs (`workers cannot schedule`).
 3. The manager's system prompt is generated per turn from the live toolset, the
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home).    It is

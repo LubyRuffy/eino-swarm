@@ -91,18 +91,9 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 	}
 
 	now := time.Now().UTC()
-	var next time.Time
-	switch {
-	case spec.delay != 0:
-		// nextAfter is zero for a one-shot. The first due time is now+delay.
-		next = now.Add(spec.delay)
-	case spec.every != 0:
-		next = now.Add(spec.every)
-	default:
-		next = spec.nextAfter(now)
-		if next.IsZero() {
-			return nil, fmt.Errorf("engine: cron has no next run")
-		}
+	next, err := firstRunAt(spec, now)
+	if err != nil {
+		return nil, err
 	}
 
 	row := &store.Schedule{
@@ -132,6 +123,23 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 	}
 	e.recordScheduleArmed(row)
 	return row, nil
+}
+
+// firstRunAt is the initial due time. nextAfter is for the fire AFTER a
+// successful run; a one-shot delay is due now+delay here and zero later.
+func firstRunAt(spec scheduleSpec, now time.Time) (time.Time, error) {
+	switch {
+	case spec.delay != 0:
+		return now.Add(spec.delay), nil
+	case spec.every != 0:
+		return now.Add(spec.every), nil
+	default:
+		next := spec.nextAfter(now)
+		if next.IsZero() {
+			return time.Time{}, fmt.Errorf("engine: cron has no next run")
+		}
+		return next, nil
+	}
 }
 
 func (e *Engine) recordScheduleArmed(row *store.Schedule) {
