@@ -63,8 +63,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   When progress is gated on time or a condition not worth polling now, it is
   told to wake and end the turn instead of spinning or asking you to remind
-  it. Cancel by id. A scheduled check reports through `report_schedule`; empty
-  findings stay quiet. Workers cannot schedule.
+  it. The sidebar **Scheduled** section is the inbox: pause, resume, cancel,
+  Run now, or add a standalone job. An active wake on the open conversation
+  shows a banner with the next check and Cancel. Cancel by id also works from
+  the armed-wait notice. A scheduled check reports through `report_schedule`;
+  empty findings stay quiet. Quiet standalone runs stay out of Recents;
+  findings open from the inbox. Workers cannot schedule. Caps live in
+  Settings → Swarm.
 - **`/plan` before changing anything.** Planning unmounts write/edit/exec
   (and similar). The manager explores, asks, and writes `$ZWAI_HOME/plans/<thread>/PLAN.md`.
   Edit it on the banner, then **Implement** to remount those tools and start

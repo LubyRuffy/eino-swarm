@@ -55,5 +55,8 @@ afterEach(async () => {
     locale: "en",
     theme: "system",
     ...defaultAppearance(),
+    schedules: [],
+    scheduleUnread: 0,
+    scheduleInboxOpen: false,
   })
 })

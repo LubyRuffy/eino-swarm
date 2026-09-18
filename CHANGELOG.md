@@ -13,6 +13,19 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Scheduled inbox, wake banner, and Swarm caps.** The sidebar **Scheduled**
+  section (`data-testid="schedule-inbox"`) opens a dialog: list waits
+  (pause/resume/cancel/Run now), create a standalone job (title, prompt,
+  exactly one of delay / interval / cron, optional project), and open unread
+  findings in that fire's conversation. An active thread wake on the open
+  conversation gets a composer banner (next check + cancel). An armed
+  `schedule` notice Cancel is `DELETE /api/schedules/:id`. Settings → Swarm
+  edits `schedule_min_interval_seconds` / `schedule_tick_ms` /
+  `schedule_max_active` (defaults 30 / 1000 / 32) as part of the whole swarm
+  object so a PUT cannot zero the Go struct. Chrome strings are in `en`/`zh`.
+  Run-now while busy sets a localized error (`skipped_busy`) instead of
+  crashing the store.
+
 - **Scheduled-task inbox HTTP API.** Same-origin `GET/POST /api/schedules`,
   get/patch/delete one wait, `POST /api/schedules/:id/run` (202, even when
   `next_run_at` is still future), and `POST /api/schedules/runs/:rid/read`.

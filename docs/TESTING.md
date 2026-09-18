@@ -16,7 +16,7 @@ deterministic and fast enough to run on every change.
 |---|---|---|
 | Go unit tests | config, store, memory, provider, tools, engine, server, CLI, TUI, and the swarm library | `go test -race -cover ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd) | `go test ./internal/server/` |
-| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`) | `cd frontend && npm test` |
+| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice cancel / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`) | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width | `cd frontend && npm run e2e` |
 
 Current Go coverage, from `go test -race -cover ./...`:
@@ -401,7 +401,12 @@ Several things are tested here, some as pure logic and some in jsdom:
   or `schedule_report` keeps the fired chip then the answer (including when
   empty `done` follows a findings report), an armed `schedule` plus empty
   `done` keeps the wait notice, and an ordinary empty `done` stays
-  visible. `compact-notice.test.tsx` clicks that icon. A `session_memory` event is
+  visible. `compact-notice.test.tsx` clicks that icon. `schedule-notice.test.tsx`
+  cancels an armed wait when `detail` is a `sch_` id and does not treat a
+  cancelled notice as a briefing. `schedule-inbox.test.tsx` /
+  `schedule-banner.test.tsx` / `app-schedule.test.ts` cover the sidebar
+  section, pause/run-now/create labels, unread badge, busy run-now error, and
+  the composer wake banner. A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /
   `goal_continued` turns fold behind a one-line Worked-for row in

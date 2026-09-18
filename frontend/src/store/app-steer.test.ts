@@ -45,6 +45,7 @@ vi.mock("@/lib/api", () => {
       agentLog: async () => ({ events: [] }),
       files: async () => ({ workspace: "/tmp/ws", files: [] }),
       followups: async () => [],
+      schedules: async () => ({ schedules: [], unread: 0 }),
       preempt: async (id: string) => {
         if (fake.preemptCode) {
           throw new ApiError("no unread steering", 409, fake.preemptCode)

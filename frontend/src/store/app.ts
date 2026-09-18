@@ -45,6 +45,7 @@ import type {
 } from "@/lib/types"
 import { useProjects } from "./projects"
 import { planAskActions } from "./app-plan"
+import { scheduleActions, type ScheduleSlice } from "./app-schedule"
 import { steerInjectActions } from "./app-steer"
 import { dropQueued, queueEvent, withRunningClock } from "./app-stream"
 import { managerHasVisibleBlocks } from "@/lib/welcome"
@@ -61,7 +62,7 @@ import {
 
 export type Theme = "light" | "dark" | "system"
 
-interface AppState {
+interface AppState extends ScheduleSlice {
   meta?: Meta
   models: ModelInfo[]
   threads: Thread[]
@@ -185,6 +186,7 @@ export const useApp = create<AppState>((set, get) => ({
         useProjects.getState().refresh(),
       ])
       set({ meta, models: models.models, threads })
+      await get().refreshSchedules()
       if (meta.ui) {
         get().setAppearance(normalizeAppearance(meta.ui), { persist: false })
       }
@@ -205,6 +207,7 @@ export const useApp = create<AppState>((set, get) => ({
     } catch (e) {
       set({ error: message(e) })
     }
+    await get().refreshSchedules()
   },
 
   refreshCatalogs: async () => {
@@ -585,6 +588,8 @@ export const useApp = create<AppState>((set, get) => ({
     fail: message,
     withRunningClock,
   }),
+
+  ...scheduleActions(set, get, { fail: message }),
 
   ...steerInjectActions(set, get, message),
 

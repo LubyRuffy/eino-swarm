@@ -327,6 +327,12 @@ export interface SwarmLimits {
   goal_session_max_iterations?: number
   /** Context fullness (1-100) that compact-before-continue uses. */
   goal_auto_compact_percent?: number
+  /** Shortest cadence a wait may use, in seconds. */
+  schedule_min_interval_seconds?: number
+  /** How often the process looks for due waits, in milliseconds. */
+  schedule_tick_ms?: number
+  /** Schedule runs that may execute at once. */
+  schedule_max_active?: number
 }
 
 export interface ProviderSettings {

@@ -32,6 +32,7 @@ export type StreamSnapshot = {
   refreshFiles: () => Promise<void>
   refreshThreads: () => Promise<void>
   refreshFollowups: () => Promise<void>
+  refreshSchedules: () => Promise<void>
 }
 
 type StreamSet = (
@@ -118,6 +119,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
   let threads = state.threads
   let usage = state.usage
   let closed = false
+  let schedulesDirty = false
   for (const ev of events) {
     rememberStored(threadId, ev)
     if (ev.kind === "rewound") {
@@ -173,6 +175,9 @@ function flushQueued(set: StreamSet, get: StreamGet) {
         t.id === threadId ? { ...t, compacted: true } : t,
       )
     }
+    if (ev.kind === "schedule" || ev.kind === "schedule_cancelled" || ev.kind === "schedule_report") {
+      schedulesDirty = true
+    }
     if (ev.kind === "usage") {
       const next = parseUsage(ev.text)
       if (next) usage = next
@@ -194,6 +199,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     }
   }
   set({ transcript, status, threads, usage })
+  if (schedulesDirty) void get().refreshSchedules()
   if (closed) {
     void get().refreshFiles()
     void get().refreshThreads()

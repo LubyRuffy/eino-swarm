@@ -16,7 +16,17 @@ export function SwarmTab({
 }) {
   const t = useT()
   const update = (patch: Partial<Settings["swarm"]>) =>
-    onChange({ ...settings, swarm: { ...settings.swarm, ...patch } })
+    onChange({
+      ...settings,
+      swarm: {
+        ...settings.swarm,
+        schedule_min_interval_seconds:
+          settings.swarm.schedule_min_interval_seconds ?? 30,
+        schedule_tick_ms: settings.swarm.schedule_tick_ms ?? 1000,
+        schedule_max_active: settings.swarm.schedule_max_active ?? 32,
+        ...patch,
+      },
+    })
   return (
     <SettingsPage
       title={t("settings.swarm.title")}
@@ -204,6 +214,51 @@ export function SwarmTab({
             value={settings.swarm.goal_auto_compact_percent}
             onChange={(e) =>
               update({ goal_auto_compact_percent: Number(e.target.value) })
+            }
+          />
+        </Field>
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.swarm.schedules")}>
+        <Field
+          query={query}
+          label={t("settings.swarm.scheduleMin")}
+          hint={t("settings.swarm.scheduleMinHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.swarm.schedule_min_interval_seconds ?? 30}
+            onChange={(e) =>
+              update({ schedule_min_interval_seconds: Number(e.target.value) })
+            }
+          />
+        </Field>
+        <Field
+          query={query}
+          label={t("settings.swarm.scheduleTick")}
+          hint={t("settings.swarm.scheduleTickHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.swarm.schedule_tick_ms ?? 1000}
+            onChange={(e) =>
+              update({ schedule_tick_ms: Number(e.target.value) })
+            }
+          />
+        </Field>
+        <Field
+          query={query}
+          label={t("settings.swarm.scheduleMax")}
+          hint={t("settings.swarm.scheduleMaxHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.swarm.schedule_max_active ?? 32}
+            onChange={(e) =>
+              update({ schedule_max_active: Number(e.target.value) })
             }
           />
         </Field>

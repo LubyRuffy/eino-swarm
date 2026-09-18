@@ -2,12 +2,14 @@ import { MessageSquarePlus, Search, Settings } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { ProjectList } from "@/components/app/project-list"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import { ResizeHandle } from "@/components/app/resize-handle"
 import { SidebarSection } from "@/components/app/sidebar-section"
 import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
+import { ScheduleInbox } from "@/components/app/schedule-inbox"
 import {
   isProjectExpanded,
   readProjectExpanded,
@@ -27,6 +29,7 @@ import {
 } from "@/lib/sidebar-width"
 import type { Project, SkillInfo, Thread } from "@/lib/types"
 import { useT } from "@/lib/use-t"
+import { useApp } from "@/store/app"
 
 /** Conversations, grouped the way people remember them: pins to watch,
  *  project folders, Recents for everything else. */
@@ -74,6 +77,8 @@ export function Sidebar({
   onPin: (id: string, pinned: boolean) => void
 }) {
   const t = useT()
+  const scheduleUnread = useApp((s) => s.scheduleUnread)
+  const openScheduleInbox = useApp((s) => s.openScheduleInbox)
   const buckets = useMemo(() => sidebarBuckets(threads), [threads])
   const [startWidth] = useState(hydrateSidebarWidth)
   const [doomed, setDoomed] = useState<Thread>()
@@ -212,6 +217,18 @@ export function Sidebar({
             {t("sidebar.empty")}
           </p>
         ) : null}
+
+        <SidebarSection
+          testId="schedule-inbox"
+          label={t("sidebar.scheduled")}
+          open={false}
+          onToggle={() => openScheduleInbox()}
+          actions={
+            scheduleUnread > 0 ? (
+              <Badge data-testid="schedule-unread">{scheduleUnread}</Badge>
+            ) : null
+          }
+        />
       </div>
 
       <div className="flex items-center justify-between border-t border-sidebar-border px-3 py-2">
@@ -235,6 +252,7 @@ export function Sidebar({
           if (doomed) onDelete(doomed.id)
         }}
       />
+      <ScheduleInbox />
     </aside>
   )
 }

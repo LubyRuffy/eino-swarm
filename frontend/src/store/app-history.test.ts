@@ -54,6 +54,7 @@ vi.mock("@/lib/api", () => {
       }),
       files: async () => ({ workspace: "/tmp/ws", files: [] }),
       followups: async () => [],
+      schedules: async () => ({ schedules: [], unread: 0 }),
     },
   }
 })

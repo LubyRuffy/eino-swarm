@@ -213,6 +213,7 @@ vi.mock("@/lib/api", () => {
       agentLog: async () => ({ events: [] }),
       files: async () => ({ workspace: "/tmp/ws", files: [] }),
       followups: async () => fake.queuedItems,
+      schedules: async () => ({ schedules: [], unread: 0 }),
       enqueueFollowup: async (id: string, text: string) => {
         if (fake.enqueueIdle) {
           throw new ApiError("the conversation is not running", 409, "idle")

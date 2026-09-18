@@ -112,6 +112,16 @@ describe("localizeNotice", () => {
       ),
     ).toBe("已压缩上下文（91200 → 1400 tokens）。你看到的记录不变。")
     expect(localizeNotice("a model wrote this", "zh")).toBe("a model wrote this")
+    expect(localizeNotice("A wait is armed.", "zh")).toBe("已设置等待。")
+    expect(localizeNotice("A wait was cancelled.", "zh")).toBe("等待已取消。")
+    expect(localizeNotice("Scheduled check.", "zh")).toBe("定时检查。")
+  })
+
+  it("keeps schedule chrome generic", () => {
+    const blob = `${JSON.stringify(en)}\n${JSON.stringify(zh)}`
+    expect(blob).not.toMatch(/GitHub|github\.com/i)
+    expect(blob).not.toMatch(/0 \d+ \* \*/)
+    expect(blob.toLowerCase()).not.toMatch(/\bdeploy\b/)
   })
 })
 

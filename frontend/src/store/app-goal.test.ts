@@ -48,6 +48,7 @@ vi.mock("@/lib/api", () => {
       agentLog: async () => ({ events: [] }),
       files: async () => ({ workspace: "/tmp/ws", files: [] }),
       followups: async () => [],
+      schedules: async () => ({ schedules: [], unread: 0 }),
       patchThread: async (
         id: string,
         patch: {
