@@ -13,6 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Scheduled-task inbox HTTP API.** Same-origin `GET/POST /api/schedules`,
+  get/patch/delete one wait, `POST /api/schedules/:id/run` (202, even when
+  `next_run_at` is still future), and `POST /api/schedules/runs/:rid/read`.
+  List returns `{schedules, unread}` where `unread` counts runs with
+  `unread=true`. Run-now while the target conversation is busy is `409`
+  `code: skipped_busy`.
+
 - **Quiet scheduled checks archive like Codex.** Empty `report_schedule`
   findings, or a finished scheduled turn with no answer, close the run as
   `quiet` (unread cleared, `turn.quiet`). A manager answer without a report

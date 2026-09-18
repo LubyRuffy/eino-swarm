@@ -16,8 +16,8 @@ desktop mode (printed on startup and used by the window).
 | status | meaning |
 |---|---|
 | `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory |
-| `404` | no such conversation / turn / file / project / skill / unread steer |
-| `409` | `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write |
+| `404` | no such conversation / turn / file / project / skill / unread steer / schedule / schedule run |
+| `409` | `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed |
 | `429` | too many terminals are already open |
 | `501` | the shell cannot do this (`reveal` / `open` outside the desktop app) |
 
@@ -983,6 +983,78 @@ is false, so the UI uses a new tab (`window.open`) instead. Only absolute
 `http`/`https` URLs are accepted (`400` otherwise). The webview must never
 navigate to the destination — that would replace the app with a third-party
 page.
+
+## Scheduled tasks
+
+Same-origin only: mutating `/api/schedules` with a non-loopback `Origin` is
+`403`. No CORS headers.
+
+A wait is a `schedule` row. Each fire (or skipped tick) is a `run`. Inbox
+`unread` is a **count** of runs with `unread=true`. Quiet runs are not unread.
+
+`POST /api/schedules/runs/:rid/read` is registered before
+`/api/schedules/:id` so `runs` is not captured as an id.
+
+### `GET /api/schedules?status=&kind=`
+
+Returns every wait, optionally filtered. `unread` is the global unread count,
+not the filtered subset.
+
+```json
+{"schedules": [
+  {"id": "sch_ab12…", "kind": "thread", "thread_id": "th_ab12…",
+   "origin_thread_id": "th_ab12…", "title": "wake", "prompt": "…",
+   "every_s": 60, "status": "active", "next_run_at": "2026-09-19T02:00:00.000Z",
+   "created_by": "human", "…": "…"}
+], "unread": 2}
+```
+
+`kind` is `thread` (wake an existing conversation) or `standalone` (mint a
+conversation per fire). `status` is `active`, `paused`, `done`, or
+`cancelled`.
+
+### `POST /api/schedules` → `201`
+
+Body: `kind`, `thread_id`, `origin_thread_id`, `project_id`, `provider_id`,
+`model`, `title`, `prompt`, exactly one of `delay_s` / `every_s` / `cron`,
+optional `max_runs`, optional `until` (RFC 3339). `created_by` is always
+`human`; the body cannot set it. Thread wakes need `thread_id`. Responds
+`{"schedule": {…}}`.
+
+### `GET /api/schedules/:id`
+
+The row plus its runs, oldest first. Missing ids are `404`.
+
+```json
+{"schedule": {"id": "sch_ab12…", "…": "…"},
+ "runs": [{"id": "srun_cd34…", "status": "findings", "unread": true,
+           "summary": "…", "thread_id": "th_ab12…", "turn_id": "tn_cd34…"}]}
+```
+
+### `PATCH /api/schedules/:id`
+
+Pause/resume with `{"status": "paused"}` or `"active"`. Also `title`,
+`prompt`, and cadence. When cadence changes, send exactly one of `delay_s`,
+`every_s`, or `cron` (the others are cleared and `next_run_at` is recomputed
+from now). Cancel is `DELETE`, not a status patch. Responds
+`{"schedule": {…}}`.
+
+### `DELETE /api/schedules/:id` → `204`
+
+Cancels an active or paused wait. A second delete of an already-cancelled
+row is `204`. Unknown ids are `404`.
+
+### `POST /api/schedules/:id/run` → `202`
+
+Fires now, even when `next_run_at` is still in the future. Body none.
+Responds `{"turn": {…}}` like `POST /api/threads/:id/turns`. The turn is
+`schedule_continue`. A paused, done, or cancelled wait is `400`. While the
+target conversation is running (or planning), or a fire is already claimed:
+`409` with `code: "skipped_busy"`.
+
+### `POST /api/schedules/runs/:rid/read` → `204`
+
+Clears `unread` on that run. Missing ids are `404`. Already-read is `204`.
 
 ## Troubleshooting
 

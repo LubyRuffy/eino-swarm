@@ -281,6 +281,35 @@ func (s *Store) GetRun(id string) (*ScheduleRun, error) {
 	return &run, nil
 }
 
+// MarkRunRead clears unread on one fire. Map Updates so false is written;
+// a struct patch would leave findings stuck unread. Missing ids are
+// ErrNotFound. Already-read is a no-op, not a 404.
+func (s *Store) MarkRunRead(id string) error {
+	now := time.Now().UTC()
+	res := s.db.Model(&ScheduleRun{}).Where("id = ?", id).Updates(map[string]any{
+		"unread":     false,
+		"updated_at": now,
+	})
+	if res.Error != nil {
+		return fmt.Errorf("store: mark schedule run read: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		if _, err := s.GetRun(id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CountUnreadRuns is the inbox badge: findings and errors, not quiet.
+func (s *Store) CountUnreadRuns() (int, error) {
+	var n int64
+	if err := s.db.Model(&ScheduleRun{}).Where("unread = ?", true).Count(&n).Error; err != nil {
+		return 0, fmt.Errorf("store: count unread schedule runs: %w", err)
+	}
+	return int(n), nil
+}
+
 // FinishRun closes a fire with the status the inbox reads. Unread is passed
 // as a map value so a quiet run can actually clear the flag — struct Updates
 // would drop the false.

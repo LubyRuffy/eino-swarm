@@ -54,6 +54,13 @@ func TestEndpointsFailCleanlyWithoutADatabase(t *testing.T) {
 		{http.MethodGet, "/api/threads/" + id + "/events", nil},
 		{http.MethodGet, "/api/threads/" + id + "/log", nil},
 		{http.MethodGet, "/api/trace/anything", nil},
+		{http.MethodGet, "/api/schedules", nil},
+		{http.MethodPost, "/api/schedules", map[string]any{"kind": "standalone", "prompt": "Continue the wait.", "every_s": 60}},
+		{http.MethodGet, "/api/schedules/sch_x", nil},
+		{http.MethodPatch, "/api/schedules/sch_x", map[string]any{"status": "paused"}},
+		{http.MethodDelete, "/api/schedules/sch_x", nil},
+		{http.MethodPost, "/api/schedules/sch_x/run", nil},
+		{http.MethodPost, "/api/schedules/runs/srun_x/read", nil},
 	} {
 		resp := h.do(tc.method, tc.path, tc.body)
 		body, _ := io.ReadAll(resp.Body)
@@ -81,6 +88,7 @@ func TestMalformedBodiesAreRejected(t *testing.T) {
 		"/api/threads/" + id + "/continue",
 		"/api/threads/" + id + "/reveal",
 		"/api/open",
+		"/api/schedules",
 	} {
 		resp := h.do(http.MethodPost, path, "\"not an object\"")
 		resp.Body.Close()

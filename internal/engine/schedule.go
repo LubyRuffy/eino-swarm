@@ -225,6 +225,89 @@ func (e *Engine) PatchSchedule(id, status string) (*store.Schedule, error) {
 	return e.store.GetSchedule(id)
 }
 
+// GetSchedule loads one wait. Missing ids are ErrNotFound.
+func (e *Engine) GetSchedule(id string) (*store.Schedule, error) {
+	return e.store.GetSchedule(id)
+}
+
+// ListRuns returns every fire of one wait, oldest first.
+func (e *Engine) ListRuns(scheduleID string) ([]store.ScheduleRun, error) {
+	return e.store.ListRuns(scheduleID)
+}
+
+// MarkRunRead clears unread on one fire.
+func (e *Engine) MarkRunRead(id string) error {
+	return e.store.MarkRunRead(id)
+}
+
+// CountUnreadRuns is the inbox badge.
+func (e *Engine) CountUnreadRuns() (int, error) {
+	return e.store.CountUnreadRuns()
+}
+
+// ScheduleFields is an HTTP PATCH. Status is pause/resume; cadence is
+// exactly one of DelayS, EveryS, or Cron when any of those is set.
+type ScheduleFields struct {
+	Status *string
+	Title  *string
+	Prompt *string
+	DelayS *int
+	EveryS *int
+	Cron   *string
+}
+
+// PatchScheduleFields applies an inbox edit. Pause/resume still goes
+// through PatchSchedule so the active cap stays one code path.
+func (e *Engine) PatchScheduleFields(id string, p ScheduleFields) (*store.Schedule, error) {
+	if _, err := e.store.GetSchedule(id); err != nil {
+		return nil, err
+	}
+	fields := map[string]any{}
+	if p.Title != nil {
+		fields["title"] = strings.TrimSpace(*p.Title)
+	}
+	if p.Prompt != nil {
+		prompt := strings.TrimSpace(*p.Prompt)
+		if prompt == "" {
+			return nil, fmt.Errorf("engine: a schedule needs a prompt")
+		}
+		fields["prompt"] = prompt
+	}
+	if p.DelayS != nil || p.EveryS != nil || p.Cron != nil {
+		delay, every, cron := 0, 0, ""
+		if p.DelayS != nil {
+			delay = *p.DelayS
+		}
+		if p.EveryS != nil {
+			every = *p.EveryS
+		}
+		if p.Cron != nil {
+			cron = strings.TrimSpace(*p.Cron)
+		}
+		spec, err := parseScheduleSpec(delay, every, cron, e.cfg.Swarm.ScheduleMinInterval())
+		if err != nil {
+			return nil, err
+		}
+		next, err := firstRunAt(spec, time.Now().UTC())
+		if err != nil {
+			return nil, err
+		}
+		fields["delay_s"] = delay
+		fields["every_s"] = every
+		fields["cron"] = cron
+		fields["next_run_at"] = next
+	}
+	if len(fields) > 0 {
+		if err := e.store.UpdateSchedule(id, fields); err != nil {
+			return nil, err
+		}
+	}
+	if p.Status != nil {
+		return e.PatchSchedule(id, *p.Status)
+	}
+	return e.store.GetSchedule(id)
+}
+
 // finishScheduledRun closes the claimed fire after FinishTurn. It does not
 // take fireMu: the ticker only claims, and this turn is already done racing
 // StartTurn. A run that is no longer `running` is a no-op so a second call

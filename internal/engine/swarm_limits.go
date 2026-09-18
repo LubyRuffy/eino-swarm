@@ -19,6 +19,7 @@ func (e *Engine) bindSwarmLimits(reg *swarm.Registry) {
 // NewRegistry; queued workers kept waiting on the semaphore from the
 // first spawn.
 func (e *Engine) ApplyLiveSwarmLimits() {
+	e.snapshotScheduleCaps()
 	e.mu.Lock()
 	rts := make([]*runtime, 0, len(e.runtimes))
 	for _, rt := range e.runtimes {

@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -38,6 +39,8 @@ func (e *Engine) StartScheduler() {
 	if e.schedStop != nil {
 		return
 	}
+	e.snapshotScheduleCaps()
+	e.schedCapsFrozen.Store(true)
 	stop := make(chan struct{})
 	e.schedStop = stop
 	e.schedWG.Add(1)
@@ -71,6 +74,7 @@ func (e *Engine) StopScheduler() {
 	}
 	close(stop)
 	e.schedWG.Wait()
+	e.schedCapsFrozen.Store(false)
 }
 
 type claimedFire struct {
@@ -85,7 +89,7 @@ type claimedFire struct {
 func (e *Engine) fireDueSchedules() {
 	claimed := e.claimDueSchedules()
 	for _, c := range claimed {
-		e.startClaimedFire(c)
+		_, _ = e.startClaimedFire(c)
 	}
 }
 
@@ -99,7 +103,7 @@ func (e *Engine) claimDueSchedules() []claimedFire {
 		e.log.Warn("could not list due schedules", "err", err)
 		return nil
 	}
-	max := e.cfg.Swarm.MaxActiveSchedules()
+	max := e.maxActiveSchedules()
 	var out []claimedFire
 	for _, row := range due {
 		running, err := e.store.HasRunningRun(row.ID)
@@ -128,7 +132,7 @@ func (e *Engine) claimDueSchedules() []claimedFire {
 }
 
 func (e *Engine) claimDueSchedule(row store.Schedule, now time.Time) *claimedFire {
-	spec, err := parseScheduleSpec(row.DelayS, row.EveryS, row.Cron, e.cfg.Swarm.ScheduleMinInterval())
+	spec, err := parseScheduleSpec(row.DelayS, row.EveryS, row.Cron, e.scheduleMinInterval())
 	if err != nil {
 		e.log.Warn("stored schedule has a broken cadence", "schedule", row.ID, "err", err)
 		return nil
@@ -181,7 +185,7 @@ func (e *Engine) claimScheduledFire(row store.Schedule, spec scheduleSpec, now t
 
 func (e *Engine) fireStandalone(row store.Schedule, spec scheduleSpec, now time.Time) {
 	if c := e.claimStandalone(row, spec, now); c != nil {
-		e.startClaimedFire(*c)
+		_, _ = e.startClaimedFire(*c)
 	}
 }
 
@@ -246,10 +250,10 @@ func (e *Engine) startScheduledTurn(row store.Schedule, spec scheduleSpec, now t
 	if c == nil {
 		return
 	}
-	e.startClaimedFire(*c)
+	_, _ = e.startClaimedFire(*c)
 }
 
-func (e *Engine) startClaimedFire(c claimedFire) {
+func (e *Engine) startClaimedFire(c claimedFire) (*store.Turn, error) {
 	threadID := c.threadID
 	if c.standalone {
 		th, err := e.mintStandaloneThread(c.row)
@@ -257,7 +261,7 @@ func (e *Engine) startClaimedFire(c claimedFire) {
 			if finErr := e.store.FinishRun(c.run.ID, store.ScheduleRunError, err.Error(), true); finErr != nil {
 				e.log.Warn("could not close a mint failure", "schedule", c.row.ID, "err", finErr)
 			}
-			return
+			return nil, err
 		}
 		threadID = th.ID
 	}
@@ -269,8 +273,10 @@ func (e *Engine) startClaimedFire(c claimedFire) {
 	})
 	if err != nil {
 		status := store.ScheduleRunError
+		out := err
 		if errors.Is(err, ErrBusy) {
 			status = store.ScheduleRunSkippedBusy
+			out = ErrSkippedBusy
 			e.record(store.Event{
 				ThreadID: threadID, TurnID: e.lastTurnID(threadID),
 				Kind: KindScheduleSkipped, AgentID: swarm.DefaultManagerID,
@@ -283,11 +289,12 @@ func (e *Engine) startClaimedFire(c claimedFire) {
 		if !errors.Is(err, ErrBusy) {
 			e.log.Warn("could not start a scheduled turn", "schedule", c.row.ID, "err", err)
 		}
-		return
+		return nil, out
 	}
 	if err := e.store.BindRun(c.run.ID, threadID, turn.ID); err != nil {
 		e.log.Warn("could not bind a schedule run to its turn", "schedule", c.row.ID, "turn", turn.ID, "err", err)
 	}
+	return turn, nil
 }
 
 func (e *Engine) mintStandaloneThread(row store.Schedule) (*store.Thread, error) {
@@ -329,4 +336,60 @@ func (e *Engine) advanceAfterFire(row store.Schedule, spec scheduleSpec, now tim
 		return false
 	}
 	return ok
+}
+
+// RunScheduleNow fires one wait immediately, even when next_run_at is
+// still in the future. The ticker path is ListDue; this is the inbox
+// button. fireMu is only held while claiming — StartTurn is outside it.
+func (e *Engine) RunScheduleNow(id string) (*store.Turn, error) {
+	c, err := e.claimRunNow(id)
+	if err != nil {
+		return nil, err
+	}
+	return e.startClaimedFire(*c)
+}
+
+func (e *Engine) claimRunNow(id string) (*claimedFire, error) {
+	e.fireMu.Lock()
+	defer e.fireMu.Unlock()
+
+	row, err := e.store.GetSchedule(id)
+	if err != nil {
+		return nil, err
+	}
+	if row.Status != store.ScheduleActive {
+		return nil, fmt.Errorf("engine: schedule is not active")
+	}
+	running, err := e.store.HasRunningRun(row.ID)
+	if err != nil {
+		return nil, err
+	}
+	if running {
+		return nil, ErrSkippedBusy
+	}
+	spec, err := parseScheduleSpec(row.DelayS, row.EveryS, row.Cron, e.scheduleMinInterval())
+	if err != nil {
+		return nil, err
+	}
+	now := e.clock()
+	if row.Kind == store.ScheduleStandalone || row.ThreadID == "" {
+		c := e.claimStandalone(*row, spec, now)
+		if c == nil {
+			return nil, fmt.Errorf("engine: could not claim the schedule")
+		}
+		return c, nil
+	}
+	th, err := e.store.GetThread(row.ThreadID)
+	if err != nil {
+		return nil, err
+	}
+	if th.PlanMode || e.Status(row.ThreadID).Running {
+		e.skipBusy(*row, spec, now, row.ThreadID)
+		return nil, ErrSkippedBusy
+	}
+	c := e.claimScheduledFire(*row, spec, now, row.ThreadID, false)
+	if c == nil {
+		return nil, fmt.Errorf("engine: could not claim the schedule")
+	}
+	return c, nil
 }

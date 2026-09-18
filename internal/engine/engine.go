@@ -26,6 +26,9 @@ var (
 	// ErrBusy means the conversation is already running a turn. The UI queues
 	// a follow-up instead of starting a second one.
 	ErrBusy = errors.New("engine: the conversation is already running a turn")
+	// ErrSkippedBusy means a scheduled check did not start because the
+	// target conversation is already running, or a fire is already claimed.
+	ErrSkippedBusy = errors.New("engine: the scheduled check was skipped because the conversation is busy")
 	// ErrIdle means there is nothing running to steer or interrupt.
 	ErrIdle = errors.New("engine: the conversation is not running")
 	// ErrNoPendingSteer means Interrupt was asked with nothing unread in
@@ -76,6 +79,14 @@ type Engine struct {
 	schedStop chan struct{}
 	schedWG   sync.WaitGroup
 	fireMu    sync.Mutex
+
+	// Frozen while the ticker is live so fireDueSchedules never reads
+	// e.cfg.Swarm (Replace copies the whole struct and races the tick).
+	// PUT /settings refreshes the atomics after Replace via
+	// ApplyLiveSwarmLimits. Tests without a ticker still read cfg.
+	schedCapsFrozen   atomic.Bool
+	schedMaxActive    atomic.Int32
+	schedMinIntervalS atomic.Int32
 }
 
 // New builds an engine over an already-open store and provider pool.
@@ -104,6 +115,52 @@ func (e *Engine) Config() *config.Config { return e.cfg }
 
 // Store exposes the persistence layer for read-only endpoints and tracing.
 func (e *Engine) Store() *store.Store { return e.store }
+
+// snapshotScheduleCaps copies the ticker caps out of cfg. Callers that
+// already mutated cfg (StartScheduler, PUT /settings) do this so the
+// ticker only ever Load()s atomics.
+func (e *Engine) snapshotScheduleCaps() {
+	max := e.cfg.Swarm.ScheduleMaxActive
+	if max <= 0 {
+		max = config.DefaultScheduleMaxActive
+	}
+	e.schedMaxActive.Store(int32(max))
+	min := e.cfg.Swarm.ScheduleMinIntervalSeconds
+	if min <= 0 {
+		min = config.DefaultScheduleMinIntervalSeconds
+	}
+	e.schedMinIntervalS.Store(int32(min))
+}
+
+func (e *Engine) maxActiveSchedules() int {
+	if e.schedCapsFrozen.Load() {
+		n := int(e.schedMaxActive.Load())
+		if n <= 0 {
+			return config.DefaultScheduleMaxActive
+		}
+		return n
+	}
+	n := e.cfg.Swarm.ScheduleMaxActive
+	if n <= 0 {
+		return config.DefaultScheduleMaxActive
+	}
+	return n
+}
+
+func (e *Engine) scheduleMinInterval() time.Duration {
+	if e.schedCapsFrozen.Load() {
+		n := int(e.schedMinIntervalS.Load())
+		if n <= 0 {
+			n = config.DefaultScheduleMinIntervalSeconds
+		}
+		return time.Duration(n) * time.Second
+	}
+	n := e.cfg.Swarm.ScheduleMinIntervalSeconds
+	if n <= 0 {
+		return config.DefaultScheduleMinIntervalSeconds * time.Second
+	}
+	return time.Duration(n) * time.Second
+}
 
 // Providers exposes the model pool.
 func (e *Engine) Providers() *provider.Pool { return e.pool }

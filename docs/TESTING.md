@@ -152,6 +152,10 @@ superseded by a later unfinished row — closes that bound fire as
 `error` instead of leaving `running`.
 Tests opt into `provider.SetMockScheduleQuiet` / `SetMockScheduleSilent`;
 the default mock still spawns and does not sniff a scheduled turn.
+`internal/server/schedules_test.go` is why the inbox HTTP API creates
+human waits, lists `{schedules, unread}`, pauses/cancels, run-now on
+idle starts a `ScheduleContinue` turn, run-now while the conversation is
+busy is `409 skipped_busy`, and reading a findings run clears unread.
 `internal/store/schedule_test.go` is why `HasPendingThreadWake` treats
 an active `kind=thread` row and a running thread fire as pending, and
 why paused/cancelled/done-with-no-run, standalone origin-only, an empty
