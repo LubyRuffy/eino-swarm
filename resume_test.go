@@ -267,21 +267,17 @@ func TestResumeWhileRunningRejected(t *testing.T) {
 	}
 	t.Cleanup(h.Cancel)
 	resumeT := invokable(t, reg.Tools()[4])
-	_, err = resumeT.InvokableRun(context.Background(),
+	out, err := resumeT.InvokableRun(context.Background(),
 		fmt.Sprintf(`{"agent_id":%q,"task":"more"}`, h.ID))
-	if err == nil || !strings.Contains(err.Error(), "still running") {
-		t.Fatalf("resume of a running worker should fail, got %v", err)
-	}
+	assertCtlRefuse(t, out, err, "still running")
 }
 
 func TestResumeUnknownRejected(t *testing.T) {
 	reg := NewRegistry()
 	reg.ModelBuilder = oneShot("x")
 	resumeT := invokable(t, reg.Tools()[4])
-	_, err := resumeT.InvokableRun(context.Background(), `{"agent_id":"ghost","task":"more"}`)
-	if err == nil || !strings.Contains(err.Error(), "unknown agent") {
-		t.Fatalf("resume of a missing worker should fail, got %v", err)
-	}
+	out, err := resumeT.InvokableRun(context.Background(), `{"agent_id":"ghost","task":"more"}`)
+	assertCtlRefuse(t, out, err, "unknown agent")
 }
 
 func TestResumeStillWorksAfterStatsPrune(t *testing.T) {
@@ -350,17 +346,23 @@ func TestResumeRejectedAfterClose(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Fatalf("resume after Close should fail, got %v", err)
 	}
+	resumeT := invokable(t, reg.Tools()[4])
+	out, err := resumeT.InvokableRun(context.Background(),
+		fmt.Sprintf(`{"agent_id":%q,"task":"continue"}`, h.ID))
+	assertCtlRefuse(t, out, err, "closed")
 }
 
 func TestResumeRequiresIDandTask(t *testing.T) {
 	reg := NewRegistry()
 	resumeT := invokable(t, reg.Tools()[4])
-	if _, err := resumeT.InvokableRun(context.Background(), `{"task":"x"}`); err == nil {
-		t.Fatal("missing agent_id should fail")
-	}
-	if _, err := resumeT.InvokableRun(context.Background(), `{"agent_id":"w-1"}`); err == nil {
-		t.Fatal("missing task should fail")
-	}
+	out, err := resumeT.InvokableRun(context.Background(), `{"task":"x"}`)
+	assertCtlRefuse(t, out, err, "agent_id is required")
+	out, err = resumeT.InvokableRun(context.Background(), `{"agent_id":"w-1"}`)
+	assertCtlRefuse(t, out, err, "task is required")
+	out, err = resumeT.InvokableRun(context.Background(), `{"agent_id":"w-1","task":"   "}`)
+	assertCtlRefuse(t, out, err, "task is required")
+	out, err = resumeT.InvokableRun(context.Background(), `{`)
+	assertCtlRefuse(t, out, err, "could not read the arguments")
 }
 
 func TestFormatContextSkipsEmptyContent(t *testing.T) {
@@ -565,11 +567,111 @@ func TestSpawnAgentRequiresATask(t *testing.T) {
 		return nil
 	}
 	spawnT := invokable(t, reg.Tools()[0])
-	if _, err := spawnT.InvokableRun(context.Background(), `{"role":"w"}`); err == nil {
-		t.Fatal("empty task must fail rather than mint a twin")
+	out, err := spawnT.InvokableRun(context.Background(), `{"role":"w"}`)
+	assertCtlRefuse(t, out, err, "task is required")
+	out, err = spawnT.InvokableRun(context.Background(), `{"role":"w","task":"   "}`)
+	assertCtlRefuse(t, out, err, "task is required")
+	out, err = spawnT.InvokableRun(context.Background(), `{"task":"x"}`)
+	assertCtlRefuse(t, out, err, "role is required")
+	out, err = spawnT.InvokableRun(context.Background(), `{`)
+	assertCtlRefuse(t, out, err, "could not read the arguments")
+}
+
+func TestSpawnOnAClosedRegistryDoesNotKillTheCaller(t *testing.T) {
+	reg := NewRegistry()
+	reg.Close()
+	spawnT := invokable(t, reg.Tools()[0])
+	out, err := spawnT.InvokableRun(context.Background(), `{"role":"w","task":"x"}`)
+	assertCtlRefuse(t, out, err, "closed")
+}
+
+func TestSpawnReuseWhenResumeFailsDoesNotKillTheCaller(t *testing.T) {
+	reg := NewRegistry()
+	reg.ModelBuilder = oneShot("x")
+	h, err := reg.Spawn(context.Background(), "w", "first", reg.ModelBuilder)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := spawnT.InvokableRun(context.Background(), `{"role":"w","task":"   "}`); err == nil {
-		t.Fatal("whitespace task must fail rather than mint a twin")
+	select {
+	case <-h.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("worker did not finish")
+	}
+	reg.mu.Lock()
+	reg.closed = true
+	reg.mu.Unlock()
+	spawnT := invokable(t, reg.Tools()[0])
+	out, err := spawnT.InvokableRun(context.Background(), `{"role":"w","task":"second"}`)
+	assertCtlRefuse(t, out, err, "closed")
+}
+
+// A missing spawn_agent task used to return a Go error. eino's ToolNode wraps
+// that as NodeRunError and kills the manager — a pursuing /goal then blocks.
+// The model omitted a field; that is a retry, not a crash.
+func TestSpawnWithoutATaskDoesNotKillTheManager(t *testing.T) {
+	var minted int
+	var sawRefuse bool
+	reg := NewRegistry()
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		if role == DefaultManagerID {
+			return &chunkedModel{turns: []turnScript{
+				{calls: []schema.ToolCall{
+					rawCall("s1", "spawn_agent", `{"role":"reader"}`),
+				}},
+				{inspect: func(msgs []*schema.Message) {
+					for _, m := range msgs {
+						if m != nil && m.Role == schema.Tool && strings.Contains(m.Content, "task is required") {
+							sawRefuse = true
+						}
+					}
+				}, calls: []schema.ToolCall{
+					rawCall("s2", "spawn_agent", `{"role":"reader","task":"read it"}`),
+				}},
+				{calls: []schema.ToolCall{
+					rawCall("w1", "wait_agents", `{"agent_ids":["reader-1"],"timeout_s":5}`),
+				}},
+				{content: []string{"done"}},
+			}}
+		}
+		minted++
+		return &chunkedModel{turns: []turnScript{{content: []string{"ok"}}}}
+	}
+	if _, err := reg.RunWith(context.Background(),
+		RunConfig{Instruction: "delegate", Task: "go"}, nil); err != nil {
+		t.Fatalf("a missing spawn task must be a tool result, not a NodeRunError: %v", err)
+	}
+	if !sawRefuse {
+		t.Fatal("the retry turn must see the refused spawn")
+	}
+	if minted != 1 {
+		t.Fatalf("missing task must not mint; the retry must mint once, got %d", minted)
+	}
+}
+
+func TestLifecycleToolsDescribeACallerMistakeAsNotFatal(t *testing.T) {
+	for _, name := range []string{"spawn_agent", "close_agent", "resume_agent"} {
+		var info *schema.ToolInfo
+		for _, bt := range NewRegistry().Tools() {
+			got, err := bt.Info(context.Background())
+			if err != nil || got == nil {
+				t.Fatal(err)
+			}
+			if got.Name == name {
+				info = got
+				break
+			}
+		}
+		if info == nil {
+			t.Fatalf("missing %s", name)
+		}
+		if !strings.Contains(info.Desc, "does not fail the turn") {
+			t.Fatalf("%s must say a caller mistake is not a crashed turn, got %q", name, info.Desc)
+		}
+		for _, leak := range []string{"reviewer", "notes.md", "NodeRunError"} {
+			if strings.Contains(info.Desc, leak) {
+				t.Fatalf("%s desc leaked %q", name, leak)
+			}
+		}
 	}
 }
 

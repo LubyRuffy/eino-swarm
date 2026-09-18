@@ -234,14 +234,40 @@ func TestARetryableModelErrorRetriesInsteadOfBlockingTheGoal(t *testing.T) {
 	}
 }
 
-func TestARetryableModelErrorBlocksAfterRetriesAreExhausted(t *testing.T) {
+func TestShouldPursueAfterTurnKeepsARecoverableFailureMoving(t *testing.T) {
+	unterminated := errors.New("[NodeRunError] error, status code: 400, status: 400 Bad Request, message: Unterminated string starting at: line 1 column 66 (char 65)\nnode path: [node_1, ChatModel]")
+	if !shouldPursueAfterTurn(store.TurnDone, nil, true) {
+		t.Fatal("a clean finish must keep pursuing")
+	}
+	if !shouldPursueAfterTurn(store.TurnDone, nil, false) {
+		t.Fatal("a clean finish without a goal still flushes follow-ups")
+	}
+	if !shouldPursueAfterTurn(store.TurnError, unterminated, true) {
+		t.Fatal("truncated tool JSON must auto-continue, not pin the banner")
+	}
+	if shouldPursueAfterTurn(store.TurnError, unterminated, false) {
+		t.Fatal("without a standing objective a failed turn must not auto-start")
+	}
+	if shouldPursueAfterTurn(store.TurnError, errors.New("chat model refused the request"), true) {
+		t.Fatal("a real refusal must still block")
+	}
+	if shouldPursueAfterTurn(store.TurnCancelled, unterminated, true) {
+		t.Fatal("Stop is a pause, not an auto-continue")
+	}
+	if shouldPursueAfterTurn(store.TurnError, nil, true) {
+		t.Fatal("an error without a recoverable cause must not look like a retry")
+	}
+}
+
+func TestARetryableModelErrorContinuesTheGoalAfterRetriesAreExhausted(t *testing.T) {
 	provider.SetCompleteOpenGoal(false)
 	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
-	unterminated := errors.New("[NodeRunError] error, status code: 400, status: 400 Bad Request, message: Unterminated string starting at: line 1 column 54 (char 53)\nnode path: [node_1, ChatModel]")
+	unterminated := errors.New("[NodeRunError] error, status code: 400, status: 400 Bad Request, message: Unterminated string starting at: line 1 column 66 (char 65)\nnode path: [node_1, ChatModel]")
 	provider.SetMockFailure(unterminated)
 	t.Cleanup(func() { provider.SetMockFailure(nil) })
 
 	e := newTestEngine(t)
+	e.Config().Swarm.GoalMaxAutoTurns = 8
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
 		t.Fatal(err)
@@ -259,8 +285,8 @@ func TestARetryableModelErrorBlocksAfterRetriesAreExhausted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !th.GoalBlocked {
-		t.Fatal("exhausting retries must still block so a poison request cannot loop")
+	if th.GoalBlocked {
+		t.Fatal("truncated tool JSON is a retry, not a stuck objective")
 	}
 	for _, leak := range []string{"NodeRunError", "ChatModel", "node path"} {
 		if strings.Contains(got.Error, leak) || strings.Contains(th.GoalBlockReason, leak) {
@@ -273,11 +299,43 @@ func TestARetryableModelErrorBlocksAfterRetriesAreExhausted(t *testing.T) {
 	}
 	n := 0
 	for _, ev := range events {
-		if ev.Kind == KindModelRetry {
+		if ev.Kind == KindModelRetry && ev.TurnID == turn.ID {
 			n++
 		}
 	}
 	if n != modelErrorRetries {
-		t.Fatalf("retry events=%d want %d", n, modelErrorRetries)
+		t.Fatalf("retry events on the failed turn=%d want %d", n, modelErrorRetries)
+	}
+	turns, err := e.Store().ListTurns(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) < 2 && !th.GoalIdle && !th.GoalCapped {
+		t.Fatalf("the objective must auto-continue or hold, turns=%d idle=%v capped=%v", len(turns), th.GoalIdle, th.GoalCapped)
+	}
+}
+
+func TestARetryableModelErrorWithoutAGoalDoesNotAutoStart(t *testing.T) {
+	unterminated := errors.New("[NodeRunError] error, status code: 400, status: 400 Bad Request, message: Unterminated string starting at: line 1 column 66 (char 65)\nnode path: [node_1, ChatModel]")
+	provider.SetMockFailure(unterminated)
+	t.Cleanup(func() { provider.SetMockFailure(nil) })
+
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	turn, err := e.StartTurn(th.ID, "start the work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := waitForTurn(t, e, turn.ID)
+	if got.Status != store.TurnError {
+		t.Fatalf("status=%s err=%s", got.Status, got.Error)
+	}
+	waitSettled(t, e, th.ID)
+	turns, err := e.Store().ListTurns(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 1 {
+		t.Fatalf("a failed turn without a standing objective must not auto-start, got %d", len(turns))
 	}
 }

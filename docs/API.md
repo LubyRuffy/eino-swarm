@@ -327,9 +327,9 @@ not poll per row. `reasoning_effort` is the conversation's thinking level (`""`,
 a conversation that belongs to no project. `goal` is the standing objective from
 `/goal` (empty when none). `goal_complete` is true after the manager called
 `complete_goal`; `goal_blocked` is true after `block_goal` or after a pursuing
-turn fails (progress needs the
-human or an external change) once in-turn retries of truncated tool JSON /
-`429` / a dropped stream are exhausted; `goal_capped` is true after consecutive
+turn fails for a reason that is not a recoverable model error (progress needs the
+human or an external change). A truncated tool-call JSON, a `429`, or a dropped
+stream retries inside the same turn twice, then auto-continues; `goal_capped` is true after consecutive
 auto-continues hit `swarm.goal_max_auto_turns`, or after the human
 interrupts a pursuing turn (the banner shows Paused and Start); `goal_idle`
 is true after an auto-continue finished with no counted tool activity
@@ -569,8 +569,11 @@ disambiguated by seq, not by text.
 ### Follow-ups
 
 A follow-up is a message typed while a turn was already running. It waits for
-that turn to finish cleanly, then starts as the next turn. Cancelled and failed
-turns leave the queue in place. Refresh, a crash, or quitting the app does not
+that turn to finish cleanly, then starts as the next turn. The live turn's own
+user text is not queued: a leftover Enter or an IME restoring the committed
+string must not schedule the same request again. ⌘Enter (and Steer on a waiting
+row) injects into this turn and drops a queued copy of that text. Cancelled and failed
+turns leave the remaining queue in place. Refresh, a crash, or quitting the app does not
 lose it: the rows live on the conversation and run after a leftover turn
 finishes. Editing a waiting row and submitting it moves that message to the
 back of the FIFO. Pasted images are not queued (the row is text-only) — they
@@ -774,7 +777,7 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
 | `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`). A later human message or resume resets the budget |
 | `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until a human message or resume; the objective stays open |
-| `goal_blocked` | the manager called `block_goal`, or a pursuing turn failed after in-turn retries of recoverable model errors; auto-continue stops. `text` is JSON `{reason}`. A later human message or resume clears it |
+| `goal_blocked` | the manager called `block_goal`, or a pursuing turn failed for a reason that is not a recoverable model error; auto-continue stops. `text` is JSON `{reason}`. A later human message or resume clears it |
 | `goal_edited` | the human changed the objective text in place; `text` is the new objective. Status stays put. A running turn is also steered |
 | `goal_resumed` | the human started pursuit again after a block, a cap, or an idle open goal. Same Working-clock rule as `goal_continued` |
 | `plan` | the conversation entered `/plan`; write/edit/exec and similar are unmounted. `text` is `planning` |

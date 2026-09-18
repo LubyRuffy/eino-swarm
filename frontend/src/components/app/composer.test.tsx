@@ -152,6 +152,34 @@ describe("Composer Enter vs IME", () => {
     fireEvent.keyDown(input, { key: "Enter", metaKey: true, keyCode: 13 })
     expect(onSend).toHaveBeenCalledWith("draft", undefined, { steer: true })
   })
+
+  // CJK IMEs write the committed string back into a controlled textarea
+  // after we clear it. A leftover Enter would then queue the same draft
+  // that just started the turn.
+  it("does not queue when the IME restores a draft that was just sent", () => {
+    const onSend = vi.fn()
+    renderComposer({ onSend, running: true })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "draft" } })
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true, keyCode: 13 })
+    expect(onSend).toHaveBeenCalledTimes(1)
+    fireEvent.change(input, { target: { value: "draft" } })
+    expect(input).toHaveValue("")
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSend).toHaveBeenCalledTimes(1)
+  })
+
+  it("sends a different draft after the previous one", () => {
+    const onSend = vi.fn()
+    renderComposer({ onSend, running: true })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "draft" } })
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true, keyCode: 13 })
+    fireEvent.change(input, { target: { value: "next" } })
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSend).toHaveBeenNthCalledWith(1, "draft", undefined, { steer: true })
+    expect(onSend).toHaveBeenNthCalledWith(2, "next", undefined, { steer: false })
+  })
 })
 
 describe("Composer follow-up queue", () => {

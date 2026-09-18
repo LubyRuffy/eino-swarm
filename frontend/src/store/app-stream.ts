@@ -11,6 +11,7 @@ import {
 import { MEMORY_WRITE_TOOLS, memoryWriteLanded } from "@/lib/tool-view"
 import { parseUsage } from "@/lib/usage"
 import type {
+  Followup,
   SwarmEvent,
   Thread,
   ThreadStatus,
@@ -21,6 +22,7 @@ import { applyGoalThreadFlags } from "./goal-events"
 import { applyPlanThreadFlags } from "./plan-events"
 import { useProjects } from "./projects"
 import { rememberRewind, rememberStored } from "./thread-history"
+import { bumpFollowups, dropMatchingFollowups } from "./followup-sync"
 
 /** The slice of the store the live event flush reads and writes. */
 export type StreamSnapshot = {
@@ -29,6 +31,7 @@ export type StreamSnapshot = {
   status: ThreadStatus
   threads: Thread[]
   usage?: UsageSnapshot
+  followups: Followup[]
   refreshFiles: () => Promise<void>
   refreshThreads: () => Promise<void>
   refreshFollowups: () => Promise<void>
@@ -114,6 +117,8 @@ function flushQueued(set: StreamSet, get: StreamGet) {
   let status = state.status
   let threads = state.threads
   let usage = state.usage
+  let followups = state.followups ?? []
+  let droppedFollowups: Followup[] = []
   let closed = false
   for (const ev of events) {
     rememberStored(threadId, ev)
@@ -128,6 +133,13 @@ function flushQueued(set: StreamSet, get: StreamGet) {
         started_at: ev.created_at,
         awaiting_continue: ev.kind === "resumed" ? false : status.awaiting_continue,
       })
+    }
+    if (ev.kind === "user_message") {
+      const next = dropMatchingFollowups(followups, ev.text ?? "")
+      if (next.length !== followups.length) {
+        droppedFollowups = followups.filter((f) => !next.includes(f))
+        followups = next
+      }
     }
     if (ev.kind === "max_iterations") {
       status = { ...status, running: true, awaiting_continue: true, turn_id: ev.turn_id }
@@ -190,7 +202,21 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       }
     }
   }
-  set({ transcript, status, threads, usage })
+  const followupsDirty = droppedFollowups.length > 0
+  set({
+    transcript,
+    status,
+    threads,
+    usage,
+    ...(followupsDirty ? { followups } : {}),
+  })
+  if (followupsDirty) {
+    bumpFollowups()
+    const id = threadId
+    void Promise.all(
+      droppedFollowups.map((f) => api.deleteFollowup(id, f.id).catch(() => undefined)),
+    ).then(() => get().refreshFollowups())
+  }
   if (closed) {
     void get().refreshFiles()
     void get().refreshThreads()

@@ -905,6 +905,14 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 	if !strings.Contains(prompt, "notified:manager") {
 		t.Fatal("the manager must be told it receives a missed handoff")
 	}
+	if !strings.Contains(prompt, "error result") {
+		t.Fatal("a missing spawn_agent field must be an error result, not a crashed turn")
+	}
+	for _, leak := range []string{"NodeRunError", "ToolNode"} {
+		if strings.Contains(prompt, leak) {
+			t.Fatalf("%q leaked into the manager prompt", leak)
+		}
+	}
 	if !strings.Contains(prompt, "visual input") {
 		t.Fatal("the prompt must say pasted images arrive on the message, not on disk")
 	}

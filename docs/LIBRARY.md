@@ -16,11 +16,11 @@ over one concurrency-safe registry:
 
 | tool | semantics |
 |---|---|
-| `spawn_agent(role, task, fork_context)` | start a sub-agent in the background; returns `{"agent_id": …}` immediately. **One worker per role:** a later call with the same role while it is running queues the new task (`steered`) instead of minting a twin; if it already finished, continues that same id (`resumed_from`). `fork_context: true` only applies when this role has no worker yet, and then replays **this manager conversation** into it. |
-| `send_message(agent_id, text)` | steer a **running** agent, or the host when `agent_id` is `manager`. Queued for the target's **next turn boundary**. `agent_id` is the id `spawn_agent` returned, that worker's role, or `manager`. `delivered: true` means queued. A finished or unknown target returns `delivered: false` with `notified: manager` when a **worker** sent it — the host gets the text and should take the next step. A Go error here is a `NodeRunError` that kills the caller. |
+| `spawn_agent(role, task, fork_context)` | start a sub-agent in the background; returns `{"agent_id": …}` immediately. **One worker per role:** a later call with the same role while it is running queues the new task (`steered`) instead of minting a twin; if it already finished, continues that same id (`resumed_from`). `fork_context: true` only applies when this role has no worker yet, and then replays **this manager conversation** into it. A missing role or task returns `{"error": …}` instead of a Go error (a Go error is a `NodeRunError` that kills the caller). |
+| `send_message(agent_id, text)` | steer a **running** agent, or the host when `agent_id` is `manager`. Queued for the target's **next turn boundary**. `agent_id` is the id `spawn_agent` returned, that worker's role, or `manager`. `delivered: true` means queued. A finished or unknown target returns `delivered: false` with `notified: manager` when a **worker** sent it — the host gets the text and should take the next step. Unreadable arguments also return `delivered: false` instead of a Go error (a Go error is a `NodeRunError` that kills the caller). |
 | `wait_agents(agent_ids, timeout_s)` | return as soon as the next listed agent reaches a final status (or the timeout); reports every agent's status (`running`/`done`/`failed`), the finished ones' results, leftover steering that never reached a model call (`undelivered`), and the running ones' last activity, plus `timed_out`. It hands control back per-finish so the manager can report progress and wait again, instead of dead-waiting on the whole batch |
-| `close_agent(agent_id)` | cancel a running agent |
-| `resume_agent(agent_id, task)` | continue a finished or failed worker **in place** under the same `agent_id`, seeded with that worker's conversation. Returns `{"agent_id": …, "resumed_from": …}` with the same id. Rejects a still-running id (`send_message` instead). Survives `Stats()` pruning the live handle. Do not `spawn_agent` a second worker with the same role to replace one that failed. |
+| `close_agent(agent_id)` | cancel a running agent. An unknown `agent_id` returns `{"error": …}` instead of a Go error. |
+| `resume_agent(agent_id, task)` | continue a finished or failed worker **in place** under the same `agent_id`, seeded with that worker's conversation. Returns `{"agent_id": …, "resumed_from": …}` with the same id. A missing id or task, or a still-running target, returns `{"error": …}` (`send_message` instead of resume while running). Survives `Stats()` pruning the live handle. Do not `spawn_agent` a second worker with the same role to replace one that failed. |
 
 Give sub-agents `SendTool()` as well and any agent can message any other (a mesh
 rather than a star).
@@ -220,6 +220,12 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
   queued for that agent. If a running agent finishes before another model call,
   `wait_agents` reports leftover steering as `undelivered`. `agent_id` may be
   the worker's role; an invented suffix is not resolved by similarity.
+- `spawn_agent` without a role or task, `resume_agent` without an id or task
+  or against a still-running worker, `close_agent` against an unknown id, and
+  unreadable JSON arguments on any of the five lifecycle tools, return a JSON
+  error result rather than a Go error. eino's ToolNode turns a Go error into
+  `NodeRunError` and kills the caller — that is what used to `goal_blocked` a
+  pursuing turn when the model omitted `task`.
 - `resume_agent` continues a finished worker's conversation on the **same** id.
   `fork_context` is the manager's conversation, not a previous worker's findings.
   A still-running worker is steered with `send_message`, not resumed.
@@ -249,6 +255,7 @@ Each of those has a test: `TestCallerContextCancelDoesNotReleaseAgents`,
 `TestResumeStillWorksAfterStatsPrune`,
 `TestSpawnAgentReusesAFinishedWorkerWithTheSameRole`,
 `TestSpawnAgentSteersARunningWorkerWithTheSameRole`,
+`TestSpawnWithoutATaskDoesNotKillTheManager`,
 `TestUndeliveredSteerSurfacesWhenTheAgentFinishes`,
 `TestHostNotifyKeepsWorkerEventsAfterRunReturns`,
 `TestRaisingMaxConcurrentUnblocksQueuedWorkers`,

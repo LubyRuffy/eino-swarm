@@ -30,8 +30,9 @@ const KindGoalContinued = "goal_continued"
 const KindGoalCapped = "goal_capped"
 
 // KindGoalBlocked is recorded when the manager calls block_goal, or when
-// a pursuing turn fails after in-turn retries of recoverable model errors
-// are exhausted. Auto-continue stops until the human resumes.
+// a pursuing turn fails for a reason that is not a recoverable model error.
+// Truncated tool JSON / 429 / a dropped stream auto-continue instead.
+// Auto-continue stops until the human resumes.
 const KindGoalBlocked = "goal_blocked"
 
 // KindGoalEdited is recorded when the human changes the objective text

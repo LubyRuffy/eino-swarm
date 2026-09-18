@@ -4,6 +4,17 @@ import type { Block } from "./transcript"
 /** Fewer than this and a jump rail is just a decoration. */
 export const TURN_NAV_MIN = 2
 
+/** Compact gap-2 ticks fit this many before they overflow a cluster and
+ *  grow a second scrollbar. Past that they share a fixed height. */
+export const TURN_NAV_TICK_PACK = 10
+
+/** Hover-list preview: wider than a tick label because the row wraps. */
+export const TURN_NAV_LIST_PREVIEW = 140
+
+export function packTurnNavTicks(count: number): boolean {
+  return count > TURN_NAV_TICK_PACK
+}
+
 export const TURN_NAV_ATTR = "data-turn-nav"
 
 export interface TurnNavItem {

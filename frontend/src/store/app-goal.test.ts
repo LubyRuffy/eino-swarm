@@ -307,6 +307,39 @@ describe("goal and compact", () => {
     expect(useApp.getState().threads[0]?.goal_block_reason).toBe("the last turn failed")
   })
 
+  it("keeps pursuing after a recoverable model error auto-continues", async () => {
+    await useApp.getState().boot()
+    const at = "2026-01-01T00:00:00.000Z"
+    fake.onEvent?.({
+      kind: "goal",
+      seq: 10,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      text: "keep going",
+      created_at: at,
+    })
+    fake.onEvent?.({
+      kind: "error",
+      seq: 11,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      err: "the model request failed because a tool call was not valid JSON",
+      created_at: at,
+    })
+    fake.onEvent?.({
+      kind: "goal_continued",
+      seq: 12,
+      thread_id: "th_old",
+      turn_id: "tn_2",
+      agent_id: "manager",
+      created_at: at,
+    })
+    expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "tn_2", started_at: at })
+    expect(useApp.getState().threads[0]?.goal_blocked).toBeFalsy()
+  })
+
   it("keeps status flags when the objective is edited", async () => {
     await useApp.getState().boot()
     fake.onEvent?.({

@@ -59,7 +59,7 @@ in this database: notes and skills are files, so a person can read and fix them
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
 | `goal_complete` | bool | true after `complete_goal`. The text stays so the banner can show what was achieved; auto-continue stops |
-| `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn fails once in-turn retries of recoverable model errors are exhausted. Auto-continue stops until the human resumes or sends a message |
+| `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn fails for a reason that is not a recoverable model error. Auto-continue stops until the human resumes or sends a message |
 | `goal_block_reason` | text | optional one-line reason from `block_goal`, or the public turn error when a pursuing turn dies before the manager can call it |
 | `goal_started_at` | time | when the current objective was set (not edited). Nil when there is no goal |
 | `goal_auto_turns` | int | consecutive runtime-started turns that kept pursuing an open goal. A human message resets it |
@@ -248,9 +248,11 @@ exists is saved alongside the old one rather than overwriting it.
 
 Typed while a turn is already running. They are **not** steering: the manager
 does not see them until this turn finishes cleanly and the engine starts the
-oldest one as the next turn. Submitting an edit of a waiting row assigns a
+oldest one as the next turn. The live turn's user text is not stored as a
+follow-up. Submitting an edit of a waiting row assigns a
 new `seq` at the back of that FIFO. **Steer** on a row (or ⌘Enter on a new draft)
-pulls that text into the current turn at the next model boundary instead.
+pulls that text into the current turn at the next model boundary instead and
+drops a queued copy of the same words.
 **Interrupt** on the unread-steer pin aborts the current manager tool so those
 steers drain on this turn; **Delete** retracts one unread `steer` (event stays,
 the `[steer]` message is dropped).

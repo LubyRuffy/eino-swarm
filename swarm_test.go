@@ -76,6 +76,24 @@ func invokable(t *testing.T, bt tool.BaseTool) tool.InvokableTool {
 	return it
 }
 
+func assertCtlRefuse(t *testing.T, out string, err error, want string) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("a caller mistake must not be a tool error (that kills the graph): %v", err)
+	}
+	var got map[string]any
+	if json.Unmarshal([]byte(out), &got) != nil {
+		t.Fatalf("refuse must be JSON, got %q", out)
+	}
+	if _, ok := got["agent_id"]; ok {
+		t.Fatalf("must not start or resume a worker: %s", out)
+	}
+	msg, _ := got["error"].(string)
+	if !strings.Contains(msg, want) {
+		t.Fatalf("error %q want %q in %s", msg, want, out)
+	}
+}
+
 func workerTurns(deliverSteer *[]string) []func(int, []*schema.Message) *schema.Message {
 	return []func(int, []*schema.Message) *schema.Message{
 		func(turn int, msgs []*schema.Message) *schema.Message {
@@ -209,9 +227,12 @@ func TestCloseCancels(t *testing.T) {
 	tools := reg.Tools()
 	closeT := invokable(t, tools[3])
 
-	if _, err := closeT.InvokableRun(context.Background(), `{"agent_id":"nope"}`); err == nil {
-		t.Fatal("close unknown agent should error")
-	}
+	out, err := closeT.InvokableRun(context.Background(), `{"agent_id":"nope"}`)
+	assertCtlRefuse(t, out, err, "unknown agent")
+	out, err = closeT.InvokableRun(context.Background(), `{"agent_id":""}`)
+	assertCtlRefuse(t, out, err, "agent_id is required")
+	out, err = closeT.InvokableRun(context.Background(), `{`)
+	assertCtlRefuse(t, out, err, "could not read the arguments")
 
 	h, err := reg.Spawn(context.Background(), "slow", "long work",
 		func(role, id string) model.BaseChatModel {
@@ -328,15 +349,18 @@ func TestLifecycleToolsReportFailuresToTheManager(t *testing.T) {
 		invokable(t, tools[2]), invokable(t, tools[3]), invokable(t, tools[4])
 	ctx := context.Background()
 
-	// malformed arguments are the model's mistake, and it has to be told which
-	// tool it got wrong
+	// malformed arguments are the model's mistake: tell it which tool, do not
+	// kill the ReAct graph
 	for name, it := range map[string]tool.InvokableTool{
 		"spawn_agent": spawnT, "send_message": sendT,
 		"wait_agents": waitT, "close_agent": closeT, "resume_agent": resumeT,
 	} {
-		_, err := it.InvokableRun(ctx, "{not json")
-		if err == nil || !strings.Contains(err.Error(), name) {
-			t.Fatalf("%s should name itself in the error, got %v", name, err)
+		out, err := it.InvokableRun(ctx, "{not json")
+		if err != nil {
+			t.Fatalf("%s malformed args must not kill the graph: %v", name, err)
+		}
+		if !strings.Contains(out, name) {
+			t.Fatalf("%s should name itself in the result, got %s", name, out)
 		}
 	}
 

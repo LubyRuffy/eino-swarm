@@ -290,8 +290,12 @@ test("carries context across turns", async ({ page }) => {
   await expect(ticks.last()).toHaveAttribute("aria-current", "true")
   await nav.hover()
   const list = page.getByTestId("turn-nav-list")
+  await expect(list).toHaveClass(/w-96/)
   await expect(list.getByText("First task: outline the work")).toBeVisible()
   await expect(list.getByText("Second task: tighten that outline")).toBeVisible()
+  await expect(
+    list.getByRole("button", { name: "First task: outline the work" }).locator("span"),
+  ).toHaveClass(/line-clamp-2/)
   await list.getByRole("button", { name: "First task: outline the work" }).click()
   await expect(
     transcript.getByText("First task: outline the work", { exact: true }),
@@ -383,6 +387,19 @@ test("Enter while working queues until the turn finishes", async ({ page }) => {
     page.getByTestId("transcript").getByText(later, { exact: true }),
   ).toBeVisible({ timeout: 60_000 })
   await expect(page.getByTestId("followup-queue")).toHaveCount(0)
+})
+
+test("Steer on a queued row injects and empties the tray", async ({ page }) => {
+  await freshConversation(page)
+  await send(page, "Look at this from two angles and merge the findings")
+  const later = "narrow the current turn"
+  await composer(page).fill(later)
+  await composer(page).press("Enter")
+  const tray = page.getByTestId("followup-queue")
+  await expect(tray).toContainText(later)
+  await tray.getByRole("button", { name: `Steer: ${later}` }).click()
+  await expect(page.getByTestId("followup-queue")).toHaveCount(0)
+  await expect(page.getByTestId("steer")).toContainText(later)
 })
 
 test("editing a queued follow-up moves it to the back", async ({ page }) => {

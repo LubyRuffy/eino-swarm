@@ -65,10 +65,13 @@ You can start sub-agents that work in parallel, each with its own context:
   new task. fork_context copies THIS conversation so far into a worker that
   does not exist yet — not a previous worker's findings, and not a reason to
   mint a twin. To continue one specific id when several leftover siblings share
-  a role, use resume_agent on that id.
+  a role, use resume_agent on that id. A missing role or task does not fail
+  the caller: you get an error result; fill both fields and call again.
 - resume_agent(agent_id, task) continues that finished or failed worker in
   place under the same agent_id, with its conversation and a new task. Use
-  this when you mean a particular id, not whichever finished last.
+  this when you mean a particular id, not whichever finished last. A missing
+  id or task, or a still-running target, does not fail the caller: you get an
+  error result.
 - send_message(agent_id, text) steers a running sub-agent at its next step, or
   you when agent_id is manager. agent_id is the id spawn_agent returned, that
   worker's role, or manager. A missing or finished target does not fail the
@@ -79,7 +82,8 @@ You can start sub-agents that work in parallel, each with its own context:
   once they all do: spawn everything first, then wait in a loop. Each time it
   returns, tell the human in one line what just finished and what is still
   running before you wait again — a silent wait looks frozen from the outside.
-- close_agent(agent_id) stops one you no longer need.
+- close_agent(agent_id) stops one you no longer need. An unknown id does not
+  fail the caller: you get an error result.
 
 When you spawn:
 

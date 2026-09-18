@@ -59,13 +59,13 @@ flowchart LR
 
 | package | responsibility |
 |---|---|
-| `.` (root) | the swarm library: `Registry`, `spawn_agent`/`send_message`/`wait_agents`/`close_agent`/`resume_agent`, `Restore`/`PlantFinished` for leftover workers, `RunWith` → `RunResult{Final, Transcript}`, `Notification` stream. Usable on its own — see [docs/LIBRARY.md](docs/LIBRARY.md). |
+| `.` (root) | the swarm library: `Registry`, `spawn_agent`/`send_message`/`wait_agents`/`close_agent`/`resume_agent` (a missing argument or unknown target is `{"error"}` / `delivered:false`, not a Go error — eino's ToolNode would turn that into `NodeRunError` and kill the caller), `Restore`/`PlantFinished` for leftover workers, `RunWith` → `RunResult{Final, Transcript}`, `Notification` stream. Usable on its own — see [docs/LIBRARY.md](docs/LIBRARY.md). |
 | `internal/config` | `config.yaml` under the data directory: load, normalize, atomic save, `OPENAI_*` seeding on first run. Nothing else in the tree hardcodes an endpoint or model. |
 | `internal/store` | gorm + pure-Go SQLite. Conversations, transcript messages, turns, the event timeline, model-call records, attachments, follow-ups waiting for the current turn. Sidebar lists conversations and projects by `sort_rank` then last activity (`last_active_at` / `updated_at`); unranked rows interleave by activity so they cannot sit above ranked work that just ran. A drop pins ranks. See [docs/DATA_MODEL.md](docs/DATA_MODEL.md). |
 | `internal/provider` | builds eino chat models from config, lists an endpoint's catalog (`GET {base_url}/models`), records per-call telemetry, and provides the scripted offline provider used by `--mock` and the tests. The provider request timeout is idle time between bytes, not the whole streamed body: a thinking model that is still emitting tokens is not cut off. |
 | `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. `BindExecOutput` is the host binder that tees `exec` stdout/stderr into `NotifyToolDelta` without the swarm library importing eino-tools. |
 | `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the three agent tools (`memory`, `skill_view`, `skill_manage`), the prompt sections they are rendered into, and the reviewer's instruction. Owns the files; knows nothing about conversations. |
-| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn after in-turn retries of truncated tool JSON / `429` / a dropped stream (`model_retry`), a no-progress continuation (`goal_idle`), a clear/interrupt, or `swarm.goal_max_auto_turns`, converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from the event log (skipped when the manager already wrote), and resolves an in-app terminal's working directory from the conversation or project the client named. |
+| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from the event log (skipped when the manager already wrote), and resolves an in-app terminal's working directory from the conversation or project the client named. |
 | `internal/server` | gin: REST, SSE, upload/download, trace, PTY terminals, embedded assets. See [docs/API.md](docs/API.md). |
 | `internal/terminal` | PTY sessions for the in-app shell. The HTTP layer names a conversation or a project; this package never takes a client-supplied path. |
 | `internal/app` | wiring shared by both shells, plus listen/serve/shutdown, `openURL` and `revealPath`. |
@@ -151,12 +151,13 @@ flowchart LR
    the section. Sub-agents do not receive it.
    While a `/goal` is open the manager
    also gets `complete_goal` and `block_goal` (manager-only, like the memory
-   tools). After a clean `done`, if nothing is queued, the runtime starts the
-   next turn itself until `complete_goal`, `block_goal`, a failed turn after
-   in-turn retries of truncated tool JSON / `429` / a dropped stream (the
-   banner then shows that turn's public error), a
+   tools).    After a clean `done`, if nothing is queued, the runtime starts the
+   next turn itself until `complete_goal`, `block_goal`, a failed turn that
+   is not a recoverable model error (the banner then shows that turn's
+   public error), a
    clear/interrupt, or
-   `swarm.goal_max_auto_turns`. Interrupt pauses an open goal (`goal_capped`)
+   `swarm.goal_max_auto_turns`. A truncated tool-call JSON, a `429`, or a
+   dropped stream retries in-turn then auto-continues. Interrupt pauses an open goal (`goal_capped`)
    until the human hits Start or sends a message — the banner Play control
    is resume, not a gap between auto-continue sessions. A `/goal` turn ends
    when the manager stops calling tools (a final assistant message with no
@@ -377,7 +378,8 @@ The front end folds this stream into blocks per agent in
 order). A `tool_delta` fills that pending row without clearing `pending`;
 `collapseLiveEvents` keys those snapshots by call id so two parallel `exec`
 calls do not overwrite each other. Carriage return in the expanded body is
-overwrite, the way a terminal treats `\r`. The pending `exec` row starts open.
+overwrite, the way a terminal treats `\r`. The pending `exec` row starts open
+and its output box follows the tail until the reader wheels up.
 A turn that ends (`done` / `error`, including a user interrupt) or an
 agent that `finished` closes any tool still `pending`: interrupt cancels
 in-flight calls without a `tool_result`, and leaving them pending keeps the
@@ -413,7 +415,9 @@ sitting frozen. It starts open; a click on the row hides it even while tokens
 are still arriving (`thoughtExpanded`) — streaming must not force it back open.
 Two or more user turns grow a compact tick cluster in the middle of the left
 edge of the transcript (`frontend/src/lib/turn-nav.ts`): hover lists those
-messages, click scrolls to the turn. The active tick is the turn that owns
+messages on two lines in a wider panel, click scrolls to the turn. Past ten
+ticks the cluster becomes a fixed-height minimap so it does not grow a
+second scrollbar beside the list. The active tick is the turn that owns
 the viewport, snapping to the latest when the scroller is at the bottom
 or still following the live edge — measuring at scrollTop 0 on open used
 to light the first tick while the reader was looking at the last turn.

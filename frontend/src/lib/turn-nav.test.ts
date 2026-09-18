@@ -2,8 +2,11 @@ import { describe, expect, it, vi } from "vitest"
 
 import type { Block } from "./transcript"
 import {
+  TURN_NAV_LIST_PREVIEW,
   TURN_NAV_MIN,
+  TURN_NAV_TICK_PACK,
   activeNavId,
+  packTurnNavTicks,
   prefersInstantScroll,
   previewText,
   offsetInScroller,
@@ -83,6 +86,14 @@ describe("previewText", () => {
     const preview = previewText(long, 20)
     expect(preview.endsWith("…")).toBe(true)
     expect(preview.length).toBeLessThanOrEqual(20)
+  })
+
+  it("keeps a longer slice for the hover list than a tick label", () => {
+    const long = "word ".repeat(40).trim()
+    const tick = previewText(long)
+    const list = previewText(long, TURN_NAV_LIST_PREVIEW)
+    expect(list.length).toBeGreaterThan(tick.length)
+    expect(list.length).toBeLessThanOrEqual(TURN_NAV_LIST_PREVIEW)
   })
 })
 
@@ -180,5 +191,12 @@ describe("offsetInScroller", () => {
 describe("TURN_NAV_MIN", () => {
   it("stays a two-turn threshold", () => {
     expect(TURN_NAV_MIN).toBe(2)
+  })
+})
+
+describe("packTurnNavTicks", () => {
+  it("packs only after a compact cluster would overflow", () => {
+    expect(packTurnNavTicks(TURN_NAV_TICK_PACK)).toBe(false)
+    expect(packTurnNavTicks(TURN_NAV_TICK_PACK + 1)).toBe(true)
   })
 })

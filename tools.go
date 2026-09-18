@@ -27,7 +27,7 @@ const sendMessageDesc = "queue a steering message. agent_id is the id spawn_agen
 //	resume_agent(agent_id, task)             — continue a finished worker in place under the same agent_id
 func (r *Registry) Tools() []tool.BaseTool {
 	return []tool.BaseTool{
-		&ctlTool{name: "spawn_agent", desc: "start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's.", fn: r.spawn},
+		&ctlTool{name: "spawn_agent", desc: "start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error} so you can retry; it does not fail the turn.", fn: r.spawn},
 		&ctlTool{name: "send_message", desc: sendMessageDesc, fn: r.send},
 		&ctlTool{name: "wait_agents", desc: "wait until the next listed agent reaches a final status, or the timeout hits; " +
 			"returns every listed agent's status (running/done/failed), the finished ones' results, " +
@@ -35,8 +35,8 @@ func (r *Registry) Tools() []tool.BaseTool {
 			"and, for those still running, their last activity. " +
 			"It returns as soon as one finishes, not once they all do, so call it again to collect the rest " +
 			"and tell the human what came back between calls.", fn: r.wait},
-		&ctlTool{name: "close_agent", desc: "cancel a running agent", fn: r.close},
-		&ctlTool{name: "resume_agent", desc: "continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead.", fn: r.resume},
+		&ctlTool{name: "close_agent", desc: "cancel a running agent. An unknown agent_id returns {error}; it does not fail the turn.", fn: r.close},
+		&ctlTool{name: "resume_agent", desc: "continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead. A missing agent_id or task, or a still-running target, returns {error}; it does not fail the turn.", fn: r.resume},
 	}
 }
 
@@ -124,6 +124,14 @@ func marshal(v any) string {
 	return string(b)
 }
 
+// ctlRefuse is a successful tool result that tells the model what was wrong.
+// A Go error from InvokableRun is a NodeRunError that kills the ReAct graph
+// and, on a pursuing /goal, blocks the objective. Missing arguments are a
+// retry, not a crash.
+func ctlRefuse(msg string) (string, error) {
+	return marshal(map[string]string{"error": msg}), nil
+}
+
 func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	var a struct {
 		Role        string `json:"role"`
@@ -131,14 +139,15 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		ForkContext bool   `json:"fork_context"`
 	}
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
-		return "", fmt.Errorf("spawn_agent: %w", err)
+		return ctlRefuse("spawn_agent: could not read the arguments")
 	}
+	a.Role = strings.TrimSpace(a.Role)
 	if a.Role == "" {
-		return "", fmt.Errorf("spawn_agent: role is required")
+		return ctlRefuse("spawn_agent: role is required")
 	}
 	a.Task = strings.TrimSpace(a.Task)
 	if a.Task == "" {
-		return "", fmt.Errorf("spawn_agent: task is required")
+		return ctlRefuse("spawn_agent: task is required")
 	}
 	tools := make([]tool.BaseTool, 0, len(r.SubAgentTools)+1)
 	tools = append(tools, r.SubAgentTools...)
@@ -158,7 +167,7 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	if id := r.reusableFinishedID(a.Role); id != "" {
 		h, err := r.Resume(ctx, id, a.Task, r.ModelBuilder, tools...)
 		if err != nil {
-			return "", err
+			return ctlRefuse(err.Error())
 		}
 		return marshal(map[string]string{"agent_id": h.ID, "resumed_from": id}), nil
 	}
@@ -170,7 +179,7 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		h, err = r.Spawn(ctx, a.Role, a.Task, r.ModelBuilder, tools...)
 	}
 	if err != nil {
-		return "", err
+		return ctlRefuse(err.Error())
 	}
 	if a.ForkContext {
 		return marshal(map[string]string{"agent_id": h.ID, "forked": "true"}), nil
@@ -188,7 +197,7 @@ func (r *Registry) sendFrom(ctx context.Context, fromID, fromRole, args string) 
 		Text    string `json:"text"`
 	}
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
-		return "", fmt.Errorf("send_message: %w", err)
+		return marshal(r.undelivered(fromID, fromRole, "", "", "send_message: could not read the arguments")), nil
 	}
 	a.AgentID = strings.TrimSpace(a.AgentID)
 	a.Text = strings.TrimSpace(a.Text)
@@ -322,7 +331,7 @@ func (r *Registry) wait(ctx context.Context, args string) (string, error) {
 		TimeoutS int      `json:"timeout_s"`
 	}
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
-		return "", fmt.Errorf("wait_agents: %w", err)
+		return ctlRefuse("wait_agents: could not read the arguments")
 	}
 	timeout := 30 * time.Second
 	if a.TimeoutS > 0 {
@@ -438,11 +447,15 @@ func (r *Registry) close(ctx context.Context, args string) (string, error) {
 		AgentID string `json:"agent_id"`
 	}
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
-		return "", fmt.Errorf("close_agent: %w", err)
+		return ctlRefuse("close_agent: could not read the arguments")
+	}
+	a.AgentID = strings.TrimSpace(a.AgentID)
+	if a.AgentID == "" {
+		return ctlRefuse("close_agent: agent_id is required")
 	}
 	h, ok := r.get(a.AgentID)
 	if !ok {
-		return "", fmt.Errorf("close_agent: unknown agent %q", a.AgentID)
+		return ctlRefuse(fmt.Sprintf("close_agent: unknown agent %q", a.AgentID))
 	}
 	h.Cancel()
 	return marshal(map[string]any{"agent_id": a.AgentID, "cancelled": true}), nil

@@ -186,6 +186,9 @@ export function Composer({
   const cancelImeSettle = useRef<(() => void) | null>(null)
   const pastedRef = useRef<PasteImage[]>([])
   pastedRef.current = pasted
+  // CJK IMEs write the committed string back after we clear the box.
+  // Swallow that echo so a leftover Enter cannot queue the live turn.
+  const echoRef = useRef("")
 
   useEffect(() => () => cancelImeSettle.current?.(), [])
   useEffect(() => () => revokePasteImages(pastedRef.current), [])
@@ -325,6 +328,7 @@ export function Composer({
       text,
     )
     if (!payload && pending.length === 0 && pasted.length === 0) return
+    if (echoRef.current && payload.trim() === echoRef.current) return
     let uploaded: Attachment[] = []
     if (pending.length > 0) {
       setUploading(true)
@@ -341,6 +345,7 @@ export function Composer({
     const images = pasted.length > 0 ? await toSendImages(pasted) : undefined
     const files = uploaded.map((a) => a.rel_path).filter(Boolean)
     if (!payload && !(images && images.length > 0) && files.length === 0) return
+    echoRef.current = payload.trim()
     onSend(payload, images, {
       steer: Boolean(opts?.steer),
       files: files.length > 0 ? files : undefined,
@@ -505,7 +510,15 @@ export function Composer({
                       : t("composer.placeholder")
             }
             className="max-h-[200px] min-h-[44px] rounded-none border-0 bg-transparent px-4 py-3 text-[0.9375rem] shadow-none focus-visible:ring-0"
-            onChange={(e) => setText(normalizeSlashPrefix(e.target.value))}
+            onChange={(e) => {
+              const next = normalizeSlashPrefix(e.target.value)
+              if (echoRef.current && next.trim() === echoRef.current) {
+                setText("")
+                return
+              }
+              echoRef.current = ""
+              setText(next)
+            }}
             onPaste={(e) => {
               const files = filesFromClipboard(e.clipboardData)
               if (files.length === 0) return

@@ -1,7 +1,10 @@
+import { useRef } from "react"
+
 import { MemoMarkdown } from "@/components/app/markdown"
 import { ShellCommand } from "@/components/app/shell-command"
 import { SourceListing } from "@/components/app/source-code"
 import { applyCarriageReturns } from "@/lib/carriage"
+import { useOutputTail } from "@/lib/output-scroll"
 import { isMarkdownPath, parseReadResult, type ReadListing } from "@/lib/read-result"
 import { execCommand, viewTool, type SearchHit } from "@/lib/tool-view"
 import { useT } from "@/lib/use-t"
@@ -40,7 +43,7 @@ export function ToolResultBody({
       ) : listing ? (
         <FileBody listing={listing} failed={view.failed} />
       ) : (
-        <ParsedBody view={view} />
+        <ParsedBody view={view} follow={Boolean(pending)} />
       )}
     </div>
   )
@@ -48,8 +51,10 @@ export function ToolResultBody({
 
 function ParsedBody({
   view,
+  follow,
 }: {
   view: ReturnType<typeof viewTool>
+  follow: boolean
 }) {
   const t = useT()
   return (
@@ -63,20 +68,35 @@ function ParsedBody({
         </p>
       ) : null}
       {view.hits ? <SearchHits hits={view.hits} /> : null}
-      {view.body ? (
-        <pre
-          data-testid="tool-output"
-          className={`thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono ${
-            view.failed && !view.error ? "text-destructive" : ""
-          }`}
-        >
-          {applyCarriageReturns(view.body)}
-        </pre>
-      ) : null}
+      {view.body ? <OutputPre text={applyCarriageReturns(view.body)} failed={view.failed && !view.error} follow={follow} /> : null}
       {!view.body && !view.hits && !view.error ? (
         <p className="text-muted-foreground">{t("tool.noOutput")}</p>
       ) : null}
     </div>
+  )
+}
+
+function OutputPre({
+  text,
+  failed,
+  follow,
+}: {
+  text: string
+  failed?: boolean
+  follow: boolean
+}) {
+  const ref = useRef<HTMLPreElement>(null)
+  useOutputTail(ref, text, follow)
+  return (
+    <pre
+      ref={ref}
+      data-testid="tool-output"
+      className={`thin-scrollbar max-h-72 overflow-auto whitespace-pre-wrap break-words rounded bg-muted p-2 font-mono [overflow-anchor:none] ${
+        failed ? "text-destructive" : ""
+      }`}
+    >
+      {text}
+    </pre>
   )
 }
 

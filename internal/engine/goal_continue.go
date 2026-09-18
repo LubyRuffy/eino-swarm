@@ -19,7 +19,8 @@ func GoalContinueText() string {
 
 // continueGoal starts the next turn when a standing objective is still open.
 // Follow-ups and unread steers already claimed the next turn; this only runs
-// after a clean finish with nothing queued. Stop, errors (which also block
+// after a clean finish with nothing queued, or after a recoverable model
+// error that already retried in-turn. Stop, a real refusal (which blocks
 // the objective), a completed, blocked, capped, or idle-held goal, and a
 // continuation that made no counted tool progress do nothing.
 func (rt *runtime) continueGoal(status string) {
@@ -92,11 +93,28 @@ func (rt *runtime) continueGoal(status string) {
 	}
 }
 
+// shouldPursueAfterTurn is whether an open /goal should start the next turn
+// after this one ends. Truncated tool JSON / 429 / a dropped stream already
+// retried in-turn; pinning the banner is how a huge tool payload used to
+// kill a standing objective. A real refusal still blocks. A conversation
+// without a standing objective does not auto-start from a failed turn.
+func shouldPursueAfterTurn(status string, runErr error, pursuing bool) bool {
+	if status == store.TurnDone {
+		return true
+	}
+	return pursuing && status == store.TurnError && isRetryableModelError(runErr)
+}
+
+func (rt *runtime) pursuingOpenGoal() bool {
+	th, err := rt.engine.store.GetThread(rt.threadID)
+	return err == nil && pursuingGoal(th)
+}
+
 // blockOpenGoalOnTurnError stops auto-continue when a pursuing turn dies
-// after in-turn retries. The manager never got to call block_goal; leaving
-// the banner on Pursuing and kicking another session is how a ChatModel
-// crash loops forever. Truncated tool JSON / 429 / a dropped stream retry
-// inside the same turn first.
+// for a reason the manager cannot retry. The manager never got to call
+// block_goal; leaving the banner on Pursuing and kicking another session
+// is how a real refusal loops. Truncated tool JSON / 429 / a dropped
+// stream retry inside the same turn, then auto-continue.
 func (rt *runtime) blockOpenGoalOnTurnError() {
 	rt.engine.blockOpenGoalOnTurnError(rt.threadID)
 }

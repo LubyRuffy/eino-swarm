@@ -25,7 +25,7 @@ Current Go coverage, from `go test -race -cover ./...`:
 |---|---|
 | `internal/memory` | 96.8% |
 | `internal/provider` | 92.0% |
-| `.` (swarm library) | 95.9% |
+| `.` (swarm library) | 95.2% |
 | `internal/tools` | 97.0% |
 | `internal/store` | 92.2% |
 | `internal/engine` | 92.7% |
@@ -176,6 +176,10 @@ the 2000-entry cap.
 `send_message`s an invented id still finishes as done and the manager's next
 model call sees the handoff text: the miss notifies the host
 (`notified: manager`) instead of a `NodeRunError` or a retry roster.
+`TestSpawnWithoutATaskDoesNotKillTheManager` /
+`TestSpawnAgentRequiresATask` are why a `spawn_agent` that omits `task`
+returns `{"error"}` so the manager retries, instead of a `NodeRunError` that
+blocks a pursuing `/goal`.
 `TestKeepHumanSteersDropsTheSessionWrap` is why an unread `/goal` wrap-up
 leftover cannot become a human turn that resets the auto-continue cap.
 The front-end reducer also hides the same historical text on older sessions.
@@ -244,12 +248,13 @@ together (OpenAI's marshaler rejects that pair);
 so a later concat cannot revive the same error.
 
 `TestAFailedTurnBlocksAnOpenGoalAndDoesNotAutoContinue` is why a crashed
-`/goal` turn shows Blocked with the public turn error on the banner (not a
+`/goal` turn that is a real refusal shows Blocked with the public turn error on the banner (not a
 generic sentinel) and an idle composer instead of auto-continuing into the
 same failure; `TestARetryableModelErrorRetriesInsteadOfBlockingTheGoal` is
 why truncated tool JSON / a `429` / a dropped stream re-enters the same
-turn (`model_retry`) instead; `TestARetryableModelErrorBlocksAfterRetriesAreExhausted`
-is the cap so a poison request cannot loop;
+turn (`model_retry`) instead; `TestARetryableModelErrorContinuesTheGoalAfterRetriesAreExhausted`
+is why exhausting those retries still auto-continues (or `goal_idle`) instead of pinning the banner;
+`TestARetryableModelErrorWithoutAGoalDoesNotAutoStart` is why that auto-continue is `/goal` only;
 `TestFailedTurnBlockReasonPrefersThePublicError` is the
 fallback when the turn row has no error text;
 `TestTurnOutcomePrefersAModelFailureOverInterruptNoise`
@@ -327,7 +332,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   a burst of deltas — lossless, because a delta carries the accumulated string.
   Live tool output uses the same rule keyed by `tool_call_id`. Carriage return
   in an expanded tool body is overwrite (`src/lib/carriage.ts`). A pending `exec`
-  row starts open.	`splitQueuedSteers` pulls unread steering out of the turn body while a turn
+  row starts open and the output box follows the tail (`src/lib/output-scroll.ts`).
+  `splitQueuedSteers` pulls unread steering out of the turn body while a turn
   is running (a later model round on the same turn consumes it; a previous
   turn's steer stays put). `steer_retracted` hides that bubble by seq (a
   duplicate caption stays); `steer_preempted` is silent. A retract that
@@ -361,7 +367,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   cannot re-parse every past answer on each streamed token.
 - **`src/lib/turn-nav.ts`** and **`src/components/app/turn-nav.tsx`**: user
   turns become jump targets (steering does not), ticks pack into a compact
-  cluster in the middle of the pane rather than stretching it,   the active tick
+  cluster in the middle of the pane rather than stretching it, and a long
+  conversation shares a fixed height instead of overflowing a second
+  scrollbar. The hover list is a wider two-line preview, not a truncated
+  single line. The active tick
   is the last message whose top has crossed a probe near the viewport, or the
   latest turn when the scroller is at the bottom or still following the live
   edge (opening a conversation used to measure at scrollTop 0 and keep the
@@ -392,7 +401,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   and when a file is dropped on the empty state; sending while a conversation is
   still being created must wait for it, or the turn runs in the conversation the
   user just left; Enter while a turn is running queues a follow-up instead of
-  steering, ⌘Enter / `{steer:true}` injects now, `{fromEventSeq}` starts a turn
+  steering, except the live turn's own user text (a leftover Enter / IME echo
+  must not enqueue the request that just started); ⌘Enter / `{steer:true}` injects now
+  and drops a queued copy of that text; `{fromEventSeq}` starts a turn
   (never a follow-up) after clearing everything below that bubble and leaving
   the edited text in place, an edited follow-up is moved to the back of the
   queue, and an idle enqueue falls
@@ -407,6 +418,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   1000 lines. `title` flushes immediately like `done`.
   `app-steer.test.ts` is why Interrupt-inject and per-bubble retract hit the
   open conversation and swallow `no_steer` / `404` races.
+  `app-followup.test.ts` is why a duplicate send of the live turn does not sit
+  in the tray, why Steer on a row / ⌘Enter of the same words empties that copy,
+  and why a stale follow-up GET cannot resurrect a steered row.
+  `followup-sync.ts` holds the generation token and the text match so
+  `app.ts` stays under 1000 lines.
   A roster sidecar of `spawned` rows must not stop that paging or paint a
   wall of "Started" lines. Opening a worker off the live edge fetches
   `GET /agents/:agent/log` even when paging already claimed the log was
@@ -423,8 +439,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   keeps `status.started_at` so the title-bar Working clock is the current
   turn, not a frozen 1s. An `error` then `goal_blocked` idles the composer
   and marks the objective blocked, so a crashed `/goal` turn is not still
-  Working — after in-turn `model_retry` of truncated tool JSON / `429` / a
-  dropped stream is exhausted. A `goal_idle` event holds the banner until a human message or Start.
+  Working — a real refusal, not truncated tool JSON / `429` / a dropped
+  stream (those `model_retry` then auto-continue). A `goal_idle` event holds the banner until a human message or Start.
   Split from `app.test.ts` so neither file crosses 1000 lines.
 - **`src/store/app-plan.ts`**: `/plan` enters planning and starts a turn with
   an argument (not during a run, not when the argument is empty); a human
@@ -533,7 +549,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   during composition (`resizeComposerArea`); the confirming
   `compositionend` measures once.
   Enter while composition is live, or on the key that just confirmed it, leaves
-  the draft in the box; the next settled Enter sends. The chrome is a fade over
+  the draft in the box; the next settled Enter sends. A CJK IME writing the
+  committed string back after send is swallowed so a leftover Enter cannot
+  queue the live turn; a different draft still sends. The chrome is a fade over
   the transcript, not a top border, so a docked toolbar cannot regress in.
   The model control is always a switcher, even with one ready name.
   ⌘Enter marks the send as steer; Enter while running queues. The Queued tray
@@ -806,7 +824,7 @@ long enough for Steer; unit tests leave it unset.
 
 | spec | covers |
 |---|---|
-| `e2e/conversation.spec.ts` | a full swarm turn, a live thought in a 10-line scrolling box whose **Thinking** label sweeps, clicking that row hiding the thought while it still streams, a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge), a generated sidebar title after the first turn (not the raw request, not a transcript row), a heading rendered as a heading while the turn is still Working, a chart in the scripted answer with Chart/Table tabs (and after reload), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge, switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, editing a queued row and submitting it so that message goes to the back of the FIFO, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, quoting selected transcript text into the next send as an editable composer annotation, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` showing a Planning banner and an `ask_user` dialog (a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
+| `e2e/conversation.spec.ts` | a full swarm turn, a live thought in a 10-line scrolling box whose **Thinking** label sweeps, clicking that row hiding the thought while it still streams, a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge), a generated sidebar title after the first turn (not the raw request, not a transcript row), a heading rendered as a heading while the turn is still Working, a chart in the scripted answer with Chart/Table tabs (and after reload), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge, switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, **Steer** on that queued row injecting and emptying the tray, editing a queued row and submitting it so that message goes to the back of the FIFO, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, quoting selected transcript text into the next send as an editable composer annotation, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` showing a Planning banner and an `ask_user` dialog (a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
 | `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, hovering a project row revealing a new-conversation control that starts one in that project rather than Recents (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, and a sixth topic in the folder sitting behind **Show more** until it is opened |
 | `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline, Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, the tool catalogue on a never-saved config, settings written to the config file and read back, personality round-tripping through Settings → Personality, pinning a title-generation model when more than one name is listed, opening a collapsed provider row then discovering models into the default-model dropdown, **Back to app** remaining on screen on a short window when the Swarm page is long, Back to app sitting in the first 48px of a browser sheet (the desktop title-bar strip is not shipped to the tab), the Add-a-provider outline staying inside the Models scrollport, theme switching persisted, chrome language switching (restored to English because locale is in the shared yaml), the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), font / size / conversation width round-tripping through Settings → General, renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
 

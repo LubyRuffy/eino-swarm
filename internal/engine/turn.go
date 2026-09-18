@@ -602,7 +602,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 			e.log.Warn("could not close turn", "turn", turn.ID, "err", err)
 		}
 	}
-	if status == store.TurnError {
+	if status == store.TurnError && !isRetryableModelError(runErr) {
 		rt.blockOpenGoalOnTurnError()
 	}
 	if status == store.TurnCancelled {
@@ -621,12 +621,15 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	if !turn.GoalContinue {
 		e.scheduleTitle(rt.threadID, turn, status, turn.UserText, res.Final)
 	}
-	started := rt.runLateSteerMessages(status, leftover)
-	if !started {
-		started = rt.flushFollowup(status)
-	}
-	if !started {
-		rt.continueGoal(status)
+	started := false
+	if shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal()) {
+		started = rt.runLateSteerMessages(store.TurnDone, leftover)
+		if !started {
+			started = rt.flushFollowup(store.TurnDone)
+		}
+		if !started {
+			rt.continueGoal(store.TurnDone)
+		}
 	}
 }
 

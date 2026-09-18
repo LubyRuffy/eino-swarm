@@ -47,6 +47,12 @@ import { useProjects } from "./projects"
 import { planAskActions } from "./app-plan"
 import { steerInjectActions } from "./app-steer"
 import { dropQueued, queueEvent, withRunningClock } from "./app-stream"
+import {
+  bumpFollowups,
+  dropMatchingFollowups,
+  isFollowupGeneration,
+  liveTurnUserText,
+} from "./followup-sync"
 import { managerHasVisibleBlocks } from "@/lib/welcome"
 import {
   applyTail,
@@ -149,6 +155,14 @@ let unsubscribe: (() => void) | undefined
  *  before the new id arrived would run the turn in the conversation they just
  *  left — visibly nowhere. */
 let creating: Promise<string | undefined> | undefined
+
+/** Same draft already in flight. A leftover Enter / IME echo must not start
+ *  the turn and also enqueue it. */
+const inflightDrafts = new Set<string>()
+
+function inflightKey(id: string | undefined, text: string) {
+  return `${id ?? ""}:${text.trim()}`
+}
 
 const THEME_KEY = "zwai.theme"
 
@@ -468,6 +482,7 @@ export const useApp = create<AppState>((set, get) => ({
       // below it is gone. Waiting on currentThread first would paint the
       // unedited bubble for a frame, which is the opposite of Codex.
       rememberRewind(id, from)
+      bumpFollowups()
       set((s) => ({
         transcript: placePendingEdit(
           rewindTranscript(s.transcript, from),
@@ -489,12 +504,15 @@ export const useApp = create<AppState>((set, get) => ({
       }
       return
     }
-    let id = await currentThread(get)
-    if (!id) {
-      id = await get().newThread()
-      if (!id) return
-    }
+    const key = inflightKey(get().activeId, text)
+    if (inflightDrafts.has(key)) return
+    inflightDrafts.add(key)
     try {
+      let id = await currentThread(get)
+      if (!id) {
+        id = await get().newThread()
+        if (!id) return
+      }
       // A live question is not a follow-up: Enter is Other for every
       // unanswered prompt. Queueing here would wait for a turn that cannot
       // finish until this answer lands.
@@ -511,12 +529,27 @@ export const useApp = create<AppState>((set, get) => ({
         !(images && images.length > 0) &&
         !(opts?.files && opts.files.length > 0)
       if (queue) {
+        if (liveTurnUserText(get().status, get().transcript) === text.trim()) {
+          return
+        }
         try {
           const item = await api.enqueueFollowup(id, text)
+          bumpFollowups()
           set((s) => ({ followups: [...s.followups, item] }))
           return
         } catch (e) {
           if (!(e instanceof ApiError && e.code === "idle")) throw e
+        }
+      }
+      if (opts?.steer) {
+        const kept = dropMatchingFollowups(get().followups, text)
+        if (kept.length !== get().followups.length) {
+          const dropped = get().followups.filter((f) => !kept.includes(f))
+          bumpFollowups()
+          set({ followups: kept })
+          await Promise.all(
+            dropped.map((f) => api.deleteFollowup(id, f.id).catch(() => undefined)),
+          )
         }
       }
       await api.steer(id, text, images, opts?.files)
@@ -525,6 +558,8 @@ export const useApp = create<AppState>((set, get) => ({
       void get().refreshThreads()
     } catch (e) {
       set({ error: message(e) })
+    } finally {
+      inflightDrafts.delete(key)
     }
   },
 
@@ -609,9 +644,13 @@ export const useApp = create<AppState>((set, get) => ({
       set({ followups: [] })
       return
     }
+    const token = bumpFollowups()
     try {
-      set({ followups: await api.followups(id) })
+      const list = await api.followups(id)
+      if (!isFollowupGeneration(token) || get().activeId !== id) return
+      set({ followups: list })
     } catch (e) {
+      if (!isFollowupGeneration(token)) return
       set({ error: message(e) })
     }
   },
@@ -621,6 +660,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (!id) return
     try {
       await api.steerFollowup(id, fid)
+      bumpFollowups()
       set((s) => ({ followups: s.followups.filter((f) => f.id !== fid) }))
     } catch (e) {
       void get().refreshFollowups()
@@ -635,6 +675,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (!id) return
     try {
       await api.deleteFollowup(id, fid)
+      bumpFollowups()
       set((s) => ({ followups: s.followups.filter((f) => f.id !== fid) }))
     } catch (e) {
       void get().refreshFollowups()
@@ -649,6 +690,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (!id) return
     try {
       const item = await api.requeueFollowup(id, fid, text)
+      bumpFollowups()
       set((s) => ({
         followups: [...s.followups.filter((f) => f.id !== fid), item],
       }))

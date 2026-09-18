@@ -16,7 +16,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **Live `exec` output.** While a shell command still runs, Web and TUI stream
   stdout/stderr into the pending tool row (`tool_delta`, broadcast only, keyed
   by `tool_call_id`). The model still gets one JSON `tool_result`. A `\r` in
-  the output overwrites the current line. The pending row starts open.
+  the output overwrites the current line. The pending row starts open
+  and the output box follows the tail (wheel-up unpins).
 
 - **Show more on long sidebar groups.** A project folder and Recents
   show the five conversations active in the last seven days. The rest
@@ -136,6 +137,31 @@ co-working app built on it. The library API is unchanged except where noted
     `Close` still stop them).
 
 ### Fixed
+
+- **The live turn no longer ghosts itself in the follow-up tray.** A leftover
+  Enter after ⌘Enter, or a CJK IME writing the committed string back into the
+  box, used to enqueue the same words that had just started the turn. Injecting
+  (⌘Enter or Steer on the row) drops a queued copy of that text; a
+  `user_message` that matches a waiting row deletes it so the next turn does
+  not repeat the request.
+
+- **The left jump list stays readable in a long conversation.** A dozen
+  turns used to stack a second scrollbar on the tick cluster and clip each
+  request to one truncated line. Ticks now pack into a fixed-height
+  minimap; the hover list is wider and wraps to two lines.
+
+- **A truncated tool-call JSON no longer pins a `/goal`.** Same-turn
+  `model_retry` still runs twice. If that still fails, this turn errors and
+  the standing objective auto-continues (follow-ups still win). A real
+  refusal still `goal_blocked`. `goal_idle` / `goal_max_auto_turns` still
+  stop a loop.
+
+- **A missing `spawn_agent` task no longer crashes the turn.** eino's ToolNode
+  turns a Go error into `NodeRunError`, and a pursuing `/goal` then
+  `goal_blocked` instead of letting the manager fill in the field.
+  Lifecycle tools now return a JSON error result for missing arguments, an
+  unknown or still-running target, unreadable JSON, and a closed registry —
+  the same class of miss as `send_message` to an unknown id.
 
 - **A generated conversation name survives the `done` list refresh.** The
   title-bar used to snap back to the truncated prompt when `GET /threads`

@@ -20,8 +20,8 @@ import (
 const KindModelRetry = "model_retry"
 
 // modelErrorRetries is how many times a recoverable model error may re-enter
-// this turn. Past that the turn fails, and an open /goal blocks, so a poison
-// request cannot loop.
+// this turn. Past that the turn fails. An open /goal auto-continues instead
+// of blocking; goal_max_auto_turns and goal_idle still stop a loop.
 const modelErrorRetries = 2
 
 const modelRetryNoticeText = "Retrying after a model error."

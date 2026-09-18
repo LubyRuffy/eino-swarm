@@ -21,7 +21,9 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 - **Jump inside a long conversation.** Once you have sent two messages, a short
   tick cluster sits in the middle of the transcript's left edge. Hover it for a
-  list of your own turns; click one to scroll there. Auto-follow unpins so a
+  two-line list of your own turns; click one to scroll there. A long
+  conversation packs the ticks into a minimap instead of stacking a second
+  scrollbar on the rail. Auto-follow unpins so a
   live stream does not yank you back to the bottom. Opening another conversation
   from the list lands at its latest turn — and lights that tick — not the top
   of the history. A long log loads from the live edge first; older turns appear
@@ -81,9 +83,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   that makes no tool progress stops auto-continue until you send a message
   or hit **Start**. If it hits an
   obstacle it cannot pass, it calls
-  `block_goal` and stops instead of retrying forever — a crashed turn does
-  the same after in-turn retries of truncated tool JSON / a `429` / a dropped
-  stream are exhausted, and the banner shows the public error. **Start** resumes after a block, a cap, a hold, or a stop. It does not
+  `block_goal` and stops instead of retrying forever — a crashed turn that
+  is not a recoverable model error does the same, and the banner shows the
+  public error. Truncated tool JSON / a `429` / a dropped stream retry
+  in-turn, then auto-continue. **Start** resumes after a block, a cap, a hold, or a stop. It does not
   appear while the objective is still pursuing between auto-continue
   sessions. The
   text is editable in place, and a live turn is told immediately. The
@@ -115,11 +118,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   plot when the JSON is a comparison, and typing in the composer
   does not rebuild the conversation.
 - **Steering, not restarting.** Enter while a turn is running **queues** a
-  follow-up for after this one finishes (refresh-safe). Click a waiting row to
+  follow-up for after this one finishes (refresh-safe), except the live turn's
+  own words — those are already in flight. Click a waiting row to
   edit it; submitting that edit sends it to the back of the queue. **Steer** on
   that row, or ⌘Enter, injects into the current turn at the next model boundary
-  — it does not kill an in-flight tool. Unread steering sits under the working
-  line: **Interrupt** aborts the current manager tool so those nudges land now
+  — it does not kill an in-flight tool, and it drops a queued copy of the same
+  text. Unread steering sits under the working line: **Interrupt** aborts the current manager tool so those nudges land now
   (workers stay up); **Delete** retracts one bubble so the model never sees it.
   Stop is what cancels the whole turn. If the manager
   hits its tool-round limit, the transcript asks whether to add another slice
@@ -154,7 +158,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   The transcript shows the command or query, not the JSON envelope; a failed
   `exec` is a red error, not a grey dump. A running `exec` opens and streams
   stdout/stderr as they arrive (a `\r` overwrites the current line the way a
-  terminal does). Opening an `exec` row wraps the full
+  terminal does; the output box follows the tail, wheel-up unpins). Opening an
+  `exec` row wraps the full
   command with shell highlighting instead of leaving it cut off. Opening a
   `read` paints the file from its suffix (Go, TypeScript, Python, …) instead
   of a grey dump; markdown still renders as prose. Agents are
@@ -269,7 +274,8 @@ What you get:
    tokens, and the turn id (`zwai trace <id>` replays the full dump). The event
    log stays folded until you open **Full log**.
 
-Keyboard: Enter sends (while a turn is running it queues a follow-up; an IME
+Keyboard: Enter sends (while a turn is running it queues a follow-up; the live
+turn's own words are not queued; an IME
 confirmation — keeping leftover Latin as typed — is not a send) · `/` at the
 start of the box opens built-in commands · ⌘Enter steers
 the draft into the current turn · Shift+Enter a newline · `⌘K` command palette · `⌘N` new

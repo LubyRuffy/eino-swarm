@@ -277,20 +277,22 @@ func (r *Registry) resume(ctx context.Context, args string) (string, error) {
 		Task    string `json:"task"`
 	}
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
-		return "", fmt.Errorf("resume_agent: %w", err)
+		return ctlRefuse("resume_agent: could not read the arguments")
 	}
+	a.AgentID = strings.TrimSpace(a.AgentID)
+	a.Task = strings.TrimSpace(a.Task)
 	if a.AgentID == "" {
-		return "", fmt.Errorf("resume_agent: agent_id is required")
+		return ctlRefuse("resume_agent: agent_id is required")
 	}
 	if a.Task == "" {
-		return "", fmt.Errorf("resume_agent: task is required")
+		return ctlRefuse("resume_agent: task is required")
 	}
 	tools := make([]tool.BaseTool, 0, len(r.SubAgentTools)+1)
 	tools = append(tools, r.SubAgentTools...)
 	tools = append(tools, r.SendTool())
 	h, err := r.Resume(ctx, a.AgentID, a.Task, r.ModelBuilder, tools...)
 	if err != nil {
-		return "", err
+		return ctlRefuse(err.Error())
 	}
 	return marshal(map[string]string{"agent_id": h.ID, "resumed_from": a.AgentID}), nil
 }

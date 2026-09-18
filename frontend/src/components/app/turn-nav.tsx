@@ -3,13 +3,21 @@ import { useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject }
 import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 import {
+  TURN_NAV_LIST_PREVIEW,
   TURN_NAV_MIN,
   activeNavId,
   offsetInScroller,
+  packTurnNavTicks,
   previewText,
   turnNavSelector,
   type TurnNavItem,
 } from "@/lib/turn-nav"
+
+function attrEscape(value: string): string {
+  return typeof CSS !== "undefined" && typeof CSS.escape === "function"
+    ? CSS.escape(value)
+    : value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
+}
 
 /** Compact tick cluster in the middle of the transcript, not a full-height
  *  scrollbar. Hover opens the list of the user's own messages. */
@@ -34,7 +42,7 @@ export function TurnNav({
   const itemKey = items.map((i) => `${i.id}\0${i.text}`).join("\n")
   const itemsRef = useRef(items)
   itemsRef.current = items
-  const ticksRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
     const root = scrollerRef.current
@@ -77,21 +85,21 @@ export function TurnNav({
     // itemKey is id+text; a streamed answer must not rebuild the rail.
   }, [scrollerRef, itemKey, pinned])
 
+  const highlight = hovered ?? active ?? items.at(-1)?.id
+
   useLayoutEffect(() => {
-    if (!active) return
-    const escaped =
-      typeof CSS !== "undefined" && typeof CSS.escape === "function"
-        ? CSS.escape(active)
-        : active.replace(/\\/g, "\\\\").replace(/"/g, '\\"')
-    const tick = ticksRef.current?.querySelector(`[data-turn-nav-tick="${escaped}"]`)
-    if (tick instanceof HTMLElement && typeof tick.scrollIntoView === "function") {
-      tick.scrollIntoView({ block: "nearest" })
+    if (!open || !highlight) return
+    const row = listRef.current?.querySelector(
+      `[data-turn-nav-row="${attrEscape(highlight)}"]`,
+    )
+    if (row instanceof HTMLElement && typeof row.scrollIntoView === "function") {
+      row.scrollIntoView({ block: "nearest" })
     }
-  }, [active])
+  }, [open, highlight])
 
   if (items.length < TURN_NAV_MIN) return null
 
-  const highlight = hovered ?? active ?? items.at(-1)?.id
+  const packTicks = packTurnNavTicks(items.length)
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") {
@@ -132,8 +140,11 @@ export function TurnNav({
       <div className="relative flex w-8 flex-col items-center py-1.5">
         <div className="absolute inset-y-1.5 left-1/2 w-px -translate-x-1/2 bg-muted-foreground/30" />
         <div
-          ref={ticksRef}
-          className="relative flex max-h-48 flex-col items-center gap-2 overflow-y-auto"
+          data-testid="turn-nav-ticks"
+          className={cn(
+            "relative flex w-full flex-col items-center",
+            packTicks ? "h-56" : "gap-2",
+          )}
         >
           {items.map((item) => {
             const current = item.id === active
@@ -145,7 +156,10 @@ export function TurnNav({
                 aria-label={previewText(item.text)}
                 aria-current={current ? "true" : undefined}
                 data-turn-nav-tick={item.id}
-                className="relative flex h-3 w-4 shrink-0 items-center justify-center"
+                className={cn(
+                  "relative flex w-4 items-center justify-center",
+                  packTicks ? "min-h-0 flex-1" : "h-3 shrink-0",
+                )}
                 onMouseEnter={() => setHovered(item.id)}
                 onFocus={() => setHovered(item.id)}
                 onClick={() => onJump(item.id)}
@@ -163,8 +177,9 @@ export function TurnNav({
       </div>
       {open ? (
         <div
+          ref={listRef}
           data-testid="turn-nav-list"
-          className="absolute left-8 top-1/2 z-20 w-64 max-h-96 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-md thin-scrollbar"
+          className="absolute left-8 top-1/2 z-20 w-96 max-h-[min(28rem,70vh)] max-w-[calc(100vw-3.5rem)] -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-md thin-scrollbar"
         >
           {items.map((item) => {
             const hot = item.id === highlight
@@ -173,8 +188,9 @@ export function TurnNav({
                 key={item.id}
                 type="button"
                 tabIndex={-1}
+                data-turn-nav-row={item.id}
                 className={cn(
-                  "mb-0.5 w-full truncate rounded-lg px-3 py-2 text-left text-[13px] leading-5 last:mb-0",
+                  "mb-1 w-full rounded-lg px-3 py-2.5 text-left text-[13px] leading-5 last:mb-0",
                   hot
                     ? "bg-secondary text-secondary-foreground"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
@@ -182,7 +198,9 @@ export function TurnNav({
                 onMouseEnter={() => setHovered(item.id)}
                 onClick={() => onJump(item.id)}
               >
-                {previewText(item.text)}
+                <span className="line-clamp-2 break-words">
+                  {previewText(item.text, TURN_NAV_LIST_PREVIEW)}
+                </span>
               </button>
             )
           })}

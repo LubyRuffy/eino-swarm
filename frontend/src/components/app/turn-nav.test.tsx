@@ -37,6 +37,9 @@ describe("TurnNav", () => {
     expect(nav).not.toHaveClass("inset-y-0")
     expect(nav).toHaveClass("top-1/2")
     expect(nav).toHaveClass("z-20")
+    const ticks = screen.getByTestId("turn-nav-ticks")
+    expect(ticks).toHaveClass("gap-2")
+    expect(ticks).not.toHaveClass("h-56")
   })
 
   it("names itself so a screen reader can find the jumps", () => {
@@ -82,5 +85,29 @@ describe("TurnNav", () => {
     const ticks = screen.getAllByRole("button")
     expect(ticks[1]).toHaveAttribute("aria-current", "true")
     expect(ticks[0]).not.toHaveAttribute("aria-current")
+  })
+
+  it("packs a long rail into a fixed height instead of a second scrollbar", () => {
+    const many = Array.from({ length: 16 }, (_, i) => ({
+      id: `tn_${i}`,
+      text: `turn ${i + 1}`,
+    }))
+    const scroller = { current: document.createElement("div") }
+    render(<TurnNav items={many} scrollerRef={scroller} onJump={vi.fn()} />)
+    const ticks = screen.getByTestId("turn-nav-ticks")
+    expect(ticks).toHaveClass("h-56")
+    expect(ticks.className).not.toMatch(/overflow-y-auto/)
+    expect(screen.getAllByRole("button")[0]).toHaveClass("flex-1")
+  })
+
+  it("lets a hover row wrap two lines in a wider list", () => {
+    renderNav()
+    fireEvent.mouseEnter(screen.getByTestId("turn-nav"))
+    const list = screen.getByTestId("turn-nav-list")
+    expect(list).toHaveClass("w-96")
+    expect(list.className).not.toMatch(/\bw-64\b/)
+    const label = within(list).getByText("second request")
+    expect(label).toHaveClass("line-clamp-2")
+    expect(label.className).not.toMatch(/\btruncate\b/)
   })
 })
