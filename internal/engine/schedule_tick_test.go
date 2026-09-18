@@ -108,7 +108,6 @@ func TestMissedTicksDoNotBurstAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	e.StartScheduler()
 	e.fireDueSchedules()
 
 	turns, err := e.Store().ListTurns(th.ID)
@@ -527,6 +526,10 @@ func TestConcurrentFiresRespectMaxActive(t *testing.T) {
 }
 
 func TestScheduledFireDoesNotResetGoalBudgetOrAutoTitle(t *testing.T) {
+	// 默认 mock 会 complete_goal，那是把目标结了，不是把预算清了。别搅在一块。
+	provider.SetCompleteOpenGoal(false)
+	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
+
 	e := newTestEngine(t)
 	clk := newScheduleClock()
 	e.now = clk.Now
@@ -543,16 +546,6 @@ func TestScheduledFireDoesNotResetGoalBudgetOrAutoTitle(t *testing.T) {
 	_ = armDueWake(t, e, clk, th.ID, 60)
 	e.fireDueSchedules()
 
-	got, err := e.Store().GetThread(th.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.GoalAutoTurns != 3 || !got.GoalCapped {
-		t.Fatalf("budget was reset: auto=%d capped=%v", got.GoalAutoTurns, got.GoalCapped)
-	}
-	if got.Title != "" {
-		t.Fatalf("autoTitle from the wrapper: %q", got.Title)
-	}
 	turns, err := e.Store().ListTurns(th.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -561,10 +554,29 @@ func TestScheduledFireDoesNotResetGoalBudgetOrAutoTitle(t *testing.T) {
 		t.Fatalf("turns=%d", len(turns))
 	}
 	waitForTurn(t, e, turns[0].ID)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if hasKind(t, e, th.ID, KindTitle) {
+			t.Fatal("a scheduled check must not run the conversation namer")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	got, err := e.Store().GetThread(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GoalAutoTurns != 3 || !got.GoalCapped {
+		t.Fatalf("budget was reset: auto=%d capped=%v", got.GoalAutoTurns, got.GoalCapped)
+	}
+	if got.Title != "" {
+		t.Fatalf("title after the turn finished: %q", got.Title)
+	}
 }
 
 func TestStartSchedulerIsIdempotentAndShutdownStopsIt(t *testing.T) {
 	e := newTestEngine(t)
+	e.cfg.Swarm.ScheduleTickMS = 3_600_000
 	e.StartScheduler()
 	e.StartScheduler()
 	e.fireDueSchedules()
@@ -845,4 +857,5 @@ func TestFireDueOnAClosedStoreIsANoop(t *testing.T) {
 	e.advanceAfterSkip(*sch, delaySpec, clk.Now())
 	e.advanceAfterFire(*sch, spec, clk.Now())
 	e.advanceAfterFire(*sch, delaySpec, clk.Now())
+	e.fireStandalone(*sch, spec, clk.Now())
 }

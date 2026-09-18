@@ -394,6 +394,41 @@ func (s *Store) UpdateSchedule(id string, fields map[string]any) error {
 	return nil
 }
 
+// UpdateActiveSchedule patches an armed row. Zero rows means it is no
+// longer active (cancelled, done, paused) — the ticker must stop, not
+// resurrect it by writing status=active.
+func (s *Store) UpdateActiveSchedule(id string, fields map[string]any) (bool, error) {
+	if len(fields) == 0 {
+		return true, nil
+	}
+	fields["updated_at"] = time.Now().UTC()
+	res := s.db.Model(&Schedule{}).Where("id = ? AND status = ?", id, ScheduleActive).Updates(fields)
+	if res.Error != nil {
+		return false, fmt.Errorf("store: update active schedule: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil
+}
+
+// BindRun writes the conversation and turn a claimed fire landed on.
+func (s *Store) BindRun(id, threadID, turnID string) error {
+	now := time.Now().UTC()
+	fields := map[string]any{"updated_at": now}
+	if threadID != "" {
+		fields["thread_id"] = threadID
+	}
+	if turnID != "" {
+		fields["turn_id"] = turnID
+	}
+	res := s.db.Model(&ScheduleRun{}).Where("id = ?", id).Updates(fields)
+	if res.Error != nil {
+		return fmt.Errorf("store: bind schedule run: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // cancelSchedulesForProject marks standalone jobs pinned to this project
 // cancelled. Origin-only rows with an empty project_id stay: they are not
 // bound to this workspace.

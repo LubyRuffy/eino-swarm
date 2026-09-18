@@ -504,6 +504,38 @@ func TestUnknownScheduleIsNotFound(t *testing.T) {
 	if err := s.UpdateSchedule("sch_missing", map[string]any{"status": ScheduleCancelled}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("UpdateSchedule err=%v", err)
 	}
+	if err := s.BindRun("srun_missing", "th_x", "tn_x"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("BindRun err=%v", err)
+	}
+}
+
+func TestUpdateActiveScheduleIgnoresCancelled(t *testing.T) {
+	s := openTestStore(t)
+	row := &Schedule{
+		Kind: ScheduleStandalone, Prompt: "Continue the wait.",
+		DelayS: 90, Status: ScheduleActive,
+		NextRunAt: time.Now().UTC(), CreatedBy: ScheduleCreatedHuman,
+	}
+	if err := s.CreateSchedule(row); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CancelSchedule(row.ID); err != nil {
+		t.Fatal(err)
+	}
+	ok, err := s.UpdateActiveSchedule(row.ID, map[string]any{
+		"status":      ScheduleActive,
+		"next_run_at": time.Now().UTC(),
+	})
+	if err != nil || ok {
+		t.Fatalf("ok=%v err=%v, cancelled must not be patched", ok, err)
+	}
+	got, err := s.GetSchedule(row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != ScheduleCancelled {
+		t.Fatalf("status=%q", got.Status)
+	}
 }
 
 // Pause/resume/cancel go through a field patch. Listing is what the inbox

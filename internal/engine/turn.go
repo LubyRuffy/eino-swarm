@@ -631,7 +631,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// runs after the terminal event on purpose: nobody is waiting for it, and
 	// a turn must never look slower because something is being learned from it.
 	e.scheduleReview(rt.threadID, turn, status, pc, res.Final)
-	if !turn.GoalContinue {
+	if !turn.GoalContinue && !turn.ScheduleContinue {
 		e.scheduleTitle(rt.threadID, turn, status, turn.UserText, res.Final)
 	}
 	started := rt.runLateSteerMessages(status, leftover)
