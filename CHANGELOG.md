@@ -167,6 +167,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A leftover scheduled turn that cannot restart closes its run.** Resume used
+  to `FinishTurn` a superseded leftover or an unresumable `ScheduleContinue`
+  row and leave the bound fire `running`, so `HasRunningRun` never cleared
+  and `CountRunningRuns` held a cap slot. Those paths now call
+  `finishScheduledRun` (`error` / unread). The live `run()` hook also closes
+  the fire when `FinishTurn` itself misses (deleted thread).
+
 - **A claimed one-shot still pauses `/goal` auto-continue.** Claim marks
   the delay `done` and inserts a `running` run before `StartTurn`; looking
   only at `status=active` let `continueGoal` steal the turn (`ErrBusy`,

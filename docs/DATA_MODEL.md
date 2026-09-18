@@ -162,7 +162,11 @@ the call looking live. Follow-ups in
 `followups` stay queued until that leftover turn finishes cleanly. Unread
 `[steer]` rows stay on the leftover turn unless they were retracted
 (`steer_retracted` plus `DeleteMessageByEventSeq`). A user **Stop** is
-`cancelled` and is not resumed. `MarkStaleTurnsCancelled` still exists as a bulk
+`cancelled` and is not resumed. Two running leftovers on one conversation
+keep the later one; a leftover `schedule_continue` that resume cannot
+restart (no request, missing provider, gone conversation) or that is
+dropped as superseded closes the bound `schedule_runs` row as `error`
+so `HasRunningRun` cannot stick. `MarkStaleTurnsCancelled` still exists as a bulk
 wipe; startup does not call it.
 
 ## `events` — the UI timeline

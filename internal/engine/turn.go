@@ -357,6 +357,7 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	}
 	if err := e.bindAttachmentTurns(files, turn.ID); err != nil {
 		_ = e.store.FinishTurn(turn.ID, store.TurnError, "", err.Error())
+		e.finishScheduledRun(turn, store.TurnError, "", err.Error())
 		return nil, err
 	}
 	if err := e.store.AppendMessages(threadID, turn.ID, []store.Message{
@@ -368,6 +369,7 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	builder, err := e.pool.ModelBuilder(context.Background(), prov.ID, prov.Model, effort, e.callRecorder(threadID, turn.ID))
 	if err != nil {
 		_ = e.store.FinishTurn(turn.ID, store.TurnError, "", err.Error())
+		e.finishScheduledRun(turn, store.TurnError, "", err.Error())
 		return nil, err
 	}
 
@@ -392,6 +394,7 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 			reg.Close()
 		}
 		_ = e.store.FinishTurn(turn.ID, store.TurnCancelled, "", ErrBusy.Error())
+		e.finishScheduledRun(turn, store.TurnCancelled, "", ErrBusy.Error())
 		return nil, ErrBusy
 	}
 	if in.ImplementPlan {
@@ -615,9 +618,10 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		} else {
 			e.log.Warn("could not close turn", "turn", turn.ID, "err", err)
 		}
-	} else {
-		e.finishScheduledRun(turn, status, res.Final, errText)
 	}
+	// Close the claimed fire even when FinishTurn missed (deleted thread):
+	// leaving status=running sticks HasRunningRun and a CountRunningRuns slot.
+	e.finishScheduledRun(turn, status, res.Final, errText)
 	if status == store.TurnError {
 		rt.blockOpenGoalOnTurnError()
 	}

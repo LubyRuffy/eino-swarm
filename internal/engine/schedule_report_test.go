@@ -360,6 +360,147 @@ func TestScheduledTurnErrorMarksTheRun(t *testing.T) {
 	})
 }
 
+func TestResumeCannotRestartClosesTheScheduleRun(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sch, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedHuman,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	run := &store.ScheduleRun{
+		ScheduleID: sch.ID, ThreadID: th.ID, Status: store.ScheduleRunRunning,
+	}
+	if err := e.Store().CreateRun(run); err != nil {
+		t.Fatal(err)
+	}
+	// No request and no transcript: resume cannot continue, same as
+	// TestResumeOrphanedTurnsClosesATurnItCannotRestart. The bound fire
+	// must not stay running or HasRunningRun never clears.
+	turn := plantScheduledLeftover(t, e, th, run.ID, "")
+
+	n, err := e.ResumeOrphanedTurns()
+	if err != nil {
+		t.Fatalf("ResumeOrphanedTurns: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("claimed to resume an unresumable scheduled turn: %d", n)
+	}
+	gotTurn, err := e.Store().GetTurn(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotTurn.Status == store.TurnRunning {
+		t.Fatalf("an unresumable leftover is still marked running: %+v", gotTurn)
+	}
+	got, err := e.Store().GetRun(run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != store.ScheduleRunError || !got.Unread {
+		t.Fatalf("run=%+v, a leftover that cannot restart must close error/unread", got)
+	}
+	running, err := e.Store().HasRunningRun(sch.ID)
+	if err != nil || running {
+		t.Fatalf("HasRunningRun=%v err=%v, the claim must not stick", running, err)
+	}
+}
+
+func TestResumeDropsASupersededScheduledRun(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sch, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedHuman,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	olderRun := &store.ScheduleRun{
+		ScheduleID: sch.ID, ThreadID: th.ID, Status: store.ScheduleRunRunning,
+	}
+	if err := e.Store().CreateRun(olderRun); err != nil {
+		t.Fatal(err)
+	}
+	newerRun := &store.ScheduleRun{
+		ScheduleID: sch.ID, ThreadID: th.ID, Status: store.ScheduleRunRunning,
+	}
+	if err := e.Store().CreateRun(newerRun); err != nil {
+		t.Fatal(err)
+	}
+	text := ScheduleContinueText(scheduleWaitPrompt)
+	older := plantScheduledLeftover(t, e, th, olderRun.ID, text)
+	newer := plantScheduledLeftover(t, e, th, newerRun.ID, text)
+	if older.Seq >= newer.Seq {
+		t.Fatalf("seq older=%d newer=%d", older.Seq, newer.Seq)
+	}
+
+	n, err := e.ResumeOrphanedTurns()
+	if err != nil {
+		t.Fatalf("ResumeOrphanedTurns: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("resumed %d, want 1", n)
+	}
+
+	dropped, err := e.Store().GetTurn(older.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped.Status == store.TurnRunning {
+		t.Fatalf("superseded leftover still running: %+v", dropped)
+	}
+	gotOlder, err := e.Store().GetRun(olderRun.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotOlder.Status != store.ScheduleRunError {
+		t.Fatalf("dropped run=%+v, superseded leftover must close as error", gotOlder)
+	}
+
+	waitForTurn(t, e, newer.ID)
+	gotNewer, err := e.Store().GetRun(newerRun.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotNewer.Status == store.ScheduleRunRunning {
+		t.Fatalf("surviving run still running after the turn closed: %+v", gotNewer)
+	}
+}
+
+func plantScheduledLeftover(t *testing.T, e *Engine, th *store.Thread, runID, text string) *store.Turn {
+	t.Helper()
+	turn := &store.Turn{
+		ThreadID:         th.ID,
+		UserText:         text,
+		ProviderID:       th.ProviderID,
+		Model:            th.Model,
+		ScheduleContinue: true,
+		ScheduleRunID:    runID,
+	}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(text) != "" {
+		if err := e.Store().AppendMessages(th.ID, turn.ID, []store.Message{
+			{Role: "user", Content: text},
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return turn
+}
+
 func assertScheduledRunClosedError(t *testing.T, e *Engine, scheduleID, runID string) {
 	t.Helper()
 	run := waitForScheduleRun(t, e, runID)

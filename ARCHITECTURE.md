@@ -324,7 +324,10 @@ flowchart LR
    cleanly. Unread `[steer]` messages stay in the leftover turn (a dangling
    tool call is dropped; the steer is not). A user **Stop**
    (`cancelled`) is not resumed.
-   Two running rows on one conversation keep the later one.
+   Two running rows on one conversation keep the later one. A leftover
+   `schedule_continue` that cannot restart, or that is dropped as superseded,
+   still closes the bound schedule run (`error`) so `HasRunningRun` cannot
+   stick a wait that will never fire again.
 8. **Review** (project conversations with memory on, `memory.auto_review`): a
    goroutine hands the finished turn's **event log** (plus the rolling session
    briefing, clipped so it cannot spend the whole budget) to a single reviewer

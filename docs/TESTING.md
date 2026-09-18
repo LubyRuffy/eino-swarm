@@ -145,6 +145,11 @@ nothing to surface archives (`quiet`, unread cleared, `turn.quiet`; a
 standalone fire leaves Recents) while an omitted report with an answer
 is `findings` and stays in the sidebar, and why a crashed or cancelled
 scheduled turn marks the run `error` so `HasRunningRun` cannot stick.
+`TestResumeCannotRestartClosesTheScheduleRun` and
+`TestResumeDropsASupersededScheduledRun` are why a leftover
+`ScheduleContinue` that resume cannot continue — empty user text, or
+superseded by a later unfinished row — closes that bound fire as
+`error` instead of leaving `running`.
 Tests opt into `provider.SetMockScheduleQuiet` / `SetMockScheduleSilent`;
 the default mock still spawns and does not sniff a scheduled turn.
 `internal/store/schedule_test.go` is why `HasPendingThreadWake` treats
