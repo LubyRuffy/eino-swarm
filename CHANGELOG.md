@@ -178,6 +178,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **Empty `done` only quiets fired scheduled turns.** The reducer used to
+  treat any notice on the turn as `schedule_fired`, so arming a wait,
+  `goal_continued` / compact, or a findings `schedule_report` plus empty
+  `done` hid the chip. Quiet now requires `schedule_fired`, empty
+  `done`, and no findings report on that turn.
+
 - **A scheduled check with no `schedule_report` and an empty `done` hides
   the fired chip.** The engine already archives that turn as quiet; the
   transcript reducer only quieted empty `schedule_report` payloads, so

@@ -124,8 +124,9 @@ export interface TurnState {
   agentIds: string[]
   /** True when this turn is a /goal work session (auto-continue or a forced yield). */
   session?: boolean
-  /** True when a scheduled check had nothing to report. Chat bubbles are dropped. */
+  /** quiet: omitted scheduled check. scheduledFindings: keep the chip on empty done. */
   quiet?: boolean
+  scheduledFindings?: boolean
 }
 
 /** The public error of the newest failed turn, if any. The banner used to
@@ -171,11 +172,11 @@ export interface TranscriptState {
   lastSeq: number
   running: boolean
   pulse?: Pulse
-  /** Event seqs of `steer` rows the human retracted. Kept across history
-   *  pages so a later-loaded bubble cannot reappear after Delete. */
+  /** Retracted steer seqs, quiet scheduled turns, and fired scheduled turns.
+   *  Arrays are cloned on each reduce so later events cannot mutate history. */
   retractedSteers?: number[]
-  /** Turn ids whose scheduled check was quiet. Cloned on each reduce. */
   quietTurns?: string[]
+  scheduledFiredTurns?: string[]
 }
 
 export const MANAGER_ID = "manager"
@@ -193,8 +194,7 @@ export function reduceEvent(
   ev: SwarmEvent,
   mode: ReduceMode = "full",
 ): TranscriptState {
-  // Array.reduce would pass the index as the third argument. Only an
-  // explicit "roster" sidecar fold skips manager chrome.
+  // Array.reduce would pass the index as the third argument; only explicit "roster" skips chrome.
   const rosterOnly = mode === "roster"
   if (ev.kind === "rewound") {
     const from = Number.parseInt(String(ev.text ?? ""), 10)
@@ -210,6 +210,7 @@ export function reduceEvent(
     pulse: state.pulse,
     retractedSteers: state.retractedSteers,
     quietTurns: state.quietTurns?.slice(),
+    scheduledFiredTurns: state.scheduledFiredTurns?.slice(),
   }
   if (applyScheduleEvent(next, ev)) return sealQuietTurns(next, ev)
   if (ev.kind === "steer_preempted") {
@@ -701,6 +702,7 @@ export function rewindTranscript(
     pulse: undefined,
     retractedSteers: (state.retractedSteers ?? []).filter((s) => s < fromSeq),
     quietTurns: (state.quietTurns ?? []).filter((id) => keptTurns.has(id)),
+    scheduledFiredTurns: (state.scheduledFiredTurns ?? []).filter((id) => keptTurns.has(id)),
   }
 }
 
@@ -723,6 +725,7 @@ export function placePendingEdit(
     pulse: undefined,
     retractedSteers: state.retractedSteers,
     quietTurns: state.quietTurns?.slice(),
+    scheduledFiredTurns: state.scheduledFiredTurns?.slice(),
   }
   const agent = touchAgent(next, MANAGER_ID)
   agent.blocks = agent.blocks.filter((b) => b.id !== PENDING_EDIT_ID)
@@ -774,15 +777,13 @@ function touchAgent(
   const created: AgentState = {
     id,
     role: role || (id === MANAGER_ID ? "manager" : id),
-    status: id === MANAGER_ID ? "running" : "running",
+    status: "running",
     activity: "",
     blocks: [],
   }
   state.agents[id] = created
   state.agentOrder =
-    id === MANAGER_ID
-      ? [id, ...state.agentOrder]
-      : [...state.agentOrder, id]
+    id === MANAGER_ID ? [id, ...state.agentOrder] : [...state.agentOrder, id]
   return created
 }
 

@@ -787,9 +787,9 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `schedule` | a wait was armed. `text` is JSON `{id,kind,title,next_run_at}`. The transcript shows a short chip; the id lives in `detail` so cancel can target it |
 | `schedule_fired` | the runtime started this turn because a wait fired. Not a `user_message`. `text` is the short chip (`Scheduled check.`). Same Working-clock rule as `goal_continued` |
 | `schedule_skipped` | a due tick could not start (busy). Trace-only; the transcript adds no row |
-| `schedule_report` | the scheduled check reported. `text` is JSON `{findings,quiet}`. Empty findings / `quiet:true` hide that turn's chat bubbles; the events stay in the log. When this event is omitted and `done` is empty, the client treats the turn the same way |
+| `schedule_report` | the scheduled check reported. `text` is JSON `{findings,quiet}`. Empty findings / `quiet:true` hide that turn's chat bubbles; the events stay in the log. When this event is omitted after `schedule_fired` and `done` is empty, the client treats the turn the same way. A findings report plus empty `done` keeps the fired chip |
 | `schedule_cancelled` | a wait was cancelled. `text` is the schedule id. The transcript shows a short chip, not the raw id |
-| `done` | the turn finished; `text` is the final answer. After `schedule_fired` with no `schedule_report`, empty / whitespace `text` hides that turn's chat bubbles; non-empty `text` is findings and keeps the fired chip |
+| `done` | the turn finished; `text` is the final answer. Empty / whitespace `text` hides chat bubbles only after `schedule_fired` when that turn did not already report findings. An armed `schedule`, `goal_continued`, compact, or other notice plus empty `done` stays visible. Non-empty `text` after a fire is findings and keeps the fired chip |
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
 

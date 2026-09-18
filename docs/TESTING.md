@@ -397,8 +397,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   `user`, not the JSON payload or raw id), `schedule_skipped` is a no-op,
   a quiet `schedule_report` drops that turn's chat bubbles and later events
   cannot grow them back, an omitted report whose `done` text is empty (or
-  whitespace) is the same quiet drop, a findings `done` or `schedule_report`
-  keeps the fired chip then the answer, and an ordinary empty `done` stays
+  whitespace) after `schedule_fired` is the same quiet drop, a findings `done`
+  or `schedule_report` keeps the fired chip then the answer (including when
+  empty `done` follows a findings report), an armed `schedule` plus empty
+  `done` keeps the wait notice, and an ordinary empty `done` stays
   visible. `compact-notice.test.tsx` clicks that icon. A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /

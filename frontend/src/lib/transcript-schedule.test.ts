@@ -264,4 +264,37 @@ describe("scheduled-task transcript notices", () => {
     expect(state.turns.find((t) => t.id === "tn_o")?.quiet).not.toBe(true)
     expect(chatKinds(state, "tn_o").some((b) => b.kind === "user")).toBe(true)
   })
+
+  it("keeps an armed wait when that human turn's done is empty", () => {
+    const state = fold([
+      ev({
+        kind: "schedule",
+        turn_id: "tn_a",
+        text: JSON.stringify({ id: "sch_ab12", kind: "thread", next_run_at: "2026-09-19T02:00:00.000Z" }),
+      }),
+      ev({ kind: "done", turn_id: "tn_a", text: "" }),
+    ])
+    const blocks = chatKinds(state, "tn_a")
+    expect(blocks.some((b) => b.kind === "notice" && b.text === "A wait is armed.")).toBe(true)
+    expect(state.quietTurns ?? []).not.toContain("tn_a")
+    expect(state.turns.find((t) => t.id === "tn_a")?.quiet).not.toBe(true)
+  })
+
+  it("keeps the fired chip when findings already reported then done is empty", () => {
+    const state = fold([
+      ev({ kind: "schedule_fired", turn_id: "tn_f", text: "Scheduled check." }),
+      ev({ kind: "agent_message", turn_id: "tn_f", text: "one thing changed" }),
+      ev({
+        kind: "schedule_report",
+        turn_id: "tn_f",
+        text: JSON.stringify({ findings: "one thing changed", quiet: false }),
+      }),
+      ev({ kind: "done", turn_id: "tn_f", text: "" }),
+    ])
+    const blocks = chatKinds(state, "tn_f")
+    expect(blocks.map((b) => b.kind)).toEqual(["notice", "answer"])
+    expect(blocks[0].text).toBe("Scheduled check.")
+    expect(state.quietTurns ?? []).not.toContain("tn_f")
+    expect(state.turns.find((t) => t.id === "tn_f")?.quiet).not.toBe(true)
+  })
 })
