@@ -616,6 +616,9 @@ func TestScheduleWritesFailWhenTheTableIsGone(t *testing.T) {
 	if _, err := s.ResumeScheduleUnderCap("sch_x", 1); err == nil {
 		t.Fatal("ResumeScheduleUnderCap must fail without the table")
 	}
+	if _, err := s.HasPendingThreadWake("th_x"); err == nil {
+		t.Fatal("HasPendingThreadWake must fail without the schedules table")
+	}
 
 	runs := openTestStore(t)
 	if err := runs.DB().Migrator().DropTable(&ScheduleRun{}); err != nil {
@@ -623,6 +626,9 @@ func TestScheduleWritesFailWhenTheTableIsGone(t *testing.T) {
 	}
 	if err := runs.CreateRun(&ScheduleRun{}); err == nil {
 		t.Fatal("CreateRun must fail without the table")
+	}
+	if _, err := runs.HasPendingThreadWake("th_x"); err == nil {
+		t.Fatal("HasPendingThreadWake must fail without the schedule_runs table")
 	}
 	if _, err := runs.GetRun("srun_x"); err == nil || errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetRun err=%v, want a storage error", err)
@@ -854,4 +860,103 @@ func TestResumeScheduleUnderCapRejectsCancelled(t *testing.T) {
 	if _, err := s.ResumeScheduleUnderCap(row.ID, 1); err == nil {
 		t.Fatal("cancelled row is not paused")
 	}
+}
+
+// continueGoal asks this so a claimed one-shot (status=done, run still
+// running) is not a free slot for GoalContinue. Listing only
+// status=active is how that race used to steal the fire.
+func TestHasPendingThreadWakeSeesActiveAndClaimedRuns(t *testing.T) {
+	s := openTestStore(t)
+	th := &Thread{Title: "t"}
+	other := &Thread{Title: "o"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateThread(other); err != nil {
+		t.Fatal(err)
+	}
+	must := func(want bool) {
+		t.Helper()
+		got, err := s.HasPendingThreadWake(th.ID)
+		if err != nil || got != want {
+			t.Fatalf("HasPendingThreadWake=%v err=%v want %v", got, err, want)
+		}
+	}
+
+	empty, err := s.HasPendingThreadWake("")
+	if err != nil || empty {
+		t.Fatalf("empty thread id: got=%v err=%v", empty, err)
+	}
+	must(false)
+
+	active := &Schedule{
+		Kind: ScheduleThread, ThreadID: th.ID, OriginThreadID: th.ID,
+		Prompt: "Continue the wait.", EveryS: 60, Status: ScheduleActive,
+		NextRunAt: time.Now().UTC().Add(time.Minute), CreatedBy: ScheduleCreatedManager,
+	}
+	if err := s.CreateSchedule(active); err != nil {
+		t.Fatal(err)
+	}
+	must(true)
+	foreign, err := s.HasPendingThreadWake(other.ID)
+	if err != nil || foreign {
+		t.Fatalf("other conversation leaked: got=%v err=%v", foreign, err)
+	}
+
+	for _, status := range []string{SchedulePaused, ScheduleCancelled, ScheduleDone} {
+		if err := s.UpdateSchedule(active.ID, map[string]any{"status": status}); err != nil {
+			t.Fatal(err)
+		}
+		must(false)
+	}
+
+	originOnly := &Schedule{
+		Kind: ScheduleStandalone, OriginThreadID: th.ID,
+		Prompt: "Continue the wait.", EveryS: 60, Status: ScheduleActive,
+		NextRunAt: time.Now().UTC().Add(time.Minute), CreatedBy: ScheduleCreatedHuman,
+	}
+	if err := s.CreateSchedule(originOnly); err != nil {
+		t.Fatal(err)
+	}
+	must(false)
+	if err := s.CreateRun(&ScheduleRun{
+		ScheduleID: originOnly.ID, ThreadID: th.ID, Status: ScheduleRunRunning,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	must(false)
+
+	claimed := &Schedule{
+		Kind: ScheduleThread, ThreadID: th.ID, OriginThreadID: th.ID,
+		Prompt: "Continue the wait.", DelayS: 30, Status: ScheduleDone,
+		NextRunAt: time.Now().UTC().Add(-time.Minute), CreatedBy: ScheduleCreatedManager,
+	}
+	if err := s.CreateSchedule(claimed); err != nil {
+		t.Fatal(err)
+	}
+	must(false)
+	run := &ScheduleRun{ScheduleID: claimed.ID, ThreadID: th.ID, Status: ScheduleRunRunning}
+	if err := s.CreateRun(run); err != nil {
+		t.Fatal(err)
+	}
+	must(true)
+	if err := s.FinishRun(run.ID, ScheduleRunQuiet, "", false); err != nil {
+		t.Fatal(err)
+	}
+	must(false)
+
+	runOnly := &Schedule{
+		Kind: ScheduleThread, Prompt: "Continue the wait.", DelayS: 30, Status: ScheduleDone,
+		NextRunAt: time.Now().UTC(), CreatedBy: ScheduleCreatedManager,
+	}
+	if err := s.CreateSchedule(runOnly); err != nil {
+		t.Fatal(err)
+	}
+	must(false)
+	if err := s.CreateRun(&ScheduleRun{
+		ScheduleID: runOnly.ID, ThreadID: th.ID, Status: ScheduleRunRunning,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	must(true)
 }

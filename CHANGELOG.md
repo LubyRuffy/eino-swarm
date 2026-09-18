@@ -14,11 +14,11 @@ co-working app built on it. The library API is unchanged except where noted
 ### Added
 
 - **Pending thread wakes pause `/goal` auto-continue.** An active
-  `kind=thread` wake targeting this conversation (`status=active`) is the
-  next turn: `continueGoal` reaps parked workers and returns, including a
-  one-shot delay that is still due. Cancel restores auto-continue on the
-  next clean pursuing finish. Paused, cancelled, and standalone origin-only
-  rows do not suppress.
+  `kind=thread` wake targeting this conversation, or a claimed fire still
+  `running`, is the next turn: `continueGoal` reaps parked workers and
+  returns, including a one-shot delay that is still due. Cancel restores
+  auto-continue on the next clean pursuing finish. Paused, cancelled,
+  done-with-no-run, and standalone origin-only rows do not suppress.
 
 - **Manager schedule tools.** The manager can arm a wait on this conversation
   (`schedule_wake`; optional id upserts instead of minting a second), arm an
@@ -158,6 +158,11 @@ co-working app built on it. The library API is unchanged except where noted
     `Close` still stop them).
 
 ### Fixed
+
+- **A claimed one-shot still pauses `/goal` auto-continue.** Claim marks
+  the delay `done` and inserts a `running` run before `StartTurn`; looking
+  only at `status=active` let `continueGoal` steal the turn (`ErrBusy`,
+  no resurrect).
 
 - **`schedule_task` stays blocked after resume of an implement-plan turn.**
   `occupy()` wipes the in-memory plan flag; the gate now also reads

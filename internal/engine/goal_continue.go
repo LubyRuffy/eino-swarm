@@ -98,26 +98,18 @@ func (rt *runtime) continueGoal(status string) {
 }
 
 // hasFutureWake is true when this conversation has an armed thread wake
-// still waiting. next_run_at in the past still counts: a one-shot delay
-// that has not fired (or skipped busy) stays due. Paused, cancelled, and
-// standalone origin-only rows do not suppress.
+// still waiting, or a claimed fire whose run is still running. Claim
+// marks a delay one-shot done before StartTurn; looking only at
+// status=active lets continueGoal steal that slot (ErrBusy, no resurrect).
+// next_run_at in the past still counts: a one-shot that has not fired
+// (or skipped busy) stays due. Paused, cancelled, done-with-no-run, and
+// standalone origin-only rows do not suppress. A store error fail-opens.
 func (e *Engine) hasFutureWake(threadID string) bool {
-	if threadID == "" {
-		return false
-	}
-	rows, err := e.store.ListSchedules()
+	ok, err := e.store.HasPendingThreadWake(threadID)
 	if err != nil {
 		return false
 	}
-	for _, row := range rows {
-		if row.Kind != store.ScheduleThread || row.ThreadID != threadID {
-			continue
-		}
-		if row.Status == store.ScheduleActive {
-			return true
-		}
-	}
-	return false
+	return ok
 }
 
 // blockOpenGoalOnTurnError stops auto-continue when a pursuing turn dies

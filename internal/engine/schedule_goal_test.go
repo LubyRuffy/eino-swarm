@@ -97,6 +97,67 @@ func TestCancelWakeRestoresGoalAutoContinue(t *testing.T) {
 	waitKind(t, e, th.ID, KindGoalContinued)
 }
 
+func TestClaimedOneShotStillSuppressesGoalAutoContinue(t *testing.T) {
+	provider.SetCompleteOpenGoal(false)
+	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
+
+	e := newTestEngine(t)
+	e.Config().Swarm.GoalMaxAutoTurns = 8
+	th, _ := e.CreateThread("", "", "")
+	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
+		t.Fatal(err)
+	}
+	sch, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, DelayS: 30,
+		CreatedBy: store.ScheduleCreatedManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Claim writes the running run and marks a delay done *before*
+	// StartTurn. Looking only at status=active lets continueGoal steal
+	// that slot; the fire then hits ErrBusy and does not resurrect.
+	if err := e.Store().CreateRun(&store.ScheduleRun{
+		ScheduleID: sch.ID, ThreadID: th.ID, Status: store.ScheduleRunRunning,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().UpdateSchedule(sch.ID, map[string]any{
+		"status": store.ScheduleDone,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := e.StartTurn(th.ID, "start the work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForTurn(t, e, first.ID)
+	waitSettled(t, e, th.ID)
+
+	turns, err := e.Store().ListTurns(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 1 {
+		t.Fatalf("a claimed one-shot must pause goal auto-continue, got %d turns", len(turns))
+	}
+	if turns[0].GoalContinue {
+		t.Fatalf("the pursuing turn must stay human-originated: %+v", turns[0])
+	}
+	if hasKind(t, e, th.ID, KindGoalContinued) {
+		t.Fatal("a claimed one-shot must not record goal_continued")
+	}
+	got, err := e.Store().GetThread(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.GoalAutoTurns != 0 {
+		t.Fatalf("a claimed one-shot must not spend the auto-continue budget, got %d", got.GoalAutoTurns)
+	}
+}
+
 func TestHasFutureWakeSeesDueAndIgnoresNonTargetRows(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
@@ -152,6 +213,38 @@ func TestHasFutureWakeSeesDueAndIgnoresNonTargetRows(t *testing.T) {
 	}
 	if e.hasFutureWake(other.ID) {
 		t.Fatal("a cancelled wake must not suppress")
+	}
+
+	claimed, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, DelayS: 30,
+		CreatedBy: store.ScheduleCreatedManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().UpdateSchedule(claimed.ID, map[string]any{
+		"status": store.ScheduleDone,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if e.hasFutureWake(th.ID) {
+		t.Fatal("a done one-shot without a running run must not suppress")
+	}
+	run := &store.ScheduleRun{
+		ScheduleID: claimed.ID, ThreadID: th.ID, Status: store.ScheduleRunRunning,
+	}
+	if err := e.Store().CreateRun(run); err != nil {
+		t.Fatal(err)
+	}
+	if !e.hasFutureWake(th.ID) {
+		t.Fatal("a done one-shot with a running run must still suppress")
+	}
+	if err := e.Store().FinishRun(run.ID, store.ScheduleRunQuiet, "", false); err != nil {
+		t.Fatal(err)
+	}
+	if e.hasFutureWake(th.ID) {
+		t.Fatal("a finished claimed fire must not suppress")
 	}
 
 	originOnly, err := e.CreateSchedule(ScheduleInput{

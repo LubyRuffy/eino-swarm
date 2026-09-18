@@ -193,6 +193,35 @@ func (s *Store) CountRunningRuns() (int, error) {
 	return int(n), nil
 }
 
+// HasPendingThreadWake is true when this conversation still has a thread
+// wake that should own the next turn: an armed row, or a claimed fire
+// whose run is still running. Claim marks a delay one-shot done before
+// StartTurn; listing only status=active would let /goal steal that slot.
+func (s *Store) HasPendingThreadWake(threadID string) (bool, error) {
+	if threadID == "" {
+		return false, nil
+	}
+	var n int64
+	err := s.db.Model(&Schedule{}).
+		Where("kind = ? AND thread_id = ? AND status = ?", ScheduleThread, threadID, ScheduleActive).
+		Limit(1).Count(&n).Error
+	if err != nil {
+		return false, fmt.Errorf("store: has pending thread wake: %w", err)
+	}
+	if n > 0 {
+		return true, nil
+	}
+	err = s.db.Model(&ScheduleRun{}).
+		Joins("JOIN schedules ON schedules.id = schedule_runs.schedule_id").
+		Where("schedule_runs.status = ? AND schedules.kind = ? AND (schedules.thread_id = ? OR schedule_runs.thread_id = ?)",
+			ScheduleRunRunning, ScheduleThread, threadID, threadID).
+		Limit(1).Count(&n).Error
+	if err != nil {
+		return false, fmt.Errorf("store: has pending thread wake: %w", err)
+	}
+	return n > 0, nil
+}
+
 // HasRunningRun is true when this wait already has a claimed fire. Two ticks
 // must not start two turns for one row.
 func (s *Store) HasRunningRun(scheduleID string) (bool, error) {
