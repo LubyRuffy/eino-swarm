@@ -8,11 +8,17 @@ import (
 func TestNextRunAfterIntervalDoesNotCatchUp(t *testing.T) {
 	// Missed beats are not skipped by looping until a future slot; the
 	// engine fires once then asks for the next instant from now.
+	// Seconds on `now` matter: aligning to 12:01:00 would look like
+	// now+60s when now is 12:00:00, which hides a catch-up bug.
 	spec := scheduleSpec{every: 60 * time.Second}
-	now := time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
+	now := time.Date(2026, 9, 18, 12, 0, 17, 0, time.UTC)
 	next := spec.nextAfter(now)
 	if !next.Equal(now.Add(60 * time.Second)) {
-		t.Fatalf("next=%s", next)
+		t.Fatalf("next=%s want=%s", next, now.Add(60*time.Second))
+	}
+	aligned := time.Date(2026, 9, 18, 12, 1, 0, 0, time.UTC)
+	if next.Equal(aligned) {
+		t.Fatal("aligned to the minute; that is catch-up")
 	}
 }
 
@@ -247,5 +253,92 @@ func TestNextRunCronNilLocationUsesHostZone(t *testing.T) {
 	next := spec.nextAfter(now)
 	if next.IsZero() || !next.After(now) || next.Location() != time.UTC {
 		t.Fatalf("next=%s loc=%v", next, next.Location())
+	}
+}
+
+func loadTestLocation(t *testing.T, name string) *time.Location {
+	t.Helper()
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc
+}
+
+func nextAfterBounded(t *testing.T, spec scheduleSpec, now time.Time) time.Time {
+	t.Helper()
+	ch := make(chan time.Time, 1)
+	go func() { ch <- spec.nextAfter(now) }()
+	select {
+	case next := <-ch:
+		return next
+	case <-time.After(2 * time.Second):
+		t.Fatal("nextAfter stalled")
+		return time.Time{}
+	}
+}
+
+func TestNextRunCronSpringForwardDSTDoesNotHang(t *testing.T) {
+	loc := loadTestLocation(t, "America/New_York")
+	spec, err := parseScheduleSpec(0, 0, "0 9 * * *", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec.loc = loc
+	// Saturday 09:00 before the missing hour: next wall-clock 09:00 is Sunday.
+	now := time.Date(2026, 3, 7, 9, 0, 0, 0, loc)
+	next := nextAfterBounded(t, spec, now)
+	if !next.After(now) {
+		t.Fatalf("next=%s not after now=%s", next, now)
+	}
+	want := time.Date(2026, 3, 8, 9, 0, 0, 0, loc).UTC()
+	if !next.Equal(want) {
+		t.Fatalf("next=%s want=%s", next, want)
+	}
+}
+
+func TestNextRunCronSpringForwardDSTGapHour(t *testing.T) {
+	loc := loadTestLocation(t, "America/New_York")
+	spec, err := parseScheduleSpec(0, 0, "0 2 * * *", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec.loc = loc
+	now := time.Date(2026, 3, 7, 2, 0, 0, 0, loc)
+	next := nextAfterBounded(t, spec, now)
+	if !next.After(now) {
+		t.Fatalf("next=%s not after now=%s", next, now)
+	}
+}
+
+func TestNextRunCronFallBackDSTIsStrictlyAfter(t *testing.T) {
+	loc := loadTestLocation(t, "America/New_York")
+	spec, err := parseScheduleSpec(0, 0, "0 1 * * *", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec.loc = loc
+	// Second 01:00 (standard time) after the repeated hour.
+	first := time.Date(2026, 11, 1, 1, 0, 0, 0, loc)
+	now := first.Add(time.Hour)
+	next := nextAfterBounded(t, spec, now)
+	if !next.After(now) {
+		t.Fatalf("next=%s unix=%d now unix=%d", next, next.Unix(), now.Unix())
+	}
+}
+
+func TestParseCronRejectsOverflowStep(t *testing.T) {
+	done := make(chan error, 1)
+	go func() {
+		_, err := parseScheduleSpec(0, 0, "59/9223372036854775807 * * * *", time.Second)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("overflow step must be rejected")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("overflow step stalled")
 	}
 }

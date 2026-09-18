@@ -141,7 +141,7 @@ func parseCronAtom(part string, lo, hi int) (uint64, error) {
 		base = part[:i]
 		rest := part[i+1:]
 		n, err := strconv.Atoi(rest)
-		if err != nil || n <= 0 {
+		if err != nil || n <= 0 || n > hi {
 			return 0, fmt.Errorf("engine: cron step")
 		}
 		step = n
@@ -185,30 +185,54 @@ func parseCronAtom(part string, lo, hi int) (uint64, error) {
 
 func cronBits(a, b, step int) uint64 {
 	var bits uint64
-	for v := a; v <= b; v += step {
+	for v := a; v <= b; {
 		bits |= 1 << uint(v)
+		// Break before v+step wraps; a huge step is already rejected at parse.
+		if step <= 0 || step > b-v {
+			break
+		}
+		v += step
 	}
 	return bits
+}
+
+// cronAdvance keeps the scan moving forward. time.Date of a missing or
+// repeated wall hour can land on t or earlier; Add is the monotonic escape.
+func cronAdvance(t, nt time.Time, step time.Duration) time.Time {
+	if nt.After(t) {
+		return nt
+	}
+	return t.Add(step)
 }
 
 func (c cronExpr) nextAfter(now time.Time, loc *time.Location) time.Time {
 	t := now.In(loc)
 	t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, loc).Add(time.Minute)
+	if !t.After(now) {
+		t = now.In(loc).Add(time.Minute)
+	}
 	end := t.AddDate(5, 0, 0)
 	for t.Before(end) {
 		if c.month&(1<<uint(t.Month())) == 0 {
-			t = time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, loc)
+			nt := time.Date(t.Year(), t.Month()+1, 1, 0, 0, 0, 0, loc)
+			t = cronAdvance(t, nt, 24*time.Hour)
 			continue
 		}
 		if !c.dayMatches(t) {
-			t = time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, loc)
+			nt := time.Date(t.Year(), t.Month(), t.Day()+1, 0, 0, 0, 0, loc)
+			t = cronAdvance(t, nt, 24*time.Hour)
 			continue
 		}
 		if c.hour&(1<<uint(t.Hour())) == 0 {
-			t = time.Date(t.Year(), t.Month(), t.Day(), t.Hour()+1, 0, 0, 0, loc)
+			nt := time.Date(t.Year(), t.Month(), t.Day(), t.Hour()+1, 0, 0, 0, loc)
+			t = cronAdvance(t, nt, time.Hour)
 			continue
 		}
 		if c.minute&(1<<uint(t.Minute())) == 0 {
+			t = t.Add(time.Minute)
+			continue
+		}
+		if !t.After(now) {
 			t = t.Add(time.Minute)
 			continue
 		}
