@@ -81,7 +81,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   conversation keeps pursuing a goal until the manager calls `complete_goal` (or you
   clear it from the banner). A live turn is steered so this round sees the
   new text. A turn ends when the manager stops calling tools; the runtime
-  then continues. Context pressure compact in place. Hitting the manager
+  then continues, unless an active thread wake is waiting on this
+  conversation — that wait is the next turn until it fires or you cancel it. Context pressure compact in place. Hitting the manager
   tool-round slice keeps the same turn going. In-flight sub-agents survive
   a pursuing turn that ends while they are still running. A continuation
   that makes no tool progress stops auto-continue until you send a message

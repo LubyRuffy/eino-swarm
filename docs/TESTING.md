@@ -133,6 +133,10 @@ this conversation, `schedule_task` refuses a `GoalContinue` /
 `ScheduleContinue` / plan-implement turn, empty `report_schedule` findings
 are quiet, garbage arguments come back as JSON `ok:false`, Info text stays
 generic, and workers get a deny stub.
+`internal/engine/schedule_goal_test.go` is why a pending thread wake
+pauses `/goal` auto-continue (including a one-shot still due), why
+cancelling it restores the next pursuing turn's `goal_continued`, and why
+paused, cancelled, and standalone origin-only rows do not suppress.
 `internal/engine/prompt_test.go` is why the manager prompt has `## Waiting`
 (`schedule_wake`, do not wait for the human to remind, `report_schedule`)
 without CI / deploy / pull-request / cron-job samples, why an open `/goal`

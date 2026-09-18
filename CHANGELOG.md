@@ -13,6 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Pending thread wakes pause `/goal` auto-continue.** An active
+  `kind=thread` wake targeting this conversation (`status=active`) is the
+  next turn: `continueGoal` reaps parked workers and returns, including a
+  one-shot delay that is still due. Cancel restores auto-continue on the
+  next clean pursuing finish. Paused, cancelled, and standalone origin-only
+  rows do not suppress.
+
 - **Manager schedule tools.** The manager can arm a wait on this conversation
   (`schedule_wake`; optional id upserts instead of minting a second), arm an
   independent job on a human-originated turn (`schedule_task`), cancel by id

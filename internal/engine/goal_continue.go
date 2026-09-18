@@ -20,10 +20,15 @@ func GoalContinueText() string {
 // continueGoal starts the next turn when a standing objective is still open.
 // Follow-ups and unread steers already claimed the next turn; this only runs
 // after a clean finish with nothing queued. Stop, errors (which also block
-// the objective), a completed, blocked, capped, or idle-held goal, and a
-// continuation that made no counted tool progress do nothing.
+// the objective), a completed, blocked, capped, or idle-held goal, a
+// continuation that made no counted tool progress, and a pending thread
+// wake do nothing. The wake is the next turn; spinning here would race it.
 func (rt *runtime) continueGoal(status string) {
 	if status != store.TurnDone {
+		return
+	}
+	if rt.engine.hasFutureWake(rt.threadID) {
+		rt.reapParked()
 		return
 	}
 	th, err := rt.engine.store.GetThread(rt.threadID)
@@ -90,6 +95,29 @@ func (rt *runtime) continueGoal(status string) {
 		rt.engine.log.Warn("could not auto-continue the standing objective",
 			"thread", rt.threadID, "err", startErr)
 	}
+}
+
+// hasFutureWake is true when this conversation has an armed thread wake
+// still waiting. next_run_at in the past still counts: a one-shot delay
+// that has not fired (or skipped busy) stays due. Paused, cancelled, and
+// standalone origin-only rows do not suppress.
+func (e *Engine) hasFutureWake(threadID string) bool {
+	if threadID == "" {
+		return false
+	}
+	rows, err := e.store.ListSchedules()
+	if err != nil {
+		return false
+	}
+	for _, row := range rows {
+		if row.Kind != store.ScheduleThread || row.ThreadID != threadID {
+			continue
+		}
+		if row.Status == store.ScheduleActive {
+			return true
+		}
+	}
+	return false
 }
 
 // blockOpenGoalOnTurnError stops auto-continue when a pursuing turn dies
