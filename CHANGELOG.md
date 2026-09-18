@@ -13,6 +13,87 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Open findings inserts the minted conversation.** Opening a standalone
+  fire used to load the transcript while leaving Recents on the origin, so
+  the title bar stayed "New conversation". `openThread` now upserts that
+  row.
+
+- **Scheduled-task E2E and kind freeze.** Playwright `e2e/schedules.spec.ts`
+  drives a standalone inbox wait (Add wait → Run now → Open findings on the
+  minted conversation, `Scheduled check.` chip, not a user bubble with the
+  protocol wrapper) and a REST thread wake (banner + Cancel wait) on the
+  mock provider. `TestNotifyKindsAreStableAcrossTheWire` freezes `schedule`
+  / `schedule_fired` / `schedule_skipped` / `schedule_report` /
+  `schedule_cancelled` to the same strings the front-end `KINDS` list
+  subscribes to.
+
+- **Schedule ticker in `App.New`.** `Engine.StartScheduler` looks for due
+  waits every `schedule_tick_ms` (default 1000). A busy target is skipped
+  (`schedule_skipped`) without bursting missed ticks after restart.
+  `Shutdown` stops it. The TUI has notices, not an inbox.
+
+- **TUI schedule notices; mock scheduled turns.** The terminal status line
+  shows a one-line armed / cancelled / findings notice (quiet reports stay
+  silent; no inbox). `--mock` auto-calls `report_schedule` on a scheduled
+  check (`ZWAI_MOCK_SCHEDULE_QUIET=1` empties findings;
+  `SetMockScheduleSpawn` restores fan-out; `ZWAI_MOCK_SCHEDULE_WAKE=1` arms
+  a min-interval wait).
+
+- **Scheduled inbox, wake banner, and Swarm caps.** The sidebar **Scheduled**
+  control (`data-testid="schedule-inbox"`, `aria-haspopup="dialog"`) opens a
+  dialog: list waits (pause/resume/cancel/Run now), create a standalone job
+  (title, prompt, exactly one of delay / interval / cron, optional project),
+  and open unread findings in that fire's conversation. Unread counts belong
+  in the trigger's accessible name, not only the badge. An active thread wake
+  on the open conversation gets a composer banner (next check + cancel). An
+  armed `schedule` notice Cancel is `DELETE /api/schedules/:id`. Settings →
+  Swarm edits `schedule_min_interval_seconds` / `schedule_tick_ms` /
+  `schedule_max_active` (defaults 30 / 1000 / 32) as part of the whole swarm
+  object so a PUT cannot zero the Go struct. Chrome strings are in `en`/`zh`.
+  Run-now while busy sets a localized error (`skipped_busy`) inside the inbox
+  dialog.
+
+- **Scheduled-task inbox HTTP API.** Same-origin `GET/POST /api/schedules`,
+  get/patch/delete one wait, `POST /api/schedules/:id/run` (202, even when
+  `next_run_at` is still future), and `POST /api/schedules/runs/:rid/read`.
+  List returns `{schedules, unread}` where `unread` counts runs with
+  `unread=true`. Run-now while the target conversation is busy is `409`
+  `code: skipped_busy`. The web client folds `schedule` / `schedule_fired` /
+  `schedule_skipped` / `schedule_report` / `schedule_cancelled` into chips
+  (quiet reports drop that turn's chat bubbles and keep Trace), and
+  subscribes to those kinds live so a kind missing from `KINDS` cannot sit
+  stored-and-invisible until reload.
+
+- **Quiet scheduled checks archive like Codex.** Empty `report_schedule`
+  findings, or a finished scheduled turn with no answer, close the run as
+  `quiet` (unread cleared, `turn.quiet`). A manager answer without a report
+  is `findings` and unread. Standalone quiet fires hide the minted
+  conversation from Recents; findings stay in the sidebar. A crashed or
+  cancelled scheduled turn marks the run `error` and unread so it cannot
+  stick `running`.
+
+- **Pending thread wakes pause `/goal` auto-continue.** An active
+  `kind=thread` wake targeting this conversation, or a claimed fire still
+  `running`, is the next turn: `continueGoal` reaps parked workers and
+  returns, including a one-shot delay that is still due. Cancel restores
+  auto-continue on the next clean pursuing finish. Paused, cancelled,
+  done-with-no-run, and standalone origin-only rows do not suppress.
+
+- **Manager schedule tools.** The manager can arm a wait on this conversation
+  (`schedule_wake`; optional id upserts instead of minting a second), arm an
+  independent job on a human-originated turn (`schedule_task`), cancel by id
+  (`cancel_schedule`), and report a scheduled check (`report_schedule`; empty
+  findings return `{ok,quiet}`). Workers get a JSON deny stub. The ticker
+  that fires due waits starts from `App.New` (`StartScheduler`).
+
+- **Waiting on the manager prompt.** When progress is gated on time or a
+  condition that is not worth polling in this turn, the manager is told to
+  call `schedule_wake` and end the turn — not to spin, block a tool, or wait
+  for the human to remind it. Open wakes for this conversation land in extra
+  (`## Scheduled`: id, next, cadence type, prompt head) so it can upsert.
+  `schedule_task` only when the human asked, or after `ask_user`. A scheduled
+  turn reports through `report_schedule`.
+
 - **Live `exec` output.** While a shell command still runs, Web and TUI stream
   stdout/stderr into the pending tool row (`tool_delta`, broadcast only, keyed
   by `tool_call_id`). The model still gets one JSON `tool_result`. A `\r` in
@@ -162,6 +243,53 @@ co-working app built on it. The library API is unchanged except where noted
   Lifecycle tools now return a JSON error result for missing arguments, an
   unknown or still-running target, unreadable JSON, and a closed registry —
   the same class of miss as `send_message` to an unknown id.
+
+- **Scheduled is a dialog trigger; busy run-now errors show in the inbox.**
+  The sidebar control used a collapsed `SidebarSection`, so a screen reader
+  heard a fold and the chevron lied. It is now `aria-haspopup="dialog"` with
+  `aria-expanded` tied to the inbox, no chevron, and unread in the accessible
+  name (`Scheduled, 2 unread`). Run-now `skipped_busy` used to set `store.error`
+  behind the dialog overlay; the dialog now shows that string as a labelled
+  `role="alert"`, and closing the inbox clears it.
+
+- **Empty `done` only quiets fired scheduled turns.** The reducer used to
+  treat any notice on the turn as `schedule_fired`, so arming a wait,
+  `goal_continued` / compact, or a findings `schedule_report` plus empty
+  `done` hid the chip. Quiet now requires `schedule_fired`, empty
+  `done`, and no findings report on that turn.
+
+- **A scheduled check with no `schedule_report` and an empty `done` hides
+  the fired chip.** The engine already archives that turn as quiet; the
+  transcript reducer only quieted empty `schedule_report` payloads, so
+  the "Scheduled check." notice stayed. Empty or whitespace `done` after
+  a fired chip now marks the turn quiet and drops its chat bubbles.
+  Non-empty `done` is findings. Ordinary empty `done` is unchanged.
+
+- **Inbox create and the schedule ticker share one frozen cap.**
+  `StartScheduler` already snapshotted `schedule_max_active` /
+  `schedule_min_interval_seconds` (and now the default provider) so a
+  `PUT /settings` `Replace` cannot race the tick. Create, resume, field
+  patch, and schedule tools used to read live `cfg.Swarm`, so a cfg write
+  without `ApplyLiveSwarmLimits` let the inbox arm more waits than the
+  ticker would run. Those paths now use the same helpers; Settings still
+  refreshes the snapshot.
+
+- **A leftover scheduled turn that cannot restart closes its run.** Resume used
+  to `FinishTurn` a superseded leftover or an unresumable `ScheduleContinue`
+  row and leave the bound fire `running`, so `HasRunningRun` never cleared
+  and `CountRunningRuns` held a cap slot. Those paths now call
+  `finishScheduledRun` (`error` / unread). The live `run()` hook also closes
+  the fire when `FinishTurn` itself misses (deleted thread).
+
+- **A claimed one-shot still pauses `/goal` auto-continue.** Claim marks
+  the delay `done` and inserts a `running` run before `StartTurn`; looking
+  only at `status=active` let `continueGoal` steal the turn (`ErrBusy`,
+  no resurrect).
+
+- **`schedule_task` stays blocked after resume of an implement-plan turn.**
+  `occupy()` wipes the in-memory plan flag; the gate now also reads
+  `plan_implemented` on the turn, so a leftover execute turn cannot mint
+  a standalone job.
 
 - **A generated conversation name survives the `done` list refresh.** The
   title-bar used to snap back to the truncated prompt when `GET /threads`
@@ -356,6 +484,14 @@ co-working app built on it. The library API is unchanged except where noted
   retried; it does not call the tool itself.
 
 ### Changed
+
+- **A finished scheduled turn now closes its run.** The ticker used to leave
+  `schedule_runs.status=running` after `FinishTurn`, so `HasRunningRun`
+  could stick until the next crash. Quiet, findings, and error are written
+  on the way out.
+
+- **An open `/goal` no longer promises an immediate auto-continue after every
+  wait-turn.** A pending wake is the next turn until it fires.
 
 - **`ask_user` is a question dialog, not a chip row.** Numbered choices,
   a radio list, Other only after that row is picked, then Submit. Same

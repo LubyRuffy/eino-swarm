@@ -12,6 +12,7 @@ import {
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { AskCardView } from "@/components/app/ask-card"
 import { CompactNotice } from "@/components/app/compact-notice"
+import { isScheduleNotice, ScheduleNotice } from "@/components/app/schedule-notice"
 import { MemoMarkdown } from "@/components/app/markdown"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -344,7 +345,7 @@ const BlockView = memo(function BlockView({
       return <IterationLimitCard block={block} />
 
     case "notice":
-      return <CompactNotice block={block} />
+      return isScheduleNotice(block) ? <ScheduleNotice block={block} /> : <CompactNotice block={block} />
 
     case "title":
       // Sidebar metadata. The Trace tab's Full log lists it; the chat does not.

@@ -83,6 +83,11 @@ const wireKinds: EventKind[] = [
   "compacted",
   "usage",
   "rewound",
+  "schedule",
+  "schedule_fired",
+  "schedule_skipped",
+  "schedule_report",
+  "schedule_cancelled",
 ]
 
 describe("the event stream", () => {

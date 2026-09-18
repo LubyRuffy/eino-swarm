@@ -47,6 +47,14 @@ describe("Sidebar chrome", () => {
     expect(screen.getByRole("button", { name: /^New conversation$/ })).toBeInTheDocument()
   })
 
+  it("always offers the Scheduled inbox section", () => {
+    render(<Sidebar threads={[]} {...noop} />)
+    const trigger = screen.getByRole("button", { name: /Scheduled/ })
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog")
+    expect(trigger.querySelector("[data-testid=section-fold]")).toBeNull()
+    expect(screen.getByTestId("schedule-inbox")).toBeInTheDocument()
+  })
+
   it("opens a new conversation from the first row", () => {
     render(<Sidebar threads={[]} {...noop} />)
     fireEvent.click(screen.getByRole("button", { name: /^New conversation$/ }))

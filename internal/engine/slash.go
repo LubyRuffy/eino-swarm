@@ -13,7 +13,7 @@ import (
 // instead of 409. Composer parse can miss (fullwidth slash, IME `、`, glued
 // CJK); this is the layer that still has to catch it.
 func (e *Engine) applySlashGoal(threadID string, in *UserInput) (turn *store.Turn, done bool, err error) {
-	if in == nil || in.ContinueGoal {
+	if in == nil || in.ContinueGoal || in.ContinueSchedule {
 		return nil, false, nil
 	}
 	arg, ok := slash.Lookup(in.Text, "goal")

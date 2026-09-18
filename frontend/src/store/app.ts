@@ -22,7 +22,7 @@ import {
 } from "@/lib/i18n"
 import type { SendImage } from "@/lib/paste-image"
 import { subscribeEvents } from "@/lib/stream"
-import { preferNamedTitles } from "@/lib/thread-title"
+import { preferNamedTitles, upsertThread } from "@/lib/thread-title"
 import { logPageSize, type ThreadLog } from "@/lib/thread-log"
 import {
   emptyTranscript,
@@ -45,6 +45,7 @@ import type {
 } from "@/lib/types"
 import { useProjects } from "./projects"
 import { planAskActions } from "./app-plan"
+import { scheduleActions, type ScheduleSlice } from "./app-schedule"
 import { steerInjectActions } from "./app-steer"
 import { dropQueued, queueEvent, withRunningClock } from "./app-stream"
 import {
@@ -67,7 +68,7 @@ import {
 
 export type Theme = "light" | "dark" | "system"
 
-interface AppState {
+interface AppState extends ScheduleSlice {
   meta?: Meta
   models: ModelInfo[]
   threads: Thread[]
@@ -199,6 +200,7 @@ export const useApp = create<AppState>((set, get) => ({
         useProjects.getState().refresh(),
       ])
       set({ meta, models: models.models, threads })
+      await get().refreshSchedules()
       if (meta.ui) {
         get().setAppearance(normalizeAppearance(meta.ui), { persist: false })
       }
@@ -219,6 +221,7 @@ export const useApp = create<AppState>((set, get) => ({
     } catch (e) {
       set({ error: message(e) })
     }
+    await get().refreshSchedules()
   },
 
   refreshCatalogs: async () => {
@@ -342,9 +345,7 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: s.threads.map((t) =>
-            t.id === thread.id ? (preferNamedTitles([t], [thread])[0] ?? thread) : t,
-          ),
+          threads: upsertThread(s.threads, thread),
         }))
         if (Boolean(log.has_more) && !managerHasVisibleBlocks(transcript)) {
           await loadUntilVisibleHistory(get)
@@ -360,9 +361,7 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: s.threads.map((t) =>
-            t.id === thread.id ? (preferNamedTitles([t], [thread])[0] ?? thread) : t,
-          ),
+          threads: upsertThread(s.threads, thread),
         }))
       }
       // The Memory tab belongs to the project, not the conversation. Opening
@@ -620,6 +619,8 @@ export const useApp = create<AppState>((set, get) => ({
     fail: message,
     withRunningClock,
   }),
+
+  ...scheduleActions(set, get, { fail: message }),
 
   ...steerInjectActions(set, get, message),
 

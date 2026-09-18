@@ -39,6 +39,7 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 		t := drop[i]
 		errText := "superseded by a later unfinished turn"
 		_ = e.store.FinishTurn(t.ID, store.TurnCancelled, "", errText)
+		e.finishScheduledRun(&t, store.TurnCancelled, "", errText)
 		e.record(store.Event{
 			ThreadID: t.ThreadID, TurnID: t.ID,
 			Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID,
@@ -54,6 +55,7 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 				continue
 			}
 			_ = e.store.FinishTurn(t.ID, store.TurnError, "", err.Error())
+			e.finishScheduledRun(&t, store.TurnError, "", err.Error())
 			e.record(store.Event{
 				ThreadID: t.ThreadID, TurnID: t.ID,
 				Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID,

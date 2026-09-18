@@ -179,6 +179,9 @@ func managerScript(turn int, msgs []*schema.Message) *schema.Message {
 	if msg := mockAskOrPlan(turn, msgs); msg != nil {
 		return msg
 	}
+	if msg := mockScheduleScript(turn, msgs); msg != nil {
+		return msg
+	}
 	task := lastUserText(msgs)
 	ids := spawnedIDs(msgs)
 	// Spawn only when this conversation has no workers yet. A continued run

@@ -15,6 +15,10 @@ import type {
   Turn,
   Followup,
   UsageSnapshot,
+  Schedule,
+  ScheduleCreate,
+  SchedulePatch,
+  ScheduleRun,
 } from "./types"
 import { normalizeUISettings } from "./appearance"
 import type { SendImage } from "./paste-image"
@@ -359,4 +363,34 @@ export const api = {
     request<{ turn: Turn; events: unknown[]; llm_calls: unknown[] }>(
       `/api/trace/${turnId}`,
     ),
+
+  schedules: (opts?: { status?: string; kind?: string }) => {
+    const params = new URLSearchParams()
+    if (opts?.status) params.set("status", opts.status)
+    if (opts?.kind) params.set("kind", opts.kind)
+    const query = params.toString()
+    return request<{ schedules: Schedule[]; unread: number }>(
+      `/api/schedules${query ? `?${query}` : ""}`,
+    )
+  },
+  createSchedule: (body: ScheduleCreate) =>
+    request<{ schedule: Schedule }>("/api/schedules", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then((r) => r.schedule),
+  schedule: (id: string) =>
+    request<{ schedule: Schedule; runs: ScheduleRun[] }>(`/api/schedules/${id}`),
+  patchSchedule: (id: string, patch: SchedulePatch) =>
+    request<{ schedule: Schedule }>(`/api/schedules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(patch),
+    }).then((r) => r.schedule),
+  deleteSchedule: (id: string) =>
+    request<void>(`/api/schedules/${id}`, { method: "DELETE" }),
+  runSchedule: (id: string) =>
+    request<{ turn: Turn }>(`/api/schedules/${id}/run`, { method: "POST" }).then(
+      (r) => r.turn,
+    ),
+  markScheduleRunRead: (rid: string) =>
+    request<void>(`/api/schedules/runs/${rid}/read`, { method: "POST" }),
 }

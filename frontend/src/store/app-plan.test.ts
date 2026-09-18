@@ -50,6 +50,7 @@ vi.mock("@/lib/api", () => {
       agentLog: async () => ({ events: [] }),
       files: async () => ({ workspace: "/tmp/ws", files: [] }),
       followups: async () => [],
+      schedules: async () => ({ schedules: [], unread: 0 }),
       patchThread: async (id: string, patch: Record<string, unknown>) => {
         fake.patches.push({ id, ...patch })
         if (patch.plan_mode !== undefined) fake.planMode = Boolean(patch.plan_mode)

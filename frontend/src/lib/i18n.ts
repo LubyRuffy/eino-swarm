@@ -40,6 +40,9 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "Review finished — nothing new to keep.": "notice.reviewQuiet",
   "Review finished.": "notice.reviewDone",
   "Memory updated.": "notice.memoryUpdated",
+  "A wait is armed.": "notice.scheduleArmed",
+  "A wait was cancelled.": "notice.scheduleCancelled",
+  "Scheduled check.": "notice.scheduleFired",
 }
 
 const REVIEW_FAIL_PREFIX = "Memory review failed: "

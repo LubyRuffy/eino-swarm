@@ -8,6 +8,7 @@ import { ResizeHandle } from "@/components/app/resize-handle"
 import { SidebarSection } from "@/components/app/sidebar-section"
 import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
+import { ScheduleInbox, ScheduleInboxTrigger } from "@/components/app/schedule-inbox"
 import {
   isProjectExpanded,
   readProjectExpanded,
@@ -212,6 +213,8 @@ export function Sidebar({
             {t("sidebar.empty")}
           </p>
         ) : null}
+
+        <ScheduleInboxTrigger />
       </div>
 
       <div className="flex items-center justify-between border-t border-sidebar-border px-3 py-2">
@@ -235,6 +238,7 @@ export function Sidebar({
           if (doomed) onDelete(doomed.id)
         }}
       />
+      <ScheduleInbox />
     </aside>
   )
 }

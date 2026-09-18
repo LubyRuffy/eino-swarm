@@ -21,10 +21,15 @@ func GoalContinueText() string {
 // Follow-ups and unread steers already claimed the next turn; this only runs
 // after a clean finish with nothing queued, or after a recoverable model
 // error that already retried in-turn. Stop, a real refusal (which blocks
-// the objective), a completed, blocked, capped, or idle-held goal, and a
-// continuation that made no counted tool progress do nothing.
+// the objective), a completed, blocked, capped, or idle-held goal, a
+// continuation that made no counted tool progress, and a pending thread
+// wake do nothing. The wake is the next turn; spinning here would race it.
 func (rt *runtime) continueGoal(status string) {
 	if status != store.TurnDone {
+		return
+	}
+	if rt.engine.hasFutureWake(rt.threadID) {
+		rt.reapParked()
 		return
 	}
 	th, err := rt.engine.store.GetThread(rt.threadID)
@@ -108,6 +113,21 @@ func shouldPursueAfterTurn(status string, runErr error, pursuing bool) bool {
 func (rt *runtime) pursuingOpenGoal() bool {
 	th, err := rt.engine.store.GetThread(rt.threadID)
 	return err == nil && pursuingGoal(th)
+}
+
+// hasFutureWake is true when this conversation has an armed thread wake
+// still waiting, or a claimed fire whose run is still running. Claim
+// marks a delay one-shot done before StartTurn; looking only at
+// status=active lets continueGoal steal that slot (ErrBusy, no resurrect).
+// next_run_at in the past still counts: a one-shot that has not fired
+// (or skipped busy) stays due. Paused, cancelled, done-with-no-run, and
+// standalone origin-only rows do not suppress. A store error fail-opens.
+func (e *Engine) hasFutureWake(threadID string) bool {
+	ok, err := e.store.HasPendingThreadWake(threadID)
+	if err != nil {
+		return false
+	}
+	return ok
 }
 
 // blockOpenGoalOnTurnError stops auto-continue when a pursuing turn dies

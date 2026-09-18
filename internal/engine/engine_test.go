@@ -937,6 +937,24 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 	if !strings.Contains(prompt, "ask_user") {
 		t.Fatal("the manager must be told to ask through ask_user")
 	}
+	if !strings.Contains(prompt, "schedule_wake") {
+		t.Fatal("the manager must be told to arm a wake instead of spinning")
+	}
+	if !strings.Contains(prompt, "do not wait for the human to remind") {
+		t.Fatal("the manager must not ask the human to poke it when a wait is the next step")
+	}
+	if !strings.Contains(prompt, "report_schedule") {
+		t.Fatal("a scheduled turn must be told to report_schedule")
+	}
+	for _, leak := range []string{"deploy", "pull request", "cron job"} {
+		if strings.Contains(strings.ToLower(prompt), leak) {
+			t.Fatalf("the prompt hardcodes example-specific text %q", leak)
+		}
+	}
+	// "CI" as a token, not the letters inside "specific".
+	if managerPromptHasCIToken(prompt) {
+		t.Fatal(`the prompt hardcodes example-specific text "CI"`)
+	}
 	if strings.Contains(strings.ToLower(prompt), "sandbox") || strings.Contains(prompt, "沙箱") {
 		t.Fatal("the prompt must not call the workspace a sandbox")
 	}

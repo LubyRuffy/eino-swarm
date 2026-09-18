@@ -64,9 +64,11 @@ func (s *Store) UpdateProject(id string, fields map[string]any) error {
 	return nil
 }
 
-// DeleteProject removes a project and every conversation in it. The rows go in
-// one transaction; the directories on disk are the caller's to remove, the
-// same way DeleteThread leaves the workspace to the engine.
+// DeleteProject removes a project and every conversation in it. Wakes that
+// targeted those conversations, and standalone jobs pinned to the project,
+// are cancelled in the same transaction. The directories on disk are the
+// caller's to remove, the same way DeleteThread leaves the workspace to
+// the engine.
 func (s *Store) DeleteProject(id string) error {
 	if _, err := s.GetProject(id); err != nil {
 		return err
@@ -76,6 +78,14 @@ func (s *Store) DeleteProject(id string) error {
 		return err
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
+		for _, tid := range threadIDs {
+			if err := cancelWakesForThread(tx, tid); err != nil {
+				return err
+			}
+		}
+		if err := cancelSchedulesForProject(tx, id); err != nil {
+			return err
+		}
 		if len(threadIDs) > 0 {
 			for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}} {
 				if err := tx.Where("thread_id IN ?", threadIDs).Delete(m).Error; err != nil {

@@ -135,6 +135,16 @@ func New(opts Options) (*Server, error) {
 		api.GET("/projects/:id/terminal", s.projectTerminal)
 
 		api.GET("/trace/:turn", s.getTrace)
+
+		// /schedules/runs/:rid/read before /schedules/:id so gin does
+		// not treat "runs" as an id.
+		api.POST("/schedules/runs/:rid/read", s.markScheduleRunRead)
+		api.GET("/schedules", s.listSchedules)
+		api.POST("/schedules", s.createSchedule)
+		api.GET("/schedules/:id", s.getSchedule)
+		api.PATCH("/schedules/:id", s.patchSchedule)
+		api.DELETE("/schedules/:id", s.deleteSchedule)
+		api.POST("/schedules/:id/run", s.runScheduleNow)
 	}
 
 	if opts.Assets != nil {
@@ -199,6 +209,8 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, engine.ErrBusy):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "busy"})
+	case errors.Is(err, engine.ErrSkippedBusy):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "skipped_busy"})
 	case errors.Is(err, engine.ErrIdle):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "idle"})
 	case errors.Is(err, engine.ErrNoPendingSteer):

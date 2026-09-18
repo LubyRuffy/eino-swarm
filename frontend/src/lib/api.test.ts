@@ -280,3 +280,114 @@ describe("threads", () => {
     expect(projects.map((p) => p.id)).toEqual(["pj_b", "pj_a"])
   })
 })
+
+describe("schedules", () => {
+  it("lists waits with status and kind on the query string", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      expect(url).toBe("/api/schedules?status=active&kind=thread")
+      return respond({
+        schedules: [{ id: "sch_1", kind: "thread", status: "active" }],
+        unread: 2,
+      })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const got = await api.schedules({ status: "active", kind: "thread" })
+    expect(got.unread).toBe(2)
+    expect(got.schedules[0]?.id).toBe("sch_1")
+  })
+
+  it("posts a create body and returns the wait", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/schedules")
+      expect(init?.method).toBe("POST")
+      expect(JSON.parse(String(init?.body))).toEqual({
+        kind: "standalone",
+        title: "wake",
+        prompt: "Check current state.",
+        every_s: 60,
+      })
+      return respond({ schedule: { id: "sch_2", kind: "standalone" } }, { status: 201 })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const row = await api.createSchedule({
+      kind: "standalone",
+      title: "wake",
+      prompt: "Check current state.",
+      every_s: 60,
+    })
+    expect(row.id).toBe("sch_2")
+  })
+
+  it("loads one wait with its runs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        expect(url).toBe("/api/schedules/sch_1")
+        return respond({
+          schedule: { id: "sch_1" },
+          runs: [{ id: "srun_1", status: "findings", unread: true }],
+        })
+      }),
+    )
+    const got = await api.schedule("sch_1")
+    expect(got.runs[0]?.id).toBe("srun_1")
+  })
+
+  it("patches a wait", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/schedules/sch_1")
+      expect(init?.method).toBe("PATCH")
+      expect(JSON.parse(String(init?.body))).toEqual({ status: "paused" })
+      return respond({ schedule: { id: "sch_1", status: "paused" } })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const row = await api.patchSchedule("sch_1", { status: "paused" })
+    expect(row.status).toBe("paused")
+  })
+
+  it("deletes a wait as 204", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/schedules/sch_1")
+      expect(init?.method).toBe("DELETE")
+      return { ok: true, status: 204, statusText: "No Content", json: async () => ({}) }
+    })
+    vi.stubGlobal("fetch", fetch)
+    await expect(api.deleteSchedule("sch_1")).resolves.toBeUndefined()
+  })
+
+  it("fires a wait now and returns the turn", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/schedules/sch_1/run")
+      expect(init?.method).toBe("POST")
+      return respond({ turn: { id: "tn_1", schedule_continue: true } }, { status: 202 })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const turn = await api.runSchedule("sch_1")
+    expect(turn.id).toBe("tn_1")
+    expect(turn.schedule_continue).toBe(true)
+  })
+
+  it("marks a run read as 204", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/schedules/runs/srun_1/read")
+      expect(init?.method).toBe("POST")
+      return { ok: true, status: 204, statusText: "No Content", json: async () => ({}) }
+    })
+    vi.stubGlobal("fetch", fetch)
+    await expect(api.markScheduleRunRead("srun_1")).resolves.toBeUndefined()
+  })
+
+  it("surfaces skipped_busy on a conflict", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        respond({ error: "the conversation is already running", code: "skipped_busy" }, { status: 409 }),
+      ),
+    )
+    await expect(api.runSchedule("sch_1")).rejects.toMatchObject({
+      status: 409,
+      code: "skipped_busy",
+    })
+    await expect(api.runSchedule("sch_1")).rejects.toBeInstanceOf(ApiError)
+  })
+})

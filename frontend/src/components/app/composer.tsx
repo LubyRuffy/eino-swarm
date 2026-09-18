@@ -9,6 +9,7 @@ import { ComposerQuotes } from "@/components/app/composer-quotes"
 import { ModelPicker } from "@/components/app/model-picker"
 import { GoalBanner } from "@/components/app/goal-banner"
 import { PlanBanner } from "@/components/app/plan-banner"
+import { ScheduleBanner } from "@/components/app/schedule-banner"
 import { QueueTray } from "@/components/app/queue-tray"
 import { SlashMenu } from "@/components/app/slash-menu"
 import { Badge } from "@/components/ui/badge"
@@ -441,6 +442,7 @@ export function Composer({
           onEdit={onEditGoal}
           onResume={onResumeGoal}
         />
+        <ScheduleBanner />
         <div
           data-testid="composer-drop"
           className="relative"

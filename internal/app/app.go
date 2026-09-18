@@ -95,6 +95,7 @@ func New(opts Options) (*App, error) {
 	} else if n > 0 {
 		logger.Info("resumed turns left over from a previous run", "count", n)
 	}
+	eng.StartScheduler()
 
 	assets := opts.Assets
 	if assets == nil && !opts.NoAssets {
@@ -110,6 +111,7 @@ func New(opts Options) (*App, error) {
 		OpenURL: openURLFor(opts.Mode),
 	})
 	if err != nil {
+		eng.Shutdown()
 		_ = st.Close()
 		return nil, err
 	}

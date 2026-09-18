@@ -168,10 +168,19 @@ type Turn struct {
 	// GoalContinue is true when the engine started this turn to keep pursuing
 	// an open standing objective. The transcript records goal_continued, not
 	// a human user_message.
-	GoalContinue bool       `json:"goal_continue,omitempty"`
-	StartedAt    time.Time  `json:"started_at"`
-	EndedAt      *time.Time `json:"ended_at,omitempty"`
-	DurationMS   int64      `json:"duration_ms"`
+	GoalContinue bool `json:"goal_continue,omitempty"`
+	// ScheduleRunID is set when this turn is a scheduled fire. Empty for
+	// every other origin. Trace uses it to join the run.
+	ScheduleRunID string `gorm:"size:64" json:"schedule_run_id,omitempty"`
+	// Quiet is true when a scheduled turn had nothing to report: the
+	// transcript hides the bubbles, the row still exists for `zwai trace`.
+	Quiet bool `json:"quiet,omitempty"`
+	// ScheduleContinue is true when the engine started this turn because a
+	// schedule fired. The transcript records schedule_fired, not user_message.
+	ScheduleContinue bool       `json:"schedule_continue,omitempty"`
+	StartedAt        time.Time  `json:"started_at"`
+	EndedAt          *time.Time `json:"ended_at,omitempty"`
+	DurationMS       int64      `json:"duration_ms"`
 }
 
 // Event is one entry of the UI timeline. Seq is per-thread and gap-free, so a

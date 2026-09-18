@@ -50,7 +50,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	if got, err := e.store.GetThread(rt.threadID); err == nil {
 		th = got
 	}
-	instruction := ManagerPrompt(toolset, e.cfg, managerExtra(e.cfg, th, pc))
+	instruction := ManagerPrompt(toolset, e.cfg, managerExtra(e.cfg, th, pc, e.scheduleLines(rt.threadID)))
 	// Fresh slice: pc.managerTools may return the workspace toolset's
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.
@@ -74,6 +74,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		)
 	}
 	managerTools = append(managerTools, AskUserTool(rt.waitAsk))
+	managerTools = append(managerTools, rt.managerScheduleTools(turn)...)
 	budget := e.cfg.Swarm.ManagerIterations()
 	if pursuingGoal(th) {
 		budget = e.cfg.Swarm.GoalSessionIterations()

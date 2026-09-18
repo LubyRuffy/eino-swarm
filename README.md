@@ -61,6 +61,17 @@ uploads, downloads and the live event stream have exactly one implementation.
   every card. The same ReAct turn continues after the answer. Workers cannot
   ask. While a card is waiting, Enter in the composer is Other, not a
   follow-up.
+- **Scheduled waits.** The manager can arm a wake on this conversation
+  (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
+  When progress is gated on time or a condition not worth polling now, it is
+  told to wake and end the turn instead of spinning or asking you to remind
+  it. The sidebar **Scheduled** control opens the inbox dialog: pause, resume, cancel,
+  Run now, or add a standalone job. An active wake on the open conversation
+  shows a banner with the next check and Cancel. Cancel by id also works from
+  the armed-wait notice. A scheduled check reports through `report_schedule`;
+  empty findings stay quiet. Quiet standalone runs stay out of Recents;
+  findings open from the inbox. Workers cannot schedule. Caps live in
+  Settings → Swarm.
 - **`/plan` before changing anything.** Planning unmounts write/edit/exec
   (and similar). The manager explores, asks, and writes `$ZWAI_HOME/plans/<thread>/PLAN.md`.
   Edit it on the banner, then **Implement** to remount those tools and start
@@ -77,7 +88,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   conversation keeps pursuing a goal until the manager calls `complete_goal` (or you
   clear it from the banner). A live turn is steered so this round sees the
   new text. A turn ends when the manager stops calling tools; the runtime
-  then continues. Context pressure compact in place. Hitting the manager
+  then continues, unless an active thread wake is waiting on this
+  conversation — that wait is the next turn until it fires or you cancel it. Context pressure compact in place. Hitting the manager
   tool-round slice keeps the same turn going. In-flight sub-agents survive
   a pursuing turn that ends while they are still running. A continuation
   that makes no tool progress stops auto-continue until you send a message

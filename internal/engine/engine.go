@@ -26,6 +26,9 @@ var (
 	// ErrBusy means the conversation is already running a turn. The UI queues
 	// a follow-up instead of starting a second one.
 	ErrBusy = errors.New("engine: the conversation is already running a turn")
+	// ErrSkippedBusy means a scheduled check did not start because the
+	// target conversation is already running, or a fire is already claimed.
+	ErrSkippedBusy = errors.New("engine: the scheduled check was skipped because the conversation is busy")
 	// ErrIdle means there is nothing running to steer or interrupt.
 	ErrIdle = errors.New("engine: the conversation is not running")
 	// ErrNoPendingSteer means Interrupt was asked with nothing unread in
@@ -67,6 +70,25 @@ type Engine struct {
 	titles   titlePool
 	compacts compactPool
 	sessions sessionMemoryPool
+
+	// now is the wall clock the ticker reads. Tests install a fake so a
+	// wait does not sleep a real cadence. Default is time.Now.
+	now func() time.Time
+
+	schedMu   sync.Mutex
+	schedStop chan struct{}
+	schedWG   sync.WaitGroup
+	fireMu    sync.Mutex
+
+	// Frozen while the ticker is live so fireDueSchedules, inbox
+	// create/resume/patch, and schedule-claim default-provider reads
+	// never touch e.cfg (Replace copies the whole struct and races
+	// the tick). PUT /settings refreshes the atomics after Replace via
+	// ApplyLiveSwarmLimits. Tests without a ticker still read cfg.
+	schedCapsFrozen      atomic.Bool
+	schedMaxActive       atomic.Int32
+	schedMinIntervalS    atomic.Int32
+	schedDefaultProvider atomic.Pointer[string]
 }
 
 // New builds an engine over an already-open store and provider pool.
@@ -95,6 +117,63 @@ func (e *Engine) Config() *config.Config { return e.cfg }
 
 // Store exposes the persistence layer for read-only endpoints and tracing.
 func (e *Engine) Store() *store.Store { return e.store }
+
+// snapshotScheduleCaps copies the ticker caps and default provider out
+// of cfg. Callers that already mutated cfg (StartScheduler, PUT
+// /settings) do this so live schedule paths only ever Load() atomics.
+func (e *Engine) snapshotScheduleCaps() {
+	max := e.cfg.Swarm.ScheduleMaxActive
+	if max <= 0 {
+		max = config.DefaultScheduleMaxActive
+	}
+	e.schedMaxActive.Store(int32(max))
+	min := e.cfg.Swarm.ScheduleMinIntervalSeconds
+	if min <= 0 {
+		min = config.DefaultScheduleMinIntervalSeconds
+	}
+	e.schedMinIntervalS.Store(int32(min))
+	def := strings.TrimSpace(e.cfg.Models.Default)
+	e.schedDefaultProvider.Store(&def)
+}
+
+func (e *Engine) maxActiveSchedules() int {
+	if e.schedCapsFrozen.Load() {
+		n := int(e.schedMaxActive.Load())
+		if n <= 0 {
+			return config.DefaultScheduleMaxActive
+		}
+		return n
+	}
+	n := e.cfg.Swarm.ScheduleMaxActive
+	if n <= 0 {
+		return config.DefaultScheduleMaxActive
+	}
+	return n
+}
+
+func (e *Engine) scheduleMinInterval() time.Duration {
+	if e.schedCapsFrozen.Load() {
+		n := int(e.schedMinIntervalS.Load())
+		if n <= 0 {
+			n = config.DefaultScheduleMinIntervalSeconds
+		}
+		return time.Duration(n) * time.Second
+	}
+	n := e.cfg.Swarm.ScheduleMinIntervalSeconds
+	if n <= 0 {
+		return config.DefaultScheduleMinIntervalSeconds * time.Second
+	}
+	return time.Duration(n) * time.Second
+}
+
+func (e *Engine) scheduleDefaultProvider() string {
+	if e.schedCapsFrozen.Load() {
+		if p := e.schedDefaultProvider.Load(); p != nil {
+			return *p
+		}
+	}
+	return e.cfg.Models.Default
+}
 
 // Providers exposes the model pool.
 func (e *Engine) Providers() *provider.Pool { return e.pool }
@@ -313,6 +392,7 @@ func (e *Engine) Running() []string {
 // waited for, briefly: a review that is cut off mid-write would leave a note
 // half stored, and a review that never finishes must not keep the app open.
 func (e *Engine) Shutdown() {
+	e.StopScheduler()
 	if !e.reviews.stop(reviewShutdownGrace) {
 		e.log.Warn("a memory review was still running at shutdown; its notes may be incomplete")
 	}

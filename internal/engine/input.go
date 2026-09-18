@@ -49,6 +49,17 @@ type UserInput struct {
 	// standing objective. The transcript records goal_continued, not a
 	// human user_message.
 	ContinueGoal bool
+	// ContinueSchedule is an engine-started turn because a wait fired.
+	// The transcript records schedule_fired, not a human user_message.
+	// The ticker (later) is what sets this; tools still read the flag on
+	// the stored turn.
+	ContinueSchedule bool
+	// ScheduleID is the wait that started this turn when ContinueSchedule
+	// is set.
+	ScheduleID string
+	// ScheduleRunID is the claimed fire bound onto the stored turn so
+	// report_schedule can finish the right row.
+	ScheduleRunID string
 	// FromEventSeq, when set, truncates the conversation at that user_message
 	// and starts again from there. It is a rewind, not a new turn on top.
 	FromEventSeq int64

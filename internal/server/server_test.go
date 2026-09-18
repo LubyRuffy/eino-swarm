@@ -922,6 +922,11 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindCompacted, "compacted"},
 		{engine.KindUsage, "usage"},
 		{engine.KindRewound, "rewound"},
+		{engine.KindSchedule, "schedule"},
+		{engine.KindScheduleFired, "schedule_fired"},
+		{engine.KindScheduleSkipped, "schedule_skipped"},
+		{engine.KindScheduleReport, "schedule_report"},
+		{engine.KindScheduleCancelled, "schedule_cancelled"},
 	} {
 		if tc.got != tc.want {
 			t.Fatalf("the event kind %q the UI relies on is now sent as %q", tc.want, tc.got)

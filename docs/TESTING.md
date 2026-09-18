@@ -16,26 +16,26 @@ deterministic and fast enough to run on every change.
 |---|---|---|
 | Go unit tests | config, store, memory, provider, tools, engine, server, CLI, TUI, and the swarm library | `go test -race -cover ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd) | `go test ./internal/server/` |
-| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`) | `cd frontend && npm test` |
-| End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width | `cd frontend && npm run e2e` |
+| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice cancel / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`) | `cd frontend && npm test` |
+| End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, scheduled inbox / wake banner | `cd frontend && npm run e2e` |
 
 Current Go coverage, from `go test -race -cover ./...`:
 
 | package | coverage |
 |---|---|
 | `internal/memory` | 96.8% |
-| `internal/provider` | 92.0% |
-| `.` (swarm library) | 95.2% |
-| `internal/tools` | 97.0% |
-| `internal/store` | 92.2% |
-| `internal/engine` | 92.7% |
-| `internal/config` | 90.6% |
-| `internal/terminal` | 95.7% |
-| `internal/server` | 90.0% |
+| `internal/provider` | 92.1% |
+| `.` (swarm library) | 94.8% |
+| `internal/tools` | 97.5% |
+| `internal/store` | 92.1% |
+| `internal/engine` | 90.4% |
+| `internal/config` | 91.5% |
+| `internal/terminal` | 97.8% |
+| `internal/server` | 90.1% |
 | `internal/slash` | 92.9% |
-| `internal/tui` | 94.7% |
-| `internal/app` | 88.0% |
-| `cmd/zwai` | 84.0% |
+| `internal/tui` | 87.6% |
+| `internal/app` | 87.3% |
+| `cmd/zwai` | 84.2% |
 
 What is deliberately not unit-tested: `main`, `runDesktop`/`runWeb`/`runTUI` (thin
 wrappers around functions that *are* tested), `desktop.Run` (opens a native
@@ -128,6 +128,53 @@ user task; `/goals` still is. `/plan` is the same parse; a live turn is
 turn until an answer, idle answers are `ErrIdle`, a wrong `call_id` is
 `ErrAskMismatch`, interrupt cancels the wait, resume re-arms an orphaned
 questionnaire instead of swallowing it, and a worker call fails in JSON.
+`internal/engine/schedule_tool_test.go` is why `schedule_wake` upserts on
+this conversation, `schedule_task` refuses a `GoalContinue` /
+`ScheduleContinue` / plan-implement turn, empty `report_schedule` findings
+are quiet, garbage arguments come back as JSON `ok:false`, Info text stays
+generic, and workers get a deny stub.
+`internal/engine/schedule_goal_test.go` is why a pending thread wake
+pauses `/goal` auto-continue, why cancelling it restores the next
+pursuing turn's `goal_continued`, and why paused, cancelled, and
+standalone origin-only rows do not suppress. A still-due delay that
+has already been claimed (`status=done` plus a `running` run, matching
+`advanceAfterFire` before `StartTurn`) is `TestClaimedOneShotStillSuppressesGoalAutoContinue`
+— the armed-row tests do not cover that race.
+`internal/engine/schedule_report_test.go` is why a scheduled check with
+nothing to surface archives (`quiet`, unread cleared, `turn.quiet`; a
+standalone fire leaves Recents) while an omitted report with an answer
+is `findings` and stays in the sidebar, and why a crashed or cancelled
+scheduled turn marks the run `error` so `HasRunningRun` cannot stick.
+`TestCreateScheduleUsesFrozenCapWhenTickerIsLive` is why inbox create
+(and resume/patch, and a standalone claim's default provider) reads the
+same snapshot the ticker froze, not a later `e.cfg.Swarm` write;
+`ApplyLiveSwarmLimits` is what Settings uses to refresh it.
+`TestResumeCannotRestartClosesTheScheduleRun` and
+`TestResumeDropsASupersededScheduledRun` are why a leftover
+`ScheduleContinue` that resume cannot continue — empty user text, or
+superseded by a later unfinished row — closes that bound fire as
+`error` instead of leaving `running`.
+Tests opt into `provider.SetMockScheduleQuiet` / `SetMockScheduleSilent` /
+`SetMockScheduleFindings`. The default mock sniffs a scheduled check
+(`This turn is a scheduled check.`) and calls `report_schedule` with
+generic findings (`ZWAI_MOCK_SCHEDULE_QUIET=1` empties them).
+`SetMockScheduleSpawn` restores the old fan-out so omitted-report-with-answer
+stays testable. `ZWAI_MOCK_SCHEDULE_WAKE=1` is off unless a test arms a
+min-interval wait on the first manager step.
+`internal/server/schedules_test.go` is why the inbox HTTP API creates
+human waits, lists `{schedules, unread}`, pauses/cancels, run-now on
+idle starts a `ScheduleContinue` turn, run-now while the conversation is
+busy is `409 skipped_busy`, and reading a findings run clears unread.
+`internal/store/schedule_test.go` is why `HasPendingThreadWake` treats
+an active `kind=thread` row and a running thread fire as pending, and
+why paused/cancelled/done-with-no-run, standalone origin-only, an empty
+thread id, and a missing table do not (the last returns the error;
+the engine fail-opens).
+`internal/engine/prompt_test.go` is why the manager prompt has `## Waiting`
+(`schedule_wake`, do not wait for the human to remind, `report_schedule`)
+without CI / deploy / pull-request / cron-job samples, why an open `/goal`
+names a pending wake as the next turn, and why extra lists this
+conversation's active wakes from a real `CreateSchedule` row.
 `internal/engine/plan_test.go` is why planning unmounts write/exec,
 `propose_plan` writes the file, Implement remounts those tools,
 deleting a conversation takes `PLAN.md` with it, and
@@ -356,7 +403,22 @@ Several things are tested here, some as pure logic and some in jsdom:
   a `goal_capped` interrupt payload notices as paused without pasting `interrupted`,
   the briefing JSON never becomes a chat row (`detail` holds `summary` so an
   icon can open it), and auto-compact shows compressing then the token counts
-  instead of the payload. `compact-notice.test.tsx` clicks that icon. A `session_memory` event is
+  instead of the payload. Scheduled-task kinds live in `transcript-schedule.test.ts`:
+  `schedule` / `schedule_fired` / `schedule_cancelled` are manager notices (not
+  `user`, not the JSON payload or raw id), `schedule_skipped` is a no-op,
+  a quiet `schedule_report` drops that turn's chat bubbles and later events
+  cannot grow them back, an omitted report whose `done` text is empty (or
+  whitespace) after `schedule_fired` is the same quiet drop, a findings `done`
+  or `schedule_report` keeps the fired chip then the answer (including when
+  empty `done` follows a findings report), an armed `schedule` plus empty
+  `done` keeps the wait notice, and an ordinary empty `done` stays
+  visible. `compact-notice.test.tsx` clicks that icon. `schedule-notice.test.tsx`
+  cancels an armed wait when `detail` is a `sch_` id and does not treat a
+  cancelled notice as a briefing.   `schedule-inbox.test.tsx` /
+  `schedule-banner.test.tsx` / `app-schedule.test.ts` cover the sidebar
+  dialog trigger (`aria-haspopup="dialog"`, unread in the accessible name),
+  pause/run-now/create labels, unread badge, busy run-now `skipped_busy` as a
+  labelled alert inside the inbox dialog, and the composer wake banner. A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /
   `goal_continued` turns fold behind a one-line Worked-for row in
@@ -826,6 +888,7 @@ long enough for Steer; unit tests leave it unset.
 |---|---|
 | `e2e/conversation.spec.ts` | a full swarm turn, a live thought in a 10-line scrolling box whose **Thinking** label sweeps, clicking that row hiding the thought while it still streams, a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge), a generated sidebar title after the first turn (not the raw request, not a transcript row), a heading rendered as a heading while the turn is still Working, a chart in the scripted answer with Chart/Table tabs (and after reload), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge, switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, **Steer** on that queued row injecting and emptying the tray, editing a queued row and submitting it so that message goes to the back of the FIFO, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, quoting selected transcript text into the next send as an editable composer annotation, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` showing a Planning banner and an `ask_user` dialog (a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
 | `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, hovering a project row revealing a new-conversation control that starts one in that project rather than Recents (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, and a sixth topic in the folder sitting behind **Show more** until it is opened |
+| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (title, prompt, Every (seconds) 60, Add wait), Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner, Cancel wait removing it. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
 | `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline, Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, the tool catalogue on a never-saved config, settings written to the config file and read back, personality round-tripping through Settings → Personality, pinning a title-generation model when more than one name is listed, opening a collapsed provider row then discovering models into the default-model dropdown, **Back to app** remaining on screen on a short window when the Swarm page is long, Back to app sitting in the first 48px of a browser sheet (the desktop title-bar strip is not shipped to the tab), the Add-a-provider outline staying inside the Models scrollport, theme switching persisted, chrome language switching (restored to English because locale is in the shared yaml), the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), font / size / conversation width round-tripping through Settings → General, renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
 
 E2E tests run against `frontend/dist`. `make e2e` rebuilds that bundle first;
@@ -891,5 +954,8 @@ or one call eating the wall clock.
 - A new event kind needs a reducer test, and usually an assertion in
   `TestNotifyKindsAreStableAcrossTheWire`: the names travel over the network and
   are stored in the database, so renaming one breaks replay of old conversations.
+  Scheduled-task kinds (`schedule`, `schedule_fired`, `schedule_skipped`,
+  `schedule_report`, `schedule_cancelled`) live in that table and in
+  `frontend/src/lib/stream.test.ts` `wireKinds`.
 - A new user-visible flow needs an E2E test. If it cannot be driven in the
   browser, it probably cannot be driven by a user either.

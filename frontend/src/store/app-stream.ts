@@ -35,6 +35,7 @@ export type StreamSnapshot = {
   refreshFiles: () => Promise<void>
   refreshThreads: () => Promise<void>
   refreshFollowups: () => Promise<void>
+  refreshSchedules: () => Promise<void>
 }
 
 type StreamSet = (
@@ -78,6 +79,9 @@ export function queueEvent(
       ev.kind === "compacted" ||
       ev.kind === "plan" || ev.kind === "plan_updated" ||
       ev.kind === "plan_implemented" || ev.kind === "plan_cancelled" ||
+      ev.kind === "schedule" || ev.kind === "schedule_fired" ||
+      ev.kind === "schedule_skipped" || ev.kind === "schedule_report" ||
+      ev.kind === "schedule_cancelled" ||
       ev.kind === "rewound" ||
       ev.kind === "tool_call" || ev.kind === "tool_result" ||
       ev.kind === "steer" || ev.kind === "steer_retracted" || ev.kind === "steer_preempted") {
@@ -120,6 +124,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
   let followups = state.followups ?? []
   let droppedFollowups: Followup[] = []
   let closed = false
+  let schedulesDirty = false
   for (const ev of events) {
     rememberStored(threadId, ev)
     if (ev.kind === "rewound") {
@@ -171,7 +176,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     }
     threads = applyGoalThreadFlags(threads, threadId, ev)
     threads = applyPlanThreadFlags(threads, threadId, ev)
-    if (ev.kind === "goal_resumed" || ev.kind === "goal_continued" || ev.kind === "plan_implemented") {
+    if (ev.kind === "goal_resumed" || ev.kind === "goal_continued" || ev.kind === "plan_implemented" || ev.kind === "schedule_fired") {
       status = withRunningClock(status, {
         turn_id: ev.turn_id,
         started_at: ev.created_at,
@@ -181,6 +186,9 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       threads = threads.map((t) =>
         t.id === threadId ? { ...t, compacted: true } : t,
       )
+    }
+    if (ev.kind === "schedule" || ev.kind === "schedule_cancelled" || ev.kind === "schedule_report") {
+      schedulesDirty = true
     }
     if (ev.kind === "usage") {
       const next = parseUsage(ev.text)
@@ -217,6 +225,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       droppedFollowups.map((f) => api.deleteFollowup(id, f.id).catch(() => undefined)),
     ).then(() => get().refreshFollowups())
   }
+  if (schedulesDirty) void get().refreshSchedules()
   if (closed) {
     void get().refreshFiles()
     void get().refreshThreads()

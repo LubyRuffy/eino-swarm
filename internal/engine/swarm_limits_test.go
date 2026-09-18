@@ -5,6 +5,7 @@ import (
 	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 )
 
 func TestApplyLiveSwarmLimitsResizesParkedAndRunningRegistries(t *testing.T) {
@@ -48,4 +49,39 @@ func TestApplyLiveSwarmLimitsResizesParkedAndRunningRegistries(t *testing.T) {
 func TestBindSwarmLimitsIgnoresNil(t *testing.T) {
 	e := newTestEngine(t)
 	e.bindSwarmLimits(nil)
+}
+
+func TestApplyLiveSwarmLimitsRefreshesScheduleCaps(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Swarm.ScheduleTickMS = 3_600_000
+	e.StartScheduler()
+	t.Cleanup(e.StopScheduler)
+	e.cfg.Swarm.ScheduleMaxActive = 0
+	e.cfg.Swarm.ScheduleMinIntervalSeconds = 0
+	e.ApplyLiveSwarmLimits()
+	if e.maxActiveSchedules() != config.DefaultScheduleMaxActive {
+		t.Fatalf("max=%d", e.maxActiveSchedules())
+	}
+	if e.scheduleMinInterval() != time.Duration(config.DefaultScheduleMinIntervalSeconds)*time.Second {
+		t.Fatalf("min=%s", e.scheduleMinInterval())
+	}
+	e.cfg.Swarm.ScheduleMaxActive = 4
+	e.cfg.Swarm.ScheduleMinIntervalSeconds = 45
+	wantDefault := e.cfg.Models.Default
+	e.cfg.Models.Default = "nope"
+	e.ApplyLiveSwarmLimits()
+	if e.maxActiveSchedules() != 4 {
+		t.Fatalf("max=%d, settings must refresh the ticker snapshot", e.maxActiveSchedules())
+	}
+	if e.scheduleMinInterval() != 45*time.Second {
+		t.Fatalf("min=%s", e.scheduleMinInterval())
+	}
+	if e.scheduleDefaultProvider() != "nope" {
+		t.Fatalf("default=%q", e.scheduleDefaultProvider())
+	}
+	e.cfg.Models.Default = wantDefault
+	e.ApplyLiveSwarmLimits()
+	if e.scheduleDefaultProvider() != wantDefault {
+		t.Fatalf("default=%q", e.scheduleDefaultProvider())
+	}
 }

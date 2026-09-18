@@ -931,6 +931,35 @@ func TestApplyTurnUpdateMissingTurnIsNotFound(t *testing.T) {
 	}
 }
 
+func TestUpdateTurnMarksAQuietScheduledRow(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	turn := &Turn{ThreadID: th.ID, UserText: "Continue the wait."}
+	if err := s.CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateTurn(turn.ID, nil); err != nil {
+		t.Fatalf("empty patch is a no-op: %v", err)
+	}
+	got, err := s.GetTurn(turn.ID)
+	if err != nil || got.Quiet {
+		t.Fatalf("empty patch must not stamp quiet: %+v err=%v", got, err)
+	}
+	if err := s.UpdateTurn(turn.ID, map[string]any{"quiet": true}); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.GetTurn(turn.ID)
+	if err != nil || !got.Quiet {
+		t.Fatalf("quiet=%v err=%v", got, err)
+	}
+	if err := s.UpdateTurn("tu_missing", map[string]any{"quiet": true}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
 func writeFile(p string) error {
 	return os.WriteFile(p, []byte("x"), 0o600)
 }

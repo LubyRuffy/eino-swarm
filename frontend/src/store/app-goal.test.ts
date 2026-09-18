@@ -48,6 +48,7 @@ vi.mock("@/lib/api", () => {
       agentLog: async () => ({ events: [] }),
       files: async () => ({ workspace: "/tmp/ws", files: [] }),
       followups: async () => [],
+      schedules: async () => ({ schedules: [], unread: 0 }),
       patchThread: async (
         id: string,
         patch: {
@@ -387,6 +388,22 @@ describe("goal and compact", () => {
     const at = "2026-01-01T02:00:00.000Z"
     fake.onEvent?.({ kind: "goal_resumed", seq: 12, thread_id: "th_old", turn_id: "tn_3", agent_id: "manager", created_at: at })
     expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "tn_3", started_at: at })
+  })
+
+  it("starts the working clock when a scheduled check fires", async () => {
+    await useApp.getState().boot()
+    const at = "2026-01-01T00:00:00.000Z"
+    fake.onEvent?.({ kind: "done", seq: 10, thread_id: "th_old", turn_id: "tn_1", agent_id: "manager", created_at: at })
+    fake.onEvent?.({
+      kind: "schedule_fired",
+      seq: 11,
+      thread_id: "th_old",
+      turn_id: "tn_2",
+      agent_id: "manager",
+      text: "Scheduled check.",
+      created_at: at,
+    })
+    expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "tn_2", started_at: at })
   })
 
   it("holds auto-continue after a no-progress continuation", async () => {
