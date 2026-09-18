@@ -147,6 +147,46 @@ func TestScheduleTaskRejectedOnImplementPlan(t *testing.T) {
 	}
 }
 
+func TestScheduleTaskRejectedOnResumedImplementPlan(t *testing.T) {
+	// occupy() is resume: it claims the leftover turn and wipes planImplement.
+	// KindPlanImplemented is the durable mark. If we only trust the in-memory
+	// flag, schedule_task sneaks through after a crash.
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	turn := mustStoredTurn(t, e, th.ID, store.Turn{})
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: turn.ID,
+		Kind: KindPlanImplemented, Text: planImplementedNotice,
+	})
+
+	rt := e.runtimeFor(th.ID)
+	idle := make(chan struct{})
+	_, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	if !rt.occupy(nil, cancel, turn.ID, idle) {
+		t.Fatal("occupy")
+	}
+	t.Cleanup(func() { rt.release(cancel, idle, turn.ID) })
+	if rt.recordingPlanImplement() {
+		t.Fatal("occupy must leave the in-memory plan flag off")
+	}
+
+	out, err := ScheduleTaskTool(func(args string) (string, error) {
+		return e.scheduleTaskJSON(th.ID, turn.ID, args)
+	}).(tool.InvokableTool).InvokableRun(context.Background(),
+		`{"prompt":"`+scheduleToolWaitPrompt+`","every_s":60}`)
+	if err != nil || !strings.Contains(out, `"ok":false`) {
+		t.Fatalf("resumed implement turn must still block schedule_task: %s %v", out, err)
+	}
+	listed, err := e.ListSchedules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("rejected create still persisted: %+v", listed)
+	}
+}
+
 func TestScheduleTaskArmsStandaloneOnAHumanTurn(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")

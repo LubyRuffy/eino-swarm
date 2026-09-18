@@ -305,8 +305,10 @@ func (e *Engine) requireHumanOriginatedTurn(threadID, turnID string) error {
 	if turn.ScheduleContinue {
 		return fmt.Errorf("engine: a scheduled check cannot arm an independent job")
 	}
-	rt := e.runtimeFor(threadID)
-	if rt.currentTurnID() == turnID && rt.recordingPlanImplement() {
+	// occupy() on resume wipes the in-memory flag. KindPlanImplemented is
+	// what survived the crash; do not also require currentTurnID or a
+	// leftover planImplement bit.
+	if e.runtimeFor(threadID).recordingPlanImplement() || e.turnHasKind(turnID, KindPlanImplemented) {
 		return fmt.Errorf("engine: an accepted-plan execute turn cannot arm an independent job")
 	}
 	return nil

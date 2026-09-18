@@ -144,6 +144,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **`schedule_task` stays blocked after resume of an implement-plan turn.**
+  `occupy()` wipes the in-memory plan flag; the gate now also reads
+  `plan_implemented` on the turn, so a leftover execute turn cannot mint
+  a standalone job.
+
 - **A generated conversation name survives the `done` list refresh.** The
   title-bar used to snap back to the truncated prompt when `GET /threads`
   still had `title_auto` after the `title` event had already named the row.
