@@ -214,6 +214,33 @@ func TestCreateStandaloneScheduleWithoutOrigin(t *testing.T) {
 	}
 }
 
+// nextAfter is zero for a one-shot. The first due time is now+delay, or a
+// delay wait looks due immediately (or never) and the ticker fires wrong.
+func TestCreateDelaySetsNextRunAtFromNow(t *testing.T) {
+	e := newTestEngine(t)
+	before := time.Now().UTC()
+	sch, err := e.CreateSchedule(ScheduleInput{
+		Kind:   store.ScheduleStandalone,
+		Prompt: scheduleWaitPrompt, DelayS: 90,
+		CreatedBy: store.ScheduleCreatedHuman,
+	})
+	after := time.Now().UTC()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sch.NextRunAt.IsZero() {
+		t.Fatal("delay next_run_at is zero; that is nextAfter, not the first due time")
+	}
+	if !sch.NextRunAt.After(after) {
+		t.Fatalf("next_run_at=%s is not after now=%s; looks like now+0", sch.NextRunAt, after)
+	}
+	wantNext := before.Add(90 * time.Second)
+	latest := after.Add(90 * time.Second)
+	if sch.NextRunAt.Before(wantNext) || sch.NextRunAt.After(latest) {
+		t.Fatalf("next_run_at=%s window [%s,%s]", sch.NextRunAt, wantNext, latest)
+	}
+}
+
 func TestCreateScheduleCronSetsNextRunAtFromSpec(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
