@@ -140,6 +140,13 @@ standalone origin-only rows do not suppress. A still-due delay that
 has already been claimed (`status=done` plus a `running` run, matching
 `advanceAfterFire` before `StartTurn`) is `TestClaimedOneShotStillSuppressesGoalAutoContinue`
 — the armed-row tests do not cover that race.
+`internal/engine/schedule_report_test.go` is why a scheduled check with
+nothing to surface archives (`quiet`, unread cleared, `turn.quiet`; a
+standalone fire leaves Recents) while an omitted report with an answer
+is `findings` and stays in the sidebar, and why a crashed or cancelled
+scheduled turn marks the run `error` so `HasRunningRun` cannot stick.
+Tests opt into `provider.SetMockScheduleQuiet` / `SetMockScheduleSilent`;
+the default mock still spawns and does not sniff a scheduled turn.
 `internal/store/schedule_test.go` is why `HasPendingThreadWake` treats
 an active `kind=thread` row and a running thread fire as pending, and
 why paused/cancelled/done-with-no-run, standalone origin-only, an empty

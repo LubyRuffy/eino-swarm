@@ -13,6 +13,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Quiet scheduled checks archive like Codex.** Empty `report_schedule`
+  findings, or a finished scheduled turn with no answer, close the run as
+  `quiet` (unread cleared, `turn.quiet`). A manager answer without a report
+  is `findings` and unread. Standalone quiet fires hide the minted
+  conversation from Recents; findings stay in the sidebar. A crashed or
+  cancelled scheduled turn marks the run `error` and unread so it cannot
+  stick `running`.
+
 - **Pending thread wakes pause `/goal` auto-continue.** An active
   `kind=thread` wake targeting this conversation, or a claimed fire still
   `running`, is the next turn: `continueGoal` reaps parked workers and
@@ -362,6 +370,11 @@ co-working app built on it. The library API is unchanged except where noted
   retried; it does not call the tool itself.
 
 ### Changed
+
+- **A finished scheduled turn now closes its run.** The ticker used to leave
+  `schedule_runs.status=running` after `FinishTurn`, so `HasRunningRun`
+  could stick until the next crash. Quiet, findings, and error are written
+  on the way out.
 
 - **An open `/goal` no longer promises an immediate auto-continue after every
   wait-turn.** A pending wake is the next turn until it fires.

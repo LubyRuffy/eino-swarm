@@ -366,6 +366,15 @@ func (s *Store) applyTurnUpdate(id string, fields map[string]any) error {
 	return nil
 }
 
+// UpdateTurn patches one turn. Quiet scheduled fires stamp this after
+// FinishTurn so Trace still has the row while the transcript hides it.
+func (s *Store) UpdateTurn(id string, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	return s.applyTurnUpdate(id, fields)
+}
+
 // GetTurn loads one turn.
 func (s *Store) GetTurn(id string) (*Turn, error) {
 	var t Turn

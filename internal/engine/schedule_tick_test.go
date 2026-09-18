@@ -135,8 +135,6 @@ func TestMissedTicksDoNotBurstAfterRestart(t *testing.T) {
 		t.Fatalf("run_count=%d last_run_at=%v", got.RunCount, got.LastRunAt)
 	}
 
-	waitForTurn(t, e, turns[0].ID)
-
 	clk.Advance(2 * time.Hour)
 	e.fireDueSchedules()
 	turns, err = e.Store().ListTurns(th.ID)
@@ -146,6 +144,7 @@ func TestMissedTicksDoNotBurstAfterRestart(t *testing.T) {
 	if len(turns) != 1 {
 		t.Fatalf("turns=%d after a second tick; a still-running run must not double-fire", len(turns))
 	}
+	waitForTurn(t, e, turns[0].ID)
 }
 
 func TestScheduleFiredIsNotAUserMessage(t *testing.T) {

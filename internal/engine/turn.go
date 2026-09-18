@@ -511,6 +511,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		if r != nil {
 			e.log.Error("turn panicked", "turn", turn.ID, "panic", r)
 			_ = e.store.FinishTurn(turn.ID, store.TurnError, "", fmt.Sprintf("internal error: %v", r))
+			e.finishScheduledRun(turn, store.TurnError, "", fmt.Sprintf("internal error: %v", r))
 			e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 				Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID,
 				Err: fmt.Sprintf("internal error: %v", r)})
@@ -614,6 +615,8 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		} else {
 			e.log.Warn("could not close turn", "turn", turn.ID, "err", err)
 		}
+	} else {
+		e.finishScheduledRun(turn, status, res.Final, errText)
 	}
 	if status == store.TurnError {
 		rt.blockOpenGoalOnTurnError()

@@ -224,3 +224,78 @@ func (e *Engine) PatchSchedule(id, status string) (*store.Schedule, error) {
 	}
 	return e.store.GetSchedule(id)
 }
+
+// finishScheduledRun closes the claimed fire after FinishTurn. It does not
+// take fireMu: the ticker only claims, and this turn is already done racing
+// StartTurn. A run that is no longer `running` is a no-op so a second call
+// cannot flip findings back to quiet.
+func (e *Engine) finishScheduledRun(turn *store.Turn, status, final, errText string) {
+	if turn == nil || !turn.ScheduleContinue {
+		return
+	}
+	runID := strings.TrimSpace(turn.ScheduleRunID)
+	if runID == "" {
+		return
+	}
+	run, err := e.store.GetRun(runID)
+	if err != nil || run.Status != store.ScheduleRunRunning {
+		return
+	}
+	if status != store.TurnDone {
+		if err := e.store.FinishRun(runID, store.ScheduleRunError, strings.TrimSpace(errText), true); err != nil {
+			e.log.Warn("could not close a failed schedule run", "run", runID, "err", err)
+		}
+		return
+	}
+	quiet, summary := e.scheduledRunOutcome(turn.ID, final)
+	if quiet {
+		if err := e.store.FinishRun(runID, store.ScheduleRunQuiet, "", false); err != nil {
+			e.log.Warn("could not close a quiet schedule run", "run", runID, "err", err)
+			return
+		}
+		if err := e.store.UpdateTurn(turn.ID, map[string]any{"quiet": true}); err != nil {
+			e.log.Warn("could not stamp a quiet scheduled turn", "turn", turn.ID, "err", err)
+		}
+		if sch := e.scheduleForTurn(turn); sch != nil && sch.Kind == store.ScheduleStandalone {
+			if err := e.SetThreadArchived(turn.ThreadID, true); err != nil {
+				e.log.Warn("could not archive a quiet standalone fire", "thread", turn.ThreadID, "err", err)
+			}
+		}
+		return
+	}
+	if err := e.store.FinishRun(runID, store.ScheduleRunFindings, summary, true); err != nil {
+		e.log.Warn("could not close a findings schedule run", "run", runID, "err", err)
+	}
+}
+
+func (e *Engine) scheduledRunOutcome(turnID, final string) (quiet bool, summary string) {
+	events, err := e.store.ListTurnEvents(turnID)
+	if err == nil {
+		var payload struct {
+			Findings string `json:"findings"`
+			Quiet    bool   `json:"quiet"`
+		}
+		found := false
+		for _, ev := range events {
+			if ev.Kind != KindScheduleReport {
+				continue
+			}
+			if json.Unmarshal([]byte(ev.Text), &payload) != nil {
+				continue
+			}
+			found = true
+		}
+		if found {
+			findings := strings.TrimSpace(payload.Findings)
+			if payload.Quiet || findings == "" {
+				return true, ""
+			}
+			return false, findings
+		}
+	}
+	final = strings.TrimSpace(final)
+	if final == "" {
+		return true, ""
+	}
+	return false, final
+}
