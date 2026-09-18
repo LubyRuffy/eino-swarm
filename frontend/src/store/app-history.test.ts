@@ -17,13 +17,14 @@ const fake = vi.hoisted(() => ({
         roster?: Array<Record<string, unknown>>
       })
     | undefined,
+  threadTitles: {} as Record<string, string>,
   subscribeSince: [] as number[],
 }))
 
 vi.mock("@/lib/api", () => {
   const thread = (id: string) => ({
     id,
-    title: "New conversation",
+    title: fake.threadTitles[id] ?? "New conversation",
     provider_id: "default",
     archived: false,
     created_at: new Date().toISOString(),
@@ -79,6 +80,7 @@ beforeEach(() => {
   fake.logRoster = []
   fake.agentLogs = {}
   fake.logHandler = undefined
+  fake.threadTitles = {}
   fake.subscribeSince.length = 0
   useApp.setState({
     threads: [],
@@ -274,6 +276,18 @@ describe("openThread", () => {
     expect(useApp.getState().historyHasMore).toBe(true)
     expect(useApp.getState().transcript.agents.manager?.blocks[0]?.text).toBe("latest")
     expect(fake.subscribeSince.at(-1)).toBe(9)
+  })
+
+  it("puts a minted findings conversation into Recents so the title bar can change", async () => {
+    await useApp.getState().boot()
+    expect(useApp.getState().threads.map((t) => t.id)).toEqual(["th_old"])
+    fake.threadTitles.th_minted = "periodic check"
+    await useApp.getState().openThread("th_minted")
+    expect(useApp.getState().activeId).toBe("th_minted")
+    expect(useApp.getState().threads[0]).toMatchObject({
+      id: "th_minted",
+      title: "periodic check",
+    })
   })
 
   it("pages older events above the tail", async () => {

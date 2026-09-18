@@ -13,6 +13,25 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Open findings inserts the minted conversation.** Opening a standalone
+  fire used to load the transcript while leaving Recents on the origin, so
+  the title bar stayed "New conversation". `openThread` now upserts that
+  row.
+
+- **Scheduled-task E2E and kind freeze.** Playwright `e2e/schedules.spec.ts`
+  drives a standalone inbox wait (Add wait → Run now → Open findings on the
+  minted conversation, `Scheduled check.` chip, not a user bubble with the
+  protocol wrapper) and a REST thread wake (banner + Cancel wait) on the
+  mock provider. `TestNotifyKindsAreStableAcrossTheWire` freezes `schedule`
+  / `schedule_fired` / `schedule_skipped` / `schedule_report` /
+  `schedule_cancelled` to the same strings the front-end `KINDS` list
+  subscribes to.
+
+- **Schedule ticker in `App.New`.** `Engine.StartScheduler` looks for due
+  waits every `schedule_tick_ms` (default 1000). A busy target is skipped
+  (`schedule_skipped`) without bursting missed ticks after restart.
+  `Shutdown` stops it. The TUI has notices, not an inbox.
+
 - **TUI schedule notices; mock scheduled turns.** The terminal status line
   shows a one-line armed / cancelled / findings notice (quiet reports stay
   silent; no inbox). `--mock` auto-calls `report_schedule` on a scheduled
@@ -65,7 +84,7 @@ co-working app built on it. The library API is unchanged except where noted
   independent job on a human-originated turn (`schedule_task`), cancel by id
   (`cancel_schedule`), and report a scheduled check (`report_schedule`; empty
   findings return `{ok,quiet}`). Workers get a JSON deny stub. The ticker
-  that fires due waits is not in this change.
+  that fires due waits starts from `App.New` (`StartScheduler`).
 
 - **Waiting on the manager prompt.** When progress is gated on time or a
   condition that is not worth polling in this turn, the manager is told to

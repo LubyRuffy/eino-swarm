@@ -15,3 +15,13 @@ export function preferNamedTitles(local: Thread[], incoming: Thread[]): Thread[]
     return t
   })
 }
+
+/** Opening a minted findings conversation must put it in Recents even when
+ *  the list was fetched before that fire existed. */
+export function upsertThread(threads: Thread[], thread: Thread): Thread[] {
+  const i = threads.findIndex((t) => t.id === thread.id)
+  if (i === -1) return [thread, ...threads]
+  const next = threads.slice()
+  next[i] = preferNamedTitles([next[i]], [thread])[0] ?? thread
+  return next
+}

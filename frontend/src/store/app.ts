@@ -22,7 +22,7 @@ import {
 } from "@/lib/i18n"
 import type { SendImage } from "@/lib/paste-image"
 import { subscribeEvents } from "@/lib/stream"
-import { preferNamedTitles } from "@/lib/thread-title"
+import { preferNamedTitles, upsertThread } from "@/lib/thread-title"
 import { logPageSize, type ThreadLog } from "@/lib/thread-log"
 import {
   emptyTranscript,
@@ -331,9 +331,7 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: s.threads.map((t) =>
-            t.id === thread.id ? (preferNamedTitles([t], [thread])[0] ?? thread) : t,
-          ),
+          threads: upsertThread(s.threads, thread),
         }))
         if (Boolean(log.has_more) && !managerHasVisibleBlocks(transcript)) {
           await loadUntilVisibleHistory(get)
@@ -349,9 +347,7 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: s.threads.map((t) =>
-            t.id === thread.id ? (preferNamedTitles([t], [thread])[0] ?? thread) : t,
-          ),
+          threads: upsertThread(s.threads, thread),
         }))
       }
       // The Memory tab belongs to the project, not the conversation. Opening
