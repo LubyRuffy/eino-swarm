@@ -453,6 +453,50 @@ func TestUnknownScheduleIsNotFound(t *testing.T) {
 	if err := s.FinishRun("srun_missing", ScheduleRunError, "x", true); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("FinishRun err=%v", err)
 	}
+	if err := s.UpdateSchedule("sch_missing", map[string]any{"status": ScheduleCancelled}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("UpdateSchedule err=%v", err)
+	}
+}
+
+// Pause/resume/cancel go through a field patch. Listing is what the inbox
+// reads, including paused rows ListDue would hide.
+func TestUpdateScheduleAndList(t *testing.T) {
+	s := openTestStore(t)
+	empty, err := s.ListSchedules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("empty list=%+v", empty)
+	}
+	if err := s.UpdateSchedule("sch_x", nil); err != nil {
+		t.Fatalf("empty patch: %v", err)
+	}
+	row := &Schedule{
+		Kind: ScheduleStandalone, Title: "t", Prompt: "Continue the wait.",
+		EveryS: 60, NextRunAt: time.Now().UTC().Add(time.Minute),
+		CreatedBy: ScheduleCreatedHuman,
+	}
+	if err := s.CreateSchedule(row); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.UpdateSchedule(row.ID, map[string]any{"status": SchedulePaused}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetSchedule(row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Status != SchedulePaused {
+		t.Fatalf("status=%q", got.Status)
+	}
+	listed, err := s.ListSchedules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].ID != row.ID || listed[0].Status != SchedulePaused {
+		t.Fatalf("list=%+v", listed)
+	}
 }
 
 // Storage errors must not look like "not found": the HTTP layer would 404 a
@@ -476,6 +520,12 @@ func TestScheduleWritesFailWhenTheTableIsGone(t *testing.T) {
 	}
 	if err := s.CancelSchedulesForThread("th_x"); err == nil {
 		t.Fatal("CancelSchedulesForThread must fail without the table")
+	}
+	if _, err := s.ListSchedules(); err == nil {
+		t.Fatal("ListSchedules must fail without the table")
+	}
+	if err := s.UpdateSchedule("sch_x", map[string]any{"status": ScheduleCancelled}); err == nil {
+		t.Fatal("UpdateSchedule must fail without the table")
 	}
 
 	runs := openTestStore(t)

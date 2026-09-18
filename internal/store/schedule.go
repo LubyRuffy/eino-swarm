@@ -215,6 +215,34 @@ func cancelWakesForThread(db *gorm.DB, threadID string) error {
 		}).Error
 }
 
+// ListSchedules returns every row, due or not. The inbox filters; the
+// ticker uses ListDue.
+func (s *Store) ListSchedules() ([]Schedule, error) {
+	var out []Schedule
+	err := s.db.Order("next_run_at asc, id asc").Find(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("store: list schedules: %w", err)
+	}
+	return out, nil
+}
+
+// UpdateSchedule applies a field patch. Unknown ids report ErrNotFound
+// rather than silently doing nothing.
+func (s *Store) UpdateSchedule(id string, fields map[string]any) error {
+	if len(fields) == 0 {
+		return nil
+	}
+	fields["updated_at"] = time.Now().UTC()
+	res := s.db.Model(&Schedule{}).Where("id = ?", id).Updates(fields)
+	if res.Error != nil {
+		return fmt.Errorf("store: update schedule: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // cancelSchedulesForProject marks standalone jobs pinned to this project
 // cancelled. Origin-only rows with an empty project_id stay: they are not
 // bound to this workspace.
