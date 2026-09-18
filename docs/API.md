@@ -784,6 +784,11 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `goal_session` | historical: older builds forced a `/goal` turn to end so the next session could start. New runs do not emit it. `text` is JSON `{reason,elapsed_ms,rounds}` where `reason` is `time` (the removed wall-clock cut) or `iterations` (older builds that treated eino's ReAct slice as a session boundary). The turn is `done`, not cancelled. In-flight sub-agents were parked for the next session |
 | `compacted` | earlier replay was folded into a briefing, either by `/compact` or automatically at `swarm.auto_compact_tokens`. `text` is JSON `{summary,through_seq,chars_before?,chars_after?,auto?,tokens_before?,tokens_after?,phase?}`. `phase: "start"` is live only (`seq` 0) and means compression is in flight. A stored auto event has `auto: true` and the token counts. `err` is set when the summarizer failed and the thread is unchanged. The transcript notice is generic (the briefing is for later prompts); an icon on that row opens `summary` in a dialog |
 | `rewound` | a live client should drop rows from `text` (the cut seq) onward. `seq` is 0, not stored — a reload already has the truncated log |
+| `schedule` | a wait was armed. `text` is JSON `{id,kind,title,next_run_at}`. The transcript shows a short chip; the id lives in `detail` so cancel can target it |
+| `schedule_fired` | the runtime started this turn because a wait fired. Not a `user_message`. `text` is the short chip (`Scheduled check.`). Same Working-clock rule as `goal_continued` |
+| `schedule_skipped` | a due tick could not start (busy). Trace-only; the transcript adds no row |
+| `schedule_report` | the scheduled check reported. `text` is JSON `{findings,quiet}`. Empty findings / `quiet:true` hide that turn's chat bubbles; the events stay in the log |
+| `schedule_cancelled` | a wait was cancelled. `text` is the schedule id. The transcript shows a short chip, not the raw id |
 | `done` | the turn finished; `text` is the final answer |
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |

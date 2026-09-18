@@ -18,7 +18,11 @@ co-working app built on it. The library API is unchanged except where noted
   `next_run_at` is still future), and `POST /api/schedules/runs/:rid/read`.
   List returns `{schedules, unread}` where `unread` counts runs with
   `unread=true`. Run-now while the target conversation is busy is `409`
-  `code: skipped_busy`.
+  `code: skipped_busy`. The web client folds `schedule` / `schedule_fired` /
+  `schedule_skipped` / `schedule_report` / `schedule_cancelled` into chips
+  (quiet reports drop that turn's chat bubbles and keep Trace), and
+  subscribes to those kinds live so a kind missing from `KINDS` cannot sit
+  stored-and-invisible until reload.
 
 - **Quiet scheduled checks archive like Codex.** Empty `report_schedule`
   findings, or a finished scheduled turn with no answer, close the run as

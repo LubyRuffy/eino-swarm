@@ -392,7 +392,8 @@ event or showing a duplicate:
   usage pulses were never stored, so they are never resumed.
 
 The front end folds this stream into blocks per agent in
-`frontend/src/lib/transcript.ts`, pairing a tool call with its result by
+`frontend/src/lib/transcript.ts` (schedule kinds in
+`frontend/src/lib/transcript-schedule.ts`), pairing a tool call with its result by
 `tool_call_id` (agents issue several in one message, and they finish out of
 order). A `tool_delta` fills that pending row without clearing `pending`;
 `collapseLiveEvents` keys those snapshots by call id so two parallel `exec`

@@ -392,7 +392,12 @@ Several things are tested here, some as pure logic and some in jsdom:
   a `goal_capped` interrupt payload notices as paused without pasting `interrupted`,
   the briefing JSON never becomes a chat row (`detail` holds `summary` so an
   icon can open it), and auto-compact shows compressing then the token counts
-  instead of the payload. `compact-notice.test.tsx` clicks that icon. A `session_memory` event is
+  instead of the payload. Scheduled-task kinds live in `transcript-schedule.test.ts`:
+  `schedule` / `schedule_fired` / `schedule_cancelled` are manager notices (not
+  `user`, not the JSON payload or raw id), `schedule_skipped` is a no-op,
+  a quiet `schedule_report` drops that turn's chat bubbles and later events
+  cannot grow them back, and a findings report keeps the fired chip then the
+  answer. `compact-notice.test.tsx` clicks that icon. A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /
   `goal_continued` turns fold behind a one-line Worked-for row in

@@ -56,6 +56,11 @@ export const KINDS = [
   "compacted",
   "usage",
   "rewound",
+  "schedule",
+  "schedule_fired",
+  "schedule_skipped",
+  "schedule_report",
+  "schedule_cancelled",
   "message",
 ] as const
 

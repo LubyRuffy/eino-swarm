@@ -75,6 +75,9 @@ export function queueEvent(
       ev.kind === "compacted" ||
       ev.kind === "plan" || ev.kind === "plan_updated" ||
       ev.kind === "plan_implemented" || ev.kind === "plan_cancelled" ||
+      ev.kind === "schedule" || ev.kind === "schedule_fired" ||
+      ev.kind === "schedule_skipped" || ev.kind === "schedule_report" ||
+      ev.kind === "schedule_cancelled" ||
       ev.kind === "rewound" ||
       ev.kind === "tool_call" || ev.kind === "tool_result" ||
       ev.kind === "steer" || ev.kind === "steer_retracted" || ev.kind === "steer_preempted") {
@@ -159,7 +162,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     }
     threads = applyGoalThreadFlags(threads, threadId, ev)
     threads = applyPlanThreadFlags(threads, threadId, ev)
-    if (ev.kind === "goal_resumed" || ev.kind === "goal_continued" || ev.kind === "plan_implemented") {
+    if (ev.kind === "goal_resumed" || ev.kind === "goal_continued" || ev.kind === "plan_implemented" || ev.kind === "schedule_fired") {
       status = withRunningClock(status, {
         turn_id: ev.turn_id,
         started_at: ev.created_at,

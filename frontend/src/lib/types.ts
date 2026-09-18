@@ -43,6 +43,11 @@ export type EventKind =
   | "compacted"
   | "usage"
   | "rewound"
+  | "schedule"
+  | "schedule_fired"
+  | "schedule_skipped"
+  | "schedule_report"
+  | "schedule_cancelled"
 
 export interface SwarmEvent {
   thread_id: string
@@ -234,6 +239,9 @@ export interface Turn {
   started_at: string
   ended_at?: string
   duration_ms: number
+  quiet?: boolean
+  schedule_continue?: boolean
+  schedule_run_id?: string
 }
 
 export interface FileEntry {
@@ -391,4 +399,79 @@ export interface MemorySettings {
   review_max_iterations: number
   skills_index_max: number
   notifications: MemoryNotify | string
+}
+
+export type ScheduleKind = "thread" | "standalone"
+export type ScheduleStatus = "active" | "paused" | "done" | "cancelled"
+export type ScheduleRunStatus =
+  | "skipped_busy"
+  | "running"
+  | "findings"
+  | "quiet"
+  | "error"
+export type ScheduleCreatedBy = "human" | "manager"
+
+/** Wire shape of a wait. Cadence is delay_s / every_s / cron; the engine
+ *  keeps exactly one set. `until` is create-body only; the row stores until_at. */
+export interface Schedule {
+  id: string
+  kind: ScheduleKind | string
+  origin_thread_id: string
+  thread_id: string
+  project_id: string
+  provider_id: string
+  model: string
+  reasoning_effort?: string
+  title: string
+  prompt: string
+  delay_s: number
+  every_s: number
+  cron: string
+  status: ScheduleStatus | string
+  next_run_at: string
+  last_run_at?: string
+  run_count: number
+  max_runs: number
+  until_at?: string
+  created_by: ScheduleCreatedBy | string
+  created_at: string
+  updated_at: string
+}
+
+export interface ScheduleRun {
+  id: string
+  schedule_id: string
+  thread_id: string
+  turn_id: string
+  status: ScheduleRunStatus | string
+  summary: string
+  unread: boolean
+  created_at: string
+  updated_at: string
+  ended_at?: string
+}
+
+export interface ScheduleCreate {
+  kind?: string
+  thread_id?: string
+  origin_thread_id?: string
+  project_id?: string
+  provider_id?: string
+  model?: string
+  title?: string
+  prompt?: string
+  delay_s?: number
+  every_s?: number
+  cron?: string
+  max_runs?: number
+  until?: string
+}
+
+export interface SchedulePatch {
+  status?: string
+  title?: string
+  prompt?: string
+  delay_s?: number
+  every_s?: number
+  cron?: string
 }

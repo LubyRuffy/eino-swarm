@@ -17,6 +17,7 @@ import {
   isRetractedSteer,
   parseSteerRetractSeq,
 } from "./transcript-steer"
+import { applyScheduleEvent, sealQuietTurns } from "./transcript-schedule"
 
 export { parseIterationLimit, parsePulse } from "./transcript-pulse"
 export { splitQueuedSteers } from "./transcript-steer"
@@ -123,6 +124,8 @@ export interface TurnState {
   agentIds: string[]
   /** True when this turn is a /goal work session (auto-continue or a forced yield). */
   session?: boolean
+  /** True when a scheduled check had nothing to report. Chat bubbles are dropped. */
+  quiet?: boolean
 }
 
 /** The public error of the newest failed turn, if any. The banner used to
@@ -171,6 +174,8 @@ export interface TranscriptState {
   /** Event seqs of `steer` rows the human retracted. Kept across history
    *  pages so a later-loaded bubble cannot reappear after Delete. */
   retractedSteers?: number[]
+  /** Turn ids whose scheduled check was quiet. Cloned on each reduce. */
+  quietTurns?: string[]
 }
 
 export const MANAGER_ID = "manager"
@@ -179,13 +184,8 @@ export function emptyTranscript(): TranscriptState {
   return { agentOrder: [], agents: {}, turns: [], lastSeq: 0, running: false }
 }
 
-/** Fold one event into the transcript, returning a new state. Pure, so the
- *  store stays a thin wrapper and the interesting logic is testable without
- *  a browser. */
-/** `roster` still creates workers and applies finished/cleanup, but it does
- *  not insert "Started" / cleanup rows into the manager transcript. Those
- *  rows belong to the contiguous log page; mixing sidecar seqs in is what
- *  turned a long /goal into a wall of agent names. */
+/** Fold one event. `roster` still creates workers and applies finished/cleanup
+ *  but does not insert "Started" / cleanup rows into the manager transcript. */
 export type ReduceMode = "full" | "roster"
 
 export function reduceEvent(
@@ -209,7 +209,9 @@ export function reduceEvent(
     running: state.running,
     pulse: state.pulse,
     retractedSteers: state.retractedSteers,
+    quietTurns: state.quietTurns?.slice(),
   }
+  if (applyScheduleEvent(next, ev)) return sealQuietTurns(next)
   if (ev.kind === "steer_preempted") {
     return next
   }
@@ -590,7 +592,7 @@ export function reduceEvent(
       append(agent, block(ev, "notice", ev.text ?? ev.kind))
   }
 
-  return next
+  return sealQuietTurns(next)
 }
 
 /** Sub-agents still working, as the event stream last left them. The heartbeat
@@ -698,6 +700,7 @@ export function rewindTranscript(
     running: pending,
     pulse: undefined,
     retractedSteers: (state.retractedSteers ?? []).filter((s) => s < fromSeq),
+    quietTurns: (state.quietTurns ?? []).filter((id) => keptTurns.has(id)),
   }
 }
 
@@ -719,6 +722,7 @@ export function placePendingEdit(
     running: true,
     pulse: undefined,
     retractedSteers: state.retractedSteers,
+    quietTurns: state.quietTurns,
   }
   const agent = touchAgent(next, MANAGER_ID)
   agent.blocks = agent.blocks.filter((b) => b.id !== PENDING_EDIT_ID)
