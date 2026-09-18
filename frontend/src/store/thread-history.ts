@@ -1,25 +1,38 @@
 import { api } from "@/lib/api"
 import {
+  extraRosterEvents,
   historyNewestSeq as newestOf,
   historyOldestSeq as oldestOf,
   logPageSize,
+  mergeLogEvents,
+  uniqueStoredEvents,
 } from "@/lib/thread-log"
 import {
   emptyTranscript,
   MANAGER_ID,
-  reduceEvents,
+  reduceEvent,
   type TranscriptState,
 } from "@/lib/transcript"
+import { managerHasVisibleBlocks } from "@/lib/welcome"
 import type { SwarmEvent } from "@/lib/types"
 
 /** Stored events for the open conversation, oldest first. Live deltas stay
- *  on the transcript; a prepend rebuilds from this list. */
+ *  on the transcript; a prepend rebuilds from this list. Roster rows that
+ *  fell out of the viewport sit beside it so paging `before` still walks
+ *  the tool log, not a spawned seq from an hour ago. Worker logs fetched
+ *  on click sit beside it the same way. */
 let threadId = ""
 let events: SwarmEvent[] = []
+let roster: SwarmEvent[] = []
+let agentLogs: SwarmEvent[] = []
+const loadedAgents = new Set<string>()
 
 export function resetThreadHistory() {
   threadId = ""
   events = []
+  roster = []
+  agentLogs = []
+  loadedAgents.clear()
 }
 
 export function historyNewestSeq(): number {
@@ -30,10 +43,35 @@ export function historyOldestSeq(): number {
   return oldestOf(events)
 }
 
-export function applyTail(id: string, page: SwarmEvent[]): TranscriptState {
+export function agentLogIsLoaded(agentId: string): boolean {
+  return loadedAgents.has(agentId)
+}
+
+function pageSeqs(): Set<number> {
+  return new Set(events.filter((ev) => ev.seq > 0).map((ev) => ev.seq))
+}
+
+function foldedTranscript(): TranscriptState {
+  const inPage = pageSeqs()
+  const merged = mergeLogEvents(uniqueStoredEvents([...roster, ...agentLogs]), events)
+  let state = emptyTranscript()
+  for (const ev of merged) {
+    state = reduceEvent(state, ev, inPage.has(ev.seq) ? "full" : "roster")
+  }
+  return state
+}
+
+export function applyTail(
+  id: string,
+  page: SwarmEvent[],
+  extra: SwarmEvent[] = [],
+): TranscriptState {
   threadId = id
   events = page.filter((ev) => (ev.seq ?? 0) > 0)
-  return reduceEvents(emptyTranscript(), page)
+  roster = extraRosterEvents(extra, events)
+  agentLogs = []
+  loadedAgents.clear()
+  return foldedTranscript()
 }
 
 export function prependOlder(id: string, older: SwarmEvent[]): TranscriptState | undefined {
@@ -41,17 +79,29 @@ export function prependOlder(id: string, older: SwarmEvent[]): TranscriptState |
   const have = new Set(events.map((ev) => ev.seq))
   const add = older.filter((ev) => (ev.seq ?? 0) > 0 && !have.has(ev.seq))
   events = [...add, ...events]
-  return reduceEvents(emptyTranscript(), events)
+  roster = extraRosterEvents(roster, events)
+  agentLogs = extraRosterEvents(agentLogs, events)
+  return foldedTranscript()
 }
 
 export function rememberStored(id: string, ev: SwarmEvent) {
   if (threadId !== id || (ev.seq ?? 0) <= 0) return
   events.push(ev)
+  roster = extraRosterEvents(roster, [ev])
+  agentLogs = extraRosterEvents(agentLogs, [ev])
 }
 
 export function rememberRewind(id: string, cut: number) {
   if (threadId !== id) return
   events = events.filter((ev) => ev.seq < cut)
+  roster = roster.filter((ev) => ev.seq < cut)
+  agentLogs = agentLogs.filter((ev) => ev.seq < cut)
+}
+
+export function applyAgentLog(id: string, extra: SwarmEvent[]): TranscriptState | undefined {
+  if (threadId !== id) return undefined
+  agentLogs = uniqueStoredEvents([...agentLogs, ...extra])
+  return foldedTranscript()
 }
 
 type HistorySlice = {
@@ -119,4 +169,64 @@ export async function loadUntilTurnHistory(
     if (historyOldestSeq() >= before) break
   }
   return hasTurn()
+}
+
+/** Keep paging until the manager has a chat row, or the log runs out.
+ *  A long-running tail is often only worker tool events; stopping at that
+ *  page would leave the pane looking brand new. */
+export async function loadUntilVisibleHistory(get: () => HistorySlice): Promise<void> {
+  const id = get().activeId
+  while (
+    get().activeId === id &&
+    get().historyHasMore &&
+    !managerHasVisibleBlocks(get().transcript)
+  ) {
+    const before = historyOldestSeq()
+    await get().loadOlder()
+    if (get().activeId !== id || historyOldestSeq() >= before) break
+  }
+}
+
+type AgentLogSlice = {
+  activeId?: string
+  historyHasMore: boolean
+  transcript: TranscriptState
+}
+
+export async function loadAgentHistory(
+  get: () => AgentLogSlice,
+  set: (partial: {
+    transcript?: TranscriptState
+    agentLogLoading?: string
+    error?: string
+  }) => void,
+  fail: (e: unknown) => string,
+  agentId: string,
+): Promise<void> {
+  const id = get().activeId
+  if (!id || !agentId || agentId === MANAGER_ID) return
+  if (loadedAgents.has(agentId)) return
+  const agent = get().transcript.agents[agentId]
+  const hasBody = (agent?.blocks ?? []).some((b) => b.kind !== "user")
+  // A complete page walk is contiguous; skip only when this worker already
+  // has rows. Roster-only "starting" with an empty pane is the hole the
+  // on-demand log exists to fill — even after has_more flipped false.
+  if (!get().historyHasMore && hasBody) {
+    loadedAgents.add(agentId)
+    return
+  }
+  set({ agentLogLoading: agentId })
+  try {
+    const page = await api.agentLog(id, agentId)
+    if (get().activeId !== id) return
+    loadedAgents.add(agentId)
+    const transcript = applyAgentLog(id, page.events ?? [])
+    set({
+      transcript: transcript ?? get().transcript,
+      agentLogLoading: undefined,
+    })
+  } catch (e) {
+    if (get().activeId !== id) return
+    set({ agentLogLoading: undefined, error: fail(e) })
+  }
 }

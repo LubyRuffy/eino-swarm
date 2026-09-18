@@ -16,6 +16,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/tools"
 )
 
 // People type the subject of the command first. Go's flag package stops at
@@ -479,8 +480,44 @@ func TestTUIGoalRidesInTheSession(t *testing.T) {
 	if setup.session.MaxIterations <= 0 {
 		t.Fatal("a --goal run must use the session iteration cap")
 	}
-	if setup.session.RunTimeout <= 0 {
-		t.Fatal("a --goal run must use the session timeout")
+}
+
+func TestTUIPlanUnmountsMutatingTools(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	setup, err := assembleTUI(context.Background(), []string{
+		"--mock", "--data-dir", t.TempDir(), "--plan", "inspect then change",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer setup.cleanup()
+	if setup.session.Task != "inspect then change" {
+		t.Fatalf("task=%q", setup.session.Task)
+	}
+	if !setup.session.Interactive {
+		t.Fatal("--plan without --task keeps the composer")
+	}
+	if setup.session.Plan == nil || !setup.session.Plan.On() {
+		t.Fatal("--plan must enter planning")
+	}
+	if !strings.Contains(setup.session.Instruction, "You are planning") {
+		t.Fatalf("instruction=%q", setup.session.Instruction)
+	}
+	if strings.Contains(strings.ToLower(setup.session.Instruction), "sandbox") {
+		t.Fatal("planning must not call the workspace a sandbox")
+	}
+	for _, name := range tools.MutatingCatalogNames() {
+		if containsTool(t, setup.session.ManagerTools, name) {
+			t.Fatalf("planning still mounted %s", name)
+		}
+	}
+	if !containsTool(t, setup.session.ManagerTools, engine.ToolAskUser) {
+		t.Fatal("ask_user must stay mounted")
+	}
+	if !containsTool(t, setup.session.ManagerTools, engine.ToolProposePlan) {
+		t.Fatal("planning must mount propose_plan")
 	}
 }
 
@@ -936,52 +973,5 @@ func TestTraceFullKeepsLongTextIntact(t *testing.T) {
 	})
 	if !strings.Contains(full, long) {
 		t.Fatalf("--full dropped part of the text:\n%s", full)
-	}
-}
-
-// What a project wrote to its memory is part of the turn that caused it. If the
-// review needed a second id to find, nobody chasing "why does it think that"
-// would ever reach it.
-func TestTraceShowsTheReviewThatFollowedTheTurn(t *testing.T) {
-	dir := t.TempDir()
-	st, err := store.Open(filepath.Join(dir, "zwai.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	pj := &store.Project{Name: "Grouped", MemoryEnabled: true}
-	if err := st.CreateProject(pj); err != nil {
-		t.Fatal(err)
-	}
-	th := &store.Thread{Title: "Reviewed", ProjectID: pj.ID}
-	if err := st.CreateThread(th); err != nil {
-		t.Fatal(err)
-	}
-	turn := &store.Turn{ThreadID: th.ID, UserText: "carry on"}
-	if err := st.CreateTurn(turn); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.AppendEvent(&store.Event{ThreadID: th.ID, TurnID: turn.ID,
-		Kind: engine.KindMemoryReview, AgentID: engine.ReviewAgentID,
-		Text: `{"changed":true,"memory":{"added":1},"skills":[]}`}); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.AppendLLMCall(&store.LLMCall{ThreadID: th.ID, TurnID: turn.ID,
-		AgentID: engine.ReviewAgentID, Model: "some-model", InputMsgs: 2,
-		InputChars: 90, OutputChars: 20, DurationMS: 120}); err != nil {
-		t.Fatal(err)
-	}
-	if err := st.Close(); err != nil {
-		t.Fatal(err)
-	}
-
-	out := captureStdout(t, func() {
-		if err := runTrace([]string{turn.ID, "--data-dir", dir}); err != nil {
-			t.Fatal(err)
-		}
-	})
-	for _, want := range []string{engine.KindMemoryReview, engine.ReviewAgentID, "model calls (1)"} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("trace is missing %q:\n%s", want, out)
-		}
 	}
 }

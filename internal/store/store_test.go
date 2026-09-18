@@ -300,6 +300,90 @@ func TestListTailEventsPagesFromTheEnd(t *testing.T) {
 	}
 }
 
+func TestListRosterEventsSkipsTheToolRows(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	kinds := []string{
+		"user_message", "spawned", "tool_call", "tool_result", "finished", "cleanup", "done",
+	}
+	for _, kind := range kinds {
+		if err := s.AppendEvent(&Event{ThreadID: th.ID, Kind: kind, AgentID: "worker-1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.ListRosterEvents(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("roster=%+v", got)
+	}
+	if got[0].Kind != "spawned" || got[0].Seq != 2 {
+		t.Fatalf("first=%+v", got[0])
+	}
+	if got[1].Kind != "finished" || got[1].Seq != 5 {
+		t.Fatalf("second=%+v", got[1])
+	}
+	if got[2].Kind != "cleanup" || got[2].Seq != 6 {
+		t.Fatalf("third=%+v", got[2])
+	}
+
+	empty, err := s.ListRosterEvents("th_missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(empty) != 0 {
+		t.Fatalf("missing thread must be empty, not an error: %+v", empty)
+	}
+}
+
+func TestListAgentEventsIsThatWorkerOnly(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "t"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	rows := []Event{
+		{ThreadID: th.ID, Kind: "user_message", AgentID: "manager", Text: "go"},
+		{ThreadID: th.ID, Kind: "spawned", AgentID: "worker-1", Role: "worker"},
+		{ThreadID: th.ID, Kind: "tool_call", AgentID: "worker-1", Text: "exec", ToolCallID: "c1"},
+		{ThreadID: th.ID, Kind: "tool_call", AgentID: "worker-2", Text: "exec", ToolCallID: "c2"},
+		{ThreadID: th.ID, Kind: "finished", AgentID: "worker-1", Text: "done"},
+	}
+	for i := range rows {
+		if err := s.AppendEvent(&rows[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	got, err := s.ListAgentEvents(th.ID, "worker-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("worker-1=%+v", got)
+	}
+	if got[0].Kind != "spawned" || got[1].Kind != "tool_call" || got[2].Kind != "finished" {
+		t.Fatalf("kinds=%+v", got)
+	}
+
+	none, err := s.ListAgentEvents(th.ID, "worker-missing")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(none) != 0 {
+		t.Fatalf("missing worker must be empty: %+v", none)
+	}
+	blank, err := s.ListAgentEvents(th.ID, "")
+	if err != nil || len(blank) != 0 {
+		t.Fatalf("blank agent: err=%v %+v", err, blank)
+	}
+}
+
 func TestConcurrentEventWritesDoNotBusyTheDatabase(t *testing.T) {
 	s := open(t)
 	th := &Thread{Title: "t"}
@@ -580,6 +664,46 @@ func TestMessagesAndTraceQueries(t *testing.T) {
 		t.Fatalf("tool result lost its call id: %+v", stored[2])
 	}
 
+	if err := s.AppendMessages(th.ID, turn.ID, []Message{
+		{Role: "user", Content: "[steer] drop me", EventSeq: 42},
+		{Role: "user", Content: "[steer] keep me", EventSeq: 43},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteMessageByEventSeq(th.ID, 42); err != nil {
+		t.Fatal(err)
+	}
+	after, err := s.ListMessages(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var captions []string
+	for _, m := range after {
+		if strings.HasPrefix(m.Content, "[steer]") {
+			captions = append(captions, m.Content)
+		}
+	}
+	if len(captions) != 1 || captions[0] != "[steer] keep me" {
+		t.Fatalf("retract dropped the wrong steer: %q", captions)
+	}
+	if err := s.AppendMessages(th.ID, turn.ID, []Message{
+		{Role: "user", Content: "[steer] legacy", EventSeq: 0},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteSteerMessage(th.ID, 99, "legacy"); err != nil {
+		t.Fatal(err)
+	}
+	afterLegacy, err := s.ListMessages(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range afterLegacy {
+		if m.Content == "[steer] legacy" {
+			t.Fatal("event_seq 0 steer survived DeleteSteerMessage")
+		}
+	}
+
 	// the trace view: one turn's events plus its model calls
 	for i := 0; i < 3; i++ {
 		if err := s.AppendEvent(&Event{ThreadID: th.ID, TurnID: turn.ID, Kind: "tool_call"}); err != nil {
@@ -754,6 +878,8 @@ func TestClosedStoreReportsErrorsEverywhere(t *testing.T) {
 		"AppendEvent":            func() error { return s.AppendEvent(&Event{ThreadID: th.ID, Kind: "delta"}) },
 		"ListEvents":             func() error { _, e := s.ListEvents(th.ID, 0, 0); return e },
 		"ListTailEvents":         func() error { _, _, e := s.ListTailEvents(th.ID, 0, 2); return e },
+		"ListRosterEvents":       func() error { _, e := s.ListRosterEvents(th.ID); return e },
+		"ListAgentEvents":        func() error { _, e := s.ListAgentEvents(th.ID, "worker-1"); return e },
 		"ListTurnEvents":         func() error { _, e := s.ListTurnEvents(turn.ID); return e },
 		"AppendLLMCall":          func() error { return s.AppendLLMCall(&LLMCall{ThreadID: th.ID}) },
 		"ListLLMCalls":           func() error { _, e := s.ListLLMCalls(turn.ID); return e },

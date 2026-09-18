@@ -3,7 +3,7 @@
 ```
 zwai [desktop] [--data-dir DIR] [--mock]
 zwai web  [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
-zwai tui  [--task "..."] [--goal "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
+zwai tui  [--task "..."] [--goal "..."] [--plan "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
 zwai trace <turn-id|conversation-id> [--full] [--data-dir DIR]
 zwai config [path|init|show] [--data-dir DIR]
 zwai version | help
@@ -87,24 +87,33 @@ transcript stays, the next Enter is the next turn. The idle composer parks
 the real terminal cursor at the insert point so CJK IME preedit follows the
 committed text (a painted block caret left the hardware cursor at column 0,
 which is where the IME attached). Type `/` for a Codex-style command popup
-(`/goal`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; `/quit` appears once you
+(`/goal`, `/plan`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; `/quit` appears once you
 type it). `/goal <objective>` starts that text as the next turn (a CJK
-objective glued to the name, or a fullwidth `／`, still counts). Enter on `/model` or `/reason` opens the catalog / thinking-level
+objective glued to the name, a fullwidth `／`, or the CJK punctuation comma
+`、`, still counts). `/plan <task>`
+enters planning, unmounts write/edit/exec and similar, and starts that task.
+Bare `/plan` only enters planning. `/implement` (hidden until typed) accepts
+the plan and starts the work. `ask_user` pauses the same run with an overlay
+(digits pick an option; typing is Other). Piped stdin fails the tool instead
+of hanging. Enter on `/model` or `/reason` opens the catalog / thinking-level
 picker. The transcript follows the live edge: a finished answer stays
 on screen instead of folding to its first line, and a folded thought
 previews the last line that was streaming. `--task` is the one-shot path for reproducing a misbehaving UI run —
 it starts immediately and exits when that run finishes. `--goal` without `--task`
 is the same start: the objective is the first user message, auto-continues until
-`complete_goal` / `block_goal`, then the composer comes back. Pass both only when
-the first user line should differ from the standing objective.
+`complete_goal` / `block_goal`, then the composer comes back. `--plan` without
+`--task` is the same start in planning: the text is the first user message,
+write/edit/exec are unmounted, and the draft lands in `$ZWAI_HOME/plans/tui/PLAN.md`.
+Pass `--task` (or leftover words) only when the first user line should differ from the standing objective.
 
 Nothing is written to the database in this mode; use the app when you want the
 conversation kept.
 
 | flag | meaning |
 |---|---|
-| `--task "..."` | run this task immediately, then exit. Words after the flags also count as the task, so quoting is optional: `zwai tui summarise the notes`. Omit it to wait at the composer (`ctrl+c` leaves), unless `--goal` is set. |
-| `--goal "..."` | standing objective. The manager gets `complete_goal` and `block_goal` and, if it does not call either, the TUI starts another run (up to `swarm.goal_max_auto_turns`) instead of returning the composer / exiting. A failed run blocks the objective the same way `block_goal` does. Each run is capped by `swarm.goal_session_max_seconds`. `swarm.goal_session_max_iterations` is only eino's ReAct slice — hitting it extends the same run without spending the auto-continue budget. The app's `/goal` is the same pursuit on a saved conversation. Omit `--task` and the objective is also the first user message — it starts immediately. Pass `--task` (or leftover words) only when the first line should steer, not restate the objective. |
+| `--task "..."` | run this task immediately, then exit. Words after the flags also count as the task, so quoting is optional: `zwai tui summarise the notes`. Omit it to wait at the composer (`ctrl+c` leaves), unless `--goal` or `--plan` is set. |
+| `--goal "..."` | standing objective. The manager gets `complete_goal` and `block_goal` and, if it does not call either, the TUI starts another run (up to `swarm.goal_max_auto_turns`) instead of returning the composer / exiting. A continuation that makes no counted tool progress returns the composer instead of looping. A failed run blocks the objective the same way `block_goal` does, after in-turn retries of truncated tool JSON / `429` / a dropped stream. Each run ends when the manager stops calling tools. `swarm.goal_session_max_iterations` is only eino's ReAct slice — hitting it extends the same run without spending the auto-continue budget. The app's `/goal` is the same pursuit on a saved conversation. Omit `--task` and the objective is also the first user message — it starts immediately. Pass `--task` (or leftover words) only when the first line should steer, not restate the objective. |
+| `--plan "..."` | enter planning immediately (same as `/plan`). Write/edit/exec and similar are unmounted; `ask_user` and `propose_plan` stay. Entering plan pauses an open `--goal`; `/implement` does not resume it. Omit `--task` and the plan text is also the first user message. |
 | `--model NAME` | the model name this session sends. Default: the provider's configured model. The catalog is whatever Settings last discovered (plus that default). Interactive sessions also switch with `/model` and `/model NAME`. |
 | `--reasoning LEVEL` | thinking level for this session: empty/`default`, `low`, `medium`, or `high`. Empty sends no `reasoning_effort`, so a non-reasoning endpoint is not handed a field it rejects. Interactive sessions cycle with `shift+tab` or `/reason LEVEL`. |
 | `--workspace DIR` | the directory relative tool paths resolve against. Default: a temporary directory that is removed on exit. |

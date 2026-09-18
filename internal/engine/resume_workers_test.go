@@ -283,7 +283,7 @@ func TestShutdownDoesNotRecordCleanupWhenAbandoning(t *testing.T) {
 }
 
 func TestResumeWorkersCueIsGeneric(t *testing.T) {
-	blob := resumeCue + "\n" + resumeWorkersCue + "\n" + resumeNotice
+	blob := resumeCue + "\n" + resumeWorkersCue + "\n" + resumeNotice + "\n" + cleanedUpWorkerErr
 	for _, leak := range []string{
 		"summarize", "researcher", "reviewer", "notes.md", "notes/",
 		"look into this", "compare the two",
@@ -760,4 +760,20 @@ func spawnIDsInMessages(msgs []adk.Message) []string {
 		}
 	}
 	return ids
+}
+
+func TestIsSteerUserSeesCaptionInParts(t *testing.T) {
+	msg := BuildUserMessage("[steer] look here", []ImageInput{{
+		Name: "clip.png", MIME: "image/png", Data: []byte{1, 2, 3},
+	}})
+	if !isSteerUser(msg) {
+		t.Fatal("an image steer must still count as unread steering")
+	}
+	kept := dropTrailingIncompleteToolCalls([]adk.Message{
+		schema.AssistantMessage("", []schema.ToolCall{{ID: "tc-1", Function: schema.FunctionCall{Name: "exec"}}}),
+		msg,
+	})
+	if len(kept) != 1 || !isSteerUser(kept[0]) {
+		t.Fatalf("image steer was dropped with the incomplete tool call: %+v", kept)
+	}
 }

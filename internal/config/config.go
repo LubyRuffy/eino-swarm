@@ -217,14 +217,9 @@ type SwarmConfig struct {
 	// Zero or negative is repaired to the default so a hand-edit cannot
 	// leave a goal looping forever or refusing to continue at all.
 	GoalMaxAutoTurns int `yaml:"goal_max_auto_turns" json:"goal_max_auto_turns"`
-	// GoalSessionMaxSeconds is how long one /goal turn may run before the
-	// runtime ends it as done and starts the next session. Zero or negative
-	// is repaired to the default.
-	GoalSessionMaxSeconds int `yaml:"goal_session_max_seconds" json:"goal_session_max_seconds"`
 	// GoalSessionMaxIterations is the manager ReAct slice while a /goal
-	// is open. Hitting it extends the same turn (no confirm, no session
-	// cut). The time cap still ends the session. Zero or negative is
-	// repaired to the default.
+	// is open. Hitting it extends the same turn (no confirm, no
+	// auto-continue spent). Zero or negative is repaired to the default.
 	GoalSessionMaxIterations int `yaml:"goal_session_max_iterations" json:"goal_session_max_iterations"`
 	// GoalAutoCompactPercent is how full context must be (0-100) before an
 	// auto-continue compact runs. Zero or negative is repaired to the
@@ -324,14 +319,6 @@ func (s SwarmConfig) GoalAutoTurns() int {
 		return DefaultGoalMaxAutoTurns
 	}
 	return s.GoalMaxAutoTurns
-}
-
-// GoalSessionDuration is how long one standing-objective turn may run.
-func (s SwarmConfig) GoalSessionDuration() time.Duration {
-	if s.GoalSessionMaxSeconds <= 0 {
-		return time.Duration(DefaultGoalSessionMaxSeconds) * time.Second
-	}
-	return time.Duration(s.GoalSessionMaxSeconds) * time.Second
 }
 
 // GoalSessionIterations is the manager ReAct slice while a standing
@@ -464,11 +451,7 @@ const (
 	DefaultAutoCompactTokens = 80_000
 	// Enough consecutive auto-turns to finish a real objective; not enough
 	// to burn a weekend if the manager never calls complete_goal.
-	DefaultGoalMaxAutoTurns = 12
-	// About ten minutes of wall time for one /goal session. eino still
-	// needs a finite ReAct slice (40); that slice extends in place until
-	// this clock, complete_goal, or the human stops it.
-	DefaultGoalSessionMaxSeconds    = 600
+	DefaultGoalMaxAutoTurns         = 12
 	DefaultGoalSessionMaxIterations = 40
 	DefaultGoalAutoCompactPercent   = 80
 	DefaultWebSearchResults         = 8
@@ -520,7 +503,6 @@ func Default() *Config {
 			CompactKeepMessages:      DefaultCompactKeepMessages,
 			AutoCompactTokens:        DefaultAutoCompactTokens,
 			GoalMaxAutoTurns:         DefaultGoalMaxAutoTurns,
-			GoalSessionMaxSeconds:    DefaultGoalSessionMaxSeconds,
 			GoalSessionMaxIterations: DefaultGoalSessionMaxIterations,
 			GoalAutoCompactPercent:   DefaultGoalAutoCompactPercent,
 		},
@@ -684,9 +666,6 @@ func (c *Config) normalize() {
 	if c.Swarm.GoalMaxAutoTurns <= 0 {
 		c.Swarm.GoalMaxAutoTurns = d.Swarm.GoalMaxAutoTurns
 	}
-	if c.Swarm.GoalSessionMaxSeconds <= 0 {
-		c.Swarm.GoalSessionMaxSeconds = d.Swarm.GoalSessionMaxSeconds
-	}
 	if c.Swarm.GoalSessionMaxIterations <= 0 {
 		c.Swarm.GoalSessionMaxIterations = d.Swarm.GoalSessionMaxIterations
 	}
@@ -824,6 +803,8 @@ const (
 	// repository must not grow screenshot files, and vision input is not a
 	// working file.
 	inputsDirName = "inputs"
+	plansDirName  = "plans"
+	planFileName  = "PLAN.md"
 	// A project's own subdirectories: the working directory zwai manages when
 	// the user did not name one, and the memory store.
 	projectWorkspaceName = "workspace"
@@ -842,6 +823,15 @@ func (c *Config) WorkspaceDir(threadID string) string {
 
 // InputsDir holds pasted images for every conversation.
 func (c *Config) InputsDir() string { return filepath.Join(c.dataDir, inputsDirName) }
+
+// PlansDir holds conversation plan files. They are app artefacts, not
+// workspace files, so a project pointed at a repository does not grow them.
+func (c *Config) PlansDir() string { return filepath.Join(c.dataDir, plansDirName) }
+
+// ThreadPlanFile is one conversation's PLAN.md.
+func (c *Config) ThreadPlanFile(threadID string) string {
+	return filepath.Join(c.PlansDir(), threadID, planFileName)
+}
 
 // ThreadInputsDir is one conversation's pasted images. Named by thread id so
 // deleting the conversation can take them with it without walking the table.

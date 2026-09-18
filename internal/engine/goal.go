@@ -23,20 +23,28 @@ const KindGoalComplete = "goal_complete"
 const KindGoalContinued = "goal_continued"
 
 // KindGoalCapped is recorded when consecutive auto-turns hit
-// swarm.goal_max_auto_turns. The objective stays open; a human message
-// or an explicit resume resets the budget.
+// swarm.goal_max_auto_turns, or when the human interrupts a pursuing
+// turn. The objective stays open; a human message or an explicit resume
+// resets the budget. Interrupt payload is JSON {reason:"interrupted"};
+// a budget cap is {auto_turns,cap}.
 const KindGoalCapped = "goal_capped"
 
 // KindGoalBlocked is recorded when the manager calls block_goal, or when
-// a pursuing turn fails. Auto-continue stops until the human resumes.
+// a pursuing turn fails after in-turn retries of recoverable model errors
+// are exhausted. Auto-continue stops until the human resumes.
 const KindGoalBlocked = "goal_blocked"
 
 // KindGoalEdited is recorded when the human changes the objective text
 // without reopening pursuit. Status (blocked/capped/complete) stays put.
 const KindGoalEdited = "goal_edited"
 
+// KindGoalIdle is recorded when an engine-started continuation finished
+// with no counted tool activity. Auto-continue stops until a human
+// message or resume; the objective stays open.
+const KindGoalIdle = "goal_idle"
+
 // KindGoalResumed is recorded when the human starts pursuit again after
-// a block, a cap, or an idle open goal.
+// a block, a cap (including a stop), or an idle open goal.
 const KindGoalResumed = "goal_resumed"
 
 // ToolCompleteGoal is the manager-only tool that marks a standing objective
@@ -52,10 +60,12 @@ const goalMaxRunes = 2000
 
 const goalContinuedNotice = "Continuing the standing objective."
 const goalResumedNotice = "Resuming the standing objective."
+const goalIdleNotice = "Stopped auto-continuing: the last continuation made no progress."
 
-// goalBlockedByFailedTurn is the banner reason when a pursuing turn dies
-// before the manager can call block_goal. Generic on purpose: the error
-// dump already sits on the transcript's error event.
+// goalBlockedByFailedTurn is the fallback banner reason when a pursuing
+// turn dies before the manager can call block_goal and the turn row has
+// no public error. Prefer the turn's Error: folding a session used to
+// hide the dump that this sentinel was supposed to point at.
 const goalBlockedByFailedTurn = "the last turn failed"
 
 // SetThreadGoal stores a standing objective for later turns. An empty value
@@ -78,6 +88,7 @@ func (e *Engine) SetThreadGoal(id, goal string) error {
 		"goal_capped":       false,
 		"goal_blocked":      false,
 		"goal_block_reason": "",
+		"goal_idle":         false,
 	}
 	if goal == "" {
 		fields["goal_started_at"] = nil
@@ -157,6 +168,7 @@ func (e *Engine) CompleteThreadGoal(id, summary string) error {
 		"goal_capped":       false,
 		"goal_blocked":      false,
 		"goal_block_reason": "",
+		"goal_idle":         false,
 	}); err != nil {
 		return err
 	}
@@ -193,6 +205,7 @@ func (e *Engine) BlockThreadGoal(id, reason string) error {
 		"goal_blocked":      true,
 		"goal_block_reason": reason,
 		"goal_capped":       false,
+		"goal_idle":         false,
 	}); err != nil {
 		return err
 	}
@@ -229,12 +242,14 @@ func (e *Engine) ResumeThreadGoal(id string) (*store.Turn, error) {
 		"goal_capped":       th.GoalCapped,
 		"goal_blocked":      th.GoalBlocked,
 		"goal_block_reason": th.GoalBlockReason,
+		"goal_idle":         th.GoalIdle,
 	}
 	if err := e.store.UpdateThread(id, map[string]any{
 		"goal_auto_turns":   0,
 		"goal_capped":       false,
 		"goal_blocked":      false,
 		"goal_block_reason": "",
+		"goal_idle":         false,
 	}); err != nil {
 		return nil, err
 	}
@@ -274,7 +289,7 @@ func closedStandingGoal(th *store.Thread) bool {
 }
 
 func resetGoalBudget(e *Engine, th *store.Thread) {
-	if th == nil || (th.GoalAutoTurns == 0 && !th.GoalCapped && !th.GoalBlocked) {
+	if th == nil || (th.GoalAutoTurns == 0 && !th.GoalCapped && !th.GoalBlocked && !th.GoalIdle) {
 		return
 	}
 	if err := e.store.UpdateThread(th.ID, map[string]any{
@@ -282,6 +297,7 @@ func resetGoalBudget(e *Engine, th *store.Thread) {
 		"goal_capped":       false,
 		"goal_blocked":      false,
 		"goal_block_reason": "",
+		"goal_idle":         false,
 	}); err != nil {
 		e.log.Warn("could not reset the goal auto-continue budget",
 			"thread", th.ID, "err", err)

@@ -55,6 +55,35 @@ func run(t *testing.T, tl tool.InvokableTool, args map[string]any) map[string]an
 	return parsed
 }
 
+func TestViewToolsIsSkillViewOnly(t *testing.T) {
+	s := New(filepath.Join(t.TempDir(), "memory"), 200)
+	if ViewTools(nil) != nil {
+		t.Fatal("a nil store must not invent a view tool")
+	}
+	got := ViewTools(s)
+	if len(got) != 1 {
+		t.Fatalf("view tools=%d", len(got))
+	}
+	info, err := got[0].Info(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != ToolSkillView {
+		t.Fatalf("view tool=%s", info.Name)
+	}
+	if len(ViewNames()) != 1 || ViewNames()[0] != ToolSkillView {
+		t.Fatalf("ViewNames=%v", ViewNames())
+	}
+	if len(WriteNames()) != 2 {
+		t.Fatalf("WriteNames=%v", WriteNames())
+	}
+	for _, name := range WriteNames() {
+		if name == ToolSkillView {
+			t.Fatal("skill_view is not a write")
+		}
+	}
+}
+
 func TestMemoryToolCuratesTheStore(t *testing.T) {
 	s, tools, changes := toolset(t, 500)
 	mem := tools[ToolMemory]

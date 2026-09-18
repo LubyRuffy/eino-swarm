@@ -1,10 +1,12 @@
-/** Built-in composer commands. Typing `/` at the start of the box lists these,
- *  the same way Cursor and Codex do. The catalog is data, not a switch on
- *  ad-hoc strings in the textarea handler. */
+/** Built-in composer commands. Typing `/` opens the palette at that token,
+ *  the same way Cursor does — after existing text, not only at column 0.
+ *  CJK punctuation IMEs emit `、` or `／` from the Slash key; those are the
+ *  same prefix. Paths (`foo/bar`) and URLs (`https://`) are not a menu.
+ *  The catalog is data, not a switch on ad-hoc strings in the textarea. */
 
 import { t, type Locale } from "@/lib/i18n"
 
-export type SlashCommandId = "goal" | "compact"
+export type SlashCommandId = "goal" | "plan" | "compact"
 
 export interface SlashCommand {
   id: SlashCommandId
@@ -21,6 +23,11 @@ export const SLASH_COMMANDS: readonly SlashCommand[] = [
     description: "Set a standing objective to pursue until done",
   },
   {
+    id: "plan",
+    name: "plan",
+    description: "Explore and write a plan before changing anything",
+  },
+  {
     id: "compact",
     name: "compact",
     description: "Compact this chat's context",
@@ -32,15 +39,40 @@ export interface SlashSubmit {
   arg: string
 }
 
+export interface SlashDraft {
+  query: string
+  /** Index of the slash rune in the composer text. */
+  start: number
+  /** Index after the command-name query (no argument yet). */
+  end: number
+}
+
 /** A draft that is still naming a command: `/` plus optional letters, no space.
  *  `/goal foo` is a submit, not a menu. A CJK objective glued to the name is
  *  too: Codex cuts the name at whitespace, so `/goal持续推进` becomes an
  *  unknown name and a user task. Cursor's `/goal` skill is identifier + rest. */
-export function slashDraft(text: string): { query: string } | null {
-  if (!hasSlashPrefix(text)) return null
-  if (parseSlashSubmit(text)?.arg) return null
-  if (/\s/.test(text)) return null
-  return { query: text.slice(slashPrefixLength(text)) }
+export function slashDraft(text: string): SlashDraft | null {
+  const start = lastTriggeredSlashIndex(text)
+  if (start < 0) return null
+  let end = start + 1
+  while (end < text.length && isCommandNameChar(text[end] as string)) end += 1
+  if (end < text.length) return null
+  return { query: text.slice(start + 1, end), start, end }
+}
+
+/** CJK punctuation IMEs emit `、` (or fullwidth `／`) from the Slash key.
+ *  The catalog is ASCII `/`; rewrite so the box and the filter agree. */
+export function normalizeSlashPrefix(text: string): string {
+  const start = lastTriggeredSlashIndex(text)
+  if (start < 0 || text[start] === "/") return text
+  return text.slice(0, start) + "/" + text.slice(start + 1)
+}
+
+export function stripSlashToken(
+  text: string,
+  draft: Pick<SlashDraft, "start" | "end">,
+): string {
+  return text.slice(0, draft.start) + text.slice(draft.end)
 }
 
 export function filterSlashCommands(
@@ -58,11 +90,9 @@ export function filterSlashCommands(
 }
 
 export function parseSlashSubmit(text: string): SlashSubmit | null {
-  const parsed = splitSlash(text)
-  if (!parsed) return null
-  const found = SLASH_COMMANDS.find((c) => c.name === parsed.name)
-  if (!found) return null
-  return { id: found.id, arg: parsed.arg }
+  const start = lastTriggeredSlashIndex(text)
+  if (start < 0) return null
+  return parseSlashFrom(text.slice(start))
 }
 
 /** Codex `parse_slash_name` stops at whitespace. We stop at the first rune
@@ -81,13 +111,39 @@ export function splitSlash(
   return { name: rest.slice(0, i).toLowerCase(), arg: rest.slice(i).trim() }
 }
 
-function hasSlashPrefix(text: string): boolean {
-  return slashPrefixLength(text) > 0
+function parseSlashFrom(slice: string): SlashSubmit | null {
+  const parsed = splitSlash(slice)
+  if (!parsed) return null
+  const found = SLASH_COMMANDS.find((c) => c.name === parsed.name)
+  if (!found) return null
+  return { id: found.id, arg: parsed.arg }
+}
+
+function lastTriggeredSlashIndex(text: string): number {
+  for (let i = text.length - 1; i >= 0; i -= 1) {
+    if (!isSlashRune(text[i])) continue
+    if (!isSlashTriggerBefore(i === 0 ? undefined : text[i - 1])) continue
+    return i
+  }
+  return -1
+}
+
+function isSlashRune(ch: string | undefined): boolean {
+  return ch === "/" || ch === "／" || ch === "、"
+}
+
+/** Paths and URLs keep their slashes. Whitespace and CJK before `/` open
+ *  the menu, including a Chinese sentence with no ASCII space. */
+function isSlashTriggerBefore(ch: string | undefined): boolean {
+  if (ch == null || ch === "") return true
+  if (/\s/.test(ch)) return true
+  if (/[A-Za-z0-9_\-/:.]/.test(ch)) return false
+  return true
 }
 
 function slashPrefixLength(text: string): number {
   if (text.startsWith("/")) return 1
-  if (text.startsWith("／")) return 1
+  if (text.startsWith("／") || text.startsWith("、")) return 1
   return 0
 }
 
@@ -98,7 +154,10 @@ function isCommandNameChar(ch: string): boolean {
 export function localizedSlashCommands(locale: Locale): SlashCommand[] {
   return SLASH_COMMANDS.map((c) => ({
     ...c,
-    description: t(locale, c.id === "goal" ? "slash.goal" : "slash.compact"),
+    description: t(
+      locale,
+      c.id === "goal" ? "slash.goal" : c.id === "plan" ? "slash.plan" : "slash.compact",
+    ),
   }))
 }
 
@@ -133,7 +192,7 @@ export function compactHint(
 }
 
 export function commandNeedsArgument(id: SlashCommandId): boolean {
-  return id === "goal"
+  return id === "goal" || id === "plan"
 }
 
 export function nextSlashIndex(

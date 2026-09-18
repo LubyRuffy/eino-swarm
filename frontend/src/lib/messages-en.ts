@@ -12,6 +12,8 @@ export const en = {
   "header.switchToWide": "Switch to wide layout",
   "header.switchToStandard": "Switch to standard layout",
   "header.togglePanel": "Toggle side panel",
+  "header.terminal": "Open terminal",
+  "header.terminalDisabled": "Open a conversation or a project first",
   "header.copyTurn": "Copy the turn id — `zwai trace <id>` replays it",
   "header.reconnecting": "Reconnecting",
   "header.lostStreamDesktop":
@@ -29,6 +31,8 @@ export const en = {
   "sidebar.emptyProject": "No conversations in this project yet.",
   "sidebar.untitled": "Untitled",
   "sidebar.more": "More",
+  "sidebar.showMore": "Show more",
+  "sidebar.showLess": "Show less",
   "sidebar.rename": "Rename",
   "sidebar.delete": "Delete",
   "sidebar.pinned": "Pinned",
@@ -57,6 +61,7 @@ export const en = {
   "palette.theme": "Switch between light and dark",
   "palette.language": "Switch language",
   "palette.width": "Switch between standard and wide",
+  "palette.terminal": "Open terminal",
   "palette.conversations": "Conversations",
   "palette.untitled": "Untitled",
 
@@ -87,6 +92,8 @@ export const en = {
     "Describe what you want done. It will delegate as needed.",
   "composer.placeholderRunning": "Working… Enter queues, ⌘Enter steers",
   "composer.placeholderGoal": "Standing objective for this conversation",
+  "composer.placeholderPlan": "What should we plan?",
+  "composer.placeholderAsk": "Type an answer, or pick a choice above",
   "composer.attach": "Attach files",
   "composer.attachHint": "Attach files to the workspace",
   "composer.thinking": "Thinking level",
@@ -125,12 +132,25 @@ export const en = {
   "goal.done": "Done",
   "goal.paused": "Paused",
   "goal.blocked": "Blocked",
+  "goal.failedTurn": "The last turn failed.",
   "goal.clear": "Clear goal",
   "goal.start": "Start goal",
   "goal.edit": "Edit goal",
 
+  "plan.planning": "Planning",
+  "plan.empty": "No plan yet",
+  "plan.edit": "Edit plan",
+  "plan.implement": "Implement plan",
+  "plan.leave": "Leave planning",
+
+  "ask.title": "Asking question",
+  "ask.other": "Other",
+  "ask.otherPlaceholder": "Type another answer",
+  "ask.submit": "Submit",
+
   "slash.commands": "Commands",
   "slash.goal": "Set a standing objective to pursue until done",
+  "slash.plan": "Explore and write a plan before changing anything",
   "slash.compact": "Compact this chat's context",
   "slash.full": "{pct}% full",
 
@@ -205,6 +225,12 @@ export const en = {
   "files.delete": "Delete",
   "files.yours": "yours",
 
+  "terminal.resize": "Resize the terminal",
+  "terminal.new": "New terminal",
+  "terminal.close": "Close terminal",
+  "terminal.closeTab": "Close this terminal",
+  "terminal.untitled": "Terminal {n}",
+
   "memory.noProject":
     "This conversation is not in a project, so it has nothing to remember between conversations.",
   "memory.reviewNow": "Review this conversation now",
@@ -231,6 +257,10 @@ export const en = {
   "memory.loading": "Loading…",
 
   "transcript.queuedSteering": "Queued steering",
+  "transcript.interruptSteer": "Interrupt",
+  "transcript.interruptSteerNamed":
+    "Abort the current tool and inject queued steering",
+  "transcript.deleteSteerNamed": "Remove this unread steering",
   "transcript.jumpLatest": "Jump to latest",
   "transcript.thinking": "Thinking",
   "transcript.thought": "Thought",
@@ -256,9 +286,16 @@ export const en = {
   "transcript.resend": "Send",
   "transcript.steer": "steer",
   "transcript.agentEmpty": "This agent has not produced anything yet.",
+  "transcript.agentLoading": "Loading this agent's log…",
   "transcript.waitingFor": "Waiting for {n} sub-agent{s}",
+  "transcript.collectingWait": "Collecting sub-agent results",
   "transcript.workingEllipsis": "working…",
   "transcript.started": "Started {role}",
+  "chart.untitled": "Chart",
+  "chart.pending": "Drawing chart",
+  "chart.tabPlot": "Chart",
+  "chart.tabTable": "Table",
+  "chart.views": "Chart or table",
   "nav.jump": "Jump to a message",
 
   "tool.running": "running…",
@@ -276,19 +313,31 @@ export const en = {
   "notice.goalContinued": "Continuing the standing objective.",
   "notice.goalCapped":
     "Stopped auto-continuing: the standing objective is still open.",
+  "notice.goalIdle":
+    "Stopped auto-continuing: the last continuation made no progress.",
+  "notice.goalPaused": "Standing objective paused.",
   "notice.goalBlocked":
     "Standing objective blocked: progress needs you or an external change.",
+  "notice.modelRetry": "Retrying after a model error.",
   "notice.goalEdited": "Standing objective updated.",
   "notice.goalResumed": "Resuming the standing objective.",
   "notice.goalSessionTime": "Work session ended after the time cap.",
   "notice.goalSessionIters": "Work session ended after the tool-round cap.",
   "notice.goalSession": "Work session ended.",
+  "notice.planning": "Planning.",
+  "notice.planUpdated": "Plan updated.",
+  "notice.planImplemented": "The human accepted the plan. Execute it.",
+  "notice.planCancelled": "Left planning.",
   "notice.compacted":
     "Earlier turns were folded into a briefing. The transcript is unchanged.",
   "notice.compressing": "Compressing conversation context…",
   "notice.autoCompacted":
     "Context compressed ({before} → {after} tokens). The transcript is unchanged.",
   "notice.autoCompactedPlain": "Context compressed. The transcript is unchanged.",
+  "notice.briefing": "View compressed briefing",
+  "notice.briefingTitle": "Compressed briefing",
+  "notice.briefingHint":
+    "What later turns will see instead of the folded messages.",
   "notice.reviewQuiet": "Review finished — nothing new to keep.",
   "notice.reviewDone": "Review finished.",
   "notice.reviewFailed": "Memory review failed: {err}",
@@ -410,7 +459,7 @@ export const en = {
   "settings.swarm.subagents": "Sub-agents",
   "settings.swarm.maxConcurrent": "Sub-agents at once",
   "settings.swarm.maxConcurrentHint":
-    "More means faster fan-out and more tokens burned in parallel.",
+    "Takes effect immediately, including workers already queued. More means faster fan-out and more tokens in parallel.",
   "settings.swarm.agentTimeout": "Sub-agent timeout (seconds)",
   "settings.swarm.agentTimeoutHint":
     "How long one sub-agent may keep working before it is stopped.",
@@ -440,12 +489,9 @@ export const en = {
   "settings.swarm.goalTurns": "Goal auto-continue turns",
   "settings.swarm.goalTurnsHint":
     "How many consecutive turns the runtime may start to pursue an open /goal without another human message.",
-  "settings.swarm.goalSessionSeconds": "Goal session length (seconds)",
-  "settings.swarm.goalSessionSecondsHint":
-    "How long one /goal turn may run before the runtime ends it and starts the next session.",
   "settings.swarm.goalSessionIters": "Goal session tool rounds",
   "settings.swarm.goalSessionItersHint":
-    "Manager tool-round slice while pursuing a /goal. Hitting it keeps the same turn going — no confirm, no new session. The time cap still ends the session.",
+    "Manager tool-round slice while pursuing a /goal. Hitting it keeps the same turn going — no confirm, no new session.",
   "settings.swarm.goalCompactPct": "Goal auto-compact at (%)",
   "settings.swarm.goalCompactPctHint":
     "When context is at least this full, compact before starting the next /goal session.",

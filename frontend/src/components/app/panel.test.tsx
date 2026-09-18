@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { RightPanel } from "./panel"
-import { MANAGER_ID, type AgentState, type TranscriptState } from "@/lib/transcript"
+import { MANAGER_ID, type AgentState, type Block, type TranscriptState } from "@/lib/transcript"
+import { useApp } from "@/store/app"
 
 function agent(partial: Partial<AgentState> & { id: string }): AgentState {
   return {
@@ -70,8 +71,10 @@ describe("Agents tab chrome", () => {
     const chrome = screen.getByTestId("agent-chrome")
     const scroller = screen.getByTestId("agent-scroller")
     expect(chrome).not.toHaveClass("sticky")
-    expect(chrome.parentElement).toBe(scroller.parentElement)
+    expect(scroller.contains(chrome)).toBe(false)
+    expect(chrome.parentElement).toContainElement(scroller)
     expect(scroller).toHaveClass("overflow-y-auto")
+    expect(scroller.className).toContain("[overflow-anchor:none]")
     expect(scroller).toHaveAttribute("data-quote-source")
     expect(scroller).toHaveTextContent("a body long enough to scroll")
     expect(chrome).not.toHaveTextContent("a body long enough to scroll")
@@ -90,6 +93,24 @@ describe("Agents tab chrome", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "Back to agents" }))
     expect(onSelectAgent).toHaveBeenCalledWith(undefined)
+  })
+
+  it("says the worker log is loading when the tools are still off the live edge", () => {
+    act(() => {
+      useApp.setState({ agentLogLoading: "worker-1" })
+    })
+    render(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([agent({ id: "worker-1", role: "worker" })])}
+        selectedAgent="worker-1"
+        {...noop}
+      />,
+    )
+    expect(screen.getByText("Loading this agent's log…")).toBeInTheDocument()
+    act(() => {
+      useApp.setState({ agentLogLoading: undefined })
+    })
   })
 
   it("opens the worker's system prompt from the chrome", () => {
@@ -155,6 +176,172 @@ describe("Agents tab chrome", () => {
     )
     expect(screen.getByRole("button", { name: /reviewer-1/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /reviewer-2/ })).toBeInTheDocument()
+  })
+})
+
+describe("Agent log follow", () => {
+  function answer(
+    agentId: string,
+    id: string,
+    text: string,
+    extra?: Partial<Block>,
+  ): Block {
+    return {
+      id,
+      kind: "answer",
+      agentId,
+      text,
+      turnId: "t1",
+      seq: 1,
+      at: new Date().toISOString(),
+      ...extra,
+    }
+  }
+
+  function unpinScroller(el: HTMLElement) {
+    el.scrollTop = 120
+    fireEvent.wheel(el, { deltaY: -40 })
+    fireEvent.scroll(el)
+  }
+
+  // Opening used to paint the first tool call. The reason you clicked in is
+  // the latest line, same as opening a conversation.
+  it("lands at the latest line when a worker is opened", async () => {
+    render(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([
+          agent({
+            id: "worker-1",
+            role: "worker",
+            blocks: [
+              answer("worker-1", "b1", "early notes"),
+              answer("worker-1", "b2", "the latest line", { seq: 2 }),
+            ],
+          }),
+        ])}
+        selectedAgent="worker-1"
+        {...noop}
+      />,
+    )
+    const el = screen.getByTestId("agent-scroller")
+    mockScrollBox(el, { scrollHeight: 2000, clientHeight: 400 })
+    await flushFollow()
+    expect(el.scrollTop).toBe(2000)
+    expect(screen.queryByTestId("agent-jump-to-latest")).toBeNull()
+  })
+
+  it("re-pins to the bottom when switching workers", async () => {
+    const first = agent({
+      id: "worker-1",
+      role: "worker",
+      blocks: [answer("worker-1", "a1", "first worker history")],
+    })
+    const second = agent({
+      id: "worker-2",
+      role: "worker",
+      blocks: [answer("worker-2", "b1", "second worker latest")],
+    })
+    const { rerender } = render(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([first, second])}
+        selectedAgent="worker-1"
+        {...noop}
+      />,
+    )
+    const el = screen.getByTestId("agent-scroller")
+    mockScrollBox(el, { scrollHeight: 2000, clientHeight: 400 })
+    await flushFollow()
+    unpinScroller(el)
+    rerender(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([first, second])}
+        selectedAgent="worker-2"
+        {...noop}
+      />,
+    )
+    const next = screen.getByTestId("agent-scroller")
+    mockScrollBox(next, { scrollHeight: 1800, clientHeight: 400 })
+    await flushFollow()
+    expect(next.scrollTop).toBe(1800)
+  })
+
+  it("does not yank the log when the reader wheels up during a stream", async () => {
+    const running = agent({
+      id: "worker-1",
+      role: "worker",
+      status: "running",
+      blocks: [answer("worker-1", "b1", "first", { streaming: true })],
+    })
+    const { rerender } = render(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([running])}
+        selectedAgent="worker-1"
+        {...noop}
+      />,
+    )
+    const el = screen.getByTestId("agent-scroller")
+    mockScrollBox(el, { scrollHeight: 400, clientHeight: 240 })
+    await flushFollow()
+    unpinScroller(el)
+    rerender(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([
+          {
+            ...running,
+            blocks: [answer("worker-1", "b1", "first line grew", { streaming: true })],
+          },
+        ])}
+        selectedAgent="worker-1"
+        {...noop}
+      />,
+    )
+    await flushFollow()
+    expect(el.scrollTop).toBe(120)
+    expect(screen.getByTestId("agent-jump-to-latest")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Jump to latest" }))
+    expect(el.scrollTop).toBe(400)
+    expect(screen.queryByTestId("agent-jump-to-latest")).toBeNull()
+  })
+
+  it("follows new tokens while the reader stays at the live edge", async () => {
+    const running = agent({
+      id: "worker-1",
+      role: "worker",
+      status: "running",
+      blocks: [answer("worker-1", "b1", "first", { streaming: true })],
+    })
+    const { rerender } = render(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([running])}
+        selectedAgent="worker-1"
+        {...noop}
+      />,
+    )
+    const el = screen.getByTestId("agent-scroller")
+    mockScrollBox(el, { scrollHeight: 400, clientHeight: 240 })
+    await flushFollow()
+    el.scrollTop = 160
+    rerender(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([
+          {
+            ...running,
+            blocks: [answer("worker-1", "b1", "first line grew", { streaming: true })],
+          },
+        ])}
+        selectedAgent="worker-1"
+        {...noop}
+      />,
+    )
+    await flushFollow()
+    expect(el.scrollTop).toBe(400)
   })
 })
 
@@ -353,4 +540,26 @@ describe("Trace token usage", () => {
     expect(box.textContent).toContain("This turn billed 12K in · 3.1K out")
   })
 })
+
+function mockScrollBox(
+  el: HTMLElement,
+  size: { scrollHeight: number; clientHeight: number },
+) {
+  Object.defineProperty(el, "scrollHeight", {
+    configurable: true,
+    get: () => size.scrollHeight,
+  })
+  Object.defineProperty(el, "clientHeight", {
+    configurable: true,
+    get: () => size.clientHeight,
+  })
+}
+
+async function flushFollow() {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve())
+    })
+  })
+}
 

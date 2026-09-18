@@ -115,6 +115,9 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 	if err != nil {
 		return err
 	}
+	if th.PlanMode {
+		toolset = tools.ExploreOnly(toolset)
+	}
 
 	providerID := strings.TrimSpace(turn.ProviderID)
 	if providerID == "" {
@@ -133,7 +136,9 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 		return err
 	}
 
-	reg := e.newTurnRegistry(builder, toolset)
+	reg := e.newTurnRegistry(builder, toolset, pc)
+	unread := e.unreadSteerMessages(turn)
+	messages = dropSteerMessages(messages, unread)
 
 	rt := e.runtimeFor(turn.ThreadID)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -143,7 +148,10 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 		reg.Close()
 		return ErrBusy
 	}
-	rt.setWorkerRestore(e.workersFromTurn(turn))
+	for _, m := range unread {
+		_ = reg.SteerManagerMessage(m)
+	}
+	rt.setWorkerRestore(e.workersFromThread(turn.ThreadID))
 
 	_ = e.store.TouchThread(turn.ThreadID)
 	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), e.imagesForTurn(turn), true)
@@ -214,6 +222,7 @@ type orphanedToolCall struct {
 	AgentID    string
 	Role       string
 	ToolCallID string
+	Text       string
 }
 
 func orphanedToolCalls(events []store.Event) []orphanedToolCall {
@@ -229,7 +238,7 @@ func orphanedToolCalls(events []store.Event) []orphanedToolCall {
 			if _, ok := open[id]; !ok {
 				order = append(order, id)
 			}
-			open[id] = orphanedToolCall{AgentID: ev.AgentID, Role: ev.Role, ToolCallID: id}
+			open[id] = orphanedToolCall{AgentID: ev.AgentID, Role: ev.Role, ToolCallID: id, Text: ev.Text}
 		case swarm.NotifyToolResult.String():
 			delete(open, id)
 		}
@@ -253,6 +262,11 @@ func (e *Engine) closeOrphanedToolCalls(turn *store.Turn) {
 		return
 	}
 	for _, c := range orphanedToolCalls(events) {
+		if isAskUserToolText(c.Text) {
+			// Re-arm the wait in run(); closing it as stopped would swallow
+			// the question the human never saw a chance to answer.
+			continue
+		}
 		agent := c.AgentID
 		if agent == "" {
 			agent = swarm.DefaultManagerID

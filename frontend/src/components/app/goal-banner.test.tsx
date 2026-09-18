@@ -63,10 +63,64 @@ describe("GoalBanner", () => {
     expect(onResume).toHaveBeenCalled()
   })
 
+  it("translates the failed-turn sentinel instead of showing the protocol string", () => {
+    render(
+      <GoalBanner
+        goal="keep going"
+        blocked
+        blockReason="the last turn failed"
+        onClear={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("goal-reason")).toHaveTextContent("The last turn failed.")
+    expect(screen.getByTestId("goal-reason").textContent).not.toBe("the last turn failed")
+  })
+
+  it("prefers the turn error over the failed-turn sentinel", () => {
+    render(
+      <GoalBanner
+        goal="keep going"
+        blocked
+        blockReason="the last turn failed"
+        turnError="the endpoint refused the connection"
+        onClear={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("goal-reason")).toHaveTextContent(
+      "the endpoint refused the connection",
+    )
+  })
+
   it("hides start while a turn is running", () => {
     render(
-      <GoalBanner goal="keep going" running onResume={vi.fn()} onClear={vi.fn()} />,
+      <GoalBanner
+        goal="keep going"
+        running
+        capped
+        onResume={vi.fn()}
+        onClear={vi.fn()}
+      />,
     )
+    expect(screen.queryByTestId("goal-start")).toBeNull()
+  })
+
+  it("shows start after a no-progress continuation", () => {
+    const onResume = vi.fn()
+    render(
+      <GoalBanner goal="keep going" idle onResume={onResume} onClear={vi.fn()} />,
+    )
+    expect(screen.getByTestId("goal-banner").textContent).toContain("Paused")
+    fireEvent.click(screen.getByTestId("goal-start"))
+    expect(onResume).toHaveBeenCalled()
+  })
+
+  it("hides start while a pursuing goal is idle between turns", () => {
+    // Codex: Play is resume. An active goal waiting for auto-continue is
+    // still Pursuing, not a start control.
+    render(
+      <GoalBanner goal="keep going" onResume={vi.fn()} onClear={vi.fn()} />,
+    )
+    expect(screen.getByTestId("goal-banner").textContent).toContain("Pursuing")
     expect(screen.queryByTestId("goal-start")).toBeNull()
   })
 

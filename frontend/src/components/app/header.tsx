@@ -3,6 +3,7 @@ import {
   Moon,
   PanelLeft,
   PanelRight,
+  SquareTerminal,
   Sun,
   UnfoldHorizontal,
   WifiOff,
@@ -43,8 +44,11 @@ export function Header({
   onToggleTheme,
   onToggleLocale,
   onToggleContentWidth,
+  onOpenTerminal,
   contentWidth,
   dark,
+  terminalOpen,
+  terminalEnabled,
 }: {
   thread?: Thread
   /** The project the open conversation belongs to, when it has one: its name
@@ -63,8 +67,11 @@ export function Header({
   onToggleTheme: () => void
   onToggleLocale: () => void
   onToggleContentWidth: () => void
+  onOpenTerminal: () => void
   contentWidth: ContentWidthPref
   dark: boolean
+  terminalOpen: boolean
+  terminalEnabled: boolean
 }) {
   const t = useT()
   // The elapsed clock ticks here, not in App: a once-a-second setState in
@@ -155,7 +162,7 @@ export function Header({
             {/* A running clock counts in seconds; "Working · 0ms" reads like a
                 bug even when it is the truth. Missing started_at used to
                 clamp to 1s forever — that is a lie, not a clock. */}
-            {status.awaiting_continue
+            {status.awaiting_continue || status.awaiting_answer
               ? t("header.waiting")
               : t("header.working")}
             {status.started_at
@@ -225,6 +232,22 @@ export function Header({
             className={wide ? "text-foreground" : "text-muted-foreground"}
           >
             {wide ? <FoldHorizontal /> : <UnfoldHorizontal />}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onOpenTerminal}
+            disabled={!terminalEnabled}
+            aria-label={t("header.terminal")}
+            title={
+              terminalEnabled
+                ? `${t("header.terminal")} (⌘J)`
+                : t("header.terminalDisabled")
+            }
+            aria-pressed={terminalOpen}
+            className={terminalOpen ? "text-foreground" : "text-muted-foreground"}
+          >
+            <SquareTerminal />
           </Button>
           <Button
             variant="ghost"

@@ -79,6 +79,9 @@ func waitForTurn(t *testing.T, e *Engine, turnID string) *store.Turn {
 		if turn.Status != store.TurnRunning {
 			return turn
 		}
+		if e.Status(turn.ThreadID).AwaitingAnswer {
+			_ = e.AnswerTurnText(turn.ThreadID, "the existing approach")
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("turn %s never finished", turnID)
@@ -923,8 +926,26 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 	if strings.Contains(prompt, "you answer directly when a request is small") {
 		t.Fatal("the conservative solo-first policy came back")
 	}
+	if !strings.Contains(prompt, "ask_user") {
+		t.Fatal("the manager must be told to ask through ask_user")
+	}
+	if strings.Contains(strings.ToLower(prompt), "sandbox") || strings.Contains(prompt, "沙箱") {
+		t.Fatal("the prompt must not call the workspace a sandbox")
+	}
+	if !strings.Contains(prompt, "language tag is chart") {
+		t.Fatal("the manager must be told when to emit a chart fence")
+	}
+	if !strings.Contains(prompt, "Do not invent numbers") {
+		t.Fatal("a chart must not become a place to fabricate values")
+	}
+	if !strings.Contains(prompt, "prefer the chart over spelling out the same") {
+		t.Fatal("the manager must prefer a chart over restating the series as text")
+	}
+	if !strings.Contains(prompt, "do not duplicate the plotted values in text") {
+		t.Fatal("a chart must replace a number dump, not sit next to one")
+	}
 	// and it must not smuggle in a particular task
-	for _, leak := range []string{"summarize", "researcher", "reviewer", "notes/", "re-research", "xlsx", "spreadsheet"} {
+	for _, leak := range []string{"summarize", "researcher", "reviewer", "notes/", "re-research", "xlsx", "spreadsheet", "revenue", "sales"} {
 		if strings.Contains(strings.ToLower(prompt), strings.ToLower(leak)) {
 			t.Fatalf("the prompt hardcodes example-specific text %q", leak)
 		}

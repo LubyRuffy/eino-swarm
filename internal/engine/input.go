@@ -52,6 +52,9 @@ type UserInput struct {
 	// FromEventSeq, when set, truncates the conversation at that user_message
 	// and starts again from there. It is a rewind, not a new turn on top.
 	FromEventSeq int64
+	// ImplementPlan is an engine-started turn that executes an accepted plan.
+	// The transcript records plan_implemented, not a human user_message.
+	ImplementPlan bool
 }
 
 // DecodeImages turns the wire payload into pixels. It refuses anything that

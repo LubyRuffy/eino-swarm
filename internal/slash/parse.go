@@ -16,16 +16,28 @@ import (
 const (
 	solidus          = '/'
 	fullwidthSolidus = '／' // IME "／", not a different command
+	ideographicComma = '、' // Slash key with CJK punctuation, not a list mark
 )
 
 // Leading reports a slash command at the start of s. A leading space is
 // not a command; submit-time Split trims first.
 func Leading(s string) (rest string, ok bool) {
 	r, size := utf8.DecodeRuneInString(s)
-	if r != solidus && r != fullwidthSolidus {
+	if r != solidus && r != fullwidthSolidus && r != ideographicComma {
 		return "", false
 	}
 	return s[size:], true
+}
+
+// NormalizePrefix rewrites a leading fullwidth solidus or CJK punctuation
+// comma to ASCII `/`. CJK IMEs emit those from the Slash key; the catalog
+// is the ASCII command prefix.
+func NormalizePrefix(s string) string {
+	r, size := utf8.DecodeRuneInString(s)
+	if r == fullwidthSolidus || r == ideographicComma {
+		return string(solidus) + s[size:]
+	}
+	return s
 }
 
 // Split returns the command name (lowercased) and argument. The name is

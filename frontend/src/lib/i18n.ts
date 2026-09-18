@@ -17,13 +17,21 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "Continuing the standing objective.": "notice.goalContinued",
   "Stopped auto-continuing: the standing objective is still open.":
     "notice.goalCapped",
+  "Stopped auto-continuing: the last continuation made no progress.":
+    "notice.goalIdle",
+  "Standing objective paused.": "notice.goalPaused",
   "Standing objective blocked: progress needs you or an external change.":
     "notice.goalBlocked",
+  "Retrying after a model error.": "notice.modelRetry",
   "Standing objective updated.": "notice.goalEdited",
   "Resuming the standing objective.": "notice.goalResumed",
   "Work session ended after the time cap.": "notice.goalSessionTime",
   "Work session ended after the tool-round cap.": "notice.goalSessionIters",
   "Work session ended.": "notice.goalSession",
+  "Planning.": "notice.planning",
+  "Plan updated.": "notice.planUpdated",
+  "The human accepted the plan. Execute it.": "notice.planImplemented",
+  "Left planning.": "notice.planCancelled",
   "Earlier turns were folded into a briefing. The transcript is unchanged.":
     "notice.compacted",
   "Compressing conversation context…": "notice.compressing",

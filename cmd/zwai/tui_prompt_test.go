@@ -38,6 +38,9 @@ func TestTUIManagerMatchesTheApp(t *testing.T) {
 	if !containsTool(t, setup.session.ManagerTools, "web_search") {
 		t.Fatal("the manager must have web_search; otherwise it will spawn a worker just to search")
 	}
+	if !containsTool(t, setup.session.ManagerTools, engine.ToolAskUser) {
+		t.Fatal("ask_user must be on the manager")
+	}
 	if !containsTool(t, setup.session.Registry.SubAgentTools, "web_search") {
 		t.Fatal("workers lost web_search")
 	}

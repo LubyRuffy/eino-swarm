@@ -30,6 +30,16 @@ var tuiSlashCommands = []slashCommand{
 		needsArg:    true,
 	},
 	{
+		name:        "plan",
+		description: "explore and write a plan before changing anything",
+		needsArg:    true,
+	},
+	{
+		name:        "implement",
+		description: "accept the plan and execute it",
+		hidden:      true,
+	},
+	{
 		name:        "model",
 		description: "choose what model to use",
 		needsArg:    true,
@@ -71,7 +81,7 @@ func slashDraft(text string) *slashDraftQuery {
 	if !ok {
 		return nil
 	}
-	if name, arg, parsed := parseTUICommand(text); parsed && arg != "" && name == "goal" {
+	if name, arg, parsed := parseTUICommand(text); parsed && arg != "" && (name == "goal" || name == "plan") {
 		return nil
 	}
 	token, args, found := strings.Cut(rest, " ")

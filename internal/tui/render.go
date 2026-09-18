@@ -45,13 +45,15 @@ func (m swarmTUI) View() string {
 		w, h = 110, 34
 	}
 	menu := ""
-	if m.interactive && !m.busy {
+	if m.interactive && !m.busy && m.ask == nil {
 		menu = m.slashMenu(w)
 	}
 	leftW := w*3/5 - 3
 	rightW := w - leftW - 4
 	chrome := 2
-	if m.interactive {
+	if m.ask != nil {
+		chrome = 8
+	} else if m.interactive {
 		chrome = 5
 		if menu != "" {
 			chrome += strings.Count(menu, "\n") + 1
@@ -84,7 +86,9 @@ func (m swarmTUI) View() string {
 		),
 		sep,
 	}
-	if m.interactive {
+	if m.ask != nil {
+		parts = append(parts, m.askView(w))
+	} else if m.interactive {
 		if menu != "" {
 			parts = append(parts, menu)
 		}

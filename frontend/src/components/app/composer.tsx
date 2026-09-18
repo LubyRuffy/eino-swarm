@@ -8,6 +8,7 @@ import { ComposerImages } from "@/components/app/composer-images"
 import { ComposerQuotes } from "@/components/app/composer-quotes"
 import { ModelPicker } from "@/components/app/model-picker"
 import { GoalBanner } from "@/components/app/goal-banner"
+import { PlanBanner } from "@/components/app/plan-banner"
 import { QueueTray } from "@/components/app/queue-tray"
 import { SlashMenu } from "@/components/app/slash-menu"
 import { Badge } from "@/components/ui/badge"
@@ -40,6 +41,8 @@ import {
   nextSlashIndex,
   parseSlashSubmit,
   slashDraft,
+  stripSlashToken,
+  normalizeSlashPrefix,
   withSlashHints,
   type SlashCommand,
 } from "@/lib/slash"
@@ -52,6 +55,7 @@ import {
   type PasteImage,
   type SendImage,
 } from "@/lib/paste-image"
+import { lastFailedTurnError } from "@/lib/transcript"
 import { formatQuotedMessage, type Quote } from "@/lib/quote"
 import type { Attachment, Followup, ModelInfo, UsageSnapshot } from "@/lib/types"
 import { windowForSelection } from "@/lib/usage"
@@ -91,6 +95,7 @@ export function Composer({
   goalBlocked,
   goalBlockReason,
   goalCapped,
+  goalIdle,
   goalStartedAt,
   contextChars,
   contextBudget,
@@ -99,6 +104,13 @@ export function Composer({
   onEditGoal,
   onResumeGoal,
   onCompact,
+  planMode,
+  planMarkdown,
+  awaitingAnswer,
+  onSetPlan,
+  onSavePlan,
+  onImplementPlan,
+  onLeavePlan,
 }: {
   running: boolean
   models: ModelInfo[]
@@ -136,6 +148,7 @@ export function Composer({
   goalBlocked?: boolean
   goalBlockReason?: string
   goalCapped?: boolean
+  goalIdle?: boolean
   goalStartedAt?: string
   contextChars?: number
   contextBudget?: number
@@ -144,8 +157,16 @@ export function Composer({
   onEditGoal?: (text: string) => void
   onResumeGoal?: () => void
   onCompact?: () => void
+  planMode?: boolean
+  planMarkdown?: string
+  awaitingAnswer?: boolean
+  onSetPlan?: (text: string) => void
+  onSavePlan?: (text: string) => void
+  onImplementPlan?: () => void
+  onLeavePlan?: () => void
 }) {
   const t = useT()
+  const lastTurnError = useApp((s) => lastFailedTurnError(s.transcript.turns))
   const [text, setText] = useState("")
   const [pending, setPending] = useState<File[]>([])
   const [pasted, setPasted] = useState<PasteImage[]>([])
@@ -153,6 +174,7 @@ export function Composer({
   const [armed, setArmed] = useState(false)
   const [adding, setAdding] = useState(false)
   const [goalDraft, setGoalDraft] = useState(false)
+  const [planDraft, setPlanDraft] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -220,14 +242,26 @@ export function Composer({
   }, [draft?.query])
 
   const pickCommand = (cmd: SlashCommand) => {
-    if (cmd.id === "goal" || commandNeedsArgument(cmd.id)) {
-      setGoalDraft(true)
+    const rest = draft ? stripSlashToken(text, draft) : ""
+    if (cmd.id === "goal" || cmd.id === "plan" || commandNeedsArgument(cmd.id)) {
+      const objective = rest.trim()
+      if (objective) {
+        setGoalDraft(false)
+        setPlanDraft(false)
+        setText("")
+        if (cmd.id === "plan") onSetPlan?.(objective)
+        else onSetGoal?.(objective)
+        return
+      }
+      setGoalDraft(cmd.id === "goal")
+      setPlanDraft(cmd.id === "plan")
       setText("")
       return
     }
     if (cmd.id === "compact") {
-      setText("")
+      setText(rest.trimEnd())
       setGoalDraft(false)
+      setPlanDraft(false)
       onCompact?.()
     }
   }
@@ -250,10 +284,30 @@ export function Composer({
       onSetGoal?.(next)
       return
     }
+    if (planDraft) {
+      const next = text.trim()
+      if (!next) return
+      setPlanDraft(false)
+      setText("")
+      onSetPlan?.(next)
+      return
+    }
     if (slash) {
       if (slash.id === "compact") {
         setText("")
         onCompact?.()
+        return
+      }
+      if (slash.id === "plan") {
+        if (!slash.arg) {
+          setPlanDraft(true)
+          setGoalDraft(false)
+          setText("")
+          return
+        }
+        setText("")
+        setPlanDraft(false)
+        onSetPlan?.(slash.arg)
         return
       }
       if (!slash.arg) {
@@ -360,12 +414,22 @@ export function Composer({
         ref={dockRef}
         className="pointer-events-auto relative z-10 content-column content-gutter pb-3"
       >
+        <PlanBanner
+          mode={planMode}
+          markdown={planMarkdown}
+          running={running}
+          onImplement={onImplementPlan}
+          onEdit={onSavePlan}
+          onLeave={onLeavePlan}
+        />
         <GoalBanner
           goal={goal ?? ""}
           complete={goalComplete}
           blocked={goalBlocked}
           blockReason={goalBlockReason}
+          turnError={goalBlocked ? lastTurnError : undefined}
           capped={goalCapped}
+          idle={goalIdle}
           running={running}
           startedAt={goalStartedAt}
           onClear={() => onClearGoal?.()}
@@ -426,17 +490,22 @@ export function Composer({
             data-testid="composer-input"
             data-slash-open={slashOpen ? "true" : undefined}
             data-goal-draft={goalDraft ? "true" : undefined}
+            data-plan-draft={planDraft ? "true" : undefined}
             aria-expanded={slashOpen}
             aria-controls={slashOpen ? "slash-menu" : undefined}
             placeholder={
               goalDraft
                 ? t("composer.placeholderGoal")
-                : running
-                  ? t("composer.placeholderRunning")
-                  : t("composer.placeholder")
+                : planDraft
+                  ? t("composer.placeholderPlan")
+                  : awaitingAnswer
+                    ? t("composer.placeholderAsk")
+                    : running
+                      ? t("composer.placeholderRunning")
+                      : t("composer.placeholder")
             }
-            className="max-h-[200px] min-h-[44px] px-4 py-3 text-[0.9375rem]"
-            onChange={(e) => setText(e.target.value)}
+            className="max-h-[200px] min-h-[44px] rounded-none border-0 bg-transparent px-4 py-3 text-[0.9375rem] shadow-none focus-visible:ring-0"
+            onChange={(e) => setText(normalizeSlashPrefix(e.target.value))}
             onPaste={(e) => {
               const files = filesFromClipboard(e.clipboardData)
               if (files.length === 0) return
@@ -471,7 +540,7 @@ export function Composer({
                 if (e.key === "Escape") {
                   e.preventDefault()
                   e.stopPropagation()
-                  setText("")
+                  setText(draft ? stripSlashToken(text, draft) : "")
                   return
                 }
                 if (e.key === "Tab") {
@@ -481,10 +550,11 @@ export function Composer({
                   return
                 }
               }
-              if (e.key === "Escape" && goalDraft) {
+              if (e.key === "Escape" && (goalDraft || planDraft)) {
                 e.preventDefault()
                 e.stopPropagation()
                 setGoalDraft(false)
+                setPlanDraft(false)
                 setText("")
                 return
               }
@@ -593,11 +663,13 @@ export function Composer({
                     uploading ||
                     (!slashOpen &&
                       !goalDraft &&
+                      !planDraft &&
                       !text.trim() &&
                       pending.length === 0 &&
                       quoted.length === 0 &&
                       pasted.length === 0) ||
-                    (goalDraft && !text.trim())
+                    (goalDraft && !text.trim()) ||
+                    (planDraft && !text.trim())
                   }
                   onClick={() => void submit()}
                   aria-label={t("composer.send")}

@@ -15,6 +15,9 @@ func TestSlashDraftKeepsTheFirstTokenWhenArgsFollow(t *testing.T) {
 	if d := slashDraft("/"); d == nil || d.token != "" || d.hasSpace {
 		t.Fatalf("bare slash=%+v", d)
 	}
+	if d := slashDraft("、"); d == nil || d.token != "" || d.hasSpace {
+		t.Fatalf("IME punctuation comma=%+v", d)
+	}
 	if d := slashDraft("/mo"); d == nil || d.token != "mo" || d.hasSpace {
 		t.Fatalf("partial=%+v", d)
 	}
@@ -24,14 +27,29 @@ func TestSlashDraftKeepsTheFirstTokenWhenArgsFollow(t *testing.T) {
 	if d := slashDraft("/goal keep going"); d != nil {
 		t.Fatal("inline /goal args close the menu, like the desktop composer")
 	}
+	if d := slashDraft("/plan inspect then change"); d != nil {
+		t.Fatal("inline /plan args close the menu, like the desktop composer")
+	}
 	if items, ok := (swarmTUI{}).slashPickerItems(nil); ok || items != nil {
 		t.Fatal("a nil draft is not a picker")
 	}
 }
 
+func TestComposerRewritesTheIMEPunctuationCommaToASlash(t *testing.T) {
+	m := newModel(nil)
+	m.interactive = true
+	m = typeKeys(t, m, "、")
+	if m.input != "/" {
+		t.Fatalf("IME comma must become ASCII slash, got %q", m.input)
+	}
+	if d := slashDraft(m.input); d == nil || d.token != "" {
+		t.Fatalf("rewritten slash should still open the menu, got %+v", d)
+	}
+}
+
 func TestFilterSlashCommandsHidesAliasesUntilTyped(t *testing.T) {
 	all := namesOf(filterSlashCommands(""))
-	if strings.Join(all, ",") != "goal,model,reason,clear,help,exit" {
+	if strings.Join(all, ",") != "goal,plan,model,reason,clear,help,exit" {
 		t.Fatalf("visible catalog=%v", all)
 	}
 	if got := namesOf(filterSlashCommands("mo")); len(got) != 1 || got[0] != "model" {
@@ -79,6 +97,13 @@ func TestParseTUICommandOnlyInterceptsTheCatalog(t *testing.T) {
 	if !ok || name != "goal" || arg != "持续推进" {
 		t.Fatalf("glued CJK is still /goal, got %q %q ok=%v", name, arg, ok)
 	}
+	name, arg, ok = parseTUICommand("/plan inspect then change")
+	if !ok || name != "plan" || arg != "inspect then change" {
+		t.Fatalf("/plan is a command, got %q %q ok=%v", name, arg, ok)
+	}
+	if _, _, ok = parseTUICommand("/implement"); !ok {
+		t.Fatal("/implement is a local command")
+	}
 	if _, _, ok = parseTUICommand("/nope keep going"); ok {
 		t.Fatal("unknown slash commands must reach the swarm as a task")
 	}
@@ -124,7 +149,7 @@ func TestSlashMenuAppearsAboveTheComposer(t *testing.T) {
 	m.width, m.height = 80, 24
 	m.input = "/"
 	view := m.View()
-	for _, name := range []string{"/goal", "/model", "/reason", "/clear", "/help", "/exit"} {
+	for _, name := range []string{"/goal", "/plan", "/model", "/reason", "/clear", "/help", "/exit"} {
 		if !strings.Contains(view, name) {
 			t.Fatalf("missing %s:\n%s", name, view)
 		}
@@ -229,7 +254,7 @@ func TestSlashUpDownMovesTheHighlightThenTabCompletesIt(t *testing.T) {
 	m = typeKeys(t, m, "/")
 	m = press(t, m, "down")
 	m = press(t, m, "tab")
-	if m.input != "/model " {
+	if m.input != "/plan " {
 		t.Fatalf("down then tab should complete the second row, input=%q", m.input)
 	}
 }
@@ -485,6 +510,28 @@ func TestGoalSlashSendsTheObjectiveNotTheSlashLine(t *testing.T) {
 	got := <-prompts
 	if got != "keep going" {
 		t.Fatalf("the model must see the objective, not the slash line, prompt=%q", got)
+	}
+}
+
+func TestPlanSlashStartsPlanningAndSendsTheTask(t *testing.T) {
+	prompts := make(chan string, 1)
+	m := newModel(nil)
+	m.interactive = true
+	m.prompts = prompts
+	m.plan = NewPlanState(nil, nil, "", nil)
+	m = typeKeys(t, m, "/plan inspect then change")
+	next, cmd := m.Update(keyMsg("enter"))
+	m = next.(swarmTUI)
+	if cmd == nil || !m.busy {
+		t.Fatal("/plan with an argument must start the turn")
+	}
+	if m.plan == nil || !m.plan.On() {
+		t.Fatal("/plan must enter planning")
+	}
+	cmd()
+	got := <-prompts
+	if got != "inspect then change" {
+		t.Fatalf("the model must see the work, not the slash line, prompt=%q", got)
 	}
 }
 

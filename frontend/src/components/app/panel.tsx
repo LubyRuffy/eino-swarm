@@ -1,19 +1,22 @@
-import { ArrowLeft } from "lucide-react"
-import { useState } from "react"
+import { ArrowLeft, ChevronDown } from "lucide-react"
+import { useRef, useState } from "react"
 
 import { AgentPromptButton } from "@/components/app/agent-prompt"
 import { FilesTab } from "@/components/app/files-tab"
 import { MemoryPanel, type MemoryPanelProps } from "@/components/app/memory-panel"
 import { ResizeHandle } from "@/components/app/resize-handle"
 import { TraceTab } from "@/components/app/trace-tab"
-import { AgentTranscript, StatusDot } from "@/components/app/transcript"
+import { AgentTranscript } from "@/components/app/agent-transcript"
+import { StatusDot } from "@/components/app/transcript"
 import { MarqueeText } from "@/components/app/marquee"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { MANAGER_ID, type TranscriptState } from "@/lib/transcript"
+import { useTranscriptFollow } from "@/lib/follow-scroll"
+import { MANAGER_ID, type AgentState, type TranscriptState } from "@/lib/transcript"
 import type { FileEntry, Meta, Turn, UsageSnapshot } from "@/lib/types"
 import { useT } from "@/lib/use-t"
+import { useApp } from "@/store/app"
 
 export type PanelTab = "agents" | "files" | "trace" | "memory"
 
@@ -190,18 +193,7 @@ function AgentsTab({
             <AgentPromptButton instruction={agent.instruction} />
           ) : null}
         </div>
-        <div
-          data-testid="agent-scroller"
-          data-quote-source=""
-          className="thin-scrollbar min-h-0 flex-1 overflow-y-auto"
-        >
-          {agent.error ? (
-            <p className="mx-2 mt-2 rounded border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
-              {agent.error}
-            </p>
-          ) : null}
-          <AgentTranscript agent={agent} />
-        </div>
+        <AgentLog key={agent.id} agent={agent} />
       </div>
     )
   }
@@ -244,6 +236,57 @@ function Section({ title, children }: { title: string; children: React.ReactNode
         {title}
       </p>
       {children}
+    </div>
+  )
+}
+
+/** One worker's log. Same live-edge contract as the conversation: open at
+ *  the latest line, follow while the reader stays there, freeze on wheel-up. */
+function AgentLog({ agent }: { agent: AgentState }) {
+  const t = useT()
+  const loading = useApp((s) => s.agentLogLoading === agent.id)
+  const scrollerRef = useRef<HTMLDivElement>(null)
+  const last = agent.blocks.at(-1)
+  const { showJump, jumpToLatest } = useTranscriptFollow({
+    scrollerRef,
+    loaded: true,
+    threadId: agent.id,
+    growthKey: `${agent.blocks.length}:${last?.text.length ?? 0}`,
+  })
+  return (
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        ref={scrollerRef}
+        data-testid="agent-scroller"
+        data-quote-source=""
+        className="thin-scrollbar min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]"
+      >
+        {agent.error ? (
+          <p className="mx-2 mt-2 rounded border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+            {agent.error}
+          </p>
+        ) : null}
+        {loading && agent.blocks.length === 0 ? (
+          <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+            {t("transcript.agentLoading")}
+          </p>
+        ) : (
+          <AgentTranscript agent={agent} />
+        )}
+      </div>
+      {showJump ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          data-testid="agent-jump-to-latest"
+          aria-label={t("transcript.jumpLatest")}
+          className="absolute right-3 bottom-3 z-20 rounded-full bg-background shadow-md"
+          onClick={jumpToLatest}
+        >
+          <ChevronDown />
+        </Button>
+      ) : null}
     </div>
   )
 }

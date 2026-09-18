@@ -6,6 +6,8 @@ import {
   type RefObject,
 } from "react"
 
+import { QUOTE_SELECTION_EVENT } from "./selection"
+
 /** How close to the live edge still counts as "at the bottom".
  *  A generous slack plus a token-by-token follow traps the reader:
  *  they can never get far enough away before the next token yanks
@@ -140,6 +142,12 @@ export function useTranscriptFollow({
     openingRef.current = true
     seenUser.current = undefined
   }, [threadId, dispatchFollow])
+
+  useLayoutEffect(() => {
+    const onQuote = () => unpin()
+    document.addEventListener(QUOTE_SELECTION_EVENT, onQuote)
+    return () => document.removeEventListener(QUOTE_SELECTION_EVENT, onQuote)
+  }, [unpin])
 
   useLayoutEffect(() => {
     if (seenUser.current === lastUserId) return

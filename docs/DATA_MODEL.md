@@ -59,11 +59,14 @@ in this database: notes and skills are files, so a person can read and fix them
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
 | `goal_complete` | bool | true after `complete_goal`. The text stays so the banner can show what was achieved; auto-continue stops |
-| `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn fails. Auto-continue stops until the human resumes or sends a message |
-| `goal_block_reason` | text | optional one-line reason from `block_goal` |
+| `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn fails once in-turn retries of recoverable model errors are exhausted. Auto-continue stops until the human resumes or sends a message |
+| `goal_block_reason` | text | optional one-line reason from `block_goal`, or the public turn error when a pursuing turn dies before the manager can call it |
 | `goal_started_at` | time | when the current objective was set (not edited). Nil when there is no goal |
 | `goal_auto_turns` | int | consecutive runtime-started turns that kept pursuing an open goal. A human message resets it |
-| `goal_capped` | bool | true after `goal_auto_turns` hit `swarm.goal_max_auto_turns`. A later human message or resume clears it and resets the budget |
+| `goal_capped` | bool | true after `goal_auto_turns` hit `swarm.goal_max_auto_turns`, or after the human interrupts a pursuing turn. A later human message or resume clears it and resets the budget |
+| `goal_idle` | bool | true after an engine-started continuation finished with no counted tool activity. Auto-continue stops until a human message or resume |
+| `plan_mode` | bool | true while `/plan` is open. Write/edit/exec and similar are unmounted; `ask_user` and `propose_plan` stay |
+| `plan_markdown` | text | current plan body. The file `$ZWAI_HOME/plans/<thread_id>/PLAN.md` is the on-disk copy; this column is what GET returns |
 | `compact_summary` | text | briefing that replaces earlier replay in the next turn's prompt. Empty means no fold yet. Copied from `session_memory` when that is set and accepted. A transcript dump is not stored, and a previously stored dump is omitted from the next manager prompt |
 | `compact_through_seq` | int64 | last **message** seq included in that briefing. Replay skips `seq <=` this when a summary is set |
 | `session_memory` | text | rolling briefing of this conversation, updated from the event log at token/tool breakpoints (newest events that fit a rune cap). Compact copies it; the post-turn reviewer reads it. Empty until the first accepted refresh |
@@ -95,6 +98,7 @@ that sees a truncated tool result will re-run the tool.
 | `tool_calls` | JSON array, exactly as received |
 | `tool_call_id` | set on a tool result, matching the call |
 | `images` | JSON array of `{id,name,mime}` for pasted vision input. The pixels live under `$ZWAI_HOME/inputs/<thread_id>/<id>`, not in this row |
+| `event_seq` | timeline seq of the `steer` that minted this `[steer]` user row. Retract (`DELETE …/steers/:seq`) deletes by this column so two identical captions do not collide. Empty on every other role |
 
 Replay into a later turn is **reduced** to user and assistant messages: the full
 tool trace is here for troubleshooting, but feeding all of it back would blow up
@@ -135,7 +139,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `error` | why it failed, when it did |
 | `provider_id`, `model` | what actually ran, not what is configured now — settings change |
 | `reasoning_effort` | the thinking level this turn ran with, so a trace shows what produced the answer |
-| `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message`. A session time cap (`goal_session` `reason=time`) still ends the turn as `done` so the next session can start |
+| `goal_continue` | true when the runtime started this turn to keep pursuing an open `/goal`. The timeline records `goal_continued`, not `user_message` |
 | `started_at`, `ended_at`, `duration_ms` | `ended_at` is null while running |
 
 A turn stays `running` until it finishes, errors, or the user stops it. A
@@ -148,7 +152,8 @@ had `spawned` without `finished` under the same `agent_id`. An in-flight
 (`err` is `the previous process stopped`) so a killed process does not leave
 the call looking live. Follow-ups in
 `followups` stay queued until that leftover turn finishes cleanly. Unread
-`[steer]` rows stay on the leftover turn. A user **Stop** is
+`[steer]` rows stay on the leftover turn unless they were retracted
+(`steer_retracted` plus `DeleteMessageByEventSeq`). A user **Stop** is
 `cancelled` and is not resumed. `MarkStaleTurnsCancelled` still exists as a bulk
 wipe; startup does not call it.
 
@@ -174,9 +179,15 @@ stream still walks forward.
 | `images` | JSON array of `{id,name,mime}` on `user_message` and `steer` when the send carried pasted images. Never the pixels |
 | `created_at` | UTC; the timeline offsets are computed against the turn's `started_at` |
 
-`spawned` and `finished` are the worker roster. Auto-compact re-injects
-those ids into the next Generate after a fold. Do not treat `messages`
-as the source of truth for who is alive.
+`spawned`, `finished` and `cleanup` are the worker roster. Auto-compact
+re-injects those ids into the next Generate after a fold. Do not treat
+`messages` as the source of truth for who is alive. The live-edge log
+page (`GET /api/threads/:id/log`) sends those rows as `roster` when they
+are no longer in the viewport, so the Agents tab can be rebuilt without
+walking the whole tool log. The client must not fold those sidecar seqs
+into the manager transcript as "Started" rows — that is how a long
+`/goal` opened as a wall of agent names. Clicking a worker loads
+`GET /api/threads/:id/agents/:agent/log` (that `agent_id` only).
 
 **Streaming deltas are deliberately not stored.** `delta`, `reasoning_delta` and
 `tool_delta` carry the full text so far, so storing each would store the answer
@@ -240,6 +251,9 @@ does not see them until this turn finishes cleanly and the engine starts the
 oldest one as the next turn. Submitting an edit of a waiting row assigns a
 new `seq` at the back of that FIFO. **Steer** on a row (or ⌘Enter on a new draft)
 pulls that text into the current turn at the next model boundary instead.
+**Interrupt** on the unread-steer pin aborts the current manager tool so those
+steers drain on this turn; **Delete** retracts one unread `steer` (event stays,
+the `[steer]` message is dropped).
 Cancelled and failed turns leave the queue alone. A crash, a kill, or quitting
 the app also leaves the rows: they are not in-memory, so the next start still
 lists them and flushes them after the leftover turn finishes cleanly. Deleting the conversation
@@ -263,6 +277,9 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
 │   └── th_ab12…/              pasted images, named by `img_` id
 ├── workspaces/
 │   └── th_ab12…/              a standalone conversation's own directory
+├── plans/
+│   └── th_ab12…/
+│       └── PLAN.md            `/plan` draft; not in the workspace
 └── projects/
     └── pj_cd34…/
         ├── workspace/         only when the project has no workdir of its own
@@ -275,7 +292,8 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
 
 `MEMORY.md` and `SKILL.md` are plain files, written atomically through a
 temporary file and a rename, so a crash mid-write leaves the old version rather
-than half of the new one. `SKILL.md` follows the
+than half of the new one. `PLAN.md` is the `/plan` draft for that conversation:
+app data, never a file in the user's workspace. `SKILL.md` follows the
 [agentskills.io](https://agentskills.io) layout: YAML frontmatter with `name`
 and `description`, then the procedure as markdown. Agent writes to `MEMORY.md`
 are also capped per paragraph (`memory.entry_max`); a create that collides with
@@ -286,15 +304,16 @@ total `char_limit` only.
 **Memory lives here, never in your working directory.** A project pointed at a
 repository must not leave files in it, and a memory that was in the repository
 would arrive in a commit, a diff and a code review. `skill_view` reads this
-tree only. A `SKILL.md` already in the workspace is a file; the agent `read`s
-it rather than opening it as a recorded skill.
+tree only — the manager and sub-agents both have it; only the manager (and
+the post-turn reviewer) can write. A `SKILL.md` already in the workspace is a
+file; the agent `read`s it rather than opening it as a recorded skill.
 
 ## Lifecycle and retention
 
 - **Delete a conversation** (`DELETE /api/threads/:id`): its messages, turns,
   events, model calls, attachments and follow-ups are removed in one transaction, then the
   row, then its workspace directory — **only when zwai created that directory** —
-  and its `inputs/` folder. A conversation in a project shares the project's
+  and its `inputs/` folder and `$ZWAI_HOME/plans/<id>/`. A conversation in a project shares the project's
   directory, which may be the user's own repository, so the workspace is left
   alone; pasted images still go because they never lived there.
 - **Delete a project** (`DELETE /api/projects/:id`): its conversations are

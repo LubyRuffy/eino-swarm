@@ -58,6 +58,19 @@ func TestStartTurnFullwidthSlashGoal(t *testing.T) {
 	waitSettled(t, e, th.ID)
 }
 
+func TestStartTurnIdeographicCommaSlashGoal(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	if _, err := e.StartTurn(th.ID, "、goal keep going"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := e.Store().GetThread(th.ID)
+	if got.Goal != "keep going" {
+		t.Fatalf("goal=%q", got.Goal)
+	}
+	waitSettled(t, e, th.ID)
+}
+
 func TestStartTurnSlashGoalsStaysATask(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")

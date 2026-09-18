@@ -8,7 +8,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	tea "github.com/charmbracelet/bubbletea"
@@ -967,29 +966,18 @@ func TestInteractiveErrorShowsInThePane(t *testing.T) {
 	}
 }
 
-func TestSessionHitCapContinuesInsteadOfFailing(t *testing.T) {
+func TestSessionHitIterationCapExtendsInPlace(t *testing.T) {
 	parent, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	run, stop := context.WithCancel(parent)
-	stop()
-	if !sessionHitCap(parent, run, errors.New("context canceled"), time.Second) {
-		t.Fatal("a session timeout must be a yield, not a fatal error")
-	}
-	if sessionHitCap(parent, parent, errors.New("exceed max iteration"), 0) {
-		t.Fatal("eino's ReAct slice is not a session time yield")
-	}
 	if !sessionHitIterationCap(parent, errors.New("exceed max iteration")) {
 		t.Fatal("a ReAct slice must be recognized so --goal can extend in place")
 	}
 	if sessionHitIterationCap(parent, errors.New("the endpoint refused")) {
 		t.Fatal("a real error is not a ReAct slice")
 	}
-	if sessionHitCap(parent, parent, errors.New("the endpoint refused"), time.Second) {
-		t.Fatal("a real error must not look like a session yield")
-	}
 	dead, stopParent := context.WithCancel(context.Background())
 	stopParent()
-	if sessionHitCap(dead, dead, errors.New("context canceled"), time.Second) {
-		t.Fatal("an interrupt of the parent is not a session yield")
+	if sessionHitIterationCap(dead, errors.New("exceed max iteration")) {
+		t.Fatal("an interrupt of the parent is not a ReAct slice")
 	}
 }

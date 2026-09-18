@@ -8,6 +8,7 @@ import type {
   ProjectMemory,
   Settings,
   Skill,
+  SwarmEvent,
   Thread,
   ThreadStatus,
   ToolDescriptor,
@@ -208,6 +209,8 @@ export const api = {
       goal?: string
       goal_edit?: boolean
       goal_resume?: boolean
+      plan_mode?: boolean
+      plan_markdown?: string
       pinned?: boolean
     },
   ) =>
@@ -270,6 +273,15 @@ export const api = {
     request<{ steered: boolean }>(`/api/threads/${id}/followups/${fid}/steer`, {
       method: "POST",
     }),
+  /** Aborts the current manager tool/generate so unread steering lands now.
+   *  Workers stay up. Stop is still POST …/interrupt. */
+  preempt: (id: string) =>
+    request<{ preempted: boolean }>(`/api/threads/${id}/preempt`, {
+      method: "POST",
+    }),
+  /** Drops one unread steer by the timeline seq. The model never sees it. */
+  retractSteer: (id: string, seq: number) =>
+    request<void>(`/api/threads/${id}/steers/${seq}`, { method: "DELETE" }),
   interrupt: (id: string) =>
     request<{ interrupted: boolean }>(`/api/threads/${id}/interrupt`, {
       method: "POST",
@@ -278,6 +290,18 @@ export const api = {
     request<{ continued: boolean }>(`/api/threads/${id}/continue`, {
       method: "POST",
       body: JSON.stringify({ continue: proceed }),
+    }),
+  answerTurn: (
+    id: string,
+    body: { call_id?: string; text?: string; answers?: Record<string, { answers: string[] }> },
+  ) =>
+    request<{ answered: boolean }>(`/api/threads/${id}/answers`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  implementPlan: (id: string) =>
+    request<{ turn: Turn }>(`/api/threads/${id}/plan/implement`, {
+      method: "POST",
     }),
   /** Re-reads the last finished turn and curates the project's memory again.
    *  Accepted, not done: the result arrives on the event stream. */
@@ -293,6 +317,11 @@ export const api = {
     const query = params.toString()
     return request<ThreadLog>(`/api/threads/${id}/log${query ? `?${query}` : ""}`)
   },
+  /** One worker's stored rows. The conversation tail often dropped them. */
+  agentLog: (id: string, agentId: string) =>
+    request<{ events: SwarmEvent[] }>(
+      `/api/threads/${id}/agents/${encodeURIComponent(agentId)}/log`,
+    ),
 
   files: (id: string) =>
     request<{ workspace: string; files: FileEntry[] }>(

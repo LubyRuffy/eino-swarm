@@ -49,6 +49,13 @@ export default {
           accent: "hsl(var(--sidebar-accent))",
           border: "hsl(var(--sidebar-border))",
         },
+        chart: {
+          "1": "hsl(var(--chart-1))",
+          "2": "hsl(var(--chart-2))",
+          "3": "hsl(var(--chart-3))",
+          "4": "hsl(var(--chart-4))",
+          "5": "hsl(var(--chart-5))",
+        },
         // Agent status has to read at a glance in both themes, so the three
         // states are tokens rather than ad-hoc greens and ambers.
         running: "hsl(var(--running))",

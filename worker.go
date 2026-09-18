@@ -28,11 +28,6 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 	modelOpt ModelBuilder, seed string, extraTools []tool.BaseTool) {
 	role, id := h.Role, h.ID
 
-	max := r.MaxConcurrent
-	if max <= 0 {
-		max = 8
-	}
-	sem := r.sem(max)
 	timeout := r.AgentTimeout
 	if timeout <= 0 {
 		timeout = DefaultAgentTimeout
@@ -69,8 +64,8 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 				fh(role, id, res, e)
 			}
 		}()
-		sem <- struct{}{}
-		defer func() { <-sem }()
+		r.acquireSlot()
+		defer r.releaseSlot()
 		defer cancel()
 		defer watchCancel()
 

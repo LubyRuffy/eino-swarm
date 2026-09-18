@@ -141,7 +141,7 @@ function QueueEdit({
       value={draft}
       autoFocus
       rows={3}
-      className="min-w-0 flex-1 rounded-md border border-input px-2 py-1"
+      className="min-w-0 flex-1 px-2 py-1"
       onChange={(e) => setDraft(e.target.value)}
       onCompositionStart={() => {
         composingRef.current = true

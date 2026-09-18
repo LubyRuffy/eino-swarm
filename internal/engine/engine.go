@@ -28,6 +28,9 @@ var (
 	ErrBusy = errors.New("engine: the conversation is already running a turn")
 	// ErrIdle means there is nothing running to steer or interrupt.
 	ErrIdle = errors.New("engine: the conversation is not running")
+	// ErrNoPendingSteer means Interrupt was asked with nothing unread in
+	// the manager inbox — the pin is gone, so there is nothing to inject.
+	ErrNoPendingSteer = errors.New("engine: there is no unread steering to inject")
 	// ErrNotFound means no such conversation.
 	ErrNotFound = store.ErrNotFound
 	// ErrNotRewindable means the named event is not a user_message.
@@ -154,6 +157,11 @@ func (e *Engine) DeleteThread(id string) error {
 		}
 	}
 	e.removeInputImages(id)
+	if path := e.threadPlanFile(id); path != "" {
+		if err := os.RemoveAll(filepath.Dir(path)); err != nil {
+			e.log.Warn("could not remove plan file", "thread", id, "path", path, "err", err)
+		}
+	}
 	e.dropSubscribers(id)
 	return nil
 }
@@ -262,6 +270,9 @@ type Status struct {
 	// the turn is paused for the human to extend it. The turn is still
 	// running: a second request is steering, not a new turn.
 	AwaitingContinue bool `json:"awaiting_continue,omitempty"`
+	// AwaitingAnswer is true when ask_user is blocked waiting for the human.
+	// Same rule as AwaitingContinue: the turn is still running.
+	AwaitingAnswer bool `json:"awaiting_answer,omitempty"`
 }
 
 // Status reports a conversation's live state.

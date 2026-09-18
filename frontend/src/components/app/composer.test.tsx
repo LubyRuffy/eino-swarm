@@ -219,6 +219,15 @@ describe("Composer chrome", () => {
       screen.getByTestId("composer").querySelector(".content-gutter"),
     ).not.toBeNull()
   })
+
+  // Default Textarea is bg-background + rounded-md. That square fill
+  // overflows the card's rounded-3xl and paints over the top corners.
+  it("does not paint an opaque textarea over the rounded card border", () => {
+    renderComposer()
+    const input = screen.getByTestId("composer-input")
+    expect(input.className).toMatch(/\bbg-transparent\b/)
+    expect(input.className).not.toMatch(/\bbg-background\b/)
+  })
 })
 
 describe("Composer pasted images", () => {
@@ -504,7 +513,35 @@ describe("Composer slash commands", () => {
     })
     expect(screen.getByTestId("slash-menu")).toBeTruthy()
     expect(screen.getByTestId("slash-command-goal")).toBeTruthy()
+    expect(screen.getByTestId("slash-command-plan")).toBeTruthy()
     expect(screen.getByTestId("slash-command-compact")).toBeTruthy()
+  })
+
+  it("lists commands when the Slash key landed as a CJK punctuation comma", () => {
+    renderComposer()
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "、" } })
+    expect(input).toHaveValue("/")
+    expect(screen.getByTestId("slash-menu")).toBeTruthy()
+    expect(screen.getByTestId("slash-command-goal")).toBeTruthy()
+  })
+
+  it("lists commands when a slash is typed after existing text", () => {
+    renderComposer()
+    fireEvent.change(screen.getByTestId("composer-input"), {
+      target: { value: "hello /" },
+    })
+    expect(screen.getByTestId("slash-menu")).toBeTruthy()
+    expect(screen.getByTestId("slash-command-goal")).toBeTruthy()
+  })
+
+  it("keeps the preceding text when Escape dismisses an inline slash", () => {
+    renderComposer()
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "hello /go" } })
+    fireEvent.keyDown(input, { key: "Escape" })
+    expect(input).toHaveValue("hello ")
+    expect(screen.queryByTestId("slash-menu")).toBeNull()
   })
 
   it("puts the compact fill on the menu from the usage snapshot", () => {
@@ -575,12 +612,47 @@ describe("Composer slash commands", () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
+  it("uses the text before an inline slash as the goal", () => {
+    const onSend = vi.fn()
+    const onSetGoal = vi.fn()
+    renderComposer({ onSend, onSetGoal })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "hello /" } })
+    fireEvent.click(screen.getByTestId("slash-command-goal"))
+    expect(onSetGoal).toHaveBeenCalledWith("hello")
+    expect(onSend).not.toHaveBeenCalled()
+    expect(screen.queryByTestId("slash-menu")).toBeNull()
+  })
+
+  it("keeps the preceding text when compact is picked after it", () => {
+    const onSend = vi.fn()
+    const onCompact = vi.fn()
+    renderComposer({ onSend, onCompact })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "hello /" } })
+    fireEvent.click(screen.getByTestId("slash-command-compact"))
+    expect(onCompact).toHaveBeenCalledTimes(1)
+    expect(onSend).not.toHaveBeenCalled()
+    expect(input).toHaveValue("hello")
+  })
+
   it("submits /goal with an argument in one go", () => {
     const onSend = vi.fn()
     const onSetGoal = vi.fn()
     renderComposer({ onSend, onSetGoal })
     const input = screen.getByTestId("composer-input")
     fireEvent.change(input, { target: { value: "/goal keep going" } })
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSetGoal).toHaveBeenCalledWith("keep going")
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("submits a trailing /goal after existing text", () => {
+    const onSend = vi.fn()
+    const onSetGoal = vi.fn()
+    renderComposer({ onSend, onSetGoal })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "hello /goal keep going" } })
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
     expect(onSetGoal).toHaveBeenCalledWith("keep going")
     expect(onSend).not.toHaveBeenCalled()
@@ -628,10 +700,68 @@ describe("Composer slash commands", () => {
     expect(onClearGoal).toHaveBeenCalled()
   })
 
-  it("starts a standing objective from the banner", () => {
+  it("does not offer start while a pursuing goal is idle between turns", () => {
+    renderComposer({ goal: "keep going", onResumeGoal: vi.fn() })
+    expect(screen.getByTestId("goal-banner").textContent).toContain("Pursuing")
+    expect(screen.queryByRole("button", { name: "Start goal" })).toBeNull()
+  })
+
+  it("starts a held standing objective from the banner", () => {
     const onResumeGoal = vi.fn()
-    renderComposer({ goal: "keep going", onResumeGoal })
+    renderComposer({ goal: "keep going", goalIdle: true, onResumeGoal })
     fireEvent.click(screen.getByRole("button", { name: "Start goal" }))
     expect(onResumeGoal).toHaveBeenCalled()
+  })
+
+  it("starts a paused standing objective from the banner", () => {
+    const onResumeGoal = vi.fn()
+    renderComposer({ goal: "keep going", goalCapped: true, onResumeGoal })
+    fireEvent.click(screen.getByRole("button", { name: "Start goal" }))
+    expect(onResumeGoal).toHaveBeenCalled()
+  })
+
+  it("waits for the work after picking plan", () => {
+    const onSend = vi.fn()
+    const onSetPlan = vi.fn()
+    renderComposer({ onSend, onSetPlan })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "/" } })
+    fireEvent.click(screen.getByTestId("slash-command-plan"))
+    expect(input).toHaveAttribute("placeholder", "What should we plan?")
+    fireEvent.change(input, { target: { value: "inspect then change" } })
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSetPlan).toHaveBeenCalledWith("inspect then change")
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("submits /plan with an argument in one go", () => {
+    const onSend = vi.fn()
+    const onSetPlan = vi.fn()
+    renderComposer({ onSend, onSetPlan })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "/plan inspect then change" } })
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSetPlan).toHaveBeenCalledWith("inspect then change")
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
+  it("uses the ask placeholder while a question is waiting", () => {
+    renderComposer({ awaitingAnswer: true })
+    expect(screen.getByTestId("composer-input")).toHaveAttribute(
+      "placeholder",
+      "Type an answer, or pick a choice above",
+    )
+  })
+
+  it("shows a planning banner and can implement", () => {
+    const onImplementPlan = vi.fn()
+    renderComposer({
+      planMode: true,
+      planMarkdown: "# Plan\n\nDo the work.",
+      onImplementPlan,
+    })
+    expect(screen.getByTestId("plan-banner").textContent).toContain("Planning")
+    fireEvent.click(screen.getByTestId("plan-implement"))
+    expect(onImplementPlan).toHaveBeenCalled()
   })
 })

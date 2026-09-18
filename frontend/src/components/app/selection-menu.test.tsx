@@ -29,6 +29,44 @@ describe("SelectionMenu", () => {
     expect(screen.queryByRole("menuitem", { name: "Add to chat" })).toBeNull()
   })
 
+  // Streaming tokens replace text nodes and auto-follow scrolls. Both used
+  // to look like "the selection is gone" and flash Add to chat then hide it.
+  it("keeps Add to chat when a stream collapses the native selection", () => {
+    render(
+      <>
+        <div data-quote-source="">alpha beta</div>
+        <SelectionMenu onAdd={vi.fn()} />
+      </>,
+    )
+    selectAll(screen.getByText("alpha beta"))
+    fireEvent.mouseUp(document)
+    expect(screen.getByRole("menuitem", { name: "Add to chat" })).toBeInTheDocument()
+
+    window.getSelection()?.removeAllRanges()
+    fireEvent(document, new Event("selectionchange"))
+    fireEvent.scroll(document)
+    expect(screen.getByRole("menuitem", { name: "Add to chat" })).toBeInTheDocument()
+  })
+
+  it("dismisses Add to chat on a wheel or a click away", () => {
+    render(
+      <>
+        <div data-quote-source="">alpha beta</div>
+        <SelectionMenu onAdd={vi.fn()} />
+      </>,
+    )
+    selectAll(screen.getByText("alpha beta"))
+    fireEvent.mouseUp(document)
+    fireEvent.wheel(document, { deltaY: 40 })
+    expect(screen.queryByRole("menuitem", { name: "Add to chat" })).toBeNull()
+
+    selectAll(screen.getByText("alpha beta"))
+    fireEvent.mouseUp(document)
+    window.getSelection()?.removeAllRanges()
+    fireEvent.mouseUp(document)
+    expect(screen.queryByRole("menuitem", { name: "Add to chat" })).toBeNull()
+  })
+
   it("does not appear for a selection outside a quote source", () => {
     render(
       <>

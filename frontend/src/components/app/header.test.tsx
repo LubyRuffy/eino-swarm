@@ -24,8 +24,11 @@ function renderHeader(props: Partial<Parameters<typeof Header>[0]> = {}) {
         onToggleTheme={vi.fn()}
         onToggleLocale={vi.fn()}
         onToggleContentWidth={vi.fn()}
+        onOpenTerminal={vi.fn()}
         contentWidth="comfortable"
         dark={false}
+        terminalOpen={false}
+        terminalEnabled
         {...props}
       />
     </TooltipProvider>,
@@ -130,6 +133,17 @@ describe("Header status", () => {
     expect(screen.getByTestId("status-badge")).toHaveTextContent("Waiting")
   })
 
+  it("says Waiting while ask_user is blocked", () => {
+    renderHeader({
+      status: {
+        running: true,
+        awaiting_answer: true,
+        started_at: new Date(Date.now() - 5000).toISOString(),
+      },
+    })
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("Waiting")
+  })
+
   it("counts elapsed time from when the turn started, including hours", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-01-01T10:10:06.000Z"))
@@ -173,5 +187,19 @@ describe("Header conversation width", () => {
     expect(
       screen.getByRole("button", { name: "Switch to standard layout" }),
     ).toHaveAttribute("aria-pressed", "true")
+  })
+})
+
+describe("Header terminal", () => {
+  it("opens a terminal in the current working directory on every click", () => {
+    const onOpenTerminal = vi.fn()
+    renderHeader({ onOpenTerminal })
+    fireEvent.click(screen.getByRole("button", { name: "Open terminal" }))
+    expect(onOpenTerminal).toHaveBeenCalled()
+  })
+
+  it("does not offer a shell when there is nowhere to start it", () => {
+    renderHeader({ terminalEnabled: false })
+    expect(screen.getByRole("button", { name: "Open terminal" })).toBeDisabled()
   })
 })

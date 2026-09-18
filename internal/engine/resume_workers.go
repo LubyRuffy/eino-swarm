@@ -16,6 +16,10 @@ import (
 // are being restored. It must stay task-agnostic.
 const resumeWorkersCue = "Sub-agents that were still running have been restarted under their existing ids. Wait for those rather than spawning replacements. Finished workers remain available under the same ids."
 
+// cleanedUpWorkerErr is how a worker that Cleanup killed looks after a
+// restart. Distinct from a crash: that worker was not left running.
+const cleanedUpWorkerErr = "stopped at the end of the turn"
+
 func (rt *runtime) isAbandoned() bool {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
@@ -57,6 +61,66 @@ func (e *Engine) workersFromTurn(turn *store.Turn) ([]swarm.RestoredWorker, []sw
 	return orphanedWorkers(events)
 }
 
+// workersFromThread is the restart roster: later turns drop previous tool
+// results, and a new registry after a process death has none of the ids.
+// Conversation events still know who was live. A /goal continuation that
+// only looked at the new empty turn made wait_agents report unknown.
+func (e *Engine) workersFromThread(threadID string) ([]swarm.RestoredWorker, []swarm.FinishedWorker) {
+	if e == nil || e.store == nil || strings.TrimSpace(threadID) == "" {
+		return nil, nil
+	}
+	events, err := e.store.ListEvents(threadID, 0, 0)
+	if err != nil {
+		return nil, nil
+	}
+	return orphanedWorkers(events)
+}
+
+// attachLeftoverWorkers plants leftover ids on a fresh registry and, when
+// the manager is expected to wait on them, pins spawn pairs back into the
+// prompt. Later turns drop tool results, so without the pin the model (and
+// the scripted manager) would mint twins or wait_agents unknown.
+func (rt *runtime) attachLeftoverWorkers(reused, pin bool, live int, messages []adk.Message) []adk.Message {
+	if rt == nil || rt.engine == nil {
+		return messages
+	}
+	running, finished := rt.engine.workersFromThread(rt.threadID)
+	if !reused {
+		rt.setWorkerRestore(running, finished)
+	}
+	if pin {
+		messages = appendWorkerPairs(messages, running, finished)
+	}
+	switch {
+	case reused && live > 0:
+		if !hasUserContent(messages, parkedWorkersCue) {
+			messages = append(messages, schema.UserMessage(parkedWorkersCue))
+		}
+	case !reused && len(running) > 0:
+		if !hasUserContent(messages, resumeWorkersCue) {
+			messages = append(messages, schema.UserMessage(resumeWorkersCue))
+		}
+	}
+	return messages
+}
+
+func appendWorkerPairs(msgs []adk.Message, running []swarm.RestoredWorker, finished []swarm.FinishedWorker) []adk.Message {
+	pairs := pinWorkerPairs(running, finished)
+	if len(pairs) == 0 {
+		return msgs
+	}
+	tail := make([]*schema.Message, 0, len(msgs))
+	for _, m := range msgs {
+		if m != nil {
+			tail = append(tail, m)
+		}
+	}
+	for _, m := range dropPairsAlreadyIn(pairs, tail) {
+		msgs = append(msgs, m)
+	}
+	return msgs
+}
+
 type workerSlot struct {
 	role, instruction, result, err string
 	running, spawned, inflight     bool
@@ -78,6 +142,20 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 		return s
 	}
 	for _, ev := range events {
+		if ev.Kind == KindCleanup {
+			// Cleanup does not emit finished per worker. Without this a
+			// later turn would Restore killed agents as still running.
+			for _, id := range order {
+				s := byID[id]
+				if s == nil || !s.spawned || !s.running {
+					continue
+				}
+				s.running = false
+				s.err = cleanedUpWorkerErr
+				s.inflight = false
+			}
+			continue
+		}
 		if isManagerAgent(ev.AgentID) {
 			continue
 		}
@@ -194,7 +272,7 @@ func dropTrailingIncompleteToolCalls(msgs []adk.Message) []adk.Message {
 }
 
 func isSteerUser(m adk.Message) bool {
-	return m != nil && m.Role == schema.User && strings.HasPrefix(strings.TrimSpace(m.Content), "[steer]")
+	return m != nil && m.Role == schema.User && strings.HasPrefix(userMessageText(m), "[steer]")
 }
 
 func (e *Engine) replayHistorySkipping(threadID, skipTurnID string) ([]adk.Message, error) {
@@ -213,6 +291,9 @@ func (e *Engine) replayHistorySkipping(threadID, skipTurnID string) ([]adk.Messa
 	out := make([]adk.Message, 0, len(rows))
 	liveTurns := map[string]struct{}{}
 	seen := map[string]struct{}{}
+	events, _ := e.store.ListEvents(threadID, 0, 0)
+	retracted := retractedSteerSeqs(events)
+	captions := retractedSteerCaptionsFrom(events)
 	for _, r := range rows {
 		if skipTurnID != "" && r.TurnID == skipTurnID {
 			continue
@@ -221,6 +302,9 @@ func (e *Engine) replayHistorySkipping(threadID, skipTurnID string) ([]adk.Messa
 			continue
 		}
 		liveTurns[r.TurnID] = struct{}{}
+		if skipRetractedSteer(r, retracted, captions) {
+			continue
+		}
 		switch schema.RoleType(r.Role) {
 		case schema.User:
 			if strings.TrimSpace(r.Content) != "" || len(r.Images) > 0 {
@@ -254,8 +338,9 @@ func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
 	if text == "" && !hasUserMessage(combined) {
 		return nil, fmt.Errorf("engine: leftover turn has no request to continue")
 	}
+	running, finished := e.workersFromThread(turn.ThreadID)
+	combined = appendWorkerPairs(combined, running, finished)
 	msgs := resumeMessages(combined, text)
-	running, finished := e.workersFromTurn(turn)
 	if len(running)+len(finished) > 0 && !hasUserContent(msgs, resumeWorkersCue) {
 		msgs = append(msgs, schema.UserMessage(resumeWorkersCue))
 	}
@@ -280,8 +365,14 @@ func (e *Engine) thisTurnMessages(turn *store.Turn) ([]adk.Message, error) {
 	out := make([]adk.Message, 0, len(rows))
 	seen := map[string]struct{}{}
 	hasTools := false
+	events, evErr := e.store.ListTurnEvents(turn.ID)
+	retracted := retractedSteerSeqs(events)
+	captions := retractedSteerCaptionsFrom(events)
 	for _, r := range rows {
 		if r.TurnID != turn.ID {
+			continue
+		}
+		if skipRetractedSteer(r, retracted, captions) {
 			continue
 		}
 		if skipThrough > 0 && r.Seq <= skipThrough {
@@ -305,8 +396,7 @@ func (e *Engine) thisTurnMessages(turn *store.Turn) ([]adk.Message, error) {
 			seen[key] = struct{}{}
 		}
 	}
-	events, err := e.store.ListTurnEvents(turn.ID)
-	if err != nil {
+	if evErr != nil {
 		return out, nil
 	}
 	kind := swarm.NotifyAgentMessage.String()

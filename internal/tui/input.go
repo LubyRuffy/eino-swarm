@@ -3,10 +3,15 @@ package tui
 import (
 	"strings"
 
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/slash"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func (m swarmTUI) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.ask != nil {
+		return m.onAskKey(msg)
+	}
 	if m.interactive && !m.busy {
 		return m.onComposerKey(msg)
 	}
@@ -68,7 +73,7 @@ func (m swarmTUI) onComposerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		m.notice = ""
 		if msg.Type == tea.KeyRunes {
-			m.input += string(msg.Runes)
+			m.input = slash.NormalizePrefix(m.input + string(msg.Runes))
 			m.noteSlashQuery()
 		}
 		return m, nil
@@ -96,7 +101,7 @@ func (m swarmTUI) pickSlash(cmd slashCommand, run bool) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch cmd.name {
-	case "model", "reason", "goal":
+	case "model", "reason", "goal", "plan":
 		m.input = "/" + cmd.name + " "
 		m.noteSlashQuery()
 		return m, nil
@@ -164,6 +169,12 @@ func (m *swarmTUI) submit() tea.Cmd {
 		return nil
 	}
 	if name, arg, ok := parseTUICommand(text); ok {
+		if name == "plan" {
+			return m.submitPlan(arg)
+		}
+		if name == "implement" {
+			return m.submitImplement()
+		}
 		if name == "goal" {
 			if arg == "" {
 				m.input = "/goal "
@@ -182,6 +193,61 @@ func (m *swarmTUI) submit() tea.Cmd {
 	}
 	m.input = ""
 	m.notice = ""
+	m.busy = true
+	m.manager.finished = false
+	m.manager.finErr = nil
+	m.manager.blocks = append(m.manager.blocks, &block{
+		kind:    blockUser,
+		agentID: m.manager.id,
+		answer:  text,
+		open:    true,
+	})
+	ch := m.prompts
+	return func() tea.Msg {
+		ch <- text
+		return nil
+	}
+}
+
+func (m *swarmTUI) submitPlan(arg string) tea.Cmd {
+	if m.plan == nil {
+		m.notice = "planning is not wired"
+		m.input = ""
+		return nil
+	}
+	if strings.EqualFold(arg, "leave") {
+		m.plan.SetOn(false)
+		m.input = ""
+		m.notice = "left planning"
+		return nil
+	}
+	m.plan.SetOn(true)
+	if arg == "" {
+		m.input = ""
+		m.notice = "planning — describe the work"
+		return nil
+	}
+	m.input = ""
+	m.notice = "planning"
+	return m.sendTask(arg)
+}
+
+func (m *swarmTUI) submitImplement() tea.Cmd {
+	if m.plan == nil || strings.TrimSpace(m.plan.Markdown()) == "" {
+		m.input = ""
+		m.notice = "no plan yet"
+		return nil
+	}
+	m.plan.SetOn(false)
+	m.input = ""
+	m.notice = "implementing"
+	return m.sendTask(engine.PlanImplementText())
+}
+
+func (m *swarmTUI) sendTask(text string) tea.Cmd {
+	if text == "" || m.busy || m.prompts == nil {
+		return nil
+	}
 	m.busy = true
 	m.manager.finished = false
 	m.manager.finErr = nil

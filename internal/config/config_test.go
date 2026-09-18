@@ -47,6 +47,9 @@ func TestLoadCreatesDefaultsOnFirstRun(t *testing.T) {
 	if cfg.ThreadInputsDir("t1") != filepath.Join(cfg.InputsDir(), "t1") {
 		t.Fatalf("thread inputs dir=%q", cfg.ThreadInputsDir("t1"))
 	}
+	if cfg.ThreadPlanFile("t1") != filepath.Join(cfg.PlansDir(), "t1", "PLAN.md") {
+		t.Fatalf("plan file=%q", cfg.ThreadPlanFile("t1"))
+	}
 	if _, err := os.Stat(cfg.ProjectsDir()); err != nil {
 		t.Fatalf("first run must create the projects dir: %v", err)
 	}
@@ -341,6 +344,8 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 		"  max_concurrent: 0",
 		"  max_turns: -3",
 		"  progress_interval_seconds: 0",
+		// leftover wall-clock key: Load must ignore it, not fail
+		"  goal_session_max_seconds: -3",
 		"tools:",
 		"  web_search_max_results: 0",
 		"log:",
@@ -377,8 +382,7 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	if cfg.Swarm.GoalMaxAutoTurns != DefaultGoalMaxAutoTurns {
 		t.Fatalf("goal auto-continue cap not repaired: %+v", cfg.Swarm)
 	}
-	if cfg.Swarm.GoalSessionMaxSeconds != DefaultGoalSessionMaxSeconds ||
-		cfg.Swarm.GoalSessionMaxIterations != DefaultGoalSessionMaxIterations ||
+	if cfg.Swarm.GoalSessionMaxIterations != DefaultGoalSessionMaxIterations ||
 		cfg.Swarm.GoalAutoCompactPercent != DefaultGoalAutoCompactPercent {
 		t.Fatalf("goal session bounds not repaired: %+v", cfg.Swarm)
 	}
@@ -414,6 +418,31 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	}
 	if cfg.Models.Default != cfg.Models.Providers[0].ID {
 		t.Fatalf("default=%q", cfg.Models.Default)
+	}
+}
+
+func TestObsoleteGoalSessionMaxSecondsIsIgnored(t *testing.T) {
+	dir := t.TempDir()
+	raw := "swarm:\n  goal_session_max_seconds: 600\n  goal_max_auto_turns: 12\n"
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Swarm.GoalMaxAutoTurns != 12 {
+		t.Fatalf("known keys must still load: %+v", cfg.Swarm)
+	}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(filepath.Join(dir, FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(saved), "goal_session_max_seconds") {
+		t.Fatal("Save must drop the wall-clock key")
 	}
 }
 
@@ -627,9 +656,6 @@ func TestCompactBudgetsRepairFromZero(t *testing.T) {
 	}
 	if (SwarmConfig{}).GoalAutoTurns() != DefaultGoalMaxAutoTurns {
 		t.Fatal("a zero goal auto-continue cap must repair")
-	}
-	if (SwarmConfig{}).GoalSessionDuration() != time.Duration(DefaultGoalSessionMaxSeconds)*time.Second {
-		t.Fatal("a zero goal session duration must repair")
 	}
 	if (SwarmConfig{}).GoalSessionIterations() != DefaultGoalSessionMaxIterations {
 		t.Fatal("a zero goal session iteration cap must repair")

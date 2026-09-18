@@ -204,6 +204,70 @@ describe("threads", () => {
     expect(page.events[0]?.seq).toBe(12)
   })
 
+  it("asks for one worker's stored log", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      expect(url).toBe("/api/threads/th_1/agents/worker-1/log")
+      return respond({ events: [{ seq: 6, kind: "tool_call" }] })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const page = await api.agentLog("th_1", "worker-1")
+    expect(page.events[0]?.seq).toBe(6)
+  })
+
+  it("posts answers for a waiting question", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        expect(url).toBe("/api/threads/th_1/answers")
+        expect(init?.method).toBe("POST")
+        expect(JSON.parse(String(init?.body))).toEqual({
+          call_id: "tc_1",
+          answers: { approach: { answers: ["Prefer the safer path"] } },
+        })
+        return respond({ answered: true }, { status: 202 })
+      }),
+    )
+    const got = await api.answerTurn("th_1", {
+      call_id: "tc_1",
+      answers: { approach: { answers: ["Prefer the safer path"] } },
+    })
+    expect(got.answered).toBe(true)
+  })
+
+  it("starts executing an accepted plan", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        expect(url).toBe("/api/threads/th_1/plan/implement")
+        expect(init?.method).toBe("POST")
+        return respond({ turn: { id: "tn_1", status: "running" } }, { status: 202 })
+      }),
+    )
+    const got = await api.implementPlan("th_1")
+    expect(got.turn.id).toBe("tn_1")
+  })
+
+  it("preempts a running turn so unread steering lands now", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/threads/th_1/preempt")
+      expect(init?.method).toBe("POST")
+      return respond({ preempted: true }, { status: 202 })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const got = await api.preempt("th_1")
+    expect(got.preempted).toBe(true)
+  })
+
+  it("retracts one unread steer by seq", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/threads/th_1/steers/12")
+      expect(init?.method).toBe("DELETE")
+      return { ok: true, status: 204, statusText: "No Content", json: async () => ({}) }
+    })
+    vi.stubGlobal("fetch", fetch)
+    await expect(api.retractSteer("th_1", 12)).resolves.toBeUndefined()
+  })
+
   it("pins a dragged project order", async () => {
     const fetch = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("/api/projects/reorder")

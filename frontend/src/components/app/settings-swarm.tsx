@@ -180,20 +180,6 @@ export function SwarmTab({
         </Field>
         <Field
           query={query}
-          label={t("settings.swarm.goalSessionSeconds")}
-          hint={t("settings.swarm.goalSessionSecondsHint")}
-        >
-          <Input
-            type="number"
-            min={1}
-            value={settings.swarm.goal_session_max_seconds}
-            onChange={(e) =>
-              update({ goal_session_max_seconds: Number(e.target.value) })
-            }
-          />
-        </Field>
-        <Field
-          query={query}
           label={t("settings.swarm.goalSessionIters")}
           hint={t("settings.swarm.goalSessionItersHint")}
         >

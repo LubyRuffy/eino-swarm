@@ -148,6 +148,9 @@ func TestBlockGoalToolInfoStaysGeneric(t *testing.T) {
 			t.Fatalf("%q leaked into block_goal: %s", leak, info.Desc)
 		}
 	}
+	if !strings.Contains(info.Desc, "three consecutive") {
+		t.Fatal("block_goal must require a repeated blocker")
+	}
 }
 
 func TestCompleteGoalToolInfoStaysGeneric(t *testing.T) {

@@ -22,40 +22,40 @@ import {
 } from "@/lib/i18n"
 import type { SendImage } from "@/lib/paste-image"
 import { subscribeEvents } from "@/lib/stream"
+import { preferNamedTitles } from "@/lib/thread-title"
 import { logPageSize, type ThreadLog } from "@/lib/thread-log"
 import {
   emptyTranscript,
-  reduceEvent,
-  collapseLiveEvents,
-  parseReview,
   MANAGER_ID,
   placePendingEdit,
   rewindTranscript,
-  toolNameOf,
   type TranscriptState,
 } from "@/lib/transcript"
-import { MEMORY_WRITE_TOOLS, memoryWriteLanded } from "@/lib/tool-view"
-import { mergeModelContext, parseUsage } from "@/lib/usage"
+import { mergeModelContext } from "@/lib/usage"
 import type {
   Attachment,
   FileEntry,
   Followup,
   Meta,
   ModelInfo,
-  SwarmEvent,
   Thread,
   ThreadStatus,
   Turn,
   UsageSnapshot,
 } from "@/lib/types"
 import { useProjects } from "./projects"
+import { planAskActions } from "./app-plan"
+import { steerInjectActions } from "./app-steer"
+import { dropQueued, queueEvent, withRunningClock } from "./app-stream"
+import { managerHasVisibleBlocks } from "@/lib/welcome"
 import {
   applyTail,
   historyNewestSeq,
+  loadAgentHistory,
   loadOlderHistory,
   loadUntilTurnHistory,
+  loadUntilVisibleHistory,
   rememberRewind,
-  rememberStored,
   resetThreadHistory,
 } from "./thread-history"
 
@@ -88,6 +88,8 @@ interface AppState {
   contentWidth: ContentWidthPref
   /** Which sub-agent the right-hand panel is showing, if any. */
   selectedAgent?: string
+  /** Worker id whose log is being fetched after a click. */
+  agentLogLoading?: string
 
   boot: () => Promise<void>
   refreshThreads: () => Promise<void>
@@ -110,10 +112,20 @@ interface AppState {
   reorderThreads: (ids: string[]) => Promise<void>
   send: (text: string, images?: SendImage[], opts?: { steer?: boolean; files?: string[]; fromEventSeq?: number }) => Promise<void>
   setGoal: (text: string) => Promise<void>
+  setPlan: (text: string) => Promise<void>
+  savePlan: (text: string) => Promise<void>
+  leavePlan: () => Promise<void>
+  implementPlan: () => Promise<void>
+  answerAsk: (
+    callId: string,
+    answers: Record<string, { answers: string[] }>,
+  ) => Promise<void>
   editGoal: (text: string) => Promise<void>
   resumeGoal: () => Promise<void>
   compactThread: () => Promise<void>
   interrupt: () => Promise<void>
+  preempt: () => Promise<void>
+  retractSteer: (seq: number) => Promise<void>
   steerFollowup: (id: string) => Promise<void>
   deleteFollowup: (id: string) => Promise<void>
   requeueFollowup: (id: string, text: string) => Promise<void>
@@ -131,12 +143,6 @@ interface AppState {
 }
 
 let unsubscribe: (() => void) | undefined
-
-/** Streamed events that have arrived since the last animation frame. One
- *  rAF applies them together, so a burst of tokens is one React render. */
-let queued: SwarmEvent[] = []
-let queuedThread = ""
-let raf = 0
 
 /** Set while a conversation is being created. Someone who clicks "New
  *  conversation" starts typing immediately, and a send that read activeId
@@ -194,7 +200,8 @@ export const useApp = create<AppState>((set, get) => ({
 
   refreshThreads: async () => {
     try {
-      set({ threads: await api.threads() })
+      const incoming = await api.threads()
+      set({ threads: preferNamedTitles(get().threads, incoming) })
     } catch (e) {
       set({ error: message(e) })
     }
@@ -286,6 +293,7 @@ export const useApp = create<AppState>((set, get) => ({
       historyHasMore: false,
       historyLoading: false,
       selectedAgent: undefined,
+      agentLogLoading: undefined,
       status: { running: false },
       usage: undefined,
     })
@@ -309,10 +317,10 @@ export const useApp = create<AppState>((set, get) => ({
       }
       if (get().activeId !== id) return
       if (haveTail) {
-        const transcript = applyTail(id, log.events ?? [])
+        const transcript = applyTail(id, log.events ?? [], log.roster ?? [])
+        if (status.running) transcript.running = true
         since = historyNewestSeq()
         set((s) => ({
-          loaded: true,
           connected: true,
           transcript,
           historyHasMore: Boolean(log.has_more),
@@ -320,7 +328,17 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: s.threads.map((t) => (t.id === thread.id ? { ...t, ...thread } : t)),
+          threads: s.threads.map((t) =>
+            t.id === thread.id ? (preferNamedTitles([t], [thread])[0] ?? thread) : t,
+          ),
+        }))
+        if (Boolean(log.has_more) && !managerHasVisibleBlocks(transcript)) {
+          await loadUntilVisibleHistory(get)
+          if (get().activeId !== id) return
+        }
+        set((s) => ({
+          loaded: true,
+          transcript: s.status.running ? { ...s.transcript, running: true } : s.transcript,
         }))
       } else {
         set((s) => ({
@@ -328,7 +346,9 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: s.threads.map((t) => (t.id === thread.id ? { ...t, ...thread } : t)),
+          threads: s.threads.map((t) =>
+            t.id === thread.id ? (preferNamedTitles([t], [thread])[0] ?? thread) : t,
+          ),
         }))
       }
       // The Memory tab belongs to the project, not the conversation. Opening
@@ -475,6 +495,14 @@ export const useApp = create<AppState>((set, get) => ({
       if (!id) return
     }
     try {
+      // A live question is not a follow-up: Enter is Other for every
+      // unanswered prompt. Queueing here would wait for a turn that cannot
+      // finish until this answer lands.
+      if (get().status.awaiting_answer) {
+        await api.answerTurn(id, { text })
+        set({ error: undefined })
+        return
+      }
       // Pasted images have nowhere to wait: the follow-up row is text. They
       // inject now rather than being dropped on the floor.
       const queue =
@@ -551,6 +579,14 @@ export const useApp = create<AppState>((set, get) => ({
       set({ error: message(e) })
     }
   },
+
+  ...planAskActions(set, get, {
+    currentThread: () => currentThread(get),
+    fail: message,
+    withRunningClock,
+  }),
+
+  ...steerInjectActions(set, get, message),
 
   compactThread: async () => {
     const id = get().activeId
@@ -722,7 +758,10 @@ export const useApp = create<AppState>((set, get) => ({
     persistChrome(get())
   },
 
-  selectAgent: (selectedAgent) => set({ selectedAgent }),
+  selectAgent: (selectedAgent) => {
+    set({ selectedAgent, agentLogLoading: undefined })
+    if (selectedAgent) void loadAgentHistory(get, set, message, selectedAgent)
+  },
   setError: (error) => set({ error }),
 }))
 
@@ -733,224 +772,8 @@ async function currentThread(get: () => AppState): Promise<string | undefined> {
   return get().activeId
 }
 
-/** Fold one event into the transcript, ignoring anything for a conversation
- *  the user has already navigated away from. Streamed tokens are queued and
- *  applied on the next animation frame so a burst of deltas is one render,
- *  not one render per token. Terminal events flush immediately: a `done` that
- *  sat behind a rAF would leave the composer looking busy after the turn ended. */
-function queueEvent(
-  set: (partial: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void,
-  get: () => AppState,
-  threadId: string,
-  ev: SwarmEvent,
-) {
-  if (get().activeId !== threadId) return
-  if (queuedThread !== threadId) {
-    flushQueued(set, get)
-    queuedThread = threadId
-  }
-  queued.push(ev)
-  if (ev.kind === "done" || ev.kind === "error" || ev.kind === "user_message" ||
-      ev.kind === "max_iterations" || ev.kind === "max_iterations_continued" ||
-      ev.kind === "resumed" || ev.kind === "goal" || ev.kind === "goal_complete" ||
-      ev.kind === "goal_continued" || ev.kind === "goal_capped" || ev.kind === "goal_blocked" ||
-      ev.kind === "goal_edited" || ev.kind === "goal_resumed" || ev.kind === "goal_session" ||
-      ev.kind === "compacted" ||
-      ev.kind === "rewound") {
-    flushQueued(set, get)
-    return
-  }
-  if (!raf) {
-    raf = requestAnimationFrame(() => {
-      raf = 0
-      flushQueued(set, get)
-    })
-  }
-}
-
-function dropQueued() {
-  queued = []
-  queuedThread = ""
-  if (raf) {
-    cancelAnimationFrame(raf)
-    raf = 0
-  }
-}
-
-function flushQueued(
-  set: (partial: Partial<AppState> | ((s: AppState) => Partial<AppState>)) => void,
-  get: () => AppState,
-) {
-  if (raf) {
-    cancelAnimationFrame(raf)
-    raf = 0
-  }
-  if (queued.length === 0) return
-  const threadId = queuedThread
-  const events = collapseLiveEvents(queued)
-  queued = []
-  const state = get()
-  if (state.activeId !== threadId) return
-
-  let transcript = state.transcript
-  let status = state.status
-  let threads = state.threads
-  let usage = state.usage
-  let closed = false
-  for (const ev of events) {
-    rememberStored(threadId, ev)
-    if (ev.kind === "rewound") {
-      const from = Number.parseInt(String(ev.text ?? ""), 10)
-      if (Number.isFinite(from) && from > 0) rememberRewind(threadId, from)
-    }
-    transcript = reduceEvent(transcript, ev)
-    if (ev.kind === "user_message" || ev.kind === "resumed") {
-      status = withRunningClock(status, {
-        turn_id: ev.turn_id,
-        started_at: ev.created_at,
-        awaiting_continue: ev.kind === "resumed" ? false : status.awaiting_continue,
-      })
-    }
-    if (ev.kind === "max_iterations") {
-      status = { ...status, running: true, awaiting_continue: true, turn_id: ev.turn_id }
-    }
-    if (ev.kind === "max_iterations_continued") {
-      status = { ...status, running: true, awaiting_continue: false }
-    }
-    if (ev.kind === "done" || ev.kind === "error") {
-      status = { running: false }
-      closed = true
-    }
-    if (ev.kind === "title" && ev.text && !ev.err) {
-      const title = ev.text
-      threads = threads.map((t) => (t.id === threadId ? { ...t, title } : t))
-    }
-    if (ev.kind === "goal") {
-      threads = threads.map((t) =>
-        t.id === threadId
-          ? {
-              ...t,
-              goal: ev.text ?? "",
-              goal_complete: false,
-              goal_capped: false,
-              goal_blocked: false,
-              goal_block_reason: "",
-            }
-          : t,
-      )
-    }
-    if (ev.kind === "goal_edited") {
-      threads = threads.map((t) =>
-        t.id === threadId ? { ...t, goal: ev.text ?? "" } : t,
-      )
-    }
-    if (ev.kind === "goal_complete") {
-      threads = threads.map((t) =>
-        t.id === threadId
-          ? { ...t, goal_complete: true, goal_capped: false, goal_blocked: false, goal_block_reason: "" }
-          : t,
-      )
-    }
-    if (ev.kind === "goal_capped") {
-      threads = threads.map((t) =>
-        t.id === threadId ? { ...t, goal_capped: true } : t,
-      )
-    }
-    if (ev.kind === "goal_blocked") {
-      threads = threads.map((t) =>
-        t.id === threadId
-          ? {
-              ...t,
-              goal_blocked: true,
-              goal_capped: false,
-              goal_block_reason: parseGoalReason(ev.text),
-            }
-          : t,
-      )
-    }
-    if (ev.kind === "goal_resumed") {
-      threads = threads.map((t) =>
-        t.id === threadId
-          ? { ...t, goal_blocked: false, goal_capped: false, goal_block_reason: "" }
-          : t,
-      )
-      status = withRunningClock(status, {
-        turn_id: ev.turn_id,
-        started_at: ev.created_at,
-      })
-    }
-    if (ev.kind === "goal_continued") {
-      status = withRunningClock(status, {
-        turn_id: ev.turn_id,
-        started_at: ev.created_at,
-      })
-    }
-    if (ev.kind === "compacted" && !ev.err && (ev.seq ?? 0) > 0) {
-      threads = threads.map((t) =>
-        t.id === threadId ? { ...t, compacted: true } : t,
-      )
-    }
-    if (ev.kind === "usage") {
-      const next = parseUsage(ev.text)
-      if (next) usage = next
-    }
-    if (ev.kind === "memory_review") {
-      // The review wrote the files directly, so the panel has to re-read them
-      // rather than derive the new state from the event.
-      const outcome = parseReview(ev)
-      void useProjects.getState().loadMemory()
-      if (outcome?.changed) useProjects.getState().noteMemoryWrite()
-      useProjects.getState().finishReview(ev.turn_id, outcome)
-    }
-    if (ev.kind === "tool_result") {
-      const name = toolNameOf(transcript, ev.tool_call_id)
-      if (name && MEMORY_WRITE_TOOLS.has(name) && memoryWriteLanded(ev.text)) {
-        void useProjects.getState().loadMemory()
-        useProjects.getState().noteMemoryWrite()
-      }
-    }
-  }
-  set({ transcript, status, threads, usage })
-  if (closed) {
-    void get().refreshFiles()
-    void get().refreshThreads()
-    void get().refreshFollowups()
-    void api
-      .turns(threadId)
-      .then((turns) => set({ turns }))
-      .catch(() => undefined)
-  }
-}
-
-function parseGoalReason(text?: string): string {
-  const raw = text?.trim() ?? ""
-  if (!raw) return ""
-  try {
-    const v = JSON.parse(raw) as { reason?: unknown }
-    return typeof v.reason === "string" ? v.reason : ""
-  } catch {
-    return raw
-  }
-}
-
 function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
-}
-
-/** Claim the conversation is mid-turn. `done` wipes `started_at`; a later
- *  `goal_continued` that only sets `running` leaves the header clamped at 1s
- *  for the whole auto-continue, which is how a 10-hour pursuit reads as a
- *  one-second job. */
-function withRunningClock(
-  status: ThreadStatus,
-  extra: Partial<ThreadStatus> = {},
-): ThreadStatus {
-  return {
-    ...status,
-    ...extra,
-    running: true,
-    started_at: extra.started_at ?? status.started_at ?? new Date().toISOString(),
-  }
 }
 
 function persistChrome(state: {

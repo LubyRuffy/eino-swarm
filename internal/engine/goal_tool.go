@@ -29,9 +29,9 @@ func (t *completeGoalTool) Info(context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: ToolCompleteGoal,
 		Desc: "Record that the conversation's standing objective is actually satisfied. " +
-			"The runtime then stops starting new turns for it. Do not call this to pause, " +
-			"to ask the human a question, or because a single turn finished — only when " +
-			"the objective itself is done.",
+			"The runtime then stops starting new turns for it. Call this only when " +
+			"current evidence proves the objective itself is done — not to pause, " +
+			"to ask the human a question, or because a single turn finished.",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"summary": {Type: schema.String,
 				Desc: "optional one-line reason the objective is satisfied"},
@@ -86,12 +86,13 @@ func (t *blockGoalTool) Info(context.Context) (*schema.ToolInfo, error) {
 		Name: ToolBlockGoal,
 		Desc: "Record that the conversation's standing objective cannot make meaningful " +
 			"progress without the human or an external change. Call this only after the " +
-			"same obstacle has already been retried and further attempts would burn " +
-			"turns without moving the objective. The runtime then stops starting new " +
-			"turns until they resume. Do not call this to pause, to ask a question, " +
-			"because a single attempt failed, or because a turn finished. After a " +
-			"resume, treat the run as a fresh attempt: only block again if the same " +
-			"obstacle recurs.",
+			"same genuine blocker has already repeated for at least three consecutive " +
+			"turns, counting the original turn and automatic continuations. The runtime " +
+			"then stops starting new turns until they resume. Do not call this to pause, " +
+			"to ask a question, because a single attempt failed, because a turn finished, " +
+			"or because the work is hard, slow, or uncertain. After a resume, treat the " +
+			"run as a fresh blocked audit: only block again if the same obstacle recurs " +
+			"for another three consecutive turns.",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"reason": {Type: schema.String,
 				Desc: "optional one-line reason progress is stuck"},

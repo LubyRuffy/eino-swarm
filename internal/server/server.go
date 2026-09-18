@@ -15,6 +15,7 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/terminal"
 	"github.com/gin-gonic/gin"
 )
 
@@ -47,10 +48,11 @@ type Options struct {
 
 // Server owns the router.
 type Server struct {
-	opts   Options
-	engine *engine.Engine
-	log    *slog.Logger
-	router *gin.Engine
+	opts      Options
+	engine    *engine.Engine
+	log       *slog.Logger
+	router    *gin.Engine
+	terminals *terminal.Hub
 }
 
 // New builds the server and its routes.
@@ -66,7 +68,7 @@ func New(opts Options) (*Server, error) {
 	}
 	gin.SetMode(gin.ReleaseMode)
 
-	s := &Server{opts: opts, engine: opts.Engine, log: opts.Logger}
+	s := &Server{opts: opts, engine: opts.Engine, log: opts.Logger, terminals: terminal.NewHub(terminal.MaxSessions)}
 	r := gin.New()
 	r.Use(gin.Recovery(), s.accessLog())
 	// A local app has no cross-origin clients to serve, and a permissive CORS
@@ -75,6 +77,7 @@ func New(opts Options) (*Server, error) {
 	r.MaxMultipartMemory = maxUploadMemory
 
 	api := r.Group("/api")
+	api.Use(s.rejectForeignOrigin())
 	{
 		api.GET("/meta", s.getMeta)
 		api.POST("/open", s.openURL)
@@ -104,8 +107,11 @@ func New(opts Options) (*Server, error) {
 
 		api.GET("/threads/:id/events", s.streamEvents)
 		api.GET("/threads/:id/log", s.listLog)
+		api.GET("/threads/:id/agents/:agent/log", s.listAgentLog)
 		api.POST("/threads/:id/turns", s.startTurn)
 		api.POST("/threads/:id/steer", s.steer)
+		api.POST("/threads/:id/preempt", s.preempt)
+		api.DELETE("/threads/:id/steers/:seq", s.retractSteer)
 		api.GET("/threads/:id/followups", s.listFollowups)
 		api.POST("/threads/:id/followups", s.enqueueFollowup)
 		api.DELETE("/threads/:id/followups/:fid", s.deleteFollowup)
@@ -113,6 +119,8 @@ func New(opts Options) (*Server, error) {
 		api.POST("/threads/:id/followups/:fid/steer", s.steerFollowup)
 		api.POST("/threads/:id/interrupt", s.interrupt)
 		api.POST("/threads/:id/continue", s.continueTurn)
+		api.POST("/threads/:id/answers", s.answerTurn)
+		api.POST("/threads/:id/plan/implement", s.implementPlan)
 		api.POST("/threads/:id/review", s.reviewThread)
 		api.POST("/threads/:id/compact", s.compactThread)
 		api.GET("/threads/:id/turns", s.listTurns)
@@ -123,6 +131,8 @@ func New(opts Options) (*Server, error) {
 		api.DELETE("/threads/:id/download/*path", s.deleteFile)
 		api.GET("/threads/:id/input-images/:image_id", s.getInputImage)
 		api.POST("/threads/:id/reveal", s.reveal)
+		api.GET("/threads/:id/terminal", s.threadTerminal)
+		api.GET("/projects/:id/terminal", s.projectTerminal)
 
 		api.GET("/trace/:turn", s.getTrace)
 	}
@@ -146,7 +156,8 @@ func (s *Server) Handler() http.Handler { return s.router }
 // only ever be logged when they end.
 func (s *Server) accessLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if strings.HasSuffix(c.Request.URL.Path, "/events") {
+		path := c.Request.URL.Path
+		if strings.HasSuffix(path, "/events") || strings.HasSuffix(path, "/terminal") {
 			c.Next()
 			return
 		}
@@ -157,6 +168,23 @@ func (s *Server) accessLog() gin.HandlerFunc {
 			"path", c.Request.URL.Path,
 			"status", c.Writer.Status(),
 			"ms", time.Since(start).Milliseconds())
+	}
+}
+
+// rejectForeignOrigin blocks mutating requests whose Origin is not this
+// loopback page. Empty Origin stays allowed so curl and the suite still work;
+// a DNS-rebind page always sends Origin.
+func (s *Server) rejectForeignOrigin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		switch c.Request.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			origin := strings.TrimSpace(c.Request.Header.Get("Origin"))
+			if origin != "" && !originMatchesLoopbackHost(c.Request) {
+				c.AbortWithStatus(http.StatusForbidden)
+				return
+			}
+		}
+		c.Next()
 	}
 }
 
@@ -173,6 +201,10 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "busy"})
 	case errors.Is(err, engine.ErrIdle):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "idle"})
+	case errors.Is(err, engine.ErrNoPendingSteer):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "no_steer"})
+	case errors.Is(err, engine.ErrAskMismatch):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "ask_mismatch"})
 	case errors.Is(err, engine.ErrNothingToCompact):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "nothing_to_compact"})
 	case errors.Is(err, engine.ErrInvalidWorkdir):

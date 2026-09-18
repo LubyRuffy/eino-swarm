@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/LubyRuffy/eino-swarm"
 	tea "github.com/charmbracelet/bubbletea"
@@ -38,9 +37,10 @@ type Session struct {
 	ContinueTask   string
 	MaxContinues   int
 	MaxIterations  int
-	RunTimeout     time.Duration
 	Interactive    bool
 	Switcher       *Switcher
+	Ask            *AskHost
+	Plan           *PlanState
 }
 
 // Run starts the bubbletea TUI for one swarm run.
@@ -59,6 +59,8 @@ func RunSession(ctx context.Context, s Session) {
 	defer stop()
 
 	tm := newModel(s.Registry)
+	tm.askHost = s.Ask
+	tm.plan = s.Plan
 	notifCh := make(chan notificationMsg, 512)
 	var prompts chan string
 	if s.Interactive {
@@ -123,12 +125,22 @@ func runConfig(reg *swarm.Registry, task string) swarm.RunConfig {
 }
 
 func sessionConfig(s Session, task string, messages []adk.Message) swarm.RunConfig {
-	cfg := swarm.RunConfig{Task: task, ManagerTools: s.ManagerTools}
+	tools := s.ManagerTools
+	if s.Plan != nil {
+		tools = s.Plan.ManagerTools()
+	}
+	cfg := swarm.RunConfig{Task: task, ManagerTools: tools}
 	if s.MaxIterations > 0 {
 		cfg.MaxIterations = s.MaxIterations
 	}
 	if len(messages) > 0 {
 		cfg.Messages = messages
+	}
+	if s.Plan != nil {
+		if inst := strings.TrimSpace(s.Plan.Instruction()); inst != "" {
+			cfg.Instruction = inst
+			return cfg
+		}
 	}
 	if inst := strings.TrimSpace(s.Instruction); inst != "" {
 		cfg.Instruction = inst
@@ -139,18 +151,6 @@ func sessionConfig(s Session, task string, messages []adk.Message) swarm.RunConf
 		cfg.Instruction = extra + "\n\n" + cfg.Instruction
 	}
 	return cfg
-}
-
-// sessionHitCap reports a /goal run that ended because this session's time
-// cap landed. The parent context is still alive, so this is not a user
-// interrupt — RunSession should continue rather than treat it as a fatal
-// error. eino's ReAct slice is not a session cap; sessionHitIterationCap
-// extends the same run without spending MaxContinues.
-func sessionHitCap(parent, run context.Context, runErr error, timeout time.Duration) bool {
-	if parent.Err() != nil || runErr == nil {
-		return false
-	}
-	return timeout > 0 && run.Err() != nil
 }
 
 func sessionHitIterationCap(parent context.Context, runErr error) bool {

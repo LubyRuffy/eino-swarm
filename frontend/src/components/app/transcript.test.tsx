@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { AgentTranscript, Heartbeat, Transcript, WaitProgress, waitAgentIds } from "./transcript"
+import { AgentTranscript } from "./agent-transcript"
+import { Heartbeat, Transcript, WaitProgress, waitAgentIds } from "./transcript"
 import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript"
 import { emptyTranscript } from "@/lib/transcript"
+import { QUOTE_SELECTION_EVENT } from "@/lib/selection"
 import { useApp } from "@/store/app"
 
 function agent(partial: Partial<AgentState> & { id: string }): AgentState {
@@ -60,6 +62,22 @@ describe("WaitProgress", () => {
     expect(screen.getByText("web_fetch")).toBeInTheDocument()
     expect(screen.getByText("reviewer")).toBeInTheDocument()
     expect(screen.getByText(/Waiting for 1 sub-agent/)).toBeInTheDocument()
+  })
+
+  it("does not count a finished worker as someone still being waited on", () => {
+    const agents = {
+      "a-1": agent({ id: "a-1", role: "researcher", status: "done" }),
+    }
+    render(
+      <WaitProgress
+        block={waitBlock(`{"agent_ids":["a-1"]}`)}
+        agents={agents}
+        onSelect={() => {}}
+      />,
+    )
+    expect(screen.getByText(/Collecting sub-agent results/)).toBeInTheDocument()
+    expect(screen.queryByText(/Waiting for 1 sub-agent/)).not.toBeInTheDocument()
+    expect(screen.getByText("done")).toBeInTheDocument()
   })
 
   // A silent row is only reassuring if it says how long it has been silent, and
@@ -411,6 +429,33 @@ describe("Transcript follow", () => {
     await flushFollow()
     expect(el.scrollTop).toBe(400)
   })
+
+  // Add to chat is a snapshot on the highlight. Following the live edge
+  // after that would yank the scroller and hide the pill mid-stream.
+  it("stops following when the reader selects transcript text", async () => {
+    const { rerender } = render(
+      <Transcript
+        state={streamingAnswer("first")}
+        loaded
+        onSelectAgent={() => {}}
+      />,
+    )
+    const el = screen.getByTestId("transcript")
+    mockScrollBox(el, { scrollHeight: 400, clientHeight: 240 })
+    el.scrollTop = 160
+    act(() => {
+      document.dispatchEvent(new Event(QUOTE_SELECTION_EVENT))
+    })
+    rerender(
+      <Transcript
+        state={streamingAnswer("first line grew")}
+        loaded
+        onSelectAgent={() => {}}
+      />,
+    )
+    await flushFollow()
+    expect(el.scrollTop).toBe(160)
+  })
 })
 
 describe("Transcript turn nav", () => {
@@ -665,6 +710,24 @@ describe("streaming answers", () => {
     )
     expect(screen.getByRole("heading", { name: "Notes" })).toBeInTheDocument()
     expect(screen.queryByText("## Notes")).not.toBeInTheDocument()
+  })
+
+  it("shows a finished worker's result when its tool log is not on this page", () => {
+    render(
+      <AgentTranscript
+        agent={agent({
+          id: "worker-1",
+          role: "worker",
+          status: "done",
+          result: "the assigned work is done",
+          blocks: [],
+        })}
+      />,
+    )
+    expect(screen.getByText("the assigned work is done")).toBeInTheDocument()
+    expect(
+      screen.queryByText("This agent has not produced anything yet."),
+    ).not.toBeInTheDocument()
   })
 })
 

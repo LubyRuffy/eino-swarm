@@ -65,13 +65,23 @@ const fake = vi.hoisted(() => ({
   reorderFail: false,
   logEvents: [] as Array<Record<string, unknown>>,
   logHasMore: false,
+  logRoster: [] as Array<Record<string, unknown>>,
+  logHandler: undefined as
+    | ((opts?: { before?: number; limit?: number }) => {
+        events: Array<Record<string, unknown>>
+        has_more: boolean
+        roster?: Array<Record<string, unknown>>
+      })
+    | undefined,
   subscribeSince: [] as number[],
+  answers: [] as Array<Record<string, unknown>>,
 }))
 
 vi.mock("@/lib/api", () => {
   const thread = (id: string) => ({
     id,
     title: "New conversation",
+    title_auto: true,
     provider_id: "default",
     archived: false,
     created_at: new Date().toISOString(),
@@ -192,10 +202,15 @@ vi.mock("@/lib/api", () => {
         usage: fake.threadUsage,
       }),
       turns: async () => [],
-      threadLog: async () => ({
-        events: fake.logEvents,
-        has_more: fake.logHasMore,
-      }),
+      threadLog: async (_id: string, opts?: { before?: number; limit?: number }) => {
+        if (fake.logHandler) return fake.logHandler(opts)
+        return {
+          events: fake.logEvents,
+          has_more: fake.logHasMore,
+          roster: fake.logRoster,
+        }
+      },
+      agentLog: async () => ({ events: [] }),
       files: async () => ({ workspace: "/tmp/ws", files: [] }),
       followups: async () => fake.queuedItems,
       enqueueFollowup: async (id: string, text: string) => {
@@ -266,6 +281,10 @@ vi.mock("@/lib/api", () => {
         return []
       },
       interrupt: async () => ({ interrupted: true }),
+      answerTurn: async (id: string, body: Record<string, unknown>) => {
+        fake.answers.push({ id, ...body })
+        return { answered: true }
+      },
       continueTurn: async (id: string, proceed: boolean) => {
         fake.continues.push({ id, proceed })
         return { continued: proceed }
@@ -327,6 +346,7 @@ vi.mock("@/lib/stream", () => ({
 
 beforeEach(() => {
   fake.steers.length = 0
+  fake.answers.length = 0
   fake.started.length = 0
   fake.enqueued.length = 0
   fake.queuedItems.length = 0
@@ -354,6 +374,8 @@ beforeEach(() => {
   fake.threadUsage = undefined
   fake.logEvents = []
   fake.logHasMore = false
+  fake.logRoster = []
+  fake.logHandler = undefined
   fake.subscribeSince.length = 0
   useApp.setState({
     threads: [],
@@ -448,6 +470,24 @@ describe("send", () => {
     expect(useApp.getState().followups.map((f) => f.text)).toEqual([
       "after this finishes",
     ])
+  })
+
+  it("answers a live question instead of queuing a follow-up", async () => {
+    await useApp.getState().boot()
+    useApp.setState({ activeId: "th_old", status: { running: true }, followups: [] })
+    fake.onEvent?.({
+      kind: "tool_call",
+      seq: 3,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      tool_call_id: "c-ask",
+      text: 'ask_user({"questions":[{"id":"approach","prompt":"Which?","options":[{"id":"a","label":"A"},{"id":"b","label":"B"}]}]})',
+    })
+    expect(useApp.getState().status.awaiting_answer).toBe(true)
+    await useApp.getState().send("the existing approach")
+    expect(fake.enqueued).toEqual([])
+    expect(fake.answers).toEqual([{ id: "th_old", text: "the existing approach" }])
   })
 
   it("moves an edited follow-up to the back of the queue", async () => {
@@ -696,6 +736,14 @@ describe("a generated conversation title", () => {
     expect(useApp.getState().threads[0]?.title).toBe("Weekly status")
   })
 
+  it("keeps that name when a done refresh still has the placeholder", async () => {
+    await useApp.getState().boot()
+    fake.onEvent?.(titleEvent())
+    await useApp.getState().refreshThreads()
+    expect(useApp.getState().threads[0]?.title).toBe("Weekly status")
+    expect(useApp.getState().threads[0]?.title_auto).toBe(false)
+  })
+
   it("does not rename from a namer that failed", async () => {
     await useApp.getState().boot()
     fake.onEvent?.(titleEvent({ err: "endpoint down" }))
@@ -827,60 +875,5 @@ describe("sidebar order", () => {
     await useApp.getState().reorderThreads(["th_1"])
     expect(useApp.getState().error).toMatch(/could not pin the order/)
     expect(useApp.getState().threads.map((t) => t.id)).toEqual(["th_old"])
-  })
-})
-
-describe("openThread", () => {
-  it("paints the tail then resumes the stream after that seq", async () => {
-    fake.logEvents = [
-      {
-        thread_id: "th_old",
-        turn_id: "tn_a",
-        seq: 9,
-        kind: "user_message",
-        agent_id: "manager",
-        text: "latest",
-        created_at: new Date().toISOString(),
-      },
-    ]
-    fake.logHasMore = true
-    await useApp.getState().boot()
-    expect(useApp.getState().loaded).toBe(true)
-    expect(useApp.getState().historyHasMore).toBe(true)
-    expect(useApp.getState().transcript.agents.manager?.blocks[0]?.text).toBe("latest")
-    expect(fake.subscribeSince.at(-1)).toBe(9)
-  })
-
-  it("pages older events above the tail", async () => {
-    fake.logEvents = [
-      {
-        thread_id: "th_old",
-        turn_id: "tn_b",
-        seq: 9,
-        kind: "user_message",
-        agent_id: "manager",
-        text: "later",
-        created_at: new Date().toISOString(),
-      },
-    ]
-    fake.logHasMore = true
-    await useApp.getState().boot()
-    fake.logEvents = [
-      {
-        thread_id: "th_old",
-        turn_id: "tn_a",
-        seq: 2,
-        kind: "user_message",
-        agent_id: "manager",
-        text: "earlier",
-        created_at: new Date().toISOString(),
-      },
-    ]
-    fake.logHasMore = false
-    await useApp.getState().loadOlder(400)
-    expect(
-      useApp.getState().transcript.agents.manager?.blocks.map((b) => b.text),
-    ).toEqual(["earlier", "later"])
-    expect(useApp.getState().historyHasMore).toBe(false)
   })
 })

@@ -45,6 +45,7 @@ vi.mock("@/lib/api", () => {
       }),
       turns: async () => [],
       threadLog: async () => ({ events: [], has_more: false }),
+      agentLog: async () => ({ events: [] }),
       files: async () => ({ workspace: "/tmp/ws", files: [] }),
       followups: async () => [],
       patchThread: async (
@@ -353,5 +354,28 @@ describe("goal and compact", () => {
     const at = "2026-01-01T02:00:00.000Z"
     fake.onEvent?.({ kind: "goal_resumed", seq: 12, thread_id: "th_old", turn_id: "tn_3", agent_id: "manager", created_at: at })
     expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "tn_3", started_at: at })
+  })
+
+  it("holds auto-continue after a no-progress continuation", async () => {
+    await useApp.getState().boot()
+    fake.onEvent?.({
+      kind: "goal",
+      seq: 50,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      text: "keep going",
+      created_at: new Date().toISOString(),
+    })
+    fake.onEvent?.({
+      kind: "goal_idle",
+      seq: 51,
+      thread_id: "th_old",
+      turn_id: "tn_2",
+      agent_id: "manager",
+      text: "Stopped auto-continuing: the last continuation made no progress.",
+      created_at: new Date().toISOString(),
+    })
+    expect(useApp.getState().threads[0]?.goal_idle).toBe(true)
   })
 })

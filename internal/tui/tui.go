@@ -125,6 +125,9 @@ type swarmTUI struct {
 	ime         *imeAnchor
 	slashIndex  int
 	slashQuery  string
+	askHost     *AskHost
+	ask         *askOverlay
+	plan        *PlanState
 }
 
 // notificationMsg wraps a swarm.Notification as a bubbletea message.
@@ -302,6 +305,11 @@ func (m swarmTUI) onTick() (tea.Model, tea.Cmd) {
 		default:
 		}
 		break
+	}
+	if m.ask == nil {
+		if p := m.askHost.take(); p != nil {
+			m.ask = newAskOverlay(p)
+		}
 	}
 	return m, tickCmd()
 }

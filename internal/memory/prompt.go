@@ -42,18 +42,7 @@ func PromptSections(systemPrompt string, snap Snapshot, skills []SkillInfo, inde
 	}
 
 	b.WriteString("## Memory\n\n")
-	fmt.Fprintf(&b, "Notes carried over from earlier conversations in this project [%d%%, %d/%d characters]:\n\n",
-		snap.Percent(), snap.Chars, snap.Limit)
-	if len(snap.Entries) == 0 {
-		b.WriteString("(nothing yet)\n\n")
-	} else {
-		for _, e := range snap.Entries {
-			b.WriteString("- ")
-			b.WriteString(strings.ReplaceAll(e, "\n", "\n  "))
-			b.WriteString("\n")
-		}
-		b.WriteString("\n")
-	}
+	b.WriteString(formatNotesList(snap))
 	b.WriteString(`This block is a snapshot from the start of this turn. Use the ` + ToolMemory + ` tool to
 keep it true: store a durable fact, a stated preference, a convention or a
 correction the human made, in one or two sentences, and remove one that has
@@ -70,36 +59,99 @@ the only write that lands is one that reduces the character count.
 	}
 
 	b.WriteString("## Skills\n\n")
-	if len(skills) == 0 {
-		b.WriteString("No skills recorded yet. " + ToolSkillView +
-			" opens only names from this index, so it has nothing to open until one is recorded.\n")
-	} else {
-		shown := skills
-		if indexMax > 0 && len(shown) > indexMax {
-			shown = shown[:indexMax]
-		}
-		b.WriteString("Procedures recorded in this project. Only the summaries are here:\n\n")
-		for _, s := range shown {
-			fmt.Fprintf(&b, "- %s — %s\n", s.Name, s.Description)
-		}
-		if len(skills) > len(shown) {
-			fmt.Fprintf(&b, "- … and %d more\n", len(skills)-len(shown))
-		}
-		fmt.Fprintf(&b, "\nCall %s(name) to read one in full before doing work it may already cover.\n", ToolSkillView)
-	}
+	b.WriteString(formatSkillsIndex(skills, indexMax))
 	// skill_view looks in this project's memory, not the workspace. The same
 	// SKILL.md layout often lives in the repository for other tools; treating
 	// a directory listing as an index entry is how a missing-name call happens.
-	fmt.Fprintf(&b, `A procedure found as a file in the workspace is a file — read it; %s does not open workspace files.
-
+	b.WriteString(skillViewWorkspaceRule())
+	fmt.Fprintf(&b, `
 Use %s to record a procedure worth following again: a workflow with several
 steps that worked, a recovery from a failure, a correction you were given.
 One subject is one skill. A create that collides with an existing skill is
 refused and names that skill — patch that one rather than adding a second name.
 
-`, ToolSkillView, ToolSkillManage)
+Sub-agents receive the same notes snapshot and skills index, and they have %s.
+They cannot call %s or %s. Their final message is the task result; they may
+append a short durable convention or procedure. Most tasks have nothing to add.
+If they do, store it yourself when it would change later work. Do not paste
+that note into the human-facing answer unless they asked.
+
+`, ToolSkillManage, ToolSkillView, ToolMemory, ToolSkillManage)
 
 	return b.String()
+}
+
+// WorkerPromptSections is what a sub-agent reads about this project's memory.
+// Notes and the skills index are the same snapshot the manager saw; write
+// tools are not named, because workers do not have them. Empty when memory
+// is off — the caller must not inject a section that advertises a missing tool.
+func WorkerPromptSections(snap Snapshot, skills []SkillInfo, indexMax int) string {
+	var b strings.Builder
+	b.WriteString("## Memory\n\n")
+	b.WriteString(formatNotesList(snap))
+	b.WriteString(`This block is a snapshot from the start of this turn. Read it. You cannot
+add, replace or remove notes, and you cannot record a skill.
+
+`)
+	b.WriteString("## Skills\n\n")
+	b.WriteString(formatSkillsIndex(skills, indexMax))
+	b.WriteString(skillViewWorkspaceRule())
+	b.WriteString(`
+## Reporting back
+
+Your final message is for the manager, not the human. Lead with the result of
+this task. Do not paste a large workspace file into it.
+
+If you learned a durable convention or a procedure that would change later
+work in this project — not findings specific to this task, not a remaining
+count or other status that will change again — append a short note the
+manager can store. Most tasks have nothing to add; then add nothing. Do not
+write a recap of the task as experience.
+`)
+	return b.String()
+}
+
+func formatNotesList(snap Snapshot) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Notes carried over from earlier conversations in this project [%d%%, %d/%d characters]:\n\n",
+		snap.Percent(), snap.Chars, snap.Limit)
+	if len(snap.Entries) == 0 {
+		b.WriteString("(nothing yet)\n\n")
+		return b.String()
+	}
+	for _, e := range snap.Entries {
+		b.WriteString("- ")
+		b.WriteString(strings.ReplaceAll(e, "\n", "\n  "))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	return b.String()
+}
+
+func formatSkillsIndex(skills []SkillInfo, indexMax int) string {
+	var b strings.Builder
+	if len(skills) == 0 {
+		b.WriteString("No skills recorded yet. " + ToolSkillView +
+			" opens only names from this index, so it has nothing to open until one is recorded.\n")
+		return b.String()
+	}
+	shown := skills
+	if indexMax > 0 && len(shown) > indexMax {
+		shown = shown[:indexMax]
+	}
+	b.WriteString("Procedures recorded in this project. Only the summaries are here:\n\n")
+	for _, s := range shown {
+		fmt.Fprintf(&b, "- %s — %s\n", s.Name, s.Description)
+	}
+	if len(skills) > len(shown) {
+		fmt.Fprintf(&b, "- … and %d more\n", len(skills)-len(shown))
+	}
+	fmt.Fprintf(&b, "\nCall %s(name) to read one in full before doing work it may already cover.\n", ToolSkillView)
+	return b.String()
+}
+
+func skillViewWorkspaceRule() string {
+	return fmt.Sprintf("A procedure found as a file in the workspace is a file — read it; %s does not open workspace files.\n", ToolSkillView)
 }
 
 // ReviewPrompt is the instruction for the review that runs after a turn.

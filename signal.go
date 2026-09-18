@@ -4,6 +4,8 @@
 package swarm
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"sync"
 
@@ -149,15 +151,38 @@ func asUI(v any) UI {
 
 // ---------- notification sink plumbing ----------
 
+// SetHostNotify is the sink workers use when no Run/RunWith is on the stack.
+// Install it before the first RunWith so a /goal session yield cannot mute
+// in-flight sub-agents: compact and the next manager turn are often seconds
+// to minutes later.
+func (r *Registry) SetHostNotify(fn Callback) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.hostNotify = fn
+	r.notify = fn
+}
+
 // setSink installs the notification sink for one run and returns the previous
 // one so it can be restored. Nested runs on one registry are not supported;
-// the engine gives every conversation its own registry.
+// the engine gives every conversation its own registry. A nil fn falls back
+// to the host sink rather than silencing parked workers.
 func (r *Registry) setSink(fn Callback) Callback {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	prev := r.notify
+	if fn == nil {
+		fn = r.hostNotify
+	}
 	r.notify = fn
 	return prev
+}
+
+func (r *Registry) emitSpawned(role, agentID, instruction string) {
+	r.emit(Notification{Kind: NotifySpawned, AgentID: agentID, Role: role, Text: instruction})
+}
+
+func (r *Registry) emitFinished(role, agentID, result string, err error) {
+	r.emit(Notification{Kind: NotifyFinished, AgentID: agentID, Role: role, Text: result, Err: err})
 }
 
 func (r *Registry) sink() Callback {
@@ -320,10 +345,13 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 	s.beginTurn()
 
 	var chunks []schema.ToolCall
+	canceled := false
 	for {
 		chunk, err := st.Recv()
 		if err != nil {
-			break // io.EOF or canceled; accumulation complete
+			canceled = errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+				strings.Contains(err.Error(), "context canceled")
+			break
 		}
 		if chunk == nil {
 			continue
@@ -346,6 +374,11 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 
 	calls := mergeStreamedToolCalls(chunks)
 	answer := s.answerText()
+	if canceled {
+		// Interrupt during generate is not a finished answer. Emitting one
+		// here leaves a complete manager bubble on a turn that will re-enter.
+		return answer, nil
+	}
 	for _, tc := range calls {
 		s.touch(tc.Function.Name + "(" + truncStr(tc.Function.Arguments, 80) + ")")
 		s.emit(Notification{Kind: NotifyToolCall, ToolCallID: tc.ID,

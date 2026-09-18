@@ -7,10 +7,11 @@ import {
   Copy,
   Loader2,
   Pencil,
-  Sparkles,
   Users,
 } from "lucide-react"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { AskCardView } from "@/components/app/ask-card"
+import { CompactNotice } from "@/components/app/compact-notice"
 import { MemoMarkdown } from "@/components/app/markdown"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { ToolRow } from "@/components/app/tool-row"
 import { MarqueeText } from "@/components/app/marquee"
 import { GoalSessionTurn, groupByTurn } from "@/components/app/transcript-session"
+import { QueuedSteers } from "@/components/app/queued-steers"
 import { TurnNav } from "@/components/app/turn-nav"
 import { InputThumbs } from "@/components/app/input-thumbs"
 import {
@@ -34,7 +36,6 @@ import {
 } from "@/lib/find-dom"
 import { useTranscriptFollow } from "@/lib/follow-scroll"
 import { useHistoryWindow } from "@/lib/use-history-window"
-import { localizeNotice } from "@/lib/i18n"
 import { TURN_NAV_MIN, resolveTurnNavItems, scrollTurnIntoView } from "@/lib/turn-nav"
 import { cn, formatDuration, formatMessageTime } from "@/lib/utils"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
@@ -115,6 +116,8 @@ export function Transcript({
   const historyLoading = useApp((s) => s.historyLoading)
   const loadOlder = useApp((s) => s.loadOlder)
   const loadUntilTurn = useApp((s) => s.loadUntilTurn)
+  const preempt = useApp((s) => s.preempt)
+  const retractSteer = useApp((s) => s.retractSteer)
   const sentinelRef = useHistoryWindow({
     scrollerRef,
     loaded,
@@ -210,6 +213,7 @@ export function Transcript({
               turn={turnById.get(turnId)}
               renderBlock={(b) => (
                 <BlockView
+                  key={b.id}
                   block={b}
                   threadId={threadId}
                   reveal={revealIds.has(b.id)}
@@ -223,28 +227,12 @@ export function Transcript({
             />
           ))}
           <Heartbeat pulse={state.pulse} running={state.running} workers={liveWorkers(state)} />
-          {queued.length > 0 ? (
-            <div
-              data-testid="queued-steers"
-              role="status"
-              aria-label={t("transcript.queuedSteering")}
-              className="mt-1 flex flex-col gap-1"
-            >
-              {queued.map((b) => (
-                <BlockView
-                  key={b.id}
-                  block={b}
-                  threadId={threadId}
-                  reveal={revealIds.has(b.id)}
-                  onSelectAgent={onSelectAgent}
-                  onResendUser={onResendUser}
-                  editing={editingSeq === b.seq}
-                  onBeginEdit={beginEdit}
-                  onCancelEdit={cancelEdit}
-                />
-              ))}
-            </div>
-          ) : null}
+          <QueuedSteers
+            blocks={queued}
+            threadId={threadId}
+            onPreempt={() => void preempt()}
+            onRetract={(seq) => void retractSteer(seq)}
+          />
           <div ref={endRef} className="h-4" />
         </div>
       </div>
@@ -338,6 +326,9 @@ const BlockView = memo(function BlockView({
       }
       return <ToolRow block={block} reveal={reveal} />
 
+    case "question":
+      return block.question ? <AskCardView card={block.question} /> : null
+
     case "spawn":
       return <SpawnRow block={block} onSelect={onSelectAgent} />
 
@@ -353,16 +344,7 @@ const BlockView = memo(function BlockView({
       return <IterationLimitCard block={block} />
 
     case "notice":
-      if (block.quiet || !block.text) return null
-      return (
-        <div
-          data-testid="memory-notice"
-          className="my-2 flex items-start gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground"
-        >
-          <Sparkles className="mt-0.5 size-3.5 shrink-0" />
-          <p className="stream-text whitespace-pre-wrap">{localizeNotice(block.text, t.locale)}</p>
-        </div>
-      )
+      return <CompactNotice block={block} />
 
     case "title":
       // Sidebar metadata. The Trace tab's Full log lists it; the chat does not.
@@ -424,7 +406,7 @@ function IterationLimitCard({ block }: { block: Block }) {
   )
 }
 
-function Reasoning({ block, reveal }: { block: Block; reveal?: boolean }) {
+export function Reasoning({ block, reveal }: { block: Block; reveal?: boolean }) {
   const t = useT()
   const [choice, setChoice] = useState<boolean | null>(null)
   // Live thoughts start open so you can watch them. The click has to win
@@ -465,6 +447,7 @@ function Reasoning({ block, reveal }: { block: Block; reveal?: boolean }) {
  *  thought that the user opens starts at the top, because they came back to
  *  read it, not to watch it grow. */
 function ThoughtBody({ text, streaming }: { text: string; streaming?: boolean }) {
+  const t = useT()
   const scrollerRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(Boolean(streaming))
   const followRaf = useRef(0)
@@ -515,7 +498,7 @@ function ThoughtBody({ text, streaming }: { text: string; streaming?: boolean })
         data-testid="thought-scroll"
         data-overflow-top={fadeTop ? "true" : undefined}
         role="region"
-        aria-label={streaming ? "Thinking" : "Thought"}
+        aria-label={streaming ? t("transcript.thinking") : t("transcript.thought")}
         className="thought-scroll thin-scrollbar border-l-2 border-border pl-3"
       >
         <p className="stream-text text-[13px] leading-6 text-muted-foreground">{text}</p>
@@ -558,19 +541,22 @@ export function WaitProgress({
   const livePulse = pulse ?? storedPulse
   const ids = waitAgentIds(block.tool?.args ?? "")
   const watched = ids.map((id) => liveAgents[id]).filter(Boolean) as AgentState[]
-  const running = watched.filter((a) => a.status === "running").length
+  const waiting = watched.filter((a) => a.status === "running").length
   const ages = new Map(livePulse?.agents.map((a) => [a.agentId, a.elapsedMs]))
-  const waiting = running > 0 ? running : watched.length
   return (
     <div className="my-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
       <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
         <Loader2 className="size-3.5 shrink-0 animate-spin" />
         <MarqueeText
           active
-          text={t("transcript.waitingFor", {
-            n: waiting,
-            s: waiting === 1 ? "" : "s",
-          })}
+          text={
+            waiting > 0
+              ? t("transcript.waitingFor", {
+                  n: waiting,
+                  s: waiting === 1 ? "" : "s",
+                })
+              : t("transcript.collectingWait")
+          }
         />
       </div>
       <div className="mt-1.5 flex flex-col gap-0.5">
@@ -584,7 +570,17 @@ export function WaitProgress({
             <StatusDot status={a.status} />
             <span className="shrink-0 font-medium">{a.role}</span>
             <MarqueeText
-              text={a.status === "running" ? a.activity || t("transcript.workingEllipsis") : a.status}
+              text={
+                a.status === "running"
+                  ? a.activity || t("transcript.workingEllipsis")
+                  : a.status === "done"
+                    ? t("status.done")
+                    : a.status === "failed"
+                      ? t("status.failed")
+                      : a.status === "cancelled"
+                        ? t("status.cancelled")
+                        : t("status.running")
+              }
               active={a.status === "running"}
               className="text-muted-foreground"
             />
@@ -813,7 +809,7 @@ function UserMessage({
               aria-label={t("transcript.editMessage")}
               value={draft}
               rows={4}
-              className="min-h-[4.5rem] px-1 py-1 text-[0.9375rem] leading-6 text-secondary-foreground"
+              className="min-h-[4.5rem] border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-6 text-secondary-foreground shadow-none focus-visible:ring-0"
               onChange={(e) => setDraft(e.target.value)}
               onCompositionStart={() => {
                 cancelIme.current?.()
@@ -901,37 +897,6 @@ function UserMessage({
           </>
         )}
       </div>
-    </div>
-  )
-}
-
-/** One agent's own transcript, for the right-hand panel. */
-export function AgentTranscript({ agent }: { agent: AgentState }) {
-  const t = useT()
-  const blocks = useMemo(
-    () => agent.blocks.filter((b) => b.kind !== "user"),
-    [agent.blocks],
-  )
-  if (blocks.length === 0) {
-    return (
-      <p className="px-3 py-6 text-center text-xs text-muted-foreground">
-        {t("transcript.agentEmpty")}
-      </p>
-    )
-  }
-  return (
-    <div className="space-y-1 px-1 py-2">
-      {blocks.map((b) =>
-        b.kind === "answer" ? (
-          <div key={b.id} className="md px-2 text-[13px]">
-            <MemoMarkdown text={b.text} streaming={b.streaming} />
-          </div>
-        ) : b.kind === "reasoning" ? (
-          <Reasoning key={b.id} block={b} />
-        ) : b.kind === "tool" ? (
-          <ToolRow key={b.id} block={b} />
-        ) : null,
-      )}
     </div>
   )
 }

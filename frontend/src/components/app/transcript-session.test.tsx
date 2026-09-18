@@ -61,6 +61,18 @@ describe("sessionPreview", () => {
       "foo bar baz",
     )
   })
+
+  it("prefers a failed turn's error over the last answer", () => {
+    expect(
+      sessionPreview(
+        [
+          block({ kind: "answer", text: "progress so far" }),
+          block({ kind: "error", text: "the endpoint refused the connection" }),
+        ],
+        { id: "tn_s", userText: "", status: "error", agentIds: [], error: "ignored" },
+      ),
+    ).toBe("the endpoint refused the connection")
+  })
 })
 
 describe("splitSessionBlocks", () => {
@@ -144,6 +156,37 @@ describe("goal session fold", () => {
       />,
     )
     expect(screen.getByTestId("goal-session")).toHaveAttribute("aria-expanded", "false")
+  })
+
+  it("keeps a failed session open so the error is not behind Worked for", () => {
+    const state = sessionState({ answer: "progress so far" })
+    state.turns = [
+      {
+        ...state.turns[0],
+        status: "error",
+        error: "the endpoint refused the connection",
+      },
+    ]
+    state.agents.manager = {
+      ...state.agents.manager,
+      status: "failed",
+      blocks: [
+        ...state.agents.manager.blocks,
+        block({
+          id: "e",
+          kind: "error",
+          text: "the endpoint refused the connection",
+          seq: 3,
+        }),
+      ],
+    }
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    const row = screen.getByTestId("goal-session")
+    expect(row).toHaveAttribute("aria-expanded", "true")
+    expect(row).toHaveAttribute("aria-invalid", "true")
+    expect(row.querySelector(".whitespace-nowrap")).toHaveTextContent("Stopped after 9s")
+    expect(screen.getByText("the endpoint refused the connection")).toBeInTheDocument()
+    expect(row.querySelector(".truncate")).toBeNull()
   })
 
   it("keeps a running session expanded", () => {

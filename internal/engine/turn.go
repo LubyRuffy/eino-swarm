@@ -14,6 +14,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -35,6 +36,14 @@ type runtime struct {
 	// cap. true extends the run; false (or interrupt) ends it. Buffered so
 	// Interrupt cannot block on a receiver that has not reached the select.
 	continueCh chan bool
+	// ask is set only while ask_user is blocked waiting for the human.
+	ask                *pendingAsk
+	askStash           *askReply
+	askStashCallID     string
+	askCompletedCallID string
+	// planImplement is this turn executing an accepted plan. The transcript
+	// records plan_implemented, not a human user_message.
+	planImplement bool
 	// abandoned is set when the process is dying. The in-memory run stops,
 	// but the turn stays running in the database so the next start continues
 	// it. Distinct from interrupt(), which is a user stop.
@@ -45,10 +54,6 @@ type runtime struct {
 	// parked is a swarm left running across /goal sessions so in-flight
 	// sub-agents are not killed when the manager's turn ends.
 	parked *swarm.Registry
-	// sessionTimers end a /goal turn at the time cap (and steer a wrap-up).
-	sessionTimers  []*time.Timer
-	sessionStarted time.Time
-	sessionUsed    int
 }
 
 // release marks the runtime idle. It runs before the turn's terminal event is
@@ -103,6 +108,7 @@ func (rt *runtime) status() Status {
 	if rt.running {
 		st.ElapsedMS = time.Since(rt.startedAt).Milliseconds()
 		st.AwaitingContinue = rt.continueCh != nil
+		st.AwaitingAnswer = rt.ask != nil
 	}
 	return st
 }
@@ -112,10 +118,17 @@ func (rt *runtime) interrupt() {
 	cancel := rt.cancel
 	running := rt.running
 	ch := rt.continueCh
+	ask := rt.ask
 	rt.mu.Unlock()
 	if ch != nil {
 		select {
 		case ch <- false:
+		default:
+		}
+	}
+	if ask != nil && ask.ch != nil {
+		select {
+		case ask.ch <- askReply{err: context.Canceled}:
 		default:
 		}
 	}
@@ -146,12 +159,10 @@ func (rt *runtime) occupy(reg *swarm.Registry, cancel context.CancelFunc, turnID
 		return false
 	}
 	rt.reg, rt.cancel, rt.turnID, rt.startedAt, rt.running, rt.idle = reg, cancel, turnID, time.Now(), true, idle
-	rt.sessionUsed = 0
-	rt.sessionStarted = time.Time{}
-	// Only a new turn clears quit-abandoned. Clearing it when run()
-	// returns would let a late finished from a killed worker look completed.
 	rt.abandoned = false
 	rt.restore, rt.planted = nil, nil
+	rt.ask, rt.askStash, rt.askStashCallID, rt.askCompletedCallID = nil, nil, "", ""
+	rt.planImplement = false
 	return true
 }
 
@@ -182,16 +193,41 @@ func (rt *runtime) close() {
 
 // newTurnRegistry is the one place a conversation's swarm is wired, so a
 // resumed turn cannot forget WorkerPreamble the way a copy-pasted block would.
-func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set) *swarm.Registry {
+func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set, pc *projectContext) *swarm.Registry {
 	reg := swarm.NewRegistry()
 	reg.ModelBuilder = builder
-	reg.MaxConcurrent = e.cfg.Swarm.MaxConcurrent
-	reg.AgentTimeout = e.cfg.Swarm.AgentTimeout()
-	reg.MaxTurns = e.cfg.Swarm.MaxTurns
-	reg.SubAgentTools = toolset.Tools
-	reg.WorkerPreamble = HostEnvironmentPrompt()
-	reg.ToolOutputBinder = tools.BindExecOutput
+	e.bindSwarmLimits(reg)
+	e.wireWorkerSurface(reg, toolset, pc)
 	return reg
+}
+
+// wireWorkerSurface is the worker half of a turn: workspace tools, skill_view
+// when the project has memory, and the host snapshot plus that memory index.
+// Writes stay off this surface. A parked registry is re-wired at the next
+// start so a later turn cannot keep yesterday's toolset.
+func (e *Engine) wireWorkerSurface(reg *swarm.Registry, toolset *tools.Set, pc *projectContext) {
+	if reg == nil || toolset == nil {
+		return
+	}
+	// Fresh slice: appending ask_user in place would hand the deny stub to
+	// the manager if workerTools returned the catalog's backing array.
+	workers := append([]tool.BaseTool(nil), pc.workerTools(toolset)...)
+	workers = append(workers, AskUserTool(func(context.Context, []AskQuestion) (AskAnswers, error) {
+		return nil, fmt.Errorf("workers cannot ask")
+	}))
+	reg.SubAgentTools = workers
+	reg.WorkerPreamble = JoinPromptSections(HostEnvironmentPrompt(), pc.workerPreambleTail())
+	reg.ToolOutputBinder = tools.BindExecOutput
+}
+
+// attachHostNotify keeps worker events flowing after RunWith restores a nil
+// sink. /goal parks the registry; compact then the next manager turn are a
+// gap that used to drop tool rows and finished, so Agents froze on starting.
+func attachHostNotify(reg *swarm.Registry, acc *accumulator) {
+	if reg == nil || acc == nil {
+		return
+	}
+	reg.SetHostNotify(acc.onNotify)
 }
 
 // ---------- public turn API ----------
@@ -226,11 +262,26 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	} else if done {
 		return turn, nil
 	}
+	if turn, done, err := e.applySlashPlan(threadID, &in); err != nil {
+		return nil, err
+	} else if done {
+		return turn, nil
+	}
 	th, err = e.store.GetThread(threadID)
 	if err != nil {
 		return nil, err
 	}
 	if in.FromEventSeq == 0 {
+		if !in.ContinueGoal && !in.ImplementPlan && rt.awaitingAnswer() {
+			if err := e.AnswerTurnText(threadID, in.Text); err != nil {
+				return nil, err
+			}
+			id := rt.currentTurnID()
+			if id == "" {
+				return nil, ErrIdle
+			}
+			return e.store.GetTurn(id)
+		}
 		rt.mu.Lock()
 		busy := rt.running
 		rt.mu.Unlock()
@@ -251,7 +302,7 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 			return nil, err
 		}
 	}
-	if !in.ContinueGoal && hasOpenGoal(th) {
+	if !in.ContinueGoal && !in.ImplementPlan && hasOpenGoal(th) {
 		resetGoalBudget(e, th)
 	}
 
@@ -271,6 +322,9 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	toolset, err := tools.Build(context.Background(), e.cfg, e.WorkspaceDir(threadID))
 	if err != nil {
 		return nil, err
+	}
+	if th.PlanMode {
+		toolset = tools.ExploreOnly(toolset)
 	}
 	refs, err := e.saveInputImages(threadID, in.Images)
 	if err != nil {
@@ -315,9 +369,10 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	reused := reg != nil
 	if reused {
 		reg.ModelBuilder = builder
-		reg.SubAgentTools = toolset.Tools
+		e.bindSwarmLimits(reg)
+		e.wireWorkerSurface(reg, toolset, pc)
 	} else {
-		reg = e.newTurnRegistry(builder, toolset)
+		reg = e.newTurnRegistry(builder, toolset, pc)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -333,16 +388,19 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 		_ = e.store.FinishTurn(turn.ID, store.TurnCancelled, "", ErrBusy.Error())
 		return nil, ErrBusy
 	}
+	if in.ImplementPlan {
+		rt.mu.Lock()
+		rt.planImplement = true
+		rt.mu.Unlock()
+	}
 
 	_ = e.store.TouchThread(threadID)
-	if !in.ContinueGoal {
+	if !in.ContinueGoal && !in.ImplementPlan {
 		e.autoTitle(th, titleFromInput(caption, modelImages, files))
 	}
 
 	messages := history
-	if reused && liveWorkers(reg.Progress()) > 0 {
-		messages = append(messages, schema.UserMessage(parkedWorkersCue))
-	}
+	messages = rt.attachLeftoverWorkers(reused, reused || in.ContinueGoal, liveWorkers(reg.Progress()), messages)
 	messages = append(messages, BuildUserMessage(text, modelImages))
 	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), refs, false)
 	return turn, nil
@@ -384,21 +442,12 @@ func (e *Engine) SteerInput(threadID string, in UserInput) error {
 		return err
 	}
 	msg := BuildUserMessage("[steer] "+text, in.Images)
+	if err := e.persistSteer(threadID, turnID, msg, text, refs); err != nil {
+		return err
+	}
 	if !reg.SteerManagerMessage(msg) {
 		return ErrIdle
 	}
-	// The steer is part of the conversation, so it is both persisted as a
-	// message and shown in the timeline.
-	if err := e.store.AppendMessages(threadID, turnID, []store.Message{
-		{Role: string(schema.User), Content: "[steer] " + text, Images: refs},
-	}); err != nil {
-		return err
-	}
-	e.record(store.Event{
-		ThreadID: threadID, TurnID: turnID,
-		Kind: KindSteer, AgentID: swarm.DefaultManagerID, Text: text,
-		Images: refs,
-	})
 	// A steer while the manager is paused at its cap is the human still
 	// talking to it: keep the text and treat that as "yes, continue".
 	rt.signalContinue(true)
@@ -435,6 +484,8 @@ func (e *Engine) Interrupt(threadID string) error {
 // the swarm library emits.
 const (
 	KindSteer                  = "steer"
+	KindSteerRetracted         = "steer_retracted"
+	KindSteerPreempted         = "steer_preempted"
 	KindCleanup                = "cleanup"
 	KindReasoning              = "reasoning"
 	KindUser                   = "user_message"
@@ -472,27 +523,28 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 			}
 		}
 		e.closeOrphanedToolCalls(turn)
+		messages = rt.resolveOrphanedAsk(ctx, turn, messages)
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 			Kind: KindResumed, AgentID: swarm.DefaultManagerID, Text: resumeNotice})
 	} else if turn.GoalContinue {
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 			Kind: KindGoalContinued, AgentID: swarm.DefaultManagerID, Text: goalContinuedNotice})
+	} else if rt.recordingPlanImplement() {
+		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
+			Kind: KindPlanImplemented, AgentID: swarm.DefaultManagerID, Text: planImplementedNotice})
 	} else {
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 			Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText, Images: images})
 	}
 
 	acc := newAccumulator(e, rt.threadID, turn.ID, e.cfg.Swarm.DeltaCoalesce())
+	attachHostNotify(reg, acc)
 	// The pulse stops the moment the manager returns: everything after that is
 	// teardown, and a pulse arriving after the final event would make a finished
 	// turn look like it was still working.
-	sessionCtx, sessionCancel := context.WithCancel(ctx)
-	defer sessionCancel()
-	rt.armGoalSession(sessionCancel)
 	beat, stopBeat := context.WithCancel(ctx)
 	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.Swarm.ProgressInterval())
-	res, runErr := rt.runManager(sessionCtx, turn, reg, acc, toolset, pc, messages)
-	rt.stopGoalSession()
+	res, runErr := rt.runManager(ctx, turn, reg, acc, toolset, pc, messages)
 	stopBeat()
 	acc.flushAll()
 
@@ -509,10 +561,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 
 	// Read the outcome before releasing, because releasing cancels the
 	// interrupt context and would make every turn look interrupted.
-	status, errText, yield := rt.turnOutcome(ctx, sessionCtx, runErr)
-	if yield != nil {
-		rt.recordGoalSession(turn, yield)
-	}
+	status, errText := rt.turnOutcome(ctx, runErr)
 	if rt.shouldPark(status) {
 		rt.parkRegistry(reg)
 	} else {
@@ -555,6 +604,9 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	}
 	if status == store.TurnError {
 		rt.blockOpenGoalOnTurnError()
+	}
+	if status == store.TurnCancelled {
+		rt.pauseOpenGoalOnInterrupt()
 	}
 	_ = e.store.TouchThread(rt.threadID)
 	// Session briefing first, from the event log, so compact and the

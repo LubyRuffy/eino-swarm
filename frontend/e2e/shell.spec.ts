@@ -1,4 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { basename, join } from "node:path"
 
 test("keyboard shortcuts open the palette, a conversation and the panel", async ({
   page,
@@ -44,6 +47,42 @@ test("keyboard shortcuts open the palette, a conversation and the panel", async 
   ).toBeVisible()
   await page.keyboard.press("ControlOrMeta+b")
   await expect(page.getByRole("button", { name: "New conversation", exact: true })).toBeVisible()
+})
+
+test("the terminal button opens a shell in the conversation workspace", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "New conversation", exact: true }).click()
+  await page.getByRole("banner").getByRole("button", { name: "Open terminal" }).click()
+  const panel = page.getByTestId("terminal-panel")
+  await expect(panel).toBeVisible()
+  await page.getByRole("banner").getByRole("button", { name: "Open terminal" }).click()
+  await expect(panel.getByRole("button", { name: "Close this terminal" })).toHaveCount(2)
+  await page.keyboard.press("ControlOrMeta+j")
+  await expect(panel).toBeHidden()
+  await page.keyboard.press("ControlOrMeta+j")
+  await expect(panel).toBeVisible()
+})
+
+test("a terminal in a project conversation starts in that project's directory", async ({
+  page,
+}) => {
+  const dir = mkdtempSync(join(tmpdir(), "zwai-term-"))
+  const label = basename(dir)
+  await page.goto("/")
+  await page.getByRole("button", { name: "New project" }).click()
+  const name = `Term ${Date.now()}`
+  await page.getByLabel("Name").fill(name)
+  await page.getByLabel("Working directory").fill(dir)
+  await page.getByRole("button", { name: "Create project" }).click()
+  await page.getByRole("button", { name: `New conversation in ${name}` }).click()
+  await page.getByRole("banner").getByRole("button", { name: "Open terminal" }).click()
+  const panel = page.getByTestId("terminal-panel")
+  await expect(panel).toBeVisible()
+  await expect(panel.getByText(label, { exact: true })).toBeVisible({
+    timeout: 10_000,
+  })
 })
 
 test("an external link opens a new window instead of replacing the app", async ({
@@ -163,6 +202,10 @@ test("the composer sits on the transcript without a dock hairline", async ({
     stageBox!.y + stageBox!.height + 1,
   )
   expect(fadeBox!.y).toBeLessThan(inputBox!.y)
+  // Default Textarea fill overflowed the rounded card and ate the top
+  // corners. Nested composer chrome has to stay transparent.
+  const bg = await input.evaluate((el) => getComputedStyle(el).backgroundColor)
+  expect(bg === "rgba(0, 0, 0, 0)" || bg === "transparent").toBeTruthy()
 })
 
 test("dragging the conversation list border resizes it without selecting text", async ({

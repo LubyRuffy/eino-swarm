@@ -2,6 +2,10 @@
  *  A selection that is not fully inside one of these is just a selection. */
 export const QUOTE_SOURCE_ATTR = "data-quote-source"
 
+/** Selecting transcript text fires this so live-edge follow unpins. Otherwise
+ *  the next token yanks the scroller and Add to chat is gone before the click. */
+export const QUOTE_SELECTION_EVENT = "zwai:quote-selection"
+
 export interface PageSelection {
   text: string
   rect: SelectionRect
@@ -60,6 +64,20 @@ export function readTextSelection(doc: Document = document): PageSelection | nul
       bottom: rect.bottom,
     },
   }
+}
+
+/** The Add to chat pill is a snapshot. A live quote-source range replaces it;
+ *  an empty range only dismisses when the user settled (mouseup / key). Token
+ *  replacements and auto-follow scroll both look like "the selection vanished"
+ *  and used to flash the pill then hide it mid-stream. */
+export function nextMenuSelection(
+  current: PageSelection | null,
+  live: PageSelection | null,
+  clearIfEmpty: boolean,
+): PageSelection | null {
+  if (live) return live
+  if (clearIfEmpty) return null
+  return current
 }
 
 /** Sit the Add to chat pill on the selection, above when there is room so it

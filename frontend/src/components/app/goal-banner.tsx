@@ -4,7 +4,24 @@ import { Flag, Play, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { useT } from "@/lib/use-t"
+import { useT, type Translate } from "@/lib/use-t"
+
+/** Stored when a pursuing turn died before block_goal. Keep in sync with
+ *  engine.goalBlockedByFailedTurn — older conversations still have this. */
+export const FAILED_TURN_BLOCK_REASON = "the last turn failed"
+
+/** Banner copy for a block. The sentinel is a protocol string; show the
+ *  turn's public error when we have it, else a localized line. */
+export function displayGoalBlockReason(
+  reason: string,
+  turnError: string | undefined,
+  t: Translate,
+): string {
+  const why = reason.trim()
+  const err = turnError?.trim() ?? ""
+  if (why === FAILED_TURN_BLOCK_REASON) return err || t("goal.failedTurn")
+  return why
+}
 
 /** Elapsed since the objective was set, Codex-style `1d 10h 39m 16s`. */
 export function formatGoalAge(from: Date, now = new Date()): string {
@@ -29,7 +46,9 @@ export function GoalBanner({
   complete,
   blocked,
   blockReason,
+  turnError,
   capped,
+  idle,
   running,
   startedAt,
   onClear,
@@ -40,7 +59,11 @@ export function GoalBanner({
   complete?: boolean
   blocked?: boolean
   blockReason?: string
+  /** Public error of the failed turn. Used when blockReason is the sentinel. */
+  turnError?: string
   capped?: boolean
+  /** True after a no-progress continuation. Play resumes, like a cap. */
+  idle?: boolean
   running?: boolean
   startedAt?: string
   onClear: () => void
@@ -70,15 +93,19 @@ export function GoalBanner({
 
   if (!goal.trim()) return null
 
+  const held = Boolean(capped || idle)
   const state = complete
     ? t("goal.done")
     : blocked
       ? t("goal.blocked")
-      : capped
+      : held
         ? t("goal.paused")
         : t("goal.pursuing")
-  const badge = complete ? "success" : blocked ? "danger" : capped ? "warning" : "outline"
-  const canStart = !complete && !running && Boolean(onResume)
+  const badge = complete ? "success" : blocked ? "danger" : held ? "warning" : "outline"
+  // Codex: Play is resume, not "the last turn ended". An active goal
+  // between auto-continue sessions stays Pursuing with no control.
+  const canStart =
+    !complete && !running && Boolean(onResume) && Boolean(capped || blocked || idle)
   const started = startedAt ? new Date(startedAt) : null
   const age =
     started && !Number.isNaN(started.getTime())
@@ -115,10 +142,11 @@ export function GoalBanner({
               ref={areaRef}
               id="goal-edit"
               data-testid="goal-edit"
+              data-edit-draft="true"
               aria-label={t("goal.edit")}
               value={draft}
               rows={3}
-              className="mt-2 min-h-16 border border-input"
+              className="mt-2 min-h-16"
               onChange={(e) => setDraft(e.target.value)}
               onBlur={save}
               onKeyDown={(e) => {
@@ -149,9 +177,12 @@ export function GoalBanner({
               {goal}
             </button>
           )}
-          {blocked && blockReason?.trim() ? (
-            <p data-testid="goal-reason" className="mt-1 text-xs text-muted-foreground">
-              {blockReason.trim()}
+          {blocked && (blockReason?.trim() || turnError?.trim()) ? (
+            <p
+              data-testid="goal-reason"
+              className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground"
+            >
+              {displayGoalBlockReason(blockReason ?? "", turnError, t)}
             </p>
           ) : null}
         </div>

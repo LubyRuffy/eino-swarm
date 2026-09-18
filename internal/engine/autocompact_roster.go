@@ -8,10 +8,11 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// pinWorkerPairs rebuilds spawn_agent tool pairs from the turn's spawned /
+// pinWorkerPairs rebuilds spawn_agent tool pairs from leftover spawned /
 // finished events. The roster lives on those rows, not in compactable
-// replay: after a fold the model still has to see the ids or it will mint
-// twins. Synthetic call ids are fine — mock spawnedIDs reads agent_id.
+// replay: after a fold — or a later turn that dropped previous tool
+// results — the model still has to see the ids or it will mint twins.
+// Synthetic call ids are fine — mock spawnedIDs reads agent_id.
 func pinWorkerPairs(running []swarm.RestoredWorker, finished []swarm.FinishedWorker) []*schema.Message {
 	var out []*schema.Message
 	seen := map[string]struct{}{}
@@ -52,14 +53,10 @@ func pinWorkerPairs(running []swarm.RestoredWorker, finished []swarm.FinishedWor
 }
 
 func (m *autoCompact) rosterPin() []*schema.Message {
-	if m == nil || m.engine == nil || m.turnID == "" {
+	if m == nil || m.engine == nil || m.threadID == "" {
 		return nil
 	}
-	turn, err := m.engine.store.GetTurn(m.turnID)
-	if err != nil {
-		return nil
-	}
-	running, finished := m.engine.workersFromTurn(turn)
+	running, finished := m.engine.workersFromThread(m.threadID)
 	return pinWorkerPairs(running, finished)
 }
 

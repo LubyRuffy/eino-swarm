@@ -47,13 +47,14 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 	fs := flag.NewFlagSet("tui", flag.ExitOnError)
 	task := fs.String("task", "", "the task to work on")
 	goal := fs.String("goal", "", "standing objective to pursue until complete_goal or block_goal")
+	plan := fs.String("plan", "", "explore and write a plan before changing anything")
 	modelName := fs.String("model", "", "model name for this session (default: the provider's configured model)")
 	reasoning := fs.String("reasoning", "", "thinking level: default, low, medium, high")
 	dataDir := fs.String("data-dir", "", "data directory")
 	mock := fs.Bool("mock", false, "run on the scripted offline provider")
 	workspace := fs.String("workspace", "", "directory the agents may read and write (default: a temporary one)")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{
-		"task": true, "goal": true, "model": true, "reasoning": true, "data-dir": true, "workspace": true,
+		"task": true, "goal": true, "plan": true, "model": true, "reasoning": true, "data-dir": true, "workspace": true,
 	})); err != nil {
 		return nil, err
 	}
@@ -63,6 +64,9 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 	text := explicit
 	if text == "" {
 		text = strings.TrimSpace(*goal)
+	}
+	if text == "" {
+		text = strings.TrimSpace(*plan)
 	}
 
 	cfg, err := config.Load(*dataDir)
@@ -119,16 +123,15 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 
 	reg := swarm.NewRegistry()
 	reg.ModelBuilder = builder
-	reg.MaxConcurrent = cfg.Swarm.MaxConcurrent
+	reg.SetMaxConcurrent(cfg.Swarm.MaxConcurrent)
 	reg.AgentTimeout = cfg.Swarm.AgentTimeout()
 	reg.MaxTurns = cfg.Swarm.MaxTurns
 	reg.ManagerMaxIterations = cfg.Swarm.ManagerIterations()
 	reg.SubAgentTools = toolset.Tools
 	reg.WorkerPreamble = engine.HostEnvironmentPrompt()
 
-	// Same slice backing would hand complete_goal to every worker. Copy for
-	// the manager; workers keep the workspace tools only.
-	managerTools := append([]tool.BaseTool(nil), toolset.Tools...)
+	host := tui.NewAskHost(stdinIsTTY())
+	planState := tui.NewPlanState(cfg, toolset, engine.PersonalityPrompt(cfg.Personality.Instructions), host.Wait)
 
 	sw := &tui.Switcher{
 		Model:     model,
@@ -147,13 +150,14 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 
 	// Empty explicit task is not an error: the TUI waits at the composer.
 	// --task (or leftover words) is the one-shot path that starts immediately
-	// and exits. --goal alone starts immediately but keeps the composer.
+	// and exits. --goal / --plan alone starts immediately but keeps the composer.
 	session := tui.Session{
-		Registry:     reg,
-		Task:         text,
-		Interactive:  explicit == "",
-		Switcher:     sw,
-		ManagerTools: managerTools,
+		Registry:    reg,
+		Task:        text,
+		Interactive: explicit == "",
+		Switcher:    sw,
+		Ask:         host,
+		Plan:        planState,
 	}
 	session.Extra = engine.PersonalityPrompt(cfg.Personality.Instructions)
 	if g := strings.TrimSpace(*goal); g != "" {
@@ -163,17 +167,20 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 			done.Store(true)
 			return `{"ok":true}`, nil
 		}
-		session.ManagerTools = append(session.ManagerTools,
+		planState.SetGoal(engine.GoalPrompt(g, false), []tool.BaseTool{
 			engine.CompleteGoalTool(stop),
 			engine.BlockGoalTool(stop),
-		)
+		})
 		session.ShouldContinue = func() bool { return !done.Load() }
 		session.ContinueTask = engine.GoalContinueText()
 		session.MaxContinues = cfg.Swarm.GoalAutoTurns()
 		session.MaxIterations = cfg.Swarm.GoalSessionIterations()
-		session.RunTimeout = cfg.Swarm.GoalSessionDuration()
 	}
-	session.Instruction = engine.ManagerPrompt(toolset, cfg, session.Extra)
+	if strings.TrimSpace(*plan) != "" {
+		planState.SetOn(true)
+	}
+	session.ManagerTools = planState.ManagerTools()
+	session.Instruction = planState.Instruction()
 
 	return &tuiSetup{
 		session: session,
@@ -227,4 +234,12 @@ func pickSessionModel(name string, catalog []string) (string, bool) {
 func catalogHas(catalog []string, name string) bool {
 	_, ok := pickSessionModel(name, catalog)
 	return ok
+}
+
+func stdinIsTTY() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
 }

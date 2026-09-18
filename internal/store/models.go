@@ -80,8 +80,19 @@ type Thread struct {
 	// GoalAutoTurns counts consecutive runtime-started turns that kept
 	// pursuing an open goal. A human message resets it. Hitting the cap
 	// sets GoalCapped and stops auto-continue until the human speaks.
+	// A human interrupt of a pursuing turn also sets GoalCapped (paused).
 	GoalAutoTurns int  `json:"goal_auto_turns"`
 	GoalCapped    bool `json:"goal_capped"`
+	// GoalIdle is true after an engine-started continuation finished with
+	// no counted tool activity. Auto-continue stops until a human message
+	// or resume; the objective stays open (not blocked, not capped).
+	GoalIdle bool `json:"goal_idle"`
+	// PlanMode is true while /plan is open: the manager explores and drafts,
+	// and write/edit/exec are not mounted.
+	PlanMode bool `json:"plan_mode"`
+	// PlanMarkdown is the current plan body. The file under the data directory
+	// is the on-disk copy; this column is what GET returns.
+	PlanMarkdown string `json:"plan_markdown"`
 	// CompactSummary replaces earlier replay messages (seq <= CompactThroughSeq)
 	// in the next turn's prompt. The event log is untouched: compacting is
 	// what the model sees, not what the transcript shows.
@@ -123,8 +134,12 @@ type Message struct {
 	ToolCallID string `gorm:"size:128" json:"tool_call_id,omitempty"`
 	// Images are pasted vision inputs, stored as files under the data
 	// directory. The bytes do not live here: replaying a turn reloads them.
-	Images    []ImageRef `gorm:"serializer:json" json:"images,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	Images []ImageRef `gorm:"serializer:json" json:"images,omitempty"`
+	// EventSeq ties a stored [steer] user row to the timeline event so
+	// retracting unread steering can drop that one message without
+	// matching on caption text.
+	EventSeq  int64     `json:"event_seq,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // ImageRef is the handle a pasted image travels as on the wire and in the

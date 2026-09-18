@@ -8,6 +8,7 @@ import (
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
 	"github.com/cloudwego/eino/components/model"
@@ -42,7 +43,7 @@ func TestTurnRegistryHandsWorkersTheHostEnvironment(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	set := buildTestToolset(t, e, th.ID)
-	reg := e.newTurnRegistry(func(role, id string) model.BaseChatModel { return nil }, set)
+	reg := e.newTurnRegistry(func(role, id string) model.BaseChatModel { return nil }, set, nil)
 	if !strings.Contains(reg.WorkerPreamble, goruntime.GOOS) {
 		t.Fatal("workers would not know which OS they are on")
 	}
@@ -117,6 +118,24 @@ func TestManagerPromptOmitsToolsWhenNoneAreRegistered(t *testing.T) {
 	}
 	if strings.Contains(prompt, "## Tools") {
 		t.Fatal("an empty toolset must not advertise tools")
+	}
+}
+
+func TestManagerPromptSaysWorkersShareWorkspaceTools(t *testing.T) {
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws", Names: []string{"exec"}}, &config.Config{}, "")
+	if !strings.Contains(prompt, "Your sub-agents have the same workspace tools") {
+		t.Fatalf("missing worker tool surface:\n%s", prompt)
+	}
+	if strings.Contains(prompt, "the same set") {
+		t.Fatal("the old wording implied workers had write tools")
+	}
+}
+
+func TestConversationExtraPutsPlanAfterTheGoal(t *testing.T) {
+	th := &store.Thread{Goal: "keep going", PlanMode: true, PlanMarkdown: "# Plan\n"}
+	extra := conversationExtra(th, nil)
+	if i, j := strings.Index(extra, "## Goal"), strings.Index(extra, "## Plan"); i < 0 || j < i {
+		t.Fatalf("plan must come after the goal:\n%s", extra)
 	}
 }
 
@@ -250,6 +269,30 @@ func TestPersonalityWrapperIsGenericAndGrounded(t *testing.T) {
 	}
 }
 
+func TestManagerPromptDescribesChartsWithoutASampleTask(t *testing.T) {
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	for _, need := range []string{
+		"language tag is chart",
+		`"type":"bar|line|area|pie"`,
+		"Do not invent numbers",
+		"One chart per comparison",
+		"prefer the chart over spelling out the same",
+		"clearer reading experience",
+		"do not duplicate the plotted values in text",
+		"markdown table",
+		"emoji",
+	} {
+		if !strings.Contains(prompt, need) {
+			t.Fatalf("missing %q:\n%s", need, prompt)
+		}
+	}
+	for _, leak := range []string{"revenue", "sales", "month", "quarter", "gdp"} {
+		if strings.Contains(strings.ToLower(prompt), leak) {
+			t.Fatalf("chart instructions leaked a sample domain %q:\n%s", leak, prompt)
+		}
+	}
+}
+
 func TestJoinPromptSectionsDropsBlankParts(t *testing.T) {
 	got := JoinPromptSections("  ", "## A\n\nx", "", "## B\n\ny")
 	if got != "## A\n\nx\n\n## B\n\ny" {
@@ -283,6 +326,62 @@ func TestWorkersDoNotReceivePersonality(t *testing.T) {
 		spawned++
 		if strings.Contains(ev.Text, "## Personality") || strings.Contains(ev.Text, "prefer compact replies") {
 			t.Fatalf("a worker received the install personality:\n%s", ev.Text)
+		}
+	}
+	if spawned == 0 {
+		t.Fatal("the scripted run spawned no workers; the check never ran")
+	}
+}
+
+func TestSpawnedWorkersReceiveTheProjectMemorySnapshot(t *testing.T) {
+	e := newTestEngine(t)
+	p, err := e.CreateProject("P", "the project's own instruction", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := e.ProjectMemory(p.ID).Add("a note from an earlier conversation"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.ProjectMemory(p.ID).WriteSkill("a-procedure", "when it applies", "steps"); err != nil {
+		t.Fatal(err)
+	}
+	th, err := e.CreateThread("t", "", p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asked := "compare the two inputs"
+	turn, err := e.StartTurn(th.ID, asked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForTurn(t, e, turn.ID)
+
+	events, err := e.Replay(th.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var spawned int
+	for _, ev := range events {
+		if ev.Kind != swarm.NotifySpawned.String() {
+			continue
+		}
+		spawned++
+		if !strings.Contains(ev.Text, "a note from an earlier conversation") {
+			t.Fatalf("worker instruction missing the notes snapshot:\n%s", ev.Text)
+		}
+		if !strings.Contains(ev.Text, "a-procedure") {
+			t.Fatalf("worker instruction missing the skills index:\n%s", ev.Text)
+		}
+		if !strings.Contains(ev.Text, "Reporting back") {
+			t.Fatalf("worker instruction missing the return contract:\n%s", ev.Text)
+		}
+		if strings.Contains(ev.Text, "the project's own instruction") {
+			t.Fatalf("a worker received the project instruction:\n%s", ev.Text)
+		}
+		for _, write := range []string{memory.ToolMemory, memory.ToolSkillManage} {
+			if strings.Contains(ev.Text, write) {
+				t.Fatalf("worker instruction named the write tool %s:\n%s", write, ev.Text)
+			}
 		}
 	}
 	if spawned == 0 {

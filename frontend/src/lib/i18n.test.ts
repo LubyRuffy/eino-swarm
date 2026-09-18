@@ -88,6 +88,17 @@ describe("localizeNotice", () => {
     expect(localizeNotice("Compressing conversation context…", "zh")).toBe(
       "正在压缩会话上下文…",
     )
+    expect(localizeNotice("Planning.", "zh")).toBe("正在规划。")
+    expect(localizeNotice("Plan updated.", "zh")).toBe("计划已更新。")
+    expect(localizeNotice("Retrying after a model error.", "zh")).toBe(
+      "模型出错，正在重试。",
+    )
+    expect(
+      localizeNotice(
+        "Stopped auto-continuing: the last continuation made no progress.",
+        "zh",
+      ),
+    ).toBe("已停止自动续跑：上一轮续跑没有实质进展。")
     expect(localizeNotice("Work session ended after the time cap.", "zh")).toBe(
       "工作会话因时长上限结束。",
     )

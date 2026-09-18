@@ -289,10 +289,38 @@ func TestMockManagerScriptFansOutAndAnswers(t *testing.T) {
 	if len(third.ToolCalls) != 0 {
 		t.Fatalf("the final turn must not call tools: %+v", third.ToolCalls)
 	}
-	for _, want := range []string{"summarize the inputs", "researcher done", "reviewer done", "## Result"} {
+	for _, want := range []string{"summarize the inputs", "researcher done", "reviewer done", "## Result", "```chart"} {
 		if !strings.Contains(third.Content, want) {
 			t.Fatalf("final answer missing %q:\n%s", want, third.Content)
 		}
+	}
+}
+
+func TestMockAnswerChartsReportLengths(t *testing.T) {
+	got := mockAnswer("the task", []string{"aa", "bbbb"})
+	if !strings.Contains(got, "```chart") {
+		t.Fatal("two reports must produce a chart fence")
+	}
+	if !strings.Contains(got, `"n":2`) || !strings.Contains(got, `"n":4`) {
+		t.Fatalf("chart must use report lengths:\n%s", got)
+	}
+	for _, leak := range []string{"revenue", "sales", "month"} {
+		if strings.Contains(strings.ToLower(got), leak) {
+			t.Fatalf("offline chart leaked a sample domain %q:\n%s", leak, got)
+		}
+	}
+}
+
+func TestMockAnswerSkipsAChartForOneReport(t *testing.T) {
+	got := mockAnswer("the task", []string{"only"})
+	if strings.Contains(got, "```chart") {
+		t.Fatal("one report is not a comparison")
+	}
+}
+
+func TestMockChartBlockIsEmptyForAShortSeries(t *testing.T) {
+	if mockChartBlock(nil) != "" || mockChartBlock([]string{"x"}) != "" {
+		t.Fatal("a short series must not emit a fence")
 	}
 }
 
@@ -571,6 +599,22 @@ func TestMockFailureStopsGenerateAndStream(t *testing.T) {
 	}
 	if _, err := m.Stream(context.Background(), []*schema.Message{schema.UserMessage("x")}); err == nil {
 		t.Fatal("Stream must surface the injected failure")
+	}
+}
+
+func TestMockFailTimesThenSucceeds(t *testing.T) {
+	SetMockFailTimes(1, errors.New("unterminated string"))
+	t.Cleanup(func() { SetMockFailure(nil) })
+	m := newMockModel("manager")
+	if _, err := m.Generate(context.Background(), []*schema.Message{schema.UserMessage("x")}); err == nil {
+		t.Fatal("the first call must fail")
+	}
+	if _, err := m.Generate(context.Background(), []*schema.Message{schema.UserMessage("x")}); err != nil {
+		t.Fatalf("the retry must go through: %v", err)
+	}
+	SetMockFailTimes(0, errors.New("unterminated string"))
+	if _, err := m.Generate(context.Background(), []*schema.Message{schema.UserMessage("x")}); err != nil {
+		t.Fatalf("zero remaining failures must not fail: %v", err)
 	}
 }
 
@@ -938,40 +982,5 @@ func TestUserTextExtraction(t *testing.T) {
 	}}
 	if got := lastUserText(multi); got != "from the image caption" {
 		t.Fatalf("a multimodal caption must still drive the script: %q", got)
-	}
-}
-
-func TestWaitReportParsingReportsProgressAndResults(t *testing.T) {
-	// a wait that came back with one worker done and one still running
-	partial := []*schema.Message{
-		schema.ToolMessage(`{"agents":[{"agent_id":"a-1","status":"done","result":"ok"},{"agent_id":"b-2","status":"running","activity":"reading"}],"timed_out":false}`, "x"),
-	}
-	r := latestWaitReport(partial)
-	if r == nil {
-		t.Fatal("latestWaitReport found nothing in a real wait result")
-	}
-	if allFinished(r) {
-		t.Fatal("a report with a running agent must not read as all finished")
-	}
-	if got := waitProgressLine(r); !strings.Contains(got, "1 finished") || !strings.Contains(got, "1 still working") {
-		t.Fatalf("waitProgressLine=%q", got)
-	}
-
-	// a wait where everyone is done, one of them failed
-	done := []*schema.Message{
-		schema.ToolMessage(`{"agents":[{"agent_id":"a-1","status":"done","result":"ok"},{"agent_id":"b-2","status":"failed","error":"timed out"}],"timed_out":false}`, "y"),
-	}
-	r = latestWaitReport(done)
-	if r == nil || !allFinished(r) {
-		t.Fatalf("a report with no running agents should read as finished: %+v", r)
-	}
-	got := collectResults(r)
-	if len(got) != 2 || got[0] != "ok" || !strings.Contains(got[1], "timed out") {
-		t.Fatalf("collectResults=%+v", got)
-	}
-
-	// no wait has happened yet
-	if latestWaitReport([]*schema.Message{schema.UserMessage("hi")}) != nil {
-		t.Fatal("latestWaitReport should be nil before the manager waits")
 	}
 }

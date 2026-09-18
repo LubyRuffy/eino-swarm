@@ -159,8 +159,7 @@ type Registry struct {
 	seq    int
 	closed bool
 
-	semOnce sync.Once
-	semCh   chan struct{}
+	slots *slotGate
 
 	// hist snapshots the manager conversation for spawn_agent(fork_context)
 	// and for RunResult.Transcript. ManagerMiddleware keeps it fresh.
@@ -170,11 +169,24 @@ type Registry struct {
 	// ManagerMiddleware at the manager's next turn boundary.
 	mgrInbox []*schema.Message
 
+	// epochs are in-flight manager tool/generate cancels. Interrupt
+	// injection cancels these without cancelling the turn or the workers.
+	epochs         map[uint64]context.CancelFunc
+	epochSeq       uint64
+	preemptPending bool
+	preempted      bool
+
 	// notify is the semantic notification sink installed for the duration of
 	// one Run/RunWith. Worker goroutines emit through it.
 	notify Callback
+	// hostNotify is the fallback after RunWith returns. /goal parks this
+	// registry across manager turns; without it, in-flight workers emit
+	// into a nil sink and the UI freezes on "starting".
+	hostNotify Callback
 
 	// MaxConcurrent caps simultaneously running sub-agents (<=0 means 8).
+	// Assigning the field is enough before the first spawn. After that,
+	// call SetMaxConcurrent so waiters see the new cap.
 	MaxConcurrent int
 
 	// AgentTimeout caps each sub-agent's lifetime with a watchdog context.
@@ -240,7 +252,16 @@ type Registry struct {
 
 // NewRegistry creates an empty registry.
 func NewRegistry() *Registry {
-	return &Registry{agents: map[string]*Handle{}, past: map[string]*agentPast{}}
+	r := &Registry{
+		agents: map[string]*Handle{},
+		past:   map[string]*agentPast{},
+		epochs: map[uint64]context.CancelFunc{},
+	}
+	// Default lifecycle hooks emit through the sink, including after a
+	// RunWith returns, so a parked worker can still record finished.
+	r.spawnHook = r.emitSpawned
+	r.finishHook = r.emitFinished
+	return r
 }
 
 func (r *Registry) get(id string) (*Handle, bool) {
@@ -404,8 +425,12 @@ func (m *historyRecorder) WrapInvokableToolCall(ctx context.Context,
 	endpoint adk.InvokableToolCallEndpoint, tc *adk.ToolContext,
 ) (adk.InvokableToolCallEndpoint, error) {
 	return func(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
+		parent := ctx
+		ctx, id := m.reg.bindEpoch(ctx)
+		defer m.reg.dropEpoch(id)
 		ctx = m.reg.bindToolOutput(ctx, DefaultManagerID, "manager", tc)
 		out, err := endpoint(ctx, argumentsInJSON, opts...)
+		out, err = m.reg.preemptToolResult(parent, ctx, out, err)
 		m.reg.appendHistoryToolResult(tc, out, err)
 		return out, err
 	}, nil
@@ -430,9 +455,17 @@ func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
 	endpoint adk.StreamableToolCallEndpoint, tc *adk.ToolContext,
 ) (adk.StreamableToolCallEndpoint, error) {
 	return func(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (*schema.StreamReader[string], error) {
+		parent := ctx
+		ctx, id := m.reg.bindEpoch(ctx)
+		defer m.reg.dropEpoch(id)
 		sr, err := endpoint(ctx, argumentsInJSON, opts...)
 		if err != nil {
-			return nil, err
+			out, err := m.reg.preemptToolResult(parent, ctx, "", err)
+			m.reg.appendHistoryToolResult(tc, out, err)
+			if err != nil {
+				return nil, err
+			}
+			return schema.StreamReaderFromArray([]string{out}), nil
 		}
 		var b strings.Builder
 		for {
@@ -442,9 +475,14 @@ func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
 			}
 			b.WriteString(chunk)
 		}
-		m.reg.appendHistoryToolResult(tc, b.String(), nil)
-		return schema.StreamReaderFromArray([]string{b.String()}), nil
+		out, err := m.reg.preemptToolResult(parent, ctx, b.String(), nil)
+		m.reg.appendHistoryToolResult(tc, out, err)
+		return schema.StreamReaderFromArray([]string{out}), err
 	}, nil
+}
+
+func (m *historyRecorder) WrapModel(ctx context.Context, inner model.BaseModel[*schema.Message], _ *adk.ModelContext) (model.BaseModel[*schema.Message], error) {
+	return &epochModel{inner: inner, reg: m.reg}, nil
 }
 
 func (r *Registry) appendHistoryToolResult(tc *adk.ToolContext, content string, runErr error) {
@@ -716,10 +754,42 @@ func (r *Registry) Close() {
 	}
 }
 
-func (r *Registry) sem(n int) chan struct{} {
-	r.semOnce.Do(func() { r.semCh = make(chan struct{}, n) })
-	return r.semCh
+// SetMaxConcurrent updates the live cap and wakes waiters. Settings can
+// raise it while workers are already queued; assigning MaxConcurrent
+// after the first spawn used to be a no-op because the semaphore was
+// created once.
+func (r *Registry) SetMaxConcurrent(n int) {
+	if n <= 0 {
+		n = defaultMaxConcurrent
+	}
+	r.mu.Lock()
+	r.MaxConcurrent = n
+	g := r.slots
+	if g == nil {
+		r.slots = newSlotGate(n)
+		r.mu.Unlock()
+		return
+	}
+	r.mu.Unlock()
+	g.resize(n)
 }
+
+func (r *Registry) slotGate() *slotGate {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.slots == nil {
+		n := r.MaxConcurrent
+		if n <= 0 {
+			n = defaultMaxConcurrent
+		}
+		r.slots = newSlotGate(n)
+	}
+	return r.slots
+}
+
+func (r *Registry) acquireSlot() { r.slotGate().acquire() }
+
+func (r *Registry) releaseSlot() { r.slotGate().release() }
 
 // ManagerConfig returns a ready-to-use ChatModelAgentConfig for the manager:
 // it wires the five lifecycle tools and the fork_context history middleware in

@@ -1,4 +1,4 @@
-import { Flag, Minimize2 } from "lucide-react"
+import { Flag, ListTodo, Minimize2 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { SlashCommand } from "@/lib/slash"
@@ -6,6 +6,7 @@ import { useT } from "@/lib/use-t"
 
 const ICONS = {
   goal: Flag,
+  plan: ListTodo,
   compact: Minimize2,
 } as const
 

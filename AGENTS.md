@@ -85,7 +85,8 @@ not stale. Touched anything user-visible → the E2E suite.
 ## Backend rules
 
 - One turn per conversation. Concurrency is `ErrBusy` (`409`), and the UI turns a
-  second Enter into steering instead of a second turn.
+  second Enter into a follow-up instead of a second turn. ⌘Enter steers the
+  live turn.
 - Persist completed events, broadcast streamed deltas. Deltas carry the full text
   so far, so a lost one costs nothing; storing them would store the answer once
   per token.

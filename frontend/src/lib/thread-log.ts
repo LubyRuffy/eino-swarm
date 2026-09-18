@@ -10,6 +10,46 @@ export const LOG_LIMIT_DEFAULT = 80
 export type ThreadLog = {
   events: SwarmEvent[]
   has_more: boolean
+  /** spawned / finished / cleanup rows that fell out of this viewport.
+   *  Only the live-edge page sends it; paging must not move the cursor. */
+  roster?: SwarmEvent[]
+}
+
+/** Rows the Agents tab needs that are not already in the loaded page.
+ *  Mixing them into the paging buffer would walk `before` from a spawned
+ *  seq and skip the tools in between. */
+export function extraRosterEvents(
+  roster: SwarmEvent[] | undefined,
+  page: SwarmEvent[],
+): SwarmEvent[] {
+  const have = new Set(
+    page.filter((ev) => (ev.seq ?? 0) > 0).map((ev) => ev.seq),
+  )
+  return (roster ?? []).filter((ev) => (ev.seq ?? 0) > 0 && !have.has(ev.seq))
+}
+
+/** Fold order: roster first (by seq), then the contiguous page. */
+export function mergeLogEvents(
+  roster: SwarmEvent[] | undefined,
+  page: SwarmEvent[],
+): SwarmEvent[] {
+  const stored = uniqueStoredEvents(page)
+  const extra = extraRosterEvents(roster, stored)
+  if (extra.length === 0) return stored
+  return uniqueStoredEvents([...extra, ...stored]).sort((a, b) => a.seq - b.seq)
+}
+
+/** Stored rows, first seq wins. Sidecars plus the page can name the same
+ *  spawned row twice; reducing it twice would look like a twin. */
+export function uniqueStoredEvents(rows: SwarmEvent[]): SwarmEvent[] {
+  const have = new Set<number>()
+  const out: SwarmEvent[] = []
+  for (const ev of rows) {
+    if ((ev.seq ?? 0) <= 0 || have.has(ev.seq)) continue
+    have.add(ev.seq)
+    out.push(ev)
+  }
+  return out
 }
 
 export function logPageSize(clientHeight: number): number {

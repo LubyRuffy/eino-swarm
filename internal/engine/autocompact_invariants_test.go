@@ -92,6 +92,41 @@ func TestAutoCompactRehydratesFinishedWorkersFromEvents(t *testing.T) {
 	}
 }
 
+func TestAutoCompactRehydratesFinishedWorkersFromEarlierTurn(t *testing.T) {
+	e := newTestEngine(t)
+	e.Config().Swarm.AutoCompactTokens = 10
+	e.Config().Swarm.CompactKeepMessages = 2
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := plantUnfinishedTurn(t, e, th.ID, "previous session")
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: prev.ID,
+		Kind: swarm.NotifySpawned.String(), AgentID: "helper-2", Role: "helper",
+	})
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: prev.ID,
+		Kind: swarm.NotifyFinished.String(), AgentID: "helper-2", Role: "helper",
+		Text: "done",
+	})
+	if err := e.Store().FinishTurn(prev.ID, store.TurnDone, "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	turn := plantUnfinishedTurn(t, e, th.ID, cmpCurrentRequest)
+	state := []*schema.Message{
+		schema.SystemMessage("sys"),
+		schema.UserMessage("the first request"),
+		schema.AssistantMessage("first answer", nil),
+		schema.UserMessage(cmpCurrentRequest),
+		overBudgetAssistant("waiting"),
+	}
+	next := mustAutoCompact(t, e, th.ID, turn.ID, state, &scriptedChatModel{out: cmpBriefing})
+	if !hasSpawnID(next.Messages, "helper-2") {
+		t.Fatal("a leftover worker from an earlier session must still be pinned so wait_agents can see the id")
+	}
+}
+
 func TestAutoCompactKeepsInFlightWaitAgentsAfterFold(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10

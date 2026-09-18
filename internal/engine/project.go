@@ -203,8 +203,14 @@ type projectContext struct {
 	project  *store.Project
 	memory   *memory.Store
 	sections string
-	tools    []tool.BaseTool
-	changes  func(memory.Change)
+	// tools is the manager set (read and write). viewTools is skill_view
+	// only — workers get that plus the workspace tools, never the writers.
+	tools     []tool.BaseTool
+	viewTools []tool.BaseTool
+	// workerText is the notes/skills snapshot and the return-to-manager
+	// contract. Empty when memory is off.
+	workerText string
+	changes    func(memory.Change)
 }
 
 // promptSections is what this project adds to the manager's prompt. A nil
@@ -219,19 +225,45 @@ func (pc *projectContext) promptSections() string {
 // managerTools gives the manager the memory tools on top of the workspace
 // toolset.
 //
-// Only the manager: a sub-agent sees one task and none of the conversation, so
-// it is in no position to judge what is worth remembering — and five workers
-// curating one bounded store at once is how it fills with near-duplicates.
+// Write tools stay here: a sub-agent sees one task and none of the
+// conversation, so it is in no position to judge what is worth remembering —
+// and five workers curating one bounded store at once is how it fills with
+// near-duplicates. Workers still get skill_view (see workerTools).
 func (pc *projectContext) managerTools(set *tools.Set) []tool.BaseTool {
+	if set == nil {
+		return nil
+	}
 	if pc == nil || len(pc.tools) == 0 {
 		return set.Tools
 	}
 	// A fresh slice: the same backing array is registered on the sub-agents as
 	// Registry.SubAgentTools, and appending in place would hand them the
-	// memory tools too.
+	// write tools too.
 	out := make([]tool.BaseTool, 0, len(set.Tools)+len(pc.tools))
 	out = append(out, set.Tools...)
 	return append(out, pc.tools...)
+}
+
+// workerTools is the workspace toolset plus skill_view when this project has
+// memory. It never includes memory or skill_manage.
+func (pc *projectContext) workerTools(set *tools.Set) []tool.BaseTool {
+	if set == nil {
+		return nil
+	}
+	if pc == nil || len(pc.viewTools) == 0 {
+		return set.Tools
+	}
+	out := make([]tool.BaseTool, 0, len(set.Tools)+len(pc.viewTools))
+	out = append(out, set.Tools...)
+	return append(out, pc.viewTools...)
+}
+
+// workerPreambleTail is the memory snapshot prepended after the host facts.
+func (pc *projectContext) workerPreambleTail() string {
+	if pc == nil {
+		return ""
+	}
+	return pc.workerText
 }
 
 // memoryLive reports whether this turn's project has a usable memory store.
@@ -269,10 +301,12 @@ func (e *Engine) projectContextFor(th *store.Thread) (*projectContext, error) {
 		} else {
 			pc.memory = mem
 			pc.tools = memory.Tools(mem, nil)
+			pc.viewTools = memory.ViewTools(mem)
 			// An unreadable skills directory costs the index, not the notes.
 			if skills, err = mem.ListSkills(); err != nil {
 				e.log.Warn("could not list a project's skills", "project", p.ID, "err", err)
 			}
+			pc.workerText = memory.WorkerPromptSections(snap, skills, e.cfg.Memory.IndexMax())
 		}
 	}
 	pc.sections = memory.PromptSections(p.SystemPrompt, snap, skills, e.cfg.Memory.IndexMax(), pc.memory != nil)

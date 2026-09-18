@@ -92,7 +92,6 @@ func TestGoalContinuesUntilCompleteGoal(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 8
-	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
@@ -130,7 +129,6 @@ func TestGoalStopsAtTheAutoContinueCap(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 1
-	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
@@ -163,7 +161,6 @@ func TestAHumanMessageResetsTheGoalAutoContinueBudget(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 1
-	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
@@ -192,7 +189,6 @@ func TestFollowupBeatsGoalAutoContinue(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 8
-	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
@@ -270,6 +266,9 @@ func TestGoalContinueTextStaysGeneric(t *testing.T) {
 			}
 		}
 	}
+	if !strings.Contains(GoalContinueText(), "three consecutive") {
+		t.Fatal("a continuation must require a repeated blocker before block_goal")
+	}
 }
 
 func waitSettled(t *testing.T, e *Engine, threadID string) {
@@ -278,6 +277,9 @@ func waitSettled(t *testing.T, e *Engine, threadID string) {
 	quiet := time.Duration(0)
 	last := time.Now()
 	for time.Now().Before(deadline) {
+		if e.Status(threadID).AwaitingAnswer {
+			_ = e.AnswerTurnText(threadID, "the existing approach")
+		}
 		if e.Status(threadID).Running {
 			quiet = 0
 		} else {
@@ -364,6 +366,15 @@ func TestGoalAndCompactSectionsStayGeneric(t *testing.T) {
 	}
 	if !strings.Contains(open, ToolBlockGoal) {
 		t.Fatal("an open goal must name block_goal")
+	}
+	if strings.Contains(open, "Work proceeds in sessions") {
+		t.Fatal("a timed session protocol must not be the standing-objective contract")
+	}
+	if !strings.Contains(open, "three consecutive") {
+		t.Fatal("block_goal must require a repeated blocker")
+	}
+	if !strings.Contains(open, "stop calling tools") {
+		t.Fatal("an open goal must say a turn ends when the manager stops calling tools")
 	}
 	done := goalSection("keep going", true, false, "")
 	if strings.Contains(done, "complete_goal(summary") {
@@ -467,8 +478,14 @@ func TestAFailedTurnBlocksAnOpenGoalAndDoesNotAutoContinue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !th.GoalBlocked || th.GoalBlockReason != goalBlockedByFailedTurn || th.GoalComplete {
+	if !th.GoalBlocked || th.GoalComplete {
 		t.Fatalf("a crashed turn must block the objective, got %+v", th)
+	}
+	if got.Error == "" {
+		t.Fatal("the failed turn must record a public error")
+	}
+	if th.GoalBlockReason != got.Error {
+		t.Fatalf("banner reason %q must be the turn error %q", th.GoalBlockReason, got.Error)
 	}
 	if !hasKind(t, e, th.ID, KindGoalBlocked) {
 		t.Fatal("missing goal_blocked event")
@@ -517,8 +534,28 @@ func TestAnInterruptedTurnDoesNotBlockTheGoal(t *testing.T) {
 	if got.GoalBlocked {
 		t.Fatal("Stop is not a blocked objective; the human can resume")
 	}
+	if !got.GoalCapped {
+		t.Fatal("Stop must pause the standing objective so Start can resume it")
+	}
 	if hasKind(t, e, th.ID, KindGoalBlocked) {
 		t.Fatal("interrupt must not emit goal_blocked")
+	}
+	if !hasKind(t, e, th.ID, KindGoalCapped) {
+		t.Fatal("interrupt must emit goal_capped so the banner leaves Pursuing")
+	}
+	events, _ := e.Replay(th.ID, 0)
+	found := false
+	for _, ev := range events {
+		if ev.Kind != KindGoalCapped {
+			continue
+		}
+		found = true
+		if ev.Text != goalCappedReasonInterrupted {
+			t.Fatalf("interrupt cap payload=%q", ev.Text)
+		}
+	}
+	if !found {
+		t.Fatal("missing interrupt goal_capped")
 	}
 }
 
@@ -528,6 +565,15 @@ func TestBlockOpenGoalOnTurnErrorNoopsWithoutAGoal(t *testing.T) {
 	e.runtimeFor(th.ID).blockOpenGoalOnTurnError()
 	if hasKind(t, e, th.ID, KindGoalBlocked) {
 		t.Fatal("no standing objective to block")
+	}
+}
+
+func TestFailedTurnBlockReasonPrefersThePublicError(t *testing.T) {
+	if got := failedTurnBlockReason("  the endpoint refused  "); got != "the endpoint refused" {
+		t.Fatalf("got %q", got)
+	}
+	if got := failedTurnBlockReason(" \n "); got != goalBlockedByFailedTurn {
+		t.Fatalf("empty error must stay a readable sentinel, got %q", got)
 	}
 }
 
@@ -811,7 +857,6 @@ func TestAHumanMessageClearsABlockedGoal(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 1
-	endGoalTurnsByTime(t, e)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)

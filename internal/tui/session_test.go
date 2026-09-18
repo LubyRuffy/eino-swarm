@@ -258,6 +258,93 @@ func TestAGoalAutoContinueHappensBeforeIdle(t *testing.T) {
 	<-done
 }
 
+func TestAGoalContinuationWithoutToolsReturnsTheComposer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	prompts := make(chan string, 1)
+	out := make(chan notificationMsg, 16)
+	var tasks []string
+	run := func(_ context.Context, cfg swarm.RunConfig, _ func(swarm.Notification)) (swarm.RunResult, error) {
+		tasks = append(tasks, cfg.Task)
+		return swarm.RunResult{
+			Transcript: []adk.Message{
+				schema.UserMessage(cfg.Task),
+				schema.AssistantMessage("ok", nil),
+			},
+		}, nil
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		pumpSession(ctx, Session{
+			Interactive:    true,
+			ContinueTask:   "keep going",
+			MaxContinues:   5,
+			ShouldContinue: func() bool { return true },
+		}, run, out, prompts)
+	}()
+	prompts <- "start"
+	waitIdle(t, out)
+	if len(tasks) != 2 || tasks[0] != "start" || tasks[1] != "keep going" {
+		t.Fatalf("an empty continuation must not loop, tasks=%q", tasks)
+	}
+	cancel()
+	<-done
+}
+
+func TestAGoalContinuationWithToolsKeepsAutoContinue(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	prompts := make(chan string, 1)
+	out := make(chan notificationMsg, 16)
+	var tasks []string
+	run := func(_ context.Context, cfg swarm.RunConfig, emit func(swarm.Notification)) (swarm.RunResult, error) {
+		tasks = append(tasks, cfg.Task)
+		emit(swarm.Notification{
+			Kind: swarm.NotifyToolCall, AgentID: swarm.DefaultManagerID,
+			Text: "wait_agents({})",
+		})
+		return swarm.RunResult{
+			Transcript: []adk.Message{
+				schema.UserMessage(cfg.Task),
+				schema.AssistantMessage("ok", nil),
+			},
+		}, nil
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		pumpSession(ctx, Session{
+			Interactive:    true,
+			ContinueTask:   "keep going",
+			MaxContinues:   2,
+			ShouldContinue: func() bool { return true },
+		}, run, out, prompts)
+	}()
+	prompts <- "start"
+	waitIdle(t, out)
+	if len(tasks) != 3 {
+		t.Fatalf("a live wait must keep auto-continuing, tasks=%q", tasks)
+	}
+	cancel()
+	<-done
+}
+
+func TestCountedGoalToolCallIgnoresLifecycleTools(t *testing.T) {
+	if countedGoalToolCall(swarm.Notification{Kind: swarm.NotifyAgentMessage, Text: "wait_agents({})"}) {
+		t.Fatal("only tool_call counts")
+	}
+	if countedGoalToolCall(swarm.Notification{Kind: swarm.NotifyToolCall, Text: "complete_goal({})"}) {
+		t.Fatal("complete_goal closes pursuit; it is not progress")
+	}
+	if countedGoalToolCall(swarm.Notification{Kind: swarm.NotifyToolCall, Text: "block_goal({})"}) {
+		t.Fatal("block_goal closes pursuit; it is not progress")
+	}
+	if !countedGoalToolCall(swarm.Notification{Kind: swarm.NotifyToolCall, Text: "wait_agents({})"}) {
+		t.Fatal("a live wait is progress")
+	}
+}
+
 func TestAGoalIterationCapExtendsWithoutSpendingAutoContinues(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
@@ -287,7 +374,6 @@ func TestAGoalIterationCapExtendsWithoutSpendingAutoContinues(t *testing.T) {
 			ContinueTask:   "keep going",
 			MaxContinues:   0,
 			ShouldContinue: func() bool { return true },
-			RunTimeout:     time.Second,
 		}, run, out, prompts)
 	}()
 	prompts <- "start"
@@ -300,28 +386,6 @@ func TestAGoalIterationCapExtendsWithoutSpendingAutoContinues(t *testing.T) {
 			t.Fatalf("an iteration slice must not inject the continue prompt: %q", tasks)
 		}
 	}
-	cancel()
-	<-done
-}
-
-func TestASessionCapDoesNotKillAnInteractiveTUI(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	prompts := make(chan string, 1)
-	out := make(chan notificationMsg, 8)
-	run := func(runCtx context.Context, _ swarm.RunConfig, _ func(swarm.Notification)) (swarm.RunResult, error) {
-		<-runCtx.Done()
-		return swarm.RunResult{
-			Transcript: []adk.Message{schema.UserMessage("do the thing")},
-		}, runCtx.Err()
-	}
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		pumpSession(ctx, Session{Interactive: true, RunTimeout: 30 * time.Millisecond}, run, out, prompts)
-	}()
-	prompts <- "do the thing"
-	waitIdle(t, out)
 	cancel()
 	<-done
 }

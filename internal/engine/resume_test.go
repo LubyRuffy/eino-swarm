@@ -271,8 +271,11 @@ func TestResumeOrphanedTurnsClosesATurnItCannotRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !th.GoalBlocked || th.GoalBlockReason != goalBlockedByFailedTurn {
+	if !th.GoalBlocked || th.GoalBlockReason != got.Error {
 		t.Fatalf("a leftover that cannot restart must block the objective, got %+v", th)
+	}
+	if got.Error == "" {
+		t.Fatal("an unresumable leftover must record why it died")
 	}
 }
 

@@ -27,12 +27,13 @@ export function GoalSessionTurn({
   renderBlock: (b: Block) => ReactNode
 }) {
   const t = useT()
+  const failed = turn?.status === "error"
   const finishedSession = Boolean(turn?.session) && turn?.status !== "running"
-  const [open, setOpen] = useState(!finishedSession)
+  const [open, setOpen] = useState(!finishedSession || failed)
   useEffect(() => {
     if (turn?.status === "running") setOpen(true)
-    else if (finishedSession) setOpen(false)
-  }, [finishedSession, turn?.status])
+    else if (finishedSession && !failed) setOpen(false)
+  }, [failed, finishedSession, turn?.status])
 
   if (!finishedSession) {
     return (
@@ -52,7 +53,9 @@ export function GoalSessionTurn({
     turn?.endedAt && turn.startedAt
       ? new Date(turn.endedAt).getTime() - new Date(turn.startedAt).getTime()
       : 0
-  const preview = open ? "" : sessionPreview(work)
+  const preview = open ? "" : sessionPreview(work, turn)
+  const durationLabel =
+    turn?.status === "done" ? t("transcript.workedFor") : t("transcript.stoppedAfter")
   return (
     <div className="flex min-w-0 scroll-mt-6 flex-col gap-1" data-turn-nav={turnId}>
       {leading.map((b) => (
@@ -61,6 +64,7 @@ export function GoalSessionTurn({
       <Disclosure
         open={open}
         onOpenChange={setOpen}
+        failed={failed}
         testId="goal-session"
         summaryClassName="gap-1.5 py-0.5 text-xs"
         summary={
@@ -69,12 +73,17 @@ export function GoalSessionTurn({
               className={cn("size-3 shrink-0 opacity-60 transition-transform", open && "rotate-90")}
             />
             <span data-find-ignore="" className="shrink-0 whitespace-nowrap tabular-nums">
-              {t("transcript.workedFor")} {formatDuration(Math.max(ms, 0))}
+              {durationLabel} {formatDuration(Math.max(ms, 0))}
             </span>
             {!open && preview ? (
               <>
                 <span className="shrink-0 opacity-40">·</span>
-                <span className="min-w-0 flex-1 truncate text-muted-foreground/80">
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 truncate",
+                    failed ? "" : "text-muted-foreground/80",
+                  )}
+                >
                   {preview}
                 </span>
               </>
@@ -105,12 +114,22 @@ export function splitSessionBlocks(blocks: Block[]): { leading: Block[]; work: B
   return { leading, work }
 }
 
+function flattenPreview(text: string): string {
+  return text.replace(/\s+/g, " ").trim()
+}
+
 /** Collapsed session rows are one line. A raw answer with newlines would
- *  otherwise blow the header into a paragraph. */
-export function sessionPreview(blocks: Block[]): string {
+ *  otherwise blow the header into a paragraph. A failed session must not
+ *  preview the last answer and look like it finished cleanly. */
+export function sessionPreview(blocks: Block[], turn?: TurnState): string {
   for (let i = blocks.length - 1; i >= 0; i--) {
     const row = blocks[i]
-    if (row?.kind === "answer") return row.text.replace(/\s+/g, " ").trim()
+    if (row?.kind === "error") return flattenPreview(row.text)
+  }
+  if (turn?.error?.trim()) return flattenPreview(turn.error)
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const row = blocks[i]
+    if (row?.kind === "answer") return flattenPreview(row.text)
   }
   return ""
 }

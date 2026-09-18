@@ -77,6 +77,31 @@ describe("ResizeHandle", () => {
     expect(screen.getByTestId("box")).toHaveStyle({ width: "480px" })
   })
 
+  it("tallens a bottom panel when the top separator moves up", () => {
+    function HeightHarness() {
+      const [height, setHeight] = useState(240)
+      return (
+        <div data-testid="box" style={{ height, position: "relative" }}>
+          <ResizeHandle
+            width={height}
+            onWidthChange={setHeight}
+            edge="top"
+            label="Resize terminal"
+            min={120}
+            max={480}
+          />
+        </div>
+      )
+    }
+    render(<HeightHarness />)
+    const handle = screen.getByRole("separator", { name: "Resize terminal" })
+    expect(handle).toHaveAttribute("aria-orientation", "horizontal")
+    fireEvent.keyDown(handle, { key: "ArrowUp" })
+    expect(screen.getByTestId("box")).toHaveStyle({ height: "264px" })
+    fireEvent.keyDown(handle, { key: "ArrowDown" })
+    expect(screen.getByTestId("box")).toHaveStyle({ height: "240px" })
+  })
+
   it("commits on the keyboard so a remembered width is not a live preview", () => {
     const onWidthChange = vi.fn()
     const onWidthCommit = vi.fn()

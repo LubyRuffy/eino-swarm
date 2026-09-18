@@ -244,3 +244,33 @@ func TestReplayableResultIsTheCatalog(t *testing.T) {
 		t.Fatalf("%q is in the catalog and must be replayable", name)
 	}
 }
+
+func TestExploreOnlyDropsMutatingCatalogTools(t *testing.T) {
+	if ExploreOnly(nil) != nil {
+		t.Fatal("nil in, nil out")
+	}
+	cfg := configFor(t)
+	set, err := Build(context.Background(), cfg, filepath.Join(t.TempDir(), "ws"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := ExploreOnly(set)
+	drop := map[string]bool{}
+	for _, name := range MutatingCatalogNames() {
+		drop[name] = true
+	}
+	if len(got.Names) == 0 {
+		t.Fatal("explore-only dropped everything")
+	}
+	for i, name := range got.Names {
+		if drop[name] {
+			t.Fatalf("still mounted %s", name)
+		}
+		if i >= len(got.Tools) {
+			t.Fatalf("Names/Tools skew at %d", i)
+		}
+	}
+	if len(set.Names) <= len(got.Names) {
+		t.Fatal("the original set must still have the mutating tools")
+	}
+}

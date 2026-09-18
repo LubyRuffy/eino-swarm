@@ -6,6 +6,7 @@ import {
   contextHint,
   filterSlashCommands,
   nextSlashIndex,
+  normalizeSlashPrefix,
   parseSlashSubmit,
   slashDraft,
   SLASH_COMMANDS,
@@ -13,31 +14,59 @@ import {
 } from "./slash"
 
 describe("slashDraft", () => {
-  it("opens only when the box starts with a slash and has no space yet", () => {
+  it("opens on a slash token at the caret, including after existing text", () => {
     expect(slashDraft("")).toBeNull()
     expect(slashDraft("hello")).toBeNull()
-    expect(slashDraft("/")).toEqual({ query: "" })
-    expect(slashDraft("/go")).toEqual({ query: "go" })
-    expect(slashDraft("/goal")).toEqual({ query: "goal" })
+    expect(slashDraft("/")).toEqual({ query: "", start: 0, end: 1 })
+    expect(slashDraft("/go")).toEqual({ query: "go", start: 0, end: 3 })
+    expect(slashDraft("/goal")).toEqual({ query: "goal", start: 0, end: 5 })
     expect(slashDraft("/goal ")).toBeNull()
-    expect(slashDraft(" /goal")).toBeNull()
+    expect(slashDraft("hello /")).toEqual({ query: "", start: 6, end: 7 })
+    expect(slashDraft("hello /go")).toEqual({ query: "go", start: 6, end: 9 })
+    expect(slashDraft(" /goal")).toEqual({ query: "goal", start: 1, end: 6 })
+    expect(slashDraft("字/")).toEqual({ query: "", start: 1, end: 2 })
+    expect(slashDraft("foo/bar")).toBeNull()
+    expect(slashDraft("https://")).toBeNull()
+  })
+
+  it("opens from the IME punctuation the Slash key emits in CJK mode", () => {
+    expect(slashDraft("、")).toEqual({ query: "", start: 0, end: 1 })
+    expect(slashDraft("、go")).toEqual({ query: "go", start: 0, end: 3 })
+    expect(slashDraft("／")).toEqual({ query: "", start: 0, end: 1 })
+    expect(slashDraft("字、")).toEqual({ query: "", start: 1, end: 2 })
   })
 
   it("closes once a known command already has its argument, even without a space", () => {
-    expect(slashDraft("/goalkeep")).toEqual({ query: "goalkeep" })
+    expect(slashDraft("/goalkeep")).toEqual({ query: "goalkeep", start: 0, end: 9 })
     expect(slashDraft("/goal持续推进")).toBeNull()
     expect(slashDraft("／goal持续推进")).toBeNull()
+    expect(slashDraft("、goal持续推进")).toBeNull()
+    expect(slashDraft("hello /goal持续推进")).toBeNull()
+  })
+})
+
+describe("normalizeSlashPrefix", () => {
+  it("rewrites IME slash runes so the box shows the catalog prefix", () => {
+    expect(normalizeSlashPrefix("")).toBe("")
+    expect(normalizeSlashPrefix("/go")).toBe("/go")
+    expect(normalizeSlashPrefix("、")).toBe("/")
+    expect(normalizeSlashPrefix("、go")).toBe("/go")
+    expect(normalizeSlashPrefix("／goal")).toBe("/goal")
+    expect(normalizeSlashPrefix("hello")).toBe("hello")
+    expect(normalizeSlashPrefix("hello 、")).toBe("hello /")
+    expect(normalizeSlashPrefix("字、")).toBe("字/")
   })
 })
 
 describe("filterSlashCommands", () => {
   it("lists every command for a bare slash", () => {
     const names = filterSlashCommands("").map((c) => c.name)
-    expect(names).toEqual(["goal", "compact"])
+    expect(names).toEqual(["goal", "plan", "compact"])
   })
 
   it("filters by prefix without requiring a particular sample task", () => {
-    expect(filterSlashCommands("g").map((c) => c.id)).toEqual(["goal"])
+    expect(filterSlashCommands("goa").map((c) => c.id)).toEqual(["goal"])
+    expect(filterSlashCommands("pla").map((c) => c.id)).toEqual(["plan"])
     expect(filterSlashCommands("comp").map((c) => c.id)).toEqual(["compact"])
     expect(filterSlashCommands("nope")).toEqual([])
   })
@@ -48,6 +77,11 @@ describe("parseSlashSubmit", () => {
     expect(parseSlashSubmit("/compact")).toEqual({ id: "compact", arg: "" })
     expect(parseSlashSubmit("  /compact  ")).toEqual({ id: "compact", arg: "" })
     expect(parseSlashSubmit("/goal")).toEqual({ id: "goal", arg: "" })
+    expect(parseSlashSubmit("/plan")).toEqual({ id: "plan", arg: "" })
+    expect(parseSlashSubmit("/plan keep going")).toEqual({
+      id: "plan",
+      arg: "keep going",
+    })
     expect(parseSlashSubmit("/goal keep going")).toEqual({
       id: "goal",
       arg: "keep going",
@@ -55,6 +89,10 @@ describe("parseSlashSubmit", () => {
     expect(parseSlashSubmit("/GOAL Keep going")).toEqual({
       id: "goal",
       arg: "Keep going",
+    })
+    expect(parseSlashSubmit("/plan inspect then change")).toEqual({
+      id: "plan",
+      arg: "inspect then change",
     })
     expect(parseSlashSubmit("/nope")).toBeNull()
     expect(parseSlashSubmit("goal")).toBeNull()
@@ -73,6 +111,15 @@ describe("parseSlashSubmit", () => {
       id: "goal",
       arg: "keep going",
     })
+    expect(parseSlashSubmit("、goal keep going")).toEqual({
+      id: "goal",
+      arg: "keep going",
+    })
+    expect(parseSlashSubmit("hello /goal keep going")).toEqual({
+      id: "goal",
+      arg: "keep going",
+    })
+    expect(parseSlashSubmit("see foo/bar")).toBeNull()
     expect(parseSlashSubmit("/goals")).toBeNull()
     expect(parseSlashSubmit("/compacted")).toBeNull()
   })
@@ -107,8 +154,9 @@ describe("compactHint", () => {
 })
 
 describe("commandNeedsArgument", () => {
-  it("only goal waits for more text", () => {
+  it("goal and plan wait for more text", () => {
     expect(commandNeedsArgument("goal")).toBe(true)
+    expect(commandNeedsArgument("plan")).toBe(true)
     expect(commandNeedsArgument("compact")).toBe(false)
   })
 })

@@ -137,8 +137,8 @@ usage:
   zwai web [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
         serve the same app in your browser
 
-  zwai tui [--task "..."] [--goal "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
-        terminal swarm: omit --task for a composer; --goal starts that objective immediately
+  zwai tui [--task "..."] [--goal "..."] [--plan "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
+        terminal swarm: omit --task for a composer; --goal / --plan start that work immediately
 
   zwai trace <turn-id|conversation-id> [--data-dir DIR] [--full]
         print a turn's timeline and every model call it made

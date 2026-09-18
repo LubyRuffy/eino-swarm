@@ -118,6 +118,16 @@ func (h *harness) waitTurnDone(threadID string) store.Turn {
 				return last
 			}
 		}
+		got := h.json(http.MethodGet, "/api/threads/"+threadID, nil, http.StatusOK)
+		status, _ := got["status"].(map[string]any)
+		if status["awaiting_answer"] == true {
+			resp := h.do(http.MethodPost, "/api/threads/"+threadID+"/answers",
+				map[string]any{"text": "the existing approach"})
+			_ = resp.Body.Close()
+			if resp.StatusCode != http.StatusAccepted && resp.StatusCode != http.StatusConflict {
+				h.t.Fatalf("answers: status %d", resp.StatusCode)
+			}
+		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	h.t.Fatalf("no turn finished for %s", threadID)
@@ -234,6 +244,8 @@ func TestUnknownThreadIs404Everywhere(t *testing.T) {
 		{http.MethodDelete, "/api/threads/nope", nil},
 		{http.MethodPost, "/api/threads/nope/turns", map[string]any{"text": "hi"}},
 		{http.MethodPost, "/api/threads/nope/steer", map[string]any{"text": "hi"}},
+		{http.MethodPost, "/api/threads/nope/preempt", nil},
+		{http.MethodDelete, "/api/threads/nope/steers/1", nil},
 		{http.MethodGet, "/api/threads/nope/followups", nil},
 		{http.MethodPost, "/api/threads/nope/followups", map[string]any{"text": "hi"}},
 		{http.MethodDelete, "/api/threads/nope/followups/fu_x", nil},
@@ -241,6 +253,8 @@ func TestUnknownThreadIs404Everywhere(t *testing.T) {
 		{http.MethodPost, "/api/threads/nope/followups/fu_x/steer", nil},
 		{http.MethodPost, "/api/threads/nope/interrupt", nil},
 		{http.MethodPost, "/api/threads/nope/continue", map[string]any{"continue": true}},
+		{http.MethodPost, "/api/threads/nope/answers", map[string]any{"text": "x"}},
+		{http.MethodPost, "/api/threads/nope/plan/implement", nil},
 		{http.MethodPost, "/api/threads/nope/compact", nil},
 		{http.MethodGet, "/api/threads/nope/files", nil},
 		{http.MethodGet, "/api/threads/nope/turns", nil},
@@ -881,6 +895,8 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindUser, "user_message"},
 		{engine.KindReasoning, "reasoning"},
 		{engine.KindSteer, "steer"},
+		{engine.KindSteerRetracted, "steer_retracted"},
+		{engine.KindSteerPreempted, "steer_preempted"},
 		{engine.KindCleanup, "cleanup"},
 		{engine.KindProgress, "progress"},
 		{engine.KindMemoryReview, "memory_review"},
@@ -888,6 +904,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindSessionMemory, "session_memory"},
 		{engine.KindMaxIterations, "max_iterations"},
 		{engine.KindMaxIterationsContinued, "max_iterations_continued"},
+		{engine.KindModelRetry, "model_retry"},
 		{engine.KindResumed, "resumed"},
 		{engine.KindGoal, "goal"},
 		{engine.KindGoalComplete, "goal_complete"},
@@ -896,6 +913,11 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindGoalBlocked, "goal_blocked"},
 		{engine.KindGoalEdited, "goal_edited"},
 		{engine.KindGoalResumed, "goal_resumed"},
+		{engine.KindGoalIdle, "goal_idle"},
+		{engine.KindPlan, "plan"},
+		{engine.KindPlanUpdated, "plan_updated"},
+		{engine.KindPlanImplemented, "plan_implemented"},
+		{engine.KindPlanCancelled, "plan_cancelled"},
 		{engine.KindGoalSession, "goal_session"},
 		{engine.KindCompacted, "compacted"},
 		{engine.KindUsage, "usage"},

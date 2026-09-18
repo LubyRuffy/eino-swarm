@@ -230,7 +230,7 @@ function QuoteRow({
           aria-label={t("quote.edit", { n })}
           value={draft}
           rows={3}
-          className="min-h-[4.5rem] border border-input px-2 py-1.5 text-xs"
+          className="min-h-[4.5rem] px-2 py-1.5 text-xs"
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {

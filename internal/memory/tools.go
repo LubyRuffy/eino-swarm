@@ -44,7 +44,8 @@ const changeTextMax = 160
 
 // Tools returns the three memory tools bound to one project's store. onChange
 // may be nil; when set it is called once per write that actually landed, and
-// must be safe for concurrent use.
+// must be safe for concurrent use. The manager gets this set. Sub-agents get
+// ViewTools: they may open a recorded procedure, not curate the store.
 func Tools(s *Store, onChange func(Change)) []tool.BaseTool {
 	if onChange == nil {
 		onChange = func(Change) {}
@@ -56,8 +57,23 @@ func Tools(s *Store, onChange func(Change)) []tool.BaseTool {
 	}
 }
 
+// ViewTools is the read-only subset: skill_view. Workers receive this so a
+// recorded procedure is reachable without five of them writing the same store.
+func ViewTools(s *Store) []tool.BaseTool {
+	if s == nil {
+		return nil
+	}
+	return []tool.BaseTool{&skillViewTool{store: s}}
+}
+
 // Names lists the tools Tools returns, for the system prompt and for tracing.
 func Names() []string { return []string{ToolMemory, ToolSkillView, ToolSkillManage} }
+
+// ViewNames lists the tools ViewTools returns.
+func ViewNames() []string { return []string{ToolSkillView} }
+
+// WriteNames lists the tools that mutate the store. Workers must not get them.
+func WriteNames() []string { return []string{ToolMemory, ToolSkillManage} }
 
 // ---------- memory ----------
 

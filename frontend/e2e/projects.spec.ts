@@ -257,6 +257,27 @@ test("dragging a project pins that order across reload", async ({ page }) => {
   await expect(page.getByTestId("project-row").nth(0)).toContainText(older)
 })
 
+test("a long project folder hides extra topics behind Show more", async ({
+  page,
+}) => {
+  const project = `Project ${Date.now()}`
+  await createProject(page, project)
+  const wrap = page.getByTestId("project-wrap").filter({ hasText: project })
+  for (let i = 0; i < 6; i++) {
+    await startInProject(page, project)
+    if (i < 5) {
+      await expect(wrap.getByTestId("thread-row")).toHaveCount(i + 1)
+    }
+  }
+  await expect(wrap.getByTestId("thread-row")).toHaveCount(5)
+  await expect(wrap.getByRole("button", { name: "Show more" })).toBeVisible()
+  await wrap.getByRole("button", { name: "Show more" }).click()
+  await expect(wrap.getByTestId("thread-row")).toHaveCount(6)
+  await expect(wrap.getByRole("button", { name: "Show less" })).toBeVisible()
+  await wrap.getByRole("button", { name: "Show less" }).click()
+  await expect(wrap.getByTestId("thread-row")).toHaveCount(5)
+})
+
 function escape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }

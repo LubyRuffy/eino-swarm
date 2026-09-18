@@ -1,13 +1,34 @@
 import type { ImageRef, SwarmEvent } from "./types"
 import {
+  compactBriefing,
   compactNotice,
+  goalCappedNotice,
   goalNotice,
   goalSessionNotice,
   isGoalSessionWrapSteer,
+  modelRetryNotice,
 } from "./transcript-notices"
 import { parseReview, reviewNotice } from "./transcript-review"
+import { askCardFromEvent, parseAskResult, ASK_TOOL, type AskCard } from "./transcript-ask"
+import { isPlanEvent, planNotice } from "./transcript-plan"
+import { parseIterationLimit, parsePulse } from "./transcript-pulse"
+import {
+  dropRetractedSteer,
+  isRetractedSteer,
+  parseSteerRetractSeq,
+} from "./transcript-steer"
 
-export { compactNotice, goalNotice, goalSessionNotice }
+export { parseIterationLimit, parsePulse } from "./transcript-pulse"
+export { splitQueuedSteers } from "./transcript-steer"
+
+export {
+  compactBriefing,
+  compactNotice,
+  goalCappedNotice,
+  goalNotice,
+  goalSessionNotice,
+  modelRetryNotice,
+}
 export { parseReview, reviewNotice, reviewPanelHint } from "./transcript-review"
 
 /** A transcript is a list of blocks per agent. The event stream is flat and
@@ -21,6 +42,7 @@ export type BlockKind =
   | "reasoning"
   | "answer"
   | "tool"
+  | "question"
   | "spawn"
   | "notice"
   | "confirm"
@@ -40,6 +62,9 @@ export interface Block {
   /** A review the user asked not to see in the transcript. It still exists
    *  so the Trace tab's Full log and resume point do not lose the event. */
   quiet?: boolean
+  /** Extra body a notice can open. Compact keeps the briefing here so the
+   *  chat row stays a one-liner instead of pasting the next prompt. */
+  detail?: string
   /** Tool blocks only. */
   tool?: {
     callId: string
@@ -50,6 +75,8 @@ export interface Block {
     /** A call with no result yet is still running. */
     pending: boolean
   }
+  /** ask_user cards. */
+  question?: AskCard
   /** Spawn blocks only: which sub-agent was started. */
   spawn?: { agentId: string; role: string }
   /** Confirm blocks only: the manager hit its tool-round cap. */
@@ -98,6 +125,16 @@ export interface TurnState {
   session?: boolean
 }
 
+/** The public error of the newest failed turn, if any. The banner used to
+ *  store only "the last turn failed"; older conversations still do. */
+export function lastFailedTurnError(turns: TurnState[]): string {
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const err = turns[i]?.error?.trim()
+    if (turns[i]?.status === "error" && err) return err
+  }
+  return ""
+}
+
 /** One sub-agent as the server last saw it. Ages are measured on the server so
  *  a client's clock, or a tab the browser had throttled, cannot invent them.
  *  There is no activity text: what an agent is doing is already on screen from
@@ -131,6 +168,9 @@ export interface TranscriptState {
   lastSeq: number
   running: boolean
   pulse?: Pulse
+  /** Event seqs of `steer` rows the human retracted. Kept across history
+   *  pages so a later-loaded bubble cannot reappear after Delete. */
+  retractedSteers?: number[]
 }
 
 export const MANAGER_ID = "manager"
@@ -142,10 +182,20 @@ export function emptyTranscript(): TranscriptState {
 /** Fold one event into the transcript, returning a new state. Pure, so the
  *  store stays a thin wrapper and the interesting logic is testable without
  *  a browser. */
+/** `roster` still creates workers and applies finished/cleanup, but it does
+ *  not insert "Started" / cleanup rows into the manager transcript. Those
+ *  rows belong to the contiguous log page; mixing sidecar seqs in is what
+ *  turned a long /goal into a wall of agent names. */
+export type ReduceMode = "full" | "roster"
+
 export function reduceEvent(
   state: TranscriptState,
   ev: SwarmEvent,
+  mode: ReduceMode = "full",
 ): TranscriptState {
+  // Array.reduce would pass the index as the third argument. Only an
+  // explicit "roster" sidecar fold skips manager chrome.
+  const rosterOnly = mode === "roster"
   if (ev.kind === "rewound") {
     const from = Number.parseInt(String(ev.text ?? ""), 10)
     if (!Number.isFinite(from) || from <= 0) return state
@@ -158,6 +208,14 @@ export function reduceEvent(
     lastSeq: ev.seq > state.lastSeq ? ev.seq : state.lastSeq,
     running: state.running,
     pulse: state.pulse,
+    retractedSteers: state.retractedSteers,
+  }
+  if (ev.kind === "steer_preempted") {
+    return next
+  }
+  if (ev.kind === "steer_retracted") {
+    dropRetractedSteer(next, parseSteerRetractSeq(ev.text))
+    return next
   }
   // The memory review runs after the turn, on its own. It is not a member of
   // the swarm, so it must not join the roster as a worker with nothing to
@@ -203,7 +261,7 @@ export function reduceEvent(
     // Keep leftover workers running: they are restarted under the same id.
     for (const id of next.agentOrder) {
       const agent = next.agents[id]
-      if (agent) closePendingTools(agent, resumeToolStopped)
+      if (agent) closePendingTools(agent, resumeToolStopped, true)
     }
     return next
   }
@@ -220,18 +278,31 @@ export function reduceEvent(
   if (ev.kind === "goal_continued") {
     next.running = true
     upsertTurn(next, ev.turn_id, { status: "running", startedAt: ev.created_at, session: true })
-    resetManagerForNewTurn(next, ev.turn_id)
+    // Parked workers keep their ids and their in-flight tools. Treating this
+    // like a human turn used to paint them done, so wait_agents sat next to a
+    // "Done" roster until the next session timed out.
     const manager = touchAgent(next, MANAGER_ID)
     manager.status = "running"
     append(manager, block(ev, "notice", ev.text?.trim() || "Continuing the standing objective."))
     return next
   }
   if (ev.kind === "goal_capped") {
-    append(touchAgent(next, MANAGER_ID), block(ev, "notice", "Stopped auto-continuing: the standing objective is still open."))
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", goalCappedNotice(ev.text)))
+    return next
+  }
+  if (ev.kind === "goal_idle") {
+    append(
+      touchAgent(next, MANAGER_ID),
+      block(ev, "notice", ev.text?.trim() || "Stopped auto-continuing: the last continuation made no progress."),
+    )
     return next
   }
   if (ev.kind === "goal_blocked") {
     append(touchAgent(next, MANAGER_ID), block(ev, "notice", "Standing objective blocked: progress needs you or an external change."))
+    return next
+  }
+  if (ev.kind === "model_retry") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", modelRetryNotice(ev.text)))
     return next
   }
   if (ev.kind === "goal_edited") {
@@ -252,7 +323,23 @@ export function reduceEvent(
     return next
   }
   if (ev.kind === "compacted") {
-    append(touchAgent(next, MANAGER_ID), block(ev, "notice", compactNotice(ev)))
+    const row = block(ev, "notice", compactNotice(ev))
+    const briefing = compactBriefing(ev)
+    if (briefing) row.detail = briefing
+    append(touchAgent(next, MANAGER_ID), row)
+    return next
+  }
+  if (isPlanEvent(ev.kind)) {
+    const text = planNotice(ev.kind, ev.text) ?? ""
+    if (ev.kind === "plan_implemented") {
+      next.running = true
+      upsertTurn(next, ev.turn_id, { status: "running", startedAt: ev.created_at })
+      const manager = touchAgent(next, MANAGER_ID)
+      manager.status = "running"
+      append(manager, block(ev, "notice", text))
+      return next
+    }
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", text))
     return next
   }
 
@@ -264,13 +351,12 @@ export function reduceEvent(
       upsertTurn(next, ev.turn_id, { userText: ev.text ?? "", status: "running", startedAt: ev.created_at })
       next.running = true
       next.pulse = undefined
-      resetManagerForNewTurn(next, ev.turn_id)
       agent.blocks = agent.blocks.filter((b) => b.id !== PENDING_EDIT_ID)
       append(agent, block(ev, "user", ev.text ?? ""))
       break
 
     case "steer":
-      if (!isGoalSessionWrapSteer(ev.text)) {
+      if (!isGoalSessionWrapSteer(ev.text) && !isRetractedSteer(next, ev.seq)) {
         append(agent, block(ev, "steer", ev.text ?? ""))
       }
       break
@@ -278,12 +364,14 @@ export function reduceEvent(
     case "reasoning_delta":
       // Deltas carry the whole accumulated string, so the open block is
       // replaced. Appending here is the classic bug that doubles every word.
+      keepWorkerLive(agent)
       replaceStreaming(agent, ev, "reasoning")
       agent.activity = "thinking"
       break
 
     case "delta":
       // The model has started answering, so any thinking block is done.
+      keepWorkerLive(agent)
       closeStreaming(agent, "reasoning")
       replaceStreaming(agent, ev, "answer")
       agent.activity = "writing"
@@ -297,19 +385,26 @@ export function reduceEvent(
       break
 
     case "agent_message":
+      keepWorkerLive(agent)
       closeStreaming(agent, "reasoning")
       replaceComplete(agent, ev, "answer")
       agent.activity = summarise(ev.text ?? "")
       break
 
     case "tool_call": {
+      keepWorkerLive(agent)
       closeStreaming(agent, "reasoning")
       closeStreaming(agent, "answer")
       const { name, args } = splitToolCall(ev.text ?? "")
-      append(agent, {
-        ...block(ev, "tool", name),
-        tool: { callId: ev.tool_call_id ?? "", name, args, pending: true },
-      })
+      const ask = askCardFromEvent(ev, name, args)
+      if (ask) {
+        append(agent, { ...block(ev, "question", name), question: ask })
+      } else {
+        append(agent, {
+          ...block(ev, "tool", name),
+          tool: { callId: ev.tool_call_id ?? "", name, args, pending: true },
+        })
+      }
       agent.activity = `${name}`
       break
     }
@@ -328,10 +423,14 @@ export function reduceEvent(
     }
 
     case "tool_result": {
-      // Pair by call id: a manager that fans out four calls at once gets four
-      // results back in whatever order they finish.
       const target = findToolBlock(agent, ev.tool_call_id)
-      if (target?.tool) {
+      if (target?.question) {
+        target.question = {
+          ...target.question,
+          pending: false,
+          answers: parseAskResult(ev.text ?? ""),
+        }
+      } else if (target?.tool) {
         target.tool = {
           ...target.tool,
           result: ev.text ?? ev.err ?? "",
@@ -354,26 +453,29 @@ export function reduceEvent(
     }
 
     case "spawned": {
+      const existed = Boolean(next.agents[ev.agent_id])
       const child = touchAgent(next, ev.agent_id, ev.role ?? ev.text)
       const instruction = recordedInstruction(ev.role, ev.text)
       if (instruction) child.instruction = instruction
       const manager = touchAgent(next, MANAGER_ID)
-      const seen = manager.blocks.some((b) => b.kind === "spawn" && b.spawn?.agentId === child.id)
+      const painted = manager.blocks.some((b) => b.kind === "spawn" && b.spawn?.agentId === child.id)
       child.status = "running"
       child.endedAt = undefined
       child.error = undefined
-      child.activity = seen ? "continuing" : "starting"
-      if (!seen) child.startedAt = ev.created_at
-      addAgentToTurn(next, ev.turn_id, child.id)
-      // A resume re-emits spawned for the same id so the roster comes back
-      // to life. A second "Started" row is the bug that looks like two
-      // workers with the same name.
-      if (!seen) {
-        append(manager, {
-          ...block(ev, "spawn", instruction ?? ev.role ?? ev.text ?? "sub-agent"),
-          agentId: MANAGER_ID,
-          spawn: { agentId: child.id, role: ev.role ?? ev.text ?? "sub-agent" },
-        })
+      child.activity = existed || painted ? "continuing" : "starting"
+      if (!existed) child.startedAt = ev.created_at
+      if (!rosterOnly) {
+        addAgentToTurn(next, ev.turn_id, child.id)
+        // A resume re-emits spawned for the same id so the roster comes back
+        // to life. A second "Started" row is the bug that looks like two
+        // workers with the same name.
+        if (!painted) {
+          append(manager, {
+            ...block(ev, "spawn", instruction ?? ev.role ?? ev.text ?? "sub-agent"),
+            agentId: MANAGER_ID,
+            spawn: { agentId: child.id, role: ev.role ?? ev.text ?? "sub-agent" },
+          })
+        }
       }
       break
     }
@@ -392,7 +494,21 @@ export function reduceEvent(
     }
 
     case "cleanup":
-      append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text ?? ""))
+      if (!rosterOnly) {
+        append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text ?? ""))
+      }
+      // Cleanup is the kill signal. Manager `done` is not: a /goal session
+      // parks workers and they keep running under the same ids.
+      for (const id of next.agentOrder) {
+        if (id === MANAGER_ID) continue
+        const child = next.agents[id]
+        if (!child || child.status !== "running") continue
+        closeStreaming(child, "reasoning")
+        closeStreaming(child, "answer")
+        closePendingTools(child, ev.text)
+        child.status = "done"
+        child.activity = "done"
+      }
       break
 
     case "max_iterations": {
@@ -440,19 +556,28 @@ export function reduceEvent(
       })
       next.running = false
       next.pulse = undefined
-      settlePendingConfirm(touchAgent(next, MANAGER_ID), false)
-      for (const id of next.agentOrder) {
-        const a = next.agents[id]
-        closeStreaming(a, "reasoning")
-        closeStreaming(a, "answer")
-        closePendingTools(a, ev.err)
-        if (a.status === "running") {
-          a.status = failed ? "failed" : "done"
-          a.activity = failed ? "stopped" : "done"
+      const manager = touchAgent(next, MANAGER_ID)
+      settlePendingConfirm(manager, false)
+      closeStreaming(manager, "reasoning")
+      closeStreaming(manager, "answer")
+      closePendingTools(manager, ev.err)
+      // A clean `done` parks leftover workers for the next /goal session.
+      // Closing their exec here made Agents say Done while wait_agents was
+      // still blocked on that same worker. An error/interrupt does kill them.
+      if (failed) {
+        for (const id of next.agentOrder) {
+          if (id === MANAGER_ID) continue
+          const child = next.agents[id]
+          if (!child) continue
+          closeStreaming(child, "reasoning")
+          closeStreaming(child, "answer")
+          closePendingTools(child, ev.err)
+          if (child.status === "running") {
+            child.status = "failed"
+            child.activity = "stopped"
+          }
         }
-      }
-      if (failed && ev.err) {
-        append(touchAgent(next, MANAGER_ID), block(ev, "error", ev.err))
+        if (ev.err) append(manager, block(ev, "error", ev.err))
       }
       break
     }
@@ -475,44 +600,6 @@ export function liveWorkers(state: TranscriptState): number {
   return state.agentOrder.filter(
     (id) => id !== MANAGER_ID && state.agents[id].status === "running",
   ).length
-}
-
-/** The manager started another round. Tool results patch a row that already
- *  exists, so they do not count — that is the current round finishing, not
- *  the next one reading the inbox. */
-function isModelRound(b: Block): boolean {
-  return b.kind === "reasoning" || b.kind === "answer" || b.kind === "tool"
-}
-
-/** Pull unread steering out of the turn body. Steering is queued for the next
- *  model call; leaving the bubble where the user typed it parks it above
- *  "Working for…" and reads as already applied. A later round on the same
- *  turn consumes it and it stays in chronological order. A finished turn
- *  keeps the event order so history does not jump. */
-export function splitQueuedSteers(
-  blocks: Block[],
-  running: boolean,
-): { body: Block[]; queued: Block[] } {
-  if (!running || blocks.length === 0) {
-    return { body: blocks, queued: [] }
-  }
-  const turnId = blocks[blocks.length - 1].turnId
-  let lastRound = -1
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i]
-    if (b.turnId === turnId && isModelRound(b)) lastRound = i
-  }
-  const body: Block[] = []
-  const queued: Block[] = []
-  for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i]
-    if (b.kind === "steer" && b.turnId === turnId && i > lastRound) {
-      queued.push(b)
-    } else {
-      body.push(b)
-    }
-  }
-  return { body, queued }
 }
 
 /** Collapse a burst of streamed events down to the latest snapshot per
@@ -548,7 +635,7 @@ export function reduceEvents(
   state: TranscriptState,
   events: SwarmEvent[],
 ): TranscriptState {
-  return events.reduce(reduceEvent, state)
+  return events.reduce((s, ev) => reduceEvent(s, ev), state)
 }
 
 /** Local placeholder so an in-place edit does not blink out between Send
@@ -610,6 +697,7 @@ export function rewindTranscript(
     lastSeq: state.lastSeq,
     running: pending,
     pulse: undefined,
+    retractedSteers: (state.retractedSteers ?? []).filter((s) => s < fromSeq),
   }
 }
 
@@ -630,6 +718,7 @@ export function placePendingEdit(
     lastSeq: state.lastSeq,
     running: true,
     pulse: undefined,
+    retractedSteers: state.retractedSteers,
   }
   const agent = touchAgent(next, MANAGER_ID)
   agent.blocks = agent.blocks.filter((b) => b.id !== PENDING_EDIT_ID)
@@ -647,18 +736,13 @@ export function placePendingEdit(
   return next
 }
 
-/** The manager's transcript is per turn: the previous turn's blocks stay in
- *  the conversation list, but a new turn starts a fresh section. */
-function resetManagerForNewTurn(state: TranscriptState, _turnId: string) {
-  void _turnId
-  for (const id of state.agentOrder) {
-    const a = state.agents[id]
-    if (a.status === "running" && id !== MANAGER_ID) {
-      // A sub-agent still marked running when a new turn starts was killed by
-      // the end-of-turn cleanup; showing it as running forever is a lie.
-      state.agents[id] = { ...a, status: "done", activity: "done" }
-    }
-  }
+/** A parked worker that is still emitting is not done, even if an older
+ *  reducer painted it that way. Live work wins over a stale roster tick. */
+function keepWorkerLive(agent: AgentState) {
+  if (agent.id === MANAGER_ID || agent.status === "running") return
+  agent.status = "running"
+  agent.endedAt = undefined
+  agent.error = undefined
 }
 
 /** Older spawned events stored the role in `text`. The instruction only
@@ -798,9 +882,14 @@ const resumeToolStopped = "the previous process stopped"
  *  left running. The spinner is keyed off `pending`; leaving it true next to
  *  an "interrupted" banner is the lie the Stop button used to leave behind.
  *  `result` must be a string or the expanded body still says "running…". */
-function closePendingTools(agent: AgentState, reason?: string) {
+function closePendingTools(agent: AgentState, reason?: string, keepQuestions?: boolean) {
   let changed = false
   const blocks = agent.blocks.map((b) => {
+    if (b.kind === "question" && b.question?.pending) {
+      if (keepQuestions) return b
+      changed = true
+      return { ...b, question: { ...b.question, pending: false } }
+    }
     if (b.kind !== "tool" || !b.tool?.pending) return b
     changed = true
     return {
@@ -821,7 +910,7 @@ function lastOpenIndex(blocks: Block[], kind: BlockKind): number {
     if (blocks[i].kind === kind && blocks[i].streaming) return i
     // A block of another kind closes the run: thinking then a tool call then
     // more thinking is two separate thinking blocks, not one.
-    if (blocks[i].kind === "tool" || blocks[i].kind === "spawn") return -1
+    if (blocks[i].kind === "tool" || blocks[i].kind === "spawn" || blocks[i].kind === "question") return -1
   }
   return -1
 }
@@ -849,6 +938,18 @@ function findToolBlock(agent: AgentState, callId?: string): Block | undefined {
   const blocks = agent.blocks
   for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i]
+    if (b.kind === "question" && b.question) {
+      if (callId && b.question.callId === callId) {
+        const copy = { ...b, question: { ...b.question } }
+        agent.blocks = blocks.map((x, j) => (j === i ? copy : x))
+        return copy
+      }
+      if (!callId && b.question.pending) {
+        const copy = { ...b, question: { ...b.question } }
+        agent.blocks = blocks.map((x, j) => (j === i ? copy : x))
+        return copy
+      }
+    }
     if (b.kind !== "tool" || !b.tool) continue
     if (callId && b.tool.callId === callId) {
       const copy = { ...b, tool: { ...b.tool } }
@@ -862,61 +963,6 @@ function findToolBlock(agent: AgentState, callId?: string): Block | undefined {
     }
   }
   return undefined
-}
-
-/** Read the cap payload out of a max_iterations event. A malformed one still
- *  renders as a card; the numbers just show as zero rather than crashing. */
-export function parseIterationLimit(
-  ev: SwarmEvent,
-): { limit: number; extendBy: number } | undefined {
-  let raw: unknown
-  try {
-    raw = JSON.parse(ev.text ?? "")
-  } catch {
-    return undefined
-  }
-  if (!raw || typeof raw !== "object") return undefined
-  const body = raw as { limit?: unknown; extend_by?: unknown }
-  return { limit: num(body.limit), extendBy: num(body.extend_by) }
-}
-
-/** Read a pulse out of an event. A malformed one is dropped rather than
- *  rendered: the next pulse is seconds away, and half a snapshot would show a
- *  turn with no agents in it. */
-export function parsePulse(ev: SwarmEvent): Pulse | undefined {
-  let raw: unknown
-  try {
-    raw = JSON.parse(ev.text ?? "")
-  } catch {
-    return undefined
-  }
-  if (!raw || typeof raw !== "object") return undefined
-  const body = raw as { elapsed_ms?: unknown; agents?: unknown }
-  const agents = Array.isArray(body.agents) ? body.agents : []
-  return {
-    at: ev.created_at,
-    elapsedMs: num(body.elapsed_ms),
-    agents: agents.flatMap((a: unknown) => {
-      const row = a as { agent_id?: unknown; role?: unknown; status?: unknown; elapsed_ms?: unknown }
-      if (typeof row?.agent_id !== "string" || !row.agent_id) return []
-      return [
-        {
-          agentId: row.agent_id,
-          role: typeof row.role === "string" ? row.role : undefined,
-          status: pulseStatus(row.status),
-          elapsedMs: num(row.elapsed_ms),
-        },
-      ]
-    }),
-  }
-}
-
-function pulseStatus(raw: unknown): AgentStatus {
-  return raw === "running" || raw === "failed" ? raw : "done"
-}
-
-function num(raw: unknown): number {
-  return typeof raw === "number" && Number.isFinite(raw) ? raw : 0
 }
 
 /** The server sends `name({json})`; the UI shows the verb and hides the
@@ -942,6 +988,7 @@ export function toolNameOf(state: TranscriptState, callId?: string): string | un
   if (!callId) return undefined
   for (const id of state.agentOrder) {
     for (const b of state.agents[id]?.blocks ?? []) {
+      if (b.kind === "question" && b.question?.callId === callId) return ASK_TOOL
       if (b.kind === "tool" && b.tool?.callId === callId) return b.tool.name
     }
   }

@@ -4,6 +4,7 @@ import {
   QUOTE_SOURCE_ATTR,
   holdSelection,
   menuPosition,
+  nextMenuSelection,
   normalizeSelectedText,
   readTextSelection,
 } from "./selection"
@@ -71,6 +72,26 @@ describe("holdSelection", () => {
 describe("normalizeSelectedText", () => {
   it("keeps inner newlines and strips nbsp padding", () => {
     expect(normalizeSelectedText("\u00a0alpha\r\nbeta\u00a0")).toBe("alpha\nbeta")
+  })
+})
+
+describe("nextMenuSelection", () => {
+  const live = {
+    text: "alpha",
+    rect: { top: 10, left: 10, width: 40, height: 12, bottom: 22 },
+  }
+
+  it("keeps the snapshot when the native selection collapses mid-stream", () => {
+    expect(nextMenuSelection(live, null, false)).toEqual(live)
+  })
+
+  it("clears only after the user settles with nothing selected", () => {
+    expect(nextMenuSelection(live, null, true)).toBeNull()
+  })
+
+  it("replaces the snapshot when a new quote-source range exists", () => {
+    const next = { ...live, text: "beta" }
+    expect(nextMenuSelection(live, next, false)).toEqual(next)
   })
 })
 

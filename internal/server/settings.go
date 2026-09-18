@@ -235,6 +235,8 @@ func (s *Server) putSettings(c *gin.Context) {
 	}
 	// The next turn must use the new endpoint without a restart.
 	s.engine.Providers().Invalidate()
+	// Queued workers sit on the live / parked registry, not the yaml file.
+	s.engine.ApplyLiveSwarmLimits()
 	c.JSON(http.StatusOK, gin.H{"settings": toSettingsView(cfg)})
 }
 

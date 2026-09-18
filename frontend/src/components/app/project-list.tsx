@@ -11,7 +11,7 @@ import {
 
 import { SidebarSection } from "@/components/app/sidebar-section"
 import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots"
-import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
+import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -168,9 +168,6 @@ function ProjectRow({
   onPinThread: (id: string, pinned: boolean) => void
 }) {
   const t = useT()
-  const sortable = useSortableList((from, to) => {
-    onReorderThreads(reorderById(threads, from, to).map((th) => th.id))
-  })
   return (
     <div className="mb-0.5" data-testid="project-wrap" data-id={project.id}>
       <div
@@ -260,19 +257,16 @@ function ProjectRow({
       </div>
       {open ? (
         <div data-testid="project-threads">
-          {threads.map((thread) => (
-            <SidebarThreadRow
-              key={thread.id}
-              thread={thread}
-              active={thread.id === activeId}
-              running={thread.running || thread.id === runningId}
-              drag={sortable.bind(thread.id)}
-              onOpen={onOpenThread}
-              onRename={onRenameThread}
-              onDelete={onDeleteThread}
-              onPin={onPinThread}
-            />
-          ))}
+          <SidebarThreadGroup
+            threads={threads}
+            activeId={activeId}
+            runningId={runningId}
+            onOpen={onOpenThread}
+            onRename={onRenameThread}
+            onDelete={onDeleteThread}
+            onPin={onPinThread}
+            onReorder={onReorderThreads}
+          />
         </div>
       ) : null}
     </div>

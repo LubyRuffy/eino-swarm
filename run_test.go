@@ -888,3 +888,62 @@ func TestSpawnedNotificationCarriesTheWorkerInstruction(t *testing.T) {
 		t.Fatalf("spawned instruction=%q", spawned[0].Text)
 	}
 }
+
+// A /goal session parks the registry when the manager stops calling tools.
+// The worker is often still inside a tool; restoring a nil sink used to drop
+// its finished event, so Agents froze on "starting" with an empty pane.
+func TestHostNotifyKeepsWorkerEventsAfterRunReturns(t *testing.T) {
+	rec := &recorder{}
+	reg := NewRegistry()
+	reg.SetHostNotify(rec.cb())
+	released := make(chan struct{})
+	var release sync.Once
+	defer release.Do(func() { close(released) })
+	reg.SubAgentTools = []tool.BaseTool{&fnTool{name: "work", fn: func(context.Context, string) (string, error) {
+		<-released
+		return "worked", nil
+	}}}
+	reg.ModelBuilder = func(role, id string) model.BaseChatModel {
+		if id == DefaultManagerID {
+			return &chunkedModel{turns: []turnScript{
+				{
+					content: []string{"fan out"},
+					calls: []schema.ToolCall{rawCall("s1", "spawn_agent",
+						`{"role":"worker","task":"do the assigned work"}`)},
+				},
+				{content: []string{"the workers are running; wrapping this turn"}},
+			}}
+		}
+		return &chunkedModel{turns: []turnScript{
+			{
+				content: []string{"on it"},
+				calls:   []schema.ToolCall{rawCall("w1", "work", "{}")},
+			},
+			{content: []string{"worker finished the assigned work"}},
+		}}
+	}
+	res, err := reg.RunWith(context.Background(), RunConfig{
+		Instruction: "coordinate",
+		Task:        "split the work",
+	}, rec.cb())
+	if err != nil {
+		t.Fatalf("RunWith: %v", err)
+	}
+	if !strings.Contains(res.Final, "wrapping this turn") {
+		t.Fatalf("manager should have left without waiting: %q", res.Final)
+	}
+	if n := len(rec.ofKind(NotifyFinished)); n != 0 {
+		t.Fatalf("worker must still be blocked when the manager returns, got %d finished", n)
+	}
+	release.Do(func() { close(released) })
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, n := range rec.ofKind(NotifyFinished) {
+			if n.AgentID != DefaultManagerID && n.Err == nil {
+				return
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("parked worker finished into the void: %+v", rec.all())
+}

@@ -8,7 +8,8 @@ tagged a release yet.
 
 The repository grew from a swarm orchestration library into a desktop
 co-working app built on it. The library API is unchanged except where noted
-(`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`).
+(`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
+`SetMaxConcurrent`).
 
 ### Added
 
@@ -16,6 +17,62 @@ co-working app built on it. The library API is unchanged except where noted
   stdout/stderr into the pending tool row (`tool_delta`, broadcast only, keyed
   by `tool_call_id`). The model still gets one JSON `tool_result`. A `\r` in
   the output overwrites the current line. The pending row starts open.
+
+- **Show more on long sidebar groups.** A project folder and Recents
+  show the five conversations active in the last seven days. The rest
+  sit behind **Show more** (and **Show less** folds them again). The
+  open or running conversation stays visible so More cannot hide the
+  row on screen. Pinned is unchanged.
+
+- **Same-turn interrupt injection.** Unread steering under the working line
+  can **Interrupt** the current manager tool or generate (workers stay up)
+  so those nudges land on this turn, or **Delete** one bubble so the model
+  never sees it. `POST /api/threads/:id/preempt`, `DELETE …/steers/:seq`,
+  events `steer_preempted` / `steer_retracted`. Stop is still the turn
+  cancel.
+
+- **In-turn retry of a recoverable model error.** A truncated tool-call JSON
+  (`400 Unterminated string`), a `429`, or a dropped stream used to fail the
+  turn and `goal_blocked` on the first hit. The manager now re-enters the
+  same turn (drops the invalid arguments so they are not sent back, records
+  `model_retry`) twice before the turn fails. A real refusal still blocks
+  immediately.
+
+- **Interactive questions (`ask_user`).** The manager pauses this ReAct turn
+  with a multiple-choice card (1–3 questions, host-injected Other). Web,
+  desktop, TUI and `--task` can answer; workers cannot. Status is
+  `awaiting_answer`. Composer Enter is Other, not a follow-up. A crash
+  resume re-arms the questionnaire. Piped TUI stdin fails the tool instead
+  of hanging.
+
+- **`/plan` before changing anything.** A conversation-level planning mode
+  unmounts write/edit/exec (and similar). The manager explores, asks, and
+  writes `$ZWAI_HOME/plans/<thread>/PLAN.md`. Edit the banner, then
+  **Implement** to remount those tools and start the work. Entering plan
+  pauses an open `/goal`; Implement does not resume it. TUI: `/plan`,
+  `/implement`, `zwai tui --plan`.
+
+- **Compact briefing on demand.** The compressed-context notice stays a
+  one-liner (token counts, transcript unchanged). An icon opens the
+  briefing later turns will see, instead of pasting it into the chat.
+
+- **Integrated terminal.** Title-bar icon (and ⌘J) opens a bottom PTY in
+  the current conversation's workspace — the project's directory when the
+  conversation is in one. Each click starts a new session; the server
+  resolves the path, the client cannot pick one. Same-origin WebSocket,
+  eight sessions per process.
+
+- **Charts in answers.** When two or more comparable quantities would be
+  easier to see as a plot, the manager emits a fenced `chart` block
+  (bar, line, area, pie JSON), keeps the prose to the takeaway, and is
+  told not to restate the same series as a list, a markdown table, or
+  emoji. The transcript paints the plot and keeps the rows as a table
+  behind a tab. No new event kind — the fence lives in the assistant
+  markdown.
+
+- **`Registry.SetMaxConcurrent`.** Resizes a live swarm's worker gate so
+  waiters see a new cap without a restart. Assigning `MaxConcurrent`
+  after the first spawn still does not wake them.
 
 - **Tail-first conversation history.** Opening a conversation fetches
   `GET /api/threads/:id/log` for one viewport of the live edge, then
@@ -51,6 +108,12 @@ co-working app built on it. The library API is unchanged except where noted
   `shift+tab` still cycles thinking level; `--model` / `--reasoning` set
   the same choice for a one-shot run.
 
+- **Sub-agents can read a project's memory.** On a project with memory on,
+  workers receive the notes snapshot, the skills index, and `skill_view`.
+  They still cannot call `memory` or `skill_manage`. Their final message
+  is the task result; they may append a short durable convention or
+  procedure for the manager to store. Most tasks have nothing to add.
+
 - **Memory quality is enforced in the tools, not only in the reviewer prompt.**
   `skill_manage` create that collides with an existing skill (edition suffix,
   shared summary, copied body) is refused and names the skill to patch.
@@ -60,11 +123,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 - **`/goal` work sessions.** A standing objective no longer welds itself
   into one turn until 200 manager rounds. Each pursuit turn ends when
-  `swarm.goal_session_max_seconds` (default 600) lands, records
-  `goal_session` (`reason=time`), and auto-continues immediately.
-  `swarm.goal_session_max_iterations` (default 40) is eino's ReAct slice:
-  hitting it extends the same turn without a confirm, a session cut, or
-  spending `goal_max_auto_turns`. Context at or above
+  the manager stops calling tools. `swarm.goal_session_max_iterations`
+  (default 40) is eino's ReAct slice: hitting it extends the same turn
+  without a confirm, a session cut, or spending `goal_max_auto_turns`.
+  Context at or above
   `swarm.goal_auto_compact_percent` (default 80) is compacted first.
   In-flight sub-agents are parked across sessions instead of killed.
   Finished session turns fold in the transcript the way Codex's
@@ -74,6 +136,166 @@ co-working app built on it. The library API is unchanged except where noted
     `Close` still stop them).
 
 ### Fixed
+
+- **A generated conversation name survives the `done` list refresh.** The
+  title-bar used to snap back to the truncated prompt when `GET /threads`
+  still had `title_auto` after the `title` event had already named the row.
+
+- **Slash menu follows the `/` token, not column 0.** Typing `/` after
+  existing text (or CJK with no ASCII space) opens goal/plan/compact the
+  way Cursor does. `foo/bar` and `https://` stay ordinary text. Escape
+  drops only the `/query`.
+
+- **CJK IME Slash key now opens the command menu.** With Chinese punctuation
+  on, that key inserts `、` (or `／`) instead of `/`, so the palette never
+  appeared. The composer rewrites those runes to `/`; TUI and `StartTurn`
+  parse them the same way.
+
+- **Unread steering survives a manager re-entry.** `RunWith` used to wipe the
+  inbox at the start of every slice, so a steer queued before the next
+  generate vanished from Interrupt and Delete while the pin stayed on
+  screen. The inbox is registry-lifetime; only the transcript snapshot
+  resets.
+
+- **Interrupt after the last generate no longer cancels the next turn.**
+  `Preempt` with no live epoch armed the next `bindEpoch`. `TakePreempt`
+  now clears that pending cancel, and a successful run with unread
+  steering still re-enters this turn.
+
+- **⌘Enter during `ask_user` is a steer, not Other.** Goal edits and
+  follow-up promotions were also being stamped onto every question.
+
+- **A late answer after Interrupt cannot auto-fill the next card.** The
+  stash only applies to a call that has not finished waiting.
+
+- **A cancelled generate is not recorded as a finished answer.**
+
+- **Interrupt during generate no longer deadlocks the stream.** Closing the
+  inner reader while `Recv` was blocked does not unblock eino's pipe, and
+  on a copied stream it nests `sync.Once`. The wrapper waits for the
+  provider to EOF (it already sees epoch cancel) and then maps that to
+  `context.Canceled`.
+
+- **Lowering `max_concurrent` tests keyed waiters by role.** `ModelBuilder`
+  runs after the gate, so two live workers racing an increment used to
+  close the wrong release channel and hang `Done`.
+
+- **PTY `ready` is on the copy loop as well as the HTTP upgrade.** Tests
+  that drive the WebSocket without `Start` still get the cwd frame; the
+  live upgrade still sends it before fork so a refused PTY can name the
+  tab, then `error`.
+
+- **PTY origin is loopback, not `Host`.** A DNS-rebind page whose Origin
+  host matched `Host` used to upgrade. Blank Origin is allowed only from
+  a loopback peer. Mutating `/api` with a non-loopback Origin is `403`.
+
+- **Escape in `/plan`, ask Other, and banner editors no longer Stops the
+  turn.** Capture-phase Escape ignored those fields.
+
+- **`ask_user` sets Waiting immediately**, so Enter answers instead of
+  queuing a follow-up that can never run. A resumed question stays
+  pending. `plan_implemented` starts the working clock.
+
+- **Scrolling up a long conversation now loads the older page.** The top
+  sentinel's IntersectionObserver fires ~80px early; the hook used to
+  ignore that and never listen for `scroll`, so dragging to the first
+  loaded row showed empty space. Sentinel intersection pages now, a
+  scroll to the top pages even after that first shot, and a prepend
+  does not yank the reader back down if they already reached 0.
+
+- **Integrated terminal would not start a shell.** `Setpgid` was set on
+  the PTY command; `creack/pty` also sets `Setsid`, and Darwin refuses
+  both (`fork/exec … operation not permitted`). The session is the
+  process group; Close still kills `-pid`.
+
+- **/plan and ask_user reach the server.** The composer and ask card already
+  called store actions that were missing, so the bundle would not typecheck.
+
+- **Empty textareas look like fields.** The shared `Textarea` had no
+  border, so New project's instruction (and Memory notes) looked like
+  leftover whitespace. It now uses the same `border-input` chrome as
+  `Input`. Nested uses (composer, message edit) keep the outer chrome
+  only.
+
+- **Composer card kept its top-left border.** Giving `Textarea` a default
+  fill left the composer input opaque. That square background overflowed
+  the rounded card and painted over the top corners. The nested field is
+  transparent again, same as message edit.
+
+- **Raising sub-agents-at-once takes effect on workers already queued.**
+  The first spawn used to mint a buffered semaphore under `sync.Once`,
+  and a parked `/goal` registry kept that cap until a restart. Settings
+  now resizes the live gate, so extra slots open immediately; lowering
+  it does not kill in-flight workers.
+
+- **`wait_agents` no longer reports leftover workers as unknown after a
+  restart between `/goal` sessions.** The next turn used to create an empty
+  registry and drop previous spawn results from replay, so ids from the last
+  session vanished. Finished workers are planted from the conversation event
+  log, still-running ones are restored under the same ids, and a continuation
+  re-pins those spawn ids. A `cleanup` kill plants as stopped rather than
+  restarting the worker.
+
+- **Add to chat no longer vanishes while a turn is streaming.** Selecting
+  transcript text used to flash the pill then hide it: auto-follow (and a
+  live thought's inner scroll) fired `scroll`, and token replacements
+  collapsed the native selection. The snippet is snapshotted until you
+  add it, click away, wheel, or press Escape, and selecting unpins follow.
+
+- **Parked `/goal` workers no longer look finished while `wait_agents`
+  is still blocked.** A session yield used to paint leftover sub-agents
+  Done (and freeze their in-flight `exec`) because manager `done` was
+  treated as cleanup. They stay running until a real `finished` or a
+  `cleanup` kill; the wait card no longer counts a finished row as
+  someone still being waited on.
+
+- **Parked `/goal` workers keep recording after the manager returns.**
+  `RunWith` used to restore a nil notification sink (and nil spawn/finish
+  hooks) the instant the manager stopped calling tools. In-flight
+  sub-agents kept running, but tool rows and `finished` fell on the floor
+  — Agents stayed on starting with an empty pane, and the next session
+  spawned replacements. `SetHostNotify` plus default lifecycle emitters
+  keep that gap audible. Opening a worker whose tools sat above the live
+  edge still fetches `GET /agents/:agent/log` even after paging claimed
+  the log was complete.
+
+- **Opening a long conversation no longer empties the Agents tab.** The
+  live-edge log page is often only recent manager tools; `spawned` /
+  `finished` had fallen out of that window, so the panel said there were
+  no sub-agents. That page now carries those roster rows as a sidecar
+  (without moving the paging cursor).
+
+- **Opening a long `/goal` no longer replaces the transcript with a wall
+  of "Started" rows.** The roster sidecar used to fold every historical
+  `spawned` into the manager chat, so paging stopped at those names and
+  the actual work (and each worker's tool log) looked gone. Sidecar
+  rows now hydrate the Agents tab only. Opening a worker whose tools
+  fell out of the live-edge viewport fetches
+  `GET /api/threads/:id/agents/:agent/log`.
+
+- **Switching into a running conversation no longer shows the empty-state
+  idea cards.** The live-edge log page is often only worker tool rows;
+  that used to look like a brand-new chat (while the roster still listed
+  the workers). Opening now pages until a manager row exists, and the
+  welcome pane stays off while a turn is running, workers are on the
+  roster, or older history is still above the tail.
+
+- **Opening a sub-agent lands on its latest line.** The Agents tab log
+  used to paint from the first tool call. It now follows the live edge
+  the same way the conversation does (and offers Jump to latest after a
+  wheel-up).
+
+- **A failed `/goal` turn no longer hides why it stopped.** The banner
+  stored a generic `the last turn failed` and the session row still said
+  工作了, with the error inside a collapsed fold. The banner now shows the
+  public turn error (the sentinel is localized for older conversations),
+  a failed session stays open as 停止于, and a collapsed preview prefers
+  that error over the last answer.
+
+- **`/goal` Start is resume, not a gap between sessions.** The banner Play
+  control only appears when the objective is Paused or Blocked. A pursuing
+  turn that just ended still shows 进行中 and auto-continues; Stop pauses
+  the goal (`goal_capped`, `{reason:"interrupted"}`) so Start can resume it.
 
 - **Switching conversations lights the latest jump-rail tick.** The
   opener follows the live edge; measuring at scrollTop 0 before that
@@ -109,6 +331,24 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- **`ask_user` is a question dialog, not a chip row.** Numbered choices,
+  a radio list, Other only after that row is picked, then Submit. Same
+  API; the empty textarea under every card is gone.
+
+- **A recoverable ChatModel failure no longer dumps `NodeRunError` on the
+  banner.** Truncated tool JSON that still fails after in-turn retries
+  becomes a one-line public error; the graph path stays in Trace.
+
+- **`/goal` turns end when the manager stops calling tools, like Codex.**
+  There is no wall-clock session timer. `swarm.goal_session_max_seconds`
+  is gone; a leftover YAML key is ignored, and the next Settings save
+  drops it. Historical `goal_session` events still replay. A continuation
+  that finishes with no counted tool activity records `goal_idle` and
+  stops auto-continue until a human message or Start. `zwai tui --goal`
+  holds the same way instead of looping until `goal_max_auto_turns`.
+  `block_goal` now requires
+  the same genuine blocker on at least three consecutive turns.
+
 - **`/goal` is a slash command at every layer, not a user task.** Codex
   `parse_slash_name` cuts the name at whitespace, so a CJK objective glued
   to `/goal` (IME never inserts that space) became an unknown name and a
@@ -121,8 +361,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **`/goal` tool-round slices stay on the same turn.** Hitting
   `swarm.goal_session_max_iterations` no longer records `goal_session`
   (`reason=iterations`) or spends `goal_max_auto_turns`. The same turn
-  extends in place (no confirm card). The time cap is still the session
-  cut. Historical `reason=iterations` events still replay as a notice.
+  extends in place (no confirm card). Historical `reason=iterations`
+  events still replay as a notice.
 
 - **Memory extract stays on the append-only event log.** Post-turn
   auto-review reads this turn's events (and a clipped session briefing),

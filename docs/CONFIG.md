@@ -51,7 +51,6 @@ swarm:
     compact_keep_messages: 6
     auto_compact_tokens: 80000
     goal_max_auto_turns: 12
-    goal_session_max_seconds: 600
     goal_session_max_iterations: 40
     goal_auto_compact_percent: 80
 tools:
@@ -141,7 +140,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 
 | key | default | meaning |
 |---|---|---|
-| `max_concurrent` | `6` | sub-agents running at the same time. The manager prompt tells the model to use this budget when the work has that many independent parts. Raise it for wide fan-out; every one of them is a model call in flight. |
+| `max_concurrent` | `6` | sub-agents running at the same time. The manager prompt tells the model to use this budget when the work has that many independent parts. Saving Settings applies it to the live and parked swarm immediately: queued workers start as soon as a slot opens under the new cap. Lowering it does not kill in-flight workers. Raise it for wide fan-out; every one of them is a model call in flight. |
 | `agent_timeout_seconds` | `600` | watchdog per sub-agent. A hung endpoint is force-terminated and the agent's result records the timeout. |
 | `max_turns` | `200` | ReAct iterations per sub-agent. A model stuck in a loop ends here instead of spinning. |
 | `manager_max_iterations` | `200` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. Reaching the cap **pauses** the turn and asks whether to add another slice of this size, rather than failing with eino's iteration error. |
@@ -155,10 +154,11 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `context_char_budget` | `80000` | rune count treated as 100% full on the `/compact` hint when the model has not reported a token window. Zero or negative is repaired to the default. |
 | `compact_keep_messages` | `6` | recent user/assistant replay messages that stay verbatim after `/compact` or auto-compact. The rest become the briefing. Zero or negative is repaired to the default. |
 | `auto_compact_tokens` | `80000` | prompt tokens on a manager call that trigger in-turn compression. Older replayable tool results are cleared first; if that is not enough, older messages become a briefing and the recent tail stays. The briefing prefers the rolling session memory (refreshed from the event log, newest events that fit a hard rune cap, tool results clipped harder than answers); the same pin as `/compact` (`compact_provider` / `compact_model`) does the summary only when that is empty, and that summarizer call is itself newest-first under the same rune cap. A briefing that is a transcript dump or pasted tool JSON is refused: the thread fields stay, the `compacted` / `session_memory` event carries `err`, and a stored dump is not copied into the next manager prompt. A failed session-memory refresh stamps the token watermark so the next Generate does not resend the same payload. Zero or negative is repaired to the default so a long ReAct loop cannot silently skip compression. The briefing is streamed; silence uses that endpoint's `timeout_seconds` (idle), same as any other model call. Session-memory refresh uses that same idle timeout, not a 15s cap. |
-| `goal_max_auto_turns` | `12` | consecutive engine-started turns that may pursue an open `/goal` without another human message. Zero or negative is repaired to the default. A human message or resume resets the count. `block_goal` and a failed turn stop auto-continue without waiting for the cap. |
-| `goal_session_max_seconds` | `600` | wall time of one `/goal` turn. The runtime then ends it as `done` (`goal_session` `reason=time`) and starts the next session immediately. Zero or negative is repaired to the default. |
-| `goal_session_max_iterations` | `40` | manager ReAct slice while a `/goal` is open. Hitting it extends the same turn (no confirm, no `goal_session`, no auto-continue spent). The time cap still ends the session. |
+| `goal_max_auto_turns` | `12` | consecutive engine-started turns that may pursue an open `/goal` without another human message. Zero or negative is repaired to the default. A human message or resume resets the count. `block_goal` and a failed turn stop auto-continue without waiting for the cap. A truncated tool-call JSON, a `429`, or a dropped stream retries inside the same turn twice before that failure counts. |
+| `goal_session_max_iterations` | `40` | manager ReAct slice while a `/goal` is open. Hitting it extends the same turn (no confirm, no `goal_session`, no auto-continue spent). |
 | `goal_auto_compact_percent` | `80` | when context is at least this full (tokens vs `min(model window, auto_compact_tokens)`, else chars vs `context_char_budget`), compact before the next auto-continue. A million-token window is not the denominator. The rolling session briefing is caught up first (this session's last manager answers, then a bounded incremental refresh) so the fold copies that view; a session briefing that has moved since the last compact also folds even when the meter is still cold. Zero or negative is repaired to the default; above 100 is clamped. |
+
+A leftover `goal_session_max_seconds` from older builds is ignored on load; the next save omits it.
 
 The current values are reported in `GET /api/meta` and are part of the manager's
 system prompt, so it knows how wide it may fan out.
@@ -219,7 +219,7 @@ shares. Nothing here applies to a conversation outside a project.
 | `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. A write that would grow past this is refused — including replacing a note with a longer one. The tool result says by how many characters (`over_by`) and lists what is stored, so the agent shortens or drops a note rather than retrying the same text. Small on purpose. |
 | `entry_max` | `360` | how long **one** note may get on an agent write (`memory` add/replace). A runbook that would eat a quarter of the budget belongs in a skill, where only the summary rides in the prompt. A note that restates a recorded skill — the summary or the steps — is refused the same way. The Memory panel's editor still uses `char_limit` only: a person who pastes a longer note is spending that budget on purpose. Zero or negative is repaired to the default; a value above `char_limit` is clamped. |
 | `review_max_iterations` | `8` | how many times the review may think and write before it is stopped. It reads one conversation and makes a handful of tool calls; a large number here buys a slow, expensive review rather than a better one. |
-| `skills_index_max` | `50` | how many skills are listed in the prompt. Only names and one-line descriptions are listed; an agent opens the one it needs with `skill_view`. Beyond this cap the prompt says how many were not listed. `skill_view` opens only this index — a procedure sitting in the workspace is a file. |
+| `skills_index_max` | `50` | how many skills are listed in the prompt (manager and sub-agents). Only names and one-line descriptions are listed; an agent opens the one it needs with `skill_view`. Beyond this cap the prompt says how many were not listed. `skill_view` opens only this index — a procedure sitting in the workspace is a file. Sub-agents get `skill_view` and this index; they cannot call `memory` or `skill_manage`. |
 | `notifications` | `on` | how a completed review appears in the transcript. `on` is one line naming what changed (`Memory updated: 1 note stored`). `verbose` adds a preview of the written text. `off` writes nothing in the transcript — the review still runs, and the Trace tab's Full log still lists it. An unknown value is repaired to `on`, not to silence. |
 
 Numbers that are zero or negative fall back to their defaults, so a hand-edited
@@ -271,3 +271,7 @@ zwai web --data-dir /tmp/zwai-demo --mock --no-open
 
 That gets its own `config.yaml`, its own database and its own workspaces, and
 touches nothing in `~/.zwai-swarm`. It is how the end-to-end tests run.
+
+Plan files are derived from the data directory, not a config key:
+`$ZWAI_HOME/plans/<thread_id>/PLAN.md`. They are app artefacts, not workspace
+files, and they are not editable in Settings.

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/cloudwego/eino/components/tool"
 )
 
 func TestCreatingAProjectPreparesItsDirectories(t *testing.T) {
@@ -305,10 +307,11 @@ func TestAConversationOutlivesAMissingProject(t *testing.T) {
 	}
 }
 
-// The project's instruction and its notes have to reach the model, and the
-// memory tools have to reach the manager — but not the sub-agents, which see
-// one task and are in no position to judge what is worth remembering.
-func TestProjectPromptAndMemoryReachTheManagerOnly(t *testing.T) {
+// The project's instruction and its notes have to reach the model. Write
+// tools stay on the manager; workers get the notes snapshot, the skills
+// index, and skill_view so a recorded procedure is not trapped in the
+// manager's prompt.
+func TestProjectMemoryIsReadableByWorkersAndWritableByTheManager(t *testing.T) {
 	e := newTestEngine(t)
 	p, err := e.CreateProject("P", "the project's own instruction", "", true)
 	if err != nil {
@@ -333,9 +336,29 @@ func TestProjectPromptAndMemoryReachTheManagerOnly(t *testing.T) {
 		"a note from an earlier conversation",
 		"a-procedure",
 		"when it applies",
+		"Sub-agents receive the same notes snapshot",
 	} {
 		if !strings.Contains(pc.promptSections(), want) {
 			t.Fatalf("%q missing from the project's prompt sections:\n%s", want, pc.promptSections())
+		}
+	}
+	for _, want := range []string{
+		"a note from an earlier conversation",
+		"a-procedure",
+		"when it applies",
+		"Reporting back",
+		"Most tasks have nothing to add",
+	} {
+		if !strings.Contains(pc.workerPreambleTail(), want) {
+			t.Fatalf("%q missing from the worker memory snapshot:\n%s", want, pc.workerPreambleTail())
+		}
+	}
+	if strings.Contains(pc.workerPreambleTail(), "the project's own instruction") {
+		t.Fatal("workers still must not receive the project instruction")
+	}
+	for _, write := range []string{memory.ToolMemory, memory.ToolSkillManage} {
+		if strings.Contains(pc.workerPreambleTail(), write) {
+			t.Fatalf("worker snapshot named the write tool %s:\n%s", write, pc.workerPreambleTail())
 		}
 	}
 
@@ -345,11 +368,32 @@ func TestProjectPromptAndMemoryReachTheManagerOnly(t *testing.T) {
 		t.Fatalf("the manager got %d tools, want the workspace toolset plus %d memory tools",
 			len(managerTools), len(memory.Names()))
 	}
+	got := toolNames(t, pc.workerTools(toolset))
+	if !got[memory.ToolSkillView] {
+		t.Fatal("workers must receive skill_view")
+	}
+	for _, write := range memory.WriteNames() {
+		if got[write] {
+			t.Fatalf("workers received the write tool %s", write)
+		}
+	}
+	if len(pc.workerTools(toolset)) != len(toolset.Tools)+len(memory.ViewNames()) {
+		t.Fatalf("workers got %d tools, want workspace plus %d view tools",
+			len(pc.workerTools(toolset)), len(memory.ViewNames()))
+	}
 	// The sub-agents' slice must not have grown: it shares a backing array
-	// with the manager's, so appending in place would hand them the memory
+	// with the manager's, so appending in place would hand them the write
 	// tools too.
 	if len(toolset.Tools) == len(managerTools) {
 		t.Fatal("the sub-agent toolset was modified in place")
+	}
+
+	reg := e.newTurnRegistry(nil, toolset, pc)
+	if !strings.Contains(reg.WorkerPreamble, "a note from an earlier conversation") {
+		t.Fatalf("WorkerPreamble missing the notes snapshot:\n%s", reg.WorkerPreamble)
+	}
+	if !strings.Contains(reg.WorkerPreamble, "## Environment") {
+		t.Fatal("WorkerPreamble dropped the host snapshot")
 	}
 
 	// With memory off, the instruction survives and the tools do not: a prompt
@@ -371,6 +415,12 @@ func TestProjectPromptAndMemoryReachTheManagerOnly(t *testing.T) {
 	if pc.memoryLive() || len(pc.managerTools(toolset)) != len(toolset.Tools) {
 		t.Fatal("memory is off but the manager still got the memory tools")
 	}
+	if pc.workerPreambleTail() != "" {
+		t.Fatalf("memory is off but workers still got a snapshot:\n%s", pc.workerPreambleTail())
+	}
+	if len(pc.workerTools(toolset)) != len(toolset.Tools) {
+		t.Fatal("memory is off but workers still got skill_view")
+	}
 }
 
 // A conversation in no project contributes nothing, which is what keeps every
@@ -391,6 +441,12 @@ func TestAConversationInNoProjectAddsNothingToThePrompt(t *testing.T) {
 	toolset := buildTestToolset(t, e, th.ID)
 	if len(pc.managerTools(toolset)) != len(toolset.Tools) {
 		t.Fatal("a conversation in no project must get exactly the workspace toolset")
+	}
+	if len(pc.workerTools(toolset)) != len(toolset.Tools) {
+		t.Fatal("a conversation in no project must not hand workers skill_view")
+	}
+	if pc.workerPreambleTail() != "" {
+		t.Fatalf("no-project workers got a memory snapshot: %q", pc.workerPreambleTail())
 	}
 }
 
@@ -529,5 +585,34 @@ func TestMemoryNeedsBothSwitchesOn(t *testing.T) {
 	e.Config().Memory.Enabled = false
 	if e.MemoryEnabled(on) {
 		t.Fatal("the global switch must be able to turn memory off everywhere")
+	}
+}
+
+func toolNames(t *testing.T, tools []tool.BaseTool) map[string]bool {
+	t.Helper()
+	out := map[string]bool{}
+	for _, tb := range tools {
+		info, err := tb.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		out[info.Name] = true
+	}
+	return out
+}
+
+func TestNilProjectContextDoesNotInventMemoryTools(t *testing.T) {
+	e := newTestEngine(t)
+	e.wireWorkerSurface(nil, nil, nil)
+	th, _ := e.CreateThread("t", "", "")
+	set := buildTestToolset(t, e, th.ID)
+	if (*projectContext)(nil).workerTools(nil) != nil {
+		t.Fatal("a nil toolset must stay nil")
+	}
+	if (*projectContext)(nil).managerTools(nil) != nil {
+		t.Fatal("a nil manager toolset must stay nil")
+	}
+	if n := len((*projectContext)(nil).workerTools(set)); n != len(set.Tools) {
+		t.Fatalf("nil project handed workers %d tools", n)
 	}
 }

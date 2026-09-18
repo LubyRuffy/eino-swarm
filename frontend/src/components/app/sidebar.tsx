@@ -6,8 +6,8 @@ import { ProjectList } from "@/components/app/project-list"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import { ResizeHandle } from "@/components/app/resize-handle"
 import { SidebarSection } from "@/components/app/sidebar-section"
+import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
-import { reorderById } from "@/lib/reorder"
 import {
   isProjectExpanded,
   readProjectExpanded,
@@ -25,7 +25,6 @@ import {
   hydrateSidebarWidth,
   paintSidebarWidth,
 } from "@/lib/sidebar-width"
-import { useSortableList } from "@/lib/sortable"
 import type { Project, SkillInfo, Thread } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
@@ -97,9 +96,6 @@ export function Sidebar({
     }
     return next
   }, [projects, activeProjectId, selectedProjectId, expanded])
-  const recentsSortable = useSortableList((from, to) => {
-    onReorder(reorderById(buckets.recents, from, to).map((th) => th.id))
-  })
   const askDelete = (id: string) => {
     const hit = threads.find((th) => th.id === id)
     if (hit) setDoomed(hit)
@@ -201,18 +197,15 @@ export function Sidebar({
             open={sections.recents}
             onToggle={() => toggleSection("recents")}
           >
-            {buckets.recents.map((thread) => (
-              <SidebarThreadRow
-                key={thread.id}
-                thread={thread}
-                active={thread.id === activeId}
-                running={thread.running || thread.id === runningId}
-                drag={recentsSortable.bind(thread.id)}
-                onOpen={onOpen}
-                onRename={onRename}
-                onDelete={askDelete}
-              />
-            ))}
+            <SidebarThreadGroup
+              threads={buckets.recents}
+              activeId={activeId}
+              runningId={runningId}
+              onOpen={onOpen}
+              onRename={onRename}
+              onDelete={askDelete}
+              onReorder={onReorder}
+            />
           </SidebarSection>
         ) : threads.length === 0 ? (
           <p className="px-2 py-6 text-xs text-sidebar-foreground/70">

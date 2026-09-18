@@ -40,7 +40,7 @@ export function PersonalityTab({
             <Textarea
               id="personality-instructions"
               rows={10}
-              className="min-h-40 resize-y border border-input bg-background shadow-sm focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-40 resize-y"
               value={value}
               onChange={(e) =>
                 onChange({

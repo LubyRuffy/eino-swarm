@@ -8,14 +8,17 @@ desktop mode (printed on startup and used by the window).
 - All bodies are JSON unless stated otherwise; timestamps are RFC 3339 with
   milliseconds.
 - **Same-origin only.** No CORS headers are sent, on purpose: this server holds
-  your conversations and listens on loopback.
+  your conversations and listens on loopback. Mutating `/api` requests with a
+  non-loopback `Origin` are `403`. The PTY upgrade also requires a loopback
+  `Origin` (or a loopback peer when `Origin` is empty).
 - Errors are `{"error": "...")` with an optional `"code"`.
 
 | status | meaning |
 |---|---|
 | `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory |
-| `404` | no such conversation / turn / file / project / skill |
-| `409` | `code: "busy"` — a turn is already running; `code: "idle"` — nothing to steer, interrupt, continue, review, or queue a follow-up against; `code: "conflict"` — the notes changed after the editor loaded them |
+| `404` | no such conversation / turn / file / project / skill / unread steer |
+| `409` | `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write |
+| `429` | too many terminals are already open |
 | `501` | the shell cannot do this (`reveal` / `open` outside the desktop app) |
 
 ## Meta
@@ -41,7 +44,7 @@ What the UI reads once at startup to decide what to render.
              "compact_provider": "", "compact_model": "",
              "context_char_budget": 80000, "compact_keep_messages": 6,
              "auto_compact_tokens": 80000,
-             "goal_max_auto_turns": 12, "goal_session_max_seconds": 600,
+             "goal_max_auto_turns": 12,
              "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80},
   "locale": "system",
   "ui": {"locale": "system", "font": "system", "font_size": "medium",
@@ -87,7 +90,7 @@ provider carries `has_api_key` and `ready` instead.
             "compact_provider": "", "compact_model": "",
             "context_char_budget": 80000, "compact_keep_messages": 6,
             "auto_compact_tokens": 80000,
-            "goal_max_auto_turns": 12, "goal_session_max_seconds": 600,
+            "goal_max_auto_turns": 12,
             "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80},
   "tools": {"disabled": [], "enabled": [], "web_search_max_results": 8,
             "proxy": {"http": "", "https": "", "no_proxy": ""}},
@@ -105,7 +108,10 @@ provider carries `has_api_key` and `ready` instead.
 
 Every top-level section is optional; omitted sections keep their current value.
 The file is rewritten atomically and the model pool is invalidated, so the next
-turn uses the new endpoint without a restart. A language-only write is
+turn uses the new endpoint without a restart. `swarm.max_concurrent` is also
+pushed onto every live or parked registry in this process, so workers already
+queued under the old cap start as soon as a slot opens; lowering it does not
+kill in-flight workers. A language-only write is
 `{"ui":{"locale":"zh"}}` and must not wipe swarm, models, the typeface, or the
 conversation column. Unknown locale values become `system`; unknown `font` /
 `font_size` / `content_width` become `system` / `medium` / `comfortable`.
@@ -322,11 +328,18 @@ a conversation that belongs to no project. `goal` is the standing objective from
 `/goal` (empty when none). `goal_complete` is true after the manager called
 `complete_goal`; `goal_blocked` is true after `block_goal` or after a pursuing
 turn fails (progress needs the
-human or an external change); `goal_capped` is true after consecutive
-auto-continues hit `swarm.goal_max_auto_turns`. The objective text stays in
+human or an external change) once in-turn retries of truncated tool JSON /
+`429` / a dropped stream are exhausted; `goal_capped` is true after consecutive
+auto-continues hit `swarm.goal_max_auto_turns`, or after the human
+interrupts a pursuing turn (the banner shows Paused and Start); `goal_idle`
+is true after an auto-continue finished with no counted tool activity
+(Start or a human message resumes). The objective text stays in
 every case so the banner can show it. `goal_block_reason` is the optional
-one-line reason from `block_goal`. `goal_started_at` is when the current
-objective was set (not edited). `compacted` is true after `/compact` or auto-compact has folded
+one-line reason from `block_goal`, or the public turn error when a pursuing
+turn dies before the manager can call it. `goal_started_at` is when the current
+objective was set (not edited). `plan_mode` is true while `/plan` is open.
+`plan_markdown` is the current plan body (also written to
+`$ZWAI_HOME/plans/<thread_id>/PLAN.md`). `compacted` is true after `/compact` or auto-compact has folded
 earlier replay into a briefing; the event log is unchanged.
 
 ### `POST /api/threads` → `201`
@@ -349,7 +362,8 @@ Returns the conversation and its live status:
 {"thread": {"id": "th_ab12…", "…": "…", "running": true},
  "status": {"thread_id": "th_ab12…", "running": true, "turn_id": "tn_cd34…",
             "started_at": "2026-09-15T11:31:00.100+08:00",
-            "elapsed_ms": 4120, "workers": 2},
+            "elapsed_ms": 4120, "workers": 2,
+            "awaiting_continue": false, "awaiting_answer": false},
  "usage": {
    "context_tokens": 71300, "context_window": 256000,
    "turn": {"prompt_tokens": 12000, "completion_tokens": 3100,
@@ -363,6 +377,9 @@ Returns the conversation and its live status:
 
 `started_at` is absent when nothing is running (never a zero timestamp, which a
 client would happily turn into a two-thousand-year elapsed time).
+`awaiting_continue` is true while the manager is paused at its tool-round cap.
+`awaiting_answer` is true while `ask_user` is blocked waiting for the human.
+The turn is still `running` in both cases.
 
 `usage` is the composer meter. `context_tokens` is the **last manager prompt**
 (workers, the namer and the reviewer have their own prompts and would lie).
@@ -377,7 +394,8 @@ and are not these token counts.
 ### `PATCH /api/threads/:id`
 
 Body may contain `title`, `provider_id`, `model`, `reasoning_effort`, `archived`,
-`pinned`, `project_id`, `goal`, `goal_edit`, `goal_resume`. An empty title is rejected; an unknown `provider_id` or
+`pinned`, `project_id`, `goal`, `goal_edit`, `goal_resume`, `plan_mode`,
+`plan_markdown`. An empty title is rejected; an unknown `provider_id` or
 `project_id` is rejected. `model` is the name this conversation sends from the
 next turn; empty follows the provider's configured default. `reasoning_effort` is
 one of `""` (the model default), `low`, `medium` or `high` — a blank clears back
@@ -396,6 +414,12 @@ still reopened). A running turn is steered so the new text is in this turn's
 context, not only the next. `goal_resume: true` starts the next turn for an
 open objective (blocked, capped, or idle). A completed or missing goal is
 rejected. Responds like `GET`.
+
+`plan_mode: true` enters planning while idle (`409 busy` if a turn is running).
+Write/edit/exec and similar are unmounted; `propose_plan` and `ask_user` stay.
+An open `/goal` is paused (`goal_capped` / interrupted-class). `plan_mode: false`
+leaves planning without starting a turn. `plan_markdown` is a human edit of the
+plan body while `plan_mode` is true (file + column + `plan_updated` event).
 
 ### `POST /api/threads/:id/compact` → `200`
 
@@ -460,7 +484,9 @@ model reads those first instead of scavenging older leftovers in the same
 folder. Unknown, escaped, or non-upload paths are `400`. At most 32 files.
 
 A `text` that is `/goal <objective>` is the slash command, not a chat line.
-The name is the ASCII identifier after `/` (or the fullwidth solidus `／`);
+The name is the ASCII identifier after `/` (or the fullwidth solidus `／`,
+or the CJK punctuation comma `、` a Slash key emits under Chinese
+punctuation);
 the rest is the objective, space optional so a glued CJK IME string still
 matches. That pins the standing objective and starts pursuit when idle, or
 steers the live turn. The stored `user_text` is the objective. Bare `/goal`
@@ -494,15 +520,18 @@ running, unless the body carries `from_event_seq`.
 ### `POST /api/threads/:id/steer` → `202`
 
 Body same as a turn (`text` + optional `images` + optional `files`). Delivers guidance to the running
-turn, injected at the next turn boundary — it never interrupts an in-flight model
-call or tool. The `steer` event is recorded when the send is accepted (queued),
-with `images` as `{id,name,mime}` handles. Attached `files` are named on that
-steer the same way as on a new turn. The UI pins that bubble under the live
-working line until the manager starts another model round; it is not mixed into
-the turn body while it is still sitting in the inbox.
+turn, injected at the next model boundary — by itself it never interrupts an
+in-flight model call or tool. The `steer` event is recorded when the send is
+accepted (queued), with `images` as `{id,name,mime}` handles. Attached `files`
+are named on that steer the same way as on a new turn. The UI pins that bubble
+under the live working line until the manager starts another model round; it is
+not mixed into the turn body while it is still sitting in the inbox.
 
 This is **Steer** / ⌘Enter, not ordinary Enter. Enter while a turn is running
-hits the follow-up queue instead.
+hits the follow-up queue instead. **Interrupt** on that pin
+(`POST …/preempt`) aborts the current manager tool or generate so every unread
+steer lands on the next model call of **this** turn. **Delete** on one bubble
+(`DELETE …/steers/:seq`) retracts that inbox item; the manager never sees it.
 
 ```json
 {"steered": true}
@@ -511,6 +540,31 @@ hits the follow-up queue instead.
 If nothing is running it **starts a turn instead** and answers
 `{"steered": false, "turn": {…}}`. A Steer click that lost the race to the turn
 finishing still lands.
+
+### `POST /api/threads/:id/preempt` → `202`
+
+Aborts the current **manager** tool call or in-flight generate so unread
+steering is drained on the next model call of this turn. Sub-agents stay up.
+Stop (`POST …/interrupt`) is still the turn cancel. `409 idle` when nothing is
+running; `409 no_steer` when the inbox is empty.
+
+```json
+{"preempted": true}
+```
+
+The timeline records `steer_preempted`. Interrupted tools get a synthetic
+`tool_result` (`the user interrupted this tool before it finished`) rather than
+killing the ReAct graph.
+
+### `DELETE /api/threads/:id/steers/:seq` → `204`
+
+Retracts one unread `steer` whose timeline seq is `:seq`. The `steer` event
+stays on the log; a `steer_retracted` row with `text` `{"seq":N}` follows, and
+the `[steer]` **message** for that seq is dropped so replay does not feed it
+back. `400` when `seq` is not a positive integer. `409 idle` when nothing is
+running. `404` when that seq is not an unread steer on this turn (already
+consumed, already retracted, or never existed). Duplicate captions are
+disambiguated by seq, not by text.
 
 ### Follow-ups
 
@@ -584,6 +638,28 @@ Steering while paused also continues. `409 idle` when the turn is not waiting.
 {"continued": true}
 ```
 
+### `POST /api/threads/:id/answers` → `202`
+
+Body `{call_id, answers}` or `{text}`. Answers an in-flight `ask_user` on this
+turn. `answers` is `{ "<question_id>": { "answers": ["label or free text"] } }`.
+`text` is Other for every unanswered question (composer Enter while waiting).
+`409 idle` when nothing is waiting; `409 ask_mismatch` when `call_id` is not
+the open questionnaire. The same ReAct turn continues after the tool result.
+
+```json
+{"answered": true}
+```
+
+### `POST /api/threads/:id/plan/implement` → `202`
+
+Leaves planning, remounts implementation tools, and starts an execute turn
+with a generic cue. The current `PLAN.md` is injected in the manager extra.
+Does not resume a paused `/goal`. `400` when there is no plan body.
+
+```json
+{"turn": {"id": "tn_cd34…", "status": "running", "…": "…"}}
+```
+
 ### `GET /api/threads/:id/turns`
 
 Every turn of the conversation, oldest first. This is what renders the
@@ -611,13 +687,36 @@ first seq of the previous page walks upward. `limit` defaults to 80 and is
 clamped to 200. Response:
 
 ```json
-{"events":[{ "seq": 12, "kind": "user_message", "…" : "…" }], "has_more": true}
+{"events":[{ "seq": 12, "kind": "user_message", "…" : "…" }],
+ "has_more": true,
+ "roster":[{ "seq": 4, "kind": "spawned", "agent_id": "worker-1", "…" : "…" }]}
 ```
 
 The front end opens a conversation with one viewport of this tail, then
 `GET /api/threads/:id/events?since=<last seq>` for live. Scrolling up fetches
 the next older page. An empty conversation is `"events":[]` with
-`has_more: false`.
+`has_more: false`. The live-edge page (`before` omitted or `0`) also sends
+`roster`: every `spawned`, `finished` and `cleanup` row whose seq is **not**
+already in `events`. A long turn's viewport is often only manager tools;
+without those rows the Agents tab looks empty. Older pages omit `roster` —
+the client already has it, and mixing those seqs into `before` would skip
+the tools in between. The client hydrates the Agents tab from `roster`
+without inserting "Started" rows into the manager transcript — those rows
+belong to the contiguous page, or they turn a long `/goal` into a wall of
+agent names with no work in between. Clicking a worker whose tools are
+outside the viewport fetches `GET /api/threads/:id/agents/:agent/log`.
+
+### `GET /api/threads/:id/agents/:agent/log`
+
+JSON list of that worker's stored events, oldest first. Empty array when
+the id is unknown. `404` when the conversation is missing. The live-edge
+conversation page is a viewport of recent tools; this is how the Agents
+tab shows a worker whose `spawned` row has fallen out of that window
+without walking the rest of the log.
+
+```json
+{"events":[{ "seq": 6, "kind": "tool_call", "agent_id": "worker-1", "…" : "…" }]}
+```
 
 ### `GET /api/threads/:id/events?since=<seq>`
 
@@ -657,25 +756,33 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished |
 | `finished` | a sub-agent finished; `err` set when it failed |
 | `turn` | an agent started a model turn (`turn N`) |
-| `steer` | human guidance was accepted. `images` as on `user_message` when the steer carried a paste. The `/goal` session wrap-up cue is **not** this event — it is delivered to the in-flight manager only |
+| `steer` | human guidance was accepted. `images` as on `user_message` when the steer carried a paste. The `/goal` session wrap-up cue is **not** this event — it is delivered to the in-flight manager only. Retracting unread steering does not delete this row |
+| `steer_retracted` | the human dropped one unread `steer` before the manager read it. `text` is JSON `{seq}` naming that steer. The chat hides the bubble; the Trace log still has both rows |
+| `steer_preempted` | Interrupt aborted the current manager tool or generate so unread steering can land on this turn. No payload. Workers were not cancelled |
 | `cleanup` | sub-agents were stopped at the end of the turn |
-| `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated. In-flight `tool_call` rows that never got a result are closed first (`tool_result` with `err`: `the previous process stopped`) so a killed `exec` does not keep spinning. Leftover sub-agents are started again under the same `agent_id` (a second `spawned` for that id is the roster coming back, not a twin). Unread `steer` rows stay on the turn. A leftover `max_iterations` confirm is no longer pending |
+| `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated. In-flight `tool_call` rows that never got a result are closed first (`tool_result` with `err`: `the previous process stopped`) so a killed `exec` does not keep spinning — except an unfinished `ask_user`, which is re-armed so the human can still answer. Leftover sub-agents are started again under the same `agent_id` (a second `spawned` for that id is the roster coming back, not a twin). Unread `steer` rows stay on the turn. A leftover `max_iterations` confirm is no longer pending |
 | `progress` | a pulse while the turn runs (see below); `seq` is 0, not stored |
 | `usage` | a live token snapshot after each model call (see below); `seq` is 0, not stored |
 | `memory_review` | the post-turn review of a project's memory finished (see below) |
 | `max_iterations` | the manager hit `swarm.manager_max_iterations`; `text` is `{"limit":N,"extend_by":N}` and the turn is still running |
 | `max_iterations_continued` | the human extended the turn; `text` names how many extra rounds |
+| `model_retry` | the manager hit a recoverable ChatModel failure (truncated tool JSON, `429`, a dropped stream) and re-entered this turn; `text` is JSON `{attempt,cap}`. The transcript notice is generic. Invalid tool arguments are dropped from the next model request so a `400 Unterminated string` cannot repeat |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
 | `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}` |
 | `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
-| `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns`; `text` is JSON `{auto_turns,cap}`. A later human message or resume resets the budget |
-| `goal_blocked` | the manager called `block_goal`, or a pursuing turn failed; auto-continue stops. `text` is JSON `{reason}`. A later human message or resume clears it |
+| `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`). A later human message or resume resets the budget |
+| `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until a human message or resume; the objective stays open |
+| `goal_blocked` | the manager called `block_goal`, or a pursuing turn failed after in-turn retries of recoverable model errors; auto-continue stops. `text` is JSON `{reason}`. A later human message or resume clears it |
 | `goal_edited` | the human changed the objective text in place; `text` is the new objective. Status stays put. A running turn is also steered |
 | `goal_resumed` | the human started pursuit again after a block, a cap, or an idle open goal. Same Working-clock rule as `goal_continued` |
-| `goal_session` | a `/goal` turn was forced to end so the next session can start. `text` is JSON `{reason,elapsed_ms,rounds}` where `reason` is `time` (current cuts) or `iterations` (older builds that treated eino's ReAct slice as a session boundary). The turn is `done`, not cancelled. In-flight sub-agents are parked for the next session |
-| `compacted` | earlier replay was folded into a briefing, either by `/compact` or automatically at `swarm.auto_compact_tokens`. `text` is JSON `{summary,through_seq,chars_before?,chars_after?,auto?,tokens_before?,tokens_after?,phase?}`. `phase: "start"` is live only (`seq` 0) and means compression is in flight. A stored auto event has `auto: true` and the token counts. `err` is set when the summarizer failed and the thread is unchanged. The transcript notice is generic — the briefing is for later prompts, not a chat row |
+| `plan` | the conversation entered `/plan`; write/edit/exec and similar are unmounted. `text` is `planning` |
+| `plan_updated` | `propose_plan` or a human edit wrote the plan body. `text` is the markdown (also on disk at `$ZWAI_HOME/plans/<thread_id>/PLAN.md`) |
+| `plan_implemented` | the human accepted the plan. Planning ended and an execute turn started. `text` is the generic cue |
+| `plan_cancelled` | the human left planning without implementing. `text` is `left planning` |
+| `goal_session` | historical: older builds forced a `/goal` turn to end so the next session could start. New runs do not emit it. `text` is JSON `{reason,elapsed_ms,rounds}` where `reason` is `time` (the removed wall-clock cut) or `iterations` (older builds that treated eino's ReAct slice as a session boundary). The turn is `done`, not cancelled. In-flight sub-agents were parked for the next session |
+| `compacted` | earlier replay was folded into a briefing, either by `/compact` or automatically at `swarm.auto_compact_tokens`. `text` is JSON `{summary,through_seq,chars_before?,chars_after?,auto?,tokens_before?,tokens_after?,phase?}`. `phase: "start"` is live only (`seq` 0) and means compression is in flight. A stored auto event has `auto: true` and the token counts. `err` is set when the summarizer failed and the thread is unchanged. The transcript notice is generic (the briefing is for later prompts); an icon on that row opens `summary` in a dialog |
 | `rewound` | a live client should drop rows from `text` (the cut seq) onward. `seq` is 0, not stored — a reload already has the truncated log |
 | `done` | the turn finished; `text` is the final answer |
 | `error` | the turn failed; `err` explains |
@@ -837,6 +944,36 @@ is not a workspace file and does not appear in the Files listing.
 Body `{"path": "optional/relative/path"}`, defaulting to the workspace root.
 Opens the platform file manager. **Desktop only**: in a browser this is `501`
 and `capabilities.reveal` is false, so the UI offers a download instead.
+
+### `GET /api/threads/:id/terminal`
+
+WebSocket. One connection is one PTY, started in that conversation's
+workspace — the project's directory when the conversation belongs to one,
+otherwise `workspaces/<thread-id>/`. Query `cols` and `rows` set the initial
+size (defaults 80×24). The client does **not** send a path: a `cwd` query is
+ignored.
+
+First text frame:
+
+```json
+{"type":"ready","cwd":"/Users/me/repo","shell":"/bin/zsh"}
+```
+
+`ready` is sent **before** the shell is forked, so the tab can name the
+directory even when the PTY cannot start (then a `{"type":"error","error":"…"}`
+frame follows). Then binary frames are raw PTY output. The client sends binary frames as
+keystrokes and text frames `{"type":"resize","cols":120,"rows":32}` to
+reflow. Closing the socket kills the process group.
+
+A missing conversation is `404` before the upgrade. Eight sessions per
+process is the cap (`429`). Same-origin only: a foreign `Origin` is `403`,
+including a DNS-rebind host that matches `Host` but is not loopback. A
+missing `Origin` is allowed only from a loopback peer.
+
+### `GET /api/projects/:id/terminal`
+
+The same PTY when there is no open conversation. `cwd` is the project's
+resolved working directory. Missing project: `404`.
 
 ### `POST /api/open`
 

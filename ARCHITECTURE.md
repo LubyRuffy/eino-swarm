@@ -13,15 +13,16 @@ flowchart LR
     Browser[zwai web<br/>browser]
   end
   subgraph frontend [frontend/ React + shadcn]
-    UI[App shell / Sidebar / Transcript / Composer / RightPanel]
+    UI[App shell / Sidebar / Transcript / Composer / Terminal / RightPanel]
   end
   subgraph server [internal/server gin]
     REST[REST + upload + download]
     SSE[SSE per conversation, seq replay]
+    PTYWS[WebSocket PTY /terminal]
     Static[embed frontend/dist + SPA fallback]
   end
   subgraph engine [internal/engine]
-    RT[runtime per conversation<br/>turn / steer / interrupt / resume]
+    RT[runtime per conversation<br/>turn / steer / preempt / interrupt / resume]
     Bus[event bus: seq, persist, broadcast]
     Acc[accumulator: notifications to events]
   end
@@ -35,7 +36,10 @@ flowchart LR
   Browser --> server
   UI -->|fetch| REST
   UI -->|EventSource| SSE
+  UI -->|WebSocket| PTYWS
   REST --> RT
+  PTYWS --> RT
+  PTYWS --> TermPkg[internal/terminal]
   RT --> Swarm --> Tools
   Swarm --> Pool
   RT --> Acc --> Bus --> SSE
@@ -61,14 +65,15 @@ flowchart LR
 | `internal/provider` | builds eino chat models from config, lists an endpoint's catalog (`GET {base_url}/models`), records per-call telemetry, and provides the scripted offline provider used by `--mock` and the tests. The provider request timeout is idle time between bytes, not the whole streamed body: a thinking model that is still emitting tokens is not cut off. |
 | `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. `BindExecOutput` is the host binder that tees `exec` stdout/stderr into `NotifyToolDelta` without the swarm library importing eino-tools. |
 | `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the three agent tools (`memory`, `skill_view`, `skill_manage`), the prompt sections they are rendered into, and the reviewer's instruction. Owns the files; knows nothing about conversations. |
-| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn, a clear/interrupt, or `swarm.goal_max_auto_turns`, converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), and runs the post-turn memory review from the event log (skipped when the manager already wrote). |
-| `internal/server` | gin: REST, SSE, upload/download, trace, embedded assets. See [docs/API.md](docs/API.md). |
+| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn after in-turn retries of truncated tool JSON / `429` / a dropped stream (`model_retry`), a no-progress continuation (`goal_idle`), a clear/interrupt, or `swarm.goal_max_auto_turns`, converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from the event log (skipped when the manager already wrote), and resolves an in-app terminal's working directory from the conversation or project the client named. |
+| `internal/server` | gin: REST, SSE, upload/download, trace, PTY terminals, embedded assets. See [docs/API.md](docs/API.md). |
+| `internal/terminal` | PTY sessions for the in-app shell. The HTTP layer names a conversation or a project; this package never takes a client-supplied path. |
 | `internal/app` | wiring shared by both shells, plus listen/serve/shutdown, `openURL` and `revealPath`. |
 | `internal/desktop` | wails3 single window pointed at the local server URL. Hidden title bar (no NSToolbar); traffic lights are centred in the 48px HTML header and the front end pads to the zoom button's measured right edge. The top 48px drags natively. A title-bar double-click is a front-end `wails:drag:doubleclick` — Wails will not zoom on the second mousedown itself, because that races the drag. The Dock / taskbar mark is an embedded PNG, inset to Apple's 824/1024 icon grid, rounded to a macOS squircle at runtime, and handed to Wails as `application.Options.Icon`, so `go run` on macOS does not keep the generic Unix-exec glyph, a square canvas, or a tile larger than a bundled `.app`. Quit cancels the event stream so the window is not frozen waiting for it. |
-| `internal/slash` | shared composer-command parse: leading `/` or fullwidth `／`, ASCII identifier name, rest is the argument. Used by the engine and the TUI so a glued CJK `/goal` cannot become a user task. |
-| `internal/tui` | terminal renderer for `zwai tui`, on the same swarm, config, manager prompt and workspace tools as the app. No `--task` opens a composer and keeps the session; `--task` is the one-shot reproduction path. `--goal` without `--task` starts immediately (the objective is the first user message) and still keeps the composer after pursuit ends. `/` opens a Codex-style command popup (`/goal`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; aliases stay hidden until typed). `/goal <objective>` starts that text as the next turn. Enter on `/model` or `/reason` opens a picker. The idle composer parks the real terminal cursor at the insert point so IME preedit is not drawn at column 0 (bubbletea v1 homes the hardware cursor after each frame). |
+| `internal/slash` | shared composer-command parse for a **whole-line** send: leading `/`, fullwidth `／`, or IME punctuation `、`; ASCII identifier name, rest is the argument. Used by the engine and the TUI so a glued CJK `/goal` cannot become a user task. The web composer also opens the same catalog on an **inline** `/` token (after existing text); that menu lives in `frontend/src/lib/slash.ts`. |
+| `internal/tui` | terminal renderer for `zwai tui`, on the same swarm, config, manager prompt and workspace tools as the app. No `--task` opens a composer and keeps the session; `--task` is the one-shot reproduction path. `--goal` / `--plan` without `--task` start immediately and still keep the composer after that run ends. `/` opens a Codex-style command popup (`/goal`, `/plan`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; aliases stay hidden until typed). `/goal <objective>` starts that text as the next turn. `/plan` unmounts write/edit/exec and similar and writes `$ZWAI_HOME/plans/tui/PLAN.md`. `/implement` accepts the plan. `ask_user` is a blocking overlay (digits pick; typing is Other); piped stdin fails the tool instead of hanging. Enter on `/model` or `/reason` opens a picker. The idle composer parks the real terminal cursor at the insert point so IME preedit is not drawn at column 0 (bubbletea v1 homes the hardware cursor after each frame). |
 | `cmd/zwai` | subcommand table: `desktop`, `web`, `tui`, `trace`, `config`. |
-| `frontend/` | React + TypeScript + Tailwind + shadcn/ui, embedded via `frontend/embed.go`. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.font_size` / `ui.content_width` the same way. The title-bar width control (and ⌘K) flips `content_width` between the reading column and a fill that sits against the sidebars. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, and Recents for conversations with no project. A project folder icon is the fold control (open vs closed directory). A running conversation's progress occupies that same column. Reorder is a title drag past 8px, with no grip glyph. Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). |
+| `frontend/` | React + TypeScript + Tailwind + shadcn/ui, embedded via `frontend/embed.go`. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.font_size` / `ui.content_width` the same way. The title-bar width control (and ⌘K) flips `content_width` between the reading column and a fill that sits against the sidebars. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, and Recents for conversations with no project. A project folder or Recents shows the five conversations active in the last seven days; the rest sit behind Show more. A project folder icon is the fold control (open vs closed directory). A running conversation's progress occupies that same column. Reorder is a title drag past 8px, with no grip glyph. Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). The title-bar terminal (⌘J) is a bottom PTY; each click starts a new session whose working directory is the open conversation's workspace (the project's directory when it has one). |
 
 ## A turn, end to end
 
@@ -77,7 +82,7 @@ flowchart LR
    sniffed, stored under `$ZWAI_HOME/inputs/<thread>/` and sent as eino
    `UserInputMultiContent` (caption in a text part, not also on `Content` —
    OpenAI cannot marshal both), not as workspace files. A `/goal <objective>`
-   body (identifier split, glued CJK, fullwidth `／`) pins the standing
+   body (identifier split, glued CJK, fullwidth `／`, IME punctuation `、`) pins the standing
    objective and starts or steers; the stored user message is the objective.
    One turn per conversation
    at a time; a second request while one runs returns `409` — except
@@ -90,8 +95,12 @@ flowchart LR
    the FIFO. **Steer** / ⌘Enter injects into the current turn
    (`POST /api/threads/:id/steer` or `…/followups/:fid/steer`) at the next
    model boundary — it does not kill an in-flight tool, and it does not
-   rewind. Pasted images cannot wait in the queue (the row is text) and
-   inject now instead.
+   rewind. **Interrupt** on the unread-steer pin (`POST …/preempt`) cancels
+   the current manager tool/generate (nested epoch ctx) so those steers drain
+   on this turn; workers stay up. **Delete** on one bubble
+   (`DELETE …/steers/:seq`) retracts that inbox item (`steer_retracted`).
+   Stop is still `POST …/interrupt` (turn ctx). Pasted images cannot wait in
+   the queue (the row is text) and inject now instead.
 2. The runtime loads the conversation's transcript from the database (reduced
    to user/assistant messages, so context stays bounded; `/compact` and
    in-turn auto-compact further
@@ -108,10 +117,25 @@ flowchart LR
    project works on the same files. The registry's `ToolOutputBinder` is
    `tools.BindExecOutput`: live `exec` chunks become `tool_delta` events; other
    tools are left alone. The model still receives one JSON `tool_result`.
+   `/plan` on an idle conversation sets
+   `plan_mode` (a live turn is `409 busy`: the tool table is already built).
+   While planning, write/edit/exec and similar are unmounted; `ask_user` and
+   `propose_plan` stay. Entering plan pauses an open `/goal`. `ask_user` is a
+   manager-only tool that blocks the same ReAct turn (`awaiting_answer`) until
+   `POST /api/threads/:id/answers`. Composer Enter while waiting is Other, not
+   a follow-up. Workers cannot ask. `propose_plan` writes
+   `$ZWAI_HOME/plans/<thread>/PLAN.md` and emits `plan_updated`. Implement
+   clears the flag, remounts those tools, and starts an execute turn with a
+   generic cue (it does not resume a paused `/goal`).
 3. The manager's system prompt is generated per turn from the live toolset, the
    workspace path, the concurrency limits, and a snapshot of the host
-   (OS, architecture, kernel, shell, date, timezone, user, home). It is
+   (OS, architecture, kernel, shell, date, timezone, user, home).    It is
    task-agnostic: no example task, filename or domain word is baked into it.
+   Answers are markdown. When two or more comparable quantities would be
+   easier to see as a plot, the manager is told to emit a `chart` fence,
+   keep the prose to the takeaway, and not restate the same series as a
+   list, a markdown table, or emoji (bar, line, area, pie JSON). The UI
+   paints the plot and offers the same rows as a table behind a tab.
    Delegation is proactive (Codex Ultra): spawn when it would save time or
    improve quality; do not wait for an explicit request. A single worker
    that the manager then waits on is not a speed win — that path is only
@@ -120,26 +144,36 @@ flowchart LR
    per role.
    When `personality.instructions` is set, a Personality section is appended
    next: personal preferences, not a task. A project's instruction, notes and
-   skills index follow it, then a standing `/goal` and a `/compact` briefing
+   skills index follow it, then a standing `/goal`, an open `/plan` (or the
+   accepted plan body on the execute turn), and a `/compact` briefing
    so those are the most recent thing the model read. If personality and a
    project instruction conflict, the project wins. Empty personality omits
    the section. Sub-agents do not receive it.
    While a `/goal` is open the manager
    also gets `complete_goal` and `block_goal` (manager-only, like the memory
    tools). After a clean `done`, if nothing is queued, the runtime starts the
-   next turn itself until `complete_goal`, `block_goal`, a failed turn, a
+   next turn itself until `complete_goal`, `block_goal`, a failed turn after
+   in-turn retries of truncated tool JSON / `429` / a dropped stream (the
+   banner then shows that turn's public error), a
    clear/interrupt, or
-   `swarm.goal_max_auto_turns`. A `/goal` turn is itself a **session**:
-   `swarm.goal_session_max_seconds` ends it as `done` (`goal_session`) rather
-   than asking to extend past `manager_max_iterations`. Thirty seconds before
-   that cap the manager is queued a wrap-up cue in-process — not a `steer`
-   event, not a transcript bubble. The cue names `complete_goal` when the
-   objective is actually done, and `block_goal` when the same obstacle was
-   retried without new evidence (it does not call the tool itself).
+   `swarm.goal_max_auto_turns`. Interrupt pauses an open goal (`goal_capped`)
+   until the human hits Start or sends a message — the banner Play control
+   is resume, not a gap between auto-continue sessions. A `/goal` turn ends
+   when the manager stops calling tools (a final assistant message with no
+   further tools). The runtime then starts the next turn. Token pressure
+   compact in place; it is not a turn boundary.
+   A continuation that finishes with no counted tool activity records
+   `goal_idle` and stops auto-continue until a human message or resume.
    `swarm.goal_session_max_iterations` is only eino's ReAct slice — hitting
    it extends the same turn (no confirm, no new session, no auto-continue
    spent). In-flight sub-agents are parked
-   on the registry and handed to the next session. Before the next start the
+   on the registry and handed to the next session. `Registry.SetHostNotify`
+   keeps their tool rows and `finished` events flowing after the manager
+   `RunWith` returns — restoring a nil sink used to freeze Agents on
+   starting with an empty pane. The UI follows that:
+   manager `done` does not mark those workers finished — only a `finished`
+   event or a `cleanup` kill does — so Agents cannot say Done while
+   `wait_agents` is still blocked on them. Before the next start the
    engine copies this session's last manager answers into the rolling
    session briefing, refreshes that briefing from new events (capped,
    newest-first, on the provider idle timeout — not a 15s cap; a failed
@@ -160,13 +194,17 @@ flowchart LR
    and (for replace) the matched note, so the manager shortens or drops rather
    than retrying the same text. A create that collides with an existing skill
    is refused and names that skill — patch, do not mint a twin. A note that
-   restates a recorded skill is refused the same way. Sub-agents do not get the memory tools: a worker that
-   wrote to the project's memory would be writing about work the manager had
-   not yet accepted. They do get the same host snapshot as `WorkerPreamble`,
-   because they run the same `exec` and would otherwise invent the wrong
-   userland. The `spawned` event stores that instruction in `text` so the
-   Agents tab, a reload, and `zwai trace` can show what the worker was
-   actually told.
+   restates a recorded skill is refused the same way. Sub-agents receive the
+   same notes snapshot and skills index, and `skill_view` so they can open a
+   recorded procedure. They do not get `memory` or `skill_manage`: a worker
+   that wrote to the project's memory would be writing about work the manager
+   had not yet accepted. Their final message is the task result; they may
+   append a short durable convention or procedure for the manager to store.
+   Most tasks have nothing to add. They also get the same host snapshot as
+   `WorkerPreamble`, because they run the same `exec` and would otherwise
+   invent the wrong userland. The `spawned` event stores that instruction in
+   `text` so the Agents tab, a reload, and `zwai trace` can show what the
+   worker was actually told.
 4. `Registry.RunWith` drives the manager. Before each manager Generate,
    `BeforeModelRewriteState` middleware first clears older **replayable**
    tool results (file bodies, listings — not spawn/memory) once billed or
@@ -186,19 +224,28 @@ flowchart LR
    (Codex-style) even though eino calls Generate — a wrapper drains
    Stream. Silence between chunks uses the provider idle timeout
    (`timeout_seconds`). After the briefing, spawn/resume
-   identity is rehydrated from this turn's `spawned` / `finished` events —
-   not salvaged from compactable messages — and summarizer errors are
+   identity is rehydrated from the conversation's `spawned` / `finished`
+   events — not only this turn's, and not salvaged from compactable
+   messages — and summarizer errors are
    swallowed (recorded, turn continues uncompacted). The keep-or-delete
    comparison is `TestCompactEffectComparedWithEinoDefault`. The transcript
    the human sees does not change: compact is a view, the event log stays
    the extract source. A live `compacted` event (`seq` 0,
    `phase: start`) is the compressing notice; the stored event has
-   `auto: true` and the token counts. It spawns sub-agents, which run
-   concurrently under `MaxConcurrent`, each with a watchdog timeout. If the
+   `auto: true` and the token counts. The notice stays a one-liner; an
+   icon opens `summary`. It spawns sub-agents, which run
+   concurrently under `MaxConcurrent`, each with a watchdog timeout. The
+   cap is a resizable gate, not a channel minted once: `PUT /settings`
+   calls `ApplyLiveSwarmLimits` so queued workers on a live or parked
+   `/goal` registry see the new budget without a restart. If the
    manager hits `swarm.manager_max_iterations`, the turn **pauses** (still
    running) and emits `max_iterations`. `POST /api/threads/:id/continue` with
    `continue: true` starts another slice of that size on the same transcript;
    `false` (or interrupt) ends the turn. Steering while paused is also a yes.
+   `ask_user` uses the same pause-the-tool pattern (`answerCh` armed before
+   the `tool_call` row, so the UI cannot win the race), and a crash resume
+   re-arms an unfinished questionnaire instead of closing it as
+   `the previous process stopped`.
 5. Every `swarm.Notification` reaches the engine's accumulator, which decides
    what is worth storing:
    - `delta` / `reasoning_delta` are **broadcast only** (`seq = 0`) — they are
@@ -250,10 +297,15 @@ flowchart LR
    still running are started again under the same `agent_id` from their event
    log (an in-flight tool call is not replayed mid-call; a `tool_result` with
    `err` is recorded first so the transcript does not keep spinning a call
-   the previous process no longer owns). Workers that already
+   the previous process no longer owns).    Workers that already
    `finished` are planted so `wait_agents` / `resume_agent` still resolve the
    id. A quit does not record `cleanup` or `finished` for those in-flight
-   workers — that would make the next start treat them as done. Follow-ups
+   workers — that would make the next start treat them as done. A `/goal`
+   session that finished before the crash is a new turn on the next start:
+   leftover workers are restored and planted from the **conversation** event
+   log (not the empty new turn), and spawn ids are re-pinned because later
+   turns drop previous tool results. `cleanup` marks killed leftovers as
+   stopped so they are not restarted as if they were still live. Follow-ups
    waiting in `followups` stay queued and run after the leftover turn finishes
    cleanly. Unread `[steer]` messages stay in the leftover turn (a dangling
    tool call is dropped; the steer is not). A user **Stop**
@@ -300,7 +352,16 @@ event or showing a duplicate:
   viewport of the live edge as JSON, the transcript renders that, and the
   stream resumes with `?since=` at that high-water mark. Scrolling up pages
   older events. Find and a jump to an unloaded turn keep paging until the
-  row exists.
+  row exists. A tail that has no manager chat row (a long-running turn
+  whose recent events are only worker tools) keeps paging before the
+  welcome cards can replace the transcript — those cards also hide the
+  history sentinel that would have loaded the missing rows. The live-edge
+  JSON also carries `roster` (`spawned` / `finished` / `cleanup` outside
+  that viewport) so the Agents tab still lists workers after an hour of
+  manager tools has pushed their spawn rows off the page. Those sidecar
+  rows hydrate the roster only; they do not become manager "Started"
+  lines. Opening a worker whose tools are outside the viewport fetches
+  `GET /api/threads/:id/agents/:agent/log`.
 - **A slow subscriber is marked lagged, not dropped.** When its channel is full
   a persisted event sets a flag instead of vanishing; the connection notices on
   a short tick and catches up from the database. The event that says the turn
@@ -327,13 +388,19 @@ pure and unit-tested; the store around it only moves data.
 Unread steering is split out of the turn body (`splitQueuedSteers`) and rendered
 under the live working line: the event is recorded when the text is accepted,
 but the manager only reads it at the next model call, and a bubble sitting above
-"Working for…" reads as already applied. Messages that are only waiting for this
-turn to finish sit in a **Queued** tray on the composer (`followups`), not in
-the transcript, until Steer injects them or the turn ends and they start as the
-next request.
+"Working for…" reads as already applied. That pin has **Interrupt** (abort the
+current manager tool so every unread steer lands now) and per-bubble **Delete**
+(retract; `steer_retracted` hides it, including when history paging loads the
+`steer` later). Messages that are only waiting for this turn to finish sit in a
+**Queued** tray on the composer (`followups`), not in the transcript, until
+Steer injects them or the turn ends and they start as the next request.
 Answer blocks render as markdown while they stream (`MemoMarkdown` with
 `streaming`); `closeIncompleteMarkdown` closes trailing `**` / `` ` `` / `~~`
-so a half-typed marker does not flash as punctuation. Completed answers are
+so a half-typed marker does not flash as punctuation. A fenced `chart` block
+whose body is a comparison (bar, line, area, pie JSON) paints as a plot
+with a Table tab for the same rows;
+an unclosed or truncated fence is a placeholder, and a finished invalid body
+stays code. Completed answers are
 memoised so a later token does not re-parse the rest of the conversation.
 **Settings is a full-page sheet, not a modal.** Opening it must not re-render
 the transcript or run Radix `hideOthers` across it — a long conversation made
@@ -360,11 +427,17 @@ re-pins. The scroll listener binds when `loaded` becomes true — the first pain
 is a skeleton with no scroller. Opening a conversation resets the pin and
 ignores the layout `scroll` at 0 that a fresh overflow box fires, otherwise a
 switch would paint the top of the history and never offer the jump control.
+Opening a sub-agent in the Agents tab uses the same hook on `agent-scroller`
+(keyed by worker id): the log lands on the latest line, follows while the
+reader stays at the edge, and offers the same jump control after a wheel-up.
 Selecting transcript text (or a sub-agent's log) offers **Add to chat**. The
-snippet is stored as a composer annotation — hover to read, edit or drop it —
-and prefixed onto the next send (`Selected text:`) so the model sees the quote
-without dumping it into the textarea (`frontend/src/lib/quote.ts`,
-`frontend/src/lib/selection.ts`).
+pill is a snapshot of that range: a live stream's auto-follow scroll and the
+text-node replacements of a streaming markdown block used to dismiss it.
+Selecting also unpins follow (`zwai:quote-selection`) so the live edge does
+not yank the highlight. The snippet is stored as a composer annotation —
+hover to read, edit or drop it — and prefixed onto the next send
+(`Selected text:`) so the model sees the quote without dumping it into the
+textarea (`frontend/src/lib/quote.ts`, `frontend/src/lib/selection.ts`).
 Each user bubble has a copy control and an edit control under it. Edit turns
 that bubble into an in-place editor (Cancel / Send) — the draft stays in the
 bubble, not the composer. Send truncates the log from that `user_message`
@@ -438,6 +511,7 @@ $ZWAI_HOME (default ~/.zwai-swarm)
 ├── config.yaml            0600, holds the API key
 ├── zwai.db                everything else
 ├── workspaces/<thread>/   one per standalone conversation; uploads/ inside
+├── plans/<thread>/PLAN.md `/plan` draft; not in the workspace
 └── projects/<project>/
     ├── workspace/         only when the project has no workdir of its own
     └── memory/            MEMORY.md + skills/<name>/SKILL.md
@@ -461,6 +535,18 @@ zwai created it** — `DeleteThread` on a project conversation would otherwise
 delete the user's repository — and deleting a project removes its memory and
 its managed workspace, never a `workdir` the user supplied.
 
+## Integrated terminal
+
+The title-bar icon (every click) and ⌘J are a bottom PTY, not a second
+workspace. The client names a conversation or a project; `engine.TerminalDir`
+picks the directory the agents already use — a project's working directory
+when the conversation is in one, otherwise `workspaces/<thread-id>/`. A
+`cwd` query is ignored. `GET /api/threads/:id/terminal` (or
+`/api/projects/:id/terminal`) upgrades a same-origin WebSocket, `internal/terminal`
+starts `$SHELL` there, and the first text frame is
+`{"type":"ready","cwd":"…","shell":"…"}` so the tab label is the path the
+server chose. Eight sessions per process.
+
 ## Shell differences
 
 Everything is shared except the native affordances, advertised by `GET /api/meta`
@@ -472,9 +558,13 @@ so the UI never renders a control it cannot deliver:
 | `mode` in `/api/meta` | `web` | `desktop` |
 | `capabilities.reveal` | `false` — download instead | `true` — opens the file manager |
 | `capabilities.open_url` | `false` — `window.open` a new tab | `true` — system browser |
+| integrated terminal | same PTY on the loopback process | same |
 
-`capabilities.memory` is not a shell difference: it reports `memory.enabled`, so
-the project dialog does not offer a switch the install will ignore.
+The in-app terminal is not a desktop-only affordance: web mode is still a
+loopback process, and the shell starts in the conversation's workspace on
+that machine. `capabilities.memory` is not a shell difference: it reports
+`memory.enabled`, so the project dialog does not offer a switch the install
+will ignore.
 
 ## Design rules that shaped the code
 

@@ -217,7 +217,6 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 func (r *Registry) resetHistory() {
 	r.mu.Lock()
 	r.hist = nil
-	r.mgrInbox = nil
 	r.mu.Unlock()
 }
 
@@ -229,6 +228,12 @@ func (r *Registry) setHooks(spawn func(role, agentID, instruction string),
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	ps, pf := r.spawnHook, r.finishHook
+	if spawn == nil {
+		spawn = r.emitSpawned
+	}
+	if finish == nil {
+		finish = r.emitFinished
+	}
 	r.spawnHook, r.finishHook = spawn, finish
 	return ps, pf
 }

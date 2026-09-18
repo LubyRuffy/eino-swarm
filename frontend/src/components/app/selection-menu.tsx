@@ -2,7 +2,13 @@ import { MessageSquarePlus } from "lucide-react"
 import { useEffect, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { menuPosition, readTextSelection, type PageSelection } from "@/lib/selection"
+import {
+  QUOTE_SELECTION_EVENT,
+  menuPosition,
+  nextMenuSelection,
+  readTextSelection,
+  type PageSelection,
+} from "@/lib/selection"
 import { useT } from "@/lib/use-t"
 
 /** Floating "Add to chat" pill. Shown after a selection inside a quote
@@ -18,7 +24,13 @@ export function SelectionMenu({ onAdd }: { onAdd: (text: string) => void }) {
     const fromEventTarget = (target: EventTarget | null) =>
       target instanceof Element && target.closest("[data-testid=selection-menu]")
 
-    const sync = () => setActive(readTextSelection())
+    const apply = (clearIfEmpty: boolean, announce: boolean) => {
+      const live = readTextSelection()
+      if (announce && live) {
+        document.dispatchEvent(new Event(QUOTE_SELECTION_EVENT))
+      }
+      setActive((current) => nextMenuSelection(current, live, clearIfEmpty))
+    }
 
     const onMouseDown = (event: MouseEvent) => {
       if (fromEventTarget(event.target)) return
@@ -27,34 +39,43 @@ export function SelectionMenu({ onAdd }: { onAdd: (text: string) => void }) {
     const onMouseUp = (event: MouseEvent) => {
       if (fromEventTarget(event.target)) return
       pressed = false
-      sync()
+      apply(true, true)
     }
     const onSelectionChange = () => {
       // While the pointer is down the range is still being painted; wait.
       if (pressed) return
-      sync()
+      apply(false, true)
     }
     const onKeyUp = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setActive(null)
         return
       }
-      sync()
+      apply(true, true)
     }
     const hide = () => setActive(null)
+    const onUserPan = (event: Event) => {
+      if (fromEventTarget(event.target)) return
+      hide()
+    }
+    const onScroll = () => apply(false, false)
 
     document.addEventListener("mousedown", onMouseDown)
     document.addEventListener("mouseup", onMouseUp)
     document.addEventListener("selectionchange", onSelectionChange)
     document.addEventListener("keyup", onKeyUp)
-    document.addEventListener("scroll", hide, true)
+    document.addEventListener("scroll", onScroll, true)
+    document.addEventListener("wheel", onUserPan, { capture: true, passive: true })
+    document.addEventListener("touchmove", onUserPan, { capture: true, passive: true })
     window.addEventListener("resize", hide)
     return () => {
       document.removeEventListener("mousedown", onMouseDown)
       document.removeEventListener("mouseup", onMouseUp)
       document.removeEventListener("selectionchange", onSelectionChange)
       document.removeEventListener("keyup", onKeyUp)
-      document.removeEventListener("scroll", hide, true)
+      document.removeEventListener("scroll", onScroll, true)
+      document.removeEventListener("wheel", onUserPan, true)
+      document.removeEventListener("touchmove", onUserPan, true)
       window.removeEventListener("resize", hide)
     }
   }, [])

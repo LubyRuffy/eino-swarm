@@ -19,6 +19,10 @@ func TestSplitCutsTheNameAtTheFirstNonIdentifier(t *testing.T) {
 	if !ok || name != "goal" || arg != "keep going" {
 		t.Fatalf("fullwidth slash: %q %q ok=%v", name, arg, ok)
 	}
+	name, arg, ok = Split("、goal keep going")
+	if !ok || name != "goal" || arg != "keep going" {
+		t.Fatalf("IME punctuation comma: %q %q ok=%v", name, arg, ok)
+	}
 	if _, _, ok = Split("/goals keep going"); !ok {
 		t.Fatal("/goals still has a name; Lookup must reject it")
 	}
@@ -30,6 +34,21 @@ func TestSplitCutsTheNameAtTheFirstNonIdentifier(t *testing.T) {
 	}
 	if _, ok := Leading(" /goal"); ok {
 		t.Fatal("a draft with a leading space is not a slash menu")
+	}
+}
+
+func TestNormalizePrefixRewritesIMESlashRunes(t *testing.T) {
+	if got := NormalizePrefix("、go"); got != "/go" {
+		t.Fatalf("comma=%q", got)
+	}
+	if got := NormalizePrefix("／goal"); got != "/goal" {
+		t.Fatalf("fullwidth=%q", got)
+	}
+	if got := NormalizePrefix("/go"); got != "/go" {
+		t.Fatalf("ascii=%q", got)
+	}
+	if got := NormalizePrefix("hello"); got != "hello" {
+		t.Fatalf("plain=%q", got)
 	}
 }
 

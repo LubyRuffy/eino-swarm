@@ -28,6 +28,9 @@ type threadView struct {
 	GoalBlocked     bool   `json:"goal_blocked"`
 	GoalBlockReason string `json:"goal_block_reason,omitempty"`
 	GoalCapped      bool   `json:"goal_capped"`
+	GoalIdle        bool   `json:"goal_idle"`
+	PlanMode        bool   `json:"plan_mode"`
+	PlanMarkdown    string `json:"plan_markdown,omitempty"`
 	GoalAutoTurns   int    `json:"goal_auto_turns,omitempty"`
 	GoalStartedAt   string `json:"goal_started_at,omitempty"`
 	Compacted       bool   `json:"compacted"`
@@ -55,6 +58,9 @@ func viewThread(th *store.Thread, running bool) threadView {
 		GoalBlocked:     th.GoalBlocked,
 		GoalBlockReason: th.GoalBlockReason,
 		GoalCapped:      th.GoalCapped,
+		GoalIdle:        th.GoalIdle,
+		PlanMode:        th.PlanMode,
+		PlanMarkdown:    th.PlanMarkdown,
 		GoalAutoTurns:   th.GoalAutoTurns,
 		Compacted:       strings.TrimSpace(th.CompactSummary) != "" && th.CompactThroughSeq > 0,
 		Archived:        th.Archived,
@@ -150,9 +156,11 @@ type patchThreadRequest struct {
 	GoalEdit *bool `json:"goal_edit"`
 	// GoalResume starts the next turn for an open objective (blocked,
 	// capped, or idle). Complete or missing goals are rejected.
-	GoalResume *bool `json:"goal_resume"`
-	Archived   *bool `json:"archived"`
-	Pinned     *bool `json:"pinned"`
+	GoalResume   *bool   `json:"goal_resume"`
+	PlanMode     *bool   `json:"plan_mode"`
+	PlanMarkdown *string `json:"plan_markdown"`
+	Archived     *bool   `json:"archived"`
+	Pinned       *bool   `json:"pinned"`
 	// ProjectID moves a conversation into a project or, when empty, out of
 	// every project. Its files stay where they are.
 	ProjectID *string `json:"project_id"`
@@ -212,6 +220,18 @@ func (s *Server) patchThread(c *gin.Context) {
 	}
 	if req.GoalResume != nil && *req.GoalResume {
 		if _, err := s.engine.ResumeThreadGoal(th.ID); err != nil {
+			s.fail(c, err)
+			return
+		}
+	}
+	if req.PlanMode != nil {
+		if err := s.engine.SetPlanMode(th.ID, *req.PlanMode); err != nil {
+			s.fail(c, err)
+			return
+		}
+	}
+	if req.PlanMarkdown != nil {
+		if err := s.engine.SavePlanMarkdown(th.ID, *req.PlanMarkdown); err != nil {
 			s.fail(c, err)
 			return
 		}

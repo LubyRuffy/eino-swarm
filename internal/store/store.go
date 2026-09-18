@@ -269,6 +269,42 @@ func (s *Store) AppendMessages(threadID, turnID string, msgs []Message) error {
 	return nil
 }
 
+// DeleteMessageByEventSeq drops the one transcript row tagged with that
+// timeline seq. Retracting unread steering uses it so replay does not keep
+// a caption the manager was told to forget.
+func (s *Store) DeleteMessageByEventSeq(threadID string, eventSeq int64) error {
+	if eventSeq <= 0 {
+		return nil
+	}
+	res := s.db.Where("thread_id = ? AND event_seq = ?", threadID, eventSeq).Delete(&Message{})
+	if res.Error != nil {
+		return fmt.Errorf("store: delete message by event seq: %w", res.Error)
+	}
+	return nil
+}
+
+// DeleteSteerMessage drops the replay row for a retracted steer. Newer
+// rows are tagged with event_seq; pre-upgrade rows have event_seq 0 and
+// match on the [steer] caption instead.
+func (s *Store) DeleteSteerMessage(threadID string, eventSeq int64, caption string) error {
+	if err := s.DeleteMessageByEventSeq(threadID, eventSeq); err != nil {
+		return err
+	}
+	cap := strings.TrimSpace(caption)
+	if cap == "" {
+		return nil
+	}
+	if !strings.HasPrefix(cap, "[steer]") {
+		cap = "[steer] " + cap
+	}
+	res := s.db.Where("thread_id = ? AND event_seq = 0 AND role = ? AND content = ?",
+		threadID, "user", cap).Delete(&Message{})
+	if res.Error != nil {
+		return fmt.Errorf("store: delete steer message: %w", res.Error)
+	}
+	return nil
+}
+
 // ListMessages returns a conversation's transcript in order.
 func (s *Store) ListMessages(threadID string) ([]Message, error) {
 	var out []Message
@@ -427,6 +463,40 @@ func (s *Store) ListTailEvents(threadID string, before int64, limit int) ([]Even
 		out[len(newest)-1-i] = ev
 	}
 	return out, hasMore, nil
+}
+
+// rosterEventKinds reconstruct the Agents tab. The live-edge log page is a
+// viewport of recent tools; these kinds otherwise fall out of that window
+// and the panel claims there are no sub-agents.
+var rosterEventKinds = []string{"spawned", "finished", "cleanup"}
+
+// ListRosterEvents returns spawned, finished and cleanup rows, oldest first.
+// Opening a long conversation paints one viewport of tools; the roster is
+// these few rows, not that window.
+func (s *Store) ListRosterEvents(threadID string) ([]Event, error) {
+	var out []Event
+	err := s.db.Where("thread_id = ? AND kind IN ?", threadID, rosterEventKinds).
+		Order("seq asc").Find(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("store: list roster events: %w", err)
+	}
+	return out, nil
+}
+
+// ListAgentEvents returns one worker's stored rows, oldest first. The live-edge
+// log page is a viewport of recent tools; opening a worker whose spawn fell
+// out of that window needs these rows, not the whole conversation.
+func (s *Store) ListAgentEvents(threadID, agentID string) ([]Event, error) {
+	if agentID == "" {
+		return nil, nil
+	}
+	var out []Event
+	err := s.db.Where("thread_id = ? AND agent_id = ?", threadID, agentID).
+		Order("seq asc").Find(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("store: list agent events: %w", err)
+	}
+	return out, nil
 }
 
 // ListTurnEvents returns one turn's events, oldest first — the trace view.

@@ -204,6 +204,24 @@ describe("Sidebar order", () => {
       expect(row.querySelector("[data-drag-handle]")).toBeNull()
     }
   })
+
+  it("hides the sixth Recents conversation behind Show more", () => {
+    render(
+      <Sidebar
+        threads={Array.from({ length: 6 }, (_, i) =>
+          thread(`th_${i}`, `Loose ${i}`, {
+            last_active_at: new Date(Date.now() - i * 60_000).toISOString(),
+          }),
+        )}
+        {...noop}
+      />,
+    )
+    expect(screen.getAllByTestId("thread-row")).toHaveLength(5)
+    expect(screen.queryByText("Loose 5")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }))
+    expect(screen.getByText("Loose 5")).toBeInTheDocument()
+    expect(screen.getAllByTestId("thread-row")).toHaveLength(6)
+  })
 })
 
 describe("Sidebar pin and folders", () => {

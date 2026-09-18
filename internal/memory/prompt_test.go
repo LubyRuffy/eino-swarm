@@ -90,6 +90,46 @@ func TestPromptListsSkillNamesAndSummariesOnly(t *testing.T) {
 	}
 }
 
+func TestWorkerPromptMirrorsTheIndexWithoutWriteTools(t *testing.T) {
+	snap := Snapshot{
+		Entries: []string{"one stored note", "another one\nwith a second line"},
+		Chars:   55,
+		Limit:   100,
+	}
+	skills := []SkillInfo{
+		{Name: "first-procedure", Description: "when a certain kind of work comes up"},
+		{Name: "second-procedure", Description: "when another does"},
+	}
+	out := WorkerPromptSections(snap, skills, 1)
+	if !strings.Contains(out, "one stored note") || !strings.Contains(out, "- another one\n  with a second line") {
+		t.Fatalf("notes missing:\n%s", out)
+	}
+	if !strings.Contains(out, "55%") || !strings.Contains(out, "55/100") {
+		t.Fatalf("usage header missing:\n%s", out)
+	}
+	if !strings.Contains(out, "first-procedure") || strings.Contains(out, "second-procedure") {
+		t.Fatalf("index not capped:\n%s", out)
+	}
+	if !strings.Contains(out, "1 more") {
+		t.Fatalf("the capped index must admit what it left out:\n%s", out)
+	}
+	if !strings.Contains(out, ToolSkillView) || !strings.Contains(out, "does not open workspace files") {
+		t.Fatalf("workers must still be able to open a skill:\n%s", out)
+	}
+	for _, write := range []string{ToolMemory, ToolSkillManage} {
+		if strings.Contains(out, write) {
+			t.Fatalf("worker prompt named %s:\n%s", write, out)
+		}
+	}
+	empty := WorkerPromptSections(Snapshot{Limit: 100}, nil, 50)
+	if !strings.Contains(empty, "No skills recorded yet") || !strings.Contains(empty, "nothing yet") {
+		t.Fatalf("a fresh project should say so plainly:\n%s", empty)
+	}
+	if strings.Contains(empty, "Call "+ToolSkillView) {
+		t.Fatalf("an empty index must not invite a view:\n%s", empty)
+	}
+}
+
 // A project with memory switched off must not be told about tools it does not
 // have: a prompt that advertises one produces failed tool calls.
 func TestMemoryOffLeavesOnlyTheProjectInstruction(t *testing.T) {
@@ -117,6 +157,8 @@ func TestMemoryPromptsStayGenericAndGrounded(t *testing.T) {
 		"sections": PromptSections("", Snapshot{Limit: 100},
 			[]SkillInfo{{Name: "n", Description: "d"}}, 50, true),
 		"review": ReviewPrompt(),
+		"worker": WorkerPromptSections(Snapshot{Limit: 100},
+			[]SkillInfo{{Name: "n", Description: "d"}}, 50),
 	}
 	// Words that only appear if someone illustrated the feature with an
 	// example and left it in.
@@ -135,6 +177,18 @@ func TestMemoryPromptsStayGenericAndGrounded(t *testing.T) {
 		if strings.TrimSpace(p) == "" {
 			t.Fatalf("the %s prompt is empty", name)
 		}
+	}
+	worker := prompts["worker"]
+	for _, write := range []string{ToolMemory, ToolSkillManage} {
+		if strings.Contains(worker, write) {
+			t.Fatalf("the worker prompt named the write tool %s:\n%s", write, worker)
+		}
+	}
+	if !strings.Contains(worker, ToolSkillView) {
+		t.Fatal("the worker prompt must name skill_view")
+	}
+	if !strings.Contains(worker, "Most tasks have nothing to add") {
+		t.Fatal("the worker prompt must allow returning nothing extra")
 	}
 }
 

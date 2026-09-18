@@ -103,6 +103,14 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 		a.engine.record(a.event(n, n.Kind.String()))
 
 	case swarm.NotifyTurn:
+		// The next model round is starting. Drop unpersisted deltas from a
+		// preempted generate so a later tool_call cannot flush them as a
+		// finished answer.
+		a.dropLive(n.AgentID)
+		a.clearAnswer(n.AgentID)
+		a.mu.Lock()
+		delete(a.reasoning, n.AgentID)
+		a.mu.Unlock()
 		a.engine.emit(a.event(n, n.Kind.String()))
 
 	case swarm.NotifyDone, swarm.NotifyError:

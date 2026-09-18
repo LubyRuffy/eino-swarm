@@ -55,7 +55,14 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	// backing array, and appending complete_goal / block_goal in place
 	// would hand them to every sub-agent.
 	managerTools := append([]tool.BaseTool(nil), pc.managerTools(toolset)...)
-	if pursuingGoal(th) {
+	if th != nil && th.PlanMode {
+		managerTools = dropPlanMutatingManagerTools(managerTools)
+		tid := rt.threadID
+		managerTools = append(managerTools, ProposePlanTool(func(markdown string) (string, error) {
+			return e.proposePlanJSON(tid, markdown)
+		}))
+	}
+	if pursuingGoal(th) && (th == nil || !th.PlanMode) {
 		tid := rt.threadID
 		managerTools = append(managerTools,
 			CompleteGoalTool(func(summary string) (string, error) {
@@ -66,15 +73,16 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			}),
 		)
 	}
+	managerTools = append(managerTools, AskUserTool(rt.waitAsk))
 	budget := e.cfg.Swarm.ManagerIterations()
 	if pursuingGoal(th) {
 		budget = e.cfg.Swarm.GoalSessionIterations()
 	}
 	used := 0
+	modelRetries := 0
 	var res swarm.RunResult
 	var runErr error
 	restore, planted := rt.takeWorkerRestore()
-	defer func() { rt.setSessionUsed(used) }()
 	for {
 		res, runErr = reg.RunWith(ctx, swarm.RunConfig{
 			Instruction:        instruction,
@@ -87,13 +95,31 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		}, swarm.Callback(acc.onNotify))
 		restore, planted = nil, nil
 		used += budget
-		if !isMaxIterations(runErr) {
-			return res, runErr
-		}
-		// Session cancel (time) and Interrupt share this ctx. Returning
-		// eino's cap here would mark the turn as a graph error.
 		if ctx.Err() != nil {
 			return res, ctx.Err()
+		}
+		// A human Interrupt Injection cancels the epoch, not this ctx. The
+		// generate can die with context.Canceled while the turn is still live;
+		// stitch unread steering and keep going. Stop still hits ctx above.
+		preempted := reg.TakePreempt()
+		if preempted && (runErr == nil || isPreemptRunError(runErr)) {
+			if runErr != nil || reg.HasPendingSteers() {
+				messages = stitchManagerToolResults(
+					nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
+					rt.engine.managerToolResults(turn.ID),
+				)
+				messages = dropTrailingIncompleteToolCalls(messages)
+				continue
+			}
+		}
+		if !isMaxIterations(runErr) {
+			if runErr != nil && isRetryableModelError(runErr) && modelRetries < modelErrorRetries {
+				modelRetries++
+				rt.recordModelRetry(turn, modelRetries)
+				messages = rt.retryManagerRun(turn, res, messages, reg)
+				continue
+			}
+			return res, runErr
 		}
 		if got, err := e.store.GetThread(rt.threadID); err == nil {
 			th = got
@@ -101,8 +127,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		if pursuingGoal(th) {
 			// eino needs a finite ReAct slice. That is not a /goal
 			// session boundary: keep this turn, keep the registry, do
-			// not spend goal_max_auto_turns. The time cap still ends
-			// the session.
+			// not spend goal_max_auto_turns.
 			messages = stitchManagerToolResults(
 				nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
 				rt.engine.managerToolResults(turn.ID),

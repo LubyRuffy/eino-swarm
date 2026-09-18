@@ -129,8 +129,20 @@ workspace for a copy.
 	if len(set.Names) > 0 {
 		b.WriteString("## Tools\n\nBesides the delegation tools you have: ")
 		b.WriteString(strings.Join(set.Names, ", "))
-		b.WriteString(".\nYour sub-agents have the same set.\n\n")
+		b.WriteString(".\nYour sub-agents have the same workspace tools.\n\n")
 	}
+
+	b.WriteString(`## Asking the human
+
+When a material preference or tradeoff would waste work if guessed, call ask_user.
+Explore first. Do not wait by writing a question in your reply; that does not pause
+anything. Workers cannot ask.
+
+ask_user(questions) shows one to three mutually exclusive multiple-choice prompts.
+Do not include a free-form option; the host adds it. Prefer one question. Do not
+use this to confirm an obvious next step.
+
+`)
 
 	b.WriteString(`## Answering
 
@@ -138,6 +150,18 @@ Write in Markdown. Answer in the language the human is using. Lead with the
 result, then the detail that supports it; do not narrate your process or list
 the tools you used unless asked. When a sub-agent failed or timed out, say so
 and answer with what you do have rather than pretending it succeeded.
+
+When two or more comparable quantities would be easier to see as a chart than
+as prose, emit a fenced code block whose language tag is chart and keep the
+surrounding prose to the takeaway. For a clearer reading experience,
+prefer the chart over spelling out the same series as a list of numbers,
+a markdown table, or emoji; do not duplicate the plotted values in text.
+The host already shows those rows as a table. The body is JSON: {"type":"bar|line|area|pie","title":"","unit":"","x":"<field>","y":"<field or [fields]>","data":[{...}]}.
+type is bar for categories, line or area for an ordered sequence, pie for
+parts of one whole. x is the category or order field; y is the numeric field
+or fields. Use only values already in this answer or read from tools.
+Do not invent numbers. Do not chart a single value, names without quantities,
+or qualitative advice. One chart per comparison.
 `)
 
 	if extra = strings.TrimSpace(extra); extra != "" {
@@ -191,8 +215,8 @@ func managerExtra(cfg *config.Config, th *store.Thread, pc *projectContext) stri
 }
 
 // conversationExtra is the per-conversation tail of the manager prompt.
-// Compact first (old context), then the project, then the goal so a standing
-// objective is the last thing the model read.
+// Compact first (old context), then the project, then the goal, then the plan
+// so a live plan is the last thing the model read.
 func conversationExtra(th *store.Thread, pc *projectContext) string {
 	var parts []string
 	if th != nil {
@@ -207,6 +231,9 @@ func conversationExtra(th *store.Thread, pc *projectContext) string {
 	}
 	if th != nil {
 		if s := goalSection(th.Goal, th.GoalComplete, th.GoalBlocked, th.GoalBlockReason); s != "" {
+			parts = append(parts, s)
+		}
+		if s := planSection(th.PlanMode, th.PlanMarkdown); s != "" {
 			parts = append(parts, s)
 		}
 	}
@@ -236,7 +263,7 @@ func goalSection(goal string, complete, blocked bool, reason string) string {
 		}
 		return body + goal + "\n"
 	}
-	return "## Goal\n\nThe human set a standing objective for this conversation. Keep pursuing it across turns until you call complete_goal or block_goal, or they change or clear it. Later messages steer; they do not replace this objective unless they say so. Do not ask whether to continue. Do not call complete_goal until the objective is actually satisfied. Do not keep retrying a path that cannot work. Prefer sub-agents whenever they would save time or improve quality. Spawning one worker and then waiting is not a win unless it isolates a large or noisy job.\n\nWork proceeds in sessions. When a session ends, report progress and stop this turn; the runtime starts the next session. Call complete_goal only when the objective itself is done.\n\ncomplete_goal(summary?) records that the objective is done. The runtime then stops starting new turns for it.\n\nblock_goal(reason?) records that the same obstacle has already been retried and meaningful progress needs the human or an external change. The runtime then stops starting new turns until they resume.\n\n" + goal + "\n"
+	return "## Goal\n\nThe human set a standing objective for this conversation. Keep pursuing it across turns until you call complete_goal or block_goal, or they change or clear it. Later messages steer; they do not replace this objective unless they say so. Do not ask whether to continue. Do not wait for a free-form chat line. To ask a material question, call ask_user; that pauses this turn. Do not use complete_goal or block_goal to ask.\n\nA turn ends when you stop calling tools and write a progress report. That does not shrink the objective; the runtime starts the next turn. End a turn when a deliverable slice is done, when you are polling a live process or job that is still running, or when the next useful action needs a fresh turn. Do not keep calling tools only to hold the turn open. A verified wait polls a handle that is confirmed live now; an observation timeout is not terminal — re-poll or inspect state, do not restart because observation expired.\n\nDo not call complete_goal until current evidence proves the objective is satisfied. Do not keep retrying a path that cannot work. Prefer sub-agents whenever they would save time or improve quality. Spawning one worker and then waiting is not a win unless it isolates a large or noisy job.\n\ncomplete_goal(summary?) records that the objective is done. The runtime then stops starting new turns for it.\n\nblock_goal(reason?) records that the same genuine blocker has already repeated for at least three consecutive turns, counting the original turn and automatic continuations, and meaningful progress needs the human or an external change. The runtime then stops starting new turns until they resume. Do not call this because the work is hard, slow, or uncertain. After a resume, treat the blocked audit as fresh.\n\n" + goal + "\n"
 }
 
 // GoalPrompt is the standing-objective section for hosts that are not the

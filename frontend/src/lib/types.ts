@@ -14,11 +14,14 @@ export type EventKind =
   | "tool_result"
   | "tool_delta"
   | "steer"
+  | "steer_retracted"
+  | "steer_preempted"
   | "cleanup"
   | "progress"
   | "memory_review"
   | "max_iterations"
   | "max_iterations_continued"
+  | "model_retry"
   | "title"
   | "session_memory"
   | "done"
@@ -28,10 +31,15 @@ export type EventKind =
   | "goal_complete"
   | "goal_continued"
   | "goal_capped"
+  | "goal_idle"
   | "goal_blocked"
   | "goal_edited"
   | "goal_resumed"
   | "goal_session"
+  | "plan"
+  | "plan_updated"
+  | "plan_implemented"
+  | "plan_cancelled"
   | "compacted"
   | "usage"
   | "rewound"
@@ -135,6 +143,9 @@ export type MemoryNotify = "off" | "on" | "verbose"
 export interface Thread {
   id: string
   title: string
+  /** True while the engine still owns the sidebar name. A generated `title`
+   *  event or a user rename clears it. */
+  title_auto?: boolean
   /** Empty for a conversation that belongs to no project. */
   project_id: string
   provider_id: string
@@ -152,6 +163,12 @@ export interface Thread {
   goal_block_reason?: string
   /** True after consecutive auto-continues hit the cap. */
   goal_capped?: boolean
+  /** True after a continuation finished with no tool progress. */
+  goal_idle?: boolean
+  /** True while /plan is open. */
+  plan_mode?: boolean
+  /** Current plan body while planning (and after, until replaced). */
+  plan_markdown?: string
   goal_auto_turns?: number
   /** When the current objective was set. Banner elapsed clock. */
   goal_started_at?: string
@@ -199,6 +216,8 @@ export interface ThreadStatus {
   /** True while the manager is paused at its tool-round cap waiting for the
    *  human to extend the turn. Still `running`. */
   awaiting_continue?: boolean
+  /** True while ask_user is blocked waiting for the human. Still `running`. */
+  awaiting_answer?: boolean
 }
 
 export interface Turn {
@@ -296,9 +315,7 @@ export interface SwarmLimits {
   auto_compact_tokens?: number
   /** Consecutive engine-started turns that may pursue an open /goal. */
   goal_max_auto_turns?: number
-  /** Wall time of one /goal session before the runtime starts the next. */
-  goal_session_max_seconds?: number
-  /** Manager tool rounds of one /goal session. */
+  /** Manager tool rounds of one /goal ReAct slice. */
   goal_session_max_iterations?: number
   /** Context fullness (1-100) that compact-before-continue uses. */
   goal_auto_compact_percent?: number

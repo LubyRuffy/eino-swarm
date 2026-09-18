@@ -10,8 +10,8 @@ import (
 
 // applySlashGoal intercepts a `/goal` user send the way Codex dispatches
 // SlashCommand::Goal: it is never a chat line, and a live turn is steered
-// instead of 409. Composer parse can miss (fullwidth slash, glued CJK);
-// this is the layer that still has to catch it.
+// instead of 409. Composer parse can miss (fullwidth slash, IME `、`, glued
+// CJK); this is the layer that still has to catch it.
 func (e *Engine) applySlashGoal(threadID string, in *UserInput) (turn *store.Turn, done bool, err error) {
 	if in == nil || in.ContinueGoal {
 		return nil, false, nil

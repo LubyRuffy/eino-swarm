@@ -25,6 +25,10 @@ over one concurrency-safe registry:
 Give sub-agents `SendTool()` as well and any agent can message any other (a mesh
 rather than a star).
 
+HITL tools (`ask_user`, `propose_plan`, `complete_goal`, `block_goal`) are
+**not** on `Registry.Tools()`. The app engine and TUI bind them on the manager
+only. A library consumer that does not ask a human does not get them.
+
 ## Minimal use
 
 ```go
@@ -70,6 +74,12 @@ Hitting `MaxIterations` still returns the transcript **including tool results
 from that last round**, so the next `RunWith` can continue instead of repeating
 the same calls. `SetHistory` keeps wrap-appended tool results that a later
 model-step snapshot would otherwise drop.
+
+`SetHostNotify` is the sink workers use after `RunWith` returns. A `/goal`
+session parks the registry across manager turns; without it, in-flight
+sub-agents emit into a nil sink and a later `finished` never lands. Install
+it before the first `RunWith`. `TestHostNotifyKeepsWorkerEventsAfterRunReturns`
+is the gap.
 
 `RunConfig.ManagerMiddlewares` are appended after the swarm's history recorder
 and steering injector. eino's `adk/middlewares/summarization` is fine on a
@@ -152,7 +162,8 @@ reg := &swarm.Registry{
     // facts they cannot see in the manager prompt (OS, shell, date).
     WorkerPreamble: hostEnv,
 }
-```
+// After the first spawn, assigning MaxConcurrent does not wake waiters.
+reg.SetMaxConcurrent(12)
 
 manager, _ := adk.NewChatModelAgent(ctx, reg.ManagerConfig(
     "manager", "swarm manager", managerModel,
@@ -192,8 +203,15 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 
 ## Guarantees
 
-- Steering never interrupts an in-flight model call or tool execution; messages
+- Steering itself never interrupts an in-flight model call or tool; messages
   land at the next turn boundary (the same semantics as Codex steering).
+  `Registry.Preempt` is the explicit abort: it cancels nested epoch contexts
+  wrapping the current manager generate/tool, converts that cancel into
+  `InterruptedToolResult`, and leaves workers on their own contexts.
+  `RetractManagerSteer(seq)` drops one unread manager inbox item tagged with
+  `SetSteerSeq`. `HasPendingSteers` / `TakePreempt` are how a host re-enters
+  a generate that died on epoch cancel without treating a provider cancel as
+  a human Stop.
 - `send_message` to a finished or unknown agent returns `{"delivered": false}`
   rather than an error. When a **worker** sends that miss, the host manager is
   notified with the text (`notified: manager`) so the worker can finish with a
@@ -231,7 +249,14 @@ Each of those has a test: `TestCallerContextCancelDoesNotReleaseAgents`,
 `TestResumeStillWorksAfterStatsPrune`,
 `TestSpawnAgentReusesAFinishedWorkerWithTheSameRole`,
 `TestSpawnAgentSteersARunningWorkerWithTheSameRole`,
-`TestUndeliveredSteerSurfacesWhenTheAgentFinishes`. Run them with `-race`.
+`TestUndeliveredSteerSurfacesWhenTheAgentFinishes`,
+`TestHostNotifyKeepsWorkerEventsAfterRunReturns`,
+`TestRaisingMaxConcurrentUnblocksQueuedWorkers`,
+`TestLoweringMaxConcurrentKeepsWaitersQueuedUntilASlotFrees`,
+`TestPreemptAbortsInFlightToolAndDeliversSteer`,
+`TestPreemptAbortsInFlightGenerate`,
+`TestRetractPendingSteerDropsItFromTheInbox`,
+`TestPreemptDoesNotCancelWorkers`. Run them with `-race`.
 
 ## No pre-registration
 

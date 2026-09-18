@@ -24,8 +24,8 @@ function topic(partial: Partial<Thread> & { id: string; title: string }): Thread
     provider_id: "default",
     reasoning_effort: "",
     archived: false,
-    created_at: "2026-09-16T00:00:00Z",
-    last_active_at: "2026-09-16T12:00:00Z",
+    created_at: new Date().toISOString(),
+    last_active_at: new Date().toISOString(),
     running: false,
     sort_rank: 0,
     ...partial,
@@ -279,6 +279,102 @@ describe("Project list", () => {
     expect(onSelect).toHaveBeenCalledWith("pj_1")
     expect(onToggle).toHaveBeenCalledWith("pj_1")
     expect(onReorder).not.toHaveBeenCalled()
+  })
+
+  it("hides the sixth conversation behind Show more until it is opened", () => {
+    const threads = Array.from({ length: 6 }, (_, i) =>
+      topic({
+        id: `th_${i}`,
+        title: `Topic ${i}`,
+        last_active_at: new Date(Date.now() - i * 60_000).toISOString(),
+      }),
+    )
+    renderList({ threadsByProject: { pj_1: threads }, expanded: { pj_1: true } })
+    expect(screen.getAllByTestId("thread-row")).toHaveLength(5)
+    expect(screen.queryByText("Topic 5")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }))
+    expect(screen.getAllByTestId("thread-row")).toHaveLength(6)
+    expect(screen.getByText("Topic 5")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Show less" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Show less" }))
+    expect(screen.queryByText("Topic 5")).not.toBeInTheDocument()
+  })
+
+  it("hides a conversation idle longer than a week even when the folder is short", () => {
+    const stale = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+    renderList({
+      threadsByProject: {
+        pj_1: [
+          topic({ id: "th_fresh", title: "This week" }),
+          topic({ id: "th_old", title: "Last month", last_active_at: stale }),
+        ],
+      },
+      expanded: { pj_1: true },
+    })
+    expect(screen.getByText("This week")).toBeInTheDocument()
+    expect(screen.queryByText("Last month")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }))
+    expect(screen.getByText("Last month")).toBeInTheDocument()
+  })
+
+  it("keeps the open conversation visible when it would otherwise sit behind More", () => {
+    const stale = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString()
+    renderList({
+      threadsByProject: {
+        pj_1: [
+          topic({ id: "th_fresh", title: "This week" }),
+          topic({
+            id: "th_open",
+            title: "Open last month",
+            last_active_at: stale,
+          }),
+        ],
+      },
+      expanded: { pj_1: true },
+      activeId: "th_open",
+    })
+    expect(screen.getByText("Open last month")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument()
+  })
+
+  it("reports the new topic order after a drop while older rows stay behind More", () => {
+    const threads = Array.from({ length: 6 }, (_, i) =>
+      topic({
+        id: `th_${i}`,
+        title: `Topic ${i}`,
+        last_active_at: new Date(Date.now() - i * 60_000).toISOString(),
+      }),
+    )
+    const { onReorderThreads } = renderList({
+      threadsByProject: { pj_1: threads },
+      expanded: { pj_1: true },
+    })
+    const rows = screen.getAllByTestId("thread-row")
+    expect(rows).toHaveLength(5)
+    const data: Record<string, string> = {}
+    const dt = {
+      setData: (type: string, value: string) => {
+        data[type] = value
+      },
+      getData: (type: string) => data[type] ?? "",
+      effectAllowed: "move",
+      dropEffect: "move",
+    }
+    fireEvent.mouseDown(rows[4])
+    fireEvent.dragStart(rows[4], { dataTransfer: dt })
+    fireEvent.dragOver(rows[0], { dataTransfer: dt })
+    fireEvent.drop(rows[0], { dataTransfer: dt })
+    expect(onReorderThreads).toHaveBeenCalledWith([
+      "th_4",
+      "th_0",
+      "th_1",
+      "th_2",
+      "th_3",
+      "th_5",
+    ])
   })
 })
 

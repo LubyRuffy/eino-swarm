@@ -49,28 +49,47 @@ uploads, downloads and the live event stream have exactly one implementation.
   skill, or queued message opens a confirm. Cancel leaves it. A chip on the
   composer that has not been sent yet still drops immediately.
 - **Quote a passage into the next message.** Select text in the transcript (or a
-  sub-agent's log) and **Add to chat**. It lands as an annotation on the
-  composer — hover to read, edit or drop it — and is sent with whatever you type
-  next, instead of being dumped into the box.
-- **Slash commands in the composer.** Type `/` at the start of the box for the
-  same palette Cursor and Codex use. **goal** sets a standing objective and
-  starts pursuing it in this turn. Codex cuts the command name at a space;
-  an IME objective glued to `/goal` (or typed with a fullwidth `／`) is still
+  sub-agent's log) and **Add to chat**. It still works while a turn is
+  streaming. The snippet lands as an annotation on the composer — hover to
+  read, edit or drop it — and is sent with whatever you type next, instead of
+  being dumped into the box.
+- **Interactive questions (`ask_user`).** When a preference would waste work
+  if guessed, the manager pauses this turn with a numbered question dialog.
+  Pick a row, then Submit. Other opens a box instead of sitting empty under
+  every card. The same ReAct turn continues after the answer. Workers cannot
+  ask. While a card is waiting, Enter in the composer is Other, not a
+  follow-up.
+- **`/plan` before changing anything.** Planning unmounts write/edit/exec
+  (and similar). The manager explores, asks, and writes `$ZWAI_HOME/plans/<thread>/PLAN.md`.
+  Edit it on the banner, then **Implement** to remount those tools and start
+  the work. Entering plan pauses an open `/goal`; Implement does not resume it.
+- **Slash commands in the composer.** Type `/` in the box — at the start or
+  after what you already wrote, the same way Cursor does. Paths (`foo/bar`)
+  and URLs do not open the palette. **goal** sets a standing objective and
+  starts pursuing it in this turn. **plan** explores and writes a plan before
+  changing anything. Codex cuts the command name at a space;
+  an IME objective glued to `/goal` or `/plan` (or typed with a fullwidth `／`,
+  or the CJK punctuation comma `、` the Slash key emits) is still
   the command, never a user message. A raw `POST /turns` of that line is
   intercepted the same way. The
-  conversation keeps pursuing until the manager calls `complete_goal` (or you
+  conversation keeps pursuing a goal until the manager calls `complete_goal` (or you
   clear it from the banner). A live turn is steered so this round sees the
-  new text. Long pursuits split into sessions when the time
-  cap lands, so the transcript reads as a sequence of
-  "Worked for …" blocks; hitting the manager tool-round slice keeps the
-  same turn going instead of cutting a session. In-flight sub-agents survive
-  a time cut. If it hits an
+  new text. A turn ends when the manager stops calling tools; the runtime
+  then continues. Context pressure compact in place. Hitting the manager
+  tool-round slice keeps the same turn going. In-flight sub-agents survive
+  a pursuing turn that ends while they are still running. A continuation
+  that makes no tool progress stops auto-continue until you send a message
+  or hit **Start**. If it hits an
   obstacle it cannot pass, it calls
   `block_goal` and stops instead of retrying forever — a crashed turn does
-  the same. **Start** resumes after a block, a cap, or a stop,
-  the text is editable in place, and a live turn is told immediately. The
+  the same after in-turn retries of truncated tool JSON / a `429` / a dropped
+  stream are exhausted, and the banner shows the public error. **Start** resumes after a block, a cap, a hold, or a stop. It does not
+  appear while the objective is still pursuing between auto-continue
+  sessions. The
+  text is editable in place, and a live turn is told immediately. The
   runtime starts the next turn itself; a queued follow-up still wins. **compact** folds earlier turns into a briefing for later
-  prompts; the transcript you see does not change. Old tool results that can
+  prompts; the transcript you see does not change. An icon on the notice
+  opens the briefing. Old tool results that can
   be re-read are cleared first. The briefing prefers a rolling session
   summary extracted from the event log, so a long `/goal` does not teach
   the project's memory from a compacted view. The same fold also runs
@@ -92,13 +111,17 @@ uploads, downloads and the live event stream have exactly one implementation.
   hide it while it is still running. After it finishes it collapses to **Thought**.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
-  (finished ones are not re-parsed on every token), and typing in the composer
+  (finished ones are not re-parsed on every token), a `chart` fence becomes a
+  plot when the JSON is a comparison, and typing in the composer
   does not rebuild the conversation.
 - **Steering, not restarting.** Enter while a turn is running **queues** a
   follow-up for after this one finishes (refresh-safe). Click a waiting row to
   edit it; submitting that edit sends it to the back of the queue. **Steer** on
   that row, or ⌘Enter, injects into the current turn at the next model boundary
-  — it does not kill an in-flight tool. Stop is what cancels. If the manager
+  — it does not kill an in-flight tool. Unread steering sits under the working
+  line: **Interrupt** aborts the current manager tool so those nudges land now
+  (workers stay up); **Delete** retracts one bubble so the model never sees it.
+  Stop is what cancels the whole turn. If the manager
   hits its tool-round limit, the transcript asks whether to add another slice
   rather than dying with a graph error.
 - **Unfinished work survives a crash.** Kill the process, quit the window, or
@@ -116,7 +139,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   sidebar is readable at once; after the first reply a short title replaces it.
   A name you type is never overwritten. Switch it off in Settings → Swarm, or
   pin a cheaper model under Settings → Models when an endpoint lists more than
-  one.
+  one. **Sub-agents at once** in that same page takes effect immediately:
+  queued workers start under the new cap; lowering it does not kill anyone
+  already running.
 - **Per-conversation model and thinking level.** Settings → Models lists
   providers as rows (open one for URL, key, default). The composer picker
   groups models by provider, searches, refreshes the catalog, and jumps
@@ -135,6 +160,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   of a grey dump; markdown still renders as prose. Agents are
   told which OS, shell and date they are on, so they stop emitting GNU-only
   flags on a Mac.
+- **Answers can include charts.** When the numbers in a reply are easier to
+  see as a comparison than as prose, the manager emits a `chart` fence
+  (bar, line, area, pie) and leads with the takeaway — it is told not to
+  dump the same series as a list, a markdown table, or emoji. The transcript
+  paints the plot; a Table tab shows the same rows. `zwai tui` still has
+  the JSON fence.
 - **Links leave the app.** A markdown URL opens in a new browser tab (`zwai web`)
   or the system browser (`zwai desktop`). It does not replace the window.
 - **One-id troubleshooting.** Copy a turn id from the UI and
@@ -210,21 +241,29 @@ What you get:
    new worker needs this conversation so far). A later task for the same role
    stays on that agent — new description, same `agent_id` — whether it is still
    running or already finished. `resume_agent` targets a specific leftover
-   sibling. Open one in the Agents tab to read the system prompt it was given.
+   sibling. Open one in the Agents tab to read the system prompt it was given;
+   the log opens at the latest line, not the first tool call. The tab lists
+   every worker this conversation started, not only the ones whose tools are
+   still in the live-edge viewport.
 2. **A workspace.** Every conversation has its own directory
    (`~/.zwai-swarm/workspaces/<thread-id>/`). Uploads land in `uploads/`, agent
    output lands next to it, and the **Files** tab shows a collapsible tree —
    filter at the top, directories expand like a file explorer, download on
-   hover (and, in the desktop app, "Show in Finder"). The tree is the workspace
+   hover (and, in the desktop app, "Show in Finder"). The title-bar terminal
+   (⌘J, and every click on the icon) starts a real shell in that same
+   directory — a project's working directory when the conversation is in one.
+   The tree is the workspace
    root, listed breadth-first so a large generated folder cannot hide the rest.
    Expand a `read` in the transcript to see the file: markdown is rendered,
    other files keep their line numbers.
 3. **Steering.** Type while it works. The nudge sits under the working line
    until the manager's next model call — it is queued, not inserted into the
-   current tool. Steering that arrives after the last model call becomes a
-   follow-up turn.
+   current tool. **Interrupt** on that pin injects it now by aborting the
+   current manager tool; **Delete** retracts one unread bubble. Steering that
+   arrives after the last model call becomes a follow-up turn.
 4. **Quote the conversation.** Select a passage and **Add to chat** when you want
-   the next message to point at it. Hover the annotation to edit or drop the
+   the next message to point at it — including while a turn is still streaming.
+   Hover the annotation to edit or drop the
    quote; send with an empty box if the quote is the whole request.
 5. **What this turn cost.** The **Trace** tab shows status, duration, billed
    tokens, and the turn id (`zwai trace <id>` replays the full dump). The event
@@ -235,7 +274,8 @@ confirmation — keeping leftover Latin as typed — is not a send) · `/` at th
 start of the box opens built-in commands · ⌘Enter steers
 the draft into the current turn · Shift+Enter a newline · `⌘K` command palette · `⌘N` new
 conversation · `⌘F` find in the open conversation · `⌘B` hide or show the
-conversation list · `⌘\` toggle the right panel · `⌘,` settings · `Esc` stop
+conversation list · `⌘\` toggle the right panel · `⌘J` open a terminal in the
+current project (or conversation) directory · `⌘,` settings · `Esc` stop
 the running turn (or close find first, if that bar is open). Drag the border
 of the conversation list or the right panel to resize them. Conversations
 and projects sort by last update; drag a row to pin a custom order (a click
@@ -272,9 +312,14 @@ With memory on, each finished turn is read back and what is worth carrying
 forward is kept: short notes about how this project works, and *skills* —
 step-by-step procedures the agents wrote for themselves. The next conversation in
 that project starts with the notes in its prompt and an index of the skills, and
-opens a skill when it needs one.
+opens a skill when it needs one. Sub-agents on that conversation get the same
+snapshot and can open a skill; they cannot write the store. Their report back to
+the manager is the task result, plus at most a short durable note if something
+would change later work.
 
-The sidebar lists each project's conversations under its name. Click the
+The sidebar lists each project's conversations under its name. A folder
+(and Recents) shows the five conversations active in the last seven days;
+**Show more** reveals the rest, **Show less** folds them again. Click the
 folder to collapse it. The open conversation is marked; the folder is not.
 Click **Pinned**, **Projects**, or **Recents** to fold
 that section. Pin a topic from the row menu to keep it in **Pinned**
@@ -310,6 +355,7 @@ zwai web --addr :9000       # serve on another port
 zwai web --no-open          # do not open a browser
 zwai tui                    # interactive terminal; type / for commands
 zwai tui --goal "..."       # standing objective; starts immediately, composer stays after
+zwai tui --plan "..."       # planning first; write/edit/exec unmounted until Implement
 zwai tui --task "..."       # one task, then exit — handy for reproducing a UI run
 zwai tui --model NAME --reasoning high   # same session, pinned model and thinking level
 zwai trace tn_ab12…         # replay one turn; also accepts a conversation id

@@ -1,4 +1,4 @@
-import { Languages, MessageSquare, MessageSquarePlus, PanelLeft, Search, Settings, SunMoon, UnfoldHorizontal } from "lucide-react"
+import { Languages, MessageSquare, MessageSquarePlus, PanelLeft, Search, Settings, SquareTerminal, SunMoon, UnfoldHorizontal } from "lucide-react"
 
 import {
   CommandDialog,
@@ -27,6 +27,7 @@ export function Palette({
   onToggleContentWidth,
   onToggleSidebar,
   onFind,
+  onOpenTerminal,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -39,6 +40,7 @@ export function Palette({
   onToggleContentWidth: () => void
   onToggleSidebar: () => void
   onFind: () => void
+  onOpenTerminal: () => void
 }) {
   const t = useT()
   const run = (fn: () => void) => {
@@ -88,6 +90,14 @@ export function Palette({
           >
             <UnfoldHorizontal />
             {t("palette.width")}
+          </CommandItem>
+          <CommandItem
+            value="terminal shell 终端"
+            onSelect={() => run(onOpenTerminal)}
+          >
+            <SquareTerminal />
+            {t("palette.terminal")}
+            <kbd className="ml-auto text-[11px] text-muted-foreground">⌘J</kbd>
           </CommandItem>
         </CommandGroup>
         {threads.length > 0 ? (

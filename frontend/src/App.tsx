@@ -13,6 +13,7 @@ import { ProjectDialog } from "@/components/app/project-dialog"
 import { SelectionMenu } from "@/components/app/selection-menu"
 import { SettingsDialog } from "@/components/app/settings-dialog"
 import { Sidebar } from "@/components/app/sidebar"
+import { TerminalPanel } from "@/components/app/terminal-panel"
 import { Transcript } from "@/components/app/transcript"
 import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
@@ -21,12 +22,15 @@ import { toggleContentWidth } from "@/lib/appearance"
 import { attachExternalLinkHandler } from "@/lib/external-links"
 import { findShortcut } from "@/lib/find"
 import { appendQuote, type Quote } from "@/lib/quote"
-import { MANAGER_ID } from "@/lib/transcript"
+import { liveWorkers } from "@/lib/transcript"
+import { terminalShortcut, terminalTarget } from "@/lib/terminal"
+import { isWelcomePane, visibleManagerBlockCount } from "@/lib/welcome"
 import type { Project, SkillInfo } from "@/lib/types"
 import { toggleLocalePref, useT } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { useApp } from "@/store/app"
 import { projectOf, useProjects } from "@/store/projects"
+import { useTerminal } from "@/store/terminal"
 
 /** Settings is a full-page sheet. Keeping `open` off AppShell's state is
  *  the difference between painting the conversation and not: a setState
@@ -122,6 +126,23 @@ function AppShell() {
 
   const focusComposer = useCallback(() => setFocusSignal((n) => n + 1), [])
 
+  const spawnTerminal = useCallback(() => {
+    const target = terminalTarget(
+      useApp.getState().activeId,
+      useProjects.getState().selectedId,
+    )
+    if (!target) return
+    useTerminal.getState().spawn(target)
+  }, [])
+
+  const toggleTerminal = useCallback(() => {
+    const target = terminalTarget(
+      useApp.getState().activeId,
+      useProjects.getState().selectedId,
+    )
+    useTerminal.getState().toggle(target)
+  }, [])
+
   useEffect(() => {
     setQuotes([])
   }, [activeId])
@@ -207,7 +228,9 @@ function AppShell() {
           target instanceof HTMLTextAreaElement &&
           (target.dataset.slashOpen === "true" ||
             target.dataset.goalDraft === "true" ||
-            target.dataset.editDraft === "true")
+            target.dataset.planDraft === "true" ||
+            target.dataset.editDraft === "true" ||
+            target.dataset.askOther === "true")
         ) {
           return
         }
@@ -230,6 +253,9 @@ function AppShell() {
       } else if (e.key === "\\") {
         e.preventDefault()
         setPanelOpen((open) => !open)
+      } else if (terminalShortcut(e)) {
+        e.preventDefault()
+        toggleTerminal()
       } else if (e.key === ",") {
         e.preventDefault()
         openSettings()
@@ -251,6 +277,7 @@ function AppShell() {
     selectFindQuery,
     startThread,
     toggleSidebar,
+    toggleTerminal,
   ])
 
   return (
@@ -265,6 +292,7 @@ function AppShell() {
         onToggleTheme={toggleTheme}
         onToggleLocale={toggleLocale}
         onToggleContentWidth={toggleWidth}
+        onOpenTerminal={spawnTerminal}
       />
       <div className="flex min-h-0 min-w-0 flex-1">
         {sidebarOpen ? (
@@ -328,6 +356,7 @@ function AppShell() {
               />
             ) : null}
           </div>
+          <TerminalPanel onNew={spawnTerminal} />
         </main>
 
         {panelOpen ? (
@@ -354,6 +383,7 @@ function AppShell() {
         onToggleContentWidth={toggleWidth}
         onToggleSidebar={toggleSidebar}
         onFind={openFind}
+        onOpenTerminal={spawnTerminal}
       />
 
       <AppProjectDialog
@@ -510,6 +540,7 @@ function AppHeader({
   onToggleTheme,
   onToggleLocale,
   onToggleContentWidth,
+  onOpenTerminal,
 }: {
   panelOpen: boolean
   sidebarOpen: boolean
@@ -519,6 +550,7 @@ function AppHeader({
   onToggleTheme: () => void
   onToggleLocale: () => void
   onToggleContentWidth: () => void
+  onOpenTerminal: () => void
 }) {
   const threads = useApp((s) => s.threads)
   const activeId = useApp((s) => s.activeId)
@@ -528,6 +560,8 @@ function AppHeader({
   const theme = useApp((s) => s.theme)
   const contentWidth = useApp((s) => s.contentWidth)
   const projects = useProjects((s) => s.projects)
+  const selectedId = useProjects((s) => s.selectedId)
+  const terminalOpen = useTerminal((s) => s.open)
   const thread = threads.find((t) => t.id === activeId)
   return (
     <Header
@@ -544,8 +578,11 @@ function AppHeader({
       onToggleTheme={onToggleTheme}
       onToggleLocale={onToggleLocale}
       onToggleContentWidth={onToggleContentWidth}
+      onOpenTerminal={onOpenTerminal}
       contentWidth={contentWidth}
       dark={isDark(theme)}
+      terminalOpen={terminalOpen}
+      terminalEnabled={Boolean(activeId || selectedId)}
     />
   )
 }
@@ -604,6 +641,8 @@ function TranscriptPane({
   const activeId = useApp((s) => s.activeId)
   const loaded = useApp((s) => s.loaded)
   const transcript = useApp((s) => s.transcript)
+  const running = useApp((s) => s.status.running || s.transcript.running)
+  const historyHasMore = useApp((s) => s.historyHasMore)
   const send = useApp((s) => s.send)
   const resendUser = useCallback(
     (text: string, seq: number) => {
@@ -611,8 +650,14 @@ function TranscriptPane({
     },
     [send],
   )
-  const showEmptyState =
-    !activeId || (loaded && (transcript.agents[MANAGER_ID]?.blocks.length ?? 0) === 0)
+  const showEmptyState = isWelcomePane({
+    activeId,
+    loaded,
+    visibleManagerBlocks: visibleManagerBlockCount(transcript),
+    running,
+    workerCount: liveWorkers(transcript),
+    historyHasMore,
+  })
   useEffect(() => {
     if (showEmptyState) onFindCount(0)
   }, [showEmptyState, onFindCount])
@@ -670,6 +715,11 @@ function AppComposer({
   const editGoal = useApp((s) => s.editGoal)
   const resumeGoal = useApp((s) => s.resumeGoal)
   const compactThread = useApp((s) => s.compactThread)
+  const setPlan = useApp((s) => s.setPlan)
+  const savePlan = useApp((s) => s.savePlan)
+  const implementPlan = useApp((s) => s.implementPlan)
+  const leavePlan = useApp((s) => s.leavePlan)
+  const awaitingAnswer = useApp((s) => Boolean(s.status.awaiting_answer))
   return (
     <Composer
       running={running}
@@ -710,6 +760,7 @@ function AppComposer({
       goalBlocked={thread?.goal_blocked}
       goalBlockReason={thread?.goal_block_reason}
       goalCapped={thread?.goal_capped}
+      goalIdle={thread?.goal_idle}
       goalStartedAt={thread?.goal_started_at}
       contextChars={thread?.context_chars}
       contextBudget={thread?.context_budget ?? meta?.swarm.context_char_budget}
@@ -718,6 +769,13 @@ function AppComposer({
       onEditGoal={(text) => void editGoal(text)}
       onResumeGoal={() => void resumeGoal()}
       onCompact={() => void compactThread()}
+      planMode={thread?.plan_mode}
+      planMarkdown={thread?.plan_markdown}
+      awaitingAnswer={awaitingAnswer}
+      onSetPlan={(text) => void setPlan(text)}
+      onSavePlan={(text) => void savePlan(text)}
+      onImplementPlan={() => void implementPlan()}
+      onLeavePlan={() => void leavePlan()}
     />
   )
 }
@@ -825,6 +883,7 @@ function AppPalette({
   onToggleContentWidth,
   onToggleSidebar,
   onFind,
+  onOpenTerminal,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -835,6 +894,7 @@ function AppPalette({
   onToggleContentWidth: () => void
   onToggleSidebar: () => void
   onFind: () => void
+  onOpenTerminal: () => void
 }) {
   const threads = useApp((s) => s.threads)
   const openThread = useApp((s) => s.openThread)
@@ -851,6 +911,7 @@ function AppPalette({
       onToggleContentWidth={onToggleContentWidth}
       onToggleSidebar={onToggleSidebar}
       onFind={onFind}
+      onOpenTerminal={onOpenTerminal}
     />
   )
 }

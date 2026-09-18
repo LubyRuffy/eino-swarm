@@ -58,6 +58,14 @@ describe("Project dialog", () => {
     expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled()
   })
 
+  // An empty instruction used to be a blinking caret in blank space.
+  it("draws a border around the instruction so it reads as a field", () => {
+    renderDialog()
+    expect(screen.getByLabelText("Instruction").className).toMatch(
+      /\bborder-input\b/,
+    )
+  })
+
   // A refused directory is the one failure a user can actually fix, so it is
   // shown against the field rather than as a banner they have to map back.
   it("shows a refused working directory under its field and stays open", async () => {

@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"strings"
-	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/cloudwego/eino/adk"
@@ -31,7 +30,7 @@ func pumpSession(ctx context.Context, s Session, run turnRunner, out chan<- noti
 	task := strings.TrimSpace(s.Task)
 	var messages []adk.Message
 	extraRuns := 0
-	var sessionDeadline time.Time
+	var turnActivity bool
 	for {
 		if ctx.Err() != nil {
 			return
@@ -43,7 +42,8 @@ func pumpSession(ctx context.Context, s Session, run turnRunner, out chan<- noti
 			}
 			task = next
 			messages = continueMessages(messages, task)
-			sessionDeadline = time.Time{}
+			extraRuns = 0
+			turnActivity = false
 		}
 
 		if err := s.Switcher.Install(); err != nil {
@@ -55,31 +55,26 @@ func pumpSession(ctx context.Context, s Session, run turnRunner, out chan<- noti
 			out <- notificationMsg{idle: true}
 			task = ""
 			extraRuns = 0
-			sessionDeadline = time.Time{}
+			turnActivity = false
 			continue
 		}
 
 		cfg := sessionConfig(s, task, messages)
-		runCtx := ctx
-		stop := func() {}
-		if s.RunTimeout > 0 {
-			if sessionDeadline.IsZero() {
-				sessionDeadline = time.Now().Add(s.RunTimeout)
-			}
-			runCtx, stop = context.WithDeadline(ctx, sessionDeadline)
-		}
-		res, runErr := run(runCtx, cfg, func(n swarm.Notification) {
+		thisRunActivity := false
+		res, runErr := run(ctx, cfg, func(n swarm.Notification) {
 			out <- notificationMsg{Notification: n}
+			if countedGoalToolCall(n) {
+				thisRunActivity = true
+			}
 		})
-		stop()
-		if sessionHitIterationCap(ctx, runErr) && s.ShouldContinue != nil && s.ShouldContinue() {
+		turnActivity = turnActivity || thisRunActivity
+		if sessionHitIterationCap(ctx, runErr) && sessionShouldContinue(s) {
 			if next := dropSystem(res.Transcript); len(next) > 0 {
 				messages = next
 			}
 			continue
 		}
-		sessionCap := sessionHitCap(ctx, runCtx, runErr, s.RunTimeout)
-		if runErr != nil && !sessionCap {
+		if runErr != nil {
 			out <- notificationMsg{Notification: swarm.Notification{
 				Kind: swarm.NotifyError, AgentID: swarm.DefaultManagerID, Err: runErr}}
 			if prompts == nil {
@@ -88,17 +83,21 @@ func pumpSession(ctx context.Context, s Session, run turnRunner, out chan<- noti
 			out <- notificationMsg{idle: true}
 			task = ""
 			extraRuns = 0
-			sessionDeadline = time.Time{}
+			turnActivity = false
 			continue
 		}
-		if s.ShouldContinue != nil && s.ShouldContinue() && extraRuns < s.MaxContinues {
+		wasContinuation := extraRuns > 0
+		// A continuation with no counted tools must not loop until
+		// MaxContinues. The first human-started run still continues once.
+		if (!wasContinuation || turnActivity) &&
+			sessionShouldContinue(s) && extraRuns < s.MaxContinues {
 			extraRuns++
+			turnActivity = false
 			messages = dropSystem(res.Transcript)
 			if text := strings.TrimSpace(s.ContinueTask); text != "" {
 				messages = append(messages, schema.UserMessage(text))
 				task = text
 			}
-			sessionDeadline = time.Time{}
 			continue
 		}
 		if prompts == nil {
@@ -108,8 +107,15 @@ func pumpSession(ctx context.Context, s Session, run turnRunner, out chan<- noti
 		out <- notificationMsg{idle: true}
 		task = ""
 		extraRuns = 0
-		sessionDeadline = time.Time{}
+		turnActivity = false
 	}
+}
+
+func sessionShouldContinue(s Session) bool {
+	if s.Plan != nil && (s.Plan.On() || s.Plan.GoalHeld()) {
+		return false
+	}
+	return s.ShouldContinue != nil && s.ShouldContinue()
 }
 
 func waitPrompt(ctx context.Context, prompts <-chan string) (string, bool) {
@@ -141,4 +147,23 @@ func continueMessages(prev []adk.Message, task string) []adk.Message {
 	out := make([]adk.Message, len(prev), len(prev)+1)
 	copy(out, prev)
 	return append(out, schema.UserMessage(task))
+}
+
+// countedGoalToolCall is progress that should keep TUI auto-continue going.
+// Names match engine.ToolCompleteGoal / ToolBlockGoal: those close pursuit
+// themselves and must not count as "keep going".
+func countedGoalToolCall(n swarm.Notification) bool {
+	if n.Kind != swarm.NotifyToolCall {
+		return false
+	}
+	name := strings.TrimSpace(n.Text)
+	if i := strings.IndexByte(name, '('); i > 0 {
+		name = strings.TrimSpace(name[:i])
+	}
+	switch name {
+	case "complete_goal", "block_goal", "":
+		return false
+	default:
+		return true
+	}
 }

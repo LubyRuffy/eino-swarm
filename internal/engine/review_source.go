@@ -45,7 +45,13 @@ func renderReviewFromEvents(events []store.Event, sessionMemory, final string) s
 		// before this turn's tool calls — those are what become skills.
 		write("session briefing", clip(mem, compactSummaryMaxRunes))
 	}
+	retracted := retractedSteerSeqs(events)
 	for _, ev := range events {
+		if ev.Kind == KindSteer {
+			if _, ok := retracted[ev.Seq]; ok {
+				continue
+			}
+		}
 		role, text, ok := reviewEventLine(ev)
 		if !ok {
 			continue
@@ -64,6 +70,8 @@ func reviewEventLine(ev store.Event) (role, text string, ok bool) {
 			return "", "", false
 		}
 		return "human", text, true
+	case KindSteerRetracted, KindSteerPreempted:
+		return "", "", false
 	case swarm.NotifyAgentMessage.String():
 		if text == "" {
 			return "", "", false

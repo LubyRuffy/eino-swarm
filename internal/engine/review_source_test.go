@@ -129,6 +129,8 @@ func TestReviewEventLineReadsTheLogNotTheNoise(t *testing.T) {
 		{store.Event{Kind: KindUser}, "", "", false},
 		{store.Event{Kind: KindSteer, Text: "nudge"}, "human", "nudge", true},
 		{store.Event{Kind: KindSteer, Text: goalSessionWrapSteer()}, "", "", false},
+		{store.Event{Kind: KindSteerRetracted, Text: `{"seq":3}`}, "", "", false},
+		{store.Event{Kind: KindSteerPreempted}, "", "", false},
 		{store.Event{Kind: KindGoalContinued, Text: "again"}, "human", "again", true},
 		{store.Event{Kind: swarm.NotifyAgentMessage.String()}, "", "", false},
 		{store.Event{Kind: swarm.NotifyAgentMessage.String(), Text: "answer"}, "assistant", "answer", true},

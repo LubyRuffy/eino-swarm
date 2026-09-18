@@ -47,15 +47,21 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(page.locator('[data-marquee="shimmer"]').first()).toBeVisible({ timeout: 15_000 })
 
   // the manager delegates, and both workers show up in the roster
-  const roster = page.getByRole("tabpanel").first()
+  const roster = page.getByRole("tabpanel").filter({
+    has: page.getByText("researcher", { exact: true }),
+  })
   await expect(roster.getByText("researcher", { exact: true })).toBeVisible()
   await expect(roster.getByText("reviewer", { exact: true })).toBeVisible()
 
   // the transcript shows the delegation and then an answer
   const transcript = page.getByTestId("transcript")
-  await expect(transcript.getByText(/^Started/).first()).toBeVisible()
   await waitForIdle(page)
   await expect(transcript.getByText("Two sub-agents ran in parallel")).toBeVisible()
+  await expect(transcript.getByTestId("transcript-chart")).toBeVisible()
+  await transcript.getByRole("tab", { name: "Table" }).click()
+  await expect(transcript.getByRole("table")).toBeVisible()
+  await transcript.getByRole("tab", { name: "Chart" }).click()
+  await expect(transcript.getByTestId("transcript-chart").locator("svg")).toBeVisible()
   await expect(transcript.getByText(/Worked for/)).toBeVisible()
 
   // billed tokens land on the composer ring and the Trace tab, not as a
@@ -79,7 +85,15 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await roster.getByText("researcher", { exact: true }).click()
   await expect(page.getByTestId("agent-chrome")).toBeVisible()
   await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible()
-  await expect(page.getByTestId("agent-scroller")).toBeVisible()
+  const agentLog = page.getByTestId("agent-scroller")
+  await expect(agentLog).toBeVisible()
+  await expect
+    .poll(async () =>
+      agentLog.evaluate(
+        (el) => el.scrollHeight - el.scrollTop - el.clientHeight <= 24,
+      ),
+    )
+    .toBe(true)
   await page.getByRole("button", { name: "View system prompt" }).click()
   const prompt = page.getByRole("dialog")
   await expect(prompt).toBeVisible()
@@ -115,6 +129,7 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   // a reload replays the whole turn from the event log
   await page.reload()
   await expect(page.getByTestId("transcript").getByText("Two sub-agents ran in parallel")).toBeVisible()
+  await expect(page.getByTestId("transcript").getByTestId("transcript-chart")).toBeVisible()
   await expect(statusBadge(page)).toContainText("Idle")
   await expect(page.getByTestId("context-meter")).toBeVisible()
 })
@@ -320,6 +335,40 @@ test("pins unread steering under the working line", async ({ page }) => {
     })
     .toMatch(/^after-/)
   await expect(statusBadge(page)).toContainText("Working")
+})
+
+test("retracts unread steering so the manager never sees it", async ({ page }) => {
+  await freshConversation(page)
+  await send(page, "Look at this from two angles and merge the findings")
+  const nudge = "prefer the shorter path"
+  await composer(page).fill(nudge)
+  await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
+  await composer(page).press("ControlOrMeta+Enter")
+  const queued = page.getByTestId("queued-steers")
+  await expect(queued).toContainText(nudge, { timeout: 30_000 })
+  await expect(
+    queued.getByRole("button", { name: "Abort the current tool and inject queued steering" }),
+  ).toBeVisible()
+  await queued.getByRole("button", { name: "Remove this unread steering" }).click()
+  await expect(page.getByTestId("queued-steers")).toHaveCount(0)
+  await expect(statusBadge(page)).toContainText("Working")
+})
+
+test("interrupts the current tool so unread steering lands now", async ({ page }) => {
+  await freshConversation(page)
+  await send(page, "Look at this from two angles and merge the findings")
+  const nudge = "prefer the shorter path"
+  await composer(page).fill(nudge)
+  await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
+  await composer(page).press("ControlOrMeta+Enter")
+  const queued = page.getByTestId("queued-steers")
+  await expect(queued).toContainText(nudge, { timeout: 30_000 })
+  await queued
+    .getByRole("button", { name: "Abort the current tool and inject queued steering" })
+    .click()
+  // Stop would cancel the turn. Interrupt keeps this one running.
+  await expect(statusBadge(page)).toContainText("Working")
+  await expect(statusBadge(page)).not.toContainText("Idle")
 })
 
 test("Enter while working queues until the turn finishes", async ({ page }) => {
@@ -693,21 +742,60 @@ test("quotes selected transcript text into the next message", async ({ page }) =
   await expect(page.getByLabel("1 annotation")).toHaveCount(0)
 })
 
+test("quotes selected text while a turn is still streaming", async ({ page }) => {
+  await freshConversation(page)
+  const first = "First task: outline the work"
+  await send(page, first)
+  await waitForIdle(page)
+
+  await send(page, "Second task: keep writing")
+  const bubble = page.getByTestId("transcript").getByText(first, { exact: true })
+  await bubble.selectText()
+  const add = page.getByRole("menuitem", { name: "Add to chat" })
+  await expect(add).toBeVisible()
+
+  // A live thought's inner scroll and auto-follow used to flash the pill
+  // then hide it on the next token.
+  await expect(page.getByTestId("thought-scroll")).toBeVisible({ timeout: 15_000 })
+  await expect(add).toBeVisible()
+  await add.click()
+  await expect(page.getByLabel("1 annotation")).toBeVisible()
+})
+
 test("slash menu lists built-in commands", async ({ page }) => {
   await freshConversation(page)
   await composer(page).fill("/")
   const menu = page.getByTestId("slash-menu")
   await expect(menu).toBeVisible()
   await expect(page.getByTestId("slash-command-goal")).toBeVisible()
+  await expect(page.getByTestId("slash-command-plan")).toBeVisible()
   await expect(page.getByTestId("slash-command-compact")).toBeVisible()
   await expect(page.getByTestId("slash-command-compact")).not.toContainText("% full")
   await composer(page).press("ArrowDown")
-  await expect(page.getByTestId("slash-command-compact")).toHaveAttribute(
+  await expect(page.getByTestId("slash-command-plan")).toHaveAttribute(
     "aria-selected",
     "true",
   )
   await composer(page).press("Escape")
   await expect(menu).toBeHidden()
+})
+
+test("slash menu opens after existing text", async ({ page }) => {
+  await freshConversation(page)
+  await composer(page).fill("hello /")
+  await expect(page.getByTestId("slash-menu")).toBeVisible()
+  await expect(page.getByTestId("slash-command-goal")).toBeVisible()
+  await composer(page).press("Escape")
+  await expect(page.getByTestId("slash-menu")).toHaveCount(0)
+  await expect(composer(page)).toHaveValue("hello ")
+})
+
+test("slash menu opens from the IME punctuation comma", async ({ page }) => {
+  await freshConversation(page)
+  await composer(page).fill("、")
+  await expect(page.getByTestId("slash-menu")).toBeVisible()
+  await expect(composer(page)).toHaveValue("/")
+  await expect(page.getByTestId("slash-command-goal")).toBeVisible()
 })
 
 test("goal command pins a standing objective", async ({ page }) => {
@@ -766,6 +854,7 @@ test("a slash goal starts pursuing without a second human message", async ({
   await composer(page).fill("/goal keep going")
   await composer(page).press("Enter")
   await expect(page.getByTestId("goal-banner")).toContainText("Pursuing")
+  await expect(page.getByTestId("goal-start")).toHaveCount(0)
   await expect(statusBadge(page)).toContainText("Working")
   await waitForIdle(page)
   await expect(page.getByTestId("goal-banner")).toContainText("Done")
@@ -812,6 +901,11 @@ test("auto-compacts when prompt tokens pass the configured budget", async ({
     await waitForIdle(page)
     await expect(page.getByTestId("transcript")).toContainText("tokens")
     await expect(page.getByTestId("user-message")).toHaveCount(before + 1)
+    await page.getByTestId("compact-briefing-open").last().click()
+    const briefing = page.getByTestId("compact-briefing")
+    await expect(briefing).toBeVisible()
+    await expect(briefing).not.toContainText("through_seq")
+    await expect(briefing).not.toHaveText(/^\s*$/)
   } finally {
     await request.put("/api/settings", { data: { swarm: settings.swarm } })
   }
@@ -838,6 +932,11 @@ test("compact folds earlier turns without rewriting the transcript", async ({
       "Earlier turns were folded into a briefing",
     )
     await expect(page.getByTestId("user-message")).toHaveCount(before)
+    await page.getByTestId("compact-briefing-open").last().click()
+    const briefing = page.getByTestId("compact-briefing")
+    await expect(briefing).toBeVisible()
+    await expect(briefing).not.toContainText("through_seq")
+    await expect(briefing).not.toHaveText(/^\s*$/)
   } finally {
     await request.put("/api/settings", { data: { swarm: settings.swarm } })
   }
@@ -851,4 +950,25 @@ test("Stop closes in-flight tools instead of leaving them spinning", async ({ pa
   await waitForIdle(page)
   await expect(page.getByText("interrupted")).toBeVisible()
   await expect(page.locator(".animate-spin")).toHaveCount(0)
+})
+
+test("plan command drafts then implements", async ({ page }) => {
+  await freshConversation(page)
+  await composer(page).fill("/plan inspect then change")
+  await composer(page).press("Enter")
+  await expect(page.getByTestId("plan-banner")).toContainText("Planning")
+  await expect(statusBadge(page)).toContainText("Working")
+  await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 30_000 })
+  await page.getByTestId("ask-option-safer").click()
+  await page.getByTestId("ask-submit").click()
+  await waitForIdle(page)
+  await expect(page.getByTestId("plan-text")).toContainText("# Plan")
+  await expect(page.getByTestId("transcript")).toContainText("Plan updated.")
+  await page.getByTestId("plan-implement").click()
+  await expect(statusBadge(page)).toContainText("Working")
+  await waitForIdle(page)
+  await expect(page.getByTestId("plan-banner")).toHaveCount(0)
+  await expect(page.getByTestId("transcript")).toContainText(
+    "The human accepted the plan. Execute it.",
+  )
 })

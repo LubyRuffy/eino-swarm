@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -154,46 +153,6 @@ func closeGoalMidSlice(t *testing.T, closeFn func(*Engine, string) error, wantKi
 	}
 }
 
-func TestGoalSessionYieldsWhenTheTimerFires(t *testing.T) {
-	provider.SetCompleteOpenGoal(false)
-	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
-
-	orig := sessionAfterFunc
-	sessionAfterFunc = func(d time.Duration, f func()) *time.Timer {
-		return time.AfterFunc(20*time.Millisecond, f)
-	}
-	t.Cleanup(func() { sessionAfterFunc = orig })
-
-	e := newTestEngine(t)
-	e.Config().Swarm.GoalMaxAutoTurns = 1
-	// A session longer than the wrap lead would arm a wrap steer. The
-	// AfterFunc mock fires wrap and cancel together, and an unread wrap
-	// must not become a human turn that resets the auto-continue cap.
-	e.Config().Swarm.GoalSessionMaxSeconds = 1
-	th, _ := e.CreateThread("", "", "")
-	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
-		t.Fatal(err)
-	}
-	first, err := e.StartTurn(th.ID, "start the work")
-	if err != nil {
-		t.Fatal(err)
-	}
-	waitForTurn(t, e, first.ID)
-	waitForTurnCount(t, e, th.ID, 2)
-	waitSettled(t, e, th.ID)
-	if !hasKind(t, e, th.ID, KindGoalSession) {
-		t.Fatal("missing goal_session event")
-	}
-	got, _ := e.Store().GetTurn(first.ID)
-	if got.Status != store.TurnDone {
-		t.Fatalf("time yield must be done: %+v", got)
-	}
-	body := goalSessionPayload(t, e, th.ID)
-	if body["reason"] != sessionReasonTime {
-		t.Fatalf("reason=%v want time (a wrap steer also uses the same timer helper)", body["reason"])
-	}
-}
-
 func TestInterruptDuringAGoalSessionDoesNotAutoContinue(t *testing.T) {
 	provider.SetCompleteOpenGoal(false)
 	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
@@ -227,16 +186,21 @@ func TestInterruptDuringAGoalSessionDoesNotAutoContinue(t *testing.T) {
 	if turns[0].Status != store.TurnCancelled {
 		t.Fatalf("interrupt must cancel: %+v", turns[0])
 	}
+	got, err := e.Store().GetThread(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.GoalCapped {
+		t.Fatal("interrupt must pause the standing objective")
+	}
 }
 
 func TestAGoalSessionCompactsWhenContextIsHot(t *testing.T) {
 	provider.SetCompleteOpenGoal(false)
 	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
-	forceGoalSessionTimer(t, 400*time.Millisecond)
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 1
-	e.Config().Swarm.GoalSessionMaxSeconds = 1
 	e.Config().Swarm.CompactKeepMessages = 1
 	e.Config().Swarm.ContextCharBudget = 80
 	e.Config().Swarm.GoalAutoCompactPercent = 1
@@ -255,14 +219,13 @@ func TestAGoalSessionCompactsWhenContextIsHot(t *testing.T) {
 		t.Fatal("a hot context must compact before the next session")
 	}
 	if !hasKind(t, e, th.ID, KindSessionMemory) {
-		t.Fatal("a hot /goal cut must catch the session briefing up before compact")
+		t.Fatal("a hot /goal continue must catch the session briefing up before compact")
 	}
 }
 
 func TestAGoalSessionContinuesWhenCompactFails(t *testing.T) {
 	provider.SetCompleteOpenGoal(false)
 	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
-	forceGoalSessionTimer(t, 400*time.Millisecond)
 
 	orig := compactGenerate
 	compactGenerate = func(ctx context.Context, m model.BaseChatModel, msgs []*schema.Message) (*schema.Message, error) {
@@ -272,7 +235,6 @@ func TestAGoalSessionContinuesWhenCompactFails(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 1
-	e.Config().Swarm.GoalSessionMaxSeconds = 1
 	e.Config().Swarm.CompactKeepMessages = 1
 	e.Config().Swarm.ContextCharBudget = 80
 	e.Config().Swarm.GoalAutoCompactPercent = 1
@@ -299,117 +261,40 @@ func TestParkedWorkersStayVisibleBetweenGoalSessions(t *testing.T) {
 	provider.SetCompleteOpenGoal(false)
 	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
 
-	var armed []func()
-	orig := sessionAfterFunc
-	sessionAfterFunc = func(d time.Duration, f func()) *time.Timer {
-		armed = append(armed, f)
-		return time.AfterFunc(time.Hour, f)
-	}
-	t.Cleanup(func() { sessionAfterFunc = orig })
-
 	e := newTestEngine(t)
 	e.Config().Swarm.GoalMaxAutoTurns = 8
-	e.Config().Swarm.GoalSessionMaxSeconds = 90
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
 	}
-	sub := e.Subscribe(th.ID)
-	defer sub.Close()
 	first, err := e.StartTurn(th.ID, "start the work")
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitLive(t, sub, "spawned", 15*time.Second)
-	if len(armed) < 2 {
-		t.Fatal("a 90s session must arm wrap then cancel")
-	}
-	armed[len(armed)-1]()
 	waitForTurn(t, e, first.ID)
-	if e.Status(th.ID).Workers == 0 {
-		t.Fatal("yielding a goal session must not kill in-flight sub-agents")
-	}
 	if hasKind(t, e, th.ID, KindCleanup) {
-		t.Fatal("yielding a goal session must not record cleanup")
+		t.Fatal("ending a pursuing turn must not record cleanup")
 	}
+	waitForTurnCount(t, e, th.ID, 2)
 	_ = e.Interrupt(th.ID)
 	waitSettled(t, e, th.ID)
 }
 
-func TestGoalSessionWrapTimerDoesNotRecordASteer(t *testing.T) {
-	wrapCh := make(chan func(), 1)
-	orig := sessionAfterFunc
-	sessionAfterFunc = func(d time.Duration, f func()) *time.Timer {
-		if d < 90*time.Second {
-			select {
-			case wrapCh <- f:
-			default:
-			}
-		}
-		t := time.NewTimer(time.Hour)
-		t.Stop()
-		return t
-	}
-	t.Cleanup(func() { sessionAfterFunc = orig })
-
+func TestShouldParkOnlyOnADonePursuingTurn(t *testing.T) {
 	e := newTestEngine(t)
-	e.Config().Swarm.GoalSessionMaxSeconds = 90
 	th, _ := e.CreateThread("", "", "")
+	rt := e.runtimeFor(th.ID)
+	if rt.shouldPark(store.TurnDone) {
+		t.Fatal("no standing objective to park")
+	}
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.StartTurn(th.ID, "start the work"); err != nil {
-		t.Fatal(err)
+	if !rt.shouldPark(store.TurnDone) {
+		t.Fatal("a done pursuing turn must park in-flight workers")
 	}
-	var wrapFn func()
-	select {
-	case wrapFn = <-wrapCh:
-	case <-time.After(5 * time.Second):
-		t.Fatal("wrap timer was not armed")
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) && !e.Status(th.ID).Running {
-		time.Sleep(5 * time.Millisecond)
-	}
-	if !e.Status(th.ID).Running {
-		t.Fatal("turn was not running when the wrap fired")
-	}
-	wrapFn()
-	assertNoWrapOnTheTimeline(t, e, th.ID)
-	_ = e.Interrupt(th.ID)
-	waitSettled(t, e, th.ID)
-	assertNoWrapOnTheTimeline(t, e, th.ID)
-}
-
-func TestGoalSessionArmsAWrapSteerBeforeTheTimeCap(t *testing.T) {
-	var armed []time.Duration
-	orig := sessionAfterFunc
-	sessionAfterFunc = func(d time.Duration, f func()) *time.Timer {
-		armed = append(armed, d)
-		return time.AfterFunc(time.Hour, f)
-	}
-	t.Cleanup(func() { sessionAfterFunc = orig })
-
-	e := newTestEngine(t)
-	e.Config().Swarm.GoalSessionMaxSeconds = 90
-	th, _ := e.CreateThread("", "", "")
-	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := e.StartTurn(th.ID, "start the work"); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if e.Status(th.ID).Running {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	_ = e.Interrupt(th.ID)
-	waitSettled(t, e, th.ID)
-	if len(armed) != 2 || armed[1]-armed[0] != goalSessionWrapLead || armed[1] != 90*time.Second {
-		t.Fatalf("wrap must fire %s before the cap, got %v", goalSessionWrapLead, armed)
+	if rt.shouldPark(store.TurnCancelled) || rt.shouldPark(store.TurnError) {
+		t.Fatal("interrupt and crash must not park")
 	}
 }
 
@@ -421,7 +306,7 @@ func TestGoalSessionTextsStayGeneric(t *testing.T) {
 	if !strings.Contains(wrap, ToolCompleteGoal) {
 		t.Fatal("a session wrap must still name complete_goal")
 	}
-	for _, body := range []string{wrap, parkedWorkersCue, sessionYieldError{Reason: "time"}.Error(), sessionYieldError{Reason: sessionReasonIterations}.Error()} {
+	for _, body := range []string{wrap, parkedWorkersCue} {
 		for _, leak := range []string{"notes.md", "researcher", "elasticsearch", "bf_cdn", "blackspigot"} {
 			if strings.Contains(strings.ToLower(body), leak) {
 				t.Fatalf("%q leaked into %q", leak, body)
@@ -430,74 +315,30 @@ func TestGoalSessionTextsStayGeneric(t *testing.T) {
 	}
 }
 
-func TestTurnOutcomePrefersAModelFailureOverACancelledSession(t *testing.T) {
+func TestTurnOutcomePrefersAModelFailureOverInterruptNoise(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	rt := e.runtimeFor(th.ID)
 	interrupt, stopInterrupt := context.WithCancel(context.Background())
 	t.Cleanup(stopInterrupt)
-	session, stopSession := context.WithCancel(context.Background())
-	stopSession()
-	status, text, yield := rt.turnOutcome(interrupt, session, errors.New("chat model refused the request"))
+	status, text := rt.turnOutcome(interrupt, errors.New("chat model refused the request"))
 	if status != store.TurnError {
-		t.Fatalf("status=%s text=%q yield=%v", status, text, yield)
-	}
-	if yield != nil {
-		t.Fatal("a crashed model call is not a session yield")
+		t.Fatalf("status=%s text=%q", status, text)
 	}
 	if !strings.Contains(text, "chat model refused the request") {
 		t.Fatalf("err text=%q", text)
 	}
 }
 
-func TestTurnOutcomeStillYieldsWhenTheSessionTimerCancelsACleanRun(t *testing.T) {
+func TestTurnOutcomeTreatsABareCancelAsAnError(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	rt := e.runtimeFor(th.ID)
 	interrupt, stopInterrupt := context.WithCancel(context.Background())
 	t.Cleanup(stopInterrupt)
-	session, stopSession := context.WithCancel(context.Background())
-	stopSession()
-	status, text, yield := rt.turnOutcome(interrupt, session, context.Canceled)
-	if status != store.TurnDone || text != "" || yield == nil || yield.Reason != sessionReasonTime {
-		t.Fatalf("status=%s text=%q yield=%+v", status, text, yield)
-	}
-}
-
-func TestGoalSessionWrapDoesNotRecordASteer(t *testing.T) {
-	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "", "")
-	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
-		t.Fatal(err)
-	}
-	if e.runtimeFor(th.ID).injectGoalSessionWrap() {
-		t.Fatal("an idle wrap must not queue")
-	}
-	if _, err := e.StartTurn(th.ID, "start the work"); err != nil {
-		t.Fatal(err)
-	}
-	deadline := time.Now().Add(10 * time.Second)
-	var queued bool
-	for time.Now().Before(deadline) {
-		if e.runtimeFor(th.ID).injectGoalSessionWrap() {
-			queued = true
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	if !queued {
-		t.Fatal("could not queue a wrap while the turn was running")
-	}
-	assertNoWrapOnTheTimeline(t, e, th.ID)
-	_ = e.Interrupt(th.ID)
-	waitSettled(t, e, th.ID)
-	assertNoWrapOnTheTimeline(t, e, th.ID)
-	turns, err := e.Store().ListTurns(th.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(turns) != 1 {
-		t.Fatalf("unread wrap must not start a human turn, got %d", len(turns))
+	status, text := rt.turnOutcome(interrupt, context.Canceled)
+	if status != store.TurnError {
+		t.Fatalf("a cancelled model without Interrupt must not look done: status=%s text=%q", status, text)
 	}
 }
 
@@ -514,31 +355,6 @@ func TestIsGoalSessionWrapSteerIgnoresTheSteerPrefix(t *testing.T) {
 	legacy := "This work session is ending. Summarize current progress. Do not start new long-running work. Call complete_goal only if the standing objective is actually satisfied. Otherwise stop this turn without asking the human."
 	if !isGoalSessionWrapSteer(legacy) {
 		t.Fatal("historical wrap text")
-	}
-}
-
-func assertNoWrapOnTheTimeline(t *testing.T, e *Engine, threadID string) {
-	t.Helper()
-	events, err := e.Replay(threadID, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, ev := range events {
-		if ev.Kind == KindSteer {
-			t.Fatalf("wrap must stay off the timeline: %+v", ev)
-		}
-		if isGoalSessionWrapSteer(ev.Text) {
-			t.Fatalf("wrap leaked into %s: %s", ev.Kind, ev.Text)
-		}
-	}
-	msgs, err := e.Store().ListMessages(threadID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, m := range msgs {
-		if isGoalSessionWrapSteer(m.Content) {
-			t.Fatalf("wrap must not be stored as a user message: %s", m.Content)
-		}
 	}
 }
 
@@ -560,43 +376,6 @@ func TestKeepHumanSteersDropsTheSessionWrap(t *testing.T) {
 	if len(empty) != 0 {
 		t.Fatalf("a wrap-only leftover must not start a turn: %q", empty)
 	}
-}
-
-func forceGoalSessionTimer(t *testing.T, d time.Duration) {
-	t.Helper()
-	orig := sessionAfterFunc
-	sessionAfterFunc = func(_ time.Duration, cb func()) *time.Timer {
-		return time.AfterFunc(d, cb)
-	}
-	t.Cleanup(func() { sessionAfterFunc = orig })
-}
-
-// endGoalTurnsByTime makes a /goal turn yield on the session clock so tests
-// that disable complete_goal do not wait out eino's ReAct slice.
-func endGoalTurnsByTime(t *testing.T, e *Engine) {
-	t.Helper()
-	forceGoalSessionTimer(t, 400*time.Millisecond)
-	e.Config().Swarm.GoalSessionMaxSeconds = 1
-}
-
-func goalSessionPayload(t *testing.T, e *Engine, threadID string) map[string]any {
-	t.Helper()
-	events, err := e.Replay(threadID, 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, ev := range events {
-		if ev.Kind != KindGoalSession {
-			continue
-		}
-		var body map[string]any
-		if err := json.Unmarshal([]byte(ev.Text), &body); err != nil {
-			t.Fatalf("goal_session text: %s", ev.Text)
-		}
-		return body
-	}
-	t.Fatal("missing goal_session payload")
-	return nil
 }
 
 func TestCompactBeforeGoalContinueMissingThreadIsANoop(t *testing.T) {
@@ -814,4 +593,11 @@ func TestCompactBeforeGoalContinueCopiesFreshSessionMemoryWhenCold(t *testing.T)
 	if !hasKind(t, e, th.ID, KindSessionMemory) {
 		t.Fatal("capture must record session_memory")
 	}
+}
+
+func TestAttachHostNotifyIgnoresNil(t *testing.T) {
+	attachHostNotify(nil, nil)
+	attachHostNotify(swarm.NewRegistry(), nil)
+	e := newTestEngine(t)
+	attachHostNotify(nil, newAccumulator(e, "th", "tn", 0))
 }

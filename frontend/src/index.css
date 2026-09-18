@@ -46,6 +46,14 @@
     --find-active: 32 98% 58%;
     --find-active-foreground: 240 10% 8%;
 
+    /* Charts in the transcript. Same family as the file glyphs so a
+       plot is not a second palette. */
+    --chart-1: 211 70% 42%;
+    --chart-2: 152 40% 36%;
+    --chart-3: 38 80% 42%;
+    --chart-4: 252 40% 48%;
+    --chart-5: 28 75% 42%;
+
     /* Files tree glyphs. Distinct enough to scan, quiet enough that a
        repository listing does not turn into a sticker sheet. */
     --file-folder: 38 80% 42%;
@@ -119,6 +127,12 @@
     --find-foreground: 0 0% 98%;
     --find-active: 32 90% 52%;
     --find-active-foreground: 240 10% 8%;
+
+    --chart-1: 210 70% 68%;
+    --chart-2: 152 40% 56%;
+    --chart-3: 40 75% 62%;
+    --chart-4: 250 45% 72%;
+    --chart-5: 32 70% 62%;
 
     --file-folder: 40 75% 62%;
     --file-code: 210 70% 68%;
@@ -234,6 +248,9 @@
   }
   .md table {
     @apply w-full text-sm border-collapse;
+  }
+  .md figure {
+    @apply min-w-0;
   }
   .md th,
   .md td {
