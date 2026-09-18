@@ -74,7 +74,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 		defer cancel()
 		defer watchCancel()
 
-		inj := &Injector{handle: h, histCap: r.historyCap()}
+		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r}
 		agent, err := adk.NewChatModelAgent(watchCtx, &adk.ChatModelAgentConfig{
 			Name:        id,
 			Description: "spawned sub-agent " + role,

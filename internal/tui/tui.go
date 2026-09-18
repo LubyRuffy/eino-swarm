@@ -30,6 +30,7 @@ type block struct {
 	answer     string // for blockThinking/Answer: final text
 	toolName   string // for blockTool
 	toolArgs   string
+	toolCallID string
 	toolRes    string
 	toolFailed bool
 	open       bool // collapsed/expanded; thinking defaults open while streaming
@@ -81,6 +82,21 @@ func (a *agentState) closeThinking() {
 // body vanished the moment the model finished.
 func (a *agentState) sealAnswer() {
 	a.curAnswer = nil
+}
+
+// toolBlock finds the in-flight call this notification belongs to. Two execs
+// can run at once; matching the last curTool would paint both streams onto
+// one row.
+func (a *agentState) toolBlock(callID string) *block {
+	if callID != "" {
+		for i := len(a.blocks) - 1; i >= 0; i-- {
+			b := a.blocks[i]
+			if b.kind == blockTool && b.toolCallID == callID {
+				return b
+			}
+		}
+	}
+	return a.curTool
 }
 
 // ---------- swarm->UI state ----------
@@ -184,21 +200,30 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 		a.sealAnswer()
 		name := toolNameOf(n.Text)
 		blk := &block{
-			kind:     blockTool,
-			agentID:  a.id,
-			open:     true, // expand while running
-			toolName: name,
-			toolArgs: summariseToolArgs(name, toolArgsOf(n.Text)),
+			kind:       blockTool,
+			agentID:    a.id,
+			open:       true, // expand while running
+			toolName:   name,
+			toolArgs:   summariseToolArgs(name, toolArgsOf(n.Text)),
+			toolCallID: n.ToolCallID,
 		}
 		a.curTool = blk
 		a.blocks = append(a.blocks, blk)
+	case swarm.NotifyToolDelta:
+		if blk := a.toolBlock(n.ToolCallID); blk != nil {
+			view := viewToolResult(blk.toolName, n.Text)
+			blk.toolRes = view.display()
+			blk.open = true
+		}
 	case swarm.NotifyToolResult:
-		if a.curTool != nil {
-			view := viewToolResult(a.curTool.toolName, n.Text)
-			a.curTool.toolRes = view.display()
-			a.curTool.toolFailed = view.failed
-			a.curTool.open = false // done: collapse to summary line
-			a.curTool = nil
+		if blk := a.toolBlock(n.ToolCallID); blk != nil {
+			view := viewToolResult(blk.toolName, n.Text)
+			blk.toolRes = view.display()
+			blk.toolFailed = view.failed
+			blk.open = false // done: collapse to summary line
+			if a.curTool == blk {
+				a.curTool = nil
+			}
 		}
 	case swarm.NotifyError:
 		a.finished = true
@@ -296,7 +321,7 @@ func (m *swarmTUI) currentAgent() *agentState {
 func (a *agentState) liveTail() string {
 	if a.curTool != nil {
 		if a.curTool.toolRes != "" {
-			return a.curTool.toolRes
+			return lastLine(a.curTool.toolRes)
 		}
 		return a.curTool.toolName + " " + trunc(a.curTool.toolArgs, 40)
 	}

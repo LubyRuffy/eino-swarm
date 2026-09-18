@@ -19,11 +19,17 @@ import type { SwarmEvent } from "./types"
 
 let seq = 0
 function ev(partial: Partial<SwarmEvent> & { kind: string }): SwarmEvent {
-  const stored = partial.kind !== "delta" && partial.kind !== "reasoning_delta"
+  const live =
+    partial.kind === "delta" ||
+    partial.kind === "reasoning_delta" ||
+    partial.kind === "tool_delta" ||
+    partial.kind === "progress" ||
+    partial.kind === "usage" ||
+    partial.kind === "rewound"
   return {
     thread_id: "th_1",
     turn_id: partial.turn_id ?? "tn_1",
-    seq: partial.seq ?? (stored ? ++seq : 0),
+    seq: partial.seq ?? (live ? 0 : ++seq),
     kind: partial.kind,
     agent_id: partial.agent_id ?? MANAGER_ID,
     role: partial.role,

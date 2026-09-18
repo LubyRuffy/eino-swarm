@@ -26,13 +26,13 @@ Current Go coverage, from `go test -race -cover ./...`:
 | `internal/memory` | 96.6% |
 | `internal/provider` | 92.0% |
 | `.` (swarm library) | 95.8% |
-| `internal/tools` | 95.8% |
+| `internal/tools` | 97.0% |
 | `internal/store` | 92.1% |
-| `internal/engine` | 92.5% |
+| `internal/engine` | 92.4% |
 | `internal/config` | 90.6% |
 | `internal/server` | 89.8% |
 | `internal/slash` | 91.7% |
-| `internal/tui` | 94.5% |
+| `internal/tui` | 94.7% |
 | `internal/app` | 88.0% |
 | `cmd/zwai` | 84.0% |
 
@@ -239,7 +239,9 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/lib/transcript.ts`**, where the stream becomes UI: streamed text
   replaces rather than appends, a completed block folds into the streamed one
   instead of duplicating it, a tool call pairs with its result by
-  `tool_call_id`, a progress pulse updates the live summary without leaving
+  `tool_call_id`, a `tool_delta` fills the pending row without closing it,
+  `collapseLiveEvents` keeps the latest snapshot per live tool call (two
+  parallel `exec`s do not mix), a progress pulse updates the live summary without leaving
   a row in the timeline or reviving an agent that has already finished, a
   `usage` pulse is ignored by the reducer (the composer meter owns it) and
   `collapseLiveEvents` keeps only the latest usage snapshot in a burst, a
@@ -249,7 +251,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   stop spinning, and
   `collapseLiveEvents` keeps only the latest snapshot per agent and kind from
   a burst of deltas — lossless, because a delta carries the accumulated string.
-	`splitQueuedSteers` pulls unread steering out of the turn body while a turn
+  Live tool output uses the same rule keyed by `tool_call_id`. Carriage return
+  in an expanded tool body is overwrite (`src/lib/carriage.ts`). A pending `exec`
+  row starts open.	`splitQueuedSteers` pulls unread steering out of the turn body while a turn
   is running (a later model round on the same turn consumes it; a previous
   turn's steer stays put). A `resumed` event keeps leftover sub-agents running
   — a second `spawned` for the same id is the roster coming back, not a twin —

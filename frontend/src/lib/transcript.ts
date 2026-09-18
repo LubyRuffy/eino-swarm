@@ -314,6 +314,19 @@ export function reduceEvent(
       break
     }
 
+    case "tool_delta": {
+      // Live tool output is the accumulated snapshot, same as a text delta.
+      // The call is still running: a later tool_result is what closes it.
+      const target = findToolBlock(agent, ev.tool_call_id)
+      if (target?.tool) {
+        target.tool = {
+          ...target.tool,
+          result: ev.text ?? "",
+        }
+      }
+      break
+    }
+
     case "tool_result": {
       // Pair by call id: a manager that fans out four calls at once gets four
       // results back in whatever order they finish.
@@ -505,7 +518,8 @@ export function splitQueuedSteers(
 /** Collapse a burst of streamed events down to the latest snapshot per
  *  agent and kind. Deltas carry the accumulated string, so keeping only the
  *  last one of a burst is lossless and is what stops a 50-token burst from
- *  becoming fifty React renders. Non-delta events keep their place. */
+ *  becoming fifty React renders. Tool deltas key on the call id so two
+ *  parallel execs do not overwrite each other. Non-delta events keep their place. */
 export function collapseLiveEvents(events: SwarmEvent[]): SwarmEvent[] {
   const seen = new Set<string>()
   const out: SwarmEvent[] = []
@@ -513,6 +527,11 @@ export function collapseLiveEvents(events: SwarmEvent[]): SwarmEvent[] {
     const ev = events[i]
     if (ev.kind === "delta" || ev.kind === "reasoning_delta") {
       const key = `${ev.agent_id || MANAGER_ID}:${ev.kind}`
+      if (seen.has(key)) continue
+      seen.add(key)
+    }
+    if (ev.kind === "tool_delta") {
+      const key = `${ev.agent_id || MANAGER_ID}:${ev.kind}:${ev.tool_call_id || ""}`
       if (seen.has(key)) continue
       seen.add(key)
     }

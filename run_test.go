@@ -495,7 +495,7 @@ func TestNotifyKindRoundTrip(t *testing.T) {
 	kinds := []NotifyKind{
 		NotifyAgentMessage, NotifySpawned, NotifyFinished, NotifyToolCall,
 		NotifyToolResult, NotifyTurn, NotifyDelta, NotifyReasoningDelta,
-		NotifyDone, NotifyError,
+		NotifyToolDelta, NotifyDone, NotifyError,
 	}
 	for _, k := range kinds {
 		got, ok := ParseNotifyKind(k.String())
@@ -508,6 +508,67 @@ func TestNotifyKindRoundTrip(t *testing.T) {
 	}
 	if NotifyKind(999).String() != "unknown" {
 		t.Fatalf("unexpected name for out-of-range kind")
+	}
+}
+
+func TestWrapInvokableToolCallEmitsToolDeltaFromBinder(t *testing.T) {
+	rec := &recorder{}
+	reg := NewRegistry()
+	reg.setSink(rec.cb())
+	reg.ToolOutputBinder = func(ctx context.Context, emit func(string), name, callID string) context.Context {
+		if name != "exec" || callID != "c1" {
+			t.Errorf("binder got name=%q call=%q", name, callID)
+		}
+		emit(`{"stdout":"a","stderr":""}`)
+		return ctx
+	}
+	mw := reg.ManagerMiddleware().(*historyRecorder)
+	wrapped, err := mw.WrapInvokableToolCall(context.Background(),
+		func(ctx context.Context, args string, _ ...tool.Option) (string, error) {
+			return `{"stdout":"ab","stderr":""}`, nil
+		}, &adk.ToolContext{Name: "exec", CallID: "c1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := wrapped(context.Background(), `{}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `"stdout":"ab"`) {
+		t.Fatalf("final result: %s", out)
+	}
+	deltas := rec.ofKind(NotifyToolDelta)
+	if len(deltas) != 1 || deltas[0].Text != `{"stdout":"a","stderr":""}` || deltas[0].ToolCallID != "c1" {
+		t.Fatalf("tool_delta: %+v", deltas)
+	}
+	if deltas[0].AgentID != DefaultManagerID {
+		t.Fatalf("manager delta on %q", deltas[0].AgentID)
+	}
+}
+
+func TestWorkerInjectorEmitsToolDeltaFromBinder(t *testing.T) {
+	rec := &recorder{}
+	reg := NewRegistry()
+	reg.setSink(rec.cb())
+	reg.ToolOutputBinder = func(ctx context.Context, emit func(string), name, callID string) context.Context {
+		emit(`{"stdout":"w","stderr":""}`)
+		return ctx
+	}
+	h := &Handle{ID: "worker-1", Role: "researcher"}
+	inj := &Injector{handle: h, reg: reg}
+	wrapped, err := inj.WrapInvokableToolCall(context.Background(),
+		func(ctx context.Context, args string, _ ...tool.Option) (string, error) {
+			return "ok", nil
+		}, &adk.ToolContext{Name: "exec", CallID: "c2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := wrapped(context.Background(), `{}`); err != nil {
+		t.Fatal(err)
+	}
+	deltas := rec.ofKind(NotifyToolDelta)
+	if len(deltas) != 1 || deltas[0].AgentID != "worker-1" || deltas[0].ToolCallID != "c2" {
+		t.Fatalf("worker tool_delta: %+v", deltas)
 	}
 }
 

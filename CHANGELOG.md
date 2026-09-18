@@ -12,6 +12,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Live `exec` output.** While a shell command still runs, Web and TUI stream
+  stdout/stderr into the pending tool row (`tool_delta`, broadcast only, keyed
+  by `tool_call_id`). The model still gets one JSON `tool_result`. A `\r` in
+  the output overwrites the current line. The pending row starts open.
+
 - **Tail-first conversation history.** Opening a conversation fetches
   `GET /api/threads/:id/log` for one viewport of the live edge, then
   the event stream resumes after that seq. Scrolling up pages older

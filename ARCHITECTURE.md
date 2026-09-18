@@ -59,7 +59,7 @@ flowchart LR
 | `internal/config` | `config.yaml` under the data directory: load, normalize, atomic save, `OPENAI_*` seeding on first run. Nothing else in the tree hardcodes an endpoint or model. |
 | `internal/store` | gorm + pure-Go SQLite. Conversations, transcript messages, turns, the event timeline, model-call records, attachments, follow-ups waiting for the current turn. Sidebar lists conversations and projects by `sort_rank` then last activity (`last_active_at` / `updated_at`); unranked rows interleave by activity so they cannot sit above ranked work that just ran. A drop pins ranks. See [docs/DATA_MODEL.md](docs/DATA_MODEL.md). |
 | `internal/provider` | builds eino chat models from config, lists an endpoint's catalog (`GET {base_url}/models`), records per-call telemetry, and provides the scripted offline provider used by `--mock` and the tests. The provider request timeout is idle time between bytes, not the whole streamed body: a thinking model that is still emitting tokens is not cut off. |
-| `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. |
+| `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. `BindExecOutput` is the host binder that tees `exec` stdout/stderr into `NotifyToolDelta` without the swarm library importing eino-tools. |
 | `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the three agent tools (`memory`, `skill_view`, `skill_manage`), the prompt sections they are rendered into, and the reviewer's instruction. Owns the files; knows nothing about conversations. |
 | `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn, a clear/interrupt, or `swarm.goal_max_auto_turns`, converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), and runs the post-turn memory review from the event log (skipped when the manager already wrote). |
 | `internal/server` | gin: REST, SSE, upload/download, trace, embedded assets. See [docs/API.md](docs/API.md). |
@@ -105,7 +105,9 @@ flowchart LR
    `swarm.Registry` with the configured limits, and builds the toolset anchored
    at the conversation's working directory — `workspaces/<thread-id>/`, or the
    project's directory when it belongs to one, so every conversation in a
-   project works on the same files.
+   project works on the same files. The registry's `ToolOutputBinder` is
+   `tools.BindExecOutput`: live `exec` chunks become `tool_delta` events; other
+   tools are left alone. The model still receives one JSON `tool_result`.
 3. The manager's system prompt is generated per turn from the live toolset, the
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home). It is
@@ -305,13 +307,17 @@ event or showing a duplicate:
   finished can be the one that would have been dropped, and nothing later would
   come to trigger a re-read.
 - **Only persisted events carry an SSE `id`.** `Last-Event-ID` (or `?since=`)
-  resumes exactly where the client stopped; deltas, progress and usage pulses
-  were never stored, so they are never resumed.
+  resumes exactly where the client stopped; deltas, tool deltas, progress and
+  usage pulses were never stored, so they are never resumed.
 
 The front end folds this stream into blocks per agent in
 `frontend/src/lib/transcript.ts`, pairing a tool call with its result by
 `tool_call_id` (agents issue several in one message, and they finish out of
-order). A turn that ends (`done` / `error`, including a user interrupt) or an
+order). A `tool_delta` fills that pending row without clearing `pending`;
+`collapseLiveEvents` keys those snapshots by call id so two parallel `exec`
+calls do not overwrite each other. Carriage return in the expanded body is
+overwrite, the way a terminal treats `\r`. The pending `exec` row starts open.
+A turn that ends (`done` / `error`, including a user interrupt) or an
 agent that `finished` closes any tool still `pending`: interrupt cancels
 in-flight calls without a `tool_result`, and leaving them pending keeps the
 spinner next to a row that already says the turn stopped. A `resumed` event

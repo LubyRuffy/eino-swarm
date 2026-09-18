@@ -169,7 +169,7 @@ stream still walks forward.
 | `agent_id` | `manager` or a sub-agent |
 | `role` | for `spawned`, the sub-agent's role |
 | `text` | the payload. For `spawned` this is the worker's system prompt (host snapshot plus the task). Older rows stored the role name here; `role` is the reliable role field. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary |
-| `tool_call_id` | pairs `tool_call` with `tool_result`; agents issue several at once and they finish out of order |
+| `tool_call_id` | pairs `tool_call` with `tool_result` (and live `tool_delta`); agents issue several at once and they finish out of order |
 | `err` | set on `error` and on a failed `finished` |
 | `images` | JSON array of `{id,name,mime}` on `user_message` and `steer` when the send carried pasted images. Never the pixels |
 | `created_at` | UTC; the timeline offsets are computed against the turn's `started_at` |
@@ -178,11 +178,13 @@ stream still walks forward.
 those ids into the next Generate after a fold. Do not treat `messages`
 as the source of truth for who is alive.
 
-**Streaming deltas are deliberately not stored.** `delta` and `reasoning_delta`
-carry the full text so far, so storing each would store the answer once per token.
-They are broadcast live with `seq = 0`; the engine stores the completed block when
-it settles. That is why a refresh mid-turn shows completed thoughts and the answer
-so far, without a hundred rows per paragraph.
+**Streaming deltas are deliberately not stored.** `delta`, `reasoning_delta` and
+`tool_delta` carry the full text so far, so storing each would store the answer
+(or the command output) once per chunk. They are broadcast live with `seq = 0`;
+the engine stores the completed block when it settles. `tool_delta` is keyed by
+`tool_call_id` so two parallel `exec` calls keep their own snapshots. That is
+why a refresh mid-turn shows completed thoughts and the answer so far, without a
+hundred rows per paragraph — and why a reconnect never resumes mid-`exec` output.
 
 **Progress pulses are not stored either.** A `progress` event restates what the
 `spawned`, `tool_call` and `finished` rows already record, so a trace loses

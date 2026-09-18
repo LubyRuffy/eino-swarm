@@ -87,6 +87,38 @@ func TestAccumulatorPersistsCompleteTextNotDeltas(t *testing.T) {
 	}
 }
 
+func TestToolDeltaIsBroadcastNotStored(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	turn := &store.Turn{ThreadID: th.ID}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	acc := newAccumulator(e, th.ID, turn.ID, 0)
+	acc.onNotify(swarm.Notification{
+		Kind: swarm.NotifyToolCall, AgentID: swarm.DefaultManagerID, Text: "exec({})", ToolCallID: "c1",
+	})
+	acc.onNotify(swarm.Notification{
+		Kind: swarm.NotifyToolDelta, AgentID: swarm.DefaultManagerID,
+		Text: `{"stdout":"a","stderr":""}`, ToolCallID: "c1",
+	})
+	acc.onNotify(swarm.Notification{
+		Kind: swarm.NotifyToolResult, AgentID: swarm.DefaultManagerID,
+		Text: `{"stdout":"ab","stderr":""}`, ToolCallID: "c1",
+	})
+	acc.flushAll()
+
+	events, err := e.Replay(th.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range events {
+		if ev.Kind == swarm.NotifyToolDelta.String() {
+			t.Fatalf("tool_delta must not be persisted: %+v", ev)
+		}
+	}
+}
+
 // An agent cut off mid-sentence must still leave its partial text behind.
 func TestAccumulatorFlushesPartialWorkAtTheEnd(t *testing.T) {
 	e := newTestEngine(t)

@@ -127,7 +127,9 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **Real tools.** File read/write/edit, `ls`/`tree`/`glob`/`grep`, shell `exec`,
   web search and fetch, from [eino-tools](https://github.com/LubyRuffy/eino-tools).
   The transcript shows the command or query, not the JSON envelope; a failed
-  `exec` is a red error, not a grey dump. Opening an `exec` row wraps the full
+  `exec` is a red error, not a grey dump. A running `exec` opens and streams
+  stdout/stderr as they arrive (a `\r` overwrites the current line the way a
+  terminal does). Opening an `exec` row wraps the full
   command with shell highlighting instead of leaving it cut off. Opening a
   `read` paints the file from its suffix (Go, TypeScript, Python, …) instead
   of a grey dump; markdown still renders as prose. Agents are

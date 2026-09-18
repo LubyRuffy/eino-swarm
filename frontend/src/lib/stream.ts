@@ -25,6 +25,7 @@ export const KINDS = [
   "finished",
   "tool_call",
   "tool_result",
+  "tool_delta",
   "steer",
   "cleanup",
   "progress",

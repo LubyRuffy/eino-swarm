@@ -184,3 +184,23 @@ func TestAsTextAndAsIntCoverTheScalarCases(t *testing.T) {
 		t.Fatal("firstText should miss empty keys")
 	}
 }
+
+func TestApplyCarriageReturnsOverwritesTheCurrentLine(t *testing.T) {
+	if got := applyCarriageReturns("step 1\rstep 2"); got != "step 2" {
+		t.Fatalf("CR overwrite = %q", got)
+	}
+	if got := applyCarriageReturns("one\ntwo\rthree"); got != "one\nthree" {
+		t.Fatalf("CR after newline = %q", got)
+	}
+}
+
+func TestViewToolResultAppliesCarriageReturns(t *testing.T) {
+	raw, _ := json.Marshal(map[string]any{
+		"stdout": "step 1\rstep 2",
+		"stderr": "",
+	})
+	view := viewToolResult("exec", string(raw))
+	if view.body != "step 2" {
+		t.Fatalf("live exec body = %q", view.body)
+	}
+}

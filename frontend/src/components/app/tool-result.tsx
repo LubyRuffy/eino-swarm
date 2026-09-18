@@ -1,6 +1,7 @@
 import { MemoMarkdown } from "@/components/app/markdown"
 import { ShellCommand } from "@/components/app/shell-command"
 import { SourceListing } from "@/components/app/source-code"
+import { applyCarriageReturns } from "@/lib/carriage"
 import { isMarkdownPath, parseReadResult, type ReadListing } from "@/lib/read-result"
 import { execCommand, viewTool, type SearchHit } from "@/lib/tool-view"
 import { useT } from "@/lib/use-t"
@@ -12,16 +13,21 @@ export function ToolResultBody({
   args,
   result,
   failed,
+  pending,
 }: {
   name: string
   args: string
   result?: string
   failed?: boolean
+  pending?: boolean
 }) {
   const t = useT()
   const listing = name === "read" && result ? parseReadResult(result) : undefined
   const view = viewTool(name, args, result, failed)
   const command = name === "exec" ? execCommand(args) : ""
+  const waiting =
+    result === undefined ||
+    (Boolean(pending) && !listing && !view.body && !view.hits && !view.error)
   return (
     <div
       className={`space-y-2 border-l-2 pl-3 text-[12px] ${
@@ -29,7 +35,7 @@ export function ToolResultBody({
       }`}
     >
       {command ? <ShellCommand command={command} /> : null}
-      {result === undefined ? (
+      {waiting ? (
         <p className="text-muted-foreground">{t("tool.running")}</p>
       ) : listing ? (
         <FileBody listing={listing} failed={view.failed} />
@@ -64,7 +70,7 @@ function ParsedBody({
             view.failed && !view.error ? "text-destructive" : ""
           }`}
         >
-          {view.body}
+          {applyCarriageReturns(view.body)}
         </pre>
       ) : null}
       {!view.body && !view.hits && !view.error ? (

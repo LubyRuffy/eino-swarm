@@ -116,6 +116,7 @@ type Notification struct {
 | `NotifyFinished` | its result; `Err` set when it failed |
 | `NotifyToolCall` | `name(args)` |
 | `NotifyToolResult` | the tool's stdout, **newlines kept**, clipped at 64k runes so a huge `exec` cannot blow up the event log |
+| `NotifyToolDelta` | live tool output **so far**, accumulated within that `ToolCallID`. Broadcast only; not stored. The model still sees one `NotifyToolResult` |
 | `NotifyTurn` | `turn N` |
 | `NotifyDelta` | the streamed answer **so far** |
 | `NotifyReasoningDelta` | the streamed reasoning **so far** |
@@ -129,9 +130,16 @@ Two properties a consumer depends on:
 - **`ToolCallID` pairs a call with its result.** Agents issue several tool calls
   in one message and they return out of order; matching by name or by arrival
   order produces the wrong pairing exactly when a run gets interesting.
+  `NotifyToolDelta` uses the same id so two live streams do not mix.
 
 `NotifyKind.String()` and `ParseNotifyKind` round-trip the names, so they can be
 stored and read back.
+
+`Registry.ToolOutputBinder`, if set, wraps the context of every invokable tool
+call on the manager and on workers. The binder receives `(ctx, emit, toolName,
+callID)` and returns a context; `emit` is called with the accumulated text so
+far and becomes `NotifyToolDelta`. The swarm library does not import a specific
+tool package — the host decides which tools stream. zwai binds `exec` only.
 
 ## Dropping to the primitives
 

@@ -87,6 +87,13 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 		a.flushAnswer(n.AgentID)
 		a.engine.record(a.event(n, n.Kind.String()))
 
+	case swarm.NotifyToolDelta:
+		a.pushLive(n)
+
+	case swarm.NotifyToolResult:
+		a.dropKey(liveKey(n.AgentID, swarm.NotifyToolDelta.String(), n.ToolCallID))
+		a.engine.record(a.event(n, n.Kind.String()))
+
 	case swarm.NotifyAgentMessage:
 		// the swarm already hands over the complete text, so the pending
 		// accumulator is dropped rather than persisted twice

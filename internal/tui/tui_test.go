@@ -400,6 +400,64 @@ func TestAJSONToolCallShowsTheCommandNotTheEnvelope(t *testing.T) {
 	}
 }
 
+func TestALiveToolDeltaUpdatesTheOpenRow(t *testing.T) {
+	m := newModel(nil)
+	m.width, m.height = 120, 40
+	feed(&m,
+		swarm.Notification{
+			Kind: swarm.NotifyToolCall, AgentID: swarm.DefaultManagerID,
+			ToolCallID: "c1", Text: `exec({"command":"printf x"})`,
+		},
+		swarm.Notification{
+			Kind: swarm.NotifyToolDelta, AgentID: swarm.DefaultManagerID,
+			ToolCallID: "c1", Text: `{"stdout":"chunk-one","stderr":""}`,
+		},
+	)
+	tools := blocksOfKind(m.manager, blockTool)
+	if len(tools) != 1 || !tools[0].open || tools[0].toolRes != "chunk-one" {
+		t.Fatalf("live tool row: %+v", tools)
+	}
+	if m.manager.curTool == nil {
+		t.Fatal("a running call is still the live one")
+	}
+	pane := m.pane(m.manager, 80, 30)
+	if !strings.Contains(pane, "chunk-one") {
+		t.Fatalf("live stdout missing from the pane:\n%s", pane)
+	}
+}
+
+func TestParallelToolDeltasStayOnTheirOwnRows(t *testing.T) {
+	m := newModel(nil)
+	feed(&m,
+		swarm.Notification{
+			Kind: swarm.NotifyToolCall, AgentID: swarm.DefaultManagerID,
+			ToolCallID: "c1", Text: `exec({"command":"printf a"})`,
+		},
+		swarm.Notification{
+			Kind: swarm.NotifyToolCall, AgentID: swarm.DefaultManagerID,
+			ToolCallID: "c2", Text: `exec({"command":"printf b"})`,
+		},
+		swarm.Notification{
+			Kind: swarm.NotifyToolDelta, AgentID: swarm.DefaultManagerID,
+			ToolCallID: "c1", Text: `{"stdout":"alpha","stderr":""}`,
+		},
+		swarm.Notification{
+			Kind: swarm.NotifyToolDelta, AgentID: swarm.DefaultManagerID,
+			ToolCallID: "c2", Text: `{"stdout":"beta","stderr":""}`,
+		},
+	)
+	tools := blocksOfKind(m.manager, blockTool)
+	if len(tools) != 2 {
+		t.Fatalf("want two tool rows, got %+v", tools)
+	}
+	if tools[0].toolRes != "alpha" || tools[1].toolRes != "beta" {
+		t.Fatalf("live streams mixed: %+v", tools)
+	}
+	if !tools[0].open || !tools[1].open {
+		t.Fatalf("pending rows should stay open: %+v", tools)
+	}
+}
+
 // Every block has a folded and an expanded form, and the pane also carries the
 // live tail of whatever is streaming right now.
 func TestPanesRenderFoldedAndExpandedBlocks(t *testing.T) {

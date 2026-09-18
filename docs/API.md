@@ -653,6 +653,7 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `agent_message` | a completed assistant message |
 | `tool_call` | `Text` is `name(args)`, paired by `tool_call_id` |
 | `tool_result` | the result, paired by `tool_call_id`. Newlines are kept so the UI can render a file body; clipped at 64k runes |
+| `tool_delta` | live tool output while a call still runs; `text` is the accumulated payload so far (for `exec`, `{stdout,stderr}` JSON), paired by `tool_call_id`. `seq` is 0, not stored. The model still receives one `tool_result` when the call finishes |
 | `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished |
 | `finished` | a sub-agent finished; `err` set when it failed |
 | `turn` | an agent started a model turn (`turn N`) |
@@ -687,10 +688,11 @@ Two rules the client depends on:
    `swarm.delta_coalesce_ms` (default 50): tokens inside the window replace the
    pending event, so a 50-token-per-second model is one event, not fifty. A
    tool call, a finished worker or the end of the turn flushes whatever is still
-   held.
-2. **Only stored events have `seq > 0` and an SSE `id`.** Deltas, progress
-   pulses and usage pulses are broadcast live and never stored, which is why a
-   reconnect resumes at a completed event.
+   held. `tool_delta` uses the same coalesce window and is keyed by
+   `tool_call_id`, so two parallel `exec` calls do not overwrite each other.
+2. **Only stored events have `seq > 0` and an SSE `id`.** Deltas, tool deltas,
+   progress pulses and usage pulses are broadcast live and never stored, which
+   is why a reconnect resumes at a completed event.
 
 ### Progress pulses
 

@@ -868,7 +868,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 	// The front end matches on these strings, so a rename in the library must
 	// not silently change the protocol.
 	for _, want := range []string{
-		"agent_message", "spawned", "finished", "tool_call", "tool_result",
+		"agent_message", "spawned", "finished", "tool_call", "tool_result", "tool_delta",
 		"turn", "delta", "reasoning_delta", "done", "error",
 	} {
 		if _, ok := swarm.ParseNotifyKind(want); !ok {

@@ -7,9 +7,10 @@ import (
 	swarm "github.com/LubyRuffy/eino-swarm"
 )
 
-// liveKey is one streamed stream: one agent, one kind (answer or thinking).
-func liveKey(agentID, kind string) string {
-	return agentID + "\x00" + kind
+// liveKey is one streamed stream: one agent, one kind, and for tool
+// deltas the call id so two parallel execs cannot overwrite each other.
+func liveKey(agentID, kind, toolCallID string) string {
+	return agentID + "\x00" + kind + "\x00" + toolCallID
 }
 
 // pushLive holds a streamed delta until the coalesce window closes, then
@@ -22,7 +23,7 @@ func (a *accumulator) pushLive(n swarm.Notification) {
 		a.engine.emit(ev)
 		return
 	}
-	key := liveKey(n.AgentID, n.Kind.String())
+	key := liveKey(n.AgentID, n.Kind.String(), n.ToolCallID)
 	a.mu.Lock()
 	_, armed := a.liveTimer[key]
 	a.live[key] = ev
@@ -35,7 +36,7 @@ func (a *accumulator) pushLive(n swarm.Notification) {
 // flushKind sends the pending live event of this kind, if any. The timer is
 // stopped so it cannot fire after the complete text has already been recorded.
 func (a *accumulator) flushKind(agentID, kind string) {
-	a.flushKey(liveKey(agentID, kind))
+	a.flushKey(liveKey(agentID, kind, ""))
 }
 
 // flushAgentLive sends every pending streamed event for this agent. A tool
@@ -103,4 +104,14 @@ func (a *accumulator) flushKey(key string) {
 	if ok {
 		a.engine.emit(ev)
 	}
+}
+
+func (a *accumulator) dropKey(key string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if timer := a.liveTimer[key]; timer != nil {
+		timer.Stop()
+	}
+	delete(a.liveTimer, key)
+	delete(a.live, key)
 }

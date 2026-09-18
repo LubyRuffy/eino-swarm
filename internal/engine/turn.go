@@ -190,6 +190,7 @@ func (e *Engine) newTurnRegistry(builder swarm.ModelBuilder, toolset *tools.Set)
 	reg.MaxTurns = e.cfg.Swarm.MaxTurns
 	reg.SubAgentTools = toolset.Tools
 	reg.WorkerPreamble = HostEnvironmentPrompt()
+	reg.ToolOutputBinder = tools.BindExecOutput
 	return reg
 }
 

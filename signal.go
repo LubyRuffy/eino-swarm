@@ -22,10 +22,11 @@ type Callback func(Notification)
 // Implementation contract:
 //   - OnNotify is called from the swarm's event pump goroutine(s); heavy work
 //     or rendering should be forwarded to the UI's own goroutine.
-//   - Streaming semantics: each NotifyDelta/NotifyReasoningDelta carries the
-//     FULL accumulated text so far ("a", "ab", "abc"…), so a UI renders by
-//     overwriting the target pane — no buffering needed. The accumulator is
-//     reset at every turn boundary (NotifyTurn).
+//   - Streaming semantics: each NotifyDelta/NotifyReasoningDelta/NotifyToolDelta
+//     carries the FULL accumulated text so far ("a", "ab", "abc"…), so a UI
+//     renders by overwriting the target pane — no buffering needed. Answer
+//     and reasoning reset at every turn boundary (NotifyTurn). Tool deltas
+//     accumulate per ToolCallID until NotifyToolResult.
 type UI interface {
 	// OnNotify receives one event. Called from the swarm's event pump
 	// goroutine(s); implementations must not block for long.
@@ -58,6 +59,7 @@ const (
 	NotifyTurn                             // an agent started a new model turn (Text="turn N")
 	NotifyDelta                            // streamed answer text, accumulated within the turn
 	NotifyReasoningDelta                   // streamed reasoning, accumulated within the turn
+	NotifyToolDelta                        // streamed tool output, accumulated within the call
 	NotifyDone                             // manager final answer; run complete
 	NotifyError                            // fatal error; run failed
 )
@@ -71,6 +73,7 @@ var notifyNames = map[NotifyKind]string{
 	NotifyTurn:           "turn",
 	NotifyDelta:          "delta",
 	NotifyReasoningDelta: "reasoning_delta",
+	NotifyToolDelta:      "tool_delta",
 	NotifyDone:           "done",
 	NotifyError:          "error",
 }
@@ -100,11 +103,11 @@ const DefaultManagerID = "manager"
 
 // Notification is one UI event.
 //
-// Delta semantics: NotifyDelta/NotifyReasoningDelta carry the FULL text
-// accumulated within the current turn ("a", then "ab", then "abc") — a UI
-// overwrites the bubble per event, no buffering needed. Reasoning and answer
-// use separate accumulators (separate event kinds), so a "thinking" view and
-// an answer view render independently. Both reset on NotifyTurn.
+// Delta semantics: NotifyDelta/NotifyReasoningDelta/NotifyToolDelta carry the
+// FULL text accumulated so far ("a", then "ab", then "abc") — a UI overwrites
+// the bubble per event, no buffering needed. Reasoning and answer use separate
+// accumulators and reset on NotifyTurn. Tool deltas key on ToolCallID and
+// reset when that call's NotifyToolResult arrives.
 type Notification struct {
 	Kind    NotifyKind
 	AgentID string // emitting agent (DefaultManagerID for the top level)

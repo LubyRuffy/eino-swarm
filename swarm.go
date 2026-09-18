@@ -218,6 +218,11 @@ type Registry struct {
 	// (<=0 means defaultHistoryLimit).
 	HistoryLimit int
 
+	// ToolOutputBinder, if set, wraps the context of every invokable tool
+	// call so a host can stream output as NotifyToolDelta. emit receives
+	// the accumulated text so far; the binder chooses the payload shape.
+	ToolOutputBinder func(ctx context.Context, emit func(string), toolName, callID string) context.Context
+
 	past    map[string]*agentPast
 	pastIDs []string
 
@@ -399,10 +404,26 @@ func (m *historyRecorder) WrapInvokableToolCall(ctx context.Context,
 	endpoint adk.InvokableToolCallEndpoint, tc *adk.ToolContext,
 ) (adk.InvokableToolCallEndpoint, error) {
 	return func(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
+		ctx = m.reg.bindToolOutput(ctx, DefaultManagerID, "manager", tc)
 		out, err := endpoint(ctx, argumentsInJSON, opts...)
 		m.reg.appendHistoryToolResult(tc, out, err)
 		return out, err
 	}, nil
+}
+
+func (r *Registry) bindToolOutput(ctx context.Context, agentID, role string, tc *adk.ToolContext) context.Context {
+	if r == nil || r.ToolOutputBinder == nil || tc == nil {
+		return ctx
+	}
+	return r.ToolOutputBinder(ctx, func(text string) {
+		r.emit(Notification{
+			Kind:       NotifyToolDelta,
+			AgentID:    agentID,
+			Role:       role,
+			Text:       text,
+			ToolCallID: tc.CallID,
+		})
+	}, tc.Name, tc.CallID)
 }
 
 func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
@@ -774,6 +795,7 @@ type Injector struct {
 	adk.BaseChatModelAgentMiddleware
 	handle  *Handle
 	histCap int
+	reg     *Registry
 }
 
 // BeforeModelRewriteState drains queued steering messages into the
@@ -798,6 +820,17 @@ func (in *Injector) AfterModelRewriteState(ctx context.Context,
 ) (context.Context, *adk.ChatModelAgentState, error) {
 	in.handle.setHistory(state.Messages, in.histCap)
 	return ctx, state, nil
+}
+
+func (in *Injector) WrapInvokableToolCall(ctx context.Context,
+	endpoint adk.InvokableToolCallEndpoint, tc *adk.ToolContext,
+) (adk.InvokableToolCallEndpoint, error) {
+	return func(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
+		if in.reg != nil && in.handle != nil {
+			ctx = in.reg.bindToolOutput(ctx, in.handle.ID, in.handle.Role, tc)
+		}
+		return endpoint(ctx, argumentsInJSON, opts...)
+	}, nil
 }
 
 // ModelBuilder builds the chat model for a spawned sub-agent. Returning the

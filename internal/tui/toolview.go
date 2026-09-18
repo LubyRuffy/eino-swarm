@@ -84,7 +84,7 @@ func viewToolResult(name, raw string) toolView {
 	if name == "exec" || name == "python_runner" {
 		if run, ok := parseRunResult(raw); ok {
 			failed := run.failed || (run.exitCode != nil && *run.exitCode != 0)
-			body := joinNonEmpty(run.stdout, run.stderr)
+			body := applyCarriageReturns(joinNonEmpty(run.stdout, run.stderr))
 			errText := run.err
 			if failed && errText == "" {
 				code := "?"
@@ -276,4 +276,32 @@ func joinNonEmpty(parts ...string) string {
 
 func flatten(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// applyCarriageReturns interprets CR the way a terminal does: return to
+// column 0 of the current line and overwrite. Progress printers would
+// otherwise dump a megabyte of `\r` junk into the pane.
+func applyCarriageReturns(text string) string {
+	var out []string
+	line := make([]rune, 0, 64)
+	col := 0
+	for _, ch := range text {
+		switch ch {
+		case '\n':
+			out = append(out, string(line))
+			line = line[:0]
+			col = 0
+		case '\r':
+			col = 0
+		default:
+			if col < len(line) {
+				line[col] = ch
+			} else {
+				line = append(line, ch)
+			}
+			col++
+		}
+	}
+	out = append(out, string(line))
+	return strings.Join(out, "\n")
 }

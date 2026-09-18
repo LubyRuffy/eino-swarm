@@ -8,7 +8,6 @@ import {
   Loader2,
   Pencil,
   Sparkles,
-  Terminal,
   Users,
 } from "lucide-react"
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
@@ -17,13 +16,11 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Disclosure } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
-import { ToolResultBody } from "@/components/app/tool-result"
-import { ShellCommand } from "@/components/app/shell-command"
+import { ToolRow } from "@/components/app/tool-row"
 import { MarqueeText } from "@/components/app/marquee"
 import { GoalSessionTurn, groupByTurn } from "@/components/app/transcript-session"
 import { TurnNav } from "@/components/app/turn-nav"
 import { InputThumbs } from "@/components/app/input-thumbs"
-import { execCommand, toolRowSummary, viewTool } from "@/lib/tool-view"
 import {
   thoughtExpanded,
   thoughtFollowsStream,
@@ -540,62 +537,6 @@ function Answer({ block }: { block: Block }) {
         />
       ) : null}
     </div>
-  )
-}
-
-function ToolRow({ block, reveal }: { block: Block; reveal?: boolean }) {
-  const [open, setOpen] = useState(false)
-  const tool = block.tool
-  if (!tool) return null
-  const view = viewTool(tool.name, tool.args, tool.result, tool.failed)
-  const command = tool.name === "exec" ? execCommand(tool.args) : ""
-  const expanded = open || Boolean(reveal)
-  return (
-    <Disclosure
-      open={expanded}
-      onOpenChange={setOpen}
-      failed={view.failed}
-      summary={
-        <>
-          {tool.pending ? (
-            <Loader2 className="size-3.5 shrink-0 animate-spin" />
-          ) : view.failed ? (
-            <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
-          ) : (
-            <Terminal className="size-3.5 shrink-0" />
-          )}
-          <span className="shrink-0 font-mono text-[13px] text-foreground">{tool.name}</span>
-          {tool.pending ? (
-            <MarqueeText
-              text={toolRowSummary(view)}
-              active
-              className={view.failed ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}
-            />
-          ) : command ? (
-            <span className="min-w-0 flex-1 overflow-hidden">
-              <ShellCommand command={command} compact />
-            </span>
-          ) : (
-            <MarqueeText
-              text={toolRowSummary(view)}
-              className={view.failed ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}
-            />
-          )}
-          {expanded ? (
-            <ChevronDown className="ml-auto size-3.5 shrink-0 opacity-60" />
-          ) : (
-            <ChevronRight className="ml-auto size-3.5 shrink-0 opacity-60" />
-          )}
-        </>
-      }
-    >
-      <ToolResultBody
-        name={tool.name}
-        args={tool.args}
-        result={tool.result}
-        failed={tool.failed}
-      />
-    </Disclosure>
   )
 }
 

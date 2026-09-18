@@ -184,7 +184,9 @@ func (m swarmTUI) pane(a *agentState, w, h int) string {
 					if blk.toolFailed {
 						resStyle = cErr
 					}
-					fmt.Fprintln(&b, resStyle.Render("│ ← "+trunc(blk.toolRes, w-8)))
+					for _, line := range lastNLines(blk.toolRes, maxInt(2, h/4)) {
+						fmt.Fprintln(&b, resStyle.Render("│ ← "+trunc(line, w-8)))
+					}
 				}
 			} else {
 				line := "▸ ⚙ " + blk.toolName

@@ -201,3 +201,41 @@ func TestCoalesceWindowsArePerAgent(t *testing.T) {
 		t.Fatalf("windows leaked across agents: %+v", seen)
 	}
 }
+
+func TestParallelToolDeltasDoNotOverwrite(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("parallel-exec", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := e.Subscribe(th.ID)
+	defer sub.Close()
+
+	acc := newAccumulator(e, th.ID, "turn-1", 25*time.Millisecond)
+	agent := swarm.DefaultManagerID
+	acc.onNotify(swarm.Notification{
+		Kind: swarm.NotifyToolDelta, AgentID: agent, ToolCallID: "c1", Text: `{"stdout":"a","stderr":""}`,
+	})
+	acc.onNotify(swarm.Notification{
+		Kind: swarm.NotifyToolDelta, AgentID: agent, ToolCallID: "c2", Text: `{"stdout":"x","stderr":""}`,
+	})
+	acc.onNotify(swarm.Notification{
+		Kind: swarm.NotifyToolDelta, AgentID: agent, ToolCallID: "c1", Text: `{"stdout":"ab","stderr":""}`,
+	})
+
+	seen := map[string]string{}
+	deadline := time.After(500 * time.Millisecond)
+	for len(seen) < 2 {
+		select {
+		case ev := <-sub.C:
+			if ev.Kind == swarm.NotifyToolDelta.String() {
+				seen[ev.ToolCallID] = ev.Text
+			}
+		case <-deadline:
+			t.Fatalf("missing a per-call tool_delta: %+v", seen)
+		}
+	}
+	if !strings.Contains(seen["c1"], `"stdout":"ab"`) || !strings.Contains(seen["c2"], `"stdout":"x"`) {
+		t.Fatalf("parallel exec snapshots mixed: %+v", seen)
+	}
+}

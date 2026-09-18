@@ -137,4 +137,29 @@ describe("ToolResultBody", () => {
     expect(screen.getByText("first hit")).toBeInTheDocument()
     expect(screen.queryByText(/"title"/)).not.toBeInTheDocument()
   })
+
+  it("shows live stdout on a pending call instead of the waiting placeholder", () => {
+    render(
+      <ToolResultBody
+        name="exec"
+        args={`{"command":"printf x"}`}
+        result={JSON.stringify({ stdout: "chunk-one", stderr: "" })}
+        pending
+      />,
+    )
+    expect(screen.getByTestId("tool-output").textContent).toBe("chunk-one")
+    expect(screen.queryByText(/running/i)).not.toBeInTheDocument()
+  })
+
+  it("treats CR as overwrite in live output", () => {
+    render(
+      <ToolResultBody
+        name="exec"
+        args={`{"command":"printf x"}`}
+        result={JSON.stringify({ stdout: "step 1\rstep 2", stderr: "" })}
+        pending
+      />,
+    )
+    expect(screen.getByTestId("tool-output").textContent).toBe("step 2")
+  })
 })
