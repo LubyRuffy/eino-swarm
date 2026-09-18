@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -530,6 +531,90 @@ func TestCreateScheduleFailsWhenTheTableIsGone(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("create must fail without the table")
+	}
+}
+
+func TestCreateScheduleRejectsEmptyPrompt(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	_, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: "   ", EveryS: 60,
+		CreatedBy: store.ScheduleCreatedHuman,
+	})
+	if err == nil {
+		t.Fatal("empty prompt")
+	}
+	for _, w := range []string{"CI", "deploy", "GitHub"} {
+		if strings.Contains(err.Error(), w) {
+			t.Fatalf("leaked %q in %v", w, err)
+		}
+	}
+	listed, err := e.ListSchedules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 0 {
+		t.Fatalf("rejected create still persisted: %+v", listed)
+	}
+}
+
+func TestCreateScheduleConcurrentStaysAtCap(t *testing.T) {
+	e := newTestEngine(t)
+	e.Config().Swarm.ScheduleMaxActive = 2
+	const n = 10
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			_, err := e.CreateSchedule(ScheduleInput{
+				Kind:   store.ScheduleStandalone,
+				Prompt: scheduleWaitPrompt, EveryS: 60,
+				CreatedBy: store.ScheduleCreatedHuman,
+			})
+			errs <- err
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	var ok int
+	for err := range errs {
+		if err == nil {
+			ok++
+		}
+	}
+	active, err := e.Store().CountActive()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active > 2 || ok > 2 {
+		t.Fatalf("active=%d created=%d, cap leaked", active, ok)
+	}
+	if active != 2 || ok != 2 {
+		t.Fatalf("active=%d created=%d, want 2", active, ok)
+	}
+}
+
+func TestCancelScheduleConcurrentWritesOneEvent(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	sch := mustCreateWake(t, e, th.ID)
+	const n = 8
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			if err := e.CancelSchedule(sch.ID); err != nil {
+				t.Errorf("cancel: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+	if n := countThreadKind(t, e, th.ID, KindScheduleCancelled); n != 1 {
+		t.Fatalf("cancelled events=%d, CAS must write one chip", n)
 	}
 }
 

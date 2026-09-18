@@ -38,6 +38,10 @@ const (
 	ScheduleCreatedManager = "manager"
 )
 
+// ErrScheduleCap means an insert or resume would exceed the active ceiling.
+// Count and write share one transaction; a check-then-insert pair is a race.
+var ErrScheduleCap = errors.New("store: too many active schedules")
+
 // Schedule is a wall-clock wait: either a wake on an existing conversation
 // or a standalone job that mints a conversation each time it fires.
 type Schedule struct {
@@ -81,8 +85,7 @@ type ScheduleRun struct {
 	EndedAt    *time.Time `json:"ended_at,omitempty"`
 }
 
-// CreateSchedule inserts a schedule, filling in the id and timestamps.
-func (s *Store) CreateSchedule(row *Schedule) error {
+func prepareSchedule(row *Schedule) {
 	if row.ID == "" {
 		row.ID = NewID("sch_")
 	}
@@ -100,10 +103,42 @@ func (s *Store) CreateSchedule(row *Schedule) error {
 		u := row.LastRunAt.UTC()
 		row.LastRunAt = &u
 	}
-	if err := s.db.Create(row).Error; err != nil {
+}
+
+func insertSchedule(db *gorm.DB, row *Schedule) error {
+	prepareSchedule(row)
+	if err := db.Create(row).Error; err != nil {
 		return fmt.Errorf("store: create schedule: %w", err)
 	}
 	return nil
+}
+
+// CreateSchedule inserts a schedule, filling in the id and timestamps.
+func (s *Store) CreateSchedule(row *Schedule) error {
+	return insertSchedule(s.db, row)
+}
+
+// CreateScheduleUnderCap inserts an active row only if CountActive is
+// still below cap. The count and the insert share one transaction.
+func (s *Store) CreateScheduleUnderCap(row *Schedule, cap int) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		n, err := countActive(tx)
+		if err != nil {
+			return err
+		}
+		if n >= cap {
+			return ErrScheduleCap
+		}
+		return insertSchedule(tx, row)
+	})
+}
+
+func countActive(db *gorm.DB) (int, error) {
+	var n int64
+	if err := db.Model(&Schedule{}).Where("status = ?", ScheduleActive).Count(&n).Error; err != nil {
+		return 0, fmt.Errorf("store: count active schedules: %w", err)
+	}
+	return int(n), nil
 }
 
 // GetSchedule loads one schedule.
@@ -135,11 +170,7 @@ func (s *Store) ListDue(now time.Time) ([]Schedule, error) {
 // CountActive returns how many schedules are still armed. The ticker uses
 // this against the configured cap; paused and cancelled rows must not count.
 func (s *Store) CountActive() (int, error) {
-	var n int64
-	if err := s.db.Model(&Schedule{}).Where("status = ?", ScheduleActive).Count(&n).Error; err != nil {
-		return 0, fmt.Errorf("store: count active schedules: %w", err)
-	}
-	return int(n), nil
+	return countActive(s.db)
 }
 
 // CreateRun inserts a fire, filling in the id and timestamps.
@@ -222,6 +253,76 @@ func (s *Store) ListSchedules() ([]Schedule, error) {
 	err := s.db.Order("next_run_at asc, id asc").Find(&out).Error
 	if err != nil {
 		return nil, fmt.Errorf("store: list schedules: %w", err)
+	}
+	return out, nil
+}
+
+// CancelSchedule marks one wait cancelled if it is still active or paused.
+// Already-cancelled (or done) rows return (nil, nil) so the engine does
+// not write a second cancelled event. Missing ids are ErrNotFound.
+func (s *Store) CancelSchedule(id string) (*Schedule, error) {
+	now := time.Now().UTC()
+	res := s.db.Model(&Schedule{}).
+		Where("id = ? AND status IN ?", id, []string{ScheduleActive, SchedulePaused}).
+		Updates(map[string]any{
+			"status":     ScheduleCancelled,
+			"updated_at": now,
+		})
+	if res.Error != nil {
+		return nil, fmt.Errorf("store: cancel schedule: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		if _, err := s.GetSchedule(id); err != nil {
+			return nil, err
+		}
+		return nil, nil
+	}
+	return s.GetSchedule(id)
+}
+
+// ResumeScheduleUnderCap flips a paused row to active only if CountActive
+// is still below cap. Already-active is a no-op so a row does not count
+// against itself. Count and update share one transaction.
+func (s *Store) ResumeScheduleUnderCap(id string, cap int) (*Schedule, error) {
+	var out *Schedule
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		var row Schedule
+		if err := tx.First(&row, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return fmt.Errorf("store: get schedule: %w", err)
+		}
+		if row.Status == ScheduleActive {
+			out = &row
+			return nil
+		}
+		if row.Status != SchedulePaused {
+			return fmt.Errorf("store: schedule is not paused")
+		}
+		n, err := countActive(tx)
+		if err != nil {
+			return err
+		}
+		if n >= cap {
+			return ErrScheduleCap
+		}
+		now := time.Now().UTC()
+		// Same transaction as the count, and this process has one SQLite
+		// connection: the row we just saw paused cannot change under us.
+		if err := tx.Model(&Schedule{}).Where("id = ?", id).Updates(map[string]any{
+			"status":     ScheduleActive,
+			"updated_at": now,
+		}).Error; err != nil {
+			return fmt.Errorf("store: update schedule: %w", err)
+		}
+		row.Status = ScheduleActive
+		row.UpdatedAt = now
+		out = &row
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return out, nil
 }

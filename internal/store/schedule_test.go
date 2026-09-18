@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -527,6 +528,15 @@ func TestScheduleWritesFailWhenTheTableIsGone(t *testing.T) {
 	if err := s.UpdateSchedule("sch_x", map[string]any{"status": ScheduleCancelled}); err == nil {
 		t.Fatal("UpdateSchedule must fail without the table")
 	}
+	if err := s.CreateScheduleUnderCap(activeSchedule(), 1); err == nil {
+		t.Fatal("CreateScheduleUnderCap must fail without the table")
+	}
+	if _, err := s.CancelSchedule("sch_x"); err == nil {
+		t.Fatal("CancelSchedule must fail without the table")
+	}
+	if _, err := s.ResumeScheduleUnderCap("sch_x", 1); err == nil {
+		t.Fatal("ResumeScheduleUnderCap must fail without the table")
+	}
 
 	runs := openTestStore(t)
 	if err := runs.DB().Migrator().DropTable(&ScheduleRun{}); err != nil {
@@ -540,5 +550,229 @@ func TestScheduleWritesFailWhenTheTableIsGone(t *testing.T) {
 	}
 	if err := runs.FinishRun("srun_x", ScheduleRunError, "", true); err == nil {
 		t.Fatal("FinishRun must fail without the table")
+	}
+}
+
+func activeSchedule() *Schedule {
+	return &Schedule{
+		Kind: ScheduleStandalone, Title: "t", Prompt: "Continue the wait.",
+		EveryS: 60, NextRunAt: time.Now().UTC().Add(time.Minute),
+		CreatedBy: ScheduleCreatedHuman,
+	}
+}
+
+// Count and insert must share one transaction. Two round trips let two
+// callers both see room and both insert, which is how a cap of 1 becomes 2.
+func TestCreateScheduleUnderCapRejectsWhenFull(t *testing.T) {
+	s := openTestStore(t)
+	if err := s.CreateScheduleUnderCap(activeSchedule(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateScheduleUnderCap(activeSchedule(), 1); !errors.Is(err, ErrScheduleCap) {
+		t.Fatalf("err=%v", err)
+	}
+	n, err := s.CountActive()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("active=%d", n)
+	}
+}
+
+func TestCreateScheduleUnderCapIgnoresPausedRows(t *testing.T) {
+	s := openTestStore(t)
+	paused := activeSchedule()
+	paused.Status = SchedulePaused
+	if err := s.CreateSchedule(paused); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateScheduleUnderCap(activeSchedule(), 1); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.CountActive()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("active=%d", n)
+	}
+}
+
+func TestCreateScheduleUnderCapConcurrentStaysAtCap(t *testing.T) {
+	s := openTestStore(t)
+	const cap, n = 2, 12
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			errs <- s.CreateScheduleUnderCap(activeSchedule(), cap)
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	var ok, capped int
+	for err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrScheduleCap):
+			capped++
+		default:
+			t.Fatalf("unexpected: %v", err)
+		}
+	}
+	active, err := s.CountActive()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active != cap || ok != cap || capped != n-cap {
+		t.Fatalf("active=%d created=%d capped=%d", active, ok, capped)
+	}
+}
+
+// UPDATE … WHERE status IN (active,paused) is the cancel. A second call
+// must not claim the row or the origin thread gets two cancelled chips.
+func TestCancelScheduleCASNoopsWhenAlreadyCancelled(t *testing.T) {
+	s := openTestStore(t)
+	row := activeSchedule()
+	if err := s.CreateSchedule(row); err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.CancelSchedule(row.ID)
+	if err != nil || first == nil || first.Status != ScheduleCancelled {
+		t.Fatalf("first=%+v err=%v", first, err)
+	}
+	second, err := s.CancelSchedule(row.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second != nil {
+		t.Fatal("already cancelled must not return the row again")
+	}
+}
+
+func TestCancelScheduleCASUnknownIsNotFound(t *testing.T) {
+	s := openTestStore(t)
+	if _, err := s.CancelSchedule("sch_missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestCancelScheduleCASCancelsPaused(t *testing.T) {
+	s := openTestStore(t)
+	row := activeSchedule()
+	row.Status = SchedulePaused
+	if err := s.CreateSchedule(row); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.CancelSchedule(row.ID)
+	if err != nil || got == nil || got.Status != ScheduleCancelled {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+}
+
+func TestCancelScheduleCASConcurrentOnlyOneWins(t *testing.T) {
+	s := openTestStore(t)
+	row := activeSchedule()
+	if err := s.CreateSchedule(row); err != nil {
+		t.Fatal(err)
+	}
+	const n = 8
+	won := make(chan *Schedule, n)
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		go func() {
+			defer wg.Done()
+			got, err := s.CancelSchedule(row.ID)
+			if err != nil {
+				t.Errorf("%v", err)
+				return
+			}
+			if got != nil {
+				won <- got
+			}
+		}()
+	}
+	wg.Wait()
+	close(won)
+	winners := 0
+	for range won {
+		winners++
+	}
+	if winners != 1 {
+		t.Fatalf("winners=%d", winners)
+	}
+	got, err := s.GetSchedule(row.ID)
+	if err != nil || got.Status != ScheduleCancelled {
+		t.Fatalf("status=%v err=%v", got, err)
+	}
+}
+
+func TestResumeScheduleUnderCapRejectsWhenFull(t *testing.T) {
+	s := openTestStore(t)
+	paused := activeSchedule()
+	paused.Status = SchedulePaused
+	if err := s.CreateSchedule(paused); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.CreateScheduleUnderCap(activeSchedule(), 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ResumeScheduleUnderCap(paused.ID, 1); !errors.Is(err, ErrScheduleCap) {
+		t.Fatalf("err=%v", err)
+	}
+	got, err := s.GetSchedule(paused.ID)
+	if err != nil || got.Status != SchedulePaused {
+		t.Fatalf("status=%v err=%v", got, err)
+	}
+}
+
+func TestResumeScheduleUnderCapSucceedsWhenRoom(t *testing.T) {
+	s := openTestStore(t)
+	paused := activeSchedule()
+	paused.Status = SchedulePaused
+	if err := s.CreateSchedule(paused); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ResumeScheduleUnderCap(paused.ID, 1)
+	if err != nil || got == nil || got.Status != ScheduleActive {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+}
+
+func TestResumeScheduleUnderCapAlreadyActiveIsNoop(t *testing.T) {
+	s := openTestStore(t)
+	row := activeSchedule()
+	if err := s.CreateSchedule(row); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.ResumeScheduleUnderCap(row.ID, 1)
+	if err != nil || got == nil || got.ID != row.ID || got.Status != ScheduleActive {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+}
+
+func TestResumeScheduleUnderCapUnknownIsNotFound(t *testing.T) {
+	s := openTestStore(t)
+	if _, err := s.ResumeScheduleUnderCap("sch_missing", 1); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestResumeScheduleUnderCapRejectsCancelled(t *testing.T) {
+	s := openTestStore(t)
+	row := activeSchedule()
+	if err := s.CreateSchedule(row); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CancelSchedule(row.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ResumeScheduleUnderCap(row.ID, 1); err == nil {
+		t.Fatal("cancelled row is not paused")
 	}
 }

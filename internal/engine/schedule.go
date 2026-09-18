@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -60,6 +61,9 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 	default:
 		return nil, fmt.Errorf("engine: unknown schedule kind")
 	}
+	if in.Prompt == "" {
+		return nil, fmt.Errorf("engine: a schedule needs a prompt")
+	}
 
 	spec, err := parseScheduleSpec(in.DelayS, in.EveryS, in.Cron, e.cfg.Swarm.ScheduleMinInterval())
 	if err != nil {
@@ -84,14 +88,6 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 		if _, err := e.store.GetThread(in.OriginThreadID); err != nil {
 			return nil, err
 		}
-	}
-
-	n, err := e.store.CountActive()
-	if err != nil {
-		return nil, err
-	}
-	if n >= e.cfg.Swarm.MaxActiveSchedules() {
-		return nil, fmt.Errorf("engine: too many active schedules")
 	}
 
 	now := time.Now().UTC()
@@ -128,7 +124,10 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 		UntilAt:         in.UntilAt,
 		CreatedBy:       in.CreatedBy,
 	}
-	if err := e.store.CreateSchedule(row); err != nil {
+	if err := e.store.CreateScheduleUnderCap(row, e.cfg.Swarm.MaxActiveSchedules()); err != nil {
+		if errors.Is(err, store.ErrScheduleCap) {
+			return nil, fmt.Errorf("engine: too many active schedules")
+		}
 		return nil, err
 	}
 	e.recordScheduleArmed(row)
@@ -156,15 +155,12 @@ func (e *Engine) recordScheduleArmed(row *store.Schedule) {
 // CancelSchedule marks a row cancelled and records a chip on the origin
 // conversation, or on the wake target if origin was never set.
 func (e *Engine) CancelSchedule(id string) error {
-	row, err := e.store.GetSchedule(id)
+	row, err := e.store.CancelSchedule(id)
 	if err != nil {
 		return err
 	}
-	if row.Status == store.ScheduleCancelled {
+	if row == nil {
 		return nil
-	}
-	if err := e.store.UpdateSchedule(id, map[string]any{"status": store.ScheduleCancelled}); err != nil {
-		return err
 	}
 	e.recordScheduleCancelled(row)
 	return nil
@@ -209,13 +205,11 @@ func (e *Engine) PatchSchedule(id, status string) (*store.Schedule, error) {
 		return nil, fmt.Errorf("engine: schedule is not pauseable")
 	}
 	if status == store.ScheduleActive {
-		n, err := e.store.CountActive()
-		if err != nil {
-			return nil, err
-		}
-		if n >= e.cfg.Swarm.MaxActiveSchedules() {
+		got, err := e.store.ResumeScheduleUnderCap(id, e.cfg.Swarm.MaxActiveSchedules())
+		if errors.Is(err, store.ErrScheduleCap) {
 			return nil, fmt.Errorf("engine: too many active schedules")
 		}
+		return got, err
 	}
 	if err := e.store.UpdateSchedule(id, map[string]any{"status": status}); err != nil {
 		return nil, err
