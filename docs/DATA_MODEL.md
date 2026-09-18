@@ -300,6 +300,8 @@ engine enforces that exactly one is set.
 
 Deleting a conversation **cancels** wakes whose `thread_id` is that
 conversation. Standalone rows that only have `origin_thread_id` stay `active`.
+Deleting a project cancels those same targeted wakes **and** standalone rows
+pinned to that `project_id`.
 
 ## `schedule_runs` — one fire (or a skipped tick)
 
@@ -366,7 +368,9 @@ file; the agent `read`s it rather than opening it as a recorded skill.
   directory, which may be the user's own repository, so the workspace is left
   alone; pasted images still go because they never lived there.
 - **Delete a project** (`DELETE /api/projects/:id`): its conversations' messages,
-  turns, events, model calls, attachments and follow-ups are removed, then the
+  turns, events, model calls, attachments and follow-ups are removed. Wakes
+  whose `thread_id` is one of those conversations, and standalone schedules
+  pinned to that `project_id`, are cancelled in the same transaction. Then the
   project row, then the directories zwai created for it — its managed workspace
   and its memory. A `workdir` the user supplied is never touched.
 - **Nothing is pruned automatically.** Events are the only table that grows fast;

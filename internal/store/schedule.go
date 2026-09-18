@@ -91,6 +91,15 @@ func (s *Store) CreateSchedule(row *Schedule) error {
 	}
 	now := time.Now().UTC()
 	row.CreatedAt, row.UpdatedAt = now, now
+	row.NextRunAt = row.NextRunAt.UTC()
+	if row.UntilAt != nil {
+		u := row.UntilAt.UTC()
+		row.UntilAt = &u
+	}
+	if row.LastRunAt != nil {
+		u := row.LastRunAt.UTC()
+		row.LastRunAt = &u
+	}
 	if err := s.db.Create(row).Error; err != nil {
 		return fmt.Errorf("store: create schedule: %w", err)
 	}
@@ -200,6 +209,22 @@ func cancelWakesForThread(db *gorm.DB, threadID string) error {
 	now := time.Now().UTC()
 	return db.Model(&Schedule{}).
 		Where("thread_id = ? AND status IN ?", threadID, []string{ScheduleActive, SchedulePaused}).
+		Updates(map[string]any{
+			"status":     ScheduleCancelled,
+			"updated_at": now,
+		}).Error
+}
+
+// cancelSchedulesForProject marks standalone jobs pinned to this project
+// cancelled. Origin-only rows with an empty project_id stay: they are not
+// bound to this workspace.
+func cancelSchedulesForProject(db *gorm.DB, projectID string) error {
+	if projectID == "" {
+		return nil
+	}
+	now := time.Now().UTC()
+	return db.Model(&Schedule{}).
+		Where("project_id = ? AND status IN ?", projectID, []string{ScheduleActive, SchedulePaused}).
 		Updates(map[string]any{
 			"status":     ScheduleCancelled,
 			"updated_at": now,

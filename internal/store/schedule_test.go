@@ -84,6 +84,37 @@ func TestCreateScheduleRoundTripsAThreadWake(t *testing.T) {
 	}
 }
 
+// ListDue compares next_run_at against now.UTC(). A local wall time left on
+// the struct would make a due row look future (or the reverse) after a
+// timezone shift.
+func TestCreateScheduleStoresNextRunAtInUTC(t *testing.T) {
+	s := openTestStore(t)
+	loc := time.FixedZone("west", -7*3600)
+	when := time.Date(2026, 9, 18, 12, 0, 0, 0, loc)
+	until := when.Add(time.Hour)
+	last := when.Add(-time.Hour)
+	row := &Schedule{
+		Kind: ScheduleStandalone, Title: "t", Prompt: "Continue the wait.",
+		EveryS: 60, Status: ScheduleActive,
+		NextRunAt: when, UntilAt: &until, LastRunAt: &last, CreatedBy: ScheduleCreatedHuman,
+	}
+	if err := s.CreateSchedule(row); err != nil {
+		t.Fatal(err)
+	}
+	if row.NextRunAt.Location() != time.UTC {
+		t.Fatalf("next_run_at loc=%s", row.NextRunAt.Location())
+	}
+	if row.UntilAt == nil || row.UntilAt.Location() != time.UTC {
+		t.Fatalf("until_at loc=%v", row.UntilAt)
+	}
+	if row.LastRunAt == nil || row.LastRunAt.Location() != time.UTC {
+		t.Fatalf("last_run_at loc=%v", row.LastRunAt)
+	}
+	if !row.NextRunAt.Equal(when.UTC()) {
+		t.Fatalf("next_run_at=%s want %s", row.NextRunAt, when.UTC())
+	}
+}
+
 // The ticker asks for what is due now. A pause and a future next_run_at must
 // not sneak into that list, or a paused wait would keep firing.
 func TestListDueSchedulesSkipsPausedAndFuture(t *testing.T) {
@@ -200,6 +231,102 @@ func TestDeleteThreadCancelsTargetedWakes(t *testing.T) {
 	gotJob, _ = s.GetSchedule(standalone.ID)
 	if gotJob.Status != ScheduleActive {
 		t.Fatalf("empty cancel must not wipe origin-only jobs: %q", gotJob.Status)
+	}
+}
+
+// DeleteProject does not call DeleteThread. Wakes on those conversations and
+// standalone jobs pinned to the project must still stop, or ListDue keeps
+// firing into a workspace that no longer exists.
+func TestDeleteProjectCancelsTargetedWakesAndPinnedJobs(t *testing.T) {
+	s := openTestStore(t)
+	p := &Project{Name: "P"}
+	if err := s.CreateProject(p); err != nil {
+		t.Fatal(err)
+	}
+	th := &Thread{Title: "in", ProjectID: p.ID}
+	other := &Thread{Title: "out"}
+	for _, x := range []*Thread{th, other} {
+		if err := s.CreateThread(x); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Now().UTC()
+	dueAt := now.Add(-time.Minute)
+	wake := &Schedule{
+		Kind: ScheduleThread, ThreadID: th.ID, OriginThreadID: th.ID,
+		Title: "wake", Prompt: "Continue the wait.",
+		EveryS: 60, Status: ScheduleActive,
+		NextRunAt: dueAt, CreatedBy: ScheduleCreatedManager,
+	}
+	outside := &Schedule{
+		Kind: ScheduleThread, ThreadID: other.ID, OriginThreadID: other.ID,
+		Title: "other", Prompt: "Continue the wait.",
+		EveryS: 60, Status: ScheduleActive,
+		NextRunAt: dueAt, CreatedBy: ScheduleCreatedManager,
+	}
+	pinned := &Schedule{
+		Kind: ScheduleStandalone, ProjectID: p.ID, OriginThreadID: th.ID,
+		Title: "pinned", Prompt: "Continue the wait.",
+		EveryS: 60, Status: ScheduleActive,
+		NextRunAt: dueAt, CreatedBy: ScheduleCreatedHuman,
+	}
+	originOnly := &Schedule{
+		Kind: ScheduleStandalone, OriginThreadID: th.ID,
+		Title: "loose", Prompt: "Continue the wait.",
+		EveryS: 60, Status: ScheduleActive,
+		NextRunAt: dueAt, CreatedBy: ScheduleCreatedHuman,
+	}
+	for _, row := range []*Schedule{wake, outside, pinned, originOnly} {
+		if err := s.CreateSchedule(row); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := s.DeleteProject(p.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	due, err := s.ListDue(now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range due {
+		if row.ID == wake.ID || row.ID == pinned.ID {
+			t.Fatalf("deleted project's schedule still due: id=%s kind=%s thread=%s project=%s",
+				row.ID, row.Kind, row.ThreadID, row.ProjectID)
+		}
+	}
+
+	gotWake, err := s.GetSchedule(wake.ID)
+	if err != nil {
+		t.Fatalf("wake row must survive as cancelled, err=%v", err)
+	}
+	if gotWake.Status != ScheduleCancelled {
+		t.Fatalf("wake status=%q", gotWake.Status)
+	}
+	gotPinned, err := s.GetSchedule(pinned.ID)
+	if err != nil {
+		t.Fatalf("pinned job must survive as cancelled, err=%v", err)
+	}
+	if gotPinned.Status != ScheduleCancelled {
+		t.Fatalf("pinned job status=%q", gotPinned.Status)
+	}
+	gotLoose, err := s.GetSchedule(originOnly.ID)
+	if err != nil {
+		t.Fatalf("origin-only job must survive, err=%v", err)
+	}
+	if gotLoose.Status != ScheduleActive {
+		t.Fatalf("origin-only job status=%q, project delete must not cancel it", gotLoose.Status)
+	}
+	gotOutside, err := s.GetSchedule(outside.ID)
+	if err != nil {
+		t.Fatalf("outside wake must survive, err=%v", err)
+	}
+	if gotOutside.Status != ScheduleActive {
+		t.Fatalf("outside wake status=%q", gotOutside.Status)
+	}
+	if err := cancelSchedulesForProject(s.DB(), ""); err != nil {
+		t.Fatalf("empty project id: %v", err)
 	}
 }
 
