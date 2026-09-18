@@ -145,6 +145,10 @@ nothing to surface archives (`quiet`, unread cleared, `turn.quiet`; a
 standalone fire leaves Recents) while an omitted report with an answer
 is `findings` and stays in the sidebar, and why a crashed or cancelled
 scheduled turn marks the run `error` so `HasRunningRun` cannot stick.
+`TestCreateScheduleUsesFrozenCapWhenTickerIsLive` is why inbox create
+(and resume/patch, and a standalone claim's default provider) reads the
+same snapshot the ticker froze, not a later `e.cfg.Swarm` write;
+`ApplyLiveSwarmLimits` is what Settings uses to refresh it.
 `TestResumeCannotRestartClosesTheScheduleRun` and
 `TestResumeDropsASupersededScheduledRun` are why a leftover
 `ScheduleContinue` that resume cannot continue — empty user text, or

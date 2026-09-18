@@ -155,7 +155,7 @@ func (e *Engine) claimDueSchedule(row store.Schedule, now time.Time) *claimedFir
 func (e *Engine) claimStandalone(row store.Schedule, spec scheduleSpec, now time.Time) *claimedFire {
 	providerID := strings.TrimSpace(row.ProviderID)
 	if providerID == "" {
-		providerID = e.cfg.Models.Default
+		providerID = e.scheduleDefaultProvider()
 	}
 	if _, err := e.pool.ResolveModel(providerID, row.Model); err != nil {
 		e.log.Warn("standalone schedule has no usable model", "schedule", row.ID, "err", err)

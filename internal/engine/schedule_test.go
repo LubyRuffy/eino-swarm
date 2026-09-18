@@ -314,6 +314,84 @@ func TestCreateScheduleRejectsWhenActiveCapIsHit(t *testing.T) {
 	}
 }
 
+// Inbox create used to read e.cfg.Swarm while the ticker had already
+// frozen the cap. A PUT /settings Replace (or a test write) then let
+// the inbox arm more waits than fireDueSchedules would run.
+func TestCreateScheduleUsesFrozenCapWhenTickerIsLive(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Swarm.ScheduleMaxActive = 1
+	e.cfg.Swarm.ScheduleTickMS = 3_600_000
+	e.StartScheduler()
+	t.Cleanup(e.StopScheduler)
+	e.cfg.Swarm.ScheduleMaxActive = 32
+
+	th, _ := e.CreateThread("", "", "")
+	if _, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedHuman,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedHuman,
+	})
+	if err == nil || !strings.Contains(err.Error(), "too many active") {
+		t.Fatalf("err=%v, create must use the frozen cap", err)
+	}
+
+	e.cfg.Swarm.ScheduleMaxActive = 2
+	e.ApplyLiveSwarmLimits()
+	if _, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedHuman,
+	}); err != nil {
+		t.Fatalf("settings must refresh the frozen cap: %v", err)
+	}
+}
+
+func TestPatchScheduleResumeUsesFrozenCapWhenTickerIsLive(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Swarm.ScheduleMaxActive = 1
+	e.cfg.Swarm.ScheduleTickMS = 3_600_000
+	e.StartScheduler()
+	t.Cleanup(e.StopScheduler)
+	th, _ := e.CreateThread("", "", "")
+	first := mustCreateWake(t, e, th.ID)
+	if _, err := e.PatchSchedule(first.ID, store.SchedulePaused); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleStandalone, OriginThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedHuman,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	e.cfg.Swarm.ScheduleMaxActive = 32
+	_, err := e.PatchSchedule(first.ID, store.ScheduleActive)
+	if err == nil || !strings.Contains(err.Error(), "too many active") {
+		t.Fatalf("err=%v, resume must use the frozen cap", err)
+	}
+}
+
+func TestPatchScheduleFieldsUsesFrozenMinIntervalWhenTickerIsLive(t *testing.T) {
+	e := newTestEngine(t)
+	e.cfg.Swarm.ScheduleTickMS = 3_600_000
+	e.StartScheduler()
+	t.Cleanup(e.StopScheduler)
+	th, _ := e.CreateThread("", "", "")
+	sch := mustCreateWake(t, e, th.ID)
+	e.cfg.Swarm.ScheduleMinIntervalSeconds = 120
+	every := 60
+	if _, err := e.PatchScheduleFields(sch.ID, ScheduleFields{EveryS: &every}); err != nil {
+		t.Fatalf("patch must use the frozen min interval, not a later cfg write: %v", err)
+	}
+}
+
 func TestListSchedulesReturnsCreatedRows(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")

@@ -80,13 +80,15 @@ type Engine struct {
 	schedWG   sync.WaitGroup
 	fireMu    sync.Mutex
 
-	// Frozen while the ticker is live so fireDueSchedules never reads
-	// e.cfg.Swarm (Replace copies the whole struct and races the tick).
-	// PUT /settings refreshes the atomics after Replace via
+	// Frozen while the ticker is live so fireDueSchedules, inbox
+	// create/resume/patch, and schedule-claim default-provider reads
+	// never touch e.cfg (Replace copies the whole struct and races
+	// the tick). PUT /settings refreshes the atomics after Replace via
 	// ApplyLiveSwarmLimits. Tests without a ticker still read cfg.
-	schedCapsFrozen   atomic.Bool
-	schedMaxActive    atomic.Int32
-	schedMinIntervalS atomic.Int32
+	schedCapsFrozen      atomic.Bool
+	schedMaxActive       atomic.Int32
+	schedMinIntervalS    atomic.Int32
+	schedDefaultProvider atomic.Pointer[string]
 }
 
 // New builds an engine over an already-open store and provider pool.
@@ -116,9 +118,9 @@ func (e *Engine) Config() *config.Config { return e.cfg }
 // Store exposes the persistence layer for read-only endpoints and tracing.
 func (e *Engine) Store() *store.Store { return e.store }
 
-// snapshotScheduleCaps copies the ticker caps out of cfg. Callers that
-// already mutated cfg (StartScheduler, PUT /settings) do this so the
-// ticker only ever Load()s atomics.
+// snapshotScheduleCaps copies the ticker caps and default provider out
+// of cfg. Callers that already mutated cfg (StartScheduler, PUT
+// /settings) do this so live schedule paths only ever Load() atomics.
 func (e *Engine) snapshotScheduleCaps() {
 	max := e.cfg.Swarm.ScheduleMaxActive
 	if max <= 0 {
@@ -130,6 +132,8 @@ func (e *Engine) snapshotScheduleCaps() {
 		min = config.DefaultScheduleMinIntervalSeconds
 	}
 	e.schedMinIntervalS.Store(int32(min))
+	def := strings.TrimSpace(e.cfg.Models.Default)
+	e.schedDefaultProvider.Store(&def)
 }
 
 func (e *Engine) maxActiveSchedules() int {
@@ -160,6 +164,15 @@ func (e *Engine) scheduleMinInterval() time.Duration {
 		return config.DefaultScheduleMinIntervalSeconds * time.Second
 	}
 	return time.Duration(n) * time.Second
+}
+
+func (e *Engine) scheduleDefaultProvider() string {
+	if e.schedCapsFrozen.Load() {
+		if p := e.schedDefaultProvider.Load(); p != nil {
+			return *p
+		}
+	}
+	return e.cfg.Models.Default
 }
 
 // Providers exposes the model pool.

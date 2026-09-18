@@ -67,11 +67,21 @@ func TestApplyLiveSwarmLimitsRefreshesScheduleCaps(t *testing.T) {
 	}
 	e.cfg.Swarm.ScheduleMaxActive = 4
 	e.cfg.Swarm.ScheduleMinIntervalSeconds = 45
+	wantDefault := e.cfg.Models.Default
+	e.cfg.Models.Default = "nope"
 	e.ApplyLiveSwarmLimits()
 	if e.maxActiveSchedules() != 4 {
 		t.Fatalf("max=%d, settings must refresh the ticker snapshot", e.maxActiveSchedules())
 	}
 	if e.scheduleMinInterval() != 45*time.Second {
 		t.Fatalf("min=%s", e.scheduleMinInterval())
+	}
+	if e.scheduleDefaultProvider() != "nope" {
+		t.Fatalf("default=%q", e.scheduleDefaultProvider())
+	}
+	e.cfg.Models.Default = wantDefault
+	e.ApplyLiveSwarmLimits()
+	if e.scheduleDefaultProvider() != wantDefault {
+		t.Fatalf("default=%q", e.scheduleDefaultProvider())
 	}
 }

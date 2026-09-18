@@ -251,7 +251,10 @@ flowchart LR
    concurrently under `MaxConcurrent`, each with a watchdog timeout. The
    cap is a resizable gate, not a channel minted once: `PUT /settings`
    calls `ApplyLiveSwarmLimits` so queued workers on a live or parked
-   `/goal` registry see the new budget without a restart. If the
+   `/goal` registry see the new budget without a restart, and so the
+   schedule ticker's frozen caps (active waits, min interval, default
+   provider) match inbox create/resume/patch instead of racing
+   `config.Replace`. If the
    manager hits `swarm.manager_max_iterations`, the turn **pauses** (still
    running) and emits `max_iterations`. `POST /api/threads/:id/continue` with
    `continue: true` starts another slice of that size on the same transcript;

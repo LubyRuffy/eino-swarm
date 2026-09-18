@@ -174,6 +174,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **Inbox create and the schedule ticker share one frozen cap.**
+  `StartScheduler` already snapshotted `schedule_max_active` /
+  `schedule_min_interval_seconds` (and now the default provider) so a
+  `PUT /settings` `Replace` cannot race the tick. Create, resume, field
+  patch, and schedule tools used to read live `cfg.Swarm`, so a cfg write
+  without `ApplyLiveSwarmLimits` let the inbox arm more waits than the
+  ticker would run. Those paths now use the same helpers; Settings still
+  refreshes the snapshot.
+
 - **A leftover scheduled turn that cannot restart closes its run.** Resume used
   to `FinishTurn` a superseded leftover or an unresumable `ScheduleContinue`
   row and leave the bound fire `running`, so `HasRunningRun` never cleared

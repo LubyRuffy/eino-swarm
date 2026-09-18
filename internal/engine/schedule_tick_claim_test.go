@@ -208,6 +208,43 @@ func TestCancelledScheduleIsNotClaimedForAFire(t *testing.T) {
 	}
 }
 
+func TestClaimStandaloneUsesFrozenDefaultProviderWhenTickerIsLive(t *testing.T) {
+	e := newTestEngine(t)
+	clk := newScheduleClock()
+	e.now = clk.Now
+	e.cfg.Swarm.ScheduleTickMS = 3_600_000
+	e.StartScheduler()
+	t.Cleanup(e.StopScheduler)
+	sch, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleStandalone, Title: "job",
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedHuman,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := e.Store().GetSchedule(sch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := parseScheduleSpec(0, 60, "", e.scheduleMinInterval())
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.cfg.Models.Default = "nope"
+	c := e.claimStandalone(*row, spec, clk.Now())
+	if c == nil {
+		t.Fatal("claim must use the frozen default provider, not a later cfg write")
+	}
+	if err := e.Store().FinishRun(c.run.ID, store.ScheduleRunError, "test", false); err != nil {
+		t.Fatal(err)
+	}
+	e.ApplyLiveSwarmLimits()
+	if got := e.claimStandalone(*row, spec, clk.Now()); got != nil {
+		t.Fatal("settings must refresh the frozen default provider")
+	}
+}
+
 func TestStandaloneMintFailureFinishesTheClaim(t *testing.T) {
 	e := newTestEngine(t)
 	clk := newScheduleClock()

@@ -235,7 +235,7 @@ func (e *Engine) replaceThreadWake(threadID, id string, in ScheduleInput) (*stor
 	if row.Status != store.ScheduleActive && row.Status != store.SchedulePaused {
 		return nil, fmt.Errorf("engine: that wait is no longer active")
 	}
-	spec, err := parseScheduleSpec(in.DelayS, in.EveryS, in.Cron, e.cfg.Swarm.ScheduleMinInterval())
+	spec, err := parseScheduleSpec(in.DelayS, in.EveryS, in.Cron, e.scheduleMinInterval())
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +346,7 @@ func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, erro
 		return scheduleToolFailure("%s", err.Error()), nil
 	}
 	if a.NextInS != 0 {
-		if _, err := parseScheduleSpec(0, a.NextInS, "", e.cfg.Swarm.ScheduleMinInterval()); err != nil {
+		if _, err := parseScheduleSpec(0, a.NextInS, "", e.scheduleMinInterval()); err != nil {
 			return scheduleToolFailure("%s", err.Error()), nil
 		}
 	}

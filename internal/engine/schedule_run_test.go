@@ -227,6 +227,15 @@ func TestScheduleCapHelpersFallBackWhenUnset(t *testing.T) {
 	if e.scheduleMinInterval() != 45*time.Second {
 		t.Fatalf("min=%s", e.scheduleMinInterval())
 	}
+	wantDefault := e.Config().Models.Default
+	if e.scheduleDefaultProvider() != wantDefault {
+		t.Fatalf("default=%q", e.scheduleDefaultProvider())
+	}
+	e.Config().Models.Default = "nope"
+	if e.scheduleDefaultProvider() != "nope" {
+		t.Fatal("unfrozen default follows cfg")
+	}
+	e.Config().Models.Default = wantDefault
 
 	e.cfg.Swarm.ScheduleTickMS = 3_600_000
 	e.StartScheduler()
@@ -242,8 +251,16 @@ func TestScheduleCapHelpersFallBackWhenUnset(t *testing.T) {
 	e.snapshotScheduleCaps()
 	e.Config().Swarm.ScheduleMaxActive = 1
 	e.Config().Swarm.ScheduleMinIntervalSeconds = 90
+	e.Config().Models.Default = "nope"
 	if e.maxActiveSchedules() != 4 || e.scheduleMinInterval() != 45*time.Second {
 		t.Fatal("a live ticker must not follow unsynced cfg writes")
+	}
+	if e.scheduleDefaultProvider() != wantDefault {
+		t.Fatal("a live ticker must not follow unsynced default-provider writes")
+	}
+	e.schedDefaultProvider.Store(nil)
+	if e.scheduleDefaultProvider() != "nope" {
+		t.Fatal("frozen without a snapshot falls back to cfg")
 	}
 }
 

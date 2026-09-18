@@ -65,7 +65,7 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 		return nil, fmt.Errorf("engine: a schedule needs a prompt")
 	}
 
-	spec, err := parseScheduleSpec(in.DelayS, in.EveryS, in.Cron, e.cfg.Swarm.ScheduleMinInterval())
+	spec, err := parseScheduleSpec(in.DelayS, in.EveryS, in.Cron, e.scheduleMinInterval())
 	if err != nil {
 		return nil, err
 	}
@@ -115,7 +115,7 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 		UntilAt:         in.UntilAt,
 		CreatedBy:       in.CreatedBy,
 	}
-	if err := e.store.CreateScheduleUnderCap(row, e.cfg.Swarm.MaxActiveSchedules()); err != nil {
+	if err := e.store.CreateScheduleUnderCap(row, e.maxActiveSchedules()); err != nil {
 		if errors.Is(err, store.ErrScheduleCap) {
 			return nil, fmt.Errorf("engine: too many active schedules")
 		}
@@ -213,7 +213,7 @@ func (e *Engine) PatchSchedule(id, status string) (*store.Schedule, error) {
 		return nil, fmt.Errorf("engine: schedule is not pauseable")
 	}
 	if status == store.ScheduleActive {
-		got, err := e.store.ResumeScheduleUnderCap(id, e.cfg.Swarm.MaxActiveSchedules())
+		got, err := e.store.ResumeScheduleUnderCap(id, e.maxActiveSchedules())
 		if errors.Is(err, store.ErrScheduleCap) {
 			return nil, fmt.Errorf("engine: too many active schedules")
 		}
@@ -284,7 +284,7 @@ func (e *Engine) PatchScheduleFields(id string, p ScheduleFields) (*store.Schedu
 		if p.Cron != nil {
 			cron = strings.TrimSpace(*p.Cron)
 		}
-		spec, err := parseScheduleSpec(delay, every, cron, e.cfg.Swarm.ScheduleMinInterval())
+		spec, err := parseScheduleSpec(delay, every, cron, e.scheduleMinInterval())
 		if err != nil {
 			return nil, err
 		}
