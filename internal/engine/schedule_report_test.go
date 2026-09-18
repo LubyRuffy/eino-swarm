@@ -61,6 +61,9 @@ func TestEmptyReportArchivesAQuietTurn(t *testing.T) {
 }
 
 func TestOmittedReportWithAnswerIsFindings(t *testing.T) {
+	provider.SetMockScheduleSpawn(true)
+	t.Cleanup(func() { provider.SetMockScheduleSpawn(false) })
+
 	e := newTestEngine(t)
 	clk := newScheduleClock()
 	e.now = clk.Now
@@ -80,7 +83,7 @@ func TestOmittedReportWithAnswerIsFindings(t *testing.T) {
 	run := waitForScheduleRun(t, e, turns[0].ScheduleRunID)
 
 	if hasKind(t, e, th.ID, KindScheduleReport) {
-		t.Fatal("default mock must not call report_schedule")
+		t.Fatal("spawn mock must not call report_schedule")
 	}
 	gotTurn, err := e.Store().GetTurn(turns[0].ID)
 	if err != nil {
@@ -90,7 +93,7 @@ func TestOmittedReportWithAnswerIsFindings(t *testing.T) {
 		t.Fatal("an answer without a report is findings, not quiet")
 	}
 	if strings.TrimSpace(gotTurn.Final) == "" {
-		t.Fatal("default mock must persist an answer")
+		t.Fatal("spawn mock must persist an answer")
 	}
 	if run.Status != store.ScheduleRunFindings || !run.Unread {
 		t.Fatalf("run=%+v, omitted report with an answer is findings/unread", run)

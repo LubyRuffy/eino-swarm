@@ -154,8 +154,13 @@ same snapshot the ticker froze, not a later `e.cfg.Swarm` write;
 `ScheduleContinue` that resume cannot continue — empty user text, or
 superseded by a later unfinished row — closes that bound fire as
 `error` instead of leaving `running`.
-Tests opt into `provider.SetMockScheduleQuiet` / `SetMockScheduleSilent`;
-the default mock still spawns and does not sniff a scheduled turn.
+Tests opt into `provider.SetMockScheduleQuiet` / `SetMockScheduleSilent` /
+`SetMockScheduleFindings`. The default mock sniffs a scheduled check
+(`This turn is a scheduled check.`) and calls `report_schedule` with
+generic findings (`ZWAI_MOCK_SCHEDULE_QUIET=1` empties them).
+`SetMockScheduleSpawn` restores the old fan-out so omitted-report-with-answer
+stays testable. `ZWAI_MOCK_SCHEDULE_WAKE=1` is off unless a test arms a
+min-interval wait on the first manager step.
 `internal/server/schedules_test.go` is why the inbox HTTP API creates
 human waits, lists `{schedules, unread}`, pauses/cancels, run-now on
 idle starts a `ScheduleContinue` turn, run-now while the conversation is

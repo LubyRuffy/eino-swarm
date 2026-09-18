@@ -212,6 +212,9 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 		}
 		a.curTool = blk
 		a.blocks = append(a.blocks, blk)
+		if note := scheduleNotice(name, toolArgsOf(n.Text)); note != "" {
+			m.notice = note
+		}
 	case swarm.NotifyToolDelta:
 		if blk := a.toolBlock(n.ToolCallID); blk != nil {
 			view := viewToolResult(blk.toolName, n.Text)

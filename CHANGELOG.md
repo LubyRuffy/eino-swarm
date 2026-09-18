@@ -13,6 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **TUI schedule notices; mock scheduled turns.** The terminal status line
+  shows a one-line armed / cancelled / findings notice (quiet reports stay
+  silent; no inbox). `--mock` auto-calls `report_schedule` on a scheduled
+  check (`ZWAI_MOCK_SCHEDULE_QUIET=1` empties findings;
+  `SetMockScheduleSpawn` restores fan-out; `ZWAI_MOCK_SCHEDULE_WAKE=1` arms
+  a min-interval wait).
+
 - **Scheduled inbox, wake banner, and Swarm caps.** The sidebar **Scheduled**
   control (`data-testid="schedule-inbox"`, `aria-haspopup="dialog"`) opens a
   dialog: list waits (pause/resume/cancel/Run now), create a standalone job
