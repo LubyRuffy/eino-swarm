@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/remote"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/terminal"
 	"github.com/gin-gonic/gin"
@@ -53,6 +54,7 @@ type Server struct {
 	log       *slog.Logger
 	router    *gin.Engine
 	terminals *terminal.Hub
+	remote    *remote.Host
 }
 
 // New builds the server and its routes.
@@ -136,6 +138,12 @@ func New(opts Options) (*Server, error) {
 
 		api.GET("/trace/:turn", s.getTrace)
 
+		api.GET("/remote/status", s.getRemoteStatus)
+		api.PUT("/remote/token", s.putRemoteToken)
+		api.POST("/remote/offer", s.postRemoteOffer)
+		api.GET("/remote/bindings", s.listRemoteBindings)
+		api.POST("/remote/bindings/:id/revoke", s.revokeRemoteBinding)
+
 		// /schedules/runs/:rid/read before /schedules/:id so gin does
 		// not treat "runs" as an id.
 		api.POST("/schedules/runs/:rid/read", s.markScheduleRunRead)
@@ -160,6 +168,10 @@ const maxUploadMemory = 16 << 20
 
 // Handler returns the http.Handler to serve.
 func (s *Server) Handler() http.Handler { return s.router }
+
+// SetRemote attaches the pairlink host so the desktop can mint a QR. Nil is fine:
+// the endpoints then report remote as offline.
+func (s *Server) SetRemote(h *remote.Host) { s.remote = h }
 
 // accessLog logs one line per request at debug level, skipping the event
 // stream because those requests last as long as the tab is open and would

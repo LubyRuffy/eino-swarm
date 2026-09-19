@@ -91,6 +91,9 @@
     --content-max: 48rem;
     --content-gutter: 2rem;
     --ui-font-size: 16px;
+
+    /* Pairing QR plate. A camera needs a white field even in dark chrome. */
+    --qr-plate: 0 0% 100%;
   }
 
   .dark {
@@ -148,6 +151,8 @@
     --syntax-flag: 211 50% 70%;
     --syntax-variable: 40 75% 62%;
     --syntax-prompt: 252 50% 75%;
+
+    --qr-plate: 0 0% 100%;
   }
 
   * {

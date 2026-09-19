@@ -13,6 +13,7 @@ import {
   isProjectExpanded,
   readProjectExpanded,
   readSectionExpanded,
+  runningProjectIds,
   writeProjectExpanded,
   writeSectionExpanded,
   type SectionId,
@@ -86,17 +87,22 @@ export function Sidebar({
     writeSectionExpanded(next)
   }
   const activeProjectId = threads.find((th) => th.id === activeId)?.project_id
+  const busyProjects = useMemo(
+    () => runningProjectIds(threads, runningId),
+    [threads, runningId],
+  )
   const openByProject = useMemo(() => {
     const next: Record<string, boolean> = {}
     for (const project of projects) {
       next[project.id] = isProjectExpanded(project.id, {
         activeProjectId,
         selectedId: selectedProjectId,
+        runningProjectIds: busyProjects,
         overrides: expanded,
       })
     }
     return next
-  }, [projects, activeProjectId, selectedProjectId, expanded])
+  }, [projects, activeProjectId, selectedProjectId, expanded, busyProjects])
   const askDelete = (id: string) => {
     const hit = threads.find((th) => th.id === id)
     if (hit) setDoomed(hit)

@@ -313,6 +313,36 @@ describe("Sidebar pin and folders", () => {
     expect(screen.getByTestId("row-label").nextElementSibling).toBeNull()
   })
 
+  it("keeps a running conversation visible when another project is open", () => {
+    const openProject = {
+      id: "pj_open",
+      name: "Open",
+      system_prompt: "",
+      workdir: "",
+      resolved_workdir: "/data/projects/pj_open/workspace",
+      memory_enabled: true,
+      memory_dir: "/data/projects/pj_open/memory",
+      created_at: "",
+      updated_at: "",
+    }
+    const busyProject = { ...openProject, id: "pj_busy", name: "Busy" }
+    render(
+      <Sidebar
+        {...noop}
+        threads={[
+          thread("th_idle", "Idle topic", { project_id: "pj_open" }),
+          thread("th_busy", "Busy topic", { project_id: "pj_busy", running: true }),
+        ]}
+        activeId="th_idle"
+        projects={[openProject, busyProject]}
+      />,
+    )
+    const busy = screen.getByText("Busy topic").closest("[data-testid=thread-row]")
+    expect(busy).toBeInTheDocument()
+    expect(busy?.querySelector("[aria-label]")).toHaveAttribute("aria-label", "running")
+    expect(screen.getByText("Idle topic")).toBeInTheDocument()
+  })
+
   it("does not offer pin on a Recents conversation", () => {
     render(<Sidebar threads={[thread("th_1", "Loose")]} {...noop} />)
     fireEvent.keyDown(screen.getByRole("button", { name: "More" }), {

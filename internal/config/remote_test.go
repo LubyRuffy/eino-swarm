@@ -1,0 +1,140 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestRemoteDefaultsAndTokenStayOffYAML(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote.Enabled {
+		t.Fatal("remote must start off")
+	}
+	if cfg.Remote.HubURL != "" {
+		t.Fatal("hub url must be blank until configured")
+	}
+	if cfg.Remote.ThreadLimit != DefaultRemoteThreadLimit {
+		t.Fatalf("thread limit %d", cfg.Remote.ThreadLimit)
+	}
+	if _, err := os.Stat(cfg.RemoteDir()); err != nil {
+		t.Fatal(err)
+	}
+	secret := "host-token-secret"
+	if err := cfg.WriteHostToken(secret); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(cfg.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), secret) {
+		t.Fatal("token leaked into config.yaml")
+	}
+	got, err := cfg.HostToken()
+	if err != nil || got != secret {
+		t.Fatalf("token %q %v", got, err)
+	}
+	if !cfg.HasHostToken() {
+		t.Fatal("expected token")
+	}
+	if err := cfg.WriteHostToken(""); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.HasHostToken() {
+		t.Fatal("cleared token still present")
+	}
+}
+
+func TestRemoteIdentityRoundTrip(t *testing.T) {
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	priv := make([]byte, 32)
+	for i := range priv {
+		priv[i] = byte(i + 1)
+	}
+	if err := cfg.WriteRemoteIdentity(priv); err != nil {
+		t.Fatal(err)
+	}
+	got, err := cfg.RemoteIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 32 || got[0] != 1 {
+		t.Fatalf("identity %x", got)
+	}
+	info, err := os.Stat(filepath.Join(cfg.RemoteDir(), remoteIdentityFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("perm %v", info.Mode().Perm())
+	}
+}
+
+func TestRemoteNormalizeClampsAndTrims(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	dir := t.TempDir()
+	raw := []byte("remote:\n  enabled: true\n  hub_url: \"  http://127.0.0.1:9  \"\n  thread_limit: -1\n  summary_chars: 0\n  open_turns: -2\n")
+	if err := os.WriteFile(filepath.Join(dir, FileName), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Remote.Enabled || cfg.Remote.HubURL != "http://127.0.0.1:9" {
+		t.Fatalf("%+v", cfg.Remote)
+	}
+	if cfg.Remote.ThreadLimit != DefaultRemoteThreadLimit || cfg.Remote.SummaryChars != DefaultRemoteSummaryChars || cfg.Remote.OpenTurns != DefaultRemoteOpenTurns {
+		t.Fatalf("clamped %+v", cfg.Remote)
+	}
+}
+
+func TestHostTokenDirectoryIsAnError(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := cfg.remoteTokenPath()
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cfg.HostToken(); err == nil {
+		t.Fatal("expected error")
+	}
+	if cfg.HasHostToken() {
+		t.Fatal("directory is not a token")
+	}
+}
+
+func TestRemoteIdentityReadError(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(cfg.remoteIdentityPath(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := cfg.RemoteIdentity(); err == nil {
+		t.Fatal("expected error")
+	}
+}

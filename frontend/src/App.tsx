@@ -496,6 +496,7 @@ function AppSidebar({
   const threads = useApp((s) => s.threads)
   const activeId = useApp((s) => s.activeId)
   const running = useApp((s) => s.status.running)
+  const overlayRunningId = threads.find((t) => t.running && t.id !== activeId)?.id
   const openThread = useApp((s) => s.openThread)
   const renameThread = useApp((s) => s.renameThread)
   const deleteThread = useApp((s) => s.deleteThread)
@@ -509,7 +510,7 @@ function AppSidebar({
     <Sidebar
       threads={threads}
       activeId={activeId}
-      runningId={running ? activeId : undefined}
+      runningId={overlayRunningId ?? (running ? activeId : undefined)}
       onNew={onNew}
       onOpen={(id) => void openThread(id)}
       onRename={(id, title) => void renameThread(id, title)}

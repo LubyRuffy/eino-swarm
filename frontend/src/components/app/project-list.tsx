@@ -12,6 +12,7 @@ import {
 import { SidebarSection } from "@/components/app/sidebar-section"
 import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots"
 import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
+import { StatusDot } from "@/components/app/transcript"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -168,6 +169,7 @@ function ProjectRow({
   onPinThread: (id: string, pinned: boolean) => void
 }) {
   const t = useT()
+  const busy = threads.some((thread) => thread.running || thread.id === runningId)
   return (
     <div className="mb-0.5" data-testid="project-wrap" data-id={project.id}>
       <div
@@ -198,12 +200,19 @@ function ProjectRow({
                 aria-hidden="true"
               />
             ) : (
-              <Folder
-                data-testid="project-folder"
-                data-open="false"
-                className="size-4 shrink-0"
-                aria-hidden="true"
-              />
+              <>
+                <Folder
+                  data-testid="project-folder"
+                  data-open="false"
+                  className="size-4 shrink-0"
+                  aria-hidden="true"
+                />
+                {busy ? (
+                  <span className="absolute right-0 top-0">
+                    <StatusDot status="running" />
+                  </span>
+                ) : null}
+              </>
             )}
           </SidebarKindSlot>
           <span data-testid="row-label" className="truncate">

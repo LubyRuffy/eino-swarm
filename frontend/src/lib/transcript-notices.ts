@@ -70,15 +70,34 @@ export function modelRetryNotice(_text?: string): string {
   return "Retrying after a model error."
 }
 
-/** Auto-continue budget, or a human stop. JSON is for Trace, not this row. */
+/** Auto-continue budget, or a human stop. JSON is for Trace, not this row.
+ *  The resume sentence stays on this line: a /goal session folds the rest. */
 export function goalCappedNotice(text?: string): string {
   try {
     const body = JSON.parse(text ?? "") as { reason?: string }
-    if (body.reason === "interrupted") return "Standing objective paused."
+    if (body.reason === "interrupted") {
+      return "Standing objective paused. Press Start on the goal to keep going."
+    }
   } catch {
     /* cap payload is {auto_turns,cap}; ignore junk */
   }
-  return "Stopped auto-continuing: the standing objective is still open."
+  return "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going."
+}
+
+/** No-progress hold. The event may still carry the older protocol line. */
+export function goalIdleNotice(_text?: string): string {
+  return "Stopped auto-continuing: the last continuation made no progress. Press Start on the goal to keep going."
+}
+
+/** Lifecycle notices that must stay outside a folded /goal session. A cap
+ *  or idle hold used to vanish behind Worked-for, so the pause looked like a crash. */
+export function isGoalHoldNotice(text?: string): boolean {
+  const s = (text ?? "").trim()
+  return (
+    s.startsWith("Stopped auto-continuing:") ||
+    s.startsWith("Standing objective paused.") ||
+    s.startsWith("Standing objective blocked:")
+  )
 }
 
 /** A forced /goal session end. The JSON payload is for Trace, not a chat row. */

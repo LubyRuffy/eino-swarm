@@ -19,7 +19,7 @@ flowchart LR
     REST[REST + upload + download]
     SSE[SSE per conversation, seq replay]
     PTYWS[WebSocket PTY /terminal]
-    Static[embed frontend/dist + SPA fallback]
+    Static[frontend.Load: disk dist or embed]
   end
   subgraph engine [internal/engine]
     RT[runtime per conversation<br/>turn / steer / preempt / interrupt / resume]
@@ -55,6 +55,29 @@ flowchart LR
   Review --> Bus
 ```
 
+## Phone remote (pairlink)
+
+The PC stays the system of record. A phone never hits gin `/api`. Binding is a
+QR; data starts on the hub (DERP) and may upgrade to UDP. The hub sees
+fingerprints and ciphertext length, not projects or events.
+
+```mermaid
+flowchart TB
+  QR["PC Settings → Phone QR"] --> Scan["Phone camera"]
+  Scan --> Bind["Hub writes binding"]
+  Bind --> Relay["Hub WebSocket ciphertext"]
+  Relay --> Disco["disco endpoints"]
+  Disco --> Punch["UDP punch"]
+  Punch -->|ok| Direct["path=direct"]
+  Punch -->|blocked| Stay["path=relay still works"]
+  Direct --> RPC["slim list/send/steer"]
+  Stay --> RPC
+  RPC --> Engine["local engine on the PC"]
+```
+
+Path switches do not mint new session keys. `zwai trace` still keys off a turn
+id; remote replies include pairlink `session_id` and `path`.
+
 ## Modules
 
 | package | responsibility |
@@ -68,12 +91,14 @@ flowchart LR
 | `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a pending thread wake (waiting is the next turn), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from the event log (skipped when the manager already wrote), and resolves an in-app terminal's working directory from the conversation or project the client named. A clock + ticker (`StartScheduler`) fires due waits (`schedule_fired`) or skips a busy target (`schedule_skipped`) without bursting missed ticks; event kinds `schedule` / `schedule_fired` / `schedule_skipped` / `schedule_report` / `schedule_cancelled` are the wire contract. |
 | `internal/server` | gin: REST, SSE, upload/download, trace, PTY terminals, embedded assets. See [docs/API.md](docs/API.md). |
 | `internal/terminal` | PTY sessions for the in-app shell. The HTTP layer names a conversation or a project; this package never takes a client-supplied path. |
-| `internal/app` | wiring shared by both shells, plus listen/serve/shutdown, `openURL` and `revealPath`. `App.New` starts the schedule ticker (`Engine.StartScheduler`); `Shutdown` stops it. |
+| `internal/app` | wiring shared by both shells, plus listen/serve/shutdown, `openURL` and `revealPath`. `App.New` starts the schedule ticker (`Engine.StartScheduler`) and the pairlink remote host; `Shutdown` stops both. |
+| `internal/remote` | slim phone RPC over pairlink: QR offers, sealed JSON (`list`/`more`/`open`/`start`/`send`/`steer`/`stop`/`answer`), default 5 threads, truncated text. Does not expose loopback `/api` to the internet. |
+| `mobile/` | Capacitor iOS (`ios/`, Swift Package Manager) and Android (`android/`) apps plus the web shell. Camera scan of `pairlink:v1:…` is the product path; paste is the same URI. WebSocket relay only (UDP hole-punch lives in the Go client). Hub URL is typed on the PC, never compiled into the app. |
 | `internal/desktop` | wails3 single window pointed at the local server URL. Hidden title bar (no NSToolbar); traffic lights are centred in the 48px HTML header and the front end pads to the zoom button's measured right edge. The top 48px drags natively. A title-bar double-click is a front-end `wails:drag:doubleclick` — Wails will not zoom on the second mousedown itself, because that races the drag. The Dock / taskbar mark is an embedded PNG, inset to Apple's 824/1024 icon grid, rounded to a macOS squircle at runtime, and handed to Wails as `application.Options.Icon`, so `go run` on macOS does not keep the generic Unix-exec glyph, a square canvas, or a tile larger than a bundled `.app`. Quit cancels the event stream so the window is not frozen waiting for it. |
 | `internal/slash` | shared composer-command parse for a **whole-line** send: leading `/`, fullwidth `／`, or IME punctuation `、`; ASCII identifier name, rest is the argument. Used by the engine and the TUI so a glued CJK `/goal` cannot become a user task. The web composer also opens the same catalog on an **inline** `/` token (after existing text); that menu lives in `frontend/src/lib/slash.ts`. |
 | `internal/tui` | terminal renderer for `zwai tui`, on the same swarm, config, manager prompt and workspace tools as the app. No `--task` opens a composer and keeps the session; `--task` is the one-shot reproduction path. `--goal` / `--plan` without `--task` start immediately and still keep the composer after that run ends. `/` opens a Codex-style command popup (`/goal`, `/plan`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; aliases stay hidden until typed). `/goal <objective>` starts that text as the next turn. `/plan` unmounts write/edit/exec and similar and writes `$ZWAI_HOME/plans/tui/PLAN.md`. `/implement` accepts the plan. `ask_user` is a blocking overlay (digits pick; typing is Other); piped stdin fails the tool instead of hanging. Enter on `/model` or `/reason` opens a picker. The idle composer parks the real terminal cursor at the insert point so IME preedit is not drawn at column 0 (bubbletea v1 homes the hardware cursor after each frame). A `schedule_wake` / `cancel_schedule` / findings `report_schedule` is a one-line status notice; quiet reports and skips stay off that line. There is no inbox. |
 | `cmd/zwai` | subcommand table: `desktop`, `web`, `tui`, `trace`, `config`. |
-| `frontend/` | React + TypeScript + Tailwind + shadcn/ui, embedded via `frontend/embed.go`. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.font_size` / `ui.content_width` the same way. The title-bar width control (and ⌘K) flips `content_width` between the reading column and a fill that sits against the sidebars. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, Recents for conversations with no project, and **Scheduled** (a dialog trigger with unread in the accessible name, not a fold; the inbox lists, pauses, runs, creates, and opens findings; `skipped_busy` alerts inside the dialog). Schedule state lives in `frontend/src/store/app-schedule.ts` so `App.tsx` does not re-render for the inbox. An active thread wake on the open conversation is a composer banner next to `/goal`. A project folder or Recents shows the five conversations active in the last seven days; the rest sit behind Show more. A project folder icon is the fold control (open vs closed directory). A running conversation's progress occupies that same column. Reorder is a title drag past 8px, with no grip glyph. Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). The title-bar terminal (⌘J) is a bottom PTY; each click starts a new session whose working directory is the open conversation's workspace (the project's directory when it has one). |
+| `frontend/` | React + TypeScript + Tailwind + shadcn/ui. `go:embed` in `frontend/embed.go` is the shipped binary; from a checkout `frontend.Load` rebuilds `dist/` when the sources changed (`//go:generate go run generate.go`, same path as `make frontend`) and serves that directory, because embed is a compile-time snapshot and a clone only has `dist/.gitkeep`. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.font_size` / `ui.content_width` the same way. The title-bar width control (and ⌘K) flips `content_width` between the reading column and a fill that sits against the sidebars. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, Recents for conversations with no project, and **Scheduled** (a dialog trigger with unread in the accessible name, not a fold; the inbox lists, pauses, runs, creates, and opens findings; `skipped_busy` alerts inside the dialog). Schedule state lives in `frontend/src/store/app-schedule.ts` so `App.tsx` does not re-render for the inbox. An active thread wake on the open conversation is a composer banner next to `/goal`. A project folder or Recents shows the five conversations active in the last seven days; the rest sit behind Show more. A project folder icon is the fold control (open vs closed directory). A running conversation's progress occupies that same column. A folder that contains a running conversation stays open like the active one, so the mark is visible without clicking in; an explicitly collapsed folder keeps a progress mark on the directory glyph. Reorder is a title drag past 8px, with no grip glyph. Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). The title-bar terminal (⌘J) is a bottom PTY; each click starts a new session whose working directory is the open conversation's workspace (the project's directory when it has one). |
 
 ## A turn, end to end
 
@@ -401,8 +426,11 @@ an armed wait or findings report plus empty `done` keeps the chip), pairing a to
 order). A `tool_delta` fills that pending row without clearing `pending`;
 `collapseLiveEvents` keys those snapshots by call id so two parallel `exec`
 calls do not overwrite each other. Carriage return in the expanded body is
-overwrite, the way a terminal treats `\r`. The pending `exec` row starts open
-and its output box follows the tail until the reader wheels up.
+overwrite, the way a terminal treats `\r`. An `exec` / `python_runner` row
+stays collapsed — stdout is a dump, and opening it used to stick after the
+command returned. The latest line rides the summary while it runs; open the
+row to watch the tail (wheel-up unpins). Other pending tool rows still start
+open and fold when the result lands, the way a finished thought does.
 A turn that ends (`done` / `error`, including a user interrupt) or an
 agent that `finished` closes any tool still `pending`: interrupt cancels
 in-flight calls without a `tool_result`, and leaving them pending keeps the
@@ -425,7 +453,10 @@ so a half-typed marker does not flash as punctuation. A fenced `chart` block
 whose body is a comparison (bar, line, area, pie JSON) paints as a plot
 with a Table tab for the same rows;
 an unclosed or truncated fence is a placeholder, and a finished invalid body
-stays code. Completed answers are
+stays code. The markdown `pre` renderer is a stable module-level component
+so a closed chart is not remounted (and Recharts does not flash empty) when
+later tokens arrive; it redraws only if the spec or the box size changes.
+Completed answers are
 memoised so a later token does not re-parse the rest of the conversation.
 **Settings is a full-page sheet, not a modal.** Opening it must not re-render
 the transcript or run Radix `hideOthers` across it — a long conversation made
@@ -513,7 +544,8 @@ request's uploads first instead of scavenging leftovers already in `uploads/`.
 Tool rows are not a JSON dump: `frontend/src/lib/tool-view.ts` picks the primary
 argument (command, query, path, …) for the summary, and parses `exec` /
 `web_search` / `python_runner` results into stdout, hits, or a failed flag.
-An `exec` row stays one truncated highlighted line until it is opened;
+An `exec` row stays one truncated highlighted line until it is opened
+(including while it is still running — stdout is not the default view);
 the expanded body then wraps the full command (`frontend/src/lib/shell-highlight.ts`)
 so a long invocation is readable, with stdout underneath.
 A `read` of a source file uses the same token colours, chosen from the
@@ -537,6 +569,7 @@ the line overflows, truncation once it is idle.
 $ZWAI_HOME (default ~/.zwai-swarm)
 ├── config.yaml            0600, holds the API key
 ├── zwai.db                everything else
+├── remote/                Host Token + X25519 identity (0600); not in yaml
 ├── workspaces/<thread>/   one per standalone conversation; uploads/ inside
 ├── plans/<thread>/PLAN.md `/plan` draft; not in the workspace
 └── projects/<project>/

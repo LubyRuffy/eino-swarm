@@ -93,7 +93,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   tool-round slice keeps the same turn going. In-flight sub-agents survive
   a pursuing turn that ends while they are still running. A continuation
   that makes no tool progress stops auto-continue until you send a message
-  or hit **Start**. If it hits an
+  or hit **Start**. Hitting the auto-continue budget (or a stop) pauses
+  the same way — the banner says this is not an error, and **Start**
+  keeps going. If it hits an
   obstacle it cannot pass, it calls
   `block_goal` and stops instead of retrying forever — a crashed turn that
   is not a recoverable model error does the same, and the banner shows the
@@ -127,7 +129,8 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
   (finished ones are not re-parsed on every token), a `chart` fence becomes a
-  plot when the JSON is a comparison, and typing in the composer
+  plot when the JSON is a comparison and does not flicker while later tokens
+  arrive, and typing in the composer
   does not rebuild the conversation.
 - **Steering, not restarting.** Enter while a turn is running **queues** a
   follow-up for after this one finishes (refresh-safe), except the live turn's
@@ -168,9 +171,11 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **Real tools.** File read/write/edit, `ls`/`tree`/`glob`/`grep`, shell `exec`,
   web search and fetch, from [eino-tools](https://github.com/LubyRuffy/eino-tools).
   The transcript shows the command or query, not the JSON envelope; a failed
-  `exec` is a red error, not a grey dump. A running `exec` opens and streams
-  stdout/stderr as they arrive (a `\r` overwrites the current line the way a
-  terminal does; the output box follows the tail, wheel-up unpins). Opening an
+  `exec` is a red error, not a grey dump. A running `exec` stays one line
+  (the latest stdout/stderr); open the row to watch the stream (a `\r`
+  overwrites the current line the way a terminal does; the output box
+  follows the tail, wheel-up unpins). The body does not stay open after
+  the command returns unless you opened it. Opening an
   `exec` row wraps the full
   command with shell highlighting instead of leaving it cut off. Opening a
   `read` paints the file from its suffix (Go, TypeScript, Python, …) instead
@@ -200,11 +205,11 @@ Tools; Linux: `webkit2gtk` dev packages).
 git clone https://github.com/LubyRuffy/eino-swarm
 cd eino-swarm
 
-# builds frontend/dist if needed, then opens the native window
-make run
+# first run builds frontend/dist (needs Node), then opens the native window
+go run ./cmd/zwai desktop
 
 # or the same app in your browser
-make web
+go run ./cmd/zwai web
 ```
 
 First launch writes `~/.zwai-swarm/config.yaml` and shows a setup banner until a
@@ -242,6 +247,23 @@ go run ./cmd/zwai web --mock
 `--mock` runs a scripted offline provider that spawns two sub-agents, calls tools
 and writes a file into the workspace. No network, no key — it is what the
 end-to-end tests run on and the fastest way to see the UI work.
+
+### Scan a phone to this PC
+
+1. In the hub console (aigateway **设备连接**, or `pairlinkd`) mint a **Host Token**.
+   It is not a Gateway Key.
+2. zwai **Settings → Phone**: turn pairing on, paste the hub URL, store the token.
+3. **Show pairing QR**. The plate is large and high-contrast. The same URI can
+   be pasted if the camera is missing.
+4. On the phone, open the **zwai** iOS or Android app (`mobile/ios`,
+   `mobile/android`). **Scan QR** is the product path. After bind, the phone
+   lists projects and the latest 5 threads, shows in-progress work, and can
+   start / follow-up / stop / answer. Full event logs, files, PTY and
+   Settings stay on the PC. `make mobile-ios` / `make mobile-android` open
+   Xcode or Android Studio after copying the web bundle.
+
+Traffic starts on the hub as ciphertext and upgrades to UDP when punching
+works. Conversations never enter the hub database.
 
 ## Using it
 
@@ -339,7 +361,9 @@ The sidebar lists each project's conversations under its name. A folder
 (and Recents) shows the five conversations active in the last seven days;
 **Show more** reveals the rest, **Show less** folds them again. Click the
 folder to collapse it. The open conversation is marked; the folder is not.
-Click **Pinned**, **Projects**, or **Recents** to fold
+A conversation that is mid-turn keeps a progress mark in that same column
+even if you are looking at another one; a collapsed folder that still has
+a live turn keeps the mark on the directory. Click **Pinned**, **Projects**, or **Recents** to fold
 that section. Pin a topic from the row menu to keep it in **Pinned**
 at the top. Conversations that belong to no project sit in **Recents**;
 **New conversation** lands there. Skills are behind **View skills** on the
@@ -391,6 +415,7 @@ zwai --data-dir /tmp/demo   # use a throwaway data directory
 ~/.zwai-swarm/            $ZWAI_HOME overrides this
 ├── config.yaml           settings (0600; the API key is in here)
 ├── zwai.db               conversations, transcripts, event timeline, model calls
+├── remote/               Host Token and device identity; not in yaml
 ├── workspaces/<thread>/  one directory per standalone conversation, `uploads/` inside it
 └── projects/<project>/   a managed working directory, and the project's memory
 ```
@@ -427,13 +452,14 @@ Run it on tasks and machines where that is acceptable. There is no approval flow
 ```bash
 make test        # go test -race -cover ./... + front-end unit tests
 make e2e         # Playwright, on the offline provider
-make frontend    # rebuild frontend/dist after editing frontend/src
+make frontend    # rebuild frontend/dist if the TypeScript sources changed
 make build       # ./bin/zwai
 ```
 
 The front end is React + TypeScript + Tailwind + shadcn/ui under `frontend/`.
-`frontend/dist` is a build artefact; `make run` / `make build` / `make e2e`
-refresh it.
+`frontend/dist` is a build artefact; `go run ./cmd/zwai desktop` (and `web`)
+rebuild it when the sources changed. `make build` generates first so the
+embed inside the binary is current. `make frontend` is `go generate ./frontend`.
 
 Rules for changing this code — coverage bars, prompt hygiene, documentation
 duties — are in [AGENTS.md](AGENTS.md). Read it before opening a pull request.

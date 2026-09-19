@@ -17,7 +17,7 @@ desktop mode (printed on startup and used by the window).
 |---|---|
 | `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory |
 | `404` | no such conversation / turn / file / project / skill / unread steer / schedule / schedule run |
-| `409` | `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed |
+| `409` | `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable |
 | `429` | too many terminals are already open |
 | `501` | the shell cannot do this (`reveal` / `open` outside the desktop app) |
 
@@ -104,7 +104,9 @@ provider carries `has_api_key` and `ready` instead.
   "personality": {"instructions": ""},
   "log": {"level": "info"},
   "ui": {"locale": "system", "font": "system", "font_size": "medium",
-           "content_width": "comfortable"}
+           "content_width": "comfortable"},
+  "remote": {"enabled": false, "hub_url": "", "thread_limit": 5,
+             "summary_chars": 280, "open_turns": 6}
 }}
 ```
 
@@ -200,6 +202,65 @@ The catalog the Settings dialog lays out, plus which tools are currently active.
 `group` is `files`, `shell` or `web`. `default_off` tools (`python_runner`,
 `screenshot`) need something zwai does not ship and must be switched on
 explicitly.
+
+## Phone pairing
+
+These endpoints drive the desktop QR. They are still same-origin loopback HTTP.
+The phone does **not** call them; it talks pairlink to the hub, and the hub
+forwards sealed frames to this process.
+
+`remote` in `GET/PUT /api/settings` is `{enabled, hub_url, thread_limit,
+summary_chars, open_turns}`. `hub_url` is whatever you typed — never compiled
+in. A PUT of `remote` reloads the pairlink host. The Host Token is **not** in
+settings JSON; it lives under `$ZWAI_HOME/remote/` and is written with
+`PUT /api/remote/token`.
+
+### `GET /api/remote/status`
+
+```json
+{"enabled": false, "hub_url": "", "has_token": false, "online": false,
+ "fingerprint": "", "error": ""}
+```
+
+`has_token` is a boolean. The Host Token is never returned.
+
+### `PUT /api/remote/token`
+
+Body `{"token": "…"}`. Empty string deletes the stored token. Reloads the
+pairlink host. Returns the same JSON as `GET /api/remote/status`.
+
+### `POST /api/remote/offer`
+
+Mints a short-lived pairing code and a PNG. `409` `remote_offline` when the
+hub URL or Host Token is missing.
+
+```json
+{"uri": "pairlink:v1:<hub_url>:<code>:<host_spk>",
+ "pairing_id": "…",
+ "expires_at": "2026-09-19T12:00:00Z",
+ "png": "data:image/png;base64,…"}
+```
+
+`uri` is what a camera must decode. The same string may be pasted. `png` is
+a high-contrast QR of that URI.
+
+### `GET /api/remote/bindings`
+
+```json
+{"bindings": [{"id": "…", "device_fp": "abcd1234efgh5678",
+               "created_at": "…", "session_id": "…"}]}
+```
+
+Fingerprints only. No Host Token, no session keys.
+
+### `POST /api/remote/bindings/:id/revoke`
+
+Drops that phone. Further tickets fail at the hub.
+
+The slim RPC the phone sends over pairlink (`list` / `more` / `open` /
+`start` / `send` / `steer` / `stop` / `answer`) is not an HTTP API. Default
+list size is 5 threads; `more` pages. Responses carry `path` (`relay` or
+`direct`) and `session_id` so `zwai trace` can join the hop.
 
 ## Projects
 
@@ -335,7 +396,8 @@ turn fails for a reason that is not a recoverable model error (progress needs th
 human or an external change). A truncated tool-call JSON, a `429`, or a dropped
 stream retries inside the same turn twice, then auto-continues; `goal_capped` is true after consecutive
 auto-continues hit `swarm.goal_max_auto_turns`, or after the human
-interrupts a pursuing turn (the banner shows Paused and Start); `goal_idle`
+interrupts a pursuing turn (the banner shows Paused, a line that this is
+not an error, and labelled Start); `goal_idle`
 is true after an auto-continue finished with no counted tool activity
 (Start or a human message resumes). The objective text stays in
 every case so the banner can show it. `goal_block_reason` is the optional
@@ -1089,6 +1151,9 @@ into a transcript archive. Token fields are `0` when the endpoint did not say.
 
 ## Static assets
 
-`GET /` and any unmatched path serve the embedded SPA (`frontend/dist`), with
+`GET /` and any unmatched path serve the SPA (`frontend/dist`), with
 `index.html` as the fallback so client-side routes survive a refresh. Unknown
-`/api/*` paths return `404` JSON instead of HTML.
+`/api/*` paths return `404` JSON instead of HTML. From a checkout, `desktop`
+and `web` rebuild that bundle when the sources changed and serve the
+directory on disk (`frontend.Load`); a shipped binary serves the `go:embed`
+snapshot. Without `index.html` the API still works and `GET /` is a 404.

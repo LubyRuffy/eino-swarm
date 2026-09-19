@@ -391,3 +391,44 @@ describe("schedules", () => {
     await expect(api.runSchedule("sch_1")).rejects.toBeInstanceOf(ApiError)
   })
 })
+
+describe("remote", () => {
+  it("reads status without a token field", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        expect(url).toBe("/api/remote/status")
+        return respond({
+          enabled: true,
+          hub_url: "http://127.0.0.1:7780",
+          has_token: true,
+          online: false,
+        })
+      }),
+    )
+    const st = await api.remoteStatus()
+    expect(st.has_token).toBe(true)
+    expect(st).not.toHaveProperty("token")
+  })
+
+  it("posts an offer and lists bindings", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/remote/offer") {
+        expect(init?.method).toBe("POST")
+        return respond({
+          uri: "pairlink:v1:http://127.0.0.1:7780:code:spk",
+          png: "data:image/png;base64,xx",
+        })
+      }
+      expect(url).toBe("/api/remote/bindings")
+      return respond({
+        bindings: [{ id: "b1", device_fp: "abcd", created_at: "", session_id: "" }],
+      })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const offer = await api.remoteOffer()
+    expect(offer.png.startsWith("data:image/png")).toBe(true)
+    const list = await api.remoteBindings()
+    expect(list).toHaveLength(1)
+  })
+})

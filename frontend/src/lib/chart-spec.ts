@@ -25,6 +25,36 @@ export const CHART_MAX_ROWS = 48
 export const CHART_MAX_SERIES = 8
 export const CHART_MIN_ROWS = 2
 
+/** True when two parsed specs would paint the same figure. Streaming
+ *  re-parses the fence on every token and must not treat a new object as
+ *  a new chart. */
+export function chartSpecsEqual(a: ChartSpec, b: ChartSpec): boolean {
+  if (a === b) return true
+  if (
+    a.type !== b.type ||
+    a.title !== b.title ||
+    a.unit !== b.unit ||
+    a.x !== b.x ||
+    a.stacked !== b.stacked ||
+    a.y.length !== b.y.length ||
+    a.data.length !== b.data.length
+  ) {
+    return false
+  }
+  for (let i = 0; i < a.y.length; i++) {
+    if (a.y[i] !== b.y[i]) return false
+  }
+  for (let i = 0; i < a.data.length; i++) {
+    const left = a.data[i]
+    const right = b.data[i]
+    if (left[a.x] !== right[a.x]) return false
+    for (const key of a.y) {
+      if (left[key] !== right[key]) return false
+    }
+  }
+  return true
+}
+
 export function parseChartSpec(raw: string): ChartParseResult {
   const text = raw.trim()
   if (!text) return { ok: false, incomplete: true }

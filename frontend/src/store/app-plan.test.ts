@@ -168,6 +168,7 @@ describe("plan and ask store", () => {
     await useApp.getState().implementPlan()
     expect(fake.implements).toEqual(["th_old"])
     expect(useApp.getState().threads[0]?.plan_mode).toBe(false)
+    expect(useApp.getState().threads[0]?.running).toBe(true)
     expect(useApp.getState().status.running).toBe(true)
   })
 

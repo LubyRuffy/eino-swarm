@@ -61,6 +61,9 @@ export default {
         running: "hsl(var(--running))",
         done: "hsl(var(--done))",
         failed: "hsl(var(--failed))",
+        qr: {
+          plate: "hsl(var(--qr-plate))",
+        },
         file: {
           folder: "hsl(var(--file-folder))",
           code: "hsl(var(--file-code))",

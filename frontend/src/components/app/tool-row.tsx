@@ -17,16 +17,22 @@ import type { Block } from "@/lib/transcript"
 
 export function ToolRow({ block, reveal }: { block: Block; reveal?: boolean }) {
   const tool = block.tool
-  const [open, setOpen] = useState(() => Boolean(tool?.pending))
+  // null until they click. useState(pending) opened a live exec and then
+  // left the dump on screen after it returned — a wall nobody asked for.
+  // Exec/python_runner stay collapsed; the latest line rides the summary.
+  // Other tools still open while pending and fold when the result lands.
+  const [choice, setChoice] = useState<boolean | null>(null)
   if (!tool) return null
   const view = viewTool(tool.name, tool.args, tool.result, tool.failed)
   const command = tool.name === "exec" ? execCommand(tool.args) : ""
   const liveLine = tool.pending && view.body ? lastLine(applyCarriageReturns(view.body)) : ""
-  const expanded = open || Boolean(reveal)
+  const watchLive =
+    Boolean(tool.pending) && tool.name !== "exec" && tool.name !== "python_runner"
+  const expanded = (choice ?? watchLive) || Boolean(reveal)
   return (
     <Disclosure
       open={expanded}
-      onOpenChange={setOpen}
+      onOpenChange={setChoice}
       failed={view.failed}
       summary={
         <>

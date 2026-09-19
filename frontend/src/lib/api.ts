@@ -6,6 +6,9 @@ import type {
   ModelInfo,
   Project,
   ProjectMemory,
+  RemoteBinding,
+  RemoteOffer,
+  RemoteStatus,
   Settings,
   Skill,
   SwarmEvent,
@@ -20,6 +23,7 @@ import type {
   SchedulePatch,
   ScheduleRun,
 } from "./types"
+import { defaultRemoteSettings } from "./types"
 import { normalizeUISettings } from "./appearance"
 import type { SendImage } from "./paste-image"
 import type { ThreadLog } from "./thread-log"
@@ -105,6 +109,7 @@ function withToolLists(s: Settings): Settings {
       enabled: s.tools.enabled ?? [],
     },
     ui: normalizeUISettings(s.ui),
+    remote: defaultRemoteSettings(s.remote),
   }
 }
 
@@ -393,4 +398,22 @@ export const api = {
     ),
   markScheduleRunRead: (rid: string) =>
     request<void>(`/api/schedules/runs/${rid}/read`, { method: "POST" }),
+
+  remoteStatus: () => request<RemoteStatus>("/api/remote/status"),
+  saveRemoteToken: (token: string) =>
+    request<RemoteStatus>("/api/remote/token", {
+      method: "PUT",
+      body: JSON.stringify({ token }),
+    }),
+  remoteOffer: () =>
+    request<RemoteOffer>("/api/remote/offer", { method: "POST", body: "{}" }),
+  remoteBindings: () =>
+    request<{ bindings: RemoteBinding[] }>("/api/remote/bindings").then(
+      (r) => r.bindings ?? [],
+    ),
+  revokeRemoteBinding: (id: string) =>
+    request<{ revoked: boolean }>(`/api/remote/bindings/${id}/revoke`, {
+      method: "POST",
+      body: "{}",
+    }),
 }

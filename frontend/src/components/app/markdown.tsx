@@ -1,19 +1,23 @@
 import {
   Children,
+  createContext,
   isValidElement,
   lazy,
   memo,
   Suspense,
+  useContext,
+  useRef,
   type ComponentPropsWithoutRef,
   type ReactElement,
   type ReactNode,
 } from "react"
 import Markdown from "react-markdown"
+import type { Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 
 import { ChartPending } from "@/components/app/chart-pending"
 import { classifyHref } from "@/lib/external-links"
-import { parseChartSpec } from "@/lib/chart-spec"
+import { chartSpecsEqual, parseChartSpec, type ChartSpec } from "@/lib/chart-spec"
 import { closeIncompleteMarkdown } from "@/lib/stream-markdown"
 
 const TranscriptChart = lazy(async () => {
@@ -24,6 +28,8 @@ const TranscriptChart = lazy(async () => {
 /** remark plugins are module-level so a memoised markdown block is not
  *  invalidated by a new array on every parent render. */
 const PLUGINS = [remarkGfm]
+
+const MarkdownStreaming = createContext(false)
 
 /** Completed markdown is immutable. Without this memo, every streamed token
  *  would re-parse every finished answer in the conversation. The open
@@ -38,14 +44,8 @@ export const MemoMarkdown = memo(function MemoMarkdown({
 }) {
   const source = streaming ? closeIncompleteMarkdown(text) : text
   return (
-    <>
-      <Markdown
-        remarkPlugins={PLUGINS}
-        components={{
-          a: MarkdownLink,
-          pre: (props) => <MarkdownPre {...props} streaming={streaming} />,
-        }}
-      >
+    <MarkdownStreaming.Provider value={streaming}>
+      <Markdown remarkPlugins={PLUGINS} components={COMPONENTS}>
         {source}
       </Markdown>
       {streaming ? (
@@ -54,27 +54,34 @@ export const MemoMarkdown = memo(function MemoMarkdown({
           className="ml-0.5 inline-block h-4 w-1.5 translate-y-0.5 animate-breathe bg-foreground/70"
         />
       ) : null}
-    </>
+    </MarkdownStreaming.Provider>
   )
 })
 
 function MarkdownPre({
   children,
   node: _node,
-  streaming = false,
   ...props
-}: ComponentPropsWithoutRef<"pre"> & { node?: unknown; streaming?: boolean }) {
+}: ComponentPropsWithoutRef<"pre"> & { node?: unknown }) {
+  const streaming = useContext(MarkdownStreaming)
+  const specRef = useRef<ChartSpec | null>(null)
   const fence = chartFence(children)
   if (fence !== null) {
     const parsed = parseChartSpec(fence)
     if (parsed.ok) {
+      if (!specRef.current || !chartSpecsEqual(specRef.current, parsed.spec)) {
+        specRef.current = parsed.spec
+      }
       return (
         <Suspense fallback={<ChartPending />}>
-          <TranscriptChart spec={parsed.spec} />
+          <TranscriptChart spec={specRef.current} />
         </Suspense>
       )
     }
+    specRef.current = null
     if (streaming || parsed.incomplete) return <ChartPending />
+  } else {
+    specRef.current = null
   }
   return <pre {...props}>{children}</pre>
 }
@@ -118,4 +125,12 @@ function MarkdownLink({
       {children}
     </a>
   )
+}
+
+/** react-markdown does createElement(components.pre). A new function here
+ *  is a new component type, so every later token unmounted a finished
+ *  chart and Recharts painted from an empty box again. */
+const COMPONENTS: Components = {
+  a: MarkdownLink,
+  pre: MarkdownPre,
 }

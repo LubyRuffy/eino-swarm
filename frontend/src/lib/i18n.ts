@@ -17,9 +17,15 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "Continuing the standing objective.": "notice.goalContinued",
   "Stopped auto-continuing: the standing objective is still open.":
     "notice.goalCapped",
+  "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going.":
+    "notice.goalCapped",
   "Stopped auto-continuing: the last continuation made no progress.":
     "notice.goalIdle",
+  "Stopped auto-continuing: the last continuation made no progress. Press Start on the goal to keep going.":
+    "notice.goalIdle",
   "Standing objective paused.": "notice.goalPaused",
+  "Standing objective paused. Press Start on the goal to keep going.":
+    "notice.goalPaused",
   "Standing objective blocked: progress needs you or an external change.":
     "notice.goalBlocked",
   "Retrying after a model error.": "notice.modelRetry",

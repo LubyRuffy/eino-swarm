@@ -83,6 +83,16 @@ describe("AskCardView", () => {
     )
   })
 
+  it("spans the conversation column instead of a dialog width", () => {
+    render(<AskCardView card={card()} />)
+    const el = screen.getByTestId("ask-card")
+    const classes = el.className.split(/\s+/)
+    expect(classes).toContain("w-full")
+    // max-w-lg is the modal default; a cap here leaves a gutter beside the
+    // rest of the transcript. The column already has --content-max.
+    expect(classes.some((c) => c.startsWith("max-w-"))).toBe(false)
+  })
+
   it("shows the settled answer instead of buttons", () => {
     render(
       <AskCardView

@@ -77,12 +77,43 @@ describe("sessionPreview", () => {
 
 describe("splitSessionBlocks", () => {
   it("keeps the user bubble out of the folded work", () => {
-    const { leading, work } = splitSessionBlocks([
+    const { leading, work, trailing } = splitSessionBlocks([
       block({ id: "u", kind: "user", text: "go", seq: 1 }),
       block({ id: "a", kind: "answer", text: "done", seq: 2 }),
     ])
     expect(leading.map((b) => b.kind)).toEqual(["user"])
     expect(work.map((b) => b.kind)).toEqual(["answer"])
+    expect(trailing).toEqual([])
+  })
+
+  it("keeps a budget-cap notice outside the folded work", () => {
+    const { leading, work, trailing } = splitSessionBlocks([
+      block({ id: "u", kind: "user", text: "go", seq: 1 }),
+      block({ id: "a", kind: "answer", text: "progress so far", seq: 2 }),
+      block({
+        id: "c",
+        kind: "notice",
+        text: "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going.",
+        seq: 3,
+      }),
+    ])
+    expect(leading.map((b) => b.kind)).toEqual(["user"])
+    expect(work.map((b) => b.kind)).toEqual(["answer"])
+    expect(trailing.map((b) => b.kind)).toEqual(["notice"])
+  })
+
+  it("peels an older idle notice that lacks the resume sentence", () => {
+    const { work, trailing } = splitSessionBlocks([
+      block({ id: "a", kind: "answer", text: "progress so far", seq: 1 }),
+      block({
+        id: "n",
+        kind: "notice",
+        text: "Stopped auto-continuing: the last continuation made no progress.",
+        seq: 2,
+      }),
+    ])
+    expect(work.map((b) => b.kind)).toEqual(["answer"])
+    expect(trailing.map((b) => b.kind)).toEqual(["notice"])
   })
 })
 
@@ -187,6 +218,26 @@ describe("goal session fold", () => {
     expect(row.querySelector(".whitespace-nowrap")).toHaveTextContent("Stopped after 9s")
     expect(screen.getByText("the endpoint refused the connection")).toBeInTheDocument()
     expect(row.querySelector(".truncate")).toBeNull()
+  })
+
+  it("keeps a budget-cap notice visible while the session is folded", () => {
+    const state = sessionState({ answer: "progress so far" })
+    state.agents.manager = {
+      ...state.agents.manager,
+      blocks: [
+        ...state.agents.manager.blocks,
+        block({
+          id: "c",
+          kind: "notice",
+          text: "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going.",
+          seq: 3,
+        }),
+      ],
+    }
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByTestId("goal-session")).toHaveAttribute("aria-expanded", "false")
+    expect(document.querySelector(".md")).toBeNull()
+    expect(screen.getByTestId("memory-notice")).toHaveTextContent("Press Start on the goal")
   })
 
   it("keeps a running session expanded", () => {

@@ -18,6 +18,7 @@ import type {
   Turn,
   UsageSnapshot,
 } from "@/lib/types"
+import { setThreadRunning } from "@/lib/thread-title"
 import { applyGoalThreadFlags } from "./goal-events"
 import { applyPlanThreadFlags } from "./plan-events"
 import { useProjects } from "./projects"
@@ -210,6 +211,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       }
     }
   }
+  threads = setThreadRunning(threads, threadId, status.running)
   const followupsDirty = droppedFollowups.length > 0
   set({
     transcript,

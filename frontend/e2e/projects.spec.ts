@@ -278,6 +278,27 @@ test("a long project folder hides extra topics behind Show more", async ({
   await expect(wrap.getByTestId("thread-row")).toHaveCount(5)
 })
 
+test("a running conversation keeps its progress after switching away", async ({
+  page,
+}) => {
+  const project = `Busy ${Date.now()}`
+  await createProject(page, project)
+  await startInProject(page, project)
+  const wrap = page.getByTestId("project-wrap").filter({ hasText: project })
+  const row = wrap.getByTestId("thread-row").first()
+  const id = await row.getAttribute("data-id")
+  expect(id).toBeTruthy()
+  await composer(page).fill("Look at this from two angles and merge the findings")
+  await composer(page).press("Enter")
+  await expect(statusBadge(page)).toContainText("Working")
+  await expect(row.getByLabel("running")).toBeVisible()
+  await page.getByRole("button", { name: "New conversation", exact: true }).click()
+  await expect(statusBadge(page)).toContainText("Idle")
+  const left = wrap.locator(`[data-testid="thread-row"][data-id="${id}"]`)
+  await expect(left).toBeVisible()
+  await expect(left.getByLabel("running")).toBeVisible()
+})
+
 function escape(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }

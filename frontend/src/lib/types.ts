@@ -364,6 +364,52 @@ export interface Settings {
   personality?: PersonalitySettings
   log: { level: string }
   ui?: UISettings
+  remote?: RemoteSettings
+}
+
+/** Phone pairing. Hub URL is whatever the human typed — never compiled in. */
+export interface RemoteSettings {
+  enabled: boolean
+  hub_url: string
+  thread_limit: number
+  summary_chars: number
+  open_turns: number
+}
+
+export function defaultRemoteSettings(
+  remote?: Partial<RemoteSettings> | null,
+): RemoteSettings {
+  return {
+    enabled: remote?.enabled ?? false,
+    hub_url: remote?.hub_url ?? "",
+    thread_limit: remote?.thread_limit && remote.thread_limit > 0 ? remote.thread_limit : 5,
+    summary_chars:
+      remote?.summary_chars && remote.summary_chars > 0 ? remote.summary_chars : 280,
+    open_turns: remote?.open_turns && remote.open_turns > 0 ? remote.open_turns : 6,
+  }
+}
+
+export interface RemoteStatus {
+  enabled: boolean
+  hub_url: string
+  has_token: boolean
+  online: boolean
+  fingerprint?: string
+  error?: string
+}
+
+export interface RemoteOffer {
+  uri: string
+  pairing_id?: string
+  png: string
+  expires_at?: string
+}
+
+export interface RemoteBinding {
+  id: string
+  device_fp: string
+  created_at: string
+  session_id: string
 }
 
 /** Install-wide personal preferences added to every manager prompt. */

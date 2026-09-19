@@ -6,20 +6,30 @@ first for what the modules are; this file is about how to change them.
 ## Commands
 
 ```bash
-go run ./cmd/zwai desktop          # the app, native window
+go run ./cmd/zwai desktop          # the app, native window (builds frontend/dist if sources changed)
 go run ./cmd/zwai web --mock       # the app in a browser, no model needed
-make test                          # go test -race -cover ./...  + front-end unit tests
+make test                          # go test -race -cover ./...  + front-end unit tests + phone tests
 make e2e                           # Playwright, on the offline provider
-make frontend                      # rebuild frontend/dist — required after editing frontend/src
+make frontend                      # rebuild frontend/dist if the TypeScript sources changed
 make build                         # ./bin/zwai (rebuilds the bundle first)
 make check                         # formatting + vet + test + e2e
 make fmt                           # gofmt the tree; `make fmt-check` only reports
+cd mobile && npm test              # Capacitor phone unit tests (includes native iOS/Android trees)
+cd mobile && npm run e2e           # phone scan/paste Playwright
+make mobile-sync                   # rebuild the phone web bundle and copy into iOS/Android
+make mobile-ios                    # open Xcode
+make mobile-android                # open Android Studio
 ```
 
 Before finishing any change: **it compiles, the tests pass, and the docs match.**
 Touched Go code → `go test -race ./...`. Touched `frontend/src` → `npm run lint`
-(a `tsc` type check), `npm test`, and `make frontend` so the embedded bundle is
-not stale. Touched anything user-visible → the E2E suite.
+(a `tsc` type check), `npm test`. `go run ./cmd/zwai desktop` (and `web`)
+rebuild `frontend/dist` when the sources changed, so a local run does not
+need a separate `make frontend`. `make build` still generates first so the
+embed inside the binary is current. Touched `mobile/` → `cd mobile && npm test`. Native iOS/Android trees under
+`mobile/ios` and `mobile/android` stay in git (Pods/.gradle/build stay out).
+Do not `cap add` those platforms again. Touched anything user-visible → the
+E2E suite.
 
 ## Non-negotiables
 
@@ -77,10 +87,11 @@ not stale. Touched anything user-visible → the E2E suite.
   the tests are.
 - Labels must be associated with their inputs (`id`/`aria-label`). Playwright's
   `getByLabel` failing is usually a real accessibility bug, not a test problem.
-- `frontend/dist` is a Vite artefact and is gitignored. After editing
-  `frontend/src`, run `make frontend` (or `make run` / `make e2e`, which build
-  it) so the embedded bundle is not stale. A sentinel `dist/.gitkeep` stays
-  in git so `go:embed` still compiles before the first build.
+- `frontend/dist` is a Vite artefact and is gitignored. `go run ./cmd/zwai
+  desktop` (and `web`) rebuild it when the TypeScript sources changed
+  (`frontend.Ensure`, `//go:generate` in `frontend/embed.go`). A shipped
+  binary without a checkout serves the embed. A sentinel `dist/.gitkeep`
+  stays in git so `go:embed` still compiles before the first build.
 
 ## Backend rules
 
@@ -135,7 +146,8 @@ feature.
   `docs: …`. A commit should build and pass tests on its own.
 - `frontend/dist` is gitignored (except `dist/.gitkeep`). Build artefacts
   (`bin/`, `*.tsbuildinfo`, `test-results/`) and anything under a data
-  directory are not tracked.
+  directory are not tracked. `go run` rebuilds dist when sources changed;
+  `make build` generates first so the embed matches.
 - The data directory is `~/.zwai-swarm` (`ZWAI_HOME` overrides). Never write to
   `~/.zwai`; that belongs to another project. Tests always use `t.TempDir()`.
 - `examples/` must keep compiling: it is the library's public surface.

@@ -2,6 +2,8 @@ codeberg.org/readeck/go-readability/v2 v2.1.2 h1:JBrdyYJBRPMBbodLM1b5KxCSDH+JqCk
 codeberg.org/readeck/go-readability/v2 v2.1.2/go.mod h1:Ut31sW4osSrJPR3T8eQslMh4+jbwimXqn0w0ReCT+PU=
 github.com/LubyRuffy/eino-tools v0.1.1-0.20260918052633-fec569f1a4ec h1:B6eRwBUma7UiAgh+KcmtXDNF74/NdiXcmeHjYAxhMFk=
 github.com/LubyRuffy/eino-tools v0.1.1-0.20260918052633-fec569f1a4ec/go.mod h1:7scgMTMfFbPoWZxQDdLPiYXWvL9ihgP+2V3EmtNhcuE=
+github.com/LubyRuffy/pairlink v0.0.0-20260919132839-f9d7105039da h1:biSTtKLx89jysaBP3V091BFjYeroWEZaFB1smg3PS2E=
+github.com/LubyRuffy/pairlink v0.0.0-20260919132839-f9d7105039da/go.mod h1:NePapFjZ8yWPyLdwkFqq60RlQ+znPEpecRt5nwtHIEo=
 github.com/PuerkitoBio/goquery v1.13.0 h1:mqHbjD7Jmnul4DTR24LKTjo1uUmHUh072kteGV+xpFM=
 github.com/PuerkitoBio/goquery v1.13.0/go.mod h1:Hip5mdBL8K2wEGKJdr27sRaNwIdDajmCwB/ExUPwW+g=
 github.com/adrg/xdg v0.5.3 h1:xRnxJXne7+oWDatRhR1JLnvuccuIeCoBu2rtuLqQB78=
@@ -215,6 +217,8 @@ github.com/sergi/go-diff v1.4.0/go.mod h1:A0bzQcvG0E7Rwjx0REVgAGH58e96+X0MeOfepq
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.10.2 h1:G2SED73/qrAu6YwbdxOD6peLkCBI3z7L+ykJFTXJBBo=
 github.com/sirupsen/logrus v1.10.2/go.mod h1:SLEg8TqYulVKKfIGHldVp2K2aYz2DKSVBq4g/H5bR7Q=
+github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e h1:MRM5ITcdelLK2j1vwZ3Je0FKVCfqOLp5zO6trqMLYs0=
+github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e/go.mod h1:XV66xRDqSt+GTGFMVlhk3ULuV0y9ZmzeVGR4mloJI3M=
 github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f h1:Z2cODYsUxQPofhpYRMQVwWz4yUVpHF+vPi+eUdruUYI=
 github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f/go.mod h1:JqzWyvTuI2X4+9wOHmKSQCYxybB/8j6Ko43qVmXDuZg=
 github.com/smarty/assertions v1.15.0 h1:cR//PqUBUiQRakZWqBiFFQ9wb8emQGDb0HeGdqGByCY=

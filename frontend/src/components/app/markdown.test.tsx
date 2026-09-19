@@ -3,11 +3,21 @@ import { describe, expect, it, vi } from "vitest"
 
 import { MemoMarkdown } from "./markdown"
 
-vi.mock("@/components/app/transcript-chart", () => ({
-  TranscriptChart: ({ spec }: { spec: { title: string } }) => (
-    <figure data-testid="transcript-chart" aria-label={spec.title} />
-  ),
-}))
+vi.mock("@/components/app/transcript-chart", async () => {
+  const { useId } = await import("react")
+  return {
+    TranscriptChart: ({ spec }: { spec: { title: string } }) => {
+      const id = useId()
+      return (
+        <figure
+          data-testid="transcript-chart"
+          data-instance={id}
+          aria-label={spec.title}
+        />
+      )
+    },
+  }
+})
 
 describe("MemoMarkdown", () => {
   it("renders a streaming heading as a heading", () => {
@@ -64,6 +74,36 @@ describe("MemoMarkdown", () => {
     expect(await screen.findByTestId("transcript-chart")).toBeInTheDocument()
     expect(screen.getByRole("figure", { name: "Counts" })).toBeInTheDocument()
     expect(screen.queryByText(/"type": "bar"/)).not.toBeInTheDocument()
+  })
+
+  it("keeps a closed chart mounted while later tokens arrive", async () => {
+    const fence = [
+      "see",
+      "",
+      "```chart",
+      JSON.stringify({
+        type: "bar",
+        title: "Counts",
+        x: "item",
+        y: "n",
+        data: [
+          { item: "a", n: 1 },
+          { item: "b", n: 3 },
+        ],
+      }),
+      "```",
+    ].join("\n")
+    const { rerender } = render(<MemoMarkdown text={fence} streaming />)
+    const chart = await screen.findByTestId("transcript-chart")
+    const instance = chart.getAttribute("data-instance")
+    expect(instance).toBeTruthy()
+
+    rerender(<MemoMarkdown text={fence + "\n\nand then more prose"} streaming />)
+    expect(screen.getByTestId("transcript-chart")).toHaveAttribute(
+      "data-instance",
+      instance,
+    )
+    expect(screen.getByText(/and then more prose/)).toBeInTheDocument()
   })
 
   it("does not treat a json fence as a chart", () => {

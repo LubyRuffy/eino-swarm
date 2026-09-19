@@ -45,3 +45,23 @@ frontend/test-results-drop/
 # before `make frontend` has run.
 frontend/dist/*
 !frontend/dist/.gitkeep
+
+# Capacitor phone shell — keep the native app trees, drop build junk
+mobile/node_modules/
+mobile/dist/
+mobile/.vite/
+mobile/test-results/
+mobile/playwright-report/
+mobile/ios/App/Pods/
+mobile/ios/App/build/
+mobile/ios/App/App/public/
+mobile/ios/DerivedData/
+mobile/ios/App/App.xcworkspace/xcuserdata/
+mobile/ios/App/App.xcodeproj/xcuserdata/
+mobile/android/.gradle/
+mobile/android/build/
+mobile/android/app/build/
+mobile/android/local.properties
+mobile/android/captures/
+mobile/android/.idea/
+mobile/android/app/.cxx/

@@ -5,6 +5,7 @@ import {
   Loader2,
   Palette,
   Search,
+  Smartphone,
   UserRound,
   Workflow,
   Wrench,
@@ -15,6 +16,7 @@ import { MemorySettings } from "@/components/app/memory-settings"
 import { ModelsTab } from "@/components/app/model-settings"
 import { GeneralTab } from "@/components/app/settings-general"
 import { PersonalityTab } from "@/components/app/settings-personality"
+import { RemoteTab } from "@/components/app/settings-remote"
 import { SwarmTab } from "@/components/app/settings-swarm"
 import { ToolsTab } from "@/components/app/settings-tools"
 import { settingsMatch } from "@/components/app/settings-field"
@@ -81,6 +83,12 @@ function sections(t: Translate) {
       label: t("settings.nav.memory"),
       icon: Library,
       keys: "remember review notes skills notifications budget 记忆 笔记",
+    },
+    {
+      id: "remote",
+      label: t("settings.nav.remote"),
+      icon: Smartphone,
+      keys: "phone remote pair qr hub token pairing scan 手机 扫码 远程 配对",
     },
   ] as const
 }
@@ -348,6 +356,13 @@ export function SettingsDialog({
                   </TabsContent>
                   <TabsContent value="memory" className={settingsScrollTab}>
                     <MemorySettings
+                      settings={settings}
+                      onChange={apply}
+                      query={query}
+                    />
+                  </TabsContent>
+                  <TabsContent value="remote" className={settingsScrollTab}>
+                    <RemoteTab
                       settings={settings}
                       onChange={apply}
                       query={query}

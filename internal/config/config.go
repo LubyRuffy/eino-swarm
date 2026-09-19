@@ -30,6 +30,7 @@ type Config struct {
 	Personality PersonalityConfig `yaml:"personality" json:"personality"`
 	Log         LogConfig         `yaml:"log" json:"log"`
 	UI          UIConfig          `yaml:"ui" json:"ui"`
+	Remote      RemoteConfig      `yaml:"remote" json:"remote"`
 
 	// dataDir is where this config was loaded from. Not serialized: the file
 	// cannot meaningfully record its own location.
@@ -577,6 +578,13 @@ func Default() *Config {
 			FontSize:     DefaultFontSize,
 			ContentWidth: DefaultContentWidth,
 		},
+		Remote: RemoteConfig{
+			Enabled:      false,
+			HubURL:       "",
+			ThreadLimit:  DefaultRemoteThreadLimit,
+			SummaryChars: DefaultRemoteSummaryChars,
+			OpenTurns:    DefaultRemoteOpenTurns,
+		},
 	}
 }
 
@@ -608,6 +616,7 @@ func Load(dataDir string) (*Config, error) {
 		filepath.Join(abs, workspacesDirName),
 		filepath.Join(abs, projectsDirName),
 		filepath.Join(abs, inputsDirName),
+		filepath.Join(abs, remoteDirName),
 	} {
 		if err := os.MkdirAll(d, dirPerm); err != nil {
 			return nil, fmt.Errorf("config: create %s: %w", d, err)
@@ -809,6 +818,7 @@ func (c *Config) normalize() {
 		c.Swarm.CompactProvider = ""
 		c.Swarm.CompactModel = ""
 	}
+	c.normalizeRemote()
 }
 
 func (c *Config) providerIndex(id string) int {
@@ -961,6 +971,7 @@ func (c *Config) Replace(next *Config) error {
 	c.Personality = next.Personality
 	c.Log = next.Log
 	c.UI = next.UI
+	c.Remote = next.Remote
 	return c.Save()
 }
 

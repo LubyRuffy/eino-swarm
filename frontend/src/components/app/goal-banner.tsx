@@ -112,6 +112,14 @@ export function GoalBanner({
       ? formatGoalAge(started, new Date(now))
       : ""
 
+  const reason = blocked && (blockReason?.trim() || turnError?.trim())
+    ? displayGoalBlockReason(blockReason ?? "", turnError, t)
+    : held && !running
+      ? idle && !capped
+        ? t("goal.idleHint")
+        : t("goal.capHint")
+      : ""
+
   const save = () => {
     if (!open.current) return
     open.current = false
@@ -177,25 +185,19 @@ export function GoalBanner({
               {goal}
             </button>
           )}
-          {blocked && (blockReason?.trim() || turnError?.trim()) ? (
-            <p
-              data-testid="goal-reason"
-              className="mt-1 whitespace-pre-wrap break-words text-xs text-muted-foreground"
-            >
-              {displayGoalBlockReason(blockReason ?? "", turnError, t)}
-            </p>
-          ) : null}
         </div>
         {canStart ? (
           <Button
             type="button"
-            variant="ghost"
-            size="icon-sm"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
             data-testid="goal-start"
             aria-label={t("goal.start")}
             onClick={onResume}
           >
             <Play />
+            {t("goal.start")}
           </Button>
         ) : null}
         <Button
@@ -208,6 +210,14 @@ export function GoalBanner({
           <X />
         </Button>
       </div>
+      {reason ? (
+        <p
+          data-testid="goal-reason"
+          className="mt-2 whitespace-pre-wrap break-words text-xs text-muted-foreground"
+        >
+          {reason}
+        </p>
+      ) : null}
     </div>
   )
 }

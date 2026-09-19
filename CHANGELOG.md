@@ -11,7 +11,58 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Fixed
+
+- **Exec stdout stays collapsed.** A live `exec` used to force the row open
+  and leave the dump on screen after it returned. The summary still shows
+  the latest line while it runs; the body is behind a click. Other pending
+  tools still open to watch, then fold when the result lands.
+
+- **Sidebar progress stays visible from the list.** A working conversation
+  only painted its breathe-dot after you clicked into it (`runningId` was the
+  open thread). Leaving, or looking at another project's folder, hid the
+  mark. The row now keeps `running` when the turn starts or when you switch
+  away, a busy folder stays open like the active one, and an explicitly
+  collapsed folder keeps the progress on the directory glyph.
+
+- **Streaming answers no longer flicker a finished chart.** A closed `chart`
+  fence remounted on every later token because the markdown `pre` renderer
+  was an inline function — a new component type each parse, so Recharts
+  painted from an empty box and replayed the grow animation. The plot keeps
+  the same instance and only redraws when the spec or the box size actually
+  changes.
+
+### Changed
+
+- **Goal pause says how to resume.** Hitting `swarm.goal_max_auto_turns`, a
+  no-progress hold, or Stop used to fold `goal_capped` / `goal_idle` behind
+  the session's Worked-for row, so the banner's Paused badge looked like a
+  crash. Those notices stay outside the fold and tell you to press **Start**
+  on the goal. The banner repeats that this is not an error, and Start is a
+  labelled button.
+
 ### Added
+
+- **`go run` builds the UI when it is missing or stale.** A clone used to
+  compile `go:embed` against empty `frontend/dist` and serve a 404 until
+  someone ran `make frontend`. `zwai desktop` / `web` now call
+  `frontend.Load`: from a checkout it fingerprints the TypeScript sources,
+  runs `npm install` / `npm run build` only when that hash (or
+  `dist/index.html`) changed, and serves the directory on disk — embed
+  cannot see a bundle written after this process was compiled. `//go:generate
+  go run generate.go` in `frontend/embed.go` is the same path (`make
+  frontend`). An installed binary with no checkout still serves the embed.
+  `go test` skips the rebuild so the suite does not need Node.
+
+- **Scan a phone to this PC.** Settings → Phone shows a high-contrast pairing
+  QR (`pairlink:v1:<hub_url>:<code>:<host_spk>`). The iOS and Android apps in
+  `mobile/ios` and `mobile/android` scan that code (paste is the same URI). Slim
+  RPC lists 5 threads, in-progress work, and maps start/send/steer/stop/answer
+  onto the existing engine. Pairlink carries ciphertext; aigateway only relays.
+  UDP blocked still works (`path=relay`). Host Token lives under
+  `$ZWAI_HOME/remote/`, never in `/api/settings`. Simulator paste of the same
+  URI (`simctl pbcopy` / Android `input text`) is how the packaged apps are
+  driven when there is no camera; see `mobile/README.md`.
 
 - **Open findings inserts the minted conversation.** Opening a standalone
   fire used to load the transcript while leaving Recents on the origin, so
@@ -218,6 +269,11 @@ co-working app built on it. The library API is unchanged except where noted
     `Close` still stop them).
 
 ### Fixed
+
+- **`ask_user` fills the conversation column.** The question card used
+  `max-w-lg` (the modal default), so it sat in a ~32rem island next to the
+  48rem reading column. It is `w-full` inside `--content-max` like the rest
+  of the transcript.
 
 - **The live turn no longer ghosts itself in the follow-up tray.** A leftover
   Enter after ⌘Enter, or a CJK IME writing the committed string back into the
@@ -565,9 +621,11 @@ co-working app built on it. The library API is unchanged except where noted
   returns the composer.
 
 - **`frontend/dist` is a build artefact.** It is gitignored. A clone
-  needs Node once (`make frontend`, or `make run` / `make e2e` which
-  build it). `go:embed` still compiles because `dist/.gitkeep` stays in
-  the tree; without `index.html` the binary serves the API only.
+  needs Node once (`go run ./cmd/zwai desktop` / `web` rebuilds when
+  the sources changed; `make frontend` is `go generate ./frontend`).
+  `go:embed` still compiles because `dist/.gitkeep` stays in
+  the tree; without `index.html` a binary with no checkout serves the
+  API only.
 
 - **Project folders open and close as a directory.** An expanded
   project shows an open-folder glyph; a collapsed one shows a closed

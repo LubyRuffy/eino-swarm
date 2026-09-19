@@ -1,10 +1,13 @@
 # Data model
 
-Everything except the settings lives in one SQLite file:
+Everything except the settings and the phone-pairing key files lives in one SQLite file:
 
 ```
 $ZWAI_HOME (default ~/.zwai-swarm)/zwai.db
 ```
+
+Phone pairing is not in this database. `$ZWAI_HOME/remote/host_token` and
+`$ZWAI_HOME/remote/identity` are 0600 files. Bindings live on the pairlink hub.
 
 gorm owns the schema (`AutoMigrate` on every start) and
 [`glebarez/sqlite`](https://github.com/glebarez/sqlite) is the driver, so there is

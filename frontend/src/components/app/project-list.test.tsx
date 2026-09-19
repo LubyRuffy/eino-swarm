@@ -154,6 +154,20 @@ describe("Project list", () => {
     expect(row.querySelector("[data-testid=row-label]")?.nextElementSibling).toBeNull()
   })
 
+  it("marks a collapsed folder that still has a running conversation", () => {
+    renderList({
+      threadsByProject: {
+        pj_1: [topic({ id: "th_busy", title: "Busy topic", running: true })],
+      },
+      expanded: { pj_1: false },
+    })
+    expect(screen.queryByTestId("project-threads")).not.toBeInTheDocument()
+    expect(
+      screen.getByTestId("project-kind").querySelector("[aria-label]"),
+    ).toHaveAttribute("aria-label", "running")
+    expect(screen.getByTestId("project-folder")).toHaveAttribute("data-open", "false")
+  })
+
   it("does not paint a drag grip on the folder or its topics", () => {
     renderList({
       threadsByProject: { pj_1: [topic({ id: "th_1", title: "A topic" })] },

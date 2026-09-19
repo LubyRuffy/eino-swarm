@@ -73,6 +73,7 @@ type settingsView struct {
 	Personality config.PersonalityConfig `json:"personality"`
 	Log         config.LogConfig         `json:"log"`
 	UI          config.UIConfig          `json:"ui"`
+	Remote      config.RemoteConfig      `json:"remote"`
 }
 
 type providerView struct {
@@ -97,6 +98,7 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.Personality = cfg.Personality
 	v.Log = cfg.Log
 	v.UI = cfg.UI
+	v.Remote = cfg.Remote
 	v.Models.Default = cfg.Models.Default
 	for _, p := range cfg.Models.Providers {
 		catalog := p.Catalog
@@ -152,6 +154,7 @@ type putSettingsRequest struct {
 	Personality *config.PersonalityConfig `json:"personality"`
 	Log         *config.LogConfig         `json:"log"`
 	UI          *config.UIConfig          `json:"ui"`
+	Remote      *config.RemoteConfig      `json:"remote"`
 }
 
 func (s *Server) putSettings(c *gin.Context) {
@@ -185,6 +188,9 @@ func (s *Server) putSettings(c *gin.Context) {
 		// A language-only PUT must not reset the typeface. Blank fields
 		// keep what is already stored; Normalize maps junk to defaults.
 		next.UI = config.MergeUI(cfg.UI, *req.UI)
+	}
+	if req.Remote != nil {
+		next.Remote = *req.Remote
 	}
 	if req.Models != nil {
 		existing := map[string]config.Provider{}
@@ -237,6 +243,9 @@ func (s *Server) putSettings(c *gin.Context) {
 	s.engine.Providers().Invalidate()
 	// Queued workers sit on the live / parked registry, not the yaml file.
 	s.engine.ApplyLiveSwarmLimits()
+	if s.remote != nil {
+		s.remote.Reload()
+	}
 	c.JSON(http.StatusOK, gin.H{"settings": toSettingsView(cfg)})
 }
 

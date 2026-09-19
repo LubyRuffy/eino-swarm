@@ -4,6 +4,7 @@ import {
   isProjectExpanded,
   readProjectExpanded,
   readSectionExpanded,
+  runningProjectIds,
   writeProjectExpanded,
   writeSectionExpanded,
 } from "./sidebar-collapse"
@@ -55,6 +56,40 @@ describe("isProjectExpanded", () => {
         overrides: { pj_other: true },
       }),
     ).toBe(true)
+  })
+
+  it("opens a folder that has a running conversation", () => {
+    expect(
+      isProjectExpanded("pj_busy", {
+        activeProjectId: "pj_open",
+        selectedId: undefined,
+        runningProjectIds: ["pj_busy"],
+        overrides: {},
+      }),
+    ).toBe(true)
+    expect(
+      isProjectExpanded("pj_busy", {
+        activeProjectId: "pj_open",
+        selectedId: undefined,
+        runningProjectIds: ["pj_busy"],
+        overrides: { pj_busy: false },
+      }),
+    ).toBe(false)
+  })
+})
+
+describe("runningProjectIds", () => {
+  it("collects folders with a live conversation, including the overlay id", () => {
+    expect(
+      runningProjectIds(
+        [
+          { id: "th_1", project_id: "pj_a", running: true },
+          { id: "th_2", project_id: "pj_b", running: false },
+          { id: "th_3", project_id: "", running: true },
+        ],
+        "th_2",
+      ),
+    ).toEqual(new Set(["pj_a", "pj_b"]))
   })
 })
 

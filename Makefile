@@ -1,9 +1,9 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-# dist/ is a Vite artefact, not source. Rebuild it with `make frontend` after
-# touching frontend/src. A sentinel in dist/ keeps `go:embed` compiling on a
-# clone that has not built the UI yet.
+# dist/ is a Vite artefact, not source. `go run ./cmd/zwai desktop` (and
+# web) rebuild it when the TypeScript sources changed. `make frontend`
+# is the same incremental build via `go generate ./frontend`.
 FRONTEND := frontend
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
@@ -14,26 +14,25 @@ help:
 	@echo "make web        serve the app in a browser"
 	@echo "make mock       run on the scripted offline provider"
 	@echo "make build      build ./bin/zwai"
-	@echo "make frontend   rebuild frontend/dist (needed after editing frontend/src)"
+	@echo "make frontend   rebuild frontend/dist if the sources changed"
 	@echo "make dev        vite dev server against a running zwai web"
-	@echo "make test       go test -race -cover ./... plus the front-end unit tests"
+	@echo "make test       go test -race -cover ./... plus the front-end and phone unit tests"
 	@echo "make e2e        Playwright end-to-end tests on the offline provider"
+	@echo "make mobile-sync  copy the phone web bundle into the iOS/Android apps"
+	@echo "make mobile-ios   open the iOS app in Xcode"
+	@echo "make mobile-android  open the Android app in Android Studio"
 	@echo "make check      formatting, vet, test, e2e"
 
-.PHONY: ensure-frontend
-ensure-frontend:
-	@if [ ! -f $(FRONTEND)/dist/index.html ]; then $(MAKE) frontend; fi
-
 .PHONY: run
-run: ensure-frontend
+run:
 	go run ./cmd/zwai desktop
 
 .PHONY: web
-web: ensure-frontend
+web:
 	go run ./cmd/zwai web
 
 .PHONY: mock
-mock: ensure-frontend
+mock:
 	go run ./cmd/zwai web --mock
 
 .PHONY: build
@@ -45,15 +44,15 @@ node_modules:
 	@test -d $(FRONTEND)/node_modules || (cd $(FRONTEND) && npm install)
 
 .PHONY: frontend
-frontend: node_modules
-	cd $(FRONTEND) && npm run build
+frontend:
+	go generate ./$(FRONTEND)
 
 .PHONY: dev
 dev: node_modules
 	cd $(FRONTEND) && npm run dev
 
 .PHONY: test
-test: test-go test-web
+test: test-go test-web test-mobile
 
 .PHONY: test-go
 test-go:
@@ -62,6 +61,24 @@ test-go:
 .PHONY: test-web
 test-web: node_modules
 	cd $(FRONTEND) && npm run test
+
+.PHONY: test-mobile
+test-mobile:
+	@test -d mobile/node_modules || (cd mobile && npm install)
+	cd mobile && npm test
+
+.PHONY: mobile-sync
+mobile-sync:
+	@test -d mobile/node_modules || (cd mobile && npm install)
+	cd mobile && npm run cap:sync
+
+.PHONY: mobile-ios
+mobile-ios: mobile-sync
+	cd mobile && npx cap open ios
+
+.PHONY: mobile-android
+mobile-android: mobile-sync
+	cd mobile && npx cap open android
 
 .PHONY: e2e
 e2e: frontend

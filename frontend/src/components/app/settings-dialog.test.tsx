@@ -17,6 +17,11 @@ vi.mock("@/lib/api", () => ({
     settings: vi.fn(),
     tools: vi.fn(),
     saveSettings: vi.fn(),
+    remoteStatus: vi.fn(),
+    remoteOffer: vi.fn(),
+    saveRemoteToken: vi.fn(),
+    remoteBindings: vi.fn(),
+    revokeRemoteBinding: vi.fn(),
   },
 }))
 
@@ -96,6 +101,13 @@ describe("Settings dialog", () => {
       ...base,
       ...patch,
     }))
+    vi.mocked(api.remoteStatus).mockResolvedValue({
+      enabled: false,
+      hub_url: "",
+      has_token: false,
+      online: false,
+    })
+    vi.mocked(api.remoteBindings).mockResolvedValue([])
   })
 
   // The Add-a-provider outline sits on the last pixel of the Models
@@ -127,6 +139,7 @@ describe("Settings dialog", () => {
       "Memory",
       "Personality",
       "General",
+      "Phone",
     ] as const) {
       fireEvent.click(screen.getByRole("tab", { name }))
       const panel = activePanel()

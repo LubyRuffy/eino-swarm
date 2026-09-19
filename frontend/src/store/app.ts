@@ -22,7 +22,7 @@ import {
 } from "@/lib/i18n"
 import type { SendImage } from "@/lib/paste-image"
 import { subscribeEvents } from "@/lib/stream"
-import { preferNamedTitles, upsertThread } from "@/lib/thread-title"
+import { mergeThreadList, setThreadRunning, upsertThread } from "@/lib/thread-title"
 import { logPageSize, type ThreadLog } from "@/lib/thread-log"
 import {
   emptyTranscript,
@@ -217,7 +217,7 @@ export const useApp = create<AppState>((set, get) => ({
   refreshThreads: async () => {
     try {
       const incoming = await api.threads()
-      set({ threads: preferNamedTitles(get().threads, incoming) })
+      set((s) => ({ threads: mergeThreadList(s.threads, incoming) }))
     } catch (e) {
       set({ error: message(e) })
     }
@@ -300,7 +300,7 @@ export const useApp = create<AppState>((set, get) => ({
     unsubscribe?.()
     unsubscribe = undefined
     resetThreadHistory()
-    set({
+    set((s) => ({
       activeId: id,
       transcript: emptyTranscript(),
       turns: [],
@@ -313,7 +313,13 @@ export const useApp = create<AppState>((set, get) => ({
       agentLogLoading: undefined,
       status: { running: false },
       usage: undefined,
-    })
+      // The header clock dies with `status`. Keep the row's progress mark
+      // so switching away from a live turn does not make the folder look idle.
+      threads:
+        s.activeId && s.activeId !== id && s.status.running
+          ? setThreadRunning(s.threads, s.activeId, true)
+          : s.threads,
+    }))
 
     try {
       const [{ thread, status, usage }, turns, followups] = await Promise.all([
@@ -345,7 +351,7 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: upsertThread(s.threads, thread),
+          threads: setThreadRunning(upsertThread(s.threads, thread), id, status.running),
         }))
         if (Boolean(log.has_more) && !managerHasVisibleBlocks(transcript)) {
           await loadUntilVisibleHistory(get)
@@ -361,7 +367,7 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: upsertThread(s.threads, thread),
+          threads: setThreadRunning(upsertThread(s.threads, thread), id, status.running),
         }))
       }
       // The Memory tab belongs to the project, not the conversation. Opening
@@ -381,6 +387,10 @@ export const useApp = create<AppState>((set, get) => ({
               connected: true,
               status: live ?? s.status,
               historyHasMore: since > 0 ? s.historyHasMore : false,
+              threads:
+                live && s.activeId
+                  ? setThreadRunning(s.threads, s.activeId, Boolean(live.running))
+                  : s.threads,
             }))
             void get().refreshFiles()
           },
@@ -404,8 +414,23 @@ export const useApp = create<AppState>((set, get) => ({
   newThread: async (projectId) => {
     creating = (async () => {
       try {
+        // Stamp before the create round-trip: a listing refresh that lands
+        // while we wait must not idle the folder we are about to leave.
+        const keepId = get().activeId
+        const keepBusy = Boolean(keepId && get().status.running)
+        if (keepBusy && keepId) {
+          set((s) => ({ threads: setThreadRunning(s.threads, keepId, true) }))
+        }
         const thread = await api.createThread(undefined, undefined, projectId)
-        set((s) => ({ threads: [thread, ...s.threads] }))
+        set((s) => {
+          const rest = s.threads.filter((t) => t.id !== thread.id)
+          return {
+            threads: [
+              thread,
+              ...(keepBusy && keepId ? setThreadRunning(rest, keepId, true) : rest),
+            ],
+          }
+        })
         await get().openThread(thread.id)
         return thread.id
       } catch (e) {
@@ -490,6 +515,7 @@ export const useApp = create<AppState>((set, get) => ({
         ),
         followups: [],
         status: withRunningClock(s.status),
+        threads: s.activeId ? setThreadRunning(s.threads, s.activeId, true) : s.threads,
         error: undefined,
       }))
       try {
@@ -552,7 +578,10 @@ export const useApp = create<AppState>((set, get) => ({
         }
       }
       await api.steer(id, text, images, opts?.files)
-      set({ status: withRunningClock(get().status) })
+      set((s) => ({
+        status: withRunningClock(s.status),
+        threads: setThreadRunning(s.threads, id, true),
+      }))
       void get().refreshFollowups()
       void get().refreshThreads()
     } catch (e) {
@@ -604,11 +633,15 @@ export const useApp = create<AppState>((set, get) => ({
     if (!id) return
     try {
       const updated = await api.patchThread(id, { goal_resume: true })
-      set((s) => ({
-        threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
-        status: updated.running ? withRunningClock(s.status) : s.status,
-        error: undefined,
-      }))
+        set((s) => ({
+          threads: setThreadRunning(
+            s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
+            id,
+            Boolean(updated.running),
+          ),
+          status: updated.running ? withRunningClock(s.status) : s.status,
+          error: undefined,
+        }))
     } catch (e) {
       set({ error: message(e) })
     }

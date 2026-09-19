@@ -65,7 +65,7 @@ export function AskCardView({ card }: { card: AskCard }) {
   return (
     <div
       data-testid="ask-card"
-      className="my-3 w-full max-w-lg rounded-2xl border bg-card p-4 shadow-md"
+      className="my-3 w-full rounded-2xl border bg-card p-4 shadow-md"
     >
       <p className="text-sm text-muted-foreground">{t("ask.title")}</p>
       {card.pending ? (

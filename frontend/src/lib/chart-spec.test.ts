@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   CHART_MAX_ROWS,
   CHART_MAX_SERIES,
+  chartSpecsEqual,
   parseChartSpec,
 } from "./chart-spec"
 
@@ -216,5 +217,46 @@ describe("parseChartSpec", () => {
     expect(got.ok).toBe(true)
     if (!got.ok) return
     expect(JSON.stringify(got.spec)).not.toMatch(/revenue|month|sales/i)
+  })
+})
+
+describe("chartSpecsEqual", () => {
+  const body = JSON.stringify({
+    type: "bar",
+    title: "Counts",
+    x: "item",
+    y: "n",
+    data: [
+      { item: "a", n: 1 },
+      { item: "b", n: 3 },
+    ],
+  })
+
+  it("treats two parses of the same fence as one figure", () => {
+    const left = parseChartSpec(body)
+    const right = parseChartSpec(body)
+    expect(left.ok && right.ok).toBe(true)
+    if (!left.ok || !right.ok) return
+    expect(left.spec).not.toBe(right.spec)
+    expect(chartSpecsEqual(left.spec, right.spec)).toBe(true)
+  })
+
+  it("notices a series value that actually changed", () => {
+    const left = parseChartSpec(body)
+    const right = parseChartSpec(
+      JSON.stringify({
+        type: "bar",
+        title: "Counts",
+        x: "item",
+        y: "n",
+        data: [
+          { item: "a", n: 1 },
+          { item: "b", n: 4 },
+        ],
+      }),
+    )
+    expect(left.ok && right.ok).toBe(true)
+    if (!left.ok || !right.ok) return
+    expect(chartSpecsEqual(left.spec, right.spec)).toBe(false)
   })
 })

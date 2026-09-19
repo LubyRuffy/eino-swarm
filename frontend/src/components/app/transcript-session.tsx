@@ -2,6 +2,7 @@ import { ChevronRight } from "lucide-react"
 import { useEffect, useState, type ReactNode } from "react"
 import { Disclosure } from "@/components/ui/collapsible"
 import { cn, formatDuration, formatTime } from "@/lib/utils"
+import { isGoalHoldNotice } from "@/lib/transcript-notices"
 import { useT } from "@/lib/use-t"
 import type { Block, TurnState } from "@/lib/transcript"
 
@@ -48,7 +49,7 @@ export function GoalSessionTurn({
 
   // Folded work stays unmounted. An 18h /goal is dozens of sessions; creating
   // every BlockView on each token is what froze the composer mid-IME.
-  const { leading, work } = splitSessionBlocks(blocks)
+  const { leading, work, trailing } = splitSessionBlocks(blocks)
   const ms =
     turn?.endedAt && turn.startedAt
       ? new Date(turn.endedAt).getTime() - new Date(turn.startedAt).getTime()
@@ -61,57 +62,74 @@ export function GoalSessionTurn({
       {leading.map((b) => (
         <div key={b.id}>{renderBlock(b)}</div>
       ))}
-      <Disclosure
-        open={open}
-        onOpenChange={setOpen}
-        failed={failed}
-        testId="goal-session"
-        summaryClassName="gap-1.5 py-0.5 text-xs"
-        summary={
-          <>
-            <ChevronRight
-              className={cn("size-3 shrink-0 opacity-60 transition-transform", open && "rotate-90")}
-            />
-            <span data-find-ignore="" className="shrink-0 whitespace-nowrap tabular-nums">
-              {durationLabel} {formatDuration(Math.max(ms, 0))}
-            </span>
-            {!open && preview ? (
-              <>
-                <span className="shrink-0 opacity-40">·</span>
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate",
-                    failed ? "" : "text-muted-foreground/80",
-                  )}
-                >
-                  {preview}
-                </span>
-              </>
-            ) : null}
-          </>
-        }
-      >
-        {open ? (
-          <div className="flex flex-col gap-1">
-            {work.map((b) => (
-              <div key={b.id}>{renderBlock(b)}</div>
-            ))}
-          </div>
-        ) : null}
-      </Disclosure>
+      {work.length > 0 ? (
+        <Disclosure
+          open={open}
+          onOpenChange={setOpen}
+          failed={failed}
+          testId="goal-session"
+          summaryClassName="gap-1.5 py-0.5 text-xs"
+          summary={
+            <>
+              <ChevronRight
+                className={cn("size-3 shrink-0 opacity-60 transition-transform", open && "rotate-90")}
+              />
+              <span data-find-ignore="" className="shrink-0 whitespace-nowrap tabular-nums">
+                {durationLabel} {formatDuration(Math.max(ms, 0))}
+              </span>
+              {!open && preview ? (
+                <>
+                  <span className="shrink-0 opacity-40">·</span>
+                  <span
+                    className={cn(
+                      "min-w-0 flex-1 truncate",
+                      failed ? "" : "text-muted-foreground/80",
+                    )}
+                  >
+                    {preview}
+                  </span>
+                </>
+              ) : null}
+            </>
+          }
+        >
+          {open ? (
+            <div className="flex flex-col gap-1">
+              {work.map((b) => (
+                <div key={b.id}>{renderBlock(b)}</div>
+              ))}
+            </div>
+          ) : null}
+        </Disclosure>
+      ) : null}
+      {trailing.map((b) => (
+        <div key={b.id}>{renderBlock(b)}</div>
+      ))}
     </div>
   )
 }
 
-/** User / steer stay visible. The rest is the work session being folded. */
-export function splitSessionBlocks(blocks: Block[]): { leading: Block[]; work: Block[] } {
+/** User / steer stay visible. A cap / idle / block notice after the work
+ *  stays visible too: folding it behind Worked-for made a budget pause look
+ *  like the turn crashed. */
+export function splitSessionBlocks(blocks: Block[]): {
+  leading: Block[]
+  work: Block[]
+  trailing: Block[]
+} {
   const leading: Block[] = []
-  const work: Block[] = []
+  const rest: Block[] = []
   for (const b of blocks) {
-    if (work.length === 0 && (b.kind === "user" || b.kind === "steer")) leading.push(b)
-    else work.push(b)
+    if (rest.length === 0 && (b.kind === "user" || b.kind === "steer")) leading.push(b)
+    else rest.push(b)
   }
-  return { leading, work }
+  const trailing: Block[] = []
+  while (rest.length > 0) {
+    const last = rest[rest.length - 1]
+    if (last?.kind !== "notice" || !isGoalHoldNotice(last.text)) break
+    trailing.unshift(rest.pop() as Block)
+  }
+  return { leading, work: rest, trailing }
 }
 
 function flattenPreview(text: string): string {

@@ -12,7 +12,10 @@ zwai version | help
 `version` also answers to `-v` and `--version`, `help` to `-h` and `--help`.
 
 Run it from a checkout with `go run ./cmd/zwai <subcommand>`, or build once with
-`make build` and use `./bin/zwai`.
+`make build` and use `./bin/zwai`. From a checkout, `desktop` and `web` rebuild
+`frontend/dist` when the TypeScript sources changed (needs Node on the first
+run, or after a UI edit). A copied binary with no checkout serves the bundle
+embedded at `go build` time.
 
 Three conveniences worth knowing:
 
@@ -39,6 +42,10 @@ in-memory runs and closes the database. Unfinished turns stay `running` so the
 next start continues them; a user **Stop** is the only path that records
 `cancelled`. The live event stream is cancelled immediately so the window does
 not freeze; a stuck REST call still has a 5s ceiling.
+
+A checkout with no `frontend/dist/index.html` (or with TypeScript newer than
+the last build) runs `npm run build` before the window opens. Ctrl-C during
+that first install stops it.
 
 Desktop is the only mode that can show a file in the platform file manager; the
 UI hides that control everywhere else. On macOS the hidden title bar

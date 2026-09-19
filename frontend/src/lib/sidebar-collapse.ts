@@ -18,13 +18,38 @@ export function isProjectExpanded(
   opts: {
     activeProjectId?: string
     selectedId?: string
+    /** Folders that have a mid-turn conversation stay open so the
+     *  progress mark is visible without clicking in. An explicit
+     *  collapse still wins. */
+    runningProjectIds?: Iterable<string>
     overrides: Record<string, boolean>
   },
 ): boolean {
   if (Object.prototype.hasOwnProperty.call(opts.overrides, projectId)) {
     return opts.overrides[projectId]
   }
-  return projectId === opts.activeProjectId || projectId === opts.selectedId
+  if (projectId === opts.activeProjectId || projectId === opts.selectedId) {
+    return true
+  }
+  if (!opts.runningProjectIds) return false
+  for (const id of opts.runningProjectIds) {
+    if (id === projectId) return true
+  }
+  return false
+}
+
+/** Project ids that currently have a working conversation, so the
+ *  sidebar can keep those folders open like the active one. */
+export function runningProjectIds(
+  threads: Array<{ id: string; project_id?: string; running: boolean }>,
+  runningId?: string,
+): Set<string> {
+  const ids = new Set<string>()
+  for (const thread of threads) {
+    if (!(thread.running || thread.id === runningId) || !thread.project_id) continue
+    ids.add(thread.project_id)
+  }
+  return ids
 }
 
 export function readProjectExpanded(): Record<string, boolean> {

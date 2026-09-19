@@ -22,6 +22,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
+	"github.com/LubyRuffy/eino-swarm/internal/remote"
 	"github.com/LubyRuffy/eino-swarm/internal/server"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
@@ -53,6 +54,7 @@ type App struct {
 	Pool   *provider.Pool
 	Engine *engine.Engine
 	Server *server.Server
+	Remote *remote.Host
 	Logger *slog.Logger
 
 	addr string
@@ -120,9 +122,12 @@ func New(opts Options) (*App, error) {
 	if addr == "" {
 		addr = cfg.Server.Addr
 	}
+	host := remote.New(eng, cfg, logger)
+	host.Start()
+	srv.SetRemote(host)
 	return &App{
 		Config: cfg, Store: st, Pool: pool, Engine: eng, Server: srv,
-		Logger: logger, addr: addr,
+		Remote: host, Logger: logger, addr: addr,
 	}, nil
 }
 
@@ -212,6 +217,9 @@ func (a *App) Shutdown(ctx context.Context) {
 		if err := srv.Shutdown(ctx); err != nil {
 			_ = srv.Close()
 		}
+	}
+	if a.Remote != nil {
+		a.Remote.Stop()
 	}
 	a.Engine.Shutdown()
 	if err := a.Store.Close(); err != nil {

@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/frontend"
 	"github.com/LubyRuffy/eino-swarm/internal/app"
 	"github.com/LubyRuffy/eino-swarm/internal/desktop"
 	"github.com/LubyRuffy/eino-swarm/internal/server"
@@ -39,7 +40,7 @@ func startDesktopServer(args []string) (desktop.Options, *app.App, error) {
 		return desktop.Options{}, nil, err
 	}
 
-	a, err := app.New(app.Options{
+	a, err := assembleApp(app.Options{
 		DataDir: *dataDir,
 		// A random loopback port: a fixed one collides with whatever else the
 		// user is running, and the window is told the URL anyway.
@@ -96,7 +97,7 @@ func serveWeb(args []string, stop <-chan os.Signal, ready func(url string)) erro
 		return err
 	}
 
-	a, err := app.New(app.Options{
+	a, err := assembleApp(app.Options{
 		DataDir: *dataDir,
 		Addr:    *addr,
 		Mock:    *mock,
@@ -133,4 +134,19 @@ func serveWeb(args []string, stop <-chan os.Signal, ready func(url string)) erro
 		a.Shutdown(ctx)
 		return nil
 	}
+}
+
+// assembleApp rebuilds the UI from a checkout when the sources changed,
+// then wires the process. `go:embed` is a compile-time snapshot: a clone
+// that has only dist/.gitkeep would otherwise serve a 404 until the next
+// `go build`. Under `go test`, Load returns the embed and does not spawn npm.
+func assembleApp(opts app.Options) (*app.App, error) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	assets, err := frontend.Load(ctx)
+	if err != nil {
+		return nil, err
+	}
+	opts.Assets = assets
+	return app.New(opts)
 }

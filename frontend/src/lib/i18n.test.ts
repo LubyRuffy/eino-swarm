@@ -95,10 +95,16 @@ describe("localizeNotice", () => {
     )
     expect(
       localizeNotice(
-        "Stopped auto-continuing: the last continuation made no progress.",
+        "Stopped auto-continuing: the last continuation made no progress. Press Start on the goal to keep going.",
         "zh",
       ),
-    ).toBe("已停止自动续跑：上一轮续跑没有实质进展。")
+    ).toBe("已停止自动续跑：上一轮续跑没有实质进展。点「开始目标」继续。")
+    expect(
+      localizeNotice(
+        "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going.",
+        "zh",
+      ),
+    ).toBe("已停止自动续跑：目标仍未完成。点「开始目标」继续。")
     expect(localizeNotice("Work session ended after the time cap.", "zh")).toBe(
       "工作会话因时长上限结束。",
     )
@@ -111,6 +117,9 @@ describe("localizeNotice", () => {
         "zh",
       ),
     ).toBe("已压缩上下文（91200 → 1400 tokens）。你看到的记录不变。")
+    expect(
+      localizeNotice("Standing objective paused. Press Start on the goal to keep going.", "zh"),
+    ).toBe("目标已暂停。点「开始目标」继续。")
     expect(localizeNotice("a model wrote this", "zh")).toBe("a model wrote this")
     expect(localizeNotice("A wait is armed.", "zh")).toBe("已设置等待。")
     expect(localizeNotice("A wait was cancelled.", "zh")).toBe("等待已取消。")

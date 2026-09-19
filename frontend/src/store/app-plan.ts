@@ -1,4 +1,5 @@
 import { api } from "@/lib/api"
+import { setThreadRunning } from "@/lib/thread-title"
 import type { Thread, ThreadStatus } from "@/lib/types"
 
 /** /plan and ask_user actions. Kept out of app.ts so that file stays under
@@ -93,8 +94,12 @@ export function planAskActions(
       try {
         const got = await api.implementPlan(id)
         set((s) => ({
-          threads: s.threads.map((t) =>
-            t.id === id ? { ...t, plan_mode: false } : t,
+          threads: setThreadRunning(
+            s.threads.map((t) =>
+              t.id === id ? { ...t, plan_mode: false } : t,
+            ),
+            id,
+            true,
           ),
           status: deps.withRunningClock(s.status, {
             turn_id: got.turn?.id,

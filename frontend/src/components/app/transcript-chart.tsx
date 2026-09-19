@@ -1,4 +1,4 @@
-import { useState, type ReactElement } from "react"
+import { memo, useEffect, useRef, useState, type ReactElement } from "react"
 import {
   Area,
   AreaChart,
@@ -19,7 +19,7 @@ import {
 import type { TooltipProps } from "recharts"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import type { ChartSpec } from "@/lib/chart-spec"
+import { chartSpecsEqual, type ChartSpec } from "@/lib/chart-spec"
 import { useT } from "@/lib/use-t"
 
 export const CHART_SERIES_PAINT = [
@@ -38,10 +38,13 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches
 }
 
-export function TranscriptChart({ spec }: { spec: ChartSpec }) {
+export const TranscriptChart = memo(function TranscriptChart({
+  spec,
+}: {
+  spec: ChartSpec
+}) {
   const t = useT()
   const label = spec.title || t("chart.untitled")
-  const animate = !prefersReducedMotion()
   const [view, setView] = useState("plot")
   return (
     <figure data-testid="transcript-chart" aria-label={label} className="min-w-0">
@@ -59,11 +62,7 @@ export function TranscriptChart({ spec }: { spec: ChartSpec }) {
         </div>
         <TabsContent value="plot" className="overflow-visible">
           <div className="h-56 w-full">
-            {view === "plot" ? (
-              <ResponsiveContainer width="100%" height="100%">
-                {renderMark(spec, animate)}
-              </ResponsiveContainer>
-            ) : null}
+            {view === "plot" ? <ChartPlot spec={spec} /> : null}
           </div>
         </TabsContent>
         <TabsContent value="table" className="overflow-auto">
@@ -72,7 +71,30 @@ export function TranscriptChart({ spec }: { spec: ChartSpec }) {
       </Tabs>
     </figure>
   )
+}, specPropsEqual)
+
+function specPropsEqual(
+  prev: { spec: ChartSpec },
+  next: { spec: ChartSpec },
+): boolean {
+  return chartSpecsEqual(prev.spec, next.spec)
 }
+
+/** Recharts restarts its grow animation whenever this subtree re-renders or
+ *  ResponsiveContainer remounts (it flashes an empty -1×-1 frame first).
+ *  Spec equality is the only reason to paint again; box size is handled
+ *  inside ResponsiveContainer, which already ignores unchanged dimensions. */
+const ChartPlot = memo(function ChartPlot({ spec }: { spec: ChartSpec }) {
+  const animate = useRef(!prefersReducedMotion())
+  useEffect(() => {
+    animate.current = false
+  }, [])
+  return (
+    <ResponsiveContainer width="100%" height="100%">
+      {renderMark(spec, animate.current)}
+    </ResponsiveContainer>
+  )
+}, specPropsEqual)
 
 function renderMark(spec: ChartSpec, animate: boolean): ReactElement {
   if (spec.type === "pie") {

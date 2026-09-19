@@ -134,6 +134,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "goal.clear": "清除目标",
   "goal.start": "开始目标",
   "goal.edit": "编辑目标",
+  "goal.capHint": "自动续跑已暂停，不是出错。点「开始目标」继续。",
+  "goal.idleHint": "上一轮续跑没有实质进展。点「开始目标」继续。",
 
   "plan.planning": "规划中",
   "plan.empty": "还没有计划",
@@ -300,9 +302,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "notice.goalCleared": "已清除目标。",
   "notice.goalCompleted": "目标已完成。",
   "notice.goalContinued": "继续追求目标。",
-  "notice.goalCapped": "已停止自动续跑：目标仍未完成。",
-  "notice.goalIdle": "已停止自动续跑：上一轮续跑没有实质进展。",
-  "notice.goalPaused": "目标已暂停。",
+  "notice.goalCapped": "已停止自动续跑：目标仍未完成。点「开始目标」继续。",
+  "notice.goalIdle": "已停止自动续跑：上一轮续跑没有实质进展。点「开始目标」继续。",
+  "notice.goalPaused": "目标已暂停。点「开始目标」继续。",
   "notice.goalBlocked": "目标已卡住：需要你或外部条件才能继续。",
   "notice.modelRetry": "模型出错，正在重试。",
   "notice.goalEdited": "目标已更新。",
@@ -371,6 +373,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.nav.swarm": "集群",
   "settings.nav.tools": "工具",
   "settings.nav.memory": "记忆",
+  "settings.nav.remote": "手机",
 
   "settings.general.title": "通用",
   "settings.general.desc": "窗口长什么样，以及这次安装把文件放在哪。",
@@ -546,6 +549,33 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.memory.skillsIndex": "提示词里列出的技能数",
   "settings.memory.skillsIndexHint":
     "只列名称和一行说明；代理打开它需要的那一个。",
+
+  "settings.remote.title": "手机",
+  "settings.remote.desc":
+    "用手机 App 扫这个码。中转只转发密文，会话留在这台电脑上。",
+  "settings.remote.hub": "中转",
+  "settings.remote.enabled": "接受手机配对",
+  "settings.remote.enabledHint":
+    "这台电脑向中转登记并出示配对 QR。不用手机就关掉。",
+  "settings.remote.hubUrl": "中转地址",
+  "settings.remote.hubUrlHint": "你在设置里填的 pairlink 中转，不是写死的域名。",
+  "settings.remote.token": "Host Token",
+  "settings.remote.tokenHint": "在中转控制台签发一次。不是 Gateway Key。",
+  "settings.remote.tokenSet": "已存有 Token。输入即替换。",
+  "settings.remote.storeToken": "保存",
+  "settings.remote.threadLimit": "手机上的会话数",
+  "settings.remote.threadLimitHint": "手机默认列出最近几条，再按更多。默认 5。",
+  "settings.remote.qr": "配对 QR",
+  "settings.remote.showQr": "显示配对 QR",
+  "settings.remote.qrAlt": "配对二维码",
+  "settings.remote.qrEmpty": "这台电脑在中转上线后就可以出示 QR。",
+  "settings.remote.uri": "配对 URI",
+  "settings.remote.expires": "{s} 秒后过期。刷新会换新码。",
+  "settings.remote.online": "在线 · {fp}",
+  "settings.remote.offline": "填好转发地址和 Host Token 才会上线。",
+  "settings.remote.devices": "已绑定的手机",
+  "settings.remote.noDevices": "还没有绑定手机。",
+  "settings.remote.revoke": "吊销",
 
   "settings.personality.title": "个性化",
   "settings.personality.desc":

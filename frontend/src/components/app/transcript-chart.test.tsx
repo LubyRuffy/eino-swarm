@@ -47,6 +47,14 @@ describe("TranscriptChart", () => {
     expect(figure.querySelector(".recharts-yAxis")).not.toBeNull()
   })
 
+  it("does not replace the svg when the spec object is a new equal copy", () => {
+    const { rerender } = render(<TranscriptChart spec={spec()} />)
+    const svg = screen.getByTestId("transcript-chart").querySelector("svg")
+    expect(svg).not.toBeNull()
+    rerender(<TranscriptChart spec={spec()} />)
+    expect(screen.getByTestId("transcript-chart").querySelector("svg")).toBe(svg)
+  })
+
   it("keeps the data table behind a tab so the plot is the first view", async () => {
     const user = userEvent.setup()
     render(<TranscriptChart spec={spec()} />)

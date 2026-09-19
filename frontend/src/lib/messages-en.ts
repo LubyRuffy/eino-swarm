@@ -138,6 +138,10 @@ export const en = {
   "goal.clear": "Clear goal",
   "goal.start": "Start goal",
   "goal.edit": "Edit goal",
+  "goal.capHint":
+    "Auto-continue paused. This is not an error. Press Start to keep going.",
+  "goal.idleHint":
+    "Auto-continue paused: the last continuation made no progress. Press Start to keep going.",
 
   "plan.planning": "Planning",
   "plan.empty": "No plan yet",
@@ -314,10 +318,11 @@ export const en = {
   "notice.goalCompleted": "Standing objective completed.",
   "notice.goalContinued": "Continuing the standing objective.",
   "notice.goalCapped":
-    "Stopped auto-continuing: the standing objective is still open.",
+    "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going.",
   "notice.goalIdle":
-    "Stopped auto-continuing: the last continuation made no progress.",
-  "notice.goalPaused": "Standing objective paused.",
+    "Stopped auto-continuing: the last continuation made no progress. Press Start on the goal to keep going.",
+  "notice.goalPaused":
+    "Standing objective paused. Press Start on the goal to keep going.",
   "notice.goalBlocked":
     "Standing objective blocked: progress needs you or an external change.",
   "notice.modelRetry": "Retrying after a model error.",
@@ -390,6 +395,7 @@ export const en = {
   "settings.nav.swarm": "Swarm",
   "settings.nav.tools": "Tools",
   "settings.nav.memory": "Memory",
+  "settings.nav.remote": "Phone",
 
   "settings.general.title": "General",
   "settings.general.desc":
@@ -578,6 +584,35 @@ export const en = {
   "settings.memory.skillsIndex": "Skills listed in the prompt",
   "settings.memory.skillsIndexHint":
     "Only names and one-line descriptions are listed; an agent opens the one it needs.",
+
+  "settings.remote.title": "Phone",
+  "settings.remote.desc":
+    "Scan the QR from the phone app. The hub only forwards ciphertext; conversations stay on this PC.",
+  "settings.remote.hub": "Hub",
+  "settings.remote.enabled": "Accept phone pairing",
+  "settings.remote.enabledHint":
+    "This PC registers with the hub and shows a pairing QR. Leave off if you are not using a phone.",
+  "settings.remote.hubUrl": "Hub URL",
+  "settings.remote.hubUrlHint":
+    "The pairlink hub you typed in Settings — never a compiled-in host.",
+  "settings.remote.token": "Host Token",
+  "settings.remote.tokenHint": "Issued once in the hub console. It is not a Gateway Key.",
+  "settings.remote.tokenSet": "A token is already stored. Enter a new one to replace it.",
+  "settings.remote.storeToken": "Store",
+  "settings.remote.threadLimit": "Threads on the phone",
+  "settings.remote.threadLimitHint":
+    "How many recent conversations the phone lists before More. Default 5.",
+  "settings.remote.qr": "Pairing QR",
+  "settings.remote.showQr": "Show pairing QR",
+  "settings.remote.qrAlt": "Pairing QR code",
+  "settings.remote.qrEmpty": "Show a QR when this PC is online at the hub.",
+  "settings.remote.uri": "Pairing URI",
+  "settings.remote.expires": "Expires in {s}s. Refresh for a new code.",
+  "settings.remote.online": "Online · {fp}",
+  "settings.remote.offline": "Offline until a hub URL and Host Token are set.",
+  "settings.remote.devices": "Bound phones",
+  "settings.remote.noDevices": "No phones bound yet.",
+  "settings.remote.revoke": "Revoke",
 
   "settings.personality.title": "Personality",
   "settings.personality.desc":

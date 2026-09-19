@@ -878,3 +878,59 @@ describe("sidebar order", () => {
     expect(useApp.getState().threads.map((t) => t.id)).toEqual(["th_old"])
   })
 })
+
+describe("sidebar running", () => {
+  it("keeps a running conversation marked after switching away", async () => {
+    const listed = (id: string, running = false) => ({
+      id,
+      title: id,
+      title_auto: true,
+      project_id: "",
+      provider_id: "default",
+      reasoning_effort: "",
+      archived: false,
+      created_at: new Date().toISOString(),
+      last_active_at: new Date().toISOString(),
+      running,
+    })
+    useApp.setState({
+      activeId: "th_old",
+      loaded: true,
+      status: { running: true, started_at: new Date().toISOString() },
+      threads: [listed("th_old"), listed("th_other")],
+    })
+    await useApp.getState().openThread("th_other")
+    expect(useApp.getState().activeId).toBe("th_other")
+    expect(useApp.getState().status.running).toBe(false)
+    expect(useApp.getState().threads.find((t) => t.id === "th_old")?.running).toBe(
+      true,
+    )
+  })
+
+  it("keeps that mark after New conversation, even if the listing is still idle", async () => {
+    const listed = (id: string, running = false) => ({
+      id,
+      title: id,
+      title_auto: true,
+      project_id: "pj_busy",
+      provider_id: "default",
+      reasoning_effort: "",
+      archived: false,
+      created_at: new Date().toISOString(),
+      last_active_at: new Date().toISOString(),
+      running,
+    })
+    useApp.setState({
+      activeId: "th_old",
+      loaded: true,
+      status: { running: true, started_at: new Date().toISOString() },
+      threads: [listed("th_old", true)],
+    })
+    await useApp.getState().newThread()
+    await useApp.getState().refreshThreads()
+    expect(useApp.getState().activeId).not.toBe("th_old")
+    expect(useApp.getState().threads.find((t) => t.id === "th_old")?.running).toBe(
+      true,
+    )
+  })
+})

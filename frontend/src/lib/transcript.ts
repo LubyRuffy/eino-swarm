@@ -3,6 +3,7 @@ import {
   compactBriefing,
   compactNotice,
   goalCappedNotice,
+  goalIdleNotice,
   goalNotice,
   goalSessionNotice,
   isGoalSessionWrapSteer,
@@ -26,6 +27,7 @@ export {
   compactBriefing,
   compactNotice,
   goalCappedNotice,
+  goalIdleNotice,
   goalNotice,
   goalSessionNotice,
   modelRetryNotice,
@@ -294,10 +296,7 @@ export function reduceEvent(
     return next
   }
   if (ev.kind === "goal_idle") {
-    append(
-      touchAgent(next, MANAGER_ID),
-      block(ev, "notice", ev.text?.trim() || "Stopped auto-continuing: the last continuation made no progress."),
-    )
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", goalIdleNotice(ev.text)))
     return next
   }
   if (ev.kind === "goal_blocked") {

@@ -975,7 +975,14 @@ test("plan command drafts then implements", async ({ page }) => {
   await composer(page).press("Enter")
   await expect(page.getByTestId("plan-banner")).toContainText("Planning")
   await expect(statusBadge(page)).toContainText("Working")
-  await expect(page.getByTestId("ask-card")).toBeVisible({ timeout: 30_000 })
+  const ask = page.getByTestId("ask-card")
+  await expect(ask).toBeVisible({ timeout: 30_000 })
+  expect(await ask.evaluate((el) => {
+    const col = el.closest(".content-column")
+    if (!(col instanceof HTMLElement)) return false
+    const cw = col.getBoundingClientRect().width
+    return cw > 512 && Math.abs(el.getBoundingClientRect().width - cw) < 2
+  })).toBe(true)
   await page.getByTestId("ask-option-safer").click()
   await page.getByTestId("ask-submit").click()
   await waitForIdle(page)

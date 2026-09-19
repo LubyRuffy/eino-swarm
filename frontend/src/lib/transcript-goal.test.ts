@@ -187,9 +187,11 @@ describe("standing objective and compact notices", () => {
     expect(manager(continued).blocks[0].text).toBe("Continuing the standing objective.")
     const capped = fold([ev({ kind: "goal_capped", text: '{"auto_turns":12,"cap":12}' })])
     expect(manager(capped).blocks[0].text).toMatch(/Stopped auto-continuing/)
+    expect(manager(capped).blocks[0].text).toMatch(/Press Start on the goal/)
     expect(manager(capped).blocks[0].text).not.toMatch(/auto_turns/)
     const paused = fold([ev({ kind: "goal_capped", text: '{"reason":"interrupted"}' })])
-    expect(manager(paused).blocks[0].text).toBe("Standing objective paused.")
+    expect(manager(paused).blocks[0].text).toMatch(/^Standing objective paused\./)
+    expect(manager(paused).blocks[0].text).toMatch(/Press Start on the goal/)
     expect(manager(paused).blocks[0].text).not.toMatch(/interrupted/)
     expect(capped.agentOrder).toEqual([MANAGER_ID])
     const blocked = fold([ev({ kind: "goal_blocked", text: '{"reason":"needs an external change"}' })])
@@ -208,6 +210,7 @@ describe("standing objective and compact notices", () => {
       }),
     ])
     expect(manager(idle).blocks[0].text).toMatch(/no progress/)
+    expect(manager(idle).blocks[0].text).toMatch(/Press Start on the goal/)
   })
 
   it("notices a forced session without pasting the JSON", () => {

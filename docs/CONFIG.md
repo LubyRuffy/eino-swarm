@@ -81,6 +81,12 @@ ui:
     font: system
     font_size: medium
     content_width: comfortable
+remote:
+    enabled: false
+    hub_url: ""
+    thread_limit: 5
+    summary_chars: 280
+    open_turns: 6
 ```
 
 Any key you leave out, set to zero or set to an empty string is repaired with its
@@ -266,6 +272,29 @@ Chrome only. Agents still answer in the language you are using.
 
 Theme stays in the browser; language, typeface and column width are first-class
 config so a new window keeps them.
+
+## `remote`
+
+Phone pairing over pairlink. Off by default. The hub URL is whatever you type
+in Settings → Phone.
+
+| key | default | meaning |
+|---|---|---|
+| `enabled` | `false` | register this PC with the hub and accept sealed RPC from bound phones |
+| `hub_url` | `""` | pairlink hub origin (`https://…`). Never compiled in |
+| `thread_limit` | `5` | how many recent threads the phone lists before More |
+| `summary_chars` | `280` | truncate assistant/summary text on the phone |
+| `open_turns` | `6` | completed turns included when a thread is opened |
+
+The Host Token and the long-term X25519 key live as files, not in this YAML:
+
+```
+$ZWAI_HOME/remote/host_token   0600
+$ZWAI_HOME/remote/identity     0600
+```
+
+`GET /api/settings` never echoes the token. Paste it via Settings → Phone or
+`PUT /api/remote/token`. Empty hub or token leaves remote offline.
 
 ## Multiple instances
 

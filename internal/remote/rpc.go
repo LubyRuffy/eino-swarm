@@ -1,0 +1,130 @@
+package remote
+
+import (
+	"encoding/json"
+	"errors"
+	"strings"
+
+	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/store"
+)
+
+// Handle runs one slim RPC against the local engine. Pairlink only
+// transports the bytes; this is the application protocol.
+func Handle(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
+	if req.V != 0 && req.V != ProtocolV {
+		return fail(req.ID, path, sessionID, "bad_version", "unsupported protocol version")
+	}
+	switch strings.TrimSpace(req.Op) {
+	case OpList, OpMore:
+		return handleList(eng, cfg, req, path, sessionID)
+	case OpOpen:
+		return handleOpen(eng, cfg, req, path, sessionID)
+	case OpStart:
+		return handleStart(eng, cfg, req, path, sessionID)
+	case OpSend:
+		return handleSend(eng, req, path, sessionID)
+	case OpSteer:
+		err := eng.Steer(req.ThreadID, req.Text)
+		return opErr(req.ID, path, sessionID, err)
+	case OpStop:
+		err := eng.Interrupt(req.ThreadID)
+		return opErr(req.ID, path, sessionID, err)
+	case OpAnswer:
+		return handleAnswer(eng, req, path, sessionID)
+	default:
+		return fail(req.ID, path, sessionID, "unknown_op", "unknown op")
+	}
+}
+
+func handleList(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
+	resp := okBase(req.ID, path, sessionID)
+	ps, err := listProjects(eng)
+	if err != nil {
+		return fail(req.ID, path, sessionID, "", fmtErr(err))
+	}
+	resp.Projects = ps
+	all, err := sortedThreads(eng)
+	if err != nil {
+		return fail(req.ID, path, sessionID, "", fmtErr(err))
+	}
+	page, next, more := pageThreads(all, req.Cursor, cfg.ThreadLimit)
+	for _, th := range page {
+		resp.Threads = append(resp.Threads, threadView(eng, th, cfg))
+	}
+	resp.More = more
+	resp.Next = next
+	resp.Running = runningViews(eng)
+	return resp
+}
+
+func handleOpen(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
+	d, err := openDetail(eng, req.ThreadID, cfg)
+	if err != nil {
+		return mapErr(req.ID, path, sessionID, err)
+	}
+	resp := okBase(req.ID, path, sessionID)
+	resp.Detail = d
+	return resp
+}
+
+func handleStart(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
+	th, err := eng.CreateThread("", "", strings.TrimSpace(req.ProjectID))
+	if err != nil {
+		return mapErr(req.ID, path, sessionID, err)
+	}
+	if _, err := eng.StartTurn(th.ID, req.Text); err != nil {
+		return mapErr(req.ID, path, sessionID, err)
+	}
+	resp := okBase(req.ID, path, sessionID)
+	loaded, err := eng.Store().GetThread(th.ID)
+	if err != nil {
+		return mapErr(req.ID, path, sessionID, err)
+	}
+	resp.Threads = []ThreadView{threadView(eng, *loaded, cfg)}
+	resp.Running = runningViews(eng)
+	return resp
+}
+
+func handleSend(eng *engine.Engine, req Request, path, sessionID string) Response {
+	st := eng.Status(req.ThreadID)
+	var err error
+	if st.Running {
+		_, err = eng.EnqueueFollowup(req.ThreadID, req.Text)
+	} else {
+		_, err = eng.StartTurn(req.ThreadID, req.Text)
+	}
+	return opErr(req.ID, path, sessionID, err)
+}
+
+func handleAnswer(eng *engine.Engine, req Request, path, sessionID string) Response {
+	if len(req.Answers) > 0 && string(req.Answers) != "null" {
+		var answers engine.AskAnswers
+		if err := json.Unmarshal(req.Answers, &answers); err != nil {
+			return fail(req.ID, path, sessionID, "bad_request", "could not read answers")
+		}
+		return opErr(req.ID, path, sessionID, eng.AnswerTurn(req.ThreadID, req.CallID, answers))
+	}
+	return opErr(req.ID, path, sessionID, eng.AnswerTurnText(req.ThreadID, req.Text))
+}
+
+func opErr(id, path, sessionID string, err error) Response {
+	if err != nil {
+		return mapErr(id, path, sessionID, err)
+	}
+	return okBase(id, path, sessionID)
+}
+
+func mapErr(id, path, sessionID string, err error) Response {
+	switch {
+	case errors.Is(err, engine.ErrBusy):
+		return fail(id, path, sessionID, "busy", err.Error())
+	case errors.Is(err, engine.ErrIdle):
+		return fail(id, path, sessionID, "idle", err.Error())
+	case errors.Is(err, store.ErrNotFound):
+		return fail(id, path, sessionID, "not_found", err.Error())
+	default:
+		return fail(id, path, sessionID, "", fmtErr(err))
+	}
+}
