@@ -13,6 +13,7 @@ import { ProjectDialog } from "@/components/app/project-dialog"
 import { SelectionMenu } from "@/components/app/selection-menu"
 import { SettingsDialog } from "@/components/app/settings-dialog"
 import { Sidebar } from "@/components/app/sidebar"
+import { ToastStack } from "@/components/app/toast-stack"
 import { TerminalPanel } from "@/components/app/terminal-panel"
 import { Transcript } from "@/components/app/transcript"
 import { Button } from "@/components/ui/button"
@@ -66,6 +67,7 @@ export function App() {
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
         <AppShell />
       </div>
+      <ToastStack />
     </TooltipProvider>
   )
 }

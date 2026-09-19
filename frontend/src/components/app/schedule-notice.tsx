@@ -1,6 +1,6 @@
 import { Clock } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
+import { ScheduleWaitActions } from "@/components/app/schedule-wait-actions"
 import { localizeNotice } from "@/lib/i18n"
 import type { Block } from "@/lib/transcript"
 import { useT } from "@/lib/use-t"
@@ -23,12 +23,16 @@ export function isScheduleNotice(block: Block): boolean {
 export function ScheduleNotice({
   block,
   onCancel,
+  onRunNow,
 }: {
   block: Block
   onCancel?: (id: string) => void
+  onRunNow?: (id: string) => void
 }) {
   const t = useT()
+  const running = useApp((s) => s.status.running)
   const deleteSchedule = useApp((s) => s.deleteSchedule)
+  const runScheduleNow = useApp((s) => s.runScheduleNow)
   if (block.quiet || !block.text) return null
   const id = isScheduleId(block.detail) ? block.detail!.trim() : ""
   const armed = block.text === "A wait is armed." && Boolean(id)
@@ -42,19 +46,17 @@ export function ScheduleNotice({
         {localizeNotice(block.text, t.locale)}
       </p>
       {armed ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="-mt-0.5 shrink-0"
-          aria-label={t("schedule.cancel")}
-          onClick={() => {
+        <ScheduleWaitActions
+          running={running}
+          onRunNow={() => {
+            if (onRunNow) onRunNow(id)
+            else void runScheduleNow(id)
+          }}
+          onCancel={() => {
             if (onCancel) onCancel(id)
             else void deleteSchedule(id)
           }}
-        >
-          {t("schedule.cancel")}
-        </Button>
+        />
       ) : null}
     </div>
   )

@@ -130,6 +130,23 @@ func (e *Engine) hasFutureWake(threadID string) bool {
 	return ok
 }
 
+// continueGoalAfterWakeCancel starts the next pursuing turn when the human
+// cancelled the wait that had been parking it. A live turn already has a
+// continueGoal at finish; stealing here would 409 and burn the budget.
+func (e *Engine) continueGoalAfterWakeCancel(row *store.Schedule) {
+	if row == nil || row.Kind != store.ScheduleThread {
+		return
+	}
+	threadID := strings.TrimSpace(row.ThreadID)
+	if threadID == "" {
+		return
+	}
+	if e.Status(threadID).Running {
+		return
+	}
+	e.runtimeFor(threadID).continueGoal(store.TurnDone)
+}
+
 // blockOpenGoalOnTurnError stops auto-continue when a pursuing turn dies
 // for a reason the manager cannot retry. The manager never got to call
 // block_goal; leaving the banner on Pursuing and kicking another session

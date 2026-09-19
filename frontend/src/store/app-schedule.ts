@@ -1,6 +1,14 @@
 import { ApiError, api } from "@/lib/api"
 import { resolveLocale, t, type LocalePref } from "@/lib/i18n"
-import type { Schedule, ScheduleCreate, SchedulePatch } from "@/lib/types"
+import { setThreadRunning } from "@/lib/thread-title"
+import type {
+  Schedule,
+  ScheduleCreate,
+  SchedulePatch,
+  Thread,
+  ThreadStatus,
+} from "@/lib/types"
+import { withRunningClock } from "./app-stream"
 
 /** Active thread wake targeting this conversation — the composer banner. */
 export function activeWake(
@@ -13,6 +21,16 @@ export function activeWake(
       row.kind === "thread" &&
       row.thread_id === threadId &&
       row.status === "active",
+  )
+}
+
+/** Run now on this conversation must paint Working before the first SSE. */
+export function wakeTargetsOpenThread(
+  row: Schedule | undefined,
+  threadId: string | undefined,
+): boolean {
+  return Boolean(
+    row && row.kind === "thread" && threadId && row.thread_id === threadId,
   )
 }
 
@@ -33,9 +51,14 @@ export type ScheduleSlice = {
 type ScheduleHost = {
   locale: LocalePref
   error?: string
+  activeId?: string
+  status: ThreadStatus
+  threads: Thread[]
+  refreshThreads: () => Promise<void>
 }
 
-type ScheduleStatePatch = Partial<ScheduleSlice> & Partial<Pick<ScheduleHost, "error">>
+type ScheduleStatePatch = Partial<ScheduleSlice> &
+  Partial<Pick<ScheduleHost, "error" | "status" | "threads">>
 
 type SetSchedule = (
   partial: ScheduleStatePatch | ((s: ScheduleSlice & ScheduleHost) => ScheduleStatePatch),
@@ -89,11 +112,30 @@ export function scheduleActions(
     },
 
     runScheduleNow: async (id) => {
+      const row = get().schedules.find((s) => s.id === id)
+      const activeId = get().activeId
+      const already = get().status.running
+      const painted = wakeTargetsOpenThread(row, activeId) && !already
       try {
+        if (painted && activeId) {
+          set((s) => ({
+            status: withRunningClock(s.status),
+            threads: setThreadRunning(s.threads, activeId, true),
+            error: undefined,
+          }))
+        }
         await api.runSchedule(id)
         await get().refreshSchedules()
+        void get().refreshThreads()
       } catch (e) {
-        if (e instanceof ApiError && e.code === "skipped_busy") {
+        const busy = e instanceof ApiError && e.code === "skipped_busy"
+        if (painted && !busy && activeId) {
+          set((s) => ({
+            status: { running: false },
+            threads: setThreadRunning(s.threads, activeId, false),
+          }))
+        }
+        if (busy) {
           set({
             error: t(resolveLocale(get().locale), "schedule.skippedBusy"),
           })

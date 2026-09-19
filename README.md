@@ -67,8 +67,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   told to wake and end the turn instead of spinning or asking you to remind
   it. The sidebar **Scheduled** control opens the inbox dialog: pause, resume, cancel,
   Run now, or add a standalone job. An active wake on the open conversation
-  shows a banner with the next check and Cancel. Cancel by id also works from
-  the armed-wait notice. A scheduled check reports through `report_schedule`;
+  shows a banner with the next check, **Run now**, and **Cancel wait** (not
+  an icon-only dismiss — that sat under the goal banner's X). Run now and
+  Cancel wait also sit on the armed-wait notice. Cancel of a thread wake
+  while idle continues a standing `/goal`; Run now fires the check without
+  waiting for the timer (the wait banner hides while that turn is working,
+  and an early cron check consumes the pending slot). A scheduled check reports through `report_schedule`;
   empty findings stay quiet. Quiet standalone runs stay out of Recents;
   findings open from the inbox. Workers cannot schedule. Caps live in
   Settings → Swarm.
@@ -130,7 +134,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   hide it while it is still running. After it finishes it collapses to **Thought**.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
-  (finished ones are not re-parsed on every token), a `chart` fence becomes a
+  (finished ones are not re-parsed on every token; fenced code is highlighted
+  and copyable; `$…$` / `$$…$$` render as formulas), a `chart` fence becomes a
   plot when the JSON is a comparison and does not flicker while later tokens
   arrive, and typing in the composer
   does not rebuild the conversation.
@@ -164,7 +169,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   queued workers start under the new cap; lowering it does not kill anyone
   already running.
 - **Per-conversation model and thinking level.** Settings → Models lists
-  providers as rows (open one for URL, key, default). The composer picker
+  providers as rows (open one for URL, key, default). Discovering a catalog
+  that fails toasts over the sheet (× to close) instead of a red line at
+  the top of that page. The composer picker
   groups models by provider, searches, refreshes the catalog, and jumps
   to Edit providers. A thinking-level menu (Default / Low / Medium / High)
   sets how hard the models reason. Both apply from the next turn. A
@@ -190,6 +197,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   dump the same series as a list, a markdown table, or emoji. The transcript
   paints the plot; a Table tab shows the same rows. `zwai tui` still has
   the JSON fence.
+- **Code and formulas render.** A fenced block with a language tag is
+  highlighted (same colours as a `read` of that suffix) and has a copy
+  control. `$…$` / `$$…$$` and `math` fences paint as formulas. The manager
+  is told to tag fences and to write mathematics as LaTeX, not as a code dump.
 - **Links leave the app.** A markdown URL opens in a new browser tab (`zwai web`)
   or the system browser (`zwai desktop`). It does not replace the window.
 - **One-id troubleshooting.** Copy a turn id from the UI and
@@ -210,6 +221,7 @@ cd eino-swarm
 
 # first run builds frontend/dist (needs Node), then opens the native window
 go run ./cmd/zwai desktop
+# macOS may ask to allow local network (LAN model endpoints). Allow it.
 
 # or the same app in your browser
 go run ./cmd/zwai web
@@ -229,7 +241,9 @@ with you — tone, language habits, standing preferences — is
 system prompt. A project's instruction is the business context; when the two
 conflict, the project wins.
 Fill in **Models** (base URL, API key, discover models, pick a
-default), or seed it from the environment before the first start:
+default), or seed it from the environment before the first start.
+On macOS desktop, a LAN endpoint needs Local Network permission (the
+window is not Terminal; `curl` working does not mean zwai can dial).
 
 ```bash
 export OPENAI_BASE_URL=https://your-endpoint/v1

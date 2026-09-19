@@ -58,6 +58,11 @@ Windows / Linux taskbar) uses the embedded app icon even under `go run`: a
 naked binary has no `.app` bundle, so the PNG has to be set at runtime, inset
 to Apple's 824/1024 icon grid, and the corners rounded here — macOS will not
 apply its squircle or content margin to a loose executable.
+On macOS, `desktop` copies itself into `~/Library/Caches/zwai/zwai.app` and
+re-execs before opening the window. Sequoia+ Local Network privacy keys off a
+bundle id; a `go run` binary is `a.out` with no Info.plist, so listing models
+on a LAN endpoint fails with `no route to host` while Terminal `curl` works.
+The first launch may prompt to allow local network access.
 
 ## `zwai web`
 

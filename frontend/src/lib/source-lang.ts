@@ -35,6 +35,8 @@ export interface LangDef {
   nameLeaders: Set<string>
   /** Identifier followed by this op is a key (`name:` in yaml). */
   keyOp?: ":" | "="
+  /** A leading # plus identifier is a preprocessor line (`#include`). */
+  hashDirective?: boolean
 }
 
 const NAMED: Record<string, LangId> = {
@@ -105,6 +107,7 @@ const LANGS: Record<Exclude<LangId, "shell" | "html">, LangDef> = {
     ),
     lineComment: "//",
     blockComment: ["/*", "*/"],
+    hashDirective: true,
     nameLeaders: words("class struct enum namespace"),
   },
   css: {
@@ -229,6 +232,44 @@ export function languageFromPath(path: string): LangId | undefined {
   const dot = lower.lastIndexOf(".")
   if (dot <= 0) return undefined
   return EXT[lower.slice(dot + 1)]
+}
+
+/** Fence info-string → highlighter dialect. Unknown tags stay plain text;
+ *  the body is not inspected, same rule as a file suffix. */
+const FENCE_ALIAS: Record<string, LangId> = {
+  "c#": "java",
+  "c++": "c",
+  console: "shell",
+  csharp: "java",
+  golang: "go",
+  javascript: "js",
+  kotlin: "java",
+  objc: "c",
+  "objective-c": "c",
+  python: "python",
+  python3: "python",
+  ruby: "ruby",
+  rust: "rust",
+  shell: "shell",
+  typescript: "js",
+}
+
+export function languageFromFence(tag: string): LangId | undefined {
+  const key = fenceTag(tag)
+  if (!key) return undefined
+  const aliased = FENCE_ALIAS[key]
+  if (aliased) return aliased
+  if (EXT[key]) return EXT[key]
+  if (key === "shell" || key === "html") return key
+  if (Object.hasOwn(LANGS, key)) return key as LangId
+  return undefined
+}
+
+function fenceTag(tag: string): string {
+  const raw = tag.trim().toLowerCase()
+  if (!raw) return ""
+  const token = raw.split(/[^a-z0-9+#._-]+/)[0] ?? ""
+  return token.replace(/^\./, "")
 }
 
 export function langDef(id: LangId): LangDef | undefined {

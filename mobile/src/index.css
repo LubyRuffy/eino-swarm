@@ -76,6 +76,21 @@
   .md-body pre {
     @apply my-2 overflow-x-auto rounded-md bg-muted p-3 text-xs;
   }
+  .md-body .md-code {
+    @apply my-2 overflow-hidden rounded-md bg-muted;
+  }
+  .md-body .md-code pre {
+    @apply my-0 rounded-none bg-transparent px-3 pb-3 pt-1;
+  }
+  .md-body .md-math {
+    @apply my-2;
+  }
+  .md-body .katex-display {
+    @apply my-0 overflow-x-auto overflow-y-hidden;
+  }
+  .md-body .katex-error {
+    color: hsl(var(--destructive));
+  }
   .md-body code {
     @apply font-mono text-xs;
   }

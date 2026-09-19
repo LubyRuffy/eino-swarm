@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { act, fireEvent, render, screen } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ScheduleBanner } from "./schedule-banner"
 import type { Schedule } from "@/lib/types"
+import { useApp } from "@/store/app"
 
 function wake(partial: Partial<Schedule> = {}): Schedule {
   return {
@@ -30,13 +31,29 @@ function wake(partial: Partial<Schedule> = {}): Schedule {
 }
 
 describe("ScheduleBanner", () => {
+  beforeEach(() => {
+    act(() => {
+      useApp.setState({ status: { running: false } })
+    })
+  })
+
   it("renders for an active wake and cancel calls delete", () => {
     const onCancel = vi.fn()
-    render(<ScheduleBanner wake={wake()} onCancel={onCancel} />)
+    render(<ScheduleBanner wake={wake()} onCancel={onCancel} onRunNow={vi.fn()} />)
     expect(screen.getByTestId("schedule-banner")).toBeInTheDocument()
     expect(screen.getByTestId("schedule-next").textContent?.length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole("button", { name: "Cancel wait" }))
     expect(onCancel).toHaveBeenCalled()
+  })
+
+  it("labels Run now instead of an icon-only dismiss", () => {
+    const onRunNow = vi.fn()
+    render(<ScheduleBanner wake={wake()} onCancel={vi.fn()} onRunNow={onRunNow} />)
+    fireEvent.click(screen.getByRole("button", { name: "Run now" }))
+    expect(onRunNow).toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Cancel wait" }).textContent).toMatch(
+      /Cancel wait/,
+    )
   })
 
   it("hides when there is no active thread wake", () => {
@@ -50,5 +67,15 @@ describe("ScheduleBanner", () => {
       <ScheduleBanner wake={wake({ kind: "standalone" })} onCancel={vi.fn()} />,
     )
     expect(job).toBeEmptyDOMElement()
+  })
+
+  it("hides while the conversation is working", () => {
+    act(() => {
+      useApp.setState({ status: { running: true } })
+    })
+    const { container } = render(
+      <ScheduleBanner wake={wake()} onCancel={vi.fn()} onRunNow={vi.fn()} />,
+    )
+    expect(container).toBeEmptyDOMElement()
   })
 })

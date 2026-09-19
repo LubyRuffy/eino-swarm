@@ -16,6 +16,7 @@ import { mergeModelContext } from "@/lib/usage"
 import type { Settings } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT, type Translate } from "@/lib/use-t"
+import { useToasts } from "@/store/toasts"
 
 import { AuxiliaryModels } from "./auxiliary-models"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
@@ -35,7 +36,6 @@ export function ModelsTab({
 }) {
   const t = useT()
   const [busy, setBusy] = useState<string>()
-  const [error, setError] = useState<string>()
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
   const [doomed, setDoomed] = useState<ProviderConfig>()
 
@@ -51,8 +51,9 @@ export function ModelsTab({
 
   const discover = async (index: number) => {
     const p = settings.models.providers[index]
+    const toastId = `discover:${p.id}`
     setBusy(p.id)
-    setError(undefined)
+    useToasts.getState().dismiss(toastId)
     try {
       const listed = await api.discoverModels({
         provider_id: p.id,
@@ -67,7 +68,14 @@ export function ModelsTab({
         model_context: mergeModelContext(p.model_context, listed.context_windows),
       })
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      // The page is scrolled to this provider. A red line under the Models
+      // heading is above the fold and looks like nothing happened.
+      useToasts.getState().push({
+        id: toastId,
+        kind: "error",
+        title: t("settings.models.discoverFailed"),
+        message: e instanceof Error ? e.message : String(e),
+      })
     } finally {
       setBusy(undefined)
     }
@@ -107,8 +115,6 @@ export function ModelsTab({
       title={t("settings.models.title")}
       description={t("settings.models.desc")}
     >
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
       <AuxiliaryModels settings={settings} onChange={onChange} query={query} />
 
       <SettingsSection

@@ -1,22 +1,22 @@
 import {
-  Children,
   createContext,
-  isValidElement,
   lazy,
   memo,
   Suspense,
   useContext,
   useRef,
   type ComponentPropsWithoutRef,
-  type ReactElement,
   type ReactNode,
 } from "react"
 import Markdown from "react-markdown"
 import type { Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
+import remarkMath from "remark-math"
 
 import { ChartPending } from "@/components/app/chart-pending"
+import { MarkdownCodeBlock, readFence } from "@/components/app/markdown-code"
 import { classifyHref } from "@/lib/external-links"
+import { isMathFence } from "@/lib/math-fence"
 import { chartSpecsEqual, parseChartSpec, type ChartSpec } from "@/lib/chart-spec"
 import { closeIncompleteMarkdown } from "@/lib/stream-markdown"
 
@@ -25,9 +25,14 @@ const TranscriptChart = lazy(async () => {
   return { default: mod.TranscriptChart }
 })
 
+const MarkdownMath = lazy(async () => {
+  const mod = await import("@/components/app/markdown-math")
+  return { default: mod.MarkdownMath }
+})
+
 /** remark plugins are module-level so a memoised markdown block is not
  *  invalidated by a new array on every parent render. */
-const PLUGINS = [remarkGfm]
+const PLUGINS = [remarkGfm, remarkMath]
 
 const MarkdownStreaming = createContext(false)
 
@@ -65,9 +70,9 @@ function MarkdownPre({
 }: ComponentPropsWithoutRef<"pre"> & { node?: unknown }) {
   const streaming = useContext(MarkdownStreaming)
   const specRef = useRef<ChartSpec | null>(null)
-  const fence = chartFence(children)
-  if (fence !== null) {
-    const parsed = parseChartSpec(fence)
+  const fence = readFence(children)
+  if (fence !== null && fence.lang === "chart") {
+    const parsed = parseChartSpec(fence.text)
     if (parsed.ok) {
       if (!specRef.current || !chartSpecsEqual(specRef.current, parsed.spec)) {
         specRef.current = parsed.spec
@@ -83,22 +88,60 @@ function MarkdownPre({
   } else {
     specRef.current = null
   }
+  if (fence !== null && isMathFence(fence.lang)) {
+    return (
+      <Suspense fallback={<code>{fence.text}</code>}>
+        <MarkdownMath display tex={fence.text} />
+      </Suspense>
+    )
+  }
+  if (fence !== null) {
+    return <MarkdownCodeBlock fence={fence} {...props} />
+  }
   return <pre {...props}>{children}</pre>
 }
 
-/** Only a fenced `chart` block is a spec. Inline `code` and other fences
- *  stay code — a JSON sample in a typescript fence must not become a plot. */
-function chartFence(children: ReactNode): string | null {
-  const codes: ReactElement<{ className?: string; children?: ReactNode }>[] = []
-  Children.forEach(children, (child) => {
-    if (!isValidElement(child)) return
-    codes.push(child as ReactElement<{ className?: string; children?: ReactNode }>)
-  })
-  if (codes.length !== 1) return null
-  const el = codes[0]
-  const lang = /language-([^\s]+)/.exec(el.props.className ?? "")?.[1]
-  if (lang !== "chart") return null
-  return String(el.props.children ?? "").replace(/\n$/, "")
+function MarkdownInlineCode({
+  className,
+  children,
+  node: _node,
+  ...props
+}: ComponentPropsWithoutRef<"code"> & { node?: unknown }) {
+  if (className?.includes("math-display")) {
+    const tex = codeText(children)
+    return (
+      <Suspense fallback={<code>{tex}</code>}>
+        <MarkdownMath display tex={tex} />
+      </Suspense>
+    )
+  }
+  if (
+    className?.includes("math-inline") ||
+    /(^|\s)language-math(\s|$)/.test(className ?? "")
+  ) {
+    const tex = codeText(children)
+    return (
+      <Suspense fallback={<code>{tex}</code>}>
+        <MarkdownMath tex={tex} />
+      </Suspense>
+    )
+  }
+  return (
+    <code className={className} {...props}>
+      {children}
+    </code>
+  )
+}
+
+function codeText(children: ReactNode): string {
+  if (children == null || typeof children === "boolean") return ""
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children).replace(/\n$/, "")
+  }
+  if (Array.isArray(children)) {
+    return children.map((c) => codeText(c as ReactNode)).join("").replace(/\n$/, "")
+  }
+  return String(children ?? "").replace(/\n$/, "")
 }
 
 function MarkdownLink({
@@ -133,4 +176,5 @@ function MarkdownLink({
 const COMPONENTS: Components = {
   a: MarkdownLink,
   pre: MarkdownPre,
+  code: MarkdownInlineCode,
 }

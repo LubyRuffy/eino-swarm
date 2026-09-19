@@ -251,6 +251,24 @@
   .md pre code {
     @apply bg-transparent p-0;
   }
+  .md .md-code {
+    @apply bg-muted overflow-hidden rounded-md;
+  }
+  .md .md-code pre {
+    @apply bg-transparent rounded-none px-3 pb-3 pt-1 overflow-x-auto;
+  }
+  .md .md-math {
+    @apply my-2;
+  }
+  .md .md-math-inline {
+    @apply mx-0.5;
+  }
+  .md .katex-display {
+    @apply my-0 overflow-x-auto overflow-y-hidden;
+  }
+  .md .katex-error {
+    color: hsl(var(--destructive));
+  }
   .md table {
     @apply w-full text-sm border-collapse;
   }
@@ -347,6 +365,12 @@
 
   .pb-composer {
     padding-bottom: var(--composer-pad);
+  }
+
+  /* Over the settings sheet (dialog z-50). A listing failure must not hide
+     under the page that caused it. */
+  .toast-layer {
+    z-index: 60;
   }
 }
 

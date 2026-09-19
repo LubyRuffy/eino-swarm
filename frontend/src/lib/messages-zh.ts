@@ -87,6 +87,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "banner.configure": "去配置",
   "banner.dismiss": "关闭",
 
+  "toast.region": "通知",
+  "toast.dismiss": "关闭",
+
   "composer.placeholder": "描述你想完成的事。需要时它会委派出去。",
   "composer.placeholderRunning": "工作中… Enter 排队，⌘Enter 注入",
   "composer.placeholderGoal": "这次会话要一直追求的目标",
@@ -273,6 +276,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "transcript.copy": "复制",
   "transcript.copied": "已复制",
   "transcript.copyMessage": "复制消息",
+  "markdown.copyCode": "复制代码",
+  "markdown.copyFormula": "复制公式",
   "transcript.editMessage": "编辑消息",
   "transcript.cancelEdit": "取消",
   "transcript.resend": "发送",
@@ -435,6 +440,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.models.defaultModelEmpty":
     "点发现可列出这个接口上的全部模型。这里只选默认。",
   "settings.models.discover": "发现模型",
+  "settings.models.discoverFailed": "没法列出模型",
   "settings.models.pickDefault": "选一个默认",
   "settings.models.typeModel": "发现，或自己输入模型名",
   "settings.models.window": "上下文窗口（tokens）",

@@ -161,7 +161,10 @@ func (e *Engine) recordScheduleArmed(row *store.Schedule) {
 }
 
 // CancelSchedule marks a row cancelled and records a chip on the origin
-// conversation, or on the wake target if origin was never set.
+// conversation, or on the wake target if origin was never set. Cancelling
+// a thread wake while that conversation is idle continues a standing
+// /goal: continueGoal only ran at turn-end, and the wait-turn had already
+// finished.
 func (e *Engine) CancelSchedule(id string) error {
 	row, err := e.store.CancelSchedule(id)
 	if err != nil {
@@ -171,6 +174,7 @@ func (e *Engine) CancelSchedule(id string) error {
 		return nil
 	}
 	e.recordScheduleCancelled(row)
+	e.continueGoalAfterWakeCancel(row)
 	return nil
 }
 

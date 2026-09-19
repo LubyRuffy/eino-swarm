@@ -50,6 +50,28 @@ describe("closeIncompleteMarkdown", () => {
     )
   })
 
+  it("closes display math so a live formula can render", () => {
+    expect(closeIncompleteMarkdown("$$\n a + b")).toBe("$$\n a + b\n$$")
+  })
+
+  it("does not close an empty display-math opener", () => {
+    expect(closeIncompleteMarkdown("wait $$")).toBe("wait $$")
+    expect(closeIncompleteMarkdown("$$\n")).toBe("$$\n")
+  })
+
+  it("does not treat a lone dollar as math", () => {
+    expect(closeIncompleteMarkdown("see $HOME")).toBe("see $HOME")
+  })
+
+  it("does not rewrite $$ inside a closed fence", () => {
+    const src = "```\n$$ not math\n```\n"
+    expect(closeIncompleteMarkdown(src)).toBe(src)
+  })
+
+  it("does not close bold inside an open display-math block", () => {
+    expect(closeIncompleteMarkdown("$$\n a ** b")).toBe("$$\n a ** b\n$$")
+  })
+
   it("ignores escaped markers", () => {
     expect(closeIncompleteMarkdown("a \\*\\* b")).toBe("a \\*\\* b")
   })

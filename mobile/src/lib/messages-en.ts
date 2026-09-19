@@ -35,6 +35,10 @@ export const en = {
   "thread.image": "Image",
   "thread.running": "running",
 
+  "markdown.copyCode": "Copy code",
+  "markdown.copyFormula": "Copy formula",
+  "markdown.copied": "Copied",
+
   "ask.title": "A question for you",
   "ask.submit": "Submit",
   "ask.other": "Other",

@@ -1,8 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { ModelsTab } from "./model-settings"
+import { ToastStack } from "./toast-stack"
 import type { Settings } from "@/lib/types"
+import { api } from "@/lib/api"
+import { resetToasts } from "@/store/toasts"
 
 vi.mock("@/lib/api", () => ({
   api: {
@@ -60,6 +63,19 @@ const base: Settings = {
 function openDetails(heading: string) {
   fireEvent.click(screen.getByRole("button", { name: `${heading} details` }))
 }
+
+async function clickDiscover() {
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Discover models" }))
+    await Promise.resolve()
+  })
+}
+
+afterEach(() => {
+  act(() => {
+    resetToasts()
+  })
+})
 
 describe("ModelsTab", () => {
   it("lists providers collapsed so a second endpoint is not a wall of fields", () => {
@@ -156,6 +172,52 @@ describe("ModelsTab", () => {
     expect(next.models.providers[0].catalog).toEqual(["alpha", "beta"])
     expect(next.models.providers[0].model).toBe("alpha")
     expect(next.models.providers[0].model_context).toEqual({ alpha: 128000 })
+  })
+
+  it("toasts a failed listing instead of burying it under the Models heading", async () => {
+    vi.mocked(api.discoverModels).mockRejectedValueOnce(
+      new Error("provider: list models: connect: no route to host"),
+    )
+    const onChange = vi.fn()
+    render(
+      <>
+        <ToastStack />
+        <ModelsTab settings={base} onChange={onChange} />
+      </>,
+    )
+    openDetails("Endpoint")
+    await clickDiscover()
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Couldn't list models")
+    expect(alert).toHaveTextContent("connect: no route to host")
+    expect(onChange).not.toHaveBeenCalled()
+    const page =
+      screen.getByRole("heading", { name: "Models" }).parentElement
+        ?.parentElement
+    expect(page?.textContent ?? "").not.toMatch(/connect: no route to host/)
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("drops the listing toast when a later discover succeeds", async () => {
+    vi.mocked(api.discoverModels)
+      .mockRejectedValueOnce("provider: list models: endpoint refused")
+      .mockResolvedValueOnce({ models: ["alpha"], context_windows: {} })
+    const onChange = vi.fn()
+    render(
+      <>
+        <ToastStack />
+        <ModelsTab settings={base} onChange={onChange} />
+      </>,
+    )
+    openDetails("Endpoint")
+    await clickDiscover()
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "provider: list models: endpoint refused",
+    )
+    await clickDiscover()
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull())
+    expect(onChange).toHaveBeenCalled()
   })
 
   it("lets a context window be typed when no catalog exists yet", () => {

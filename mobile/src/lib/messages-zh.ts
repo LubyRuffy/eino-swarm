@@ -37,6 +37,10 @@ export const zh: Record<MessageKey, string> = {
   "thread.image": "图片",
   "thread.running": "运行中",
 
+  "markdown.copyCode": "复制代码",
+  "markdown.copyFormula": "复制公式",
+  "markdown.copied": "已复制",
+
   "ask.title": "需要你选一下",
   "ask.submit": "提交",
   "ask.other": "其他",

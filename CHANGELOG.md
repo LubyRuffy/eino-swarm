@@ -13,6 +13,20 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **macOS desktop can reach LAN model endpoints.** Sequoia+ Local Network
+  privacy treats the Wails window as its own app. `go run ./cmd/zwai
+  desktop` was a naked binary (`a.out`, no Info.plist), so Discover
+  against a private-network URL failed with `no route to host` while
+  Terminal `curl` worked. Desktop now re-execs through
+  `~/Library/Caches/zwai/zwai.app` (stable bundle id + usage string) and
+  the error names the System Settings toggle.
+
+- **Discover models failures toast instead of hiding above the fold.** The
+  error used to paint as a red line under the Models heading, so expanding a
+  provider and clicking Discover looked like a no-op until you scrolled up.
+  It is now a dismissible toast over Settings (× to close), same as a Hermes
+  notice.
+
 - **Fresh clone `npm install` no longer dies on npm 12.** The lockfiles had
   been written against a mirror. npm 12's `allow-remote=none` treats a
   tarball whose host is not the install registry as a remote package
@@ -48,7 +62,26 @@ co-working app built on it. The library API is unchanged except where noted
   the same instance and only redraws when the spec or the box size actually
   changes.
 
+- **Run now hides the wait chip and does not re-fire the same cron slot.**
+  Clicking **Run now** started the check but left "Waiting / next check …"
+  on the composer with the original due time, and an early cron tick
+  (`nextAfter(now)`) was still that same slot, so 01:35 would fire again.
+  The banner hides while the conversation is working. A cron run-now
+  consumes the pending slot.
+
+- **Cancel wait continues a parked `/goal`.** Cancelling a thread wake after
+  the wait-turn had already ended used to leave the standing objective
+  idle: `continueGoal` only ran at turn-end. Cancel on an idle conversation
+  now starts the next pursuing turn. A cancel during a live turn still
+  restores auto-continue when that turn finishes.
+
 ### Changed
+
+- **Wake banner is Run now / Cancel wait, not an icon-only X.** The X sat
+  under the goal banner's dismiss, and the labeled cancel lived on a
+  transcript chip that had already scrolled away, so people would not
+  touch it. The composer banner and the armed-wait notice both offer
+  **Run now** (fires immediately) and **Cancel wait**.
 
 - **Goal pause says how to resume.** Hitting `swarm.goal_max_auto_turns`, a
   no-progress hold, or Stop used to fold `goal_capped` / `goal_idle` behind
@@ -58,6 +91,16 @@ co-working app built on it. The library API is unchanged except where noted
   labelled button.
 
 ### Added
+
+- **Transcript markdown highlights code and paints formulas.** A language-tagged
+  fence used to sit as a grey dump; it now uses the same syntax colours as a
+  `read` listing, with a copy control on the block. `$…$` / `$$…$$` and
+  `math` / `latex` / `tex` fences render through KaTeX (copy on display math
+  copies the source). An unclosed `$$` is closed while the answer is still
+  streaming so the formula can paint live. The manager prompt tells it to tag
+  fences and to write mathematics as LaTeX, not as a code fence. The phone
+  remote renders the same math and copy controls (highlighting stays on the
+  desktop `read` tokenizer).
 
 - **`reopen_goal`.** Manager-only, mounted next to `complete_goal`. Undoes a
   `complete_goal` in the same turn so auto-continue keeps going. **Start**
@@ -152,9 +195,11 @@ co-working app built on it. The library API is unchanged except where noted
 - **Pending thread wakes pause `/goal` auto-continue.** An active
   `kind=thread` wake targeting this conversation, or a claimed fire still
   `running`, is the next turn: `continueGoal` reaps parked workers and
-  returns, including a one-shot delay that is still due. Cancel restores
-  auto-continue on the next clean pursuing finish. Paused, cancelled,
-  done-with-no-run, and standalone origin-only rows do not suppress.
+  returns, including a one-shot delay that is still due. Cancelling that
+  wake while the conversation is idle starts the next pursuing turn
+  immediately. A cancel during a live turn still restores auto-continue
+  when that turn finishes. Paused, cancelled, done-with-no-run, and
+  standalone origin-only rows do not suppress.
 
 - **Manager schedule tools.** The manager can arm a wait on this conversation
   (`schedule_wake`; optional id upserts instead of minting a second), arm an

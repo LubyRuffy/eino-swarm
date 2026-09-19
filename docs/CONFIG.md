@@ -128,7 +128,12 @@ A provider is **ready** when it has both `base_url` and `model`. Until the defau
 provider is ready, `GET /api/meta` reports `configured: false` and the UI shows a
 setup banner instead of pretending a turn can run. Listing models only needs the
 base URL (`POST /api/models/discover`); the request is capped at 15 seconds so a
-hung endpoint cannot freeze Settings.
+hung endpoint cannot freeze Settings. A failed listing is a dismissible toast
+over Settings (title plus the error, with an ×), not a red line at the top of
+the Models page — that page is usually scrolled to the provider you just asked.
+On macOS, a desktop window that cannot reach a LAN URL (`no route to host`)
+while Terminal `curl` can is Local Network privacy: allow **zwai** under
+System Settings → Privacy & Security → Local Network.
 
 ### First-run seeding
 

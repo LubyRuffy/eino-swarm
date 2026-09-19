@@ -90,6 +90,9 @@ export const en = {
   "banner.configure": "Configure",
   "banner.dismiss": "Dismiss",
 
+  "toast.region": "Notifications",
+  "toast.dismiss": "Dismiss",
+
   "composer.placeholder":
     "Describe what you want done. It will delegate as needed.",
   "composer.placeholderRunning": "Working… Enter queues, ⌘Enter steers",
@@ -289,6 +292,8 @@ export const en = {
   "transcript.copy": "Copy",
   "transcript.copied": "Copied",
   "transcript.copyMessage": "Copy message",
+  "markdown.copyCode": "Copy code",
+  "markdown.copyFormula": "Copy formula",
   "transcript.editMessage": "Edit message",
   "transcript.cancelEdit": "Cancel",
   "transcript.resend": "Send",
@@ -462,6 +467,7 @@ export const en = {
   "settings.models.defaultModelEmpty":
     "Discover to list every model this endpoint serves. You only pick the default here.",
   "settings.models.discover": "Discover models",
+  "settings.models.discoverFailed": "Couldn't list models",
   "settings.models.pickDefault": "Pick a default",
   "settings.models.typeModel": "discover, or type a model name",
   "settings.models.window": "Context window (tokens)",

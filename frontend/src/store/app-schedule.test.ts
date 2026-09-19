@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { emptyTranscript } from "@/lib/transcript"
 import type { Schedule } from "@/lib/types"
 import { useApp } from "@/store/app"
-import { activeWake } from "@/store/app-schedule"
+import { activeWake, wakeTargetsOpenThread } from "@/store/app-schedule"
 import { useProjects } from "@/store/projects"
 
 const fake = vi.hoisted(() => ({
@@ -16,6 +16,7 @@ const fake = vi.hoisted(() => ({
   deleted: [] as string[],
   ran: [] as string[],
   runBusy: false,
+  runFail: "" as string,
   marked: [] as string[],
 }))
 
@@ -72,6 +73,9 @@ vi.mock("@/lib/api", () => {
       runSchedule: async (id: string) => {
         if (fake.runBusy) {
           throw new ApiError("the conversation is already running", 409, "skipped_busy")
+        }
+        if (fake.runFail) {
+          throw new Error(fake.runFail)
         }
         fake.ran.push(id)
         return { id: "tn_1", schedule_continue: true }
@@ -132,6 +136,7 @@ beforeEach(() => {
   fake.deleted = []
   fake.ran = []
   fake.runBusy = false
+  fake.runFail = ""
   fake.marked = []
   useApp.setState({
     threads: [],
@@ -188,6 +193,59 @@ describe("schedule store", () => {
     )
   })
 
+  it("paints the open conversation running when run-now fires a thread wake", async () => {
+    useApp.setState({
+      activeId: "th_old",
+      status: { running: false },
+      threads: [
+        {
+          id: "th_old",
+          title: "New conversation",
+          project_id: "",
+          provider_id: "default",
+          reasoning_effort: "",
+          archived: false,
+          created_at: new Date().toISOString(),
+          last_active_at: new Date().toISOString(),
+          running: false,
+        },
+      ],
+    })
+    await useApp.getState().refreshSchedules()
+    await useApp.getState().runScheduleNow("sch_1")
+    expect(fake.ran).toEqual(["sch_1"])
+    expect(useApp.getState().status.running).toBe(true)
+    expect(useApp.getState().threads.find((row) => row.id === "th_old")?.running).toBe(
+      true,
+    )
+  })
+
+  it("reverts that paint when run-now fails for a reason other than busy", async () => {
+    fake.runFail = "the wait is not active"
+    useApp.setState({
+      activeId: "th_old",
+      status: { running: false },
+      threads: [
+        {
+          id: "th_old",
+          title: "New conversation",
+          project_id: "",
+          provider_id: "default",
+          reasoning_effort: "",
+          archived: false,
+          created_at: new Date().toISOString(),
+          last_active_at: new Date().toISOString(),
+          running: false,
+        },
+      ],
+    })
+    await useApp.getState().refreshSchedules()
+    await useApp.getState().runScheduleNow("sch_1")
+    expect(fake.ran).toEqual([])
+    expect(useApp.getState().status.running).toBe(false)
+    expect(useApp.getState().error).toBe("the wait is not active")
+  })
+
   it("clears that error when the inbox closes", async () => {
     fake.runBusy = true
     await useApp.getState().runScheduleNow("sch_1")
@@ -197,7 +255,7 @@ describe("schedule store", () => {
     expect(useApp.getState().error).toBeUndefined()
   })
 
-  it("refreshes waits when the live stream arms, reports, or cancels one", async () => {
+  it("refreshes waits when the live stream arms, fires, reports, or cancels one", async () => {
     await useApp.getState().boot()
     const afterBoot = fake.listed
     fake.onEvent?.({
@@ -210,6 +268,18 @@ describe("schedule store", () => {
     })
     await Promise.resolve()
     expect(fake.listed).toBeGreaterThan(afterBoot)
+    const afterArm = fake.listed
+    fake.onEvent?.({
+      kind: "schedule_fired",
+      seq: 12,
+      thread_id: "th_old",
+      turn_id: "tn_2",
+      agent_id: "manager",
+      text: "Scheduled check.",
+      created_at: "2026-09-19T00:00:01.000Z",
+    })
+    await Promise.resolve()
+    expect(fake.listed).toBeGreaterThan(afterArm)
   })
 })
 
@@ -224,5 +294,8 @@ describe("activeWake", () => {
     expect(activeWake(rows, "th_old")?.id).toBe("sch_wake")
     expect(activeWake(rows, "th_missing")).toBeUndefined()
     expect(activeWake(rows, undefined)).toBeUndefined()
+    expect(wakeTargetsOpenThread(wait(), "th_old")).toBe(true)
+    expect(wakeTargetsOpenThread(wait({ kind: "standalone" }), "th_old")).toBe(false)
+    expect(wakeTargetsOpenThread(wait(), "th_other")).toBe(false)
   })
 })

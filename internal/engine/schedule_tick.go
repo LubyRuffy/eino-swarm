@@ -325,7 +325,14 @@ func (e *Engine) advanceAfterFire(row store.Schedule, spec scheduleSpec, now tim
 	if spec.delay != 0 {
 		fields["status"] = store.ScheduleDone
 	} else {
-		next := spec.nextAfter(now)
+		from := now
+		// Run-now before a cron slot must consume that slot. nextAfter(now)
+		// while the due time is still ahead is the same tick, so the banner
+		// and the ticker would fire it again. Intervals reset from now.
+		if spec.every == 0 && !row.NextRunAt.IsZero() && row.NextRunAt.After(now) {
+			from = row.NextRunAt
+		}
+		next := spec.nextAfter(from)
 		if !next.IsZero() {
 			fields["next_run_at"] = next
 		}

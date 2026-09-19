@@ -16,7 +16,7 @@ deterministic and fast enough to run on every change.
 |---|---|---|
 | Go unit tests | config, store, memory, provider, tools, engine, server, CLI, TUI, and the swarm library | `go test -race -cover ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed) | `go test ./internal/server/` |
-| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice cancel / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`) | `cd frontend && npm test` |
+| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`), dismissible listing toasts | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, scheduled inbox / wake banner, Phone settings QR control | `cd frontend && npm run e2e` |
 | Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, compact transcript / watch session | `cd mobile && npm test` |
 | Phone E2E | scan screen + paste of the same `pairlink:v1` URI (camera is the product path on device) | `cd mobile && npm run e2e` |
@@ -29,17 +29,17 @@ Current Go coverage, from `go test -race -cover ./...`:
 | `frontend` | 92.9% |
 | `internal/memory` | 96.8% |
 | `internal/provider` | 92.1% |
-| `.` (swarm library) | 94.8% |
+| `.` (swarm library) | 95.0% |
 | `internal/tools` | 97.5% |
 | `internal/store` | 92.1% |
-| `internal/engine` | 90.4% |
+| `internal/engine` | 90.5% |
 | `internal/config` | 91.6% |
 | `internal/terminal` | 97.8% |
 | `internal/server` | 90.0% |
 | `internal/slash` | 92.9% |
 | `internal/tui` | 87.6% |
 | `internal/app` | 87.9% |
-| `cmd/zwai` | 84.2% |
+| `cmd/zwai` | 84.7% |
 | `internal/remote` | 91.3% |
 
 `internal/remote` is the phone RPC. `TestListDefaultsToFiveAndOmitsProjectSecrets`
@@ -52,7 +52,8 @@ SSE, clip `spawned` bodies, and stay under the 64KiB pairlink frame.
 The Capacitor shell in `mobile/` has its own unit tests
 and a Playwright paste/scan screen; `mobile/native-project.test.ts` asserts the
 iOS and Android trees ship with camera permission and no compiled hub URL.
-Camera on a real device is the product path (`make mobile-ios` /
+`mobile/src/components/markdown.test.tsx` renders `$n$` as KaTeX and copies a
+fenced body. Camera on a real device is the product path (`make mobile-ios` /
 `make mobile-android`).
 
 `frontend` is the embed plus the incremental Vite rebuild (`Ensure` /
@@ -70,10 +71,12 @@ window) and `tui.Run` (drives a real terminal; `runConfig` is the testable
 payload). The rest of `internal/desktop`
 is tested: traffic-light geometry, hopping AppKit geometry onto the main
 thread (Wails delivers window events off-thread), the quit-time
-`Window #1 not found` filter, and that the Dock icon is a real PNG with
+`Window #1 not found` filter, that the Dock icon is a real PNG with
 transparent rounded corners on Apple's 824/1024 icon grid, wired into
-`application.Options` (the window itself still cannot be opened in a unit
-test). Each untestable shell was
+`application.Options`, and that `prepareBundle` writes a Local Network
+Info.plist under the cache dir (the `syscall.Exec` re-exec itself cannot
+run in a unit test). The window itself still cannot be opened in a unit
+test. Each untestable shell was
 split so that everything which can fail is testable: `startDesktopServer`
 returns the window options and the live server without opening a window,
 `serveWeb` takes an injected stop signal, and `assembleTUI` / `buildTUISwarm`
@@ -87,7 +90,12 @@ like a real swarm run: it thinks, spawns two sub-agents (one with
 `fork_context`), has a worker call `write` to produce a file in the workspace,
 waits for both, then streams a markdown answer that includes a `chart`
 fence whose values are the report lengths (so the UI's plot renderer is
-on the same path, without a sample domain baked in).
+on the same path, without a sample domain baked in), a language-tagged
+`go` fence, and inline `$n$` math so highlighting and KaTeX ride the
+same offline path. Under `go test` those last two extras are omitted:
+each extra word is another `mockChunkDelay`, and streaming them on every
+manager answer blew the engine package's 10m budget. `zwai --mock` and
+Playwright (`go run`) still emit them.
 
 It answers as a **memory reviewer** too, when the agent asking is the review
 after a turn: it stores one note and records one skill, both derived from the
@@ -161,8 +169,9 @@ this conversation, `schedule_task` refuses a `GoalContinue` /
 are quiet, garbage arguments come back as JSON `ok:false`, Info text stays
 generic, and workers get a deny stub.
 `internal/engine/schedule_goal_test.go` is why a pending thread wake
-pauses `/goal` auto-continue, why cancelling it restores the next
-pursuing turn's `goal_continued`, and why paused, cancelled, and
+pauses `/goal` auto-continue, why cancelling it while idle starts the next
+pursuing turn immediately (`goal_continued`), why a cancel without a
+standing objective stays idle, and why paused, cancelled, and
 standalone origin-only rows do not suppress. A still-due delay that
 has already been claimed (`status=done` plus a `running` run, matching
 `advanceAfterFire` before `StartTurn`) is `TestClaimedOneShotStillSuppressesGoalAutoContinue`
@@ -180,7 +189,8 @@ same snapshot the ticker froze, not a later `e.cfg.Swarm` write;
 `TestResumeDropsASupersededScheduledRun` are why a leftover
 `ScheduleContinue` that resume cannot continue — empty user text, or
 superseded by a later unfinished row — closes that bound fire as
-`error` instead of leaving `running`.
+`error` instead of leaving `running`. The surviving run is polled until
+`FinishRun` (turn close lands first).
 Tests opt into `provider.SetMockScheduleQuiet` / `SetMockScheduleSilent` /
 `SetMockScheduleFindings`. The default mock sniffs a scheduled check
 (`This turn is a scheduled check.`) and calls `report_schedule` with
@@ -192,6 +202,9 @@ min-interval wait on the first manager step.
 human waits, lists `{schedules, unread}`, pauses/cancels, run-now on
 idle starts a `ScheduleContinue` turn, run-now while the conversation is
 busy is `409 skipped_busy`, and reading a findings run clears unread.
+`TestRunScheduleNowConsumesAFutureCronSlot` is why an early cron run-now
+advances past the pending slot instead of leaving `next_run_at` on that
+same due time.
 `internal/store/schedule_test.go` is why `HasPendingThreadWake` treats
 an active `kind=thread` row and a running thread fire as pending, and
 why paused/cancelled/done-with-no-run, standalone origin-only, an empty
@@ -449,13 +462,14 @@ Several things are tested here, some as pure logic and some in jsdom:
   or `schedule_report` keeps the fired chip then the answer (including when
   empty `done` follows a findings report), an armed `schedule` plus empty
   `done` keeps the wait notice, and an ordinary empty `done` stays
-  visible. `compact-notice.test.tsx` clicks that icon. `schedule-notice.test.tsx`
-  cancels an armed wait when `detail` is a `sch_` id and does not treat a
+  visible. `compact-notice.test.tsx` clicks that icon.   `schedule-notice.test.tsx` clicks Run now and Cancel wait on an armed wait when `detail` is a `sch_` id and does not treat a
   cancelled notice as a briefing.   `schedule-inbox.test.tsx` /
   `schedule-banner.test.tsx` / `app-schedule.test.ts` cover the sidebar
   dialog trigger (`aria-haspopup="dialog"`, unread in the accessible name),
   pause/run-now/create labels, unread badge, busy run-now `skipped_busy` as a
-  labelled alert inside the inbox dialog, and the composer wake banner. A `session_memory` event is
+  labelled alert inside the inbox dialog, the composer wake banner's labeled
+  Run now / Cancel wait (`schedule-wait-actions.test.tsx`), the banner hiding
+  while the conversation is working, and run-now painting the open conversation Working. A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /
   `goal_continued` turns fold behind a one-line Worked-for row in
@@ -595,14 +609,18 @@ Several things are tested here, some as pure logic and some in jsdom:
   measured box size changes.
 - **`src/lib/stream-markdown.ts`**: trailing `**` / `` ` `` / `~~` in the
   current prose region are closed so a streaming answer can render; an open
-  fence is left alone (it is already a code block), and a marker with no
-  content yet is not turned into `****`.
+  fence is left alone (it is already a code block), a marker with no
+  content yet is not turned into `****`, and an unclosed `$$` with a body
+  is closed so KaTeX can paint live (`$HOME` is not treated as math).
 - **`src/components/app/markdown.tsx`**, rendered in jsdom: a streaming
   `## heading` is a heading, trailing bold renders as `<strong>`, a
   finished answer is not rewritten, a `chart` fence paints, a `json` fence
   does not, a live truncated chart fence is a placeholder, a finished
   invalid chart fence stays code, and a closed chart keeps the same instance
-  while later tokens append prose after it.
+  while later tokens append prose after it. A `go` fence paints keywords
+  onto tokens and copies the original body; `cpp` maps onto the C
+  highlighter; an unlabeled fence stays plain and still copies; `$n$` /
+  `$$…$$` and a `math` fence render as KaTeX.
 - **`src/components/app/transcript.tsx`**, rendered in jsdom: while `wait_agents`
   is pending the transcript shows the sub-agents it is waiting on, each one's
   live activity and the age the latest pulse gave it — the roll-up that keeps a
@@ -712,9 +730,14 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/lib/shell-highlight.ts`**: an `exec` command tokenizes into
   keywords / strings / flags / variables without dropping characters; a
   too-long line falls back to plain text.
+- **`src/lib/math-fence.ts`**: `math` / `latex` / `tex` / `katex` fences are
+  formulas; `go` / `chart` / empty are not.
 - **`src/lib/source-highlight.ts`** / **`src/lib/source-lang.ts`**: a `read`
   body tokenizes from the path suffix into the same token kinds; concatenating
   tokens reproduces the file; markdown and unknown suffixes are left alone.
+  A markdown fence info-string (`cpp`, `javascript`, `python`) maps onto
+  the same dialects; `chart` / `math` / unknown tags stay undefined so the
+  body is not guessed. A C `#include` line is a keyword, not an operator.
 - **`src/lib/read-result.ts`**, a `read` tool payload becomes a file listing:
   newline-separated bodies, and the older flattened one-liners, both recover
   the path and the lines; other tool output is left alone.
@@ -952,11 +975,12 @@ long enough for Steer; unit tests leave it unset.
 |---|---|
 | `e2e/conversation.spec.ts` | a full swarm turn, a live thought in a 10-line scrolling box whose **Thinking** label sweeps, clicking that row hiding the thought while it still streams, a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge), a generated sidebar title after the first turn (not the raw request, not a transcript row), a heading rendered as a heading while the turn is still Working, a chart in the scripted answer with Chart/Table tabs (and after reload), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge, switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, **Steer** on that queued row injecting and emptying the tray, editing a queued row and submitting it so that message goes to the back of the FIFO, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, quoting selected transcript text into the next send as an editable composer annotation, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` showing a Planning banner and an `ask_user` dialog that spans the conversation column (a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
 | `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, hovering a project row revealing a new-conversation control that starts one in that project rather than Recents (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, a sixth topic in the folder sitting behind **Show more** until it is opened, and a running conversation keeping its sidebar progress after switching to a new conversation |
+| `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour) and `$n$` as KaTeX |
 | `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |
-| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (title, prompt, Every (seconds) 60, Add wait), Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner, Cancel wait removing it. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
+| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (title, prompt, Every (seconds) 60, Add wait), Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, Cancel wait removing it, Run now starting Working, hiding the wait banner, and a `Scheduled check.` chip. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
 | `e2e/remote.spec.ts` | Settings → Phone: Hub URL, Host Token, Event text on the phone, Show pairing QR, no QR pixels while the hub is unset (`409 remote_offline`) |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR control; junk paste errors; a syntactically valid URI uses the same bind path |
-| `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline, Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, the tool catalogue on a never-saved config, settings written to the config file and read back, personality round-tripping through Settings → Personality, pinning a title-generation model when more than one name is listed, opening a collapsed provider row then discovering models into the default-model dropdown, **Back to app** remaining on screen on a short window when the Swarm page is long, Back to app sitting in the first 48px of a browser sheet (the desktop title-bar strip is not shipped to the tab), the Add-a-provider outline staying inside the Models scrollport, theme switching persisted, chrome language switching (restored to English because locale is in the shared yaml), the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), font / size / conversation width round-tripping through Settings → General, renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
+| `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline, Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, the tool catalogue on a never-saved config, settings written to the config file and read back, personality round-tripping through Settings → Personality, pinning a title-generation model when more than one name is listed, opening a collapsed provider row then discovering models into the default-model dropdown, a failed listing toasting over that open provider (in viewport, × dismisses it), **Back to app** remaining on screen on a short window when the Swarm page is long, Back to app sitting in the first 48px of a browser sheet (the desktop title-bar strip is not shipped to the tab), the Add-a-provider outline staying inside the Models scrollport, theme switching persisted, chrome language switching (restored to English because locale is in the shared yaml), the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), font / size / conversation width round-tripping through Settings → General, renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
 
 E2E tests run against `frontend/dist`. Playwright starts
 `go run ./cmd/zwai web --mock --no-open`, which rebuilds that bundle when the
@@ -984,8 +1008,10 @@ a client at all is verified in the engine and reducer tests.
   Double-click the title bar: the window should zoom,
   then restore on the next double-click. On macOS the traffic lights and the
   sidebar toggle must share one baseline in that title bar; New conversation
-  starts on the row below. Opening Settings, **Back to app** must sit on the
-  row under the lights, not in the drag strip. ⌘Q should return the shell promptly without
+  starts on the row below.   Opening Settings, **Back to app** must sit on the
+  row under the lights, not in the drag strip. On macOS, the first desktop
+  launch may prompt for Local Network access (LAN model endpoints); denying
+  it looks like `no route to host` while Terminal curl still works. ⌘Q should return the shell promptly without
   `Window #1 not found` warnings. Wails cannot be driven by these tests.
 - **CJK IME**: leftover Latin confirmed with Enter must stay in the composer;
   the next Enter sends. The desktop window is WebKit, which fires

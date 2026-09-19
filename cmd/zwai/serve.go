@@ -20,6 +20,13 @@ import (
 const shutdownGrace = 5 * time.Second
 
 func runDesktop(args []string) error {
+	// macOS Local Network privacy keys off a bundle id. `go run` is a naked
+	// binary (identifier a.out); LAN model endpoints then fail with
+	// "no route to host" while Terminal curl works. Re-exec into a cached
+	// .app before we bind the local server.
+	if err := desktop.ReexecIfUnbundled(); err != nil {
+		return err
+	}
 	// The app is shut down by opts.OnShutdown when the window closes.
 	opts, _, err := startDesktopServer(args)
 	if err != nil {

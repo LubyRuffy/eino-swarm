@@ -59,7 +59,7 @@ func TestCancelWakeRestoresGoalAutoContinue(t *testing.T) {
 	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
 
 	e := newTestEngine(t)
-	e.Config().Swarm.GoalMaxAutoTurns = 8
+	e.Config().Swarm.GoalMaxAutoTurns = 1
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)
@@ -85,16 +85,72 @@ func TestCancelWakeRestoresGoalAutoContinue(t *testing.T) {
 	if err := e.CancelSchedule(sch.ID); err != nil {
 		t.Fatal(err)
 	}
-	second, err := e.StartTurn(th.ID, "start the work")
+	waitKind(t, e, th.ID, KindGoalContinued)
+	waitSettled(t, e, th.ID)
+	turns, err := e.Store().ListTurns(th.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	waitForTurn(t, e, second.ID)
-	turns := waitForTurnCount(t, e, th.ID, 3)
-	if !turns[2].GoalContinue {
-		t.Fatalf("cancelling the wake must restore auto-continue: %+v", turns[2])
+	if len(turns) < 2 || !turns[1].GoalContinue {
+		t.Fatalf("cancelling an idle wake must start the next pursuing turn: %+v", turns)
 	}
-	waitKind(t, e, th.ID, KindGoalContinued)
+}
+
+func TestCancelWakeWithoutStandingObjectiveStaysIdle(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	sch, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.CancelSchedule(sch.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitSettled(t, e, th.ID)
+	turns, err := e.Store().ListTurns(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 0 {
+		t.Fatalf("cancel without a standing objective must not start a turn, got %d", len(turns))
+	}
+	if hasKind(t, e, th.ID, KindGoalContinued) {
+		t.Fatal("cancel without a standing objective must not record goal_continued")
+	}
+}
+
+func TestContinueGoalAfterWakeCancelNoopsWhenNotAnIdleThreadWake(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
+		t.Fatal(err)
+	}
+	e.continueGoalAfterWakeCancel(nil)
+	e.continueGoalAfterWakeCancel(&store.Schedule{
+		Kind: store.ScheduleStandalone, ThreadID: th.ID,
+	})
+	e.continueGoalAfterWakeCancel(&store.Schedule{Kind: store.ScheduleThread})
+	if hasKind(t, e, th.ID, KindGoalContinued) {
+		t.Fatal("a non-thread or empty-target cancel must not start a pursuing turn")
+	}
+
+	rt := e.runtimeFor(th.ID)
+	rt.mu.Lock()
+	rt.running = true
+	rt.mu.Unlock()
+	e.continueGoalAfterWakeCancel(&store.Schedule{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+	})
+	rt.mu.Lock()
+	rt.running = false
+	rt.mu.Unlock()
+	if hasKind(t, e, th.ID, KindGoalContinued) {
+		t.Fatal("cancel must not steal a live turn")
+	}
 }
 
 func TestClaimedOneShotStillSuppressesGoalAutoContinue(t *testing.T) {

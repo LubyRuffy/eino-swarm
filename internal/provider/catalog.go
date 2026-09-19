@@ -65,7 +65,7 @@ func fetchOpenAICatalog(ctx context.Context, p config.Provider) (Catalog, error)
 	client := &http.Client{Timeout: discoverTimeout(p)}
 	resp, err := client.Do(req)
 	if err != nil {
-		return Catalog{}, fmt.Errorf("provider: list models: %w", err)
+		return Catalog{}, fmt.Errorf("provider: list models: %w%s", err, localNetworkHint(err))
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxCatalogBytes+1))

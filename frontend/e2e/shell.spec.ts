@@ -523,6 +523,50 @@ test("discovers models into the default dropdown", async ({ page, request }) => 
   }
 })
 
+test("a failed model listing toasts over the open provider", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 700 })
+  const { settings } = await (await request.get("/api/settings")).json()
+  const provider = settings.models.providers[0]
+  await request.put("/api/settings", {
+    data: {
+      models: {
+        default: settings.models.default,
+        providers: [{ ...provider, base_url: "http://endpoint.invalid/v1" }],
+      },
+    },
+  })
+  try {
+    await page.goto("/")
+    await page.getByRole("button", { name: "Settings" }).click()
+    const dialog = page.getByRole("dialog")
+    const heading = (provider.label || provider.id).trim()
+    await dialog.getByRole("button", { name: `${heading} details` }).click()
+    const discover = dialog.getByRole("button", { name: "Discover models" })
+    await expect(discover).toBeEnabled()
+    await page.route("**/api/models/discover", async (route) => {
+      await route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "provider: list models: connect: no route to host",
+        }),
+      })
+    })
+    await discover.click()
+    const toast = page.getByRole("alert")
+    await expect(toast).toContainText("Couldn't list models")
+    await expect(toast).toContainText("connect: no route to host")
+    await expect(toast).toBeInViewport()
+    await toast.getByRole("button", { name: "Dismiss" }).click()
+    await expect(toast).toHaveCount(0)
+  } finally {
+    await request.put("/api/settings", { data: { models: settings.models } })
+  }
+})
+
 test("Back to app stays on screen when Swarm is taller than the window", async ({
   page,
 }) => {

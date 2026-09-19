@@ -1,5 +1,11 @@
 import type { ReadLine } from "./read-result"
-import { languageFromPath, langDef, type LangDef, type LangId } from "./source-lang"
+import {
+  languageFromFence,
+  languageFromPath,
+  langDef,
+  type LangDef,
+  type LangId,
+} from "./source-lang"
 import { tokenizeShell, type ShellTokenKind } from "./shell-highlight"
 
 /** Same kinds as an exec line so a read of `*.go` and a shell command share
@@ -8,7 +14,7 @@ import { tokenizeShell, type ShellTokenKind } from "./shell-highlight"
 export type SourceTokenKind = ShellTokenKind
 export type SourceToken = { kind: SourceTokenKind; text: string }
 
-export { languageFromPath }
+export { languageFromFence, languageFromPath }
 
 /** A single line longer than this is painted as plain text. Same ceiling as
  *  shell highlighting: a 10k-char one-liner is still shown, just not coloured. */
@@ -117,6 +123,15 @@ function tokenizeCLike(src: string, def: LangDef): SourceToken[] {
       i++
       while (i < src.length && isHex(src[i])) i++
       push(tokens, "flag", src.slice(start, i))
+      pendingName = false
+      continue
+    }
+    if (def.hashDirective && c === "#") {
+      const start = i
+      i++
+      while (i < src.length && isSpace(src[i]) && src[i] !== "\n") i++
+      while (i < src.length && isIdentPart(src[i])) i++
+      push(tokens, "keyword", src.slice(start, i))
       pendingName = false
       continue
     }

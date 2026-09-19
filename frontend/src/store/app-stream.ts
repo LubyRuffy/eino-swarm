@@ -188,7 +188,12 @@ function flushQueued(set: StreamSet, get: StreamGet) {
         t.id === threadId ? { ...t, compacted: true } : t,
       )
     }
-    if (ev.kind === "schedule" || ev.kind === "schedule_cancelled" || ev.kind === "schedule_report") {
+    if (
+      ev.kind === "schedule" ||
+      ev.kind === "schedule_fired" ||
+      ev.kind === "schedule_cancelled" ||
+      ev.kind === "schedule_report"
+    ) {
       schedulesDirty = true
     }
     if (ev.kind === "usage") {

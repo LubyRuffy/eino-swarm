@@ -21,10 +21,17 @@ function notice(partial: Partial<Block> = {}): Block {
 describe("ScheduleNotice", () => {
   it("cancels when detail is a schedule id", () => {
     const onCancel = vi.fn()
-    render(<ScheduleNotice block={notice()} onCancel={onCancel} />)
+    render(<ScheduleNotice block={notice()} onCancel={onCancel} onRunNow={vi.fn()} />)
     expect(screen.getByTestId("schedule-notice").textContent).toMatch(/A wait is armed/)
     fireEvent.click(screen.getByRole("button", { name: "Cancel wait" }))
     expect(onCancel).toHaveBeenCalledWith("sch_ab12")
+  })
+
+  it("runs the wait now from the armed chip", () => {
+    const onRunNow = vi.fn()
+    render(<ScheduleNotice block={notice()} onCancel={vi.fn()} onRunNow={onRunNow} />)
+    fireEvent.click(screen.getByRole("button", { name: "Run now" }))
+    expect(onRunNow).toHaveBeenCalledWith("sch_ab12")
   })
 
   it("does not treat a cancelled notice as a briefing or a second cancel", () => {
@@ -37,6 +44,7 @@ describe("ScheduleNotice", () => {
       /A wait was cancelled/,
     )
     expect(screen.queryByRole("button", { name: "Cancel wait" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Run now" })).toBeNull()
     expect(screen.queryByTestId("compact-briefing-open")).toBeNull()
   })
 })

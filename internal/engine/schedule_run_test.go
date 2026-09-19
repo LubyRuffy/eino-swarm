@@ -30,6 +30,33 @@ func TestRunScheduleNowStartsAContinueTurnOnIdle(t *testing.T) {
 	}
 }
 
+func TestRunScheduleNowConsumesAFutureCronSlot(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	sch, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, Cron: "0 9 * * *",
+		CreatedBy: store.ScheduleCreatedHuman,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := sch.NextRunAt
+	if original.IsZero() || !original.After(time.Now().UTC()) {
+		t.Fatalf("cron must arm a future slot, next=%s", original)
+	}
+	if _, err := e.RunScheduleNow(sch.ID); err != nil {
+		t.Fatal(err)
+	}
+	got, err := e.GetSchedule(sch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.NextRunAt.After(original) {
+		t.Fatalf("run-now left the same due slot: orig=%s got=%s", original, got.NextRunAt)
+	}
+}
+
 func TestRunScheduleNowBusyTargetIsSkippedBusy(t *testing.T) {
 	provider.SetMockAskUser(true)
 	t.Cleanup(func() { provider.SetMockAskUser(false) })

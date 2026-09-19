@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { parseReadResult } from "./read-result"
 import {
+  languageFromFence,
   languageFromPath,
   paintLines,
   tokenizeSource,
@@ -34,6 +35,25 @@ describe("languageFromPath", () => {
     expect(languageFromPath("notes.txt")).toBeUndefined()
     expect(languageFromPath("notes.md.bak")).toBeUndefined()
     expect(languageFromPath("LICENSE")).toBeUndefined()
+  })
+})
+
+describe("languageFromFence", () => {
+  it("maps fence aliases onto the same dialects as a file suffix", () => {
+    expect(languageFromFence("cpp")).toBe("c")
+    expect(languageFromFence("c++")).toBe("c")
+    expect(languageFromFence("javascript")).toBe("js")
+    expect(languageFromFence("TypeScript")).toBe("js")
+    expect(languageFromFence("python")).toBe("python")
+    expect(languageFromFence("bash")).toBe("shell")
+    expect(languageFromFence("go")).toBe("go")
+  })
+
+  it("ignores extra fence info and an unknown tag", () => {
+    expect(languageFromFence("python {cmd=true}")).toBe("python")
+    expect(languageFromFence("chart")).toBeUndefined()
+    expect(languageFromFence("math")).toBeUndefined()
+    expect(languageFromFence("")).toBeUndefined()
   })
 })
 
@@ -227,6 +247,13 @@ describe("tokenizeSource", () => {
     expect(firstKind(tokens, "int")).toBe("keyword")
     expect(firstKind(tokens, "0xFF")).toBe("flag")
     expect(tokens.some((t) => t.kind === "comment" && t.text.includes("note"))).toBe(true)
+  })
+
+  it("marks a C preprocessor line as a keyword, not an operator", () => {
+    const src = "#include <stdio.h>"
+    const tokens = tokenizeSource(src, "c")
+    expect(joined(tokens)).toBe(src)
+    expect(firstKind(tokens, "#include")).toBe("keyword")
   })
 
   it("paints a self-closing HTML tag and an unterminated comment", () => {

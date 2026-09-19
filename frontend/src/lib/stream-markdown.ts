@@ -3,9 +3,11 @@
  *
  *  Headings, lists and unclosed fences are already valid as they grow —
  *  CommonMark treats an open fence as a code block through the end of the
- *  document, which is the right live view. This only patches `**`, `***`,
+ *  document, which is the right live view. This patches `**`, `***`,
  *  `~~` and `` ` `` in the current prose region, which otherwise flash as
- *  raw characters and then snap to formatting.
+ *  raw characters and then snap to formatting. An unclosed `$$` display
+ *  math opener is closed the same way so KaTeX can paint while the body
+ *  is still arriving. A single `$` is left alone: `$HOME` is not math.
  *
  *  Complete answers must not go through here: a closer is a live lie that
  *  the finishing token retracts. */
@@ -13,6 +15,9 @@ export function closeIncompleteMarkdown(text: string): string {
   if (!text) return text
   const region = lastProseRegion(text)
   if (!region) return text
+  if (unclosedDisplayMath(region.text)) {
+    return text.endsWith("\n") ? text + "$$" : text + "\n$$"
+  }
   const open = openInlines(region.text)
   if (open.length === 0) return text
   return text + open.reverse().join("")
@@ -101,4 +106,28 @@ function hasContentAfter(s: string, tok: string): boolean {
   const i = s.lastIndexOf(tok)
   if (i === -1) return false
   return s.slice(i + tok.length).trim().length > 0
+}
+
+/** Odd `$$` in the prose region, with body after the opener. Inline `$`
+ *  is not counted: a path or a price must not become a formula. */
+function unclosedDisplayMath(s: string): boolean {
+  let count = 0
+  let inCode = false
+  let last = -1
+  for (let i = 0; i < s.length; ) {
+    if (s[i] === "`") {
+      inCode = !inCode
+      i++
+      continue
+    }
+    if (!inCode && s.startsWith("$$", i)) {
+      count++
+      last = i
+      i += 2
+      continue
+    }
+    i++
+  }
+  if (count % 2 === 0 || last < 0) return false
+  return s.slice(last + 2).trim().length > 0
 }

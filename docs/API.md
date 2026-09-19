@@ -1127,7 +1127,11 @@ from now). Cancel is `DELETE`, not a status patch. Responds
 ### `DELETE /api/schedules/:id` → `204`
 
 Cancels an active or paused wait. A second delete of an already-cancelled
-row is `204`. Unknown ids are `404`.
+row is `204`. Unknown ids are `404`. Cancelling a `kind=thread` wake while
+its conversation is idle starts the next standing-objective turn when one
+is still open (`goal_continued`). A live turn is left alone; auto-continue
+resumes when that turn finishes. A wait with no standing objective stays
+idle. Standalone jobs do not start a turn on the origin conversation.
 
 ### `POST /api/schedules/:id/run` → `202`
 
@@ -1135,7 +1139,10 @@ Fires now, even when `next_run_at` is still in the future. Body none.
 Responds `{"turn": {…}}` like `POST /api/threads/:id/turns`. The turn is
 `schedule_continue`. A paused, done, or cancelled wait is `400`. While the
 target conversation is running (or planning), or a fire is already claimed:
-`409` with `code: "skipped_busy"`.
+`409` with `code: "skipped_busy"`. An early cron fire consumes that due
+slot (`next_run_at` becomes the occurrence after the one that was pending);
+an interval resets from now. A delay one-shot is marked `done`. The
+composer wait banner hides while that conversation is working.
 
 ### `POST /api/schedules/runs/:rid/read` → `204`
 

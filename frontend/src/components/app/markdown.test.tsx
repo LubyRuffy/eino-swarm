@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { MemoMarkdown } from "./markdown"
 
@@ -20,6 +20,9 @@ vi.mock("@/components/app/transcript-chart", async () => {
 })
 
 describe("MemoMarkdown", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
   it("renders a streaming heading as a heading", () => {
     render(<MemoMarkdown text={"## Result\n\nstill writing"} streaming />)
     expect(screen.getByRole("heading", { name: "Result" })).toBeInTheDocument()
@@ -110,7 +113,61 @@ describe("MemoMarkdown", () => {
     const text = "```json\n{\"type\":\"bar\"}\n```"
     render(<MemoMarkdown text={text} />)
     expect(screen.queryByTestId("transcript-chart")).not.toBeInTheDocument()
-    expect(screen.getByText(/"type":"bar"/)).toBeInTheDocument()
+    expect(screen.getByTestId("markdown-code").textContent).toContain('"type":"bar"')
+  })
+
+  it("highlights a language-tagged fence and copies the original body", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } })
+    const src = "func Len(s string) int { return len(s) }"
+    render(<MemoMarkdown text={"```go\n" + src + "\n```"} />)
+    expect(screen.getByText("func")).toHaveClass("text-syntax-keyword")
+    expect(screen.getByText("Len")).toHaveClass("text-syntax-command")
+    expect(screen.getByTestId("markdown-code").textContent).toContain(src)
+    fireEvent.click(screen.getByRole("button", { name: "Copy code" }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(src))
+  })
+
+  it("maps a cpp fence onto the C highlighter", () => {
+    render(<MemoMarkdown text={"```cpp\nint x = 1;\n```"} />)
+    expect(screen.getByText("int")).toHaveClass("text-syntax-keyword")
+    expect(screen.getByText("cpp")).toBeInTheDocument()
+  })
+
+  it("leaves an unlabeled fence uncoloured and still copyable", () => {
+    render(<MemoMarkdown text={"```\nnot a language\n```"} />)
+    expect(document.querySelector(".text-syntax-keyword")).toBeNull()
+    expect(screen.getByRole("button", { name: "Copy code" })).toBeInTheDocument()
+    expect(screen.getByTestId("markdown-code").textContent).toContain("not a language")
+  })
+
+  it("renders inline and display math as KaTeX, not as dollar signs", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } })
+    render(<MemoMarkdown text={"see $n$ and\n\n$$\n a + b \n$$"} />)
+    expect(screen.queryByText(/\$n\$/)).not.toBeInTheDocument()
+    await waitFor(() => expect(document.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2))
+    expect(screen.getByTestId("markdown-math")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Copy formula" }))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(" a + b "))
+  })
+
+  it("does not treat a dollar path as math", () => {
+    render(<MemoMarkdown text="see $HOME" />)
+    expect(document.querySelector(".katex")).toBeNull()
+    expect(screen.getByText(/\$HOME/)).toBeInTheDocument()
+  })
+
+  it("renders a math fence as a formula, not as source", async () => {
+    render(<MemoMarkdown text={"```math\n a + b \n```"} />)
+    expect(await screen.findByTestId("markdown-math")).toBeInTheDocument()
+    await waitFor(() => expect(document.querySelector(".katex")).toBeTruthy())
+    expect(screen.queryByTestId("markdown-code")).not.toBeInTheDocument()
+  })
+
+  it("closes a live display-math fence so KaTeX can paint mid-stream", async () => {
+    render(<MemoMarkdown text={"$$\n a + b"} streaming />)
+    await waitFor(() => expect(document.querySelector(".katex")).toBeTruthy())
   })
 
   it("holds a live unclosed chart fence as a placeholder, not as raw JSON", () => {

@@ -499,9 +499,28 @@ func TestManagerPromptDescribesChartsWithoutASampleTask(t *testing.T) {
 			t.Fatalf("missing %q:\n%s", need, prompt)
 		}
 	}
-	for _, leak := range []string{"revenue", "sales", "month", "quarter", "gdp"} {
+	for _, leak := range []string{"revenue", "sales", "month", "quarter", "gdp", "katex", "knapsack"} {
 		if strings.Contains(strings.ToLower(prompt), leak) {
 			t.Fatalf("chart instructions leaked a sample domain %q:\n%s", leak, prompt)
+		}
+	}
+}
+
+func TestManagerPromptDescribesCodeFencesAndMath(t *testing.T) {
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	for _, need := range []string{
+		"Fenced source must name its language",
+		"$...$",
+		"$$...$$",
+		"not inside a code fence",
+	} {
+		if !strings.Contains(prompt, need) {
+			t.Fatalf("missing %q:\n%s", need, prompt)
+		}
+	}
+	for _, leak := range []string{"highlight.js", "prism", "katex", "knapsack", "latex.js"} {
+		if strings.Contains(strings.ToLower(prompt), leak) {
+			t.Fatalf("math/code instructions leaked %q:\n%s", leak, prompt)
 		}
 	}
 }

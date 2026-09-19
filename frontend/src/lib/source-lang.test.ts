@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { langDef, languageFromPath } from "./source-lang"
+import { langDef, languageFromFence, languageFromPath } from "./source-lang"
 
 describe("source-lang", () => {
   it("maps the suffixes the files tree already treats as code or config", () => {
@@ -24,5 +24,11 @@ describe("source-lang", () => {
     expect(langDef("html")).toBeUndefined()
     expect(langDef("shell")).toBeUndefined()
     expect(langDef("go")?.lineComment).toBe("//")
+  })
+
+  it("maps a fence tag onto the same dialect as a suffix", () => {
+    expect(languageFromFence("cpp")).toBe("c")
+    expect(languageFromFence("javascript")).toBe("js")
+    expect(languageFromFence("chart")).toBeUndefined()
   })
 })

@@ -50,7 +50,12 @@ afterEach(async () => {
   // A static import here would bind the real client before the mock exists.
   const { useApp } = await import("@/store/app")
   const { applyAppearance, defaultAppearance } = await import("@/lib/appearance")
+  const { resetToasts } = await import("@/store/toasts")
   applyAppearance(defaultAppearance())
+  const { act } = await import("@testing-library/react")
+  act(() => {
+    resetToasts()
+  })
   useApp.setState({
     locale: "en",
     theme: "system",

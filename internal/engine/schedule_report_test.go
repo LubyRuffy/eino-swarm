@@ -472,10 +472,9 @@ func TestResumeDropsASupersededScheduledRun(t *testing.T) {
 	}
 
 	waitForTurn(t, e, newer.ID)
-	gotNewer, err := e.Store().GetRun(newerRun.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// FinishTurn lands before FinishRun. Waiting on the turn then reading
+	// the run once is a race the suite hits under load.
+	gotNewer := waitForScheduleRun(t, e, newerRun.ID)
 	if gotNewer.Status == store.ScheduleRunRunning {
 		t.Fatalf("surviving run still running after the turn closed: %+v", gotNewer)
 	}
