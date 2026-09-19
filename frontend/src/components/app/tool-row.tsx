@@ -5,7 +5,7 @@ import {
   Loader2,
   Terminal,
 } from "lucide-react"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 
 import { MarqueeText } from "@/components/app/marquee"
 import { ShellCommand } from "@/components/app/shell-command"
@@ -21,14 +21,24 @@ export function ToolRow({ block, reveal }: { block: Block; reveal?: boolean }) {
   // left the dump on screen after it returned — a wall nobody asked for.
   // Exec/python_runner stay collapsed; the latest line rides the summary.
   // Other tools still open while pending and fold when the result lands.
+  // edit/write stay open: the hunk is the thing they came to review, and the
+  // tool result is only a status sentence.
   const [choice, setChoice] = useState<boolean | null>(null)
-  if (!tool) return null
-  const view = viewTool(tool.name, tool.args, tool.result, tool.failed)
+  const toolName = tool?.name
+  const toolArgs = tool?.args
+  const toolResult = tool?.result
+  const toolFailed = tool?.failed
+  const view = useMemo(() => {
+    if (toolName === undefined || toolArgs === undefined) return undefined
+    return viewTool(toolName, toolArgs, toolResult, toolFailed)
+  }, [toolName, toolArgs, toolResult, toolFailed])
+  if (!tool || !view) return null
   const command = tool.name === "exec" ? execCommand(tool.args) : ""
   const liveLine = tool.pending && view.body ? lastLine(applyCarriageReturns(view.body)) : ""
   const watchLive =
     Boolean(tool.pending) && tool.name !== "exec" && tool.name !== "python_runner"
-  const expanded = (choice ?? watchLive) || Boolean(reveal)
+  const fileChange = Boolean(view.diff)
+  const expanded = (choice ?? (watchLive || fileChange)) || Boolean(reveal)
   return (
     <Disclosure
       open={expanded}
@@ -74,6 +84,7 @@ export function ToolRow({ block, reveal }: { block: Block; reveal?: boolean }) {
         result={tool.result}
         failed={tool.failed}
         pending={tool.pending}
+        view={view}
       />
     </Disclosure>
   )

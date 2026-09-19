@@ -81,6 +81,12 @@ export default {
           variable: "hsl(var(--syntax-variable))",
           prompt: "hsl(var(--syntax-prompt))",
         },
+        diff: {
+          add: "hsl(var(--diff-add))",
+          "add-bg": "hsl(var(--diff-add-bg))",
+          del: "hsl(var(--diff-del))",
+          "del-bg": "hsl(var(--diff-del-bg))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -1,3 +1,5 @@
+import { editCountLabel, parseFileChange, type EditDiff } from "./edit-diff"
+
 /** How a built-in tool call should read on one line, and how its payload
  *  should look once expanded. Field names come from the tool schemas — not
  *  from anyone's example query. */
@@ -33,6 +35,9 @@ export type ToolView = {
   error?: string
   body: string
   hits?: SearchHit[]
+  /** Present for edit/write. Parsed once so the row and the expanded
+   *  body share the same hunk instead of re-parsing the args. */
+  diff?: EditDiff
 }
 
 export function summariseToolCall(name: string, args: string): string {
@@ -78,9 +83,10 @@ export function toolRowSummary(view: ToolView): string {
 }
 
 export function viewTool(name: string, args: string, result?: string, flagged?: boolean): ToolView {
-  const summary = summariseToolCall(name, args)
+  const diff = parseFileChange(name, args)
+  const summary = withChangeCounts(summariseToolCall(name, args), diff)
   if (result === undefined) {
-    return { summary, failed: Boolean(flagged), body: "" }
+    return { summary, failed: Boolean(flagged), body: "", diff }
   }
   const prefix = errorPrefix(result)
   if (name === "exec" || name === "python_runner") {
@@ -89,13 +95,13 @@ export function viewTool(name: string, args: string, result?: string, flagged?: 
       const failed = Boolean(flagged || run.failed || (run.exitCode !== 0 && run.exitCode !== undefined))
       const body = [run.stdout, run.stderr].filter((s) => s.trim()).join("\n")
       const error = run.error || (failed ? `exit ${run.exitCode ?? "?"}` : undefined)
-      return { summary, failed, error, body }
+      return { summary, failed, error, body, diff }
     }
   }
   if (name === "web_search") {
     const hits = parseSearchHits(result)
     if (hits) {
-      return { summary, failed: Boolean(flagged || prefix), error: prefix, body: "", hits }
+      return { summary, failed: Boolean(flagged || prefix), error: prefix, body: "", hits, diff }
     }
   }
   const failed = Boolean(flagged || prefix)
@@ -107,10 +113,22 @@ export function viewTool(name: string, args: string, result?: string, flagged?: 
         failed: Boolean(flagged || !mem.success),
         error: mem.error || prefix,
         body: mem.body,
+        diff,
       }
     }
   }
-  return { summary, failed, error: prefix, body: result }
+  // Status sentences (`ok: replaced block`, `Updated file`) are not the
+  // body once we have a hunk — the hunk is. Leaving them in body would
+  // paint the same change twice if a later surface dumps view.body.
+  return { summary, failed, error: prefix, body: diff ? "" : result, diff }
+}
+
+function withChangeCounts(summary: string, diff: EditDiff | undefined): string {
+  if (!diff || (diff.added === 0 && diff.removed === 0)) return summary
+  const counts = editCountLabel(diff)
+  if (!summary) return counts
+  if (summary.includes(counts)) return summary
+  return `${summary}  ${counts}`
 }
 
 function summariseMemoryCall(

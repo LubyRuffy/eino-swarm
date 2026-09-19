@@ -143,6 +143,47 @@ describe("ToolRow", () => {
     expect(screen.getByTestId("tool-output").textContent).toBe("done")
   })
 
+  it("keeps a finished edit open so the diff is on screen", () => {
+    const args = JSON.stringify({
+      file_path: "pkg/alpha.go",
+      search_block: "return 0",
+      replace_block: "return 1",
+    })
+    render(
+      <ToolRow
+        block={toolBlock({
+          name: "edit",
+          args,
+          result: "ok: replaced block in pkg/alpha.go",
+        })}
+      />,
+    )
+    expect(screen.getByRole("button", { name: /edit/ })).toHaveTextContent("+1")
+    expect(screen.getByRole("button", { name: /edit/ })).toHaveTextContent("−1")
+    expect(screen.getByTestId("file-diff")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /edit/ }))
+    expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
+  })
+
+  it("keeps a finished write open so the new file is on screen", () => {
+    render(
+      <ToolRow
+        block={toolBlock({
+          name: "write",
+          args: JSON.stringify({
+            file_path: "pkg/alpha.go",
+            content: "package alpha\n",
+          }),
+          result: "Updated file pkg/alpha.go",
+        })}
+      />,
+    )
+    expect(screen.getByRole("button", { name: /write/ })).toHaveTextContent("+1")
+    expect(screen.getByTestId("file-diff")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /write/ }))
+    expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
+  })
+
   it("folds a non-exec tool when it finishes unless the reader opened it", () => {
     const { rerender } = render(
       <ToolRow

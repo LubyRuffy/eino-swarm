@@ -77,6 +77,18 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- **An `edit` or `write` in the transcript is a highlighted hunk, not a
+  status line.** eino-tools still returns `ok: replaced block in …` /
+  `Updated file …` (that string is what the model sees). The UI rebuilds
+  the change from the args: `search_block` / `replace_block` or `patch`
+  for edit, `content` for write (all additions). Red deletions, green
+  additions, syntax colours from the path suffix, `+N` (write) or `+N −M`
+  (edit) on the collapsed row. A write of hundreds of lines is clipped
+  in the expanded view; the count is still the real size. An empty write
+  is the path and the empty-file line, not `+0`. The row stays open
+  after it lands so the hunk is on screen; a click still folds it. A
+  failed call keeps the error above the attempted change.
+
 - **Wake banner is Run now / Cancel wait, not an icon-only X.** The X sat
   under the goal banner's dismiss, and the labeled cancel lived on a
   transcript chip that had already scrolled away, so people would not

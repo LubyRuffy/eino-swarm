@@ -298,6 +298,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "tool.running": "运行中…",
   "tool.noOutput": "（无输出）",
   "tool.emptyFile": "（空文件）",
+  "tool.diffMore": "还有 {n} 行",
 
   "status.running": "进行中",
   "status.done": "完成",

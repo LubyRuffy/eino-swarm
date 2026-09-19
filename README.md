@@ -188,7 +188,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   `exec` row wraps the full
   command with shell highlighting instead of leaving it cut off. Opening a
   `read` paints the file from its suffix (Go, TypeScript, Python, …) instead
-  of a grey dump; markdown still renders as prose. Agents are
+  of a grey dump; markdown still renders as prose. An `edit` or `write`
+  stays open as a highlighted diff of what landed — red gone, green new —
+  instead of the one-line status the tool returns to the model (`ok:
+  replaced block`, `Updated file`). A huge write is clipped in that view;
+  the collapsed row still shows the path plus the real `+N` (write) or
+  `+N −M` (edit). Agents are
   told which OS, shell and date they are on, so they stop emitting GNU-only
   flags on a Mac.
 - **Answers can include charts.** When the numbers in a reply are easier to
@@ -313,7 +318,9 @@ What you get:
    The tree is the workspace
    root, listed breadth-first so a large generated folder cannot hide the rest.
    Expand a `read` in the transcript to see the file: markdown is rendered,
-   other files keep their line numbers.
+   other files keep their line numbers. An `edit` or `write` paints the hunk
+   from the call's args (search/replace, patch, or the written body) with
+   add/delete highlighting.
 3. **Steering.** Type while it works. The nudge sits under the working line
    until the manager's next model call — it is queued, not inserted into the
    current tool. **Interrupt** on that pin injects it now by aborting the

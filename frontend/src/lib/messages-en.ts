@@ -314,6 +314,7 @@ export const en = {
   "tool.running": "running…",
   "tool.noOutput": "(no output)",
   "tool.emptyFile": "(empty file)",
+  "tool.diffMore": "{n} more lines",
 
   "status.running": "running",
   "status.done": "done",

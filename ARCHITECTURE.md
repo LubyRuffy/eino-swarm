@@ -433,6 +433,15 @@ stays collapsed — stdout is a dump, and opening it used to stick after the
 command returned. The latest line rides the summary while it runs; open the
 row to watch the tail (wheel-up unpins). Other pending tool rows still start
 open and fold when the result lands, the way a finished thought does.
+An `edit` or `write` is the exception: eino-tools only returns a status
+sentence (`ok: replaced block in …` / `Updated file …`), so the desktop UI
+rebuilds a highlighted hunk from the args (`frontend/src/lib/edit-diff.ts`)
+and keeps the row open. Edit uses `search_block` / `replace_block` or
+`patch`; write treats `content` as all additions. A huge write is clipped
+in the expanded view (400 lines); the `+N` on the row is still the real
+size. A click still folds it. The collapsed summary adds `+N` (write) or
+`+N −M` (edit). `viewTool` attaches the hunk once so the row and the
+body do not re-parse the args.
 A turn that ends (`done` / `error`, including a user interrupt) or an
 agent that `finished` closes any tool still `pending`: interrupt cancels
 in-flight calls without a `tool_result`, and leaving them pending keeps the

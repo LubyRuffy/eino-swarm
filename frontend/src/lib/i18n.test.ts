@@ -42,6 +42,8 @@ describe("t", () => {
     expect(t("zh", "header.idle")).toBe("空闲")
     expect(t("en", "queue.count", { n: 3 })).toBe("3 Queued")
     expect(t("zh", "queue.count", { n: 3 })).toBe("3 条排队")
+    expect(t("en", "tool.diffMore", { n: 12 })).toBe("12 more lines")
+    expect(t("zh", "tool.diffMore", { n: 12 })).toBe("还有 12 行")
   })
 
   it("has a Chinese string for every English key", () => {

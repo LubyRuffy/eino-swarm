@@ -180,3 +180,68 @@ describe("toolRowSummary", () => {
     expect(toolRowSummary(view)).toBe("add · a durable fact")
   })
 })
+
+describe("file change view", () => {
+  it("puts plus/minus counts on an edit path, not the JSON envelope", () => {
+    const view = viewTool(
+      "edit",
+      JSON.stringify({
+        file_path: "pkg/alpha.go",
+        search_block: "return 0",
+        replace_block: "return 1",
+      }),
+      "ok: replaced block in pkg/alpha.go",
+    )
+    expect(view.summary).toContain("pkg/alpha.go")
+    expect(view.summary).toMatch(/\+1/)
+    expect(view.summary).toMatch(/−1/)
+    expect(view.summary).not.toContain("search_block")
+    expect(view.summary).not.toContain("{")
+    expect(toolRowSummary(view)).toContain("+1")
+    expect(view.diff?.added).toBe(1)
+    expect(view.body).toBe("")
+  })
+
+  it("puts an added-line count on a write path, not the status sentence", () => {
+    const view = viewTool(
+      "write",
+      JSON.stringify({
+        file_path: "pkg/alpha.go",
+        content: "package alpha\nfunc Alpha() {}\n",
+      }),
+      "Updated file pkg/alpha.go",
+    )
+    expect(view.summary).toContain("pkg/alpha.go")
+    expect(view.summary).toMatch(/\+2/)
+    expect(view.summary).not.toContain("content")
+    expect(view.summary).not.toContain("{")
+    expect(toolRowSummary(view)).toContain("+2")
+    expect(view.diff?.added).toBe(2)
+    expect(view.body).toBe("")
+  })
+
+  it("does not advertise +0 on an empty write, but still attaches the hunk", () => {
+    const view = viewTool(
+      "write",
+      JSON.stringify({ file_path: "pkg/alpha.go", content: "" }),
+      "Updated file pkg/alpha.go",
+    )
+    expect(view.summary).toBe("pkg/alpha.go")
+    expect(view.summary).not.toMatch(/\+0/)
+    expect(view.diff?.added).toBe(0)
+    expect(view.diff?.hunks[0].lines).toEqual([])
+  })
+
+  it("attaches the hunk while the call is still pending", () => {
+    const view = viewTool(
+      "edit",
+      JSON.stringify({
+        file_path: "pkg/alpha.go",
+        search_block: "return 0",
+        replace_block: "return 1",
+      }),
+    )
+    expect(view.diff?.added).toBe(1)
+    expect(view.body).toBe("")
+  })
+})

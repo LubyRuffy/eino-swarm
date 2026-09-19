@@ -3,7 +3,7 @@ import { useMemo } from "react"
 import { paintLines, type SourceTokenKind } from "@/lib/source-highlight"
 import type { ReadLine } from "@/lib/read-result"
 
-const KIND_CLASS: Record<SourceTokenKind, string> = {
+export const SOURCE_KIND_CLASS: Record<SourceTokenKind, string> = {
   text: "",
   comment: "text-syntax-comment",
   string: "text-syntax-string",
@@ -37,7 +37,7 @@ export function SourceListing({
               </td>
               <td className="stream-text w-full whitespace-pre-wrap py-0 pr-2">
                 {row.tokens.map((t, i) => (
-                  <span key={i} className={KIND_CLASS[t.kind] || undefined}>
+                  <span key={i} className={SOURCE_KIND_CLASS[t.kind] || undefined}>
                     {t.text}
                   </span>
                 ))}

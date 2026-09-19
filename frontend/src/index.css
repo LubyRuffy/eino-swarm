@@ -73,6 +73,13 @@
     --syntax-variable: 38 80% 38%;
     --syntax-prompt: 252 40% 52%;
 
+    /* Edit hunks in the transcript. Same hues as --done / --destructive so
+       a light/dark swap cannot leave additions looking like deletions. */
+    --diff-add: 142 62% 32%;
+    --diff-add-bg: 142 40% 94%;
+    --diff-del: 0 72% 42%;
+    --diff-del-bg: 0 70% 96%;
+
     /* Width of the macOS traffic lights plus a gap. The desktop shell
        overwrites this from the native button frames; the fallback is only
        for the first paint and for unit tests. */
@@ -151,6 +158,11 @@
     --syntax-flag: 211 50% 70%;
     --syntax-variable: 40 75% 62%;
     --syntax-prompt: 252 50% 75%;
+
+    --diff-add: 142 50% 58%;
+    --diff-add-bg: 142 35% 12%;
+    --diff-del: 0 70% 62%;
+    --diff-del-bg: 0 40% 14%;
 
     --qr-plate: 0 0% 100%;
   }

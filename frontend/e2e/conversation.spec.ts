@@ -87,6 +87,13 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible()
   const agentLog = page.getByTestId("agent-scroller")
   await expect(agentLog).toBeVisible()
+  // write lands as a highlighted body, not the one-line status eino-tools
+  // returns to the model.
+  const written = agentLog.getByTestId("file-diff")
+  await expect(written).toBeVisible()
+  await expect(written).toContainText("notes/researcher.md")
+  await expect(written.locator('[data-diff="add"]').first()).toBeVisible()
+  await expect(agentLog.getByText(/Updated file/)).toHaveCount(0)
   await expect
     .poll(async () =>
       agentLog.evaluate(

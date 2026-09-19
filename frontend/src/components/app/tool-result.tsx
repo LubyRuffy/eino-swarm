@@ -1,12 +1,13 @@
 import { useRef } from "react"
 
+import { EditDiffView } from "@/components/app/edit-diff"
 import { MemoMarkdown } from "@/components/app/markdown"
 import { ShellCommand } from "@/components/app/shell-command"
 import { SourceListing } from "@/components/app/source-code"
 import { applyCarriageReturns } from "@/lib/carriage"
 import { useOutputTail } from "@/lib/output-scroll"
 import { isMarkdownPath, parseReadResult, type ReadListing } from "@/lib/read-result"
-import { execCommand, viewTool, type SearchHit } from "@/lib/tool-view"
+import { execCommand, viewTool, type SearchHit, type ToolView } from "@/lib/tool-view"
 import { useT } from "@/lib/use-t"
 
 /** Expanded tool output. Built-in tools are shown as what they did — a
@@ -17,20 +18,23 @@ export function ToolResultBody({
   result,
   failed,
   pending,
+  view: given,
 }: {
   name: string
   args: string
   result?: string
   failed?: boolean
   pending?: boolean
+  view?: ToolView
 }) {
   const t = useT()
   const listing = name === "read" && result ? parseReadResult(result) : undefined
-  const view = viewTool(name, args, result, failed)
+  const view = given ?? viewTool(name, args, result, failed)
+  const diff = view.diff
   const command = name === "exec" ? execCommand(args) : ""
   const waiting =
-    result === undefined ||
-    (Boolean(pending) && !listing && !view.body && !view.hits && !view.error)
+    (result === undefined && !diff) ||
+    (Boolean(pending) && !listing && !view.body && !view.hits && !view.error && !diff)
   return (
     <div
       className={`space-y-2 border-l-2 pl-3 text-[12px] ${
@@ -53,10 +57,11 @@ function ParsedBody({
   view,
   follow,
 }: {
-  view: ReturnType<typeof viewTool>
+  view: ToolView
   follow: boolean
 }) {
   const t = useT()
+  const diff = view.diff
   return (
     <div className="space-y-2">
       {view.failed && view.error ? (
@@ -68,8 +73,10 @@ function ParsedBody({
         </p>
       ) : null}
       {view.hits ? <SearchHits hits={view.hits} /> : null}
-      {view.body ? <OutputPre text={applyCarriageReturns(view.body)} failed={view.failed && !view.error} follow={follow} /> : null}
-      {!view.body && !view.hits && !view.error ? (
+      {diff ? <EditDiffView diff={diff} /> : view.body ? (
+        <OutputPre text={applyCarriageReturns(view.body)} failed={view.failed && !view.error} follow={follow} />
+      ) : null}
+      {!view.body && !view.hits && !view.error && !diff ? (
         <p className="text-muted-foreground">{t("tool.noOutput")}</p>
       ) : null}
     </div>
