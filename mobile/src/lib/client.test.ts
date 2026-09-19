@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { redeemOffer, TICKET_PROTO } from "./client"
+import { deliverResponse, redeemOffer, TICKET_PROTO } from "./client"
+import type { RemoteResponse } from "./rpc"
 import { generateIdentity } from "./crypto"
 import { bytesToB64url, bytesToHex } from "./bytes"
 
@@ -34,5 +35,27 @@ describe("redeemOffer", () => {
     expect(fetcher).toHaveBeenCalledOnce()
     expect(JSON.stringify(fetcher.mock.calls)).toContain("pairings/redeem")
     expect(TICKET_PROTO).toBe("pairlink.ticket.")
+  })
+})
+
+describe("deliverResponse", () => {
+  it("routes a matching id to the waiter and unmatched frames to onPush", () => {
+    const pending = new Map<string, (r: RemoteResponse) => void>()
+    const waiter = vi.fn()
+    const push = vi.fn()
+    pending.set("m1", waiter)
+    const rpc: RemoteResponse = { v: 1, id: "m1", ok: true }
+    deliverResponse(pending, rpc, push)
+    expect(waiter).toHaveBeenCalledWith(rpc)
+    expect(push).not.toHaveBeenCalled()
+    const event: RemoteResponse = {
+      v: 1,
+      id: "",
+      ok: true,
+      op: "event",
+      thread_id: "t",
+    }
+    deliverResponse(pending, event, push)
+    expect(push).toHaveBeenCalledWith(event)
   })
 })

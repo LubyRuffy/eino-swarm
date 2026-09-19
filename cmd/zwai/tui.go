@@ -167,9 +167,14 @@ func assembleTUI(ctx context.Context, args []string) (*tuiSetup, error) {
 			done.Store(true)
 			return `{"ok":true}`, nil
 		}
+		undo := func(string) (string, error) {
+			done.Store(false)
+			return `{"ok":true}`, nil
+		}
 		planState.SetGoal(engine.GoalPrompt(g, false), []tool.BaseTool{
 			engine.CompleteGoalTool(stop),
 			engine.BlockGoalTool(stop),
+			engine.ReopenGoalTool(undo),
 		})
 		session.ShouldContinue = func() bool { return !done.Load() }
 		session.ContinueTask = engine.GoalContinueText()

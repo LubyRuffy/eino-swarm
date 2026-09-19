@@ -71,6 +71,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			BlockGoalTool(func(reason string) (string, error) {
 				return e.blockGoalJSON(tid, reason)
 			}),
+			ReopenGoalTool(func(reason string) (string, error) {
+				return e.reopenGoalJSON(tid, reason)
+			}),
 		)
 	}
 	managerTools = append(managerTools, AskUserTool(rt.waitAsk))

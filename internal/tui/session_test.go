@@ -340,6 +340,9 @@ func TestCountedGoalToolCallIgnoresLifecycleTools(t *testing.T) {
 	if countedGoalToolCall(swarm.Notification{Kind: swarm.NotifyToolCall, Text: "block_goal({})"}) {
 		t.Fatal("block_goal closes pursuit; it is not progress")
 	}
+	if countedGoalToolCall(swarm.Notification{Kind: swarm.NotifyToolCall, Text: "reopen_goal({})"}) {
+		t.Fatal("reopen_goal restores pursuit; it is not progress")
+	}
 	if !countedGoalToolCall(swarm.Notification{Kind: swarm.NotifyToolCall, Text: "wait_agents({})"}) {
 		t.Fatal("a live wait is progress")
 	}

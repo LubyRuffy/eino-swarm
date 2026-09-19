@@ -3,6 +3,7 @@ import { Camera } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/input"
+import { localeSwitchLabel, t } from "@/lib/i18n"
 import { parseOffer } from "@/lib/offer"
 import { scanPairlinkURI } from "@/lib/scan"
 
@@ -10,10 +11,14 @@ export function ScanScreen({
   onURI,
   busy,
   error,
+  onRetry,
+  onToggleLocale,
 }: {
   onURI: (uri: string) => void
   busy?: boolean
   error?: string
+  onRetry?: () => void
+  onToggleLocale?: () => void
 }) {
   const [paste, setPaste] = useState("")
   const [localError, setLocalError] = useState<string>()
@@ -42,24 +47,24 @@ export function ScanScreen({
   const shown = error || localError
 
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-4 p-6">
-      <h1 className="text-xl font-semibold">扫码绑定这台 PC</h1>
-      <p className="text-sm text-muted-foreground">
-        打开 zwai Settings → Phone 的配对 QR。摄像头是产品路径；没有摄像头再粘贴同一条
-        URI。
-      </p>
-      <Button
-        onClick={() => void scan()}
-        disabled={busy}
-        aria-label="Scan QR"
-      >
+    <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-5 px-5 py-8">
+      <header className="flex items-start justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">{t("scan.title")}</h1>
+        {onToggleLocale ? (
+          <Button variant="ghost" onClick={onToggleLocale} aria-label={localeSwitchLabel()}>
+            {localeSwitchLabel()}
+          </Button>
+        ) : null}
+      </header>
+      <p className="text-sm leading-relaxed text-muted-foreground">{t("scan.hint")}</p>
+      <Button onClick={() => void scan()} disabled={busy} aria-label={t("scan.camera")}>
         <Camera className="size-4" />
-        Scan QR
+        {t("scan.camera")}
       </Button>
-      <label className="flex flex-col gap-2 text-sm">
-        Pairing URI
+      <label className="flex flex-col gap-2 text-sm text-muted-foreground">
+        {t("scan.uri")}
         <Textarea
-          aria-label="Pairing URI"
+          aria-label={t("scan.uri")}
           value={paste}
           onChange={(e) => setPaste(e.target.value)}
           placeholder="pairlink:v1:…"
@@ -67,8 +72,13 @@ export function ScanScreen({
         />
       </label>
       <Button variant="outline" onClick={submitPaste} disabled={busy}>
-        Paste and bind
+        {t("scan.paste")}
       </Button>
+      {onRetry ? (
+        <Button variant="outline" onClick={onRetry} disabled={busy}>
+          {t("scan.retry")}
+        </Button>
+      ) : null}
       {shown ? (
         <p className="text-sm text-destructive" role="alert">
           {shown}

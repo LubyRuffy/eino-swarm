@@ -63,5 +63,23 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
+    padding: env(safe-area-inset-top) env(safe-area-inset-right)
+      env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  .md-body > :first-child {
+    @apply mt-0;
+  }
+  .md-body p {
+    @apply my-2 leading-relaxed;
+  }
+  .md-body pre {
+    @apply my-2 overflow-x-auto rounded-md bg-muted p-3 text-xs;
+  }
+  .md-body code {
+    @apply font-mono text-xs;
+  }
+  .md-body a {
+    @apply underline;
   }
 }

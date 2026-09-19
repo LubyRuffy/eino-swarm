@@ -13,6 +13,22 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **Fresh clone `npm install` no longer dies on npm 12.** The lockfiles had
+  been written against a mirror. npm 12's `allow-remote=none` treats a
+  tarball whose host is not the install registry as a remote package
+  (`EALLOWREMOTE`) and a new machine with the default registry never
+  reaches the UI build. Resolved URLs are `registry.npmjs.org`;
+  `frontend/.npmrc` and `mobile/.npmrc` pin that so a user-level mirror
+  cannot rewrite them on the next install.
+
+- **A mistaken `complete_goal` is recoverable.** The manager used to close a
+  standing objective by calling `complete_goal` to end a turn (summary even
+  saying the work was still open), and there was no undo: Play hid itself,
+  Resume rejected "already complete", auto-continue died. `reopen_goal`
+  undoes it in that turn and resets the auto-continue budget (a complete
+  at the cap must not immediately recap); **Start** on the Done banner
+  reopens it later.
+
 - **Exec stdout stays collapsed.** A live `exec` used to force the row open
   and leave the dump on screen after it returned. The summary still shows
   the latest line while it runs; the body is behind a click. Other pending
@@ -43,6 +59,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **`reopen_goal`.** Manager-only, mounted next to `complete_goal`. Undoes a
+  `complete_goal` in the same turn so auto-continue keeps going. **Start**
+  on a Done banner is the human path after the turn has already ended.
+
 - **`go run` builds the UI when it is missing or stale.** A clone used to
   compile `go:embed` against empty `frontend/dist` and serve a 404 until
   someone ran `make frontend`. `zwai desktop` / `web` now call
@@ -53,6 +73,12 @@ co-working app built on it. The library API is unchanged except where noted
   go run generate.go` in `frontend/embed.go` is the same path (`make
   frontend`). An installed binary with no checkout still serves the embed.
   `go test` skips the rebuild so the suite does not need Node.
+
+- **Phone is a compact screen on the same conversation.** Pairlink `watch` /
+  `unwatch` pushes the desktop SSE kinds (same `seq`) with clipped bodies
+  (`event_chars`, empty `spawned` text, 64KiB cap). The iOS/Android shell
+  renders send / follow-up / steer / stop / ask / goal / plan / markdown /
+  tools. Settings, Files, PTY and Trace stay on the PC.
 
 - **Scan a phone to this PC.** Settings → Phone shows a high-contrast pairing
   QR (`pairlink:v1:<hub_url>:<code>:<host_spk>`). The iOS and Android apps in

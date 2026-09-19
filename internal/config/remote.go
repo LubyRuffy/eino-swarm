@@ -13,6 +13,7 @@ const (
 	DefaultRemoteThreadLimit  = 5
 	DefaultRemoteSummaryChars = 280
 	DefaultRemoteOpenTurns    = 6
+	DefaultRemoteEventChars   = 4000
 )
 
 // RemoteConfig is the phone-pairing channel. HubURL is whatever the user
@@ -25,6 +26,7 @@ type RemoteConfig struct {
 	ThreadLimit  int    `yaml:"thread_limit" json:"thread_limit"`
 	SummaryChars int    `yaml:"summary_chars" json:"summary_chars"`
 	OpenTurns    int    `yaml:"open_turns" json:"open_turns"`
+	EventChars   int    `yaml:"event_chars" json:"event_chars"`
 }
 
 // RemoteDir holds the host identity and Host Token (mode 0700 / 0600).
@@ -50,6 +52,9 @@ func (c *Config) normalizeRemote() {
 	}
 	if c.Remote.OpenTurns <= 0 {
 		c.Remote.OpenTurns = DefaultRemoteOpenTurns
+	}
+	if c.Remote.EventChars <= 0 {
+		c.Remote.EventChars = DefaultRemoteEventChars
 	}
 }
 

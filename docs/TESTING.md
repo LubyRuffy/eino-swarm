@@ -18,7 +18,7 @@ deterministic and fast enough to run on every change.
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed) | `go test ./internal/server/` |
 | Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice cancel / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`) | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, scheduled inbox / wake banner, Phone settings QR control | `cd frontend && npm run e2e` |
-| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list | `cd mobile && npm test` |
+| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, compact transcript / watch session | `cd mobile && npm test` |
 | Phone E2E | scan screen + paste of the same `pairlink:v1` URI (camera is the product path on device) | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, Start | see `mobile/README.md` (not in `make check`) |
 
@@ -26,7 +26,7 @@ Current Go coverage, from `go test -race -cover ./...`:
 
 | package | coverage |
 |---|---|
-| `frontend` | 92.4% |
+| `frontend` | 92.9% |
 | `internal/memory` | 96.8% |
 | `internal/provider` | 92.1% |
 | `.` (swarm library) | 94.8% |
@@ -40,13 +40,16 @@ Current Go coverage, from `go test -race -cover ./...`:
 | `internal/tui` | 87.6% |
 | `internal/app` | 87.9% |
 | `cmd/zwai` | 84.2% |
-| `internal/remote` | 90.9% |
+| `internal/remote` | 91.3% |
 
 `internal/remote` is the phone RPC. `TestListDefaultsToFiveAndOmitsProjectSecrets`
 is why the phone never sees a project prompt. `TestSlimListPayloadStaysBounded`
 caps the default list. `TestUDPBlockedListAndSendStayOnRelay` is the
 UDP-blocked path: QR pixels round-trip to the same URI, then list and send
-stay on `path=relay`. The Capacitor shell in `mobile/` has its own unit tests
+stay on `path=relay`. `TestWatchLiveSendAndUnwatch` plus the kinds freeze
+in `watch_test.go` keep phone `watch` on the same seq/kind bus as desktop
+SSE, clip `spawned` bodies, and stay under the 64KiB pairlink frame.
+The Capacitor shell in `mobile/` has its own unit tests
 and a Playwright paste/scan screen; `mobile/native-project.test.ts` asserts the
 iOS and Android trees ship with camera permission and no compiled hub URL.
 Camera on a real device is the product path (`make mobile-ios` /
@@ -55,7 +58,10 @@ Camera on a real device is the product path (`make mobile-ios` /
 `frontend` is the embed plus the incremental Vite rebuild (`Ensure` /
 `Load`). The fingerprint and `npm` runner are tested against a fake tree;
 `Load` returns the embed under `go test` so `go test ./...` does not
-require Node. `assembleApp` in `cmd/zwai` is the two-line call that
+require Node. `TestCommittedLockfilesMatchThePublicNpmRegistry` refuses a
+lockfile whose `resolved` hosts are not `registry.npmjs.org` — npm 12
+treats those tarballs as remote packages (`EALLOWREMOTE`) on a fresh clone.
+`assembleApp` in `cmd/zwai` is the two-line call that
 production `desktop` / `web` go through.
 
 What is deliberately not unit-tested: `main`, `runDesktop`/`runWeb`/`runTUI` (thin
@@ -276,6 +282,15 @@ tool results are in the transcript the next slice reads;
 `TestBlockingAGoalAtTheReActSliceDoesNotAskToExtend` are why
 `complete_goal` / `block_goal` mid-slice must not pop the non-goal
 confirm card;
+`internal/engine/goal_reopen_test.go` is why a mistaken `complete_goal`
+can be undone in-turn (`reopen_goal`, which also resets `goal_auto_turns` so
+a complete at the cap does not immediately recap) and later from **Start**
+(`ResumeThreadGoal` no longer rejects a completed objective);
+`TestCatchUpStopsWhenTheWatchIsCancelled` /
+`TestWatchCancelSkipsReady` /
+`TestWatchReplaysAfterALaggedSubscriber` are why a phone `unwatch` / second
+`watch` must not keep pushing the old thread, and a slow phone replays
+from the store instead of dropping stored events;
 `TestGoalContinuesWhenTheManagerStopsCallingTools` is why the manager
 stopping tools starts the next turn with no `goal_session`;
 `TestAContinuationWithoutToolsStopsAutoContinue` /
@@ -519,7 +534,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   (`src/store/app-history.test.ts`). Opening paints the tail and resumes
   the stream after that seq (also here, split from `app.test.ts`).
 - **`src/store/app-goal.test.ts`**: `/goal` pursuing until `complete_goal` or
-  `block_goal` (edit and resume from the banner); setting a standing
+  `block_goal` (edit and resume from the banner, including Start after a
+  mistaken complete); setting a standing
   objective while idle starts that turn; setting one during a run does not
   queue a second turn; `/compact` landing on the
   open conversation, with the hint hidden at 0% (and a compact with nothing
@@ -664,8 +680,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   `/plan` waits for the work after picking the command; `/plan <task>` submits
   in one go. While `awaiting_answer` the placeholder is the Other prompt.
 - **`src/components/app/goal-banner.tsx`**: Pursuing / Blocked / Paused / Done,
-  Start only when Paused or Blocked (not while Pursuing between sessions),
+  Start when Paused, Blocked, or Done (not while Pursuing between sessions),
   a Paused/idle reason line that this is not an error and Start resumes,
+  a Done reason line if the close was early,
   labelled Start (not an icon-only play control),
   inline edit that saves on blur and cancels on Escape, and
   elapsed time from `goal_started_at`. A failed-turn sentinel is localized
@@ -935,8 +952,9 @@ long enough for Steer; unit tests leave it unset.
 |---|---|
 | `e2e/conversation.spec.ts` | a full swarm turn, a live thought in a 10-line scrolling box whose **Thinking** label sweeps, clicking that row hiding the thought while it still streams, a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge), a generated sidebar title after the first turn (not the raw request, not a transcript row), a heading rendered as a heading while the turn is still Working, a chart in the scripted answer with Chart/Table tabs (and after reload), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge, switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, **Steer** on that queued row injecting and emptying the tray, editing a queued row and submitting it so that message goes to the back of the FIFO, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, quoting selected transcript text into the next send as an editable composer annotation, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` showing a Planning banner and an `ask_user` dialog that spans the conversation column (a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
 | `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, hovering a project row revealing a new-conversation control that starts one in that project rather than Recents (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, a sixth topic in the folder sitting behind **Show more** until it is opened, and a running conversation keeping its sidebar progress after switching to a new conversation |
+| `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |
 | `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (title, prompt, Every (seconds) 60, Add wait), Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner, Cancel wait removing it. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
-| `e2e/remote.spec.ts` | Settings → Phone: Hub URL and Host Token fields, Show pairing QR, no QR pixels while the hub is unset (`409 remote_offline`) |
+| `e2e/remote.spec.ts` | Settings → Phone: Hub URL, Host Token, Event text on the phone, Show pairing QR, no QR pixels while the hub is unset (`409 remote_offline`) |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR control; junk paste errors; a syntactically valid URI uses the same bind path |
 | `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline, Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, the tool catalogue on a never-saved config, settings written to the config file and read back, personality round-tripping through Settings → Personality, pinning a title-generation model when more than one name is listed, opening a collapsed provider row then discovering models into the default-model dropdown, **Back to app** remaining on screen on a short window when the Swarm page is long, Back to app sitting in the first 48px of a browser sheet (the desktop title-bar strip is not shipped to the tab), the Add-a-provider outline staying inside the Models scrollport, theme switching persisted, chrome language switching (restored to English because locale is in the shared yaml), the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), font / size / conversation width round-tripping through Settings → General, renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
 
@@ -980,7 +998,9 @@ a client at all is verified in the engine and reducer tests.
   runs. The panel, the transcript and the composer all change shape mid-turn.
 - **The phone apps**: `make mobile-ios` / `make mobile-android`. Scan the
   pairing QR from Settings → Phone. Paste is the same URI when the camera is
-  missing. The hub hostname is typed on the PC, never shipped in the binary.
+  missing. After bind, the phone is a compact screen on the same conversation
+  bus (send / follow-up / steer / stop / ask); Settings, Files, PTY and Trace
+  stay on the PC. The hub hostname is typed on the PC, never shipped in the binary.
   Simulators: iOS can use a loopback hub; Android needs `adb reverse` onto
   that same hub port. `mobile/ios/App/AppUITests/BindFlowTests.swift` pastes
   the offer from `simctl pbcopy`, asserts `path=` plus the seed conversation,

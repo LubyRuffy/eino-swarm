@@ -749,6 +749,14 @@ describe("Composer slash commands", () => {
     expect(onResumeGoal).toHaveBeenCalled()
   })
 
+  it("starts a completed standing objective from the banner", () => {
+    const onResumeGoal = vi.fn()
+    renderComposer({ goal: "keep going", goalComplete: true, onResumeGoal })
+    expect(screen.getByTestId("goal-reason").textContent).toMatch(/too early/)
+    fireEvent.click(screen.getByRole("button", { name: "Start goal" }))
+    expect(onResumeGoal).toHaveBeenCalled()
+  })
+
   it("waits for the work after picking plan", () => {
     const onSend = vi.fn()
     const onSetPlan = vi.fn()

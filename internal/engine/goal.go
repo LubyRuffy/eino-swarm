@@ -45,7 +45,9 @@ const KindGoalEdited = "goal_edited"
 const KindGoalIdle = "goal_idle"
 
 // KindGoalResumed is recorded when the human starts pursuit again after
-// a block, a cap (including a stop), or an idle open goal.
+// a block, a cap (including a stop), an idle open goal, or a completed
+// objective that was closed in error. The manager's reopen_goal uses the
+// same kind so the banner drops Done without a new wire name.
 const KindGoalResumed = "goal_resumed"
 
 // ToolCompleteGoal is the manager-only tool that marks a standing objective
@@ -56,6 +58,10 @@ const ToolCompleteGoal = "complete_goal"
 // ToolBlockGoal is the manager-only tool that marks a standing objective
 // stuck. Same stability rule as complete_goal.
 const ToolBlockGoal = "block_goal"
+
+// ToolReopenGoal is the manager-only tool that undoes a complete_goal from
+// this turn. Same stability rule as complete_goal.
+const ToolReopenGoal = "reopen_goal"
 
 const goalMaxRunes = 2000
 
@@ -221,9 +227,10 @@ func (e *Engine) BlockThreadGoal(id, reason string) error {
 	return nil
 }
 
-// ResumeThreadGoal clears a block or cap and starts the next turn. An idle
-// open goal (interrupted, or set and not yet started) starts the same way.
-// A completed goal or a missing one is an error; a running turn is ErrBusy.
+// ResumeThreadGoal clears a block, cap, idle hold, or a completed mark and
+// starts the next turn. A missing goal is an error; a running turn is ErrBusy.
+// Completing used to be terminal; a mistaken complete_goal left no Play
+// control, so resume reopens that case too.
 func (e *Engine) ResumeThreadGoal(id string) (*store.Turn, error) {
 	th, err := e.store.GetThread(id)
 	if err != nil {
@@ -232,13 +239,11 @@ func (e *Engine) ResumeThreadGoal(id string) (*store.Turn, error) {
 	if strings.TrimSpace(th.Goal) == "" {
 		return nil, fmt.Errorf("engine: there is no standing objective to resume")
 	}
-	if th.GoalComplete {
-		return nil, fmt.Errorf("engine: the standing objective is already complete")
-	}
 	if e.Status(id).Running {
 		return nil, ErrBusy
 	}
 	prev := map[string]any{
+		"goal_complete":     th.GoalComplete,
 		"goal_auto_turns":   th.GoalAutoTurns,
 		"goal_capped":       th.GoalCapped,
 		"goal_blocked":      th.GoalBlocked,
@@ -246,6 +251,7 @@ func (e *Engine) ResumeThreadGoal(id string) (*store.Turn, error) {
 		"goal_idle":         th.GoalIdle,
 	}
 	if err := e.store.UpdateThread(id, map[string]any{
+		"goal_complete":     false,
 		"goal_auto_turns":   0,
 		"goal_capped":       false,
 		"goal_blocked":      false,
@@ -267,6 +273,41 @@ func (e *Engine) ResumeThreadGoal(id string) (*store.Turn, error) {
 		return nil, startErr
 	}
 	return turn, nil
+}
+
+// ReopenThreadGoal clears a complete_goal from this conversation so pursuit
+// continues when the current turn ends. The manager calls this after a
+// mistaken complete; the human Play path is ResumeThreadGoal. The
+// auto-continue budget resets the same way Start does — otherwise a
+// complete at the cap would reopen and immediately recap. Not complete
+// is an error so a spurious call cannot hide that nothing closed.
+func (e *Engine) ReopenThreadGoal(id, reason string) error {
+	th, err := e.store.GetThread(id)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(th.Goal) == "" {
+		return fmt.Errorf("engine: there is no standing objective to reopen")
+	}
+	if !th.GoalComplete {
+		return fmt.Errorf("engine: the standing objective is not complete")
+	}
+	if err := e.store.UpdateThread(id, map[string]any{
+		"goal_complete":     false,
+		"goal_auto_turns":   0,
+		"goal_capped":       false,
+		"goal_blocked":      false,
+		"goal_block_reason": "",
+		"goal_idle":         false,
+	}); err != nil {
+		return err
+	}
+	e.record(store.Event{
+		ThreadID: id, TurnID: e.lastTurnID(id),
+		Kind: KindGoalResumed, AgentID: swarm.DefaultManagerID,
+		Text: goalResumedNotice,
+	})
+	return nil
 }
 
 func (e *Engine) revertGoalResume(id string, prev map[string]any) {

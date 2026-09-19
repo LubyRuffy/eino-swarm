@@ -237,7 +237,7 @@ func (e *Engine) holdGoalIdle(threadID string) {
 
 // turnHasCountedGoalActivity reports tool work that moved the objective.
 // complete_goal / block_goal close pursuit themselves and must not count
-// as "keep going" activity.
+// as "keep going" activity. reopen_goal only restores pursuit.
 func (e *Engine) turnHasCountedGoalActivity(threadID, turnID string) bool {
 	if turnID == "" {
 		return false
@@ -255,7 +255,7 @@ func countedGoalActivity(events []store.Event, turnID string) bool {
 			continue
 		}
 		switch toolCallName(ev.Text) {
-		case ToolCompleteGoal, ToolBlockGoal, "":
+		case ToolCompleteGoal, ToolBlockGoal, ToolReopenGoal, "":
 			continue
 		default:
 			return true

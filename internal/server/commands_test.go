@@ -73,6 +73,27 @@ func TestGoalEditKeepsABlockAndResumeStartsATurn(t *testing.T) {
 	h.waitTurnDone(id)
 }
 
+func TestGoalResumeRestartsACompletedObjective(t *testing.T) {
+	h := newHarness(t)
+	id := h.newThread()
+	h.json(http.MethodPatch, "/api/threads/"+id,
+		map[string]any{"goal": "keep pursuing this"}, http.StatusOK)
+	if err := h.app.Engine.CompleteThreadGoal(id, "not actually done"); err != nil {
+		t.Fatal(err)
+	}
+	resumed := h.json(http.MethodPatch, "/api/threads/"+id,
+		map[string]any{"goal_resume": true}, http.StatusOK)
+	thread := resumed["thread"].(map[string]any)
+	if thread["goal_complete"] != false {
+		t.Fatalf("resume must reopen a completed objective: %v", thread)
+	}
+	if thread["running"] != true {
+		t.Fatalf("resume must start a turn: %v", thread)
+	}
+	h.json(http.MethodPost, "/api/threads/"+id+"/interrupt", nil, http.StatusAccepted)
+	h.waitTurnDone(id)
+}
+
 func TestGoalResumeWithoutOneIsRejected(t *testing.T) {
 	h := newHarness(t)
 	id := h.newThread()

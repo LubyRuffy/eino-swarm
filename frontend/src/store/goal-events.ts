@@ -65,6 +65,7 @@ export function applyGoalThreadFlags(
         t.id === threadId
           ? {
               ...t,
+              goal_complete: false,
               goal_blocked: false,
               goal_capped: false,
               goal_idle: false,

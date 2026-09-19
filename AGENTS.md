@@ -148,6 +148,12 @@ feature.
   (`bin/`, `*.tsbuildinfo`, `test-results/`) and anything under a data
   directory are not tracked. `go run` rebuilds dist when sources changed;
   `make build` generates first so the embed matches.
+- Frontend and mobile lockfiles resolve against `registry.npmjs.org`. A
+  mirror in `~/.npmrc` used to write those hosts into `package-lock.json`;
+  npm 12 then refuses the install on a machine whose registry does not
+  match (`EALLOWREMOTE`). Project `.npmrc` pins the public registry so the
+  local mirror cannot leak into the lockfile. Do not commit mirror
+  `resolved` URLs.
 - The data directory is `~/.zwai-swarm` (`ZWAI_HOME` overrides). Never write to
   `~/.zwai`; that belongs to another project. Tests always use `t.TempDir()`.
 - `examples/` must keep compiling: it is the library's public surface.

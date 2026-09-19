@@ -161,7 +161,7 @@ func countedGoalToolCall(n swarm.Notification) bool {
 		name = strings.TrimSpace(name[:i])
 	}
 	switch name {
-	case "complete_goal", "block_goal", "":
+	case "complete_goal", "block_goal", "reopen_goal", "":
 		return false
 	default:
 		return true

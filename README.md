@@ -86,7 +86,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   the command, never a user message. A raw `POST /turns` of that line is
   intercepted the same way. The
   conversation keeps pursuing a goal until the manager calls `complete_goal` (or you
-  clear it from the banner). A live turn is steered so this round sees the
+  clear it from the banner). A mistaken `complete_goal` can be undone in that
+  turn with `reopen_goal`, or later with **Start** on the Done banner. A live turn is steered so this round sees the
   new text. A turn ends when the manager stops calling tools; the runtime
   then continues, unless an active thread wake is waiting on this
   conversation — that wait is the next turn until it fires or you cancel it. Context pressure compact in place. Hitting the manager
@@ -100,7 +101,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   `block_goal` and stops instead of retrying forever — a crashed turn that
   is not a recoverable model error does the same, and the banner shows the
   public error. Truncated tool JSON / a `429` / a dropped stream retry
-  in-turn, then auto-continue. **Start** resumes after a block, a cap, a hold, or a stop. It does not
+  in-turn, then auto-continue. **Start** resumes after a block, a cap, a hold, a stop, or a completed
+  objective that finished too early. It does not
   appear while the objective is still pursuing between auto-continue
   sessions. The
   text is editable in place, and a live turn is told immediately. The
@@ -197,7 +199,8 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 ## Quick start
 
-Requirements: Go 1.26+ and Node.js (for the UI bundle). The desktop window uses
+Requirements: Go 1.26+ and Node.js (for the UI bundle on first run; `npm install`
+uses the public registry). The desktop window uses
 [Wails 3](https://wails.io) and needs a C toolchain (macOS: Xcode Command Line
 Tools; Linux: `webkit2gtk` dev packages).
 
@@ -257,10 +260,12 @@ end-to-end tests run on and the fastest way to see the UI work.
    be pasted if the camera is missing.
 4. On the phone, open the **zwai** iOS or Android app (`mobile/ios`,
    `mobile/android`). **Scan QR** is the product path. After bind, the phone
-   lists projects and the latest 5 threads, shows in-progress work, and can
-   start / follow-up / stop / answer. Full event logs, files, PTY and
-   Settings stay on the PC. `make mobile-ios` / `make mobile-android` open
-   Xcode or Android Studio after copying the web bundle.
+   lists projects and the latest 5 threads, shows in-progress work, and is
+   a compact screen on the same conversation: start / send / follow-up /
+   steer / stop / answer, with live events (`watch`) using the same kinds
+   and seq as the PC. Settings, files, PTY and Trace stay on the PC.
+   `make mobile-ios` / `make mobile-android` open Xcode or Android Studio
+   after copying the web bundle.
 
 Traffic starts on the hub as ciphertext and upgrades to UDP when punching
 works. Conversations never enter the hub database.

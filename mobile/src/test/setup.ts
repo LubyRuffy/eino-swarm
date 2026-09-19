@@ -30,6 +30,9 @@ if (typeof window !== "undefined") {
   })
 }
 
+const { setLocale } = await import("@/lib/i18n")
+
 afterEach(() => {
   memory.clear()
+  setLocale("en")
 })

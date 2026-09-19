@@ -256,6 +256,28 @@ describe("goal and compact", () => {
     expect(useApp.getState().threads[0]?.goal_complete).toBe(true)
   })
 
+  it("reopens a completed objective from a resume event", async () => {
+    await useApp.getState().boot()
+    fake.onEvent?.({
+      kind: "goal_complete",
+      seq: 51,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      text: "{}",
+      created_at: new Date().toISOString(),
+    })
+    fake.onEvent?.({
+      kind: "goal_resumed",
+      seq: 52,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      created_at: new Date().toISOString(),
+    })
+    expect(useApp.getState().threads[0]?.goal_complete).toBe(false)
+  })
+
   it("marks the objective blocked from the stream", async () => {
     await useApp.getState().boot()
     fake.onEvent?.({

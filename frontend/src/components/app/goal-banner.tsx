@@ -104,8 +104,10 @@ export function GoalBanner({
   const badge = complete ? "success" : blocked ? "danger" : held ? "warning" : "outline"
   // Codex: Play is resume, not "the last turn ended". An active goal
   // between auto-continue sessions stays Pursuing with no control.
+  // Done used to hide Play, so a mistaken complete_goal had no one-click
+  // undo. Start reopens that case the same way a cap does.
   const canStart =
-    !complete && !running && Boolean(onResume) && Boolean(capped || blocked || idle)
+    !running && Boolean(onResume) && Boolean(capped || blocked || idle || complete)
   const started = startedAt ? new Date(startedAt) : null
   const age =
     started && !Number.isNaN(started.getTime())
@@ -114,11 +116,13 @@ export function GoalBanner({
 
   const reason = blocked && (blockReason?.trim() || turnError?.trim())
     ? displayGoalBlockReason(blockReason ?? "", turnError, t)
-    : held && !running
-      ? idle && !capped
-        ? t("goal.idleHint")
-        : t("goal.capHint")
-      : ""
+    : complete && !running
+      ? t("goal.completeHint")
+      : held && !running
+        ? idle && !capped
+          ? t("goal.idleHint")
+          : t("goal.capHint")
+        : ""
 
   const save = () => {
     if (!open.current) return

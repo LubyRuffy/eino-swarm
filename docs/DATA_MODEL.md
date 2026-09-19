@@ -8,6 +8,8 @@ $ZWAI_HOME (default ~/.zwai-swarm)/zwai.db
 
 Phone pairing is not in this database. `$ZWAI_HOME/remote/host_token` and
 `$ZWAI_HOME/remote/identity` are 0600 files. Bindings live on the pairlink hub.
+A watched phone reads the same `EVENT` rows the desktop SSE does (clipped
+bodies, same `kind`/`seq`); it does not get a second copy of the timeline.
 
 gorm owns the schema (`AutoMigrate` on every start) and
 [`glebarez/sqlite`](https://github.com/glebarez/sqlite) is the driver, so there is
@@ -66,11 +68,11 @@ in this database: notes and skills are files, so a person can read and fix them
 | `model` | text | the name this conversation sends; empty follows the provider's default so a Settings change applies until someone picks in the composer |
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
-| `goal_complete` | bool | true after `complete_goal`. The text stays so the banner can show what was achieved; auto-continue stops |
+| `goal_complete` | bool | true after `complete_goal`. The text stays so the banner can show it; auto-continue stops. `reopen_goal` or **Start** on the Done banner clears it, resets `goal_auto_turns`, and pursuit continues |
 | `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn fails for a reason that is not a recoverable model error. Auto-continue stops until the human resumes or sends a message |
 | `goal_block_reason` | text | optional one-line reason from `block_goal`, or the public turn error when a pursuing turn dies before the manager can call it |
 | `goal_started_at` | time | when the current objective was set (not edited). Nil when there is no goal |
-| `goal_auto_turns` | int | consecutive runtime-started turns that kept pursuing an open goal. A human message resets it |
+| `goal_auto_turns` | int | consecutive runtime-started turns that kept pursuing an open goal. A human message, `reopen_goal`, or **Start** resets it |
 | `goal_capped` | bool | true after `goal_auto_turns` hit `swarm.goal_max_auto_turns`, or after the human interrupts a pursuing turn. A later human message or resume clears it and resets the budget |
 | `goal_idle` | bool | true after an engine-started continuation finished with no counted tool activity. Auto-continue stops until a human message or resume |
 | `plan_mode` | bool | true while `/plan` is open. Write/edit/exec and similar are unmounted; `ask_user` and `propose_plan` stay |

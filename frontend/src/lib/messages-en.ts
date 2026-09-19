@@ -142,6 +142,8 @@ export const en = {
     "Auto-continue paused. This is not an error. Press Start to keep going.",
   "goal.idleHint":
     "Auto-continue paused: the last continuation made no progress. Press Start to keep going.",
+  "goal.completeHint":
+    "If this finished too early, press Start to keep going.",
 
   "plan.planning": "Planning",
   "plan.empty": "No plan yet",
@@ -602,6 +604,9 @@ export const en = {
   "settings.remote.threadLimit": "Threads on the phone",
   "settings.remote.threadLimitHint":
     "How many recent conversations the phone lists before More. Default 5.",
+  "settings.remote.eventChars": "Event text on the phone",
+  "settings.remote.eventCharsHint":
+    "How many characters of each event the phone receives. Default 4000. Live tool output is clipped shorter.",
   "settings.remote.qr": "Pairing QR",
   "settings.remote.showQr": "Show pairing QR",
   "settings.remote.qrAlt": "Pairing QR code",

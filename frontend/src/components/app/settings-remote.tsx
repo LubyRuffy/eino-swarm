@@ -178,6 +178,18 @@ export function RemoteTab({
             onChange={(e) => update({ thread_limit: Number(e.target.value) })}
           />
         </Field>
+        <Field
+          query={query}
+          label={t("settings.remote.eventChars")}
+          hint={t("settings.remote.eventCharsHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={remote.event_chars}
+            onChange={(e) => update({ event_chars: Number(e.target.value) })}
+          />
+        </Field>
       </SettingsSection>
 
       <SettingsSection

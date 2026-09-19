@@ -136,6 +136,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "goal.edit": "编辑目标",
   "goal.capHint": "自动续跑已暂停，不是出错。点「开始目标」继续。",
   "goal.idleHint": "上一轮续跑没有实质进展。点「开始目标」继续。",
+  "goal.completeHint": "如果是提前结案，点「开始目标」继续。",
 
   "plan.planning": "规划中",
   "plan.empty": "还没有计划",
@@ -565,6 +566,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.remote.storeToken": "保存",
   "settings.remote.threadLimit": "手机上的会话数",
   "settings.remote.threadLimitHint": "手机默认列出最近几条，再按更多。默认 5。",
+  "settings.remote.eventChars": "手机上的事件正文",
+  "settings.remote.eventCharsHint":
+    "每条事件推到手机时保留多少字。默认 4000。工具直播输出会再短一截。",
   "settings.remote.qr": "配对 QR",
   "settings.remote.showQr": "显示配对 QR",
   "settings.remote.qrAlt": "配对二维码",

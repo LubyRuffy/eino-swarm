@@ -8,6 +8,11 @@ export const OpSend = "send"
 export const OpSteer = "steer"
 export const OpStop = "stop"
 export const OpAnswer = "answer"
+export const OpWatch = "watch"
+export const OpUnwatch = "unwatch"
+export const OpEvent = "event"
+export const OpReady = "ready"
+export const OpLagged = "lagged"
 
 export type RemoteRequest = {
   v: number
@@ -19,6 +24,7 @@ export type RemoteRequest = {
   text?: string
   call_id?: string
   answers?: unknown
+  since?: number
 }
 
 export type ProjectView = { id: string; name: string }
@@ -46,6 +52,26 @@ export type TurnView = {
   text?: string
 }
 
+export type WatchStatus = {
+  running?: boolean
+  turn_id?: string
+  awaiting_answer?: boolean
+}
+
+export type RemoteEvent = {
+  thread_id: string
+  turn_id?: string
+  seq: number
+  kind: string
+  agent_id?: string
+  role?: string
+  text: string
+  tool_call_id?: string
+  err?: string
+  has_images?: boolean
+  created_at: string
+}
+
 export type ThreadDetail = {
   id: string
   title: string
@@ -70,6 +96,11 @@ export type RemoteResponse = {
   more?: boolean
   next?: string
   detail?: ThreadDetail
+  op?: string
+  thread_id?: string
+  seq?: number
+  event?: RemoteEvent
+  status?: WatchStatus
 }
 
 export function encodeRequest(req: RemoteRequest): Uint8Array {

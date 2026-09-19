@@ -8,15 +8,24 @@ import (
 const (
 	ProtocolV = 1
 
-	OpList   = "list"
-	OpMore   = "more"
-	OpOpen   = "open"
-	OpStart  = "start"
-	OpSend   = "send"
-	OpSteer  = "steer"
-	OpStop   = "stop"
-	OpAnswer = "answer"
+	OpList    = "list"
+	OpMore    = "more"
+	OpOpen    = "open"
+	OpStart   = "start"
+	OpSend    = "send"
+	OpSteer   = "steer"
+	OpStop    = "stop"
+	OpAnswer  = "answer"
+	OpWatch   = "watch"
+	OpUnwatch = "unwatch"
+	OpEvent   = "event"
+	OpReady   = "ready"
+	OpLagged  = "lagged"
 )
+
+// MaxPushPayload is pairlink's plaintext cap. A tool_delta that would
+// blow this is clipped or dropped (seq 0) rather than tearing the link.
+const MaxPushPayload = 64 << 10
 
 // Request is the slim RPC the phone sends over a sealed pairlink frame.
 type Request struct {
@@ -29,6 +38,7 @@ type Request struct {
 	Text      string          `json:"text,omitempty"`
 	CallID    string          `json:"call_id,omitempty"`
 	Answers   json.RawMessage `json:"answers,omitempty"`
+	Since     int64           `json:"since,omitempty"`
 }
 
 // Response is what the PC replies. Path and SessionID are pairlink
@@ -47,6 +57,33 @@ type Response struct {
 	More      bool          `json:"more,omitempty"`
 	Next      string        `json:"next,omitempty"`
 	Detail    *ThreadDetail `json:"detail,omitempty"`
+	Op        string        `json:"op,omitempty"`
+	ThreadID  string        `json:"thread_id,omitempty"`
+	Seq       int64         `json:"seq,omitempty"`
+	Event     *EventView    `json:"event,omitempty"`
+	Status    *WatchStatus  `json:"status,omitempty"`
+}
+
+type WatchStatus struct {
+	Running        bool   `json:"running,omitempty"`
+	TurnID         string `json:"turn_id,omitempty"`
+	AwaitingAnswer bool   `json:"awaiting_answer,omitempty"`
+}
+
+// EventView is one conversation event on pairlink. Same kind/seq as the
+// desktop SSE payload; text may be clipped so a frame stays under MaxPushPayload.
+type EventView struct {
+	ThreadID   string    `json:"thread_id"`
+	TurnID     string    `json:"turn_id,omitempty"`
+	Seq        int64     `json:"seq"`
+	Kind       string    `json:"kind"`
+	AgentID    string    `json:"agent_id,omitempty"`
+	Role       string    `json:"role,omitempty"`
+	Text       string    `json:"text"`
+	ToolCallID string    `json:"tool_call_id,omitempty"`
+	Err        string    `json:"err,omitempty"`
+	HasImages  bool      `json:"has_images,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type ProjectView struct {

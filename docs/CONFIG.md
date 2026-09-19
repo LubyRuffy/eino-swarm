@@ -87,6 +87,7 @@ remote:
     thread_limit: 5
     summary_chars: 280
     open_turns: 6
+    event_chars: 4000
 ```
 
 Any key you leave out, set to zero or set to an empty string is repaired with its
@@ -285,6 +286,7 @@ in Settings → Phone.
 | `thread_limit` | `5` | how many recent threads the phone lists before More |
 | `summary_chars` | `280` | truncate assistant/summary text on the phone |
 | `open_turns` | `6` | completed turns included when a thread is opened |
+| `event_chars` | `4000` | max characters of each watched event body on the phone. `tool_delta` is clipped to `summary_chars`. `spawned` text is always empty |
 
 The Host Token and the long-term X25519 key live as files, not in this YAML:
 

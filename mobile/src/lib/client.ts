@@ -66,6 +66,7 @@ export class DeviceLink {
   private pending = new Map<string, (r: RemoteResponse) => void>()
   path = "relay"
   sessionIDHex = ""
+  onPush?: (resp: RemoteResponse) => void
 
   constructor(
     readonly identity: Identity,
@@ -154,11 +155,7 @@ export class DeviceLink {
     } catch {
       return
     }
-    const wait = this.pending.get(resp.id)
-    if (wait) {
-      this.pending.delete(resp.id)
-      wait(resp)
-    }
+    deliverResponse(this.pending, resp, this.onPush)
   }
 
   async rpc(
@@ -197,6 +194,21 @@ export class DeviceLink {
     this.ws = null
     this.sess = null
   }
+}
+
+/** Watch pushes have an empty id. A matching id is an RPC reply. */
+export function deliverResponse(
+  pending: Map<string, (r: RemoteResponse) => void>,
+  resp: RemoteResponse,
+  onPush?: (r: RemoteResponse) => void,
+) {
+  const wait = resp.id ? pending.get(resp.id) : undefined
+  if (wait) {
+    pending.delete(resp.id)
+    wait(resp)
+    return
+  }
+  onPush?.(resp)
 }
 
 function asBytes(data: unknown): Uint8Array {

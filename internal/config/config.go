@@ -584,6 +584,7 @@ func Default() *Config {
 			ThreadLimit:  DefaultRemoteThreadLimit,
 			SummaryChars: DefaultRemoteSummaryChars,
 			OpenTurns:    DefaultRemoteOpenTurns,
+			EventChars:   DefaultRemoteEventChars,
 		},
 	}
 }

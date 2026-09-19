@@ -364,8 +364,11 @@ func TestGoalAndCompactSectionsStayGeneric(t *testing.T) {
 	if !strings.Contains(open, ToolCompleteGoal) {
 		t.Fatal("an open goal must name complete_goal")
 	}
-	if !strings.Contains(open, ToolBlockGoal) {
-		t.Fatal("an open goal must name block_goal")
+	if !strings.Contains(open, ToolReopenGoal) {
+		t.Fatal("an open goal must name reopen_goal")
+	}
+	if !strings.Contains(open, "end a turn") {
+		t.Fatal("an open goal must say complete_goal is not how a turn ends")
 	}
 	if strings.Contains(open, "Work proceeds in sessions") {
 		t.Fatal("a timed session protocol must not be the standing-objective contract")
@@ -677,12 +680,6 @@ func TestResumeThreadGoalRejectsWhatItShould(t *testing.T) {
 	}
 	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
 		t.Fatal(err)
-	}
-	if err := e.CompleteThreadGoal(th.ID, ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := e.ResumeThreadGoal(th.ID); err == nil {
-		t.Fatal("want an error when the objective is complete")
 	}
 }
 

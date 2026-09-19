@@ -2,8 +2,13 @@
 
 iOS and Android apps. The camera scan of a `pairlink:v1:…` QR is the product
 path; paste is the same URI, not a second protocol. After bind, the phone
-talks to the PC over pairlink (WebSocket relay). It never calls zwai `/api`
-and never sees the full event log.
+talks to the PC over pairlink (WebSocket relay). It never calls zwai `/api`.
+
+The phone is a compact screen on the same conversation as the desktop: same
+event kinds and seq (`watch` / `unwatch`), clipped bodies so a frame stays
+under 64KiB. Send, follow-up, steer, stop, ask, `/goal` and `/plan` land on
+the PC engine; the other window sees them live. Settings, Files, PTY and
+Trace stay on the PC.
 
 The native trees `ios/` and `android/` live in git. `npx cap add` is already
 done. iOS 15+ (Xcode 27 dropped 14). Capacitor CLI 7.6 lowercases
@@ -13,7 +18,7 @@ without CocoaPods must use `node scripts/add-ios-spm.cjs` instead of
 `.iOS(.v15)` if it snaps back to v14.
 
 ```bash
-npm install
+npm install              # uses registry.npmjs.org (project .npmrc)
 npm test
 npm run e2e
 npm run cap:sync          # rebuild dist and copy into both apps
@@ -57,4 +62,7 @@ xcodebuild test -project App.xcodeproj -scheme App \
 
 `BindFlowTests` reuses a saved bind when the scan screen is gone, then
 asserts `path=` plus the seed conversation and Starts a new thread. It is
-not part of `make check`.
+not part of `make check`. English accessibility names (`Pairing URI`,
+`Paste and bind`, `New message`, `Start`, `Back`, `Stop` / `Follow-up` /
+`Send`) are the unit-test locale (`en`); Playwright `e2e/scan.spec.ts` uses
+`zh-CN`.

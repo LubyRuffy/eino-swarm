@@ -31,7 +31,10 @@ func (t *completeGoalTool) Info(context.Context) (*schema.ToolInfo, error) {
 		Desc: "Record that the conversation's standing objective is actually satisfied. " +
 			"The runtime then stops starting new turns for it. Call this only when " +
 			"current evidence proves the objective itself is done — not to pause, " +
-			"to ask the human a question, or because a single turn finished.",
+			"to end a turn, to wait, to record that a slice finished, to ask the " +
+			"human a question, or because a single turn finished. A turn ends when " +
+			"you stop calling tools. If you called this in error, call reopen_goal " +
+			"before the turn ends.",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"summary": {Type: schema.String,
 				Desc: "optional one-line reason the objective is satisfied"},
@@ -121,6 +124,63 @@ func (t *blockGoalTool) InvokableRun(_ context.Context, args string, _ ...tool.O
 
 func (e *Engine) blockGoalJSON(threadID, reason string) (string, error) {
 	if err := e.BlockThreadGoal(threadID, reason); err != nil {
+		return goalToolFailure("%s", err.Error()), nil
+	}
+	body, _ := json.Marshal(map[string]any{"ok": true})
+	return string(body), nil
+}
+
+// ReopenGoalTool is the manager-only tool that undoes a complete_goal from
+// this turn. The TUI binds a local flag; the app binds the store.
+func ReopenGoalTool(reopen func(reason string) (string, error)) tool.BaseTool {
+	if reopen == nil {
+		reopen = func(string) (string, error) {
+			return `{"ok":false,"error":"reopen_goal is not wired"}`, nil
+		}
+	}
+	return &reopenGoalTool{reopen: reopen}
+}
+
+type reopenGoalTool struct {
+	reopen func(reason string) (string, error)
+}
+
+func (t *reopenGoalTool) Info(context.Context) (*schema.ToolInfo, error) {
+	return &schema.ToolInfo{
+		Name: ToolReopenGoal,
+		Desc: "Record that complete_goal was a mistake and the standing objective " +
+			"is still open. The runtime then keeps starting turns for it. Call this " +
+			"only after complete_goal in this turn, when the objective itself is " +
+			"not actually satisfied. Do not call this to pause, to ask, or to start " +
+			"new work.",
+		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
+			"reason": {Type: schema.String,
+				Desc: "optional one-line reason complete_goal was wrong"},
+		}),
+	}, nil
+}
+
+func (t *reopenGoalTool) InvokableRun(_ context.Context, args string, _ ...tool.Option) (string, error) {
+	var a struct {
+		Reason string `json:"reason"`
+	}
+	if s := strings.TrimSpace(args); s != "" && s != "{}" {
+		if err := json.Unmarshal([]byte(args), &a); err != nil {
+			return goalToolFailure("could not read the arguments: %v", err), nil
+		}
+	}
+	out, err := t.reopen(a.Reason)
+	if err != nil {
+		return goalToolFailure("%s", err.Error()), nil
+	}
+	if strings.TrimSpace(out) == "" {
+		return `{"ok":true}`, nil
+	}
+	return out, nil
+}
+
+func (e *Engine) reopenGoalJSON(threadID, reason string) (string, error) {
+	if err := e.ReopenThreadGoal(threadID, reason); err != nil {
 		return goalToolFailure("%s", err.Error()), nil
 	}
 	body, _ := json.Marshal(map[string]any{"ok": true})

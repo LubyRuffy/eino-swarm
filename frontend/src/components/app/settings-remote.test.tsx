@@ -50,6 +50,7 @@ const base: Settings = {
     thread_limit: 5,
     summary_chars: 280,
     open_turns: 6,
+    event_chars: 4000,
   },
 }
 
@@ -99,5 +100,6 @@ describe("RemoteTab", () => {
     )
     expect(screen.getByLabelText("Host Token")).toHaveValue("")
     expect(screen.getByText(/already stored/i)).toBeInTheDocument()
+    expect(screen.getByLabelText("Event text on the phone")).toHaveValue(4000)
   })
 })

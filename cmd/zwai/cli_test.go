@@ -465,7 +465,8 @@ func TestTUIGoalRidesInTheSession(t *testing.T) {
 	if !strings.Contains(setup.session.Extra, "## Goal") ||
 		!strings.Contains(setup.session.Extra, "keep the standing objective") ||
 		!strings.Contains(setup.session.Extra, engine.ToolCompleteGoal) ||
-		!strings.Contains(setup.session.Extra, engine.ToolBlockGoal) {
+		!strings.Contains(setup.session.Extra, engine.ToolBlockGoal) ||
+		!strings.Contains(setup.session.Extra, engine.ToolReopenGoal) {
 		t.Fatalf("goal extra=%q", setup.session.Extra)
 	}
 	if len(setup.session.ManagerTools) < 3 {

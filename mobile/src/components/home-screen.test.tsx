@@ -26,6 +26,7 @@ describe("HomeScreen", () => {
         onUnlink={vi.fn()}
       />,
     )
+    expect(screen.getByLabelText("path=relay")).toBeInTheDocument()
     expect(screen.getByText("In progress")).toBeInTheDocument()
     expect(screen.getByText("thread 4")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument()

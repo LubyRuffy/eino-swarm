@@ -374,6 +374,7 @@ export interface RemoteSettings {
   thread_limit: number
   summary_chars: number
   open_turns: number
+  event_chars: number
 }
 
 export function defaultRemoteSettings(
@@ -386,6 +387,7 @@ export function defaultRemoteSettings(
     summary_chars:
       remote?.summary_chars && remote.summary_chars > 0 ? remote.summary_chars : 280,
     open_turns: remote?.open_turns && remote.open_turns > 0 ? remote.open_turns : 6,
+    event_chars: remote?.event_chars && remote.event_chars > 0 ? remote.event_chars : 4000,
   }
 }
 

@@ -2,7 +2,6 @@ package remote
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -118,19 +117,10 @@ func (h *Host) stopLocked() {
 
 func (h *Host) serveLink(l *client.Link) {
 	h.log.Info("remote device linked", "path", l.Path(), "session", l.SessionID())
+	pump := newLinkPump(h.eng, h.cfg.Remote, l)
+	defer pump.Close()
 	for msg := range l.Recv() {
-		var req Request
-		if err := json.Unmarshal(msg, &req); err != nil {
-			raw, _ := json.Marshal(fail("", l.Path(), l.SessionID(), "bad_request", "not json"))
-			_ = l.Send(raw)
-			continue
-		}
-		resp := Handle(h.eng, h.cfg.Remote, req, l.Path(), l.SessionID())
-		raw, err := json.Marshal(resp)
-		if err != nil {
-			continue
-		}
-		_ = l.Send(raw)
+		pump.Dispatch(msg)
 	}
 }
 

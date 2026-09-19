@@ -44,8 +44,9 @@ next start continues them; a user **Stop** is the only path that records
 not freeze; a stuck REST call still has a 5s ceiling.
 
 A checkout with no `frontend/dist/index.html` (or with TypeScript newer than
-the last build) runs `npm run build` before the window opens. Ctrl-C during
-that first install stops it.
+the last build) runs `npm install` then `npm run build` before the window
+opens, against `registry.npmjs.org` (the project `.npmrc`, not a user-level
+mirror). Ctrl-C during that first install stops it.
 
 Desktop is the only mode that can show a file in the platform file manager; the
 UI hides that control everywhere else. On macOS the hidden title bar
@@ -119,7 +120,7 @@ conversation kept.
 | flag | meaning |
 |---|---|
 | `--task "..."` | run this task immediately, then exit. Words after the flags also count as the task, so quoting is optional: `zwai tui summarise the notes`. Omit it to wait at the composer (`ctrl+c` leaves), unless `--goal` or `--plan` is set. |
-| `--goal "..."` | standing objective. The manager gets `complete_goal` and `block_goal` and, if it does not call either, the TUI starts another run (up to `swarm.goal_max_auto_turns`) instead of returning the composer / exiting. A continuation that makes no counted tool progress returns the composer instead of looping. A failed run that is not a recoverable model error blocks the objective the same way `block_goal` does. A truncated tool-call JSON, a `429`, or a dropped stream retries inside the same turn twice, then auto-continues. Each run ends when the manager stops calling tools. `swarm.goal_session_max_iterations` is only eino's ReAct slice — hitting it extends the same run without spending the auto-continue budget. The app's `/goal` is the same pursuit on a saved conversation. Omit `--task` and the objective is also the first user message — it starts immediately. Pass `--task` (or leftover words) only when the first line should steer, not restate the objective. |
+| `--goal "..."` | standing objective. The manager gets `complete_goal`, `block_goal`, and `reopen_goal` and, if it does not call `complete_goal` or `block_goal`, the TUI starts another run (up to `swarm.goal_max_auto_turns`) instead of returning the composer / exiting. A continuation that makes no counted tool progress returns the composer instead of looping. A failed run that is not a recoverable model error blocks the objective the same way `block_goal` does. A truncated tool-call JSON, a `429`, or a dropped stream retries inside the same turn twice, then auto-continues. Each run ends when the manager stops calling tools. `swarm.goal_session_max_iterations` is only eino's ReAct slice — hitting it extends the same run without spending the auto-continue budget. The app's `/goal` is the same pursuit on a saved conversation. Omit `--task` and the objective is also the first user message — it starts immediately. Pass `--task` (or leftover words) only when the first line should steer, not restate the objective. |
 | `--plan "..."` | enter planning immediately (same as `/plan`). Write/edit/exec and similar are unmounted; `ask_user` and `propose_plan` stay. Entering plan pauses an open `--goal`; `/implement` does not resume it. Omit `--task` and the plan text is also the first user message. |
 | `--model NAME` | the model name this session sends. Default: the provider's configured model. The catalog is whatever Settings last discovered (plus that default). Interactive sessions also switch with `/model` and `/model NAME`. |
 | `--reasoning LEVEL` | thinking level for this session: empty/`default`, `low`, `medium`, or `high`. Empty sends no `reasoning_effort`, so a non-reasoning endpoint is not handed a field it rejects. Interactive sessions cycle with `shift+tab` or `/reason LEVEL`. |

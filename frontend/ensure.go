@@ -124,6 +124,9 @@ func installAndBuild(ctx context.Context, root string, run commandRunner) error 
 		return fmt.Errorf("the UI bundle is missing or stale, and %s was not found on PATH; install Node.js", npmCommand)
 	}
 	if needsInstall(root) {
+		if err := checkLockfileRegistry(root); err != nil {
+			return err
+		}
 		fmt.Fprintln(ensureOut, "zwai: installing frontend packages")
 		if err := run.Run(ctx, root, npm, npmInstallArg); err != nil {
 			return fmt.Errorf("npm install: %w", err)

@@ -106,7 +106,7 @@ provider carries `has_api_key` and `ready` instead.
   "ui": {"locale": "system", "font": "system", "font_size": "medium",
            "content_width": "comfortable"},
   "remote": {"enabled": false, "hub_url": "", "thread_limit": 5,
-             "summary_chars": 280, "open_turns": 6}
+             "summary_chars": 280, "open_turns": 6, "event_chars": 4000}
 }}
 ```
 
@@ -210,7 +210,7 @@ The phone does **not** call them; it talks pairlink to the hub, and the hub
 forwards sealed frames to this process.
 
 `remote` in `GET/PUT /api/settings` is `{enabled, hub_url, thread_limit,
-summary_chars, open_turns}`. `hub_url` is whatever you typed — never compiled
+summary_chars, open_turns, event_chars}`. `hub_url` is whatever you typed — never compiled
 in. A PUT of `remote` reloads the pairlink host. The Host Token is **not** in
 settings JSON; it lives under `$ZWAI_HOME/remote/` and is written with
 `PUT /api/remote/token`.
@@ -257,10 +257,20 @@ Fingerprints only. No Host Token, no session keys.
 
 Drops that phone. Further tickets fail at the hub.
 
-The slim RPC the phone sends over pairlink (`list` / `more` / `open` /
-`start` / `send` / `steer` / `stop` / `answer`) is not an HTTP API. Default
-list size is 5 threads; `more` pages. Responses carry `path` (`relay` or
-`direct`) and `session_id` so `zwai trace` can join the hop.
+The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
+`list` / `more` / `open` / `start` / `send` / `steer` / `stop` / `answer` /
+`watch` / `unwatch`. Default list size is 5 threads; `more` pages.
+Responses carry `path` (`relay` or `direct`) and `session_id` so `zwai trace`
+can join the hop.
+
+`watch` `{thread_id, since}` subscribes to the same event kinds as desktop
+SSE (`frontend/src/lib/stream.ts` `KINDS`). The PC pushes `event` (one
+clipped `EventView`, same `seq` as the store), then `ready` `{seq, status}`,
+and `lagged` when a slow phone missed a live frame — catch-up is replayed
+from the database, not dropped. `spawned` bodies are stripped; `tool_delta`
+is one line; other text is capped by `event_chars` (default 4000). A frame
+over 64KiB is dropped rather than tearing the link. Settings, Files, PTY
+and Trace stay on the PC.
 
 ## Projects
 
@@ -391,7 +401,8 @@ not poll per row. `reasoning_effort` is the conversation's thinking level (`""`,
 `low`, `medium`, `high`); empty means the model's own default. `project_id` is empty for
 a conversation that belongs to no project. `goal` is the standing objective from
 `/goal` (empty when none). `goal_complete` is true after the manager called
-`complete_goal`; `goal_blocked` is true after `block_goal` or after a pursuing
+`complete_goal`; `reopen_goal` in that turn, or **Start** on the Done banner,
+clears it and pursuit continues. `goal_blocked` is true after `block_goal` or after a pursuing
 turn fails for a reason that is not a recoverable model error (progress needs the
 human or an external change). A truncated tool-call JSON, a `429`, or a dropped
 stream retries inside the same turn twice, then auto-continues; `goal_capped` is true after consecutive
@@ -478,7 +489,7 @@ running steers the new text into this turn's context, not only the next.
 with `goal` changes the text without reopening pursuit (a completed goal is
 still reopened). A running turn is steered so the new text is in this turn's
 context, not only the next. `goal_resume: true` starts the next turn for an
-open objective (blocked, capped, or idle). A completed or missing goal is
+open objective (blocked, capped, idle, or completed in error). A missing goal is
 rejected. Responds like `GET`.
 
 `plan_mode: true` enters planning while idle (`409 busy` if a turn is running).
@@ -839,13 +850,13 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
-| `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}` |
+| `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}`. `reopen_goal` in the same turn records `goal_resumed`, resets the auto-continue budget, and pursuit continues |
+| `goal_blocked` | the manager called `block_goal`, or a pursuing turn failed for a reason that is not a recoverable model error. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |
+| `goal_resumed` | the human started pursuit again after a block, a cap, an idle open goal, or a completed objective that finished too early — or the manager called `reopen_goal` after a mistaken `complete_goal`. Same Working-clock rule as `goal_continued` |
 | `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
 | `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`). A later human message or resume resets the budget |
 | `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until a human message or resume; the objective stays open |
-| `goal_blocked` | the manager called `block_goal`, or a pursuing turn failed for a reason that is not a recoverable model error; auto-continue stops. `text` is JSON `{reason}`. A later human message or resume clears it |
 | `goal_edited` | the human changed the objective text in place; `text` is the new objective. Status stays put. A running turn is also steered |
-| `goal_resumed` | the human started pursuit again after a block, a cap, or an idle open goal. Same Working-clock rule as `goal_continued` |
 | `plan` | the conversation entered `/plan`; write/edit/exec and similar are unmounted. `text` is `planning` |
 | `plan_updated` | `propose_plan` or a human edit wrote the plan body. `text` is the markdown (also on disk at `$ZWAI_HOME/plans/<thread_id>/PLAN.md`) |
 | `plan_implemented` | the human accepted the plan. Planning ended and an execute turn started. `text` is the generic cue |

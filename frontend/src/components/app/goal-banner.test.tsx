@@ -38,6 +38,18 @@ describe("GoalBanner", () => {
     expect(screen.queryByTestId("goal-start")).toBeNull()
   })
 
+  it("can restart a completed objective", () => {
+    const onResume = vi.fn()
+    render(
+      <GoalBanner goal="keep going" complete onResume={onResume} onClear={vi.fn()} />,
+    )
+    expect(screen.getByTestId("goal-banner").textContent).toContain("Done")
+    expect(screen.getByTestId("goal-reason").textContent).toMatch(/too early/)
+    expect(screen.getByTestId("goal-reason").textContent).toMatch(/Start/)
+    fireEvent.click(screen.getByRole("button", { name: "Start goal" }))
+    expect(onResume).toHaveBeenCalled()
+  })
+
   it("marks a capped objective", () => {
     render(<GoalBanner goal="keep going" capped onResume={vi.fn()} onClear={vi.fn()} />)
     expect(screen.getByTestId("goal-banner").textContent).toContain("Paused")

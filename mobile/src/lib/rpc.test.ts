@@ -3,7 +3,10 @@ import { describe, expect, it } from "vitest"
 import {
   decodeResponse,
   encodeRequest,
+  OpEvent,
   OpList,
+  OpUnwatch,
+  OpWatch,
   PROTOCOL_V,
   slimListBytes,
   type RemoteResponse,
@@ -35,5 +38,43 @@ describe("slim rpc", () => {
     expect(slimListBytes(resp)).toBeLessThanOrEqual(16 * 1024)
     const decoded = decodeResponse(new TextEncoder().encode(raw))
     expect(decoded.threads).toHaveLength(5)
+  })
+
+  it("encodes watch with since and decodes an event push", () => {
+    const req = encodeRequest({
+      v: PROTOCOL_V,
+      id: "w",
+      op: OpWatch,
+      thread_id: "t1",
+      since: 12,
+    })
+    expect(JSON.parse(new TextDecoder().decode(req))).toMatchObject({
+      op: OpWatch,
+      thread_id: "t1",
+      since: 12,
+    })
+    const stop = encodeRequest({ v: PROTOCOL_V, id: "u", op: OpUnwatch, thread_id: "t1" })
+    expect(JSON.parse(new TextDecoder().decode(stop)).op).toBe(OpUnwatch)
+    const decoded = decodeResponse(
+      new TextEncoder().encode(
+        JSON.stringify({
+          v: 1,
+          id: "",
+          ok: true,
+          op: OpEvent,
+          thread_id: "t1",
+          seq: 3,
+          event: {
+            thread_id: "t1",
+            seq: 3,
+            kind: "delta",
+            text: "hi",
+            created_at: "2026-01-01T00:00:00Z",
+          },
+        }),
+      ),
+    )
+    expect(decoded.op).toBe(OpEvent)
+    expect(decoded.event?.seq).toBe(3)
   })
 })
