@@ -3,7 +3,7 @@ module github.com/LubyRuffy/eino-swarm
 go 1.26.0
 
 require (
-	github.com/LubyRuffy/eino-tools v0.1.1-0.20260918052633-fec569f1a4ec
+	github.com/LubyRuffy/eino-tools v0.1.1-0.20260920151219-a1b084f431dd
 	github.com/LubyRuffy/pairlink v0.0.0-20260919132839-f9d7105039da
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834

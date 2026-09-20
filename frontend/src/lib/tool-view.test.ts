@@ -202,6 +202,23 @@ describe("file change view", () => {
     expect(view.body).toBe("")
   })
 
+  it("shows only a minus count when replace_block is empty", () => {
+    const view = viewTool(
+      "edit",
+      JSON.stringify({
+        file_path: "notes.txt",
+        search_block: "beta\n",
+        replace_block: "",
+      }),
+      "ok: replaced block in notes.txt",
+    )
+    expect(view.summary).toContain("notes.txt")
+    expect(view.summary).toMatch(/−1/)
+    expect(view.summary).not.toMatch(/\+0/)
+    expect(view.diff?.added).toBe(0)
+    expect(view.diff?.removed).toBe(1)
+  })
+
   it("puts an added-line count on a write path, not the status sentence", () => {
     const view = viewTool(
       "write",

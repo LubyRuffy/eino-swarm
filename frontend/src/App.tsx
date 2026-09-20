@@ -27,6 +27,7 @@ import { liveWorkers } from "@/lib/transcript"
 import { terminalShortcut, terminalTarget } from "@/lib/terminal"
 import { isWelcomePane, visibleManagerBlockCount } from "@/lib/welcome"
 import type { Project, SkillInfo } from "@/lib/types"
+import { startSidebarSync } from "@/lib/sidebar-sync"
 import { askingThreadIds } from "@/lib/thread-title"
 import { toggleLocalePref, useT } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
@@ -55,6 +56,7 @@ export function App() {
     booted.current = true
     void boot()
   }, [boot])
+  useEffect(() => startSidebarSync(() => useApp.getState().syncThreads()), [])
   useEffect(() => {
     // WKWebView loads a clicked http(s) href in this window, target=_blank
     // included. Catch every <a>, not just markdown, so the app is never
@@ -521,7 +523,7 @@ function AppSidebar({
     <Sidebar
       threads={threads}
       activeId={activeId}
-      runningId={overlayRunningId ?? (running ? activeId : undefined)}
+      runningId={running ? activeId : overlayRunningId}
       waitingIds={waitingIds}
       askingIds={askingIds}
       onNew={onNew}

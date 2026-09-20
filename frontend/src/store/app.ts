@@ -22,7 +22,12 @@ import {
 } from "@/lib/i18n"
 import type { SendImage } from "@/lib/paste-image"
 import { subscribeEvents } from "@/lib/stream"
-import { mergeThreadList, setThreadRunning, upsertThread } from "@/lib/thread-title"
+import {
+  mergeThreadList,
+  setThreadRunning,
+  threadListOverlay,
+  upsertThread,
+} from "@/lib/thread-title"
 import { logPageSize, type ThreadLog } from "@/lib/thread-log"
 import {
   emptyTranscript,
@@ -100,6 +105,8 @@ interface AppState extends ScheduleSlice {
 
   boot: () => Promise<void>
   refreshThreads: () => Promise<void>
+  /** Re-read running flags without toasting a dropped packet. */
+  syncThreads: () => Promise<void>
   /** Re-lists every endpoint and writes the catalogs. Does not reboot the
    *  conversation — boot() would yank the open thread. */
   refreshCatalogs: () => Promise<void>
@@ -165,6 +172,15 @@ function inflightKey(id: string | undefined, text: string) {
   return `${id ?? ""}:${text.trim()}`
 }
 
+function applyThreadListing(
+  threads: Thread[],
+  incoming: Thread[],
+  activeId: string | undefined,
+  status: ThreadStatus,
+): Thread[] {
+  return mergeThreadList(threads, incoming, threadListOverlay(activeId, status))
+}
+
 const THEME_KEY = "zwai.theme"
 
 export const useApp = create<AppState>((set, get) => ({
@@ -217,11 +233,26 @@ export const useApp = create<AppState>((set, get) => ({
   refreshThreads: async () => {
     try {
       const incoming = await api.threads()
-      set((s) => ({ threads: mergeThreadList(s.threads, incoming) }))
+      set((s) => ({
+        threads: applyThreadListing(s.threads, incoming, s.activeId, s.status),
+      }))
     } catch (e) {
       set({ error: message(e) })
     }
     await get().refreshSchedules()
+  },
+
+  /** Same listing as refreshThreads, but a dropped packet must not toast:
+   *  this is the background pass that keeps folder progress honest. */
+  syncThreads: async () => {
+    try {
+      const incoming = await api.threads()
+      set((s) => ({
+        threads: applyThreadListing(s.threads, incoming, s.activeId, s.status),
+      }))
+    } catch {
+      // A background tick is not a user action.
+    }
   },
 
   refreshCatalogs: async () => {

@@ -16,21 +16,45 @@ export function preferNamedTitles(local: Thread[], incoming: Thread[]): Thread[]
   })
 }
 
-/** Reconcile a listing with the sidebar. A fetch that raced a live overlay
- *  would otherwise idle a folder that is still working. `setThreadRunning(false)`
- *  (stream done, or opening that conversation idle) is what clears it. */
-export function mergeThreadList(local: Thread[], incoming: Thread[]): Thread[] {
+/** The open conversation's live stamp. A listing fetch that raced Enter
+ *  or `done` would otherwise idle a working folder or relight a finished
+ *  one. Other rows take the listing as-is: that is how a turn that
+ *  started in the background lights up without a click. */
+export type ThreadListOverlay = {
+  id: string
+  running: boolean
+  awaitingAnswer?: boolean
+}
+
+export function threadListOverlay(
+  activeId: string | undefined,
+  status: { running: boolean; awaiting_answer?: boolean },
+): ThreadListOverlay | undefined {
+  if (!activeId) return undefined
+  return {
+    id: activeId,
+    running: status.running,
+    awaitingAnswer: status.running && Boolean(status.awaiting_answer),
+  }
+}
+
+/** Reconcile a listing with the sidebar. Background rows trust
+ *  `running` / `awaiting_answer` from GET /api/threads. The open
+ *  conversation keeps `overlay` so a start/done race cannot flicker. */
+export function mergeThreadList(
+  local: Thread[],
+  incoming: Thread[],
+  overlay?: ThreadListOverlay,
+): Thread[] {
   const named = preferNamedTitles(local, incoming)
-  const prev = new Map(local.map((t) => [t.id, t]))
+  if (!overlay) return named
   return named.map((t) => {
-    const was = prev.get(t.id)
-    if (was?.running && !t.running) {
-      return { ...t, running: true, awaiting_answer: was.awaiting_answer }
+    if (t.id !== overlay.id) return t
+    const awaiting = overlay.running && Boolean(overlay.awaitingAnswer)
+    if (t.running === overlay.running && Boolean(t.awaiting_answer) === awaiting) {
+      return t
     }
-    if (was?.awaiting_answer && t.running && !t.awaiting_answer) {
-      return { ...t, awaiting_answer: true }
-    }
-    return t
+    return { ...t, running: overlay.running, awaiting_answer: awaiting }
   })
 }
 
@@ -46,9 +70,9 @@ export function upsertThread(threads: Thread[], thread: Thread): Thread[] {
 
 /** Sidebar progress is `thread.running`. The live header only knows the
  *  open conversation, so a turn that starts — or is still going when we
- *  leave — has to be stamped here or the folder looks idle until you
- *  click back in. `awaitingAnswer` is the ask_user overlay: same row,
- *  different mark, so a blocked question is not a working pulse. */
+ *  leave — has to be stamped here or the folder looks idle until the
+ *  next listing refresh. `awaitingAnswer` is the ask_user overlay: same
+ *  row, different mark, so a blocked question is not a working pulse. */
 export function setThreadRunning(
   threads: Thread[],
   id: string,

@@ -402,6 +402,9 @@ Conventions in these tests:
 `cmd/zwai/cli_trace_test.go` is split from `cli_test.go` so neither file
 crosses 1000 lines: a memory review on the same turn id shows in `zwai trace`.
 `internal/provider/provider_wait_test.go` is wait_agents progress parsing.
+`internal/tools/pin_test.go` is why a UTF-8 `read` whose first 4096 bytes
+cut a rune stays `encoding=utf-8`, and why an empty `edit` `replace_block`
+deletes instead of the old catch-all missing-payload error.
 
 ## Front-end unit tests
 
@@ -547,7 +550,16 @@ Several things are tested here, some as pure logic and some in jsdom:
   Switching away from a live turn keeps `thread.running` on that row so the
   sidebar progress does not wait for you to click back in. `setThreadRunning`
   lives in `src/lib/thread-title.ts` and also stamps `awaiting_answer` so a
-  blocked question is not a working pulse after you leave. A parked thread wake is not `running`:
+  blocked question is not a working pulse after you leave. A listing refresh
+  is the source of truth for every other row: `mergeThreadList` takes
+  `running` / `awaiting_answer` from `GET /api/threads`, and only the open
+  conversation keeps a live overlay so an Enter/`done` race cannot flicker.
+  That is how a `/goal` auto-continue or a schedule fire on a conversation
+  you are not looking at still lights the folder without a click — and how
+  a finished background turn goes dark. `startSidebarSync` re-reads the
+  listing every 2s while the window is visible (`src/lib/sidebar-sync.ts`);
+  a hidden tab skips the tick, becoming visible is an immediate catch-up,
+  and a dropped packet does not toast (`syncThreads`). A parked thread wake is not `running`:
   `waitingThreadIds` from the schedule list paints the breathing clock.
   `askingThreadIds` unions listing `awaiting_answer` with the open
   conversation's live status.
@@ -757,7 +769,8 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/lib/edit-diff.ts`**: an `edit` call's `search_block` / `replace_block`
   (or apply_patch `patch`) becomes line hunks. Shared prefix/suffix stay
   context; the middle is an LCS (capped so a huge replace cannot freeze
-  the transcript). A `write` call's `content` is all additions; empty
+  the transcript). An empty `replace_block` is a deletion hunk (`−N`, no
+  `+0`). A `write` call's `content` is all additions; empty
   content is still a hunk (zero lines). `clipDiff` keeps the first 400
   painted lines and reports the rest as hidden. The tool result is ignored
   — it is only a status sentence. CRLF matches LF. A path-only call has no
@@ -820,7 +833,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   not pressed; the open topic is `aria-current`. The folder icon is the
   fold control: open directory vs closed directory. A running
   conversation's progress sits in that same icon column, including after
-  switching away, and an explicitly collapsed folder that still has a live
+  switching away and when a turn starts on a conversation you have not
+  opened (`GET /api/threads` `running`, re-read while the window is
+  visible), and an explicitly collapsed folder that still has a live
   turn keeps the progress on the directory glyph, clipped so the breathe
   animation cannot smear the icon. A blocked `ask_user` replaces that
   progress with a pinging question mark (`ask-mark`; the ping is allowed to
@@ -841,7 +856,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   is ignored. A disabled bind does not arm.
 - **`src/lib/reorder.ts`**, **`src/lib/sidebar-groups.ts`**,
   **`src/lib/sidebar-preview.ts`**,
-  **`src/lib/sidebar-collapse.ts`**: moving a row is a splice; Recents and a
+  **`src/lib/sidebar-collapse.ts`**,
+  **`src/lib/thread-title.ts`**, **`src/lib/sidebar-sync.ts`**: moving a row is a splice; Recents and a
   project sort their own ranks, then unranked rows interleave by last
   activity so a stale global cannot sit above a ranked topic that just ran.
   Pinned order is `pinned_at`. A folder without an override follows
@@ -851,7 +867,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   fold is the three booleans in `zwai.sidebar.section-expanded`. A
   sidebar group preview keeps the first five conversations active in
   the last seven days; older or extra rows sit behind Show more unless
-  they are the open or running conversation.
+  they are the open or running conversation. `mergeThreadList` takes
+  listing `running` for background rows and only overlays the open
+  conversation; `startSidebarSync` re-reads the listing while visible.
 - **`src/lib/sidebar-width.ts`**: missing or garbage storage is the default
   column, out-of-range values are clamped, a live drag paints
   `--zwai-sidebar-width` without writing storage, and a commit (pointer up

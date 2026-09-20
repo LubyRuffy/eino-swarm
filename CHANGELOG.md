@@ -24,6 +24,23 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **`read` / `edit` from eino-tools no longer lie to the model.** A UTF-8
+  file whose first 4096 bytes cut a Chinese rune used to come back labelled
+  `gb18030` with a mojibake body; `edit` with only a path, only
+  `replace_block`, or an empty replace (delete) all collapsed into
+  `either search_block/replace_block or patch is required`. Pin is
+  `a1b084f` ([#4](https://github.com/LubyRuffy/eino-tools/issues/4),
+  [#5](https://github.com/LubyRuffy/eino-tools/issues/5)). An empty replace
+  still paints as `−N` on the collapsed row.
+
+- **Sidebar progress matches the live runtimes without a click.** A
+  `/goal` auto-continue or a schedule fire on a conversation you are not
+  looking at used to leave the project folder idle until you opened that
+  row. The listing's `running` flag is now the source of truth for every
+  background conversation; the open one still keeps a live overlay so
+  Enter/`done` cannot flicker. The window re-reads `GET /api/threads`
+  every 2s while visible.
+
 - **A live desktop window no longer goes white when another `go run` rebuilds the UI.**
   `frontend.Load` serves `dist/` on disk, and Vite deletes the hashed JS the
   already-open window's `index.html` still names. The SPA fallback then

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { mergeThreadList, preferNamedTitles, setThreadRunning, askingThreadIds, upsertThread } from "./thread-title"
+import { mergeThreadList, preferNamedTitles, setThreadRunning, askingThreadIds, upsertThread, threadListOverlay } from "./thread-title"
 import type { Thread } from "./types"
 
 function thread(id: string, title: string, title_auto: boolean): Thread {
@@ -82,21 +82,68 @@ describe("askingThreadIds", () => {
 })
 
 describe("mergeThreadList", () => {
-  it("keeps a live overlay when the listing still says idle", () => {
-    const local = [setThreadRunning([thread("th_1", "A", true)], "th_1", true)[0]!]
-    const incoming = [thread("th_1", "A", true)]
-    expect(mergeThreadList(local, incoming)[0]?.running).toBe(true)
+  it("lights a conversation the listing says is running, even if we never opened it", () => {
+    const local = [thread("th_1", "A", true), thread("th_2", "B", true)]
+    const incoming = [
+      thread("th_1", "A", true),
+      setThreadRunning([thread("th_2", "B", true)], "th_2", true)[0]!,
+    ]
+    expect(mergeThreadList(local, incoming)[1]?.running).toBe(true)
   })
 
-  it("keeps a blocked-ask overlay when the listing still says working", () => {
+  it("idles a background conversation the listing says finished", () => {
+    const local = [setThreadRunning([thread("th_1", "A", true)], "th_1", true)[0]!]
+    const incoming = [thread("th_1", "A", true)]
+    expect(mergeThreadList(local, incoming)[0]?.running).toBe(false)
+  })
+
+  it("keeps the open conversation lit when a listing fetch raced Enter", () => {
+    const local = [setThreadRunning([thread("th_1", "A", true)], "th_1", true)[0]!]
+    const incoming = [thread("th_1", "A", true)]
+    expect(
+      mergeThreadList(local, incoming, { id: "th_1", running: true })[0]?.running,
+    ).toBe(true)
+  })
+
+  it("does not relight the open conversation when a listing fetch raced done", () => {
+    const local = [thread("th_1", "A", true)]
+    const incoming = [setThreadRunning([thread("th_1", "A", true)], "th_1", true)[0]!]
+    expect(
+      mergeThreadList(local, incoming, { id: "th_1", running: false })[0]?.running,
+    ).toBe(false)
+  })
+
+  it("keeps a blocked-ask overlay on the open conversation", () => {
     const local = [setThreadRunning([thread("th_1", "A", true)], "th_1", true, true)[0]!]
     const incoming = [setThreadRunning([thread("th_1", "A", true)], "th_1", true)[0]!]
-    expect(mergeThreadList(local, incoming)[0]?.awaiting_answer).toBe(true)
+    expect(
+      mergeThreadList(local, incoming, {
+        id: "th_1",
+        running: true,
+        awaitingAnswer: true,
+      })[0]?.awaiting_answer,
+    ).toBe(true)
   })
 
   it("lets setThreadRunning(false) stay idle on the next listing", () => {
     const local = [thread("th_1", "A", true)]
     const incoming = [thread("th_1", "A", true)]
     expect(mergeThreadList(local, incoming)[0]?.running).toBe(false)
+  })
+})
+
+describe("threadListOverlay", () => {
+  it("stamps the open conversation and stays out of the way when none is open", () => {
+    expect(threadListOverlay(undefined, { running: true })).toBeUndefined()
+    expect(threadListOverlay("th_1", { running: true, awaiting_answer: true })).toEqual({
+      id: "th_1",
+      running: true,
+      awaitingAnswer: true,
+    })
+    expect(threadListOverlay("th_1", { running: false, awaiting_answer: true })).toEqual({
+      id: "th_1",
+      running: false,
+      awaitingAnswer: false,
+    })
   })
 })

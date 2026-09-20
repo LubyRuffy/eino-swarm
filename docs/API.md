@@ -397,7 +397,9 @@ unranked row does not sit above a ranked one that just ran. A drag writes a
 positive rank and pins relative order inside its group (Recents or one project). `pinned` is a separate flag: a
 project topic the user is tracking at the top of the sidebar, ordered by
 `pinned_at`. `running` is computed from the live runtimes in one pass, so the sidebar does
-not poll per row. `awaiting_answer` is true on that same row while `ask_user` is blocked
+not poll per row. The desktop and web UI re-fetch this list every few seconds while the
+window is visible, so a turn that starts (or finishes) in the background still lights —
+or clears — the folder without opening that conversation. `awaiting_answer` is true on that same row while `ask_user` is blocked
 waiting for the human (still `running`): the sidebar paints a question mark instead of
 the working pulse. `reasoning_effort` is the conversation's thinking level (`""`,
 `low`, `medium`, `high`); empty means the model's own default. `project_id` is empty for

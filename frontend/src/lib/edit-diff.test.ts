@@ -68,6 +68,19 @@ describe("parseEditDiff", () => {
     expect(texts).not.toContain("replaced block")
   })
 
+  it("treats an empty replace_block as a deletion hunk, not a missing edit", () => {
+    const diff = parseEditDiff(
+      JSON.stringify({
+        file_path: "notes.txt",
+        search_block: "beta\n",
+        replace_block: "",
+      }),
+    )
+    expect(diff?.added).toBe(0)
+    expect(diff?.removed).toBe(1)
+    expect(diff?.hunks[0].lines.map((l) => [l.op, l.text])).toEqual([["del", "beta"]])
+  })
+
   it("normalises CRLF in a search/replace so the hunk is the same as LF", () => {
     const diff = parseEditDiff(
       JSON.stringify({

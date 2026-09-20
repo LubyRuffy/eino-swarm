@@ -444,8 +444,9 @@ open and fold when the result lands, the way a finished thought does.
 An `edit` or `write` also stays collapsed: eino-tools only returns a status
 sentence (`ok: replaced block in …` / `Updated file …`), so the desktop UI
 rebuilds a highlighted hunk from the args (`frontend/src/lib/edit-diff.ts`)
-and shows it when the row is opened. Edit uses `search_block` /
-`replace_block` or `patch`; write treats `content` as all additions. A huge
+and shows it when the row is opened. Edit uses paired `search_block` /
+`replace_block` (empty replace deletes) or `patch`; write treats `content`
+as all additions. A huge
 write is clipped in the expanded view (400 lines); the `+N` on the collapsed
 row is still the real size. The collapsed summary adds `+N` (write) or
 `+N −M` (edit). `viewTool` attaches the hunk once so the row and the

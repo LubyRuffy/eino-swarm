@@ -24,6 +24,8 @@ const fake = vi.hoisted(() => ({
   /** Which project each list call was scoped to. The sidebar no longer
    *  filters; a leftover query would still be a bug. */
   listedProjects: [] as Array<string | undefined>,
+  listedThreads: undefined as Array<Record<string, unknown>> | undefined,
+  listedFail: false,
   createdIn: [] as Array<string | undefined>,
   reviewed: [] as string[],
   loadedMemory: [] as string[],
@@ -153,6 +155,8 @@ vi.mock("@/lib/api", () => {
       },
       threads: async (_archived?: boolean, projectId?: string) => {
         fake.listedProjects.push(projectId)
+        if (fake.listedFail) throw new Error("offline")
+        if (fake.listedThreads) return fake.listedThreads
         return [thread("th_old")]
       },
       projects: async () => [
@@ -359,6 +363,8 @@ beforeEach(() => {
   fake.created = 0
   fake.createDelayMs = 0
   fake.listedProjects.length = 0
+  fake.listedThreads = undefined
+  fake.listedFail = false
   fake.createdIn.length = 0
   fake.reviewed.length = 0
   fake.loadedMemory.length = 0
@@ -883,24 +889,25 @@ describe("sidebar order", () => {
 })
 
 describe("sidebar running", () => {
+  const listed = (id: string, running = false, project_id = "pj_busy") => ({
+    id,
+    title: id,
+    title_auto: true,
+    project_id,
+    provider_id: "default",
+    reasoning_effort: "",
+    archived: false,
+    created_at: new Date().toISOString(),
+    last_active_at: new Date().toISOString(),
+    running,
+  })
+
   it("keeps a running conversation marked after switching away", async () => {
-    const listed = (id: string, running = false) => ({
-      id,
-      title: id,
-      title_auto: true,
-      project_id: "",
-      provider_id: "default",
-      reasoning_effort: "",
-      archived: false,
-      created_at: new Date().toISOString(),
-      last_active_at: new Date().toISOString(),
-      running,
-    })
     useApp.setState({
       activeId: "th_old",
       loaded: true,
       status: { running: true, started_at: new Date().toISOString() },
-      threads: [listed("th_old"), listed("th_other")],
+      threads: [listed("th_old", false, ""), listed("th_other", false, "")],
     })
     await useApp.getState().openThread("th_other")
     expect(useApp.getState().activeId).toBe("th_other")
@@ -910,19 +917,7 @@ describe("sidebar running", () => {
     )
   })
 
-  it("keeps that mark after New conversation, even if the listing is still idle", async () => {
-    const listed = (id: string, running = false) => ({
-      id,
-      title: id,
-      title_auto: true,
-      project_id: "pj_busy",
-      provider_id: "default",
-      reasoning_effort: "",
-      archived: false,
-      created_at: new Date().toISOString(),
-      last_active_at: new Date().toISOString(),
-      running,
-    })
+  it("keeps that mark after New conversation when the listing still reports it running", async () => {
     useApp.setState({
       activeId: "th_old",
       loaded: true,
@@ -930,10 +925,63 @@ describe("sidebar running", () => {
       threads: [listed("th_old", true)],
     })
     await useApp.getState().newThread()
+    fake.listedThreads = [
+      listed("th_old", true),
+      listed(useApp.getState().activeId ?? "th_new", false),
+    ]
     await useApp.getState().refreshThreads()
     expect(useApp.getState().activeId).not.toBe("th_old")
     expect(useApp.getState().threads.find((t) => t.id === "th_old")?.running).toBe(
       true,
     )
+  })
+
+  it("lights a background conversation from the listing without opening it", async () => {
+    useApp.setState({
+      activeId: "th_open",
+      loaded: true,
+      status: { running: false },
+      threads: [listed("th_open"), listed("th_busy")],
+    })
+    fake.listedThreads = [listed("th_open"), listed("th_busy", true)]
+    await useApp.getState().refreshThreads()
+    expect(useApp.getState().threads.find((t) => t.id === "th_busy")?.running).toBe(
+      true,
+    )
+  })
+
+  it("idles a left conversation once the listing says it finished", async () => {
+    useApp.setState({
+      activeId: "th_open",
+      loaded: true,
+      status: { running: false },
+      threads: [listed("th_open"), listed("th_old", true)],
+    })
+    fake.listedThreads = [listed("th_open"), listed("th_old")]
+    await useApp.getState().refreshThreads()
+    expect(useApp.getState().threads.find((t) => t.id === "th_old")?.running).toBe(
+      false,
+    )
+  })
+
+  it("keeps the open conversation marked when a listing fetch raced Enter", async () => {
+    useApp.setState({
+      activeId: "th_old",
+      loaded: true,
+      status: { running: true, started_at: new Date().toISOString() },
+      threads: [listed("th_old", true, "")],
+    })
+    fake.listedThreads = [listed("th_old", false, "")]
+    await useApp.getState().refreshThreads()
+    expect(useApp.getState().threads.find((t) => t.id === "th_old")?.running).toBe(
+      true,
+    )
+  })
+
+  it("does not toast when a background listing fetch fails", async () => {
+    fake.listedFail = true
+    useApp.setState({ error: undefined })
+    await useApp.getState().syncThreads()
+    expect(useApp.getState().error).toBeUndefined()
   })
 })
