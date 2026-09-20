@@ -5,6 +5,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "header.idle": "空闲",
   "header.working": "工作中",
   "header.waiting": "等待中",
+  "header.compressing": "压缩中",
   "header.newConversation": "新对话",
   "header.hideConversations": "隐藏会话列表",
   "header.showConversations": "显示会话列表",
@@ -301,6 +302,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "tool.diffMore": "还有 {n} 行",
 
   "status.running": "进行中",
+  "status.waiting": "等待中",
   "status.done": "完成",
   "status.failed": "失败",
   "status.cancelled": "已停止",

@@ -128,6 +128,9 @@ the prompt),
 a force refresh that is already caught up, a short extract still storing a
 briefing, cancel while another refresh holds
 the gate),
+`internal/engine/followup_test.go` (a queued follow-up starts as soon as the
+turn is `done`, even while a session briefing is still blocked on the
+summarizer),
 `internal/engine/session_memory_bound_test.go` (newest-first rune cap, a
 multi-thousand-event log staying under the cap, tool results clipped harder than
 answers, dump not stamped, a failed refresh stamping the token watermark
@@ -469,7 +472,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   pause/run-now/create labels, unread badge, busy run-now `skipped_busy` as a
   labelled alert inside the inbox dialog, the composer wake banner's labeled
   Run now / Cancel wait (`schedule-wait-actions.test.tsx`), the banner hiding
-  while the conversation is working, and run-now painting the open conversation Working. A `session_memory` event is
+  while the conversation is working, a parked wait painting a breathing clock
+  on the sidebar row and Waiting on the title bar (`waitingThreadIds`,
+  `wait-mark.tsx`), and run-now painting the open conversation Working. A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /
   `goal_continued` turns fold behind a one-line Worked-for row in
@@ -531,9 +536,12 @@ Several things are tested here, some as pure logic and some in jsdom:
   older events until a manager row exists before painting as loaded.
   Switching away from a live turn keeps `thread.running` on that row so the
   sidebar progress does not wait for you to click back in. `setThreadRunning`
-  lives in `src/lib/thread-title.ts`.
+  lives in `src/lib/thread-title.ts`. A parked thread wake is not `running`:
+  `waitingThreadIds` from the schedule list paints the breathing clock.
   Live SSE folding lives in `src/store/app-stream.ts` so `app.ts` stays under
-  1000 lines. `title` flushes immediately like `done`.
+  1000 lines. `title` flushes immediately like `done`. A live `compacted`
+  `phase: "start"` pulse sets `status.compressing` (title bar Compressing,
+  composer banner) and does not mark the thread compacted; `done` clears it.
   `app-steer.test.ts` is why Interrupt-inject and per-bubble retract hit the
   open conversation and swallow `no_steer` / `404` races.
   `app-followup.test.ts` is why a duplicate send of the live turn does not sit
@@ -997,7 +1005,7 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, hovering a project row revealing a new-conversation control that starts one in that project rather than Recents (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, a sixth topic in the folder sitting behind **Show more** until it is opened, and a running conversation keeping its sidebar progress after switching to a new conversation |
 | `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour) and `$n$` as KaTeX |
 | `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |
-| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (title, prompt, Every (seconds) 60, Add wait), Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, Cancel wait removing it, Run now starting Working, hiding the wait banner, and a `Scheduled check.` chip. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
+| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (title, prompt, Every (seconds) 60, Add wait), Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
 | `e2e/remote.spec.ts` | Settings → Phone: Hub URL, Host Token, Event text on the phone, Show pairing QR, no QR pixels while the hub is unset (`409 remote_offline`) |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR control; junk paste errors; a syntactically valid URI uses the same bind path |
 | `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline, Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, the tool catalogue on a never-saved config, settings written to the config file and read back, personality round-tripping through Settings → Personality, pinning a title-generation model when more than one name is listed, opening a collapsed provider row then discovering models into the default-model dropdown, a failed listing toasting over that open provider (in viewport, × dismisses it), **Back to app** remaining on screen on a short window when the Swarm page is long, Back to app sitting in the first 48px of a browser sheet (the desktop title-bar strip is not shipped to the tab), the Add-a-provider outline staying inside the Models scrollport, theme switching persisted, chrome language switching (restored to English because locale is in the shared yaml), the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), font / size / conversation width round-tripping through Settings → General, renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |

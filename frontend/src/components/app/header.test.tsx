@@ -144,6 +144,53 @@ describe("Header status", () => {
     expect(screen.getByTestId("status-badge")).toHaveTextContent("Waiting")
   })
 
+  it("says Waiting while a thread wake is parked", () => {
+    renderHeader({ waiting: true })
+    const badge = screen.getByTestId("status-badge")
+    expect(badge).toHaveTextContent("Waiting")
+    expect(badge.querySelector("[data-testid=wait-mark]")).toHaveAttribute(
+      "aria-label",
+      "waiting",
+    )
+    expect(badge).not.toHaveTextContent("Idle")
+  })
+
+  it("keeps Working when a turn is live even if a wait is also armed", () => {
+    renderHeader({
+      waiting: true,
+      status: {
+        running: true,
+        started_at: new Date(Date.now() - 5000).toISOString(),
+      },
+    })
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("Working")
+    expect(screen.queryByTestId("wait-mark")).not.toBeInTheDocument()
+  })
+
+  it("says Compressing while auto-compact is rewriting the next prompt", () => {
+    renderHeader({
+      status: {
+        running: true,
+        compressing: true,
+        started_at: new Date(Date.now() - 5000).toISOString(),
+      },
+    })
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("Compressing")
+    expect(screen.getByTestId("status-badge")).not.toHaveTextContent("Working")
+  })
+
+  it("keeps Waiting when the human has to answer, even during compact", () => {
+    renderHeader({
+      status: {
+        running: true,
+        compressing: true,
+        awaiting_answer: true,
+        started_at: new Date(Date.now() - 5000).toISOString(),
+      },
+    })
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("Waiting")
+  })
+
   it("counts elapsed time from when the turn started, including hours", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-01-01T10:10:06.000Z"))

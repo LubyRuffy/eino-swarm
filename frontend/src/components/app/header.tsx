@@ -11,6 +11,7 @@ import {
 import { useEffect, useState } from "react"
 
 import { CopyButton } from "@/components/app/transcript"
+import { WaitMark } from "@/components/app/wait-mark"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -34,6 +35,7 @@ export function Header({
   thread,
   project,
   status,
+  waiting,
   meta,
   connected,
   panelOpen,
@@ -56,6 +58,8 @@ export function Header({
    *  tools are pointed somewhere else. */
   project?: Project
   status: ThreadStatus
+  /** True while an active thread wake is parked. Still not `running`. */
+  waiting?: boolean
   meta?: Meta
   connected: boolean
   panelOpen: boolean
@@ -164,10 +168,17 @@ export function Header({
                 clamp to 1s forever — that is a lie, not a clock. */}
             {status.awaiting_continue || status.awaiting_answer
               ? t("header.waiting")
-              : t("header.working")}
+              : status.compressing
+                ? t("header.compressing")
+                : t("header.working")}
             {status.started_at
               ? ` · ${formatDuration(Math.max(elapsedMs, 1000))}`
               : null}
+          </Badge>
+        ) : waiting ? (
+          <Badge variant="warning" data-testid="status-badge">
+            <WaitMark />
+            {t("header.waiting")}
           </Badge>
         ) : (
           <Badge variant="outline" data-testid="status-badge">

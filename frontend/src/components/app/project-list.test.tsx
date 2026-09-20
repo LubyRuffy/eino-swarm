@@ -168,6 +168,21 @@ describe("Project list", () => {
     expect(screen.getByTestId("project-folder")).toHaveAttribute("data-open", "false")
   })
 
+  it("marks a collapsed folder that still has a parked wait", () => {
+    renderList({
+      threadsByProject: {
+        pj_1: [topic({ id: "th_wait", title: "Waiting topic" })],
+      },
+      expanded: { pj_1: false },
+      waitingIds: new Set(["th_wait"]),
+    })
+    expect(screen.queryByTestId("project-threads")).not.toBeInTheDocument()
+    expect(screen.getByTestId("project-kind").querySelector("[data-testid=wait-mark]")).toHaveAttribute(
+      "aria-label",
+      "waiting",
+    )
+  })
+
   it("does not paint a drag grip on the folder or its topics", () => {
     renderList({
       threadsByProject: { pj_1: [topic({ id: "th_1", title: "A topic" })] },

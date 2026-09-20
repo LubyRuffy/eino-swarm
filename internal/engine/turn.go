@@ -629,15 +629,11 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		rt.pauseOpenGoalOnInterrupt()
 	}
 	_ = e.store.TouchThread(rt.threadID)
-	// Session briefing first, from the event log, so compact and the
-	// reviewer do not have to re-summarize a folded ADK transcript.
-	if err := e.syncSessionMemory(context.Background(), rt.threadID, turn.ID, false); err != nil {
-		e.log.Warn("could not refresh the session briefing", "turn", turn.ID, "err", err)
-	}
-	// The review reads the event log and curates the project's memory. It
-	// runs after the terminal event on purpose: nobody is waiting for it, and
-	// a turn must never look slower because something is being learned from it.
-	e.scheduleReview(rt.threadID, turn, status, pc, res.Final)
+	// Briefing and review run after the terminal event, in the background:
+	// the composer already looks idle, and a queued follow-up must start
+	// rather than sit there looking stuck. Compact still waits on the
+	// same gate if the next Generate actually needs the briefing.
+	e.scheduleSessionAndReview(rt.threadID, turn, status, pc, res.Final)
 	if !turn.GoalContinue && !turn.ScheduleContinue {
 		e.scheduleTitle(rt.threadID, turn, status, turn.UserText, res.Final)
 	}

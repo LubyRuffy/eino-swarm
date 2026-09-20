@@ -13,6 +13,24 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A queued follow-up no longer freezes behind post-turn memory.** After
+  `done` the composer already looked Idle, then the runtime sat on a
+  session-briefing model call before popping the queue — so "1 queued"
+  looked stuck. Memory review was already a background extra; the briefing
+  now is too. The next turn starts immediately. If that turn actually has
+  to compress context, `compacted` `phase: "start"` keeps the Working clock
+  and the chrome says **Compressing** (composer banner + transcript notice).
+  Quit waits for that extra before refusing a new review. A `/goal`
+  auto-continue drains the briefing before copying wrap-up, so the two
+  cannot overwrite each other.
+
+- **A parked wait still looks alive.** An armed thread wake used to leave
+  the sidebar empty and the title bar Idle, so a `/goal` sitting on
+  `next_run_at` looked finished. The row now keeps a breathing clock in the
+  folder column (a live turn still uses the progress dot), a collapsed
+  folder that only has a wait keeps the same mark, and the title bar says
+  **Waiting**. The wait chip on the composer breathes the same clock.
+
 - **`edit` / `write` rows stay collapsed until clicked.** They used to force
   the hunk open (the same mistake as live `exec` dumping stdout). The
   collapsed row still shows the path and `+N −M`; open it to see the

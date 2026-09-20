@@ -91,6 +91,19 @@ describe("runningProjectIds", () => {
       ),
     ).toEqual(new Set(["pj_a", "pj_b"]))
   })
+
+  it("opens a folder that only has a parked wait", () => {
+    expect(
+      runningProjectIds(
+        [
+          { id: "th_wait", project_id: "pj_wait", running: false },
+          { id: "th_idle", project_id: "pj_idle", running: false },
+        ],
+        undefined,
+        ["th_wait"],
+      ),
+    ).toEqual(new Set(["pj_wait"]))
+  })
 })
 
 describe("project expand storage", () => {

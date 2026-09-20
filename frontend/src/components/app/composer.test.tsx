@@ -202,6 +202,13 @@ describe("Composer follow-up queue", () => {
       "Working… Enter queues, ⌘Enter steers",
     )
   })
+
+  it("names live compression above the box so a queued follow-up is not a freeze", () => {
+    renderComposer({ running: true, compressing: true })
+    expect(screen.getByTestId("compressing-banner")).toHaveTextContent(
+      "Compressing conversation context…",
+    )
+  })
 })
 
 describe("Composer quotes", () => {

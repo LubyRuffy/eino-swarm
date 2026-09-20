@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { emptyTranscript } from "@/lib/transcript"
 import type { Schedule } from "@/lib/types"
 import { useApp } from "@/store/app"
-import { activeWake, wakeTargetsOpenThread } from "@/store/app-schedule"
+import { activeWake, waitingThreadIds, wakeTargetsOpenThread } from "@/store/app-schedule"
 import { useProjects } from "@/store/projects"
 
 const fake = vi.hoisted(() => ({
@@ -297,5 +297,18 @@ describe("activeWake", () => {
     expect(wakeTargetsOpenThread(wait(), "th_old")).toBe(true)
     expect(wakeTargetsOpenThread(wait({ kind: "standalone" }), "th_old")).toBe(false)
     expect(wakeTargetsOpenThread(wait(), "th_other")).toBe(false)
+  })
+
+  it("collects parked thread wakes and ignores jobs, paused rows, and blanks", () => {
+    expect(
+      waitingThreadIds([
+        wait({ id: "sch_wake" }),
+        wait({ id: "sch_other", thread_id: "th_other" }),
+        wait({ id: "sch_paused", status: "paused" }),
+        wait({ id: "sch_job", kind: "standalone", thread_id: "th_old" }),
+        wait({ id: "sch_blank", thread_id: "" }),
+      ]),
+    ).toEqual(new Set(["th_old", "th_other"]))
+    expect(waitingThreadIds(undefined)).toEqual(new Set())
   })
 })

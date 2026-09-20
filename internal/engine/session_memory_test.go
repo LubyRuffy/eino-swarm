@@ -230,6 +230,45 @@ func TestLastAssistantHadToolsLooksAtTheTail(t *testing.T) {
 	}
 }
 
+func TestSessionMemorySpawnTracksWorkBeforeBegin(t *testing.T) {
+	p := newSessionMemoryPool()
+	if !p.spawn() {
+		t.Fatal("a live pool must accept a wrapper")
+	}
+	released := make(chan struct{})
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		p.done()
+		close(released)
+	}()
+	if !p.wait(time.Second) {
+		t.Fatal("wait must cover spawn without begin")
+	}
+	<-released
+}
+
+func TestSessionMemorySpawnRefusesAfterStop(t *testing.T) {
+	p := newSessionMemoryPool()
+	p.stop()
+	if p.spawn() {
+		t.Fatal("stop must refuse a new wrapper")
+	}
+}
+
+func TestSessionMemoryPoolWaitReturnsAfterRefresh(t *testing.T) {
+	p := newSessionMemoryPool()
+	ch := p.begin("th")
+	if ch == nil {
+		t.Fatal("a live pool must hand out a gate")
+	}
+	ch <- struct{}{}
+	p.done()
+	<-ch
+	if !p.wait(time.Second) {
+		t.Fatal("wait must return once every refresh has Done")
+	}
+}
+
 func TestSessionMemoryPoolStopRefusesANewRefresh(t *testing.T) {
 	e := newTestEngine(t)
 	e.sessions.stop()

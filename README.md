@@ -140,7 +140,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   arrive, and typing in the composer
   does not rebuild the conversation.
 - **Steering, not restarting.** Enter while a turn is running **queues** a
-  follow-up for after this one finishes (refresh-safe), except the live turn's
+  follow-up for after this one finishes (refresh-safe; a post-turn session
+  briefing or memory review does not hold that start), except the live turn's
   own words — those are already in flight. Click a waiting row to
   edit it; submitting that edit sends it to the back of the queue. **Steer** on
   that row, or ⌘Enter, injects into the current turn at the next model boundary
@@ -388,8 +389,10 @@ The sidebar lists each project's conversations under its name. A folder
 **Show more** reveals the rest, **Show less** folds them again. Click the
 folder to collapse it. The open conversation is marked; the folder is not.
 A conversation that is mid-turn keeps a progress mark in that same column
-even if you are looking at another one; a collapsed folder that still has
-a live turn keeps the mark on the directory. Click **Pinned**, **Projects**, or **Recents** to fold
+even if you are looking at another one; a conversation whose next turn is a
+parked wait keeps a clock there instead, so it does not look Idle. A
+collapsed folder that still has a live turn or a wait keeps the mark on the
+directory. Click **Pinned**, **Projects**, or **Recents** to fold
 that section. Pin a topic from the row menu to keep it in **Pinned**
 at the top. Conversations that belong to no project sit in **Recents**;
 **New conversation** lands there. Skills are behind **View skills** on the

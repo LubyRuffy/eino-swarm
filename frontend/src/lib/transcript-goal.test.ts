@@ -7,7 +7,7 @@ import {
   splitQueuedSteers,
   type TranscriptState,
 } from "./transcript"
-import { GOAL_SESSION_WRAP_STEER } from "./transcript-notices"
+import { GOAL_SESSION_WRAP_STEER, compactIsStarting } from "./transcript-notices"
 import type { SwarmEvent } from "./types"
 
 let seq = 0
@@ -255,6 +255,19 @@ describe("standing objective and compact notices", () => {
     ])
     expect(manager(starting).blocks[0].text).toBe("Compressing conversation context…")
     expect(manager(starting).blocks[0].detail).toBeUndefined()
+    expect(
+      compactIsStarting({
+        text: '{"auto":true,"phase":"start","tokens_before":91200}',
+      }),
+    ).toBe(true)
+    expect(
+      compactIsStarting({
+        text: '{"auto":true,"tokens_before":91200,"tokens_after":1400}',
+      }),
+    ).toBe(false)
+    expect(compactIsStarting({ err: "the model returned nothing usable as a briefing" })).toBe(
+      false,
+    )
     const done = fold([
       ev({
         kind: "compacted",

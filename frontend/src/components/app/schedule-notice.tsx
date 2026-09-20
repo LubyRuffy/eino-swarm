@@ -1,6 +1,7 @@
 import { Clock } from "lucide-react"
 
 import { ScheduleWaitActions } from "@/components/app/schedule-wait-actions"
+import { WaitMark } from "@/components/app/wait-mark"
 import { localizeNotice } from "@/lib/i18n"
 import type { Block } from "@/lib/transcript"
 import { useT } from "@/lib/use-t"
@@ -41,7 +42,11 @@ export function ScheduleNotice({
       data-testid="schedule-notice"
       className="my-2 flex items-start gap-2 rounded-lg border border-border bg-muted/50 px-3 py-2 text-[13px] text-muted-foreground"
     >
-      <Clock className="mt-0.5 size-3.5 shrink-0" />
+      {armed ? (
+        <WaitMark className="mt-0.5 size-3.5" />
+      ) : (
+        <Clock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+      )}
       <p className="min-w-0 flex-1 stream-text whitespace-pre-wrap">
         {localizeNotice(block.text, t.locale)}
       </p>

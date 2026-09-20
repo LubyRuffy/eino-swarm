@@ -13,6 +13,7 @@ import { SidebarSection } from "@/components/app/sidebar-section"
 import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots"
 import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { StatusDot } from "@/components/app/transcript"
+import { WaitMark } from "@/components/app/wait-mark"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -40,6 +41,7 @@ export function ProjectList({
   expanded,
   activeId,
   runningId,
+  waitingIds,
   onSelect,
   onToggle,
   onNew,
@@ -61,6 +63,7 @@ export function ProjectList({
   expanded: Record<string, boolean>
   activeId?: string
   runningId?: string
+  waitingIds?: ReadonlySet<string>
   sectionOpen?: boolean
   onToggleSection?: () => void
   onSelect: (id: string) => void
@@ -107,6 +110,7 @@ export function ProjectList({
           open={Boolean(expanded[project.id])}
           activeId={activeId}
           runningId={runningId}
+          waitingIds={waitingIds}
           drag={sortable.bind(project.id)}
           onSelect={onSelect}
           onToggle={onToggle}
@@ -137,6 +141,7 @@ function ProjectRow({
   open,
   activeId,
   runningId,
+  waitingIds,
   drag,
   onSelect,
   onToggle,
@@ -155,6 +160,7 @@ function ProjectRow({
   open: boolean
   activeId?: string
   runningId?: string
+  waitingIds?: ReadonlySet<string>
   drag: ReturnType<ReturnType<typeof useSortableList>["bind"]>
   onSelect: (id: string) => void
   onToggle: (id: string) => void
@@ -170,6 +176,8 @@ function ProjectRow({
 }) {
   const t = useT()
   const busy = threads.some((thread) => thread.running || thread.id === runningId)
+  const waiting =
+    !busy && threads.some((thread) => Boolean(waitingIds?.has(thread.id)))
   return (
     <div className="mb-0.5" data-testid="project-wrap" data-id={project.id}>
       <div
@@ -210,6 +218,10 @@ function ProjectRow({
                 {busy ? (
                   <span className="absolute right-0 top-0">
                     <StatusDot status="running" />
+                  </span>
+                ) : waiting ? (
+                  <span className="absolute right-0 top-0">
+                    <WaitMark className="size-2.5" />
                   </span>
                 ) : null}
               </>
@@ -270,6 +282,7 @@ function ProjectRow({
             threads={threads}
             activeId={activeId}
             runningId={runningId}
+            waitingIds={waitingIds}
             onOpen={onOpenThread}
             onRename={onRenameThread}
             onDelete={onDeleteThread}

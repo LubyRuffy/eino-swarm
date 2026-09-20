@@ -1,5 +1,5 @@
 import { AlertTriangle, X } from "lucide-react"
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { create } from "zustand"
 
 import { Composer } from "@/components/app/composer"
@@ -30,6 +30,7 @@ import type { Project, SkillInfo } from "@/lib/types"
 import { toggleLocalePref, useT } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { useApp } from "@/store/app"
+import { activeWake, waitingThreadIds } from "@/store/app-schedule"
 import { projectOf, useProjects } from "@/store/projects"
 import { useTerminal } from "@/store/terminal"
 
@@ -499,6 +500,8 @@ function AppSidebar({
   const activeId = useApp((s) => s.activeId)
   const running = useApp((s) => s.status.running)
   const overlayRunningId = threads.find((t) => t.running && t.id !== activeId)?.id
+  const schedules = useApp((s) => s.schedules)
+  const waitingIds = useMemo(() => waitingThreadIds(schedules), [schedules])
   const openThread = useApp((s) => s.openThread)
   const renameThread = useApp((s) => s.renameThread)
   const deleteThread = useApp((s) => s.deleteThread)
@@ -513,6 +516,7 @@ function AppSidebar({
       threads={threads}
       activeId={activeId}
       runningId={overlayRunningId ?? (running ? activeId : undefined)}
+      waitingIds={waitingIds}
       onNew={onNew}
       onOpen={(id) => void openThread(id)}
       onRename={(id, title) => void renameThread(id, title)}
@@ -558,6 +562,7 @@ function AppHeader({
   const threads = useApp((s) => s.threads)
   const activeId = useApp((s) => s.activeId)
   const status = useApp((s) => s.status)
+  const schedules = useApp((s) => s.schedules)
   const meta = useApp((s) => s.meta)
   const connected = useApp((s) => s.connected)
   const theme = useApp((s) => s.theme)
@@ -571,6 +576,7 @@ function AppHeader({
       thread={thread}
       project={projectOf(projects, thread?.project_id)}
       status={status}
+      waiting={Boolean(activeWake(schedules, activeId))}
       meta={meta}
       connected={connected || !activeId}
       panelOpen={panelOpen}
@@ -699,6 +705,7 @@ function AppComposer({
   // Do not select `usage` here. That pulse is one object per model call and
   // would re-render the controlled textarea while a CJK IME is composing.
   const running = useApp((s) => s.status.running)
+  const compressing = useApp((s) => Boolean(s.status.compressing))
   const models = useApp((s) => s.models)
   const thread = useApp((s) => s.threads.find((row) => row.id === s.activeId))
   const activeId = useApp((s) => s.activeId)
@@ -726,6 +733,7 @@ function AppComposer({
   return (
     <Composer
       running={running}
+      compressing={compressing}
       models={models}
       provider={thread?.provider_id || meta?.default_provider}
       model={thread?.model}

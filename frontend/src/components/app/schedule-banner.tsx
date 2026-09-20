@@ -1,6 +1,5 @@
-import { Clock } from "lucide-react"
-
 import { ScheduleWaitActions } from "@/components/app/schedule-wait-actions"
+import { WaitMark } from "@/components/app/wait-mark"
 import { Badge } from "@/components/ui/badge"
 import { useT } from "@/lib/use-t"
 import type { Schedule } from "@/lib/types"
@@ -40,10 +39,10 @@ export function ScheduleBanner({
   return (
     <div data-testid="schedule-banner" className="mb-2 rounded-xl border bg-card px-3 py-2">
       <div className="flex items-start gap-2">
-        <Clock className="mt-1 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <WaitMark className="mt-1 size-3.5" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{t("schedule.waiting")}</Badge>
+            <Badge variant="warning">{t("schedule.waiting")}</Badge>
             {when ? (
               <span data-testid="schedule-next" className="text-xs text-muted-foreground">
                 {t("schedule.nextCheck", { time: when })}

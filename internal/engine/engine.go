@@ -388,11 +388,19 @@ func (e *Engine) Running() []string {
 // running, so the next start continues them. A user Interrupt is the only
 // path that records cancelled.
 //
-// Memory reviews are refused from here on and the ones already running are
-// waited for, briefly: a review that is cut off mid-write would leave a note
-// half stored, and a review that never finishes must not keep the app open.
+// Memory reviews, conversation namers, compact, and session briefings are
+// refused from here on and the ones already running are waited for, briefly:
+// a review that is cut off mid-write would leave a note half stored, and a
+// review that never finishes must not keep the app open.
 func (e *Engine) Shutdown() {
 	e.StopScheduler()
+	// Wrappers register on sessions.wg at launch and scheduleReview after
+	// the briefing. Wait for them before refusing new reviews, or a quit
+	// drops the review that was about to start.
+	e.sessions.stop()
+	if !e.sessions.wait(reviewShutdownGrace) {
+		e.log.Warn("a session briefing was still running at shutdown; later compact may be stale")
+	}
 	if !e.reviews.stop(reviewShutdownGrace) {
 		e.log.Warn("a memory review was still running at shutdown; its notes may be incomplete")
 	}
@@ -402,7 +410,6 @@ func (e *Engine) Shutdown() {
 	if !e.compacts.stop(reviewShutdownGrace) {
 		e.log.Warn("a compact was still running at shutdown; later turns keep the previous briefing")
 	}
-	e.sessions.stop()
 	e.mu.Lock()
 	rts := make([]*runtime, 0, len(e.runtimes))
 	for _, rt := range e.runtimes {

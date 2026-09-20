@@ -36,6 +36,7 @@ export function Sidebar({
   threads,
   activeId,
   runningId,
+  waitingIds,
   onNew,
   onOpen,
   onRename,
@@ -57,6 +58,7 @@ export function Sidebar({
   threads: Thread[]
   activeId?: string
   runningId?: string
+  waitingIds?: ReadonlySet<string>
   onNew: () => void
   onOpen: (id: string) => void
   onRename: (id: string, title: string) => void
@@ -88,8 +90,8 @@ export function Sidebar({
   }
   const activeProjectId = threads.find((th) => th.id === activeId)?.project_id
   const busyProjects = useMemo(
-    () => runningProjectIds(threads, runningId),
-    [threads, runningId],
+    () => runningProjectIds(threads, runningId, waitingIds),
+    [threads, runningId, waitingIds],
   )
   const openByProject = useMemo(() => {
     const next: Record<string, boolean> = {}
@@ -161,6 +163,7 @@ export function Sidebar({
                 thread={thread}
                 active={thread.id === activeId}
                 running={thread.running || thread.id === runningId}
+                waiting={waitingIds?.has(thread.id)}
                 onOpen={onOpen}
                 onRename={onRename}
                 onDelete={askDelete}
@@ -176,6 +179,7 @@ export function Sidebar({
           expanded={openByProject}
           activeId={activeId}
           runningId={runningId}
+          waitingIds={waitingIds}
           sectionOpen={sections.projects}
           onToggleSection={() => toggleSection("projects")}
           onSelect={onSelectProject}
@@ -208,6 +212,7 @@ export function Sidebar({
               threads={buckets.recents}
               activeId={activeId}
               runningId={runningId}
+              waitingIds={waitingIds}
               onOpen={onOpen}
               onRename={onRename}
               onDelete={askDelete}

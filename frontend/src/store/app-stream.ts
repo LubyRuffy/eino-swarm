@@ -1,5 +1,6 @@
 import { api } from "@/lib/api"
 import { ASK_TOOL } from "@/lib/transcript-ask"
+import { compactIsStarting } from "@/lib/transcript-notices"
 import {
   collapseLiveEvents,
   parseReview,
@@ -183,10 +184,20 @@ function flushQueued(set: StreamSet, get: StreamGet) {
         started_at: ev.created_at,
       })
     }
-    if (ev.kind === "compacted" && !ev.err && (ev.seq ?? 0) > 0) {
-      threads = threads.map((t) =>
-        t.id === threadId ? { ...t, compacted: true } : t,
-      )
+    if (ev.kind === "compacted") {
+      if (compactIsStarting(ev)) {
+        status = withRunningClock(status, {
+          compressing: true,
+          turn_id: ev.turn_id,
+        })
+      } else {
+        status = { ...status, compressing: false }
+      }
+      if (!ev.err && (ev.seq ?? 0) > 0) {
+        threads = threads.map((t) =>
+          t.id === threadId ? { ...t, compacted: true } : t,
+        )
+      }
     }
     if (
       ev.kind === "schedule" ||

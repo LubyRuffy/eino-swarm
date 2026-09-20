@@ -24,6 +24,17 @@ export function activeWake(
   )
 }
 
+/** Conversations whose next turn is a parked wait, not a live tool call.
+ *  Standalone jobs mint their own thread on fire; they do not mark origin. */
+export function waitingThreadIds(schedules: Schedule[] | undefined): Set<string> {
+  const ids = new Set<string>()
+  for (const row of schedules ?? []) {
+    if (row.kind !== "thread" || row.status !== "active" || !row.thread_id) continue
+    ids.add(row.thread_id)
+  }
+  return ids
+}
+
 /** Run now on this conversation must paint Working before the first SSE. */
 export function wakeTargetsOpenThread(
   row: Schedule | undefined,

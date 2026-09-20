@@ -79,7 +79,7 @@ in this database: notes and skills are files, so a person can read and fix them
 | `plan_markdown` | text | current plan body. The file `$ZWAI_HOME/plans/<thread_id>/PLAN.md` is the on-disk copy; this column is what GET returns |
 | `compact_summary` | text | briefing that replaces earlier replay in the next turn's prompt. Empty means no fold yet. Copied from `session_memory` when that is set and accepted. A transcript dump is not stored, and a previously stored dump is omitted from the next manager prompt |
 | `compact_through_seq` | int64 | last **message** seq included in that briefing. Replay skips `seq <=` this when a summary is set |
-| `session_memory` | text | rolling briefing of this conversation, updated from the event log at token/tool breakpoints (newest events that fit a rune cap). Compact copies it; the post-turn reviewer reads it. Empty until the first accepted refresh |
+| `session_memory` | text | rolling briefing of this conversation, updated from the event log at token/tool breakpoints (newest events that fit a rune cap). Compact copies it; the post-turn reviewer reads it. Empty until the first accepted refresh. Post-turn refresh is background work and does not block the next follow-up |
 | `session_memory_through_seq` | int64 | last **event** seq included in that briefing. Advanced only on an accepted refresh. A rewind that deletes that event clears the three session-memory columns |
 | `session_memory_tokens` | int | estimated event-log tokens at the last refresh attempt (accepted or failed), so the next gate knows how far the window has grown and a failed refresh cannot resend the same payload |
 | `archived` | bool | hidden from the sidebar's default list |

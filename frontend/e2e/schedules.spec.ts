@@ -136,11 +136,15 @@ test("a thread wake from REST shows a banner that cancel removes", async ({
   await expect(
     page.getByTestId("schedule-banner").getByRole("button", { name: "Run now" }),
   ).toBeVisible()
+  await expect(statusBadge(page)).toContainText("Waiting")
+  await expect(row.getByTestId("wait-mark")).toBeVisible()
   await page
     .getByTestId("schedule-banner")
     .getByRole("button", { name: "Cancel wait" })
     .click()
   await expect(page.getByTestId("schedule-banner")).toHaveCount(0)
+  await expect(statusBadge(page)).toContainText("Idle")
+  await expect(row.getByTestId("wait-mark")).toHaveCount(0)
 })
 
 test("a thread wake banner can run now instead of waiting", async ({
@@ -181,6 +185,8 @@ test("a thread wake banner can run now instead of waiting", async ({
   }
 
   await expect(page.getByTestId("schedule-banner")).toBeVisible()
+  await expect(statusBadge(page)).toContainText("Waiting")
+  await expect(row.getByTestId("wait-mark")).toBeVisible()
   await page
     .getByTestId("schedule-banner")
     .getByRole("button", { name: "Run now" })
@@ -190,5 +196,7 @@ test("a thread wake banner can run now instead of waiting", async ({
   await expect(
     page.getByTestId("schedule-notice").filter({ hasText: "Scheduled check." }),
   ).toBeVisible()
-  await waitForIdle(page)
+  await expect(statusBadge(page)).toContainText("Waiting", { timeout: 60_000 })
+  await expect(page.getByTestId("schedule-banner")).toBeVisible()
+  await expect(row.getByTestId("wait-mark")).toBeVisible()
 })

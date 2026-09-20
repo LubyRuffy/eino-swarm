@@ -202,6 +202,8 @@ describe("goal and compact", () => {
       created_at: at,
     })
     expect(useApp.getState().threads[0]?.compacted).toBeFalsy()
+    expect(useApp.getState().status.compressing).toBe(true)
+    expect(useApp.getState().status.running).toBe(true)
     fake.onEvent?.({
       kind: "compacted",
       seq: 51,
@@ -216,6 +218,32 @@ describe("goal and compact", () => {
       created_at: at,
     })
     expect(useApp.getState().threads[0]?.compacted).toBe(true)
+    expect(useApp.getState().status.compressing).toBe(false)
+  })
+
+  it("clears compressing when the turn ends even if compact never finished", async () => {
+    await useApp.getState().boot()
+    fake.onEvent?.({
+      kind: "compacted",
+      seq: 0,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "compact-summarizer",
+      text: JSON.stringify({ auto: true, phase: "start", tokens_before: 90000 }),
+      created_at: new Date().toISOString(),
+    })
+    expect(useApp.getState().status.compressing).toBe(true)
+    fake.onEvent?.({
+      kind: "done",
+      seq: 52,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      text: "ok",
+      created_at: new Date().toISOString(),
+    })
+    expect(useApp.getState().status.compressing).toBeFalsy()
+    expect(useApp.getState().status.running).toBe(false)
   })
 
   it("updates the banner from a goal event", async () => {

@@ -11,8 +11,8 @@ export const SIDEBAR_PREVIEW_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000
 /** Split one sidebar group into the rows shown by default and the ones
  *  behind Show more. A row is previewed when it is among the first
  *  SIDEBAR_PREVIEW_LIMIT that were active inside SIDEBAR_PREVIEW_MAX_AGE_MS.
- *  keepIds (the open conversation, a running one) stay in the preview so
- *  the row you are looking at cannot vanish under More. */
+ *  keepIds (the open conversation, a running one, a parked wait) stay in
+ *  the preview so the row you are looking at cannot vanish under More. */
 export function splitSidebarPreview(
   threads: Thread[],
   opts?: { now?: Date; keepIds?: Iterable<string> },

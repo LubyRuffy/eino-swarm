@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots"
 import { StatusDot } from "@/components/app/transcript"
+import { WaitMark } from "@/components/app/wait-mark"
 import { useSortableList } from "@/lib/sortable"
 import type { Thread } from "@/lib/types"
 import { useT } from "@/lib/use-t"
@@ -19,12 +20,14 @@ import { cn } from "@/lib/utils"
 type DragBind = ReturnType<ReturnType<typeof useSortableList>["bind"]>
 
 /** One conversation in the sidebar: Recents, a project folder, or Pinned.
- *  The leading size-4 slot is the folder column — empty, or a progress
- *  dot when the turn is running — so titles line up with the project name. */
+ *  The leading size-4 slot is the folder column — empty, a progress dot
+ *  while a turn is live, or a clock while a wait is parked — so titles
+ *  line up with the project name. */
 export function SidebarThreadRow({
   thread,
   active,
   running,
+  waiting,
   drag,
   onOpen,
   onRename,
@@ -34,6 +37,7 @@ export function SidebarThreadRow({
   thread: Thread
   active: boolean
   running: boolean
+  waiting?: boolean
   drag?: DragBind
   onOpen: (id: string) => void
   onRename: (id: string, title: string) => void
@@ -96,7 +100,11 @@ export function SidebarThreadRow({
         className="flex min-w-0 flex-1 items-center gap-1 text-left"
       >
         <SidebarKindSlot>
-          {running ? <StatusDot status="running" /> : null}
+          {running ? (
+            <StatusDot status="running" />
+          ) : waiting ? (
+            <WaitMark />
+          ) : null}
         </SidebarKindSlot>
         <span data-testid="row-label" className="truncate">
           {thread.title || t("sidebar.untitled")}

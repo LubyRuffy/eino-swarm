@@ -67,6 +67,7 @@ import { useApp } from "@/store/app"
  *  it finishes. ⌘Enter (or Steer on a queued row) injects into this turn. */
 export function Composer({
   running,
+  compressing,
   models,
   provider,
   model,
@@ -114,6 +115,9 @@ export function Composer({
   onLeavePlan,
 }: {
   running: boolean
+  /** Live auto-compact. The transcript already has a notice; this banner is
+   *  so a queued follow-up is not mistaken for a freeze. */
+  compressing?: boolean
   models: ModelInfo[]
   provider?: string
   model?: string
@@ -464,6 +468,14 @@ export function Composer({
             onRequeue={(id, next) => onRequeueFollowup?.(id, next)}
             onClear={() => onClearFollowups?.()}
           />
+          {compressing ? (
+            <p
+              data-testid="compressing-banner"
+              className="mb-2 text-xs text-muted-foreground"
+            >
+              {t("notice.compressing")}
+            </p>
+          ) : null}
           <div className="relative">
             {draft && slashOpen ? (
               <ComposerSlashMenu

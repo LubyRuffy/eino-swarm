@@ -37,6 +37,7 @@ type sessionMemoryPool struct {
 	mu       sync.Mutex
 	stopped  bool
 	inflight map[string]chan struct{}
+	wg       sync.WaitGroup
 }
 
 func newSessionMemoryPool() sessionMemoryPool {
@@ -50,17 +51,48 @@ func (p *sessionMemoryPool) begin(threadID string) chan struct{} {
 		return nil
 	}
 	if ch, ok := p.inflight[threadID]; ok {
+		p.wg.Add(1)
 		return ch
 	}
 	ch := make(chan struct{}, 1)
 	p.inflight[threadID] = ch
+	p.wg.Add(1)
 	return ch
 }
+
+// spawn accounts for a post-turn wrapper before skip checks or begin().
+// Shutdown would otherwise see wg==0 and return while briefing/review are
+// already in flight, then refuse the review that was supposed to follow.
+func (p *sessionMemoryPool) spawn() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.stopped {
+		return false
+	}
+	p.wg.Add(1)
+	return true
+}
+
+func (p *sessionMemoryPool) done() { p.wg.Done() }
 
 func (p *sessionMemoryPool) stop() {
 	p.mu.Lock()
 	p.stopped = true
 	p.mu.Unlock()
+}
+
+func (p *sessionMemoryPool) wait(d time.Duration) bool {
+	finished := make(chan struct{})
+	go func() {
+		p.wg.Wait()
+		close(finished)
+	}()
+	select {
+	case <-finished:
+		return true
+	case <-time.After(d):
+		return false
+	}
 }
 
 // shouldRefreshSessionMemory is Claude Code's session-memory gate: first
@@ -251,6 +283,7 @@ func (e *Engine) syncSessionMemory(ctx context.Context, threadID, turnID string,
 	if gate == nil {
 		return nil
 	}
+	defer e.sessions.done()
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -335,6 +368,33 @@ func (e *Engine) recordSessionMemory(threadID, turnID, summary string, through i
 		Kind: KindSessionMemory, AgentID: SessionMemoryAgentID,
 		Text: body, Err: errText,
 	})
+}
+
+// scheduleSessionAndReview refreshes the rolling briefing, then starts the
+// post-turn memory review. Both are extras: a queued follow-up must not wait
+// for either, or the composer looks idle with a message that never starts.
+func (e *Engine) scheduleSessionAndReview(threadID string, turn *store.Turn, status string,
+	pc *projectContext, final string,
+) {
+	if !e.sessions.spawn() {
+		return
+	}
+	turnID := ""
+	if turn != nil {
+		turnID = turn.ID
+	}
+	go func() {
+		defer e.sessions.done()
+		defer func() {
+			if r := recover(); r != nil {
+				e.log.Error("session briefing panicked", "turn", turnID, "panic", r)
+			}
+		}()
+		if err := e.syncSessionMemory(context.Background(), threadID, turnID, false); err != nil {
+			e.log.Warn("could not refresh the session briefing", "turn", turnID, "err", err)
+		}
+		e.scheduleReview(threadID, turn, status, pc, final)
+	}()
 }
 
 func (e *Engine) sessionMemoryOf(threadID string) string {

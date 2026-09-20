@@ -41,6 +41,7 @@ describe("ScheduleBanner", () => {
     const onCancel = vi.fn()
     render(<ScheduleBanner wake={wake()} onCancel={onCancel} onRunNow={vi.fn()} />)
     expect(screen.getByTestId("schedule-banner")).toBeInTheDocument()
+    expect(screen.getByTestId("wait-mark")).toHaveAttribute("aria-label", "waiting")
     expect(screen.getByTestId("schedule-next").textContent?.length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole("button", { name: "Cancel wait" }))
     expect(onCancel).toHaveBeenCalled()

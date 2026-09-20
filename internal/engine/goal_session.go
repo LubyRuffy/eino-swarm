@@ -141,14 +141,15 @@ func (e *Engine) compactBeforeGoalContinue(threadID string) {
 		return
 	}
 	turnID := e.lastTurnID(threadID)
-	e.captureGoalSessionProgress(threadID, turnID)
-
+	// Drain an in-flight post-turn refresh first. Merging wrap-up onto a
+	// stale read, then letting that refresh write, dropped the wrap-up.
 	ctx, cancel := context.WithTimeout(context.Background(), e.sessionMemoryRefreshTimeout())
 	defer cancel()
 	if err := e.syncSessionMemory(ctx, threadID, turnID, false); err != nil {
 		e.log.Warn("could not refresh the session briefing before a goal auto-continue",
 			"thread", threadID, "err", err)
 	}
+	e.captureGoalSessionProgress(threadID, turnID)
 	if latest, e2 := e.store.GetThread(threadID); e2 == nil {
 		th = latest
 	}

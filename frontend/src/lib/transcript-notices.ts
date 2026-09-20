@@ -12,6 +12,10 @@ type CompactPayload = {
   tokens_after?: number
 }
 
+export function compactIsStarting(ev: { text?: string; err?: string }): boolean {
+  return !ev.err && parseCompactPayload(ev.text)?.phase === "start"
+}
+
 function parseCompactPayload(text?: string): CompactPayload | undefined {
   const raw = text?.trim() ?? ""
   if (!raw.startsWith("{")) return undefined

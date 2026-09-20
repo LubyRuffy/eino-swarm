@@ -4,6 +4,7 @@ export const en = {
   "header.idle": "Idle",
   "header.working": "Working",
   "header.waiting": "Waiting",
+  "header.compressing": "Compressing",
   "header.newConversation": "New conversation",
   "header.hideConversations": "Hide conversations",
   "header.showConversations": "Show conversations",
@@ -317,6 +318,7 @@ export const en = {
   "tool.diffMore": "{n} more lines",
 
   "status.running": "running",
+  "status.waiting": "waiting",
   "status.done": "done",
   "status.failed": "failed",
   "status.cancelled": "stopped",

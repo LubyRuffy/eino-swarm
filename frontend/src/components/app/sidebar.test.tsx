@@ -313,6 +313,47 @@ describe("Sidebar pin and folders", () => {
     expect(screen.getByTestId("row-label").nextElementSibling).toBeNull()
   })
 
+  it("marks a parked wait in the folder column so it does not look idle", () => {
+    render(
+      <Sidebar
+        threads={[thread("th_1", "Loose")]}
+        waitingIds={new Set(["th_1"])}
+        {...noop}
+      />,
+    )
+    expect(screen.getByTestId("wait-mark")).toHaveAttribute("aria-label", "waiting")
+    expect(screen.queryByLabelText("running")).not.toBeInTheDocument()
+  })
+
+  it("keeps a live turn's progress when that conversation is also waiting", () => {
+    render(
+      <Sidebar
+        threads={[thread("th_1", "Loose", { running: true })]}
+        runningId="th_1"
+        waitingIds={new Set(["th_1"])}
+        {...noop}
+      />,
+    )
+    expect(screen.getByLabelText("running")).toBeInTheDocument()
+    expect(screen.queryByTestId("wait-mark")).not.toBeInTheDocument()
+  })
+
+  it("keeps a waiting conversation in the Recents preview", () => {
+    render(
+      <Sidebar
+        threads={Array.from({ length: 6 }, (_, i) =>
+          thread(`th_${i}`, `Loose ${i}`, {
+            last_active_at: new Date(Date.now() - i * 60_000).toISOString(),
+          }),
+        )}
+        waitingIds={new Set(["th_5"])}
+        {...noop}
+      />,
+    )
+    expect(screen.getByText("Loose 5")).toBeInTheDocument()
+    expect(screen.getByTestId("wait-mark")).toBeInTheDocument()
+  })
+
   it("keeps a running conversation visible when another project is open", () => {
     const openProject = {
       id: "pj_open",

@@ -223,6 +223,10 @@ export interface ThreadStatus {
   awaiting_continue?: boolean
   /** True while ask_user is blocked waiting for the human. Still `running`. */
   awaiting_answer?: boolean
+  /** True while auto-compact is rewriting the next prompt. Still `running`.
+   *  Live only: `compacted` with `phase: "start"` sets it, a later compact
+   *  result or `done` clears it. */
+  compressing?: boolean
 }
 
 export interface Turn {

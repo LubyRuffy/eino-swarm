@@ -1,12 +1,14 @@
 package engine
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -284,6 +286,74 @@ func TestReleaseOfAnOldTurnDoesNotCancelTheLiveOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitForTurn(t, e, first.ID)
+}
+
+// A post-turn session briefing is an extra. The composer already looks idle
+// (the turn released before the summarizer runs). Blocking the follow-up
+// behind that call is what a queued "do this next" looks like a freeze.
+func TestFollowupStartsWithoutWaitingForSessionMemory(t *testing.T) {
+	prev := compactGenerate
+	t.Cleanup(func() { compactGenerate = prev })
+	e := newTestEngine(t)
+
+	hold := make(chan struct{})
+	t.Cleanup(func() {
+		select {
+		case <-hold:
+		default:
+			close(hold)
+		}
+	})
+	compactGenerate = func(ctx context.Context, m model.BaseChatModel, msgs []*schema.Message) (*schema.Message, error) {
+		if len(msgs) > 0 && msgs[0] != nil && msgs[0].Content == sessionMemoryPrompt() {
+			<-hold
+		}
+		return prev(ctx, m, msgs)
+	}
+
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Cross the init token floor so the post-turn refresh actually calls
+	// the summarizer. Events, not messages: the manager prompt stays small.
+	e.record(store.Event{
+		ThreadID: th.ID, Kind: KindUser,
+		Text: strings.Repeat("x", sessionMemoryInitTokens*4),
+	})
+
+	first, err := e.StartTurn(th.ID, "do the first piece")
+	if err != nil {
+		t.Fatal(err)
+	}
+	queueWhileRunning(t, e, th.ID, "then the next piece")
+	waitForTurn(t, e, first.ID)
+
+	deadline := time.Now().Add(2 * time.Second)
+	var turns []store.Turn
+	for time.Now().Before(deadline) {
+		turns, err = e.Store().ListTurns(th.ID)
+		if err != nil {
+			t.Fatalf("ListTurns: %v", err)
+		}
+		if len(turns) >= 2 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if len(turns) < 2 || turns[1].UserText != "then the next piece" {
+		t.Fatalf("follow-up stayed queued behind the session briefing: %+v", turns)
+	}
+	close(hold)
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if hasKind(t, e, th.ID, KindSessionMemory) {
+			waitForTurn(t, e, turns[1].ID)
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the background briefing never recorded session_memory")
 }
 
 func TestFlushFollowupSkipsCancelledTurns(t *testing.T) {

@@ -18,8 +18,8 @@ export function isProjectExpanded(
   opts: {
     activeProjectId?: string
     selectedId?: string
-    /** Folders that have a mid-turn conversation stay open so the
-     *  progress mark is visible without clicking in. An explicit
+    /** Folders that have a mid-turn conversation or a parked wait stay
+     *  open so the mark is visible without clicking in. An explicit
      *  collapse still wins. */
     runningProjectIds?: Iterable<string>
     overrides: Record<string, boolean>
@@ -43,10 +43,14 @@ export function isProjectExpanded(
 export function runningProjectIds(
   threads: Array<{ id: string; project_id?: string; running: boolean }>,
   runningId?: string,
+  waitingIds?: Iterable<string>,
 ): Set<string> {
+  const waiting = waitingIds ? new Set(waitingIds) : undefined
   const ids = new Set<string>()
   for (const thread of threads) {
-    if (!(thread.running || thread.id === runningId) || !thread.project_id) continue
+    const live =
+      thread.running || thread.id === runningId || Boolean(waiting?.has(thread.id))
+    if (!live || !thread.project_id) continue
     ids.add(thread.project_id)
   }
   return ids
