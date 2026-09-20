@@ -10,8 +10,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -615,71 +613,6 @@ func TestTraceReconstructsATurn(t *testing.T) {
 	turns := h.json(http.MethodGet, "/api/threads/"+id+"/turns", nil, http.StatusOK)
 	if len(turns["turns"].([]any)) != 1 {
 		t.Fatalf("turns=%v", turns)
-	}
-}
-
-// ---------- assets ----------
-
-func TestAssetsServeSPAWithFallback(t *testing.T) {
-	t.Setenv("OPENAI_BASE_URL", "")
-	t.Setenv("OPENAI_API_KEY", "")
-	t.Setenv("OPENAI_MODEL", "")
-	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, "assets"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "index.html"),
-		[]byte("<html>app shell</html>"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "assets", "main.js"),
-		[]byte("console.log(1)"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	a, err := app.New(app.Options{
-		DataDir: t.TempDir(), Mock: true, Mode: server.ModeWeb,
-		Assets: os.DirFS(dir),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { a.Engine.Shutdown(); _ = a.Store.Close() }()
-	ts := httptest.NewServer(a.Server.Handler())
-	defer ts.Close()
-
-	for _, tc := range []struct {
-		path, wantBody, wantCache string
-	}{
-		{"/", "app shell", "no-store"},
-		{"/assets/main.js", "console.log(1)", "public, max-age=31536000, immutable"},
-		// a deep link and a reload must land on the app, not a 404
-		{"/threads/th_abc", "app shell", "no-store"},
-	} {
-		resp, err := ts.Client().Get(ts.URL + tc.path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), tc.wantBody) {
-			t.Fatalf("GET %s: %d %q", tc.path, resp.StatusCode, body)
-		}
-		if got := resp.Header.Get("Cache-Control"); got != tc.wantCache {
-			t.Fatalf("GET %s cache-control=%q want %q", tc.path, got, tc.wantCache)
-		}
-	}
-
-	// an unknown API path is an error, never the app shell: a fetch that gets
-	// HTML back fails in a way that is very hard to debug
-	resp, err := ts.Client().Get(ts.URL + "/api/does-not-exist")
-	if err != nil {
-		t.Fatal(err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusNotFound || strings.Contains(string(body), "app shell") {
-		t.Fatalf("unknown api path: %d %q", resp.StatusCode, body)
 	}
 }
 

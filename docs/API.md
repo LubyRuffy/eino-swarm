@@ -1169,9 +1169,15 @@ into a transcript archive. Token fields are `0` when the endpoint did not say.
 
 ## Static assets
 
-`GET /` and any unmatched path serve the SPA (`frontend/dist`), with
-`index.html` as the fallback so client-side routes survive a refresh. Unknown
-`/api/*` paths return `404` JSON instead of HTML. From a checkout, `desktop`
-and `web` rebuild that bundle when the sources changed and serve the
-directory on disk (`frontend.Load`); a shipped binary serves the `go:embed`
-snapshot. Without `index.html` the API still works and `GET /` is a 404.
+`GET /` and any unmatched path that looks like a client route serve the SPA
+(`frontend/dist`), with `index.html` as the fallback so a deep link and a
+browser reload land on the app. Missing files under `/assets/` (and any other
+path with a file extension) return `404` text, not HTML: WebKit refuses to
+execute a module whose `Content-Type` is `text/html`, which is how a hashed
+JS file that vanished used to paint a white window. Unknown `/api/*` paths
+return `404` JSON instead of HTML. The tree is copied into memory when the
+server starts, so a later Vite rebuild of `frontend/dist` cannot delete hashed
+files out from under a live `desktop` / `web` process. From a checkout,
+`desktop` and `web` rebuild that bundle when the sources changed
+(`frontend.Load`); a shipped binary serves the `go:embed` snapshot. Without
+`index.html` the API still works and `GET /` is a 404.

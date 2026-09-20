@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"io/fs"
 	"net/http"
 	"path"
@@ -13,7 +14,22 @@ import (
 // anything that is not a real file and not under /api is answered with
 // index.html, so a deep link and a browser reload land on the app instead of a
 // 404.
+//
+// The tree is copied into memory first. desktop and web both call
+// frontend.Load, which points at frontend/dist on disk; a second `go run`
+// (or `make frontend`) runs Vite, which deletes the hashed JS the first
+// window's index.html still names. Serving that HTML as the "JS" file is
+// how WebKit paints a white window (`text/html` is not a valid JavaScript
+// MIME type for a module script). A missing file under /assets/ therefore
+// 404s instead of falling back, and the copy means the live directory can
+// be rewritten without taking the already-open window with it.
 func (s *Server) mountAssets(r *gin.Engine, assets fs.FS) {
+	frozen, err := freezeAssets(assets)
+	if err != nil {
+		s.log.Warn("could not freeze the front end bundle; serving it live", "err", err)
+	} else {
+		assets = frozen
+	}
 	index, err := fs.ReadFile(assets, "index.html")
 	if err != nil {
 		s.log.Warn("no front end bundle is embedded; only the API is available", "err", err)
@@ -43,7 +59,12 @@ func (s *Server) mountAssets(r *gin.Engine, assets fs.FS) {
 			return
 		}
 		if f, err := assets.Open(name); err == nil {
+			info, statErr := f.Stat()
 			_ = f.Close()
+			if statErr != nil || info.IsDir() {
+				notFoundAsset(c)
+				return
+			}
 			// Hashed bundle file names make the content immutable, so the
 			// desktop shell and the browser can both cache them hard.
 			if strings.HasPrefix(name, "assets/") {
@@ -52,6 +73,48 @@ func (s *Server) mountAssets(r *gin.Engine, assets fs.FS) {
 			files.ServeHTTP(c.Writer, c.Request)
 			return
 		}
+		if bundledFile(name) {
+			notFoundAsset(c)
+			return
+		}
 		serveIndex(c)
 	})
+}
+
+func notFoundAsset(c *gin.Context) {
+	c.Data(http.StatusNotFound, "text/plain; charset=utf-8", []byte("not found"))
+}
+
+func bundledFile(name string) bool {
+	return name == "assets" || strings.HasPrefix(name, "assets/") || path.Ext(name) != ""
+}
+
+func freezeAssets(src fs.FS) (fs.FS, error) {
+	out := snapFS{}
+	err := fs.WalkDir(src, ".", func(name string, d fs.DirEntry, err error) error {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil
+			}
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		data, err := fs.ReadFile(src, name)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		cp := make([]byte, len(data))
+		copy(cp, data)
+		out[name] = cp
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }

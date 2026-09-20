@@ -13,6 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A live desktop window no longer goes white when another `go run` rebuilds the UI.**
+  `frontend.Load` serves `dist/` on disk, and Vite deletes the hashed JS the
+  already-open window's `index.html` still names. The SPA fallback then
+  answered that request with HTML (`text/html`), which WebKit will not
+  execute as a module. The bundle is now copied at server start, and a
+  missing `/assets/*` file is a 404.
+
 - **A queued follow-up no longer freezes behind post-turn memory.** After
   `done` the composer already looked Idle, then the runtime sat on a
   session-briefing model call before popping the queue — so "1 queued"
