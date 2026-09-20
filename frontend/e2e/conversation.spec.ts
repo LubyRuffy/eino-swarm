@@ -87,8 +87,10 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible()
   const agentLog = page.getByTestId("agent-scroller")
   await expect(agentLog).toBeVisible()
-  // write lands as a highlighted body, not the one-line status eino-tools
-  // returns to the model.
+  // write stays collapsed like exec; the hunk is behind a click, not a
+  // wall of additions and not the one-line status eino-tools returns.
+  await expect(agentLog.getByTestId("file-diff")).toHaveCount(0)
+  await agentLog.getByRole("button", { name: /write/ }).click()
   const written = agentLog.getByTestId("file-diff")
   await expect(written).toBeVisible()
   await expect(written).toContainText("notes/researcher.md")

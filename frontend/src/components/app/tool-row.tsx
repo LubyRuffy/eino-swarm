@@ -20,9 +20,8 @@ export function ToolRow({ block, reveal }: { block: Block; reveal?: boolean }) {
   // null until they click. useState(pending) opened a live exec and then
   // left the dump on screen after it returned — a wall nobody asked for.
   // Exec/python_runner stay collapsed; the latest line rides the summary.
+  // edit/write too: the hunk is a wall, +N −M on the row is the signal.
   // Other tools still open while pending and fold when the result lands.
-  // edit/write stay open: the hunk is the thing they came to review, and the
-  // tool result is only a status sentence.
   const [choice, setChoice] = useState<boolean | null>(null)
   const toolName = tool?.name
   const toolArgs = tool?.args
@@ -36,9 +35,11 @@ export function ToolRow({ block, reveal }: { block: Block; reveal?: boolean }) {
   const command = tool.name === "exec" ? execCommand(tool.args) : ""
   const liveLine = tool.pending && view.body ? lastLine(applyCarriageReturns(view.body)) : ""
   const watchLive =
-    Boolean(tool.pending) && tool.name !== "exec" && tool.name !== "python_runner"
-  const fileChange = Boolean(view.diff)
-  const expanded = (choice ?? (watchLive || fileChange)) || Boolean(reveal)
+    Boolean(tool.pending) &&
+    tool.name !== "exec" &&
+    tool.name !== "python_runner" &&
+    !view.diff
+  const expanded = (choice ?? watchLive) || Boolean(reveal)
   return (
     <Disclosure
       open={expanded}

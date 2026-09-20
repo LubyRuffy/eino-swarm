@@ -13,6 +13,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **`edit` / `write` rows stay collapsed until clicked.** They used to force
+  the hunk open (the same mistake as live `exec` dumping stdout). The
+  collapsed row still shows the path and `+N −M`; open it to see the
+  highlighted change.
+
 - **macOS desktop can reach LAN model endpoints.** Sequoia+ Local Network
   privacy treats the Wails window as its own app. `go run ./cmd/zwai
   desktop` was a naked binary (`a.out`, no Info.plist), so Discover
@@ -85,9 +90,9 @@ co-working app built on it. The library API is unchanged except where noted
   additions, syntax colours from the path suffix, `+N` (write) or `+N −M`
   (edit) on the collapsed row. A write of hundreds of lines is clipped
   in the expanded view; the count is still the real size. An empty write
-  is the path and the empty-file line, not `+0`. The row stays open
-  after it lands so the hunk is on screen; a click still folds it. A
-  failed call keeps the error above the attempted change.
+  is the path and the empty-file line, not `+0`. The row stays collapsed
+  until clicked, same as `exec` — a transcript of writes is not a wall of
+  hunks. A failed call keeps the error above the attempted change.
 
 - **Wake banner is Run now / Cancel wait, not an icon-only X.** The X sat
   under the goal banner's dismiss, and the labeled cancel lived on a

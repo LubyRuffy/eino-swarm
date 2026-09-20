@@ -143,7 +143,7 @@ describe("ToolRow", () => {
     expect(screen.getByTestId("tool-output").textContent).toBe("done")
   })
 
-  it("keeps a finished edit open so the diff is on screen", () => {
+  it("keeps a finished edit collapsed until the user opens it", () => {
     const args = JSON.stringify({
       file_path: "pkg/alpha.go",
       search_block: "return 0",
@@ -160,12 +160,12 @@ describe("ToolRow", () => {
     )
     expect(screen.getByRole("button", { name: /edit/ })).toHaveTextContent("+1")
     expect(screen.getByRole("button", { name: /edit/ })).toHaveTextContent("−1")
-    expect(screen.getByTestId("file-diff")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: /edit/ }))
     expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /edit/ }))
+    expect(screen.getByTestId("file-diff")).toBeInTheDocument()
   })
 
-  it("keeps a finished write open so the new file is on screen", () => {
+  it("keeps a finished write collapsed until the user opens it", () => {
     render(
       <ToolRow
         block={toolBlock({
@@ -179,9 +179,56 @@ describe("ToolRow", () => {
       />,
     )
     expect(screen.getByRole("button", { name: /write/ })).toHaveTextContent("+1")
-    expect(screen.getByTestId("file-diff")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: /write/ }))
     expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /write/ }))
+    expect(screen.getByTestId("file-diff")).toBeInTheDocument()
+  })
+
+  it("does not dump a pending write hunk until the row is opened", () => {
+    render(
+      <ToolRow
+        block={toolBlock({
+          name: "write",
+          args: JSON.stringify({
+            file_path: "pkg/alpha.go",
+            content: "package alpha\n",
+          }),
+          pending: true,
+        })}
+      />,
+    )
+    expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /write/ })).toHaveTextContent("+1")
+    fireEvent.click(screen.getByRole("button", { name: /write/ }))
+    expect(screen.getByTestId("file-diff")).toBeInTheDocument()
+  })
+
+  it("keeps write open after it finishes if the reader opened it", () => {
+    const args = JSON.stringify({
+      file_path: "pkg/alpha.go",
+      content: "package alpha\n",
+    })
+    const { rerender } = render(
+      <ToolRow
+        block={toolBlock({
+          name: "write",
+          args,
+          pending: true,
+        })}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: /write/ }))
+    expect(screen.getByTestId("file-diff")).toBeInTheDocument()
+    rerender(
+      <ToolRow
+        block={toolBlock({
+          name: "write",
+          args,
+          result: "Updated file pkg/alpha.go",
+        })}
+      />,
+    )
+    expect(screen.getByTestId("file-diff")).toBeInTheDocument()
   })
 
   it("folds a non-exec tool when it finishes unless the reader opened it", () => {
