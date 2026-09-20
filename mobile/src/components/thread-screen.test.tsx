@@ -36,6 +36,10 @@ describe("ThreadScreen", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: "Steer" }))
     expect(onSteer).toHaveBeenCalledWith("nudge")
+    expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument()
+    const transcript = document.querySelector("ol")
+    expect(transcript).toHaveClass("min-h-0")
+    expect(transcript?.closest("main")).toHaveClass("h-[100dvh]")
   })
 
   it("shows a standing goal and the ask card", () => {
@@ -82,5 +86,60 @@ describe("ThreadScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "A" }))
     fireEvent.click(screen.getByTestId("ask-submit"))
     expect(onAnswerStructured).toHaveBeenCalledWith("c1", { q1: { answers: ["A"] } })
+  })
+
+  it("keeps a tool result collapsed until tapped", () => {
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live" }}
+        blocks={[
+          {
+            id: "tool-1",
+            kind: "tool",
+            toolName: "exec",
+            text: '{"n":1,"ok":true}',
+          },
+          { id: "spawn-1", kind: "spawn", text: "worker" },
+        ]}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("exec")).toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('{"n":1')
+    expect(screen.queryByText("worker")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /exec/ }))
+    expect(document.body.textContent).toContain('{"n":1')
+  })
+
+  it("asks for earlier rows when the transcript is pulled up", () => {
+    const onOlder = vi.fn()
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live" }}
+        blocks={[{ id: "1", kind: "answer", text: "now" }]}
+        hasMore
+        onBack={vi.fn()}
+        onOlder={onOlder}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Earlier" }))
+    expect(onOlder).toHaveBeenCalledTimes(1)
+    const transcript = document.querySelector("ol")
+    if (!transcript) throw new Error("missing transcript")
+    Object.defineProperty(transcript, "scrollTop", { value: 4, configurable: true })
+    Object.defineProperty(transcript, "scrollHeight", { value: 800, configurable: true })
+    Object.defineProperty(transcript, "clientHeight", { value: 400, configurable: true })
+    fireEvent.scroll(transcript)
+    expect(onOlder).toHaveBeenCalledTimes(2)
   })
 })

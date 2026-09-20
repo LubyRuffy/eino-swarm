@@ -5,6 +5,7 @@ import {
   encodeRequest,
   OpEvent,
   OpList,
+  OpLog,
   OpUnwatch,
   OpWatch,
   PROTOCOL_V,
@@ -76,5 +77,16 @@ describe("slim rpc", () => {
     )
     expect(decoded.op).toBe(OpEvent)
     expect(decoded.event?.seq).toBe(3)
+    const older = encodeRequest({
+      v: PROTOCOL_V,
+      id: "l",
+      op: OpLog,
+      thread_id: "t1",
+      before: 4,
+    })
+    expect(JSON.parse(new TextDecoder().decode(older))).toMatchObject({
+      op: OpLog,
+      before: 4,
+    })
   })
 })

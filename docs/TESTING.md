@@ -18,7 +18,7 @@ deterministic and fast enough to run on every change.
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
 | Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`), dismissible settings toasts | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet) | `cd frontend && npm run e2e` |
-| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, compact transcript / watch session | `cd mobile && npm test` |
+| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, resume picker (live turn / last thread), compact transcript / watch session | `cd mobile && npm test` |
 | Phone E2E | scan screen + paste of the same `pairlink:v1` URI (camera is the product path on device) | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, Start | see `mobile/README.md` (not in `make check`) |
 
@@ -40,7 +40,7 @@ Current Go coverage, from `go test -race -cover ./...`:
 | `internal/tui` | 87.6% |
 | `internal/app` | 87.9% |
 | `cmd/zwai` | 84.7% |
-| `internal/remote` | 91.1% |
+| `internal/remote` | 90.7% |
 
 `internal/remote` is the phone RPC. `TestListDefaultsToFiveAndOmitsProjectSecrets`
 is why the phone never sees a project prompt. `TestSlimListPayloadStaysBounded`
@@ -49,10 +49,18 @@ UDP-blocked path: QR pixels round-trip to the same URI, then list and send
 stay on `path=relay`. `TestWatchLiveSendAndUnwatch` plus the kinds freeze
 in `watch_test.go` keep phone `watch` on the same seq/kind bus as desktop
 SSE, clip `spawned` bodies, and stay under the 64KiB pairlink frame.
+`TestWatchOpensAtTheLiveEdgeNotTheOldestEvent` is why a long conversation
+on the phone does not start at seq 1. `TestWatchOpensOnTheLastTurnNotEarlierOnes`
+plus `TestLogPagesOlderEventsBeforeTheViewport` are why first paint is the
+last turn and pulling up loads earlier events.
+`TestStatusGoesOfflineWhenHubCloses` is why a dead hub socket cannot keep
+minting a QR the phone will redeem as `host offline`: status follows idle-drop
+and reconnect of that WebSocket.
 The Capacitor shell in `mobile/` has its own unit tests
 and a Playwright paste/scan screen; `mobile/native-project.test.ts` asserts the
 iOS and Android trees ship with camera permission and no compiled hub URL.
-`mobile/src/components/markdown.test.tsx` renders `$n$` as KaTeX and copies a
+`mobile/src/lib/resume.test.ts` is why bind opens a live turn (or the last
+thread) instead of parking on New conversation. `mobile/src/components/markdown.test.tsx` renders `$n$` as KaTeX and copies a
 fenced body. Camera on a real device is the product path (`make mobile-ios` /
 `make mobile-android`).
 
@@ -731,8 +739,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   (`composer-attachments.tsx`); a disabled composer ignores the drop.
   Send names the uploaded paths on the turn (`files` on `POST /turns`); a
   failed upload keeps the chip and does not start a turn.
-  `/plan` waits for the work after picking the command; `/plan <task>` submits
-  in one go. While `awaiting_answer` the placeholder is the Other prompt.
+  `/plan` waits for the work after picking the command (the box shows
+  `/plan ` plus a hint); `/plan <task>` submits in one go. Picking **goal**
+  writes `/goal ` the same way — wiping the token looked like a missed
+  click. A live turn still shows Send once the argument is present, next
+  to Stop. While `awaiting_answer` the placeholder is the Other prompt.
 - **`src/components/app/goal-banner.tsx`**: Pursuing / Blocked / Paused / Done,
   Start when Paused, Blocked, or Done (not while Pursuing between sessions),
   a Paused/idle reason line that this is not an error and Start resumes,
@@ -966,6 +977,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   token is a submit too, so a CJK objective glued to `/goal` is not a user
   message, and a fullwidth `／` or IME punctuation `、` is still a slash
   (the composer rewrites those to `/`). `/plan` is in the same catalog.
+  Picking a command that needs an argument completes `/name ` in the box
+  and keeps the textarea focused (menu `mousedown` is cancelled so the
+  click cannot steal the caret); wiping the token is not a pick.
   Filtering is
   prefix-or-contains, compact's hint is a percentage (hidden when used is 0),
   and unknown names are not commands. The menu is a listbox; the textarea
@@ -1053,7 +1067,7 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour) and `$n$` as KaTeX |
 | `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |
 | `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (title, prompt, Every (seconds) 60, Add wait), Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
-| `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it) |
+| `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it) |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR control; junk paste errors; a syntactically valid URI uses the same bind path |
 | `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline, Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, the tool catalogue on a never-saved config, settings written to the config file and read back, personality round-tripping through Settings → Personality, pinning a title-generation model when more than one name is listed, opening a collapsed provider row then discovering models into the default-model dropdown, a failed listing toasting over that open provider (in viewport, × dismisses it), **Back to app** remaining on screen on a short window when the Swarm page is long, Back to app sitting in the first 48px of a browser sheet (the desktop title-bar strip is not shipped to the tab), the Add-a-provider outline staying inside the Models scrollport, theme switching persisted, chrome language switching (restored to English because locale is in the shared yaml), the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), font / size / conversation width round-tripping through Settings → General, renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
 
@@ -1099,14 +1113,15 @@ a client at all is verified in the engine and reducer tests.
   runs. The panel, the transcript and the composer all change shape mid-turn.
 - **The phone apps**: `make mobile-ios` / `make mobile-android`. Scan the
   pairing QR from Settings → Phone. Paste is the same URI when the camera is
-  missing. After bind, the phone is a compact screen on the same conversation
+  missing. After bind, a live turn (or the last thread this phone opened)
+  opens; otherwise the inbox is the compact screen on the same conversation
   bus (send / follow-up / steer / stop / ask); Settings, Files, PTY and Trace
   stay on the PC. The hub hostname is typed on the PC, never shipped in the binary.
   Simulators: iOS can use a loopback hub; Android needs `adb reverse` onto
   that same hub port. `mobile/ios/App/AppUITests/BindFlowTests.swift` pastes
-  the offer from `simctl pbcopy`, asserts `path=` plus the seed conversation,
-  and Starts a thread. Android is the debug APK plus `adb reverse`. Neither
-  is in `make check`.
+  the offer from `simctl pbcopy`, taps Back if a thread already opened, asserts
+  `path=` plus the seed conversation, and Starts a thread. Android is the debug
+  APK plus `adb reverse`. Neither is in `make check`.
 
 ## When a turn misbehaves
 

@@ -1,0 +1,108 @@
+import { useState } from "react"
+
+import { PhoneMarkdown } from "@/components/markdown"
+import { t } from "@/lib/i18n"
+import type { CompactBlock } from "@/lib/transcript"
+import { cn } from "@/lib/cn"
+
+export function renderBlock(b: CompactBlock) {
+  if (b.kind === "user") {
+    return (
+      <div className="ml-10 rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
+        <p className="whitespace-pre-wrap">{b.text}</p>
+        {b.hasImages ? (
+          <p className="mt-1 text-xs opacity-80">{t("thread.image")}</p>
+        ) : null}
+      </div>
+    )
+  }
+  if (b.kind === "steer") {
+    return (
+      <div className="ml-10 rounded-2xl bg-accent px-3 py-2 text-sm">
+        <p className="whitespace-pre-wrap">{b.text}</p>
+      </div>
+    )
+  }
+  if (b.kind === "answer") {
+    return (
+      <div className={cn("mr-4 text-sm leading-relaxed", b.streaming && "opacity-90")}>
+        <PhoneMarkdown text={b.text} />
+      </div>
+    )
+  }
+  if (b.kind === "tool") {
+    return <ToolChip block={b} />
+  }
+  if (b.kind === "spawn") {
+    return null
+  }
+  if (b.kind === "error") {
+    return <p className="text-sm text-destructive">{b.text}</p>
+  }
+  if (b.kind === "notice") {
+    if (!b.text) return null
+    return <p className="text-[11px] text-muted-foreground">{b.text}</p>
+  }
+  return null
+}
+
+function ToolChip({ block }: { block: CompactBlock }) {
+  const [open, setOpen] = useState(false)
+  const name = block.toolName || t("thread.tool")
+  const summary = toolChipSummary(block)
+  const body = packedBody(block.text)
+  return (
+    <div>
+      <button
+        type="button"
+        className="flex max-w-full items-center gap-1.5 text-left text-xs text-muted-foreground"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span
+          className={cn(
+            "size-1.5 shrink-0 rounded-full",
+            block.pending
+              ? "animate-pulse bg-[hsl(var(--running))]"
+              : block.failed
+                ? "bg-destructive"
+                : "bg-muted-foreground/40",
+          )}
+          aria-hidden
+        />
+        <span className="shrink-0 font-mono">{name}</span>
+        {summary && !open ? <span className="min-w-0 truncate">{summary}</span> : null}
+      </button>
+      {open && body ? (
+        <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-[11px] text-muted-foreground">
+          {body}
+        </pre>
+      ) : null}
+    </div>
+  )
+}
+
+function toolChipSummary(b: CompactBlock): string {
+  const line = lastLine(b.text)
+  if (!line || looksPacked(line) || line === b.toolName) return ""
+  return clip(line, 48)
+}
+
+function packedBody(text: string): string {
+  return clip(text.trim(), 400)
+}
+
+function looksPacked(s: string): boolean {
+  const t = s.trim()
+  return t.startsWith("{") || t.startsWith("[")
+}
+
+function lastLine(text: string): string {
+  const lines = text.split("\n").map((row) => row.trim()).filter(Boolean)
+  return lines[lines.length - 1] ?? ""
+}
+
+function clip(s: string, n: number): string {
+  if (s.length <= n) return s
+  return s.slice(0, n) + "…"
+}

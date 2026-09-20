@@ -580,6 +580,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.remote.eventChars": "手机上的事件正文",
   "settings.remote.eventCharsHint":
     "每条事件推到手机时保留多少字。默认 4000。工具直播输出会再短一截。",
+  "settings.remote.watchEvents": "手机上的事件条数",
+  "settings.remote.watchEventsHint":
+    "打开会话时最后一轮最多推多少条，往上拉加载更早时也按这个分页。默认 80。",
   "settings.remote.qr": "配对 QR",
   "settings.remote.showQr": "显示配对 QR",
   "settings.remote.qrAlt": "配对二维码",

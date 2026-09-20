@@ -233,6 +233,91 @@ func TestCatchUpSkipsUnknownKindsAndClipsNewlines(t *testing.T) {
 	}
 }
 
+func TestWatchOpensAtTheLiveEdgeNotTheOldestEvent(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("tail", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 8; i++ {
+		if err := e.Store().AppendEvent(&store.Event{
+			ThreadID: th.ID, Kind: "user_message", Text: "m" + string(rune('a'+i)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pump, log := testPumpCfg(t, e, config.RemoteConfig{EventChars: 400, SummaryChars: 40, WatchEvents: 3})
+	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
+	pump.Dispatch(raw)
+	ready := log.waitOp(t, OpReady, 3*time.Second)
+	var texts []string
+	var seqs []int64
+	for _, r := range log.snapshot() {
+		if r.Op == OpEvent && r.Event != nil {
+			texts = append(texts, r.Event.Text)
+			seqs = append(seqs, r.Event.Seq)
+		}
+	}
+	if len(texts) != 3 || texts[0] != "mf" || texts[2] != "mh" {
+		t.Fatalf("tail %+v", texts)
+	}
+	if ready.Seq != seqs[len(seqs)-1] {
+		t.Fatalf("ready %d last %d", ready.Seq, seqs[len(seqs)-1])
+	}
+	if !ready.More {
+		t.Fatal("older rows must still exist")
+	}
+}
+
+func TestWatchOpensOnTheLastTurnNotEarlierOnes(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("last-turn", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := &store.Turn{ThreadID: th.ID, Status: store.TurnDone}
+	if err := e.Store().CreateTurn(old); err != nil {
+		t.Fatal(err)
+	}
+	live := &store.Turn{ThreadID: th.ID, Status: store.TurnRunning}
+	if err := e.Store().CreateTurn(live); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		if err := e.Store().AppendEvent(&store.Event{
+			ThreadID: th.ID, TurnID: old.ID, Kind: "user_message", Text: "old",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := e.Store().AppendEvent(&store.Event{
+		ThreadID: th.ID, TurnID: live.ID, Kind: "user_message", Text: "now",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().AppendEvent(&store.Event{
+		ThreadID: th.ID, TurnID: live.ID, Kind: "agent_message", Text: "ok",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pump, log := testPump(t, e)
+	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
+	pump.Dispatch(raw)
+	ready := log.waitOp(t, OpReady, 3*time.Second)
+	if !ready.More {
+		t.Fatal("earlier turn must still exist")
+	}
+	var texts []string
+	for _, r := range log.snapshot() {
+		if r.Op == OpEvent && r.Event != nil {
+			texts = append(texts, r.Event.Text)
+		}
+	}
+	if strings.Join(texts, ",") != "now,ok" {
+		t.Fatalf("last turn %+v", texts)
+	}
+}
+
 func TestWatchJunkJSONAndCatchUpFromSince(t *testing.T) {
 	e := testEngine(t)
 	th, err := e.CreateThread("since", "", "")
@@ -265,11 +350,15 @@ func TestWatchJunkJSONAndCatchUpFromSince(t *testing.T) {
 }
 
 func testPump(t *testing.T, e *engine.Engine) (*LinkPump, *pushLog) {
+	return testPumpCfg(t, e, config.RemoteConfig{EventChars: 400, SummaryChars: 40})
+}
+
+func testPumpCfg(t *testing.T, e *engine.Engine, cfg config.RemoteConfig) (*LinkPump, *pushLog) {
 	t.Helper()
 	log := &pushLog{}
 	pump := &LinkPump{
 		eng:       e,
-		cfg:       config.RemoteConfig{EventChars: 400, SummaryChars: 40},
+		cfg:       cfg,
 		path:      "relay",
 		sessionID: "sess",
 		send: func(b []byte) error {
@@ -348,6 +437,12 @@ func TestEventCharsAndSummaryDefaults(t *testing.T) {
 	if eventChars(config.RemoteConfig{EventChars: 9}) != 9 {
 		t.Fatal("event chars override")
 	}
+	if watchEvents(config.RemoteConfig{}) != config.DefaultRemoteWatchEvents {
+		t.Fatal("watch events default")
+	}
+	if watchEvents(config.RemoteConfig{WatchEvents: 12}) != 12 {
+		t.Fatal("watch events override")
+	}
 }
 
 func TestShouldPush(t *testing.T) {
@@ -380,7 +475,7 @@ func TestCatchUpClosedStore(t *testing.T) {
 	pump, _ := testPump(t, e)
 	_ = e.Store().Close()
 	highest := int64(0)
-	if err := pump.catchUp(context.Background(), th.ID, &highest); err == nil {
+	if _, err := pump.catchUp(context.Background(), th.ID, &highest); err == nil {
 		t.Fatal("expected replay error")
 	}
 }
@@ -410,7 +505,7 @@ func TestCatchUpStopsWhenTheWatchIsCancelled(t *testing.T) {
 		return orig(b)
 	}
 	highest := int64(0)
-	if err := pump.catchUp(ctx, th.ID, &highest); err == nil {
+	if _, err := pump.catchUp(ctx, th.ID, &highest); err == nil {
 		t.Fatal("cancelled catch-up must stop")
 	}
 	if len(log.snapshot()) >= 20 {

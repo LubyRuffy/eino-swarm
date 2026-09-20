@@ -221,3 +221,45 @@ func TestOfferAfterHubDies(t *testing.T) {
 		t.Fatal("offer must fail when the hub is gone")
 	}
 }
+
+func TestStatusGoesOfflineWhenHubCloses(t *testing.T) {
+	// HTTP pairing still works after the hub drops the WebSocket; the phone
+	// then redeem-fails with host offline. Status must follow the socket.
+	hubStore := pstore.NewMemory()
+	hub := relay.New(hubStore)
+	hub.Idle = 80 * time.Millisecond
+	srv := httptest.NewServer(hub.Handler())
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+	token, err := relay.IssueHostToken(ctx, hubStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := testEngine(t)
+	cfg := e.Config()
+	cfg.Remote.Enabled = true
+	cfg.Remote.HubURL = srv.URL
+	if err := cfg.WriteHostToken(token); err != nil {
+		t.Fatal(err)
+	}
+	h := New(e, cfg, nil)
+	h.keepAlive = time.Hour
+	h.Start()
+	t.Cleanup(h.Stop)
+	if !h.Status().Online {
+		t.Fatalf("status %+v", h.Status())
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) && h.Status().Online {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if h.Status().Online {
+		t.Fatal("quiet socket should idle-drop without keepalive")
+	}
+	if _, err := h.Offer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if !h.Status().Online {
+		t.Fatal("offer must wait for the host socket to reconnect")
+	}
+}

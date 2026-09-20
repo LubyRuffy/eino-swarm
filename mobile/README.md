@@ -1,14 +1,17 @@
 # zwai phone
 
 iOS and Android apps. The camera scan of a `pairlink:v1:…` QR is the product
-path; paste is the same URI, not a second protocol. After bind, the phone
-talks to the PC over pairlink (WebSocket relay). It never calls zwai `/api`.
+path; paste is the same URI, not a second protocol. After bind, a live
+turn (or the last thread this phone opened) opens immediately; otherwise
+the inbox lists projects and threads. The phone talks to the PC over
+pairlink (WebSocket relay). It never calls zwai `/api`.
 
 The phone is a compact screen on the same conversation as the desktop: same
-event kinds and seq (`watch` / `unwatch`), clipped bodies so a frame stays
-under 64KiB. Send, follow-up, steer, stop, ask, `/goal` and `/plan` land on
-the PC engine; the other window sees them live. Settings, Files, PTY and
-Trace stay on the PC.
+event kinds and seq (`watch` / `unwatch` / `log`), clipped bodies so a frame
+stays under 64KiB. First paint is the last turn; pulling up pages older
+events. Tool rows stay collapsed until tapped. Send, follow-up, steer, stop,
+ask, `/goal` and `/plan` land on the PC engine; the other window sees them
+live. Settings, Files, PTY and Trace stay on the PC.
 
 The native trees `ios/` and `android/` live in git. `npx cap add` is already
 done. iOS 15+ (Xcode 27 dropped 14). Capacitor CLI 7.6 lowercases
@@ -48,6 +51,10 @@ address and publish the port:
 adb reverse tcp:7780 tcp:7780   # when the hub listens on 7780
 ```
 
+A hub redeem `host offline` means this PC's WebSocket is not in the hub's
+live map. Settings → Phone must show online **when you mint a new QR**; a
+code already spent on that error will not redeem again.
+
 Capacitor Android WebView origin is `https://localhost`; the hub must answer
 CORS on HTTP redeem. After minting an offer:
 
@@ -60,8 +67,9 @@ xcodebuild test -project App.xcodeproj -scheme App \
   CODE_SIGNING_ALLOWED=NO
 ```
 
-`BindFlowTests` reuses a saved bind when the scan screen is gone, then
-asserts `path=` plus the seed conversation and Starts a new thread. It is
+`BindFlowTests` reuses a saved bind when the scan screen is gone. A live
+or last thread may already be open; the test taps Back to reach the inbox,
+then asserts `path=` plus the seed conversation and Starts a new thread. It is
 not part of `make check`. English accessibility names (`Pairing URI`,
 `Paste and bind`, `New message`, `Start`, `Back`, `Stop` / `Follow-up` /
 `Send`) are the unit-test locale (`en`); Playwright `e2e/scan.spec.ts` uses

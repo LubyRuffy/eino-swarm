@@ -106,7 +106,8 @@ provider carries `has_api_key` and `ready` instead.
   "ui": {"locale": "system", "font": "system", "font_size": "medium",
            "content_width": "comfortable"},
   "remote": {"enabled": false, "hub_url": "", "thread_limit": 5,
-             "summary_chars": 280, "open_turns": 6, "event_chars": 4000}
+             "summary_chars": 280, "open_turns": 6, "event_chars": 4000,
+             "watch_events": 80}
 }}
 ```
 
@@ -210,7 +211,7 @@ The phone does **not** call them; it talks pairlink to the hub, and the hub
 forwards sealed frames to this process.
 
 `remote` in `GET/PUT /api/settings` is `{enabled, hub_url, thread_limit,
-summary_chars, open_turns, event_chars}`. `hub_url` is whatever you typed — never compiled
+summary_chars, open_turns, event_chars, watch_events}`. `hub_url` is whatever you typed — never compiled
 in. A PUT of `remote` reloads the pairlink host. The Host Token is **not** in
 settings JSON; it lives under `$ZWAI_HOME/remote/`. Enabling pairing mints it
 if missing. `PUT /api/remote/token` can replace it.
@@ -222,7 +223,10 @@ if missing. `PUT /api/remote/token` can replace it.
  "fingerprint": "", "error": ""}
 ```
 
-`has_token` is a boolean. The Host Token is never returned.
+`has_token` is a boolean. The Host Token is never returned. `online` is the
+host WebSocket to the hub, not “pairing HTTP worked”. A quiet socket is
+dropped by the hub after 60s; the desktop keepalives and reconnects so a
+new QR can redeem.
 
 ### `PUT /api/remote/token`
 
@@ -259,18 +263,26 @@ Drops that phone. Further tickets fail at the hub.
 
 The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `list` / `more` / `open` / `start` / `send` / `steer` / `stop` / `answer` /
-`watch` / `unwatch`. Default list size is 5 threads; `more` pages.
+`watch` / `unwatch` / `log`. Default list size is 5 threads; `more` pages
+threads. `log` `{thread_id, before}` pages older transcript events (newest
+page older than `before`, size `watch_events`).
+The phone client opens a live turn (or the last thread it used) after the
+first `list`; `open` is that resume, not a new protocol.
 Responses carry `path` (`relay` or `direct`) and `session_id` so `zwai trace`
 can join the hop.
 
 `watch` `{thread_id, since}` subscribes to the same event kinds as desktop
-SSE (`frontend/src/lib/stream.ts` `KINDS`). The PC pushes `event` (one
-clipped `EventView`, same `seq` as the store), then `ready` `{seq, status}`,
-and `lagged` when a slow phone missed a live frame — catch-up is replayed
-from the database, not dropped. `spawned` bodies are stripped; `tool_delta`
-is one line; other text is capped by `event_chars` (default 4000). A frame
-over 64KiB is dropped rather than tearing the link. Settings, Files, PTY
-and Trace stay on the PC.
+SSE (`frontend/src/lib/stream.ts` `KINDS`). `since` omitted or `0` pushes the
+last turn (capped at `watch_events` from that turn's end), not the entire
+log from seq 1. `ready` `{seq, status, more}`: `more` means older events
+still exist; the phone pulls up and calls `log`. `more: false` is omitted on
+the wire (`omitempty`); the phone treats a missing `more` as false. `log`
+returns `events` plus `seq` (oldest seq of that store page) so an empty
+filtered page can still advance the cursor instead of killing paging. A later
+`since` or `lagged` replays the gap from the database, not dropped. `spawned`
+bodies are stripped; `tool_delta` is one line; other text is capped by
+`event_chars` (default 4000). A frame over 64KiB is dropped rather than
+tearing the link. Settings, Files, PTY and Trace stay on the PC.
 
 ## Projects
 

@@ -629,7 +629,7 @@ describe("Composer slash commands", () => {
     expect(screen.queryByTestId("slash-menu")).toBeNull()
   })
 
-  it("waits for the objective after picking goal", () => {
+  it("writes /goal into the box after picking from the menu", () => {
     const onSend = vi.fn()
     const onSetGoal = vi.fn()
     renderComposer({ onSend, onSetGoal })
@@ -637,25 +637,28 @@ describe("Composer slash commands", () => {
     fireEvent.change(input, { target: { value: "/" } })
     fireEvent.click(screen.getByTestId("slash-command-goal"))
     expect(screen.queryByTestId("slash-menu")).toBeNull()
-    expect(input).toHaveAttribute(
-      "placeholder",
-      "Standing objective for this conversation",
+    expect(input).toHaveValue("/goal ")
+    expect(input).toHaveFocus()
+    expect(input).toHaveAttribute("data-goal-draft", "true")
+    expect(screen.getByTestId("composer-command-hint").textContent).toMatch(
+      /Standing objective/,
     )
-    fireEvent.change(input, { target: { value: "keep going" } })
+    fireEvent.change(input, { target: { value: "/goal keep going" } })
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
     expect(onSetGoal).toHaveBeenCalledWith("keep going")
     expect(onSend).not.toHaveBeenCalled()
   })
 
-  it("uses the text before an inline slash as the goal", () => {
+  it("keeps preceding text when goal is picked after it", () => {
     const onSend = vi.fn()
     const onSetGoal = vi.fn()
     renderComposer({ onSend, onSetGoal })
     const input = screen.getByTestId("composer-input")
     fireEvent.change(input, { target: { value: "hello /" } })
     fireEvent.click(screen.getByTestId("slash-command-goal"))
-    expect(onSetGoal).toHaveBeenCalledWith("hello")
+    expect(onSetGoal).not.toHaveBeenCalled()
     expect(onSend).not.toHaveBeenCalled()
+    expect(input).toHaveValue("hello /goal ")
     expect(screen.queryByTestId("slash-menu")).toBeNull()
   })
 
@@ -726,6 +729,28 @@ describe("Composer slash commands", () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
+  it("keeps Send next to Stop after picking goal during a live turn", () => {
+    renderComposer({ running: true })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "/" } })
+    fireEvent.click(screen.getByTestId("slash-command-goal"))
+    expect(input).toHaveValue("/goal ")
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled()
+    fireEvent.change(input, { target: { value: "/goal keep going" } })
+    expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled()
+  })
+
+  it("leaves a bare /goal prompt in the box instead of wiping it", () => {
+    const onSetGoal = vi.fn()
+    renderComposer({ onSetGoal })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "/goal " } })
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSetGoal).not.toHaveBeenCalled()
+    expect(input).toHaveValue("/goal ")
+  })
+
   it("shows the standing objective and can clear it", () => {
     const onClearGoal = vi.fn()
     renderComposer({ goal: "keep going", onClearGoal })
@@ -764,15 +789,18 @@ describe("Composer slash commands", () => {
     expect(onResumeGoal).toHaveBeenCalled()
   })
 
-  it("waits for the work after picking plan", () => {
+  it("writes /plan into the box after picking from the menu", () => {
     const onSend = vi.fn()
     const onSetPlan = vi.fn()
     renderComposer({ onSend, onSetPlan })
     const input = screen.getByTestId("composer-input")
     fireEvent.change(input, { target: { value: "/" } })
     fireEvent.click(screen.getByTestId("slash-command-plan"))
-    expect(input).toHaveAttribute("placeholder", "What should we plan?")
-    fireEvent.change(input, { target: { value: "inspect then change" } })
+    expect(input).toHaveValue("/plan ")
+    expect(screen.getByTestId("composer-command-hint").textContent).toMatch(
+      /What should we plan/,
+    )
+    fireEvent.change(input, { target: { value: "/plan inspect then change" } })
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
     expect(onSetPlan).toHaveBeenCalledWith("inspect then change")
     expect(onSend).not.toHaveBeenCalled()

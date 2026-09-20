@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  clearSlashCommand,
   commandNeedsArgument,
   compactHint,
+  completeSlashCommand,
   contextHint,
   filterSlashCommands,
   nextSlashIndex,
   normalizeSlashPrefix,
   parseSlashSubmit,
+  slashAwaitingArg,
   slashDraft,
+  slashSubmitReady,
   SLASH_COMMANDS,
   withSlashHints,
 } from "./slash"
@@ -55,6 +59,48 @@ describe("normalizeSlashPrefix", () => {
     expect(normalizeSlashPrefix("hello")).toBe("hello")
     expect(normalizeSlashPrefix("hello 、")).toBe("hello /")
     expect(normalizeSlashPrefix("字、")).toBe("字/")
+  })
+})
+
+describe("completeSlashCommand", () => {
+  it("replaces the in-progress token with /name and a trailing space", () => {
+    expect(completeSlashCommand("/", { start: 0, end: 1 }, "goal")).toBe("/goal ")
+    expect(completeSlashCommand("/go", { start: 0, end: 3 }, "goal")).toBe(
+      "/goal ",
+    )
+    expect(completeSlashCommand("hello /", { start: 6, end: 7 }, "plan")).toBe(
+      "hello /plan ",
+    )
+  })
+})
+
+describe("clearSlashCommand", () => {
+  it("drops the slash token and keeps the preceding text", () => {
+    expect(clearSlashCommand("/goal ")).toBe("")
+    expect(clearSlashCommand("hello /goal ")).toBe("hello")
+    expect(clearSlashCommand("keep going")).toBe("keep going")
+  })
+})
+
+describe("slashAwaitingArg", () => {
+  it("is the command id only while the argument is still missing", () => {
+    expect(slashAwaitingArg("/goal")).toBe("goal")
+    expect(slashAwaitingArg("/goal ")).toBe("goal")
+    expect(slashAwaitingArg("/plan")).toBe("plan")
+    expect(slashAwaitingArg("/goal keep going")).toBeNull()
+    expect(slashAwaitingArg("/compact")).toBeNull()
+    expect(slashAwaitingArg("/")).toBeNull()
+  })
+})
+
+describe("slashSubmitReady", () => {
+  it("is true for compact immediately and for goal/plan once they have an argument", () => {
+    expect(slashSubmitReady("/compact")).toBe(true)
+    expect(slashSubmitReady("/goal")).toBe(false)
+    expect(slashSubmitReady("/goal ")).toBe(false)
+    expect(slashSubmitReady("/goal keep going")).toBe(true)
+    expect(slashSubmitReady("/plan inspect")).toBe(true)
+    expect(slashSubmitReady("hello")).toBe(false)
   })
 })
 

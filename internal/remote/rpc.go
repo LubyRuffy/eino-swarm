@@ -33,6 +33,8 @@ func Handle(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sess
 		return opErr(req.ID, path, sessionID, err)
 	case OpAnswer:
 		return handleAnswer(eng, req, path, sessionID)
+	case OpLog:
+		return handleLog(eng, cfg, req, path, sessionID)
 	default:
 		return fail(req.ID, path, sessionID, "unknown_op", "unknown op")
 	}

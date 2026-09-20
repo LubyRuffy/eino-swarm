@@ -22,7 +22,38 @@ co-working app built on it. The library API is unchanged except where noted
   `GET /api/threads` carries `awaiting_answer` on that row so another
   conversation's question is visible without opening it.
 
+- **Phone remote lands in the conversation that is actually going, not a new one.**
+  After bind the phone opens a live turn (the last one this device used, if
+  that is still running, otherwise the first live). If nothing is live it
+  reopens the last thread. The inbox is a tappable list; New conversation
+  is a compact composer, not the landing screen.
+
+- **The phone transcript is the last turn, not a dump of the whole log.**
+  Opening a conversation watches that turn (capped at `watch_events`);
+  pulling up pages older events with `log`. Tool rows stay collapsed to the
+  name until tapped, so a live `exec` is not a JSON wall.
+
 ### Fixed
+
+- **The phone no longer opens a long conversation at the first user message.**
+  `watch` with `since` 0 replayed the whole log from seq 1, so the first paint
+  was the oldest turn while the desktop was on the live edge. The transcript
+  is a bounded scroller stuck to the tail — `min-h-[100dvh]` used to grow the
+  page so the visible window was always the oldest rows. A reconnect still
+  fills the gap.
+
+- **Phone pairing no longer dies with `host offline` on a freshly minted QR.**
+  The PC still posted pairing codes over HTTP after the hub idle-dropped the
+  host WebSocket (60s quiet), so Settings said online and the phone redeem
+  got 409. The host now keepalives and reconnects that socket; `online` and
+  Show QR follow the socket, not the HTTP POST. The phone unwraps the hub
+  JSON instead of painting `{"error":"host offline"}`.
+
+- **Picking goal / plan from the slash menu no longer looks like a missed click.**
+  The pick used to wipe `/` and leave an empty box with only a placeholder
+  swap — and while a turn was running, Send was replaced by Stop. The menu
+  now writes `/goal ` / `/plan ` in the composer, keeps the caret, and still
+  shows Send once the argument is there.
 
 - **`read` / `edit` from eino-tools no longer lie to the model.** A UTF-8
   file whose first 4096 bytes cut a Chinese rune used to come back labelled

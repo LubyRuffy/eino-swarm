@@ -457,10 +457,23 @@ func (s *Store) ListEvents(threadID string, since int64, limit int) ([]Event, er
 // from the end), oldest first. hasMore is true when older rows still exist —
 // a reconnecting UI asks for a viewport of the live edge, then pages up.
 func (s *Store) ListTailEvents(threadID string, before int64, limit int) ([]Event, bool, error) {
+	return s.listTail(threadID, "", before, limit)
+}
+
+// ListTailEventsByTurn is ListTailEvents scoped to one turn. The phone
+// opens on the last turn without loading that turn's entire timeline.
+func (s *Store) ListTailEventsByTurn(threadID, turnID string, limit int) ([]Event, bool, error) {
+	return s.listTail(threadID, turnID, 0, limit)
+}
+
+func (s *Store) listTail(threadID, turnID string, before int64, limit int) ([]Event, bool, error) {
 	if limit <= 0 {
 		return []Event{}, false, nil
 	}
 	q := s.db.Where("thread_id = ?", threadID)
+	if turnID != "" {
+		q = q.Where("turn_id = ?", turnID)
+	}
 	if before > 0 {
 		q = q.Where("seq < ?", before)
 	}
@@ -477,6 +490,17 @@ func (s *Store) ListTailEvents(threadID string, before int64, limit int) ([]Even
 		out[len(newest)-1-i] = ev
 	}
 	return out, hasMore, nil
+}
+
+// ListEventsByTurn returns one turn's timeline, oldest first.
+func (s *Store) ListEventsByTurn(threadID, turnID string) ([]Event, error) {
+	var out []Event
+	err := s.db.Where("thread_id = ? AND turn_id = ?", threadID, turnID).
+		Order("seq asc").Find(&out).Error
+	if err != nil {
+		return nil, fmt.Errorf("store: list events by turn: %w", err)
+	}
+	return out, nil
 }
 
 // rosterEventKinds reconstruct the Agents tab. The live-edge log page is a

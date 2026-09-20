@@ -18,6 +18,7 @@ const (
 	OpAnswer  = "answer"
 	OpWatch   = "watch"
 	OpUnwatch = "unwatch"
+	OpLog     = "log"
 	OpEvent   = "event"
 	OpReady   = "ready"
 	OpLagged  = "lagged"
@@ -39,6 +40,7 @@ type Request struct {
 	CallID    string          `json:"call_id,omitempty"`
 	Answers   json.RawMessage `json:"answers,omitempty"`
 	Since     int64           `json:"since,omitempty"`
+	Before    int64           `json:"before,omitempty"`
 }
 
 // Response is what the PC replies. Path and SessionID are pairlink
@@ -61,6 +63,7 @@ type Response struct {
 	ThreadID  string        `json:"thread_id,omitempty"`
 	Seq       int64         `json:"seq,omitempty"`
 	Event     *EventView    `json:"event,omitempty"`
+	Events    []EventView   `json:"events,omitempty"`
 	Status    *WatchStatus  `json:"status,omitempty"`
 }
 

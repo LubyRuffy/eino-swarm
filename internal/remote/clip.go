@@ -22,6 +22,13 @@ func summaryChars(cfg config.RemoteConfig) int {
 	return cfg.SummaryChars
 }
 
+func watchEvents(cfg config.RemoteConfig) int {
+	if cfg.WatchEvents <= 0 {
+		return config.DefaultRemoteWatchEvents
+	}
+	return cfg.WatchEvents
+}
+
 func eventView(ev store.Event, cfg config.RemoteConfig) EventView {
 	text := ev.Text
 	switch ev.Kind {

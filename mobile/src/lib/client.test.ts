@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { deliverResponse, redeemOffer, TICKET_PROTO } from "./client"
+import { bindError, deliverResponse, hubError, redeemOffer, TICKET_PROTO } from "./client"
 import type { RemoteResponse } from "./rpc"
 import { generateIdentity } from "./crypto"
 import { bytesToB64url, bytesToHex } from "./bytes"
@@ -35,6 +35,43 @@ describe("redeemOffer", () => {
     expect(fetcher).toHaveBeenCalledOnce()
     expect(JSON.stringify(fetcher.mock.calls)).toContain("pairings/redeem")
     expect(TICKET_PROTO).toBe("pairlink.ticket.")
+  })
+
+  it("unwraps a hub JSON error so the scan screen is not a raw blob", async () => {
+    const device = generateIdentity()
+    const fetcher = vi.fn(async () => {
+      return new Response(JSON.stringify({ error: "host offline" }), { status: 409 })
+    })
+    await expect(
+      redeemOffer(
+        {
+          hubURL: "http://127.0.0.1:7780",
+          code: "ScanCode01",
+          hostPub: generateIdentity().pub,
+          lan: [],
+        },
+        device,
+        fetcher as unknown as typeof fetch,
+      ),
+    ).rejects.toThrow("host offline")
+  })
+})
+
+describe("hubError", () => {
+  it("prefers JSON error, then raw text, then the status", () => {
+    expect(hubError(409, '{"error":"host offline"}').message).toBe("host offline")
+    expect(hubError(500, "not-json").message).toBe("not-json")
+    expect(hubError(502, "{").message).toBe("{")
+    expect(hubError(503, "   ").message).toBe("503")
+  })
+})
+
+describe("bindError", () => {
+  it("maps a host-offline redeem to the scan copy", async () => {
+    const { setLocale, t } = await import("./i18n")
+    setLocale("en")
+    expect(bindError(new Error("host offline"))).toBe(t("scan.hostOffline"))
+    expect(bindError("ws timeout")).toBe("ws timeout")
   })
 })
 

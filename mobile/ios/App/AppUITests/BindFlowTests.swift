@@ -18,8 +18,23 @@ final class BindFlowTests: XCTestCase {
       app.buttons["Paste and bind"].tap()
     }
 
+    // A live or last thread opens immediately; the inbox is behind Back.
     let path = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'path='")).firstMatch
-    XCTAssertTrue(path.waitForExistence(timeout: 25), "bind did not reach the home screen")
+    let back = app.buttons["Back"]
+    let deadline = Date().addingTimeInterval(25)
+    var landed = false
+    while Date() < deadline {
+      if path.exists || back.exists {
+        landed = true
+        break
+      }
+      RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+    }
+    XCTAssertTrue(landed, "bind did not reach the home screen or a thread")
+    if back.exists {
+      back.tap()
+    }
+    XCTAssertTrue(path.waitForExistence(timeout: 8), "bind did not reach the home screen")
     // WKWebView exposes the Recent row as a Button, not a StaticText.
     let seed = app.buttons.matching(NSPredicate(format: "label CONTAINS 'sim-flow'")).firstMatch
     XCTAssertTrue(seed.waitForExistence(timeout: 8), "seed conversation missing after bind")

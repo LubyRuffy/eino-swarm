@@ -52,6 +52,7 @@ const base: Settings = {
     summary_chars: 280,
     open_turns: 6,
     event_chars: 4000,
+    watch_events: 80,
   },
 }
 
@@ -101,6 +102,7 @@ describe("RemoteTab", () => {
     )
     expect(screen.queryByLabelText("Host Token")).not.toBeInTheDocument()
     expect(screen.getByLabelText("Event text on the phone")).toHaveValue(4000)
+    expect(screen.getByLabelText("Events on the phone")).toHaveValue(80)
   })
 
   it("toasts a pairing failure instead of a red line under the Phone heading", async () => {

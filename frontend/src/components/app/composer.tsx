@@ -35,13 +35,16 @@ import {
 } from "@/lib/composer-drop"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
 import {
-  commandNeedsArgument,
+  clearSlashCommand,
   compactHint,
+  completeSlashCommand,
   filterSlashCommands,
   localizedSlashCommands,
   nextSlashIndex,
   parseSlashSubmit,
+  slashAwaitingArg,
   slashDraft,
+  slashSubmitReady,
   stripSlashToken,
   normalizeSlashPrefix,
   withSlashHints,
@@ -178,10 +181,9 @@ export function Composer({
   const [uploading, setUploading] = useState(false)
   const [armed, setArmed] = useState(false)
   const [adding, setAdding] = useState(false)
-  const [goalDraft, setGoalDraft] = useState(false)
-  const [planDraft, setPlanDraft] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
   const areaRef = useRef<HTMLTextAreaElement>(null)
+  const pinCaret = useRef<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const dockRef = useRef<HTMLDivElement>(null)
   // WebKit fires compositionend, then the Enter that confirmed leftover
@@ -228,6 +230,18 @@ export function Composer({
     resizeComposerArea(areaRef.current, { composing: composingRef.current })
   }, [text])
 
+  // Menu click blurs the textarea. Pin the caret after `/goal ` lands so
+  // the pick is a completion, not a vanished slash.
+  useLayoutEffect(() => {
+    const pos = pinCaret.current
+    if (pos == null) return
+    pinCaret.current = null
+    const el = areaRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(pos, pos)
+  }, [text])
+
   useEffect(() => {
     const el = areaRef.current
     if (!el) return
@@ -244,34 +258,34 @@ export function Composer({
     ? filterSlashCommands(draft.query, localizedSlashCommands(t.locale))
     : []
   const slashOpen = slashItems.length > 0
+  const awaitingArg = slashAwaitingArg(text)
+  const sendReady = slashSubmitReady(text)
+  const sendDisabled =
+    Boolean(disabled) ||
+    uploading ||
+    Boolean(awaitingArg) ||
+    (!sendReady &&
+      !slashOpen &&
+      !text.trim() &&
+      pending.length === 0 &&
+      quoted.length === 0 &&
+      pasted.length === 0)
+  const showSend = !running || Boolean(awaitingArg) || sendReady
 
   useEffect(() => {
     setSlashIndex(0)
   }, [draft?.query])
 
   const pickCommand = (cmd: SlashCommand) => {
-    const rest = draft ? stripSlashToken(text, draft) : ""
-    if (cmd.id === "goal" || cmd.id === "plan" || commandNeedsArgument(cmd.id)) {
-      const objective = rest.trim()
-      if (objective) {
-        setGoalDraft(false)
-        setPlanDraft(false)
-        setText("")
-        if (cmd.id === "plan") onSetPlan?.(objective)
-        else onSetGoal?.(objective)
-        return
-      }
-      setGoalDraft(cmd.id === "goal")
-      setPlanDraft(cmd.id === "plan")
-      setText("")
+    if (!draft) return
+    if (cmd.id === "compact") {
+      setText(stripSlashToken(text, draft).trimEnd())
+      onCompact?.()
       return
     }
-    if (cmd.id === "compact") {
-      setText(rest.trimEnd())
-      setGoalDraft(false)
-      setPlanDraft(false)
-      onCompact?.()
-    }
+    const next = completeSlashCommand(text, draft, cmd.name)
+    pinCaret.current = next.length
+    setText(next)
   }
 
   const submit = async (opts?: { steer?: boolean }) => {
@@ -284,48 +298,16 @@ export function Composer({
       if (cmd) pickCommand(cmd)
       return
     }
-    if (goalDraft) {
-      const next = text.trim()
-      if (!next) return
-      setGoalDraft(false)
-      setText("")
-      onSetGoal?.(next)
-      return
-    }
-    if (planDraft) {
-      const next = text.trim()
-      if (!next) return
-      setPlanDraft(false)
-      setText("")
-      onSetPlan?.(next)
-      return
-    }
     if (slash) {
       if (slash.id === "compact") {
         setText("")
         onCompact?.()
         return
       }
-      if (slash.id === "plan") {
-        if (!slash.arg) {
-          setPlanDraft(true)
-          setGoalDraft(false)
-          setText("")
-          return
-        }
-        setText("")
-        setPlanDraft(false)
-        onSetPlan?.(slash.arg)
-        return
-      }
-      if (!slash.arg) {
-        setGoalDraft(true)
-        setText("")
-        return
-      }
+      if (!slash.arg) return
       setText("")
-      setGoalDraft(false)
-      onSetGoal?.(slash.arg)
+      if (slash.id === "plan") onSetPlan?.(slash.arg)
+      else onSetGoal?.(slash.arg)
       return
     }
     const payload = formatQuotedMessage(
@@ -501,6 +483,16 @@ export function Composer({
             images={pasted}
             onRemove={(id) => setPasted((prev) => dropPasteImage(prev, id))}
           />
+          {awaitingArg ? (
+            <p
+              data-testid="composer-command-hint"
+              className="px-4 pt-2 text-xs text-muted-foreground"
+            >
+              {awaitingArg === "goal"
+                ? t("composer.placeholderGoal")
+                : t("composer.placeholderPlan")}
+            </p>
+          ) : null}
           <Textarea
             ref={areaRef}
             value={text}
@@ -508,20 +500,16 @@ export function Composer({
             disabled={disabled}
             data-testid="composer-input"
             data-slash-open={slashOpen ? "true" : undefined}
-            data-goal-draft={goalDraft ? "true" : undefined}
-            data-plan-draft={planDraft ? "true" : undefined}
+            data-goal-draft={awaitingArg === "goal" ? "true" : undefined}
+            data-plan-draft={awaitingArg === "plan" ? "true" : undefined}
             aria-expanded={slashOpen}
             aria-controls={slashOpen ? "slash-menu" : undefined}
             placeholder={
-              goalDraft
-                ? t("composer.placeholderGoal")
-                : planDraft
-                  ? t("composer.placeholderPlan")
-                  : awaitingAnswer
-                    ? t("composer.placeholderAsk")
-                    : running
-                      ? t("composer.placeholderRunning")
-                      : t("composer.placeholder")
+              awaitingAnswer
+                ? t("composer.placeholderAsk")
+                : running
+                  ? t("composer.placeholderRunning")
+                  : t("composer.placeholder")
             }
             className="max-h-[200px] min-h-[44px] rounded-none border-0 bg-transparent px-4 py-3 text-[0.9375rem] shadow-none focus-visible:ring-0"
             onChange={(e) => {
@@ -577,12 +565,10 @@ export function Composer({
                   return
                 }
               }
-              if (e.key === "Escape" && (goalDraft || planDraft)) {
+              if (e.key === "Escape" && awaitingArg) {
                 e.preventDefault()
                 e.stopPropagation()
-                setGoalDraft(false)
-                setPlanDraft(false)
-                setText("")
+                setText(clearSlashCommand(text))
                 return
               }
               // Enter sends; Shift+Enter is a newline. An IME confirm —
@@ -682,29 +668,18 @@ export function Composer({
                 >
                   <Square className="size-3.5 fill-current" />
                 </Button>
-              ) : (
+              ) : null}
+              {showSend ? (
                 <Button
                   size="icon"
-                  disabled={
-                    disabled ||
-                    uploading ||
-                    (!slashOpen &&
-                      !goalDraft &&
-                      !planDraft &&
-                      !text.trim() &&
-                      pending.length === 0 &&
-                      quoted.length === 0 &&
-                      pasted.length === 0) ||
-                    (goalDraft && !text.trim()) ||
-                    (planDraft && !text.trim())
-                  }
+                  disabled={sendDisabled}
                   onClick={() => void submit()}
                   aria-label={t("composer.send")}
                   title={t("composer.sendHint")}
                 >
                   <ArrowUp />
                 </Button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>

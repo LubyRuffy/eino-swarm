@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { HomeScreen } from "@/components/home-screen"
 import { ScanScreen } from "@/components/scan-screen"
 import { ThreadScreen } from "@/components/thread-screen"
-import { bindFromURI, DeviceLink, openSaved } from "@/lib/client"
+import { bindFromURI, bindError, DeviceLink, openSaved } from "@/lib/client"
 import { getLocale, toggleLocale } from "@/lib/i18n"
 import type {
   ProjectView,
@@ -14,6 +14,7 @@ import type {
 import {
   OpAnswer,
   OpList,
+  OpLog,
   OpMore,
   OpOpen,
   OpSend,
@@ -23,14 +24,16 @@ import {
   OpUnwatch,
   OpWatch,
 } from "@/lib/rpc"
+import { pickResumeThread } from "@/lib/resume"
 import {
   applyPush,
   emptyView,
   markRunning,
   openView,
+  prependOlder,
   type PhoneView,
 } from "@/lib/session"
-import { clearLink, loadSavedLink } from "@/lib/store"
+import { clearLastThreadId, clearLink, loadLastThreadId, loadSavedLink, saveLastThreadId } from "@/lib/store"
 
 export function App() {
   const [locale, setLocaleTick] = useState(getLocale())
@@ -43,8 +46,12 @@ export function App() {
   const [more, setMore] = useState(false)
   const [cursor, setCursor] = useState("")
   const [view, setView] = useState<PhoneView>(emptyView())
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const linkRef = useRef<DeviceLink | null>(null)
   const viewRef = useRef<PhoneView>(view)
+  const resumedRef = useRef(false)
+  const olderBusy = useRef(false)
+  const loadGen = useRef(0)
   linkRef.current = link
   viewRef.current = view
 
@@ -53,7 +60,7 @@ export function App() {
     setView(next)
   }
 
-  const applyList = (resp: RemoteResponse, append: boolean) => {
+  const applyList = (resp: RemoteResponse, append: boolean, target?: DeviceLink) => {
     if (!resp.ok) {
       setError(resp.error || resp.code || "rpc failed")
       return
@@ -64,7 +71,8 @@ export function App() {
     setRunning(resp.running ?? [])
     setMore(Boolean(resp.more))
     setCursor(resp.next ?? "")
-    if (resp.path && linkRef.current) linkRef.current.path = resp.path
+    const link = target ?? linkRef.current
+    if (resp.path && link) link.path = resp.path
   }
 
   const attachPush = (next: DeviceLink) => {
@@ -72,6 +80,30 @@ export function App() {
       if (resp.path) next.path = resp.path
       commitView(applyPush(viewRef.current, resp))
     }
+  }
+
+  const openThreadOn = async (target: DeviceLink, id: string) => {
+    const r = await target.rpc({ op: OpOpen, thread_id: id })
+    if (!r.detail) {
+      setError(r.error || "open failed")
+      if (id === loadLastThreadId()) clearLastThreadId()
+      return false
+    }
+    saveLastThreadId(id)
+    loadGen.current += 1
+    olderBusy.current = false
+    setLoadingOlder(false)
+    commitView(openView(r.detail))
+    await target.rpc({ op: OpWatch, thread_id: id })
+    return true
+  }
+
+  const consumeFirstList = async (target: DeviceLink, resp: RemoteResponse) => {
+    applyList(resp, false, target)
+    if (!resp.ok || resumedRef.current || viewRef.current.detail) return
+    const id = pickResumeThread(loadLastThreadId(), resp.running ?? [], resp.threads ?? [])
+    if (!id) return
+    if (await openThreadOn(target, id)) resumedRef.current = true
   }
 
   const boot = useCallback(async () => {
@@ -82,9 +114,9 @@ export function App() {
       const next = await openSaved(saved)
       attachPush(next)
       setLink(next)
-      applyList(await next.rpc({ op: OpList }), false)
+      await consumeFirstList(next, await next.rpc({ op: OpList }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(bindError(e))
     } finally {
       setBusy(false)
     }
@@ -114,9 +146,9 @@ export function App() {
       await next.connect(bound.saved.hubURL, bound.saved.ticket)
       attachPush(next)
       setLink(next)
-      applyList(await next.rpc({ op: OpList }), false)
+      await consumeFirstList(next, await next.rpc({ op: OpList }))
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      setError(bindError(e))
     } finally {
       setBusy(false)
     }
@@ -129,17 +161,43 @@ export function App() {
 
   const openThread = async (id: string) => {
     if (!link) return
-    const r = await link.rpc({ op: OpOpen, thread_id: id })
-    if (!r.detail) {
-      setError(r.error || "open failed")
-      return
+    await openThreadOn(link, id)
+  }
+
+  const loadOlder = async () => {
+    if (!link || olderBusy.current) return
+    const cur = viewRef.current
+    const before = cur.oldestSeq > 0 ? cur.oldestSeq : cur.lastSeq
+    if (!cur.hasMore || !cur.threadId || before <= 0) return
+    const gen = loadGen.current
+    const threadId = cur.threadId
+    olderBusy.current = true
+    setLoadingOlder(true)
+    try {
+      const r = await link.rpc({
+        op: OpLog,
+        thread_id: threadId,
+        before,
+      })
+      if (loadGen.current !== gen || viewRef.current.threadId !== threadId) return
+      if (!r.ok) {
+        setError(r.error || r.code || "rpc failed")
+        return
+      }
+      commitView(prependOlder(viewRef.current, r.events ?? [], Boolean(r.more), r.seq ?? 0))
+    } finally {
+      if (loadGen.current === gen) {
+        olderBusy.current = false
+        setLoadingOlder(false)
+      }
     }
-    commitView(openView(r.detail))
-    await link.rpc({ op: OpWatch, thread_id: id })
   }
 
   const closeThread = async () => {
     const id = viewRef.current.threadId
+    loadGen.current += 1
+    olderBusy.current = false
+    setLoadingOlder(false)
     commitView(emptyView())
     if (link && id) {
       await link.rpc({ op: OpUnwatch, thread_id: id })
@@ -167,7 +225,10 @@ export function App() {
         key={locale + detail.id}
         detail={detail}
         blocks={view.blocks}
+        hasMore={view.hasMore}
+        loadingOlder={loadingOlder}
         onBack={() => void closeThread()}
+        onOlder={() => void loadOlder()}
         onSend={async (text) => {
           await link.rpc({ op: OpSend, thread_id: detail.id, text })
           commitView(markRunning(viewRef.current))
@@ -226,6 +287,8 @@ export function App() {
           void link.rpc({ op: OpUnwatch }).catch(() => undefined)
           link.close()
           clearLink()
+          resumedRef.current = false
+          loadGen.current += 1
           setLink(null)
           setThreads([])
           setProjects([])

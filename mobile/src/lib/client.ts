@@ -1,5 +1,6 @@
 import { b64urlToBytes, bytesToB64url, bytesToHex, equalBytes, hexToBytes } from "./bytes"
 import { fingerprint, finish, initiate, type Identity, type Session } from "./crypto"
+import { t } from "./i18n"
 import {
   httpToWS,
   marshalFrame,
@@ -31,6 +32,25 @@ export type RedeemResult = {
   sessionID: Uint8Array
 }
 
+export function hubError(status: number, text: string): Error {
+  const trimmed = text.trim()
+  if (trimmed.startsWith("{")) {
+    try {
+      const body = JSON.parse(trimmed) as { error?: string }
+      if (body.error?.trim()) return new Error(body.error.trim())
+    } catch {
+      // raw text is still the error
+    }
+  }
+  return new Error(trimmed || String(status))
+}
+
+export function bindError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  if (raw === "host offline") return t("scan.hostOffline")
+  return raw
+}
+
 export async function redeemOffer(
   offer: Offer,
   device: Identity,
@@ -45,7 +65,7 @@ export async function redeemOffer(
     }),
   })
   const text = await res.text()
-  if (!res.ok) throw new Error(text || res.statusText)
+  if (!res.ok) throw hubError(res.status, text)
   const body = JSON.parse(text) as {
     ticket: string
     host_pub: string

@@ -115,7 +115,8 @@ func (p *LinkPump) stopWatch() {
 func (p *LinkPump) runWatch(ctx context.Context, sub *engine.Subscription, threadID string, since int64) {
 	defer sub.Close()
 	highest := since
-	if err := p.catchUp(ctx, threadID, &highest); err != nil {
+	hasMore, err := p.catchUp(ctx, threadID, &highest)
+	if err != nil {
 		if ctx.Err() != nil {
 			return
 		}
@@ -134,6 +135,7 @@ func (p *LinkPump) runWatch(ctx context.Context, sub *engine.Subscription, threa
 		SessionID: p.sessionID,
 		ThreadID:  threadID,
 		Seq:       highest,
+		More:      hasMore,
 		Status: &WatchStatus{
 			Running:        st.Running,
 			TurnID:         st.TurnID,
@@ -160,7 +162,7 @@ func (p *LinkPump) runWatch(ctx context.Context, sub *engine.Subscription, threa
 					ThreadID:  threadID,
 					Seq:       highest,
 				})
-				_ = p.catchUp(ctx, threadID, &highest)
+				_, _ = p.catchUp(ctx, threadID, &highest)
 			}
 		case ev, ok := <-sub.C:
 			if !ok {
@@ -179,17 +181,17 @@ func (p *LinkPump) runWatch(ctx context.Context, sub *engine.Subscription, threa
 	}
 }
 
-func (p *LinkPump) catchUp(ctx context.Context, threadID string, highest *int64) error {
+func (p *LinkPump) catchUp(ctx context.Context, threadID string, highest *int64) (bool, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return false, err
 	}
-	history, err := p.eng.Replay(threadID, *highest)
+	history, hasMore, err := p.watchHistory(threadID, *highest)
 	if err != nil {
-		return err
+		return false, err
 	}
 	for _, ev := range history {
 		if err := ctx.Err(); err != nil {
-			return err
+			return false, err
 		}
 		if !p.pushEvent(threadID, ev) {
 			continue
@@ -198,7 +200,18 @@ func (p *LinkPump) catchUp(ctx context.Context, threadID string, highest *int64)
 			*highest = ev.Seq
 		}
 	}
-	return nil
+	return hasMore, nil
+}
+
+// First open (since 0) is the last turn, capped at watch_events from
+// that turn's end. Replaying from seq 0 paints the oldest user message
+// on a phone that cannot scroll the rest in time. Pull-up uses log.
+func (p *LinkPump) watchHistory(threadID string, since int64) ([]store.Event, bool, error) {
+	if since > 0 {
+		events, err := p.eng.Replay(threadID, since)
+		return events, false, err
+	}
+	return lastTurnWindow(p.eng.Store(), threadID, watchEvents(p.cfg))
 }
 
 func (p *LinkPump) pushEvent(threadID string, ev store.Event) bool {

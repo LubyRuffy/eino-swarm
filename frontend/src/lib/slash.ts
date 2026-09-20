@@ -75,6 +75,23 @@ export function stripSlashToken(
   return text.slice(0, draft.start) + text.slice(draft.end)
 }
 
+/** Picking `goal` / `plan` from the menu must leave `/name ` in the box.
+ *  Wiping the token looks like the click missed. */
+export function completeSlashCommand(
+  text: string,
+  draft: Pick<SlashDraft, "start" | "end">,
+  name: string,
+): string {
+  return `${text.slice(0, draft.start)}/${name} ${text.slice(draft.end)}`
+}
+
+/** Escape on a `/goal ` prompt with no argument. */
+export function clearSlashCommand(text: string): string {
+  const start = lastTriggeredSlashIndex(text)
+  if (start < 0) return text
+  return text.slice(0, start).trimEnd()
+}
+
 export function filterSlashCommands(
   query: string,
   commands: readonly SlashCommand[] = SLASH_COMMANDS,
@@ -193,6 +210,19 @@ export function compactHint(
 
 export function commandNeedsArgument(id: SlashCommandId): boolean {
   return id === "goal" || id === "plan"
+}
+
+/** `/goal` / `/plan` with no argument yet — the box is prompting, not ready. */
+export function slashAwaitingArg(text: string): SlashCommandId | null {
+  const slash = parseSlashSubmit(text)
+  if (!slash || !commandNeedsArgument(slash.id) || slash.arg) return null
+  return slash.id
+}
+
+export function slashSubmitReady(text: string): boolean {
+  const slash = parseSlashSubmit(text)
+  if (!slash) return false
+  return slash.id === "compact" || Boolean(slash.arg)
 }
 
 export function nextSlashIndex(

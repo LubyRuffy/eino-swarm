@@ -27,8 +27,11 @@ type Host struct {
 	cancel   context.CancelFunc
 	offerURI string
 	offerAt  time.Time
-	online   bool
 	err      string
+
+	// keepAlive is forwarded to pairlink. Zero is the library default.
+	// Tests stretch it so a short hub Idle can drop the socket.
+	keepAlive time.Duration
 }
 
 func New(eng *engine.Engine, cfg *config.Config, log *slog.Logger) *Host {
@@ -80,9 +83,10 @@ func (h *Host) startLocked() {
 		return
 	}
 	conn, err := client.Dial(ctx, client.Config{
-		HubURL:   hub,
-		Identity: id,
-		Token:    token,
+		HubURL:    hub,
+		Identity:  id,
+		Token:     token,
+		KeepAlive: h.keepAlive,
 	})
 	if err != nil {
 		cancel()
@@ -96,7 +100,6 @@ func (h *Host) startLocked() {
 	h.conn = conn
 	h.id = id
 	h.cancel = cancel
-	h.online = true
 	h.err = ""
 }
 
@@ -115,7 +118,6 @@ func (h *Host) stopLocked() {
 		_ = h.conn.Close()
 		h.conn = nil
 	}
-	h.online = false
 	h.offerURI = ""
 }
 
@@ -135,6 +137,17 @@ type Offer struct {
 	PNG       []byte    `json:"-"`
 }
 
+func (h *Host) waitConnectedLocked(deadline time.Time) {
+	for time.Now().Before(deadline) {
+		if h.conn != nil && h.conn.Connected() {
+			return
+		}
+		h.mu.Unlock()
+		time.Sleep(40 * time.Millisecond)
+		h.mu.Lock()
+	}
+}
+
 func (h *Host) Offer(ctx context.Context) (*Offer, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -142,6 +155,13 @@ func (h *Host) Offer(ctx context.Context) (*Offer, error) {
 		h.startLocked()
 	}
 	if h.conn == nil {
+		if h.err != "" {
+			return nil, fmt.Errorf("%s", h.err)
+		}
+		return nil, fmt.Errorf("remote is offline")
+	}
+	h.waitConnectedLocked(time.Now().Add(2 * time.Second))
+	if h.conn == nil || !h.conn.Connected() {
 		if h.err != "" {
 			return nil, fmt.Errorf("%s", h.err)
 		}
@@ -177,7 +197,7 @@ func (h *Host) Status() Status {
 		Enabled:  h.cfg.Remote.Enabled,
 		HubURL:   h.cfg.Remote.HubURL,
 		HasToken: h.cfg.HasHostToken(),
-		Online:   h.online,
+		Online:   h.conn != nil && h.conn.Connected(),
 		Error:    h.err,
 	}
 	if h.id != nil {

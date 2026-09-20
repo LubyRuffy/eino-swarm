@@ -49,6 +49,7 @@ export function SlashMenu({
                   active ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
                 )}
                 onMouseEnter={() => onHover(i)}
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => onSelect(cmd)}
               >
                 <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />

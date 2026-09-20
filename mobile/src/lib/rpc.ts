@@ -10,6 +10,7 @@ export const OpStop = "stop"
 export const OpAnswer = "answer"
 export const OpWatch = "watch"
 export const OpUnwatch = "unwatch"
+export const OpLog = "log"
 export const OpEvent = "event"
 export const OpReady = "ready"
 export const OpLagged = "lagged"
@@ -25,6 +26,7 @@ export type RemoteRequest = {
   call_id?: string
   answers?: unknown
   since?: number
+  before?: number
 }
 
 export type ProjectView = { id: string; name: string }
@@ -100,6 +102,7 @@ export type RemoteResponse = {
   thread_id?: string
   seq?: number
   event?: RemoteEvent
+  events?: RemoteEvent[]
   status?: WatchStatus
 }
 

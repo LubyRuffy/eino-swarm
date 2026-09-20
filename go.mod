@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/LubyRuffy/eino-tools v0.1.1-0.20260920151219-a1b084f431dd
-	github.com/LubyRuffy/pairlink v0.0.0-20260919132839-f9d7105039da
+	github.com/LubyRuffy/pairlink v0.0.0-20260920160328-300c901e646b
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/cloudwego/eino v0.9.19

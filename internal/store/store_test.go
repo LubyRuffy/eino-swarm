@@ -283,6 +283,33 @@ func TestListTailEventsPagesFromTheEnd(t *testing.T) {
 		t.Fatalf("first page hasMore=%v %+v", hasMore, rest)
 	}
 
+	tagged := &Thread{Title: "tagged"}
+	if err := s.CreateThread(tagged); err != nil {
+		t.Fatal(err)
+	}
+	turn := &Turn{ThreadID: tagged.ID, Status: TurnDone}
+	if err := s.CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AppendEvent(&Event{ThreadID: tagged.ID, TurnID: turn.ID, Kind: "user_message", Text: "in"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.AppendEvent(&Event{ThreadID: tagged.ID, Kind: "user_message", Text: "out"}); err != nil {
+		t.Fatal(err)
+	}
+	byTurn, err := s.ListEventsByTurn(tagged.ID, turn.ID)
+	if err != nil || len(byTurn) != 1 || byTurn[0].Text != "in" {
+		t.Fatalf("by turn %v %+v", err, byTurn)
+	}
+	missing, err := s.ListEventsByTurn(tagged.ID, "tn_missing")
+	if err != nil || len(missing) != 0 {
+		t.Fatalf("missing turn %v %+v", err, missing)
+	}
+	turnTail, moreTurn, err := s.ListTailEventsByTurn(tagged.ID, turn.ID, 1)
+	if err != nil || moreTurn || len(turnTail) != 1 || turnTail[0].Text != "in" {
+		t.Fatalf("turn tail %v more=%v %+v", err, moreTurn, turnTail)
+	}
+
 	empty, hasMore, err := s.ListTailEvents(th.ID, 1, 2)
 	if err != nil {
 		t.Fatal(err)

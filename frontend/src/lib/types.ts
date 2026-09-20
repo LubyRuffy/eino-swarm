@@ -381,6 +381,7 @@ export interface RemoteSettings {
   summary_chars: number
   open_turns: number
   event_chars: number
+  watch_events: number
 }
 
 export function defaultRemoteSettings(
@@ -394,6 +395,7 @@ export function defaultRemoteSettings(
       remote?.summary_chars && remote.summary_chars > 0 ? remote.summary_chars : 280,
     open_turns: remote?.open_turns && remote.open_turns > 0 ? remote.open_turns : 6,
     event_chars: remote?.event_chars && remote.event_chars > 0 ? remote.event_chars : 4000,
+    watch_events: remote?.watch_events && remote.watch_events > 0 ? remote.watch_events : 80,
   }
 }
 

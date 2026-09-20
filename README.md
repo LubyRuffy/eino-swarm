@@ -86,7 +86,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   the work. Entering plan pauses an open `/goal`; Implement does not resume it.
 - **Slash commands in the composer.** Type `/` in the box — at the start or
   after what you already wrote, the same way Cursor does. Paths (`foo/bar`)
-  and URLs do not open the palette. **goal** sets a standing objective and
+  and URLs do not open the palette. Picking **goal** or **plan** from the
+  menu writes `/goal ` / `/plan ` in the box; type the rest and Enter.
+  **goal** sets a standing objective and
   starts pursuing it in this turn. **plan** explores and writes a plan before
   changing anything. Codex cuts the command name at a space;
   an IME objective glued to `/goal` or `/plan` (or typed with a fullwidth `／`,
@@ -285,11 +287,11 @@ end-to-end tests run on and the fastest way to see the UI work.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
 3. On the phone, open the **zwai** iOS or Android app (`mobile/ios`,
-   `mobile/android`). **Scan QR** is the product path. After bind, the phone
-   lists projects and the latest 5 threads, shows in-progress work, and is
-   a compact screen on the same conversation: start / send / follow-up /
-   steer / stop / answer, with live events (`watch`) using the same kinds
-   and seq as the PC. Settings, files, PTY and Trace stay on the PC.
+   `mobile/android`). **Scan QR** is the product path. After bind, a live turn
+   (or the last thread this phone opened) opens immediately; otherwise the
+   inbox lists projects and the latest 5 threads. The transcript opens on the
+   last turn; pull up to load earlier. Tools stay collapsed. Settings, files,
+   PTY and Trace stay on the PC.
    `make mobile-ios` / `make mobile-android` open Xcode or Android Studio
    after copying the web bundle.
 

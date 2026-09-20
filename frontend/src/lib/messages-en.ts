@@ -618,6 +618,9 @@ export const en = {
   "settings.remote.eventChars": "Event text on the phone",
   "settings.remote.eventCharsHint":
     "How many characters of each event the phone receives. Default 4000. Live tool output is clipped shorter.",
+  "settings.remote.watchEvents": "Events on the phone",
+  "settings.remote.watchEventsHint":
+    "Cap on the last turn when a conversation opens, and the page size when the phone pulls up for older events. Default 80.",
   "settings.remote.qr": "Pairing QR",
   "settings.remote.showQr": "Show pairing QR",
   "settings.remote.qrAlt": "Pairing QR code",

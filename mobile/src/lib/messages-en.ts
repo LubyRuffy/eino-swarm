@@ -8,19 +8,21 @@ export const en = {
   "scan.showPaste": "Paste URI instead",
   "scan.hidePaste": "Hide paste",
   "scan.retry": "Retry",
+  "scan.hostOffline":
+    "This PC is not on the hub. Show a new QR after the desktop reconnects.",
 
   "home.app": "zwai",
   "home.inProgress": "In progress",
   "home.recent": "Recent",
   "home.more": "More",
   "home.unlink": "Unlink",
-  "home.new": "New conversation",
   "home.project": "Project",
   "home.defaultProject": "Default",
   "home.start": "Start",
   "home.ask": "Waiting for an answer",
   "home.live": "live",
   "home.newMessage": "New message",
+  "home.open": "Open {title}",
   "home.relay": "relay",
   "home.direct": "direct",
 
@@ -34,6 +36,9 @@ export const en = {
   "thread.plan": "Planning",
   "thread.image": "Image",
   "thread.running": "running",
+  "thread.earlier": "Earlier",
+  "thread.loading": "Loading",
+  "thread.tool": "tool",
 
   "markdown.copyCode": "Copy code",
   "markdown.copyFormula": "Copy formula",

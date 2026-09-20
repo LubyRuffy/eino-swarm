@@ -35,7 +35,36 @@ describe("HomeScreen", () => {
     })
     fireEvent.click(screen.getByRole("button", { name: "Start" }))
     expect(onStart).toHaveBeenCalledWith("hello", "")
-    fireEvent.click(screen.getByText("thread 2"))
+    expect(screen.queryByText("New conversation")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Open thread 2" }))
     expect(onOpen).toHaveBeenCalledWith("t2")
+    expect(screen.getAllByText("thread 0")).toHaveLength(1)
+  })
+
+  it("treats a listing running flag as in-progress", () => {
+    render(
+      <HomeScreen
+        path="relay"
+        projects={[]}
+        threads={[
+          {
+            id: "t1",
+            title: "thread 1",
+            running: true,
+            last_active_at: "2026-01-01T00:00:00Z",
+            summary: "one line",
+          },
+        ]}
+        running={[]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onStart={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("In progress")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open thread 1" })).toBeInTheDocument()
+    expect(screen.queryByText("Recent")).not.toBeInTheDocument()
   })
 })

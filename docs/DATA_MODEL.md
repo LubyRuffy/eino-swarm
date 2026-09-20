@@ -9,7 +9,8 @@ $ZWAI_HOME (default ~/.zwai-swarm)/zwai.db
 Phone pairing is not in this database. `$ZWAI_HOME/remote/host_token` and
 `$ZWAI_HOME/remote/identity` are 0600 files. Bindings live on the pairlink hub.
 A watched phone reads the same `EVENT` rows the desktop SSE does (clipped
-bodies, same `kind`/`seq`); it does not get a second copy of the timeline.
+bodies, same `kind`/`seq`); first paint is the last turn, older rows come
+from `log` paging. It does not get a second copy of the timeline.
 
 gorm owns the schema (`AutoMigrate` on every start) and
 [`glebarez/sqlite`](https://github.com/glebarez/sqlite) is the driver, so there is

@@ -16,6 +16,7 @@ const (
 	DefaultRemoteSummaryChars = 280
 	DefaultRemoteOpenTurns    = 6
 	DefaultRemoteEventChars   = 4000
+	DefaultRemoteWatchEvents  = 80
 )
 
 // RemoteConfig is the phone-pairing channel. HubURL is whatever the user
@@ -28,6 +29,7 @@ type RemoteConfig struct {
 	SummaryChars int    `yaml:"summary_chars" json:"summary_chars"`
 	OpenTurns    int    `yaml:"open_turns" json:"open_turns"`
 	EventChars   int    `yaml:"event_chars" json:"event_chars"`
+	WatchEvents  int    `yaml:"watch_events" json:"watch_events"`
 }
 
 // RemoteDir holds the host identity and Host Token (mode 0700 / 0600).
@@ -56,6 +58,9 @@ func (c *Config) normalizeRemote() {
 	}
 	if c.Remote.EventChars <= 0 {
 		c.Remote.EventChars = DefaultRemoteEventChars
+	}
+	if c.Remote.WatchEvents <= 0 {
+		c.Remote.WatchEvents = DefaultRemoteWatchEvents
 	}
 }
 

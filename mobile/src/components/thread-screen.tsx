@@ -1,7 +1,8 @@
-import { useState } from "react"
+import { useLayoutEffect, useRef, useState } from "react"
+import { ChevronLeft } from "lucide-react"
 
 import { AskCard } from "@/components/ask-card"
-import { PhoneMarkdown } from "@/components/markdown"
+import { renderBlock } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/input"
 import { t } from "@/lib/i18n"
@@ -13,7 +14,10 @@ import { cn } from "@/lib/cn"
 export function ThreadScreen({
   detail,
   blocks,
+  hasMore,
+  loadingOlder,
   onBack,
+  onOlder,
   onSend,
   onSteer,
   onStop,
@@ -22,7 +26,10 @@ export function ThreadScreen({
 }: {
   detail: ThreadDetail
   blocks: CompactBlock[]
+  hasMore?: boolean
+  loadingOlder?: boolean
   onBack: () => void
+  onOlder?: () => void
   onSend: (text: string) => void
   onSteer: (text: string) => void
   onStop: () => void
@@ -35,31 +42,93 @@ export function ThreadScreen({
   const ask = pendingAsk(blocks)
   const asking = Boolean(detail.running?.ask_user || ask?.pending)
   const running = Boolean(detail.running)
+  const scroller = useRef<HTMLOListElement>(null)
+  const stick = useRef(true)
+  const pinHeight = useRef<number | null>(null)
+
+  const loadOlder = () => {
+    if (!onOlder || loadingOlder || !hasMore) return
+    pinHeight.current = scroller.current?.scrollHeight ?? 0
+    onOlder()
+  }
+
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    if (loadingOlder) return
+    if (pinHeight.current != null) {
+      el.scrollTop = el.scrollHeight - pinHeight.current
+      pinHeight.current = null
+      if (el.scrollTop < 48 && hasMore) loadOlder()
+      return
+    }
+    if (stick.current) el.scrollTop = el.scrollHeight
+  }, [blocks, loadingOlder, hasMore])
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] max-w-lg flex-col">
-      <header className="flex items-center gap-2 px-2 py-2">
-        <Button variant="ghost" onClick={onBack}>
-          {t("thread.back")}
+    <main className="mx-auto flex h-[100dvh] max-w-lg flex-col overflow-hidden bg-background">
+      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-1">
+        <Button
+          variant="ghost"
+          className="size-10 shrink-0 px-0"
+          onClick={onBack}
+          aria-label={t("thread.back")}
+        >
+          <ChevronLeft className="size-5" />
         </Button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold">{detail.title}</h1>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {running ? (
+            <span
+              className="size-1.5 shrink-0 rounded-full bg-[hsl(var(--running))]"
+              aria-hidden
+            />
+          ) : null}
+          <h1 className="min-w-0 truncate text-sm font-medium">{detail.title}</h1>
+        </div>
         {running ? (
-          <Button variant="destructive" onClick={onStop}>
+          <Button
+            variant="ghost"
+            className="h-8 shrink-0 px-2 text-destructive"
+            onClick={onStop}
+          >
             {t("thread.stop")}
           </Button>
         ) : null}
       </header>
       {detail.goal_on && detail.goal ? (
-        <p className="px-4 text-sm text-muted-foreground">{detail.goal}</p>
+        <p className="truncate px-4 py-1 text-xs text-muted-foreground">{detail.goal}</p>
       ) : null}
       {detail.plan_on ? (
-        <p className="px-4 text-xs text-[hsl(var(--running))]">{t("thread.plan")}</p>
+        <p className="px-4 text-[11px] text-[hsl(var(--running))]">{t("thread.plan")}</p>
       ) : null}
 
-      <ol className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
-        {blocks.map((b) => (
-          <li key={b.id}>{renderBlock(b)}</li>
-        ))}
+      <ol
+        ref={scroller}
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-3"
+        onScroll={(e) => {
+          const el = e.currentTarget
+          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+          if (el.scrollTop < 48 && el.scrollHeight > el.clientHeight + 24) loadOlder()
+        }}
+      >
+        {hasMore ? (
+          <li className="flex justify-center">
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-8 text-xs text-muted-foreground"
+              disabled={loadingOlder}
+              onClick={loadOlder}
+            >
+              {loadingOlder ? t("thread.loading") : t("thread.earlier")}
+            </Button>
+          </li>
+        ) : null}
+        {blocks.map((b) => {
+          const node = renderBlock(b)
+          if (!node) return null
+          return <li key={b.id}>{node}</li>
+        })}
         {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
           <li>
             <AskCard
@@ -79,54 +148,6 @@ export function ThreadScreen({
       />
     </main>
   )
-}
-
-function renderBlock(b: CompactBlock) {
-  if (b.kind === "user") {
-    return (
-      <div className="ml-8 rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
-        <p className="whitespace-pre-wrap">{b.text}</p>
-        {b.hasImages ? (
-          <p className="mt-1 text-xs opacity-80">{t("thread.image")}</p>
-        ) : null}
-      </div>
-    )
-  }
-  if (b.kind === "steer") {
-    return (
-      <div className="ml-8 rounded-2xl bg-accent px-3 py-2 text-sm">
-        <p className="whitespace-pre-wrap">{b.text}</p>
-      </div>
-    )
-  }
-  if (b.kind === "answer") {
-    return (
-      <div className={cn("mr-6", b.streaming && "opacity-90")}>
-        <PhoneMarkdown text={b.text} />
-      </div>
-    )
-  }
-  if (b.kind === "tool") {
-    return (
-      <p className="text-xs text-muted-foreground">
-        {b.pending ? (
-          <span className="text-[hsl(var(--running))]">{b.toolName || b.text}</span>
-        ) : (
-          b.toolName || b.text
-        )}
-      </p>
-    )
-  }
-  if (b.kind === "spawn") {
-    return <p className="text-xs text-muted-foreground">{b.text}</p>
-  }
-  if (b.kind === "error") {
-    return <p className="text-sm text-destructive">{b.text}</p>
-  }
-  if (b.kind === "notice") {
-    return <p className="text-xs text-muted-foreground">{b.text}</p>
-  }
-  return null
 }
 
 function Composer({
@@ -158,7 +179,7 @@ function Composer({
       : t("thread.send")
   return (
     <form
-      className="sticky bottom-0 flex flex-col gap-2 border-t border-border bg-background px-4 py-3"
+      className="flex shrink-0 items-end gap-2 border-t border-border bg-background px-3 py-2"
       onSubmit={(e) => {
         e.preventDefault()
         submit(asking ? "answer" : "send")
@@ -168,16 +189,22 @@ function Composer({
         aria-label={asking ? t("thread.answer") : t("thread.message")}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        rows={2}
+        rows={1}
+        className="min-h-10 max-h-24 flex-1 resize-none rounded-2xl border-0 bg-muted px-3 py-2"
       />
-      <div className="flex gap-2">
-        <Button type="submit">{label}</Button>
-        {running ? (
-          <Button type="button" variant="outline" onClick={() => submit("steer")}>
-            {t("thread.steer")}
-          </Button>
-        ) : null}
-      </div>
+      {running ? (
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-10 shrink-0 px-3"
+          onClick={() => submit("steer")}
+        >
+          {t("thread.steer")}
+        </Button>
+      ) : null}
+      <Button type="submit" className={cn("h-10 shrink-0 rounded-2xl px-4")}>
+        {label}
+      </Button>
     </form>
   )
 }

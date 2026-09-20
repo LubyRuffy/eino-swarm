@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { RemoteEvent, RemoteResponse, ThreadDetail } from "./rpc"
 import { OpEvent, OpReady } from "./rpc"
-import { applyPush, emptyView, markRunning, openView } from "./session"
+import { applyPush, emptyView, markRunning, openView, prependOlder } from "./session"
 
 function detail(partial?: Partial<ThreadDetail>): ThreadDetail {
   return { id: "t1", title: "one", ...partial }
@@ -61,7 +61,7 @@ describe("phone watch session", () => {
     expect(view.detail?.running?.turn_id).toBe("tu")
     view = applyPush(view, push(ev({ seq: 5, kind: "title", text: "named" })))
     expect(view.detail?.title).toBe("named")
-    view = applyPush(view, push(ev({ seq: 6, kind: "goal", text: "ship it" })))
+    view = applyPush(view, push(ev({ seq: 6, kind: "goal", text: "objective" })))
     expect(view.detail?.goal_on).toBe(true)
     view = applyPush(view, push(ev({ seq: 7, kind: "plan", text: "steps" })))
     expect(view.detail?.plan_on).toBe(true)
@@ -69,5 +69,69 @@ describe("phone watch session", () => {
     expect(view.detail?.running).toBeUndefined()
     view = markRunning(view)
     expect(view.detail?.running?.thread_id).toBe("t1")
+  })
+
+  it("opens hasMore from ready and prepends older events above the viewport", () => {
+    let view = openView(detail())
+    view = applyPush(view, push(ev({ seq: 4, kind: "user_message", text: "now" })))
+    view = applyPush(view, {
+      v: 1,
+      id: "",
+      ok: true,
+      op: OpReady,
+      thread_id: "t1",
+      seq: 4,
+      more: true,
+      status: { running: false },
+    })
+    expect(view.hasMore).toBe(true)
+    expect(view.oldestSeq).toBe(4)
+    view = prependOlder(
+      view,
+      [ev({ seq: 2, kind: "user_message", text: "old" }), ev({ seq: 4, kind: "user_message", text: "dup" })],
+      false,
+    )
+    expect(view.hasMore).toBe(false)
+    expect(view.oldestSeq).toBe(2)
+    expect(view.blocks.map((b) => b.text)).toEqual(["old", "now"])
+    view = prependOlder(view, [ev({ seq: 2, kind: "user_message", text: "old" })], true)
+    expect(view.hasMore).toBe(false)
+    view = { ...view, hasMore: true, oldestSeq: 8 }
+    view = prependOlder(view, [], true, 3)
+    expect(view.hasMore).toBe(true)
+    expect(view.oldestSeq).toBe(3)
+    view = applyPush(view, {
+      v: 1,
+      id: "",
+      ok: true,
+      op: OpReady,
+      thread_id: "t1",
+      seq: 8,
+      status: { running: false },
+    })
+    expect(view.hasMore).toBe(false)
+  })
+
+  it("keeps a live streaming answer when older rows are prepended", () => {
+    let view = openView(detail())
+    view = applyPush(view, push(ev({ seq: 3, kind: "user_message", text: "q" })))
+    view = applyPush(view, push(ev({ seq: 0, kind: "delta", text: "partial" })))
+    view = prependOlder(view, [ev({ seq: 1, kind: "user_message", text: "prev" })], true)
+    expect(view.blocks.map((b) => b.text)).toEqual(["prev", "q", "partial"])
+    expect(view.blocks[2]?.streaming).toBe(true)
+  })
+
+  it("drops another thread's older page", () => {
+    let view = openView(detail())
+    view = applyPush(view, push(ev({ seq: 4, kind: "user_message", text: "now" })))
+    view = prependOlder(
+      view,
+      [ev({ seq: 1, kind: "user_message", text: "nope", thread_id: "other" })],
+      true,
+      1,
+    )
+    expect(view.blocks.map((b) => b.text)).toEqual(["now"])
+    expect(view.hasMore).toBe(true)
+    expect(view.oldestSeq).toBe(1)
   })
 })

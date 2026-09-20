@@ -1,6 +1,10 @@
+import type { ReactNode } from "react"
+import { ChevronRight } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { localeSwitchLabel, t } from "@/lib/i18n"
+import { collectLive } from "@/lib/resume"
 import type { ProjectView, RunningView, ThreadView } from "@/lib/rpc"
 import { cn } from "@/lib/cn"
 
@@ -27,10 +31,12 @@ export function HomeScreen({
   path: string
   onToggleLocale?: () => void
 }) {
-  const grouped = groupThreads(projects, threads)
+  const live = collectLive(running, threads)
+  const skip = new Set(live.map((r) => r.thread_id))
+  const grouped = groupThreads(projects, threads, skip)
   return (
-    <main className="mx-auto flex min-h-[100dvh] max-w-lg flex-col">
-      <header className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
+    <main className="mx-auto flex h-[100dvh] max-w-lg flex-col overflow-hidden">
+      <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold tracking-tight">{t("home.app")}</h1>
           <span
@@ -54,60 +60,34 @@ export function HomeScreen({
         </div>
       </header>
 
-      <div className="flex flex-1 flex-col gap-6 px-4 pb-4">
-        {running.length > 0 ? (
-          <section className="flex flex-col gap-1">
-            <h2 className="text-sm font-medium text-muted-foreground">
-              {t("home.inProgress")}
-            </h2>
-            <ul className="divide-y divide-border">
-              {running.map((r) => (
-                <li key={r.thread_id}>
-                  <button
-                    type="button"
-                    className="w-full py-3 text-left"
-                    onClick={() => onOpen(r.thread_id)}
-                  >
-                    <div className="text-sm font-medium">{r.title}</div>
-                    <div className="text-xs text-[hsl(var(--running))]">
-                      {r.ask_user ? t("home.ask") : r.action || t("thread.running")}
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">
+        {live.length > 0 ? (
+          <InboxSection title={t("home.inProgress")}>
+            {live.map((r) => (
+              <ThreadRow
+                key={r.thread_id}
+                id={r.thread_id}
+                title={r.title || r.thread_id}
+                detail={r.ask_user ? t("home.ask") : r.action || t("thread.running")}
+                live
+                onOpen={onOpen}
+              />
+            ))}
+          </InboxSection>
         ) : null}
 
         {grouped.map((g) => (
-          <section key={g.id || "recent"} className="flex flex-col gap-1">
-            <h2 className="text-sm font-medium text-muted-foreground">{g.name}</h2>
-            <ul className="divide-y divide-border">
-              {g.threads.map((th) => (
-                <li key={th.id}>
-                  <button
-                    type="button"
-                    className="w-full py-3 text-left"
-                    onClick={() => onOpen(th.id)}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium">{th.title || th.id}</span>
-                      {th.running ? (
-                        <span className="text-xs text-[hsl(var(--running))]">
-                          {t("home.live")}
-                        </span>
-                      ) : null}
-                    </div>
-                    {th.summary ? (
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {th.summary}
-                      </p>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <InboxSection key={g.id || "recent"} title={g.name}>
+            {g.threads.map((th) => (
+              <ThreadRow
+                key={th.id}
+                id={th.id}
+                title={th.title || th.id}
+                detail={th.summary}
+                onOpen={onOpen}
+              />
+            ))}
+          </InboxSection>
         ))}
         {more ? (
           <Button variant="outline" onClick={onMore}>
@@ -121,11 +101,69 @@ export function HomeScreen({
   )
 }
 
-function groupThreads(projects: ProjectView[], threads: ThreadView[]) {
+function InboxSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="px-1 text-sm font-medium text-muted-foreground">{title}</h2>
+      <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card">
+        {children}
+      </ul>
+    </section>
+  )
+}
+
+function ThreadRow({
+  id,
+  title,
+  detail,
+  live,
+  onOpen,
+}: {
+  id: string
+  title: string
+  detail?: string
+  live?: boolean
+  onOpen: (id: string) => void
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        aria-label={t("home.open", { title })}
+        className="flex min-h-11 w-full items-center gap-3 px-3 py-3 text-left hover:bg-accent active:bg-accent"
+        onClick={() => onOpen(id)}
+      >
+        {live ? (
+          <span
+            className="size-2 shrink-0 animate-pulse rounded-full bg-[hsl(var(--running))]"
+            aria-hidden
+          />
+        ) : null}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{title}</span>
+          {detail ? (
+            <span
+              className={cn(
+                "mt-0.5 block truncate text-xs",
+                live ? "text-[hsl(var(--running))]" : "text-muted-foreground",
+              )}
+            >
+              {detail}
+            </span>
+          ) : null}
+        </span>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+      </button>
+    </li>
+  )
+}
+
+function groupThreads(projects: ProjectView[], threads: ThreadView[], skip: Set<string>) {
   const names = new Map(projects.map((p) => [p.id, p.name]))
   const by = new Map<string, ThreadView[]>()
   const rest: ThreadView[] = []
   for (const th of threads) {
+    if (skip.has(th.id)) continue
     if (th.project_id && names.has(th.project_id)) {
       const list = by.get(th.project_id) ?? []
       list.push(th)
@@ -152,7 +190,7 @@ function NewThreadForm({
 }) {
   return (
     <form
-      className="sticky bottom-0 flex flex-col gap-2 border-t border-border bg-background px-4 py-3"
+      className="flex shrink-0 flex-col gap-2 border-t border-border bg-background px-3 py-2"
       onSubmit={(e) => {
         e.preventDefault()
         const fd = new FormData(e.currentTarget)
@@ -164,28 +202,32 @@ function NewThreadForm({
         }
       }}
     >
-      <label className="text-sm font-medium" htmlFor="new-thread">
-        {t("home.new")}
-      </label>
       {projects.length > 0 ? (
-        <label className="text-sm">
-          {t("home.project")}
-          <select
-            name="project"
-            aria-label={t("home.project")}
-            className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-          >
-            <option value="">{t("home.defaultProject")}</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <select
+          name="project"
+          aria-label={t("home.project")}
+          className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+        >
+          <option value="">{t("home.defaultProject")}</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
       ) : null}
-      <Input id="new-thread" name="text" aria-label={t("home.newMessage")} />
-      <Button type="submit">{t("home.start")}</Button>
+      <div className="flex items-center gap-2">
+        <Input
+          id="new-thread"
+          name="text"
+          aria-label={t("home.newMessage")}
+          placeholder={t("home.newMessage")}
+          className="h-11 bg-muted"
+        />
+        <Button type="submit" className="h-11 shrink-0">
+          {t("home.start")}
+        </Button>
+      </div>
     </form>
   )
 }

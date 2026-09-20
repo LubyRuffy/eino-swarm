@@ -585,6 +585,7 @@ func Default() *Config {
 			SummaryChars: DefaultRemoteSummaryChars,
 			OpenTurns:    DefaultRemoteOpenTurns,
 			EventChars:   DefaultRemoteEventChars,
+			WatchEvents:  DefaultRemoteWatchEvents,
 		},
 	}
 }

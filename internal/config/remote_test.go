@@ -28,6 +28,9 @@ func TestRemoteDefaultsAndTokenStayOffYAML(t *testing.T) {
 	if cfg.Remote.EventChars != DefaultRemoteEventChars {
 		t.Fatalf("event chars %d", cfg.Remote.EventChars)
 	}
+	if cfg.Remote.WatchEvents != DefaultRemoteWatchEvents {
+		t.Fatalf("watch events %d", cfg.Remote.WatchEvents)
+	}
 	if _, err := os.Stat(cfg.RemoteDir()); err != nil {
 		t.Fatal(err)
 	}
@@ -160,7 +163,7 @@ func TestRemoteNormalizeClampsAndTrims(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
 	dir := t.TempDir()
-	raw := []byte("remote:\n  enabled: true\n  hub_url: \"  http://127.0.0.1:9  \"\n  thread_limit: -1\n  summary_chars: 0\n  open_turns: -2\n  event_chars: 0\n")
+	raw := []byte("remote:\n  enabled: true\n  hub_url: \"  http://127.0.0.1:9  \"\n  thread_limit: -1\n  summary_chars: 0\n  open_turns: -2\n  event_chars: 0\n  watch_events: 0\n")
 	if err := os.WriteFile(filepath.Join(dir, FileName), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -171,7 +174,7 @@ func TestRemoteNormalizeClampsAndTrims(t *testing.T) {
 	if !cfg.Remote.Enabled || cfg.Remote.HubURL != "http://127.0.0.1:9" {
 		t.Fatalf("%+v", cfg.Remote)
 	}
-	if cfg.Remote.ThreadLimit != DefaultRemoteThreadLimit || cfg.Remote.SummaryChars != DefaultRemoteSummaryChars || cfg.Remote.OpenTurns != DefaultRemoteOpenTurns || cfg.Remote.EventChars != DefaultRemoteEventChars {
+	if cfg.Remote.ThreadLimit != DefaultRemoteThreadLimit || cfg.Remote.SummaryChars != DefaultRemoteSummaryChars || cfg.Remote.OpenTurns != DefaultRemoteOpenTurns || cfg.Remote.EventChars != DefaultRemoteEventChars || cfg.Remote.WatchEvents != DefaultRemoteWatchEvents {
 		t.Fatalf("clamped %+v", cfg.Remote)
 	}
 }

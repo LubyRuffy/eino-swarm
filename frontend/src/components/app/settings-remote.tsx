@@ -147,6 +147,18 @@ export function RemoteTab({
             onChange={(e) => update({ event_chars: Number(e.target.value) })}
           />
         </Field>
+        <Field
+          query={query}
+          label={t("settings.remote.watchEvents")}
+          hint={t("settings.remote.watchEventsHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={remote.watch_events}
+            onChange={(e) => update({ watch_events: Number(e.target.value) })}
+          />
+        </Field>
       </SettingsSection>
 
       <SettingsSection

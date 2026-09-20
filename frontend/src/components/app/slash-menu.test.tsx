@@ -38,4 +38,21 @@ describe("SlashMenu", () => {
     fireEvent.click(screen.getByTestId("slash-command-goal"))
     expect(onSelect).toHaveBeenCalledWith(items[0])
   })
+
+  it("keeps the textarea focused by cancelling mousedown on a row", () => {
+    render(
+      <div className="relative">
+        <SlashMenu
+          items={items}
+          activeIndex={0}
+          onHover={vi.fn()}
+          onSelect={vi.fn()}
+        />
+      </div>,
+    )
+    const row = screen.getByTestId("slash-command-goal")
+    const ev = new MouseEvent("mousedown", { bubbles: true, cancelable: true })
+    row.dispatchEvent(ev)
+    expect(ev.defaultPrevented).toBe(true)
+  })
 })

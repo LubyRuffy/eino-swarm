@@ -3,6 +3,7 @@ import { fromPrivate, generateIdentity, type Identity } from "./crypto"
 
 const ID_KEY = "zwai.remote.identity"
 const LINK_KEY = "zwai.remote.link"
+const LAST_KEY = "zwai.remote.lastThread"
 
 export type SavedLink = {
   hubURL: string
@@ -44,4 +45,19 @@ export function saveLink(link: SavedLink) {
 
 export function clearLink() {
   localStorage.removeItem(LINK_KEY)
+  clearLastThreadId()
+}
+
+export function loadLastThreadId(): string {
+  return localStorage.getItem(LAST_KEY) ?? ""
+}
+
+export function saveLastThreadId(id: string) {
+  const v = id.trim()
+  if (!v) return
+  localStorage.setItem(LAST_KEY, v)
+}
+
+export function clearLastThreadId() {
+  localStorage.removeItem(LAST_KEY)
 }
