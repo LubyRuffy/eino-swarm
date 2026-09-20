@@ -212,8 +212,8 @@ forwards sealed frames to this process.
 `remote` in `GET/PUT /api/settings` is `{enabled, hub_url, thread_limit,
 summary_chars, open_turns, event_chars}`. `hub_url` is whatever you typed — never compiled
 in. A PUT of `remote` reloads the pairlink host. The Host Token is **not** in
-settings JSON; it lives under `$ZWAI_HOME/remote/` and is written with
-`PUT /api/remote/token`.
+settings JSON; it lives under `$ZWAI_HOME/remote/`. Enabling pairing mints it
+if missing. `PUT /api/remote/token` can replace it.
 
 ### `GET /api/remote/status`
 
@@ -232,7 +232,7 @@ pairlink host. Returns the same JSON as `GET /api/remote/status`.
 ### `POST /api/remote/offer`
 
 Mints a short-lived pairing code and a PNG. `409` `remote_offline` when the
-hub URL or Host Token is missing.
+hub URL is missing or the host cannot register.
 
 ```json
 {"uri": "pairlink:v1:<hub_url>:<code>:<host_spk>",
@@ -385,7 +385,7 @@ typed them (`400`).
               "archived": false, "project_id": "pj_ab12…", "pinned": false,
               "created_at": "2026-09-15T11:03:12.884+08:00",
               "last_active_at": "2026-09-15T11:31:02.114+08:00",
-              "sort_rank": 0, "running": true}]}
+              "sort_rank": 0, "running": true, "awaiting_answer": true}]}
 ```
 
 `archived=1` returns the archived ones instead. `project=<id>` returns only that
@@ -397,7 +397,9 @@ unranked row does not sit above a ranked one that just ran. A drag writes a
 positive rank and pins relative order inside its group (Recents or one project). `pinned` is a separate flag: a
 project topic the user is tracking at the top of the sidebar, ordered by
 `pinned_at`. `running` is computed from the live runtimes in one pass, so the sidebar does
-not poll per row. `reasoning_effort` is the conversation's thinking level (`""`,
+not poll per row. `awaiting_answer` is true on that same row while `ask_user` is blocked
+waiting for the human (still `running`): the sidebar paints a question mark instead of
+the working pulse. `reasoning_effort` is the conversation's thinking level (`""`,
 `low`, `medium`, `high`); empty means the model's own default. `project_id` is empty for
 a conversation that belongs to no project. `goal` is the standing objective from
 `/goal` (empty when none). `goal_complete` is true after the manager called
@@ -436,7 +438,7 @@ an unknown id is rejected (`404`).
 Returns the conversation and its live status:
 
 ```json
-{"thread": {"id": "th_ab12…", "…": "…", "running": true},
+{"thread": {"id": "th_ab12…", "…": "…", "running": true, "awaiting_answer": true},
  "status": {"thread_id": "th_ab12…", "running": true, "turn_id": "tn_cd34…",
             "started_at": "2026-09-15T11:31:00.100+08:00",
             "elapsed_ms": 4120, "workers": 2,

@@ -133,7 +133,7 @@ describe("Header status", () => {
     expect(screen.getByTestId("status-badge")).toHaveTextContent("Waiting")
   })
 
-  it("says Waiting while ask_user is blocked", () => {
+  it("says Your turn while ask_user is blocked", () => {
     renderHeader({
       status: {
         running: true,
@@ -141,7 +141,13 @@ describe("Header status", () => {
         started_at: new Date(Date.now() - 5000).toISOString(),
       },
     })
-    expect(screen.getByTestId("status-badge")).toHaveTextContent("Waiting")
+    const badge = screen.getByTestId("status-badge")
+    expect(badge).toHaveTextContent("Your turn")
+    expect(badge).not.toHaveTextContent("Waiting")
+    expect(badge).not.toHaveTextContent("Working")
+    const mark = badge.querySelector("[data-testid=ask-mark]")
+    expect(mark).toHaveAttribute("aria-label", "needs your answer")
+    expect(mark?.querySelector(".animate-ping")).toBeTruthy()
   })
 
   it("says Waiting while a thread wake is parked", () => {
@@ -179,7 +185,7 @@ describe("Header status", () => {
     expect(screen.getByTestId("status-badge")).not.toHaveTextContent("Working")
   })
 
-  it("keeps Waiting when the human has to answer, even during compact", () => {
+  it("keeps Your turn when the human has to answer, even during compact", () => {
     renderHeader({
       status: {
         running: true,
@@ -188,7 +194,9 @@ describe("Header status", () => {
         started_at: new Date(Date.now() - 5000).toISOString(),
       },
     })
-    expect(screen.getByTestId("status-badge")).toHaveTextContent("Waiting")
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("Your turn")
+    expect(screen.getByTestId("status-badge")).not.toHaveTextContent("Waiting")
+    expect(screen.getByTestId("status-badge")).not.toHaveTextContent("Compressing")
   })
 
   it("counts elapsed time from when the turn started, including hours", () => {

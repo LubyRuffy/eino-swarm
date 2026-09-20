@@ -1,5 +1,6 @@
 import { useState } from "react"
 
+import { AskMark } from "@/components/app/ask-mark"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ASK_OTHER_ID, type AskCard, type AskQuestion } from "@/lib/transcript-ask"
@@ -65,9 +66,25 @@ export function AskCardView({ card }: { card: AskCard }) {
   return (
     <div
       data-testid="ask-card"
-      className="my-3 w-full rounded-2xl border bg-card p-4 shadow-md"
+      className={cn(
+        "relative my-3 w-full rounded-2xl border bg-card p-4 shadow-md",
+        card.pending && "border-ask",
+      )}
     >
-      <p className="text-sm text-muted-foreground">{t("ask.title")}</p>
+      <div className="flex items-center gap-2">
+        {card.pending ? <AskMark className="size-3.5" pulse={false} /> : null}
+        <p
+          className={cn(
+            "text-sm",
+            card.pending ? "font-medium text-ask" : "text-muted-foreground",
+          )}
+        >
+          {card.pending ? t("ask.needsYou") : t("ask.title")}
+        </p>
+      </div>
+      {card.pending ? (
+        <p className="mt-1 text-xs text-muted-foreground">{t("ask.hint")}</p>
+      ) : null}
       {card.pending ? (
         <form
           className="mt-3 flex flex-col gap-4"

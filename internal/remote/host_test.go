@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -126,6 +128,36 @@ func TestHostOfferAndServeLinkOverRelay(t *testing.T) {
 	}
 }
 
+func TestHostStartWithoutHubURLStaysOffline(t *testing.T) {
+	e := testEngine(t)
+	cfg := e.Config()
+	cfg.Remote.Enabled = true
+	h := New(e, cfg, nil)
+	h.Start()
+	st := h.Status()
+	if st.Online || st.Error != "remote needs hub_url" {
+		t.Fatalf("expected hub_url error %+v", st)
+	}
+	if st.HasToken {
+		t.Fatal("must not mint a token without a hub")
+	}
+}
+
+func TestHostStartTokenPathError(t *testing.T) {
+	e := testEngine(t)
+	cfg := e.Config()
+	cfg.Remote.Enabled = true
+	cfg.Remote.HubURL = "http://127.0.0.1:9"
+	if err := os.Mkdir(filepath.Join(cfg.RemoteDir(), "host_token"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	h := New(e, cfg, nil)
+	h.Start()
+	if h.Status().Online || h.Status().Error == "" {
+		t.Fatalf("expected token path error %+v", h.Status())
+	}
+}
+
 func TestHostStartWithoutTokenStaysOffline(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()
@@ -137,12 +169,11 @@ func TestHostStartWithoutTokenStaysOffline(t *testing.T) {
 	if st.Online || st.Error == "" {
 		t.Fatalf("expected offline %+v", st)
 	}
+	if !st.HasToken {
+		t.Fatal("unreachable hub must still mint a local host token")
+	}
 	if _, err := h.Offer(context.Background()); err == nil {
 		t.Fatal("offer must fail offline")
-	}
-	binds, err := h.ListBindings(context.Background())
-	if err != nil || len(binds) != 0 {
-		t.Fatalf("bindings %v %v", binds, err)
 	}
 }
 

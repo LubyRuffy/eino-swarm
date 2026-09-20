@@ -125,11 +125,24 @@ func TestAskUserPausesThisTurnUntilAnswered(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := waitAskToolCall(t, sub, 15*time.Second)
+	if ids := e.AwaitingAnswer(); len(ids) != 1 || ids[0] != th.ID {
+		t.Fatalf("AwaitingAnswer=%v want [%s]", ids, th.ID)
+	}
 	if err := e.AnswerTurn(th.ID, "wrong-id", AskAnswers{"approach": {Answers: []string{"safer"}}}); !errors.Is(err, ErrAskMismatch) {
 		t.Fatalf("wrong id err=%v", err)
 	}
 	if err := e.AnswerTurn(th.ID, call.ToolCallID, AskAnswers{"approach": {Answers: []string{"safer"}}}); err != nil {
 		t.Fatal(err)
+	}
+	cleared := time.Now().Add(2 * time.Second)
+	for time.Now().Before(cleared) {
+		if len(e.AwaitingAnswer()) == 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if ids := e.AwaitingAnswer(); len(ids) != 0 {
+		t.Fatalf("an answered ask is still listed: %v", ids)
 	}
 	finished := waitForTurn(t, e, turn.ID)
 	if finished.Status != store.TurnDone {

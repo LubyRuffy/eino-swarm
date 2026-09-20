@@ -43,9 +43,13 @@ type threadView struct {
 	CreatedAt       string `json:"created_at"`
 	LastActiveAt    string `json:"last_active_at"`
 	Running         bool   `json:"running"`
+	// Live only: ask_user is blocked waiting for the human. The turn is
+	// still Running. Omitted when idle so a listing of finished rows
+	// does not dump a field of falses.
+	AwaitingAnswer bool `json:"awaiting_answer,omitempty"`
 }
 
-func viewThread(th *store.Thread, running bool) threadView {
+func viewThread(th *store.Thread, running, awaitingAnswer bool) threadView {
 	v := threadView{
 		ID:              th.ID,
 		Title:           th.Title,
@@ -69,6 +73,7 @@ func viewThread(th *store.Thread, running bool) threadView {
 		CreatedAt:       th.CreatedAt.Format(timeFormat),
 		LastActiveAt:    th.LastActiveAt.Format(timeFormat),
 		Running:         running,
+		AwaitingAnswer:  awaitingAnswer,
 	}
 	if th.GoalStartedAt != nil && !th.GoalStartedAt.IsZero() {
 		v.GoalStartedAt = th.GoalStartedAt.Format(timeFormat)
@@ -79,8 +84,8 @@ func viewThread(th *store.Thread, running bool) threadView {
 	return v
 }
 
-func viewThreadWithUsage(th *store.Thread, running bool, chars, budget int) threadView {
-	v := viewThread(th, running)
+func viewThreadWithUsage(th *store.Thread, running, awaitingAnswer bool, chars, budget int) threadView {
+	v := viewThread(th, running, awaitingAnswer)
 	v.ContextChars = chars
 	v.ContextBudget = budget
 	return v
@@ -98,9 +103,13 @@ func (s *Server) listThreads(c *gin.Context) {
 	for _, id := range s.engine.Running() {
 		running[id] = true
 	}
+	asking := map[string]bool{}
+	for _, id := range s.engine.AwaitingAnswer() {
+		asking[id] = true
+	}
 	out := make([]threadView, 0, len(threads))
 	for i := range threads {
-		out = append(out, viewThread(&threads[i], running[threads[i].ID]))
+		out = append(out, viewThread(&threads[i], running[threads[i].ID], asking[threads[i].ID]))
 	}
 	c.JSON(http.StatusOK, gin.H{"threads": out})
 }
@@ -118,7 +127,7 @@ func (s *Server) createThread(c *gin.Context) {
 		s.fail(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"thread": viewThread(th, false)})
+	c.JSON(http.StatusCreated, gin.H{"thread": viewThread(th, false, false)})
 }
 
 func (s *Server) getThread(c *gin.Context) {
@@ -138,7 +147,7 @@ func (s *Server) getThread(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"thread": viewThreadWithUsage(th, status.Running, chars, budget),
+		"thread": viewThreadWithUsage(th, status.Running, status.AwaitingAnswer, chars, budget),
 		"status": status,
 		"usage":  usage,
 	})
@@ -438,7 +447,7 @@ func (s *Server) compactThread(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"thread": viewThreadWithUsage(th, status.Running, chars, budget),
+		"thread": viewThreadWithUsage(th, status.Running, status.AwaitingAnswer, chars, budget),
 		"status": status,
 		"usage":  usage,
 	})

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest"
 
-import { resetToasts, useToasts } from "./toasts"
+import { errorMessage, resetToasts, toastError, useToasts } from "./toasts"
 
 afterEach(() => {
   resetToasts()
@@ -42,6 +42,23 @@ describe("toasts", () => {
       "err-3",
       "err-4",
       "err-5",
+    ])
+  })
+
+  it("toastError is a named error card and errorMessage unwraps Error", () => {
+    expect(errorMessage(new Error("disk full"))).toBe("disk full")
+    expect(errorMessage("plain")).toBe("plain")
+    toastError("hub refused", {
+      id: "settings:remote",
+      title: "Couldn't set up the phone",
+    })
+    expect(useToasts.getState().toasts).toEqual([
+      {
+        id: "settings:remote",
+        kind: "error",
+        title: "Couldn't set up the phone",
+        message: "hub refused",
+      },
     ])
   })
 

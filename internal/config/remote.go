@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,9 +19,8 @@ const (
 )
 
 // RemoteConfig is the phone-pairing channel. HubURL is whatever the user
-// typed in Settings — never a compiled-in host. The Host Token and the
-// long-term key live as files under RemoteDir, not in this struct, so
-// GET /api/settings cannot echo them.
+// typed in Settings — never a compiled-in host. The Host Token is minted on
+// this PC when pairing starts; GET /api/settings cannot echo it.
 type RemoteConfig struct {
 	Enabled      bool   `yaml:"enabled" json:"enabled"`
 	HubURL       string `yaml:"hub_url" json:"hub_url"`
@@ -87,6 +88,28 @@ func (c *Config) HostToken() (string, error) {
 func (c *Config) HasHostToken() bool {
 	tok, err := c.HostToken()
 	return err == nil && tok != ""
+}
+
+// EnsureHostToken returns the stored Host Token, minting a random one if the
+// file is missing. The hub admits that token when open registration is on.
+// This is not a Gateway Key and never goes in config.yaml.
+func (c *Config) EnsureHostToken() (string, error) {
+	tok, err := c.HostToken()
+	if err != nil {
+		return "", err
+	}
+	if tok != "" {
+		return tok, nil
+	}
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	tok = hex.EncodeToString(raw)
+	if err := c.WriteHostToken(tok); err != nil {
+		return "", err
+	}
+	return tok, nil
 }
 
 func (c *Config) WriteRemoteIdentity(priv []byte) error {

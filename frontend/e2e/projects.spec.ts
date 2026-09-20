@@ -297,6 +297,13 @@ test("a running conversation keeps its progress after switching away", async ({
   const left = wrap.locator(`[data-testid="thread-row"][data-id="${id}"]`)
   await expect(left).toBeVisible()
   await expect(left.getByLabel("running")).toBeVisible()
+
+  await wrap.getByRole("button", { name: project, exact: true }).click()
+  await expect(wrap.getByTestId("thread-row")).toHaveCount(0)
+  const mark = wrap.getByTestId("folder-live-mark")
+  await expect(mark).toBeVisible()
+  await expect(mark.getByLabel("running")).toBeVisible()
+  await expect(mark).toHaveClass(/overflow-hidden/)
 })
 
 function escape(text: string): string {

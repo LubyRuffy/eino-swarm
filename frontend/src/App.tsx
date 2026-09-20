@@ -27,6 +27,7 @@ import { liveWorkers } from "@/lib/transcript"
 import { terminalShortcut, terminalTarget } from "@/lib/terminal"
 import { isWelcomePane, visibleManagerBlockCount } from "@/lib/welcome"
 import type { Project, SkillInfo } from "@/lib/types"
+import { askingThreadIds } from "@/lib/thread-title"
 import { toggleLocalePref, useT } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { useApp } from "@/store/app"
@@ -499,9 +500,14 @@ function AppSidebar({
   const threads = useApp((s) => s.threads)
   const activeId = useApp((s) => s.activeId)
   const running = useApp((s) => s.status.running)
+  const awaitingAnswer = useApp((s) => Boolean(s.status.awaiting_answer))
   const overlayRunningId = threads.find((t) => t.running && t.id !== activeId)?.id
   const schedules = useApp((s) => s.schedules)
   const waitingIds = useMemo(() => waitingThreadIds(schedules), [schedules])
+  const askingIds = useMemo(
+    () => askingThreadIds(threads, activeId, awaitingAnswer),
+    [threads, activeId, awaitingAnswer],
+  )
   const openThread = useApp((s) => s.openThread)
   const renameThread = useApp((s) => s.renameThread)
   const deleteThread = useApp((s) => s.deleteThread)
@@ -517,6 +523,7 @@ function AppSidebar({
       activeId={activeId}
       runningId={overlayRunningId ?? (running ? activeId : undefined)}
       waitingIds={waitingIds}
+      askingIds={askingIds}
       onNew={onNew}
       onOpen={(id) => void openThread(id)}
       onRename={(id, title) => void renameThread(id, title)}

@@ -11,6 +11,7 @@ import {
 import { useEffect, useState } from "react"
 
 import { CopyButton } from "@/components/app/transcript"
+import { AskMark } from "@/components/app/ask-mark"
 import { WaitMark } from "@/components/app/wait-mark"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -161,16 +162,25 @@ export function Header({
         </div>
 
         {status.running ? (
-          <Badge variant="warning" data-testid="status-badge">
-            <span className="size-1.5 animate-breathe rounded-full bg-running" />
+          <Badge
+            variant={status.awaiting_answer ? "ask" : "warning"}
+            data-testid="status-badge"
+          >
+            {status.awaiting_answer ? (
+              <AskMark />
+            ) : (
+              <span className="size-1.5 animate-breathe rounded-full bg-running" />
+            )}
             {/* A running clock counts in seconds; "Working · 0ms" reads like a
                 bug even when it is the truth. Missing started_at used to
                 clamp to 1s forever — that is a lie, not a clock. */}
-            {status.awaiting_continue || status.awaiting_answer
-              ? t("header.waiting")
-              : status.compressing
-                ? t("header.compressing")
-                : t("header.working")}
+            {status.awaiting_answer
+              ? t("header.yourTurn")
+              : status.awaiting_continue
+                ? t("header.waiting")
+                : status.compressing
+                  ? t("header.compressing")
+                  : t("header.working")}
             {status.started_at
               ? ` · ${formatDuration(Math.max(elapsedMs, 1000))}`
               : null}

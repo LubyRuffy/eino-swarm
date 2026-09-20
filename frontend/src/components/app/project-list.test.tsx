@@ -168,6 +168,23 @@ describe("Project list", () => {
     expect(screen.getByTestId("project-folder")).toHaveAttribute("data-open", "false")
   })
 
+  // The overlay used to inherit the row's text-sm line box, so the 6px
+  // breathe-dot stretched into a glow across the closed folder.
+  it("clips the collapsed running mark so it cannot smear the folder", () => {
+    renderList({
+      threadsByProject: {
+        pj_1: [topic({ id: "th_busy", title: "Busy topic", running: true })],
+      },
+      expanded: { pj_1: false },
+    })
+    const mark = screen.getByTestId("folder-live-mark")
+    expect(screen.getByTestId("project-kind")).toContainElement(mark)
+    expect(mark.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["absolute", "flex", "overflow-hidden", "leading-none"]),
+    )
+    expect(mark.querySelector("[aria-label]")).toHaveClass("block", "size-1.5")
+  })
+
   it("marks a collapsed folder that still has a parked wait", () => {
     renderList({
       threadsByProject: {
@@ -181,6 +198,26 @@ describe("Project list", () => {
       "aria-label",
       "waiting",
     )
+    expect(screen.getByTestId("folder-live-mark")).toContainElement(
+      screen.getByTestId("wait-mark"),
+    )
+  })
+
+  it("marks a collapsed folder that is blocked on ask_user", () => {
+    renderList({
+      threadsByProject: {
+        pj_1: [topic({ id: "th_ask", title: "Asking topic", running: true })],
+      },
+      expanded: { pj_1: false },
+      askingIds: new Set(["th_ask"]),
+    })
+    expect(screen.queryByTestId("project-threads")).not.toBeInTheDocument()
+    expect(screen.getByTestId("ask-mark")).toHaveAttribute(
+      "aria-label",
+      "needs your answer",
+    )
+    expect(screen.getByTestId("folder-live-mark")).toHaveClass("overflow-visible")
+    expect(screen.queryByLabelText("running")).not.toBeInTheDocument()
   })
 
   it("does not paint a drag grip on the folder or its topics", () => {

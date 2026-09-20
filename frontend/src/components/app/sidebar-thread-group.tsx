@@ -16,6 +16,7 @@ export function SidebarThreadGroup({
   activeId,
   runningId,
   waitingIds,
+  askingIds,
   onOpen,
   onRename,
   onDelete,
@@ -26,6 +27,7 @@ export function SidebarThreadGroup({
   activeId?: string
   runningId?: string
   waitingIds?: ReadonlySet<string>
+  askingIds?: ReadonlySet<string>
   onOpen: (id: string) => void
   onRename: (id: string, title: string) => void
   onDelete: (id: string) => void
@@ -38,11 +40,12 @@ export function SidebarThreadGroup({
       splitSidebarPreview(threads, {
         keepIds: [
           ...[activeId, runningId].filter((id): id is string => Boolean(id)),
-          ...threads.filter((th) => th.running).map((th) => th.id),
+          ...threads.filter((th) => th.running || th.awaiting_answer).map((th) => th.id),
           ...(waitingIds ?? []),
+          ...(askingIds ?? []),
         ],
       }),
-    [threads, activeId, runningId, waitingIds],
+    [threads, activeId, runningId, waitingIds, askingIds],
   )
   const shown = expanded ? threads : visible
   const sortable = useSortableList((from, to) => {
@@ -57,6 +60,7 @@ export function SidebarThreadGroup({
           active={thread.id === activeId}
           running={thread.running || thread.id === runningId}
           waiting={waitingIds?.has(thread.id)}
+          asking={Boolean(askingIds?.has(thread.id) || thread.awaiting_answer)}
           drag={onReorder ? sortable.bind(thread.id) : undefined}
           onOpen={onOpen}
           onRename={onRename}

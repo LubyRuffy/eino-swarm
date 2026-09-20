@@ -317,7 +317,12 @@ export const useApp = create<AppState>((set, get) => ({
       // so switching away from a live turn does not make the folder look idle.
       threads:
         s.activeId && s.activeId !== id && s.status.running
-          ? setThreadRunning(s.threads, s.activeId, true)
+          ? setThreadRunning(
+              s.threads,
+              s.activeId,
+              true,
+              Boolean(s.status.awaiting_answer),
+            )
           : s.threads,
     }))
 
@@ -351,7 +356,12 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: setThreadRunning(upsertThread(s.threads, thread), id, status.running),
+          threads: setThreadRunning(
+            upsertThread(s.threads, thread),
+            id,
+            status.running,
+            Boolean(status.awaiting_answer),
+          ),
         }))
         if (Boolean(log.has_more) && !managerHasVisibleBlocks(transcript)) {
           await loadUntilVisibleHistory(get)
@@ -367,7 +377,12 @@ export const useApp = create<AppState>((set, get) => ({
           turns,
           followups,
           usage,
-          threads: setThreadRunning(upsertThread(s.threads, thread), id, status.running),
+          threads: setThreadRunning(
+            upsertThread(s.threads, thread),
+            id,
+            status.running,
+            Boolean(status.awaiting_answer),
+          ),
         }))
       }
       // The Memory tab belongs to the project, not the conversation. Opening
@@ -389,7 +404,12 @@ export const useApp = create<AppState>((set, get) => ({
               historyHasMore: since > 0 ? s.historyHasMore : false,
               threads:
                 live && s.activeId
-                  ? setThreadRunning(s.threads, s.activeId, Boolean(live.running))
+                  ? setThreadRunning(
+                      s.threads,
+                      s.activeId,
+                      Boolean(live.running),
+                      Boolean(live.awaiting_answer),
+                    )
                   : s.threads,
             }))
             void get().refreshFiles()
@@ -418,8 +438,11 @@ export const useApp = create<AppState>((set, get) => ({
         // while we wait must not idle the folder we are about to leave.
         const keepId = get().activeId
         const keepBusy = Boolean(keepId && get().status.running)
+        const keepAsking = Boolean(get().status.awaiting_answer)
         if (keepBusy && keepId) {
-          set((s) => ({ threads: setThreadRunning(s.threads, keepId, true) }))
+          set((s) => ({
+            threads: setThreadRunning(s.threads, keepId, true, keepAsking),
+          }))
         }
         const thread = await api.createThread(undefined, undefined, projectId)
         set((s) => {
@@ -427,7 +450,9 @@ export const useApp = create<AppState>((set, get) => ({
           return {
             threads: [
               thread,
-              ...(keepBusy && keepId ? setThreadRunning(rest, keepId, true) : rest),
+              ...(keepBusy && keepId
+                ? setThreadRunning(rest, keepId, true, keepAsking)
+                : rest),
             ],
           }
         })

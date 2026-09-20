@@ -338,6 +338,38 @@ describe("Sidebar pin and folders", () => {
     expect(screen.queryByTestId("wait-mark")).not.toBeInTheDocument()
   })
 
+  it("marks a blocked ask as your turn instead of the working pulse", () => {
+    render(
+      <Sidebar
+        threads={[thread("th_1", "Loose", { running: true })]}
+        runningId="th_1"
+        askingIds={new Set(["th_1"])}
+        {...noop}
+      />,
+    )
+    const mark = screen.getByTestId("ask-mark")
+    expect(mark).toHaveAttribute("aria-label", "needs your answer")
+    expect(mark.querySelector(".animate-ping")).toBeTruthy()
+    expect(screen.queryByLabelText("running")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("wait-mark")).not.toBeInTheDocument()
+  })
+
+  it("keeps an asking conversation in the Recents preview", () => {
+    render(
+      <Sidebar
+        threads={Array.from({ length: 6 }, (_, i) =>
+          thread(`th_${i}`, `Loose ${i}`, {
+            last_active_at: new Date(Date.now() - i * 60_000).toISOString(),
+          }),
+        )}
+        askingIds={new Set(["th_5"])}
+        {...noop}
+      />,
+    )
+    expect(screen.getByText("Loose 5")).toBeInTheDocument()
+    expect(screen.getByTestId("ask-mark")).toBeInTheDocument()
+  })
+
   it("keeps a waiting conversation in the Recents preview", () => {
     render(
       <Sidebar

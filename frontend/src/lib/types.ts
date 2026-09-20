@@ -195,6 +195,8 @@ export interface Thread {
   /** Set by the server from its live runtimes, so the sidebar can show a
    *  conversation working even while another one is on screen. */
   running: boolean
+  /** Live only: ask_user is blocked waiting for the human. Still `running`. */
+  awaiting_answer?: boolean
 }
 
 /** A message typed while a turn was already running. It waits for that turn

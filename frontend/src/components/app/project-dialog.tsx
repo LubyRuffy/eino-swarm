@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { ApiError, type ProjectPatch } from "@/lib/api"
 import type { Project } from "@/lib/types"
 import { useT } from "@/lib/use-t"
+import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 /** Create or edit one project: its instruction, its working directory and
  *  whether it remembers anything. */
@@ -41,7 +42,6 @@ export function ProjectDialog({
   const [workdir, setWorkdir] = useState("")
   const [memory, setMemory] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string>()
   const [workdirError, setWorkdirError] = useState<string>()
 
   useEffect(() => {
@@ -50,14 +50,14 @@ export function ProjectDialog({
     setPrompt(project?.system_prompt ?? "")
     setWorkdir(project?.workdir ?? "")
     setMemory(project ? project.memory_enabled : memoryAvailable)
-    setError(undefined)
     setWorkdirError(undefined)
+    useToasts.getState().dismiss("project:save")
   }, [open, project, memoryAvailable])
 
   const submit = async () => {
     setSaving(true)
-    setError(undefined)
     setWorkdirError(undefined)
+    useToasts.getState().dismiss("project:save")
     try {
       await onSave({
         name: name.trim(),
@@ -67,12 +67,14 @@ export function ProjectDialog({
       })
       onOpenChange(false)
     } catch (e) {
-      // A refused working directory is shown under the field that caused it;
-      // anything else goes above the buttons, where the eye already is.
+      // A refused working directory is shown under the field that caused it.
       if (e instanceof ApiError && e.code === "workdir") {
         setWorkdirError(e.message)
       } else {
-        setError(e instanceof Error ? e.message : String(e))
+        toastError(errorMessage(e), {
+          id: "project:save",
+          title: t("project.saveFailed"),
+        })
       }
     } finally {
       setSaving(false)
@@ -153,8 +155,6 @@ export function ProjectDialog({
             />
           </div>
         </div>
-
-        {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

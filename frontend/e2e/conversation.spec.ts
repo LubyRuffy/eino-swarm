@@ -986,6 +986,14 @@ test("plan command drafts then implements", async ({ page }) => {
   await expect(statusBadge(page)).toContainText("Working")
   const ask = page.getByTestId("ask-card")
   await expect(ask).toBeVisible({ timeout: 30_000 })
+  await expect(ask).toContainText("Your answer needed")
+  await expect(ask.getByTestId("ask-mark")).toBeVisible()
+  await expect(ask).not.toHaveClass(/animate-ask-ring/)
+  await expect(ask.locator("[data-testid=ask-mark] .animate-ping")).toHaveCount(0)
+  await expect(statusBadge(page)).toContainText("Your turn")
+  await expect(
+    statusBadge(page).locator("[data-testid=ask-mark] .animate-ping"),
+  ).toHaveCount(1)
   expect(await ask.evaluate((el) => {
     const col = el.closest(".content-column")
     if (!(col instanceof HTMLElement)) return false

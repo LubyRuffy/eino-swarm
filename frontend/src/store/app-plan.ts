@@ -120,6 +120,9 @@ export function planAskActions(
         set((s) => ({
           error: undefined,
           status: { ...s.status, awaiting_answer: false },
+          threads: s.activeId
+            ? setThreadRunning(s.threads, s.activeId, true, false)
+            : s.threads,
         }))
       } catch (e) {
         set({ error: deps.fail(e) })

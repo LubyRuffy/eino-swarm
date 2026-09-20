@@ -42,7 +42,9 @@ describe("AskCardView", () => {
 
   it("posts the chosen label after Submit", async () => {
     render(<AskCardView card={card()} />)
-    expect(screen.getByTestId("ask-card").textContent).toContain("Asking question")
+    expect(screen.getByTestId("ask-card").textContent).toContain("Your answer needed")
+    expect(screen.getByTestId("ask-card").textContent).toContain("Pick an option to continue.")
+    expect(screen.getByTestId("ask-mark")).toHaveAttribute("aria-label", "needs your answer")
     expect(screen.getByTestId("ask-submit")).toBeDisabled()
     fireEvent.click(screen.getByTestId("ask-option-safer"))
     expect(answerAsk).not.toHaveBeenCalled()
@@ -93,6 +95,16 @@ describe("AskCardView", () => {
     expect(classes.some((c) => c.startsWith("max-w-"))).toBe(false)
   })
 
+  it("paints a pending card as a call to act, not a working pulse", () => {
+    render(<AskCardView card={card()} />)
+    const el = screen.getByTestId("ask-card")
+    expect(el).toHaveClass("border-ask")
+    expect(el).not.toHaveClass("animate-ask-ring")
+    const mark = screen.getByTestId("ask-mark")
+    expect(mark).toBeTruthy()
+    expect(mark.querySelector(".animate-ping")).toBeNull()
+  })
+
   it("shows the settled answer instead of buttons", () => {
     render(
       <AskCardView
@@ -106,5 +118,8 @@ describe("AskCardView", () => {
     expect(screen.getByTestId("ask-card").textContent).toContain(
       "Prefer the safer path",
     )
+    expect(screen.getByTestId("ask-card").textContent).toContain("Asking question")
+    expect(screen.queryByTestId("ask-mark")).toBeNull()
+    expect(screen.getByTestId("ask-card")).not.toHaveClass("animate-ask-ring")
   })
 })

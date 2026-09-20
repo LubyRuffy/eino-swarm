@@ -30,7 +30,7 @@ From the repo root: `make mobile-ios` / `make mobile-android`.
 Android debug builds need JDK 21 (`JAVA_HOME` pointing at it). iOS needs Xcode
 and a 15.0+ deployment target.
 
-Hub URL, Host Token and pairing live on the PC (Settings → Phone). This app
+Hub URL and pairing live on the PC (Settings → Phone). This app
 only stores the device identity and the redeem ticket on the phone. Camera
 and cleartext (user-typed hub URLs, including `http` on a LAN) are declared
 in `Info.plist` and `AndroidManifest.xml`; nothing compiles a hub hostname.

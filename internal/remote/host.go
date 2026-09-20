@@ -58,9 +58,13 @@ func (h *Host) startLocked() {
 		return
 	}
 	hub := cfg.Remote.HubURL
-	token, err := cfg.HostToken()
-	if err != nil || hub == "" || token == "" {
-		h.err = "remote needs hub_url and a Host Token"
+	if hub == "" {
+		h.err = "remote needs hub_url"
+		return
+	}
+	token, err := cfg.EnsureHostToken()
+	if err != nil {
+		h.err = err.Error()
 		return
 	}
 	id, err := loadIdentity(cfg)

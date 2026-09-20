@@ -12,8 +12,11 @@ import type {
 } from "@/lib/types"
 import { defaultRemoteSettings } from "@/lib/types"
 import { useT } from "@/lib/use-t"
+import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 import { Field, SettingsPage, SettingsSection } from "./settings-field"
+
+const remoteToastId = "settings:remote"
 
 export function RemoteTab({
   settings,
@@ -30,18 +33,20 @@ export function RemoteTab({
     onChange({ ...settings, remote: { ...remote, ...patch } })
 
   const [status, setStatus] = useState<RemoteStatus>()
-  const [token, setToken] = useState("")
   const [offer, setOffer] = useState<RemoteOffer>()
   const [bindings, setBindings] = useState<RemoteBinding[]>([])
-  const [error, setError] = useState<string>()
   const [busy, setBusy] = useState(false)
   const [now, setNow] = useState(() => Date.now())
 
+  const fail = (e: unknown) =>
+    toastError(errorMessage(e), {
+      id: remoteToastId,
+      title: t("settings.remote.failed"),
+    })
+  const clearFail = () => useToasts.getState().dismiss(remoteToastId)
+
   const reload = () => {
-    void api
-      .remoteStatus()
-      .then(setStatus)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+    void api.remoteStatus().then(setStatus).catch(fail)
     void api
       .remoteBindings()
       .then(setBindings)
@@ -64,28 +69,14 @@ export function RemoteTab({
 
   const showQr = async () => {
     setBusy(true)
-    setError(undefined)
+    clearFail()
     try {
       const next = await api.remoteOffer()
       setOffer(next)
       reload()
     } catch (e) {
       setOffer(undefined)
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const storeToken = async () => {
-    setBusy(true)
-    setError(undefined)
-    try {
-      const st = await api.saveRemoteToken(token.trim())
-      setStatus(st)
-      setToken("")
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      fail(e)
     } finally {
       setBusy(false)
     }
@@ -97,7 +88,7 @@ export function RemoteTab({
       await api.revokeRemoteBinding(id)
       reload()
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      fail(e)
     } finally {
       setBusy(false)
     }
@@ -108,12 +99,6 @@ export function RemoteTab({
       title={t("settings.remote.title")}
       description={t("settings.remote.desc")}
     >
-      {error ? (
-        <p className="text-sm text-destructive" role="alert">
-          {error}
-        </p>
-      ) : null}
-
       <SettingsSection title={t("settings.remote.hub")}>
         <Field
           query={query}
@@ -138,34 +123,6 @@ export function RemoteTab({
             placeholder="https://"
           />
         </Field>
-        <div
-          className="flex items-start justify-between gap-6 px-4 py-3.5"
-          data-settings-row=""
-        >
-          <div className="min-w-0 flex-1">
-            <label htmlFor="remote-host-token" className="text-sm font-medium leading-none">
-              {t("settings.remote.token")}
-            </label>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              {status?.has_token
-                ? t("settings.remote.tokenSet")
-                : t("settings.remote.tokenHint")}
-            </p>
-          </div>
-          <div className="flex w-56 shrink-0 gap-2">
-            <Input
-              id="remote-host-token"
-              type="password"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            <Button type="button" size="sm" disabled={busy} onClick={() => void storeToken()}>
-              {t("settings.remote.storeToken")}
-            </Button>
-          </div>
-        </div>
         <Field
           query={query}
           label={t("settings.remote.threadLimit")}

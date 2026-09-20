@@ -39,6 +39,9 @@
     --running: 38 92% 50%;
     --done: 142 62% 38%;
     --failed: 0 72% 46%;
+    /* ask_user waiting on the human. Distinct from --running: a question
+       is not "still working". */
+    --ask: 252 55% 46%;
 
     /* In-conversation find. Distinct from --running: a hit is not "working". */
     --find: 48 96% 72%;
@@ -132,6 +135,7 @@
     --running: 38 92% 56%;
     --done: 142 58% 48%;
     --failed: 0 70% 58%;
+    --ask: 252 58% 72%;
 
     --find: 48 70% 38%;
     --find-foreground: 0 0% 98%;
@@ -388,7 +392,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-marquee,
-  .animate-shimmer {
+  .animate-shimmer,
+  .animate-ping {
     animation: none !important;
   }
 }

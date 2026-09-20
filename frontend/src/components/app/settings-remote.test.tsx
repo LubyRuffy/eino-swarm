@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { RemoteTab } from "./settings-remote"
+import { ToastStack } from "./toast-stack"
 import type { Settings } from "@/lib/types"
 
 vi.mock("@/lib/api", () => ({
@@ -93,13 +94,35 @@ describe("RemoteTab", () => {
     ).toMatch(/^pairlink:v1:/)
   })
 
-  it("does not echo a stored host token", async () => {
+  it("does not show a host token field", async () => {
     render(<RemoteTab settings={base} onChange={vi.fn()} />)
     await waitFor(() =>
-      expect(screen.getByLabelText("Host Token")).toBeInTheDocument(),
+      expect(screen.getByLabelText("Hub URL")).toBeInTheDocument(),
     )
-    expect(screen.getByLabelText("Host Token")).toHaveValue("")
-    expect(screen.getByText(/already stored/i)).toBeInTheDocument()
+    expect(screen.queryByLabelText("Host Token")).not.toBeInTheDocument()
     expect(screen.getByLabelText("Event text on the phone")).toHaveValue(4000)
+  })
+
+  it("toasts a pairing failure instead of a red line under the Phone heading", async () => {
+    vi.mocked(api.remoteOffer).mockRejectedValueOnce(new Error("hub refused"))
+    render(
+      <>
+        <ToastStack />
+        <RemoteTab settings={base} onChange={vi.fn()} />
+      </>,
+    )
+    await waitFor(() =>
+      expect(screen.getByLabelText("Hub URL")).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Couldn't set up the phone")
+    expect(alert).toHaveTextContent("hub refused")
+    const page =
+      screen.getByRole("heading", { name: "Phone" }).parentElement
+        ?.parentElement
+    expect(page?.textContent ?? "").not.toMatch(/hub refused/)
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
+    expect(screen.queryByRole("alert")).toBeNull()
   })
 })

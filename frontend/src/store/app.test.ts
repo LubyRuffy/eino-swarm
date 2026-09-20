@@ -486,6 +486,9 @@ describe("send", () => {
       text: 'ask_user({"questions":[{"id":"approach","prompt":"Which?","options":[{"id":"a","label":"A"},{"id":"b","label":"B"}]}]})',
     })
     expect(useApp.getState().status.awaiting_answer).toBe(true)
+    expect(
+      useApp.getState().threads.find((t) => t.id === "th_old")?.awaiting_answer,
+    ).toBe(true)
     await useApp.getState().send("the existing approach")
     expect(fake.enqueued).toEqual([])
     expect(fake.answers).toEqual([{ id: "th_old", text: "the existing approach" }])

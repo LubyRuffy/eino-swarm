@@ -57,7 +57,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   being dumped into the box.
 - **Interactive questions (`ask_user`).** When a preference would waste work
   if guessed, the manager pauses this turn with a numbered question dialog.
-  Pick a row, then Submit. Other opens a box instead of sitting empty under
+  The card says **Your answer needed**, the title bar says **Your turn**, and
+  the sidebar swaps the working pulse for a pinging question mark — pick a
+  row, then Submit. Other opens a box instead of sitting empty under
   every card. The same ReAct turn continues after the answer. Workers cannot
   ask. While a card is waiting, Enter in the composer is Other, not a
   follow-up.
@@ -172,7 +174,9 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **Per-conversation model and thinking level.** Settings → Models lists
   providers as rows (open one for URL, key, default). Discovering a catalog
   that fails toasts over the sheet (× to close) instead of a red line at
-  the top of that page. The composer picker
+  the top of that page. The same toast is how Phone pairing, a failed
+  Settings save, and a failed project save report — never a red line under
+  the heading you already scrolled past. The composer picker
   groups models by provider, searches, refreshes the catalog, and jumps
   to Edit providers. A thinking-level menu (Default / Low / Medium / High)
   sets how hard the models reason. Both apply from the next turn. A
@@ -273,12 +277,12 @@ end-to-end tests run on and the fastest way to see the UI work.
 
 ### Scan a phone to this PC
 
-1. In the hub console (aigateway **设备连接**, or `pairlinkd`) mint a **Host Token**.
-   It is not a Gateway Key.
-2. zwai **Settings → Phone**: turn pairing on, paste the hub URL, store the token.
-3. **Show pairing QR**. The plate is large and high-contrast. The same URI can
+1. zwai **Settings → Phone**: turn pairing on and paste the hub URL
+   (`https://…`). The Host Token is minted on this PC and hidden; it is not
+   a Gateway Key. A missing hub toasts over the sheet (× to close).
+2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
-4. On the phone, open the **zwai** iOS or Android app (`mobile/ios`,
+3. On the phone, open the **zwai** iOS or Android app (`mobile/ios`,
    `mobile/android`). **Scan QR** is the product path. After bind, the phone
    lists projects and the latest 5 threads, shows in-progress work, and is
    a compact screen on the same conversation: start / send / follow-up /

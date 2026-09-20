@@ -713,9 +713,14 @@ export function StatusDot({ status }: { status: AgentState["status"] }) {
   return (
     <span
       aria-label={label}
-      className={`size-1.5 shrink-0 rounded-full ${color} ${
-        status === "running" ? "animate-breathe" : ""
-      }`}
+      className={cn(
+        // Inline spans ignore size-* and pick up the row's line box, so
+        // the collapsed-folder overlay (not a flex item) paints a smear
+        // instead of a 6px dot.
+        "block size-1.5 shrink-0 rounded-full leading-none",
+        color,
+        status === "running" && "animate-breathe",
+      )}
     />
   )
 }

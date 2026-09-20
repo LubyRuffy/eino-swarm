@@ -11,6 +11,17 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Changed
+
+- **A blocked `ask_user` no longer looks like the swarm is still working.**
+  The working breathe-dot meant "alive"; a question needs the human. The
+  pending card says **Your answer needed** with a still ask border — a
+  pulsing ring on the whole dialog was too loud once the card was already
+  in view. The title bar says **Your turn**, and the sidebar (including a
+  collapsed folder) swaps the progress dot for a pinging question mark.
+  `GET /api/threads` carries `awaiting_answer` on that row so another
+  conversation's question is visible without opening it.
+
 ### Fixed
 
 - **A live desktop window no longer goes white when another `go run` rebuilds the UI.**
@@ -19,6 +30,11 @@ co-working app built on it. The library API is unchanged except where noted
   answered that request with HTML (`text/html`), which WebKit will not
   execute as a module. The bundle is now copied at server start, and a
   missing `/assets/*` file is a 404.
+
+- **Collapsed project folders no longer smear the running breathe-dot.** The
+  mark sat in the row's `text-sm` line box, so a 6px progress dot stretched
+  into a glow across the closed directory glyph. It is now a clipped badge
+  on the corner.
 
 - **A queued follow-up no longer freezes behind post-turn memory.** After
   `done` the composer already looked Idle, then the runtime sat on a
@@ -50,6 +66,13 @@ co-working app built on it. The library API is unchanged except where noted
   Terminal `curl` worked. Desktop now re-execs through
   `~/Library/Caches/zwai/zwai.app` (stable bundle id + usage string) and
   the error names the System Settings toggle.
+
+- **Settings failures toast instead of hiding above the fold.** Phone
+  pairing used the same red line under the page heading Discover used to:
+  scroll to the control, click, nothing looks broken. A failed Settings
+  save and a failed project save now use that same dismissible toast
+  (× to close). A refused project working directory still sits under the
+  field that caused it.
 
 - **Discover models failures toast instead of hiding above the fold.** The
   error used to paint as a red line under the Models heading, so expanding a
@@ -106,6 +129,12 @@ co-working app built on it. The library API is unchanged except where noted
   restores auto-continue when that turn finishes.
 
 ### Changed
+
+- **Phone pairing no longer asks for a Host Token.** Settings → Phone is
+  hub URL + enable. zwai mints the credential into `$ZWAI_HOME/remote/host_token`
+  and does not show it. Aigateway `pairlink.open_registration` (default on)
+  admits that token so bind and relay work without 设备连接. `PUT /api/remote/token`
+  still exists; the UI does not use it.
 
 - **An `edit` or `write` in the transcript is a highlighted hunk, not a
   status line.** eino-tools still returns `ok: replaced block in …` /

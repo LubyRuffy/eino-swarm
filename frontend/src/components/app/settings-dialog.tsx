@@ -37,6 +37,7 @@ import type { Meta, Settings, ToolDescriptor } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT, type Translate } from "@/lib/use-t"
 import type { Theme } from "@/store/app"
+import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 /** Scrollport for the right-hand page.
  *  `overflow-y-auto` does not replace TabsContent's `overflow-hidden`
@@ -147,10 +148,11 @@ export function SettingsDialog({
   onAppearanceChange: (patch: Partial<Appearance>) => void
 }) {
   const t = useT()
+  const tRef = useRef(t)
+  tRef.current = t
   const nav = useMemo(() => sections(t), [t.locale])
   const [settings, setSettings] = useState<Settings>()
   const [catalog, setCatalog] = useState<ToolDescriptor[]>([])
-  const [error, setError] = useState<string>()
   const [query, setQuery] = useState("")
   const [section, setSection] = useState<SectionId>("models")
 
@@ -158,16 +160,18 @@ export function SettingsDialog({
   onSavedRef.current = onSaved
   const localeRef = useRef(locale)
   localeRef.current = locale
-  const setErrorRef = useRef(setError)
-  setErrorRef.current = setError
   const persistRef = useRef<SettingsPersist | null>(null)
   if (!persistRef.current) {
     persistRef.current = new SettingsPersist(async (patch) => {
       try {
         await api.saveSettings(patch)
+        useToasts.getState().dismiss("settings:save")
         onSavedRef.current()
       } catch (e) {
-        setErrorRef.current(e instanceof Error ? e.message : String(e))
+        toastError(errorMessage(e), {
+          id: "settings:save",
+          title: tRef.current("settings.saveFailed"),
+        })
         throw e
       }
     })
@@ -175,7 +179,8 @@ export function SettingsDialog({
 
   useEffect(() => {
     if (!open) return
-    setError(undefined)
+    useToasts.getState().dismiss("settings:save")
+    useToasts.getState().dismiss("settings:load")
     setQuery("")
     setSection("models")
     void Promise.all([api.settings(), api.tools()])
@@ -183,7 +188,12 @@ export function SettingsDialog({
         setSettings(s)
         setCatalog(tools.catalog)
       })
-      .catch((e) => setError(String(e instanceof Error ? e.message : e)))
+      .catch((e) =>
+        toastError(errorMessage(e), {
+          id: "settings:load",
+          title: tRef.current("settings.loadFailed"),
+        }),
+      )
   }, [open])
 
   useEffect(() => {
@@ -196,7 +206,7 @@ export function SettingsDialog({
 
   const apply = (next: Settings) => {
     setSettings(next)
-    setError(undefined)
+    useToasts.getState().dismiss("settings:save")
     persistRef.current?.schedule(next, localeRef.current)
   }
 
@@ -205,7 +215,10 @@ export function SettingsDialog({
       await persistRef.current?.flush()
       onOpenChange(false)
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      toastError(errorMessage(e), {
+        id: "settings:save",
+        title: t("settings.saveFailed"),
+      })
     }
   }
 
@@ -309,12 +322,6 @@ export function SettingsDialog({
             </aside>
 
             <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background">
-              {error ? (
-                <p className="shrink-0 px-8 py-3 text-sm text-destructive">
-                  {error}
-                </p>
-              ) : null}
-
               {!settings ? (
                 <div className="flex flex-1 items-center justify-center text-muted-foreground">
                   <Loader2 className="size-5 animate-spin" />

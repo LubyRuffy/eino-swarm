@@ -4,6 +4,7 @@ export const en = {
   "header.idle": "Idle",
   "header.working": "Working",
   "header.waiting": "Waiting",
+  "header.yourTurn": "Your turn",
   "header.compressing": "Compressing",
   "header.newConversation": "New conversation",
   "header.hideConversations": "Hide conversations",
@@ -156,6 +157,8 @@ export const en = {
   "plan.leave": "Leave planning",
 
   "ask.title": "Asking question",
+  "ask.needsYou": "Your answer needed",
+  "ask.hint": "Pick an option to continue.",
   "ask.other": "Other",
   "ask.otherPlaceholder": "Type another answer",
   "ask.submit": "Submit",
@@ -319,6 +322,7 @@ export const en = {
 
   "status.running": "running",
   "status.waiting": "waiting",
+  "status.asking": "needs your answer",
   "status.done": "done",
   "status.failed": "failed",
   "status.cancelled": "stopped",
@@ -471,6 +475,8 @@ export const en = {
     "Discover to list every model this endpoint serves. You only pick the default here.",
   "settings.models.discover": "Discover models",
   "settings.models.discoverFailed": "Couldn't list models",
+  "settings.saveFailed": "Couldn't save settings",
+  "settings.loadFailed": "Couldn't load settings",
   "settings.models.pickDefault": "Pick a default",
   "settings.models.typeModel": "discover, or type a model name",
   "settings.models.window": "Context window (tokens)",
@@ -606,10 +612,6 @@ export const en = {
   "settings.remote.hubUrl": "Hub URL",
   "settings.remote.hubUrlHint":
     "The pairlink hub you typed in Settings — never a compiled-in host.",
-  "settings.remote.token": "Host Token",
-  "settings.remote.tokenHint": "Issued once in the hub console. It is not a Gateway Key.",
-  "settings.remote.tokenSet": "A token is already stored. Enter a new one to replace it.",
-  "settings.remote.storeToken": "Store",
   "settings.remote.threadLimit": "Threads on the phone",
   "settings.remote.threadLimitHint":
     "How many recent conversations the phone lists before More. Default 5.",
@@ -623,10 +625,11 @@ export const en = {
   "settings.remote.uri": "Pairing URI",
   "settings.remote.expires": "Expires in {s}s. Refresh for a new code.",
   "settings.remote.online": "Online · {fp}",
-  "settings.remote.offline": "Offline until a hub URL and Host Token are set.",
+  "settings.remote.offline": "Offline until a hub URL is set and pairing is on.",
   "settings.remote.devices": "Bound phones",
   "settings.remote.noDevices": "No phones bound yet.",
   "settings.remote.revoke": "Revoke",
+  "settings.remote.failed": "Couldn't set up the phone",
 
   "settings.personality.title": "Personality",
   "settings.personality.desc":
@@ -656,6 +659,7 @@ export const en = {
   "project.cancel": "Cancel",
   "project.save": "Save",
   "project.create": "Create project",
+  "project.saveFailed": "Couldn't save the project",
   "project.deleteTitle": "Delete {name}?",
   "project.deleteDesc":
     "Its conversations and everything it remembered are deleted with it.",

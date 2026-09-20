@@ -527,6 +527,9 @@ func TestStatusReportsProgress(t *testing.T) {
 			if len(e.Running()) == 0 {
 				t.Fatal("Running() does not list the working conversation")
 			}
+			if ids := e.AwaitingAnswer(); len(ids) != 0 {
+				t.Fatalf("a working turn is not an ask: %v", ids)
+			}
 			break
 		}
 		time.Sleep(5 * time.Millisecond)

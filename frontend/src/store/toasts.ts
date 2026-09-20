@@ -9,9 +9,9 @@ export type AppToast = {
   message: string
 }
 
-/** A listing failure while the Models page is scrolled to a provider must
- *  not vanish under the fold. Same id replaces in place so retrying the
- *  same endpoint does not stack a new card per click. */
+/** Settings action failures must not vanish under the fold. Same id
+ *  replaces in place so retrying the same action does not stack a new
+ *  card per click. */
 const MAX_TOASTS = 4
 
 let seq = 0
@@ -52,4 +52,20 @@ export const useToasts = create<ToastState>((set) => ({
 export function resetToasts() {
   seq = 0
   useToasts.setState({ toasts: [] })
+}
+
+export function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
+export function toastError(
+  message: string,
+  opts?: { id?: string; title?: string },
+): string {
+  return useToasts.getState().push({
+    id: opts?.id,
+    kind: "error",
+    title: opts?.title,
+    message,
+  })
 }

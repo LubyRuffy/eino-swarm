@@ -16,7 +16,7 @@ import { mergeModelContext } from "@/lib/usage"
 import type { Settings } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT, type Translate } from "@/lib/use-t"
-import { useToasts } from "@/store/toasts"
+import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 import { AuxiliaryModels } from "./auxiliary-models"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
@@ -70,11 +70,9 @@ export function ModelsTab({
     } catch (e) {
       // The page is scrolled to this provider. A red line under the Models
       // heading is above the fold and looks like nothing happened.
-      useToasts.getState().push({
+      toastError(errorMessage(e), {
         id: toastId,
-        kind: "error",
         title: t("settings.models.discoverFailed"),
-        message: e instanceof Error ? e.message : String(e),
       })
     } finally {
       setBusy(undefined)

@@ -128,9 +128,11 @@ A provider is **ready** when it has both `base_url` and `model`. Until the defau
 provider is ready, `GET /api/meta` reports `configured: false` and the UI shows a
 setup banner instead of pretending a turn can run. Listing models only needs the
 base URL (`POST /api/models/discover`); the request is capped at 15 seconds so a
-hung endpoint cannot freeze Settings. A failed listing is a dismissible toast
-over Settings (title plus the error, with an ×), not a red line at the top of
-the Models page — that page is usually scrolled to the provider you just asked.
+hung endpoint cannot freeze Settings. A failed Settings action (listing
+models, Phone pairing, saving the yaml, loading the sheet, saving a project)
+is a dismissible toast over the UI (title plus the error, with an ×), not a
+red line at the top of the page you just scrolled. A refused project working
+directory stays under that field — that is the control that caused it.
 On macOS, a desktop window that cannot reach a LAN URL (`no route to host`)
 while Terminal `curl` can is Local Network privacy: allow **zwai** under
 System Settings → Privacy & Security → Local Network.
@@ -300,8 +302,10 @@ $ZWAI_HOME/remote/host_token   0600
 $ZWAI_HOME/remote/identity     0600
 ```
 
-`GET /api/settings` never echoes the token. Paste it via Settings → Phone or
-`PUT /api/remote/token`. Empty hub or token leaves remote offline.
+`GET /api/settings` never echoes the token. Enabling pairing with a hub URL
+mints `host_token` if the file is missing. `PUT /api/remote/token` can still
+replace it. Empty hub leaves remote offline; **Show pairing QR** then toasts
+over Settings instead of a red line under Phone.
 
 ## Multiple instances
 

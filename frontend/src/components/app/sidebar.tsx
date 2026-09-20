@@ -37,6 +37,7 @@ export function Sidebar({
   activeId,
   runningId,
   waitingIds,
+  askingIds,
   onNew,
   onOpen,
   onRename,
@@ -59,6 +60,7 @@ export function Sidebar({
   activeId?: string
   runningId?: string
   waitingIds?: ReadonlySet<string>
+  askingIds?: ReadonlySet<string>
   onNew: () => void
   onOpen: (id: string) => void
   onRename: (id: string, title: string) => void
@@ -164,6 +166,7 @@ export function Sidebar({
                 active={thread.id === activeId}
                 running={thread.running || thread.id === runningId}
                 waiting={waitingIds?.has(thread.id)}
+                asking={Boolean(askingIds?.has(thread.id) || thread.awaiting_answer)}
                 onOpen={onOpen}
                 onRename={onRename}
                 onDelete={askDelete}
@@ -180,6 +183,7 @@ export function Sidebar({
           activeId={activeId}
           runningId={runningId}
           waitingIds={waitingIds}
+          askingIds={askingIds}
           sectionOpen={sections.projects}
           onToggleSection={() => toggleSection("projects")}
           onSelect={onSelectProject}
@@ -213,6 +217,7 @@ export function Sidebar({
               activeId={activeId}
               runningId={runningId}
               waitingIds={waitingIds}
+              askingIds={askingIds}
               onOpen={onOpen}
               onRename={onRename}
               onDelete={askDelete}

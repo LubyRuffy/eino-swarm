@@ -24,7 +24,12 @@ export function mergeThreadList(local: Thread[], incoming: Thread[]): Thread[] {
   const prev = new Map(local.map((t) => [t.id, t]))
   return named.map((t) => {
     const was = prev.get(t.id)
-    if (was?.running && !t.running) return { ...t, running: true }
+    if (was?.running && !t.running) {
+      return { ...t, running: true, awaiting_answer: was.awaiting_answer }
+    }
+    if (was?.awaiting_answer && t.running && !t.awaiting_answer) {
+      return { ...t, awaiting_answer: true }
+    }
     return t
   })
 }
@@ -42,17 +47,38 @@ export function upsertThread(threads: Thread[], thread: Thread): Thread[] {
 /** Sidebar progress is `thread.running`. The live header only knows the
  *  open conversation, so a turn that starts — or is still going when we
  *  leave — has to be stamped here or the folder looks idle until you
- *  click back in. */
+ *  click back in. `awaitingAnswer` is the ask_user overlay: same row,
+ *  different mark, so a blocked question is not a working pulse. */
 export function setThreadRunning(
   threads: Thread[],
   id: string,
   running: boolean,
+  awaitingAnswer = false,
 ): Thread[] {
   let changed = false
+  const nextAnswer = running && awaitingAnswer
   const next = threads.map((thread) => {
-    if (thread.id !== id || thread.running === running) return thread
+    if (thread.id !== id) return thread
+    if (thread.running === running && Boolean(thread.awaiting_answer) === nextAnswer) {
+      return thread
+    }
     changed = true
-    return { ...thread, running }
+    return { ...thread, running, awaiting_answer: nextAnswer }
   })
   return changed ? next : threads
+}
+
+/** Asking ids for the sidebar. Listing `awaiting_answer` covers other
+ *  conversations; the open conversation's live status can race the list. */
+export function askingThreadIds(
+  threads: Array<{ id: string; awaiting_answer?: boolean }>,
+  activeId?: string,
+  awaitingAnswer?: boolean,
+): Set<string> {
+  const ids = new Set<string>()
+  for (const thread of threads) {
+    if (thread.awaiting_answer) ids.add(thread.id)
+  }
+  if (awaitingAnswer && activeId) ids.add(activeId)
+  return ids
 }

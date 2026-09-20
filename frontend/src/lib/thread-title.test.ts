@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { mergeThreadList, preferNamedTitles, setThreadRunning, upsertThread } from "./thread-title"
+import { mergeThreadList, preferNamedTitles, setThreadRunning, askingThreadIds, upsertThread } from "./thread-title"
 import type { Thread } from "./types"
 
 function thread(id: string, title: string, title_auto: boolean): Thread {
@@ -58,6 +58,27 @@ describe("setThreadRunning", () => {
     expect(next[1]?.running).toBe(false)
     expect(setThreadRunning(next, "th_1", true)).toBe(next)
   })
+
+  it("stamps a blocked ask so the sidebar is not a working pulse", () => {
+    const listed = [thread("th_1", "A", true)]
+    const next = setThreadRunning(listed, "th_1", true, true)
+    expect(next[0]).toMatchObject({ running: true, awaiting_answer: true })
+    expect(setThreadRunning(next, "th_1", true, true)).toBe(next)
+    expect(setThreadRunning(next, "th_1", false)?.[0]?.awaiting_answer).toBe(false)
+  })
+})
+
+describe("askingThreadIds", () => {
+  it("unions the listing with the open conversation's live status", () => {
+    const listed = [
+      { ...thread("th_1", "A", true), awaiting_answer: true },
+      thread("th_2", "B", true),
+    ]
+    expect([...askingThreadIds(listed, "th_2", true)].sort()).toEqual([
+      "th_1",
+      "th_2",
+    ])
+  })
 })
 
 describe("mergeThreadList", () => {
@@ -65,6 +86,12 @@ describe("mergeThreadList", () => {
     const local = [setThreadRunning([thread("th_1", "A", true)], "th_1", true)[0]!]
     const incoming = [thread("th_1", "A", true)]
     expect(mergeThreadList(local, incoming)[0]?.running).toBe(true)
+  })
+
+  it("keeps a blocked-ask overlay when the listing still says working", () => {
+    const local = [setThreadRunning([thread("th_1", "A", true)], "th_1", true, true)[0]!]
+    const incoming = [setThreadRunning([thread("th_1", "A", true)], "th_1", true)[0]!]
+    expect(mergeThreadList(local, incoming)[0]?.awaiting_answer).toBe(true)
   })
 
   it("lets setThreadRunning(false) stay idle on the next listing", () => {

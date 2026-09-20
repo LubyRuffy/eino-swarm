@@ -366,18 +366,35 @@ func (e *Engine) Status(threadID string) Status {
 	return rt.status()
 }
 
-// Running reports which conversations are mid-turn, so the sidebar can show a
-// working indicator without polling each one.
-func (e *Engine) Running() []string {
+func (e *Engine) snapshotRuntimes() []*runtime {
 	e.mu.Lock()
 	rts := make([]*runtime, 0, len(e.runtimes))
 	for _, rt := range e.runtimes {
 		rts = append(rts, rt)
 	}
 	e.mu.Unlock()
+	return rts
+}
+
+// Running reports which conversations are mid-turn, so the sidebar can show a
+// working indicator without polling each one.
+func (e *Engine) Running() []string {
 	var out []string
-	for _, rt := range rts {
+	for _, rt := range e.snapshotRuntimes() {
 		if s := rt.status(); s.Running {
+			out = append(out, s.ThreadID)
+		}
+	}
+	return out
+}
+
+// AwaitingAnswer reports which conversations are blocked on ask_user. The
+// sidebar paints those as "your turn" rather than the working pulse: the
+// turn is still running, but the next move is the human's.
+func (e *Engine) AwaitingAnswer() []string {
+	var out []string
+	for _, rt := range e.snapshotRuntimes() {
+		if s := rt.status(); s.AwaitingAnswer {
 			out = append(out, s.ThreadID)
 		}
 	}

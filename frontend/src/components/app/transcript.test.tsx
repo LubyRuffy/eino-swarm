@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { AgentTranscript } from "./agent-transcript"
-import { Heartbeat, Transcript, WaitProgress, waitAgentIds } from "./transcript"
+import { Heartbeat, StatusDot, Transcript, WaitProgress, waitAgentIds } from "./transcript"
 import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript"
 import { emptyTranscript } from "@/lib/transcript"
 import { QUOTE_SELECTION_EVENT } from "@/lib/selection"
@@ -115,6 +115,17 @@ describe("WaitProgress", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: /researcher/ }))
     expect(onSelect).toHaveBeenCalledWith("a-1")
+  })
+})
+
+describe("StatusDot", () => {
+  // Collapsed project folders overlay this on the glyph. Inline + size-*
+  // paints a smear through the folder stroke; a block box does not.
+  it("is a real box so a breathe animation cannot inherit a text line", () => {
+    render(<StatusDot status="running" />)
+    const dot = screen.getByLabelText("running")
+    expect(dot).toHaveClass("block", "size-1.5", "leading-none", "animate-breathe")
+    expect(dot).not.toHaveClass("inline")
   })
 })
 

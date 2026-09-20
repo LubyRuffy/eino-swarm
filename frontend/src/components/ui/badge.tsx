@@ -13,6 +13,7 @@ const badgeVariants = cva(
         success: "border-transparent bg-done/15 text-done",
         warning: "border-transparent bg-running/15 text-running",
         danger: "border-transparent bg-destructive/15 text-destructive",
+        ask: "border-transparent bg-ask/15 text-ask",
       },
     },
     defaultVariants: { variant: "default" },

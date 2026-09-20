@@ -10,8 +10,13 @@ import {
 } from "lucide-react"
 
 import { SidebarSection } from "@/components/app/sidebar-section"
-import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots"
+import {
+  SidebarGlyphMark,
+  SidebarKindSlot,
+  sidebarRowClass,
+} from "@/components/app/sidebar-slots"
 import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
+import { AskMark } from "@/components/app/ask-mark"
 import { StatusDot } from "@/components/app/transcript"
 import { WaitMark } from "@/components/app/wait-mark"
 import { Button } from "@/components/ui/button"
@@ -42,6 +47,7 @@ export function ProjectList({
   activeId,
   runningId,
   waitingIds,
+  askingIds,
   onSelect,
   onToggle,
   onNew,
@@ -64,6 +70,7 @@ export function ProjectList({
   activeId?: string
   runningId?: string
   waitingIds?: ReadonlySet<string>
+  askingIds?: ReadonlySet<string>
   sectionOpen?: boolean
   onToggleSection?: () => void
   onSelect: (id: string) => void
@@ -111,6 +118,7 @@ export function ProjectList({
           activeId={activeId}
           runningId={runningId}
           waitingIds={waitingIds}
+          askingIds={askingIds}
           drag={sortable.bind(project.id)}
           onSelect={onSelect}
           onToggle={onToggle}
@@ -142,6 +150,7 @@ function ProjectRow({
   activeId,
   runningId,
   waitingIds,
+  askingIds,
   drag,
   onSelect,
   onToggle,
@@ -161,6 +170,7 @@ function ProjectRow({
   activeId?: string
   runningId?: string
   waitingIds?: ReadonlySet<string>
+  askingIds?: ReadonlySet<string>
   drag: ReturnType<ReturnType<typeof useSortableList>["bind"]>
   onSelect: (id: string) => void
   onToggle: (id: string) => void
@@ -175,9 +185,15 @@ function ProjectRow({
   onPinThread: (id: string, pinned: boolean) => void
 }) {
   const t = useT()
-  const busy = threads.some((thread) => thread.running || thread.id === runningId)
+  const asking = threads.some((thread) =>
+    Boolean(askingIds?.has(thread.id) || thread.awaiting_answer),
+  )
+  const busy =
+    !asking && threads.some((thread) => thread.running || thread.id === runningId)
   const waiting =
-    !busy && threads.some((thread) => Boolean(waitingIds?.has(thread.id)))
+    !asking &&
+    !busy &&
+    threads.some((thread) => Boolean(waitingIds?.has(thread.id)))
   return (
     <div className="mb-0.5" data-testid="project-wrap" data-id={project.id}>
       <div
@@ -215,14 +231,18 @@ function ProjectRow({
                   className="size-4 shrink-0"
                   aria-hidden="true"
                 />
-                {busy ? (
-                  <span className="absolute right-0 top-0">
+                {asking ? (
+                  <SidebarGlyphMark clip={false}>
+                    <AskMark className="size-2.5" />
+                  </SidebarGlyphMark>
+                ) : busy ? (
+                  <SidebarGlyphMark>
                     <StatusDot status="running" />
-                  </span>
+                  </SidebarGlyphMark>
                 ) : waiting ? (
-                  <span className="absolute right-0 top-0">
+                  <SidebarGlyphMark>
                     <WaitMark className="size-2.5" />
-                  </span>
+                  </SidebarGlyphMark>
                 ) : null}
               </>
             )}
@@ -283,6 +303,7 @@ function ProjectRow({
             activeId={activeId}
             runningId={runningId}
             waitingIds={waitingIds}
+            askingIds={askingIds}
             onOpen={onOpenThread}
             onRename={onRenameThread}
             onDelete={onDeleteThread}

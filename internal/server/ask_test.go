@@ -43,6 +43,19 @@ func TestAnswerTurnEndpointContinuesTheSameTurn(t *testing.T) {
 	if !waiting {
 		t.Fatal("the turn never paused for ask_user")
 	}
+	listed := h.json(http.MethodGet, "/api/threads", nil, http.StatusOK)
+	rows, _ := listed["threads"].([]any)
+	var sawAsk bool
+	for _, raw := range rows {
+		row, _ := raw.(map[string]any)
+		if row["id"] == id && row["awaiting_answer"] == true && row["running"] == true {
+			sawAsk = true
+			break
+		}
+	}
+	if !sawAsk {
+		t.Fatalf("the listing must mark the blocked row so the sidebar is not a working pulse: %+v", rows)
+	}
 	h.json(http.MethodPost, "/api/threads/"+id+"/answers",
 		map[string]any{"text": "use the existing layout"}, http.StatusAccepted)
 	turn := h.waitTurnDone(id)

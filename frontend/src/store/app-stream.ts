@@ -227,7 +227,12 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       }
     }
   }
-  threads = setThreadRunning(threads, threadId, status.running)
+  threads = setThreadRunning(
+    threads,
+    threadId,
+    status.running,
+    Boolean(status.awaiting_answer),
+  )
   const followupsDirty = droppedFollowups.length > 0
   set({
     transcript,

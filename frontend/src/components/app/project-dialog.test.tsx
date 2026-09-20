@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { ProjectDialog } from "./project-dialog"
+import { ToastStack } from "./toast-stack"
 import { ApiError } from "@/lib/api"
 import type { Project } from "@/lib/types"
 
@@ -92,6 +93,30 @@ describe("Project dialog", () => {
       "true",
     )
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
+  })
+
+  it("toasts a save failure instead of a red line above the buttons", async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error("store locked"))
+    const onOpenChange = vi.fn()
+    render(
+      <>
+        <ToastStack />
+        <ProjectDialog
+          open
+          memoryAvailable
+          onOpenChange={onOpenChange}
+          onSave={onSave}
+        />
+      </>,
+    )
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "P" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }))
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Couldn't save the project")
+    expect(alert).toHaveTextContent("store locked")
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }))
+    expect(screen.queryByRole("alert")).toBeNull()
   })
 
   it("loads the project being edited", () => {

@@ -11,6 +11,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots"
 import { StatusDot } from "@/components/app/transcript"
+import { AskMark } from "@/components/app/ask-mark"
 import { WaitMark } from "@/components/app/wait-mark"
 import { useSortableList } from "@/lib/sortable"
 import type { Thread } from "@/lib/types"
@@ -21,13 +22,15 @@ type DragBind = ReturnType<ReturnType<typeof useSortableList>["bind"]>
 
 /** One conversation in the sidebar: Recents, a project folder, or Pinned.
  *  The leading size-4 slot is the folder column — empty, a progress dot
- *  while a turn is live, or a clock while a wait is parked — so titles
- *  line up with the project name. */
+ *  while a turn is live, a ping question mark while ask_user is blocked,
+ *  or a clock while a wait is parked — so titles line up with the
+ *  project name. */
 export function SidebarThreadRow({
   thread,
   active,
   running,
   waiting,
+  asking,
   drag,
   onOpen,
   onRename,
@@ -38,6 +41,7 @@ export function SidebarThreadRow({
   active: boolean
   running: boolean
   waiting?: boolean
+  asking?: boolean
   drag?: DragBind
   onOpen: (id: string) => void
   onRename: (id: string, title: string) => void
@@ -100,7 +104,9 @@ export function SidebarThreadRow({
         className="flex min-w-0 flex-1 items-center gap-1 text-left"
       >
         <SidebarKindSlot>
-          {running ? (
+          {asking ? (
+            <AskMark />
+          ) : running ? (
             <StatusDot status="running" />
           ) : waiting ? (
             <WaitMark />

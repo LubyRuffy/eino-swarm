@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SettingsDialog } from "./settings-dialog"
+import { ToastStack } from "./toast-stack"
 import type { Settings } from "@/lib/types"
 
 class ResizeObserverStub {
@@ -73,18 +74,21 @@ const base: Settings = {
 
 function renderDialog(props: Partial<Parameters<typeof SettingsDialog>[0]> = {}) {
   render(
-    <SettingsDialog
-      open
-      theme="system"
-      locale="system"
-      appearance={{ font: "system", fontSize: "medium", contentWidth: "comfortable" }}
-      onOpenChange={vi.fn()}
-      onThemeChange={vi.fn()}
-      onLocaleChange={vi.fn()}
-      onAppearanceChange={vi.fn()}
-      onSaved={vi.fn()}
-      {...props}
-    />,
+    <>
+      <ToastStack />
+      <SettingsDialog
+        open
+        theme="system"
+        locale="system"
+        appearance={{ font: "system", fontSize: "medium", contentWidth: "comfortable" }}
+        onOpenChange={vi.fn()}
+        onThemeChange={vi.fn()}
+        onLocaleChange={vi.fn()}
+        onAppearanceChange={vi.fn()}
+        onSaved={vi.fn()}
+        {...props}
+      />
+    </>,
   )
 }
 
@@ -312,7 +316,7 @@ describe("Settings dialog", () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
-  it("keeps the sheet open and shows the error when a write fails", async () => {
+  it("keeps the sheet open and toasts when a write fails", async () => {
     vi.mocked(api.saveSettings).mockRejectedValue(new Error("disk full"))
     const onOpenChange = vi.fn()
     renderDialog({ onOpenChange })
@@ -327,9 +331,9 @@ describe("Settings dialog", () => {
       await screen.findByRole("switch", { name: "Remember anything at all" }),
     )
     fireEvent.click(screen.getByRole("button", { name: "Back to app" }))
-    await waitFor(() =>
-      expect(screen.getByText("disk full")).toBeInTheDocument(),
-    )
+    const alert = await screen.findByRole("alert")
+    expect(alert).toHaveTextContent("Couldn't save settings")
+    expect(alert).toHaveTextContent("disk full")
     expect(onOpenChange).not.toHaveBeenCalledWith(false)
     expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
