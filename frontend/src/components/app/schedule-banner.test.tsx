@@ -79,4 +79,15 @@ describe("ScheduleBanner", () => {
     )
     expect(container).toBeEmptyDOMElement()
   })
+
+  it("shows the prompt when the title is empty", () => {
+    render(
+      <ScheduleBanner
+        wake={wake({ title: "" })}
+        onCancel={vi.fn()}
+        onRunNow={vi.fn()}
+      />,
+    )
+    expect(screen.getByTestId("schedule-prompt")).toHaveTextContent("Continue the wait.")
+  })
 })

@@ -342,7 +342,7 @@ func scheduleSection(rows []store.Schedule) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("## Scheduled\n\nOpen waits on this conversation. Upsert by id instead of creating a second.\n\n")
+	b.WriteString("## Scheduled\n\nOpen waits on this conversation. schedule_wake without an id replaces the existing wake; pass id to target one.\n\n")
 	for _, row := range rows {
 		fmt.Fprintf(&b, "- id=%s next=%s cadence=%s prompt=%s\n",
 			row.ID,

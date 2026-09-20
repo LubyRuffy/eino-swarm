@@ -154,10 +154,14 @@ id; remote replies include pairlink `session_id` and `path`.
    generic cue (it does not resume a paused `/goal`).
    The manager also gets `schedule_wake`, `schedule_task`, `cancel_schedule`,
    and `report_schedule` next to `ask_user`. `schedule_wake` upserts a wait
-   on this conversation. `schedule_task` fails unless the current turn is
+   on this conversation (omitting `id` replaces the open wake). `schedule_task` fails unless the current turn is
    human-originated (`!GoalContinue && !ScheduleContinue && !ImplementPlan`).
    `report_schedule` fails unless `ScheduleContinue`; empty findings are
-   quiet. Workers get JSON deny stubs (`workers cannot schedule`).
+   quiet. `next_in_s` rearms an already-active interval, or a delay that
+   claim marked `done`, under the same cap transaction as create/resume.
+   Cancelled and paused rows stay dead. Omitting `id` on `schedule_wake`
+   fails the tool if listing wakes fails, instead of minting a second row.
+   Workers get JSON deny stubs (`workers cannot schedule`).
    The manager prompt has a generic `## Waiting` section after Asking the
    human: gated progress calls `schedule_wake` and ends the turn; it must
    not spin, block a tool, or wait for the human to remind it. Open wakes

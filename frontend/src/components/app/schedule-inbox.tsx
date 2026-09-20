@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 import { useT } from "@/lib/use-t"
 import type { Schedule, ScheduleCreate, ScheduleRun } from "@/lib/types"
+import { inboxScheduleOrder, scheduleHeadline } from "@/lib/schedule-view"
 import { useApp } from "@/store/app"
 import { useProjects } from "@/store/projects"
 
@@ -147,7 +148,7 @@ export function ScheduleInbox() {
           <p className="text-sm text-muted-foreground">{t("schedule.empty")}</p>
         ) : (
           <ul className="flex flex-col gap-2">
-            {schedules.map((row) => (
+            {inboxScheduleOrder(schedules).map((row) => (
               <ScheduleRow
                 key={row.id}
                 row={row}
@@ -262,10 +263,17 @@ function ScheduleRow({
       className="rounded-lg border border-border bg-card px-3 py-2"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <p className="min-w-0 flex-1 truncate text-sm font-medium">{row.title}</p>
+        <p className="min-w-0 flex-1 truncate text-sm font-medium">
+          {scheduleHeadline(row) || row.id}
+        </p>
         <Badge variant="outline">{kind}</Badge>
         <Badge variant={row.status === "active" ? "success" : "outline"}>{status}</Badge>
       </div>
+      {row.title.trim() && row.prompt.trim() ? (
+        <p data-testid="schedule-prompt" className="mt-1 truncate text-xs text-muted-foreground">
+          {row.prompt}
+        </p>
+      ) : null}
       {row.next_run_at ? (
         <p className="mt-1 text-xs text-muted-foreground">{formatWhen(row.next_run_at)}</p>
       ) : null}

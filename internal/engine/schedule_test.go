@@ -75,12 +75,18 @@ func TestCreateThreadWakeRecordsScheduleEvent(t *testing.T) {
 		ID        string    `json:"id"`
 		Kind      string    `json:"kind"`
 		Title     string    `json:"title"`
+		Prompt    string    `json:"prompt"`
+		ThreadID  string    `json:"thread_id"`
+		Status    string    `json:"status"`
 		NextRunAt time.Time `json:"next_run_at"`
 	}
 	if err := json.Unmarshal([]byte(ev.Text), &payload); err != nil {
 		t.Fatalf("payload %q: %v", ev.Text, err)
 	}
 	if payload.ID != sch.ID || payload.Kind != store.ScheduleThread || payload.Title != "wake" {
+		t.Fatalf("payload=%+v", payload)
+	}
+	if payload.Prompt != scheduleWaitPrompt || payload.ThreadID != th.ID || payload.Status != store.ScheduleActive {
 		t.Fatalf("payload=%+v", payload)
 	}
 	if !payload.NextRunAt.Equal(sch.NextRunAt) {

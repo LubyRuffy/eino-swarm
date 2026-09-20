@@ -69,9 +69,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   told to wake and end the turn instead of spinning or asking you to remind
   it. The sidebar **Scheduled** control opens the inbox dialog: pause, resume, cancel,
   Run now, or add a standalone job. An active wake on the open conversation
-  shows a banner with the next check, **Run now**, and **Cancel wait** (not
+  shows a banner with the next check and the wait's title or prompt, **Run now**, and **Cancel wait** (not
   an icon-only dismiss — that sat under the goal banner's X). Run now and
-  Cancel wait also sit on the armed-wait notice. Cancel of a thread wake
+  Cancel wait also sit on the armed-wait notice, which shows the same
+  instruction. The **Scheduled** inbox lists live waits first and shows the
+  stored prompt, not only an optional title. Cancel of a thread wake
   while idle continues a standing `/goal`; Run now fires the check without
   waiting for the timer (the wait banner hides while that turn is working,
   and an early cron check consumes the pending slot). A scheduled check reports through `report_schedule`;

@@ -303,7 +303,7 @@ engine enforces that exactly one is set.
 | `provider_id`, `model`, `reasoning_effort` | standalone; wakes use the target conversation's model |
 | `title`, `prompt` | display name + durable per-run instruction (user text) |
 | `delay_s`, `every_s`, `cron` | one-shot delay, interval, or 5-field cron. Engine layer |
-| `status` | `active`, `paused`, `done`, `cancelled` |
+| `status` | `active`, `paused`, `done`, `cancelled`. Claim marks a delay `done`. `report_schedule` `next_in_s` may flip `done` → `active` under the same cap as create/resume; cancelled and paused stay dead |
 | `next_run_at`, `last_run_at` | UTC. Due = `status=active` AND `next_run_at <= now` |
 | `run_count`, `max_runs`, `until_at` | `0` / null means until cancelled |
 | `created_by` | `human` or `manager` |

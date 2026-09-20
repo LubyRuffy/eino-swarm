@@ -13,6 +13,7 @@ import { MEMORY_WRITE_TOOLS, memoryWriteLanded } from "@/lib/tool-view"
 import { parseUsage } from "@/lib/usage"
 import type {
   Followup,
+  Schedule,
   SwarmEvent,
   Thread,
   ThreadStatus,
@@ -25,6 +26,11 @@ import { applyPlanThreadFlags } from "./plan-events"
 import { useProjects } from "./projects"
 import { rememberRewind, rememberStored } from "./thread-history"
 import { bumpFollowups, dropMatchingFollowups } from "./followup-sync"
+import {
+  applyArmedSchedule,
+  applyCancelledSchedule,
+  parseArmedSchedule,
+} from "@/lib/schedule-view"
 
 /** The slice of the store the live event flush reads and writes. */
 export type StreamSnapshot = {
@@ -34,6 +40,7 @@ export type StreamSnapshot = {
   threads: Thread[]
   usage?: UsageSnapshot
   followups: Followup[]
+  schedules: Schedule[]
   refreshFiles: () => Promise<void>
   refreshThreads: () => Promise<void>
   refreshFollowups: () => Promise<void>
@@ -126,6 +133,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
   let followups = state.followups ?? []
   let droppedFollowups: Followup[] = []
   let closed = false
+  let schedules = state.schedules ?? []
   let schedulesDirty = false
   for (const ev of events) {
     rememberStored(threadId, ev)
@@ -207,6 +215,12 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     ) {
       schedulesDirty = true
     }
+    if (ev.kind === "schedule") {
+      schedules = applyArmedSchedule(schedules, parseArmedSchedule(ev.text), threadId)
+    }
+    if (ev.kind === "schedule_cancelled") {
+      schedules = applyCancelledSchedule(schedules, ev.text ?? "")
+    }
     if (ev.kind === "usage") {
       const next = parseUsage(ev.text)
       if (next) usage = next
@@ -240,6 +254,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     threads,
     usage,
     ...(followupsDirty ? { followups } : {}),
+    ...(schedulesDirty ? { schedules } : {}),
   })
   if (followupsDirty) {
     bumpFollowups()

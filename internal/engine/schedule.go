@@ -147,12 +147,22 @@ func (e *Engine) recordScheduleArmed(row *store.Schedule) {
 	if threadID == "" {
 		return
 	}
+	// Prompt and thread_id ride the chip payload so the inbox/banner can
+	// paint before GET /api/schedules returns. Keys are additive.
 	text, _ := json.Marshal(struct {
-		ID        string    `json:"id"`
-		Kind      string    `json:"kind"`
-		Title     string    `json:"title"`
-		NextRunAt time.Time `json:"next_run_at"`
-	}{ID: row.ID, Kind: row.Kind, Title: row.Title, NextRunAt: row.NextRunAt})
+		ID             string    `json:"id"`
+		Kind           string    `json:"kind"`
+		Title          string    `json:"title"`
+		Prompt         string    `json:"prompt"`
+		ThreadID       string    `json:"thread_id"`
+		OriginThreadID string    `json:"origin_thread_id"`
+		Status         string    `json:"status"`
+		NextRunAt      time.Time `json:"next_run_at"`
+	}{
+		ID: row.ID, Kind: row.Kind, Title: row.Title, Prompt: row.Prompt,
+		ThreadID: row.ThreadID, OriginThreadID: row.OriginThreadID,
+		Status: row.Status, NextRunAt: row.NextRunAt,
+	})
 	e.record(store.Event{
 		ThreadID: threadID, TurnID: e.lastTurnID(threadID),
 		Kind: KindSchedule, AgentID: swarm.DefaultManagerID,

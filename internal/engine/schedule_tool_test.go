@@ -97,6 +97,46 @@ func TestScheduleWakeUpsertsOnThisConversation(t *testing.T) {
 	}
 }
 
+func TestScheduleWakeWithoutIdReplacesTheOpenWake(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	turn := mustStoredTurn(t, e, th.ID, store.Turn{})
+	tl := mustInvokable(t, ScheduleWakeTool(func(args string) (string, error) {
+		return e.scheduleWakeJSON(th.ID, turn.ID, args)
+	}))
+
+	first, err := tl.InvokableRun(context.Background(),
+		`{"prompt":"`+scheduleToolWaitPrompt+`","every_s":60,"title":"wake"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := mustToolOK(t, first).ID
+
+	again, err := tl.InvokableRun(context.Background(),
+		`{"prompt":"`+scheduleToolWaitPrompt+`","delay_s":90,"title":"later"}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := mustToolOK(t, again)
+	if got.ID != id {
+		t.Fatalf("omitted id minted a second wait: %q then %q", id, got.ID)
+	}
+	listed, err := e.ListSchedules()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 {
+		t.Fatalf("wakes=%d, omitted id must replace", len(listed))
+	}
+	row, err := e.Store().GetSchedule(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.DelayS != 90 || row.EveryS != 0 || row.Title != "later" || row.Status != store.ScheduleActive {
+		t.Fatalf("replaced spec=%+v", row)
+	}
+}
+
 func TestScheduleTaskRejectedOnSyntheticTurns(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
@@ -861,6 +901,51 @@ func TestReportScheduleRecadenceUpdatesTheInterval(t *testing.T) {
 	}
 	if row.EveryS != 120 || row.DelayS != 0 || row.Cron != "" {
 		t.Fatalf("recadence=%+v", row)
+	}
+}
+
+func TestReportScheduleNextInSRearmsAFiredDelay(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	sch, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleToolWaitPrompt, DelayS: 90,
+		CreatedBy: store.ScheduleCreatedManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().UpdateSchedule(sch.ID, map[string]any{
+		"status": store.ScheduleDone, "run_count": 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run := &store.ScheduleRun{ScheduleID: sch.ID, ThreadID: th.ID, Status: store.ScheduleRunRunning}
+	if err := e.Store().CreateRun(run); err != nil {
+		t.Fatal(err)
+	}
+	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true, ScheduleRunID: run.ID})
+	out, err := ReportScheduleTool(func(args string) (string, error) {
+		return e.reportScheduleJSON(th.ID, turn.ID, args)
+	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":"note","next_in_s":60}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !mustToolOK(t, out).OK {
+		t.Fatalf("rearm: %s", out)
+	}
+	row, err := e.Store().GetSchedule(sch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Status != store.ScheduleActive {
+		t.Fatalf("status=%q, next_in_s must rearm a fired delay", row.Status)
+	}
+	if row.EveryS != 60 || row.DelayS != 0 {
+		t.Fatalf("cadence=%+v", row)
+	}
+	if n := countThreadKind(t, e, th.ID, KindSchedule); n < 2 {
+		t.Fatalf("armed chips=%d, recadence must record a wait", n)
 	}
 }
 

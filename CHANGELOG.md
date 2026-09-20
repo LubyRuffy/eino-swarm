@@ -54,6 +54,19 @@ co-working app built on it. The library API is unchanged except where noted
   folder that only has a wait keeps the same mark, and the title bar says
   **Waiting**. The wait chip on the composer breathes the same clock.
 
+- **Armed waits show their instruction.** The inbox listed every historical
+  `done` row first (`next_run_at` ascending), and both the inbox and the
+  composer banner hid an empty-title wait's `prompt`. A just-armed check
+  was in the database and still invisible. Live/paused rows now sort first,
+  the chip/banner/inbox fall back to `prompt`, and a live `schedule` event
+  paints the store before `GET /api/schedules` returns.
+
+- **`report_schedule` `next_in_s` rearms a fired delay.** Claim marks a
+  one-shot `done` before the turn runs. Recadence used to write `every_s`
+  onto that dead row, so the next fire never happened. It now flips
+  `done` back to `active` under the same cap transaction as create/resume,
+  and records another armed chip. Cancelled and paused rows stay dead.
+
 - **`edit` / `write` rows stay collapsed until clicked.** They used to force
   the hunk open (the same mistake as live `exec` dumping stdout). The
   collapsed row still shows the path and `+N −M`; open it to see the

@@ -38,8 +38,9 @@ const (
 	ScheduleCreatedManager = "manager"
 )
 
-// ErrScheduleCap means an insert or resume would exceed the active ceiling.
-// Count and write share one transaction; a check-then-insert pair is a race.
+// ErrScheduleCap means an insert, resume, or done→active rearm would
+// exceed the active ceiling. Count and write share one transaction; a
+// check-then-write pair is a race.
 var ErrScheduleCap = errors.New("store: too many active schedules")
 
 // Schedule is a wall-clock wait: either a wake on an existing conversation
@@ -433,6 +434,45 @@ func (s *Store) ResumeScheduleUnderCap(id string, cap int) (*Schedule, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// ActivateDoneUnderCap rearms a finished one-shot. Count and the status
+// flip share one transaction so a parallel create cannot sneak past the cap.
+// Cancelled and paused rows stay dead — next_in_s is not an undo.
+func (s *Store) ActivateDoneUnderCap(id string, cap int, fields map[string]any) error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		var row Schedule
+		if err := tx.First(&row, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return fmt.Errorf("store: get schedule: %w", err)
+		}
+		if row.Status != ScheduleDone {
+			return fmt.Errorf("store: schedule is not done")
+		}
+		n, err := countActive(tx)
+		if err != nil {
+			return err
+		}
+		if n >= cap {
+			return ErrScheduleCap
+		}
+		patch := map[string]any{}
+		for k, v := range fields {
+			patch[k] = v
+		}
+		patch["status"] = ScheduleActive
+		patch["updated_at"] = time.Now().UTC()
+		res := tx.Model(&Schedule{}).Where("id = ? AND status = ?", id, ScheduleDone).Updates(patch)
+		if res.Error != nil {
+			return fmt.Errorf("store: update schedule: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return fmt.Errorf("store: schedule is not done")
+		}
+		return nil
+	})
 }
 
 // UpdateSchedule applies a field patch. Unknown ids report ErrNotFound

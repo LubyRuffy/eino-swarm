@@ -194,6 +194,7 @@ describe("Scheduled inbox", () => {
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/Periodic check/)
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/Standalone/)
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/Active/)
+    expect(screen.getByTestId("schedule-prompt").textContent).toMatch(/Continue the wait/)
     fireEvent.click(screen.getByRole("button", { name: "Pause" }))
     await waitFor(() =>
       expect(fake.patched).toEqual([{ id: "sch_1", patch: { status: "paused" } }]),
@@ -235,5 +236,30 @@ describe("Scheduled inbox", () => {
     const alert = await waitFor(() => screen.getByRole("alert"))
     expect(alert).toHaveTextContent("The conversation is already running a turn.")
     expect(alert).toHaveAccessibleName(/error/i)
+  })
+
+  it("puts a live untitled wait above done rows and shows its prompt", async () => {
+    fake.rows = [
+      wait({
+        id: "sch_done",
+        title: "old",
+        status: "done",
+        next_run_at: "2026-09-19T01:00:00.000Z",
+      }),
+      wait({
+        id: "sch_live",
+        title: "",
+        status: "active",
+        next_run_at: "2026-09-19T04:00:00.000Z",
+      }),
+    ]
+    useApp.setState({ schedules: fake.rows })
+    render(<Sidebar threads={[]} {...noop} />)
+    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    const rows = screen.getAllByTestId("schedule-row")
+    expect(rows[0].textContent).toMatch(/Continue the wait/)
+    expect(rows[0].textContent).toMatch(/Active/)
+    expect(rows[1].textContent).toMatch(/old/)
   })
 })

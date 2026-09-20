@@ -16,7 +16,7 @@ deterministic and fast enough to run on every change.
 |---|---|---|
 | Go unit tests | config, store, memory, provider, tools, engine, server, CLI, TUI, and the swarm library | `go test -race -cover ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
-| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`), dismissible settings toasts | `cd frontend && npm test` |
+| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`), dismissible settings toasts | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet) | `cd frontend && npm run e2e` |
 | Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, compact transcript / watch session | `cd mobile && npm test` |
 | Phone E2E | scan screen + paste of the same `pairlink:v1` URI (camera is the product path on device) | `cd mobile && npm run e2e` |
@@ -170,10 +170,15 @@ questionnaire instead of swallowing it, a worker call fails in JSON, and
 not an ask; answering clears the list). `internal/server/ask_test.go` is why
 the thread listing marks `awaiting_answer` while the questionnaire is open.
 `internal/engine/schedule_tool_test.go` is why `schedule_wake` upserts on
-this conversation, `schedule_task` refuses a `GoalContinue` /
+this conversation (including when the model omits `id`), `schedule_task` refuses a `GoalContinue` /
 `ScheduleContinue` / plan-implement turn, empty `report_schedule` findings
-are quiet, garbage arguments come back as JSON `ok:false`, Info text stays
+are quiet, `next_in_s` rearms a delay that claim already marked `done`,
+garbage arguments come back as JSON `ok:false`, Info text stays
 generic, and workers get a deny stub.
+`internal/engine/schedule_rearm_test.go` is why that recadence refuses
+cancelled and paused rows and respects `schedule_max_active`.
+`internal/store/schedule_activate_test.go` is why `done` → `active` shares
+the cap transaction with create/resume.
 `internal/engine/schedule_goal_test.go` is why a pending thread wake
 pauses `/goal` auto-continue, why cancelling it while idle starts the next
 pursuing turn immediately (`goal_continued`), why a cancel without a
@@ -468,8 +473,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   or `schedule_report` keeps the fired chip then the answer (including when
   empty `done` follows a findings report), an armed `schedule` plus empty
   `done` keeps the wait notice, and an ordinary empty `done` stays
-  visible. `compact-notice.test.tsx` clicks that icon.   `schedule-notice.test.tsx` clicks Run now and Cancel wait on an armed wait when `detail` is a `sch_` id and does not treat a
-  cancelled notice as a briefing.   `schedule-inbox.test.tsx` /
+  visible. `compact-notice.test.tsx` clicks that icon.   `schedule-notice.test.tsx` clicks Run now and Cancel wait on an armed wait when `detail` is a `sch_` id (including a padded id matching the store row) and does not treat a
+  cancelled notice as a briefing. `schedule-view.test.ts` is why the inbox
+  lists live waits first, empty titles fall back to `prompt`, and an armed
+  chip paints the store before GET.   `schedule-inbox.test.tsx` /
   `schedule-banner.test.tsx` / `app-schedule.test.ts` cover the sidebar
   dialog trigger (`aria-haspopup="dialog"`, unread in the accessible name),
   pause/run-now/create labels, unread badge, busy run-now `skipped_busy` as a

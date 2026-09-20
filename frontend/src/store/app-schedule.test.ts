@@ -267,6 +267,7 @@ describe("schedule store", () => {
       created_at: "2026-09-19T00:00:00.000Z",
     })
     await Promise.resolve()
+    expect(useApp.getState().schedules.some((row) => row.id === "sch_1")).toBe(true)
     expect(fake.listed).toBeGreaterThan(afterBoot)
     const afterArm = fake.listed
     fake.onEvent?.({

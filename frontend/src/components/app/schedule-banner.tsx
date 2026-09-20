@@ -1,6 +1,7 @@
 import { ScheduleWaitActions } from "@/components/app/schedule-wait-actions"
 import { WaitMark } from "@/components/app/wait-mark"
 import { Badge } from "@/components/ui/badge"
+import { scheduleHeadline } from "@/lib/schedule-view"
 import { useT } from "@/lib/use-t"
 import type { Schedule } from "@/lib/types"
 import { activeWake } from "@/store/app-schedule"
@@ -35,6 +36,7 @@ export function ScheduleBanner({
   const cancel = onCancel ?? (() => void deleteSchedule(wake.id))
   const runNow = onRunNow ?? (() => void runScheduleNow(wake.id))
   const when = wake.next_run_at ? formatWhen(wake.next_run_at) : ""
+  const headline = scheduleHeadline(wake)
 
   return (
     <div data-testid="schedule-banner" className="mb-2 rounded-xl border bg-card px-3 py-2">
@@ -49,12 +51,14 @@ export function ScheduleBanner({
               </span>
             ) : (
               <span data-testid="schedule-next" className="text-xs text-muted-foreground">
-                {wake.title}
+                {headline}
               </span>
             )}
           </div>
-          {wake.title ? (
-            <p className="mt-1 truncate text-sm">{wake.title}</p>
+          {headline ? (
+            <p data-testid="schedule-prompt" className="mt-1 truncate text-sm">
+              {headline}
+            </p>
           ) : null}
         </div>
         <ScheduleWaitActions onRunNow={runNow} onCancel={cancel} />

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -212,16 +213,56 @@ func (e *Engine) scheduleWakeJSON(threadID, _, args string) (string, error) {
 	in.OriginThreadID = threadID
 	in.CreatedBy = store.ScheduleCreatedManager
 	id := strings.TrimSpace(a.ID)
-	var row *store.Schedule
-	if id != "" {
-		row, err = e.replaceThreadWake(threadID, id, in)
-	} else {
-		row, err = e.CreateSchedule(in)
+	explicit := id != ""
+	if !explicit {
+		found, listErr := e.openThreadWakeID(threadID)
+		if listErr != nil {
+			return scheduleToolFailure("%s", listErr.Error()), nil
+		}
+		id = found
 	}
+	if id != "" {
+		row, err := e.replaceThreadWake(threadID, id, in)
+		if err == nil {
+			return scheduleArmedOK(row.ID), nil
+		}
+		if explicit {
+			return scheduleToolFailure("%s", err.Error()), nil
+		}
+	}
+	row, err := e.CreateSchedule(in)
 	if err != nil {
 		return scheduleToolFailure("%s", err.Error()), nil
 	}
 	return scheduleArmedOK(row.ID), nil
+}
+
+// openThreadWakeID is the live wake on this conversation, if any. Omitting
+// id from schedule_wake must replace that row instead of minting a second.
+// A list error must fail the tool: swallowing it stacked a second wake.
+func (e *Engine) openThreadWakeID(threadID string) (string, error) {
+	if threadID == "" || e.store == nil {
+		return "", nil
+	}
+	rows, err := e.store.ListSchedules()
+	if err != nil {
+		return "", fmt.Errorf("engine: list schedules: %w", err)
+	}
+	var id string
+	var next time.Time
+	for _, row := range rows {
+		if row.Kind != store.ScheduleThread || row.ThreadID != threadID {
+			continue
+		}
+		if row.Status != store.ScheduleActive {
+			continue
+		}
+		if id == "" || row.NextRunAt.Before(next) {
+			id = row.ID
+			next = row.NextRunAt
+		}
+	}
+	return id, nil
 }
 
 func (e *Engine) replaceThreadWake(threadID, id string, in ScheduleInput) (*store.Schedule, error) {
@@ -358,13 +399,7 @@ func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, erro
 				return scheduleToolFailure("%s", err.Error()), nil
 			}
 		} else if a.NextInS != 0 {
-			next := time.Now().UTC().Add(time.Duration(a.NextInS) * time.Second)
-			if err := e.store.UpdateSchedule(sch.ID, map[string]any{
-				"every_s":     a.NextInS,
-				"delay_s":     0,
-				"cron":        "",
-				"next_run_at": next,
-			}); err != nil {
+			if err := e.rearmScheduleInterval(sch, a.NextInS); err != nil {
 				return scheduleToolFailure("%s", err.Error()), nil
 			}
 		}
@@ -380,6 +415,48 @@ func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, erro
 	})
 	body, _ := json.Marshal(map[string]any{"ok": true, "quiet": quiet})
 	return string(body), nil
+}
+
+// rearmScheduleInterval is report_schedule next_in_s. A delay one-shot is
+// already marked done at claim; writing every_s without flipping status
+// left a future next_run_at that the ticker would never fire. Cancelled
+// and paused rows stay dead — recadence is not an undo.
+func (e *Engine) rearmScheduleInterval(sch *store.Schedule, nextInS int) error {
+	if sch == nil || nextInS == 0 {
+		return nil
+	}
+	next := time.Now().UTC().Add(time.Duration(nextInS) * time.Second)
+	fields := map[string]any{
+		"every_s":     nextInS,
+		"delay_s":     0,
+		"cron":        "",
+		"next_run_at": next,
+	}
+	switch sch.Status {
+	case store.ScheduleActive:
+		ok, err := e.store.UpdateActiveSchedule(sch.ID, fields)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return fmt.Errorf("engine: that wait is no longer active")
+		}
+	case store.ScheduleDone:
+		if err := e.store.ActivateDoneUnderCap(sch.ID, e.maxActiveSchedules(), fields); err != nil {
+			if errors.Is(err, store.ErrScheduleCap) {
+				return fmt.Errorf("engine: too many active schedules")
+			}
+			return err
+		}
+	default:
+		return fmt.Errorf("engine: that wait is no longer active")
+	}
+	got, err := e.store.GetSchedule(sch.ID)
+	if err != nil {
+		return err
+	}
+	e.recordScheduleArmed(got)
+	return nil
 }
 
 func (e *Engine) scheduleForTurn(turn *store.Turn) *store.Schedule {
