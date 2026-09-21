@@ -89,8 +89,9 @@ on screen until that `ready` (a tap is not a freeze).
 minting a QR the phone will redeem as `host offline`: status follows idle-drop
 and reconnect of that WebSocket.
 `mobile/src/lib/client.test.ts` is why a phone ticket socket keepalives
-with a punch-ping data frame, rejects in-flight RPC on `onclose`, and maps
-that drop to the reconnect copy instead of a frozen inbox.
+with a punch-ping data frame, rejects in-flight RPC on `onclose`, maps
+that drop to the reconnect copy instead of a frozen inbox, and sends
+`hello` with the model line once the session is up.
 The Capacitor shell in `mobile/` has its own unit tests
 and a Playwright paste/scan screen; `mobile/native-project.test.ts` asserts the
 iOS and Android trees ship with camera permission, no compiled hub URL, and
