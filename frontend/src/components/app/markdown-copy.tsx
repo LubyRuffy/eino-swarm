@@ -2,6 +2,7 @@ import { useState } from "react"
 import { Check, Copy } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { copyText } from "@/lib/copy-text"
 import { useT } from "@/lib/use-t"
 
 /** Copy the fence or formula source. Icon-only so the toolbar does not
@@ -21,15 +22,12 @@ export function MarkdownCopy({
       type="button"
       variant="ghost"
       size="icon-xs"
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text)
+      onClick={() => {
+        void copyText(text).then((ok) => {
+          if (!ok) return
           setCopied(true)
           setTimeout(() => setCopied(false), 1200)
-        } catch {
-          // Clipboard access can be denied; the button just does nothing
-          // rather than throwing an error at the user.
-        }
+        })
       }}
       title={copied ? t("transcript.copied") : name}
       aria-label={name}

@@ -23,7 +23,7 @@ const sendMessageDesc = "queue a steering message. agent_id is the id spawn_agen
 //	spawn_agent(role, task[, fork_context]) — start a sub-agent, returns agent_id at once
 //	send_message(agent_id, text)            — steer a running agent (mesh-safe)
 //	wait_agents(agent_ids, timeout_s)       — return when the next one finishes, with every agent's status
-//	close_agent(agent_id)                   — cancel a running agent
+//	close_agent(agent_id)                   — cancel a still-running agent; leftover finished ids return already_finished
 //	resume_agent(agent_id, task)             — continue a finished worker in place under the same agent_id
 func (r *Registry) Tools() []tool.BaseTool {
 	return []tool.BaseTool{
@@ -35,7 +35,7 @@ func (r *Registry) Tools() []tool.BaseTool {
 			"and, for those still running, their last activity. " +
 			"It returns as soon as one finishes, not once they all do, so call it again to collect the rest " +
 			"and tell the human what came back between calls.", fn: r.wait},
-		&ctlTool{name: "close_agent", desc: "cancel a running agent. An unknown agent_id returns {error}; it does not fail the turn.", fn: r.close},
+		&ctlTool{name: "close_agent", desc: "cancel a still-running agent. A leftover finished id is already stopped: the result is already_finished, not cancelled. Do not close leftover ids as cleanup. An unknown agent_id returns {error}; it does not fail the turn.", fn: r.close},
 		&ctlTool{name: "resume_agent", desc: "continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead. A missing agent_id or task, or a still-running target, returns {error}; it does not fail the turn.", fn: r.resume},
 	}
 }
@@ -105,7 +105,9 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 			"timeout_s": {Type: schema.Number},
 		}
 	case "close_agent":
-		params = map[string]*schema.ParameterInfo{"agent_id": {Type: schema.String, Required: true}}
+		params = map[string]*schema.ParameterInfo{
+			"agent_id": {Type: schema.String, Required: true, Desc: "still-running worker to cancel. A leftover finished id is already stopped"},
+		}
 	case "resume_agent":
 		params = map[string]*schema.ParameterInfo{
 			"agent_id": {Type: schema.String, Required: true, Desc: "finished or failed worker to continue in place"},
@@ -456,6 +458,14 @@ func (r *Registry) close(ctx context.Context, args string) (string, error) {
 	h, ok := r.get(a.AgentID)
 	if !ok {
 		return ctlRefuse(fmt.Sprintf("close_agent: unknown agent %q", a.AgentID))
+	}
+	// Leftover finished workers stay in the registry for resume_agent.
+	// cancelled:true on those made a long /goal treat one close as a canary
+	// and walk the rest of the roster.
+	if _, _, finished := h.Result(); finished {
+		return marshal(map[string]any{
+			"agent_id": a.AgentID, "cancelled": false, "already_finished": true,
+		}), nil
 	}
 	h.Cancel()
 	return marshal(map[string]any{"agent_id": a.AgentID, "cancelled": true}), nil

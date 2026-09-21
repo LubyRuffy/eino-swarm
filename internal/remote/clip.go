@@ -29,6 +29,17 @@ func watchEvents(cfg config.RemoteConfig) int {
 	return cfg.WatchEvents
 }
 
+// First watch is a tail page, not the whole last turn. 80 rows of a
+// pursuing turn is a multi-second pairlink frame; pull-up still uses
+// watch_events.
+func watchOpenEvents(cfg config.RemoteConfig) int {
+	n := watchEvents(cfg)
+	if n > config.DefaultRemoteWatchOpen {
+		return config.DefaultRemoteWatchOpen
+	}
+	return n
+}
+
 func eventView(ev store.Event, cfg config.RemoteConfig) EventView {
 	text := ev.Text
 	switch ev.Kind {
@@ -59,6 +70,10 @@ func eventView(ev store.Event, cfg config.RemoteConfig) EventView {
 }
 
 func encodeEventPush(path, sessionID, threadID string, ev store.Event, cfg config.RemoteConfig) ([]byte, bool) {
+	return encodeEventPushStatus(path, sessionID, threadID, ev, cfg, nil)
+}
+
+func encodeEventPushStatus(path, sessionID, threadID string, ev store.Event, cfg config.RemoteConfig, st *WatchStatus) ([]byte, bool) {
 	view := eventView(ev, cfg)
 	for {
 		raw, err := json.Marshal(Response{
@@ -70,6 +85,7 @@ func encodeEventPush(path, sessionID, threadID string, ev store.Event, cfg confi
 			ThreadID:  threadID,
 			Seq:       view.Seq,
 			Event:     &view,
+			Status:    st,
 		})
 		if err != nil {
 			return nil, false

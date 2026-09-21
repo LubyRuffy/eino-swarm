@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest"
 
 import { QueuedSteers } from "./queued-steers"
 import type { Block } from "@/lib/transcript"
+import { formatQuotedMessage } from "@/lib/quote"
 
 function steer(text: string, seq: number): Block {
   return {
@@ -37,6 +38,19 @@ describe("queued steering pin", () => {
     expect(onRetract).toHaveBeenCalledWith(3)
     fireEvent.click(deletes[1])
     expect(onRetract).toHaveBeenCalledWith(4)
+  })
+
+  it("splits a quoted steer so the highlight is not the same dump as the nudge", () => {
+    render(
+      <QueuedSteers
+        blocks={[steer(formatQuotedMessage(["alpha beta"], "do this"), 3)]}
+        onPreempt={() => {}}
+        onRetract={() => {}}
+      />,
+    )
+    expect(screen.getByTestId("quote-snippet")).toHaveTextContent("alpha beta")
+    expect(screen.getByText("do this")).toBeInTheDocument()
+    expect(screen.queryByText(/<selected_text>/)).not.toBeInTheDocument()
   })
 
   it("renders nothing when the inbox is empty", () => {

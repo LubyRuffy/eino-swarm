@@ -15,6 +15,7 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/remote"
+	"github.com/LubyRuffy/eino-swarm/internal/search"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/terminal"
 	"github.com/gin-gonic/gin"
@@ -55,6 +56,7 @@ type Server struct {
 	router    *gin.Engine
 	terminals *terminal.Hub
 	remote    *remote.Host
+	search    *search.Service
 }
 
 // New builds the server and its routes.
@@ -85,6 +87,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/open", s.openURL)
 		api.GET("/settings", s.getSettings)
 		api.PUT("/settings", s.putSettings)
+		api.GET("/search", s.getSearch)
 		api.GET("/models", s.getModels)
 		api.POST("/models/discover", s.discoverModels)
 		api.GET("/tools", s.getTools)
@@ -172,6 +175,10 @@ func (s *Server) Handler() http.Handler { return s.router }
 // SetRemote attaches the pairlink host so the desktop can mint a QR. Nil is fine:
 // the endpoints then report remote as offline.
 func (s *Server) SetRemote(h *remote.Host) { s.remote = h }
+
+// SetSearch attaches conversation search. Nil is fine: GET /api/search
+// then returns an empty hit list.
+func (s *Server) SetSearch(svc *search.Service) { s.search = svc }
 
 // accessLog logs one line per request at debug level, skipping the event
 // stream because those requests last as long as the tab is open and would

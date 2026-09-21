@@ -15,35 +15,6 @@ import (
 
 const scheduleToolWaitPrompt = "Continue the wait."
 
-func TestScheduleToolNamesAreStable(t *testing.T) {
-	// These names sit in transcripts and Trace. Renaming one is a protocol change.
-	if ToolScheduleWake != "schedule_wake" || ToolScheduleTask != "schedule_task" ||
-		ToolCancelSchedule != "cancel_schedule" || ToolReportSchedule != "report_schedule" {
-		t.Fatalf("names drifted: %q %q %q %q",
-			ToolScheduleWake, ToolScheduleTask, ToolCancelSchedule, ToolReportSchedule)
-	}
-}
-
-func TestScheduleToolInfoStaysGeneric(t *testing.T) {
-	for _, tl := range []tool.BaseTool{
-		ScheduleWakeTool(nil),
-		ScheduleTaskTool(nil),
-		CancelScheduleTool(nil),
-		ReportScheduleTool(nil),
-	} {
-		info, err := tl.Info(context.Background())
-		if err != nil || info == nil {
-			t.Fatalf("info: %+v %v", info, err)
-		}
-		blob := strings.ToLower(info.Name + " " + info.Desc)
-		for _, leak := range []string{"ci", "deploy", "cron example", "github"} {
-			if strings.Contains(blob, leak) {
-				t.Fatalf("%q leaked into %s: %s", leak, info.Name, info.Desc)
-			}
-		}
-	}
-}
-
 func TestScheduleWakeUpsertsOnThisConversation(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")

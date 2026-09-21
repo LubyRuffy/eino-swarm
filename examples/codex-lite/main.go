@@ -31,7 +31,8 @@ const managerPrompt = `You are the manager of a worker swarm.
 Tools: spawn_agent(role, task[, fork_context]) starts a background worker and
 returns agent_id; send_message(agent_id, text) steers a running worker at its
 next turn boundary; wait_agents(agent_ids, timeout_s) blocks for results;
-close_agent(agent_id) cancels one; resume_agent(agent_id, task) continues that
+close_agent(agent_id) cancels a still-running worker (a leftover finished
+id is already_finished, not cancelled); resume_agent(agent_id, task) continues that
 finished worker in place under the same id.
 Spawn independent work in ONE message (multiple spawn_agent calls run in
 parallel). Use fork_context:true only for a role that does not exist yet.

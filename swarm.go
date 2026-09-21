@@ -9,7 +9,7 @@
 //	spawn_agent(role, task) -> {"agent_id": "..."}   returns immediately
 //	send_message(agent_id, text)                     queued for the target's next turn
 //	wait_agents(agent_ids, timeout_s) -> results     returns when the next one finishes
-//	close_agent(agent_id)                            cancels the agent
+//	close_agent(agent_id)                            cancels a still-running agent; leftover finished ids return already_finished
 //	resume_agent(agent_id, task) -> {"agent_id": "...", "resumed_from": "..."}
 //	                                                 same worker, that finished worker's conversation
 //

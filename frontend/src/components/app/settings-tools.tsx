@@ -1,13 +1,17 @@
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import type { Settings, ToolDescriptor } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 
 import {
   Field,
   SettingsPage,
   SettingsSection,
+  settingsHintClass,
+  settingsLabelClass,
   settingsMatch,
+  settingsRowClass,
 } from "./settings-field"
 
 export function ToolsTab({
@@ -65,16 +69,17 @@ export function ToolsTab({
               <label
                 key={t.name}
                 data-settings-row=""
-                className="flex cursor-pointer items-start justify-between gap-6 px-4 py-3.5 hover:bg-accent/40"
+                className={cn(
+                  settingsRowClass,
+                  "cursor-pointer hover:bg-accent/40",
+                )}
               >
-                <div className="min-w-0">
-                  <p className="text-sm">
-                    <span className="font-mono text-[13px]">{t.name}</span>
+                <div className="min-w-0 flex-1">
+                  <p className={settingsLabelClass}>
+                    <span className="font-mono">{t.name}</span>
                     <span className="text-muted-foreground"> — {t.title}</span>
                   </p>
-                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                    {t.summary}
-                  </p>
+                  <p className={settingsHintClass}>{t.summary}</p>
                 </div>
                 <Switch
                   checked={isOn(t)}
@@ -90,7 +95,7 @@ export function ToolsTab({
         title={tr("settings.tools.proxy")}
         description={tr("settings.tools.proxyDesc")}
       >
-        <Field query={query} label={tr("settings.tools.http")}>
+        <Field query={query} label={tr("settings.tools.http")} wide>
           <Input
             value={settings.tools.proxy.http}
             placeholder="http://127.0.0.1:7890"
@@ -105,7 +110,7 @@ export function ToolsTab({
             }
           />
         </Field>
-        <Field query={query} label={tr("settings.tools.https")}>
+        <Field query={query} label={tr("settings.tools.https")} wide>
           <Input
             value={settings.tools.proxy.https}
             onChange={(e) =>
@@ -123,6 +128,7 @@ export function ToolsTab({
           query={query}
           label={tr("settings.tools.noProxy")}
           hint={tr("settings.tools.noProxyHint")}
+          wide
         >
           <Input
             value={settings.tools.proxy.no_proxy}

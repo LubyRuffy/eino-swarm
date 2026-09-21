@@ -16,6 +16,7 @@ func (s *Server) getRemoteStatus(c *gin.Context) {
 	if s.remote == nil {
 		c.JSON(http.StatusOK, gin.H{
 			"enabled": false, "hub_url": "", "has_token": false, "online": false,
+			"keep_awake": false, "awake": false,
 		})
 		return
 	}

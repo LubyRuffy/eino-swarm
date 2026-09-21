@@ -17,6 +17,8 @@ const (
 	DefaultRemoteOpenTurns    = 6
 	DefaultRemoteEventChars   = 4000
 	DefaultRemoteWatchEvents  = 80
+	DefaultRemoteWatchOpen    = 24
+	DefaultRemoteKeepAwake    = true
 )
 
 // RemoteConfig is the phone-pairing channel. HubURL is whatever the user
@@ -30,6 +32,10 @@ type RemoteConfig struct {
 	OpenTurns    int    `yaml:"open_turns" json:"open_turns"`
 	EventChars   int    `yaml:"event_chars" json:"event_chars"`
 	WatchEvents  int    `yaml:"watch_events" json:"watch_events"`
+	// KeepAwake holds a system sleep assertion while pairing is on. The
+	// host process is the phone's only door; idle sleep slams it. Default
+	// on. macOS honors this only on AC power (`caffeinate -s`).
+	KeepAwake bool `yaml:"keep_awake" json:"keep_awake"`
 }
 
 // RemoteDir holds the host identity and Host Token (mode 0700 / 0600).

@@ -31,7 +31,7 @@ func waitForTitle(t *testing.T, e *Engine, turnID string) store.Event {
 	return store.Event{}
 }
 
-// After the first finished turn the sidebar shows a generated name, not the
+// After the opening message the sidebar shows a generated name, not the
 // raw request. That is the whole feature: quoting the user was the old bug.
 func TestAFinishedTurnGetsAGeneratedTitle(t *testing.T) {
 	e := newTestEngine(t)
@@ -144,7 +144,7 @@ func TestAUserRenameBeatsASlowNamer(t *testing.T) {
 	}
 }
 
-func TestACancelledTurnKeepsThePlaceholder(t *testing.T) {
+func TestAnInterruptedOpeningTurnKeepsOneName(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	turn, err := e.StartTurn(th.ID, "look into the reporting pipeline")
@@ -152,23 +152,37 @@ func TestACancelledTurnKeepsThePlaceholder(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(120 * time.Millisecond)
-	if err := e.Interrupt(th.ID); err != nil {
+	if err := e.Interrupt(th.ID); err != nil && !errors.Is(err, ErrIdle) {
 		t.Fatal(err)
 	}
 	waitForTurn(t, e, turn.ID)
-	time.Sleep(80 * time.Millisecond)
-	events, _ := e.Store().ListTurnEvents(turn.ID)
-	for _, ev := range events {
+	ev := waitForTitle(t, e, turn.ID)
+	if ev.Err != "" || ev.Text == "" {
+		t.Fatalf("opening message must still be named: %+v", ev)
+	}
+	named, _ := e.Store().GetThread(th.ID)
+	if named.Title != ev.Text {
+		t.Fatalf("stored title=%q event=%q", named.Title, ev.Text)
+	}
+	if named.TitleAuto {
+		t.Fatal("a landed title must not be overwritten by a later namer")
+	}
+
+	next, err := e.StartTurn(th.ID, "a different follow-up entirely")
+	if err != nil {
+		t.Fatalf("second StartTurn: %v", err)
+	}
+	waitForTurn(t, e, next.ID)
+	time.Sleep(50 * time.Millisecond)
+	later, _ := e.Store().ListTurnEvents(next.ID)
+	for _, ev := range later {
 		if ev.Kind == KindTitle {
-			t.Fatalf("named a conversation from an interrupted turn: %+v", ev)
+			t.Fatal("a later turn must not name the conversation again")
 		}
 	}
 	got, _ := e.Store().GetThread(th.ID)
-	if got.Title != "look into the reporting pipeline" {
-		t.Fatalf("placeholder=%q", got.Title)
-	}
-	if !got.TitleAuto {
-		t.Fatal("an interrupted turn must leave the title machine-owned")
+	if got.Title != ev.Text {
+		t.Fatalf("a later turn overwrote the title: %q", got.Title)
 	}
 }
 
@@ -271,16 +285,56 @@ func TestTitleInputCarriesUserAndAnswer(t *testing.T) {
 	}
 }
 
+func TestTitleFromQuotedMessageUsesTheRequest(t *testing.T) {
+	tagged := "<selected_text>\nalpha beta\n</selected_text>\n\n<user_request>\ndo this\n</user_request>"
+	if got := titleFrom(tagged); got != "do this" {
+		t.Fatalf("titleFrom=%q", got)
+	}
+	if got := titleInput(tagged, "ready"); !strings.Contains(got, "User: do this") {
+		t.Fatalf("title input kept the wrapper: %q", got)
+	}
+	if strings.Contains(titleInput(tagged, "ready"), "<selected_text>") {
+		t.Fatal("the namer must not see the quote tags")
+	}
+	legacy := "Selected text:\nalpha beta\n\ndo this"
+	if got := titleFrom(legacy); got != "do this" {
+		t.Fatalf("legacy titleFrom=%q", got)
+	}
+	if got := titleFrom("<selected_text>\nalpha beta\n</selected_text>"); got != "alpha beta" {
+		t.Fatalf("quote-only titleFrom=%q", got)
+	}
+}
+
 func TestAutoTitleSkipsBlankInput(t *testing.T) {
 	e := newTestEngine(t)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.autoTitle(th, " \n\t ")
+	if e.autoTitle(th, " \n\t ") {
+		t.Fatal("blank input reported a plant")
+	}
 	got, _ := e.Store().GetThread(th.ID)
 	if got.Title != "" {
 		t.Fatalf("blank input set a title: %q", got.Title)
+	}
+}
+
+func TestAutoTitleReportsWhetherItPlanted(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !e.autoTitle(th, "look into the reporting pipeline") {
+		t.Fatal("the opening line must plant a placeholder")
+	}
+	if e.autoTitle(th, "a different follow-up entirely") {
+		t.Fatal("a second message must not plant again")
+	}
+	got, _ := e.Store().GetThread(th.ID)
+	if got.Title != "look into the reporting pipeline" {
+		t.Fatalf("placeholder=%q", got.Title)
 	}
 }
 
@@ -299,7 +353,7 @@ func TestAutoTitleSurvivesAClosedStore(t *testing.T) {
 func TestScheduleTitleSkipsAMissingConversation(t *testing.T) {
 	e := newTestEngine(t)
 	turn := &store.Turn{ID: "tn_gone", ThreadID: "th_gone", ProviderID: e.Config().Models.Default}
-	e.scheduleTitle("th_gone", turn, store.TurnDone, "ask", "ans")
+	e.scheduleTitle("th_gone", turn, "ask", "ans")
 	time.Sleep(30 * time.Millisecond)
 	events, err := e.Store().ListTurnEvents("tn_gone")
 	if err != nil {
@@ -323,13 +377,74 @@ func TestScheduleTitleRefusesASecondNamer(t *testing.T) {
 	}
 	t.Cleanup(func() { e.titles.done(th.ID) })
 	turn := &store.Turn{ID: "tn_second", ThreadID: th.ID, ProviderID: e.Config().Models.Default}
-	e.scheduleTitle(th.ID, turn, store.TurnDone, "ask", "ans")
+	e.scheduleTitle(th.ID, turn, "ask", "ans")
 	time.Sleep(40 * time.Millisecond)
 	events, _ := e.Store().ListTurnEvents("tn_second")
 	for _, ev := range events {
 		if ev.Kind == KindTitle {
 			t.Fatal("a second namer ran")
 		}
+	}
+}
+
+func TestScheduleTitleDoesNotNeedAFinishedTurn(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := &store.Turn{ID: "tn_open", ThreadID: th.ID, ProviderID: e.Config().Models.Default}
+	e.scheduleTitle(th.ID, turn, "look into the reporting pipeline", "")
+	ev := waitForTitle(t, e, "tn_open")
+	if ev.Err != "" || ev.Text == "" {
+		t.Fatalf("title event=%+v", ev)
+	}
+	got, _ := e.Store().GetThread(th.ID)
+	if got.Title != ev.Text || got.TitleAuto {
+		t.Fatalf("landed title=%+v", got)
+	}
+}
+
+func TestAFailedOpeningNamerDoesNotRenameOnTheNextTurn(t *testing.T) {
+	e := newTestEngine(t)
+	orig := titleGenerate
+	titleGenerate = func(context.Context, model.BaseChatModel, []*schema.Message) (*schema.Message, error) {
+		return nil, errors.New("namer down")
+	}
+	t.Cleanup(func() { titleGenerate = orig })
+
+	th, _ := e.CreateThread("", "", "")
+	const ask = "look into the reporting pipeline"
+	turn, err := e.StartTurn(th.ID, ask)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ev := waitForTitle(t, e, turn.ID)
+	if ev.Err == "" {
+		t.Fatal("want the opening namer to fail")
+	}
+	waitForTurn(t, e, turn.ID)
+	got, _ := e.Store().GetThread(th.ID)
+	if got.Title != ask {
+		t.Fatalf("placeholder=%q", got.Title)
+	}
+
+	titleGenerate = orig
+	next, err := e.StartTurn(th.ID, "a different follow-up entirely")
+	if err != nil {
+		t.Fatalf("second StartTurn: %v", err)
+	}
+	waitForTurn(t, e, next.ID)
+	time.Sleep(80 * time.Millisecond)
+	later, _ := e.Store().ListTurnEvents(next.ID)
+	for _, ev := range later {
+		if ev.Kind == KindTitle {
+			t.Fatal("a later turn must not get a second namer")
+		}
+	}
+	got, _ = e.Store().GetThread(th.ID)
+	if got.Title != ask {
+		t.Fatalf("a later turn overwrote the placeholder: %q", got.Title)
 	}
 }
 
@@ -346,7 +461,7 @@ func TestANamerPanicDoesNotKillTheProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	turn := &store.Turn{ID: "tn_panic", ThreadID: th.ID, ProviderID: e.Config().Models.Default}
-	e.scheduleTitle(th.ID, turn, store.TurnDone, "ask", "ans")
+	e.scheduleTitle(th.ID, turn, "ask", "ans")
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
@@ -365,7 +480,7 @@ func TestANilTurnPanicDoesNotKillTheProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.scheduleTitle(th.ID, nil, store.TurnDone, "ask", "ans")
+	e.scheduleTitle(th.ID, nil, "ask", "ans")
 
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {

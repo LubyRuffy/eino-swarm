@@ -92,6 +92,23 @@ func TestHostOfferAndServeLinkOverRelay(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("list timeout")
 	}
+	hello, _ := json.Marshal(Request{V: ProtocolV, ID: "hello", Op: OpHello, Text: "Phone 1.0 Device"})
+	if err := link.Send(hello); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-link.Recv():
+		var resp Response
+		if err := json.Unmarshal(got, &resp); err != nil {
+			t.Fatal(err)
+		}
+		if !resp.OK {
+			t.Fatalf("hello %+v", resp)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("hello timeout")
+	}
+
 	if err := link.Send([]byte("not-json")); err != nil {
 		t.Fatal(err)
 	}
@@ -114,6 +131,12 @@ func TestHostOfferAndServeLinkOverRelay(t *testing.T) {
 	}
 	if len(binds) != 1 {
 		t.Fatalf("bindings %+v", binds)
+	}
+	if binds[0].Device != "Phone 1.0 Device" {
+		t.Fatalf("bound phone must show the reported model, got %+v", binds[0])
+	}
+	if binds[0].LastSeen == "" {
+		t.Fatal("last_seen missing after hello")
 	}
 	if err := h.RevokeBinding(ctx, binds[0].ID); err != nil {
 		t.Fatal(err)

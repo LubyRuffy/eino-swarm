@@ -22,6 +22,7 @@ vi.mock("@/components/app/transcript-chart", async () => {
 describe("MemoMarkdown", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+    Reflect.deleteProperty(document, "execCommand")
   })
   it("renders a streaming heading as a heading", () => {
     render(<MemoMarkdown text={"## Result\n\nstill writing"} streaming />)
@@ -139,6 +140,22 @@ describe("MemoMarkdown", () => {
     expect(document.querySelector(".text-syntax-keyword")).toBeNull()
     expect(screen.getByRole("button", { name: "Copy code" })).toBeInTheDocument()
     expect(screen.getByTestId("markdown-code").textContent).toContain("not a language")
+  })
+
+  it("still copies a fence when the clipboard API refuses", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"))
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } })
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => true),
+    })
+    render(<MemoMarkdown text={"```\nalpha\n```"} />)
+    fireEvent.click(screen.getByRole("button", { name: "Copy code" }))
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Copy code" })).toHaveAttribute("title", "Copied"),
+    )
+    expect(writeText).not.toHaveBeenCalled()
   })
 
   it("renders inline and display math as KaTeX, not as dollar signs", async () => {

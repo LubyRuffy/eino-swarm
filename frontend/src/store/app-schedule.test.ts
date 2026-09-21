@@ -18,6 +18,7 @@ const fake = vi.hoisted(() => ({
   runBusy: false,
   runFail: "" as string,
   marked: [] as string[],
+  listFail: false,
 }))
 
 vi.mock("@/lib/api", () => {
@@ -57,6 +58,7 @@ vi.mock("@/lib/api", () => {
       followups: async () => [],
       schedules: async () => {
         fake.listed += 1
+        if (fake.listFail) throw new Error("offline")
         return { schedules: fake.rows, unread: fake.unread }
       },
       createSchedule: async (body: Record<string, unknown>) => {
@@ -138,6 +140,7 @@ beforeEach(() => {
   fake.runBusy = false
   fake.runFail = ""
   fake.marked = []
+  fake.listFail = false
   useApp.setState({
     threads: [],
     activeId: undefined,
@@ -252,6 +255,28 @@ describe("schedule store", () => {
     useApp.getState().openScheduleInbox()
     useApp.getState().closeScheduleInbox()
     expect(useApp.getState().scheduleInboxOpen).toBe(false)
+    expect(useApp.getState().error).toBeUndefined()
+  })
+
+  it("refreshes waits when a due tick is skipped busy", async () => {
+    await useApp.getState().boot()
+    const afterBoot = fake.listed
+    fake.onEvent?.({
+      kind: "schedule_skipped",
+      seq: 11,
+      thread_id: "th_old",
+      agent_id: "manager",
+      text: "sch_1",
+      created_at: "2026-09-19T00:00:00.000Z",
+    })
+    await Promise.resolve()
+    expect(fake.listed).toBeGreaterThan(afterBoot)
+  })
+
+  it("does not toast when a background wait fetch fails", async () => {
+    fake.listFail = true
+    useApp.setState({ error: undefined })
+    await useApp.getState().refreshSchedules({ silent: true })
     expect(useApp.getState().error).toBeUndefined()
   })
 

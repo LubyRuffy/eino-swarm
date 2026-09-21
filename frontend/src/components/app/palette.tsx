@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react"
 import { Languages, MessageSquare, MessageSquarePlus, PanelLeft, Search, Settings, SquareTerminal, SunMoon, UnfoldHorizontal } from "lucide-react"
 
 import {
@@ -8,7 +9,13 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
-import type { Thread } from "@/lib/types"
+import { api } from "@/lib/api"
+import {
+  SEARCH_DEBOUNCE_MS,
+  conversationHitValue,
+  shouldQuerySearch,
+} from "@/lib/thread-search"
+import type { SearchHit, Thread } from "@/lib/types"
 import { relativeDay } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 
@@ -43,14 +50,73 @@ export function Palette({
   onOpenTerminal: () => void
 }) {
   const t = useT()
+  const [query, setQuery] = useState("")
+  const [hits, setHits] = useState<SearchHit[] | null>(null)
+  const [hitsFor, setHitsFor] = useState("")
+  const [searchFailed, setSearchFailed] = useState(false)
   const run = (fn: () => void) => {
     onOpenChange(false)
     fn()
   }
 
+  useEffect(() => {
+    if (!open) {
+      setQuery("")
+      setHits(null)
+      setHitsFor("")
+      setSearchFailed(false)
+      return
+    }
+    if (!shouldQuerySearch(query)) {
+      setHits(null)
+      setHitsFor("")
+      setSearchFailed(false)
+      return
+    }
+    const q = query.trim()
+    setHits(null)
+    setHitsFor("")
+    setSearchFailed(false)
+    let cancelled = false
+    const handle = window.setTimeout(() => {
+      void api
+        .search(q)
+        .then((res) => {
+          if (cancelled) return
+          setHits(res.hits ?? [])
+          setHitsFor(q)
+          setSearchFailed(false)
+        })
+        .catch(() => {
+          if (cancelled) return
+          setHits(null)
+          setHitsFor(q)
+          setSearchFailed(true)
+        })
+    }, SEARCH_DEBOUNCE_MS)
+    return () => {
+      cancelled = true
+      window.clearTimeout(handle)
+    }
+  }, [open, query])
+
+  const searching = shouldQuerySearch(query)
+  const q = query.trim()
+  const conversationHits = !searching
+    ? null
+    : searchFailed && hitsFor === q
+      ? null
+      : hits && hitsFor === q
+        ? hits
+        : []
+
   return (
-    <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder={t("palette.placeholder")} />
+    <CommandDialog open={open} onOpenChange={onOpenChange} shouldFilter={!searching}>
+      <CommandInput
+        value={query}
+        onValueChange={setQuery}
+        placeholder={t("palette.placeholder")}
+      />
       <CommandList>
         <CommandEmpty>{t("palette.empty")}</CommandEmpty>
         <CommandGroup heading={t("palette.actions")}>
@@ -100,7 +166,29 @@ export function Palette({
             <kbd className="ml-auto text-[11px] text-muted-foreground">⌘J</kbd>
           </CommandItem>
         </CommandGroup>
-        {threads.length > 0 ? (
+        {conversationHits ? (
+          conversationHits.length > 0 ? (
+            <CommandGroup heading={t("palette.conversations")}>
+              {conversationHits.map((hit) => (
+                <CommandItem
+                  key={hit.thread_id}
+                  value={conversationHitValue(hit, query)}
+                  onSelect={() => run(() => onOpen(hit.thread_id))}
+                >
+                  <MessageSquare />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{hit.title || t("palette.untitled")}</span>
+                    {hit.snippet ? (
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        {hit.snippet}
+                      </span>
+                    ) : null}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          ) : null
+        ) : threads.length > 0 ? (
           <CommandGroup heading={t("palette.conversations")}>
             {threads.map((thread) => (
               <CommandItem

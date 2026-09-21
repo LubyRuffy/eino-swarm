@@ -142,8 +142,8 @@ export function Composer({
   prefill?: string
   prefillToken?: number
   focusSignal: number
-  /** Snippets pulled out of the transcript. Shown as annotations, then
-   *  prefixed onto the send so the model sees them. */
+  /** Snippets pulled out of the transcript. Shown as chips, then tagged
+   *  onto the send so the model can tell a highlight from the request. */
   quotes?: Quote[]
   onQuotesChange?: (quotes: Quote[]) => void
   followups?: Followup[]

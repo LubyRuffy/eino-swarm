@@ -1,4 +1,4 @@
-import type { Schedule } from "@/lib/types"
+import type { Schedule, ScheduleRun } from "@/lib/types"
 
 export function scheduleHeadline(row: Pick<Schedule, "title" | "prompt">): string {
   const title = (row.title ?? "").trim()
@@ -6,14 +6,58 @@ export function scheduleHeadline(row: Pick<Schedule, "title" | "prompt">): strin
   return (row.prompt ?? "").trim()
 }
 
+/** Unread findings/errors the inbox can open, newest fire first. */
+export function unreadFindings(runs: ScheduleRun[]): ScheduleRun[] {
+  return runs
+    .filter(
+      (run) =>
+        run.unread &&
+        (run.status === "findings" || run.status === "error") &&
+        Boolean(run.thread_id?.trim()),
+    )
+    .sort((a, b) => {
+      const tb = Date.parse(b.created_at)
+      const ta = Date.parse(a.created_at)
+      if (!Number.isNaN(tb) && !Number.isNaN(ta) && tb !== ta) return tb - ta
+      return b.id.localeCompare(a.id)
+    })
+}
+
+/** A wait the human can still pause, resume, cancel, or run. */
+export function isLiveSchedule(row: Pick<Schedule, "status">): boolean {
+  const status = (row.status ?? "").trim()
+  return status !== "done" && status !== "cancelled"
+}
+
+function unreadScheduleIds(runs: ScheduleRun[]): Set<string> {
+  return new Set(unreadFindings(runs).map((run) => run.schedule_id))
+}
+
 /** Live waits first so a just-armed row is not buried under done fires. */
 export function inboxScheduleOrder(rows: Schedule[]): Schedule[] {
-  const live = (row: Schedule) => row.status === "active" || row.status === "paused"
   return [...rows].sort((a, b) => {
-    const rank = (live(a) ? 0 : 1) - (live(b) ? 0 : 1)
+    const rank = (isLiveSchedule(a) ? 0 : 1) - (isLiveSchedule(b) ? 0 : 1)
     if (rank !== 0) return rank
     return (a.next_run_at || "").localeCompare(b.next_run_at || "")
   })
+}
+
+/** Ended waits stay out of the inbox unless they still have unread findings. */
+export function inboxVisibleSchedules(
+  rows: Schedule[],
+  runs: ScheduleRun[],
+  includeEnded: boolean,
+): Schedule[] {
+  if (includeEnded) return inboxScheduleOrder(rows)
+  const unreadIds = unreadScheduleIds(runs)
+  return inboxScheduleOrder(
+    rows.filter((row) => isLiveSchedule(row) || unreadIds.has(row.id)),
+  )
+}
+
+export function inboxHiddenEndedCount(rows: Schedule[], runs: ScheduleRun[]): number {
+  const unreadIds = unreadScheduleIds(runs)
+  return rows.filter((row) => !isLiveSchedule(row) && !unreadIds.has(row.id)).length
 }
 
 export type ArmedSchedulePayload = {
@@ -61,6 +105,17 @@ export function activeWake(
   )
 }
 
+/** Prefer the later due time so a replayed arm chip cannot rewind the clock. */
+export function laterScheduleDue(a?: string, b?: string): string {
+  const left = (a ?? "").trim()
+  const right = (b ?? "").trim()
+  const ta = Date.parse(left)
+  const tb = Date.parse(right)
+  if (Number.isNaN(ta)) return right || left
+  if (Number.isNaN(tb)) return left
+  return ta >= tb ? left : right
+}
+
 /** Paint the composer banner from the chip payload before GET returns. */
 export function applyArmedSchedule(
   rows: Schedule[],
@@ -91,7 +146,9 @@ export function applyArmedSchedule(
     every_s: existing?.every_s ?? 0,
     cron: existing?.cron ?? "",
     status: payload.status?.trim() || existing?.status || "active",
-    next_run_at: payload.next_run_at || existing?.next_run_at || "",
+    // The arm event is a snapshot. Replaying it after GET advanced
+    // next_run_at used to freeze the banner on the first due slot.
+    next_run_at: laterScheduleDue(existing?.next_run_at, payload.next_run_at),
     run_count: existing?.run_count ?? 0,
     max_runs: existing?.max_runs ?? 0,
     created_by: existing?.created_by || "manager",

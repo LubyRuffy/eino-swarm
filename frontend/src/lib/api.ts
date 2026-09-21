@@ -10,6 +10,7 @@ import type {
   RemoteOffer,
   RemoteStatus,
   Settings,
+  SearchResult,
   Skill,
   SwarmEvent,
   Thread,
@@ -23,7 +24,7 @@ import type {
   SchedulePatch,
   ScheduleRun,
 } from "./types"
-import { defaultRemoteSettings } from "./types"
+import { defaultRemoteSettings, defaultSearchSettings } from "./types"
 import { normalizeUISettings } from "./appearance"
 import type { SendImage } from "./paste-image"
 import type { ThreadLog } from "./thread-log"
@@ -110,6 +111,7 @@ function withToolLists(s: Settings): Settings {
     },
     ui: normalizeUISettings(s.ui),
     remote: defaultRemoteSettings(s.remote),
+    search: defaultSearchSettings(s.search),
   }
 }
 
@@ -125,6 +127,12 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(patch),
     }).then((r) => withToolLists(r.settings)),
+
+  search: (q: string, limit?: number) => {
+    const params = new URLSearchParams({ q })
+    if (limit && limit > 0) params.set("limit", String(limit))
+    return request<SearchResult>(`/api/search?${params.toString()}`)
+  },
 
   models: () =>
     request<{ models: ModelInfo[]; default: string; mock: boolean }>(

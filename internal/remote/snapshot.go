@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
@@ -87,6 +88,7 @@ func threadView(eng *engine.Engine, th store.Thread, cfg config.RemoteConfig) Th
 		Title:        title,
 		ProjectID:    th.ProjectID,
 		Running:      st.Running,
+		Waiting:      st.Waiting,
 		LastActiveAt: th.LastActiveAt,
 		Summary:      threadSummary(eng, th.ID, cfg.SummaryChars),
 	}
@@ -110,16 +112,32 @@ func threadSummary(eng *engine.Engine, threadID string, chars int) string {
 
 func runningViews(eng *engine.Engine) []RunningView {
 	ids := eng.Running()
-	if len(ids) == 0 {
+	waiting := eng.Waiting()
+	if len(ids) == 0 && len(waiting) == 0 {
 		return nil
 	}
-	out := make([]RunningView, 0, len(ids))
+	seen := make(map[string]int, len(ids)+len(waiting))
+	out := make([]RunningView, 0, len(ids)+len(waiting))
 	for _, id := range ids {
 		th, err := eng.Store().GetThread(id)
 		if err != nil {
 			continue
 		}
+		seen[id] = len(out)
 		out = append(out, runningView(eng, th))
+	}
+	for _, id := range waiting {
+		if i, ok := seen[id]; ok {
+			out[i].Waiting = true
+			continue
+		}
+		th, err := eng.Store().GetThread(id)
+		if err != nil {
+			continue
+		}
+		v := runningView(eng, th)
+		v.Waiting = true
+		out = append(out, v)
 	}
 	return out
 }
@@ -160,18 +178,7 @@ func openDetail(eng *engine.Engine, threadID string, cfg config.RemoteConfig) (*
 	if err != nil {
 		return nil, err
 	}
-	d := &ThreadDetail{
-		ID:     th.ID,
-		Title:  strings.TrimSpace(th.Title),
-		Goal:   th.Goal,
-		GoalOn: strings.TrimSpace(th.Goal) != "" && !th.GoalComplete,
-		PlanOn: th.PlanMode,
-	}
-	st := eng.Status(th.ID)
-	if st.Running {
-		rv := runningView(eng, th)
-		d.Running = &rv
-	}
+	d := threadDetail(eng, th, cfg)
 	turns, err := eng.Store().ListTurns(th.ID)
 	if err != nil {
 		return nil, err
@@ -200,6 +207,62 @@ func openDetail(eng *engine.Engine, threadID string, cfg config.RemoteConfig) (*
 		})
 	}
 	return d, nil
+}
+
+func threadDetail(eng *engine.Engine, th *store.Thread, cfg config.RemoteConfig) *ThreadDetail {
+	st := eng.Status(th.ID)
+	d := &ThreadDetail{
+		ID:              th.ID,
+		Title:           strings.TrimSpace(th.Title),
+		Goal:            th.Goal,
+		GoalOn:          strings.TrimSpace(th.Goal) != "",
+		GoalComplete:    th.GoalComplete,
+		GoalBlocked:     th.GoalBlocked,
+		GoalBlockReason: truncate(oneLine(th.GoalBlockReason), summaryChars(cfg)),
+		GoalCapped:      th.GoalCapped,
+		GoalIdle:        th.GoalIdle,
+		PlanOn:          th.PlanMode,
+		Waiting:         st.Waiting,
+		Wake:            wakeView(eng, th.ID, cfg),
+	}
+	if th.GoalStartedAt != nil && !th.GoalStartedAt.IsZero() {
+		d.GoalStartedAt = th.GoalStartedAt.UTC().Format(time.RFC3339)
+	}
+	if st.Running {
+		rv := runningView(eng, th)
+		d.Running = &rv
+	}
+	return d
+}
+
+func wakeView(eng *engine.Engine, threadID string, cfg config.RemoteConfig) *WakeView {
+	row, err := eng.Store().ActiveThreadWake(threadID)
+	if err != nil || row == nil {
+		return nil
+	}
+	v := &WakeView{
+		ID:     row.ID,
+		Title:  strings.TrimSpace(row.Title),
+		Prompt: truncate(oneLine(row.Prompt), summaryChars(cfg)),
+	}
+	if !row.NextRunAt.IsZero() {
+		v.NextRunAt = row.NextRunAt.UTC().Format(time.RFC3339)
+	}
+	return v
+}
+
+func watchStatus(eng *engine.Engine, threadID string, cfg config.RemoteConfig) *WatchStatus {
+	st := eng.Status(threadID)
+	ws := &WatchStatus{
+		Running:        st.Running,
+		TurnID:         st.TurnID,
+		AwaitingAnswer: st.AwaitingAnswer,
+		Waiting:        st.Waiting,
+	}
+	if st.Waiting {
+		ws.Wake = wakeView(eng, threadID, cfg)
+	}
+	return ws
 }
 
 func fail(id, path, sessionID, code, msg string) Response {

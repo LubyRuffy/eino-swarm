@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -164,6 +165,56 @@ func TestWatchReplayMatchesEngineReplaySeq(t *testing.T) {
 	if countOp(log.snapshot(), OpEvent) != 0 {
 		t.Fatal("catch-up must ride ready, not a slideshow of event frames")
 	}
+}
+
+func TestWatchReadyAndArmPushCarryWaitingStatus(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("parked", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.CreateSchedule(engine.ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Title: "wake", Prompt: "Continue the wait.", DelayS: 3600,
+		CreatedBy: store.ScheduleCreatedManager,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pump, log := testPump(t, e)
+	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
+	pump.Dispatch(raw)
+	ready := log.waitOp(t, OpReady, 3*time.Second)
+	if ready.Status == nil || !ready.Status.Waiting || ready.Status.Wake == nil || ready.Status.Wake.ID == "" {
+		t.Fatalf("ready status %+v", ready.Status)
+	}
+	other, err := e.CreateThread("other", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.CreateSchedule(engine.ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Title: "again", Prompt: "Continue the wait.", DelayS: 90,
+		CreatedBy: store.ScheduleCreatedManager,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		for _, r := range log.snapshot() {
+			if r.Op == OpEvent && r.Event != nil && r.Event.Kind == "schedule" {
+				if r.Status == nil || !r.Status.Waiting || r.Status.Wake == nil {
+					t.Fatalf("arm push missing status %+v", r)
+				}
+				if r.ThreadID != th.ID {
+					t.Fatalf("arm leaked onto %s", r.ThreadID)
+				}
+				_ = other
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("no armed wait push %+v", log.snapshot())
 }
 
 func TestWatchLiveSendAndUnwatch(t *testing.T) {
@@ -351,6 +402,40 @@ func TestWatchOpensAtTheLiveEdgeNotTheOldestEvent(t *testing.T) {
 	}
 }
 
+func TestWatchFirstSnapshotFitsAPhoneScreen(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("fat", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := &store.Turn{ThreadID: th.ID, Status: store.TurnRunning}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	n := config.DefaultRemoteWatchOpen + 8
+	for i := 0; i < n; i++ {
+		if err := e.Store().AppendEvent(&store.Event{
+			ThreadID: th.ID, TurnID: turn.ID, Kind: "user_message",
+			Text: "m" + strconv.Itoa(i),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pump, log := testPump(t, e)
+	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
+	pump.Dispatch(raw)
+	ready := log.waitOp(t, OpReady, 3*time.Second)
+	if len(ready.Events) != config.DefaultRemoteWatchOpen {
+		t.Fatalf("first paint %d want %d", len(ready.Events), config.DefaultRemoteWatchOpen)
+	}
+	if ready.Events[len(ready.Events)-1].Text != "m"+strconv.Itoa(n-1) {
+		t.Fatalf("must keep the live edge %+v", ready.Events[len(ready.Events)-1])
+	}
+	if !ready.More {
+		t.Fatal("older rows of this turn must still page")
+	}
+}
+
 func TestWatchOpensOnTheLastTurnNotEarlierOnes(t *testing.T) {
 	e := testEngine(t)
 	th, err := e.CreateThread("last-turn", "", "")
@@ -527,6 +612,12 @@ func TestEventCharsAndSummaryDefaults(t *testing.T) {
 	}
 	if watchEvents(config.RemoteConfig{WatchEvents: 12}) != 12 {
 		t.Fatal("watch events override")
+	}
+	if watchOpenEvents(config.RemoteConfig{}) != config.DefaultRemoteWatchOpen {
+		t.Fatal("first watch is a screen, not the log page")
+	}
+	if watchOpenEvents(config.RemoteConfig{WatchEvents: 8}) != 8 {
+		t.Fatal("a smaller watch_events still binds the first paint")
 	}
 }
 

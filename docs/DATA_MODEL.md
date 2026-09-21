@@ -36,6 +36,8 @@ erDiagram
   THREAD ||--o{ SCHEDULE : originates
   THREAD ||--o{ SCHEDULE : wakes
   THREAD ||--o{ SCHEDULERUN : ran
+  THREAD ||--o| SEARCH_DOC : indexed
+  THREAD ||--o{ SEARCH_CHUNK : embedded
   TURN ||--o{ EVENT : produced
   TURN ||--o{ MESSAGE : produced
   TURN ||--o{ LLMCALL : made
@@ -63,8 +65,8 @@ in this database: notes and skills are files, so a person can read and fix them
 | column | type | notes |
 |---|---|---|
 | `id` | text, PK | `th_` + 8 random bytes hex. **Also the workspace directory name**, so it must stay free of separators and shell metacharacters. |
-| `title` | text | placeholder from the first message, then a generated name after the first finished turn when the user did not supply one |
-| `title_auto` | bool | true while the engine still owns the title. A user rename (or a landed generated name) clears it so a slow namer cannot overwrite the sidebar |
+| `title` | text | placeholder from the first message, then a generated name from that opening line when the user did not supply one |
+| `title_auto` | bool | true while the engine still owns the title. A user rename or a landed generated name clears it so a later namer cannot overwrite the sidebar |
 | `project_id` | text, indexed | the project this conversation belongs to; empty for a standalone one. It decides where the tools work, what the prompt carries, and whether a review runs |
 | `provider_id` | text | which configured provider this conversation uses |
 | `model` | text | the name this conversation sends; empty follows the provider's default so a Settings change applies until someone picks in the composer |
@@ -146,7 +148,7 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `thread_id` | |
 | `seq` | per-conversation turn number |
 | `status` | `running`, `done`, `error`, `cancelled` |
-| `user_text` | what was asked |
+| `user_text` | what was asked. On `goal_continue` / `schedule_continue` this is the protocol prompt the model saw, not a human send |
 | `final` | the manager's final answer |
 | `error` | why it failed, when it did |
 | `provider_id`, `model` | what actually ran, not what is configured now — settings change |
@@ -158,14 +160,16 @@ The `id` is the handle the whole troubleshooting story hangs off: the UI shows i
 | `started_at`, `ended_at`, `duration_ms` | `ended_at` is null while running |
 
 A turn stays `running` until it finishes, errors, or the user stops it. A
-crash, a kill, or quitting the app leaves the row running; the next start
+  crash, a kill, or quitting the app leaves the row running; the next start
 calls `ResumeOrphanedTurns` and continues every leftover on the same turn id
 (`resumed` on the timeline), replaying manager answers already stored on
 `messages` or still only on the event log, and restarting sub-agents that
 had `spawned` without `finished` under the same `agent_id`. An in-flight
-`tool_call` with no `tool_result` is closed on that timeline before `resumed`
-(`err` is `the previous process stopped`) so a killed process does not leave
-the call looking live. Follow-ups in
+`exec` (or any non-wait tool) with no `tool_result` is closed on that
+timeline before `resumed` (`err` is `the previous process stopped`) so a
+killed process does not leave the call looking live. A dangling
+`wait_agents` is closed as a timed-out wait snapshot of those ids, not as a
+stopped exec, so the manager can wait again on the live workers. Follow-ups in
 `followups` stay queued until that leftover turn finishes cleanly. Unread
 `[steer]` rows stay on the leftover turn unless they were retracted
 (`steer_retracted` plus `DeleteMessageByEventSeq`). A user **Stop** is
@@ -325,7 +329,7 @@ pinned to that `project_id`.
 | `thread_id` | the conversation that ran: the wake target, or the conversation minted for a standalone fire |
 | `turn_id` | the turn that ran, when one started. Empty on a skip |
 | `status` | `skipped_busy`, `running`, `findings`, `quiet`, `error` |
-| `summary` | short findings text the inbox shows. Empty on quiet |
+| `summary` | short findings text the inbox shows on the wait row, and as the stacked Open findings labels when several fires are unread. Empty on quiet |
 | `unread` | true for `findings` and `error`. Quiet runs are not unread |
 | `created_at`, `updated_at`, `ended_at` | `ended_at` is null while `running` |
 
@@ -370,10 +374,42 @@ tree only — the manager and sub-agents both have it; only the manager (and
 the post-turn reviewer) can write. A `SKILL.md` already in the workspace is a
 file; the agent `read`s it rather than opening it as a recorded skill.
 
+## `search_docs` / `thread_fts` — keyword index
+
+One row per conversation. Rebuilt from the title, standing goal and
+user/assistant messages. Tool dumps stay out so JSON keys cannot drown hits.
+`thread_fts` is an FTS5 trigram virtual table content-synced by triggers.
+Creating it rebuilds from whatever `search_docs` already holds, so an upgrade
+does not sit on an empty MATCH until the next title edit.
+Queries shorter than three runes skip MATCH and use LIKE, so two-character CJK
+still hits. Archived conversations are filtered at query time.
+
+| column | notes |
+|---|---|
+| `id` | integer PK; FTS `content_rowid` |
+| `thread_id` | unique, the conversation |
+| `title` | sidebar name at index time |
+| `body` | concatenated goal + messages, capped |
+
+## `search_chunks` — optional embedding passages
+
+Only filled when `search.embedding` is on and a model is named. One row per
+passage per model. Vectors are little-endian float32. A pin change deletes
+rows whose `model` is not the current name.
+
+| column | notes |
+|---|---|
+| `id` | integer PK |
+| `thread_id`, `chunk_key`, `model` | unique together. `chunk_key` is `title`, `goal`, or `msg:<id>` |
+| `text_hash` | sha256 of the passage; unchanged text is not re-embedded |
+| `dim` | vector length |
+| `vector` | packed float32 |
+
 ## Lifecycle and retention
 
 - **Delete a conversation** (`DELETE /api/threads/:id`): its messages, turns,
-  events, model calls, attachments and follow-ups are removed in one transaction, then the
+  events, model calls, attachments, follow-ups and search index (keyword doc
+  plus embedding chunks) are removed in one transaction, then the
   row, then its workspace directory — **only when zwai created that directory** —
   and its `inputs/` folder and `$ZWAI_HOME/plans/<id>/`. Wakes whose `thread_id`
   is that conversation are cancelled in the same transaction; standalone

@@ -9,6 +9,8 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/wakeup"
 	"github.com/LubyRuffy/pairlink/client"
 	"github.com/LubyRuffy/pairlink/crypto"
 	"github.com/LubyRuffy/pairlink/protocol"
@@ -32,24 +34,33 @@ type Host struct {
 	// keepAlive is forwarded to pairlink. Zero is the library default.
 	// Tests stretch it so a short hub Idle can drop the socket.
 	keepAlive time.Duration
+
+	// wake is the sleep assertion. It follows config, not the hub
+	// socket: Reload must not release and re-acquire or idle sleep
+	// wins the gap.
+	wake wakeup.Holder
 }
 
 func New(eng *engine.Engine, cfg *config.Config, log *slog.Logger) *Host {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Host{eng: eng, cfg: cfg, log: log}
+	return &Host{eng: eng, cfg: cfg, log: log, wake: wakeup.ForProcess()}
 }
 
 func (h *Host) Reload() {
-	h.Stop()
-	h.Start()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.stopLocked()
+	h.startLocked()
+	h.applyWakeLocked()
 }
 
 func (h *Host) Start() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.startLocked()
+	h.applyWakeLocked()
 }
 
 func (h *Host) startLocked() {
@@ -107,6 +118,23 @@ func (h *Host) Stop() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.stopLocked()
+	if h.wake != nil {
+		_ = h.wake.Set(false)
+	}
+}
+
+func (h *Host) applyWakeLocked() {
+	if h.wake == nil {
+		return
+	}
+	enabled, keep := false, false
+	if h.cfg != nil {
+		enabled = h.cfg.Remote.Enabled
+		keep = h.cfg.Remote.KeepAwake
+	}
+	if err := h.wake.Set(wakeup.Wanted(enabled, keep)); err != nil {
+		h.log.Warn("keep-awake failed", "err", err)
+	}
 }
 
 func (h *Host) stopLocked() {
@@ -153,6 +181,7 @@ func (h *Host) Offer(ctx context.Context) (*Offer, error) {
 	defer h.mu.Unlock()
 	if h.conn == nil {
 		h.startLocked()
+		h.applyWakeLocked()
 	}
 	if h.conn == nil {
 		if h.err != "" {
@@ -186,6 +215,8 @@ type Status struct {
 	HubURL      string `json:"hub_url"`
 	HasToken    bool   `json:"has_token"`
 	Online      bool   `json:"online"`
+	KeepAwake   bool   `json:"keep_awake"`
+	Awake       bool   `json:"awake"`
 	Fingerprint string `json:"fingerprint,omitempty"`
 	Error       string `json:"error,omitempty"`
 }
@@ -194,11 +225,15 @@ func (h *Host) Status() Status {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	st := Status{
-		Enabled:  h.cfg.Remote.Enabled,
-		HubURL:   h.cfg.Remote.HubURL,
-		HasToken: h.cfg.HasHostToken(),
-		Online:   h.conn != nil && h.conn.Connected(),
-		Error:    h.err,
+		Enabled:   h.cfg.Remote.Enabled,
+		HubURL:    h.cfg.Remote.HubURL,
+		HasToken:  h.cfg.HasHostToken(),
+		Online:    h.conn != nil && h.conn.Connected(),
+		KeepAwake: h.cfg.Remote.KeepAwake,
+		Error:     h.err,
+	}
+	if h.wake != nil {
+		st.Awake = h.wake.On()
 	}
 	if h.id != nil {
 		st.Fingerprint = h.id.Fingerprint()
@@ -206,15 +241,23 @@ func (h *Host) Status() Status {
 	return st
 }
 
-func (h *Host) ListBindings(ctx context.Context) ([]client.BindingView, error) {
+func (h *Host) ListBindings(ctx context.Context) ([]Binding, error) {
 	token, err := h.cfg.HostToken()
 	if err != nil {
 		return nil, err
 	}
 	if token == "" || h.cfg.Remote.HubURL == "" {
-		return []client.BindingView{}, nil
+		return []Binding{}, nil
 	}
-	return client.ListBindings(ctx, h.cfg.Remote.HubURL, token)
+	raw, err := client.ListBindings(ctx, h.cfg.Remote.HubURL, token)
+	if err != nil {
+		return nil, err
+	}
+	var devices []store.RemoteDevice
+	if h.eng != nil {
+		devices, _ = h.eng.Store().ListRemoteDevices()
+	}
+	return decorateBindings(raw, devices), nil
 }
 
 func (h *Host) RevokeBinding(ctx context.Context, id string) error {

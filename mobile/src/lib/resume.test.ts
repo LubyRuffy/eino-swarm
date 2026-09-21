@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { collectLive, pickResumeThread } from "./resume"
+import { collectLive, detailFromListing, pickResumeThread, rosterFingerprint } from "./resume"
 import type { RunningView, ThreadView } from "./rpc"
 
 function thread(id: string, running: boolean): ThreadView {
@@ -19,6 +19,15 @@ describe("collectLive", () => {
     )
     expect(live.map((r) => r.thread_id)).toEqual(["a", "b"])
     expect(live[0].action).toBe("read")
+  })
+
+  it("treats a parked wait as live so bind does not hide a hung-looking thread", () => {
+    const parked = thread("w", false)
+    parked.waiting = true
+    const live = collectLive([run("w", { waiting: true })], [parked, thread("idle", false)])
+    expect(live.map((r) => r.thread_id)).toEqual(["w"])
+    expect(live[0].waiting).toBe(true)
+    expect(pickResumeThread("", [], [parked])).toBe("w")
   })
 })
 
@@ -40,5 +49,41 @@ describe("pickResumeThread", () => {
   it("stays on the inbox when there is no last thread and nothing live", () => {
     expect(pickResumeThread("", [], [thread("a", false)])).toBe("")
     expect(pickResumeThread("", [], [])).toBe("")
+  })
+})
+
+describe("detailFromListing", () => {
+  it("paints a stub from the inbox so a tap does not wait on watch", () => {
+    const parked = thread("w", false)
+    parked.waiting = true
+    parked.title = "parked"
+    expect(detailFromListing("w", [run("w", { waiting: true })], [parked])).toEqual({
+      id: "w",
+      title: "parked",
+      waiting: true,
+    })
+    expect(
+      detailFromListing("a", [run("a", { turn_id: "tu", action: "read" })], [thread("a", true)]),
+    ).toEqual({
+      id: "a",
+      title: "thread a",
+      running: { thread_id: "a", title: "thread a", turn_id: "tu", action: "read" },
+    })
+    expect(detailFromListing("missing", [], [])).toEqual({
+      id: "missing",
+      title: "missing",
+    })
+  })
+})
+
+describe("rosterFingerprint", () => {
+  it("stays the same when a 2s inbox poll repeats the roster so a tap is not eaten", () => {
+    const projects = [{ id: "p", name: "P" }]
+    const threads = [thread("a", false)]
+    const running = [run("a", { action: "read" })]
+    const a = rosterFingerprint(projects, threads, running, false, "")
+    const b = rosterFingerprint(projects, threads, running, false, "")
+    expect(a).toBe(b)
+    expect(rosterFingerprint(projects, threads, [run("a", { action: "exec" })], false, "")).not.toBe(a)
   })
 })

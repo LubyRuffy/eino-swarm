@@ -254,6 +254,40 @@ describe("queued steering", () => {
       steer.compareDocumentPosition(screen.getByText("adjusted")) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).not.toBe(0)
   })
+
+  it("hides close_agent the way TUI hides bookkeeping", () => {
+    render(
+      <Transcript
+        state={runningWith([
+          row("user", "look into this", { seq: 1 }),
+          row("tool", "close_agent", {
+            seq: 2,
+            tool: {
+              callId: "c1",
+              name: "close_agent",
+              args: `{"agent_id":"helper-1"}`,
+              pending: false,
+              result: `{"cancelled":false,"already_finished":true}`,
+            },
+          }),
+          row("tool", "read", {
+            seq: 3,
+            tool: {
+              callId: "c2",
+              name: "read",
+              args: `{"file_path":"notes.md"}`,
+              pending: false,
+              result: "ok",
+            },
+          }),
+        ])}
+        loaded
+        onSelectAgent={() => {}}
+      />,
+    )
+    expect(screen.queryByText("close_agent")).not.toBeInTheDocument()
+    expect(screen.getByText("read")).toBeInTheDocument()
+  })
 })
 
 describe("Transcript follow", () => {

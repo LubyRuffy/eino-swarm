@@ -35,6 +35,13 @@ func Handle(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sess
 		return handleAnswer(eng, req, path, sessionID)
 	case OpLog:
 		return handleLog(eng, cfg, req, path, sessionID)
+	case OpRunNow:
+		return handleRunNow(eng, req, path, sessionID)
+	case OpCancelWait:
+		return handleCancelWait(eng, req, path, sessionID)
+	case OpResumeGoal:
+		_, err := eng.ResumeThreadGoal(req.ThreadID)
+		return opErr(req.ID, path, sessionID, err)
 	default:
 		return fail(req.ID, path, sessionID, "unknown_op", "unknown op")
 	}
@@ -111,6 +118,34 @@ func handleAnswer(eng *engine.Engine, req Request, path, sessionID string) Respo
 	return opErr(req.ID, path, sessionID, eng.AnswerTurnText(req.ThreadID, req.Text))
 }
 
+func handleRunNow(eng *engine.Engine, req Request, path, sessionID string) Response {
+	row, err := parkedWake(eng, req.ThreadID)
+	if err != nil {
+		return mapErr(req.ID, path, sessionID, err)
+	}
+	_, err = eng.RunScheduleNow(row.ID)
+	return opErr(req.ID, path, sessionID, err)
+}
+
+func handleCancelWait(eng *engine.Engine, req Request, path, sessionID string) Response {
+	row, err := parkedWake(eng, req.ThreadID)
+	if err != nil {
+		return mapErr(req.ID, path, sessionID, err)
+	}
+	return opErr(req.ID, path, sessionID, eng.CancelSchedule(row.ID))
+}
+
+func parkedWake(eng *engine.Engine, threadID string) (*store.Schedule, error) {
+	row, err := eng.Store().ActiveThreadWake(threadID)
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, engine.ErrIdle
+	}
+	return row, nil
+}
+
 func opErr(id, path, sessionID string, err error) Response {
 	if err != nil {
 		return mapErr(id, path, sessionID, err)
@@ -124,6 +159,8 @@ func mapErr(id, path, sessionID string, err error) Response {
 		return fail(id, path, sessionID, "busy", err.Error())
 	case errors.Is(err, engine.ErrIdle):
 		return fail(id, path, sessionID, "idle", err.Error())
+	case errors.Is(err, engine.ErrSkippedBusy):
+		return fail(id, path, sessionID, "skipped_busy", err.Error())
 	case errors.Is(err, store.ErrNotFound):
 		return fail(id, path, sessionID, "not_found", err.Error())
 	default:

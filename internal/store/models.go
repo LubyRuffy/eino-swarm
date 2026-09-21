@@ -45,9 +45,9 @@ type Project struct {
 type Thread struct {
 	ID    string `gorm:"primaryKey;size:64" json:"id"`
 	Title string `gorm:"size:400" json:"title"`
-	// TitleAuto is true while the engine still owns the title: empty, the
-	// first-message placeholder, or a generated name. A user rename clears it
-	// so a slow namer cannot overwrite what they just typed.
+	// TitleAuto is true while the engine still owns the title: empty or the
+	// first-message placeholder. A user rename or a landed generated name
+	// clears it so a later namer cannot overwrite the sidebar.
 	TitleAuto bool `json:"title_auto"`
 	// ProjectID is empty for a conversation that belongs to no project. Those
 	// keep their own workspace directory; a project's conversations share the

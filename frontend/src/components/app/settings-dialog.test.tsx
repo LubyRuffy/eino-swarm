@@ -128,6 +128,9 @@ describe("Settings dialog", () => {
 
     expect(screen.getByRole("dialog").className).toMatch(/\bh-dvh\b/)
     expect(screen.getByRole("button", { name: "Back to app" })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Settings" })).toHaveClass(
+      "sr-only",
+    )
     // modal={false}: Radix otherwise walks the conversation to aria-hide it.
     expect(document.querySelector(".bg-black\\/60")).toBeNull()
     expect(screen.queryByTestId("settings-titlebar")).toBeNull()

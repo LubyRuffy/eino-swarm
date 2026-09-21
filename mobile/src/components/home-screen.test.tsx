@@ -41,6 +41,32 @@ describe("HomeScreen", () => {
     expect(screen.getAllByText("thread 0")).toHaveLength(1)
   })
 
+  it("marks a dead socket so a quiet inbox is not mistaken for live", () => {
+    render(
+      <HomeScreen
+        path="relay"
+        connected={false}
+        projects={[]}
+        threads={[
+          {
+            id: "t1",
+            title: "thread 1",
+            running: false,
+            last_active_at: "2026-01-01T00:00:00Z",
+          },
+        ]}
+        running={[]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onStart={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(screen.getByLabelText("path=offline")).toBeInTheDocument()
+    expect(screen.queryByLabelText("path=relay")).not.toBeInTheDocument()
+  })
+
   it("treats a listing running flag as in-progress", () => {
     render(
       <HomeScreen
@@ -65,6 +91,34 @@ describe("HomeScreen", () => {
     )
     expect(screen.getByText("In progress")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Open thread 1" })).toBeInTheDocument()
+    expect(screen.queryByText("Recent")).not.toBeInTheDocument()
+  })
+
+  it("lists a parked wait as in-progress instead of a quiet recent row", () => {
+    render(
+      <HomeScreen
+        path="relay"
+        projects={[]}
+        threads={[
+          {
+            id: "t1",
+            title: "thread 1",
+            running: false,
+            waiting: true,
+            last_active_at: "2026-01-01T00:00:00Z",
+            summary: "one line",
+          },
+        ]}
+        running={[]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onStart={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("In progress")).toBeInTheDocument()
+    expect(screen.getByText("Waiting")).toBeInTheDocument()
     expect(screen.queryByText("Recent")).not.toBeInTheDocument()
   })
 })

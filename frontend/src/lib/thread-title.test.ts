@@ -26,6 +26,14 @@ describe("preferNamedTitles", () => {
     expect(preferNamedTitles(local, incoming)[0]?.title_auto).toBe(false)
   })
 
+  it("keeps a generated name when the list omits title_auto", () => {
+    const local = [thread("th_1", "Weekly status", false)]
+    const incoming = [{ ...thread("th_1", "Investigate the overdue items…", true) }]
+    delete incoming[0].title_auto
+    expect(preferNamedTitles(local, incoming)[0]?.title).toBe("Weekly status")
+    expect(preferNamedTitles(local, incoming)[0]?.title_auto).toBe(false)
+  })
+
   it("takes the list once the namer has landed there", () => {
     const local = [thread("th_1", "Weekly status", false)]
     const incoming = [thread("th_1", "Ops report", false)]

@@ -1,12 +1,12 @@
 import { useId } from "react"
 
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { parseTokenWindow, setModelWindow } from "@/lib/usage"
 import type { Settings } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 
-import { Field, settingsMatch } from "./settings-field"
+import { Field, settingsHintClass, settingsLabelClass, settingsMatch } from "./settings-field"
 
 type ProviderConfig = Settings["models"]["providers"][number]
 
@@ -70,24 +70,22 @@ export function ProviderWindows({
   }
 
   return (
-    <div className="px-4 py-3.5" data-settings-row="" data-testid="provider-windows">
-      <p className="text-sm font-medium">{t("settings.models.windows")}</p>
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-        {t("settings.models.windowsHint")}
-      </p>
-      <ul className="mt-3 flex flex-col gap-2">
+    <div className="px-4 py-3" data-settings-row="" data-testid="provider-windows">
+      <p className={settingsLabelClass}>{t("settings.models.windows")}</p>
+      <p className={settingsHintClass}>{t("settings.models.windowsHint")}</p>
+      <ul className="mt-2.5 flex flex-col gap-1.5">
         {names.map((name, i) => {
           const id = `${uid}-${i}`
           return (
             <li key={name} className="flex items-center justify-between gap-3">
-              <Label htmlFor={id} className="min-w-0 flex-1 truncate font-normal">
+              <label htmlFor={id} className={cn(settingsLabelClass, "min-w-0 flex-1 truncate")}>
                 {name}
-              </Label>
+              </label>
               <Input
                 id={id}
                 type="number"
                 min={0}
-                className="h-9 w-28"
+                className="h-[32px] w-[5.75rem] px-2 text-right text-[13px] tabular-nums shadow-none"
                 aria-label={t("settings.models.windowFor", { name })}
                 value={provider.model_context?.[name] || ""}
                 placeholder={t("settings.models.windowPlaceholder")}
@@ -98,12 +96,12 @@ export function ProviderWindows({
         })}
       </ul>
       {names.length > 1 ? (
-        <div className="mt-4 flex items-start justify-between gap-3 border-t border-border pt-3">
+        <div className="mt-3 flex items-start justify-between gap-3 border-t border-border pt-2.5">
           <div className="min-w-0 flex-1">
-            <Label htmlFor={`${uid}-fallback`}>
+            <label htmlFor={`${uid}-fallback`} className={settingsLabelClass}>
               {t("settings.models.windowFallback")}
-            </Label>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+            </label>
+            <p className={settingsHintClass}>
               {t("settings.models.windowFallbackHint")}
             </p>
           </div>
@@ -111,7 +109,7 @@ export function ProviderWindows({
             id={`${uid}-fallback`}
             type="number"
             min={0}
-            className="h-9 w-28"
+            className="h-[32px] w-[5.75rem] px-2 text-right text-[13px] tabular-nums shadow-none"
             aria-label={t("settings.models.windowFallback")}
             value={provider.context_window || ""}
             placeholder={t("settings.models.windowPlaceholder")}

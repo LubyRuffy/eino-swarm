@@ -49,6 +49,49 @@ test("keyboard shortcuts open the palette, a conversation and the panel", async 
   await expect(page.getByRole("button", { name: "New conversation", exact: true })).toBeVisible()
 })
 
+test("semantic search is off until a model is pinned", async ({ page }) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "Settings" }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("tab", { name: "Models" }).click()
+  await expect(dialog.getByLabel("Semantic search")).not.toBeChecked()
+  await expect(dialog.getByLabel("Embedding model")).toHaveCount(0)
+})
+
+test("the command palette finds a conversation by words in its body", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "New conversation", exact: true }).click()
+  const box = page.getByTestId("composer-input")
+  await box.fill("unique-body needle for the palette")
+  await box.press("Enter")
+  await expect(page.getByTestId("status-badge")).toContainText("Working")
+  await expect(page.getByTestId("status-badge")).toContainText("Idle", { timeout: 60_000 })
+  await renameRecentsRow(page, 0, "gamma")
+
+  await page.keyboard.press("ControlOrMeta+k")
+  const palette = page.getByPlaceholder(
+    "Search conversations, or type a command…",
+  )
+  await expect(palette).toBeVisible()
+  const pending = page.waitForResponse((res) => res.url().includes("/api/search"))
+  await palette.fill("unique-body")
+  const res = await pending
+  expect(res.ok()).toBeTruthy()
+  const body = (await res.json()) as {
+    hits?: Array<{ title?: string; snippet?: string }>
+  }
+  expect(body.hits?.some((h) => h.title === "gamma")).toBeTruthy()
+  const dialog = page.getByRole("dialog")
+  await expect(
+    dialog.getByRole("group", { name: "Conversations" }).getByText("gamma", {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(dialog.getByText(/unique-body needle/)).toBeVisible()
+})
+
 test("the terminal button opens a shell in the conversation workspace", async ({
   page,
 }) => {

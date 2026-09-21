@@ -10,6 +10,12 @@ import type {
   RemoteStatus,
   Settings,
 } from "@/lib/types"
+import {
+  bindingFingerprint,
+  bindingTitle,
+  bindingUsesLastSeen,
+  bindingWhen,
+} from "@/lib/remote-binding"
 import { defaultRemoteSettings } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 import { errorMessage, toastError, useToasts } from "@/store/toasts"
@@ -114,6 +120,7 @@ export function RemoteTab({
           query={query}
           label={t("settings.remote.hubUrl")}
           hint={t("settings.remote.hubUrlHint")}
+          wide
         >
           <Input
             value={remote.hub_url}
@@ -203,7 +210,7 @@ export function RemoteTab({
             />
           </div>
         ) : (
-          <p className="px-4 py-3 text-sm text-muted-foreground" data-settings-row="">
+          <p className="px-4 py-2.5 text-sm text-muted-foreground" data-settings-row="">
             {t("settings.remote.qrEmpty")}
           </p>
         )}
@@ -211,19 +218,28 @@ export function RemoteTab({
 
       <SettingsSection title={t("settings.remote.devices")}>
         {bindings.length === 0 ? (
-          <p className="px-4 py-3 text-sm text-muted-foreground" data-settings-row="">
+          <p className="px-4 py-2.5 text-sm text-muted-foreground" data-settings-row="">
             {t("settings.remote.noDevices")}
           </p>
         ) : (
           bindings.map((b) => (
             <div
               key={b.id}
-              className="flex items-center justify-between gap-3 px-4 py-3"
+              className="flex items-center justify-between gap-3 px-4 py-2.5"
               data-settings-row=""
             >
               <div className="min-w-0">
-                <p className="font-mono text-sm">{b.device_fp}</p>
-                <p className="text-xs text-muted-foreground">{b.created_at}</p>
+                <p className={b.device?.trim() ? "truncate text-sm" : "truncate font-mono text-sm"}>
+                  {bindingTitle(b)}
+                </p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {bindingFingerprint(b)
+                    ? `${bindingFingerprint(b)} · `
+                    : ""}
+                  {bindingUsesLastSeen(b)
+                    ? t("settings.remote.lastSeen", { time: bindingWhen(b) })
+                    : bindingWhen(b)}
+                </p>
               </div>
               <Button
                 type="button"
@@ -237,6 +253,19 @@ export function RemoteTab({
             </div>
           ))
         )}
+      </SettingsSection>
+
+      <SettingsSection title={t("settings.remote.other")}>
+        <Field
+          query={query}
+          label={t("settings.remote.keepAwake")}
+          hint={t("settings.remote.keepAwakeHint")}
+        >
+          <Switch
+            checked={remote.keep_awake}
+            onCheckedChange={(v) => update({ keep_awake: v })}
+          />
+        </Field>
       </SettingsSection>
     </SettingsPage>
   )

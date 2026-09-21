@@ -23,10 +23,10 @@ const (
 )
 
 const (
-	scheduleWakeDesc = "Arm or replace a wait on this conversation. Call this when progress is gated on time or a condition that is not worth polling inside this turn, then end the turn. Do not schedule work that can finish now. Do not use a wait instead of asking the human."
+	scheduleWakeDesc = "Arm or replace a wait on this conversation. Call this when progress is gated on time or a condition that is not worth polling inside this turn, then end the turn. When remaining time is an estimate, bias delay_s/every_s to about a third of it; extra checks are fine. Do not schedule work that can finish now. Do not use a wait instead of asking the human."
 	scheduleTaskDesc = "Arm an independent job that mints its own conversation when it fires. Only from a human-originated turn — never from a continuation, a scheduled check, or an accepted-plan execute turn."
 	cancelSchedDesc  = "Cancel a wait by id so it stops firing."
-	reportSchedDesc  = "Report the result of a scheduled check. Empty findings mean nothing to surface. Call this only on a scheduled turn."
+	reportSchedDesc  = "Report the result of a scheduled check. Empty findings mean nothing to surface. Call this only on a scheduled turn. If this wait is on an estimated remaining time and still open, recadence shorter, never stretch."
 )
 
 func scheduleCadenceParams() map[string]*schema.ParameterInfo {
@@ -41,9 +41,16 @@ func scheduleCadenceParams() map[string]*schema.ParameterInfo {
 	}
 }
 
+func scheduleWakeCadenceParams() map[string]*schema.ParameterInfo {
+	params := scheduleCadenceParams()
+	params["delay_s"] = &schema.ParameterInfo{Type: schema.Integer, Desc: "one-shot wait in seconds; for an estimated remaining time, pass about a third of it, not the full estimate"}
+	params["every_s"] = &schema.ParameterInfo{Type: schema.Integer, Desc: "interval in seconds; prefer this when remaining time is an estimate, about a third of that estimate"}
+	return params
+}
+
 // ScheduleWakeTool upserts a thread wake on the current conversation.
 func ScheduleWakeTool(run func(args string) (string, error)) tool.BaseTool {
-	params := scheduleCadenceParams()
+	params := scheduleWakeCadenceParams()
 	params["id"] = &schema.ParameterInfo{Type: schema.String, Desc: "optional id of an existing wait on this conversation to replace"}
 	return newScheduleTool(ToolScheduleWake, scheduleWakeDesc, params, run)
 }
@@ -67,7 +74,7 @@ func ReportScheduleTool(run func(args string) (string, error)) tool.BaseTool {
 	return newScheduleTool(ToolReportSchedule, reportSchedDesc, map[string]*schema.ParameterInfo{
 		"findings":  {Type: schema.String, Desc: "what changed; empty means nothing to surface"},
 		"keep":      {Type: schema.Boolean, Desc: "keep firing; false cancels the wait. Default true"},
-		"next_in_s": {Type: schema.Integer, Desc: "optional new interval in seconds for the next fire"},
+		"next_in_s": {Type: schema.Integer, Desc: "optional new interval in seconds for the next fire; for an estimated remaining wait, bias short, never stretch"},
 	}, run)
 }
 

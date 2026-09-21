@@ -17,8 +17,12 @@ type createThreadRequest struct {
 }
 
 type threadView struct {
-	ID              string `json:"id"`
-	Title           string `json:"title"`
+	ID    string `json:"id"`
+	Title string `json:"title"`
+	// TitleAuto is always sent: a missing field is indistinguishable from
+	// false, and the sidebar needs the true value to keep a generated name
+	// across a listing fetch that still has the placeholder.
+	TitleAuto       bool   `json:"title_auto"`
 	ProjectID       string `json:"project_id"`
 	ProviderID      string `json:"provider_id"`
 	Model           string `json:"model"`
@@ -57,6 +61,7 @@ func viewThread(th *store.Thread, running, awaitingAnswer, waiting bool) threadV
 	v := threadView{
 		ID:              th.ID,
 		Title:           th.Title,
+		TitleAuto:       th.TitleAuto,
 		ProjectID:       th.ProjectID,
 		ProviderID:      th.ProviderID,
 		Model:           th.Model,

@@ -14,6 +14,9 @@ func TestUsageKindIsStable(t *testing.T) {
 	if KindUsage != "usage" {
 		t.Fatalf("KindUsage=%q", KindUsage)
 	}
+	if !isAuxiliaryAgent(TitleAgentID) || isAuxiliaryAgent(swarm.DefaultManagerID) {
+		t.Fatal("the namer is not the conversation meter")
+	}
 }
 
 func TestATurnRecordsAndBroadcastsTokenUsage(t *testing.T) {

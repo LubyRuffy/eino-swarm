@@ -405,7 +405,10 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 
 	_ = e.store.TouchThread(threadID)
 	if !in.ContinueGoal && !in.ImplementPlan && !in.ContinueSchedule {
-		e.autoTitle(th, titleFromInput(caption, modelImages, files))
+		seed := titleFromInput(caption, modelImages, files)
+		if e.autoTitle(th, seed) {
+			e.scheduleTitle(th.ID, turn, seed, "")
+		}
 	}
 
 	messages := history
@@ -634,9 +637,6 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// rather than sit there looking stuck. Compact still waits on the
 	// same gate if the next Generate actually needs the briefing.
 	e.scheduleSessionAndReview(rt.threadID, turn, status, pc, res.Final)
-	if !turn.GoalContinue && !turn.ScheduleContinue {
-		e.scheduleTitle(rt.threadID, turn, status, turn.UserText, res.Final)
-	}
 	started := false
 	if shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal()) {
 		started = rt.runLateSteerMessages(store.TurnDone, leftover)
@@ -697,7 +697,19 @@ func (e *Engine) callRecorder(threadID, turnID string) provider.Recorder {
 			e.log.Warn("could not record a model call", "turn", turnID, "err", err)
 			return
 		}
+		if isAuxiliaryAgent(r.AgentID) {
+			return
+		}
 		e.emitUsage(threadID, turnID)
+	}
+}
+
+func isAuxiliaryAgent(id string) bool {
+	switch id {
+	case TitleAgentID, CompactAgentID, SessionMemoryAgentID:
+		return true
+	default:
+		return false
 	}
 }
 
@@ -744,7 +756,9 @@ func (e *Engine) persistManagerAnswer(threadID, turnID, text string) {
 		{Role: string(schema.Assistant), Content: text, AgentID: swarm.DefaultManagerID},
 	}); err != nil {
 		e.log.Warn("could not persist assistant message", "turn", turnID, "err", err)
+		return
 	}
+	e.reindex(threadID)
 }
 
 // emit broadcasts an event without persisting it. Used for streamed deltas:
@@ -815,7 +829,9 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 	}
 	if err := e.store.AppendMessages(threadID, turnID, rows); err != nil {
 		e.log.Warn("could not persist transcript", "turn", turnID, "err", err)
+		return
 	}
+	e.reindex(threadID)
 }
 
 func (e *Engine) storedAssistantText(threadID, turnID string) map[string]bool {

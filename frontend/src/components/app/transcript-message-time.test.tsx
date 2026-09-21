@@ -72,9 +72,81 @@ describe("message clocks", () => {
       .getByTestId("assistant-message-time")
       .closest("[data-testid=message-meta]")
     expect(userStamp).toHaveAttribute("title", at)
+    expect(userMeta).toHaveClass("h-5")
+    expect(userMeta).toHaveClass("mt-0.5")
+    expect(userMeta).toHaveClass("opacity-0")
     expect(userMeta).toHaveClass("group-hover/msg:opacity-100")
     expect(userMeta).toHaveClass("pointer-events-none")
+    expect(userMeta).not.toHaveClass("max-h-0")
+    expect(answerMeta).toHaveClass("h-5")
+    expect(answerMeta).toHaveClass("opacity-0")
     expect(answerMeta).toHaveClass("group-hover/msg:opacity-100")
+    expect(answerMeta).not.toHaveClass("max-h-0")
+    expect(screen.getByRole("button", { name: "Copy" })).toHaveClass("size-5")
+    expect(screen.getByRole("button", { name: "Copy message" })).toHaveClass("size-5")
+  })
+
+  it("does not stamp an earlier answer while a later one is still the response", () => {
+    const at = "2026-09-21T04:42:00.000Z"
+    render(
+      <Transcript
+        state={{
+          ...emptyTranscript(),
+          agentOrder: ["manager"],
+          agents: {
+            manager: {
+              id: "manager",
+              role: "manager",
+              status: "running",
+              activity: "writing",
+              blocks: [
+                {
+                  id: "u1",
+                  kind: "user",
+                  agentId: "manager",
+                  text: "go",
+                  turnId: "t1",
+                  seq: 1,
+                  at,
+                },
+                {
+                  id: "a1",
+                  kind: "answer",
+                  agentId: "manager",
+                  text: "first",
+                  turnId: "t1",
+                  seq: 2,
+                  at,
+                },
+                {
+                  id: "a2",
+                  kind: "answer",
+                  agentId: "manager",
+                  text: "second",
+                  turnId: "t1",
+                  seq: 3,
+                  at,
+                },
+              ],
+            },
+          },
+          turns: [{ id: "t1", userText: "go", status: "running", agentIds: [] }],
+          lastSeq: 3,
+        }}
+        loaded
+        onSelectAgent={() => {}}
+      />,
+    )
+    expect(screen.getByTestId("user-message-time")).toBeInTheDocument()
+    const answers = screen.getAllByTestId("assistant-message")
+    expect(answers).toHaveLength(2)
+    expect(answers[0]?.querySelector("[data-testid=message-meta]")).toBeNull()
+    expect(answers[1]?.querySelector("[data-testid=assistant-message-time]")).not.toBeNull()
+  })
+
+  it("holds the response clock until that last answer finishes", () => {
+    render(<Transcript state={oneAnswer("live text", "2026-09-21T04:43:00.000Z", true)} loaded onSelectAgent={() => {}} />)
+    expect(screen.queryByTestId("assistant-message-time")).toBeNull()
   })
 })
 

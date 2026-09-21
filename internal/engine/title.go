@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -36,8 +37,8 @@ var titleGenerate = func(ctx context.Context, m model.BaseChatModel, msgs []*sch
 	return m.Generate(ctx, msgs)
 }
 
-// titlePool owns the namers in flight. One per conversation: two finished
-// turns racing would otherwise both see TitleAuto and the second would
+// titlePool owns the namers in flight. One per conversation: two opening
+// messages racing would otherwise both see TitleAuto and the second would
 // waste a call (or, worse, rename after the first had already landed).
 type titlePool struct {
 	mu       sync.Mutex
@@ -91,23 +92,27 @@ func (p *titlePool) stop(wait time.Duration) bool {
 
 // autoTitle plants a readable placeholder from the first message so the
 // sidebar is not "New conversation" while the namer is still thinking.
-func (e *Engine) autoTitle(th *store.Thread, text string) {
+// It reports whether it planted, so the namer runs once on that opening
+// line — a follow-up must not get a second name just because the first
+// call failed or the first turn ran long.
+func (e *Engine) autoTitle(th *store.Thread, text string) bool {
 	if !th.TitleAuto || strings.TrimSpace(th.Title) != "" {
-		return
+		return false
 	}
 	title := titleFrom(text)
 	if title == "" {
-		return
+		return false
 	}
 	if err := e.store.UpdateThread(th.ID, map[string]any{"title": title}); err != nil {
 		e.log.Warn("could not set the conversation title", "thread", th.ID, "err", err)
-		return
+		return false
 	}
 	th.Title = title
+	return true
 }
 
 func titleFrom(text string) string {
-	flat := strings.Join(strings.Fields(text), " ")
+	flat := strings.Join(strings.Fields(plainUserText(text)), " ")
 	if flat == "" {
 		return ""
 	}
@@ -118,11 +123,12 @@ func titleFrom(text string) string {
 	return strings.TrimSpace(string(r[:titleMaxRunes])) + "…"
 }
 
-// scheduleTitle asks the model for a real name after a clean first finish.
-// Interrupted and failed turns keep the placeholder: a half-answer is not
-// what the sidebar should be named after.
-func (e *Engine) scheduleTitle(threadID string, turn *store.Turn, status, userText, final string) {
-	if !e.cfg.Swarm.AutoTitle || status != store.TurnDone {
+// scheduleTitle asks the model for a real name from the opening message.
+// Waiting for the first finish made a long first turn rename the sidebar
+// after the human had already learned the placeholder. A landed name, or
+// a title the user typed, stays put.
+func (e *Engine) scheduleTitle(threadID string, turn *store.Turn, userText, final string) {
+	if !e.cfg.Swarm.AutoTitle {
 		return
 	}
 	th, err := e.store.GetThread(threadID)
@@ -185,6 +191,7 @@ func (e *Engine) runTitle(threadID string, turn *store.Turn, userText, final str
 		// title event: the sidebar would jump back to the generated name.
 		return
 	}
+	e.reindex(threadID)
 	e.recordTitle(threadID, turn.ID, title, "")
 }
 
@@ -212,7 +219,7 @@ The title must:
 func titleInput(user, assistant string) string {
 	var b strings.Builder
 	b.WriteString("User: ")
-	b.WriteString(oneLine(user))
+	b.WriteString(oneLine(plainUserText(user)))
 	if a := strings.TrimSpace(assistant); a != "" {
 		b.WriteString("\n\nAssistant: ")
 		b.WriteString(oneLine(a))
@@ -237,4 +244,74 @@ func sanitizeTitle(raw string) string {
 	s = strings.Join(strings.Fields(s), " ")
 	s = strings.TrimRight(s, " -.–—:;,.!?。！？")
 	return titleFrom(s)
+}
+
+// plainUserText is what a sidebar label should name: the human's request,
+// not the <selected_text> / <user_request> wrapper that travels with a
+// quoted send. Tags in a highlight are unescaped so a stray closer cannot
+// hide the request.
+func plainUserText(text string) string {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return ""
+	}
+	if strings.Contains(text, "<user_request>") {
+		if s := innerXML(userRequestTagRe, text, "user_request"); s != "" {
+			return s
+		}
+	}
+	if strings.Contains(text, "<selected_text>") {
+		if parts := innerXMLAll(selectedTextTagRe, text, "selected_text"); len(parts) > 0 {
+			return strings.Join(parts, " ")
+		}
+	}
+	if strings.HasPrefix(text, legacySelectedLabel) {
+		return plainLegacyQuote(text)
+	}
+	return text
+}
+
+const legacySelectedLabel = "Selected text:"
+
+var (
+	selectedTextTagRe = regexp.MustCompile(`(?s)<selected_text>\n?(.*?)\n?</selected_text>`)
+	userRequestTagRe  = regexp.MustCompile(`(?s)<user_request>\n?(.*?)\n?</user_request>`)
+)
+
+func innerXML(re *regexp.Regexp, text, tag string) string {
+	m := re.FindStringSubmatch(text)
+	if len(m) < 2 {
+		return ""
+	}
+	return unescapeXMLClose(strings.TrimSpace(m[1]), tag)
+}
+
+func innerXMLAll(re *regexp.Regexp, text, tag string) []string {
+	ms := re.FindAllStringSubmatch(text, -1)
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		if len(m) < 2 {
+			continue
+		}
+		s := unescapeXMLClose(strings.TrimSpace(m[1]), tag)
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func unescapeXMLClose(s, tag string) string {
+	return strings.ReplaceAll(s, "</ "+tag+">", "</"+tag+">")
+}
+
+func plainLegacyQuote(text string) string {
+	rest := strings.TrimSpace(strings.TrimPrefix(text, legacySelectedLabel))
+	if i := strings.LastIndex(rest, "\n\n"); i >= 0 {
+		tail := strings.TrimSpace(rest[i+2:])
+		if tail != "" && !strings.HasPrefix(tail, legacySelectedLabel) {
+			return tail
+		}
+	}
+	return rest
 }

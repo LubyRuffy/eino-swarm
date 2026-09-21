@@ -74,6 +74,7 @@ type settingsView struct {
 	Log         config.LogConfig         `json:"log"`
 	UI          config.UIConfig          `json:"ui"`
 	Remote      config.RemoteConfig      `json:"remote"`
+	Search      config.SearchConfig      `json:"search"`
 }
 
 type providerView struct {
@@ -99,6 +100,7 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.Log = cfg.Log
 	v.UI = cfg.UI
 	v.Remote = cfg.Remote
+	v.Search = cfg.Search
 	v.Models.Default = cfg.Models.Default
 	for _, p := range cfg.Models.Providers {
 		catalog := p.Catalog
@@ -155,6 +157,7 @@ type putSettingsRequest struct {
 	Log         *config.LogConfig         `json:"log"`
 	UI          *config.UIConfig          `json:"ui"`
 	Remote      *config.RemoteConfig      `json:"remote"`
+	Search      *config.SearchConfig      `json:"search"`
 }
 
 func (s *Server) putSettings(c *gin.Context) {
@@ -191,6 +194,9 @@ func (s *Server) putSettings(c *gin.Context) {
 	}
 	if req.Remote != nil {
 		next.Remote = *req.Remote
+	}
+	if req.Search != nil {
+		next.Search = *req.Search
 	}
 	if req.Models != nil {
 		existing := map[string]config.Provider{}
@@ -245,6 +251,9 @@ func (s *Server) putSettings(c *gin.Context) {
 	s.engine.ApplyLiveSwarmLimits()
 	if s.remote != nil {
 		s.remote.Reload()
+	}
+	if s.search != nil {
+		s.search.Reload()
 	}
 	c.JSON(http.StatusOK, gin.H{"settings": toSettingsView(cfg)})
 }

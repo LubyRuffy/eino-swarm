@@ -19,7 +19,7 @@ const KindGoalSession = "goal_session"
 
 // parkedWorkersCue is appended when the next turn reuses live sub-agents.
 // Distinct from resumeWorkersCue: those workers were not restarted.
-const parkedWorkersCue = "Sub-agents that were still running continue under their existing ids. Wait for those rather than spawning replacements. Finished workers remain available under the same ids."
+const parkedWorkersCue = "Sub-agents that were still running continue under their existing ids. Wait for those rather than spawning replacements. Finished workers remain available under the same ids; they are already stopped, so do not close_agent them."
 
 // goalSessionWrapSteer is the historical wrap-up leftover. Older builds
 // queued it in-process before a wall-clock cut. keepHumanSteers still

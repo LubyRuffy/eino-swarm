@@ -10,6 +10,7 @@ import {
   prefersInstantScroll,
   previewText,
   offsetInScroller,
+  isHumanNavTurn,
   resolveTurnNavItems,
   scrollTurnIntoView,
   turnNavItems,
@@ -53,6 +54,14 @@ describe("turnNavItems", () => {
     const blob = JSON.stringify(items)
     expect(blob).not.toMatch(/notes\.md|summary\.md|deadline/i)
   })
+
+  it("labels a quoted send by the request, not the wire tags", () => {
+    const wrapped =
+      "<selected_text>\nalpha\n</selected_text>\n\n<user_request>\ndo this\n</user_request>"
+    const items = turnNavItems([user("tn_a", wrapped)])
+    expect(items.map((i) => i.text)).toEqual(["do this"])
+    expect(JSON.stringify(items)).not.toMatch(/selected_text|user_request/)
+  })
 })
 
 describe("turnNavItemsFromTurns", () => {
@@ -64,6 +73,30 @@ describe("turnNavItemsFromTurns", () => {
     ])
     expect(items.map((i) => i.id)).toEqual(["tn_a", "tn_c"])
   })
+
+  it("skips a wait fire so a /goal park is still one jump", () => {
+    const items = turnNavItemsFromTurns([
+      { id: "tn_a", user_text: "first request" },
+      { id: "tn_b", user_text: "scheduled wrapper", schedule_continue: true },
+      { id: "tn_c", user_text: "scheduled wrapper", schedule_continue: true },
+      { id: "tn_d", user_text: "second request" },
+    ])
+    expect(items.map((i) => i.id)).toEqual(["tn_a", "tn_d"])
+    expect(items.map((i) => i.text)).not.toEqual(
+      expect.arrayContaining(["scheduled wrapper"]),
+    )
+  })
+})
+
+describe("isHumanNavTurn", () => {
+  it("keeps a typed send and drops engine-started rows", () => {
+    expect(isHumanNavTurn({ id: "tn_a", user_text: "first request" })).toBe(true)
+    expect(isHumanNavTurn({ id: "tn_b", user_text: "kept going", goal_continue: true })).toBe(false)
+    expect(
+      isHumanNavTurn({ id: "tn_c", user_text: "scheduled wrapper", schedule_continue: true }),
+    ).toBe(false)
+    expect(isHumanNavTurn({ id: "tn_d", user_text: "   " })).toBe(false)
+  })
 })
 
 describe("resolveTurnNavItems", () => {
@@ -73,6 +106,15 @@ describe("resolveTurnNavItems", () => {
       { id: "tn_c", user_text: "second request" },
     ])
     expect(items.map((i) => i.id)).toEqual(["tn_a", "tn_c"])
+  })
+
+  it("does not let engine-started turns outvote the loaded user rows", () => {
+    const items = resolveTurnNavItems([user("tn_a", "first request")], [
+      { id: "tn_a", user_text: "first request" },
+      { id: "tn_b", user_text: "kept going", goal_continue: true },
+      { id: "tn_c", user_text: "scheduled wrapper", schedule_continue: true },
+    ])
+    expect(items.map((i) => i.id)).toEqual(["tn_a"])
   })
 })
 

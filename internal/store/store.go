@@ -75,8 +75,11 @@ func Open(path string) (*Store, error) {
 		followupSeq: map[string]int64{},
 		inMemory:    inMemory,
 	}
-	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
+	}
+	if err := s.ensureSearch(); err != nil {
+		return nil, err
 	}
 	return s, nil
 }
@@ -134,6 +137,9 @@ func (s *Store) CreateThread(t *Thread) error {
 	if err := s.db.Create(t).Error; err != nil {
 		return fmt.Errorf("store: create thread: %w", err)
 	}
+	if err := s.IndexThread(t.ID); err != nil {
+		return err
+	}
 	return s.bumpProject(t.ProjectID)
 }
 
@@ -182,6 +188,12 @@ func (s *Store) UpdateThread(id string, fields map[string]any) error {
 	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
+	if _, ok := fields["title"]; ok {
+		return s.IndexThread(id)
+	}
+	if _, ok := fields["goal"]; ok {
+		return s.IndexThread(id)
+	}
 	return nil
 }
 
@@ -202,7 +214,13 @@ func (s *Store) ApplyAutoTitle(id, title string) (bool, error) {
 	if res.Error != nil {
 		return false, fmt.Errorf("store: apply auto title: %w", res.Error)
 	}
-	return res.RowsAffected > 0, nil
+	ok := res.RowsAffected > 0
+	if ok {
+		if err := s.IndexThread(id); err != nil {
+			return false, err
+		}
+	}
+	return ok, nil
 }
 
 // TouchThread marks a conversation as just active so it sorts to the top of
@@ -230,6 +248,9 @@ func (s *Store) DeleteThread(id string) error {
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := cancelWakesForThread(tx, id); err != nil {
+			return err
+		}
+		if err := deleteSearchForThread(tx, id); err != nil {
 			return err
 		}
 		for _, m := range []any{&Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}} {
@@ -271,7 +292,7 @@ func (s *Store) AppendMessages(threadID, turnID string, msgs []Message) error {
 	if err := s.db.Create(&msgs).Error; err != nil {
 		return fmt.Errorf("store: append messages: %w", err)
 	}
-	return nil
+	return s.IndexThread(threadID)
 }
 
 // DeleteMessageByEventSeq drops the one transcript row tagged with that
@@ -296,18 +317,19 @@ func (s *Store) DeleteSteerMessage(threadID string, eventSeq int64, caption stri
 		return err
 	}
 	cap := strings.TrimSpace(caption)
-	if cap == "" {
-		return nil
+	if cap != "" {
+		if !strings.HasPrefix(cap, "[steer]") {
+			cap = "[steer] " + cap
+		}
+		res := s.db.Where("thread_id = ? AND event_seq = 0 AND role = ? AND content = ?",
+			threadID, "user", cap).Delete(&Message{})
+		if res.Error != nil {
+			return fmt.Errorf("store: delete steer message: %w", res.Error)
+		}
 	}
-	if !strings.HasPrefix(cap, "[steer]") {
-		cap = "[steer] " + cap
-	}
-	res := s.db.Where("thread_id = ? AND event_seq = 0 AND role = ? AND content = ?",
-		threadID, "user", cap).Delete(&Message{})
-	if res.Error != nil {
-		return fmt.Errorf("store: delete steer message: %w", res.Error)
-	}
-	return nil
+	// ⌘K reads search_docs, not messages. Drop the row and leave the
+	// index alone and a retracted steer still pops up in the palette.
+	return s.IndexThread(threadID)
 }
 
 // ListMessages returns a conversation's transcript in order.

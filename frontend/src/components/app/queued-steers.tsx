@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react"
 
 import { InputThumbs } from "@/components/app/input-thumbs"
+import { QuotedMessageBody } from "@/components/app/quoted-message"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import type { Block } from "@/lib/transcript"
@@ -76,7 +77,7 @@ function QueuedSteerRow({
             images={block.images}
             className={block.text ? "mb-1" : undefined}
           />
-          {block.text ? <p className="stream-text">{block.text}</p> : null}
+          {block.text ? <QuotedMessageBody text={block.text} /> : null}
         </div>
         {onRetract ? (
           <Button

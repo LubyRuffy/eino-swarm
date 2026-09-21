@@ -6,6 +6,7 @@ import { PhoneMarkdown } from "./markdown"
 describe("PhoneMarkdown", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+    Reflect.deleteProperty(document, "execCommand")
   })
 
   it("copies a fenced body and renders math", async () => {
@@ -16,6 +17,22 @@ describe("PhoneMarkdown", () => {
     expect(document.querySelector(".katex")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "Copy code" }))
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(src))
+  })
+
+  it("still copies a fence when the clipboard API refuses", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("denied"))
+    vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } })
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => true),
+    })
+    render(<PhoneMarkdown text={"```\nalpha\n```"} />)
+    fireEvent.click(screen.getByRole("button", { name: "Copy code" }))
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Copy code" })).toHaveAttribute("title", "Copied"),
+    )
+    expect(writeText).not.toHaveBeenCalled()
   })
 
   it("renders a math fence as a formula", () => {

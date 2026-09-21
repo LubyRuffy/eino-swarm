@@ -63,7 +63,7 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 	s.mu.Lock()
 	delete(s.followupSeq, threadID)
 	s.mu.Unlock()
-	return nil
+	return s.IndexThread(threadID)
 }
 
 // GetEvent loads one timeline row by its per-conversation sequence number.

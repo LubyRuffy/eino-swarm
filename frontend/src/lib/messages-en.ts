@@ -174,7 +174,6 @@ export const en = {
   "quote.chipOne": "1 annotation",
   "quote.chipMany": "{n} annotations",
   "quote.selected": "Selected text",
-  "quote.dialog": "Quoted text",
   "quote.edit": "Edit selected text {n}",
   "quote.remove": "Remove selected text {n}",
 
@@ -372,6 +371,9 @@ export const en = {
   "schedule.inboxTitle": "Scheduled",
   "schedule.inboxHint": "Waits the manager armed, and jobs you added.",
   "schedule.empty": "No waits yet.",
+  "schedule.emptyLive": "No live waits.",
+  "schedule.showEnded": "Show ended ({n})",
+  "schedule.hideEnded": "Hide ended",
   "schedule.pause": "Pause",
   "schedule.resume": "Resume",
   "schedule.cancel": "Cancel wait",
@@ -393,6 +395,7 @@ export const en = {
   "schedule.statusDone": "Done",
   "schedule.statusCancelled": "Cancelled",
   "schedule.openFindings": "Open findings",
+  "schedule.openFindingsCount": "Open findings ({n})",
   "schedule.skippedBusy": "The conversation is already running a turn.",
   "schedule.waiting": "Waiting",
   "schedule.error": "Error",
@@ -507,13 +510,26 @@ export const en = {
   "settings.aux.titleAria": "Title generation model",
   "settings.aux.compactAria": "Compact summary model",
 
+  "settings.searchEmbed.title": "Conversation search",
+  "settings.searchEmbed.desc":
+    "Keyword search is always on. Turn on embeddings to also rank by meaning, using a model you name.",
+  "settings.searchEmbed.embedding": "Semantic search",
+  "settings.searchEmbed.embeddingHint":
+    "Off by default. When on, ⌘K ranks conversations by meaning as well as words. Needs an embedding model on one of your endpoints.",
+  "settings.searchEmbed.model": "Embedding model",
+  "settings.searchEmbed.modelHint":
+    "The name your endpoint expects for embeddings. Not assumed from the chat catalog.",
+  "settings.searchEmbed.modelAria": "Embedding model",
+  "settings.searchEmbed.badge": "search",
+  "settings.searchEmbed.pick": "Select a model",
+
   "settings.swarm.title": "Swarm",
   "settings.swarm.desc":
     "How many workers run at once, and when the manager stops waiting.",
   "settings.swarm.conversations": "Conversations",
   "settings.swarm.autoTitle": "Name conversations automatically",
   "settings.swarm.autoTitleHint":
-    "After the first reply, a short title replaces the raw opening line in the sidebar. Off keeps the first message. A name you type is never overwritten. Pin a different model under Models.",
+    "The first message is named once, as soon as it is sent. Off keeps that opening line. A name you type is never overwritten. Pin a different model under Models.",
   "settings.swarm.subagents": "Sub-agents",
   "settings.swarm.maxConcurrent": "Sub-agents at once",
   "settings.swarm.maxConcurrentHint":
@@ -622,7 +638,11 @@ export const en = {
     "How many characters of each event the phone receives. Default 4000. Live tool output is clipped shorter.",
   "settings.remote.watchEvents": "Events on the phone",
   "settings.remote.watchEventsHint":
-    "Cap on the last turn when a conversation opens, and the page size when the phone pulls up for older events. Default 80.",
+    "Page size when the phone pulls up for older events. First open is a short live-edge snapshot, not the whole last turn. Default 80.",
+  "settings.remote.other": "Other settings",
+  "settings.remote.keepAwake": "Keep this computer awake",
+  "settings.remote.keepAwakeHint":
+    "Prevent sleep when this computer is plugged in and phone pairing is on.",
   "settings.remote.qr": "Pairing QR",
   "settings.remote.showQr": "Show pairing QR",
   "settings.remote.qrAlt": "Pairing QR code",
@@ -633,6 +653,7 @@ export const en = {
   "settings.remote.offline": "Offline until a hub URL is set and pairing is on.",
   "settings.remote.devices": "Bound phones",
   "settings.remote.noDevices": "No phones bound yet.",
+  "settings.remote.lastSeen": "Last connected {time}",
   "settings.remote.revoke": "Revoke",
   "settings.remote.failed": "Couldn't set up the phone",
 

@@ -224,6 +224,26 @@ func (s *Store) HasPendingThreadWake(threadID string) (bool, error) {
 	return n > 0, nil
 }
 
+// ActiveThreadWake is the soonest armed thread wait on this conversation.
+// Nil when nothing is parked. The phone banner and Run now / Cancel wait
+// target this row; dumping every schedule onto pairlink would be the inbox.
+func (s *Store) ActiveThreadWake(threadID string) (*Schedule, error) {
+	if threadID == "" {
+		return nil, nil
+	}
+	var row Schedule
+	err := s.db.Where("kind = ? AND thread_id = ? AND status = ?", ScheduleThread, threadID, ScheduleActive).
+		Order("next_run_at ASC").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("store: active thread wake: %w", err)
+	}
+	return &row, nil
+}
+
 // PendingWakeThreadIDs is every conversation whose next turn is a parked
 // wait: an armed thread wake, or a claimed thread fire still running.
 // The sidebar listing uses this in one pass so it does not query per row.

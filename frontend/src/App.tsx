@@ -56,7 +56,18 @@ export function App() {
     booted.current = true
     void boot()
   }, [boot])
-  useEffect(() => startSidebarSync(() => useApp.getState().syncThreads()), [])
+  useEffect(
+    () =>
+      startSidebarSync(async () => {
+        const s = useApp.getState()
+        await s.syncThreads()
+        // The listing tick used to skip waits. An armed chip then kept the
+        // first next_run_at until a full reload, so a fired interval looked
+        // overdue.
+        await s.refreshSchedules({ silent: true })
+      }),
+    [],
+  )
   useEffect(() => {
     // WKWebView loads a clicked http(s) href in this window, target=_blank
     // included. Catch every <a>, not just markdown, so the app is never

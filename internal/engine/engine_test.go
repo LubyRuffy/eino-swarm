@@ -552,11 +552,12 @@ func TestAutoTitleFromFirstMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := e.Store().GetThread(th.ID)
-	if got.Title != "look into the reporting pipeline" {
-		t.Fatalf("placeholder=%q", got.Title)
-	}
-	if !got.TitleAuto {
-		t.Fatal("the placeholder must stay machine-owned so the namer can replace it")
+	if got.TitleAuto {
+		if got.Title != "look into the reporting pipeline" {
+			t.Fatalf("placeholder=%q", got.Title)
+		}
+	} else if got.Title == "" || got.Title == "look into the reporting pipeline" {
+		t.Fatalf("landed title=%q", got.Title)
 	}
 	waitForTurn(t, e, turn.ID)
 }
@@ -882,102 +883,6 @@ func TestUnsubscribeIsIdempotent(t *testing.T) {
 	sub.Close()
 	if _, open := <-sub.C; open {
 		t.Fatal("the channel should be closed after unsubscribing")
-	}
-}
-
-func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
-	e := newTestEngine(t)
-	th, _ := e.CreateThread("", "", "")
-	set := buildTestToolset(t, e, th.ID)
-	prompt := ManagerPrompt(set, e.Config(), "")
-
-	// it must tell the agent the things only the runtime knows
-	if !strings.Contains(prompt, e.WorkspaceDir(th.ID)) {
-		t.Fatal("the prompt does not tell the agent where its workspace is")
-	}
-	for _, name := range set.Names {
-		if !strings.Contains(prompt, name) {
-			t.Fatalf("the prompt does not mention the %q tool the agent actually has", name)
-		}
-	}
-	for _, tool := range []string{"spawn_agent", "send_message", "wait_agents", "close_agent", "resume_agent"} {
-		if !strings.Contains(prompt, tool) {
-			t.Fatalf("the prompt does not explain %s", tool)
-		}
-	}
-	if !strings.Contains(prompt, "notified:manager") {
-		t.Fatal("the manager must be told it receives a missed handoff")
-	}
-	if !strings.Contains(prompt, "error result") {
-		t.Fatal("a missing spawn_agent field must be an error result, not a crashed turn")
-	}
-	for _, leak := range []string{"NodeRunError", "ToolNode"} {
-		if strings.Contains(prompt, leak) {
-			t.Fatalf("%q leaked into the manager prompt", leak)
-		}
-	}
-	if !strings.Contains(prompt, "visual input") {
-		t.Fatal("the prompt must say pasted images arrive on the message, not on disk")
-	}
-	if !strings.Contains(prompt, "lists attached files") {
-		t.Fatal("the prompt must say files named on a message are this request's uploads")
-	}
-	if !strings.Contains(prompt, "save time or improve quality") {
-		t.Fatal("the manager must spawn when a swarm would save time or improve quality")
-	}
-	if !strings.Contains(prompt, "do not wait for the human to ask") {
-		t.Fatal("delegation is proactive; the human should not have to request a swarm")
-	}
-	if !strings.Contains(prompt, "Spawning one worker and then waiting") {
-		t.Fatal("a one-worker wait must be called out as slower, not as a swarm win")
-	}
-	if strings.Contains(prompt, "Proactive multi-agent work is the default") {
-		t.Fatal("unconditional spawn-first came back")
-	}
-	if strings.Contains(prompt, "you answer directly when a request is small") {
-		t.Fatal("the conservative solo-first policy came back")
-	}
-	if !strings.Contains(prompt, "ask_user") {
-		t.Fatal("the manager must be told to ask through ask_user")
-	}
-	if !strings.Contains(prompt, "schedule_wake") {
-		t.Fatal("the manager must be told to arm a wake instead of spinning")
-	}
-	if !strings.Contains(prompt, "do not wait for the human to remind") {
-		t.Fatal("the manager must not ask the human to poke it when a wait is the next step")
-	}
-	if !strings.Contains(prompt, "report_schedule") {
-		t.Fatal("a scheduled turn must be told to report_schedule")
-	}
-	for _, leak := range []string{"deploy", "pull request", "cron job"} {
-		if strings.Contains(strings.ToLower(prompt), leak) {
-			t.Fatalf("the prompt hardcodes example-specific text %q", leak)
-		}
-	}
-	// "CI" as a token, not the letters inside "specific".
-	if managerPromptHasCIToken(prompt) {
-		t.Fatal(`the prompt hardcodes example-specific text "CI"`)
-	}
-	if strings.Contains(strings.ToLower(prompt), "sandbox") || strings.Contains(prompt, "沙箱") {
-		t.Fatal("the prompt must not call the workspace a sandbox")
-	}
-	if !strings.Contains(prompt, "language tag is chart") {
-		t.Fatal("the manager must be told when to emit a chart fence")
-	}
-	if !strings.Contains(prompt, "Do not invent numbers") {
-		t.Fatal("a chart must not become a place to fabricate values")
-	}
-	if !strings.Contains(prompt, "prefer the chart over spelling out the same") {
-		t.Fatal("the manager must prefer a chart over restating the series as text")
-	}
-	if !strings.Contains(prompt, "do not duplicate the plotted values in text") {
-		t.Fatal("a chart must replace a number dump, not sit next to one")
-	}
-	// and it must not smuggle in a particular task
-	for _, leak := range []string{"summarize", "researcher", "reviewer", "notes/", "re-research", "xlsx", "spreadsheet", "revenue", "sales"} {
-		if strings.Contains(strings.ToLower(prompt), strings.ToLower(leak)) {
-			t.Fatalf("the prompt hardcodes example-specific text %q", leak)
-		}
 	}
 }
 

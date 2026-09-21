@@ -166,7 +166,6 @@ export const zh: { [K in keyof typeof en]: string } = {
   "quote.chipOne": "1 条引用",
   "quote.chipMany": "{n} 条引用",
   "quote.selected": "选中的文本",
-  "quote.dialog": "引用的文本",
   "quote.edit": "编辑选中的文本 {n}",
   "quote.remove": "移除选中的文本 {n}",
 
@@ -348,6 +347,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "schedule.inboxTitle": "定时任务",
   "schedule.inboxHint": "主管设下的等待，以及你添加的独立任务。",
   "schedule.empty": "还没有等待。",
+  "schedule.emptyLive": "没有进行中的等待。",
+  "schedule.showEnded": "显示已结束（{n}）",
+  "schedule.hideEnded": "隐藏已结束",
   "schedule.pause": "暂停",
   "schedule.resume": "继续",
   "schedule.cancel": "取消等待",
@@ -478,12 +480,24 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.aux.titleAria": "生成标题所用模型",
   "settings.aux.compactAria": "压缩摘要所用模型",
 
+  "settings.searchEmbed.title": "会话搜索",
+  "settings.searchEmbed.desc":
+    "关键字搜索一直开着。打开嵌入后，⌘K 还会按意思排会话，模型名你自己填。",
+  "settings.searchEmbed.embedding": "语义搜索",
+  "settings.searchEmbed.embeddingHint":
+    "默认关。打开后 ⌘K 除了字面匹配还会按意思排。需要你在某个接口上指定嵌入模型。",
+  "settings.searchEmbed.model": "嵌入模型",
+  "settings.searchEmbed.modelHint": "接口认的嵌入模型名。不会从聊天目录瞎猜。",
+  "settings.searchEmbed.modelAria": "嵌入模型",
+  "settings.searchEmbed.badge": "搜索",
+  "settings.searchEmbed.pick": "选择模型",
+
   "settings.swarm.title": "集群",
   "settings.swarm.desc": "同时跑多少工人，以及主管什么时候不再等。",
   "settings.swarm.conversations": "会话",
   "settings.swarm.autoTitle": "自动给会话起名",
   "settings.swarm.autoTitleHint":
-    "第一轮回复后，侧栏用短标题替换原始首句。关掉则保留首条消息。你亲手起的名字不会被覆盖。可在模型页钉一个不同的模型。",
+    "第一条发出后立刻起名，定过就不再改。关掉则一直用首条消息。你亲手起的名字不会被覆盖。可在模型页钉一个不同的模型。",
   "settings.swarm.subagents": "子代理",
   "settings.swarm.maxConcurrent": "同时运行的子代理",
   "settings.swarm.maxConcurrentHint":
@@ -583,7 +597,11 @@ export const zh: { [K in keyof typeof en]: string } = {
     "每条事件推到手机时保留多少字。默认 4000。工具直播输出会再短一截。",
   "settings.remote.watchEvents": "手机上的事件条数",
   "settings.remote.watchEventsHint":
-    "打开会话时最后一轮最多推多少条，往上拉加载更早时也按这个分页。默认 80。",
+    "手机往上拉加载更早时的分页大小。第一次打开只拉直播尾巴，不会把整轮塞进来。默认 80。",
+  "settings.remote.other": "其他",
+  "settings.remote.keepAwake": "保持这台电脑唤醒",
+  "settings.remote.keepAwakeHint":
+    "插着电并且已打开手机配对时，阻止电脑休眠。",
   "settings.remote.qr": "配对 QR",
   "settings.remote.showQr": "显示配对 QR",
   "settings.remote.qrAlt": "配对二维码",
@@ -594,6 +612,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.remote.offline": "填好转发地址并打开配对才会上线。",
   "settings.remote.devices": "已绑定的手机",
   "settings.remote.noDevices": "还没有绑定手机。",
+  "settings.remote.lastSeen": "最近连接 {time}",
   "settings.remote.revoke": "吊销",
   "settings.remote.failed": "没法配手机",
 

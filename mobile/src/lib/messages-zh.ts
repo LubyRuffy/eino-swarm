@@ -22,10 +22,13 @@ export const zh: Record<MessageKey, string> = {
   "home.start": "开始",
   "home.ask": "等待回答",
   "home.live": "进行中",
+  "home.waiting": "等待中",
   "home.newMessage": "新消息",
   "home.open": "打开 {title}",
   "home.relay": "中继",
   "home.direct": "直连",
+  "home.offline": "已断开",
+  "home.reconnecting": "重连中",
 
   "thread.back": "返回",
   "thread.stop": "停止",
@@ -37,6 +40,7 @@ export const zh: Record<MessageKey, string> = {
   "thread.plan": "规划中",
   "thread.image": "图片",
   "thread.running": "运行中",
+  "thread.waiting": "等待中",
   "thread.earlier": "更早",
   "thread.loading": "加载中",
   "thread.tool": "工具",
@@ -45,9 +49,27 @@ export const zh: Record<MessageKey, string> = {
   "thread.rosterRunning": "{n} 进行中",
   "thread.rosterUndelivered": "{n} 未送达",
 
+  "quote.selected": "选中的文本",
+
   "notice.scheduleArmed": "已设置等待。",
   "notice.scheduleCancelled": "等待已取消。",
   "notice.scheduleFired": "定时检查。",
+
+  "goal.pursuing": "进行中",
+  "goal.done": "已完成",
+  "goal.paused": "已暂停",
+  "goal.blocked": "已卡住",
+  "goal.failedTurn": "上一轮失败了。",
+  "goal.start": "开始目标",
+  "goal.waitHint": "已挂起，等下次检查。不是出错。下面的等待条可以立即运行或取消。",
+  "goal.capHint": "自动续跑已暂停，不是出错。点「开始目标」继续。",
+  "goal.idleHint": "上一轮续跑没有实质进展。点「开始目标」继续。",
+  "goal.completeHint": "如果是提前结案，点「开始目标」继续。",
+
+  "schedule.waiting": "等待中",
+  "schedule.nextCheck": "下次检查 {time}",
+  "schedule.runNow": "立即运行",
+  "schedule.cancel": "取消等待",
 
   "markdown.copyCode": "复制代码",
   "markdown.copyFormula": "复制公式",
@@ -58,6 +80,9 @@ export const zh: Record<MessageKey, string> = {
   "ask.other": "其他",
 
   "err.reconnect": "连接中断。点重试会再连，不会解除绑定。",
+  "err.rpc": "请求失败。",
+  "err.open": "打不开这个对话。",
+  "err.watch": "跟不上这个对话。",
   "locale.en": "EN",
   "locale.zh": "中文",
 }

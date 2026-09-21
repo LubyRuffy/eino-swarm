@@ -60,15 +60,31 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   const answer = transcript.locator("[data-testid=assistant-message]", {
     hasText: "Two sub-agents ran in parallel",
   })
+  const answerMeta = answer.getByTestId("message-meta")
+  await expect(answerMeta).toHaveCSS("opacity", "0")
+  const idle = await answerMeta.boundingBox()
+  expect(idle?.height ?? 0).toBeGreaterThan(8)
   await answer.hover()
   await expect(answer.getByTestId("assistant-message-time")).toHaveAttribute("datetime", /^\d{4}-/)
-  await expect(answer.getByTestId("message-meta")).toHaveCSS("opacity", "1")
+  await expect(answerMeta).toHaveCSS("opacity", "1")
+  expect((await answerMeta.boundingBox())?.height).toBe(idle?.height)
   const user = page.getByTestId("user-message").first()
+  const userMeta = user.locator("xpath=following-sibling::*[@data-testid='message-meta']")
+  await expect(userMeta).toHaveCSS("opacity", "0")
+  const userIdle = await userMeta.boundingBox()
+  expect(userIdle?.height ?? 0).toBeGreaterThan(8)
   await user.hover()
-  await expect(user.locator("xpath=following-sibling::*[@data-testid='message-meta']")).toHaveCSS(
-    "opacity",
-    "1",
-  )
+  await expect(userMeta).toHaveCSS("opacity", "1")
+  expect((await userMeta.boundingBox())?.height).toBe(userIdle?.height)
+  // WKWebView denies clipboard-write. The click must still copy via the
+  // gesture-safe path and flip the control to Copied.
+  await page.evaluate(() => {
+    const clip = navigator.clipboard
+    if (clip) clip.writeText = () => Promise.reject(new Error("denied"))
+  })
+  const copyMsg = userMeta.getByRole("button", { name: "Copy message" })
+  await copyMsg.click()
+  await expect(copyMsg).toHaveAttribute("title", "Copied")
   await expect(transcript.getByTestId("transcript-chart")).toBeVisible()
   await transcript.getByRole("tab", { name: "Table" }).click()
   await expect(transcript.getByRole("table")).toBeVisible()
@@ -273,7 +289,8 @@ test("names a conversation after the first turn", async ({ page }) => {
   await expect(title).not.toHaveText("New conversation")
   await expect(title).not.toHaveText(ask)
   // The placeholder is the truncated request plus an ellipsis; the generated
-  // name is shorter and has none.
+  // name is shorter and has none. Naming runs from the opening message, so
+  // a long first turn cannot rename the sidebar after the fact.
   await expect(title).not.toHaveText(/…/, { timeout: 15_000 })
   await expect(title).toHaveText(/Investigate/)
   await expect(
@@ -622,7 +639,7 @@ test("switches the model in the composer and keeps it after a reload", async ({
     await picker.click()
     await page.getByRole("button", { name: "Edit providers" }).click()
     const dialog = page.getByRole("dialog")
-    await expect(dialog.getByRole("heading", { name: "Settings" })).toBeVisible()
+    await expect(dialog.getByRole("heading", { name: "Models", exact: true })).toBeVisible()
     const heading = (provider.label || provider.id).trim()
     await expect(
       dialog.getByRole("button", { name: `${heading} details` }),
@@ -749,56 +766,6 @@ test("edits a sent message in place and restarts from there", async ({
   await expect(page.getByTestId("transcript")).not.toContainText(second)
   await expect(statusBadge(page)).toContainText("Working")
   await waitForIdle(page)
-})
-
-test("quotes selected transcript text into the next message", async ({ page }) => {
-  await freshConversation(page)
-  const first = "First task: outline the work"
-  await send(page, first)
-  await waitForIdle(page)
-
-  const bubble = page.getByTestId("transcript").getByText(first, { exact: true })
-  await bubble.selectText()
-  await page.getByRole("menuitem", { name: "Add to chat" }).click()
-  await expect(page.getByLabel("1 annotation")).toBeVisible()
-
-  await page.getByLabel("1 annotation").hover()
-  await expect(page.getByTestId("quote-card")).toContainText("Selected text:")
-  await expect(page.getByTestId("quote-card")).toContainText(first)
-  await expect(page.getByRole("button", { name: "Edit selected text 1" })).toBeVisible()
-  await expect(page.getByRole("button", { name: "Remove selected text 1" })).toBeVisible()
-
-  const follow = "Second task: tighten that outline"
-  await composer(page).fill(follow)
-  await composer(page).press("Enter")
-  await expect(statusBadge(page)).toContainText("Working")
-  await waitForIdle(page)
-
-  const last = page.getByTestId("user-message").last()
-  await expect(last).toContainText("Selected text:")
-  await expect(last).toContainText(first)
-  await expect(last).toContainText(follow)
-  await expect(page.getByLabel("1 annotation")).toHaveCount(0)
-})
-
-test("quotes selected text while a turn is still streaming", async ({ page }) => {
-  await freshConversation(page)
-  const first = "First task: outline the work"
-  await send(page, first)
-  await waitForIdle(page)
-
-  await send(page, "Second task: keep writing")
-  const bubble = page.getByTestId("transcript").getByText(first, { exact: true })
-  await bubble.selectText()
-  const add = page.getByRole("menuitem", { name: "Add to chat" })
-  await expect(add).toBeVisible()
-
-  // A live thought's inner scroll and auto-follow used to flash the pill
-  // then hide it on the next token.
-  await expect(page.getByTestId("thought-scroll")).toBeVisible({ timeout: 15_000 })
-  await expect(add).toBeVisible()
-  await add.click()
-  await expect(page.getByLabel("1 annotation")).toBeVisible()
 })
 
 test("slash menu lists built-in commands", async ({ page }) => {

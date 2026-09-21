@@ -19,9 +19,17 @@ import { useT, type Translate } from "@/lib/use-t"
 import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
 import { AuxiliaryModels } from "./auxiliary-models"
+import { SearchSettingsPanel } from "./settings-search"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
 import { ProviderWindows } from "./provider-windows"
-import { Field, SettingsPage, SettingsSection, settingsMatch } from "./settings-field"
+import {
+  Field,
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+  settingsMatch,
+  settingsSelectTriggerClass,
+} from "./settings-field"
 
 type ProviderConfig = Settings["models"]["providers"][number]
 
@@ -114,6 +122,7 @@ export function ModelsTab({
       description={t("settings.models.desc")}
     >
       <AuxiliaryModels settings={settings} onChange={onChange} query={query} />
+      <SearchSettingsPanel settings={settings} onChange={onChange} query={query} />
 
       <SettingsSection
         title={t("settings.models.providers")}
@@ -252,10 +261,10 @@ function ProviderRow({
             )}
           />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-foreground">
+            <span className="block truncate text-[13px] font-normal text-foreground/90">
               {heading}
             </span>
-            <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+            <span className="mt-0.5 block truncate text-[13px] font-normal text-muted-foreground">
               {subtitle}
             </span>
           </span>
@@ -291,7 +300,7 @@ function ProviderRow({
               onChange={(e) => onUpdate({ label: e.target.value })}
             />
           </Field>
-          <Field query={query} label={t("settings.models.baseUrl")} controlClassName="w-72">
+          <Field query={query} label={t("settings.models.baseUrl")} wide>
             <Input
               value={p.base_url}
               placeholder="https://your-endpoint/v1"
@@ -316,27 +325,23 @@ function ProviderRow({
             />
           </Field>
           {settingsMatch(query, t("settings.models.defaultModel"), t("settings.models.discover")) ? (
-            <div
-              className="flex items-start justify-between gap-6 px-4 py-3.5"
-              data-settings-row=""
+            <SettingsRow
+              label={t("settings.models.defaultModel")}
+              hint={
+                options.length > 0
+                  ? t("settings.models.defaultModelHint", {
+                      n: options.length,
+                      s: options.length === 1 ? "" : "s",
+                    })
+                  : t("settings.models.defaultModelEmpty")
+              }
             >
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{t("settings.models.defaultModel")}</p>
-                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  {options.length > 0
-                    ? t("settings.models.defaultModelHint", {
-                        n: options.length,
-                        s: options.length === 1 ? "" : "s",
-                      })
-                    : t("settings.models.defaultModelEmpty")}
-                </p>
-              </div>
-              <div className="flex w-72 shrink-0 flex-col gap-2">
+              <div className="flex flex-col items-end gap-1.5">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 justify-end gap-1.5 self-end"
+                  className="h-7 justify-end gap-1.5"
                   disabled={!p.base_url.trim() || busy}
                   onClick={onDiscover}
                 >
@@ -353,7 +358,7 @@ function ProviderRow({
                     onValueChange={(model) => onUpdate({ model })}
                   >
                     <SelectTrigger
-                      className="h-9 text-sm"
+                      className={settingsSelectTriggerClass}
                       aria-label={t("settings.models.defaultModel")}
                     >
                       <SelectValue placeholder={t("settings.models.pickDefault")} />
@@ -371,11 +376,12 @@ function ProviderRow({
                     value={p.model}
                     placeholder={t("settings.models.typeModel")}
                     aria-label={t("settings.models.defaultModel")}
+                    className="h-[32px] w-56 text-[13px] shadow-none"
                     onChange={(e) => onUpdate({ model: e.target.value })}
                   />
                 )}
               </div>
-            </div>
+            </SettingsRow>
           ) : null}
           <ProviderWindows
             query={query}

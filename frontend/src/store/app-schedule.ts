@@ -49,7 +49,7 @@ export type ScheduleSlice = {
   schedules: Schedule[]
   scheduleUnread: number
   scheduleInboxOpen: boolean
-  refreshSchedules: () => Promise<void>
+  refreshSchedules: (opts?: { silent?: boolean }) => Promise<void>
   createSchedule: (body: ScheduleCreate) => Promise<void>
   patchSchedule: (id: string, patch: SchedulePatch) => Promise<void>
   deleteSchedule: (id: string) => Promise<void>
@@ -88,7 +88,7 @@ export function scheduleActions(
     scheduleUnread: 0,
     scheduleInboxOpen: false,
 
-    refreshSchedules: async () => {
+    refreshSchedules: async (opts) => {
       const n = ++scheduleFetch
       try {
         const got = await api.schedules()
@@ -110,7 +110,8 @@ export function scheduleActions(
         })
       } catch (e) {
         if (n !== scheduleFetch) return
-        set({ error: deps.fail(e) })
+        // The sidebar tick is not a user action; a dropped GET must not toast.
+        if (!opts?.silent) set({ error: deps.fail(e) })
       }
     },
 

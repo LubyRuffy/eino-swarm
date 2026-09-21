@@ -9,8 +9,9 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-// lastTurnWindow is what the phone paints on first watch: the latest
-// turn, newest-capped at `cap` so a monster turn still fits a frame.
+// lastTurnWindow is a live-edge page: the latest turn, newest-capped
+// at `cap`. First watch uses a short cap so the phone is not stuck
+// packing a pursuing turn; `log` still pages watch_events.
 // Threads with no turns fall back to a live-edge page of raw events.
 func lastTurnWindow(st *store.Store, threadID string, cap int) ([]store.Event, bool, error) {
 	if cap <= 0 {

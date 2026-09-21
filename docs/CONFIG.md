@@ -89,6 +89,11 @@ remote:
     open_turns: 6
     event_chars: 4000
     watch_events: 80
+    keep_awake: true
+search:
+    embedding: false
+    embedding_provider: ""
+    embedding_model: ""
 ```
 
 Any key you leave out, set to zero or set to an empty string is repaired with its
@@ -164,7 +169,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `manager_max_iterations` | `200` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. Reaching the cap **pauses** the turn and asks whether to add another slice of this size, rather than failing with eino's iteration error. |
 | `progress_interval_seconds` | `5` | how often a running turn emits a progress pulse. It is the only thing that moves while every agent sits in a slow tool call, so a higher value makes a busy run look stuck for longer. Zero or negative falls back to the default; pulses cannot be switched off. |
 | `delta_coalesce_ms` | `50` | how long streamed tokens wait to be sent as one event. A token every few milliseconds would redraw the whole UI; one pulse per interval keeps the screen moving without a frame per token. Zero or negative falls back to the default. |
-| `auto_title` | `true` | after the first finished turn, ask the model for a short sidebar name instead of leaving the truncated first message. Off keeps the placeholder. A title the user typed is never overwritten. An older config file without the key stays on. |
+| `auto_title` | `true` | on the first user message, ask the model for a short sidebar name instead of leaving the truncated first message. Off keeps the placeholder. A title the user typed is never overwritten. An older config file without the key stays on. |
 | `title_provider` | empty | endpoint the namer calls. Empty follows the conversation's provider. An id that is no longer in `providers` is cleared on load. |
 | `title_model` | empty | model name the namer calls. Empty (with an empty provider) follows the conversation's model. A name with no provider stays on the conversation's endpoint. Pin one in Settings → Models when an endpoint lists more than one name. |
 | `compact_provider` | empty | endpoint `/compact` calls. Same empty-means-follow rule as `title_provider`. A deleted id is cleared on load. |
@@ -295,7 +300,8 @@ in Settings → Phone.
 | `summary_chars` | `280` | truncate assistant/summary text on the phone |
 | `open_turns` | `6` | completed turns included when a thread is opened |
 | `event_chars` | `4000` | max characters of each watched event body on the phone. `tool_delta` is clipped to `summary_chars`. `spawned` text is always empty |
-| `watch_events` | `80` | max stored events from the last turn when the phone opens a conversation (`watch` with `since` 0; the snapshot is the `watch` RPC `ready`), and the page size for `log` when it pulls up for older rows (`before` 0 pages older than that window). A reconnect with `since` > 0 still replays the gap on that same `ready` snapshot |
+| `watch_events` | `80` | page size for `log` when the phone pulls up for older rows (`before` 0 pages older than the first snapshot). A reconnect with `since` > 0 still replays the gap on that same `ready` snapshot. First `watch` (`since` 0) paints at most 24 stored events from the live edge (`DefaultRemoteWatchOpen`) even when this is higher, so a long `/goal` turn is not a multi-second freeze |
+| `keep_awake` | `true` | hold a system sleep assertion while `enabled` is on. Settings → Phone → **Keep this computer awake**. On macOS this is `caffeinate -s` (idle sleep is blocked only on AC power). Linux uses `systemd-inhibit` when that binary exists; Windows uses `SetThreadExecutionState`. A missing key in an older file stays on. An explicit `false` is kept. The assertion follows this switch and `enabled`, not the hub socket — a reconnect must not drop it |
 
 The Host Token and the long-term X25519 key live as files, not in this YAML:
 
@@ -308,6 +314,25 @@ $ZWAI_HOME/remote/identity     0600
 mints `host_token` if the file is missing. `PUT /api/remote/token` can still
 replace it. Empty hub leaves remote offline; **Show pairing QR** then toasts
 over Settings instead of a red line under Phone.
+
+## `search`
+
+Conversation search for ⌘K. Keyword indexing is always on. Embeddings are
+opt-in: calling an extra endpoint is a cost the install did not ask for, and
+no model name is baked in.
+
+| key | default | meaning |
+|---|---|---|
+| `embedding` | `false` | when true **and** `embedding_model` is set, ⌘K also ranks by meaning. A true switch with an empty model stays keyword-only. |
+| `embedding_provider` | empty | endpoint `/embeddings` is sent to. Empty follows `models.default`. A deleted id is cleared on load. |
+| `embedding_model` | empty | the name that endpoint expects for embeddings. Never defaulted to a product name. Pin one in Settings → Models. |
+
+The index is SQLite FTS5 (trigram) over titles, standing goals and
+user/assistant messages. Queries shorter than three runes use LIKE so a
+two-character CJK needle still hits. Tool dumps stay out. Vectors live in
+`search_chunks` keyed by model; a pin change drops the previous model's rows
+and backfills in the background. A failed embed of the query falls back to
+keywords.
 
 ## Multiple instances
 

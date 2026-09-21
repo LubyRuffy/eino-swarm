@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import { Transcript } from "./transcript"
-import { sessionPreview, splitSessionBlocks } from "./transcript-session"
+import { sessionPreview, splitSessionBlocks, responseClockBlockId } from "./transcript-session"
 import type { AgentState, Block, TranscriptState } from "@/lib/transcript"
 import { emptyTranscript } from "@/lib/transcript"
 
@@ -54,6 +54,27 @@ function sessionState(opts?: { answer?: string; user?: string }): TranscriptStat
     ],
   }
 }
+
+describe("responseClockBlockId", () => {
+  it("stamps the last finished answer, not every answer in the turn", () => {
+    expect(
+      responseClockBlockId([
+        block({ id: "u", kind: "user", text: "ask", seq: 1 }),
+        block({ id: "a1", kind: "answer", text: "mid", seq: 2 }),
+        block({ id: "a2", kind: "answer", text: "end", seq: 3 }),
+      ]),
+    ).toBe("a2")
+  })
+
+  it("waits until the last answer finishes streaming", () => {
+    expect(
+      responseClockBlockId([
+        block({ id: "a1", kind: "answer", text: "mid", seq: 2 }),
+        block({ id: "a2", kind: "answer", text: "live", seq: 3, streaming: true }),
+      ]),
+    ).toBeUndefined()
+  })
+})
 
 describe("sessionPreview", () => {
   it("flattens an answer onto one line", () => {

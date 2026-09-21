@@ -1,11 +1,14 @@
 import { ASK_TOOL, splitToolCall } from "./ask"
+import { applyGoalDetail } from "./goal"
 import {
   OpEvent,
   OpReady,
   type RemoteEvent,
   type RemoteResponse,
   type ThreadDetail,
+  type WatchStatus,
 } from "./rpc"
+import { applyWakeDetail, laterScheduleDue } from "./schedule"
 import { applyEvent, pendingAsk, type CompactBlock } from "./transcript"
 
 /** One open thread on the phone. threadId is set before watch returns,
@@ -42,6 +45,13 @@ export function openView(detail: ThreadDetail): PhoneView {
   return { ...emptyView(), threadId: detail.id, detail }
 }
 
+export function applyOpenDetail(view: PhoneView, detail: ThreadDetail): PhoneView {
+  if (view.threadId === detail.id && view.detail) {
+    return { ...view, detail }
+  }
+  return openView(detail)
+}
+
 export function markRunning(view: PhoneView): PhoneView {
   if (!view.detail || view.detail.running) return view
   return {
@@ -61,7 +71,7 @@ export function applyPush(view: PhoneView, resp: RemoteResponse): PhoneView {
     if (!view.caughtUp) {
       return { ...view, queued: view.queued.concat(resp.event) }
     }
-    return applyLiveEvent(view, resp.event)
+    return applyLiveEvent(view, resp.event, resp.status)
   }
   return view
 }
@@ -107,25 +117,17 @@ function applyReady(view: PhoneView, resp: RemoteResponse): PhoneView {
     if (detail) detail = patchDetail(detail, ev, blocks)
     if (ev.seq > lastSeq) lastSeq = ev.seq
   }
-  const st = resp.status
-  if (st && detail) {
-    detail = {
-      ...detail,
-      running: st.running
-        ? {
-            thread_id: detail.id,
-            title: detail.title,
-            turn_id: st.turn_id,
-            ask_user: st.awaiting_answer || Boolean(detail.running?.ask_user),
-          }
-        : undefined,
-    }
+  if (resp.status && detail) {
+    detail = applyWatchStatus(detail, resp.status, true)
   }
   return {
     ...view,
     lastSeq,
     oldestSeq: oldestOf(stored, lastSeq, Boolean(resp.more), view.oldestSeq),
-    hasMore: Boolean(resp.more) || (fromReady.length === 0 && view.hasMore),
+    hasMore:
+      Boolean(resp.more) ||
+      (fromReady.length === 0 && view.hasMore) ||
+      (stored[0]?.seq ?? 0) > 1,
     caughtUp: true,
     queued: [],
     events: stored,
@@ -149,13 +151,14 @@ function oldestOf(
   return n
 }
 
-function applyLiveEvent(view: PhoneView, ev: RemoteEvent): PhoneView {
+function applyLiveEvent(view: PhoneView, ev: RemoteEvent, status?: WatchStatus): PhoneView {
   if (ev.seq > 0 && ev.seq <= view.lastSeq) return view
   const events = rememberEvent(view.events, ev)
   const blocks = applyEvent(view.blocks, ev)
   let detail = view.detail
   if (detail) {
     detail = patchDetail(detail, ev, blocks)
+    if (status) detail = applyWatchStatus(detail, status, false)
   }
   return {
     ...view,
@@ -205,23 +208,45 @@ function restoreStreaming(blocks: CompactBlock[], prev: CompactBlock[]): Compact
   return blocks.concat(live)
 }
 
+function applyWatchStatus(detail: ThreadDetail, st: WatchStatus, snapshot: boolean): ThreadDetail {
+  const next: ThreadDetail = {
+    ...detail,
+    running: st.running
+      ? {
+          thread_id: detail.id,
+          title: detail.title,
+          turn_id: st.turn_id,
+          ask_user: st.awaiting_answer || Boolean(detail.running?.ask_user),
+          waiting: st.waiting,
+        }
+      : undefined,
+  }
+  if (snapshot || st.waiting) {
+    next.waiting = Boolean(st.waiting)
+    if (st.waiting) {
+      next.wake = st.wake
+        ? {
+            id: st.wake.id,
+            title: st.wake.title ?? detail.wake?.title,
+            prompt: st.wake.prompt ?? detail.wake?.prompt,
+            next_run_at: laterScheduleDue(detail.wake?.next_run_at, st.wake.next_run_at),
+          }
+        : detail.wake
+    } else if (snapshot) {
+      next.wake = undefined
+    }
+  }
+  return next
+}
+
 function patchDetail(
   detail: ThreadDetail,
   ev: RemoteEvent,
   blocks: CompactBlock[],
 ): ThreadDetail {
-  let next = detail
+  let next = applyGoalDetail(applyWakeDetail(detail, ev), ev)
   if (ev.kind === "title" && ev.text) {
     next = { ...next, title: ev.text }
-  }
-  if (ev.kind === "goal" && ev.text) {
-    next = { ...next, goal: ev.text, goal_on: true }
-  }
-  if (ev.kind === "goal_resumed" || ev.kind === "goal_continued") {
-    next = { ...next, goal_on: true }
-  }
-  if (ev.kind === "goal_complete" || ev.kind === "goal_blocked") {
-    next = { ...next, goal_on: false }
   }
   if (ev.kind === "plan") {
     next = { ...next, plan_on: true }

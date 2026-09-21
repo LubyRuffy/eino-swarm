@@ -1,20 +1,14 @@
 import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SelectItem } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import type { MemoryNotify, Settings } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
 import {
   Field,
+  SettingsChoice,
   SettingsPage,
   SettingsSection,
-  settingsMatch,
 } from "./settings-field"
 
 /** The install-wide memory budget. Per-project memory is switched on in the
@@ -59,46 +53,22 @@ export function MemorySettings({
             onCheckedChange={(auto_review) => update({ auto_review })}
           />
         </Field>
-        {settingsMatch(
-          query,
-          t("settings.memory.after"),
-          "notifications",
-          "transcript",
-        ) ? (
-          <div
-            className="flex items-start justify-between gap-6 px-4 py-3.5"
-            data-settings-row=""
-          >
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{t("settings.memory.after")}</p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                {t("settings.memory.afterHint")}
-              </p>
-            </div>
-            <div className="w-64 shrink-0">
-              <Select
-                value={settings.memory.notifications || "on"}
-                onValueChange={(notifications) =>
-                  update({ notifications: notifications as MemoryNotify })
-                }
-              >
-                <SelectTrigger
-                  aria-label={t("settings.memory.after")}
-                  className="h-9 text-sm"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="on">{t("settings.memory.notifyOn")}</SelectItem>
-                  <SelectItem value="verbose">
-                    {t("settings.memory.notifyVerbose")}
-                  </SelectItem>
-                  <SelectItem value="off">{t("settings.memory.notifyOff")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        ) : null}
+        <SettingsChoice
+          query={query}
+          search={[t("settings.memory.after"), "notifications", "transcript"]}
+          label={t("settings.memory.after")}
+          hint={t("settings.memory.afterHint")}
+          value={settings.memory.notifications || "on"}
+          onValueChange={(notifications) =>
+            update({ notifications: notifications as MemoryNotify })
+          }
+        >
+          <SelectItem value="on">{t("settings.memory.notifyOn")}</SelectItem>
+          <SelectItem value="verbose">
+            {t("settings.memory.notifyVerbose")}
+          </SelectItem>
+          <SelectItem value="off">{t("settings.memory.notifyOff")}</SelectItem>
+        </SettingsChoice>
       </SettingsSection>
 
       <SettingsSection title={t("settings.memory.budget")}>

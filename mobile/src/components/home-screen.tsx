@@ -18,6 +18,8 @@ export function HomeScreen({
   onStart,
   onUnlink,
   path,
+  connected = true,
+  reconnecting = false,
   onToggleLocale,
 }: {
   projects: ProjectView[]
@@ -29,6 +31,8 @@ export function HomeScreen({
   onStart: (text: string, projectId: string) => void
   onUnlink: () => void
   path: string
+  connected?: boolean
+  reconnecting?: boolean
   onToggleLocale?: () => void
 }) {
   const live = collectLive(running, threads)
@@ -42,10 +46,24 @@ export function HomeScreen({
           <span
             className={cn(
               "size-2 rounded-full",
-              path === "direct" ? "bg-[hsl(var(--running))]" : "bg-muted-foreground/50",
+              reconnecting
+                ? "animate-pulse bg-destructive"
+                : !connected
+                  ? "bg-destructive"
+                  : path === "direct"
+                    ? "bg-[hsl(var(--running))]"
+                    : "bg-muted-foreground/50",
             )}
-            title={path === "direct" ? t("home.direct") : t("home.relay")}
-            aria-label={`path=${path}`}
+            title={
+              reconnecting
+                ? t("home.reconnecting")
+                : !connected
+                  ? t("home.offline")
+                  : path === "direct"
+                    ? t("home.direct")
+                    : t("home.relay")
+            }
+            aria-label={`path=${reconnecting ? "reconnecting" : connected ? path : "offline"}`}
           />
         </div>
         <div className="flex items-center gap-1">
@@ -68,7 +86,13 @@ export function HomeScreen({
                 key={r.thread_id}
                 id={r.thread_id}
                 title={r.title || r.thread_id}
-                detail={r.ask_user ? t("home.ask") : r.action || t("thread.running")}
+                detail={
+                  r.ask_user
+                    ? t("home.ask")
+                    : r.waiting && !r.turn_id
+                      ? t("home.waiting")
+                      : r.action || t("thread.running")
+                }
                 live
                 onOpen={onOpen}
               />

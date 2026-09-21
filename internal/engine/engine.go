@@ -80,6 +80,8 @@ type Engine struct {
 	schedWG   sync.WaitGroup
 	fireMu    sync.Mutex
 
+	index ThreadIndex
+
 	// Frozen while the ticker is live so fireDueSchedules, inbox
 	// create/resume/patch, and schedule-claim default-provider reads
 	// never touch e.cfg (Replace copies the whole struct and races
@@ -212,6 +214,7 @@ func (e *Engine) CreateThread(title, providerID, projectID string) (*store.Threa
 	if err := os.MkdirAll(e.WorkspaceDir(th.ID), 0o700); err != nil {
 		return nil, fmt.Errorf("engine: create workspace: %w", err)
 	}
+	e.reindex(th.ID)
 	return th, nil
 }
 
@@ -230,6 +233,7 @@ func (e *Engine) DeleteThread(id string) error {
 	if err := e.store.DeleteThread(id); err != nil {
 		return err
 	}
+	e.dropIndex(id)
 	if e.ownsWorkspace(ws) {
 		if err := os.RemoveAll(ws); err != nil {
 			e.log.Warn("could not remove workspace", "thread", id, "path", ws, "err", err)
@@ -256,10 +260,14 @@ func (e *Engine) ownsWorkspace(dir string) bool {
 // RenameThread sets a conversation's title. It takes ownership: a namer
 // still in flight must not put the generated name back afterwards.
 func (e *Engine) RenameThread(id, title string) error {
-	return e.store.UpdateThread(id, map[string]any{
+	if err := e.store.UpdateThread(id, map[string]any{
 		"title":      strings.TrimSpace(title),
 		"title_auto": false,
-	})
+	}); err != nil {
+		return err
+	}
+	e.reindex(id)
+	return nil
 }
 
 // SetThreadProvider switches which endpoint a conversation uses from its next

@@ -35,6 +35,25 @@ describe("settings", () => {
     expect(settings.tools.enabled).toEqual([])
   })
 
+  it("fills missing search settings as off with no model", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        respond({
+          settings: {
+            tools: { disabled: [], enabled: [], proxy: {} },
+          },
+        }),
+      ),
+    )
+    const settings = await api.settings()
+    expect(settings.search).toEqual({
+      embedding: false,
+      embedding_provider: "",
+      embedding_model: "",
+    })
+  })
+
   it("keeps the lists the server sent", async () => {
     vi.stubGlobal(
       "fetch",
@@ -430,5 +449,32 @@ describe("remote", () => {
     expect(offer.png.startsWith("data:image/png")).toBe(true)
     const list = await api.remoteBindings()
     expect(list).toHaveLength(1)
+  })
+})
+
+describe("search", () => {
+  it("asks the server with the typed query", async () => {
+    const fetch = vi.fn(async () =>
+      respond({ query: "unique-body", embedding: false, hits: [] }),
+    )
+    vi.stubGlobal("fetch", fetch)
+    const out = await api.search("unique-body")
+    expect(out.hits).toEqual([])
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/search?q=unique-body",
+      expect.anything(),
+    )
+  })
+
+  it("forwards a limit when the caller asks", async () => {
+    const fetch = vi.fn(async () =>
+      respond({ query: "alpha", embedding: false, hits: [] }),
+    )
+    vi.stubGlobal("fetch", fetch)
+    await api.search("alpha", 5)
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/search?q=alpha&limit=5",
+      expect.anything(),
+    )
   })
 })

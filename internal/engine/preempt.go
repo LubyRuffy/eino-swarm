@@ -35,6 +35,7 @@ func (e *Engine) persistSteer(threadID, turnID string, msg *schema.Message, text
 	}); err != nil {
 		e.log.Warn("could not persist a steer message", "turn", turnID, "err", err)
 	}
+	e.reindex(threadID)
 	e.broadcast(ev)
 	return nil
 }
@@ -102,6 +103,7 @@ func (e *Engine) RetractSteer(threadID string, seq int64) error {
 	if err := e.store.DeleteSteerMessage(threadID, seq, ev.Text); err != nil {
 		e.log.Warn("could not drop a retracted steer message", "thread", threadID, "seq", seq, "err", err)
 	}
+	e.reindex(threadID)
 	body, _ := json.Marshal(steerRetractPayload{Seq: seq})
 	e.record(store.Event{
 		ThreadID: threadID, TurnID: turnID,

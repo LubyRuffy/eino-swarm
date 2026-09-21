@@ -48,6 +48,9 @@ func newHarness(t *testing.T) *harness {
 	ts := httptest.NewServer(a.Server.Handler())
 	t.Cleanup(func() {
 		ts.Close()
+		if a.Search != nil {
+			a.Search.Stop()
+		}
 		a.Engine.Shutdown()
 		_ = a.Store.Close()
 	})
@@ -144,6 +147,9 @@ func TestThreadLifecycle(t *testing.T) {
 	id := created["thread"].(map[string]any)["id"].(string)
 	if created["thread"].(map[string]any)["title"] != "Named" {
 		t.Fatalf("title not kept: %v", created)
+	}
+	if created["thread"].(map[string]any)["title_auto"] != false {
+		t.Fatal("an explicit title must not stay machine-owned")
 	}
 
 	list := h.json(http.MethodGet, "/api/threads", nil, http.StatusOK)
@@ -450,6 +456,10 @@ func TestEventStreamHonoursLastEventID(t *testing.T) {
 func TestEventStreamCarriesTheGeneratedTitle(t *testing.T) {
 	h := newHarness(t)
 	id := h.newThread()
+	fresh := h.json(http.MethodGet, "/api/threads/"+id, nil, http.StatusOK)
+	if fresh["thread"].(map[string]any)["title_auto"] != true {
+		t.Fatal("an untitled conversation must stay machine-owned")
+	}
 	created := h.json(http.MethodPost, "/api/threads/"+id+"/turns",
 		map[string]any{"text": "look into the reporting pipeline"}, http.StatusAccepted)
 	turn := created["turn"].(map[string]any)
@@ -475,6 +485,9 @@ func TestEventStreamCarriesTheGeneratedTitle(t *testing.T) {
 	th := got["thread"].(map[string]any)
 	if th["title"] != title.Text {
 		t.Fatalf("GET thread title=%v event=%q", th["title"], title.Text)
+	}
+	if th["title_auto"] != false {
+		t.Fatal("a landed name must not stay machine-owned")
 	}
 	if title.Text == "look into the reporting pipeline" {
 		t.Fatal("the conversation is still quoting the request")
@@ -699,6 +712,7 @@ func TestRestartRecoversConversations(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 	// Quit: in-memory run stops, the turn stays unfinished for the next start.
+	first.Search.Stop()
 	first.Engine.Shutdown()
 	_ = first.Store.Close()
 
@@ -706,7 +720,7 @@ func TestRestartRecoversConversations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restart: %v", err)
 	}
-	defer func() { second.Engine.Shutdown(); _ = second.Store.Close() }()
+	defer func() { second.Search.Stop(); second.Engine.Shutdown(); _ = second.Store.Close() }()
 
 	got, err := second.Store.GetThread(th.ID)
 	if err != nil {
@@ -769,6 +783,7 @@ func TestRestartKeepsTheFollowupQueue(t *testing.T) {
 	if _, err := first.Store.EnqueueFollowup(th.ID, "then that"); err != nil {
 		t.Fatal(err)
 	}
+	first.Search.Stop()
 	first.Engine.Shutdown()
 	_ = first.Store.Close()
 
@@ -776,7 +791,7 @@ func TestRestartKeepsTheFollowupQueue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restart: %v", err)
 	}
-	defer func() { second.Engine.Shutdown(); _ = second.Store.Close() }()
+	defer func() { second.Search.Stop(); second.Engine.Shutdown(); _ = second.Store.Close() }()
 
 	want := []string{"after this finishes", "then that"}
 	deadline := time.Now().Add(45 * time.Second)

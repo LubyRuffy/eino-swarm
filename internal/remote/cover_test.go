@@ -18,6 +18,9 @@ func TestMapErrAndFmtErr(t *testing.T) {
 	if mapErr("1", "relay", "s", engine.ErrIdle).Code != "idle" {
 		t.Fatal("idle")
 	}
+	if mapErr("1", "relay", "s", engine.ErrSkippedBusy).Code != "skipped_busy" {
+		t.Fatal("skipped_busy")
+	}
 	if mapErr("1", "relay", "s", store.ErrNotFound).Code != "not_found" {
 		t.Fatal("not_found")
 	}

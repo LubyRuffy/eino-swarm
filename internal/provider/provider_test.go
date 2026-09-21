@@ -618,6 +618,22 @@ func TestMockFailTimesThenSucceeds(t *testing.T) {
 	}
 }
 
+func TestMockFailTimesDoesNotConsumeTheTitleNamer(t *testing.T) {
+	SetMockFailTimes(1, errors.New("unterminated string"))
+	t.Cleanup(func() { SetMockFailure(nil) })
+	namer := newMockModel("title-namer")
+	if _, err := namer.Generate(context.Background(), []*schema.Message{
+		schema.SystemMessage("Name this conversation."),
+		schema.UserMessage("User: look into the reporting pipeline"),
+	}); err != nil {
+		t.Fatalf("the namer must not eat a counted injection: %v", err)
+	}
+	mgr := newMockModel("manager")
+	if _, err := mgr.Generate(context.Background(), []*schema.Message{schema.UserMessage("x")}); err == nil {
+		t.Fatal("the counted failure still belongs to the manager")
+	}
+}
+
 // ---------- telemetry ----------
 
 type fakeModel struct {

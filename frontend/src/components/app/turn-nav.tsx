@@ -20,7 +20,8 @@ function attrEscape(value: string): string {
 }
 
 /** Compact tick cluster in the middle of the transcript, not a full-height
- *  scrollbar. Hover opens the list of the user's own messages. */
+ *  scrollbar. Hover opens the list of the human's own sends — labels, not
+ *  a card of fake bubbles. */
 export function TurnNav({
   items,
   scrollerRef,
@@ -179,7 +180,7 @@ export function TurnNav({
         <div
           ref={listRef}
           data-testid="turn-nav-list"
-          className="absolute left-8 top-1/2 z-20 w-96 max-h-[min(28rem,70vh)] max-w-[calc(100vw-3.5rem)] -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-md thin-scrollbar"
+          className="absolute left-8 top-1/2 z-20 w-96 max-h-[min(28rem,70vh)] max-w-[calc(100vw-3.5rem)] -translate-y-1/2 overflow-y-auto bg-background py-1 thin-scrollbar"
         >
           {items.map((item) => {
             const hot = item.id === highlight
@@ -190,10 +191,10 @@ export function TurnNav({
                 tabIndex={-1}
                 data-turn-nav-row={item.id}
                 className={cn(
-                  "mb-1 w-full rounded-lg px-3 py-2.5 text-left text-[13px] leading-5 last:mb-0",
+                  "block w-full px-3 py-1.5 text-left text-[13px] leading-5",
                   hot
-                    ? "bg-secondary text-secondary-foreground"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                    ? "text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
                 )}
                 onMouseEnter={() => setHovered(item.id)}
                 onClick={() => onJump(item.id)}

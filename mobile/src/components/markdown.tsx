@@ -17,6 +17,7 @@ import "katex/dist/katex.min.css"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/cn"
+import { copyText } from "@/lib/copy-text"
 import { t } from "@/lib/i18n"
 
 const PLUGINS = [remarkGfm, remarkMath]
@@ -24,7 +25,7 @@ const MATH_LANGS = new Set(["math", "latex", "tex", "katex"])
 
 export function PhoneMarkdown({ text, className }: { text: string; className?: string }) {
   return (
-    <div className={cn("md-body text-sm", className)}>
+    <div className={cn("md-body break-words text-sm", className)}>
       <Markdown remarkPlugins={PLUGINS} components={COMPONENTS} urlTransform={safeUrl}>
         {text}
       </Markdown>
@@ -184,15 +185,11 @@ function PhoneCopy({ text, kind }: { text: string; kind: "code" | "formula" }) {
       aria-label={name}
       title={copied ? t("markdown.copied") : name}
       onClick={() => {
-        void navigator.clipboard.writeText(text).then(
-          () => {
-            setCopied(true)
-            setTimeout(() => setCopied(false), 1200)
-          },
-          () => {
-            // Clipboard access can be denied; the button just does nothing.
-          },
-        )
+        void copyText(text).then((ok) => {
+          if (!ok) return
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1200)
+        })
       }}
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}

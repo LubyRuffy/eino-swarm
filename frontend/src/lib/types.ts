@@ -252,6 +252,9 @@ export interface Turn {
   ended_at?: string
   duration_ms: number
   quiet?: boolean
+  /** Engine-started /goal session. Not a human send; the jump rail
+   *  stays on the last user_message. */
+  goal_continue?: boolean
   schedule_continue?: boolean
   schedule_run_id?: string
 }
@@ -377,6 +380,38 @@ export interface Settings {
   log: { level: string }
   ui?: UISettings
   remote?: RemoteSettings
+  search?: SearchSettings
+}
+
+/** Conversation search. Keyword indexing is always on; embeddings are opt-in. */
+export interface SearchSettings {
+  embedding: boolean
+  embedding_provider: string
+  embedding_model: string
+}
+
+export function defaultSearchSettings(
+  search?: Partial<SearchSettings> | null,
+): SearchSettings {
+  return {
+    embedding: search?.embedding ?? false,
+    embedding_provider: search?.embedding_provider ?? "",
+    embedding_model: search?.embedding_model ?? "",
+  }
+}
+
+export interface SearchHit {
+  thread_id: string
+  title: string
+  snippet: string
+  score: number
+  source: "fts" | "semantic" | "hybrid"
+}
+
+export interface SearchResult {
+  query: string
+  embedding: boolean
+  hits: SearchHit[]
 }
 
 /** Phone pairing. Hub URL is whatever the human typed — never compiled in. */
@@ -388,6 +423,7 @@ export interface RemoteSettings {
   open_turns: number
   event_chars: number
   watch_events: number
+  keep_awake: boolean
 }
 
 export function defaultRemoteSettings(
@@ -402,6 +438,7 @@ export function defaultRemoteSettings(
     open_turns: remote?.open_turns && remote.open_turns > 0 ? remote.open_turns : 6,
     event_chars: remote?.event_chars && remote.event_chars > 0 ? remote.event_chars : 4000,
     watch_events: remote?.watch_events && remote.watch_events > 0 ? remote.watch_events : 80,
+    keep_awake: remote?.keep_awake ?? true,
   }
 }
 
@@ -410,6 +447,8 @@ export interface RemoteStatus {
   hub_url: string
   has_token: boolean
   online: boolean
+  keep_awake?: boolean
+  awake?: boolean
   fingerprint?: string
   error?: string
 }
@@ -424,7 +463,9 @@ export interface RemoteOffer {
 export interface RemoteBinding {
   id: string
   device_fp: string
+  device?: string
   created_at: string
+  last_seen?: string
   session_id: string
 }
 

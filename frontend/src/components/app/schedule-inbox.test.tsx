@@ -222,9 +222,51 @@ describe("Scheduled inbox", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Open findings" })).toBeInTheDocument(),
     )
+    expect(screen.getByTestId("schedule-findings")).toHaveTextContent("Something changed.")
     fireEvent.click(screen.getByRole("button", { name: "Open findings" }))
     await waitFor(() => expect(fake.marked).toEqual(["srun_1"]))
     await waitFor(() => expect(fake.opened).toEqual(["th_findings"]))
+  })
+
+  it("collapses several unread fires into a stacked list instead of a button per fire", async () => {
+    fake.runs = [
+      {
+        id: "srun_old",
+        schedule_id: "sch_1",
+        thread_id: "th_old",
+        turn_id: "tn_old",
+        status: "findings",
+        summary: "earlier change",
+        unread: true,
+        created_at: "2026-09-19T03:00:00.000Z",
+        updated_at: "2026-09-19T03:00:00.000Z",
+      },
+      {
+        id: "srun_new",
+        schedule_id: "sch_1",
+        thread_id: "th_new",
+        turn_id: "tn_new",
+        status: "findings",
+        summary: "later change",
+        unread: true,
+        created_at: "2026-09-19T04:00:00.000Z",
+        updated_at: "2026-09-19T04:00:00.000Z",
+      },
+    ]
+    render(<Sidebar threads={[]} {...noop} />)
+    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    expect(screen.getByRole("dialog").className).toMatch(/\boverflow-x-hidden\b/)
+    expect(screen.getByRole("dialog").className).toMatch(/\boverflow-y-auto\b/)
+    expect(screen.getByTestId("schedule-row")).toHaveClass("shrink-0")
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "later change" })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole("button", { name: "Open findings" })).not.toBeInTheDocument()
+    expect(screen.queryByTestId("schedule-findings")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "earlier change" }))
+    await waitFor(() => expect(fake.marked).toEqual(["srun_old"]))
+    await waitFor(() => expect(fake.opened).toEqual(["th_old"]))
   })
 
   it("shows skipped_busy inside the inbox dialog", async () => {
@@ -238,7 +280,7 @@ describe("Scheduled inbox", () => {
     expect(alert).toHaveAccessibleName(/error/i)
   })
 
-  it("puts a live untitled wait above done rows and shows its prompt", async () => {
+  it("hides ended waits by default and can reveal them", async () => {
     fake.rows = [
       wait({
         id: "sch_done",
@@ -253,13 +295,71 @@ describe("Scheduled inbox", () => {
         next_run_at: "2026-09-19T04:00:00.000Z",
       }),
     ]
+    fake.runs = []
     useApp.setState({ schedules: fake.rows })
     render(<Sidebar threads={[]} {...noop} />)
     fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
     const rows = screen.getAllByTestId("schedule-row")
+    expect(rows).toHaveLength(1)
     expect(rows[0].textContent).toMatch(/Continue the wait/)
     expect(rows[0].textContent).toMatch(/Active/)
-    expect(rows[1].textContent).toMatch(/old/)
+    expect(screen.queryByText("old")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Show ended (1)" }))
+    const revealed = screen.getAllByTestId("schedule-row")
+    expect(revealed).toHaveLength(2)
+    expect(revealed[1].textContent).toMatch(/old/)
+    fireEvent.click(screen.getByRole("button", { name: "Hide ended" }))
+    expect(screen.getAllByTestId("schedule-row")).toHaveLength(1)
+  })
+
+  it("still lists an ended wait that has unread findings", async () => {
+    fake.rows = [
+      wait({
+        id: "sch_done",
+        title: "old",
+        status: "done",
+        next_run_at: "2026-09-19T01:00:00.000Z",
+      }),
+    ]
+    fake.runs = [
+      {
+        id: "srun_1",
+        schedule_id: "sch_done",
+        thread_id: "th_findings",
+        turn_id: "tn_1",
+        status: "findings",
+        summary: "Something changed.",
+        unread: true,
+        created_at: "2026-09-19T03:00:00.000Z",
+        updated_at: "2026-09-19T03:00:00.000Z",
+      },
+    ]
+    useApp.setState({ schedules: fake.rows })
+    render(<Sidebar threads={[]} {...noop} />)
+    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+    await waitFor(() => expect(screen.getByTestId("schedule-row")).toBeInTheDocument())
+    expect(screen.getByTestId("schedule-row").textContent).toMatch(/old/)
+    expect(screen.queryByRole("button", { name: /Show ended/ })).not.toBeInTheDocument()
+  })
+
+  it("says there are no live waits when every row has ended", async () => {
+    fake.rows = [
+      wait({
+        id: "sch_done",
+        title: "old",
+        status: "done",
+        next_run_at: "2026-09-19T01:00:00.000Z",
+      }),
+    ]
+    fake.runs = []
+    useApp.setState({ schedules: fake.rows })
+    render(<Sidebar threads={[]} {...noop} />)
+    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    expect(screen.getByText("No live waits.")).toBeInTheDocument()
+    expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Show ended (1)" }))
+    expect(screen.getByTestId("schedule-row").textContent).toMatch(/old/)
   })
 })

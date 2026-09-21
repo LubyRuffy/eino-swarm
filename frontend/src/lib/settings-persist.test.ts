@@ -55,12 +55,30 @@ describe("persistPayload", () => {
   it("keeps the locale with the rest of the document", () => {
     const patch = persistPayload(base, "zh")
     expect(patch.memory).toEqual(base.memory)
+    expect(patch.search).toEqual(base.search)
     expect(patch.ui).toEqual({
       locale: "zh",
       font: "system",
       font_size: "medium",
       content_width: "comfortable",
     })
+  })
+
+  it("keeps a search pin with the rest of the document", () => {
+    const patch = persistPayload({
+      ...base,
+      search: {
+        embedding: true,
+        embedding_provider: "default",
+        embedding_model: "named-embed",
+      },
+    })
+    expect(patch.search).toEqual({
+      embedding: true,
+      embedding_provider: "default",
+      embedding_model: "named-embed",
+    })
+    expect(patch.memory).toEqual(base.memory)
   })
 
   it("keeps a typeface already on the document", () => {

@@ -162,6 +162,18 @@ export function sessionPreview(blocks: Block[], turn?: TurnState): string {
   return ""
 }
 
+/** Hover clock lives under the user request and under the last finished
+ *  answer of that turn. Intermediate answers while tools still run are
+ *  not their own messages. */
+export function responseClockBlockId(blocks: Block[]): string | undefined {
+  let last: Block | undefined
+  for (const b of blocks) {
+    if (b.kind === "answer") last = b
+  }
+  if (!last || last.streaming) return undefined
+  return last.id
+}
+
 function TurnFooter({ turn }: { turn?: TurnState }) {
   const t = useT()
   if (!turn || turn.status === "running" || !turn.endedAt || !turn.startedAt) return null

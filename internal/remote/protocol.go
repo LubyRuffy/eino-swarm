@@ -8,20 +8,24 @@ import (
 const (
 	ProtocolV = 1
 
-	OpList    = "list"
-	OpMore    = "more"
-	OpOpen    = "open"
-	OpStart   = "start"
-	OpSend    = "send"
-	OpSteer   = "steer"
-	OpStop    = "stop"
-	OpAnswer  = "answer"
-	OpWatch   = "watch"
-	OpUnwatch = "unwatch"
-	OpLog     = "log"
-	OpEvent   = "event"
-	OpReady   = "ready"
-	OpLagged  = "lagged"
+	OpList       = "list"
+	OpMore       = "more"
+	OpOpen       = "open"
+	OpStart      = "start"
+	OpSend       = "send"
+	OpSteer      = "steer"
+	OpStop       = "stop"
+	OpAnswer     = "answer"
+	OpWatch      = "watch"
+	OpUnwatch    = "unwatch"
+	OpLog        = "log"
+	OpEvent      = "event"
+	OpReady      = "ready"
+	OpLagged     = "lagged"
+	OpRunNow     = "run_now"
+	OpCancelWait = "cancel_wait"
+	OpResumeGoal = "resume_goal"
+	OpHello      = "hello"
 )
 
 // MaxPushPayload is pairlink's plaintext cap. A tool_delta that would
@@ -68,9 +72,19 @@ type Response struct {
 }
 
 type WatchStatus struct {
-	Running        bool   `json:"running,omitempty"`
-	TurnID         string `json:"turn_id,omitempty"`
-	AwaitingAnswer bool   `json:"awaiting_answer,omitempty"`
+	Running        bool      `json:"running,omitempty"`
+	TurnID         string    `json:"turn_id,omitempty"`
+	AwaitingAnswer bool      `json:"awaiting_answer,omitempty"`
+	Waiting        bool      `json:"waiting,omitempty"`
+	Wake           *WakeView `json:"wake,omitempty"`
+}
+
+// WakeView is the parked thread wait the phone paints. Prompt is clipped.
+type WakeView struct {
+	ID        string `json:"id"`
+	Title     string `json:"title,omitempty"`
+	Prompt    string `json:"prompt,omitempty"`
+	NextRunAt string `json:"next_run_at,omitempty"`
 }
 
 // EventView is one conversation event on pairlink. Same kind/seq as the
@@ -99,6 +113,7 @@ type ThreadView struct {
 	Title        string    `json:"title"`
 	ProjectID    string    `json:"project_id,omitempty"`
 	Running      bool      `json:"running"`
+	Waiting      bool      `json:"waiting,omitempty"`
 	LastActiveAt time.Time `json:"last_active_at"`
 	Summary      string    `json:"summary,omitempty"`
 }
@@ -109,16 +124,25 @@ type RunningView struct {
 	TurnID   string `json:"turn_id,omitempty"`
 	Action   string `json:"action,omitempty"`
 	AskUser  bool   `json:"ask_user,omitempty"`
+	Waiting  bool   `json:"waiting,omitempty"`
 }
 
 type ThreadDetail struct {
-	ID      string       `json:"id"`
-	Title   string       `json:"title"`
-	Goal    string       `json:"goal,omitempty"`
-	GoalOn  bool         `json:"goal_on,omitempty"`
-	PlanOn  bool         `json:"plan_on,omitempty"`
-	Running *RunningView `json:"running,omitempty"`
-	Turns   []TurnView   `json:"turns,omitempty"`
+	ID              string       `json:"id"`
+	Title           string       `json:"title"`
+	Goal            string       `json:"goal,omitempty"`
+	GoalOn          bool         `json:"goal_on,omitempty"`
+	GoalComplete    bool         `json:"goal_complete,omitempty"`
+	GoalBlocked     bool         `json:"goal_blocked,omitempty"`
+	GoalBlockReason string       `json:"goal_block_reason,omitempty"`
+	GoalCapped      bool         `json:"goal_capped,omitempty"`
+	GoalIdle        bool         `json:"goal_idle,omitempty"`
+	GoalStartedAt   string       `json:"goal_started_at,omitempty"`
+	PlanOn          bool         `json:"plan_on,omitempty"`
+	Waiting         bool         `json:"waiting,omitempty"`
+	Wake            *WakeView    `json:"wake,omitempty"`
+	Running         *RunningView `json:"running,omitempty"`
+	Turns           []TurnView   `json:"turns,omitempty"`
 }
 
 type TurnView struct {

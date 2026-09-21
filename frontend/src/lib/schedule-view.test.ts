@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest"
 
-import type { Schedule } from "@/lib/types"
+import type { Schedule, ScheduleRun } from "@/lib/types"
 import {
   applyArmedSchedule,
   applyCancelledSchedule,
   applyFiredThreadWake,
+  inboxHiddenEndedCount,
   inboxScheduleOrder,
+  inboxVisibleSchedules,
+  isLiveSchedule,
   isLiveThreadWake,
   keepArmedWakes,
+  laterScheduleDue,
   parseArmedSchedule,
   scheduleHeadline,
+  unreadFindings,
 } from "./schedule-view"
 
 function wait(partial: Partial<Schedule> = {}): Schedule {
@@ -55,6 +60,73 @@ describe("schedule-view", () => {
       "sch_new",
       "sch_old",
     ])
+  })
+
+  it("hides ended waits from the inbox unless they still have unread findings", () => {
+    const done = wait({ id: "sch_old" })
+    const cancelled = wait({ id: "sch_cancel", status: "cancelled" })
+    const paused = wait({
+      id: "sch_paused",
+      status: "paused",
+      next_run_at: "2026-09-19T03:00:00.000Z",
+    })
+    const live = wait({
+      id: "sch_new",
+      status: "active",
+      next_run_at: "2026-09-19T04:00:00.000Z",
+    })
+    const rows = [done, cancelled, paused, live]
+    expect(isLiveSchedule(live)).toBe(true)
+    expect(isLiveSchedule(paused)).toBe(true)
+    expect(isLiveSchedule(done)).toBe(false)
+    expect(isLiveSchedule(cancelled)).toBe(false)
+    expect(inboxVisibleSchedules(rows, [], false).map((row) => row.id)).toEqual([
+      "sch_paused",
+      "sch_new",
+    ])
+    expect(inboxHiddenEndedCount(rows, [])).toBe(2)
+    const unread = [
+      run({ id: "srun_old", schedule_id: "sch_old", thread_id: "th_old" }),
+    ]
+    expect(inboxVisibleSchedules(rows, unread, false).map((row) => row.id)).toEqual([
+      "sch_paused",
+      "sch_new",
+      "sch_old",
+    ])
+    expect(inboxHiddenEndedCount(rows, unread)).toBe(1)
+    expect(inboxVisibleSchedules(rows, unread, true).map((row) => row.id)).toEqual([
+      "sch_paused",
+      "sch_new",
+      "sch_old",
+      "sch_cancel",
+    ])
+  })
+
+  it("does not rewind next_run_at when a replayed arm chip is older", () => {
+    const live = wait({
+      id: "sch_new",
+      status: "active",
+      next_run_at: "2026-09-19T04:00:00.000Z",
+    })
+    const payload = parseArmedSchedule(
+      JSON.stringify({
+        id: "sch_new",
+        kind: "thread",
+        status: "active",
+        thread_id: "th_1",
+        next_run_at: "2026-09-19T01:00:00.000Z",
+      }),
+    )
+    const rows = applyArmedSchedule([live], payload, "th_1")
+    expect(rows.find((row) => row.id === "sch_new")?.next_run_at).toBe(
+      "2026-09-19T04:00:00.000Z",
+    )
+    expect(laterScheduleDue("2026-09-19T04:00:00.000Z", "2026-09-19T01:00:00.000Z")).toBe(
+      "2026-09-19T04:00:00.000Z",
+    )
+    expect(laterScheduleDue("", "2026-09-19T01:00:00.000Z")).toBe(
+      "2026-09-19T01:00:00.000Z",
+    )
   })
 
   it("applies an armed chip onto the list so the banner can paint before GET", () => {
@@ -120,5 +192,42 @@ describe("schedule-view", () => {
         threadId: "th_1",
       }).map((row) => row.id),
     ).toEqual(["sch_live"])
+  })
+})
+
+function run(partial: Partial<ScheduleRun> = {}): ScheduleRun {
+  return {
+    id: "srun_1",
+    schedule_id: "sch_1",
+    thread_id: "th_1",
+    turn_id: "tn_1",
+    status: "findings",
+    summary: "one thing changed",
+    unread: true,
+    created_at: "2026-09-19T03:00:00.000Z",
+    updated_at: "2026-09-19T03:00:00.000Z",
+    ...partial,
+  }
+}
+
+describe("unreadFindings", () => {
+  it("keeps unread findings and errors that still have a conversation", () => {
+    const rows = unreadFindings([
+      run({ id: "srun_old", created_at: "2026-09-19T03:00:00.000Z" }),
+      run({
+        id: "srun_new",
+        created_at: "2026-09-19T04:00:00.000Z",
+        summary: "later change",
+      }),
+      run({ id: "srun_quiet", status: "quiet", unread: false }),
+      run({ id: "srun_read", unread: false }),
+      run({ id: "srun_notarget", thread_id: "" }),
+      run({ id: "srun_err", status: "error", created_at: "2026-09-19T03:30:00.000Z" }),
+    ])
+    expect(rows.map((row) => row.id)).toEqual(["srun_new", "srun_err", "srun_old"])
+  })
+
+  it("does not treat a sample body as the filter", () => {
+    expect(JSON.stringify(unreadFindings([run()]))).not.toMatch(/CI|deploy|GitHub/)
   })
 })

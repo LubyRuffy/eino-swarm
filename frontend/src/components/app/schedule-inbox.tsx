@@ -22,7 +22,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 import { useT } from "@/lib/use-t"
 import type { Schedule, ScheduleCreate, ScheduleRun } from "@/lib/types"
-import { inboxScheduleOrder, scheduleHeadline } from "@/lib/schedule-view"
+import {
+  inboxHiddenEndedCount,
+  inboxVisibleSchedules,
+  isLiveSchedule,
+  scheduleHeadline,
+  unreadFindings,
+} from "@/lib/schedule-view"
 import { useApp } from "@/store/app"
 import { useProjects } from "@/store/projects"
 
@@ -87,6 +93,11 @@ export function ScheduleInbox() {
   const [cadence, setCadence] = useState<Cadence>("delay")
   const [cadenceValue, setCadenceValue] = useState("")
   const [projectId, setProjectId] = useState("none")
+  const [showEnded, setShowEnded] = useState(false)
+
+  useEffect(() => {
+    if (open) setShowEnded(false)
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -122,15 +133,25 @@ export function ScheduleInbox() {
 
   const openFindings = (run: ScheduleRun) => {
     void (async () => {
-      await readScheduleRun(run.id)
+      const thread = (run.thread_id ?? "").trim()
+      const same = thread
+        ? unreadFindings(runs).filter((r) => (r.thread_id ?? "").trim() === thread)
+        : []
+      const toRead = same.length > 0 ? same : [run]
+      for (const r of toRead) await readScheduleRun(r.id)
       close()
-      if (run.thread_id) await openThread(run.thread_id)
+      if (thread) await openThread(thread)
     })()
   }
 
+  const visible = inboxVisibleSchedules(schedules, runs, showEnded)
+  const hiddenEnded = inboxHiddenEndedCount(schedules, runs)
+
   return (
     <Dialog open onOpenChange={(next) => { if (!next) close() }}>
-      <DialogContent className="max-h-[80vh] max-w-2xl overflow-auto">
+      {/* overflow-hidden + flex-1 on the list let the create form steal
+          height and squash every wait row into an overlapping bar. */}
+      <DialogContent className="thin-scrollbar flex max-h-[80vh] max-w-2xl flex-col overflow-x-hidden overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{t("schedule.inboxTitle")}</DialogTitle>
           <DialogDescription>{t("schedule.inboxHint")}</DialogDescription>
@@ -146,9 +167,11 @@ export function ScheduleInbox() {
         ) : null}
         {schedules.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("schedule.empty")}</p>
+        ) : visible.length === 0 ? (
+          <p className="text-sm text-muted-foreground">{t("schedule.emptyLive")}</p>
         ) : (
-          <ul className="flex flex-col gap-2">
-            {inboxScheduleOrder(schedules).map((row) => (
+          <ul className="flex min-w-0 flex-col gap-2">
+            {visible.map((row) => (
               <ScheduleRow
                 key={row.id}
                 row={row}
@@ -162,6 +185,19 @@ export function ScheduleInbox() {
             ))}
           </ul>
         )}
+        {hiddenEnded > 0 ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="self-start"
+            onClick={() => setShowEnded((on) => !on)}
+          >
+            {showEnded
+              ? t("schedule.hideEnded")
+              : t("schedule.showEnded", { n: hiddenEnded })}
+          </Button>
+        ) : null}
         <form className="flex flex-col gap-3 border-t border-border pt-4" onSubmit={submit}>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="schedule-title">{t("schedule.title")}</Label>
@@ -254,30 +290,39 @@ function ScheduleRow({
         : row.status === "cancelled"
           ? t("schedule.statusCancelled")
           : t("schedule.statusActive")
-  const findings = runs.filter(
-    (r) => r.unread && (r.status === "findings" || r.status === "error") && r.thread_id,
-  )
+  const findings = unreadFindings(runs)
+  const latest = findings[0]
   return (
     <li
       data-testid="schedule-row"
-      className="rounded-lg border border-border bg-card px-3 py-2"
+      className="min-w-0 shrink-0 overflow-hidden rounded-lg border border-border bg-card px-3 py-2"
     >
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <p className="min-w-0 flex-1 truncate text-sm font-medium">
           {scheduleHeadline(row) || row.id}
         </p>
-        <Badge variant="outline">{kind}</Badge>
-        <Badge variant={row.status === "active" ? "success" : "outline"}>{status}</Badge>
+        <Badge className="shrink-0" variant="outline">{kind}</Badge>
+        <Badge
+          className="shrink-0"
+          variant={row.status === "active" ? "success" : "outline"}
+        >
+          {status}
+        </Badge>
       </div>
       {row.title.trim() && row.prompt.trim() ? (
         <p data-testid="schedule-prompt" className="mt-1 truncate text-xs text-muted-foreground">
           {row.prompt}
         </p>
       ) : null}
+      {!isLiveSchedule(row) && findings.length <= 1 && latest?.summary?.trim() ? (
+        <p data-testid="schedule-findings" className="mt-1 truncate text-xs">
+          {latest.summary}
+        </p>
+      ) : null}
       {row.next_run_at ? (
         <p className="mt-1 text-xs text-muted-foreground">{formatWhen(row.next_run_at)}</p>
       ) : null}
-      <div className="mt-2 flex flex-wrap gap-1">
+      <div className="mt-2 flex min-w-0 flex-wrap gap-1">
         {row.status === "active" ? (
           <Button type="button" variant="ghost" size="sm" onClick={onPause}>
             {t("schedule.pause")}
@@ -303,18 +348,35 @@ function ScheduleRow({
             </Button>
           </>
         ) : null}
-        {findings.map((run) => (
-          <Button
-            key={run.id}
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={() => onOpenFindings(run)}
-          >
-            {t("schedule.openFindings")}
-          </Button>
-        ))}
+        <FindingsControl findings={findings} onOpen={onOpenFindings} />
       </div>
     </li>
+  )
+}
+
+function FindingsControl({
+  findings,
+  onOpen,
+}: {
+  findings: ScheduleRun[]
+  onOpen: (run: ScheduleRun) => void
+}) {
+  const t = useT()
+  if (findings.length === 0) return null
+  const latest = findings[0]
+  const label =
+    findings.length === 1
+      ? t("schedule.openFindings")
+      : t("schedule.openFindingsCount", { n: findings.length })
+  return (
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      className="shrink-0"
+      onClick={() => onOpen(latest)}
+    >
+      {label}
+    </Button>
   )
 }

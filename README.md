@@ -54,9 +54,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   composer that has not been sent yet still drops immediately.
 - **Quote a passage into the next message.** Select text in the transcript (or a
   sub-agent's log) and **Add to chat**. It still works while a turn is
-  streaming. The snippet lands as an annotation on the composer — hover to
-  read, edit or drop it — and is sent with whatever you type next, instead of
-  being dumped into the box.
+  streaming. The snippet lands as a compact chip on the composer — edit or
+  drop it — and is sent in `<selected_text>` next to whatever you type
+  (`<user_request>`), instead of being dumped into the box.
 - **Interactive questions (`ask_user`).** When a preference would waste work
   if guessed, the manager pauses this turn with a numbered question dialog.
   The card says **Your answer needed**, the title bar says **Your turn**, and
@@ -69,18 +69,27 @@ uploads, downloads and the live event stream have exactly one implementation.
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   When progress is gated on time or a condition not worth polling now, it is
   told to wake and end the turn instead of spinning or asking you to remind
-  it. The sidebar **Scheduled** control opens the inbox dialog: pause, resume, cancel,
+  it. Estimated remaining time is biased short (about a third, then that
+  interval) so a check lands before the work is already done; extra checks
+  are expected. A named clock time you asked for is still honored. The sidebar **Scheduled** control opens the inbox dialog: pause, resume, cancel,
   Run now, or add a standalone job. An active wake on the open conversation
   shows a banner with the next check and the wait's title or prompt, **Run now**, and **Cancel wait** (not
   an icon-only dismiss — that sat under the goal banner's X). Run now and
   Cancel wait also sit on the armed-wait notice, which shows the same
-  instruction. The **Scheduled** inbox lists live waits first and shows the
-  stored prompt, not only an optional title. Cancel of a thread wake
+  instruction. The **Scheduled** inbox lists live waits (active or paused)
+  and shows the stored prompt, not only an optional title. Done and cancelled
+  waits stay hidden unless they still have unread findings, or you choose
+  **Show ended**. Cancel of a thread wake
   while idle continues a standing `/goal`; Run now fires the check without
   waiting for the timer (the wait banner hides while that turn is working,
-  and an early cron check consumes the pending slot). A scheduled check reports through `report_schedule`;
+  and an early cron check consumes the pending slot). The next-check time
+  comes from the live schedule row, not the first arm snapshot — a refresh
+  used to look like the timer jumped. A scheduled check reports through `report_schedule`;
   empty findings stay quiet. Quiet standalone runs stay out of Recents;
-  findings open from the inbox. Workers cannot schedule. Caps live in
+  findings open from the inbox — **Open findings** on a single unread fire,
+  or a stacked list of those summaries when several fires are unread, so the
+  row cannot overflow the dialog.
+  Workers cannot schedule. Caps live in
   Settings → Swarm.
 - **`/plan` before changing anything.** Planning unmounts write/edit/exec
   (and similar). The manager explores, asks, and writes `$ZWAI_HOME/plans/<thread>/PLAN.md`.
@@ -163,9 +172,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   lose power mid-turn: the next start continues every leftover conversation,
   with the answers already on screen still in the model's context, any
   sub-agents that were still working restarted under the same ids, and queued
-  follow-ups still waiting to run after that turn. A tool call that was in
-  flight when the process died is marked stopped, not left spinning. Pressing
-  **Stop** is the one thing that does not come back.
+  follow-ups still waiting to run after that turn. A file/shell tool that was
+  in flight is marked stopped. A `wait_agents` that was blocked is completed
+  as a timed-out wait on those same ids so the manager keeps waiting instead
+  of recounting finished leftovers as a new swarm. Pressing **Stop** is the
+  one thing that does not come back.
 - **Projects that remember.** Group conversations under one working directory and
   one instruction, and let them keep what they learn: after each turn the project
   writes down durable facts and records reusable procedures as skills, which
@@ -246,7 +257,8 @@ go run ./cmd/zwai web
 First launch writes `~/.zwai-swarm/config.yaml` and shows a setup banner until a
 model is configured. Open **Settings** (⌘,) — a full-page sheet, sections in the
 left rail (on the desktop window, **Back to app** sits below the traffic
-lights). Edits write themselves; **Back to app** flushes the last keystroke.
+lights). Each page is a list of compact rows (name and hint left, control
+right). Edits write themselves; **Back to app** flushes the last keystroke.
 Chrome language is **Settings → General**, the **中 / EN** control in the title
 bar, or ⌘K → Switch language. Agents still answer in the language you are using.
 Font and size are **Settings → General**. Conversation width is the title-bar
@@ -258,6 +270,9 @@ system prompt. A project's instruction is the business context; when the two
 conflict, the project wins.
 Fill in **Models** (base URL, API key, discover models, pick a
 default), or seed it from the environment before the first start.
+Conversation search is always keyword (FTS5). **Settings → Models → Semantic
+search** is off until you turn it on and name an embedding model; then ⌘K
+also ranks by meaning.
 On macOS desktop, a LAN endpoint needs Local Network permission (the
 window is not Terminal; `curl` working does not mean zwai can dial).
 
@@ -286,16 +301,25 @@ end-to-end tests run on and the fastest way to see the UI work.
 1. zwai **Settings → Phone**: turn pairing on and paste the hub URL
    (`https://…`). The Host Token is minted on this PC and hidden; it is not
    a Gateway Key. A missing hub toasts over the sheet (× to close).
+   **Keep this computer awake** stays on by default so a plugged-in host
+   does not idle-sleep while a phone still expects it. Turn it off if you
+   want the machine to sleep.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
 3. On the phone, open the **zwai** iOS or Android app (`mobile/ios`,
-   `mobile/android`). **Scan QR** is the product path. After bind, a live turn
+   `mobile/android`). The home-screen icon is the same ZWAI mark as the Dock.
+   **Scan QR** is the product path. After bind, a live turn
    (or the last thread this phone opened) opens immediately; otherwise the
    inbox lists projects and the latest 5 threads. The transcript opens on the
-   last turn, already at the live edge; pull up to load earlier. Markdown
+   last turn, already at the live edge; Earlier or pull up loads older rows. A tap
+   paints the chrome immediately; the transcript is a short tail, not the
+   whole turn. Markdown
    renders in the transcript. Tools stay collapsed with a one-line preview.
-   A `wait_agents` chip is a status count, not the roster JSON. A schedule
-   wake is a one-liner, not the payload JSON. Settings, files,
+   A `wait_agents` chip is a status count, not the roster JSON. A parked
+   `/goal` wait paints **Pursuing** plus **Waiting** (next check, Run now,
+   Cancel wait) instead of a silent composer. A long objective stays one
+   line so that chrome cannot cover the wait or the box. A dropped hub socket is a
+   reconnect banner, not a frozen inbox. Settings, files,
    PTY and Trace stay on the PC.
    `make mobile-ios` / `make mobile-android` open Xcode or Android Studio
    after copying the web bundle.
@@ -342,8 +366,9 @@ What you get:
    arrives after the last model call becomes a follow-up turn.
 4. **Quote the conversation.** Select a passage and **Add to chat** when you want
    the next message to point at it — including while a turn is still streaming.
-   Hover the annotation to edit or drop the
-   quote; send with an empty box if the quote is the whole request.
+   The composer shows a truncated chip (edit or drop); send with an empty box
+   if the quote is the whole request. The model sees `<selected_text>` and
+   `<user_request>` as separate blocks.
 5. **What this turn cost.** The **Trace** tab shows status, duration, billed
    tokens, and the turn id (`zwai trace <id>` replays the full dump). The event
    log stays folded until you open **Full log**.
@@ -352,7 +377,8 @@ Keyboard: Enter sends (while a turn is running it queues a follow-up; the live
 turn's own words are not queued; an IME
 confirmation — keeping leftover Latin as typed — is not a send) · `/` at the
 start of the box opens built-in commands · ⌘Enter steers
-the draft into the current turn · Shift+Enter a newline · `⌘K` command palette · `⌘N` new
+the draft into the current turn · Shift+Enter a newline · `⌘K` command palette
+(titles, bodies, and meaning when embeddings are on) · `⌘N` new
 conversation · `⌘F` find in the open conversation · `⌘B` hide or show the
 conversation list · `⌘\` toggle the right panel · `⌘J` open a terminal in the
 current project (or conversation) directory · `⌘,` settings · `Esc` stop

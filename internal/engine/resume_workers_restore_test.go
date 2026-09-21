@@ -316,3 +316,14 @@ func latestWaitFor(events []store.Event, agentID string) (status, result, errTex
 	}
 	return
 }
+
+func TestLeftoverWorkerCuesDoNotInviteARosterClose(t *testing.T) {
+	for _, cue := range []string{parkedWorkersCue, resumeWorkersCue} {
+		if !strings.Contains(cue, "do not close_agent") {
+			t.Fatalf("a leftover cue must not invite closing the roster:\n%s", cue)
+		}
+		if strings.Contains(strings.ToLower(cue), "canary") {
+			t.Fatal("leftover cue leaked the motivating failure")
+		}
+	}
+}

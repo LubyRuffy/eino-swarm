@@ -107,7 +107,8 @@ provider carries `has_api_key` and `ready` instead.
            "content_width": "comfortable"},
   "remote": {"enabled": false, "hub_url": "", "thread_limit": 5,
              "summary_chars": 280, "open_turns": 6, "event_chars": 4000,
-             "watch_events": 80}
+             "watch_events": 80, "keep_awake": true},
+  "search": {"embedding": false, "embedding_provider": "", "embedding_model": ""}
 }}
 ```
 
@@ -124,6 +125,13 @@ conversation column. Unknown locale values become `system`; unknown `font` /
 `font_size` / `content_width` become `system` / `medium` / `comfortable`.
 Omitted ui fields keep what is stored, so a language PUT cannot reset the
 typeface.
+
+`search` is conversation search. Keyword indexing (FTS5) is always on.
+`embedding` defaults to `false`. Turning it on without `embedding_model` still
+ranks by keywords only. A named model starts semantic ranking (and a background
+backfill); changing the name drops vectors from the previous pin. Empty
+`embedding_provider` follows `models.default`. PUT reloads the search worker
+without a restart.
 
 Per provider, `api_key` is three-valued:
 
@@ -162,6 +170,26 @@ top level is still the default **provider** id. `context_window` is that name's
 token limit: a discovered per-name value, else the provider fallback, else `0`
 (unknown — the meter then shows a count without a percentage). Offline (`--mock`)
 reports a simulated window so the ring still moves.
+
+### `GET /api/search?q=&limit=`
+
+Ranks conversations for ⌘K. `q` is required; blank returns no hits (not a
+wildcard). `limit` defaults to 20, cap 50. Keyword search is always on (FTS5
+trigram, with LIKE for queries shorter than three runes so two-character CJK
+still hits). `embedding` is true only when Settings has embeddings on **and**
+the query vector succeeded; a failed embed falls back to keywords and reports
+`false`.
+
+```json
+{"query": "unique-body", "embedding": false,
+ "hits": [{"thread_id": "th_ab12…", "title": "gamma",
+           "snippet": "unique-body needle sits here",
+           "score": 0.016, "source": "fts"}]}
+```
+
+`source` is `fts`, `semantic`, or `hybrid` (a hit that ranked on both lists).
+Archived conversations stay out. Tool dumps are not indexed. The one-id
+troubleshooting path is still the turn: search is a palette, not a trace.
 
 ### `POST /api/models/discover`
 
@@ -211,8 +239,10 @@ The phone does **not** call them; it talks pairlink to the hub, and the hub
 forwards sealed frames to this process.
 
 `remote` in `GET/PUT /api/settings` is `{enabled, hub_url, thread_limit,
-summary_chars, open_turns, event_chars, watch_events}`. `hub_url` is whatever you typed — never compiled
-in. A PUT of `remote` reloads the pairlink host. The Host Token is **not** in
+summary_chars, open_turns, event_chars, watch_events, keep_awake}`. `hub_url` is whatever you typed — never compiled
+in. A PUT of `remote` reloads the pairlink host. `keep_awake` (default true)
+holds a system sleep assertion while pairing is on; it is not tied to the hub
+socket. The Host Token is **not** in
 settings JSON; it lives under `$ZWAI_HOME/remote/`. Enabling pairing mints it
 if missing. `PUT /api/remote/token` can replace it.
 
@@ -220,13 +250,17 @@ if missing. `PUT /api/remote/token` can replace it.
 
 ```json
 {"enabled": false, "hub_url": "", "has_token": false, "online": false,
- "fingerprint": "", "error": ""}
+ "keep_awake": true, "awake": false, "fingerprint": "", "error": ""}
 ```
 
-`has_token` is a boolean. The Host Token is never returned. `online` is the
+`has_token` is a boolean. The Host Token is never returned. `keep_awake` is
+the setting; `awake` is whether this process currently holds the sleep
+assertion (`enabled && keep_awake`). `online` is the
 host WebSocket to the hub, not “pairing HTTP worked”. A quiet socket is
 dropped by the hub after 60s; the desktop keepalives and reconnects so a
-new QR can redeem.
+new QR can redeem. The phone ticket socket does the same (punch-ping data
+frames, not WebSocket control pings). A drop is a reconnect banner on the
+inbox or transcript; Retry uses the saved ticket and does not unlink.
 
 ### `PUT /api/remote/token`
 
@@ -263,20 +297,35 @@ Drops that phone. Further tickets fail at the hub.
 
 The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `list` / `more` / `open` / `start` / `send` / `steer` / `stop` / `answer` /
-`watch` / `unwatch` / `log`. Default list size is 5 threads; `more` pages
-threads. `log` `{thread_id, before}` pages older transcript events (newest
-page older than `before`, size `watch_events`).
+`watch` / `unwatch` / `log` / `run_now` / `cancel_wait` / `resume_goal`.
+Default list size is 5 threads; `more` pages threads. `log`
+`{thread_id, before}` pages older transcript events (newest page older than
+`before`, size `watch_events`). `run_now` and `cancel_wait` target the soonest
+armed thread wake on `{thread_id}` (`409 idle` when none is parked;
+`409 skipped_busy` when Run now cannot start). `resume_goal` starts the next
+pursuing turn after a cap, block, idle hold, or a complete that was closed
+early. `list.running` includes parked waits (`waiting: true`) even when they
+are not on the recent page, so the inbox cannot hide a hung-looking `/goal`.
+`open.detail` carries the standing objective flags (`goal_on`, complete /
+blocked / capped / idle, `goal_started_at`) and the parked `wake`
+(`id`, clipped title/prompt, `next_run_at`).
 The phone client opens a live turn (or the last thread it used) after the
-first `list`; `open` is that resume, not a new protocol.
+first `list`; a parked wait counts as live. `open` is that resume, not a new
+protocol.
 Responses carry `path` (`relay` or `direct`) and `session_id` so `zwai trace`
 can join the hop.
 
 `watch` `{thread_id, since}` subscribes to the same event kinds as desktop
 SSE (`frontend/src/lib/stream.ts` `KINDS`). `since` omitted or `0` loads the
-last turn (capped at `watch_events` from that turn's end), not the entire
-log from seq 1. That snapshot is the `watch` RPC reply: one `ready`
+live edge (at most 24 stored events from the last turn's end, even when
+`watch_events` is higher), not the entire log from seq 1. The rest of that
+turn pages with `log`, the same pull-up as older turns. That snapshot is the `watch` RPC reply: one `ready`
 `{seq, status, more, events}` so the phone can paint the tail without
-waiting on a later push. Catch-up is not a slideshow of `event` frames —
+waiting on a later push. `status` is the same live header as desktop:
+`running` / `turn_id` / `awaiting_answer` / `waiting`, plus `wake` while a
+thread wait is parked. Goal, schedule, `turn`, `done` and `error` event
+frames carry that `status` too so a parked `/goal` does not look idle after
+`done`. Catch-up is not a slideshow of `event` frames —
 painting those oldest-first is how the phone showed the start of the turn
 and then yanked down. `more` means older events still exist; the phone
 pulls up (or taps Earlier) and calls `log`. `log` with `before` omitted or
@@ -396,7 +445,8 @@ typed them (`400`).
 ### `GET /api/threads?archived=1&project=<id>`
 
 ```json
-{"threads": [{"id": "th_ab12…", "title": "Deadline sweep", "provider_id": "default",
+{"threads": [{"id": "th_ab12…", "title": "Deadline sweep", "title_auto": false,
+              "provider_id": "default",
               "model": "alpha",
               "reasoning_effort": "", "goal": "", "compacted": false,
               "archived": false, "project_id": "pj_ab12…", "pinned": false,
@@ -446,10 +496,12 @@ earlier replay into a briefing; the event log is unchanged.
 
 Body `{"title": "optional", "provider_id": "optional", "project_id": "optional"}`
 (an empty body is fine). A conversation created without a title shows its first
-message as a placeholder, then gets a short generated name after the first
-finished turn (`swarm.auto_title`, on by default). `title_auto` on the thread is
+message as a placeholder, then gets a short generated name from that opening
+line (`swarm.auto_title`, on by default) — not after the first reply, so a long
+first turn cannot rename a conversation the human has already found. `title_auto`
+on the thread (also on `GET /api/threads`) is
 true while the engine still owns that name; a title supplied here, or typed
-later via rename, clears it and is never overwritten. It follows the provider's default
+later via rename, or a landed generated name, clears it and is never overwritten. It follows the provider's default
 model until the composer picks one (`model` on the thread). With a `project_id`
 it works in that project's directory, carries its instruction and its memory, and
 an unknown id is rejected (`404`).
@@ -771,7 +823,10 @@ Does not resume a paused `/goal`. `400` when there is no plan body.
 ### `GET /api/threads/:id/turns`
 
 Every turn of the conversation, oldest first. This is what renders the
-"Worked for 12s" footers.
+"Worked for 12s" footers. Engine-started rows (`goal_continue`,
+`schedule_continue`) still carry the protocol `user_text`; they are not
+human sends. The jump rail keys off a `user_message`, so those rows share
+the previous human tick.
 
 ### `POST /api/threads/:id/review` → `202`
 
@@ -892,9 +947,9 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `goal_session` | historical: older builds forced a `/goal` turn to end so the next session could start. New runs do not emit it. `text` is JSON `{reason,elapsed_ms,rounds}` where `reason` is `time` (the removed wall-clock cut) or `iterations` (older builds that treated eino's ReAct slice as a session boundary). The turn is `done`, not cancelled. In-flight sub-agents were parked for the next session |
 | `compacted` | earlier replay was folded into a briefing, either by `/compact` or automatically at `swarm.auto_compact_tokens`. `text` is JSON `{summary,through_seq,chars_before?,chars_after?,auto?,tokens_before?,tokens_after?,phase?}`. `phase: "start"` is live only (`seq` 0) and means compression is in flight — clients keep the Working clock and show that in chrome (title bar **Compressing**, composer banner), not only as a transcript notice. A stored auto event has `auto: true` and the token counts. `err` is set when the summarizer failed and the thread is unchanged. The transcript notice is generic (the briefing is for later prompts); an icon on that row opens `summary` in a dialog |
 | `rewound` | a live client should drop rows from `text` (the cut seq) onward. `seq` is 0, not stored — a reload already has the truncated log |
-| `schedule` | a wait was armed. `text` is JSON `{id,kind,title,prompt,thread_id,origin_thread_id,status,next_run_at}`. Older rows omit the extra keys. The transcript shows a short chip; the id lives in `detail` so cancel can target it. The client also merges this payload into the inbox list immediately so the composer banner does not wait on `GET /api/schedules` |
+| `schedule` | a wait was armed. `text` is JSON `{id,kind,title,prompt,thread_id,origin_thread_id,status,next_run_at}`. Older rows omit the extra keys. The transcript shows a short chip; the id lives in `detail` so cancel can target it. The client also merges this payload into the inbox list immediately so the composer banner does not wait on `GET /api/schedules`. `next_run_at` on that chip is a snapshot of the first due slot — a later GET or fire must not be rewound if the event is replayed |
 | `schedule_fired` | the runtime started this turn because a wait fired. Not a `user_message`. `text` is the short chip (`Scheduled check.`). Same Working-clock rule as `goal_continued` |
-| `schedule_skipped` | a due tick could not start (busy). Trace-only; the transcript adds no row |
+| `schedule_skipped` | a due tick could not start (busy). Trace-only; the transcript adds no row. The client refreshes the schedule list so the banner shows the advanced `next_run_at` |
 | `schedule_report` | the scheduled check reported. `text` is JSON `{findings,quiet}`. Empty findings / `quiet:true` hide that turn's chat bubbles; the events stay in the log. When this event is omitted after `schedule_fired` and `done` is empty, the client treats the turn the same way. A findings report plus empty `done` keeps the fired chip |
 | `schedule_cancelled` | a wait was cancelled. `text` is the schedule id. The transcript shows a short chip, not the raw id |
 | `done` | the turn finished; `text` is the final answer. Empty / whitespace `text` hides chat bubbles only after `schedule_fired` when that turn did not already report findings. An armed `schedule`, `goal_continued`, compact, or other notice plus empty `done` stays visible. Non-empty `text` after a fire is findings and keeps the fired chip |
@@ -993,12 +1048,13 @@ Trace tab's Full log still lists the event either way.
 ### Conversation titles
 
 A conversation created without a title shows its first message as a placeholder
-so the sidebar is readable while the turn runs. After that turn finishes, one
-`title` event is stored under **the turn's own id** (`agent_id: "title-namer"`),
+so the sidebar is readable while the namer thinks. The namer runs from that
+opening line, not after the first finish: a `title` event is stored under **the
+turn's own id** (`agent_id: "title-namer"`),
 and the sidebar / header pick up `text` as the new name. The transcript ignores
 the event — a title is metadata, not a chat row — but the Trace tab's Full log
 lists it.
-Interrupted and failed turns keep the placeholder. A title the user typed
+A later turn does not name the conversation again. A title the user typed
 (`POST /api/threads` or rename) is never overwritten. `swarm.auto_title: false`
 leaves the placeholder. Empty `title_provider` / `title_model` follow the
 conversation's model; pin another name in Settings → Models when an endpoint

@@ -140,8 +140,26 @@ func TestSettingsViewHidesKeysAndReportsReadiness(t *testing.T) {
 	if a.Catalog == nil || b.Catalog == nil {
 		t.Fatal("catalog must be a list, not null")
 	}
+	if view.Search.Embedding || view.Search.EmbeddingModel != "" {
+		t.Fatalf("search embeddings must ship off with no model: %+v", view.Search)
+	}
 	// the view type has no field that could carry the key at all
 	if strings.Contains(strings.ToLower(a.Label+a.BaseURL+a.Model), "k") && a.Model == "k" {
 		t.Fatal("the key ended up in another field")
+	}
+}
+
+func TestGetSearchWithoutAServiceIsEmpty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := &Server{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/search?q=alpha", nil)
+	s.getSearch(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"hits":[]`) {
+		t.Fatalf("nil search must not 500: %s", w.Body.String())
 	}
 }

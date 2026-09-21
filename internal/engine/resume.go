@@ -263,6 +263,7 @@ func (e *Engine) closeOrphanedToolCalls(turn *store.Turn) {
 		e.log.Warn("could not list in-flight tools for resume", "turn", turn.ID, "err", err)
 		return
 	}
+	running, finished := e.workersFromThread(turn.ThreadID)
 	for _, c := range orphanedToolCalls(events) {
 		if isAskUserToolText(c.Text) {
 			// Re-arm the wait in run(); closing it as stopped would swallow
@@ -273,6 +274,18 @@ func (e *Engine) closeOrphanedToolCalls(turn *store.Turn) {
 		if agent == "" {
 			agent = swarm.DefaultManagerID
 		}
+		text, errText := resumeToolStopped, resumeToolStopped
+		if toolCallName(c.Text) == waitAgentsToolName {
+			_, args := splitToolCallText(c.Text)
+			ids := waitAgentIDsFromArgs(args)
+			if len(ids) == 0 {
+				for _, w := range running {
+					ids = append(ids, w.ID)
+				}
+			}
+			text = resumeWaitSnapshotJSON(ids, running, finished)
+			errText = ""
+		}
 		e.record(store.Event{
 			ThreadID:   turn.ThreadID,
 			TurnID:     turn.ID,
@@ -280,8 +293,8 @@ func (e *Engine) closeOrphanedToolCalls(turn *store.Turn) {
 			AgentID:    agent,
 			Role:       c.Role,
 			ToolCallID: c.ToolCallID,
-			Text:       resumeToolStopped,
-			Err:        resumeToolStopped,
+			Text:       text,
+			Err:        errText,
 		})
 	}
 }

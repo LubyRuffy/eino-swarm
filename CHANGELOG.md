@@ -13,12 +13,53 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
-- **Hover a transcript message to see when it happened.** User bubbles and
-  finished answers keep the event clock off a pointer until hover (or
-  focus); a touch screen leaves it up. The stamp is the local day and time;
-  the ISO sits on the tooltip so a row can be matched to a log.
+- **Phone pairing can keep this computer awake.** Settings → Phone has
+  **Keep this computer awake** (on by default). While pairing is on, the
+  host process holds a system sleep assertion so a phone can still reach
+  a plugged-in machine after the display goes dark. A hub reconnect does
+  not drop the assertion. macOS only honors it on AC power.
+
+- **⌘K searches conversation bodies, not just titles.** Keyword indexing is
+  always on (SQLite FTS5, with LIKE for short CJK). Semantic ranking is off
+  until Settings → Models turns embeddings on and names a model; then FTS and
+  vectors fuse. `GET /api/search` is the palette's source of truth.
+
+- **Hover a transcript message to see when it happened.** The clock row
+  sits under the user request and under the last finished answer of that
+  turn — not under every intermediate answer. The slot is a compact reserved
+  row and the ink fades in on hover (or focus); a touch screen leaves it up. The stamp
+  is the local day and time; the ISO sits on the tooltip so a row can be
+  matched to a log.
 
 ### Changed
+
+- **Scheduled inbox hides ended waits.** Done and cancelled rows used to sit
+  under the live ones and drown the list. The default view is active and
+  paused waits; an ended row only stays if it still has unread findings.
+  **Show ended** reveals the rest.
+
+- **Settings type is quiet.** Row titles and hints share 13px regular; ink vs
+  mute is the hierarchy, not a bold label over a caption. Menus are a light
+  bordered control in the same size, not a grey chip. The extra **Settings**
+  heading in the sidebar is gone (the section name is the page title).
+
+- **Conversation names are chosen from the first message, once.** A long first
+  turn used to keep the truncated request in the sidebar until it finished,
+  then swap in a generated name — so the row people had been looking at
+  vanished. The namer now runs as soon as that opening line is sent. A
+  later turn, or a namer that already failed, does not get a second try.
+
+- **Quoted sends tag the highlight separately from the request.** Composer
+  chips are one truncated line (edit / drop), the same shape as a Cursor
+  annotation. The payload uses `<selected_text>` / `<user_request>` so the
+  model does not have to guess where the quote ends. User and steer bubbles
+  render those as chips plus the instruction, not the wire tags.
+
+- **Scheduled waits bias short of remaining-time estimates.** The manager
+  used to be told to pick a cadence that can miss a beat, so a check often
+  landed after the work had already finished. Extra checks are cheap; a
+  late wait looks like the clock is lying. Named clock times the human
+  asked for are still honored.
 
 - **A blocked `ask_user` no longer looks like the swarm is still working.**
   The working breathe-dot meant "alive"; a question needs the human. The
@@ -36,17 +77,96 @@ co-working app built on it. The library API is unchanged except where noted
   is a compact composer, not the landing screen.
 
 - **The phone transcript is the last turn, not a dump of the whole log.**
-  Opening a conversation watches that turn (capped at `watch_events`);
-  pulling up pages older events with `log`. Tool rows stay collapsed to the
+  Opening a conversation watches a live-edge snapshot (not the whole last
+  turn); pulling up pages older events with `log`. Tool rows stay collapsed to the
   name plus a field preview until tapped, so a live `exec` or
   `report_schedule` is not a JSON wall. Schedule kinds use the same
   one-liners as desktop (`A wait is armed.` / `Scheduled check.` /
-  `A wait was cancelled.`); the phone does not paint the wake payload or
-  offer Run now / Cancel wait. A `progress` pulse is live chrome on
+  `A wait was cancelled.`); the open conversation paints the parked wait
+  (next check, **Run now**, **Cancel wait**) and the standing `/goal` state
+  so a silent composer is not a freeze. A `progress` pulse is live chrome on
   desktop, not a chat row; `wait_agents` stays a count chip (`n done ·
   m failed`), never the `elapsed_ms` roster JSON.
 
 ### Fixed
+
+- **Scheduled inbox wait rows keep their height.** Pinning the create form
+  inside a flex column let the list shrink, so several waits painted as
+  overlapping bars. The dialog scrolls as a whole; each wait row does not
+  shrink.
+
+- **Scheduled inbox no longer repeats Open findings off the card.** Several
+  unread fires used to paint one button each, so the row overflowed and the
+  kind/status badges slid out of view. One fire still uses **Open findings**;
+  several become a stacked, truncated list of those summaries. The dialog no
+  longer grows sideways.
+
+- **`GET /api/threads` carries `title_auto`.** The listing omitted it, so a
+  `done` refresh treated a generated name as still machine-owned and snapped
+  the sidebar back to the opening line.
+
+- **A force-quit mid-`wait_agents` no longer recounts the leftover roster as
+  a new naked swarm.** The blocked wait is completed as a timed-out snapshot
+  of those ids (live workers stay `running`). Finished leftovers stay planted
+  for `wait_agents` / `resume_agent` but are not re-pinned as
+  `spawn_agent({role})` on that leftover turn, so the next wait blocks on
+  who was actually still running.
+
+- **The phone launcher is the zwai mark, not Capacitor's cyan lattice.**
+  `cap add` left the default iOS App Icon and Android mipmaps in git. The
+  home screen showed someone else's logo. Those slots (and the splash) are
+  now painted from `internal/desktop/appicon.png`; `go run ./mobile/scripts/genicons.go`
+  rebuilds them.
+
+- **Leftover finished workers no longer look like a live army to close.**
+  `close_agent` on an already-finished id returns `already_finished`, not
+  `cancelled: true`. That lie made a long `/goal` treat one close as a canary
+  and walk the leftover roster. The manager prompt says leftover ids stay
+  for `resume_agent`. Desktop and phone hide `close_agent` the way the TUI
+  already did — Trace still lists it.
+
+- **Copy on a transcript message (and on a code fence) still works in the desktop window.**
+  WKWebView often rejects `navigator.clipboard.writeText`; the button swallowed
+  that and looked dead. Copy now uses `execCommand` while the click is still a
+  user gesture, then the Clipboard API if that path cannot write. Quoted
+  bubbles copy the chips plus the instruction, not the `<selected_text>`
+  wrappers the model sees.
+
+- **Retracting unread steering drops it from ⌘K.** The palette indexed
+  messages, not the live transcript after a retract, so a discarded nudge
+  still ranked.
+
+- **⌘K no longer keeps the previous search hits while the next query is in
+  flight.** Changing the box used to leave the old rows selectable (and
+  the local conversation list flashing) until `/api/search` returned.
+
+- **Embedding backfill no longer drops conversations when the queue is
+  full.** Overflow waits for a worker slot instead of waiting for the next
+  Settings reload.
+
+- **The conversation namer does not steal the first model error or an empty
+  usage pulse.** Naming runs as soon as the opening line is sent, on the
+  same mock endpoint as the manager. A counted test injection (and the
+  composer's token meter) belong to the turn, not the sidebar label.
+
+- **A blocked phone goal with an empty reason is not labelled as a failed
+  turn.** Only the stored sentinel maps to that copy. RPC failures use
+  localized strings, not English leftovers.
+
+- **The phone no longer pretends a dead hub socket is still live.** A quiet
+  ticket WebSocket is idle-dropped by the hub; the inbox stayed tappable,
+  `open`/`log` threw into the void, and a thread opened before `watch`
+  finished painted an invisible transcript you could not drag. The phone
+  now keepalives with the same punch-ping data frames as the desktop host,
+  fails RPC immediately on close, paints a reconnect banner (Retry does
+  not unlink), and retries when the app becomes visible again.
+
+- **A parked wait no longer freezes the next-check clock on the first due slot.**
+  The arm chip is a snapshot. After a fire (or a busy skip) the banner
+  could keep showing that first time until a full reload, so a 30-minute
+  interval looked overdue. Replaying the chip cannot rewind `next_run_at`,
+  the sidebar tick refreshes `GET /api/schedules` without toasting, and
+  `schedule_skipped` refreshes the list too.
 
 - **The phone no longer paints a `wait_agents` / `progress` roster as a JSON wall.**
   Desktop never puts `elapsed_ms` in the chat (a pulse is live chrome; a
@@ -61,6 +181,30 @@ co-working app built on it. The library API is unchanged except where noted
   pins after the work, listing/`status.waiting` drive the sidebar clock, and
   a stale schedule GET cannot overwrite a newer arm. A fire clears Waiting
   so a one-shot does not look parked after it already ran.
+
+- **The phone no longer waits on the inbox for the whole last turn.** A tap
+  paints the chrome from the listing immediately; `open` fills goal/wait,
+  then `watch` folds a short live-edge snapshot. Pull up for the rest.
+  A long `/goal` turn is not a multi-second freeze. A 2s inbox poll that
+  repeats the same roster does not remount the row mid-tap. The transcript
+  is a bounded overflow box (not a flex-column list); **Earlier** sits
+  above it so paging does not depend on a dead drag. Long tool paths wrap
+  inside the column instead of stretching the thread off-screen.
+
+- **The phone no longer treats a parked `/goal` wait as a dead composer.**
+  `list.running` carries `waiting`, `open`/`watch` carry the objective flags
+  and the wake snapshot, and Run now / Cancel wait / Start goal are RPC
+  (`run_now` / `cancel_wait` / `resume_goal`). The inbox puts that thread in
+  In progress; the conversation shows Pursuing plus Waiting instead of a
+  muted goal strip and a Send box. A long objective is one truncated line
+  (same as desktop) so the wait chip and composer cannot be pushed off the
+  screen.
+
+- **The jump rail is one tick per human send, not per turn.** A `/goal`
+  auto-continue or a wait fire stores a protocol prompt in `user_text`, so
+  the turns list used to clone a scheduled-check label for every fire. Those
+  rows share the last `user_message`. The hover list is labels on the page
+  background, not a shadowed popover of fake bubbles.
 
 - **Clicking the jump rail to a turn still above the loaded tail actually
   lands there.** The rail already listed every human turn; the click scrolled

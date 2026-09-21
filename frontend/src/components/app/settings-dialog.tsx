@@ -65,7 +65,7 @@ function sections(t: Translate) {
       id: "models",
       label: t("settings.nav.models"),
       icon: Cpu,
-      keys: "provider endpoint api key base url discover auxiliary title compact context window timeout model 模型 提供商",
+      keys: "provider endpoint api key base url discover auxiliary title compact context window timeout model embedding semantic search 模型 提供商 嵌入 语义 搜索",
     },
     {
       id: "swarm",
@@ -89,7 +89,7 @@ function sections(t: Translate) {
       id: "remote",
       label: t("settings.nav.remote"),
       icon: Smartphone,
-      keys: "phone remote pair qr hub token pairing scan 手机 扫码 远程 配对",
+      keys: "phone remote pair qr hub token pairing scan awake sleep model device 手机 扫码 远程 配对 唤醒 休眠 型号",
     },
   ] as const
 }
@@ -268,23 +268,23 @@ export function SettingsDialog({
             <aside
               className={cn(
                 RAIL_WIDTH,
-                "flex shrink-0 flex-col gap-3 border-r border-sidebar-border bg-sidebar py-4 text-sidebar-foreground",
+                "flex shrink-0 flex-col gap-2 border-r border-sidebar-border bg-sidebar py-3 text-sidebar-foreground",
               )}
             >
-              <div className="flex flex-col gap-3 px-3">
+              <DialogTitle className="sr-only">
+                {t("settings.title")}
+              </DialogTitle>
+              <div className="flex flex-col gap-2 px-3">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-8 justify-start gap-2 px-2 text-muted-foreground"
+                  className="h-7 justify-start gap-1.5 px-2 text-[13px] font-normal text-muted-foreground"
                   onClick={() => void leave()}
                 >
                   <ArrowLeft />
                   {t("settings.back")}
                 </Button>
-                <DialogTitle className="px-2 text-lg font-semibold">
-                  {t("settings.title")}
-                </DialogTitle>
                 <div className="relative">
                   <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -296,25 +296,28 @@ export function SettingsDialog({
                     aria-label={t("settings.search")}
                     placeholder={t("settings.searchPlaceholder")}
                     spellCheck={false}
-                    className="h-8 bg-background pl-8 text-xs shadow-none"
+                    className="h-8 border-transparent bg-sidebar-accent pl-8 text-[13px] font-normal shadow-none placeholder:text-muted-foreground"
                   />
                 </div>
               </div>
 
-              <TabsList className="mt-1 flex h-auto w-full flex-col items-stretch gap-0.5 bg-transparent px-2 py-0">
+              <TabsList className="flex h-auto w-full flex-col items-stretch gap-0.5 bg-transparent px-2 py-0">
                 {visibleNav.map((s) => (
                   <TabsTrigger
                     key={s.id}
                     value={s.id}
-                    className="h-9 w-full justify-start gap-2 rounded-lg px-2.5 text-sm font-medium shadow-none data-[state=active]:bg-accent data-[state=active]:text-accent-foreground data-[state=active]:shadow-none"
+                    className="h-8 w-full justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground shadow-none data-[state=active]:bg-sidebar-accent data-[state=active]:text-foreground data-[state=active]:shadow-none"
                   >
-                      <s.icon className="size-4" aria-hidden />
+                    <s.icon
+                      className="size-4 text-muted-foreground"
+                      aria-hidden
+                    />
                     {s.label}
                   </TabsTrigger>
                 ))}
               </TabsList>
 
-              <DialogDescription className="mt-auto px-4 pb-3 text-[11px] leading-snug text-muted-foreground">
+              <DialogDescription className="mt-auto px-3 pb-2 text-[11px] leading-snug text-muted-foreground">
                 {t("settings.storedIn", {
                   path: meta?.data_dir ?? t("settings.storedFallback"),
                 })}

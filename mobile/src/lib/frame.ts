@@ -5,6 +5,7 @@ export const TYPE_HANDSHAKE = 0x01
 export const TYPE_DATA = 0x02
 export const TYPE_DISCO = 0x03
 export const TYPE_OBSERVED = 0x04
+export const TYPE_PUNCH_PING = 0x10
 export const KEY_SIZE = 32
 export const SESSION_ID_SIZE = 16
 export const MAX_PAYLOAD = 64 << 10

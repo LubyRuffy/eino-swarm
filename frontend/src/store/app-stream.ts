@@ -47,7 +47,7 @@ export type StreamSnapshot = {
   refreshFiles: () => Promise<void>
   refreshThreads: () => Promise<void>
   refreshFollowups: () => Promise<void>
-  refreshSchedules: () => Promise<void>
+  refreshSchedules: (opts?: { silent?: boolean }) => Promise<void>
 }
 
 type StreamSet = (
@@ -217,6 +217,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     if (
       ev.kind === "schedule" ||
       ev.kind === "schedule_fired" ||
+      ev.kind === "schedule_skipped" ||
       ev.kind === "schedule_cancelled" ||
       ev.kind === "schedule_report"
     ) {

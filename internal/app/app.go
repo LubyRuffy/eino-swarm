@@ -23,6 +23,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/remote"
+	"github.com/LubyRuffy/eino-swarm/internal/search"
 	"github.com/LubyRuffy/eino-swarm/internal/server"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
@@ -55,6 +56,7 @@ type App struct {
 	Engine *engine.Engine
 	Server *server.Server
 	Remote *remote.Host
+	Search *search.Service
 	Logger *slog.Logger
 
 	addr string
@@ -90,6 +92,9 @@ func New(opts Options) (*App, error) {
 		logger.Info("running on the scripted offline provider; no model will be called")
 	}
 	eng := engine.New(cfg, st, pool, logger)
+	idx := search.New(st, pool, cfg, logger)
+	eng.SetThreadIndex(idx)
+	idx.Start()
 	// A previous process that was killed (or quit) leaves turns marked
 	// running. Continue them here: a crash is not a user Stop.
 	if n, err := eng.ResumeOrphanedTurns(); err != nil {
@@ -113,6 +118,7 @@ func New(opts Options) (*App, error) {
 		OpenURL: openURLFor(opts.Mode),
 	})
 	if err != nil {
+		idx.Stop()
 		eng.Shutdown()
 		_ = st.Close()
 		return nil, err
@@ -125,9 +131,10 @@ func New(opts Options) (*App, error) {
 	host := remote.New(eng, cfg, logger)
 	host.Start()
 	srv.SetRemote(host)
+	srv.SetSearch(idx)
 	return &App{
 		Config: cfg, Store: st, Pool: pool, Engine: eng, Server: srv,
-		Remote: host, Logger: logger, addr: addr,
+		Remote: host, Search: idx, Logger: logger, addr: addr,
 	}, nil
 }
 
@@ -220,6 +227,9 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 	if a.Remote != nil {
 		a.Remote.Stop()
+	}
+	if a.Search != nil {
+		a.Search.Stop()
 	}
 	a.Engine.Shutdown()
 	if err := a.Store.Close(); err != nil {

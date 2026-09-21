@@ -1,12 +1,4 @@
-import type { ReactNode } from "react"
-
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SelectItem } from "@/components/ui/select"
 import {
   normalizeUISettings,
   type Appearance,
@@ -20,7 +12,9 @@ import { useT } from "@/lib/use-t"
 import type { Theme } from "@/store/app"
 
 import {
+  SettingsChoice,
   SettingsPage,
+  SettingsRow,
   SettingsSection,
   settingsMatch,
 } from "./settings-field"
@@ -74,7 +68,7 @@ export function GeneralTab({
       description={t("settings.general.desc")}
     >
       <SettingsSection title={t("settings.general.appearance")}>
-        <ChromeSelect
+        <SettingsChoice
           query={query}
           search={[
             t("settings.general.appearance"),
@@ -99,9 +93,9 @@ export function GeneralTab({
           <SelectItem value="dark">
             {t("settings.general.themeDark")}
           </SelectItem>
-        </ChromeSelect>
+        </SettingsChoice>
 
-        <ChromeSelect
+        <SettingsChoice
           query={query}
           search={[
             t("settings.general.language"),
@@ -121,9 +115,9 @@ export function GeneralTab({
           </SelectItem>
           <SelectItem value="en">{t("settings.general.langEn")}</SelectItem>
           <SelectItem value="zh">{t("settings.general.langZh")}</SelectItem>
-        </ChromeSelect>
+        </SettingsChoice>
 
-        <ChromeSelect
+        <SettingsChoice
           query={query}
           search={[
             t("settings.general.font"),
@@ -145,9 +139,9 @@ export function GeneralTab({
             {t("settings.general.fontSerif")}
           </SelectItem>
           <SelectItem value="mono">{t("settings.general.fontMono")}</SelectItem>
-        </ChromeSelect>
+        </SettingsChoice>
 
-        <ChromeSelect
+        <SettingsChoice
           query={query}
           search={[
             t("settings.general.fontSize"),
@@ -170,9 +164,9 @@ export function GeneralTab({
           <SelectItem value="large">
             {t("settings.general.fontSizeLarge")}
           </SelectItem>
-        </ChromeSelect>
+        </SettingsChoice>
 
-        <ChromeSelect
+        <SettingsChoice
           query={query}
           search={[
             t("settings.general.contentWidth"),
@@ -200,11 +194,11 @@ export function GeneralTab({
           <SelectItem value="full">
             {t("settings.general.contentWidthFull")}
           </SelectItem>
-        </ChromeSelect>
+        </SettingsChoice>
       </SettingsSection>
 
       <SettingsSection title={t("settings.general.logs")}>
-        <ChromeSelect
+        <SettingsChoice
           query={query}
           search={[
             t("settings.general.logLevel"),
@@ -224,7 +218,7 @@ export function GeneralTab({
               {l}
             </SelectItem>
           ))}
-        </ChromeSelect>
+        </SettingsChoice>
       </SettingsSection>
 
       {settingsMatch(
@@ -238,67 +232,24 @@ export function GeneralTab({
         meta?.mode,
       ) ? (
         <SettingsSection title={t("settings.general.install")}>
-          <div
-            className="flex flex-col gap-1 px-4 py-3.5 text-sm"
-            data-settings-row=""
-          >
-            <p>
-              {t("settings.general.dataDir")}{" "}
-              <code className="font-mono text-xs text-muted-foreground">
-                {meta?.data_dir}
-              </code>
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {t("settings.general.version", {
+          <SettingsRow
+            label={t("settings.general.dataDir")}
+            hint={
+              t("settings.general.version", {
                 version: meta?.version ?? "",
                 mode: meta?.mode ?? "",
-              })}
-              {meta?.mock ? t("settings.general.mock") : ""}
-            </p>
-          </div>
+              }) + (meta?.mock ? t("settings.general.mock") : "")
+            }
+          >
+            <code
+              className="max-w-[16rem] truncate font-mono text-xs text-muted-foreground"
+              title={meta?.data_dir}
+            >
+              {meta?.data_dir}
+            </code>
+          </SettingsRow>
         </SettingsSection>
       ) : null}
     </SettingsPage>
-  )
-}
-
-function ChromeSelect({
-  query,
-  search,
-  label,
-  hint,
-  value,
-  onValueChange,
-  children,
-}: {
-  query: string
-  search: string[]
-  label: string
-  hint: string
-  value: string
-  onValueChange: (value: string) => void
-  children: ReactNode
-}) {
-  if (!settingsMatch(query, ...search)) return null
-  return (
-    <div
-      className="flex items-start justify-between gap-6 px-4 py-3.5"
-      data-settings-row=""
-    >
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">{label}</p>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          {hint}
-        </p>
-      </div>
-      <div className="w-56 shrink-0">
-        <Select value={value} onValueChange={onValueChange}>
-          <SelectTrigger className="h-9 text-sm" aria-label={label}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>{children}</SelectContent>
-        </Select>
-      </div>
-    </div>
   )
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/pairlink/client"
+	"github.com/LubyRuffy/pairlink/crypto"
 )
 
 // lagCheckInterval matches the SSE path: a stored event dropped for a
@@ -34,6 +35,8 @@ type LinkPump struct {
 	cfg       config.RemoteConfig
 	path      string
 	sessionID string
+	deviceFP  string
+	devices   *store.Store
 
 	sendMu sync.Mutex
 	send   func([]byte) error
@@ -45,13 +48,21 @@ type LinkPump struct {
 }
 
 func newLinkPump(eng *engine.Engine, cfg config.RemoteConfig, l *client.Link) *LinkPump {
-	return &LinkPump{
+	p := &LinkPump{
 		eng:       eng,
 		cfg:       cfg,
 		path:      l.Path(),
 		sessionID: l.SessionID(),
+		deviceFP:  crypto.Fingerprint(l.PeerPub),
 		send:      l.Send,
 	}
+	if eng != nil {
+		p.devices = eng.Store()
+	}
+	// Last-seen updates on the socket, not on hello. A phone that
+	// has not upgraded yet still moves the clock.
+	p.touchDevice("")
+	return p
 }
 
 func (p *LinkPump) Close() {
@@ -85,9 +96,19 @@ func (p *LinkPump) Dispatch(msg []byte) {
 	case OpUnwatch:
 		p.stopWatch()
 		p.reply(okBase(req.ID, p.path, p.sessionID))
+	case OpHello:
+		p.touchDevice(req.Text)
+		p.reply(okBase(req.ID, p.path, p.sessionID))
 	default:
 		p.reply(Handle(p.eng, p.cfg, req, p.path, p.sessionID))
 	}
+}
+
+func (p *LinkPump) touchDevice(label string) {
+	if p == nil || p.devices == nil || p.deviceFP == "" {
+		return
+	}
+	_ = p.devices.TouchRemoteDevice(p.deviceFP, label)
 }
 
 func (p *LinkPump) startWatch(req Request) Response {
@@ -160,14 +181,9 @@ func (p *LinkPump) runWatch(ctx context.Context, sub *engine.Subscription, threa
 
 func (p *LinkPump) readySnapshot(id, threadID string, history []store.Event, hasMore bool, highest int64) Response {
 	packed := packLogEvents(id, p.path, p.sessionID, threadID, history, hasMore, p.cfg)
-	st := p.eng.Status(threadID)
 	packed.Op = OpReady
 	packed.Seq = highest
-	packed.Status = &WatchStatus{
-		Running:        st.Running,
-		TurnID:         st.TurnID,
-		AwaitingAnswer: st.AwaitingAnswer,
-	}
+	packed.Status = watchStatus(p.eng, threadID, p.cfg)
 	return packed
 }
 
@@ -257,25 +273,41 @@ func (p *LinkPump) catchUp(ctx context.Context, threadID string, highest *int64)
 	return hasMore, nil
 }
 
-// First open (since 0) is the last turn, capped at watch_events from
-// that turn's end. Replaying from seq 0 paints the oldest user message
+// First open (since 0) is a live-edge page, not the whole last turn.
+// Replaying from seq 0 paints the oldest user message
 // on a phone that cannot scroll the rest in time. Pull-up uses log.
 func (p *LinkPump) watchHistory(threadID string, since int64) ([]store.Event, bool, error) {
 	if since > 0 {
 		events, err := p.eng.Replay(threadID, since)
 		return events, false, err
 	}
-	return lastTurnWindow(p.eng.Store(), threadID, watchEvents(p.cfg))
+	return lastTurnWindow(p.eng.Store(), threadID, watchOpenEvents(p.cfg))
 }
 
 func (p *LinkPump) pushEvent(threadID string, ev store.Event) bool {
 	if !shouldPush(ev.Kind) {
 		return ev.Seq > 0
 	}
-	raw, ok := encodeEventPush(p.path, p.sessionID, threadID, ev, p.cfg)
+	var st *WatchStatus
+	if carriesWatchStatus(ev.Kind) {
+		st = watchStatus(p.eng, threadID, p.cfg)
+	}
+	raw, ok := encodeEventPushStatus(p.path, p.sessionID, threadID, ev, p.cfg, st)
 	if !ok {
 		return ev.Seq > 0
 	}
 	p.sendRaw(raw)
 	return true
+}
+
+func carriesWatchStatus(kind string) bool {
+	switch kind {
+	case "turn", "done", "error",
+		"schedule", "schedule_fired", "schedule_skipped", "schedule_cancelled",
+		"goal", "goal_complete", "goal_blocked", "goal_capped", "goal_idle",
+		"goal_resumed", "goal_continued", "goal_edited":
+		return true
+	default:
+		return false
+	}
 }

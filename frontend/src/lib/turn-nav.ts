@@ -1,4 +1,5 @@
 import { isFollowBottom } from "./follow-scroll"
+import { plainUserText } from "./quote"
 import type { Block } from "./transcript"
 
 /** Fewer than this and a jump rail is just a decoration. */
@@ -22,37 +23,50 @@ export interface TurnNavItem {
   text: string
 }
 
-/** User turns only. Steering is a nudge inside a turn, not a place to jump. */
+/** Human user_message rows only. Steering is a nudge inside a turn, not
+ *  a place to jump. Engine-started sessions (/goal continue, a wait fire)
+ *  never mint a user row, so they share the last human tick. */
 export function turnNavItems(blocks: Block[]): TurnNavItem[] {
   const items: TurnNavItem[] = []
   for (const b of blocks) {
     if (b.kind !== "user") continue
     const text = b.text.trim()
     if (!text) continue
-    items.push({ id: b.turnId, text: b.text })
+    items.push({ id: b.turnId, text: plainUserText(b.text) })
   }
   return items
 }
 
-/** Turns API is the full list even when the transcript only has a tail page. */
-export function turnNavItemsFromTurns(
-  turns: { id: string; user_text: string; goal_continue?: boolean }[],
-): TurnNavItem[] {
+type TurnNavSource = {
+  id: string
+  user_text: string
+  goal_continue?: boolean
+  schedule_continue?: boolean
+}
+
+/** Turns API is the full list even when the transcript only has a tail page.
+ *  `user_text` on an engine-started turn is the protocol prompt, not a
+ *  human send — counting those used to clone a scheduled-check tick for
+ *  every fire. */
+export function turnNavItemsFromTurns(turns: TurnNavSource[]): TurnNavItem[] {
   const items: TurnNavItem[] = []
   for (const t of turns) {
-    if (t.goal_continue) continue
-    const text = t.user_text.trim()
-    if (!text) continue
-    items.push({ id: t.id, text: t.user_text })
+    if (!isHumanNavTurn(t)) continue
+    items.push({ id: t.id, text: plainUserText(t.user_text) })
   }
   return items
+}
+
+export function isHumanNavTurn(t: TurnNavSource): boolean {
+  if (t.goal_continue || t.schedule_continue) return false
+  return t.user_text.trim() !== ""
 }
 
 /** The complete rail: prefer the turn list when it knows about jumps the
  *  loaded slice has not fetched yet. */
 export function resolveTurnNavItems(
   blocks: Block[],
-  turns: { id: string; user_text: string; goal_continue?: boolean }[] = [],
+  turns: TurnNavSource[] = [],
 ): TurnNavItem[] {
   const fromBlocks = turnNavItems(blocks)
   const fromTurns = turnNavItemsFromTurns(turns)

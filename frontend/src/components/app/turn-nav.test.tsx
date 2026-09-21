@@ -110,4 +110,16 @@ describe("TurnNav", () => {
     expect(label).toHaveClass("line-clamp-2")
     expect(label.className).not.toMatch(/\btruncate\b/)
   })
+
+  it("does not paint the hover list as a shadowed bubble card", () => {
+    renderNav()
+    fireEvent.mouseEnter(screen.getByTestId("turn-nav"))
+    const list = screen.getByTestId("turn-nav-list")
+    expect(list.className).not.toMatch(/shadow/)
+    expect(list.className).not.toMatch(/bg-popover/)
+    expect(list.className).not.toMatch(/border-border/)
+    const row = within(list).getByRole("button", { name: "second request" })
+    expect(row.className).not.toMatch(/bg-secondary/)
+    expect(row.className).not.toMatch(/rounded-lg/)
+  })
 })

@@ -2,6 +2,7 @@ import { useState } from "react"
 
 import { PhoneMarkdown } from "@/components/markdown"
 import { t } from "@/lib/i18n"
+import { parseQuotedMessage } from "@/lib/quote"
 import type { CompactBlock } from "@/lib/transcript"
 import {
   dropPackedJson,
@@ -18,8 +19,8 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text && !b.hasImages) return null
     return (
-      <div className="ml-6 break-words rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
-        {text ? <PhoneMarkdown text={text} /> : null}
+      <div className="ml-6 min-w-0 max-w-full break-words rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
+        {text ? <QuotedPhoneText text={text} /> : null}
         {b.hasImages ? (
           <p className="mt-1 text-xs text-muted-foreground">{t("thread.image")}</p>
         ) : null}
@@ -30,8 +31,8 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text) return null
     return (
-      <div className="ml-6 break-words rounded-2xl bg-accent px-3 py-2 text-sm">
-        <PhoneMarkdown text={text} />
+      <div className="ml-6 min-w-0 max-w-full break-words rounded-2xl bg-accent px-3 py-2 text-sm">
+        <QuotedPhoneText text={text} />
       </div>
     )
   }
@@ -39,12 +40,13 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text) return null
     return (
-      <div className={cn("mr-4 text-sm leading-relaxed", b.streaming && "opacity-90")}>
+      <div className={cn("mr-4 min-w-0 break-words text-sm leading-relaxed", b.streaming && "opacity-90")}>
         <PhoneMarkdown text={text} />
       </div>
     )
   }
   if (b.kind === "tool") {
+    if (b.toolName === "close_agent") return null
     return <ToolChip block={b} />
   }
   if (b.kind === "spawn") {
@@ -61,16 +63,36 @@ export function renderBlock(b: CompactBlock) {
   return null
 }
 
+function QuotedPhoneText({ text }: { text: string }) {
+  const parsed = parseQuotedMessage(text)
+  if (parsed.quotes.length === 0) {
+    return <PhoneMarkdown text={text} />
+  }
+  return (
+    <div className="flex flex-col gap-2" data-testid="quoted-message">
+      {parsed.quotes.map((q, i) => (
+        <p
+          key={`${i}-${q.slice(0, 24)}`}
+          className="rounded-lg border border-border bg-muted/50 px-2 py-1 text-xs text-muted-foreground"
+        >
+          {i + 1}. {t("quote.selected")}: {q}
+        </p>
+      ))}
+      {parsed.body ? <PhoneMarkdown text={parsed.body} /> : null}
+    </div>
+  )
+}
+
 function ToolChip({ block }: { block: CompactBlock }) {
   const [open, setOpen] = useState(false)
   const name = block.toolName || t("thread.tool")
   const summary = toolChipSummary(block)
   const body = packedBody(block)
   return (
-    <div>
+    <div className="min-w-0 max-w-full">
       <button
         type="button"
-        className="flex max-w-full items-center gap-1.5 text-left text-xs text-muted-foreground"
+        className="flex min-w-0 max-w-full items-center gap-1.5 text-left text-xs text-muted-foreground"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >

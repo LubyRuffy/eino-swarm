@@ -44,6 +44,7 @@ func serveUI(t *testing.T, assets fs.FS) (*httptest.Server, func()) {
 	ts := httptest.NewServer(a.Server.Handler())
 	stop := func() {
 		ts.Close()
+		a.Search.Stop()
 		a.Engine.Shutdown()
 		_ = a.Store.Close()
 	}

@@ -1,4 +1,3 @@
-import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import type { Settings } from "@/lib/types"
 import { useT } from "@/lib/use-t"
@@ -6,6 +5,8 @@ import { useT } from "@/lib/use-t"
 import {
   SettingsPage,
   SettingsSection,
+  settingsHintClass,
+  settingsLabelClass,
   settingsMatch,
 } from "./settings-field"
 
@@ -32,15 +33,15 @@ export function PersonalityTab({
     >
       <SettingsSection>
         {settingsMatch(query, label, hint, t("settings.personality.title")) ? (
-          <div className="grid gap-2 px-4 py-3.5" data-settings-row="">
-            <Label htmlFor="personality-instructions">{label}</Label>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {hint}
-            </p>
+          <div className="grid gap-2 px-4 py-3" data-settings-row="">
+            <label htmlFor="personality-instructions" className={settingsLabelClass}>
+              {label}
+            </label>
+            <p className={settingsHintClass}>{hint}</p>
             <Textarea
               id="personality-instructions"
-              rows={10}
-              className="min-h-40 resize-y"
+              rows={8}
+              className="min-h-32 resize-y text-[13px]"
               value={value}
               onChange={(e) =>
                 onChange({

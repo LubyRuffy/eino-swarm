@@ -44,7 +44,7 @@ func TestOpenBrowserLaunchesTheURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { a.Engine.Shutdown(); _ = a.Store.Close() }()
+	defer func() { a.Search.Stop(); a.Engine.Shutdown(); _ = a.Store.Close() }()
 	url, err := a.Listen()
 	if err != nil {
 		t.Fatal(err)
@@ -137,7 +137,7 @@ func TestListenReportsABadAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { a.Engine.Shutdown(); _ = a.Store.Close() }()
+	defer func() { a.Search.Stop(); a.Engine.Shutdown(); _ = a.Store.Close() }()
 	if _, err := a.Listen(); err == nil {
 		t.Fatal("want an error for an unusable address")
 	}
@@ -327,6 +327,7 @@ func TestNewResumesTurnsLeftRunningByAPreviousProcess(t *testing.T) {
 	// Stop the ticker without finishing the leftover row: this test is a
 	// crash, but the process stays alive and must not keep polling a
 	// database we are about to close.
+	first.Search.Stop()
 	first.Engine.Shutdown()
 	_ = first.Store.Close()
 
@@ -334,7 +335,7 @@ func TestNewResumesTurnsLeftRunningByAPreviousProcess(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { second.Engine.Shutdown(); _ = second.Store.Close() }()
+	defer func() { second.Search.Stop(); second.Engine.Shutdown(); _ = second.Store.Close() }()
 
 	if !second.Engine.Status(th.ID).Running {
 		t.Fatal("the leftover turn was not restarted")
@@ -367,7 +368,7 @@ func TestNewServesTheEmbeddedBundleAndReportsALoopbackURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { a.Engine.Shutdown(); _ = a.Store.Close() }()
+	defer func() { a.Search.Stop(); a.Engine.Shutdown(); _ = a.Store.Close() }()
 	url, err := a.Listen()
 	if err != nil {
 		t.Fatal(err)

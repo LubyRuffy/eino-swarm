@@ -30,8 +30,13 @@ import { Disclosure } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ToolRow } from "@/components/app/tool-row"
 import { MarqueeText } from "@/components/app/marquee"
-import { GoalSessionTurn, groupByTurn } from "@/components/app/transcript-session"
+import {
+  GoalSessionTurn,
+  groupByTurn,
+  responseClockBlockId,
+} from "@/components/app/transcript-session"
 import { QueuedSteers } from "@/components/app/queued-steers"
+import { QuotedMessageBody, QuoteSnippet } from "@/components/app/quoted-message"
 import { TurnNav } from "@/components/app/turn-nav"
 import { InputThumbs } from "@/components/app/input-thumbs"
 import {
@@ -51,6 +56,8 @@ import { TURN_NAV_MIN, resolveTurnNavItems } from "@/lib/turn-nav"
 import { useTurnJump } from "@/lib/use-turn-jump"
 import { cn, formatDuration, formatMessageTime } from "@/lib/utils"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
+import { copyText } from "@/lib/copy-text"
+import { displayQuotedText, formatQuotedMessage, parseQuotedMessage } from "@/lib/quote"
 import { useT } from "@/lib/use-t"
 import { Textarea } from "@/components/ui/textarea"
 import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript"
@@ -211,27 +218,31 @@ export function Transcript({
           {historyHasMore ? (
             <div ref={sentinelRef} data-testid="history-sentinel" className="h-4" />
           ) : null}
-          {groups.map(([turnId, turnBlocks]) => (
-            <GoalSessionTurn
-              key={turnId}
-              turnId={turnId}
-              blocks={turnBlocks}
-              turn={turnById.get(turnId)}
-              renderBlock={(b) => (
-                <BlockView
-                  key={b.id}
-                  block={b}
-                  threadId={threadId}
-                  reveal={revealIds.has(b.id)}
-                  onSelectAgent={onSelectAgent}
-                  onResendUser={onResendUser}
-                  editing={editingSeq === b.seq}
-                  onBeginEdit={beginEdit}
-                  onCancelEdit={cancelEdit}
-                />
-              )}
-            />
-          ))}
+          {groups.map(([turnId, turnBlocks]) => {
+            const clockAnswerId = responseClockBlockId(turnBlocks)
+            return (
+              <GoalSessionTurn
+                key={turnId}
+                turnId={turnId}
+                blocks={turnBlocks}
+                turn={turnById.get(turnId)}
+                renderBlock={(b) => (
+                  <BlockView
+                    key={b.id}
+                    block={b}
+                    threadId={threadId}
+                    reveal={revealIds.has(b.id)}
+                    showClock={b.kind === "user" || b.id === clockAnswerId}
+                    onSelectAgent={onSelectAgent}
+                    onResendUser={onResendUser}
+                    editing={editingSeq === b.seq}
+                    onBeginEdit={beginEdit}
+                    onCancelEdit={cancelEdit}
+                  />
+                )}
+              />
+            )
+          })}
           <Heartbeat pulse={state.pulse} running={state.running} workers={liveWorkers(state)} />
           <QueuedSteers
             blocks={queued}
@@ -263,6 +274,7 @@ const BlockView = memo(function BlockView({
   block,
   threadId,
   reveal,
+  showClock,
   onSelectAgent,
   onResendUser,
   editing,
@@ -272,6 +284,7 @@ const BlockView = memo(function BlockView({
   block: Block
   threadId?: string
   reveal?: boolean
+  showClock?: boolean
   onSelectAgent: (id: string) => void
   onResendUser?: (text: string, seq: number) => void
   editing?: boolean
@@ -307,7 +320,7 @@ const BlockView = memo(function BlockView({
                 images={block.images}
                 className={block.text ? "mb-1" : undefined}
               />
-              {block.text ? <p className="stream-text">{block.text}</p> : null}
+              {block.text ? <QuotedMessageBody text={block.text} /> : null}
             </div>
           </div>
         </div>
@@ -317,13 +330,16 @@ const BlockView = memo(function BlockView({
       return <Reasoning block={block} reveal={reveal} />
 
     case "answer":
-      return <Answer block={block} />
+      return <Answer block={block} showClock={showClock} />
 
     case "tool":
       // A spawn shows up twice — once as the call, once as the sub-agent row
       // that follows it. The row is the better of the two, so the call is
       // dropped here; the Trace tab's Full log still lists it.
       if (block.tool?.name === "spawn_agent") return null
+      // close_agent is registry bookkeeping. A leftover /goal roster close is
+      // not a conversation; TUI already dropped it. Trace still lists it.
+      if (block.tool?.name === "close_agent") return null
       // A pending wait is the moment a swarm looks frozen from the outside, so
       // it shows the sub-agents it is waiting on and what each is doing right
       // now rather than a bare "running…".
@@ -513,12 +529,11 @@ function ThoughtBody({ text, streaming }: { text: string; streaming?: boolean })
   )
 }
 
-/** Hover-capable pointers hide the stamp until the row is hovered or
- *  focused. Touch has no hover; the stamp stays up so a log can still
- *  be matched. Named `/msg` because Disclosure already owns `group`, and
- *  a hover on a folded session must not light every stamp inside it. */
+/** Clock + actions sit under the request and the last finished answer.
+ *  Height is reserved; pointers fade the ink in. Touch keeps it up.
+ *  Named `/msg` because Disclosure already owns `group`. */
 const MESSAGE_META_CLASS =
-  "flex shrink-0 items-center gap-0.5 overflow-hidden whitespace-nowrap text-[11px] text-muted-foreground pointer-events-none max-h-0 opacity-0 transition-[max-height,opacity,margin] group-hover/msg:pointer-events-auto group-hover/msg:mt-1 group-hover/msg:max-h-8 group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:mt-1 group-focus-within/msg:max-h-8 group-focus-within/msg:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:mt-1 [@media(hover:none)]:max-h-8 [@media(hover:none)]:opacity-100"
+  "mt-0.5 flex h-5 shrink-0 items-center gap-0 overflow-hidden whitespace-nowrap text-[10px] leading-none text-muted-foreground pointer-events-none opacity-0 transition-opacity group-hover/msg:pointer-events-auto group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100"
 
 function MessageMeta({
   at,
@@ -537,7 +552,7 @@ function MessageMeta({
       data-testid={timeTestId}
       dateTime={at}
       title={at}
-      className="px-1 tabular-nums"
+      className="px-0.5 tabular-nums"
     >
       {stamped}
     </time>
@@ -555,19 +570,21 @@ function MessageMeta({
   )
 }
 
-function Answer({ block }: { block: Block }) {
+function Answer({ block, showClock }: { block: Block; showClock?: boolean }) {
   const copy =
-    !block.streaming && block.text.length > 0 ? (
-      <CopyButton text={block.text} className="text-muted-foreground" />
+    showClock && !block.streaming && block.text.length > 0 ? (
+      <CopyButton text={block.text} size="icon-2xs" className="text-muted-foreground" />
     ) : null
   return (
     <div className="group/msg relative py-2" data-testid="assistant-message">
       <div className="md">
         <MemoMarkdown text={block.text} streaming={block.streaming} />
       </div>
-      <MessageMeta at={block.at} timeTestId="assistant-message-time">
-        {copy}
-      </MessageMeta>
+      {showClock ? (
+        <MessageMeta at={block.at} timeTestId="assistant-message-time">
+          {copy}
+        </MessageMeta>
+      ) : null}
     </div>
   )
 }
@@ -777,36 +794,36 @@ export function CopyButton({
   text,
   className,
   label,
+  size = "icon-sm",
   "aria-label": ariaLabel,
 }: {
   text: string
   className?: string
   label?: string
+  size?: "icon-sm" | "icon-xs" | "icon-2xs"
   "aria-label"?: string
 }) {
   const t = useT()
   const [copied, setCopied] = useState(false)
   const name = ariaLabel ?? label ?? t("transcript.copy")
+  const glyph = size === "icon-2xs" ? "size-3" : "size-3.5"
   return (
     <Button
       type="button"
       variant="ghost"
-      size={label ? "sm" : "icon-sm"}
+      size={label ? "sm" : size}
       className={className}
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text)
+      onClick={() => {
+        void copyText(text).then((ok) => {
+          if (!ok) return
           setCopied(true)
           setTimeout(() => setCopied(false), 1200)
-        } catch {
-          // Clipboard access can be denied; the button just does nothing
-          // rather than throwing an error at the user.
-        }
+        })
       }}
       title={copied ? t("transcript.copied") : name}
       aria-label={name}
     >
-      {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+      {copied ? <Check className={glyph} /> : <Copy className={glyph} />}
       {label ? <span>{copied ? t("transcript.copied") : label}</span> : null}
     </Button>
   )
@@ -828,18 +845,25 @@ function UserMessage({
   onResend?: (text: string, seq: number) => void
 }) {
   const t = useT()
-  const [draft, setDraft] = useState(block.text)
+  const quoted = parseQuotedMessage(block.text)
+  const [draft, setDraft] = useState(
+    quoted.quotes.length > 0 ? quoted.body : block.text,
+  )
   const composingRef = useRef(false)
   const cancelIme = useRef<(() => void) | null>(null)
   useEffect(() => {
-    if (editing) setDraft(block.text)
+    if (!editing) return
+    const next = parseQuotedMessage(block.text)
+    setDraft(next.quotes.length > 0 ? next.body : block.text)
   }, [editing, block.text])
   useEffect(() => () => cancelIme.current?.(), [])
 
   const submit = () => {
-    const text = draft.trim()
-    if (!text && !(block.images && block.images.length > 0)) return
-    onResend?.(draft, block.seq)
+    const next = parseQuotedMessage(block.text)
+    const payload =
+      next.quotes.length > 0 ? formatQuotedMessage(next.quotes, draft) : draft
+    if (!payload.trim() && !(block.images && block.images.length > 0)) return
+    onResend?.(payload, block.seq)
     onCancelEdit?.()
   }
 
@@ -854,8 +878,17 @@ function UserMessage({
             <InputThumbs
               threadId={threadId}
               images={block.images}
-              className={draft ? "mb-2" : undefined}
+              className={draft || quoted.quotes.length > 0 ? "mb-2" : undefined}
             />
+            {quoted.quotes.length > 0 ? (
+              <ul className="mb-2 flex flex-col gap-1.5">
+                {quoted.quotes.map((q, i) => (
+                  <li key={`${i}-${q.slice(0, 24)}`}>
+                    <QuoteSnippet index={i} text={q} />
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             <Textarea
               autoFocus
               data-edit-draft="true"
@@ -893,7 +926,11 @@ function UserMessage({
               <Button
                 type="button"
                 size="sm"
-                disabled={!draft.trim() && !(block.images && block.images.length > 0)}
+                disabled={
+                  !draft.trim() &&
+                  quoted.quotes.length === 0 &&
+                  !(block.images && block.images.length > 0)
+                }
                 onClick={submit}
               >
                 {t("transcript.resend")}
@@ -911,13 +948,14 @@ function UserMessage({
                 images={block.images}
                 className={block.text ? "mb-2" : undefined}
               />
-              {block.text ? <p className="stream-text whitespace-pre-wrap">{block.text}</p> : null}
+              {block.text ? <QuotedMessageBody text={block.text} /> : null}
             </div>
             <MessageMeta at={block.at} timeTestId="user-message-time" timeFirst>
               {block.text ? (
                 <CopyButton
-                  text={block.text}
+                  text={displayQuotedText(block.text)}
                   aria-label={t("transcript.copyMessage")}
+                  size="icon-2xs"
                   className="text-muted-foreground"
                 />
               ) : null}
@@ -925,13 +963,13 @@ function UserMessage({
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
+                  size="icon-2xs"
                   aria-label={t("transcript.editMessage")}
                   title={t("transcript.editMessage")}
                   className="text-muted-foreground"
                   onClick={onBeginEdit}
                 >
-                  <Pencil className="size-3.5" />
+                  <Pencil className="size-3" />
                 </Button>
               ) : null}
             </MessageMeta>

@@ -31,6 +31,9 @@ func TestRemoteDefaultsAndTokenStayOffYAML(t *testing.T) {
 	if cfg.Remote.WatchEvents != DefaultRemoteWatchEvents {
 		t.Fatalf("watch events %d", cfg.Remote.WatchEvents)
 	}
+	if !cfg.Remote.KeepAwake {
+		t.Fatal("keep-awake defaults on so a phone can still reach this PC")
+	}
 	if _, err := os.Stat(cfg.RemoteDir()); err != nil {
 		t.Fatal(err)
 	}
@@ -176,6 +179,27 @@ func TestRemoteNormalizeClampsAndTrims(t *testing.T) {
 	}
 	if cfg.Remote.ThreadLimit != DefaultRemoteThreadLimit || cfg.Remote.SummaryChars != DefaultRemoteSummaryChars || cfg.Remote.OpenTurns != DefaultRemoteOpenTurns || cfg.Remote.EventChars != DefaultRemoteEventChars || cfg.Remote.WatchEvents != DefaultRemoteWatchEvents {
 		t.Fatalf("clamped %+v", cfg.Remote)
+	}
+	if !cfg.Remote.KeepAwake {
+		t.Fatal("an older remote block without keep_awake must default on")
+	}
+}
+
+func TestRemoteKeepAwakeFalseIsPreserved(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	dir := t.TempDir()
+	raw := []byte("remote:\n  enabled: true\n  keep_awake: false\n")
+	if err := os.WriteFile(filepath.Join(dir, FileName), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Remote.Enabled || cfg.Remote.KeepAwake {
+		t.Fatalf("explicit off must stick %+v", cfg.Remote)
 	}
 }
 

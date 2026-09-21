@@ -20,7 +20,11 @@ import {
 import type { Settings } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
-import { SettingsSection, settingsMatch } from "./settings-field"
+import {
+  SettingsRow,
+  SettingsSection,
+  settingsSelectTriggerClass,
+} from "./settings-field"
 
 /** Jobs that are not the conversation itself. They follow the conversation's
  *  model until someone pins a cheaper (or different) one. */
@@ -144,20 +148,14 @@ function AuxiliaryPin({
     })),
   )
 
-  if (!settingsMatch(query, title, subtitle, "auxiliary")) return null
-
   return (
-    <div
-      className="flex items-start justify-between gap-6 px-4 py-3.5"
-      data-settings-row=""
+    <SettingsRow
+      query={query}
+      search={[title, subtitle, "auxiliary"]}
+      label={title}
+      hint={subtitle}
+      badge={<Badge variant="default">{badge}</Badge>}
     >
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium">{title}</span>
-          <Badge variant="default">{badge}</Badge>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p>
-      </div>
       {choices.length > 1 ? (
         <Select
           value={titleModelChoiceId(provider, model, choices)}
@@ -170,7 +168,7 @@ function AuxiliaryPin({
             onPin(next.providerId, next.model)
           }}
         >
-          <SelectTrigger aria-label={ariaLabel} className="h-8 w-56 shrink-0">
+          <SelectTrigger aria-label={ariaLabel} className={settingsSelectTriggerClass}>
             <SelectValue placeholder={t("settings.aux.automatic")} />
           </SelectTrigger>
           <SelectContent>
@@ -193,6 +191,6 @@ function AuxiliaryPin({
           </SelectContent>
         </Select>
       ) : null}
-    </div>
+    </SettingsRow>
   )
 }

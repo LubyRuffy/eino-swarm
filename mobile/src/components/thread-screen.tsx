@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react"
 import { ChevronLeft } from "lucide-react"
 
 import { AskCard } from "@/components/ask-card"
-import { PhoneMarkdown } from "@/components/markdown"
+import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
 import { renderBlock } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/input"
@@ -25,6 +25,9 @@ export function ThreadScreen({
   onStop,
   onAnswer,
   onAnswerStructured,
+  onRunNow,
+  onCancelWait,
+  onResumeGoal,
 }: {
   detail: ThreadDetail
   blocks: CompactBlock[]
@@ -41,11 +44,15 @@ export function ThreadScreen({
     callId: string,
     answers: Record<string, { answers: string[] }>,
   ) => void
+  onRunNow?: () => void
+  onCancelWait?: () => void
+  onResumeGoal?: () => void
 }) {
   const ask = pendingAsk(blocks)
   const asking = Boolean(detail.running?.ask_user || ask?.pending)
   const running = Boolean(detail.running)
-  const scroller = useRef<HTMLOListElement>(null)
+  const waiting = Boolean(detail.waiting && !running)
+  const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const pinHeight = useRef<number | null>(null)
   const [atTail, setAtTail] = useState(false)
@@ -87,7 +94,7 @@ export function ThreadScreen({
   }
 
   return (
-    <main className="mx-auto flex h-full max-w-lg flex-col overflow-hidden bg-background">
+    <main className="mx-auto flex h-full min-w-0 w-full max-w-lg flex-col overflow-hidden bg-background">
       <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-1">
         <Button
           variant="ghost"
@@ -98,13 +105,21 @@ export function ThreadScreen({
           <ChevronLeft className="size-5" />
         </Button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          {running ? (
+          {running || waiting ? (
             <span
               className="size-1.5 shrink-0 rounded-full bg-[hsl(var(--running))]"
               aria-hidden
             />
           ) : null}
           <h1 className="min-w-0 truncate text-sm font-medium">{detail.title}</h1>
+          {waiting ? (
+            <span
+              data-testid="thread-status"
+              className="shrink-0 text-xs text-[hsl(var(--running))]"
+            >
+              {t("thread.waiting")}
+            </span>
+          ) : null}
         </div>
         {running ? (
           <Button
@@ -116,19 +131,43 @@ export function ThreadScreen({
           </Button>
         ) : null}
       </header>
-      {detail.goal_on && detail.goal ? (
-        <div className="max-h-16 overflow-hidden bg-background px-4 py-1 text-xs text-muted-foreground">
-          <PhoneMarkdown text={detail.goal} className="text-xs [&_p]:my-0" />
-        </div>
-      ) : null}
+      <GoalBanner
+        detail={detail}
+        running={running}
+        waiting={waiting}
+        onResume={onResumeGoal}
+      />
+      <ScheduleBanner
+        detail={detail}
+        running={running}
+        onRunNow={onRunNow}
+        onCancel={onCancelWait}
+      />
       {detail.plan_on ? (
         <p className="px-4 text-[11px] text-[hsl(var(--running))]">{t("thread.plan")}</p>
       ) : null}
 
-      <ol
+      {hasMore ? (
+        <div className="flex shrink-0 justify-center border-b border-border">
+          <Button
+            type="button"
+            variant="ghost"
+            className="h-8 text-xs text-muted-foreground"
+            disabled={loadingOlder || !caughtUp}
+            onClick={loadOlder}
+          >
+            {loadingOlder || !caughtUp ? t("thread.loading") : t("thread.earlier")}
+          </Button>
+        </div>
+      ) : null}
+
+      {/* Android WebView will not scroll a flex-column <ol>. Bounded
+          overflow box; Earlier sits above so paging is not a dead drag. */}
+      <div
         ref={scroller}
+        data-testid="transcript"
         className={cn(
-          "flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3",
+          "min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-scroll overscroll-y-contain touch-pan-y px-3 py-3 [-webkit-overflow-scrolling:touch]",
           !atTail && "invisible",
         )}
         onScroll={(e) => {
@@ -143,32 +182,18 @@ export function ThreadScreen({
           pullY.current = null
         }}
       >
-        <div
-          className={cn(
-            "flex flex-col gap-2",
-            hasMore && caughtUp && "min-h-[calc(100%+4rem)] justify-end",
-          )}
-        >
-          {hasMore ? (
-            <div className="flex justify-center">
-              <Button
-                type="button"
-                variant="ghost"
-                className="h-8 text-xs text-muted-foreground"
-                disabled={loadingOlder || !caughtUp}
-                onClick={loadOlder}
-              >
-                {loadingOlder || !caughtUp ? t("thread.loading") : t("thread.earlier")}
-              </Button>
-            </div>
-          ) : null}
+        <div className="flex min-w-0 w-full flex-col gap-2">
           {!caughtUp && blocks.length === 0 ? (
             <p className="px-1 text-xs text-muted-foreground">{t("thread.loading")}</p>
           ) : (
             blocks.map((b) => {
               const node = renderBlock(b)
               if (!node) return null
-              return <div key={b.id}>{node}</div>
+              return (
+                <div key={b.id} className="min-w-0 max-w-full">
+                  {node}
+                </div>
+              )
             })
           )}
           {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
@@ -178,7 +203,7 @@ export function ThreadScreen({
             />
           ) : null}
         </div>
-      </ol>
+      </div>
 
       <Composer
         asking={asking}
@@ -220,7 +245,7 @@ function Composer({
       : t("thread.send")
   return (
     <form
-      className="flex shrink-0 items-end gap-2 border-t border-border bg-background px-3 py-2"
+      className="flex min-w-0 shrink-0 items-end gap-2 border-t border-border bg-background px-3 py-2"
       onSubmit={(e) => {
         e.preventDefault()
         submit(asking ? "answer" : "send")

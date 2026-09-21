@@ -100,6 +100,25 @@ func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
 	}
 }
 
+func TestManagerPromptDoesNotTreatLeftoverWorkersAsSomethingToClose(t *testing.T) {
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, &config.Config{}, "")
+	for _, need := range []string{
+		"already stopped",
+		"leftover roster",
+		"already_finished",
+		"resume_agent",
+	} {
+		if !strings.Contains(prompt, need) {
+			t.Fatalf("missing %q:\n%s", need, prompt)
+		}
+	}
+	for _, leak := range []string{"canary", "金丝雀"} {
+		if strings.Contains(strings.ToLower(prompt), strings.ToLower(leak)) {
+			t.Fatalf("close_agent copy leaked %q", leak)
+		}
+	}
+}
+
 func TestOpenGoalPrefersProactiveDelegation(t *testing.T) {
 	open := goalSection("keep going", false, false, "")
 	if !strings.Contains(open, "Prefer sub-agents whenever they would save time or improve quality") {
@@ -145,10 +164,18 @@ func TestManagerPromptWaitingCopyStaysGeneric(t *testing.T) {
 		"do not wait for the human to remind",
 		"report_schedule",
 		"schedule_task",
+		"about a third",
+		"Extra checks",
+		"Do not pad",
+		"named clock time",
+		"do not stretch",
 	} {
 		if !strings.Contains(prompt, need) {
 			t.Fatalf("missing %q:\n%s", need, prompt)
 		}
+	}
+	if strings.Contains(prompt, "can miss a beat") {
+		t.Fatal("the conservative miss-a-beat cadence came back")
 	}
 	ask := strings.Index(prompt, "## Asking the human")
 	wait := strings.Index(prompt, "## Waiting")
@@ -618,5 +645,110 @@ func TestSpawnedWorkersReceiveTheProjectMemorySnapshot(t *testing.T) {
 	}
 	if spawned == 0 {
 		t.Fatal("the scripted run spawned no workers; the check never ran")
+	}
+}
+
+func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	set := buildTestToolset(t, e, th.ID)
+	prompt := ManagerPrompt(set, e.Config(), "")
+
+	// it must tell the agent the things only the runtime knows
+	if !strings.Contains(prompt, e.WorkspaceDir(th.ID)) {
+		t.Fatal("the prompt does not tell the agent where its workspace is")
+	}
+	for _, name := range set.Names {
+		if !strings.Contains(prompt, name) {
+			t.Fatalf("the prompt does not mention the %q tool the agent actually has", name)
+		}
+	}
+	for _, tool := range []string{"spawn_agent", "send_message", "wait_agents", "close_agent", "resume_agent"} {
+		if !strings.Contains(prompt, tool) {
+			t.Fatalf("the prompt does not explain %s", tool)
+		}
+	}
+	if !strings.Contains(prompt, "notified:manager") {
+		t.Fatal("the manager must be told it receives a missed handoff")
+	}
+	if !strings.Contains(prompt, "error result") {
+		t.Fatal("a missing spawn_agent field must be an error result, not a crashed turn")
+	}
+	for _, leak := range []string{"NodeRunError", "ToolNode"} {
+		if strings.Contains(prompt, leak) {
+			t.Fatalf("%q leaked into the manager prompt", leak)
+		}
+	}
+	if !strings.Contains(prompt, "visual input") {
+		t.Fatal("the prompt must say pasted images arrive on the message, not on disk")
+	}
+	if !strings.Contains(prompt, "lists attached files") {
+		t.Fatal("the prompt must say files named on a message are this request's uploads")
+	}
+	if !strings.Contains(prompt, "<selected_text>") || !strings.Contains(prompt, "<user_request>") {
+		t.Fatal("the prompt must say how a quoted highlight is tagged on the user message")
+	}
+	if !strings.Contains(prompt, "save time or improve quality") {
+		t.Fatal("the manager must spawn when a swarm would save time or improve quality")
+	}
+	if !strings.Contains(prompt, "do not wait for the human to ask") {
+		t.Fatal("delegation is proactive; the human should not have to request a swarm")
+	}
+	if !strings.Contains(prompt, "Spawning one worker and then waiting") {
+		t.Fatal("a one-worker wait must be called out as slower, not as a swarm win")
+	}
+	if strings.Contains(prompt, "Proactive multi-agent work is the default") {
+		t.Fatal("unconditional spawn-first came back")
+	}
+	if strings.Contains(prompt, "you answer directly when a request is small") {
+		t.Fatal("the conservative solo-first policy came back")
+	}
+	if !strings.Contains(prompt, "ask_user") {
+		t.Fatal("the manager must be told to ask through ask_user")
+	}
+	if !strings.Contains(prompt, "schedule_wake") {
+		t.Fatal("the manager must be told to arm a wake instead of spinning")
+	}
+	if !strings.Contains(prompt, "do not wait for the human to remind") {
+		t.Fatal("the manager must not ask the human to poke it when a wait is the next step")
+	}
+	if !strings.Contains(prompt, "about a third") {
+		t.Fatal("estimated waits must be biased short, not padded to miss a beat")
+	}
+	if strings.Contains(prompt, "can miss a beat") {
+		t.Fatal("the conservative miss-a-beat cadence came back")
+	}
+	if !strings.Contains(prompt, "report_schedule") {
+		t.Fatal("a scheduled turn must be told to report_schedule")
+	}
+	for _, leak := range []string{"deploy", "pull request", "cron job"} {
+		if strings.Contains(strings.ToLower(prompt), leak) {
+			t.Fatalf("the prompt hardcodes example-specific text %q", leak)
+		}
+	}
+	// "CI" as a token, not the letters inside "specific".
+	if managerPromptHasCIToken(prompt) {
+		t.Fatal(`the prompt hardcodes example-specific text "CI"`)
+	}
+	if strings.Contains(strings.ToLower(prompt), "sandbox") || strings.Contains(prompt, "沙箱") {
+		t.Fatal("the prompt must not call the workspace a sandbox")
+	}
+	if !strings.Contains(prompt, "language tag is chart") {
+		t.Fatal("the manager must be told when to emit a chart fence")
+	}
+	if !strings.Contains(prompt, "Do not invent numbers") {
+		t.Fatal("a chart must not become a place to fabricate values")
+	}
+	if !strings.Contains(prompt, "prefer the chart over spelling out the same") {
+		t.Fatal("the manager must prefer a chart over restating the series as text")
+	}
+	if !strings.Contains(prompt, "do not duplicate the plotted values in text") {
+		t.Fatal("a chart must replace a number dump, not sit next to one")
+	}
+	// and it must not smuggle in a particular task
+	for _, leak := range []string{"summarize", "researcher", "reviewer", "notes/", "re-research", "xlsx", "spreadsheet", "revenue", "sales"} {
+		if strings.Contains(strings.ToLower(prompt), strings.ToLower(leak)) {
+			t.Fatalf("the prompt hardcodes example-specific text %q", leak)
+		}
 	}
 }

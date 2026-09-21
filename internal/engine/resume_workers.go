@@ -14,7 +14,7 @@ import (
 
 // resumeWorkersCue is appended for the manager only when leftover workers
 // are being restored. It must stay task-agnostic.
-const resumeWorkersCue = "Sub-agents that were still running have been restarted under their existing ids. Wait for those rather than spawning replacements. Finished workers remain available under the same ids."
+const resumeWorkersCue = "Sub-agents that were still running have been restarted under their existing ids. Wait for those rather than spawning replacements. Finished workers remain available under the same ids; they are already stopped, so do not close_agent them."
 
 // cleanedUpWorkerErr is how a worker that Cleanup killed looks after a
 // restart. Distinct from a crash: that worker was not left running.
@@ -229,37 +229,8 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 }
 
 func dropTrailingIncompleteToolCalls(msgs []adk.Message) []adk.Message {
-	lastAsst := -1
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i] == nil || isSteerUser(msgs[i]) {
-			continue
-		}
-		if msgs[i].Role == schema.Assistant && len(msgs[i].ToolCalls) > 0 {
-			lastAsst = i
-			break
-		}
-		if msgs[i].Role == schema.User || (msgs[i].Role == schema.Assistant && len(msgs[i].ToolCalls) == 0) {
-			return msgs
-		}
-	}
-	if lastAsst < 0 {
-		return msgs
-	}
-	needed := map[string]struct{}{}
-	for _, tc := range msgs[lastAsst].ToolCalls {
-		if tc.ID != "" {
-			needed[tc.ID] = struct{}{}
-		}
-	}
-	if len(needed) == 0 {
-		return msgs
-	}
-	for _, m := range msgs[lastAsst+1:] {
-		if m != nil && m.Role == schema.Tool {
-			delete(needed, m.ToolCallID)
-		}
-	}
-	if len(needed) == 0 {
+	lastAsst, needed := trailingIncompleteToolCalls(msgs)
+	if lastAsst < 0 || len(needed) == 0 {
 		return msgs
 	}
 	out := append([]adk.Message{}, msgs[:lastAsst]...)
@@ -332,16 +303,20 @@ func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
 	if err != nil {
 		return nil, err
 	}
-	live = dropTrailingIncompleteToolCalls(live)
+	running, finished := e.workersFromThread(turn.ThreadID)
+	live = sealTrailingIncompleteToolCalls(live, running, finished)
 	combined := append(prior, live...)
 	text := strings.TrimSpace(turn.UserText)
 	if text == "" && !hasUserMessage(combined) {
 		return nil, fmt.Errorf("engine: leftover turn has no request to continue")
 	}
-	running, finished := e.workersFromThread(turn.ThreadID)
-	combined = appendWorkerPairs(combined, running, finished)
+	// Finished leftovers stay planted on the registry. Pinning them here
+	// as spawn_agent({role}) with no task made a long /goal look like the
+	// manager had just opened a naked army, and wait_agents returned on
+	// the first already-done id instead of blocking on the live ones.
+	combined = appendWorkerPairs(combined, running, nil)
 	msgs := resumeMessages(combined, text)
-	if len(running)+len(finished) > 0 && !hasUserContent(msgs, resumeWorkersCue) {
+	if len(running) > 0 && !hasUserContent(msgs, resumeWorkersCue) {
 		msgs = append(msgs, schema.UserMessage(resumeWorkersCue))
 	}
 	return msgs, nil

@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
@@ -121,5 +123,89 @@ func TestSummaryFallsBackToUserTextAndRunningAction(t *testing.T) {
 	listed := Handle(e, config.RemoteConfig{}, Request{ID: "r", Op: OpList}, "relay", "s")
 	if !listed.OK || len(listed.Running) == 0 || listed.Running[0].Action != "read" {
 		t.Fatalf("running %+v", listed.Running)
+	}
+}
+
+func TestRunNowCancelWaitAndResumeGoalMapOntoTheEngine(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("parked", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	idle := Handle(e, config.RemoteConfig{}, Request{ID: "n", Op: OpRunNow, ThreadID: th.ID}, "relay", "s")
+	if idle.OK || idle.Code != "idle" {
+		t.Fatalf("run now without a wake %+v", idle)
+	}
+	cancelIdle := Handle(e, config.RemoteConfig{}, Request{ID: "c", Op: OpCancelWait, ThreadID: th.ID}, "relay", "s")
+	if cancelIdle.OK || cancelIdle.Code != "idle" {
+		t.Fatalf("cancel without a wake %+v", cancelIdle)
+	}
+	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().UpdateThread(th.ID, map[string]any{
+		"goal_complete": true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	wake, err := e.CreateSchedule(engine.ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Title: "wake", Prompt: "Continue the wait.", DelayS: 3600,
+		CreatedBy: store.ScheduleCreatedManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel := Handle(e, config.RemoteConfig{}, Request{ID: "x", Op: OpCancelWait, ThreadID: th.ID}, "relay", "s")
+	if !cancel.OK {
+		t.Fatalf("cancel %+v", cancel)
+	}
+	got, err := e.Store().GetSchedule(wake.ID)
+	if err != nil || got.Status != store.ScheduleCancelled {
+		t.Fatalf("cancelled row %+v err=%v", got, err)
+	}
+	if _, err := e.CreateSchedule(engine.ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Title: "wake", Prompt: "Continue the wait.", DelayS: 3600,
+		CreatedBy: store.ScheduleCreatedManager,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run := Handle(e, config.RemoteConfig{}, Request{ID: "go", Op: OpRunNow, ThreadID: th.ID}, "relay", "s")
+	if !run.OK {
+		t.Fatalf("run now %+v", run)
+	}
+	if !e.Status(th.ID).Running {
+		t.Fatal("run now must start the parked turn")
+	}
+	if err := e.Interrupt(th.ID); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for e.Status(th.ID).Running && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if e.Status(th.ID).Running {
+		t.Fatal("interrupt did not settle")
+	}
+	resume := Handle(e, config.RemoteConfig{}, Request{ID: "re", Op: OpResumeGoal, ThreadID: th.ID}, "relay", "s")
+	if !resume.OK {
+		t.Fatalf("resume %+v", resume)
+	}
+	if !e.Status(th.ID).Running {
+		t.Fatal("resume goal must start a turn")
+	}
+	loaded, err := e.Store().GetThread(th.ID)
+	if err != nil || loaded.GoalComplete {
+		t.Fatalf("goal still complete %+v err=%v", loaded, err)
+	}
+	missing := Handle(e, config.RemoteConfig{}, Request{ID: "ng", Op: OpResumeGoal, ThreadID: "nope"}, "relay", "s")
+	if missing.OK {
+		t.Fatalf("resume missing %+v", missing)
+	}
+	_ = e.Store().Close()
+	closed := Handle(e, config.RemoteConfig{}, Request{ID: "cl", Op: OpRunNow, ThreadID: th.ID}, "relay", "s")
+	if closed.OK {
+		t.Fatalf("run now on closed store %+v", closed)
 	}
 }

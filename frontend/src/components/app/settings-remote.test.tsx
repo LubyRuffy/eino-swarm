@@ -53,6 +53,7 @@ const base: Settings = {
     open_turns: 6,
     event_chars: 4000,
     watch_events: 80,
+    keep_awake: true,
   },
 }
 
@@ -103,6 +104,40 @@ describe("RemoteTab", () => {
     expect(screen.queryByLabelText("Host Token")).not.toBeInTheDocument()
     expect(screen.getByLabelText("Event text on the phone")).toHaveValue(4000)
     expect(screen.getByLabelText("Events on the phone")).toHaveValue(80)
+    expect(screen.getByLabelText("Keep this computer awake")).toBeChecked()
+  })
+
+  it("paints the reported phone model instead of a bare fingerprint", async () => {
+    vi.mocked(api.remoteBindings).mockResolvedValue([
+      {
+        id: "b1",
+        device_fp: "aa11bb22cc33dd44",
+        device: "Phone 1.0 Device",
+        created_at: "2026-09-20T16:00:00Z",
+        last_seen: "2026-09-20T16:03:32Z",
+        session_id: "s1",
+      },
+    ])
+    render(<RemoteTab settings={base} onChange={vi.fn()} />)
+    await waitFor(() =>
+      expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/aa11bb22cc33dd44/)).toBeInTheDocument()
+    expect(screen.getByText(/Last connected/)).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Bound phones" })?.closest("section")?.textContent ?? "").not.toMatch(
+      /^aa11bb22cc33dd44$/,
+    )
+  })
+
+  it("toggles keep-awake without inventing a sample phrase", async () => {
+    const onChange = vi.fn()
+    render(<RemoteTab settings={base} onChange={onChange} />)
+    await waitFor(() =>
+      expect(screen.getByLabelText("Keep this computer awake")).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByLabelText("Keep this computer awake"))
+    const next = onChange.mock.calls[0][0] as Settings
+    expect(next.remote?.keep_awake).toBe(false)
   })
 
   it("toasts a pairing failure instead of a red line under the Phone heading", async () => {

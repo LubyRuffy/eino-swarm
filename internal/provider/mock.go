@@ -38,18 +38,18 @@ const mockChunkDelay = 18 * time.Millisecond
 func newMockModel(role string) model.BaseChatModel {
 	switch role {
 	case managerRole, "":
-		return &mockModel{script: managerScript}
+		return &mockModel{script: managerScript, role: managerRole}
 	case reviewerRole:
-		return &mockModel{script: reviewerScript}
+		return &mockModel{script: reviewerScript, role: reviewerRole}
 	case titleRole:
-		return &mockModel{script: titleNamerScript}
+		return &mockModel{script: titleNamerScript, role: titleRole}
 	case compactRole, sessionMemoryRole:
 		// Briefings are not a chat stream. Pacing them like the manager
 		// would add seconds of fake tokens to every /compact and session
 		// refresh in --mock and the test suite.
-		return &mockModel{script: compactSummarizerScript, instant: true}
+		return &mockModel{script: compactSummarizerScript, instant: true, role: role}
 	default:
-		return &mockModel{script: workerScript(role)}
+		return &mockModel{script: workerScript(role), role: role}
 	}
 }
 
@@ -82,6 +82,7 @@ type mockScript func(turn int, msgs []*schema.Message) *schema.Message
 type mockModel struct {
 	script  mockScript
 	instant bool
+	role    string
 
 	mu   sync.Mutex
 	turn int
@@ -98,7 +99,7 @@ func (m *mockModel) Generate(ctx context.Context, in []*schema.Message, _ ...mod
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := mockCallFailure(); err != nil {
+	if err := m.scriptedFailure(); err != nil {
 		return nil, err
 	}
 	out := m.script(m.nextTurn(), in)
@@ -110,7 +111,7 @@ func (m *mockModel) Stream(ctx context.Context, in []*schema.Message, _ ...model
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := mockCallFailure(); err != nil {
+	if err := m.scriptedFailure(); err != nil {
 		return nil, err
 	}
 	out := m.script(m.nextTurn(), in)
@@ -637,6 +638,31 @@ func mockCallFailure() error {
 		return mockFailErr
 	}
 	return mockFailErr
+}
+
+func (m *mockModel) scriptedFailure() error {
+	// Counted injections are for the manager (and workers). The namer
+	// races the opening turn and would otherwise eat the one failure a
+	// retry test planted. A blanket SetMockFailure still applies.
+	if mockAuxiliaryRole(m.role) && mockFailCounted() {
+		return nil
+	}
+	return mockCallFailure()
+}
+
+func mockFailCounted() bool {
+	mockFailMu.Lock()
+	defer mockFailMu.Unlock()
+	return mockFailN && mockFailErr != nil
+}
+
+func mockAuxiliaryRole(role string) bool {
+	switch role {
+	case titleRole, compactRole, sessionMemoryRole, reviewerRole:
+		return true
+	default:
+		return false
+	}
 }
 
 func mockShouldCompleteGoal(msgs []*schema.Message) bool {

@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest"
 import { Composer } from "./composer"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { IME_KEYCODE } from "@/lib/ime"
+import { formatQuotedMessage } from "@/lib/quote"
 import type { Attachment, ModelInfo } from "@/lib/types"
 
 function savedFile(name: string): Attachment {
@@ -223,9 +224,13 @@ describe("Composer quotes", () => {
     const input = screen.getByTestId("composer-input")
     fireEvent.change(input, { target: { value: "do this" } })
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
-    expect(onSend).toHaveBeenCalledWith("Selected text:\nalpha\n\ndo this", undefined, {
-      steer: false,
-    })
+    expect(onSend).toHaveBeenCalledWith(
+      formatQuotedMessage(["alpha"], "do this"),
+      undefined,
+      {
+        steer: false,
+      },
+    )
     expect(onQuotesChange).toHaveBeenCalledWith([])
   })
 
@@ -236,7 +241,9 @@ describe("Composer quotes", () => {
       quotes: [{ id: "q1", text: "alpha" }],
     })
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
-    expect(onSend).toHaveBeenCalledWith("Selected text:\nalpha", undefined, { steer: false })
+    expect(onSend).toHaveBeenCalledWith(formatQuotedMessage(["alpha"], ""), undefined, {
+      steer: false,
+    })
   })
 })
 

@@ -31,6 +31,7 @@ type Config struct {
 	Log         LogConfig         `yaml:"log" json:"log"`
 	UI          UIConfig          `yaml:"ui" json:"ui"`
 	Remote      RemoteConfig      `yaml:"remote" json:"remote"`
+	Search      SearchConfig      `yaml:"search" json:"search"`
 
 	// dataDir is where this config was loaded from. Not serialized: the file
 	// cannot meaningfully record its own location.
@@ -586,6 +587,7 @@ func Default() *Config {
 			OpenTurns:    DefaultRemoteOpenTurns,
 			EventChars:   DefaultRemoteEventChars,
 			WatchEvents:  DefaultRemoteWatchEvents,
+			KeepAwake:    DefaultRemoteKeepAwake,
 		},
 	}
 }
@@ -821,6 +823,7 @@ func (c *Config) normalize() {
 		c.Swarm.CompactModel = ""
 	}
 	c.normalizeRemote()
+	c.normalizeSearch()
 }
 
 func (c *Config) providerIndex(id string) int {
@@ -974,6 +977,7 @@ func (c *Config) Replace(next *Config) error {
 	c.Log = next.Log
 	c.UI = next.UI
 	c.Remote = next.Remote
+	c.Search = next.Search
 	return c.Save()
 }
 

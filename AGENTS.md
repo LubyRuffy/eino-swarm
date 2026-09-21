@@ -8,7 +8,7 @@ first for what the modules are; this file is about how to change them.
 ```bash
 go run ./cmd/zwai desktop          # the app, native window (builds frontend/dist if sources changed)
 go run ./cmd/zwai web --mock       # the app in a browser, no model needed
-make test                          # go test -race -cover ./...  + front-end unit tests + phone tests
+make test                          # go test -race -cover -timeout 20m ./...  + front-end unit tests + phone tests
 make e2e                           # Playwright, on the offline provider
 make frontend                      # rebuild frontend/dist if the TypeScript sources changed
 make build                         # ./bin/zwai (rebuilds the bundle first)
@@ -19,10 +19,11 @@ cd mobile && npm run e2e           # phone scan/paste Playwright
 make mobile-sync                   # rebuild the phone web bundle and copy into iOS/Android
 make mobile-ios                    # open Xcode
 make mobile-android                # open Android Studio
+go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launcher slots
 ```
 
 Before finishing any change: **it compiles, the tests pass, and the docs match.**
-Touched Go code → `go test -race ./...`. Touched `frontend/src` → `npm run lint`
+Touched Go code → `go test -race -timeout 20m ./...`. Touched `frontend/src` → `npm run lint`
 (a `tsc` type check), `npm test`. `go run ./cmd/zwai desktop` (and `web`)
 rebuild `frontend/dist` when the sources changed, so a local run does not
 need a separate `make frontend`. `make build` still generates first so the

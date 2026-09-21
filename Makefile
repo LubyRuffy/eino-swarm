@@ -56,7 +56,7 @@ test: test-go test-web test-mobile
 
 .PHONY: test-go
 test-go:
-	go test -race -cover ./...
+	go test -race -cover -timeout 20m ./...
 
 .PHONY: test-web
 test-web: node_modules

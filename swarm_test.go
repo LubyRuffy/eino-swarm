@@ -246,8 +246,12 @@ func TestCloseCancels(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(100 * time.Millisecond)
-	if _, err := closeT.InvokableRun(context.Background(), `{"agent_id":"`+h.ID+`"}`); err != nil {
+	out, err = closeT.InvokableRun(context.Background(), `{"agent_id":"`+h.ID+`"}`)
+	if err != nil {
 		t.Fatalf("close_agent: %v", err)
+	}
+	if !strings.Contains(out, `"cancelled":true`) {
+		t.Fatalf("a running worker must report cancelled: %s", out)
 	}
 	select {
 	case <-h.Done():

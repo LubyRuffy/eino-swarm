@@ -6,22 +6,16 @@ import { ComposerQuotes } from "./composer-quotes"
 const quotes = [{ id: "q1", text: "alpha beta" }]
 
 describe("ComposerQuotes", () => {
-  it("hides the card until the chip is hovered or opened", () => {
+  it("shows a truncated chip and the annotation count without a hover dump", () => {
     render(<ComposerQuotes quotes={quotes} onChange={vi.fn()} />)
     expect(screen.getByLabelText("1 annotation")).toBeInTheDocument()
+    expect(screen.getByTestId("quote-snippet")).toHaveTextContent("Selected text:")
+    expect(screen.getByTestId("quote-snippet")).toHaveTextContent("alpha beta")
     expect(screen.queryByTestId("quote-card")).toBeNull()
   })
 
-  it("shows the quoted text on hover so it can be edited or dropped", () => {
+  it("lets a click edit or drop the snippet", () => {
     render(<ComposerQuotes quotes={quotes} onChange={vi.fn()} />)
-    fireEvent.mouseEnter(screen.getByLabelText("1 annotation").parentElement as HTMLElement)
-    expect(screen.getByTestId("quote-card")).toHaveTextContent("Selected text:")
-    expect(screen.getByTestId("quote-card")).toHaveTextContent("alpha beta")
-  })
-
-  it("lets a click on the chip open the same card (keyboard and tests)", () => {
-    render(<ComposerQuotes quotes={quotes} onChange={vi.fn()} />)
-    fireEvent.click(screen.getByLabelText("1 annotation"))
     expect(screen.getByRole("button", { name: "Edit selected text 1" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Remove selected text 1" })).toBeInTheDocument()
   })
@@ -29,7 +23,6 @@ describe("ComposerQuotes", () => {
   it("edits the snippet in place", () => {
     const onChange = vi.fn()
     render(<ComposerQuotes quotes={quotes} onChange={onChange} />)
-    fireEvent.click(screen.getByLabelText("1 annotation"))
     fireEvent.click(screen.getByRole("button", { name: "Edit selected text 1" }))
     const area = screen.getByLabelText("Edit selected text 1")
     fireEvent.change(area, { target: { value: "gamma" } })
@@ -40,7 +33,6 @@ describe("ComposerQuotes", () => {
   it("drops the snippet from the next send", () => {
     const onChange = vi.fn()
     render(<ComposerQuotes quotes={quotes} onChange={onChange} />)
-    fireEvent.click(screen.getByLabelText("1 annotation"))
     fireEvent.click(screen.getByRole("button", { name: "Remove selected text 1" }))
     expect(onChange).toHaveBeenCalledWith([])
   })

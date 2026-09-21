@@ -14,6 +14,10 @@ export const OpLog = "log"
 export const OpEvent = "event"
 export const OpReady = "ready"
 export const OpLagged = "lagged"
+export const OpRunNow = "run_now"
+export const OpCancelWait = "cancel_wait"
+export const OpResumeGoal = "resume_goal"
+export const OpHello = "hello"
 
 export type RemoteRequest = {
   v: number
@@ -36,6 +40,7 @@ export type ThreadView = {
   title: string
   project_id?: string
   running: boolean
+  waiting?: boolean
   last_active_at: string
   summary?: string
 }
@@ -46,6 +51,7 @@ export type RunningView = {
   turn_id?: string
   action?: string
   ask_user?: boolean
+  waiting?: boolean
 }
 
 export type TurnView = {
@@ -58,6 +64,15 @@ export type WatchStatus = {
   running?: boolean
   turn_id?: string
   awaiting_answer?: boolean
+  waiting?: boolean
+  wake?: WakeView
+}
+
+export type WakeView = {
+  id: string
+  title?: string
+  prompt?: string
+  next_run_at?: string
 }
 
 export type RemoteEvent = {
@@ -79,7 +94,15 @@ export type ThreadDetail = {
   title: string
   goal?: string
   goal_on?: boolean
+  goal_complete?: boolean
+  goal_blocked?: boolean
+  goal_block_reason?: string
+  goal_capped?: boolean
+  goal_idle?: boolean
+  goal_started_at?: string
   plan_on?: boolean
+  waiting?: boolean
+  wake?: WakeView
   running?: RunningView
   turns?: TurnView[]
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import type { RemoteEvent, RemoteResponse, ThreadDetail } from "./rpc"
 import { OpEvent, OpReady } from "./rpc"
-import { applyPush, emptyView, markRunning, openView, prependOlder } from "./session"
+import { applyOpenDetail, applyPush, emptyView, markRunning, openView, prependOlder } from "./session"
 
 function detail(partial?: Partial<ThreadDetail>): ThreadDetail {
   return { id: "t1", title: "one", ...partial }
@@ -56,6 +56,19 @@ describe("phone watch session", () => {
     expect(applyPush(emptyView(), push(ev({ seq: 1, kind: "user_message", text: "hi" }))).blocks).toEqual([])
   })
 
+  it("keeps a listing stub until watch ready so a tap is not a freeze", () => {
+    const stub = openView(detail({ title: "parked", waiting: true }))
+    expect(stub.caughtUp).toBe(false)
+    const opened = applyOpenDetail(stub, detail({ title: "parked", waiting: true, goal: "keep going" }))
+    expect(opened.detail?.goal).toBe("keep going")
+    expect(opened.caughtUp).toBe(false)
+    expect(opened.blocks).toEqual([])
+    const other = applyOpenDetail(opened, detail({ id: "t2", title: "other" }))
+    expect(other.threadId).toBe("t2")
+    expect(other.detail?.title).toBe("other")
+    expect(applyOpenDetail(emptyView(), detail()).threadId).toBe("t1")
+  })
+
   it("paints ready.events in one shot without a replay", () => {
     const view = applyPush(
       openView(detail()),
@@ -73,6 +86,21 @@ describe("phone watch session", () => {
     expect(view.lastSeq).toBe(3)
     expect(view.hasMore).toBe(true)
     expect(view.caughtUp).toBe(true)
+  })
+
+  it("pages when the live-edge snapshot is not seq 1 even if ready omits more", () => {
+    const view = applyPush(
+      openView(detail()),
+      ready({
+        seq: 24,
+        events: [
+          ev({ seq: 20, kind: "user_message", text: "mid" }),
+          ev({ seq: 24, kind: "agent_message", text: "tail" }),
+        ],
+      }),
+    )
+    expect(view.hasMore).toBe(true)
+    expect(view.oldestSeq).toBe(20)
   })
 
   it("ignores another thread and duplicate seq", () => {
@@ -106,6 +134,57 @@ describe("phone watch session", () => {
     expect(view.detail?.running).toBeUndefined()
     view = markRunning(view)
     expect(view.detail?.running?.thread_id).toBe("t1")
+  })
+
+  it("keeps a parked wait and a standing goal after done so the phone is not idle", () => {
+    let view = applyPush(
+      openView(detail({ goal: "keep going", goal_on: true })),
+      ready({
+        seq: 1,
+        status: {
+          running: false,
+          waiting: true,
+          wake: { id: "sch_1", title: "wake", next_run_at: "2026-09-21T02:00:00Z" },
+        },
+      }),
+    )
+    expect(view.detail?.waiting).toBe(true)
+    expect(view.detail?.wake?.id).toBe("sch_1")
+    view = applyPush(
+      view,
+      push(
+        ev({
+          seq: 2,
+          kind: "schedule",
+          text: JSON.stringify({
+            id: "sch_1",
+            kind: "thread",
+            status: "active",
+            next_run_at: "2026-09-21T04:00:00Z",
+          }),
+        }),
+      ),
+    )
+    expect(view.detail?.wake?.next_run_at).toBe("2026-09-21T04:00:00Z")
+    view = applyPush(view, push(ev({ seq: 3, kind: "goal_complete", text: "done" })))
+    expect(view.detail?.goal_on).toBe(true)
+    expect(view.detail?.goal_complete).toBe(true)
+    view = applyPush(view, push(ev({ seq: 4, kind: "done" })))
+    expect(view.detail?.running).toBeUndefined()
+    expect(view.detail?.waiting).toBe(true)
+    expect(view.detail?.wake?.id).toBe("sch_1")
+    view = applyPush(view, {
+      v: 1,
+      id: "",
+      ok: true,
+      op: OpEvent,
+      thread_id: "t1",
+      seq: 6,
+      event: ev({ seq: 6, kind: "schedule_fired", text: "sch_1" }),
+      status: { running: true, waiting: false, turn_id: "tu2" },
+    })
+    expect(view.detail?.waiting).toBe(false)
+    expect(view.detail?.running?.turn_id).toBe("tu2")
   })
 
   it("opens hasMore from ready and prepends older events above the viewport", () => {

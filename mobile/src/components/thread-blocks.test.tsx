@@ -29,6 +29,22 @@ describe("thread blocks", () => {
     expect(screen.getByText("going").closest("strong")).toBeTruthy()
   })
 
+  it("splits a quoted user bubble so the tags are not the message", () => {
+    render(
+      <>
+        {renderBlock({
+          id: "q",
+          kind: "user",
+          text: "<selected_text>\nalpha\n</selected_text>\n\n<user_request>\ndo **this**\n</user_request>",
+        })}
+      </>,
+    )
+    expect(screen.getByTestId("quoted-message")).toHaveTextContent("Selected text:")
+    expect(screen.getByTestId("quoted-message")).toHaveTextContent("alpha")
+    expect(screen.getByText("this").closest("strong")).toBeTruthy()
+    expect(screen.queryByText(/<selected_text>/)).not.toBeInTheDocument()
+  })
+
   it("localizes an armed-wait notice instead of painting the schedule JSON", () => {
     setLocale("zh")
     render(<>{renderBlock({ id: "3", kind: "notice", text: "A wait is armed." })}</>)
@@ -93,5 +109,50 @@ describe("thread blocks", () => {
     expect(screen.getByText(/worker done/)).toBeInTheDocument()
     expect(screen.getByText(/helper failed/)).toBeInTheDocument()
     expect(screen.queryByText(/elapsed_ms/)).not.toBeInTheDocument()
+  })
+
+  it("hides close_agent bookkeeping", () => {
+    const { container } = render(
+      <>
+        {renderBlock({
+          id: "8",
+          kind: "tool",
+          toolName: "close_agent",
+          text: '{"cancelled":false,"already_finished":true}',
+        })}
+      </>,
+    )
+    expect(container).toBeEmptyDOMElement()
+    expect(screen.queryByText("close_agent")).not.toBeInTheDocument()
+  })
+
+  it("keeps a long tool preview inside the row so the log is not stretched", () => {
+    render(
+      <>
+        {renderBlock({
+          id: "path",
+          kind: "tool",
+          toolName: "exec",
+          text: "E2=" + "x".repeat(120) + "/run",
+          pending: true,
+        })}
+      </>,
+    )
+    const row = screen.getByRole("button")
+    expect(row).toHaveClass("min-w-0")
+    expect(row).toHaveClass("max-w-full")
+  })
+
+  it("wraps a long assistant line instead of stretching the thread", () => {
+    render(
+      <>
+        {renderBlock({
+          id: "a",
+          kind: "answer",
+          text: "see `" + "x".repeat(80) + "`",
+        })}
+      </>,
+    )
+    expect(document.querySelector(".md-body")).toHaveClass("break-words")
   })
 })

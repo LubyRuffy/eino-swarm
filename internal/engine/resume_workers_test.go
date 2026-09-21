@@ -111,15 +111,9 @@ func TestResumeConversationKeepsThisTurnsSpawnResults(t *testing.T) {
 	if lastUserIs(msgs, resumeCue) == false {
 		t.Fatal("resume cue missing")
 	}
-	for _, m := range msgs {
-		if m == nil || len(m.ToolCalls) == 0 {
-			continue
-		}
-		for _, tc := range m.ToolCalls {
-			if tc.Function.Name == "wait_agents" {
-				t.Fatal("an unfinished wait_agents must not be replayed; the model would see a tool call with no result")
-			}
-		}
+	rep, callID := waitReportInMessages(t, msgs)
+	if callID != "w1" || !rep.TimedOut {
+		t.Fatalf("dangling wait_agents must be completed, not dropped: call=%q timed_out=%v", callID, rep.TimedOut)
 	}
 }
 
@@ -157,14 +151,13 @@ func TestResumeConversationKeepsUnreadSteerAfterADanglingWait(t *testing.T) {
 		if strings.Contains(m.Content, "[steer] focus on the second part") {
 			foundSteer = true
 		}
-		for _, tc := range m.ToolCalls {
-			if tc.Function.Name == "wait_agents" {
-				t.Fatal("dangling wait_agents survived because a steer followed it")
-			}
-		}
 	}
 	if !foundSteer {
 		t.Fatal("unread steering did not come back with the leftover turn")
+	}
+	rep, callID := waitReportInMessages(t, msgs)
+	if callID != "w1" || !rep.TimedOut {
+		t.Fatalf("a dangling wait after a steer must still be completed: call=%q timed_out=%v", callID, rep.TimedOut)
 	}
 }
 
