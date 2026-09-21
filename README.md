@@ -71,15 +71,15 @@ uploads, downloads and the live event stream have exactly one implementation.
   told to wake and end the turn instead of spinning or asking you to remind
   it. Estimated remaining time is biased short (about a third, then that
   interval) so a check lands before the work is already done; extra checks
-  are expected. A named clock time you asked for is still honored. The sidebar **Scheduled** control opens the inbox dialog: pause, resume, cancel,
-  Run now, or add a standalone job. An active wake on the open conversation
+  are expected. A named clock time you asked for is still honored.   The sidebar **Scheduled** control opens the inbox dialog: a list with
+  search and **All / Active / Paused / Completed**, defaulting to Active.
+  **Create** opens the add-wait form; rows stay title plus cadence and next
+  check until you expand them for pause, resume, cancel, or Run now.
+  An active wake on the open conversation
   shows a banner with the next check and the wait's title or prompt, **Run now**, and **Cancel wait** (not
   an icon-only dismiss — that sat under the goal banner's X). Run now and
   Cancel wait also sit on the armed-wait notice, which shows the same
-  instruction. The **Scheduled** inbox lists live waits (active or paused)
-  and shows the stored prompt, not only an optional title. Done and cancelled
-  waits stay hidden unless they still have unread findings, or you choose
-  **Show ended**. Cancel of a thread wake
+  instruction. Cancel of a thread wake
   while idle continues a standing `/goal`; Run now fires the check without
   waiting for the timer (the wait banner hides while that turn is working,
   and an early cron check consumes the pending slot). The next-check time
@@ -87,7 +87,7 @@ uploads, downloads and the live event stream have exactly one implementation.
   used to look like the timer jumped. A scheduled check reports through `report_schedule`;
   empty findings stay quiet. Quiet standalone runs stay out of Recents;
   findings open from the inbox — **Open findings** on a live wait, with a
-  count when several fires are unread, so finished reports stay off the card.
+  count when several fires are unread, so finished reports stay off the row.
   Workers cannot schedule. Caps live in
   Settings → Swarm.
 - **`/plan` before changing anything.** Planning unmounts write/edit/exec
@@ -260,7 +260,8 @@ lights). Each page is a list of compact rows (name and hint left, control
 right). Edits write themselves; **Back to app** flushes the last keystroke.
 Chrome language is **Settings → General**, the **中 / EN** control in the title
 bar, or ⌘K → Switch language. Agents still answer in the language you are using.
-Font and size are **Settings → General**. Conversation width is the title-bar
+Font and size are **Settings → General**. Size scales the conversation; chrome
+(sidebar, Settings, title bar) stays the same. Conversation width is the title-bar
 control (standard reading column vs wide, filling the space between the
 sidebars), **Settings → General**, or ⌘K. How you want the manager to work
 with you — tone, language habits, standing preferences — is
@@ -322,7 +323,10 @@ end-to-end tests run on and the fastest way to see the UI work.
    reconnect banner, not a frozen inbox. Settings, files,
    PTY and Trace stay on the PC.
    `make mobile-ios` / `make mobile-android` open Xcode or Android Studio
-   after copying the web bundle.
+   after copying the web bundle. `make mobile-android-release` writes the
+   signed APK/AAB to `bin/` (set `ANDROID_KEYSTORE*` or a gitignored
+   `mobile/android/keystore.properties`; `ANDROID_UNSIGNED=1` is a debug-signed
+   sideload APK, not a Play bundle).
 
 Traffic starts on the hub as ciphertext and upgrades to UDP when punching
 works. Conversations never enter the hub database.

@@ -31,6 +31,7 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api } from "@/lib/api"
 import type { Appearance } from "@/lib/appearance"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import type { LocalePref } from "@/lib/i18n"
 import { SettingsPersist } from "@/lib/settings-persist"
 import type { Meta, Settings, ToolDescriptor } from "@/lib/types"
@@ -279,7 +280,10 @@ export function SettingsDialog({
                   type="button"
                   variant="ghost"
                   size="sm"
-                  className="h-7 justify-start gap-1.5 px-2 text-[13px] font-normal text-muted-foreground"
+                  className={cn(
+                    chromeTypeClass,
+                    "h-7 justify-start gap-1.5 px-2 text-muted-foreground",
+                  )}
                   onClick={() => void leave()}
                 >
                   <ArrowLeft />
@@ -296,7 +300,10 @@ export function SettingsDialog({
                     aria-label={t("settings.search")}
                     placeholder={t("settings.searchPlaceholder")}
                     spellCheck={false}
-                    className="h-8 border-transparent bg-sidebar-accent pl-8 text-[13px] font-normal shadow-none placeholder:text-muted-foreground"
+                    className={cn(
+                      chromeTypeClass,
+                      "h-8 border-transparent bg-sidebar-accent pl-8 shadow-none placeholder:text-muted-foreground",
+                    )}
                   />
                 </div>
               </div>
@@ -306,7 +313,10 @@ export function SettingsDialog({
                   <TabsTrigger
                     key={s.id}
                     value={s.id}
-                    className="h-8 w-full justify-start gap-2 rounded-md px-2 text-[13px] font-normal text-muted-foreground shadow-none data-[state=active]:bg-sidebar-accent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                    className={cn(
+                      chromeTypeClass,
+                      "h-8 w-full justify-start gap-2 rounded-md px-2 text-muted-foreground shadow-none data-[state=active]:bg-sidebar-accent data-[state=active]:text-foreground data-[state=active]:shadow-none",
+                    )}
                   >
                     <s.icon
                       className="size-4 text-muted-foreground"
@@ -317,7 +327,12 @@ export function SettingsDialog({
                 ))}
               </TabsList>
 
-              <DialogDescription className="mt-auto px-3 pb-2 text-[11px] leading-snug text-muted-foreground">
+              <DialogDescription
+                className={cn(
+                  chromeTypeClass,
+                  "mt-auto px-3 pb-2 text-muted-foreground",
+                )}
+              >
                 {t("settings.storedIn", {
                   path: meta?.data_dir ?? t("settings.storedFallback"),
                 })}
@@ -330,7 +345,7 @@ export function SettingsDialog({
                   <Loader2 className="size-5 animate-spin" />
                 </div>
               ) : visibleNav.length === 0 ? (
-                <p className="px-8 py-12 text-sm text-muted-foreground">
+                <p className={cn(chromeTypeClass, "px-8 py-12 text-muted-foreground")}>
                   {t("settings.noMatch")}
                 </p>
               ) : (

@@ -6,6 +6,7 @@
     "skipLibCheck": true,
     "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "moduleDetection": "force",
     "noEmit": true,
@@ -20,6 +21,7 @@
     "postcss.config.js",
     "capacitor.config.ts",
     "native-project.test.ts",
+    "scripts/**/*.ts",
     "e2e"
   ]
 }

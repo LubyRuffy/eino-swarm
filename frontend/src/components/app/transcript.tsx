@@ -895,7 +895,7 @@ function UserMessage({
               aria-label={t("transcript.editMessage")}
               value={draft}
               rows={4}
-              className="min-h-[4.5rem] border-0 bg-transparent px-1 py-1 text-[0.9375rem] leading-6 text-secondary-foreground shadow-none focus-visible:ring-0"
+              className="min-h-[4.5rem] border-0 bg-transparent px-1 py-1 leading-6 text-secondary-foreground shadow-none focus-visible:ring-0"
               onChange={(e) => setDraft(e.target.value)}
               onCompositionStart={() => {
                 cancelIme.current?.()
@@ -941,7 +941,7 @@ function UserMessage({
           <>
             <div
               data-testid="user-message"
-              className="rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-[0.9375rem] leading-6 text-secondary-foreground"
+              className="rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 leading-6 text-secondary-foreground"
             >
               <InputThumbs
                 threadId={threadId}

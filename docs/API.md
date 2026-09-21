@@ -65,7 +65,8 @@ install has memory off, rather than offering something that will not happen.
 is opened with the system browser instead of inside the webview. `locale` is
 `system`, `en` or `zh` — the chrome language from `ui.locale`. The UI applies it
 on boot without writing it back. `ui` is the rest of the chrome: `font`
-(`system` / `serif` / `mono`), `font_size` (`small` / `medium` / `large`), and
+(`system` / `serif` / `mono`), `font_size` (`small` / `medium` / `large`;
+conversation body 12 / 13 / 16px, `medium` matches Settings), and
 `content_width` (`comfortable` / `full`). `locale` is also at the top level so
 an older client that only reads that field still pins the dictionary.
 
@@ -486,7 +487,7 @@ human or an external change). A truncated tool-call JSON, a `429`, or a dropped
 stream retries inside the same turn twice, then auto-continues; `goal_capped` is true after consecutive
 auto-continues hit `swarm.goal_max_auto_turns`, or after the human
 interrupts a pursuing turn (the banner shows Paused, a line that this is
-not an error, and labelled Start); `goal_idle`
+not an error, and Start); `goal_idle`
 is true after an auto-continue finished with no counted tool activity
 (Start or a human message resumes). The objective text stays in
 every case so the banner can show it. `goal_block_reason` is the optional

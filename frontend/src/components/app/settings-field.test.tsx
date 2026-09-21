@@ -40,9 +40,9 @@ describe("settings field row", () => {
       "font-normal",
     )
     expect(screen.getByText("Sub-agents at once").className).toContain(
-      "text-[13px]",
+      "--chrome-font-size",
     )
-    expect(screen.getByText("fan-out").className).toContain("text-[13px]")
+    expect(screen.getByText("fan-out").className).toContain("--chrome-font-size")
   })
 
   it("hides a row whose label does not match the query", () => {
@@ -67,7 +67,7 @@ describe("settings field row", () => {
     )
     const trigger = screen.getByRole("combobox", { name: "Appearance" })
     expect(trigger.className).toContain("bg-background")
-    expect(trigger.className).toContain("text-[13px]")
+    expect(trigger.className).toContain("--chrome-font-size")
     expect(trigger.className).toContain("font-normal")
     expect(trigger.className).toMatch(/\bw-auto\b/)
     expect(trigger.className).not.toMatch(/\bw-56\b/)
@@ -96,6 +96,7 @@ describe("settings field row", () => {
     const page = screen.getByRole("heading", { name: "Swarm" }).parentElement
       ?.parentElement
     expect(page?.className).toMatch(/\bgap-8\b/)
-    expect(page?.className).not.toMatch(/\bmx-auto\b/)
+    expect(page?.className).toMatch(/\bmx-auto\b/)
+    expect(page?.className).toMatch(/\bmax-w-3xl\b/)
   })
 })

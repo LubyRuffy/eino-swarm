@@ -19,6 +19,7 @@ cd mobile && npm run e2e           # phone scan/paste Playwright
 make mobile-sync                   # rebuild the phone web bundle and copy into iOS/Android
 make mobile-ios                    # open Xcode
 make mobile-android                # open Android Studio
+make mobile-android-release        # signed (or ANDROID_UNSIGNED=1) APK/AAB into bin/
 go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launcher slots
 ```
 

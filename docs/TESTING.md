@@ -18,7 +18,7 @@ deterministic and fast enough to run on every change.
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), conversation search (`GET /api/search` finds a body the title does not contain; embeddings stay off until a model is pinned), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
 | Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (compact chips; tagged `<selected_text>` / `<user_request>` on send; Copy message without the wire tags; the Add to chat snapshot surviving a live stream), clipboard image paste, copying transcript text when the Clipboard API refuses (execCommand fallback), file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window` / `use-turn-jump`), dismissible settings toasts, ⌘K palette body search (`thread-search` / `palette.test`, stale hits cleared while the next query is in flight), semantic-search settings (off until a model is named) | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet; Bound phones paints a reported model) | `cd frontend && npm run e2e` |
-| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default | `cd mobile && npm test` |
+| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default; Android release Gradle reads version/signing from env (no password in git); `android-release` refuses a store upload without a keystore, skips JDK 17, copies the APK to `bin/` | `cd mobile && npm test` |
 | Phone E2E | scan screen + paste of the same `pairlink:v1` URI (camera is the product path on device) | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, Start | see `mobile/README.md` (not in `make check`) |
 
@@ -95,7 +95,11 @@ that drop to the reconnect copy instead of a frozen inbox, and sends
 The Capacitor shell in `mobile/` has its own unit tests
 and a Playwright paste/scan screen; `mobile/native-project.test.ts` asserts the
 iOS and Android trees ship with camera permission, no compiled hub URL, and
-the zwai launcher (not Capacitor's default icon). `TestPhoneLauncherSlotsMatchTheDesktopMark`
+the zwai launcher (not Capacitor's default icon), and that Android release
+Gradle takes version/signing from the environment (no password in git).
+`mobile/scripts/android-release.test.ts` is why `make mobile-android-release`
+refuses a store upload without a keystore, skips JAVA_HOME 17, and copies
+the APK into `bin/`. `TestPhoneLauncherSlotsMatchTheDesktopMark`
 is why those PNGs are `internal/desktop/appicon.png` painted into the iOS/Android
 slots (`go run ./mobile/scripts/genicons.go`).
 `mobile/src/lib/resume.test.ts` is why bind opens a live turn (or the last
@@ -575,8 +579,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   `done` keeps the wait notice, and an ordinary empty `done` stays
   visible. `compact-notice.test.tsx` clicks that icon.   `schedule-notice.test.tsx` clicks Run now and Cancel wait on an armed wait when `detail` is a `sch_` id (including a padded id matching the store row) and does not treat a
   cancelled notice as a briefing.   `schedule-view.test.ts` is why the inbox
-  lists live waits and hides ended ones unless they still have unread
-  findings (`inboxVisibleSchedules`; **Show ended** reveals the rest), empty titles fall back to `prompt`, an armed
+  filters All / Active / Paused / Completed (`inboxFilteredSchedules`; Active
+  is the default tab) and search matches title or prompt, empty titles fall back to `prompt`, an armed
   chip paints the store before GET, a replayed arm chip cannot rewind a
   later `next_run_at`, a fire marks that conversation's live
   wake done, and a stale empty GET cannot wipe the
@@ -590,13 +594,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   on the sidebar row and Waiting on the title bar (`waitingThreadIds`,
   `wait-mark.tsx`), run-now painting the open conversation Working,
   a `schedule_skipped` stream event refreshing the list, and a silent
-  schedule GET that must not toast. Ended waits stay out of the inbox
-  until **Show ended**, except an ended row that still has unread findings.
-  Several unread fires on one wait collapse
+  schedule GET that must not toast. The inbox defaults to Active; Completed
+  lists done and cancelled waits. Create stays behind the header control so
+  the list does not share height with the form. Several unread fires on one wait collapse
   to one Open findings control (a count when there is more than one) so
-  finished reports stay off the card (`unreadFindings` newest-first; opening
+  finished reports stay off the row (`unreadFindings` newest-first; opening
   a conversation marks every unread fire on that thread; wait rows are
-  `shrink-0` so a tall create form cannot squash them). A `session_memory` event is
+  `shrink-0`). A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /
   `goal_continued` turns fold behind a one-line Worked-for row in
@@ -740,8 +744,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   and `border-ask` (no ring or ping on the dialog); a settled card drops
   both. Sidebar and title-bar `ask-mark` still ping.
 - **`src/components/app/plan-banner.tsx`**: Planning, editable markdown,
-  Implement, Leave. Split from the goal banner so neither file grows past
-  1000 lines.
+  Implement, Leave. Same one-line composer pin as the goal banner. Split
+  from the goal banner so neither file grows past 1000 lines.
 - **`src/store/goal-events.ts`**: thread flags for `/goal` events live here so
   `app.ts` stays under 1000 lines. `goal-events.test.ts` covers the idle hold.
 - **`src/lib/usage.ts`** and **`src/components/app/context-meter.tsx`**: compact
@@ -869,7 +873,7 @@ Several things are tested here, some as pure logic and some in jsdom:
   Start when Paused, Blocked, or Done (not while Pursuing between sessions),
   a Paused/idle reason line that this is not an error and Start resumes,
   a Done reason line if the close was early,
-  labelled Start (not an icon-only play control),
+  icon Start with an accessible name (Codex-density pin above the composer),
   inline edit that saves on blur and cancels on Escape, and
   elapsed time from `goal_started_at`. A failed-turn sentinel is localized
   and yields to the turn's public error when that is on the transcript.
@@ -1033,7 +1037,14 @@ Several things are tested here, some as pure logic and some in jsdom:
   `data-*` attributes. Junk becomes the current defaults. A `localStorage`
   cache paints the first frame; `GET /api/meta` is the source of truth.
   `toggleContentWidth` is the title-bar / ⌘K flip. `--content-gutter`
-  shrinks in `full` so the column sits against the sidebars.
+  shrinks in `full` so the column sits against the sidebars. Font size
+  writes `--ui-font-size` only (12 / 13 / 16px; `medium` matches chrome);
+  `--chrome-font-size` stays in CSS so Large cannot balloon the sidebar or
+  Settings.
+- **`src/lib/chrome-type.ts`**: the shared 13px regular class for window
+  chrome (sidebar, Settings, title bar, composer controls), plus the
+  muted one-line chip (`composerPinClass`) for goal / plan / wait above
+  the composer.
 - **`src/components/app/settings-dialog.tsx`**, rendered in jsdom: Settings
   is a full-page sheet (`h-dvh`) with **Back to app**, a labelled search
   box, and a left rail of tabs. The dialog title is screen-reader only —
@@ -1063,9 +1074,9 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/components/app/settings-field.tsx`**, rendered in jsdom: a row
   puts the label left of the control; a query hides non-matching rows;
   a section with no remaining rows is omitted. Title and hint share
-  `13px` / `font-normal` (color is the hierarchy). Menus hug their value
-  (`w-auto`, `bg-background`, same 13px). The page is left-anchored
-  (`gap-8`, not `mx-auto`).
+  chrome type (`--chrome-font-size` / `font-normal`; color is the hierarchy).
+  Menus hug their value (`w-auto`, `bg-background`, same chrome type). The
+  page column is centered (`max-w-3xl mx-auto`, `gap-8`).
 - **`src/lib/file-tree.ts`**: a flat workspace listing becomes a nested tree
   (missing parents are synthesised), filtering keeps ancestors, collapse hides
   children unless a query is forcing matches open, and a unique directory
@@ -1196,7 +1207,7 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, hovering a project row revealing a new-conversation control that starts one in that project rather than Recents (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, a sixth topic in the folder sitting behind **Show more** until it is opened, and a running conversation keeping its sidebar progress after switching to a new conversation (an explicit folder collapse keeps a clipped breathe-dot on the glyph, not a smear) |
 | `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour) and `$n$` as KaTeX |
 | `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |
-| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (title, prompt, Every (seconds) 60, Add wait), Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
+| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (Create, title, prompt, Every (seconds) 60, Add wait), expand the row, Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
 | `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Keep this computer awake, Bound phones empty copy, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR control; junk paste errors; a syntactically valid URI uses the same bind path |
 | `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline, Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, the tool catalogue on a never-saved config, settings written to the config file and read back, personality round-tripping through Settings → Personality, pinning a title-generation model when more than one name is listed, opening a collapsed provider row then discovering models into the default-model dropdown, a failed listing toasting over that open provider (in viewport, × dismisses it), **Back to app** remaining on screen on a short window when the Swarm page is long, Back to app sitting in the first 48px of a browser sheet (the desktop title-bar strip is not shipped to the tab), the Add-a-provider outline staying inside the Models scrollport, semantic search off by default on Models, ⌘K finding a conversation by words in its body, theme switching persisted, chrome language switching (restored to English because locale is in the shared yaml), the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), font / size / conversation width round-tripping through Settings → General, renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
@@ -1251,7 +1262,8 @@ a client at all is verified in the engine and reducer tests.
   that same hub port. `mobile/ios/App/AppUITests/BindFlowTests.swift` pastes
   the offer from `simctl pbcopy`, taps Back if a thread already opened, asserts
   `path=` plus the seed conversation, and Starts a thread. Android is the debug
-  APK plus `adb reverse`. Neither is in `make check`.
+  APK plus `adb reverse`, or `make mobile-android-release` for the release
+  APK/AAB in `bin/`. Neither is in `make check`.
 
 ## When a turn misbehaves
 

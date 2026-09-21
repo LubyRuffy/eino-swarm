@@ -12,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import { mergeModelContext } from "@/lib/usage"
 import type { Settings } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -27,6 +28,8 @@ import {
   SettingsPage,
   SettingsRow,
   SettingsSection,
+  settingsHintClass,
+  settingsLabelClass,
   settingsMatch,
   settingsSelectTriggerClass,
 } from "./settings-field"
@@ -261,10 +264,10 @@ function ProviderRow({
             )}
           />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13px] font-normal text-foreground/90">
+            <span className={cn("block truncate", settingsLabelClass)}>
               {heading}
             </span>
-            <span className="mt-0.5 block truncate text-[13px] font-normal text-muted-foreground">
+            <span className={cn("block truncate", settingsHintClass)}>
               {subtitle}
             </span>
           </span>
@@ -376,7 +379,7 @@ function ProviderRow({
                     value={p.model}
                     placeholder={t("settings.models.typeModel")}
                     aria-label={t("settings.models.defaultModel")}
-                    className="h-[32px] w-56 text-[13px] shadow-none"
+                    className={cn("h-[32px] w-56 shadow-none", chromeTypeClass)}
                     onChange={(e) => onUpdate({ model: e.target.value })}
                   />
                 )}

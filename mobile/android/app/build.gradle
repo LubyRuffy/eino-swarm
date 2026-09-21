@@ -1,5 +1,22 @@
 apply plugin: 'com.android.application'
 
+// Version and the upload keystore come from the environment / a gitignored
+// properties file. A literal here would freeze Play versionCode and leak
+// the signing password into git.
+def zwaiVersionName = project.findProperty("zwaiVersionName") ?: System.getenv("ANDROID_VERSION") ?: "1.0"
+def zwaiVersionCode = (project.findProperty("zwaiVersionCode") ?: System.getenv("ANDROID_VERSION_CODE") ?: "1").toString().toInteger()
+
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+def releaseStorePath = System.getenv("ANDROID_KEYSTORE") ?: keystoreProperties["storeFile"]
+def releaseStorePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD") ?: keystoreProperties["storePassword"]
+def releaseKeyAlias = System.getenv("ANDROID_KEY_ALIAS") ?: keystoreProperties["keyAlias"]
+def releaseKeyPassword = System.getenv("ANDROID_KEY_PASSWORD") ?: keystoreProperties["keyPassword"] ?: releaseStorePassword
+
 android {
     namespace "com.lubyruffy.zwai"
     compileSdk rootProject.ext.compileSdkVersion
@@ -7,8 +24,8 @@ android {
         applicationId "com.lubyruffy.zwai"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode zwaiVersionCode
+        versionName zwaiVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +33,30 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (releaseStorePath) {
+                def store = new File(releaseStorePath)
+                if (!store.isAbsolute()) {
+                    store = rootProject.file(releaseStorePath)
+                }
+                storeFile store
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (releaseStorePath) {
+                signingConfig signingConfigs.release
+            } else {
+                // No upload key: still sign so adb install works. Play rejects this.
+                signingConfig signingConfigs.debug
+            }
         }
     }
 }

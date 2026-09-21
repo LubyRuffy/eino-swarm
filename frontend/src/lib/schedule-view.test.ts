@@ -5,14 +5,19 @@ import {
   applyArmedSchedule,
   applyCancelledSchedule,
   applyFiredThreadWake,
-  inboxHiddenEndedCount,
+  cadenceAmount,
+  inboxFilterMatch,
+  inboxFilteredSchedules,
   inboxScheduleOrder,
-  inboxVisibleSchedules,
+  inboxSearchMatch,
+  inboxStatusTab,
   isLiveSchedule,
   isLiveThreadWake,
+  isScheduleDue,
   keepArmedWakes,
   laterScheduleDue,
   parseArmedSchedule,
+  scheduleCadenceSpec,
   scheduleHeadline,
   unreadFindings,
 } from "./schedule-view"
@@ -62,7 +67,7 @@ describe("schedule-view", () => {
     ])
   })
 
-  it("hides ended waits from the inbox unless they still have unread findings", () => {
+  it("splits the inbox into All / Active / Paused / Completed", () => {
     const done = wait({ id: "sch_old" })
     const cancelled = wait({ id: "sch_cancel", status: "cancelled" })
     const paused = wait({
@@ -80,26 +85,86 @@ describe("schedule-view", () => {
     expect(isLiveSchedule(paused)).toBe(true)
     expect(isLiveSchedule(done)).toBe(false)
     expect(isLiveSchedule(cancelled)).toBe(false)
-    expect(inboxVisibleSchedules(rows, [], false).map((row) => row.id)).toEqual([
-      "sch_paused",
+    expect(inboxStatusTab("")).toBe("active")
+    expect(inboxStatusTab("paused")).toBe("paused")
+    expect(inboxStatusTab("done")).toBe("completed")
+    expect(inboxStatusTab("cancelled")).toBe("completed")
+    expect(inboxFilterMatch(live, "active")).toBe(true)
+    expect(inboxFilterMatch(paused, "active")).toBe(false)
+    expect(inboxFilteredSchedules(rows, "active", "").map((row) => row.id)).toEqual([
       "sch_new",
     ])
-    expect(inboxHiddenEndedCount(rows, [])).toBe(2)
-    const unread = [
-      run({ id: "srun_old", schedule_id: "sch_old", thread_id: "th_old" }),
-    ]
-    expect(inboxVisibleSchedules(rows, unread, false).map((row) => row.id)).toEqual([
+    expect(inboxFilteredSchedules(rows, "paused", "").map((row) => row.id)).toEqual([
       "sch_paused",
-      "sch_new",
+    ])
+    expect(inboxFilteredSchedules(rows, "completed", "").map((row) => row.id)).toEqual([
       "sch_old",
+      "sch_cancel",
     ])
-    expect(inboxHiddenEndedCount(rows, unread)).toBe(1)
-    expect(inboxVisibleSchedules(rows, unread, true).map((row) => row.id)).toEqual([
+    expect(inboxFilteredSchedules(rows, "all", "").map((row) => row.id)).toEqual([
       "sch_paused",
       "sch_new",
       "sch_old",
       "sch_cancel",
     ])
+  })
+
+  it("filters the inbox by title or prompt without treating the query as a rule", () => {
+    const named = wait({
+      id: "sch_named",
+      status: "active",
+      title: "wake",
+      prompt: "Continue the wait.",
+    })
+    const other = wait({
+      id: "sch_other",
+      status: "active",
+      title: "other",
+      prompt: "Stay parked.",
+    })
+    expect(inboxSearchMatch(named, "WAKE")).toBe(true)
+    expect(inboxSearchMatch(named, "parked")).toBe(false)
+    expect(inboxFilteredSchedules([named, other], "all", "wait").map((row) => row.id)).toEqual([
+      "sch_named",
+    ])
+    expect(JSON.stringify(inboxFilteredSchedules([named, other], "all", "wait"))).not.toMatch(
+      /CI|deploy|GitHub/,
+    )
+  })
+
+  it("names cadence in whole minutes or hours when the seconds divide evenly", () => {
+    expect(cadenceAmount(1)).toEqual({ n: 1, unit: "second" })
+    expect(cadenceAmount(45)).toEqual({ n: 45, unit: "second" })
+    expect(cadenceAmount(60)).toEqual({ n: 1, unit: "minute" })
+    expect(cadenceAmount(1800)).toEqual({ n: 30, unit: "minute" })
+    expect(cadenceAmount(3600)).toEqual({ n: 1, unit: "hour" })
+    expect(cadenceAmount(0)).toEqual({ n: 0, unit: "second" })
+    expect(scheduleCadenceSpec(wait({ every_s: 60, delay_s: 0, cron: "" }))).toEqual({
+      kind: "every",
+      seconds: 60,
+    })
+    expect(scheduleCadenceSpec(wait({ every_s: 0, delay_s: 15, cron: "" }))).toEqual({
+      kind: "delay",
+      seconds: 15,
+    })
+    expect(scheduleCadenceSpec(wait({ every_s: 0, delay_s: 0, cron: "0 * * * *" }))).toEqual({
+      kind: "cron",
+      expr: "0 * * * *",
+    })
+    expect(scheduleCadenceSpec(wait({ every_s: 0, delay_s: 0, cron: "" }))).toEqual({
+      kind: "none",
+    })
+    expect(JSON.stringify(scheduleCadenceSpec(wait({ cron: "0 * * * *" })))).not.toMatch(
+      /CI|deploy|GitHub/,
+    )
+  })
+
+  it("treats a due slot as now", () => {
+    const now = Date.parse("2026-09-21T05:00:00.000Z")
+    expect(isScheduleDue("2026-09-21T04:59:00.000Z", now)).toBe(true)
+    expect(isScheduleDue("2026-09-21T05:00:00.000Z", now)).toBe(true)
+    expect(isScheduleDue("2026-09-21T05:01:00.000Z", now)).toBe(false)
+    expect(isScheduleDue("not-a-time", now)).toBe(false)
   })
 
   it("does not rewind next_run_at when a replayed arm chip is older", () => {

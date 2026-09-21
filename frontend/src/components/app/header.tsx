@@ -25,6 +25,7 @@ import {
   SIDEBAR_WIDTH_VAR,
 } from "@/lib/sidebar-width"
 import type { ContentWidthPref } from "@/lib/appearance"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import type { Meta, Project, Thread, ThreadStatus } from "@/lib/types"
 import { cn, formatDuration } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
@@ -138,7 +139,10 @@ export function Header({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span
-                    className="max-w-48 shrink-0 truncate text-sm text-muted-foreground"
+                    className={cn(
+                      chromeTypeClass,
+                      "max-w-48 shrink-0 truncate text-muted-foreground",
+                    )}
                     data-testid="thread-project"
                   >
                     {project.name}
@@ -150,11 +154,11 @@ export function Header({
                   })}
                 </TooltipContent>
               </Tooltip>
-              <span className="shrink-0 text-sm text-muted-foreground">·</span>
+              <span className={cn(chromeTypeClass, "shrink-0 text-muted-foreground")}>·</span>
             </>
           ) : null}
           <p
-            className="min-w-0 truncate text-sm font-medium"
+            className={cn(chromeTypeClass, "min-w-0 truncate")}
             data-testid="thread-title"
           >
             {thread?.title || t("header.newConversation")}
@@ -239,7 +243,7 @@ export function Header({
             onClick={onToggleLocale}
             title={t("header.switchLanguage")}
             aria-label={t("header.switchLanguage")}
-            className="px-1.5 text-[11px] font-medium"
+            className={cn(chromeTypeClass, "px-1.5")}
           >
             {t("header.languageMark")}
           </Button>

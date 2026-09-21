@@ -26,6 +26,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import { reorderById } from "@/lib/reorder"
 import { useSortableList } from "@/lib/sortable"
 import type { Project, SkillInfo, Thread } from "@/lib/types"
@@ -135,7 +136,7 @@ export function ProjectList({
       ))}
 
       {projects.length === 0 ? (
-        <p className="px-2 py-2 text-xs text-sidebar-foreground/70">
+        <p className={cn(chromeTypeClass, "px-2 py-2 text-sidebar-foreground/70")}>
           {t("projects.empty")}
         </p>
       ) : null}

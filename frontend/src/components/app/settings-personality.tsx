@@ -1,5 +1,7 @@
 import { Textarea } from "@/components/ui/textarea"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import type { Settings } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 
 import {
@@ -41,7 +43,7 @@ export function PersonalityTab({
             <Textarea
               id="personality-instructions"
               rows={8}
-              className="min-h-32 resize-y text-[13px]"
+              className={cn("min-h-32 resize-y", chromeTypeClass)}
               value={value}
               onChange={(e) =>
                 onChange({

@@ -10,6 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import {
   auxiliaryModelChoices,
   groupModels,
@@ -17,6 +18,7 @@ import {
   parseModelChoiceId,
 } from "@/lib/models"
 import { defaultSearchSettings, type SearchSettings, type Settings } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 
 import {
@@ -137,7 +139,7 @@ export function SearchSettingsPanel({
               onChange={(e) => update({ embedding_model: e.target.value })}
               aria-label={t("settings.searchEmbed.modelAria")}
               placeholder={t("settings.searchEmbed.pick")}
-              className="h-[32px] w-56 text-[13px]"
+              className={cn("h-[32px] w-56", chromeTypeClass)}
             />
           )}
         </SettingsRow>

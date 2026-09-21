@@ -16,11 +16,19 @@ import {
   bindingUsesLastSeen,
   bindingWhen,
 } from "@/lib/remote-binding"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import { defaultRemoteSettings } from "@/lib/types"
+import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 import { errorMessage, toastError, useToasts } from "@/store/toasts"
 
-import { Field, SettingsPage, SettingsSection } from "./settings-field"
+import {
+  Field,
+  SettingsPage,
+  SettingsSection,
+  settingsHintClass,
+  settingsLabelClass,
+} from "./settings-field"
 
 const remoteToastId = "settings:remote"
 
@@ -210,7 +218,10 @@ export function RemoteTab({
             />
           </div>
         ) : (
-          <p className="px-4 py-2.5 text-sm text-muted-foreground" data-settings-row="">
+          <p
+            className={cn(chromeTypeClass, "px-4 py-2.5 text-muted-foreground")}
+            data-settings-row=""
+          >
             {t("settings.remote.qrEmpty")}
           </p>
         )}
@@ -218,7 +229,10 @@ export function RemoteTab({
 
       <SettingsSection title={t("settings.remote.devices")}>
         {bindings.length === 0 ? (
-          <p className="px-4 py-2.5 text-sm text-muted-foreground" data-settings-row="">
+          <p
+            className={cn(chromeTypeClass, "px-4 py-2.5 text-muted-foreground")}
+            data-settings-row=""
+          >
             {t("settings.remote.noDevices")}
           </p>
         ) : (
@@ -229,10 +243,16 @@ export function RemoteTab({
               data-settings-row=""
             >
               <div className="min-w-0">
-                <p className={b.device?.trim() ? "truncate text-sm" : "truncate font-mono text-sm"}>
+                <p
+                  className={cn(
+                    settingsLabelClass,
+                    "truncate",
+                    !b.device?.trim() && "font-mono",
+                  )}
+                >
                   {bindingTitle(b)}
                 </p>
-                <p className="truncate text-xs text-muted-foreground">
+                <p className={cn(settingsHintClass, "truncate")}>
                   {bindingFingerprint(b)
                     ? `${bindingFingerprint(b)} · `
                     : ""}

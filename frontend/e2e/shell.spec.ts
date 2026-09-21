@@ -763,7 +763,7 @@ test("font and conversation width round-trip through settings", async ({
     await expect(root).toHaveAttribute("data-font", "serif")
     await expect(root).toHaveAttribute("data-font-size", "large")
     await expect(root).toHaveAttribute("data-content-width", "full")
-    await expect(root).toHaveCSS("font-size", "18px")
+    await expect(root).toHaveCSS("font-size", "16px")
 
     const saved = await (await request.get("/api/settings")).json()
     expect(saved.settings.ui.font).toBe("serif")

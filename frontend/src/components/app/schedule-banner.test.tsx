@@ -47,14 +47,13 @@ describe("ScheduleBanner", () => {
     expect(onCancel).toHaveBeenCalled()
   })
 
-  it("labels Run now instead of an icon-only dismiss", () => {
+  it("keeps named Run now / Cancel wait as icon controls", () => {
     const onRunNow = vi.fn()
     render(<ScheduleBanner wake={wake()} onCancel={vi.fn()} onRunNow={onRunNow} />)
     fireEvent.click(screen.getByRole("button", { name: "Run now" }))
     expect(onRunNow).toHaveBeenCalled()
-    expect(screen.getByRole("button", { name: "Cancel wait" }).textContent).toMatch(
-      /Cancel wait/,
-    )
+    expect(screen.getByRole("button", { name: "Cancel wait" })).toBeInTheDocument()
+    expect(screen.getByTestId("schedule-banner").className).toContain("bg-muted/40")
   })
 
   it("hides when there is no active thread wake", () => {

@@ -3,7 +3,8 @@ import { normalizeLocalePref, type LocalePref } from "./i18n"
 /** Typeface for the window. system is the UI sans stack already in CSS. */
 export type FontPref = "system" | "serif" | "mono"
 
-/** Root font size. medium is 16px, the size the CSS already uses. */
+/** Conversation reading size. medium matches --chrome-font-size (Settings).
+ *  Window chrome uses --chrome-font-size and does not follow this. */
 export type FontSizePref = "small" | "medium" | "large"
 
 /** Conversation column. comfortable is the current max-w-3xl reading width. */
@@ -41,9 +42,9 @@ const FONT_STACKS: Record<FontPref, string> = {
 }
 
 const FONT_SIZES: Record<FontSizePref, string> = {
-  small: "14px",
-  medium: "16px",
-  large: "18px",
+  small: "12px",
+  medium: "13px",
+  large: "16px",
 }
 
 const CONTENT_MAX: Record<ContentWidthPref, string> = {
@@ -169,6 +170,8 @@ export function applyAppearance(pref: Appearance): void {
   root.style.setProperty("--ui-font-size", FONT_SIZES[pref.fontSize])
   root.style.setProperty("--content-max", CONTENT_MAX[pref.contentWidth])
   root.style.setProperty("--content-gutter", CONTENT_GUTTER[pref.contentWidth])
+  // --chrome-font-size lives in CSS. Writing it here would make Font size
+  // balloon the sidebar and Settings, which is the cheap look.
   root.dataset.font = pref.font
   root.dataset.fontSize = pref.fontSize
   root.dataset.contentWidth = pref.contentWidth

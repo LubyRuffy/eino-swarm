@@ -41,6 +41,34 @@ describe("native phone apps", () => {
     expect(gradle).not.toMatch(leakedHost)
   })
 
+  it("ships an Android release build that reads version and signing from outside the tree", () => {
+    // A password or version baked into build.gradle would ship in git and
+    // freeze Play versionCode at 1. CLI injects both; the file only reads.
+    const gradle = read("android/app/build.gradle")
+    expect(gradle).toMatch(/zwaiVersionName/)
+    expect(gradle).toMatch(/zwaiVersionCode/)
+    expect(gradle).toMatch(/ANDROID_VERSION/)
+    expect(gradle).toMatch(/ANDROID_VERSION_CODE/)
+    expect(gradle).toMatch(/signingConfigs/)
+    expect(gradle).toMatch(/ANDROID_KEYSTORE/)
+    expect(gradle).toMatch(/keystore\.properties/)
+    expect(gradle).toMatch(/signingConfigs\.debug/)
+    expect(gradle).not.toMatch(/storePassword\s+["'][^"']+["']/)
+    expect(gradle).not.toMatch(/keyPassword\s+["'][^"']+["']/)
+    expect(gradle).not.toMatch(/storeFile\s+file\(["'][^"']+["']\)/)
+    expect(gradle).not.toMatch(leakedHost)
+
+    const ignore = read("android/.gitignore") + "\n" + readFileSync(path.join(root, "../.gitignore"), "utf8")
+    expect(ignore).toMatch(/keystore\.properties/)
+    expect(ignore).toMatch(/\*\.jks/)
+    expect(ignore).toMatch(/\*\.keystore/)
+
+    const makefile = readFileSync(path.join(root, "../Makefile"), "utf8")
+    expect(makefile).toMatch(/mobile-android-release/)
+    const pkg = JSON.parse(read("package.json"))
+    expect(pkg.scripts["cap:android-release"]).toMatch(/android-release/)
+  })
+
   it("does not compile a hub URL into the Capacitor config", () => {
     const cfg = read("capacitor.config.ts")
     expect(cfg).toMatch(/cleartext:\s*true/)

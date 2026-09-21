@@ -107,6 +107,9 @@ describe("Header project chip", () => {
     expect(name.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(title.parentElement).toContainElement(name)
     expect(title).toHaveClass("truncate")
+    expect(title.className).toContain("font-normal")
+    expect(title.className).toContain("--chrome-font-size")
+    expect(title.className).not.toMatch(/\bfont-medium\b/)
     expect(title.parentElement).toHaveClass("items-center")
   })
 

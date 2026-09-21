@@ -18,6 +18,11 @@ describe("formatGoalAge", () => {
 })
 
 describe("GoalBanner", () => {
+  it("sits as a one-line pin, not a card", () => {
+    render(<GoalBanner goal="keep going" onClear={vi.fn()} />)
+    expect(screen.getByTestId("goal-banner").className).toContain("bg-muted/40")
+    expect(screen.getByTestId("goal-banner").className).not.toMatch(/\bbg-card\b/)
+  })
   it("shows the objective and can clear it", () => {
     const onClear = vi.fn()
     render(<GoalBanner goal="keep going" onClear={onClear} />)
@@ -55,7 +60,7 @@ describe("GoalBanner", () => {
     expect(screen.getByTestId("goal-banner").textContent).toContain("Paused")
     expect(screen.getByTestId("goal-reason").textContent).toMatch(/not an error/)
     expect(screen.getByTestId("goal-reason").textContent).toMatch(/Press Start/)
-    expect(screen.getByRole("button", { name: "Start goal" })).toHaveTextContent("Start goal")
+    expect(screen.getByRole("button", { name: "Start goal" })).toBeInTheDocument()
   })
 
   it("marks a blocked objective and can resume", () => {

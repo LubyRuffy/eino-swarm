@@ -17,6 +17,18 @@ describe("ScheduleWaitActions", () => {
     )
   })
 
+  it("compacts to icon-only controls for the composer pin", () => {
+    render(
+      <ScheduleWaitActions compact onRunNow={vi.fn()} onCancel={vi.fn()} />,
+    )
+    expect(screen.getByRole("button", { name: "Run now" }).textContent).not.toMatch(
+      /Run now/,
+    )
+    expect(screen.getByRole("button", { name: "Cancel wait" }).textContent).not.toMatch(
+      /Cancel wait/,
+    )
+  })
+
   it("hides Run now while the conversation is already working", () => {
     render(<ScheduleWaitActions running onRunNow={vi.fn()} onCancel={vi.fn()} />)
     expect(screen.queryByRole("button", { name: "Run now" })).toBeNull()

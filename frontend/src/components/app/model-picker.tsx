@@ -11,6 +11,7 @@ import {
   CommandList,
 } from "@/components/ui/command"
 import { groupModels, modelChoiceId } from "@/lib/models"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import type { ModelInfo } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
@@ -173,7 +174,8 @@ export function ModelPicker({
         aria-expanded={open}
         aria-haspopup="listbox"
         className={cn(
-          "inline-flex h-7 max-w-[14rem] items-center gap-1.5 rounded-md px-2 text-xs hover:bg-accent",
+          "inline-flex h-7 max-w-[14rem] items-center gap-1.5 rounded-md px-2 hover:bg-accent",
+          chromeTypeClass,
           open && "bg-accent",
         )}
         onClick={() => setOpen((v) => !v)}

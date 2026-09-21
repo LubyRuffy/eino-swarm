@@ -21,6 +21,7 @@ help:
 	@echo "make mobile-sync  copy the phone web bundle into the iOS/Android apps"
 	@echo "make mobile-ios   open the iOS app in Xcode"
 	@echo "make mobile-android  open the Android app in Android Studio"
+	@echo "make mobile-android-release  Android APK/AAB into bin/"
 	@echo "make check      formatting, vet, test, e2e"
 
 .PHONY: run
@@ -79,6 +80,11 @@ mobile-ios: mobile-sync
 .PHONY: mobile-android
 mobile-android: mobile-sync
 	cd mobile && npx cap open android
+
+.PHONY: mobile-android-release
+mobile-android-release:
+	@test -d mobile/node_modules || (cd mobile && npm install)
+	cd mobile && VERSION="$(VERSION)" npm run cap:android-release
 
 .PHONY: e2e
 e2e: frontend

@@ -18,6 +18,7 @@ import {
   writeSectionExpanded,
   type SectionId,
 } from "@/lib/sidebar-collapse"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import { sidebarBuckets } from "@/lib/sidebar-groups"
 import {
   SIDEBAR_WIDTH_MAX,
@@ -29,6 +30,7 @@ import {
 } from "@/lib/sidebar-width"
 import type { Project, SkillInfo, Thread } from "@/lib/types"
 import { useT } from "@/lib/use-t"
+import { cn } from "@/lib/utils"
 
 /** Conversations, grouped the way people remember them: pins to watch,
  *  project folders, Recents for everything else. */
@@ -134,7 +136,10 @@ export function Sidebar({
         <Button
           variant="secondary"
           size="sm"
-          className="min-w-0 flex-1 justify-start gap-2 overflow-hidden"
+          className={cn(
+            chromeTypeClass,
+            "min-w-0 flex-1 justify-start gap-2 overflow-hidden",
+          )}
           onClick={onNew}
         >
           <MessageSquarePlus className="shrink-0" />
@@ -225,7 +230,7 @@ export function Sidebar({
             />
           </SidebarSection>
         ) : threads.length === 0 ? (
-          <p className="px-2 py-6 text-xs text-sidebar-foreground/70">
+          <p className={cn(chromeTypeClass, "px-2 py-6 text-sidebar-foreground/70")}>
             {t("sidebar.empty")}
           </p>
         ) : null}
@@ -234,7 +239,12 @@ export function Sidebar({
       </div>
 
       <div className="flex items-center justify-between border-t border-sidebar-border px-3 py-2">
-        <Button variant="ghost" size="sm" className="gap-2" onClick={onSettings}>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(chromeTypeClass, "gap-2")}
+          onClick={onSettings}
+        >
           <Settings />
           {t("sidebar.settings")}
         </Button>

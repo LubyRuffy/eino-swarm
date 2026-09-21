@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 import { ListTodo, Play, X } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { composerPinClass } from "@/lib/chrome-type"
 import { useT } from "@/lib/use-t"
 
 /** Planning banner: draft markdown, Implement, leave planning. */
@@ -46,50 +46,51 @@ export function PlanBanner({
     if (next && next !== (markdown ?? "").trim()) onEdit?.(next)
   }
 
+  const preview = markdown?.trim() ? markdown.replace(/\s+/g, " ") : t("plan.empty")
+
   return (
-    <div data-testid="plan-banner" className="mb-2 rounded-xl border bg-card px-3 py-2">
-      <div className="flex items-start gap-2">
-        <ListTodo className="mt-1 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <Badge variant="outline">{t("plan.planning")}</Badge>
-          {editing ? (
-            <Textarea
-              ref={areaRef}
-              id="plan-edit"
-              data-testid="plan-edit"
-              data-edit-draft="true"
-              aria-label={t("plan.edit")}
-              value={draft}
-              rows={8}
-              className="mt-2 min-h-24"
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={save}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault()
-                  open.current = false
-                  setDraft(markdown ?? "")
-                  setEditing(false)
-                }
-              }}
-            />
-          ) : (
-            <button
-              type="button"
-              data-testid="plan-text"
-              className="mt-1 block max-h-32 w-full overflow-hidden text-left text-sm whitespace-pre-wrap hover:underline"
-              aria-label={t("plan.edit")}
-              onClick={() => {
-                if (!onEdit) return
-                open.current = true
+    <div data-testid="plan-banner" className={composerPinClass}>
+      <div className="flex items-center gap-2">
+        <ListTodo className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="shrink-0 text-muted-foreground">{t("plan.planning")}</span>
+        {editing ? (
+          <Textarea
+            ref={areaRef}
+            id="plan-edit"
+            data-testid="plan-edit"
+            data-edit-draft="true"
+            aria-label={t("plan.edit")}
+            value={draft}
+            rows={6}
+            className="min-h-20 flex-1"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault()
+                open.current = false
                 setDraft(markdown ?? "")
-                setEditing(true)
-              }}
-            >
-              {markdown?.trim() ? markdown : t("plan.empty")}
-            </button>
-          )}
-        </div>
+                setEditing(false)
+              }
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            data-testid="plan-text"
+            className="min-w-0 flex-1 truncate text-left hover:underline"
+            aria-label={t("plan.edit")}
+            title={markdown?.trim() || undefined}
+            onClick={() => {
+              if (!onEdit) return
+              open.current = true
+              setDraft(markdown ?? "")
+              setEditing(true)
+            }}
+          >
+            {preview}
+          </button>
+        )}
         {markdown?.trim() && !running ? (
           <Button
             type="button"

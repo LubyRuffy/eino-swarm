@@ -59,6 +59,7 @@ test("standalone wait from the inbox runs now and opens findings", async ({
 
   await openInbox(page)
   const inbox = page.getByRole("dialog")
+  await inbox.getByRole("button", { name: "Create" }).click()
   await inbox.getByLabel("Title").fill("periodic check")
   await inbox.getByLabel("Prompt").fill("Continue the wait.")
   await inbox.getByLabel("Cadence").click()
@@ -68,6 +69,7 @@ test("standalone wait from the inbox runs now and opens findings", async ({
   await expect(inbox.getByTestId("schedule-row")).toBeVisible()
   await expect(inbox.getByTestId("schedule-row")).toContainText("periodic check")
 
+  await inbox.getByTestId("schedule-row-toggle").click()
   await inbox.getByRole("button", { name: "Run now" }).click()
   // The dialog inert-hides the title-bar status badge; close it so Idle is
   // readable, then wait for the minted turn via unread.

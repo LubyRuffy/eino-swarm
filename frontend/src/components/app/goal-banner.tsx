@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 import { Flag, Play, X } from "lucide-react"
 
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { composerPinClass } from "@/lib/chrome-type"
 import { useT, type Translate } from "@/lib/use-t"
 
 /** Stored when a pursuing turn died before block_goal. Keep in sync with
@@ -104,7 +104,6 @@ export function GoalBanner({
       : held
         ? t("goal.paused")
         : t("goal.pursuing")
-  const badge = complete ? "success" : blocked ? "danger" : held ? "warning" : "outline"
   // Codex: Play is resume, not "the last turn ended". An active goal
   // between auto-continue sessions stays Pursuing with no control.
   // Done used to hide Play, so a mistaken complete_goal had no one-click
@@ -142,71 +141,70 @@ export function GoalBanner({
   }
 
   return (
-    <div data-testid="goal-banner" className="mb-2 rounded-xl border bg-card px-3 py-2">
-      <div className="flex items-start gap-2">
-        <Flag className="mt-1 size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant={badge}>{state}</Badge>
-            {age ? (
-              <span data-testid="goal-age" className="text-xs tabular-nums text-muted-foreground">
-                {age}
-              </span>
-            ) : null}
-          </div>
-          {editing ? (
-            <Textarea
-              ref={areaRef}
-              id="goal-edit"
-              data-testid="goal-edit"
-              data-edit-draft="true"
-              aria-label={t("goal.edit")}
-              value={draft}
-              rows={3}
-              className="mt-2 min-h-16"
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={save}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault()
-                  open.current = false
-                  setDraft(goal)
-                  setEditing(false)
-                } else if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  save()
-                }
-              }}
-            />
-          ) : (
-            <button
-              type="button"
-              data-testid="goal-text"
-              className="mt-1 block w-full truncate text-left text-sm hover:underline"
-              aria-label={t("goal.edit")}
-              onClick={() => {
-                if (!onEdit) return
-                open.current = true
+    <div data-testid="goal-banner" className={composerPinClass}>
+      <div className="flex items-center gap-2">
+        <Flag className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="shrink-0 text-muted-foreground">{state}</span>
+        {editing ? (
+          <Textarea
+            ref={areaRef}
+            id="goal-edit"
+            data-testid="goal-edit"
+            data-edit-draft="true"
+            aria-label={t("goal.edit")}
+            value={draft}
+            rows={2}
+            className="min-h-12 flex-1"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault()
+                open.current = false
                 setDraft(goal)
-                setEditing(true)
-              }}
-            >
-              {goal}
-            </button>
-          )}
-        </div>
+                setEditing(false)
+              } else if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                save()
+              }
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            data-testid="goal-text"
+            className="min-w-0 flex-1 truncate text-left hover:underline"
+            aria-label={t("goal.edit")}
+            title={reason || goal}
+            onClick={() => {
+              if (!onEdit) return
+              open.current = true
+              setDraft(goal)
+              setEditing(true)
+            }}
+          >
+            {goal}
+          </button>
+        )}
+        {age ? (
+          <span
+            data-testid="goal-age"
+            className="shrink-0 tabular-nums text-muted-foreground"
+          >
+            {age}
+          </span>
+        ) : null}
         {canStart ? (
           <Button
             type="button"
-            variant="outline"
-            size="sm"
+            variant="ghost"
+            size="icon-sm"
             className="shrink-0"
             data-testid="goal-start"
             aria-label={t("goal.start")}
             onClick={onResume}
           >
             <Play />
-            {t("goal.start")}
           </Button>
         ) : null}
         <Button
@@ -222,7 +220,7 @@ export function GoalBanner({
       {reason ? (
         <p
           data-testid="goal-reason"
-          className="mt-2 whitespace-pre-wrap break-words text-xs text-muted-foreground"
+          className="mt-0.5 line-clamp-2 text-muted-foreground"
         >
           {reason}
         </p>

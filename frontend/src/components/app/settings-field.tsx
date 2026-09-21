@@ -6,6 +6,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import { cn } from "@/lib/utils"
 
 export function settingsMatch(
@@ -22,21 +23,20 @@ export const settingsRowClass =
   "flex items-start justify-between gap-4 px-4 py-3"
 
 /** Title and hint share a size. Color is the hierarchy, not weight or a
- *  smaller caption — a medium/large chrome size must not turn this into a
- *  bold form. 13px is px so Settings stays this quiet when the window is Large. */
-export const settingsLabelClass =
-  "text-[13px] font-normal leading-snug text-foreground/90"
+ *  smaller caption — Font size must not turn this into a bold form. */
+export const settingsLabelClass = cn(chromeTypeClass, "text-foreground/90")
 
-export const settingsHintClass =
-  "mt-0.5 text-[13px] font-normal leading-snug text-muted-foreground"
+export const settingsHintClass = cn(chromeTypeClass, "mt-0.5 text-muted-foreground")
 
 /** Light bordered control, same type as the row, not a grey chip. */
-export const settingsSelectTriggerClass =
-  "h-[32px] w-auto max-w-[14rem] border-border bg-background px-2.5 text-[13px] font-normal text-foreground shadow-none"
+export const settingsSelectTriggerClass = cn(
+  chromeTypeClass,
+  "h-[32px] w-auto max-w-[14rem] border-border bg-background px-2.5 text-foreground shadow-none",
+)
 
 function fieldControlClass(wide?: boolean) {
   return cn(
-    "[&_input]:h-[32px] [&_input]:text-[13px] [&_input]:shadow-none",
+    "[&_input]:h-[32px] [&_input]:text-[length:var(--chrome-font-size)] [&_input]:font-normal [&_input]:shadow-none",
     "[&_input[type=number]]:w-[5.75rem] [&_input[type=number]]:px-2 [&_input[type=number]]:text-right [&_input[type=number]]:tabular-nums",
     wide
       ? "[&_input:not([type=number])]:w-72"
@@ -209,12 +209,12 @@ export function SettingsSection({
         <div className="flex items-end justify-between gap-3 px-0.5">
           <div className="min-w-0">
             {title ? (
-              <h3 className="text-[13px] font-medium text-foreground/90">
+              <h3 className={cn(chromeTypeClass, "font-medium text-foreground/90")}>
                 {title}
               </h3>
             ) : null}
             {description ? (
-              <p className="mt-0.5 text-[13px] font-normal leading-snug text-muted-foreground">
+              <p className={cn(chromeTypeClass, "mt-0.5 text-muted-foreground")}>
                 {description}
               </p>
             ) : null}
@@ -229,6 +229,8 @@ export function SettingsSection({
   )
 }
 
+/** One settings page. Centered reading column in the remaining pane —
+ *  a max-width hugging the sidebar is the cheap look. */
 export function SettingsPage({
   title,
   description,
@@ -239,13 +241,13 @@ export function SettingsPage({
   children: ReactNode
 }) {
   return (
-    <div className="flex w-full max-w-3xl flex-col gap-8 px-12 py-8">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-12 py-8">
       <div className="flex flex-col gap-1">
         <h2 className="text-2xl font-semibold tracking-tight text-foreground">
           {title}
         </h2>
         {description ? (
-          <p className="text-[13px] font-normal leading-snug text-muted-foreground">
+          <p className={cn(chromeTypeClass, "text-muted-foreground")}>
             {description}
           </p>
         ) : null}

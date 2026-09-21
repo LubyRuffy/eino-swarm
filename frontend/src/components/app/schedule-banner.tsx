@@ -1,6 +1,6 @@
 import { ScheduleWaitActions } from "@/components/app/schedule-wait-actions"
 import { WaitMark } from "@/components/app/wait-mark"
-import { Badge } from "@/components/ui/badge"
+import { composerPinClass } from "@/lib/chrome-type"
 import { scheduleHeadline } from "@/lib/schedule-view"
 import { useT } from "@/lib/use-t"
 import type { Schedule } from "@/lib/types"
@@ -39,29 +39,27 @@ export function ScheduleBanner({
   const headline = scheduleHeadline(wake)
 
   return (
-    <div data-testid="schedule-banner" className="mb-2 rounded-xl border bg-card px-3 py-2">
-      <div className="flex items-start gap-2">
-        <WaitMark className="mt-1 size-3.5" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="warning">{t("schedule.waiting")}</Badge>
-            {when ? (
-              <span data-testid="schedule-next" className="text-xs text-muted-foreground">
-                {t("schedule.nextCheck", { time: when })}
-              </span>
-            ) : (
-              <span data-testid="schedule-next" className="text-xs text-muted-foreground">
-                {headline}
-              </span>
-            )}
-          </div>
-          {headline ? (
-            <p data-testid="schedule-prompt" className="mt-1 truncate text-sm">
-              {headline}
-            </p>
-          ) : null}
-        </div>
-        <ScheduleWaitActions onRunNow={runNow} onCancel={cancel} />
+    <div data-testid="schedule-banner" className={composerPinClass}>
+      <div className="flex items-center gap-2">
+        <WaitMark className="size-3.5" />
+        <span className="shrink-0 text-muted-foreground">{t("schedule.waiting")}</span>
+        {headline ? (
+          <p data-testid="schedule-prompt" className="min-w-0 flex-1 truncate">
+            {headline}
+          </p>
+        ) : (
+          <span className="min-w-0 flex-1" />
+        )}
+        {when ? (
+          <span data-testid="schedule-next" className="shrink-0 text-muted-foreground">
+            {t("schedule.nextCheck", { time: when })}
+          </span>
+        ) : (
+          <span data-testid="schedule-next" className="sr-only">
+            {headline}
+          </span>
+        )}
+        <ScheduleWaitActions compact onRunNow={runNow} onCancel={cancel} />
       </div>
     </div>
   )

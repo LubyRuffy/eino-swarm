@@ -64,6 +64,8 @@ import { formatQuotedMessage, type Quote } from "@/lib/quote"
 import type { Attachment, Followup, ModelInfo, UsageSnapshot } from "@/lib/types"
 import { windowForSelection } from "@/lib/usage"
 import { useT, type Translate } from "@/lib/use-t"
+import { chromeTypeClass } from "@/lib/chrome-type"
+import { cn } from "@/lib/utils"
 import { activeWake } from "@/lib/schedule-view"
 import { useApp } from "@/store/app"
 
@@ -518,7 +520,7 @@ export function Composer({
                   ? t("composer.placeholderRunning")
                   : t("composer.placeholder")
             }
-            className="max-h-[200px] min-h-[44px] rounded-none border-0 bg-transparent px-4 py-3 text-[0.9375rem] shadow-none focus-visible:ring-0"
+            className="max-h-[200px] min-h-[44px] rounded-none border-0 bg-transparent px-4 py-3 shadow-none focus-visible:ring-0"
             onChange={(e) => {
               const next = normalizeSlashPrefix(e.target.value)
               if (echoRef.current && next.trim() === echoRef.current) {
@@ -631,7 +633,10 @@ export function Composer({
               >
                 <SelectTrigger
                   aria-label={t("composer.thinking")}
-                  className="h-7 w-auto gap-1.5 border-none bg-transparent px-2 shadow-none hover:bg-accent"
+                  className={cn(
+                    chromeTypeClass,
+                    "h-7 w-auto gap-1.5 border-none bg-transparent px-2 shadow-none hover:bg-accent",
+                  )}
                 >
                   <Brain className="size-3.5 text-muted-foreground" />
                   <SelectValue />

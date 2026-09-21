@@ -65,3 +65,6 @@ mobile/android/local.properties
 mobile/android/captures/
 mobile/android/.idea/
 mobile/android/app/.cxx/
+*.jks
+*.keystore
+mobile/android/keystore.properties

@@ -13,6 +13,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Android release APK/AAB from the Makefile.** `make mobile-android-release`
+  syncs the phone web bundle, builds the release package, and copies it to
+  `bin/`. Signing is `ANDROID_KEYSTORE*` or a gitignored
+  `mobile/android/keystore.properties` — never a password in the tree.
+  `ANDROID_UNSIGNED=1` is a debug-signed sideload APK only. Version comes from a `vX.Y.Z`
+  tag (`major*10000+minor*100+patch`), or `mobile/package.json` when git
+  describe is not a tag. `ANDROID_VERSION_CODE` overrides the integer Play
+  needs.
+
 - **Bound phones show the phone's model.** After the app connects it
   sends `hello` with a one-line label (OS + version + model from the UA).
   Settings → Phone uses that instead of a bare fingerprint, with last
@@ -38,15 +47,27 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
-- **Scheduled inbox hides ended waits.** Done and cancelled rows used to sit
-  under the live ones and drown the list. The default view is active and
-  paused waits; an ended row only stays if it still has unread findings.
-  **Show ended** reveals the rest.
+- **Composer pins are one-line chips.** Goal, plan, and waiting sit on a
+  muted Codex-style row above the box (status, truncated title, age or
+  next check, icon controls). The transcript wait notice still labels
+  Run now / Cancel wait.
 
-- **Settings type is quiet.** Row titles and hints share 13px regular; ink vs
-  mute is the hierarchy, not a bold label over a caption. Menus are a light
-  bordered control in the same size, not a grey chip. The extra **Settings**
-  heading in the sidebar is gone (the section name is the page title).
+- **Conversation body matches Settings by default.** `ui.font_size`
+  `medium` is 13px (same as chrome). Small is 12px, large is 16px. Markdown
+  follows the root at `1em`. Chrome still ignores Font size.
+
+- **Scheduled inbox is a filtered list.** Search, **All / Active / Paused /
+  Completed** (Active is the default), and **Create** in the header. Rows
+  are a title plus cadence and next check; expand for pause / Run now /
+  Cancel wait. Finished reports stay behind **Open findings**.
+
+- **Settings type is quiet.** Row titles and hints share the chrome size
+  (13px regular); ink vs mute is the hierarchy, not a bold label over a
+  caption. Menus are a light bordered control in the same size, not a grey
+  chip. The extra **Settings** heading in the sidebar is gone (the section
+  name is the page title). The page column is centered in the remaining pane
+  (`max-w-3xl mx-auto`). Sidebar, title bar and composer controls use the
+  same chrome type; **Font size** scales the conversation, not that chrome.
 
 - **Conversation names are chosen from the first message, once.** A long first
   turn used to keep the truncated request in the sidebar until it finished,
@@ -95,12 +116,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
-- **Scheduled inbox wait rows keep their height.** Pinning the create form
-  inside a flex column let the list shrink, so several waits painted as
-  overlapping bars. The dialog scrolls as a whole; each wait row does not
-  shrink.
+- **Scheduled inbox wait rows keep their height.** Create lives in the
+  header; the form is not pinned under the list, so several waits cannot
+  be squashed into overlapping bars.
 
-- **Scheduled inbox no longer dumps completed findings on the wait card.**
+- **Scheduled inbox no longer dumps completed findings on the wait row.**
   Several unread fires used to paint one button each, then a stacked list of
   those summaries, so a live wait looked like a wall of finished reports.
   Live rows stay a wait: **Open findings**, with a count when there is more

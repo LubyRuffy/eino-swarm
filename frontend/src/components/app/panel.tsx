@@ -16,6 +16,7 @@ import { useTranscriptFollow } from "@/lib/follow-scroll"
 import { MANAGER_ID, type AgentState, type TranscriptState } from "@/lib/transcript"
 import type { FileEntry, Meta, Turn, UsageSnapshot } from "@/lib/types"
 import { useT } from "@/lib/use-t"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import { useApp } from "@/store/app"
 
 export type PanelTab = "agents" | "files" | "trace" | "memory"
@@ -82,7 +83,7 @@ export function RightPanel({
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <TabsList>
-            <TabsTrigger value="agents">
+            <TabsTrigger value="agents" className={chromeTypeClass}>
               {t("panel.agents")}
               {countRunning(transcript) > 0 ? (
                 <Badge variant="warning" className="ml-1 px-1 py-0">
@@ -90,10 +91,14 @@ export function RightPanel({
                 </Badge>
               ) : null}
             </TabsTrigger>
-            <TabsTrigger value="files">{t("panel.files")}</TabsTrigger>
-            <TabsTrigger value="trace">{t("panel.trace")}</TabsTrigger>
+            <TabsTrigger value="files" className={chromeTypeClass}>
+              {t("panel.files")}
+            </TabsTrigger>
+            <TabsTrigger value="trace" className={chromeTypeClass}>
+              {t("panel.trace")}
+            </TabsTrigger>
             {memory ? (
-              <TabsTrigger value="memory">
+              <TabsTrigger value="memory" className={chromeTypeClass}>
                 {t("panel.memory")}
                 {memory.unread ? (
                   <Badge variant="warning" className="ml-1 px-1 py-0">

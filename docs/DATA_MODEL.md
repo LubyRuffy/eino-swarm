@@ -332,7 +332,7 @@ pinned to that `project_id`.
 | `thread_id` | the conversation that ran: the wake target, or the conversation minted for a standalone fire |
 | `turn_id` | the turn that ran, when one started. Empty on a skip |
 | `status` | `skipped_busy`, `running`, `findings`, `quiet`, `error` |
-| `summary` | short findings text the inbox shows on an ended wait that still has one unread fire. Live waits keep that text off the card and open it through **Open findings**. Empty on quiet |
+| `summary` | short findings text from a fire. The inbox does not paint it on live rows; **Open findings** opens the conversation. Empty on quiet |
 | `unread` | true for `findings` and `error`. Quiet runs are not unread |
 | `created_at`, `updated_at`, `ended_at` | `ended_at` is null while `running` |
 

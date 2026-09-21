@@ -281,7 +281,7 @@ Chrome only. Agents still answer in the language you are using.
 |---|---|---|
 | `locale` | `system` | `system`, `en` or `zh`. `system` follows the browser (`zh*` → Chinese, everything else English). The title-bar control pins `en` or `zh`. Desktop binds a random loopback, so this lives in the file rather than in `localStorage` alone. Junk becomes `system`. |
 | `font` | `system` | `system`, `serif` or `mono`. `system` is the UI sans stack. The whole window uses it. Junk becomes `system`. |
-| `font_size` | `medium` | `small`, `medium` or `large`. Scales the window from the CSS root (14 / 16 / 18px). Junk becomes `medium`. |
+| `font_size` | `medium` | `small`, `medium` or `large`. Scales conversation text from the CSS root (12 / 13 / 16px). `medium` matches `--chrome-font-size` (Settings, sidebar, title bar). Junk becomes `medium`. |
 | `content_width` | `comfortable` | `comfortable` keeps the reading column (`max-w-3xl`). `full` fills the space between the sidebars. The title-bar control and ⌘K toggle the same preference. Junk becomes `comfortable`. |
 
 Theme stays in the browser; language, typeface and column width are first-class

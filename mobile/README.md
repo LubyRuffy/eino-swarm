@@ -51,6 +51,37 @@ From the repo root: `make mobile-ios` / `make mobile-android`.
 Android debug builds need JDK 21 (`JAVA_HOME` pointing at it). iOS needs Xcode
 and a 15.0+ deployment target.
 
+## Android release
+
+`make mobile-android-release` syncs the web bundle, builds the Gradle
+`release` variant, and copies the APK/AAB to `bin/`. Play/store signing
+needs `ANDROID_KEYSTORE*` or a gitignored `mobile/android/keystore.properties`
+— missing those fails on purpose so a debug-signed APK cannot ship as a
+store build. `ANDROID_UNSIGNED=1` is the sideload path: debug-signed APK,
+no AAB (`adb install` works; Play will not).
+
+```bash
+# Sideload (emulator / adb). No tags on this checkout is fine.
+ANDROID_UNSIGNED=1 make mobile-android-release
+
+# Signed APK + AAB (Play / sideload with your upload key)
+export ANDROID_KEYSTORE="$HOME/.zwai-android-upload.jks"
+export ANDROID_KEYSTORE_PASSWORD
+export ANDROID_KEY_ALIAS=upload
+make mobile-android-release
+```
+
+`keystore.properties` next to `mobile/android/build.gradle` is the same
+four keys (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) if you
+do not want them in the shell. Do not commit that file or `*.jks`.
+
+Version: a `vX.Y.Z` git tag becomes `versionName` X.Y.Z and `versionCode`
+`major*10000+minor*100+patch`. This checkout has no tags, so the script
+falls back to `mobile/package.json` `version`. Override with
+`ANDROID_VERSION` / `ANDROID_VERSION_CODE`. `ANDROID_ARTIFACT=apk|aab|both`
+picks the Gradle task (default both). JDK 21 is required (Capacitor
+`compileOptions`); JAVA_HOME 17 is skipped.
+
 Hub URL and pairing live on the PC (Settings → Phone). This app
 only stores the device identity and the redeem ticket on the phone. Camera
 and cleartext (user-typed hub URLs, including `http` on a LAN) are declared

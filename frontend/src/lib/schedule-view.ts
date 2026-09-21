@@ -29,8 +29,35 @@ export function isLiveSchedule(row: Pick<Schedule, "status">): boolean {
   return status !== "done" && status !== "cancelled"
 }
 
-function unreadScheduleIds(runs: ScheduleRun[]): Set<string> {
-  return new Set(unreadFindings(runs).map((run) => run.schedule_id))
+/** Inbox status tabs. Completed is done + cancelled. */
+export type InboxFilter = "all" | "active" | "paused" | "completed"
+
+export function inboxStatusTab(
+  status: string | undefined,
+): Exclude<InboxFilter, "all"> {
+  const s = (status ?? "").trim()
+  if (s === "paused") return "paused"
+  if (s === "done" || s === "cancelled") return "completed"
+  return "active"
+}
+
+export function inboxFilterMatch(
+  row: Pick<Schedule, "status">,
+  filter: InboxFilter,
+): boolean {
+  if (filter === "all") return true
+  return inboxStatusTab(row.status) === filter
+}
+
+export function inboxSearchMatch(
+  row: Pick<Schedule, "title" | "prompt">,
+  query: string,
+): boolean {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+  const title = (row.title ?? "").toLowerCase()
+  const prompt = (row.prompt ?? "").toLowerCase()
+  return title.includes(needle) || prompt.includes(needle)
 }
 
 /** Live waits first so a just-armed row is not buried under done fires. */
@@ -42,22 +69,50 @@ export function inboxScheduleOrder(rows: Schedule[]): Schedule[] {
   })
 }
 
-/** Ended waits stay out of the inbox unless they still have unread findings. */
-export function inboxVisibleSchedules(
+export function inboxFilteredSchedules(
   rows: Schedule[],
-  runs: ScheduleRun[],
-  includeEnded: boolean,
+  filter: InboxFilter,
+  query: string,
 ): Schedule[] {
-  if (includeEnded) return inboxScheduleOrder(rows)
-  const unreadIds = unreadScheduleIds(runs)
   return inboxScheduleOrder(
-    rows.filter((row) => isLiveSchedule(row) || unreadIds.has(row.id)),
+    rows.filter(
+      (row) => inboxFilterMatch(row, filter) && inboxSearchMatch(row, query),
+    ),
   )
 }
 
-export function inboxHiddenEndedCount(rows: Schedule[], runs: ScheduleRun[]): number {
-  const unreadIds = unreadScheduleIds(runs)
-  return rows.filter((row) => !isLiveSchedule(row) && !unreadIds.has(row.id)).length
+export type CadenceSpec =
+  | { kind: "every"; seconds: number }
+  | { kind: "delay"; seconds: number }
+  | { kind: "cron"; expr: string }
+  | { kind: "none" }
+
+export function scheduleCadenceSpec(
+  row: Pick<Schedule, "delay_s" | "every_s" | "cron">,
+): CadenceSpec {
+  const cron = (row.cron ?? "").trim()
+  if (cron) return { kind: "cron", expr: cron }
+  if (row.every_s > 0) return { kind: "every", seconds: row.every_s }
+  if (row.delay_s > 0) return { kind: "delay", seconds: row.delay_s }
+  return { kind: "none" }
+}
+
+export type CadenceUnit = "second" | "minute" | "hour"
+
+export function cadenceAmount(seconds: number): { n: number; unit: CadenceUnit } {
+  if (seconds > 0 && seconds % 3600 === 0) {
+    return { n: seconds / 3600, unit: "hour" }
+  }
+  if (seconds > 0 && seconds % 60 === 0) {
+    return { n: seconds / 60, unit: "minute" }
+  }
+  return { n: Math.max(0, seconds), unit: "second" }
+}
+
+export function isScheduleDue(nextRunAt: string, nowMs = Date.now()): boolean {
+  const t = Date.parse(nextRunAt)
+  if (Number.isNaN(t)) return false
+  return t <= nowMs
 }
 
 export type ArmedSchedulePayload = {

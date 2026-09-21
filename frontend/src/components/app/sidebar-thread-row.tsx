@@ -13,6 +13,7 @@ import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots
 import { StatusDot } from "@/components/app/transcript"
 import { AskMark } from "@/components/app/ask-mark"
 import { WaitMark } from "@/components/app/wait-mark"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import { useSortableList } from "@/lib/sortable"
 import type { Thread } from "@/lib/types"
 import { useT } from "@/lib/use-t"
@@ -63,7 +64,7 @@ export function SidebarThreadRow({
       <Input
         autoFocus
         value={draft}
-        className="h-7 text-sm"
+        className={cn("h-7", chromeTypeClass)}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {

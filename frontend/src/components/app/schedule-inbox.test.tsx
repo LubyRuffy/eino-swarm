@@ -187,14 +187,16 @@ describe("Scheduled inbox", () => {
     expect(screen.getByTestId("schedule-inbox")).toHaveAttribute("aria-expanded", "true")
   })
 
-  it("lists waits and can pause or run now", async () => {
+  it("lists waits as a compact row and can pause or run now after expanding", async () => {
     render(<Sidebar threads={[]} {...noop} />)
     fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/Periodic check/)
-    expect(screen.getByTestId("schedule-row").textContent).toMatch(/Standalone/)
-    expect(screen.getByTestId("schedule-row").textContent).toMatch(/Active/)
-    expect(screen.getByTestId("schedule-prompt").textContent).toMatch(/Continue the wait/)
+    expect(screen.getByTestId("schedule-row").textContent).toMatch(/Every 1 minute/)
+    expect(screen.getByTestId("schedule-row").textContent).toMatch(/Next run now/)
+    expect(screen.queryByTestId("schedule-prompt")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId("schedule-row-toggle"))
     fireEvent.click(screen.getByRole("button", { name: "Pause" }))
     await waitFor(() =>
       expect(fake.patched).toEqual([{ id: "sch_1", patch: { status: "paused" } }]),
@@ -203,16 +205,44 @@ describe("Scheduled inbox", () => {
     await waitFor(() => expect(fake.ran).toEqual(["sch_1"]))
   })
 
-  it("labels the create form so getByLabel works", async () => {
+  it("keeps the create form behind Create so the list stays a list", async () => {
     render(<Sidebar threads={[]} {...noop} />)
     fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
     expect(screen.getByLabelText("Title")).toBeInTheDocument()
     expect(screen.getByLabelText("Prompt")).toBeInTheDocument()
     expect(screen.getByLabelText("Cadence")).toBeInTheDocument()
     expect(screen.getByLabelText("Delay (seconds)")).toBeInTheDocument()
     expect(screen.getByLabelText("Project")).toBeInTheDocument()
     expect(screen.getByRole("dialog").textContent).not.toMatch(/0 9 \*|GitHub|deploy/i)
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument()
+  })
+
+  it("submits a standalone wait from the create form", async () => {
+    render(<Sidebar threads={[]} {...noop} />)
+    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "wake" } })
+    fireEvent.change(screen.getByLabelText("Prompt"), {
+      target: { value: "Continue the wait." },
+    })
+    fireEvent.change(screen.getByLabelText("Delay (seconds)"), { target: { value: "30" } })
+    fireEvent.click(screen.getByRole("button", { name: "Add wait" }))
+    await waitFor(() =>
+      expect(fake.created).toEqual([
+        {
+          kind: "standalone",
+          title: "wake",
+          prompt: "Continue the wait.",
+          delay_s: 30,
+        },
+      ]),
+    )
+    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument()
   })
 
   it("opens unread findings in that fire's conversation", async () => {
@@ -256,8 +286,8 @@ describe("Scheduled inbox", () => {
     render(<Sidebar threads={[]} {...noop} />)
     fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
-    expect(screen.getByRole("dialog").className).toMatch(/\boverflow-x-hidden\b/)
-    expect(screen.getByRole("dialog").className).toMatch(/\boverflow-y-auto\b/)
+    expect(screen.getByRole("dialog").className).toMatch(/\boverflow-hidden\b/)
+    expect(screen.getByTestId("schedule-list").className).toMatch(/\boverflow-y-auto\b/)
     expect(screen.getByTestId("schedule-row")).toHaveClass("shrink-0")
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Open findings (2)" })).toBeInTheDocument(),
@@ -310,13 +340,14 @@ describe("Scheduled inbox", () => {
     render(<Sidebar threads={[]} {...noop} />)
     fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId("schedule-row-toggle"))
     fireEvent.click(screen.getByRole("button", { name: "Run now" }))
     const alert = await waitFor(() => screen.getByRole("alert"))
     expect(alert).toHaveTextContent("The conversation is already running a turn.")
     expect(alert).toHaveAccessibleName(/error/i)
   })
 
-  it("hides ended waits by default and can reveal them", async () => {
+  it("defaults to Active and reveals ended waits on Completed", async () => {
     fake.rows = [
       wait({
         id: "sch_done",
@@ -339,17 +370,16 @@ describe("Scheduled inbox", () => {
     const rows = screen.getAllByTestId("schedule-row")
     expect(rows).toHaveLength(1)
     expect(rows[0].textContent).toMatch(/Continue the wait/)
-    expect(rows[0].textContent).toMatch(/Active/)
     expect(screen.queryByText("old")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Show ended (1)" }))
+    fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
     const revealed = screen.getAllByTestId("schedule-row")
-    expect(revealed).toHaveLength(2)
-    expect(revealed[1].textContent).toMatch(/old/)
-    fireEvent.click(screen.getByRole("button", { name: "Hide ended" }))
-    expect(screen.getAllByTestId("schedule-row")).toHaveLength(1)
+    expect(revealed).toHaveLength(1)
+    expect(revealed[0].textContent).toMatch(/old/)
+    fireEvent.click(screen.getByRole("tab", { name: "All" }))
+    expect(screen.getAllByTestId("schedule-row")).toHaveLength(2)
   })
 
-  it("still lists an ended wait that has unread findings", async () => {
+  it("keeps an ended wait with unread findings on Completed, not Active", async () => {
     fake.rows = [
       wait({
         id: "sch_done",
@@ -374,13 +404,16 @@ describe("Scheduled inbox", () => {
     useApp.setState({ schedules: fake.rows })
     render(<Sidebar threads={[]} {...noop} />)
     fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByTestId("schedule-row")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
+    expect(screen.getByText("No waits in this view.")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/old/)
-    expect(screen.getByTestId("schedule-findings")).toHaveTextContent("Something changed.")
-    expect(screen.queryByRole("button", { name: /Show ended/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open findings" })).toBeInTheDocument()
+    expect(screen.queryByTestId("schedule-findings")).not.toBeInTheDocument()
   })
 
-  it("says there are no live waits when every row has ended", async () => {
+  it("says this view is empty when every row has ended", async () => {
     fake.rows = [
       wait({
         id: "sch_done",
@@ -394,9 +427,27 @@ describe("Scheduled inbox", () => {
     render(<Sidebar threads={[]} {...noop} />)
     fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
     await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
-    expect(screen.getByText("No live waits.")).toBeInTheDocument()
+    expect(screen.getByText("No waits in this view.")).toBeInTheDocument()
     expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Show ended (1)" }))
+    fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/old/)
+  })
+
+  it("filters the list from the search box", async () => {
+    fake.rows = [
+      wait({ id: "sch_keep", title: "alpha wait", prompt: "Continue the wait." }),
+      wait({ id: "sch_drop", title: "other wait", prompt: "Stay parked." }),
+    ]
+    fake.runs = []
+    useApp.setState({ schedules: fake.rows })
+    render(<Sidebar threads={[]} {...noop} />)
+    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+    await waitFor(() => expect(screen.getAllByTestId("schedule-row")).toHaveLength(2))
+    fireEvent.change(screen.getByLabelText("Search waits"), { target: { value: "alpha" } })
+    expect(screen.getAllByTestId("schedule-row")).toHaveLength(1)
+    expect(screen.getByTestId("schedule-row").textContent).toMatch(/alpha wait/)
+    fireEvent.change(screen.getByLabelText("Search waits"), { target: { value: "zzzz" } })
+    expect(screen.getByText("No matching waits.")).toBeInTheDocument()
+    expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
   })
 })

@@ -100,7 +100,10 @@
        bar overwrite this when the human picks full width. */
     --content-max: 48rem;
     --content-gutter: 2rem;
-    --ui-font-size: 16px;
+    --ui-font-size: 13px;
+    /* Sidebar / Settings / title bar / composer controls. Font size
+       overwrites --ui-font-size; this one stays so chrome does not balloon. */
+    --chrome-font-size: 13px;
 
     /* Pairing QR plate. A camera needs a white field even in dark chrome. */
     --qr-plate: 0 0% 100%;
@@ -182,7 +185,8 @@
   }
 
   html {
-    font-size: var(--ui-font-size, 16px);
+    /* Conversation / markdown. Chrome reads --chrome-font-size instead. */
+    font-size: var(--ui-font-size, 13px);
   }
 
   body {
@@ -232,7 +236,7 @@
      and a lot of kilobytes; these are the few rules the answers actually
      need. Sizes are rem so Settings → Font size scales the answer too. */
   .md {
-    @apply text-[0.9375rem] leading-7;
+    @apply text-[1em] leading-6;
   }
   .md > * + * {
     @apply mt-3;

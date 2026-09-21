@@ -1,5 +1,7 @@
 import { FileText, Layers, Search } from "lucide-react"
 
+import { chromeTypeClass } from "@/lib/chrome-type"
+import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 
 /** Shown before the first message. Its job is to answer "what do I type?",
@@ -33,7 +35,7 @@ export function EmptyState({ onPick }: { onPick: (text: string) => void }) {
         <h1 className="text-center text-2xl font-semibold tracking-tight">
           {t("empty.title")}
         </h1>
-        <p className="mt-2 text-center text-sm text-muted-foreground">
+        <p className={cn(chromeTypeClass, "mt-2 text-center text-muted-foreground")}>
           {t("empty.lead")}
         </p>
         <div className="mt-8 grid gap-2 sm:grid-cols-3">
@@ -45,8 +47,8 @@ export function EmptyState({ onPick }: { onPick: (text: string) => void }) {
               className="rounded-xl border border-border bg-card p-3 text-left transition-colors hover:border-ring hover:bg-accent/50"
             >
               <Icon className="size-4 text-muted-foreground" />
-              <p className="mt-2 text-[13px] font-medium">{title}</p>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">{hint}</p>
+              <p className={cn(chromeTypeClass, "mt-2")}>{title}</p>
+              <p className={cn(chromeTypeClass, "mt-1 text-muted-foreground")}>{hint}</p>
             </button>
           ))}
         </div>

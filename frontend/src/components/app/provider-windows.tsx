@@ -1,6 +1,7 @@
 import { useId } from "react"
 
 import { Input } from "@/components/ui/input"
+import { chromeTypeClass } from "@/lib/chrome-type"
 import { parseTokenWindow, setModelWindow } from "@/lib/usage"
 import type { Settings } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -85,7 +86,10 @@ export function ProviderWindows({
                 id={id}
                 type="number"
                 min={0}
-                className="h-[32px] w-[5.75rem] px-2 text-right text-[13px] tabular-nums shadow-none"
+                className={cn(
+                  "h-[32px] w-[5.75rem] px-2 text-right tabular-nums shadow-none",
+                  chromeTypeClass,
+                )}
                 aria-label={t("settings.models.windowFor", { name })}
                 value={provider.model_context?.[name] || ""}
                 placeholder={t("settings.models.windowPlaceholder")}
@@ -109,7 +113,10 @@ export function ProviderWindows({
             id={`${uid}-fallback`}
             type="number"
             min={0}
-            className="h-[32px] w-[5.75rem] px-2 text-right text-[13px] tabular-nums shadow-none"
+            className={cn(
+              "h-[32px] w-[5.75rem] px-2 text-right tabular-nums shadow-none",
+              chromeTypeClass,
+            )}
             aria-label={t("settings.models.windowFallback")}
             value={provider.context_window || ""}
             placeholder={t("settings.models.windowPlaceholder")}
