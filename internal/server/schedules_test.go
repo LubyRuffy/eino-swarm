@@ -50,6 +50,54 @@ func TestCreateSchedulesAreHumanCreated(t *testing.T) {
 	}
 }
 
+func TestParkedThreadWakeMarksTheConversationWaiting(t *testing.T) {
+	h := newHarness(t)
+	threadID := h.newThread()
+	idle := h.json(http.MethodGet, "/api/threads/"+threadID, nil, http.StatusOK)
+	status, _ := idle["status"].(map[string]any)
+	if status["waiting"] == true {
+		t.Fatal("a conversation without a wake must not be waiting")
+	}
+	row, _ := idle["thread"].(map[string]any)
+	if row["waiting"] == true {
+		t.Fatal("listing thread must omit waiting when nothing is parked")
+	}
+
+	h.json(http.MethodPost, "/api/schedules", map[string]any{
+		"kind": "thread", "thread_id": threadID,
+		"prompt": scheduleWaitPrompt, "every_s": 60,
+	}, http.StatusCreated)
+
+	got := h.json(http.MethodGet, "/api/threads/"+threadID, nil, http.StatusOK)
+	st, _ := got["status"].(map[string]any)
+	if st["waiting"] != true {
+		t.Fatalf("status waiting=%v, parked wake must not look idle", st["waiting"])
+	}
+	if st["running"] == true {
+		t.Fatal("arming a wait must not start a turn")
+	}
+	th, _ := got["thread"].(map[string]any)
+	if th["waiting"] != true {
+		t.Fatalf("thread waiting=%v", th["waiting"])
+	}
+	listed := h.json(http.MethodGet, "/api/threads", nil, http.StatusOK)
+	rows, _ := listed["threads"].([]any)
+	found := false
+	for _, raw := range rows {
+		item, _ := raw.(map[string]any)
+		if item["id"] != threadID {
+			continue
+		}
+		found = true
+		if item["waiting"] != true {
+			t.Fatalf("list waiting=%v", item["waiting"])
+		}
+	}
+	if !found {
+		t.Fatal("created conversation missing from the list")
+	}
+}
+
 func TestListSchedulesFiltersAndCountsUnread(t *testing.T) {
 	h := newHarness(t)
 	threadID := h.newThread()

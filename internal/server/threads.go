@@ -47,9 +47,13 @@ type threadView struct {
 	// still Running. Omitted when idle so a listing of finished rows
 	// does not dump a field of falses.
 	AwaitingAnswer bool `json:"awaiting_answer,omitempty"`
+	// Parked thread wake: the next turn is that wait, not a live tool call.
+	// Omitted when idle-without-a-wait so a listing of finished rows does
+	// not dump a field of falses.
+	Waiting bool `json:"waiting,omitempty"`
 }
 
-func viewThread(th *store.Thread, running, awaitingAnswer bool) threadView {
+func viewThread(th *store.Thread, running, awaitingAnswer, waiting bool) threadView {
 	v := threadView{
 		ID:              th.ID,
 		Title:           th.Title,
@@ -74,6 +78,7 @@ func viewThread(th *store.Thread, running, awaitingAnswer bool) threadView {
 		LastActiveAt:    th.LastActiveAt.Format(timeFormat),
 		Running:         running,
 		AwaitingAnswer:  awaitingAnswer,
+		Waiting:         waiting,
 	}
 	if th.GoalStartedAt != nil && !th.GoalStartedAt.IsZero() {
 		v.GoalStartedAt = th.GoalStartedAt.Format(timeFormat)
@@ -84,8 +89,8 @@ func viewThread(th *store.Thread, running, awaitingAnswer bool) threadView {
 	return v
 }
 
-func viewThreadWithUsage(th *store.Thread, running, awaitingAnswer bool, chars, budget int) threadView {
-	v := viewThread(th, running, awaitingAnswer)
+func viewThreadWithUsage(th *store.Thread, running, awaitingAnswer, waiting bool, chars, budget int) threadView {
+	v := viewThread(th, running, awaitingAnswer, waiting)
 	v.ContextChars = chars
 	v.ContextBudget = budget
 	return v
@@ -107,9 +112,13 @@ func (s *Server) listThreads(c *gin.Context) {
 	for _, id := range s.engine.AwaitingAnswer() {
 		asking[id] = true
 	}
+	waiting := map[string]bool{}
+	for _, id := range s.engine.Waiting() {
+		waiting[id] = true
+	}
 	out := make([]threadView, 0, len(threads))
 	for i := range threads {
-		out = append(out, viewThread(&threads[i], running[threads[i].ID], asking[threads[i].ID]))
+		out = append(out, viewThread(&threads[i], running[threads[i].ID], asking[threads[i].ID], waiting[threads[i].ID]))
 	}
 	c.JSON(http.StatusOK, gin.H{"threads": out})
 }
@@ -127,7 +136,7 @@ func (s *Server) createThread(c *gin.Context) {
 		s.fail(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"thread": viewThread(th, false, false)})
+	c.JSON(http.StatusCreated, gin.H{"thread": viewThread(th, false, false, false)})
 }
 
 func (s *Server) getThread(c *gin.Context) {
@@ -147,7 +156,7 @@ func (s *Server) getThread(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"thread": viewThreadWithUsage(th, status.Running, status.AwaitingAnswer, chars, budget),
+		"thread": viewThreadWithUsage(th, status.Running, status.AwaitingAnswer, status.Waiting, chars, budget),
 		"status": status,
 		"usage":  usage,
 	})
@@ -447,7 +456,7 @@ func (s *Server) compactThread(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"thread": viewThreadWithUsage(th, status.Running, status.AwaitingAnswer, chars, budget),
+		"thread": viewThreadWithUsage(th, status.Running, status.AwaitingAnswer, status.Waiting, chars, budget),
 		"status": status,
 		"usage":  usage,
 	})

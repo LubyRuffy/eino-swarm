@@ -8,29 +8,29 @@ import type {
   Thread,
   ThreadStatus,
 } from "@/lib/types"
+import {
+  activeWake,
+  applyCancelledSchedule,
+  keepArmedWakes,
+} from "@/lib/schedule-view"
 import { withRunningClock } from "./app-stream"
 
-/** Active thread wake targeting this conversation — the composer banner. */
-export function activeWake(
-  schedules: Schedule[] | undefined,
-  threadId: string | undefined,
-): Schedule | undefined {
-  if (!threadId) return undefined
-  return (schedules ?? []).find(
-    (row) =>
-      row.kind === "thread" &&
-      row.thread_id === threadId &&
-      row.status === "active",
-  )
-}
+export { activeWake } from "@/lib/schedule-view"
 
 /** Conversations whose next turn is a parked wait, not a live tool call.
- *  Standalone jobs mint their own thread on fire; they do not mark origin. */
-export function waitingThreadIds(schedules: Schedule[] | undefined): Set<string> {
+ *  Standalone jobs mint their own thread on fire; they do not mark origin.
+ *  Listing `waiting` covers a wake the schedule list has not caught yet. */
+export function waitingThreadIds(
+  schedules: Schedule[] | undefined,
+  threads?: Array<{ id: string; waiting?: boolean }>,
+): Set<string> {
   const ids = new Set<string>()
   for (const row of schedules ?? []) {
     if (row.kind !== "thread" || row.status !== "active" || !row.thread_id) continue
     ids.add(row.thread_id)
+  }
+  for (const thread of threads ?? []) {
+    if (thread.waiting && thread.id) ids.add(thread.id)
   }
   return ids
 }
@@ -76,6 +76,8 @@ type SetSchedule = (
 ) => void
 
 /** Inbox actions. Kept out of app.ts so that file stays under 1000 lines. */
+let scheduleFetch = 0
+
 export function scheduleActions(
   set: SetSchedule,
   get: () => ScheduleSlice & ScheduleHost,
@@ -87,10 +89,27 @@ export function scheduleActions(
     scheduleInboxOpen: false,
 
     refreshSchedules: async () => {
+      const n = ++scheduleFetch
       try {
         const got = await api.schedules()
-        set({ schedules: got.schedules ?? [], scheduleUnread: got.unread ?? 0 })
+        if (n !== scheduleFetch) return
+        set((s) => {
+          const incoming = got.schedules ?? []
+          const schedules = keepArmedWakes(s.schedules, incoming, {
+            waiting: Boolean(s.status.waiting),
+            threadId: s.activeId,
+          })
+          return {
+            schedules,
+            scheduleUnread: got.unread ?? 0,
+            status: {
+              ...s.status,
+              waiting: Boolean(s.status.waiting || activeWake(schedules, s.activeId)),
+            },
+          }
+        })
       } catch (e) {
+        if (n !== scheduleFetch) return
         set({ error: deps.fail(e) })
       }
     },
@@ -116,6 +135,16 @@ export function scheduleActions(
     deleteSchedule: async (id) => {
       try {
         await api.deleteSchedule(id)
+        set((s) => {
+          const schedules = applyCancelledSchedule(s.schedules, id)
+          return {
+            schedules,
+            status: {
+              ...s.status,
+              waiting: Boolean(activeWake(schedules, s.activeId)),
+            },
+          }
+        })
         await get().refreshSchedules()
       } catch (e) {
         set({ error: deps.fail(e) })

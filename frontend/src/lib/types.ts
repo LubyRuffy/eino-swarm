@@ -197,6 +197,8 @@ export interface Thread {
   running: boolean
   /** Live only: ask_user is blocked waiting for the human. Still `running`. */
   awaiting_answer?: boolean
+  /** Parked thread wake. Not `running`: the next turn is that wait. */
+  waiting?: boolean
 }
 
 /** A message typed while a turn was already running. It waits for that turn
@@ -229,6 +231,10 @@ export interface ThreadStatus {
    *  Live only: `compacted` with `phase: "start"` sets it, a later compact
    *  result or `done` clears it. */
   compressing?: boolean
+  /** True while a thread wake still owns the next turn. Not `running`.
+   *  Live `schedule` sets it; `done` must keep it or the title bar says
+   *  Idle while /goal is parked on that wait. */
+  waiting?: boolean
 }
 
 export interface Turn {

@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react"
 import { useEffect, useState, type ReactNode } from "react"
 import { Disclosure } from "@/components/ui/collapsible"
 import { cn, formatDuration, formatTime } from "@/lib/utils"
-import { isGoalHoldNotice } from "@/lib/transcript-notices"
+import { isArmedWaitNotice, isGoalHoldNotice } from "@/lib/transcript-notices"
 import { useT } from "@/lib/use-t"
 import type { Block, TurnState } from "@/lib/transcript"
 
@@ -36,10 +36,14 @@ export function GoalSessionTurn({
     else if (finishedSession && !failed) setOpen(false)
   }, [failed, finishedSession, turn?.status])
 
+  const pinAfter = Boolean(turn?.status && turn.status !== "running")
+  const split = pinAfter || finishedSession ? splitSessionBlocks(blocks) : null
+
   if (!finishedSession) {
+    const ordered = split ? [...split.leading, ...split.work, ...split.trailing] : blocks
     return (
       <div className="flex scroll-mt-6 flex-col gap-1" data-turn-nav={turnId}>
-        {blocks.map((b) => (
+        {ordered.map((b) => (
           <div key={b.id}>{renderBlock(b)}</div>
         ))}
         <TurnFooter turn={turn} />
@@ -124,12 +128,18 @@ export function splitSessionBlocks(blocks: Block[]): {
     else rest.push(b)
   }
   const trailing: Block[] = []
-  while (rest.length > 0) {
-    const last = rest[rest.length - 1]
-    if (last?.kind !== "notice" || !isGoalHoldNotice(last.text)) break
-    trailing.unshift(rest.pop() as Block)
+  const work: Block[] = []
+  for (const b of rest) {
+    if (b.kind === "notice" && isArmedWaitNotice(b.text)) trailing.push(b)
+    else work.push(b)
   }
-  return { leading, work: rest, trailing }
+  const holds: Block[] = []
+  while (work.length > 0) {
+    const last = work[work.length - 1]
+    if (last?.kind !== "notice" || !isGoalHoldNotice(last.text)) break
+    holds.unshift(work.pop() as Block)
+  }
+  return { leading, work, trailing: [...trailing, ...holds] }
 }
 
 function flattenPreview(text: string): string {

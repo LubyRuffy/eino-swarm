@@ -505,7 +505,10 @@ function AppSidebar({
   const awaitingAnswer = useApp((s) => Boolean(s.status.awaiting_answer))
   const overlayRunningId = threads.find((t) => t.running && t.id !== activeId)?.id
   const schedules = useApp((s) => s.schedules)
-  const waitingIds = useMemo(() => waitingThreadIds(schedules), [schedules])
+  const waitingIds = useMemo(
+    () => waitingThreadIds(schedules, threads),
+    [schedules, threads],
+  )
   const askingIds = useMemo(
     () => askingThreadIds(threads, activeId, awaitingAnswer),
     [threads, activeId, awaitingAnswer],
@@ -585,7 +588,7 @@ function AppHeader({
       thread={thread}
       project={projectOf(projects, thread?.project_id)}
       status={status}
-      waiting={Boolean(activeWake(schedules, activeId))}
+      waiting={Boolean(status.waiting) || Boolean(activeWake(schedules, activeId))}
       meta={meta}
       connected={connected || !activeId}
       panelOpen={panelOpen}

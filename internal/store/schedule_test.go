@@ -881,6 +881,22 @@ func TestHasPendingThreadWakeSeesActiveAndClaimedRuns(t *testing.T) {
 		if err != nil || got != want {
 			t.Fatalf("HasPendingThreadWake=%v err=%v want %v", got, err, want)
 		}
+		ids, listErr := s.PendingWakeThreadIDs()
+		if listErr != nil {
+			t.Fatalf("PendingWakeThreadIDs: %v", listErr)
+		}
+		has := false
+		for _, id := range ids {
+			if id == th.ID {
+				has = true
+			}
+			if id == other.ID {
+				t.Fatalf("other conversation leaked into ids: %v", ids)
+			}
+		}
+		if has != want {
+			t.Fatalf("PendingWakeThreadIDs has %s = %v want %v (%v)", th.ID, has, want, ids)
+		}
 	}
 
 	empty, err := s.HasPendingThreadWake("")

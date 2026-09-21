@@ -423,6 +423,7 @@ export const useApp = create<AppState>((set, get) => ({
       if (thread.project_id) {
         void useProjects.getState().loadMemory(thread.project_id)
       }
+      void get().refreshSchedules()
       unsubscribe = subscribeEvents(
         id,
         {
@@ -431,7 +432,9 @@ export const useApp = create<AppState>((set, get) => ({
             set((s) => ({
               loaded: true,
               connected: true,
-              status: live ?? s.status,
+              status: live
+                ? { ...live, waiting: live.waiting ?? s.status.waiting }
+                : s.status,
               historyHasMore: since > 0 ? s.historyHasMore : false,
               threads:
                 live && s.activeId

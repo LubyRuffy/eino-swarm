@@ -51,6 +51,7 @@ export function GoalBanner({
   idle,
   running,
   startedAt,
+  waiting,
   onClear,
   onEdit,
   onResume,
@@ -66,6 +67,8 @@ export function GoalBanner({
   idle?: boolean
   running?: boolean
   startedAt?: string
+  /** Parked on a thread wake. Auto-continue is waiting, not stuck. */
+  waiting?: boolean
   onClear: () => void
   onEdit?: (text: string) => void
   onResume?: () => void
@@ -122,7 +125,9 @@ export function GoalBanner({
         ? idle && !capped
           ? t("goal.idleHint")
           : t("goal.capHint")
-        : ""
+        : waiting && !running
+          ? t("goal.waitHint")
+          : ""
 
   const save = () => {
     if (!open.current) return

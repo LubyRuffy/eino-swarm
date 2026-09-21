@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -221,6 +222,50 @@ func (s *Store) HasPendingThreadWake(threadID string) (bool, error) {
 		return false, fmt.Errorf("store: has pending thread wake: %w", err)
 	}
 	return n > 0, nil
+}
+
+// PendingWakeThreadIDs is every conversation whose next turn is a parked
+// wait: an armed thread wake, or a claimed thread fire still running.
+// The sidebar listing uses this in one pass so it does not query per row.
+func (s *Store) PendingWakeThreadIDs() ([]string, error) {
+	var armed []string
+	err := s.db.Model(&Schedule{}).
+		Where("kind = ? AND status = ? AND thread_id <> ?", ScheduleThread, ScheduleActive, "").
+		Distinct("thread_id").Pluck("thread_id", &armed).Error
+	if err != nil {
+		return nil, fmt.Errorf("store: pending wake thread ids: %w", err)
+	}
+	var claimed []string
+	err = s.db.Model(&ScheduleRun{}).
+		Joins("JOIN schedules ON schedules.id = schedule_runs.schedule_id").
+		Where("schedule_runs.status = ? AND schedules.kind = ?", ScheduleRunRunning, ScheduleThread).
+		Pluck("schedule_runs.thread_id", &claimed).Error
+	if err != nil {
+		return nil, fmt.Errorf("store: pending wake run thread ids: %w", err)
+	}
+	var fromSched []string
+	err = s.db.Model(&ScheduleRun{}).
+		Joins("JOIN schedules ON schedules.id = schedule_runs.schedule_id").
+		Where("schedule_runs.status = ? AND schedules.kind = ? AND schedules.thread_id <> ?",
+			ScheduleRunRunning, ScheduleThread, "").
+		Pluck("schedules.thread_id", &fromSched).Error
+	if err != nil {
+		return nil, fmt.Errorf("store: pending wake schedule thread ids: %w", err)
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(armed)+len(claimed)+len(fromSched))
+	for _, id := range append(append(armed, claimed...), fromSched...) {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out, nil
 }
 
 // HasRunningRun is true when this wait already has a claimed fire. Two ticks

@@ -142,6 +142,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "goal.capHint": "自动续跑已暂停，不是出错。点「开始目标」继续。",
   "goal.idleHint": "上一轮续跑没有实质进展。点「开始目标」继续。",
   "goal.completeHint": "如果是提前结案，点「开始目标」继续。",
+  "goal.waitHint": "已挂起，等下次检查。不是出错。下面的等待条可以立即运行或取消。",
 
   "plan.planning": "规划中",
   "plan.empty": "还没有计划",

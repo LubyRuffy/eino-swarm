@@ -274,11 +274,13 @@ can join the hop.
 `watch` `{thread_id, since}` subscribes to the same event kinds as desktop
 SSE (`frontend/src/lib/stream.ts` `KINDS`). `since` omitted or `0` loads the
 last turn (capped at `watch_events` from that turn's end), not the entire
-log from seq 1. That snapshot rides **one** `ready` `{seq, status, more, events}`
-so the phone can paint the tail in a single fold. Catch-up is not a
-slideshow of `event` frames — painting those oldest-first is how the phone
-showed the start of the turn and then yanked down. `more` means older
-events still exist; the phone pulls up and calls `log`. `more: false` is omitted on
+log from seq 1. That snapshot is the `watch` RPC reply: one `ready`
+`{seq, status, more, events}` so the phone can paint the tail without
+waiting on a later push. Catch-up is not a slideshow of `event` frames —
+painting those oldest-first is how the phone showed the start of the turn
+and then yanked down. `more` means older events still exist; the phone
+pulls up (or taps Earlier) and calls `log`. `log` with `before` omitted or
+`0` pages the rows older than that last-turn window. `more: false` is omitted on
 the wire (`omitempty`); the phone treats a missing `more` as false. `log`
 returns `events` plus `seq` (oldest seq of that store page) so an empty
 filtered page can still advance the cursor instead of killing paging. A later
@@ -416,7 +418,9 @@ not poll per row. The desktop and web UI re-fetch this list every few seconds wh
 window is visible, so a turn that starts (or finishes) in the background still lights —
 or clears — the folder without opening that conversation. `awaiting_answer` is true on that same row while `ask_user` is blocked
 waiting for the human (still `running`): the sidebar paints a question mark instead of
-the working pulse. `reasoning_effort` is the conversation's thinking level (`""`,
+the working pulse. `waiting` is true while a thread wake still owns the next
+turn (not `running`): the sidebar paints a clock, the title bar says Waiting
+instead of Idle, and `/goal` does not auto-continue. `reasoning_effort` is the conversation's thinking level (`""`,
 `low`, `medium`, `high`); empty means the model's own default. `project_id` is empty for
 a conversation that belongs to no project. `goal` is the standing objective from
 `/goal` (empty when none). `goal_complete` is true after the manager called
@@ -475,7 +479,12 @@ Returns the conversation and its live status:
 client would happily turn into a two-thousand-year elapsed time).
 `awaiting_continue` is true while the manager is paused at its tool-round cap.
 `awaiting_answer` is true while `ask_user` is blocked waiting for the human.
-The turn is still `running` in both cases.
+The turn is still `running` in both of those cases.
+`waiting` is true while a thread wake still owns the next turn: the conversation
+is not running, and `/goal` will not auto-continue until that wait fires, is
+cancelled, or is run now. Omitted when there is no parked wait. The listing
+row carries the same `waiting` flag so the sidebar can paint a clock without
+opening the conversation.
 
 `usage` is the composer meter. `context_tokens` is the **last manager prompt**
 (workers, the namer and the reviewer have their own prompts and would lie).

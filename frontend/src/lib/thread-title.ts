@@ -24,23 +24,25 @@ export type ThreadListOverlay = {
   id: string
   running: boolean
   awaitingAnswer?: boolean
+  waiting?: boolean
 }
 
 export function threadListOverlay(
   activeId: string | undefined,
-  status: { running: boolean; awaiting_answer?: boolean },
+  status: { running: boolean; awaiting_answer?: boolean; waiting?: boolean },
 ): ThreadListOverlay | undefined {
   if (!activeId) return undefined
   return {
     id: activeId,
     running: status.running,
     awaitingAnswer: status.running && Boolean(status.awaiting_answer),
+    waiting: !status.running && Boolean(status.waiting),
   }
 }
 
 /** Reconcile a listing with the sidebar. Background rows trust
- *  `running` / `awaiting_answer` from GET /api/threads. The open
- *  conversation keeps `overlay` so a start/done race cannot flicker. */
+ *  `running` / `awaiting_answer` / `waiting` from GET /api/threads. The open
+ *  conversation keeps `overlay` so a start/done/arm race cannot flicker. */
 export function mergeThreadList(
   local: Thread[],
   incoming: Thread[],
@@ -51,10 +53,20 @@ export function mergeThreadList(
   return named.map((t) => {
     if (t.id !== overlay.id) return t
     const awaiting = overlay.running && Boolean(overlay.awaitingAnswer)
-    if (t.running === overlay.running && Boolean(t.awaiting_answer) === awaiting) {
+    const waiting = !overlay.running && Boolean(overlay.waiting || t.waiting)
+    if (
+      t.running === overlay.running &&
+      Boolean(t.awaiting_answer) === awaiting &&
+      Boolean(t.waiting) === waiting
+    ) {
       return t
     }
-    return { ...t, running: overlay.running, awaiting_answer: awaiting }
+    return {
+      ...t,
+      running: overlay.running,
+      awaiting_answer: awaiting,
+      waiting,
+    }
   })
 }
 

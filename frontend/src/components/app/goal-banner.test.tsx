@@ -140,6 +140,16 @@ describe("GoalBanner", () => {
     expect(screen.queryByTestId("goal-start")).toBeNull()
   })
 
+  it("says the objective is parked on a wait, not crashed", () => {
+    render(
+      <GoalBanner goal="keep going" waiting onResume={vi.fn()} onClear={vi.fn()} />,
+    )
+    expect(screen.getByTestId("goal-banner").textContent).toContain("Pursuing")
+    expect(screen.getByTestId("goal-reason").textContent).toMatch(/Parked until the next check/)
+    expect(screen.getByTestId("goal-reason").textContent).toMatch(/not an error/)
+    expect(screen.queryByTestId("goal-start")).toBeNull()
+  })
+
   it("edits the objective and saves on blur", () => {
     const onEdit = vi.fn()
     render(<GoalBanner goal="keep going" onEdit={onEdit} onClear={vi.fn()} />)

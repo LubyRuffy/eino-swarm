@@ -115,6 +115,27 @@ describe("splitSessionBlocks", () => {
     expect(work.map((b) => b.kind)).toEqual(["answer"])
     expect(trailing.map((b) => b.kind)).toEqual(["notice"])
   })
+
+  it("pins an armed wait after the work so it is not buried in the report", () => {
+    const { work, trailing } = splitSessionBlocks([
+      block({ id: "u", kind: "user", text: "go", seq: 1 }),
+      block({ id: "w", kind: "notice", text: "A wait is armed.", seq: 2 }),
+      block({ id: "a", kind: "answer", text: "progress so far", seq: 3 }),
+    ])
+    expect(work.map((b) => b.kind)).toEqual(["answer"])
+    expect(trailing.map((b) => b.text)).toEqual(["A wait is armed."])
+  })
+
+  it("leaves a hold notice in the middle of the work", () => {
+    const hold =
+      "Stopped auto-continuing: the standing objective is still open. Press Start on the goal to keep going."
+    const { work, trailing } = splitSessionBlocks([
+      block({ id: "n", kind: "notice", text: hold, seq: 1 }),
+      block({ id: "a", kind: "answer", text: "progress so far", seq: 2 }),
+    ])
+    expect(work.map((b) => b.kind)).toEqual(["notice", "answer"])
+    expect(trailing).toEqual([])
+  })
 })
 
 describe("goal session fold", () => {
@@ -218,6 +239,27 @@ describe("goal session fold", () => {
     expect(row.querySelector(".whitespace-nowrap")).toHaveTextContent("Stopped after 9s")
     expect(screen.getByText("the endpoint refused the connection")).toBeInTheDocument()
     expect(row.querySelector(".truncate")).toBeNull()
+  })
+
+  it("keeps an armed wait visible while the session is folded", () => {
+    const state = sessionState({ answer: "progress so far" })
+    state.agents.manager = {
+      ...state.agents.manager,
+      blocks: [
+        block({
+          id: "w",
+          kind: "notice",
+          text: "A wait is armed.",
+          detail: "sch_ab12",
+          seq: 1,
+        }),
+        ...state.agents.manager.blocks,
+      ],
+    }
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByTestId("goal-session")).toHaveAttribute("aria-expanded", "false")
+    expect(document.querySelector(".md")).toBeNull()
+    expect(screen.getByTestId("schedule-notice")).toHaveTextContent("A wait is armed")
   })
 
   it("keeps a budget-cap notice visible while the session is folded", () => {

@@ -294,7 +294,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    inbox lists projects and the latest 5 threads. The transcript opens on the
    last turn, already at the live edge; pull up to load earlier. Markdown
    renders in the transcript. Tools stay collapsed with a one-line preview.
-   A schedule wake is a one-liner, not the payload JSON. Settings, files,
+   A `wait_agents` chip is a status count, not the roster JSON. A schedule
+   wake is a one-liner, not the payload JSON. Settings, files,
    PTY and Trace stay on the PC.
    `make mobile-ios` / `make mobile-android` open Xcode or Android Studio
    after copying the web bundle.
@@ -402,7 +403,9 @@ The sidebar lists each project's conversations under its name. A folder
 folder to collapse it. The open conversation is marked; the folder is not.
 A conversation that is mid-turn keeps a progress mark in that same column
 even if you are looking at another one; a conversation whose next turn is a
-parked wait keeps a clock there instead, so it does not look Idle. A
+parked wait keeps a clock there instead, so it does not look Idle. The
+title bar says **Waiting**, and the wait itself is the composer banner
+(Run now / Cancel wait) — that is not a row in **Pinned**. A
 collapsed folder that still has a live turn or a wait keeps the mark on the
 directory. Click **Pinned**, **Projects**, or **Recents** to fold
 that section. Pin a topic from the row menu to keep it in **Pinned**

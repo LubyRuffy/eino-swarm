@@ -47,6 +47,7 @@ export function ScheduleNotice({
   )
   if (block.quiet || !block.text) return null
   const armed = block.text === "A wait is armed." && Boolean(id)
+  const live = armed && (!row || row.status === "active")
   const headline = row ? scheduleHeadline(row) : ""
   const when = row?.next_run_at ? formatWhen(row.next_run_at) : ""
   return (
@@ -63,18 +64,18 @@ export function ScheduleNotice({
         <p className="stream-text whitespace-pre-wrap">
           {localizeNotice(block.text, t.locale)}
         </p>
-        {armed && when ? (
+        {live && when ? (
           <p data-testid="schedule-next" className="mt-0.5 text-xs">
             {t("schedule.nextCheck", { time: when })}
           </p>
         ) : null}
-        {armed && headline ? (
+        {live && headline ? (
           <p data-testid="schedule-prompt" className="mt-0.5 truncate text-xs">
             {headline}
           </p>
         ) : null}
       </div>
-      {armed ? (
+      {live ? (
         <ScheduleWaitActions
           running={running}
           onRunNow={() => {

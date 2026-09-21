@@ -27,8 +27,11 @@ import { useProjects } from "./projects"
 import { rememberRewind, rememberStored } from "./thread-history"
 import { bumpFollowups, dropMatchingFollowups } from "./followup-sync"
 import {
+  activeWake,
   applyArmedSchedule,
   applyCancelledSchedule,
+  applyFiredThreadWake,
+  isLiveThreadWake,
   parseArmedSchedule,
 } from "@/lib/schedule-view"
 
@@ -175,7 +178,11 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       status = { ...status, awaiting_answer: false }
     }
     if (ev.kind === "done" || ev.kind === "error") {
-      status = { running: false }
+      status = {
+        running: false,
+        turn_id: ev.turn_id || status.turn_id,
+        waiting: Boolean(status.waiting),
+      }
       closed = true
     }
     if (ev.kind === "title" && ev.text && !ev.err) {
@@ -186,7 +193,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     }
     threads = applyGoalThreadFlags(threads, threadId, ev)
     threads = applyPlanThreadFlags(threads, threadId, ev)
-    if (ev.kind === "goal_resumed" || ev.kind === "goal_continued" || ev.kind === "plan_implemented" || ev.kind === "schedule_fired") {
+    if (ev.kind === "goal_resumed" || ev.kind === "goal_continued" || ev.kind === "plan_implemented") {
       status = withRunningClock(status, {
         turn_id: ev.turn_id,
         started_at: ev.created_at,
@@ -216,10 +223,22 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       schedulesDirty = true
     }
     if (ev.kind === "schedule") {
-      schedules = applyArmedSchedule(schedules, parseArmedSchedule(ev.text), threadId)
+      const payload = parseArmedSchedule(ev.text)
+      schedules = applyArmedSchedule(schedules, payload, threadId)
+      if (isLiveThreadWake(payload)) {
+        status = { ...status, waiting: true }
+      }
+    }
+    if (ev.kind === "schedule_fired") {
+      schedules = applyFiredThreadWake(schedules, threadId)
+      status = withRunningClock({ ...status, waiting: false }, {
+        turn_id: ev.turn_id,
+        started_at: ev.created_at,
+      })
     }
     if (ev.kind === "schedule_cancelled") {
       schedules = applyCancelledSchedule(schedules, ev.text ?? "")
+      status = { ...status, waiting: Boolean(activeWake(schedules, threadId)) }
     }
     if (ev.kind === "usage") {
       const next = parseUsage(ev.text)
@@ -265,6 +284,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
   }
   if (schedulesDirty) void get().refreshSchedules()
   if (closed) {
+    void get().refreshSchedules()
     void get().refreshFiles()
     void get().refreshThreads()
     void get().refreshFollowups()

@@ -4,7 +4,10 @@ import type { Schedule } from "@/lib/types"
 import {
   applyArmedSchedule,
   applyCancelledSchedule,
+  applyFiredThreadWake,
   inboxScheduleOrder,
+  isLiveThreadWake,
+  keepArmedWakes,
   parseArmedSchedule,
   scheduleHeadline,
 } from "./schedule-view"
@@ -73,11 +76,49 @@ describe("schedule-view", () => {
     expect(JSON.stringify(rows)).not.toMatch(/CI|deploy|GitHub/)
   })
 
+  it("treats a thread chip without kind/status as still live", () => {
+    expect(isLiveThreadWake(parseArmedSchedule('{"id":"sch_1"}'))).toBe(true)
+    expect(
+      isLiveThreadWake(parseArmedSchedule('{"id":"sch_1","kind":"standalone"}')),
+    ).toBe(false)
+    expect(
+      isLiveThreadWake(parseArmedSchedule('{"id":"sch_1","status":"cancelled"}')),
+    ).toBe(false)
+  })
+
   it("marks a cancelled chip so the banner drops without waiting for GET", () => {
     const rows = applyCancelledSchedule(
       [wait({ id: "sch_1", status: "active" })],
       "sch_1",
     )
     expect(rows[0]?.status).toBe("cancelled")
+  })
+
+  it("marks this conversation's live wake done when it fires", () => {
+    const rows = applyFiredThreadWake(
+      [
+        wait({ id: "sch_live", status: "active" }),
+        wait({ id: "sch_other", thread_id: "th_other", status: "active" }),
+      ],
+      "th_1",
+    )
+    expect(rows.find((row) => row.id === "sch_live")?.status).toBe("done")
+    expect(rows.find((row) => row.id === "sch_other")?.status).toBe("active")
+    expect(applyFiredThreadWake(rows, "")).toBe(rows)
+  })
+
+  it("keeps the open conversation's armed wait when GET is still empty", () => {
+    const armed = wait({ id: "sch_live", status: "active" })
+    expect(
+      keepArmedWakes([armed], [], { waiting: true, threadId: "th_1" }).map((row) => row.id),
+    ).toEqual(["sch_live"])
+    expect(keepArmedWakes([armed], [], { waiting: false, threadId: "th_1" })).toEqual([])
+    expect(keepArmedWakes([armed], [], { waiting: true, threadId: "th_other" })).toEqual([])
+    expect(
+      keepArmedWakes([armed], [wait({ id: "sch_live", status: "active" })], {
+        waiting: true,
+        threadId: "th_1",
+      }).map((row) => row.id),
+    ).toEqual(["sch_live"])
   })
 })

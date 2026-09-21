@@ -149,6 +149,8 @@ export const en = {
     "Auto-continue paused: the last continuation made no progress. Press Start to keep going.",
   "goal.completeHint":
     "If this finished too early, press Start to keep going.",
+  "goal.waitHint":
+    "Parked until the next check. This is not an error. Run now or Cancel wait on the wait below.",
 
   "plan.planning": "Planning",
   "plan.empty": "No plan yet",

@@ -51,6 +51,37 @@ describe("ScheduleNotice", () => {
     expect(screen.queryByTestId("compact-briefing-open")).toBeNull()
   })
 
+  it("drops Run now on a historical chip whose wait is no longer active", () => {
+    useApp.setState({
+      schedules: [
+        {
+          id: "sch_ab12",
+          kind: "thread",
+          origin_thread_id: "th_1",
+          thread_id: "th_1",
+          project_id: "",
+          provider_id: "",
+          model: "",
+          title: "",
+          prompt: "Continue the wait.",
+          delay_s: 0,
+          every_s: 60,
+          cron: "",
+          status: "done",
+          next_run_at: "2026-09-19T12:00:00.000Z",
+          run_count: 1,
+          max_runs: 0,
+          created_by: "manager",
+          created_at: "2026-09-19T00:00:00.000Z",
+          updated_at: "2026-09-19T00:00:00.000Z",
+        },
+      ],
+    })
+    render(<ScheduleNotice block={notice()} />)
+    expect(screen.queryByRole("button", { name: "Run now" })).toBeNull()
+    expect(screen.queryByRole("button", { name: "Cancel wait" })).toBeNull()
+  })
+
   it("shows the stored prompt and next check on an armed chip", () => {
     useApp.setState({
       schedules: [

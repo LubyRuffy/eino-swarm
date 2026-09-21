@@ -39,6 +39,28 @@ export function parseArmedSchedule(text?: string): ArmedSchedulePayload | undefi
   }
 }
 
+/** A `schedule` chip that still owns the next turn on this conversation. */
+export function isLiveThreadWake(payload: ArmedSchedulePayload | undefined): boolean {
+  if (!payload) return false
+  const kind = (payload.kind ?? "thread").trim() || "thread"
+  const status = (payload.status ?? "active").trim() || "active"
+  return kind === "thread" && status === "active"
+}
+
+/** Active thread wake targeting this conversation — the composer banner. */
+export function activeWake(
+  schedules: Schedule[] | undefined,
+  threadId: string | undefined,
+): Schedule | undefined {
+  if (!threadId) return undefined
+  return (schedules ?? []).find(
+    (row) =>
+      row.kind === "thread" &&
+      row.thread_id === threadId &&
+      row.status === "active",
+  )
+}
+
 /** Paint the composer banner from the chip payload before GET returns. */
 export function applyArmedSchedule(
   rows: Schedule[],
@@ -86,4 +108,34 @@ export function applyCancelledSchedule(rows: Schedule[], id: string): Schedule[]
   return rows.map((row) =>
     row.id === target ? { ...row, status: "cancelled" } : row,
   )
+}
+
+/** A claimed fire is no longer a parked wait. Recurring rows come back on GET. */
+export function applyFiredThreadWake(rows: Schedule[], threadId: string): Schedule[] {
+  if (!threadId) return rows
+  return rows.map((row) =>
+    row.kind === "thread" && row.status === "active" && row.thread_id === threadId
+      ? { ...row, status: "done" }
+      : row,
+  )
+}
+
+/** A GET that started before the arm must not wipe the composer banner.
+ *  Only the open conversation's live wait is kept: a cancelled wait already
+ *  cleared `waiting`, so an empty GET is then the truth. */
+export function keepArmedWakes(
+  local: Schedule[],
+  incoming: Schedule[],
+  opts: { waiting?: boolean; threadId?: string },
+): Schedule[] {
+  if (!opts.waiting || !opts.threadId) return incoming
+  const got = new Set(incoming.map((row) => row.id))
+  const keep = local.filter(
+    (row) =>
+      row.kind === "thread" &&
+      row.status === "active" &&
+      row.thread_id === opts.threadId &&
+      !got.has(row.id),
+  )
+  return keep.length ? [...keep, ...incoming] : incoming
 }

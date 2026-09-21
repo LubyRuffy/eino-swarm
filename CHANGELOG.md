@@ -46,6 +46,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A parked `/goal` wait no longer looks like the swarm died.** An armed
+  `schedule_wake` correctly stops auto-continue, but `done` wiped the header
+  to Idle and left the wait chip buried in the report. Title bar is
+  **Waiting**, the goal banner says parked (not an error), the wait chip
+  pins after the work, listing/`status.waiting` drive the sidebar clock, and
+  a stale schedule GET cannot overwrite a newer arm. A fire clears Waiting
+  so a one-shot does not look parked after it already ran.
+
 - **Clicking the jump rail to a turn still above the loaded tail actually
   lands there.** The rail already listed every human turn; the click scrolled
   before React mounted the prepended row (and gave up if a sentinel page was

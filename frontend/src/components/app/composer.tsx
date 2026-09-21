@@ -64,6 +64,7 @@ import { formatQuotedMessage, type Quote } from "@/lib/quote"
 import type { Attachment, Followup, ModelInfo, UsageSnapshot } from "@/lib/types"
 import { windowForSelection } from "@/lib/usage"
 import { useT, type Translate } from "@/lib/use-t"
+import { activeWake } from "@/lib/schedule-view"
 import { useApp } from "@/store/app"
 
 /** The composer. Enter while a turn is running queues a follow-up for after
@@ -175,6 +176,11 @@ export function Composer({
 }) {
   const t = useT()
   const lastTurnError = useApp((s) => lastFailedTurnError(s.transcript.turns))
+  const parkedWait = useApp(
+    (s) =>
+      !s.status.running &&
+      Boolean(s.status.waiting || activeWake(s.schedules, s.activeId)),
+  )
   const [text, setText] = useState("")
   const [pending, setPending] = useState<File[]>([])
   const [pasted, setPasted] = useState<PasteImage[]>([])
@@ -423,6 +429,7 @@ export function Composer({
           capped={goalCapped}
           idle={goalIdle}
           running={running}
+          waiting={parkedWait}
           startedAt={goalStartedAt}
           onClear={() => onClearGoal?.()}
           onEdit={onEditGoal}

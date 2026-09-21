@@ -352,6 +352,10 @@ type Status struct {
 	// AwaitingAnswer is true when ask_user is blocked waiting for the human.
 	// Same rule as AwaitingContinue: the turn is still running.
 	AwaitingAnswer bool `json:"awaiting_answer,omitempty"`
+	// Waiting is true when a thread wake still owns the next turn. The
+	// conversation can be idle: that parked wait is why /goal does not
+	// auto-continue, and why the title bar must not say Idle.
+	Waiting bool `json:"waiting,omitempty"`
 }
 
 // Status reports a conversation's live state.
@@ -360,10 +364,11 @@ func (e *Engine) Status(threadID string) Status {
 	rt := e.runtimes[threadID]
 	e.mu.Unlock()
 	st := Status{ThreadID: threadID}
-	if rt == nil {
-		return st
+	if rt != nil {
+		st = rt.status()
 	}
-	return rt.status()
+	st.Waiting = e.hasFutureWake(threadID)
+	return st
 }
 
 func (e *Engine) snapshotRuntimes() []*runtime {
@@ -399,6 +404,20 @@ func (e *Engine) AwaitingAnswer() []string {
 		}
 	}
 	return out
+}
+
+// Waiting reports which conversations have a parked thread wake, so the
+// sidebar can paint a clock without polling each row or trusting a stale
+// schedule list in the client.
+func (e *Engine) Waiting() []string {
+	if e.store == nil {
+		return nil
+	}
+	ids, err := e.store.PendingWakeThreadIDs()
+	if err != nil {
+		return nil
+	}
+	return ids
 }
 
 // Shutdown stops every in-memory run but leaves unfinished turns marked

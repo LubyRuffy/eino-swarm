@@ -104,6 +104,12 @@ export function isGoalHoldNotice(text?: string): boolean {
   )
 }
 
+/** Live wait chip. Must not fold behind Worked-for or sit above a long
+ *  report while the composer looks idle. */
+export function isArmedWaitNotice(text?: string): boolean {
+  return (text ?? "").trim() === "A wait is armed."
+}
+
 /** A forced /goal session end. The JSON payload is for Trace, not a chat row. */
 export function goalSessionNotice(text?: string): string {
   let reason = ""

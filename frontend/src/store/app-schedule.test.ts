@@ -282,6 +282,95 @@ describe("schedule store", () => {
     await Promise.resolve()
     expect(fake.listed).toBeGreaterThan(afterArm)
   })
+
+  it("does not let a stale empty GET wipe an armed wait", async () => {
+    await useApp.getState().boot()
+    fake.rows = []
+    fake.onEvent?.({
+      kind: "schedule",
+      seq: 11,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      text: '{"id":"sch_armed","kind":"thread","status":"active","thread_id":"th_old"}',
+      created_at: "2026-09-19T00:00:00.000Z",
+    })
+    expect(useApp.getState().status.waiting).toBe(true)
+    await useApp.getState().refreshSchedules()
+    expect(useApp.getState().schedules.some((row) => row.id === "sch_armed")).toBe(true)
+    expect(useApp.getState().status.waiting).toBe(true)
+  })
+
+  it("keeps Waiting after done when a thread wake was armed this turn", async () => {
+    await useApp.getState().boot()
+    fake.onEvent?.({
+      kind: "schedule",
+      seq: 11,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      text: '{"id":"sch_1","kind":"thread","status":"active","thread_id":"th_old"}',
+      created_at: "2026-09-19T00:00:00.000Z",
+    })
+    expect(useApp.getState().status.waiting).toBe(true)
+    fake.onEvent?.({
+      kind: "done",
+      seq: 12,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      created_at: "2026-09-19T00:00:01.000Z",
+    })
+    expect(useApp.getState().status.running).toBe(false)
+    expect(useApp.getState().status.waiting).toBe(true)
+  })
+
+  it("drops Waiting when that wait fires so a one-shot does not look parked", async () => {
+    await useApp.getState().boot()
+    fake.onEvent?.({
+      kind: "schedule",
+      seq: 11,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      text: '{"id":"sch_1","kind":"thread","status":"active","thread_id":"th_old"}',
+      created_at: "2026-09-19T00:00:00.000Z",
+    })
+    fake.onEvent?.({
+      kind: "done",
+      seq: 12,
+      thread_id: "th_old",
+      turn_id: "tn_1",
+      agent_id: "manager",
+      created_at: "2026-09-19T00:00:01.000Z",
+    })
+    fake.rows = []
+    fake.onEvent?.({
+      kind: "schedule_fired",
+      seq: 13,
+      thread_id: "th_old",
+      turn_id: "tn_2",
+      agent_id: "manager",
+      text: "Scheduled check.",
+      created_at: "2026-09-19T00:00:02.000Z",
+    })
+    expect(useApp.getState().status.running).toBe(true)
+    expect(useApp.getState().status.waiting).toBe(false)
+    fake.onEvent?.({
+      kind: "done",
+      seq: 14,
+      thread_id: "th_old",
+      turn_id: "tn_2",
+      agent_id: "manager",
+      created_at: "2026-09-19T00:00:03.000Z",
+    })
+    await useApp.getState().refreshSchedules()
+    expect(useApp.getState().status.running).toBe(false)
+    expect(useApp.getState().status.waiting).toBe(false)
+    expect(useApp.getState().schedules.some((row) => row.status === "active")).toBe(
+      false,
+    )
+  })
 })
 
 describe("activeWake", () => {
@@ -311,5 +400,14 @@ describe("activeWake", () => {
       ]),
     ).toEqual(new Set(["th_old", "th_other"]))
     expect(waitingThreadIds(undefined)).toEqual(new Set())
+  })
+
+  it("unions listing waiting so a stale schedule list still paints the clock", () => {
+    expect(
+      waitingThreadIds([wait({ id: "sch_wake" })], [
+        { id: "th_old" },
+        { id: "th_listed", waiting: true },
+      ]),
+    ).toEqual(new Set(["th_old", "th_listed"]))
   })
 })

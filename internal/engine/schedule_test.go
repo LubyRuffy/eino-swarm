@@ -60,6 +60,12 @@ func TestCreateThreadWakeRecordsScheduleEvent(t *testing.T) {
 	if e.Status(th.ID).Running {
 		t.Fatal("create must not fire a turn")
 	}
+	if !e.Status(th.ID).Waiting {
+		t.Fatal("an armed wake must mark the conversation waiting")
+	}
+	if ids := e.Waiting(); len(ids) != 1 || ids[0] != th.ID {
+		t.Fatalf("Waiting=%v want [%s]", ids, th.ID)
+	}
 	turns, err := e.Store().ListTurns(th.ID)
 	if err != nil {
 		t.Fatal(err)

@@ -40,7 +40,7 @@ Current Go coverage, from `go test -race -cover ./...`:
 | `internal/tui` | 87.6% |
 | `internal/app` | 87.9% |
 | `cmd/zwai` | 84.7% |
-| `internal/remote` | 90.9% |
+| `internal/remote` | 91.5% |
 
 `internal/remote` is the phone RPC. `TestListDefaultsToFiveAndOmitsProjectSecrets`
 is why the phone never sees a project prompt. `TestSlimListPayloadStaysBounded`
@@ -51,11 +51,15 @@ in `watch_test.go` keep phone `watch` on the same seq/kind bus as desktop
 SSE, clip `spawned` bodies, and stay under the 64KiB pairlink frame.
 `TestWatchOpensAtTheLiveEdgeNotTheOldestEvent` is why a long conversation
 on the phone does not start at seq 1 — and why that tail arrives on
-`ready.events`, not a trickle of `event` frames. `TestWatchOpensOnTheLastTurnNotEarlierOnes`
+the `watch` RPC `ready`, not a trickle of `event` frames. `TestWatchOpensOnTheLastTurnNotEarlierOnes`
 plus `TestLogPagesOlderEventsBeforeTheViewport` are why first paint is the
-last turn and pulling up loads earlier events.
+last turn and pulling up loads earlier events. `TestWatchEmptyLastTurnReadyStillPages`
+is why an empty live turn still carries a log cursor, and
+`TestLogZeroBeforePagesOlderThanLastTurn` is why `log` with `before` 0
+pages older than that window.
 `mobile/src/lib/session.test.ts` queues `event` until `ready` so an old
-host that still streams catch-up still paints once.
+host that still streams catch-up still paints once, and a later empty
+`ready` must not walk the log cursor forward.
 `TestStatusGoesOfflineWhenHubCloses` is why a dead hub socket cannot keep
 minting a QR the phone will redeem as `host offline`: status follows idle-drop
 and reconnect of that WebSocket.
@@ -67,8 +71,9 @@ thread) instead of parking on New conversation. `mobile/src/components/markdown.
 fenced body, paints `**bold**` and GFM tables, and keeps a filesystem path
 from becoming a webview navigation. `mobile/src/components/thread-blocks.test.tsx`
 is why a user bubble uses that same markdown, not the source markers, and the standing-goal strip under the title does too.
-`mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, and a `report_schedule` row keeps its args after the result envelope.
-`mobile/src/lib/tool-preview.test.ts` pulls `findings` (not `prompt`) for the collapsed chip. Camera on a real device is the product path (`make mobile-ios` /
+`mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, a `progress` pulse is not a notice, and a `report_schedule` row keeps its args after the result envelope.
+`mobile/src/lib/tool-preview.test.ts` pulls `findings` (not `prompt`) for the collapsed chip, and a wait roster is counts rather than `elapsed_ms`.
+`mobile/src/components/thread-blocks.test.tsx` keeps that roster off the user bubble and the expanded tool body. Camera on a real device is the product path (`make mobile-ios` /
 `make mobile-android`).
 
 `frontend` is the embed plus the incremental Vite rebuild (`Ensure` /
@@ -235,7 +240,12 @@ same due time.
 an active `kind=thread` row and a running thread fire as pending, and
 why paused/cancelled/done-with-no-run, standalone origin-only, an empty
 thread id, and a missing table do not (the last returns the error;
-the engine fail-opens).
+the engine fail-opens). `PendingWakeThreadIDs` is the listing batch of
+those same conversations so the sidebar does not query per row.
+`internal/engine/schedule_test.go` is why `Status.Waiting` and `Waiting()`
+follow an armed thread wake without starting a turn.
+`internal/server/schedules_test.go` is why GET `/api/threads/:id` and the
+listing carry `waiting` while a thread wake is parked.
 `internal/engine/prompt_test.go` is why the manager prompt has `## Waiting`
 (`schedule_wake`, do not wait for the human to remind, `report_schedule`)
 without CI / deploy / pull-request / cron-job samples, why an open `/goal`
@@ -492,9 +502,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   empty `done` follows a findings report), an armed `schedule` plus empty
   `done` keeps the wait notice, and an ordinary empty `done` stays
   visible. `compact-notice.test.tsx` clicks that icon.   `schedule-notice.test.tsx` clicks Run now and Cancel wait on an armed wait when `detail` is a `sch_` id (including a padded id matching the store row) and does not treat a
-  cancelled notice as a briefing. `schedule-view.test.ts` is why the inbox
-  lists live waits first, empty titles fall back to `prompt`, and an armed
-  chip paints the store before GET.   `schedule-inbox.test.tsx` /
+  cancelled notice as a briefing.   `schedule-view.test.ts` is why the inbox
+  lists live waits first, empty titles fall back to `prompt`, an armed
+  chip paints the store before GET, a fire marks that conversation's live
+  wake done, and a stale empty GET cannot wipe the
+  open conversation's live wait.   `schedule-inbox.test.tsx` /
   `schedule-banner.test.tsx` / `app-schedule.test.ts` cover the sidebar
   dialog trigger (`aria-haspopup="dialog"`, unread in the accessible name),
   pause/run-now/create labels, unread badge, busy run-now `skipped_busy` as a
@@ -506,7 +518,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /
   `goal_continued` turns fold behind a one-line Worked-for row in
-  `transcript-session.test.tsx` (CJK preview truncates; duration does not wrap).
+  `transcript-session.test.tsx` (CJK preview truncates; duration does not wrap;
+  an armed wait and a budget-cap notice stay visible outside the fold).
   A `goal_capped` / `goal_idle` / `goal_blocked` notice after that work stays
   outside the fold so a budget pause cannot hide behind Worked-for.
   A failed session stays expanded as Stopped-after with the error visible,
@@ -573,15 +586,21 @@ Several things are tested here, some as pure logic and some in jsdom:
   lives in `src/lib/thread-title.ts` and also stamps `awaiting_answer` so a
   blocked question is not a working pulse after you leave. A listing refresh
   is the source of truth for every other row: `mergeThreadList` takes
-  `running` / `awaiting_answer` from `GET /api/threads`, and only the open
-  conversation keeps a live overlay so an Enter/`done` race cannot flicker.
+  `running` / `awaiting_answer` / `waiting` from `GET /api/threads`, and only the open
+  conversation keeps a live overlay so an Enter/`done`/arm race cannot flicker.
   That is how a `/goal` auto-continue or a schedule fire on a conversation
   you are not looking at still lights the folder without a click — and how
   a finished background turn goes dark. `startSidebarSync` re-reads the
   listing every 2s while the window is visible (`src/lib/sidebar-sync.ts`);
   a hidden tab skips the tick, becoming visible is an immediate catch-up,
   and a dropped packet does not toast (`syncThreads`). A parked thread wake is not `running`:
-  `waitingThreadIds` from the schedule list paints the breathing clock.
+  `waitingThreadIds` from the schedule list plus listing `waiting` paints the breathing clock,
+  and `status.waiting` from GET/SSE (kept across `done`) is why the title bar says Waiting
+  instead of Idle while `/goal` is parked on that wait. A live `schedule` event sets
+  `waiting` even before GET returns; a stale GET cannot wipe a newer arm
+  (`scheduleFetch` generation plus `keepArmedWakes` in `app-schedule.ts`). The goal banner repeats that this is
+  parked, not an error. An armed-wait notice is pinned after the work of a finished
+  turn so it does not sit above a long report.
   `askingThreadIds` unions listing `awaiting_answer` with the open
   conversation's live status.
   Live SSE folding lives in `src/store/app-stream.ts` so `app.ts` stays under

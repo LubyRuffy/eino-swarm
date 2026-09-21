@@ -130,6 +130,29 @@ describe("mergeThreadList", () => {
     const incoming = [thread("th_1", "A", true)]
     expect(mergeThreadList(local, incoming)[0]?.running).toBe(false)
   })
+
+  it("keeps a parked wait on the open conversation when the listing is still idle", () => {
+    const local = [thread("th_1", "A", true)]
+    const incoming = [thread("th_1", "A", true)]
+    expect(
+      mergeThreadList(local, incoming, {
+        id: "th_1",
+        running: false,
+        waiting: true,
+      })[0]?.waiting,
+    ).toBe(true)
+  })
+
+  it("does not let a live overlay idle a listing wait on the open conversation", () => {
+    const incoming = [{ ...thread("th_1", "A", true), waiting: true }]
+    expect(
+      mergeThreadList([], incoming, {
+        id: "th_1",
+        running: false,
+        waiting: false,
+      })[0]?.waiting,
+    ).toBe(true)
+  })
 })
 
 describe("threadListOverlay", () => {
@@ -139,11 +162,19 @@ describe("threadListOverlay", () => {
       id: "th_1",
       running: true,
       awaitingAnswer: true,
+      waiting: false,
     })
     expect(threadListOverlay("th_1", { running: false, awaiting_answer: true })).toEqual({
       id: "th_1",
       running: false,
       awaitingAnswer: false,
+      waiting: false,
+    })
+    expect(threadListOverlay("th_1", { running: false, waiting: true })).toEqual({
+      id: "th_1",
+      running: false,
+      awaitingAnswer: false,
+      waiting: true,
     })
   })
 })
