@@ -9,7 +9,17 @@ import {
   Pencil,
   Users,
 } from "lucide-react"
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import {
+  Children,
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react"
 import { AskCardView } from "@/components/app/ask-card"
 import { CompactNotice } from "@/components/app/compact-notice"
 import { isScheduleNotice, ScheduleNotice } from "@/components/app/schedule-notice"
@@ -37,7 +47,8 @@ import {
 } from "@/lib/find-dom"
 import { useTranscriptFollow } from "@/lib/follow-scroll"
 import { useHistoryWindow } from "@/lib/use-history-window"
-import { TURN_NAV_MIN, resolveTurnNavItems, scrollTurnIntoView } from "@/lib/turn-nav"
+import { TURN_NAV_MIN, resolveTurnNavItems } from "@/lib/turn-nav"
+import { useTurnJump } from "@/lib/use-turn-jump"
 import { cn, formatDuration, formatMessageTime } from "@/lib/utils"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
 import { useT } from "@/lib/use-t"
@@ -106,11 +117,12 @@ export function Transcript({
     }
     return undefined
   }, [blocks])
+  const growthKey = `${blockCount}:${lastText}`
   const { showJump, jumpToLatest, unpin, pinned } = useTranscriptFollow({
     scrollerRef,
     loaded,
     threadId,
-    growthKey: `${blockCount}:${lastText}`,
+    growthKey,
     lastUserId,
   })
   const historyHasMore = useApp((s) => s.historyHasMore)
@@ -125,23 +137,16 @@ export function Transcript({
     hasMore: historyHasMore,
     loading: historyLoading,
     pinned,
-    growthKey: `${blockCount}:${lastText}`,
+    growthKey,
     loadOlder,
   })
-
-  const jumpTo = useCallback(
-    (id: string) => {
-      // Cancel follow in this click or the next token yanks back to the bottom.
-      unpin()
-      const el = scrollerRef.current
-      if (el && scrollTurnIntoView(el, id)) return
-      void loadUntilTurn(id, el?.clientHeight).then((found) => {
-        const root = scrollerRef.current
-        if (found && root) scrollTurnIntoView(root, id)
-      })
-    },
-    [unpin, loadUntilTurn],
-  )
+  // After useHistoryWindow so a prepend restore cannot undo the jump.
+  const jumpTo = useTurnJump({
+    scrollerRef,
+    growthKey,
+    unpin,
+    loadUntilTurn,
+  })
 
   const paintFind = useCallback(
     (scroll: boolean) => {
@@ -508,18 +513,61 @@ function ThoughtBody({ text, streaming }: { text: string; streaming?: boolean })
   )
 }
 
-function Answer({ block }: { block: Block }) {
+/** Hover-capable pointers hide the stamp until the row is hovered or
+ *  focused. Touch has no hover; the stamp stays up so a log can still
+ *  be matched. Named `/msg` because Disclosure already owns `group`, and
+ *  a hover on a folded session must not light every stamp inside it. */
+const MESSAGE_META_CLASS =
+  "flex shrink-0 items-center gap-0.5 overflow-hidden whitespace-nowrap text-[11px] text-muted-foreground pointer-events-none max-h-0 opacity-0 transition-[max-height,opacity,margin] group-hover/msg:pointer-events-auto group-hover/msg:mt-1 group-hover/msg:max-h-8 group-hover/msg:opacity-100 group-focus-within/msg:pointer-events-auto group-focus-within/msg:mt-1 group-focus-within/msg:max-h-8 group-focus-within/msg:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:mt-1 [@media(hover:none)]:max-h-8 [@media(hover:none)]:opacity-100"
+
+function MessageMeta({
+  at,
+  timeTestId,
+  timeFirst,
+  children,
+}: {
+  at: string
+  timeTestId: string
+  timeFirst?: boolean
+  children?: ReactNode
+}) {
+  const stamped = formatMessageTime(at)
+  const stamp = stamped ? (
+    <time
+      data-testid={timeTestId}
+      dateTime={at}
+      title={at}
+      className="px-1 tabular-nums"
+    >
+      {stamped}
+    </time>
+  ) : null
+  // Two `{cond ? node : null}` children are an array of nulls, which is
+  // truthy. Children.toArray drops those so an empty row does not mount.
+  const hasActions = Children.toArray(children).length > 0
+  if (!stamp && !hasActions) return null
   return (
-    <div className="group/answer relative py-2">
+    <div data-testid="message-meta" data-find-ignore="" className={MESSAGE_META_CLASS}>
+      {timeFirst ? stamp : null}
+      {children}
+      {timeFirst ? null : stamp}
+    </div>
+  )
+}
+
+function Answer({ block }: { block: Block }) {
+  const copy =
+    !block.streaming && block.text.length > 0 ? (
+      <CopyButton text={block.text} className="text-muted-foreground" />
+    ) : null
+  return (
+    <div className="group/msg relative py-2" data-testid="assistant-message">
       <div className="md">
         <MemoMarkdown text={block.text} streaming={block.streaming} />
       </div>
-      {!block.streaming && block.text.length > 0 ? (
-        <CopyButton
-          text={block.text}
-          className="absolute -top-1 right-0 opacity-0 transition-opacity group-hover/answer:opacity-100"
-        />
-      ) : null}
+      <MessageMeta at={block.at} timeTestId="assistant-message-time">
+        {copy}
+      </MessageMeta>
     </div>
   )
 }
@@ -780,7 +828,6 @@ function UserMessage({
   onResend?: (text: string, seq: number) => void
 }) {
   const t = useT()
-  const stamped = formatMessageTime(block.at)
   const [draft, setDraft] = useState(block.text)
   const composingRef = useRef(false)
   const cancelIme = useRef<(() => void) | null>(null)
@@ -798,7 +845,7 @@ function UserMessage({
 
   return (
     <div className="mb-2 mt-6 flex scroll-mt-6 justify-end first:mt-0">
-      <div className="flex max-w-[85%] flex-col items-end">
+      <div className="group/msg flex max-w-[85%] flex-col items-end">
         {editing ? (
           <div
             data-testid="user-message-editor"
@@ -866,19 +913,7 @@ function UserMessage({
               />
               {block.text ? <p className="stream-text whitespace-pre-wrap">{block.text}</p> : null}
             </div>
-            <div
-              data-find-ignore=""
-              className="mt-1 flex items-center gap-0.5 text-[11px] text-muted-foreground"
-            >
-              {stamped ? (
-                <time
-                  data-testid="user-message-time"
-                  dateTime={block.at}
-                  className="px-1 tabular-nums"
-                >
-                  {stamped}
-                </time>
-              ) : null}
+            <MessageMeta at={block.at} timeTestId="user-message-time" timeFirst>
               {block.text ? (
                 <CopyButton
                   text={block.text}
@@ -899,7 +934,7 @@ function UserMessage({
                   <Pencil className="size-3.5" />
                 </Button>
               ) : null}
-            </div>
+            </MessageMeta>
           </>
         )}
       </div>

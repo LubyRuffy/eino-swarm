@@ -57,6 +57,18 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   const transcript = page.getByTestId("transcript")
   await waitForIdle(page)
   await expect(transcript.getByText("Two sub-agents ran in parallel")).toBeVisible()
+  const answer = transcript.locator("[data-testid=assistant-message]", {
+    hasText: "Two sub-agents ran in parallel",
+  })
+  await answer.hover()
+  await expect(answer.getByTestId("assistant-message-time")).toHaveAttribute("datetime", /^\d{4}-/)
+  await expect(answer.getByTestId("message-meta")).toHaveCSS("opacity", "1")
+  const user = page.getByTestId("user-message").first()
+  await user.hover()
+  await expect(user.locator("xpath=following-sibling::*[@data-testid='message-meta']")).toHaveCSS(
+    "opacity",
+    "1",
+  )
   await expect(transcript.getByTestId("transcript-chart")).toBeVisible()
   await transcript.getByRole("tab", { name: "Table" }).click()
   await expect(transcript.getByRole("table")).toBeVisible()
@@ -723,6 +735,7 @@ test("edits a sent message in place and restarts from there", async ({
   await waitForIdle(page)
   await expect(page.getByTestId("user-message")).toHaveCount(2)
 
+  await page.getByTestId("user-message").first().hover()
   await page.getByRole("button", { name: "Edit message" }).first().click()
   const editor = page.getByTestId("user-message-editor")
   await expect(editor).toBeVisible()

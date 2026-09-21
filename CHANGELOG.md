@@ -11,6 +11,13 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Added
+
+- **Hover a transcript message to see when it happened.** User bubbles and
+  finished answers keep the event clock off a pointer until hover (or
+  focus); a touch screen leaves it up. The stamp is the local day and time;
+  the ISO sits on the tooltip so a row can be matched to a log.
+
 ### Changed
 
 - **A blocked `ask_user` no longer looks like the swarm is still working.**
@@ -31,9 +38,20 @@ co-working app built on it. The library API is unchanged except where noted
 - **The phone transcript is the last turn, not a dump of the whole log.**
   Opening a conversation watches that turn (capped at `watch_events`);
   pulling up pages older events with `log`. Tool rows stay collapsed to the
-  name until tapped, so a live `exec` is not a JSON wall.
+  name plus a field preview until tapped, so a live `exec` or
+  `report_schedule` is not a JSON wall. Schedule kinds use the same
+  one-liners as desktop (`A wait is armed.` / `Scheduled check.` /
+  `A wait was cancelled.`); the phone does not paint the wake payload or
+  offer Run now / Cancel wait.
 
 ### Fixed
+
+- **Clicking the jump rail to a turn still above the loaded tail actually
+  lands there.** The rail already listed every human turn; the click scrolled
+  before React mounted the prepended row (and gave up if a sentinel page was
+  already in flight). The jump now waits for that row to commit, joins the
+  in-flight page, and fetches max-size pages instead of crawling the
+  viewport.
 
 - **The phone no longer opens a long conversation at the first user message.**
   `watch` with `since` 0 replayed the whole log from seq 1, so the first paint
@@ -41,6 +59,25 @@ co-working app built on it. The library API is unchanged except where noted
   is a bounded scroller stuck to the tail — `min-h-[100dvh]` used to grow the
   page so the visible window was always the oldest rows. A reconnect still
   fills the gap.
+
+- **The phone no longer plays the last turn from the top and then auto-scrolls.**
+  Catch-up used to be one `event` frame per row, oldest first, so React
+  painted the first user message and the scroller chased the tail for
+  seconds. History now rides `ready.events`; the phone queues anything
+  that arrives before `ready`, folds once, and only then shows the
+  transcript already pinned to the live edge.
+
+- **The phone no longer dumps a schedule wake as a JSON paragraph.**
+  `schedule` / `schedule_fired` / `schedule_cancelled` fold to the same
+  one-liners as desktop; `schedule_report` stays off the notice list.
+  A finished tool row keeps the call args so a findings preview can ride
+  the collapsed chip instead of `{"ok":true}`.
+
+- **The phone no longer dumps markdown source in a user bubble.**
+  Assistant rows already went through GFM; a user or steer row was a
+  `<p>`. Bold, lists, tables and http(s) links now render. A filesystem
+  path in a markdown link stays as text so it cannot replace the webview.
+  The standing-goal strip under the title uses the same renderer.
 
 - **Phone pairing no longer dies with `host offline` on a freshly minted QR.**
   The PC still posted pairing codes over HTTP after the hub idle-dropped the

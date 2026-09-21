@@ -16,7 +16,7 @@ deterministic and fast enough to run on every change.
 |---|---|---|
 | Go unit tests | config, store, memory, provider, tools, engine, server, CLI, TUI, and the swarm library | `go test -race -cover ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
-| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window`), dismissible settings toasts | `cd frontend && npm test` |
+| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (the Add to chat snapshot surviving a live stream), clipboard image paste, file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window` / `use-turn-jump`), dismissible settings toasts | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet) | `cd frontend && npm run e2e` |
 | Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, resume picker (live turn / last thread), compact transcript / watch session | `cd mobile && npm test` |
 | Phone E2E | scan screen + paste of the same `pairlink:v1` URI (camera is the product path on device) | `cd mobile && npm run e2e` |
@@ -40,7 +40,7 @@ Current Go coverage, from `go test -race -cover ./...`:
 | `internal/tui` | 87.6% |
 | `internal/app` | 87.9% |
 | `cmd/zwai` | 84.7% |
-| `internal/remote` | 90.7% |
+| `internal/remote` | 90.9% |
 
 `internal/remote` is the phone RPC. `TestListDefaultsToFiveAndOmitsProjectSecrets`
 is why the phone never sees a project prompt. `TestSlimListPayloadStaysBounded`
@@ -50,9 +50,12 @@ stay on `path=relay`. `TestWatchLiveSendAndUnwatch` plus the kinds freeze
 in `watch_test.go` keep phone `watch` on the same seq/kind bus as desktop
 SSE, clip `spawned` bodies, and stay under the 64KiB pairlink frame.
 `TestWatchOpensAtTheLiveEdgeNotTheOldestEvent` is why a long conversation
-on the phone does not start at seq 1. `TestWatchOpensOnTheLastTurnNotEarlierOnes`
+on the phone does not start at seq 1 — and why that tail arrives on
+`ready.events`, not a trickle of `event` frames. `TestWatchOpensOnTheLastTurnNotEarlierOnes`
 plus `TestLogPagesOlderEventsBeforeTheViewport` are why first paint is the
 last turn and pulling up loads earlier events.
+`mobile/src/lib/session.test.ts` queues `event` until `ready` so an old
+host that still streams catch-up still paints once.
 `TestStatusGoesOfflineWhenHubCloses` is why a dead hub socket cannot keep
 minting a QR the phone will redeem as `host offline`: status follows idle-drop
 and reconnect of that WebSocket.
@@ -61,7 +64,11 @@ and a Playwright paste/scan screen; `mobile/native-project.test.ts` asserts the
 iOS and Android trees ship with camera permission and no compiled hub URL.
 `mobile/src/lib/resume.test.ts` is why bind opens a live turn (or the last
 thread) instead of parking on New conversation. `mobile/src/components/markdown.test.tsx` renders `$n$` as KaTeX and copies a
-fenced body. Camera on a real device is the product path (`make mobile-ios` /
+fenced body, paints `**bold**` and GFM tables, and keeps a filesystem path
+from becoming a webview navigation. `mobile/src/components/thread-blocks.test.tsx`
+is why a user bubble uses that same markdown, not the source markers, and the standing-goal strip under the title does too.
+`mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, and a `report_schedule` row keeps its args after the result envelope.
+`mobile/src/lib/tool-preview.test.ts` pulls `findings` (not `prompt`) for the collapsed chip. Camera on a real device is the product path (`make mobile-ios` /
 `make mobile-android`).
 
 `frontend` is the embed plus the incremental Vite rebuild (`Ensure` /
@@ -506,7 +513,7 @@ Several things are tested here, some as pure logic and some in jsdom:
   and a collapsed preview prefers that error over the last answer.
   Folded successful work is not mounted until the row is opened, so a long `/goal`
   cannot re-parse every past answer on each streamed token.
-- **`src/lib/turn-nav.ts`** and **`src/components/app/turn-nav.tsx`**: user
+- **`src/lib/turn-nav.ts`**, **`src/lib/use-turn-jump.ts`** and **`src/components/app/turn-nav.tsx`**: user
   turns become jump targets (steering does not), ticks pack into a compact
   cluster in the middle of the pane rather than stretching it, and a long
   conversation shares a fixed height instead of overflowing a second
@@ -519,6 +526,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   as offset 0, and a
   missing id after a conversation switch is a no-op. The rail stays hidden until
   there are two user turns; hover opens the list; a click (or arrow keys) jumps.
+  A click whose row is not mounted yet pages then scrolls after commit — not
+  in the fetch callback.
 - **`src/lib/thread-log.ts`**, **`src/lib/use-history-window.ts`**, **`src/store/thread-history.ts`**, **`src/lib/welcome.ts`**: opening a
   conversation paints one viewport of the live edge (`GET /log`) and resumes
   SSE after that seq; scrolling up prepends older pages without jumping the
@@ -527,7 +536,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   if that first intersection already happened — IO does not re-fire while
   the sentinel stays on screen. Prepend keeps the same row on screen unless
   the reader already reached the top, in which case they stay on the newly
-  loaded rows. A jump to an unloaded turn keeps paging until that user row exists.
+  loaded rows. A jump to an unloaded turn keeps paging until that user row exists
+  (`use-turn-jump`: the scroll waits for the row to mount — scrolling in the
+  fetch callback missed; `loadUntilTurn` joins an in-flight sentinel page
+  instead of treating `historyLoading` as the end of the log, and fetches max
+  pages rather than the 24-row viewport).
   A worker-only tail keeps paging until a non-quiet, non-spawn manager row exists so the
   empty-state idea cards cannot cover a running conversation. The live-edge
   page also folds a `roster` sidecar (`spawned` / `finished` / `cleanup`
@@ -587,7 +600,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   `GET /agents/:agent/log` even when paging already claimed the log was
   complete but that worker's pane is still empty
   (`src/store/app-history.test.ts`). Opening paints the tail and resumes
-  the stream after that seq (also here, split from `app.test.ts`).
+  the stream after that seq (also here, split from `app.test.ts`). A jump
+  to a turn still above the tail pages until that user row exists, and
+  joins an in-flight sentinel page instead of bailing.
 - **`src/store/app-goal.test.ts`**: `/goal` pursuing until `complete_goal` or
   `block_goal` (edit and resume from the banner, including Start after a
   mistaken complete); setting a standing
@@ -685,10 +700,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   non-exec tool that was watched live folds unless the reader opened it.
   A refused `memory` write shows the refusal on the collapsed row, not only
   inside the disclosure. An exec still open when the turn is interrupted loses its spinner rather
-  than running forever. Copy and a pencil sit under each user bubble (copy
-  is hidden when there is no text); edit opens the bubble in place and Send
-  restarts from that `user_message` seq, clearing everything below
-  (`transcript-user.test.tsx`).
+  than running forever. Hovering a user bubble or a finished answer reveals
+  the event clock (`transcript-message-time.test.tsx`); copy and a pencil sit
+  under each user bubble (copy is hidden when there is no text); edit opens
+  the bubble in place and Send restarts from that `user_message` seq, clearing
+  everything below (`transcript-user.test.tsx`).
   A compact notice stays a one-liner; `compact-notice.test.tsx` opens the
   briefing from the icon without pasting it into the row.
   Each turn group carries `data-turn-nav` so the rail can jump; one turn
@@ -1062,7 +1078,7 @@ long enough for Steer; unit tests leave it unset.
 
 | spec | covers |
 |---|---|
-| `e2e/conversation.spec.ts` | a full swarm turn, a live thought in a 10-line scrolling box whose **Thinking** label sweeps, clicking that row hiding the thought while it still streams, a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title after the first turn (not the raw request, not a transcript row), a heading rendered as a heading while the turn is still Working, a chart in the scripted answer with Chart/Table tabs (and after reload), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge, switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, **Steer** on that queued row injecting and emptying the tray, editing a queued row and submitting it so that message goes to the back of the FIFO, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, quoting selected transcript text into the next send as an editable composer annotation, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
+| `e2e/conversation.spec.ts` | a full swarm turn, a live thought in a 10-line scrolling box whose **Thinking** label sweeps, clicking that row hiding the thought while it still streams, a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title after the first turn (not the raw request, not a transcript row), a heading rendered as a heading while the turn is still Working, a chart in the scripted answer with Chart/Table tabs (and after reload), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge, switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, **Steer** on that queued row injecting and emptying the tray, editing a queued row and submitting it so that message goes to the back of the FIFO, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, quoting selected transcript text into the next send as an editable composer annotation, hovering a finished answer or user bubble revealing the event clock, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
 | `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, hovering a project row revealing a new-conversation control that starts one in that project rather than Recents (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, a sixth topic in the folder sitting behind **Show more** until it is opened, and a running conversation keeping its sidebar progress after switching to a new conversation (an explicit folder collapse keeps a clipped breathe-dot on the glyph, not a smear) |
 | `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour) and `$n$` as KaTeX |
 | `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |

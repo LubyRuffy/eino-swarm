@@ -3,6 +3,8 @@ import {
   extraRosterEvents,
   historyNewestSeq as newestOf,
   historyOldestSeq as oldestOf,
+  LOG_LIMIT_MAX,
+  LOG_ROW_PX,
   logPageSize,
   mergeLogEvents,
   uniqueStoredEvents,
@@ -26,6 +28,10 @@ let events: SwarmEvent[] = []
 let roster: SwarmEvent[] = []
 let agentLogs: SwarmEvent[] = []
 const loadedAgents = new Set<string>()
+
+/** One in-flight older page. A jump must join this instead of seeing
+ *  `historyLoading` and treating the busy sentinel as the end of the log. */
+let olderLoad: Promise<void> | undefined
 
 export function resetThreadHistory() {
   threadId = ""
@@ -123,33 +129,48 @@ export async function loadOlderHistory(
   fail: (e: unknown) => string,
   clientHeight?: number,
 ): Promise<void> {
-  const id = get().activeId
-  if (!id || get().historyLoading || !get().historyHasMore) return
-  const before = historyOldestSeq()
-  if (before <= 0) {
-    set({ historyHasMore: false })
-    return
-  }
-  set({ historyLoading: true })
-  try {
-    const page = await api.threadLog(id, {
-      before,
-      limit: logPageSize(clientHeight ?? 0),
-    })
-    if (get().activeId !== id) return
-    const transcript = prependOlder(id, page.events ?? [])
-    if (!transcript) {
-      set({ historyLoading: false })
+  const want = get().activeId
+  if (!want) return
+  for (;;) {
+    if (olderLoad) {
+      await olderLoad
+      continue
+    }
+    if (get().activeId !== want || !get().historyHasMore) return
+    const before = historyOldestSeq()
+    if (before <= 0) {
+      set({ historyHasMore: false })
       return
     }
-    set({
-      transcript,
-      historyHasMore: Boolean(page.has_more),
-      historyLoading: false,
+    let release: () => void = () => {}
+    olderLoad = new Promise<void>((resolve) => {
+      release = resolve
     })
-  } catch (e) {
-    if (get().activeId !== id) return
-    set({ historyLoading: false, error: fail(e) })
+    set({ historyLoading: true })
+    try {
+      const page = await api.threadLog(want, {
+        before,
+        limit: logPageSize(clientHeight ?? 0),
+      })
+      if (get().activeId !== want) return
+      const transcript = prependOlder(want, page.events ?? [])
+      if (!transcript) {
+        set({ historyLoading: false })
+        return
+      }
+      set({
+        transcript,
+        historyHasMore: Boolean(page.has_more),
+        historyLoading: false,
+      })
+    } catch (e) {
+      if (get().activeId !== want) return
+      set({ historyLoading: false, error: fail(e) })
+    } finally {
+      olderLoad = undefined
+      release()
+    }
+    return
   }
 }
 
@@ -158,14 +179,21 @@ export async function loadUntilTurnHistory(
   turnId: string,
   clientHeight?: number,
 ): Promise<boolean> {
+  const id = get().activeId
+  if (!id || !turnId) return false
   const hasTurn = () =>
     (get().transcript.agents[MANAGER_ID]?.blocks ?? []).some(
       (b) => b.turnId === turnId && b.kind === "user",
     )
-  const page = clientHeight && clientHeight > 0 ? clientHeight : 20_000
-  while (get().historyHasMore && !hasTurn()) {
+  if (hasTurn()) return true
+  // The rail already knows the turn exists. Crawl max pages, not the
+  // 24-row viewport, or a tool-heavy gap looks like a dead click.
+  const page = Math.max(clientHeight ?? 0, LOG_LIMIT_MAX * LOG_ROW_PX)
+  while (get().activeId === id && !hasTurn()) {
+    if (!get().historyHasMore) break
     const before = historyOldestSeq()
     await get().loadOlder(page)
+    if (get().activeId !== id) return false
     if (historyOldestSeq() >= before) break
   }
   return hasTurn()

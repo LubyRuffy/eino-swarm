@@ -27,7 +27,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   live stream does not yank you back to the bottom. Opening another conversation
   from the list lands at its latest turn — and lights that tick — not the top
   of the history. A long log loads from the live edge first; older turns appear
-  when you scroll up. New tokens while you are
+  when you scroll up, and clicking a tick still above that tail pages it in
+  before scrolling. New tokens while you are
   reading light a jump-to-latest control; click it to return and follow again.
 - **A ring on the composer shows how full the last manager prompt is.** Hover
   it for the compact count against this model's window, plus this-turn billed
@@ -42,11 +43,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   thumbs, other files become workspace attachments, same as the paperclip.
   Sending names those files on the message, so the model reads what you just
   attached instead of an older leftover sitting in the same folder.
-- **Copy or edit a sent message.** Copy and a pencil sit under each of your
-  bubbles, with the time you sent it. Copy takes the text. Edit opens the bubble
-  in place (Cancel / Send). Sending keeps that bubble, clears everything below
-  it, and starts again at that position — it is not a composer prefill, and
-  it is not a new turn on top.
+- **Copy or edit a sent message.** Hover a user bubble or a finished answer
+  to see the event time (touch keeps it visible). Copy and a pencil sit under
+  your bubbles. Copy takes the text. Edit opens the bubble in place
+  (Cancel / Send). Sending keeps that bubble, clears everything below it, and
+  starts again at that position — it is not a composer prefill, and it is not
+  a new turn on top.
 - **Deletes ask first.** A conversation, project, provider, workspace file,
   skill, or queued message opens a confirm. Cancel leaves it. A chip on the
   composer that has not been sent yet still drops immediately.
@@ -290,7 +292,9 @@ end-to-end tests run on and the fastest way to see the UI work.
    `mobile/android`). **Scan QR** is the product path. After bind, a live turn
    (or the last thread this phone opened) opens immediately; otherwise the
    inbox lists projects and the latest 5 threads. The transcript opens on the
-   last turn; pull up to load earlier. Tools stay collapsed. Settings, files,
+   last turn, already at the live edge; pull up to load earlier. Markdown
+   renders in the transcript. Tools stay collapsed with a one-line preview.
+   A schedule wake is a one-liner, not the payload JSON. Settings, files,
    PTY and Trace stay on the PC.
    `make mobile-ios` / `make mobile-android` open Xcode or Android Studio
    after copying the web bundle.

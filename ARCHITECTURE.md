@@ -95,8 +95,8 @@ id; remote replies include pairlink `session_id` and `path`.
 | `internal/server` | gin: REST, SSE, upload/download, trace, PTY terminals, embedded assets. See [docs/API.md](docs/API.md). |
 | `internal/terminal` | PTY sessions for the in-app shell. The HTTP layer names a conversation or a project; this package never takes a client-supplied path. |
 | `internal/app` | wiring shared by both shells, plus listen/serve/shutdown, `openURL` and `revealPath`. `App.New` starts the schedule ticker (`Engine.StartScheduler`) and the pairlink remote host; `Shutdown` stops both. |
-| `internal/remote` | phone RPC over pairlink: QR offers, sealed JSON (`list`/`more`/`open`/`start`/`send`/`steer`/`stop`/`answer`/`watch`/`unwatch`/`log`). `watch` with `since` 0 pushes the last turn (capped at `watch_events` from that turn's end); `log` `{before}` pages older events when the phone pulls up. Then the same event kinds as desktop SSE (`PushKinds` frozen against `frontend/src/lib/stream.ts`), seq-identical, bodies clipped (`event_chars`, empty `spawned` text, 64KiB frame cap). Does not expose loopback `/api` to the internet. |
-| `mobile/` | Capacitor iOS (`ios/`, Swift Package Manager) and Android (`android/`) apps plus the web shell. Camera scan of `pairlink:v1:…` is the product path; paste is the same URI. After bind, a live turn (or the last thread this phone opened) opens immediately; otherwise the inbox lists projects and the latest threads. The transcript starts on the last turn; pulling up loads earlier events. Tools stay collapsed (name + status) until tapped. Settings, PTY, Files and Trace stay on the PC. WebSocket relay only (UDP hole-punch lives in the Go client). Hub URL is typed on the PC, never compiled into the app. |
+| `internal/remote` | phone RPC over pairlink: QR offers, sealed JSON (`list`/`more`/`open`/`start`/`send`/`steer`/`stop`/`answer`/`watch`/`unwatch`/`log`). `watch` with `since` 0 loads the last turn (capped at `watch_events` from that turn's end) onto **one** `ready.events` frame; `log` `{before}` pages older events when the phone pulls up. Live and lagged catch-up still push `event`. Same kinds as desktop SSE (`PushKinds` frozen against `frontend/src/lib/stream.ts`), seq-identical, bodies clipped (`event_chars`, empty `spawned` text, 64KiB frame cap). Does not expose loopback `/api` to the internet. |
+| `mobile/` | Capacitor iOS (`ios/`, Swift Package Manager) and Android (`android/`) apps plus the web shell. Camera scan of `pairlink:v1:…` is the product path; paste is the same URI. After bind, a live turn (or the last thread this phone opened) opens immediately; otherwise the inbox lists projects and the latest threads. The transcript starts on the last turn (history is one `ready.events` fold, then jump to the tail); pulling up loads earlier events. User and assistant text is markdown (GFM, math); tools stay collapsed (name + a field preview, not the packed JSON). Schedule kinds are the same one-liners as desktop (armed / fired / cancelled); `schedule_report` stays on the tool row. The phone has no Run now / Cancel wait RPC. Settings, PTY, Files and Trace stay on the PC. WebSocket relay only (UDP hole-punch lives in the Go client). Hub URL is typed on the PC, never compiled into the app. |
 | `internal/desktop` | wails3 single window pointed at the local server URL. Hidden title bar (no NSToolbar); traffic lights are centred in the 48px HTML header and the front end pads to the zoom button's measured right edge. The top 48px drags natively. A title-bar double-click is a front-end `wails:drag:doubleclick` — Wails will not zoom on the second mousedown itself, because that races the drag. The Dock / taskbar mark is an embedded PNG, inset to Apple's 824/1024 icon grid, rounded to a macOS squircle at runtime, and handed to Wails as `application.Options.Icon`, so `go run` on macOS does not keep the generic Unix-exec glyph, a square canvas, or a tile larger than a bundled `.app`. On macOS, `ReexecIfUnbundled` copies that binary into `~/Library/Caches/zwai/zwai.app` (`NSLocalNetworkUsageDescription`, stable `CFBundleIdentifier`) so Sequoia+ Local Network privacy can allow LAN model endpoints; a naked `go run` executable is identifier `a.out` and gets `no route to host` while Terminal curl works. Quit cancels the event stream so the window is not frozen waiting for it. |
 | `internal/slash` | shared composer-command parse for a **whole-line** send: leading `/`, fullwidth `／`, or IME punctuation `、`; ASCII identifier name, rest is the argument. Used by the engine and the TUI so a glued CJK `/goal` cannot become a user task. The web composer also opens the same catalog on an **inline** `/` token (after existing text); that menu lives in `frontend/src/lib/slash.ts`. Picking **goal** / **plan** completes `/name ` in the box; wiping the token is not a pick. |
 | `internal/tui` | terminal renderer for `zwai tui`, on the same swarm, config, manager prompt and workspace tools as the app. No `--task` opens a composer and keeps the session; `--task` is the one-shot reproduction path. `--goal` / `--plan` without `--task` start immediately and still keep the composer after that run ends. `/` opens a Codex-style command popup (`/goal`, `/plan`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; aliases stay hidden until typed). `/goal <objective>` starts that text as the next turn. `/plan` unmounts write/edit/exec and similar and writes `$ZWAI_HOME/plans/tui/PLAN.md`. `/implement` accepts the plan. `ask_user` is a blocking overlay (digits pick; typing is Other); piped stdin fails the tool instead of hanging. Enter on `/model` or `/reason` opens a picker. The idle composer parks the real terminal cursor at the insert point so IME preedit is not drawn at column 0 (bubbletea v1 homes the hardware cursor after each frame). A `schedule_wake` / `cancel_schedule` / findings `report_schedule` is a one-line status notice; quiet reports and skips stay off that line. There is no inbox. |
@@ -434,7 +434,10 @@ The front end folds this stream into blocks per agent in
 `frontend/src/lib/transcript.ts` (schedule kinds in
 `frontend/src/lib/transcript-schedule.ts`; a quiet report, or an empty `done`
 after `schedule_fired` with no findings report, drops that turn's chat bubbles;
-an armed wait or findings report plus empty `done` keeps the chip), pairing a tool call with its result by
+an armed wait or findings report plus empty `done` keeps the chip). The phone
+reducer (`mobile/src/lib/transcript.ts`) maps those kinds to the same
+one-liners and skips the JSON payload; it does not drop a quiet turn's
+tool row, because the phone has no Run now / Cancel wait actions. Pairing a tool call with its result by
 `tool_call_id` (agents issue several in one message, and they finish out of
 order). A `tool_delta` fills that pending row without clearing `pending`;
 `collapseLiveEvents` keys those snapshots by call id so two parallel `exec`
@@ -502,7 +505,9 @@ sitting frozen. It starts open; a click on the row hides it even while tokens
 are still arriving (`thoughtExpanded`) — streaming must not force it back open.
 Two or more user turns grow a compact tick cluster in the middle of the left
 edge of the transcript (`frontend/src/lib/turn-nav.ts`): hover lists those
-messages on two lines in a wider panel, click scrolls to the turn. Past ten
+messages on two lines in a wider panel, click scrolls to the turn (`use-turn-jump`:
+a turn still above the loaded tail is paged in, and the scroll waits until
+that row is committed). Past ten
 ticks the cluster becomes a fixed-height minimap so it does not grow a
 second scrollbar beside the list. The active tick is the turn that owns
 the viewport, snapping to the latest when the scroller is at the bottom
@@ -529,7 +534,11 @@ not yank the highlight. The snippet is stored as a composer annotation —
 hover to read, edit or drop it — and prefixed onto the next send
 (`Selected text:`) so the model sees the quote without dumping it into the
 textarea (`frontend/src/lib/quote.ts`, `frontend/src/lib/selection.ts`).
-Each user bubble has a copy control and an edit control under it. Edit turns
+Hovering a user bubble or a finished assistant answer reveals the event
+clock (`formatMessageTime`, ISO on `title` / `datetime`) next to the
+actions, so a transcript row can be matched to a log line. Pointers hide
+that row until hover or focus; a touch screen keeps it up. Each user
+bubble has a copy control and an edit control under it. Edit turns
 that bubble into an in-place editor (Cancel / Send) — the draft stays in the
 bubble, not the composer. Send truncates the log from that `user_message`
 seq (`POST /api/threads/:id/turns` with `from_event_seq`) and starts the turn

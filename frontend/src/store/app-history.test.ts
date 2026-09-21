@@ -11,11 +11,17 @@ const fake = vi.hoisted(() => ({
   logRoster: [] as Array<Record<string, unknown>>,
   agentLogs: {} as Record<string, Array<Record<string, unknown>>>,
   logHandler: undefined as
-    | ((opts?: { before?: number; limit?: number }) => {
-        events: Array<Record<string, unknown>>
-        has_more: boolean
-        roster?: Array<Record<string, unknown>>
-      })
+    | ((opts?: { before?: number; limit?: number }) =>
+        | {
+            events: Array<Record<string, unknown>>
+            has_more: boolean
+            roster?: Array<Record<string, unknown>>
+          }
+        | Promise<{
+            events: Array<Record<string, unknown>>
+            has_more: boolean
+            roster?: Array<Record<string, unknown>>
+          }>)
     | undefined,
   threadTitles: {} as Record<string, string>,
   subscribeSince: [] as number[],
@@ -417,5 +423,126 @@ describe("openThread", () => {
     expect(JSON.stringify(useApp.getState().transcript)).not.toMatch(
       /notes\.md|summarize|look into this/,
     )
+  })
+})
+
+describe("loadUntilTurn", () => {
+  it("pages until a jump target still above the tail exists", async () => {
+    const at = new Date().toISOString()
+    const limits: number[] = []
+    fake.logHandler = (opts) => {
+      if (opts?.before) limits.push(opts.limit ?? 0)
+      if (opts?.before === 40) {
+        return {
+          events: [
+            {
+              thread_id: "th_old",
+              turn_id: "tn_a",
+              seq: 2,
+              kind: "user_message",
+              agent_id: "manager",
+              text: "earlier task",
+              created_at: at,
+            },
+          ],
+          has_more: false,
+        }
+      }
+      return {
+        events: [
+          {
+            thread_id: "th_old",
+            turn_id: "tn_b",
+            seq: 40,
+            kind: "user_message",
+            agent_id: "manager",
+            text: "later task",
+            created_at: at,
+          },
+        ],
+        has_more: true,
+      }
+    }
+    await useApp.getState().boot()
+    expect(
+      useApp.getState().transcript.agents.manager?.blocks.some((b) => b.turnId === "tn_a"),
+    ).toBe(false)
+    expect(await useApp.getState().loadUntilTurn("tn_a", 400)).toBe(true)
+    expect(
+      useApp.getState().transcript.agents.manager?.blocks.some(
+        (b) => b.kind === "user" && b.turnId === "tn_a",
+      ),
+    ).toBe(true)
+    expect(limits.at(-1)).toBe(200)
+  })
+
+  it("waits for an in-flight sentinel page instead of treating busy history as the end", async () => {
+    const at = new Date().toISOString()
+    let resume!: () => void
+    const hold = new Promise<void>((resolve) => {
+      resume = resolve
+    })
+    let n = 0
+    fake.logHandler = (opts) => {
+      n += 1
+      if (!opts?.before) {
+        return {
+          events: [
+            {
+              thread_id: "th_old",
+              turn_id: "tn_b",
+              seq: 40,
+              kind: "user_message",
+              agent_id: "manager",
+              text: "later task",
+              created_at: at,
+            },
+          ],
+          has_more: true,
+        }
+      }
+      if (n === 2) {
+        return hold.then(() => ({
+          events: [
+            {
+              thread_id: "th_old",
+              turn_id: "tn_b",
+              seq: 20,
+              kind: "tool_call",
+              agent_id: "manager",
+              text: "exec({})",
+              tool_call_id: "c1",
+              created_at: at,
+            },
+          ],
+          has_more: true,
+        }))
+      }
+      return {
+        events: [
+          {
+            thread_id: "th_old",
+            turn_id: "tn_a",
+            seq: 2,
+            kind: "user_message",
+            agent_id: "manager",
+            text: "earlier task",
+            created_at: at,
+          },
+        ],
+        has_more: false,
+      }
+    }
+    await useApp.getState().boot()
+    const sentinel = useApp.getState().loadOlder(400)
+    const jump = useApp.getState().loadUntilTurn("tn_a", 400)
+    resume()
+    await sentinel
+    expect(await jump).toBe(true)
+    expect(
+      useApp.getState().transcript.agents.manager?.blocks.some(
+        (b) => b.kind === "user" && b.turnId === "tn_a",
+      ),
+    ).toBe(true)
   })
 })
