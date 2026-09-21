@@ -143,9 +143,10 @@ export async function loadOlderHistory(
       return
     }
     let release: () => void = () => {}
-    olderLoad = new Promise<void>((resolve) => {
+    const mine = new Promise<void>((resolve) => {
       release = resolve
     })
+    olderLoad = mine
     set({ historyLoading: true })
     try {
       const page = await api.threadLog(want, {
@@ -167,7 +168,7 @@ export async function loadOlderHistory(
       if (get().activeId !== want) return
       set({ historyLoading: false, error: fail(e) })
     } finally {
-      olderLoad = undefined
+      if (olderLoad === mine) olderLoad = undefined
       release()
     }
     return

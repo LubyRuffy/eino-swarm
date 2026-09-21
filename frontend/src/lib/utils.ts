@@ -78,7 +78,7 @@ export function formatTime(iso: string): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
 }
 
-/** Calendar time under a user bubble. Seconds belong on the turn footer,
+/** Calendar time on a transcript row. Seconds belong on the turn footer,
  *  not on every message. */
 export function formatMessageTime(iso: string): string {
   const date = new Date(iso)
