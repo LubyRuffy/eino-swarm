@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react"
 import { ChevronLeft } from "lucide-react"
 
 import { AskCard } from "@/components/ask-card"
+import { PhoneMarkdown } from "@/components/markdown"
 import { renderBlock } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/input"
@@ -16,6 +17,7 @@ export function ThreadScreen({
   blocks,
   hasMore,
   loadingOlder,
+  caughtUp = true,
   onBack,
   onOlder,
   onSend,
@@ -28,6 +30,7 @@ export function ThreadScreen({
   blocks: CompactBlock[]
   hasMore?: boolean
   loadingOlder?: boolean
+  caughtUp?: boolean
   onBack: () => void
   onOlder?: () => void
   onSend: (text: string) => void
@@ -45,16 +48,20 @@ export function ThreadScreen({
   const scroller = useRef<HTMLOListElement>(null)
   const stick = useRef(true)
   const pinHeight = useRef<number | null>(null)
+  const [atTail, setAtTail] = useState(false)
 
   const loadOlder = () => {
-    if (!onOlder || loadingOlder || !hasMore) return
+    if (!onOlder || loadingOlder || !hasMore || !caughtUp) return
     pinHeight.current = scroller.current?.scrollHeight ?? 0
     onOlder()
   }
 
+  const pullY = useRef<number | null>(null)
+
   useLayoutEffect(() => {
     const el = scroller.current
-    if (!el) return
+    if (!el || !caughtUp) return
+    el.style.overflowAnchor = "none"
     if (loadingOlder) return
     if (pinHeight.current != null) {
       el.scrollTop = el.scrollHeight - pinHeight.current
@@ -63,10 +70,24 @@ export function ThreadScreen({
       return
     }
     if (stick.current) el.scrollTop = el.scrollHeight
-  }, [blocks, loadingOlder, hasMore])
+    if (!atTail) setAtTail(true)
+  }, [caughtUp, blocks, loadingOlder, hasMore, atTail])
+
+  const onPullStart = (y: number) => {
+    pullY.current = y
+  }
+  const onPullMove = (y: number) => {
+    const start = pullY.current
+    const el = scroller.current
+    if (start == null || !el || !hasMore) return
+    if (el.scrollTop <= 0 && y - start > 48) {
+      pullY.current = null
+      loadOlder()
+    }
+  }
 
   return (
-    <main className="mx-auto flex h-[100dvh] max-w-lg flex-col overflow-hidden bg-background">
+    <main className="mx-auto flex h-full max-w-lg flex-col overflow-hidden bg-background">
       <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-1">
         <Button
           variant="ghost"
@@ -96,7 +117,9 @@ export function ThreadScreen({
         ) : null}
       </header>
       {detail.goal_on && detail.goal ? (
-        <p className="truncate px-4 py-1 text-xs text-muted-foreground">{detail.goal}</p>
+        <div className="max-h-16 overflow-hidden bg-background px-4 py-1 text-xs text-muted-foreground">
+          <PhoneMarkdown text={detail.goal} className="text-xs [&_p]:my-0" />
+        </div>
       ) : null}
       {detail.plan_on ? (
         <p className="px-4 text-[11px] text-[hsl(var(--running))]">{t("thread.plan")}</p>
@@ -104,39 +127,57 @@ export function ThreadScreen({
 
       <ol
         ref={scroller}
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 py-3"
+        className={cn(
+          "flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3",
+          caughtUp && !atTail && "invisible",
+        )}
         onScroll={(e) => {
           const el = e.currentTarget
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
-          if (el.scrollTop < 48 && el.scrollHeight > el.clientHeight + 24) loadOlder()
+          if (!atTail) return
+          if (el.scrollTop < 48) loadOlder()
+        }}
+        onTouchStart={(e) => onPullStart(e.touches[0]?.clientY ?? 0)}
+        onTouchMove={(e) => onPullMove(e.touches[0]?.clientY ?? 0)}
+        onTouchEnd={() => {
+          pullY.current = null
         }}
       >
-        {hasMore ? (
-          <li className="flex justify-center">
-            <Button
-              type="button"
-              variant="ghost"
-              className="h-8 text-xs text-muted-foreground"
-              disabled={loadingOlder}
-              onClick={loadOlder}
-            >
-              {loadingOlder ? t("thread.loading") : t("thread.earlier")}
-            </Button>
-          </li>
-        ) : null}
-        {blocks.map((b) => {
-          const node = renderBlock(b)
-          if (!node) return null
-          return <li key={b.id}>{node}</li>
-        })}
-        {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
-          <li>
+        <div
+          className={cn(
+            "flex flex-col gap-2",
+            hasMore && caughtUp && "min-h-[calc(100%+4rem)] justify-end",
+          )}
+        >
+          {hasMore ? (
+            <div className="flex justify-center">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 text-xs text-muted-foreground"
+                disabled={loadingOlder || !caughtUp}
+                onClick={loadOlder}
+              >
+                {loadingOlder || !caughtUp ? t("thread.loading") : t("thread.earlier")}
+              </Button>
+            </div>
+          ) : null}
+          {!caughtUp && blocks.length === 0 ? (
+            <p className="px-1 text-xs text-muted-foreground">{t("thread.loading")}</p>
+          ) : (
+            blocks.map((b) => {
+              const node = renderBlock(b)
+              if (!node) return null
+              return <div key={b.id}>{node}</div>
+            })
+          )}
+          {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
             <AskCard
               questions={ask.questions!}
               onSubmit={(answers) => onAnswerStructured(ask.callId || "", answers)}
             />
-          </li>
-        ) : null}
+          ) : null}
+        </div>
       </ol>
 
       <Composer

@@ -9,12 +9,16 @@ import {
 import { applyEvent, pendingAsk, type CompactBlock } from "./transcript"
 
 /** One open thread on the phone. threadId is set before watch returns,
- *  because catch-up events can beat React's setState. */
+ *  because catch-up events can beat React's setState. Events that arrive
+ *  before ready are queued, not painted — otherwise the transcript plays
+ *  from the first user message and then yanks to the tail. */
 export type PhoneView = {
   threadId: string | null
   lastSeq: number
   oldestSeq: number
   hasMore: boolean
+  caughtUp: boolean
+  queued: RemoteEvent[]
   events: RemoteEvent[]
   blocks: CompactBlock[]
   detail: ThreadDetail | null
@@ -26,6 +30,8 @@ export function emptyView(): PhoneView {
     lastSeq: 0,
     oldestSeq: 0,
     hasMore: false,
+    caughtUp: false,
+    queued: [],
     events: [],
     blocks: [],
     detail: null,
@@ -51,7 +57,12 @@ export function applyPush(view: PhoneView, resp: RemoteResponse): PhoneView {
   if (!view.threadId) return view
   if (resp.thread_id && resp.thread_id !== view.threadId) return view
   if (resp.op === OpReady) return applyReady(view, resp)
-  if (resp.op === OpEvent && resp.event) return applyLiveEvent(view, resp.event)
+  if (resp.op === OpEvent && resp.event) {
+    if (!view.caughtUp) {
+      return { ...view, queued: view.queued.concat(resp.event) }
+    }
+    return applyLiveEvent(view, resp.event)
+  }
   return view
 }
 
@@ -85,27 +96,53 @@ export function prependOlder(
 }
 
 function applyReady(view: PhoneView, resp: RemoteResponse): PhoneView {
+  const fromReady = resp.events ?? []
+  const stored = mergeEvents(view.events, mergeEvents(fromReady, view.queued.filter((ev) => ev.seq > 0)))
+  const deltas = view.queued.filter((ev) => ev.seq <= 0)
+  let blocks = foldEvents(stored)
+  for (const ev of deltas) blocks = applyEvent(blocks, ev)
+  let detail = view.detail
+  let lastSeq = Math.max(view.lastSeq, resp.seq ?? 0)
+  for (const ev of stored.concat(deltas)) {
+    if (detail) detail = patchDetail(detail, ev, blocks)
+    if (ev.seq > lastSeq) lastSeq = ev.seq
+  }
   const st = resp.status
-  const hasMore = Boolean(resp.more)
-  if (!st || !view.detail) {
-    return { ...view, lastSeq: Math.max(view.lastSeq, resp.seq ?? 0), hasMore }
+  if (st && detail) {
+    detail = {
+      ...detail,
+      running: st.running
+        ? {
+            thread_id: detail.id,
+            title: detail.title,
+            turn_id: st.turn_id,
+            ask_user: st.awaiting_answer || Boolean(detail.running?.ask_user),
+          }
+        : undefined,
+    }
   }
   return {
     ...view,
-    lastSeq: Math.max(view.lastSeq, resp.seq ?? 0),
-    hasMore,
-    detail: {
-      ...view.detail,
-      running: st.running
-        ? {
-            thread_id: view.detail.id,
-            title: view.detail.title,
-            turn_id: st.turn_id,
-            ask_user: st.awaiting_answer,
-          }
-        : undefined,
-    },
+    lastSeq,
+    oldestSeq: oldestOf(stored, lastSeq, Boolean(resp.more), view.oldestSeq),
+    hasMore: Boolean(resp.more) || (fromReady.length === 0 && view.hasMore),
+    caughtUp: true,
+    queued: [],
+    events: stored,
+    blocks,
+    detail,
   }
+}
+
+function oldestOf(
+  stored: RemoteEvent[],
+  lastSeq: number,
+  more: boolean,
+  fallback: number,
+): number {
+  if (stored[0]?.seq) return stored[0].seq
+  if (more && lastSeq > 0) return lastSeq + 1
+  return fallback
 }
 
 function applyLiveEvent(view: PhoneView, ev: RemoteEvent): PhoneView {

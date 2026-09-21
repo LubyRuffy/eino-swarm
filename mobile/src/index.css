@@ -97,4 +97,30 @@
   .md-body a {
     @apply underline;
   }
+  .md-body ul,
+  .md-body ol {
+    @apply my-2 list-outside pl-5;
+  }
+  .md-body ul {
+    @apply list-disc;
+  }
+  .md-body ol {
+    @apply list-decimal;
+  }
+  .md-body li {
+    @apply my-0.5;
+  }
+  .md-body strong {
+    @apply font-semibold;
+  }
+  .md-body table {
+    @apply w-full border-collapse text-xs;
+  }
+  .md-body th,
+  .md-body td {
+    @apply border border-border px-2 py-1 text-left;
+  }
+  .md-body th {
+    @apply font-medium;
+  }
 }

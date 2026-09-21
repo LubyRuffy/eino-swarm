@@ -40,6 +40,10 @@ export const en = {
   "thread.loading": "Loading",
   "thread.tool": "tool",
 
+  "notice.scheduleArmed": "A wait is armed.",
+  "notice.scheduleCancelled": "A wait was cancelled.",
+  "notice.scheduleFired": "Scheduled check.",
+
   "markdown.copyCode": "Copy code",
   "markdown.copyFormula": "Copy formula",
   "markdown.copied": "Copied",

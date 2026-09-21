@@ -5,6 +5,7 @@ import {
   type AskQuestion,
 } from "./ask"
 import type { RemoteEvent } from "./rpc"
+import { looksPacked } from "./tool-preview"
 
 export type BlockKind =
   | "user"
@@ -25,6 +26,7 @@ export type CompactBlock = {
   failed?: boolean
   toolName?: string
   callId?: string
+  args?: string
   hasImages?: boolean
   questions?: AskQuestion[]
 }
@@ -33,6 +35,7 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
   const next = blocks.slice()
   switch (ev.kind) {
     case "user_message":
+      if (ev.text.startsWith("This turn is a scheduled check.")) return next
       next.push({
         id: blockId(ev),
         kind: "user",
@@ -90,6 +93,7 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
         kind: "tool",
         text: parsed.name || ev.text,
         toolName: parsed.name,
+        args: parsed.args,
         callId: ev.tool_call_id,
         pending: true,
       })
@@ -152,14 +156,27 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
     case "max_iterations_continued":
     case "model_retry":
     case "compacted":
-    case "schedule":
-    case "schedule_fired":
-    case "schedule_skipped":
-    case "schedule_report":
-    case "schedule_cancelled":
       if (ev.text) {
         next.push({ id: blockId(ev), kind: "notice", text: ev.text })
       }
+      return next
+    case "schedule":
+      next.push({ id: blockId(ev), kind: "notice", text: "A wait is armed." })
+      return next
+    case "schedule_fired": {
+      const text = ev.text.trim()
+      next.push({
+        id: blockId(ev),
+        kind: "notice",
+        text: !text || looksPacked(text) ? "Scheduled check." : text,
+      })
+      return next
+    }
+    case "schedule_skipped":
+    case "schedule_report":
+      return next
+    case "schedule_cancelled":
+      next.push({ id: blockId(ev), kind: "notice", text: "A wait was cancelled." })
       return next
     default:
       return next

@@ -39,7 +39,7 @@ describe("ThreadScreen", () => {
     expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument()
     const transcript = document.querySelector("ol")
     expect(transcript).toHaveClass("min-h-0")
-    expect(transcript?.closest("main")).toHaveClass("h-[100dvh]")
+    expect(transcript?.closest("main")).toHaveClass("h-full")
   })
 
   it("shows a standing goal and the ask card", () => {
@@ -49,7 +49,7 @@ describe("ThreadScreen", () => {
         detail={{
           id: "t1",
           title: "live",
-          goal: "keep going",
+          goal: "keep **going**",
           goal_on: true,
           plan_on: true,
         }}
@@ -81,7 +81,8 @@ describe("ThreadScreen", () => {
         onAnswerStructured={onAnswerStructured}
       />,
     )
-    expect(screen.getByText("keep going")).toBeInTheDocument()
+    expect(screen.getByText("going").closest("strong")).toBeTruthy()
+    expect(screen.queryByText(/\*\*going\*\*/)).not.toBeInTheDocument()
     expect(screen.getByText("Planning")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "A" }))
     fireEvent.click(screen.getByTestId("ask-submit"))
@@ -137,9 +138,61 @@ describe("ThreadScreen", () => {
     const transcript = document.querySelector("ol")
     if (!transcript) throw new Error("missing transcript")
     Object.defineProperty(transcript, "scrollTop", { value: 4, configurable: true })
-    Object.defineProperty(transcript, "scrollHeight", { value: 800, configurable: true })
+    Object.defineProperty(transcript, "scrollHeight", { value: 400, configurable: true })
     Object.defineProperty(transcript, "clientHeight", { value: 400, configurable: true })
     fireEvent.scroll(transcript)
     expect(onOlder).toHaveBeenCalledTimes(2)
+  })
+
+  it("loads earlier rows when the finger pulls down at the top", () => {
+    const onOlder = vi.fn()
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live" }}
+        blocks={[{ id: "1", kind: "answer", text: "now" }]}
+        hasMore
+        onBack={vi.fn()}
+        onOlder={onOlder}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    const transcript = document.querySelector("ol")
+    if (!transcript) throw new Error("missing transcript")
+    Object.defineProperty(transcript, "scrollTop", { value: 0, configurable: true })
+    fireEvent.touchStart(transcript, { touches: [{ clientY: 80 }] })
+    fireEvent.touchMove(transcript, { touches: [{ clientY: 140 }] })
+    expect(onOlder).toHaveBeenCalledTimes(1)
+  })
+
+  it("holds the transcript until watch is caught up", () => {
+    const onOlder = vi.fn()
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live" }}
+        blocks={[{ id: "1", kind: "answer", text: "now" }]}
+        hasMore
+        caughtUp={false}
+        onBack={vi.fn()}
+        onOlder={onOlder}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("Loading")).toBeInTheDocument()
+    expect(screen.queryByText("now")).not.toBeInTheDocument()
+    const transcript = document.querySelector("ol")
+    if (!transcript) throw new Error("missing transcript")
+    Object.defineProperty(transcript, "scrollTop", { value: 4, configurable: true })
+    Object.defineProperty(transcript, "scrollHeight", { value: 800, configurable: true })
+    Object.defineProperty(transcript, "clientHeight", { value: 400, configurable: true })
+    fireEvent.scroll(transcript)
+    expect(onOlder).not.toHaveBeenCalled()
   })
 })

@@ -16,19 +16,84 @@ import remarkMath from "remark-math"
 import "katex/dist/katex.min.css"
 
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
 
 const PLUGINS = [remarkGfm, remarkMath]
 const MATH_LANGS = new Set(["math", "latex", "tex", "katex"])
 
-export function PhoneMarkdown({ text }: { text: string }) {
+export function PhoneMarkdown({ text, className }: { text: string; className?: string }) {
   return (
-    <div className="md-body text-sm">
-      <Markdown remarkPlugins={PLUGINS} components={COMPONENTS}>
+    <div className={cn("md-body text-sm", className)}>
+      <Markdown remarkPlugins={PLUGINS} components={COMPONENTS} urlTransform={safeUrl}>
         {text}
       </Markdown>
     </div>
   )
+}
+
+function PhoneLink({
+  href,
+  children,
+  node: _node,
+  ...props
+}: ComponentPropsWithoutRef<"a"> & { node?: unknown }) {
+  const origin = typeof window === "undefined" ? "http://127.0.0.1" : window.location.origin
+  const action = classifyHref(href, origin)
+  if (action === "block") {
+    return <span>{children}</span>
+  }
+  if (action === "leave") {
+    return (
+      <a {...props} href={href} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    )
+  }
+  return (
+    <a {...props} href={href}>
+      {children}
+    </a>
+  )
+}
+
+function PhoneTable({
+  node: _node,
+  ...props
+}: ComponentPropsWithoutRef<"table"> & { node?: unknown }) {
+  return (
+    <div className="overflow-x-auto">
+      <table {...props} />
+    </div>
+  )
+}
+
+/** Hash fragments stay. javascript/file/data never navigate. http(s)
+ *  leaves the webview. Same-origin paths are blocked: the phone has no
+ *  router, and a local path in a markdown link would replace the transcript. */
+function classifyHref(href: string | null | undefined, origin: string): "stay" | "leave" | "block" {
+  if (href == null) return "stay"
+  const raw = href.trim()
+  if (raw.startsWith("#")) return "stay"
+  if (raw === "") return "block"
+  let url: URL
+  try {
+    url = new URL(raw, origin)
+  } catch {
+    return "block"
+  }
+  const proto = url.protocol.toLowerCase()
+  if (proto === "javascript:" || proto === "data:" || proto === "vbscript:" || proto === "file:") {
+    return "block"
+  }
+  // The phone is one webview. A same-origin path would replace the transcript.
+  if (url.origin === origin) return "block"
+  if (proto === "http:" || proto === "https:" || proto === "mailto:") return "leave"
+  return "block"
+}
+
+function safeUrl(url: string): string {
+  return classifyHref(url, "http://127.0.0.1") === "block" ? "" : url
 }
 
 function PhonePre({
@@ -177,6 +242,8 @@ function codeText(children: ReactNode): string {
 }
 
 const COMPONENTS: Components = {
+  a: PhoneLink,
   pre: PhonePre,
   code: PhoneInlineCode,
+  table: PhoneTable,
 }

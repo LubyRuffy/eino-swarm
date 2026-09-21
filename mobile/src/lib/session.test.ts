@@ -29,17 +29,54 @@ function push(event: RemoteEvent, thread_id = "t1"): RemoteResponse {
   }
 }
 
+function ready(partial?: Partial<RemoteResponse>): RemoteResponse {
+  return {
+    v: 1,
+    id: "",
+    ok: true,
+    op: OpReady,
+    thread_id: "t1",
+    seq: 0,
+    status: { running: false },
+    ...partial,
+  }
+}
+
 describe("phone watch session", () => {
-  it("applies catch-up before React would have flushed detail", () => {
-    const view = openView(detail())
-    const next = applyPush(view, push(ev({ seq: 1, kind: "user_message", text: "hi" })))
-    expect(next.blocks).toHaveLength(1)
-    expect(next.lastSeq).toBe(1)
+  it("does not paint catch-up until ready, then folds it in one shot", () => {
+    let view = openView(detail())
+    view = applyPush(view, push(ev({ seq: 1, kind: "user_message", text: "hi" })))
+    expect(view.blocks).toEqual([])
+    expect(view.queued).toHaveLength(1)
+    view = applyPush(view, ready({ seq: 1 }))
+    expect(view.blocks).toHaveLength(1)
+    expect(view.lastSeq).toBe(1)
+    expect(view.caughtUp).toBe(true)
+    expect(view.queued).toEqual([])
     expect(applyPush(emptyView(), push(ev({ seq: 1, kind: "user_message", text: "hi" }))).blocks).toEqual([])
   })
 
+  it("paints ready.events in one shot without a replay", () => {
+    const view = applyPush(
+      openView(detail()),
+      ready({
+        seq: 3,
+        more: true,
+        events: [
+          ev({ seq: 2, kind: "user_message", text: "mid" }),
+          ev({ seq: 3, kind: "agent_message", text: "tail" }),
+        ],
+      }),
+    )
+    expect(view.blocks.map((b) => b.text)).toEqual(["mid", "tail"])
+    expect(view.oldestSeq).toBe(2)
+    expect(view.lastSeq).toBe(3)
+    expect(view.hasMore).toBe(true)
+    expect(view.caughtUp).toBe(true)
+  })
+
   it("ignores another thread and duplicate seq", () => {
-    let view = openView(detail())
+    let view = applyPush(openView(detail()), ready({ seq: 0 }))
     view = applyPush(view, push(ev({ seq: 2, kind: "user_message", text: "a" })))
     view = applyPush(view, push(ev({ seq: 2, kind: "user_message", text: "a" })))
     view = applyPush(view, push(ev({ seq: 3, kind: "delta", text: "nope" }), "other"))
@@ -72,18 +109,14 @@ describe("phone watch session", () => {
   })
 
   it("opens hasMore from ready and prepends older events above the viewport", () => {
-    let view = openView(detail())
-    view = applyPush(view, push(ev({ seq: 4, kind: "user_message", text: "now" })))
-    view = applyPush(view, {
-      v: 1,
-      id: "",
-      ok: true,
-      op: OpReady,
-      thread_id: "t1",
-      seq: 4,
-      more: true,
-      status: { running: false },
-    })
+    let view = applyPush(
+      openView(detail()),
+      ready({
+        seq: 4,
+        more: true,
+        events: [ev({ seq: 4, kind: "user_message", text: "now" })],
+      }),
+    )
     expect(view.hasMore).toBe(true)
     expect(view.oldestSeq).toBe(4)
     view = prependOlder(
@@ -100,20 +133,12 @@ describe("phone watch session", () => {
     view = prependOlder(view, [], true, 3)
     expect(view.hasMore).toBe(true)
     expect(view.oldestSeq).toBe(3)
-    view = applyPush(view, {
-      v: 1,
-      id: "",
-      ok: true,
-      op: OpReady,
-      thread_id: "t1",
-      seq: 8,
-      status: { running: false },
-    })
+    view = applyPush(view, ready({ seq: 8, status: { running: false } }))
     expect(view.hasMore).toBe(false)
   })
 
   it("keeps a live streaming answer when older rows are prepended", () => {
-    let view = openView(detail())
+    let view = applyPush(openView(detail()), ready({ seq: 0 }))
     view = applyPush(view, push(ev({ seq: 3, kind: "user_message", text: "q" })))
     view = applyPush(view, push(ev({ seq: 0, kind: "delta", text: "partial" })))
     view = prependOlder(view, [ev({ seq: 1, kind: "user_message", text: "prev" })], true)
@@ -122,8 +147,10 @@ describe("phone watch session", () => {
   })
 
   it("drops another thread's older page", () => {
-    let view = openView(detail())
-    view = applyPush(view, push(ev({ seq: 4, kind: "user_message", text: "now" })))
+    let view = applyPush(
+      openView(detail()),
+      ready({ seq: 4, events: [ev({ seq: 4, kind: "user_message", text: "now" })] }),
+    )
     view = prependOlder(
       view,
       [ev({ seq: 1, kind: "user_message", text: "nope", thread_id: "other" })],

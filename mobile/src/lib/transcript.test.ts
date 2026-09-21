@@ -91,4 +91,60 @@ describe("compact transcript", () => {
     blocks = applyEvent(blocks, ev({ seq: 14, kind: "plan", text: "" }))
     expect(blocks.map((b) => b.kind)).toEqual(["notice"])
   })
+
+  it("folds schedule kinds to one-liners instead of the payload JSON", () => {
+    const payload = JSON.stringify({
+      id: "sch_x",
+      kind: "thread",
+      title: "periodic",
+      prompt: "do the long check then cat status.json",
+    })
+    let blocks: CompactBlock[] = []
+    blocks = applyEvent(blocks, ev({ seq: 20, kind: "schedule", text: payload }))
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 21, kind: "user_message", text: "This turn is a scheduled check.\n\nkeep going" }),
+    )
+    blocks = applyEvent(blocks, ev({ seq: 22, kind: "schedule_fired", text: payload }))
+    blocks = applyEvent(blocks, ev({ seq: 23, kind: "schedule_report", text: payload }))
+    blocks = applyEvent(blocks, ev({ seq: 24, kind: "schedule_skipped", text: payload }))
+    blocks = applyEvent(blocks, ev({ seq: 25, kind: "schedule_cancelled", text: "sch_x" }))
+    expect(blocks.map((b) => b.kind)).toEqual(["notice", "notice", "notice"])
+    expect(blocks.map((b) => b.text)).toEqual([
+      "A wait is armed.",
+      "Scheduled check.",
+      "A wait was cancelled.",
+    ])
+    expect(blocks.some((b) => b.text.includes("status.json"))).toBe(false)
+    expect(blocks.some((b) => b.text.includes("sch_x"))).toBe(false)
+  })
+
+  it("keeps report tool args after a quiet envelope result so the chip can preview findings", () => {
+    const args = JSON.stringify({ findings: "one thing changed", quiet: false })
+    let blocks: CompactBlock[] = []
+    blocks = applyEvent(
+      blocks,
+      ev({
+        seq: 30,
+        kind: "tool_call",
+        tool_call_id: "c",
+        text: `report_schedule(${args})`,
+      }),
+    )
+    blocks = applyEvent(
+      blocks,
+      ev({
+        seq: 31,
+        kind: "tool_result",
+        tool_call_id: "c",
+        text: JSON.stringify({ ok: true, quiet: false }),
+      }),
+    )
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].kind).toBe("tool")
+    expect(blocks[0].toolName).toBe("report_schedule")
+    expect(blocks[0].args).toBe(args)
+    expect(blocks[0].text).toBe(JSON.stringify({ ok: true, quiet: false }))
+    expect(blocks[0].pending).toBe(false)
+  })
 })

@@ -3,23 +3,24 @@ import { useState } from "react"
 import { PhoneMarkdown } from "@/components/markdown"
 import { t } from "@/lib/i18n"
 import type { CompactBlock } from "@/lib/transcript"
+import { jsonPreview, looksPacked } from "@/lib/tool-preview"
 import { cn } from "@/lib/cn"
 
 export function renderBlock(b: CompactBlock) {
   if (b.kind === "user") {
     return (
-      <div className="ml-10 rounded-2xl bg-primary px-3 py-2 text-sm text-primary-foreground">
-        <p className="whitespace-pre-wrap">{b.text}</p>
+      <div className="ml-6 break-words rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
+        <PhoneMarkdown text={b.text} />
         {b.hasImages ? (
-          <p className="mt-1 text-xs opacity-80">{t("thread.image")}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{t("thread.image")}</p>
         ) : null}
       </div>
     )
   }
   if (b.kind === "steer") {
     return (
-      <div className="ml-10 rounded-2xl bg-accent px-3 py-2 text-sm">
-        <p className="whitespace-pre-wrap">{b.text}</p>
+      <div className="ml-6 break-words rounded-2xl bg-accent px-3 py-2 text-sm">
+        <PhoneMarkdown text={b.text} />
       </div>
     )
   }
@@ -40,8 +41,9 @@ export function renderBlock(b: CompactBlock) {
     return <p className="text-sm text-destructive">{b.text}</p>
   }
   if (b.kind === "notice") {
-    if (!b.text) return null
-    return <p className="text-[11px] text-muted-foreground">{b.text}</p>
+    const text = localizeNotice(b.text)
+    if (!text) return null
+    return <p className="text-[11px] text-muted-foreground">{text}</p>
   }
   return null
 }
@@ -50,7 +52,7 @@ function ToolChip({ block }: { block: CompactBlock }) {
   const [open, setOpen] = useState(false)
   const name = block.toolName || t("thread.tool")
   const summary = toolChipSummary(block)
-  const body = packedBody(block.text)
+  const body = packedBody(block)
   return (
     <div>
       <button
@@ -84,17 +86,16 @@ function ToolChip({ block }: { block: CompactBlock }) {
 
 function toolChipSummary(b: CompactBlock): string {
   const line = lastLine(b.text)
-  if (!line || looksPacked(line) || line === b.toolName) return ""
-  return clip(line, 48)
+  if (line && !looksPacked(line) && line !== b.toolName) return clip(line, 72)
+  return clip(jsonPreview(b.text) || jsonPreview(b.args), 72)
 }
 
-function packedBody(text: string): string {
-  return clip(text.trim(), 400)
-}
-
-function looksPacked(s: string): boolean {
-  const t = s.trim()
-  return t.startsWith("{") || t.startsWith("[")
+function packedBody(block: CompactBlock): string {
+  const preview = jsonPreview(block.text) || jsonPreview(block.args)
+  if (preview) return clip(preview, 400)
+  const raw = block.text.trim()
+  if (!raw || raw === block.toolName) return ""
+  return clip(raw, 400)
 }
 
 function lastLine(text: string): string {
@@ -103,6 +104,20 @@ function lastLine(text: string): string {
 }
 
 function clip(s: string, n: number): string {
+  if (!s) return ""
   if (s.length <= n) return s
   return s.slice(0, n) + "…"
+}
+
+function localizeNotice(text: string): string {
+  switch (text) {
+    case "A wait is armed.":
+      return t("notice.scheduleArmed")
+    case "A wait was cancelled.":
+      return t("notice.scheduleCancelled")
+    case "Scheduled check.":
+      return t("notice.scheduleFired")
+    default:
+      return text
+  }
 }

@@ -23,6 +23,7 @@ import {
   OpStop,
   OpUnwatch,
   OpWatch,
+  OpReady,
 } from "@/lib/rpc"
 import { pickResumeThread } from "@/lib/resume"
 import {
@@ -94,7 +95,12 @@ export function App() {
     olderBusy.current = false
     setLoadingOlder(false)
     commitView(openView(r.detail))
-    await target.rpc({ op: OpWatch, thread_id: id })
+    const w = await target.rpc({ op: OpWatch, thread_id: id })
+    if (!w.ok) {
+      setError(w.error || w.code || "watch failed")
+      return false
+    }
+    commitView(applyPush(viewRef.current, { ...w, op: w.op || OpReady }))
     return true
   }
 
@@ -168,7 +174,7 @@ export function App() {
     if (!link || olderBusy.current) return
     const cur = viewRef.current
     const before = cur.oldestSeq > 0 ? cur.oldestSeq : cur.lastSeq
-    if (!cur.hasMore || !cur.threadId || before <= 0) return
+    if (!cur.hasMore || !cur.threadId) return
     const gen = loadGen.current
     const threadId = cur.threadId
     olderBusy.current = true
@@ -227,6 +233,7 @@ export function App() {
         blocks={view.blocks}
         hasMore={view.hasMore}
         loadingOlder={loadingOlder}
+        caughtUp={view.caughtUp}
         onBack={() => void closeThread()}
         onOlder={() => void loadOlder()}
         onSend={async (text) => {

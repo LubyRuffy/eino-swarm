@@ -41,6 +41,10 @@ export const zh: Record<MessageKey, string> = {
   "thread.loading": "加载中",
   "thread.tool": "工具",
 
+  "notice.scheduleArmed": "已设置等待。",
+  "notice.scheduleCancelled": "等待已取消。",
+  "notice.scheduleFired": "定时检查。",
+
   "markdown.copyCode": "复制代码",
   "markdown.copyFormula": "复制公式",
   "markdown.copied": "已复制",

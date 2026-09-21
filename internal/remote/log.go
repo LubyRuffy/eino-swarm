@@ -54,14 +54,25 @@ func handleLog(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, s
 	if tid == "" {
 		return fail(req.ID, path, sessionID, "bad_request", "thread_id required")
 	}
-	if req.Before <= 0 {
-		return fail(req.ID, path, sessionID, "bad_request", "before required")
-	}
 	if _, err := eng.Store().GetThread(tid); err != nil {
 		return mapErr(req.ID, path, sessionID, err)
 	}
 	before := req.Before
 	limit := watchEvents(cfg)
+	if before <= 0 {
+		window, _, err := lastTurnWindow(eng.Store(), tid, limit)
+		if err != nil {
+			return fail(req.ID, path, sessionID, "", fmtErr(err))
+		}
+		if len(window) == 0 {
+			page, more, err := eng.Store().ListTailEvents(tid, 0, limit)
+			if err != nil {
+				return fail(req.ID, path, sessionID, "", fmtErr(err))
+			}
+			return packLogEvents(req.ID, path, sessionID, tid, page, more, cfg)
+		}
+		before = window[0].Seq
+	}
 	var page []store.Event
 	hasMore := true
 	for i := 0; i < 32 && hasMore; i++ {

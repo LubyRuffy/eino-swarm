@@ -34,6 +34,7 @@ type LinkPump struct {
 	mu       sync.Mutex
 	cancel   context.CancelFunc
 	watching string
+	watchWG  sync.WaitGroup
 }
 
 func newLinkPump(eng *engine.Engine, cfg config.RemoteConfig, l *client.Link) *LinkPump {
@@ -92,13 +93,35 @@ func (p *LinkPump) startWatch(req Request) Response {
 	}
 	p.stopWatch()
 	ctx, cancel := context.WithCancel(context.Background())
+	sub := p.eng.Subscribe(tid)
 	p.mu.Lock()
 	p.cancel = cancel
 	p.watching = tid
 	p.mu.Unlock()
-	sub := p.eng.Subscribe(tid)
-	go p.runWatch(ctx, sub, tid, req.Since)
-	return okBase(req.ID, p.path, p.sessionID)
+	history, hasMore, err := p.watchHistory(tid, req.Since)
+	if err != nil || ctx.Err() != nil {
+		cancel()
+		sub.Close()
+		p.mu.Lock()
+		if p.cancel != nil {
+			p.cancel = nil
+			p.watching = ""
+		}
+		p.mu.Unlock()
+		if err != nil {
+			return fail(req.ID, p.path, p.sessionID, "", fmtErr(err))
+		}
+		return fail(req.ID, p.path, p.sessionID, "cancelled", "watch cancelled")
+	}
+	highest := watchHighest(req.Since, history, hasMore, p.eng.Store(), tid)
+	resp := p.readySnapshot(req.ID, tid, history, hasMore, highest)
+	p.watchWG.Add(1)
+	go func() {
+		defer p.watchWG.Done()
+		defer sub.Close()
+		p.watchLoop(ctx, sub, tid, highest)
+	}()
+	return resp
 }
 
 func (p *LinkPump) stopWatch() {
@@ -110,12 +133,12 @@ func (p *LinkPump) stopWatch() {
 	if cancel != nil {
 		cancel()
 	}
+	p.watchWG.Wait()
 }
 
 func (p *LinkPump) runWatch(ctx context.Context, sub *engine.Subscription, threadID string, since int64) {
 	defer sub.Close()
-	highest := since
-	hasMore, err := p.catchUp(ctx, threadID, &highest)
+	history, hasMore, err := p.loadHistory(ctx, threadID, since)
 	if err != nil {
 		if ctx.Err() != nil {
 			return
@@ -126,22 +149,45 @@ func (p *LinkPump) runWatch(ctx context.Context, sub *engine.Subscription, threa
 	if ctx.Err() != nil {
 		return
 	}
+	highest := watchHighest(since, history, hasMore, p.eng.Store(), threadID)
+	p.reply(p.readySnapshot("", threadID, history, hasMore, highest))
+	p.watchLoop(ctx, sub, threadID, highest)
+}
+
+func (p *LinkPump) readySnapshot(id, threadID string, history []store.Event, hasMore bool, highest int64) Response {
+	packed := packLogEvents(id, p.path, p.sessionID, threadID, history, hasMore, p.cfg)
 	st := p.eng.Status(threadID)
-	p.reply(Response{
-		V:         ProtocolV,
-		OK:        true,
-		Op:        OpReady,
-		Path:      p.path,
-		SessionID: p.sessionID,
-		ThreadID:  threadID,
-		Seq:       highest,
-		More:      hasMore,
-		Status: &WatchStatus{
-			Running:        st.Running,
-			TurnID:         st.TurnID,
-			AwaitingAnswer: st.AwaitingAnswer,
-		},
-	})
+	packed.Op = OpReady
+	packed.Seq = highest
+	packed.Status = &WatchStatus{
+		Running:        st.Running,
+		TurnID:         st.TurnID,
+		AwaitingAnswer: st.AwaitingAnswer,
+	}
+	return packed
+}
+
+func watchHighest(since int64, history []store.Event, hasMore bool, st *store.Store, threadID string) int64 {
+	highest := since
+	for _, ev := range history {
+		if ev.Seq > highest {
+			highest = ev.Seq
+		}
+	}
+	if highest > since || !hasMore || st == nil {
+		return highest
+	}
+	tail, _, err := st.ListTailEvents(threadID, 0, 1)
+	if err != nil || len(tail) == 0 {
+		return highest
+	}
+	if tail[len(tail)-1].Seq > highest {
+		return tail[len(tail)-1].Seq
+	}
+	return highest
+}
+
+func (p *LinkPump) watchLoop(ctx context.Context, sub *engine.Subscription, threadID string, highest int64) {
 	ticker := time.NewTicker(lagCheckInterval)
 	defer ticker.Stop()
 	for {
@@ -181,11 +227,15 @@ func (p *LinkPump) runWatch(ctx context.Context, sub *engine.Subscription, threa
 	}
 }
 
-func (p *LinkPump) catchUp(ctx context.Context, threadID string, highest *int64) (bool, error) {
+func (p *LinkPump) loadHistory(ctx context.Context, threadID string, since int64) ([]store.Event, bool, error) {
 	if err := ctx.Err(); err != nil {
-		return false, err
+		return nil, false, err
 	}
-	history, hasMore, err := p.watchHistory(threadID, *highest)
+	return p.watchHistory(threadID, since)
+}
+
+func (p *LinkPump) catchUp(ctx context.Context, threadID string, highest *int64) (bool, error) {
+	history, hasMore, err := p.loadHistory(ctx, threadID, *highest)
 	if err != nil {
 		return false, err
 	}

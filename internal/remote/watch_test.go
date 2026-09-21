@@ -65,19 +65,17 @@ func TestWatchReplayMatchesEngineReplaySeq(t *testing.T) {
 	if ready.Seq != replay[len(replay)-1].Seq {
 		t.Fatalf("ready seq %d replay %d", ready.Seq, replay[len(replay)-1].Seq)
 	}
-	var seqs []int64
-	for _, r := range log.snapshot() {
-		if r.Op == OpEvent && r.Event != nil {
-			seqs = append(seqs, r.Event.Seq)
-		}
-	}
+	seqs := seqsOf(ready.Events)
 	if len(seqs) != len(replay) {
-		t.Fatalf("pushed %v replay %d", seqs, len(replay))
+		t.Fatalf("ready events %v replay %d", seqs, len(replay))
 	}
 	for i, ev := range replay {
 		if seqs[i] != ev.Seq {
 			t.Fatalf("seq %d want %d", seqs[i], ev.Seq)
 		}
+	}
+	if countOp(log.snapshot(), OpEvent) != 0 {
+		t.Fatal("catch-up must ride ready, not a slideshow of event frames")
 	}
 }
 
@@ -216,20 +214,21 @@ func TestCatchUpSkipsUnknownKindsAndClipsNewlines(t *testing.T) {
 	pump, log := testPump(t, e)
 	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
 	pump.Dispatch(raw)
-	log.waitOp(t, OpReady, 3*time.Second)
+	ready := log.waitOp(t, OpReady, 3*time.Second)
 	var texts []string
 	var kinds []string
-	for _, r := range log.snapshot() {
-		if r.Op == OpEvent && r.Event != nil {
-			kinds = append(kinds, r.Event.Kind)
-			texts = append(texts, r.Event.Text)
-		}
+	for _, ev := range ready.Events {
+		kinds = append(kinds, ev.Kind)
+		texts = append(texts, ev.Text)
 	}
 	if strings.Join(kinds, ",") != "user_message" {
 		t.Fatalf("kinds %v", kinds)
 	}
 	if texts[0] != "line1\nline2" {
 		t.Fatalf("newlines %q", texts[0])
+	}
+	if countOp(log.snapshot(), OpEvent) != 0 {
+		t.Fatal("unknown kinds must not become event frames")
 	}
 }
 
@@ -250,22 +249,18 @@ func TestWatchOpensAtTheLiveEdgeNotTheOldestEvent(t *testing.T) {
 	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
 	pump.Dispatch(raw)
 	ready := log.waitOp(t, OpReady, 3*time.Second)
-	var texts []string
-	var seqs []int64
-	for _, r := range log.snapshot() {
-		if r.Op == OpEvent && r.Event != nil {
-			texts = append(texts, r.Event.Text)
-			seqs = append(seqs, r.Event.Seq)
-		}
-	}
+	texts := textsOfViews(ready.Events)
 	if len(texts) != 3 || texts[0] != "mf" || texts[2] != "mh" {
 		t.Fatalf("tail %+v", texts)
 	}
-	if ready.Seq != seqs[len(seqs)-1] {
-		t.Fatalf("ready %d last %d", ready.Seq, seqs[len(seqs)-1])
+	if ready.Seq != ready.Events[len(ready.Events)-1].Seq {
+		t.Fatalf("ready %d last %d", ready.Seq, ready.Events[len(ready.Events)-1].Seq)
 	}
 	if !ready.More {
 		t.Fatal("older rows must still exist")
+	}
+	if countOp(log.snapshot(), OpEvent) != 0 {
+		t.Fatal("live-edge catch-up must not trickle as event frames")
 	}
 }
 
@@ -307,14 +302,11 @@ func TestWatchOpensOnTheLastTurnNotEarlierOnes(t *testing.T) {
 	if !ready.More {
 		t.Fatal("earlier turn must still exist")
 	}
-	var texts []string
-	for _, r := range log.snapshot() {
-		if r.Op == OpEvent && r.Event != nil {
-			texts = append(texts, r.Event.Text)
-		}
+	if strings.Join(textsOfViews(ready.Events), ",") != "now,ok" {
+		t.Fatalf("last turn %+v", textsOfViews(ready.Events))
 	}
-	if strings.Join(texts, ",") != "now,ok" {
-		t.Fatalf("last turn %+v", texts)
+	if countOp(log.snapshot(), OpEvent) != 0 {
+		t.Fatal("last-turn catch-up must not trickle as event frames")
 	}
 }
 
@@ -346,6 +338,12 @@ func TestWatchJunkJSONAndCatchUpFromSince(t *testing.T) {
 	ready := log.waitOp(t, OpReady, 3*time.Second)
 	if ready.Seq != replay[len(replay)-1].Seq {
 		t.Fatalf("since ready %d replay %d", ready.Seq, replay[len(replay)-1].Seq)
+	}
+	if len(ready.Events) != len(replay) {
+		t.Fatalf("ready events %d replay %d", len(ready.Events), len(replay))
+	}
+	if countOp(log.snapshot(), OpEvent) != 0 {
+		t.Fatal("since catch-up must ride ready, not event frames")
 	}
 }
 
@@ -665,4 +663,30 @@ func TestPushEventDropsOversizedDelta(t *testing.T) {
 	if pump.pushEvent(th.ID, store.Event{Kind: "not_a_desktop_kind", Seq: 0, Text: "x"}) {
 		t.Fatal("unknown delta")
 	}
+}
+
+func seqsOf(events []EventView) []int64 {
+	out := make([]int64, len(events))
+	for i, ev := range events {
+		out[i] = ev.Seq
+	}
+	return out
+}
+
+func textsOfViews(events []EventView) []string {
+	out := make([]string, len(events))
+	for i, ev := range events {
+		out[i] = ev.Text
+	}
+	return out
+}
+
+func countOp(got []Response, op string) int {
+	n := 0
+	for _, r := range got {
+		if r.Op == op {
+			n++
+		}
+	}
+	return n
 }

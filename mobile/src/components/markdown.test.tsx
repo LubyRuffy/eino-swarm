@@ -24,4 +24,30 @@ describe("PhoneMarkdown", () => {
     expect(document.querySelector(".katex")).toBeTruthy()
     expect(screen.queryByTestId("markdown-code")).not.toBeInTheDocument()
   })
+
+  it("renders emphasis, a gfm table, and does not keep the markers", () => {
+    render(
+      <PhoneMarkdown
+        text={"see **alpha**\n\n| col |\n| --- |\n| val |"}
+      />,
+    )
+    const strong = screen.getByText("alpha")
+    expect(strong.closest("strong")).toBeTruthy()
+    expect(screen.queryByText(/\*\*alpha\*\*/)).not.toBeInTheDocument()
+    expect(screen.getByRole("table")).toBeInTheDocument()
+    expect(screen.getByText("val")).toBeInTheDocument()
+  })
+
+  it("sends an http link out of the webview", () => {
+    render(<PhoneMarkdown text="see [docs](https://example.invalid/docs)" />)
+    const link = screen.getByRole("link", { name: "docs" })
+    expect(link).toHaveAttribute("href", "https://example.invalid/docs")
+    expect(link).toHaveAttribute("target", "_blank")
+  })
+
+  it("does not turn a filesystem path into a navigable link", () => {
+    render(<PhoneMarkdown text={"open [notes](/tmp/notes.md)"} />)
+    expect(screen.queryByRole("link")).not.toBeInTheDocument()
+    expect(screen.getByText("notes")).toBeInTheDocument()
+  })
 })

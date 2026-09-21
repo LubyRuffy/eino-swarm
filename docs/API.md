@@ -272,10 +272,13 @@ Responses carry `path` (`relay` or `direct`) and `session_id` so `zwai trace`
 can join the hop.
 
 `watch` `{thread_id, since}` subscribes to the same event kinds as desktop
-SSE (`frontend/src/lib/stream.ts` `KINDS`). `since` omitted or `0` pushes the
+SSE (`frontend/src/lib/stream.ts` `KINDS`). `since` omitted or `0` loads the
 last turn (capped at `watch_events` from that turn's end), not the entire
-log from seq 1. `ready` `{seq, status, more}`: `more` means older events
-still exist; the phone pulls up and calls `log`. `more: false` is omitted on
+log from seq 1. That snapshot rides **one** `ready` `{seq, status, more, events}`
+so the phone can paint the tail in a single fold. Catch-up is not a
+slideshow of `event` frames — painting those oldest-first is how the phone
+showed the start of the turn and then yanked down. `more` means older
+events still exist; the phone pulls up and calls `log`. `more: false` is omitted on
 the wire (`omitempty`); the phone treats a missing `more` as false. `log`
 returns `events` plus `seq` (oldest seq of that store page) so an empty
 filtered page can still advance the cursor instead of killing paging. A later
