@@ -3,7 +3,8 @@ import { create } from "zustand"
 import { applyPinnedOrder } from "@/lib/reorder"
 import { api, ApiError, type ProjectPatch } from "@/lib/api"
 import { reviewPanelHint } from "@/lib/transcript"
-import type { MemoryEntries, Project, ProjectMemory, ReviewOutcome } from "@/lib/types"
+import type { MemoryEntries, Project, ProjectMemory, ReviewOutcome, SkillTidyReport } from "@/lib/types"
+import { normalizeTidyReport } from "@/lib/skill-tidy"
 
 /** Projects and the memory panel live in their own store.
  *
@@ -45,6 +46,13 @@ interface ProjectsState {
   loadMemory: (projectId?: string) => Promise<void>
   saveMemory: (text: string, rev?: string) => Promise<void>
   removeSkill: (name: string) => Promise<void>
+  tidySkills: () => Promise<void>
+  clearTidy: () => void
+  /** True between a tidy click and the response. */
+  tidying: boolean
+  /** What the last tidy decided. Absent until a click has an answer. */
+  tidyReport?: SkillTidyReport
+  tidyError?: string
   noteMemoryWrite: () => void
   seeMemory: () => void
   setError: (message?: string) => void
@@ -55,6 +63,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   memoryLoading: false,
   memoryUnread: false,
   reviewing: false,
+  tidying: false,
 
   beginReview: () =>
     set({ reviewing: true, reviewHint: undefined, pendingReviewTurnId: undefined }),
@@ -144,7 +153,13 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       set({ memory: undefined, memoryProjectId: undefined })
       return
     }
-    set({ memoryLoading: true, memoryProjectId: id })
+    set({
+      memoryLoading: true,
+      memoryProjectId: id,
+      tidying: false,
+      tidyReport: undefined,
+      tidyError: undefined,
+    })
     try {
       const memory = await api.memory(id)
       // The panel may have moved on while this was in flight; showing one
@@ -199,6 +214,29 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       set({ error: message(e) })
     }
   },
+
+  tidySkills: async () => {
+    const id = get().memoryProjectId
+    if (!id) return
+    set({ tidying: true, tidyReport: undefined, tidyError: undefined })
+    try {
+      const result = await api.tidySkills(id)
+      if (get().memoryProjectId !== id) return
+      set((s) => ({
+        tidying: false,
+        tidyReport: normalizeTidyReport(result.report, result.memory.skills.length),
+        memory: result.memory,
+        projects: s.projects.map((p) =>
+          p.id === id ? { ...p, skills: result.memory.skills } : p,
+        ),
+      }))
+    } catch (e) {
+      if (get().memoryProjectId !== id) return
+      set({ tidying: false, tidyError: message(e) })
+    }
+  },
+
+  clearTidy: () => set({ tidyReport: undefined, tidyError: undefined }),
 
   noteMemoryWrite: () => set({ memoryUnread: true }),
   seeMemory: () => set({ memoryUnread: false }),

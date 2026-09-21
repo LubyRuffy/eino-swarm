@@ -1,6 +1,7 @@
 import { ChevronRight } from "lucide-react"
 import { useEffect, useState, type ReactNode } from "react"
 import { Disclosure } from "@/components/ui/collapsible"
+import { TurnBlockList } from "@/components/app/work-fold"
 import { cn, formatDuration, formatTime } from "@/lib/utils"
 import { isArmedWaitNotice, isGoalHoldNotice } from "@/lib/transcript-notices"
 import { useT } from "@/lib/use-t"
@@ -20,11 +21,13 @@ export function GoalSessionTurn({
   turnId,
   blocks,
   turn,
+  revealIds,
   renderBlock,
 }: {
   turnId: string
   blocks: Block[]
   turn?: TurnState
+  revealIds?: Set<string>
   renderBlock: (b: Block) => ReactNode
 }) {
   const t = useT()
@@ -43,9 +46,12 @@ export function GoalSessionTurn({
     const ordered = split ? [...split.leading, ...split.work, ...split.trailing] : blocks
     return (
       <div className="flex scroll-mt-6 flex-col gap-1" data-turn-nav={turnId}>
-        {ordered.map((b) => (
-          <div key={b.id}>{renderBlock(b)}</div>
-        ))}
+        <TurnBlockList
+          blocks={ordered}
+          revealIds={revealIds}
+          renderBlock={renderBlock}
+          running={turn?.status === "running"}
+        />
         <TurnFooter turn={turn} />
       </div>
     )
@@ -63,9 +69,11 @@ export function GoalSessionTurn({
     turn?.status === "done" ? t("transcript.workedFor") : t("transcript.stoppedAfter")
   return (
     <div className="flex min-w-0 scroll-mt-6 flex-col gap-1" data-turn-nav={turnId}>
-      {leading.map((b) => (
-        <div key={b.id}>{renderBlock(b)}</div>
-      ))}
+      <TurnBlockList
+        blocks={leading}
+        revealIds={revealIds}
+        renderBlock={renderBlock}
+      />
       {work.length > 0 ? (
         <Disclosure
           open={open}
@@ -99,16 +107,20 @@ export function GoalSessionTurn({
         >
           {open ? (
             <div className="flex flex-col gap-1">
-              {work.map((b) => (
-                <div key={b.id}>{renderBlock(b)}</div>
-              ))}
+              <TurnBlockList
+                blocks={work}
+                revealIds={revealIds}
+                renderBlock={renderBlock}
+              />
             </div>
           ) : null}
         </Disclosure>
       ) : null}
-      {trailing.map((b) => (
-        <div key={b.id}>{renderBlock(b)}</div>
-      ))}
+      <TurnBlockList
+        blocks={trailing}
+        revealIds={revealIds}
+        renderBlock={renderBlock}
+      />
     </div>
   )
 }

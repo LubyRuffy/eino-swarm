@@ -51,7 +51,9 @@ describe("PhoneMarkdown", () => {
     const strong = screen.getByText("alpha")
     expect(strong.closest("strong")).toBeTruthy()
     expect(screen.queryByText(/\*\*alpha\*\*/)).not.toBeInTheDocument()
-    expect(screen.getByRole("table")).toBeInTheDocument()
+    const table = screen.getByRole("table")
+    expect(table.parentElement).toHaveAttribute("data-testid", "markdown-table")
+    expect(table.parentElement?.className).toMatch(/\boverflow-x-auto\b/)
     expect(screen.getByText("val")).toBeInTheDocument()
   })
 

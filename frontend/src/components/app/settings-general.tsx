@@ -1,10 +1,15 @@
 import { SelectItem } from "@/components/ui/select"
 import {
-  normalizeUISettings,
+  appearanceToUI,
+  normalizeAppearance,
   type Appearance,
+  type CodeFontSizePref,
   type ContentWidthPref,
+  type FacePref,
   type FontPref,
   type FontSizePref,
+  type FontSizeToken,
+  type TranscriptModePref,
 } from "@/lib/appearance"
 import type { LocalePref } from "@/lib/i18n"
 import type { Meta, Settings } from "@/lib/types"
@@ -16,8 +21,10 @@ import {
   SettingsPage,
   SettingsRow,
   SettingsSection,
+  SettingsTwinChoice,
   settingsMatch,
 } from "./settings-field"
+import { AppearanceTheme } from "./theme-cards"
 
 export function GeneralTab({
   theme,
@@ -46,21 +53,43 @@ export function GeneralTab({
 
   const paint = (patch: Partial<Appearance>) => {
     onAppearanceChange(patch)
-    const next = {
+    const next = normalizeAppearance({
       font: patch.font ?? appearance.font,
-      fontSize: patch.fontSize ?? appearance.fontSize,
-      contentWidth: patch.contentWidth ?? appearance.contentWidth,
-    }
+      ui_font_size: patch.uiFontSize ?? appearance.uiFontSize,
+      content_font: patch.contentFont ?? appearance.contentFont,
+      font_size: patch.fontSize ?? appearance.fontSize,
+      code_font: patch.codeFont ?? appearance.codeFont,
+      code_font_size: patch.codeFontSize ?? appearance.codeFontSize,
+      content_width: patch.contentWidth ?? appearance.contentWidth,
+      transcript_mode: patch.transcriptMode ?? appearance.transcriptMode,
+      palette: patch.palette ?? appearance.palette,
+    })
     onChange({
       ...settings,
-      ui: normalizeUISettings({
-        locale,
-        font: next.font,
-        font_size: next.fontSize,
-        content_width: next.contentWidth,
-      }),
+      ui: appearanceToUI(next, locale),
     })
   }
+
+  const faceItems = (includeUi: boolean) => (
+    <>
+      {includeUi ? (
+        <SelectItem value="ui">{t("settings.general.fontSameUI")}</SelectItem>
+      ) : null}
+      <SelectItem value="system">{t("settings.general.fontSystem")}</SelectItem>
+      <SelectItem value="serif">{t("settings.general.fontSerif")}</SelectItem>
+      <SelectItem value="mono">{t("settings.general.fontMono")}</SelectItem>
+    </>
+  )
+
+  const sizeItems = (
+    <>
+      <SelectItem value="small">{t("settings.general.fontSizeSmall")}</SelectItem>
+      <SelectItem value="medium">
+        {t("settings.general.fontSizeMedium")}
+      </SelectItem>
+      <SelectItem value="large">{t("settings.general.fontSizeLarge")}</SelectItem>
+    </>
+  )
 
   return (
     <SettingsPage
@@ -68,32 +97,13 @@ export function GeneralTab({
       description={t("settings.general.desc")}
     >
       <SettingsSection title={t("settings.general.appearance")}>
-        <SettingsChoice
+        <AppearanceTheme
           query={query}
-          search={[
-            t("settings.general.appearance"),
-            "theme",
-            "light",
-            "dark",
-            "system",
-            "外观",
-            "主题",
-          ]}
-          label={t("settings.general.appearance")}
-          hint={t("settings.general.appearanceHint")}
-          value={theme}
-          onValueChange={(v) => onThemeChange(v as Theme)}
-        >
-          <SelectItem value="system">
-            {t("settings.general.themeSystem")}
-          </SelectItem>
-          <SelectItem value="light">
-            {t("settings.general.themeLight")}
-          </SelectItem>
-          <SelectItem value="dark">
-            {t("settings.general.themeDark")}
-          </SelectItem>
-        </SettingsChoice>
+          theme={theme}
+          onThemeChange={onThemeChange}
+          palette={appearance.palette}
+          onPaletteChange={(palette) => paint({ palette })}
+        />
 
         <SettingsChoice
           query={query}
@@ -117,54 +127,100 @@ export function GeneralTab({
           <SelectItem value="zh">{t("settings.general.langZh")}</SelectItem>
         </SettingsChoice>
 
-        <SettingsChoice
+        <SettingsTwinChoice
           query={query}
           search={[
-            t("settings.general.font"),
-            "font",
-            "typeface",
+            t("settings.general.uiFont"),
+            "ui font",
+            "chrome",
             "serif",
             "mono",
+            "字号",
             "字体",
           ]}
-          label={t("settings.general.font")}
-          hint={t("settings.general.fontHint")}
-          value={appearance.font}
-          onValueChange={(v) => paint({ font: v as FontPref })}
-        >
-          <SelectItem value="system">
-            {t("settings.general.fontSystem")}
-          </SelectItem>
-          <SelectItem value="serif">
-            {t("settings.general.fontSerif")}
-          </SelectItem>
-          <SelectItem value="mono">{t("settings.general.fontMono")}</SelectItem>
-        </SettingsChoice>
+          label={t("settings.general.uiFont")}
+          hint={t("settings.general.uiFontHint")}
+          left={{
+            value: appearance.font,
+            onValueChange: (v) => paint({ font: v as FontPref }),
+            ariaLabel: t("settings.general.uiFont"),
+            children: faceItems(false),
+          }}
+          right={{
+            value: appearance.uiFontSize,
+            onValueChange: (v) => paint({ uiFontSize: v as FontSizeToken }),
+            ariaLabel: t("settings.general.uiFontSize"),
+            children: sizeItems,
+          }}
+        />
 
-        <SettingsChoice
+        <SettingsTwinChoice
           query={query}
           search={[
-            t("settings.general.fontSize"),
-            "font size",
-            "small",
-            "large",
+            t("settings.general.contentFont"),
+            "content font",
+            "conversation",
+            "字号",
+            "正文",
+          ]}
+          label={t("settings.general.contentFont")}
+          hint={t("settings.general.contentFontHint")}
+          left={{
+            value: appearance.contentFont,
+            onValueChange: (v) => paint({ contentFont: v as FacePref }),
+            ariaLabel: t("settings.general.contentFont"),
+            children: faceItems(true),
+          }}
+          right={{
+            value: appearance.fontSize,
+            onValueChange: (v) => paint({ fontSize: v as FontSizePref }),
+            ariaLabel: t("settings.general.contentFontSize"),
+            children: (
+              <>
+                <SelectItem value="ui">
+                  {t("settings.general.fontSizeSameUI")}
+                </SelectItem>
+                {sizeItems}
+              </>
+            ),
+          }}
+        />
+
+        <SettingsTwinChoice
+          query={query}
+          search={[
+            t("settings.general.codeFont"),
+            "code font",
+            "mono",
+            "代码",
             "字号",
           ]}
-          label={t("settings.general.fontSize")}
-          hint={t("settings.general.fontSizeHint")}
-          value={appearance.fontSize}
-          onValueChange={(v) => paint({ fontSize: v as FontSizePref })}
-        >
-          <SelectItem value="small">
-            {t("settings.general.fontSizeSmall")}
-          </SelectItem>
-          <SelectItem value="medium">
-            {t("settings.general.fontSizeMedium")}
-          </SelectItem>
-          <SelectItem value="large">
-            {t("settings.general.fontSizeLarge")}
-          </SelectItem>
-        </SettingsChoice>
+          label={t("settings.general.codeFont")}
+          hint={t("settings.general.codeFontHint")}
+          left={{
+            value: appearance.codeFont,
+            onValueChange: (v) => paint({ codeFont: v as FacePref }),
+            ariaLabel: t("settings.general.codeFont"),
+            children: faceItems(true),
+          }}
+          right={{
+            value: appearance.codeFontSize,
+            onValueChange: (v) =>
+              paint({ codeFontSize: v as CodeFontSizePref }),
+            ariaLabel: t("settings.general.codeFontSize"),
+            children: (
+              <>
+                <SelectItem value="ui">
+                  {t("settings.general.fontSizeSameUI")}
+                </SelectItem>
+                <SelectItem value="content">
+                  {t("settings.general.fontSizeSameContent")}
+                </SelectItem>
+                {sizeItems}
+              </>
+            ),
+          }}
+        />
 
         <SettingsChoice
           query={query}
@@ -193,6 +249,38 @@ export function GeneralTab({
           </SelectItem>
           <SelectItem value="full">
             {t("settings.general.contentWidthFull")}
+          </SelectItem>
+        </SettingsChoice>
+
+        <SettingsChoice
+          query={query}
+          search={[
+            t("settings.general.transcriptMode"),
+            "transcript",
+            "user",
+            "developer",
+            "verbose",
+            "compact",
+            "tools",
+            "thinking",
+            "用户",
+            "开发",
+            "精简",
+            "工具",
+            "思考",
+          ]}
+          label={t("settings.general.transcriptMode")}
+          hint={t("settings.general.transcriptModeHint")}
+          value={appearance.transcriptMode}
+          onValueChange={(v) =>
+            paint({ transcriptMode: v as TranscriptModePref })
+          }
+        >
+          <SelectItem value="user">
+            {t("settings.general.transcriptUser")}
+          </SelectItem>
+          <SelectItem value="developer">
+            {t("settings.general.transcriptDeveloper")}
           </SelectItem>
         </SettingsChoice>
       </SettingsSection>

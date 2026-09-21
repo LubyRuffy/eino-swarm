@@ -63,7 +63,7 @@ function PhoneTable({
   ...props
 }: ComponentPropsWithoutRef<"table"> & { node?: unknown }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="md-table min-w-0 max-w-full overflow-x-auto" data-testid="markdown-table">
       <table {...props} />
     </div>
   )

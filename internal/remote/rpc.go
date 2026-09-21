@@ -13,6 +13,10 @@ import (
 // Handle runs one slim RPC against the local engine. Pairlink only
 // transports the bytes; this is the application protocol.
 func Handle(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
+	return withHost(dispatch(eng, cfg, req, path, sessionID), cfg)
+}
+
+func dispatch(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
 	if req.V != 0 && req.V != ProtocolV {
 		return fail(req.ID, path, sessionID, "bad_version", "unsupported protocol version")
 	}
@@ -47,6 +51,18 @@ func Handle(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sess
 	}
 }
 
+func withHost(resp Response, cfg config.RemoteConfig) Response {
+	if !resp.OK {
+		return resp
+	}
+	name := strings.TrimSpace(cfg.DisplayName)
+	if name == "" {
+		return resp
+	}
+	resp.Host = config.SeedRemoteDisplayName(name)
+	return resp
+}
+
 func handleList(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
 	resp := okBase(req.ID, path, sessionID)
 	ps, err := listProjects(eng)
@@ -54,17 +70,17 @@ func handleList(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, 
 		return fail(req.ID, path, sessionID, "", fmtErr(err))
 	}
 	resp.Projects = ps
+	resp.Running = runningViews(eng, cfg)
 	all, err := sortedThreads(eng)
 	if err != nil {
 		return fail(req.ID, path, sessionID, "", fmtErr(err))
 	}
-	page, next, more := pageThreads(all, req.Cursor, cfg.ThreadLimit)
+	page, next, more := pageThreads(excludeLiveThreads(all, runningIDs(resp.Running)), req.Cursor, cfg.ThreadLimit)
 	for _, th := range page {
 		resp.Threads = append(resp.Threads, threadView(eng, th, cfg))
 	}
 	resp.More = more
 	resp.Next = next
-	resp.Running = runningViews(eng)
 	return resp
 }
 
@@ -92,7 +108,7 @@ func handleStart(eng *engine.Engine, cfg config.RemoteConfig, req Request, path,
 		return mapErr(req.ID, path, sessionID, err)
 	}
 	resp.Threads = []ThreadView{threadView(eng, *loaded, cfg)}
-	resp.Running = runningViews(eng)
+	resp.Running = runningViews(eng, cfg)
 	return resp
 }
 

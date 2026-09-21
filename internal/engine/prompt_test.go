@@ -169,13 +169,21 @@ func TestManagerPromptWaitingCopyStaysGeneric(t *testing.T) {
 		"Do not pad",
 		"named clock time",
 		"do not stretch",
+		"A parallel exec",
+		"Do not sleep the full remaining time",
 	} {
 		if !strings.Contains(prompt, need) {
 			t.Fatalf("missing %q:\n%s", need, prompt)
 		}
 	}
+	if strings.Contains(prompt, "Do not call exec to sleep") {
+		t.Fatal("a parallel progress-poll sleep is allowed; the prompt must not ban it")
+	}
 	if strings.Contains(prompt, "can miss a beat") {
 		t.Fatal("the conservative miss-a-beat cadence came back")
+	}
+	if strings.Contains(prompt, "sleep 150") {
+		t.Fatal("a sample wait duration leaked into the prompt")
 	}
 	ask := strings.Index(prompt, "## Asking the human")
 	wait := strings.Index(prompt, "## Waiting")

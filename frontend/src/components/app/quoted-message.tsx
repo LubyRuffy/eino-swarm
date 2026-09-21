@@ -6,50 +6,66 @@ import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 import { parseQuotedMessage } from "@/lib/quote"
 
-/** Compact Cursor-style chip: one line until opened, so a long highlight
- *  does not become a second bubble. */
+/** Transcript chip: one truncated line until opened. Composer hover
+ *  passes `detail` so the full highlight is the hover panel, not a
+ *  second bubble sitting in the box. */
 export function QuoteSnippet({
   index,
   text,
   onEdit,
   onRemove,
+  detail = false,
 }: {
   index: number
   text: string
   onEdit?: () => void
   onRemove?: () => void
+  detail?: boolean
 }) {
   const t = useT()
   const [open, setOpen] = useState(false)
+  const expanded = detail || open
   const n = index + 1
+  const body = (
+    <>
+      <span className="text-muted-foreground">
+        {n}. {t("quote.selected")}:
+      </span>{" "}
+      <span
+        className={
+          expanded
+            ? "whitespace-pre-wrap break-words text-foreground"
+            : "inline-block max-w-full truncate align-bottom text-foreground"
+        }
+      >
+        {text}
+      </span>
+    </>
+  )
   return (
     <div
       data-testid="quote-snippet"
       className={cn(
-        "flex w-fit max-w-full items-start gap-1 border border-border bg-background px-2.5 py-1",
-        open ? "rounded-2xl" : "rounded-full",
+        "flex w-fit max-w-full items-start gap-1 border border-border px-2.5 py-1",
+        detail
+          ? "bg-popover text-popover-foreground shadow-md"
+          : "bg-background",
+        expanded ? "rounded-2xl" : "rounded-full",
       )}
     >
-      <button
-        type="button"
-        className="min-w-0 flex-1 text-left text-xs leading-5"
-        aria-expanded={open}
-        aria-label={`${n}. ${t("quote.selected")}`}
-        onClick={() => setOpen((v) => !v)}
-      >
-        <span className="text-muted-foreground">
-          {n}. {t("quote.selected")}:
-        </span>{" "}
-        <span
-          className={
-            open
-              ? "whitespace-pre-wrap break-words text-foreground"
-              : "inline-block max-w-full truncate align-bottom text-foreground"
-          }
+      {detail ? (
+        <div className="min-w-0 flex-1 text-left text-xs leading-5">{body}</div>
+      ) : (
+        <button
+          type="button"
+          className="min-w-0 flex-1 text-left text-xs leading-5"
+          aria-expanded={open}
+          aria-label={`${n}. ${t("quote.selected")}`}
+          onClick={() => setOpen((v) => !v)}
         >
-          {text}
-        </span>
-      </button>
+          {body}
+        </button>
+      )}
       {onEdit || onRemove ? (
         <div className="flex shrink-0">
           {onEdit ? (

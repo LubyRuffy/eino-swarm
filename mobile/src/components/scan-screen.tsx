@@ -11,14 +11,14 @@ export function ScanScreen({
   onURI,
   busy,
   error,
-  onRetry,
   onToggleLocale,
+  embedded,
 }: {
   onURI: (uri: string) => void
   busy?: boolean
   error?: string
-  onRetry?: () => void
   onToggleLocale?: () => void
+  embedded?: boolean
 }) {
   const [paste, setPaste] = useState("")
   const [localError, setLocalError] = useState<string>()
@@ -47,15 +47,23 @@ export function ScanScreen({
   const shown = error || localError
 
   return (
-    <main className="mx-auto flex h-full max-w-md flex-col gap-5 overflow-y-auto px-5 py-8">
-      <header className="flex items-start justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{t("scan.title")}</h1>
-        {onToggleLocale ? (
-          <Button variant="ghost" onClick={onToggleLocale} aria-label={localeSwitchLabel()}>
-            {localeSwitchLabel()}
-          </Button>
-        ) : null}
-      </header>
+    <main
+      className={
+        embedded
+          ? "mx-auto flex max-w-md flex-col gap-4 px-5 pb-6"
+          : "mx-auto flex h-full max-w-md flex-col gap-5 overflow-y-auto px-5 py-8"
+      }
+    >
+      {embedded ? null : (
+        <header className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">{t("scan.title")}</h1>
+          {onToggleLocale ? (
+            <Button variant="ghost" onClick={onToggleLocale} aria-label={localeSwitchLabel()}>
+              {localeSwitchLabel()}
+            </Button>
+          ) : null}
+        </header>
+      )}
       <p className="text-sm leading-relaxed text-muted-foreground">{t("scan.hint")}</p>
       <Button onClick={() => void scan()} disabled={busy} aria-label={t("scan.camera")}>
         <Camera className="size-4" />
@@ -74,11 +82,6 @@ export function ScanScreen({
       <Button variant="outline" onClick={submitPaste} disabled={busy}>
         {t("scan.paste")}
       </Button>
-      {onRetry ? (
-        <Button variant="outline" onClick={onRetry} disabled={busy}>
-          {t("scan.retry")}
-        </Button>
-      ) : null}
       {shown ? (
         <p className="text-sm text-destructive" role="alert">
           {shown}

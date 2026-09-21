@@ -79,8 +79,14 @@ log:
 ui:
     locale: system
     font: system
-    font_size: medium
+    ui_font_size: medium
+    content_font: ui
+    font_size: ui
+    code_font: mono
+    code_font_size: content
     content_width: comfortable
+    transcript_mode: user
+    palette: zwai
 remote:
     enabled: false
     hub_url: ""
@@ -169,7 +175,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `manager_max_iterations` | `200` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. Reaching the cap **pauses** the turn and asks whether to add another slice of this size, rather than failing with eino's iteration error. |
 | `progress_interval_seconds` | `5` | how often a running turn emits a progress pulse. It is the only thing that moves while every agent sits in a slow tool call, so a higher value makes a busy run look stuck for longer. Zero or negative falls back to the default; pulses cannot be switched off. |
 | `delta_coalesce_ms` | `50` | how long streamed tokens wait to be sent as one event. A token every few milliseconds would redraw the whole UI; one pulse per interval keeps the screen moving without a frame per token. Zero or negative falls back to the default. |
-| `auto_title` | `true` | on the first user message, ask the model for a short sidebar name instead of leaving the truncated first message. Off keeps the placeholder. A title the user typed is never overwritten. An older config file without the key stays on. |
+| `auto_title` | `true` | on the first user message, ask the model for a short sidebar name instead of leaving the truncated first message. The same namer labels an untitled scheduled wait from its prompt. Off keeps the placeholder. A title the user typed is never overwritten. An older config file without the key stays on. |
 | `title_provider` | empty | endpoint the namer calls. Empty follows the conversation's provider. An id that is no longer in `providers` is cleared on load. |
 | `title_model` | empty | model name the namer calls. Empty (with an empty provider) follows the conversation's model. A name with no provider stays on the conversation's endpoint. Pin one in Settings → Models when an endpoint lists more than one name. |
 | `compact_provider` | empty | endpoint `/compact` calls. Same empty-means-follow rule as `title_provider`. A deleted id is cleared on load. |
@@ -241,7 +247,7 @@ shares. Nothing here applies to a conversation outside a project.
 | key | default | meaning |
 |---|---|---|
 | `enabled` | `true` | the master switch. Off means no project carries notes or skills and no review runs, whatever a project's own switch says. What is already stored stays readable in the Memory panel. |
-| `auto_review` | `true` | read a turn's event log when it finishes and keep what is worth carrying forward. Off leaves memory to the agents' own tools and the "Review now" button. Only a turn that finished cleanly is reviewed: nobody who pressed stop asked for a half-finished approach to become a skill. Auto-review is skipped when the manager already wrote with `memory` or `skill_manage` this turn; "Review now" still runs. |
+| `auto_review` | `true` | read a turn's event log when it finishes and keep what is worth carrying forward. Off leaves note extraction to the agents' own tools and the "Review now" button. Only a turn that finished cleanly is reviewed: nobody who pressed stop asked for a half-finished approach to become a skill. Auto-review is skipped when the manager already wrote with `memory` or `skill_manage` this turn; "Review now" still runs. Leftover skill families (same subject, several names) are still folded into one skill after a finished turn, including when auto-review is off or skipped — that fold is catalog hygiene, not extraction. The Memory panel's **Tidy overlapping skills** control runs the same fold without a turn, after a hand edit. |
 | `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. A write that would grow past this is refused — including replacing a note with a longer one. The tool result says by how many characters (`over_by`) and lists what is stored, so the agent shortens or drops a note rather than retrying the same text. Small on purpose. |
 | `entry_max` | `360` | how long **one** note may get on an agent write (`memory` add/replace). A runbook that would eat a quarter of the budget belongs in a skill, where only the summary rides in the prompt. A note that restates a recorded skill — the summary or the steps — is refused the same way. The Memory panel's editor still uses `char_limit` only: a person who pastes a longer note is spending that budget on purpose. Zero or negative is repaired to the default; a value above `char_limit` is clamped. |
 | `review_max_iterations` | `8` | how many times the review may think and write before it is stopped. It reads one conversation and makes a handful of tool calls; a large number here buys a slow, expensive review rather than a better one. |
@@ -252,8 +258,9 @@ Numbers that are zero or negative fall back to their defaults, so a hand-edited
 file cannot leave a project with no room to remember anything.
 
 The files live in the data directory, never in your repository — see
-[DATA_MODEL.md](DATA_MODEL.md) for the layout, and edit them from the Memory
-panel rather than by hand while the app is running.
+[DATA_MODEL.md](DATA_MODEL.md) for the layout. Edit notes from the Memory
+panel. Skill files can be edited on disk; Reload then **Tidy overlapping skills**
+after a hand edit, rather than expecting the tab to rewrite them on open.
 
 ## `personality`
 
@@ -280,12 +287,18 @@ Chrome only. Agents still answer in the language you are using.
 | key | default | meaning |
 |---|---|---|
 | `locale` | `system` | `system`, `en` or `zh`. `system` follows the browser (`zh*` → Chinese, everything else English). The title-bar control pins `en` or `zh`. Desktop binds a random loopback, so this lives in the file rather than in `localStorage` alone. Junk becomes `system`. |
-| `font` | `system` | `system`, `serif` or `mono`. `system` is the UI sans stack. The whole window uses it. Junk becomes `system`. |
-| `font_size` | `medium` | `small`, `medium` or `large`. Scales conversation text from the CSS root (12 / 13 / 16px). `medium` matches `--chrome-font-size` (Settings, sidebar, title bar). Junk becomes `medium`. |
+| `font` | `system` | UI typeface: `system`, `serif` or `mono`. Sidebar / Settings / title bar. Junk becomes `system`. |
+| `ui_font_size` | `medium` | UI size: `small` / `medium` / `large` (12 / 13 / 16px). Sidebar, Settings, title bar, and directory row/gap density. Junk or blank becomes `medium`. |
+| `content_font` | `ui` | Conversation typeface. `ui` follows `font`. Else `system` / `serif` / `mono`. |
+| `font_size` | `ui` | Conversation size. `ui` follows `ui_font_size`. Else `small` / `medium` / `large`. A stored `medium` stays 13px. Junk becomes `medium`. Directory row height tracks `ui_font_size`, not this key. |
+| `code_font` | `mono` | Fences and inline code. `ui` / `system` / `serif` / `mono`. Blank is `mono`. |
+| `code_font_size` | `content` | Code size. `content` follows `font_size`, `ui` follows chrome, or `small` / `medium` / `large`. |
 | `content_width` | `comfortable` | `comfortable` keeps the reading column (`max-w-3xl`). `full` fills the space between the sidebars. The title-bar control and ⌘K toggle the same preference. Junk becomes `comfortable`. |
+| `transcript_mode` | `user` | `user` folds consecutive thinking, tool calls, and mid-turn answers behind one live ticker. The current activity swaps in vertically; the line itself marquees left-to-right. Copy is **Thinking** (or the latest thought line), **Planning next moves** between model turns, and **Editing** / **Reading** / **Exec** `{name}` while a tool runs. `developer` keeps every thought and tool row. The title-bar code icon and ⌘K toggle the same preference. Junk becomes `user`. |
+| `palette` | `zwai` | Named color set. `zwai` is the current chrome. `fofa` is the intelligence-console palette (cyan on navy / cool gray). Each set has light and dark; the title-bar control still pins light / dark / system. Junk becomes `zwai`. Settings → General shows System / Light / Dark cards and a Color theme menu. |
 
-Theme stays in the browser; language, typeface and column width are first-class
-config so a new window keeps them.
+Light / dark stays in the browser; language, typeface, column width, transcript
+mode and palette are first-class config so a new window keeps them.
 
 ## `remote`
 
@@ -296,8 +309,9 @@ in Settings → Phone.
 |---|---|---|
 | `enabled` | `false` | register this PC with the hub and accept sealed RPC from bound phones |
 | `hub_url` | `""` | pairlink hub origin (`https://…`). Never compiled in |
-| `thread_limit` | `5` | how many recent threads the phone lists before More |
-| `summary_chars` | `280` | truncate assistant/summary text on the phone |
+| `display_name` | this machine's hostname | name a bound phone paints on its host chip. Blank seeds `os.Hostname()` (or stays empty if that fails). Editable in Settings → Phone. Clipped to 40 runes. Not a compiled label |
+| `thread_limit` | `5` | how many idle recents the phone lists below In progress before More. Live rows (`list.running`) are a separate roster and do not count |
+| `summary_chars` | `280` | truncate assistant/summary text on the phone. Inbox `action` / `summary` are human one-liners (findings, a command, prose), not raw `tool_call` JSON |
 | `open_turns` | `6` | completed turns included when a thread is opened |
 | `event_chars` | `4000` | max characters of each watched event body on the phone. `tool_delta` is clipped to `summary_chars`. `spawned` text is always empty |
 | `watch_events` | `80` | page size for `log` when the phone pulls up for older rows (`before` 0 pages older than the first snapshot). A reconnect with `since` > 0 still replays the gap on that same `ready` snapshot. First `watch` (`since` 0) paints at most 24 stored events from the live edge (`DefaultRemoteWatchOpen`) even when this is higher, so a long `/goal` turn is not a multi-second freeze |

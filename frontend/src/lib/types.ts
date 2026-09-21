@@ -121,6 +121,29 @@ export interface ProjectMemory {
   enabled: boolean
   memory: MemoryEntries
   skills: SkillInfo[]
+  /** True when a same-subject family is still on disk. Folding is a click,
+   *  not a side effect of opening the tab. */
+  needs_tidy?: boolean
+}
+
+/** One family a tidy folded: the keeper, the chapter-skills it ate, and
+ *  whether the keeper had to be created. */
+export interface SkillTidyMerge {
+  keep: string
+  dropped: string[]
+  created: boolean
+}
+
+/** What POST /memory/tidy-skills returns besides the refreshed catalog. */
+export interface SkillTidyReport {
+  scanned: number
+  before: number
+  after: number
+  families: number
+  unchanged: number
+  created: string[]
+  deleted: string[]
+  merged: SkillTidyMerge[]
 }
 
 /** The payload of a `memory_review` event: what the post-turn review decided
@@ -424,6 +447,7 @@ export interface RemoteSettings {
   event_chars: number
   watch_events: number
   keep_awake: boolean
+  display_name: string
 }
 
 export function defaultRemoteSettings(
@@ -439,6 +463,7 @@ export function defaultRemoteSettings(
     event_chars: remote?.event_chars && remote.event_chars > 0 ? remote.event_chars : 4000,
     watch_events: remote?.watch_events && remote.watch_events > 0 ? remote.watch_events : 80,
     keep_awake: remote?.keep_awake ?? true,
+    display_name: remote?.display_name ?? "",
   }
 }
 
@@ -478,8 +503,14 @@ export interface PersonalitySettings {
 export interface UISettings {
   locale: string
   font: string
+  ui_font_size: string
+  content_font: string
   font_size: string
+  code_font: string
+  code_font_size: string
   content_width: string
+  transcript_mode: string
+  palette: string
 }
 
 export interface TokenTotals {
@@ -532,6 +563,7 @@ export interface Schedule {
   model: string
   reasoning_effort?: string
   title: string
+  title_auto?: boolean
   prompt: string
   delay_s: number
   every_s: number

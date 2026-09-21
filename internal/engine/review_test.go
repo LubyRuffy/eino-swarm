@@ -3,6 +3,8 @@ package engine
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -640,5 +642,228 @@ func TestOneLineAndClipStayWithinTheirBounds(t *testing.T) {
 	// read back.
 	if got := clip(strings.Repeat("中", 10), 3); len([]rune(got)) != 5 {
 		t.Fatalf("clip on multi-byte text=%q", got)
+	}
+}
+
+func plantProjectSkill(t *testing.T, e *Engine, projectID, name, desc, body string) {
+	t.Helper()
+	path := filepath.Join(e.ProjectMemory(projectID).Dir(), memory.SkillsDir, name, memory.SkillFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw := "---\nname: " + name + "\ndescription: " + desc + "\n---\n\n" + body + "\n"
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func listedSkillNames(t *testing.T, e *Engine, projectID string) string {
+	t.Helper()
+	list, err := e.ProjectMemory(projectID).ListSkills()
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make([]string, len(list))
+	for i, s := range list {
+		names[i] = s.Name
+	}
+	return strings.Join(names, ",")
+}
+
+// A catalog that already holds chapter-skills for one subject must collapse
+// after a turn without anyone asking. The reviewer may also store a new skill
+// from the conversation; that is a different subject and must survive.
+func TestAFinishedTurnFoldsASkillFamilyWithoutBeingAsked(t *testing.T) {
+	e := newTestEngine(t)
+	p, th := projectThread(t, e)
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-notes", "when filing notes", "1. gather notes")
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-send", "when sending", "1. send it")
+
+	turn, err := e.StartTurn(th.ID, "a request")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForTurn(t, e, turn.ID); got.Status != store.TurnDone {
+		t.Fatalf("turn status=%q", got.Status)
+	}
+	outcome := decodeReview(t, waitForReview(t, e, turn.ID))
+	if !outcome.Changed {
+		t.Fatalf("the fold must be reported: %+v", outcome)
+	}
+	joined := listedSkillNames(t, e, p.ID)
+	if !strings.Contains(joined, "weekly-rollup") {
+		t.Fatalf("the family was not folded into the stem: %s", joined)
+	}
+	if strings.Contains(joined, "weekly-rollup-notes") || strings.Contains(joined, "weekly-rollup-send") {
+		t.Fatalf("chapter-skills survived the fold: %s", joined)
+	}
+	if !strings.Contains(joined, "recorded-") {
+		t.Fatalf("the skill stored from this conversation must survive: %s", joined)
+	}
+}
+
+// Turning auto-review off still leaves catalog hygiene running. The user did
+// not ask to keep competing procedures; they asked not to extract notes.
+func TestSkillFamiliesStillFoldWhenAutoReviewIsOff(t *testing.T) {
+	e := newTestEngine(t)
+	e.Config().Memory.AutoReview = false
+	p, th := projectThread(t, e)
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-notes", "when filing notes", "1. gather notes")
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-send", "when sending", "1. send it")
+
+	turn, err := e.StartTurn(th.ID, "a request")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForTurn(t, e, turn.ID); got.Status != store.TurnDone {
+		t.Fatalf("turn status=%q", got.Status)
+	}
+	outcome := decodeReview(t, waitForReview(t, e, turn.ID))
+	if !outcome.Changed || outcome.Note == "" {
+		t.Fatalf("a fold-only pass must still leave a trace: %+v", outcome)
+	}
+	joined := listedSkillNames(t, e, p.ID)
+	if joined != "weekly-rollup" {
+		t.Fatalf("skills=%s", joined)
+	}
+	calls, err := e.Store().ListLLMCalls(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range calls {
+		if c.AgentID == ReviewAgentID {
+			t.Fatal("auto-review is off; the fold must not spend a reviewer call")
+		}
+	}
+}
+
+func TestSkillFamiliesStillFoldWhenTheManagerAlreadyWrote(t *testing.T) {
+	e := newTestEngine(t)
+	p, th := projectThread(t, e)
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-notes", "when filing notes", "1. gather notes")
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-send", "when sending", "1. send it")
+
+	turn := &store.Turn{ThreadID: th.ID, UserText: "keep going"}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	e.record(store.Event{ThreadID: th.ID, TurnID: turn.ID, Kind: KindUser, Text: "keep going"})
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: turn.ID, AgentID: swarm.DefaultManagerID,
+		Kind: swarm.NotifyToolCall.String(), ToolCallID: "c-mem",
+		Text: memory.ToolMemory + "({action:add})",
+	})
+	e.record(store.Event{
+		ThreadID: th.ID, TurnID: turn.ID,
+		Kind: swarm.NotifyToolResult.String(), ToolCallID: "c-mem", Text: "stored",
+	})
+	pc, err := e.projectContextFor(th)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.scheduleReview(th.ID, turn, store.TurnDone, pc, "done")
+	outcome := decodeReview(t, waitForReview(t, e, turn.ID))
+	if !outcome.Changed {
+		t.Fatalf("the leftover family must still fold: %+v", outcome)
+	}
+	if listedSkillNames(t, e, p.ID) != "weekly-rollup" {
+		t.Fatalf("skills=%s", listedSkillNames(t, e, p.ID))
+	}
+}
+
+func TestReviewUserMessageAttachesTheLiveCatalog(t *testing.T) {
+	e := newTestEngine(t)
+	p, th := projectThread(t, e)
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-notes", "when filing notes", "1. gather notes")
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-send", "when sending", "1. send it")
+	pc, err := e.projectContextFor(th)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := e.reviewUserMessage(pc, "Conversation to review:\n\nhuman: hi\n")
+	if !strings.Contains(got, "weekly-rollup-notes") || !strings.Contains(got, "must become one skill") {
+		t.Fatalf("catalog missing from the review message:\n%s", got)
+	}
+	if e.reviewUserMessage(pc, "Conversation to review:\n") == "" {
+		t.Fatal("a non-empty transcript must keep the conversation")
+	}
+}
+
+// A catalog edited in Finder does not wait for a turn: the Memory panel's
+// tidy is the same fold, on demand.
+func TestFoldProjectSkillsTidiesWithoutATurn(t *testing.T) {
+	e := newTestEngine(t)
+	p, _ := projectThread(t, e)
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-notes", "when filing notes", "1. gather notes")
+	plantProjectSkill(t, e, p.ID, "weekly-rollup-send", "when sending", "1. send it")
+
+	rep, err := e.FoldProjectSkills(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Folded() || len(rep.Changes) != 1 || rep.Changes[0].Action != "merge" {
+		t.Fatalf("report=%+v", rep)
+	}
+	if strings.Join(rep.Created, ",") != "weekly-rollup" {
+		t.Fatalf("created=%v", rep.Created)
+	}
+	if strings.Join(rep.Deleted, ",") != "weekly-rollup-notes,weekly-rollup-send" {
+		t.Fatalf("deleted=%v", rep.Deleted)
+	}
+	if got := listedSkillNames(t, e, p.ID); got != "weekly-rollup" {
+		t.Fatalf("skills=%s", got)
+	}
+}
+
+func TestFoldProjectSkillsOnATidyCatalogIsANoop(t *testing.T) {
+	e := newTestEngine(t)
+	p, _ := projectThread(t, e)
+	plantProjectSkill(t, e, p.ID, "weekly-rollup", "when filing the week", "1. gather notes")
+
+	rep, err := e.FoldProjectSkills(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Folded() || len(rep.Changes) != 0 {
+		t.Fatalf("a tidy catalog must not rewrite: %+v", rep)
+	}
+	if rep.Scanned != 1 || rep.After != 1 {
+		t.Fatalf("counts=%+v", rep)
+	}
+	if got := listedSkillNames(t, e, p.ID); got != "weekly-rollup" {
+		t.Fatalf("skills=%s", got)
+	}
+}
+
+func TestFoldProjectSkillsRefusesAMissingProject(t *testing.T) {
+	e := newTestEngine(t)
+	_, err := e.FoldProjectSkills("pj_missing")
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("want ErrNotFound, got %v", err)
+	}
+}
+
+func TestFoldProjectSkillsRefusesAfterShutdown(t *testing.T) {
+	e := newTestEngine(t)
+	p, _ := projectThread(t, e)
+	e.Shutdown()
+	_, err := e.FoldProjectSkills(p.ID)
+	if !errors.Is(err, ErrIdle) {
+		t.Fatalf("want ErrIdle after shutdown, got %v", err)
+	}
+}
+
+func TestFoldProjectSkillsReportsAnUnreadableStore(t *testing.T) {
+	e := newTestEngine(t)
+	p, _ := projectThread(t, e)
+	dir := e.ProjectMemory(p.ID).Dir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, memory.SkillsDir), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.FoldProjectSkills(p.ID); err == nil {
+		t.Fatal("an unreadable skills directory must fail the tidy, not look like a tidy catalog")
 	}
 }

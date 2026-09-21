@@ -34,6 +34,20 @@ func TestNameRelatedCatchesASharedPrefixAndAHighTokenOverlap(t *testing.T) {
 	}
 }
 
+func TestNameRelatedTreatsASharedStemAsTheSameSkill(t *testing.T) {
+	// Two chapter names that share a two-token stem are the same procedure
+	// split across the index. One shared leading token is not.
+	if !nameRelated("weekly-rollup-notes", "weekly-rollup-send") {
+		t.Fatal("a shared two-token stem is one subject")
+	}
+	if nameRelated("weekly-rollup-notes", "release-check-notes") {
+		t.Fatal("a shared trailing token is not a stem")
+	}
+	if nameRelated("alpha-stall", "alpha-task") {
+		t.Fatal("one leading token is not a stem")
+	}
+}
+
 func TestSkillOverlapReasons(t *testing.T) {
 	base := Skill{
 		SkillInfo: SkillInfo{Name: "weekly-rollup", Description: "when cutting a weekly summary of finished work after each period"},

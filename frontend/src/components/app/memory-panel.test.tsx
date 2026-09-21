@@ -35,6 +35,7 @@ function renderPanel(props: Partial<Parameters<typeof MemoryPanel>[0]> = {}) {
     onDeleteSkill: vi.fn(),
     onRefresh: vi.fn(),
     onReview: vi.fn(),
+    onTidySkills: vi.fn(),
   }
   render(
     <MemoryPanel
@@ -102,6 +103,7 @@ describe("Memory panel", () => {
         onDeleteSkill={vi.fn()}
         onRefresh={vi.fn()}
         onReview={vi.fn()}
+        onTidySkills={vi.fn()}
       />,
     )
     rerender(
@@ -116,6 +118,7 @@ describe("Memory panel", () => {
         onDeleteSkill={vi.fn()}
         onRefresh={vi.fn()}
         onReview={vi.fn()}
+        onTidySkills={vi.fn()}
       />,
     )
     expect(screen.getAllByLabelText("Project notes").at(-1)).toHaveValue(
@@ -135,6 +138,7 @@ describe("Memory panel", () => {
         onDeleteSkill={vi.fn()}
         onRefresh={vi.fn()}
         onReview={vi.fn()}
+        onTidySkills={vi.fn()}
       />,
     )
     const box = screen.getAllByLabelText("Project notes").at(-1)!
@@ -151,6 +155,7 @@ describe("Memory panel", () => {
         onDeleteSkill={vi.fn()}
         onRefresh={vi.fn()}
         onReview={vi.fn()}
+        onTidySkills={vi.fn()}
       />,
     )
     expect(box).toHaveValue("half-typed")
@@ -179,6 +184,7 @@ describe("Memory panel", () => {
         onDeleteSkill={vi.fn()}
         onRefresh={vi.fn()}
         onReview={vi.fn()}
+        onTidySkills={vi.fn()}
       />,
     )
     fireEvent.change(screen.getByLabelText("Project notes"), {
@@ -196,6 +202,7 @@ describe("Memory panel", () => {
         onDeleteSkill={vi.fn()}
         onRefresh={vi.fn()}
         onReview={vi.fn()}
+        onTidySkills={vi.fn()}
       />,
     )
     fireEvent.click(screen.getByRole("button", { name: "Reload" }))
@@ -242,11 +249,12 @@ describe("Memory panel", () => {
   })
 
   it("asks for a review and a reload on request", () => {
-    const { onReview, onRefresh, onDeleteSkill } = renderPanel()
+    const { onReview, onRefresh, onDeleteSkill, onTidySkills } = renderPanel()
     fireEvent.click(
       screen.getByRole("button", { name: "Review this conversation now" }),
     )
     fireEvent.click(screen.getByRole("button", { name: "Reload memory" }))
+    fireEvent.click(screen.getByRole("button", { name: "Tidy overlapping skills" }))
     fireEvent.click(
       screen.getByRole("button", { name: "Delete the skill a-procedure" }),
     )
@@ -254,7 +262,65 @@ describe("Memory panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete skill" }))
     expect(onReview).toHaveBeenCalled()
     expect(onRefresh).toHaveBeenCalled()
+    expect(onTidySkills).toHaveBeenCalled()
     expect(onDeleteSkill).toHaveBeenCalledWith("a-procedure")
+  })
+
+  it("spins and says so while skills are being tidied", () => {
+    renderPanel({ tidying: true })
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/Folding overlapping/)
+    expect(screen.getByText(/Scanning 1 skills/)).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: "Tidy overlapping skills" }),
+    ).toBeDisabled()
+  })
+
+  it("reports a tidy that folded nothing", () => {
+    renderPanel({
+      tidyReport: {
+        scanned: 1,
+        before: 1,
+        after: 1,
+        families: 0,
+        unchanged: 1,
+        created: [],
+        deleted: [],
+        merged: [],
+      },
+    })
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/already tidy/)
+    expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/1 scanned/)
+  })
+
+  it("reports a tidy that folded overlapping skills", () => {
+    renderPanel({
+      tidyReport: {
+        scanned: 2,
+        before: 2,
+        after: 1,
+        families: 1,
+        unchanged: 0,
+        created: ["a-procedure"],
+        deleted: ["a-procedure-notes"],
+        merged: [
+          { keep: "a-procedure", dropped: ["a-procedure-notes"], created: true },
+        ],
+      },
+    })
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/Folded overlapping/)
+    expect(screen.getByText("a-procedure-notes → a-procedure")).toBeInTheDocument()
+  })
+
+  it("keeps a failed tidy visible instead of pretending it landed", () => {
+    renderPanel({ tidyError: "cannot tidy skills" })
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent("cannot tidy skills")
+  })
+
+  it("marks the tidy control when the catalog still has a family", () => {
+    renderPanel({ memory: { ...memory, needs_tidy: true } })
+    expect(screen.getByRole("button", { name: "Tidy overlapping skills" })).toHaveClass(
+      "border",
+    )
   })
 
   it("spins and says so while a review is in flight", () => {

@@ -20,8 +20,8 @@ describe("formatGoalAge", () => {
 describe("GoalBanner", () => {
   it("sits as a one-line pin, not a card", () => {
     render(<GoalBanner goal="keep going" onClear={vi.fn()} />)
-    expect(screen.getByTestId("goal-banner").className).toContain("bg-muted/40")
-    expect(screen.getByTestId("goal-banner").className).not.toMatch(/\bbg-card\b/)
+    expect(screen.getByTestId("goal-banner").className).toContain("bg-background")
+    expect(screen.getByTestId("goal-banner").className).not.toMatch(/bg-muted/)
   })
   it("shows the objective and can clear it", () => {
     const onClear = vi.fn()
@@ -149,9 +149,9 @@ describe("GoalBanner", () => {
     render(
       <GoalBanner goal="keep going" waiting onResume={vi.fn()} onClear={vi.fn()} />,
     )
+    expect(screen.getByTestId("goal-banner")).toHaveAttribute("data-waiting", "true")
     expect(screen.getByTestId("goal-banner").textContent).toContain("Pursuing")
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/Parked until the next check/)
-    expect(screen.getByTestId("goal-reason").textContent).toMatch(/not an error/)
+    expect(screen.queryByTestId("goal-reason")).toBeNull()
     expect(screen.queryByTestId("goal-start")).toBeNull()
   })
 

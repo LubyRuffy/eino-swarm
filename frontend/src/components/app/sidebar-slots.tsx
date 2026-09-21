@@ -3,14 +3,34 @@ import type { ReactNode } from "react"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import { cn } from "@/lib/utils"
 
-/** One row in the conversation list. Same type as Settings chrome. */
+/** One row in the conversation list. Height tracks UI chrome size, not
+ *  transcript rem, so content size cannot pack titles into a spreadsheet. */
 export const sidebarRowClass = cn(
   chromeTypeClass,
-  "group relative flex h-7 select-none items-center gap-1 rounded-md pl-2 pr-2 transition-colors",
+  "sidebar-row group relative flex select-none items-center gap-2 rounded-lg transition-colors",
 )
 
+/** Pinned / Projects / Recents / Scheduled labels. Same inline gutter as
+ *  the rows underneath, so a section name does not sit in a second grid. */
+export const sidebarSectionLabelClass = cn(
+  "sidebar-section-label flex min-w-0 flex-1 items-center gap-1 text-left font-medium uppercase tracking-wide text-sidebar-foreground/60",
+)
+
+export const sidebarSectionClass = "mb-[var(--sidebar-section-gap)]"
+
+/** Thread rows inside Pinned, Recents, or one folder. The 2px gap is
+ *  why the selected pill floats instead of welding to its neighbours. */
+export const sidebarStackClass =
+  "flex flex-col gap-[var(--sidebar-row-gap)]"
+
+/** Space between project folders. Tighter than a section, looser than a
+ *  topic — otherwise ten folders become one grey brick. */
+export const sidebarFolderStackClass =
+  "flex flex-col gap-[var(--sidebar-folder-gap)]"
+
 /** Folder, running progress, or an empty spacer so titles share a
- *  column with the project directory. */
+ *  column with the project directory. Token size, not size-4: that rem
+ *  slot shrank with the transcript. */
 export function SidebarKindSlot({
   testId = "row-kind",
   children,
@@ -21,7 +41,7 @@ export function SidebarKindSlot({
   return (
     <span
       data-testid={testId}
-      className="relative flex size-4 shrink-0 items-center justify-center"
+      className="sidebar-kind relative flex shrink-0 items-center justify-center"
     >
       {children}
     </span>

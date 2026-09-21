@@ -3,14 +3,11 @@ import { create } from "zustand"
 import { applyPinnedOrder } from "@/lib/reorder"
 import {
   applyAppearance,
+  appearanceToUI,
   normalizeAppearance,
-  normalizeUISettings,
   readAppearance,
   writeAppearance,
   type Appearance,
-  type ContentWidthPref,
-  type FontPref,
-  type FontSizePref,
 } from "@/lib/appearance"
 import { ApiError, api } from "@/lib/api"
 import {
@@ -95,9 +92,15 @@ interface AppState extends ScheduleSlice {
   error?: string
   theme: Theme
   locale: LocalePref
-  font: FontPref
-  fontSize: FontSizePref
-  contentWidth: ContentWidthPref
+  font: Appearance["font"]
+  uiFontSize: Appearance["uiFontSize"]
+  contentFont: Appearance["contentFont"]
+  fontSize: Appearance["fontSize"]
+  codeFont: Appearance["codeFont"]
+  codeFontSize: Appearance["codeFontSize"]
+  contentWidth: Appearance["contentWidth"]
+  transcriptMode: Appearance["transcriptMode"]
+  palette: Appearance["palette"]
   /** Which sub-agent the right-hand panel is showing, if any. */
   selectedAgent?: string
   /** Worker id whose log is being fetched after a click. */
@@ -203,11 +206,17 @@ export const useApp = create<AppState>((set, get) => ({
   boot: async () => {
     applyTheme(get().theme)
     applyLocale(get().locale)
-    applyAppearance({
+    applyAppearance(normalizeAppearance({
       font: get().font,
-      fontSize: get().fontSize,
-      contentWidth: get().contentWidth,
-    })
+      ui_font_size: get().uiFontSize,
+      content_font: get().contentFont,
+      font_size: get().fontSize,
+      code_font: get().codeFont,
+      code_font_size: get().codeFontSize,
+      content_width: get().contentWidth,
+      transcript_mode: get().transcriptMode,
+      palette: get().palette,
+    }))
     try {
       const [meta, models, threads] = await Promise.all([
         api.meta(),
@@ -326,6 +335,11 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   openThread: async (id) => {
+    // Leave Scheduled even when this conversation is already open; Open
+    // findings would otherwise be a no-op and leave the page up.
+    if (get().scheduleInboxOpen) {
+      set({ scheduleInboxOpen: false, error: undefined })
+    }
     if (get().activeId === id) return
     dropQueued()
     unsubscribe?.()
@@ -881,10 +895,17 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   setAppearance: (patch, opts) => {
+    const cur = get()
     const next = normalizeAppearance({
-      font: patch.font ?? get().font,
-      font_size: patch.fontSize ?? get().fontSize,
-      content_width: patch.contentWidth ?? get().contentWidth,
+      font: patch.font ?? cur.font,
+      ui_font_size: patch.uiFontSize ?? cur.uiFontSize,
+      content_font: patch.contentFont ?? cur.contentFont,
+      font_size: patch.fontSize ?? cur.fontSize,
+      code_font: patch.codeFont ?? cur.codeFont,
+      code_font_size: patch.codeFontSize ?? cur.codeFontSize,
+      content_width: patch.contentWidth ?? cur.contentWidth,
+      transcript_mode: patch.transcriptMode ?? cur.transcriptMode,
+      palette: patch.palette ?? cur.palette,
     })
     writeAppearance(next)
     applyAppearance(next)
@@ -913,18 +934,10 @@ function message(e: unknown): string {
 
 function persistChrome(state: {
   locale: LocalePref
-  font: FontPref
-  fontSize: FontSizePref
-  contentWidth: ContentWidthPref
-}) {
+} & Appearance) {
   void api
     .saveSettings({
-      ui: normalizeUISettings({
-        locale: state.locale,
-        font: state.font,
-        font_size: state.fontSize,
-        content_width: state.contentWidth,
-      }),
+      ui: appearanceToUI(state, state.locale),
     })
     .catch(() => undefined)
 }

@@ -49,8 +49,10 @@ What the UI reads once at startup to decide what to render.
              "schedule_min_interval_seconds": 30, "schedule_tick_ms": 1000,
              "schedule_max_active": 32},
   "locale": "system",
-  "ui": {"locale": "system", "font": "system", "font_size": "medium",
-         "content_width": "comfortable"}
+  "ui": {"locale": "system", "font": "system", "ui_font_size": "medium",
+         "content_font": "ui", "font_size": "ui", "code_font": "mono",
+         "code_font_size": "content", "content_width": "comfortable",
+         "transcript_mode": "user", "palette": "zwai"}
 }
 ```
 
@@ -65,9 +67,17 @@ install has memory off, rather than offering something that will not happen.
 is opened with the system browser instead of inside the webview. `locale` is
 `system`, `en` or `zh` — the chrome language from `ui.locale`. The UI applies it
 on boot without writing it back. `ui` is the rest of the chrome: `font`
-(`system` / `serif` / `mono`), `font_size` (`small` / `medium` / `large`;
-conversation body 12 / 13 / 16px, `medium` matches Settings), and
-`content_width` (`comfortable` / `full`). `locale` is also at the top level so
+(`system` / `serif` / `mono`), `ui_font_size` (`small` / `medium` / `large`;
+chrome and directory density),
+`content_font` (`ui` / `system` / `serif` / `mono`), `font_size` (`ui` /
+`small` / `medium` / `large`; conversation body, `ui` matches chrome),
+`code_font` / `code_font_size`,
+`content_width` (`comfortable` / `full`), `transcript_mode` (`user` /
+`developer`; `user` folds thinking and tools
+behind a live ticker: **Thinking** / **Planning next moves** / **Editing**
+/ **Reading** / **Exec**), and
+`palette` (`zwai` / `fofa`; named color set, each with light and dark).
+`locale` is also at the top level so
 an older client that only reads that field still pins the dictionary.
 
 ## Settings, models and tools
@@ -104,8 +114,10 @@ provider carries `has_api_key` and `ready` instead.
              "skills_index_max": 50, "notifications": "on"},
   "personality": {"instructions": ""},
   "log": {"level": "info"},
-  "ui": {"locale": "system", "font": "system", "font_size": "medium",
-           "content_width": "comfortable"},
+  "ui": {"locale": "system", "font": "system", "ui_font_size": "medium",
+           "content_font": "ui", "font_size": "ui", "code_font": "mono",
+           "code_font_size": "content", "content_width": "comfortable",
+           "transcript_mode": "user", "palette": "zwai"},
   "remote": {"enabled": false, "hub_url": "", "thread_limit": 5,
              "summary_chars": 280, "open_turns": 6, "event_chars": 4000,
              "watch_events": 80, "keep_awake": true},
@@ -123,7 +135,8 @@ queued under the old cap start as soon as a slot opens; lowering it does not
 kill in-flight workers. A language-only write is
 `{"ui":{"locale":"zh"}}` and must not wipe swarm, models, the typeface, or the
 conversation column. Unknown locale values become `system`; unknown `font` /
-`font_size` / `content_width` become `system` / `medium` / `comfortable`.
+`ui_font_size` / `font_size` / `content_width` / `transcript_mode` / `palette` become `system` / `medium` /
+`medium` / `comfortable` / `user` / `zwai`. `content_font` blank is `ui`; `code_font` blank is `mono`.
 Omitted ui fields keep what is stored, so a language PUT cannot reset the
 typeface.
 
@@ -239,9 +252,10 @@ These endpoints drive the desktop QR. They are still same-origin loopback HTTP.
 The phone does **not** call them; it talks pairlink to the hub, and the hub
 forwards sealed frames to this process.
 
-`remote` in `GET/PUT /api/settings` is `{enabled, hub_url, thread_limit,
+`remote` in `GET/PUT /api/settings` is `{enabled, hub_url, display_name, thread_limit,
 summary_chars, open_turns, event_chars, watch_events, keep_awake}`. `hub_url` is whatever you typed — never compiled
-in. A PUT of `remote` reloads the pairlink host. `keep_awake` (default true)
+in. `display_name` is this computer's name on a bound phone's host chip; blank
+seeds the machine hostname. A PUT of `remote` reloads the pairlink host. `keep_awake` (default true)
 holds a system sleep assertion while pairing is on; it is not tied to the hub
 socket. The Host Token is **not** in
 settings JSON; it lives under `$ZWAI_HOME/remote/`. Enabling pairing mints it
@@ -304,22 +318,35 @@ The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
 `resume_goal`. `hello` `{text}` is the phone's one-line model; the host
 keys it by the pairlink fingerprint, not a client-supplied id.
-Default list size is 5 threads; `more` pages threads. `log`
-`{thread_id, before}` pages older transcript events (newest page older than
+OK replies carry `host` (this PC's `remote.display_name`) so the phone can
+label the chip; an older host omits it and the phone falls back to a short
+fingerprint, never the hub hostname.
+Default list size is 5 idle recents (`thread_limit`); live turns and
+parked waits sit on `list.running` and do not occupy that quota, so In
+progress cannot starve the project / Recents list. `more` pages that idle
+list. `log` `{thread_id, before}` pages older transcript events (newest page older than
 `before`, size `watch_events`). `run_now` and `cancel_wait` target the soonest
 armed thread wake on `{thread_id}` (`409 idle` when none is parked;
 `409 skipped_busy` when Run now cannot start). `resume_goal` starts the next
 pursuing turn after a cap, block, idle hold, or a complete that was closed
 early. `list.running` includes parked waits (`waiting: true`) even when they
 are not on the recent page, so the inbox cannot hide a hung-looking `/goal`.
+`list.running[].action` is a one-line human preview of the live turn
+(assistant prose, or a tool payload field such as findings / command / path),
+clipped to `summary_chars`. Raw `tool_call` JSON and lifecycle tools
+(`schedule_wake`, `report_schedule`, `memory`, …) stay off that field; empty
+means the phone should show Waiting or running in its own language.
+`list.threads[].summary` is the same kind of line for an idle conversation:
+quiet scheduled checks and the protocol wrapper (`This turn is a scheduled
+check.`) are skipped rather than painted as the Recents subtitle.
 `open.detail` carries the standing objective flags (`goal_on`, complete /
 blocked / capped / idle, `goal_started_at`) and the parked `wake`
 (`id`, clipped title/prompt, `next_run_at`).
 The phone client opens a live turn (or the last thread it used) after the
 first `list`; a parked wait counts as live. `open` is that resume, not a new
 protocol.
-Responses carry `path` (`relay` or `direct`) and `session_id` so `zwai trace`
-can join the hop.
+Responses carry `path` (`relay` or `direct`), `session_id`, and `host` so `zwai trace`
+can join the hop and the phone can name this PC.
 
 `watch` `{thread_id, since}` subscribes to the same event kinds as desktop
 SSE (`frontend/src/lib/stream.ts` `KINDS`). `since` omitted or `0` loads the
@@ -410,7 +437,8 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
   "dir": "/Users/me/.zwai-swarm/projects/pj_ab12…/memory",
   "enabled": true,
   "memory": {"text": "…", "entries": ["…"], "chars": 412, "limit": 2200, "rev": "a1b2c3d4e5f6"},
-  "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}]
+  "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
+  "needs_tidy": false
 }}
 ```
 
@@ -419,7 +447,8 @@ is stored stays readable, and nothing is carried into a prompt. `entries` are
 the notes as the prompt sees them, split on blank lines. `skills` carries names
 and one-line descriptions only — the body is fetched per skill, exactly as an
 agent fetches it with `skill_view`. That index is the project's memory, not a
-`SKILL.md` already in the workspace.
+`SKILL.md` already in the workspace. `needs_tidy` is true when a same-subject
+family is still on disk. Opening this endpoint does not fold them.
 
 ### `PUT /api/projects/:id/memory`
 
@@ -433,6 +462,31 @@ what a client that never read has to do.
 Responds with the new snapshot `{"memory": {…}}`. The character limit still
 applies: notes that no longer fit in a prompt are the same problem whoever
 typed them (`400`).
+
+### `POST /api/projects/:id/memory/tidy-skills` → `200`
+
+Folds leftover skill families on demand — the same catalog hygiene that runs
+after a finished turn, without needing a conversation. A `SKILL.md` edited
+in Finder is otherwise left as it was until the next turn. Sync: the body is
+the outcome, not a `memory_review` event (there is no turn to hang it on).
+Serializes with that project's in-flight reviewer so a click cannot fold
+while a review is still writing.
+
+```json
+{"memory": { "dir": "…", "enabled": true, "memory": {…}, "skills": […], "needs_tidy": false },
+ "report": {
+   "scanned": 3, "before": 3, "after": 2, "families": 1, "unchanged": 1,
+   "created": ["weekly-rollup"],
+   "deleted": ["weekly-rollup-notes", "weekly-rollup-send"],
+   "merged": [{"keep": "weekly-rollup", "dropped": ["weekly-rollup-notes", "weekly-rollup-send"], "created": true}],
+   "changes": [{"target": "skill_manage", "action": "merge", "name": "weekly-rollup", "text": "…"}]
+ },
+ "changes": [{"target": "skill_manage", "action": "merge", "name": "weekly-rollup", "text": "…"}],
+ "folded": true}
+```
+
+`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created, and the leftover count. `created` is the keeper when the shared stem was not already a skill; merging into an existing keeper leaves `created` empty. `folded` is false and the name lists are empty when the catalog was already tidy. `changes` duplicates `report.changes` so a client that only read the first version still works.
+`409 idle` after shutdown. `404` for a project nobody has.
 
 ### `GET /api/projects/:id/skills/:name`
 
@@ -840,7 +894,8 @@ Reviews the conversation's most recent completed turn again, curating the
 project's memory from it. The reviewer reads the stored event log (and the
 rolling session briefing), not a compacted ADK transcript. Auto-review after
 a turn is skipped when the manager already wrote with `memory` or
-`skill_manage`; this endpoint still runs. Answers with the turn being reviewed
+`skill_manage`; leftover skill families are still folded. This endpoint still
+runs the reviewer. Answers with the turn being reviewed
 (`{"turn": {…}}`), not the outcome: the review is a background job and its
 result arrives on the event stream as `memory_review`, the same way a turn's
 answer does. `409 idle` when the conversation is in no project, has memory off,
@@ -1027,7 +1082,8 @@ still reaches everything that happened, including the reviewer's model calls
 {
   "changed": true,
   "notes": {"add": 1, "replace": 1},
-  "skills": [{"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"}],
+  "skills": [{"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"},
+             {"target": "skill_manage", "action": "merge", "name": "a-procedure", "text": "a-procedure-notes, a-procedure-send"}],
   "changes": [
     {"target": "memory", "action": "add", "text": "the durable fact that was stored"},
     {"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"}
@@ -1040,10 +1096,16 @@ still reaches everything that happened, including the reviewer's model calls
 
 The event is stored even when `changed` is false: a review that left no trace
 could not be told apart from one that never ran. A `skill_manage` create that
-collides, or a `memory` write that exceeds `entry_max` or restates a skill
-(summary or steps), is a tool refusal — it does not appear in `changes`. The
-turn's status is not affected — a failed review (`err`) costs a note, not the
-answer.
+collides (same subject, shared name stem, or a copied procedure), or a `memory`
+write that exceeds `entry_max` or restates a skill (summary or steps), is a
+tool refusal — it does not appear in `changes`. After the reviewer finishes —
+or instead, when auto-review is skipped or off — leftover skill families are
+folded into one skill under the shared stem. That fold is a `merge` change on
+the same `memory_review` event when it landed, and is the only event recorded
+when the reviewer did not run. The Memory panel can run the same fold without
+a turn (`POST /api/projects/:id/memory/tidy-skills`); that path has no
+`memory_review` event because there is no turn id to hang it on. The turn's status is not affected — a failed
+review (`err`) costs a note, not the answer.
 
 `notify` is `off`, `on` or `verbose` — `memory.notifications` at the moment the
 review finished, stamped so a later settings change does not rewrite history.
@@ -1191,9 +1253,11 @@ conversation per fire). `status` is `active`, `paused`, `done`, or
 ### `POST /api/schedules` → `201`
 
 Body: `kind`, `thread_id`, `origin_thread_id`, `project_id`, `provider_id`,
-`model`, `title`, `prompt`, exactly one of `delay_s` / `every_s` / `cron`,
+`model`, optional `title`, `prompt`, exactly one of `delay_s` / `every_s` / `cron`,
 optional `max_runs`, optional `until` (RFC 3339). `created_by` is always
-`human`; the body cannot set it. Thread wakes need `thread_id`. Responds
+`human`; the body cannot set it. Thread wakes need `thread_id`. An omitted
+`title` plants a truncated prompt and asks the conversation namer for a short
+inbox label (`title_auto` until it lands or someone PATCHes one). Responds
 `{"schedule": {…}}`.
 
 ### `GET /api/schedules/:id`
@@ -1209,9 +1273,11 @@ The row plus its runs, oldest first. Missing ids are `404`.
 ### `PATCH /api/schedules/:id`
 
 Pause/resume with `{"status": "paused"}` or `"active"`. Also `title`,
-`prompt`, and cadence. When cadence changes, send exactly one of `delay_s`,
+`prompt`, and cadence. A title patch takes ownership (`title_auto` false).
+When cadence changes, send exactly one of `delay_s`,
 `every_s`, or `cron` (the others are cleared and `next_run_at` is recomputed
-from now). Cancel is `DELETE`, not a status patch. Responds
+from now). The Scheduled inbox editor uses this (it omits cadence when the
+interval did not change, so `next_run_at` stays put). Cancel is `DELETE`, not a status patch. Responds
 `{"schedule": {…}}`.
 
 ### `DELETE /api/schedules/:id` → `204`

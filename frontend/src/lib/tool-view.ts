@@ -1,4 +1,4 @@
-import { editCountLabel, parseFileChange, type EditDiff } from "./edit-diff"
+import { parseFileChange, type EditDiff } from "./edit-diff"
 
 /** How a built-in tool call should read on one line, and how its payload
  *  should look once expanded. Field names come from the tool schemas — not
@@ -24,7 +24,7 @@ const PRIMARY: Record<string, string[]> = {
   close_agent: ["agent_id"],
   memory: ["action", "content", "old_text"],
   skill_view: ["name"],
-  skill_manage: ["action", "name"],
+  skill_manage: ["action", "name", "sources"],
 }
 
 export type SearchHit = { title: string; url: string; snippet: string }
@@ -84,7 +84,7 @@ export function toolRowSummary(view: ToolView): string {
 
 export function viewTool(name: string, args: string, result?: string, flagged?: boolean): ToolView {
   const diff = parseFileChange(name, args)
-  const summary = withChangeCounts(summariseToolCall(name, args), diff)
+  const summary = summariseToolCall(name, args)
   if (result === undefined) {
     return { summary, failed: Boolean(flagged), body: "", diff }
   }
@@ -117,18 +117,10 @@ export function viewTool(name: string, args: string, result?: string, flagged?: 
       }
     }
   }
-  // Status sentences (`ok: replaced block`, `Updated file`) are not the
+  // Status sentences (`ok: replaced block`, `Updated file … (N bytes)`) are not the
   // body once we have a hunk — the hunk is. Leaving them in body would
   // paint the same change twice if a later surface dumps view.body.
   return { summary, failed, error: prefix, body: diff ? "" : result, diff }
-}
-
-function withChangeCounts(summary: string, diff: EditDiff | undefined): string {
-  if (!diff || (diff.added === 0 && diff.removed === 0)) return summary
-  const counts = editCountLabel(diff)
-  if (!summary) return counts
-  if (summary.includes(counts)) return summary
-  return `${summary}  ${counts}`
 }
 
 function summariseMemoryCall(
@@ -140,7 +132,10 @@ function summariseMemoryCall(
   if (name === "skill_view") return asText(obj.name)
   const action = asText(obj.action)
   if (name === "skill_manage") {
-    return [action, asText(obj.name)].filter(Boolean).join(" · ")
+    const sources = Array.isArray(obj.sources)
+      ? obj.sources.map(asText).filter(Boolean).join(", ")
+      : ""
+    return [action, asText(obj.name), sources].filter(Boolean).join(" · ")
   }
   const preview = asText(obj.content) || asText(obj.old_text)
   return [action, preview].filter(Boolean).join(" · ")

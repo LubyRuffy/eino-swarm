@@ -52,25 +52,29 @@ type Schedule struct {
 	OriginThreadID string `gorm:"index;size:64" json:"origin_thread_id"`
 	// ThreadID is the conversation a wake lands on. Empty for standalone
 	// rows: those do not reuse the origin conversation.
-	ThreadID        string     `gorm:"index;size:64" json:"thread_id"`
-	ProjectID       string     `gorm:"index;size:64" json:"project_id"`
-	ProviderID      string     `gorm:"size:64" json:"provider_id"`
-	Model           string     `gorm:"size:200" json:"model"`
-	ReasoningEffort string     `gorm:"size:16" json:"reasoning_effort"`
-	Title           string     `gorm:"size:400" json:"title"`
-	Prompt          string     `json:"prompt"`
-	DelayS          int        `json:"delay_s"`
-	EveryS          int        `json:"every_s"`
-	Cron            string     `gorm:"size:128" json:"cron"`
-	Status          string     `gorm:"index:idx_sched_due;size:32" json:"status"`
-	NextRunAt       time.Time  `gorm:"index:idx_sched_due" json:"next_run_at"`
-	LastRunAt       *time.Time `json:"last_run_at,omitempty"`
-	RunCount        int        `json:"run_count"`
-	MaxRuns         int        `json:"max_runs"`
-	UntilAt         *time.Time `json:"until_at,omitempty"`
-	CreatedBy       string     `gorm:"size:32" json:"created_by"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
+	ThreadID        string `gorm:"index;size:64" json:"thread_id"`
+	ProjectID       string `gorm:"index;size:64" json:"project_id"`
+	ProviderID      string `gorm:"size:64" json:"provider_id"`
+	Model           string `gorm:"size:200" json:"model"`
+	ReasoningEffort string `gorm:"size:16" json:"reasoning_effort"`
+	Title           string `gorm:"size:400" json:"title"`
+	// TitleAuto is true while the engine still owns the inbox label: empty
+	// or the truncated prompt. A PATCH/tool title or a landed generated
+	// name clears it so a later namer cannot overwrite the list.
+	TitleAuto bool       `json:"title_auto"`
+	Prompt    string     `json:"prompt"`
+	DelayS    int        `json:"delay_s"`
+	EveryS    int        `json:"every_s"`
+	Cron      string     `gorm:"size:128" json:"cron"`
+	Status    string     `gorm:"index:idx_sched_due;size:32" json:"status"`
+	NextRunAt time.Time  `gorm:"index:idx_sched_due" json:"next_run_at"`
+	LastRunAt *time.Time `json:"last_run_at,omitempty"`
+	RunCount  int        `json:"run_count"`
+	MaxRuns   int        `json:"max_runs"`
+	UntilAt   *time.Time `json:"until_at,omitempty"`
+	CreatedBy string     `gorm:"size:32" json:"created_by"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
 }
 
 // ScheduleRun is one fire (or a skipped tick) of a schedule.
@@ -538,6 +542,26 @@ func (s *Store) ActivateDoneUnderCap(id string, cap int, fields map[string]any) 
 		}
 		return nil
 	})
+}
+
+// ApplyAutoScheduleTitle sets the inbox label only while the wait is still
+// machine-named. A human or tool title in between is a no-op (ok=false),
+// not an error: the namer lost the race and must not clobber the list.
+func (s *Store) ApplyAutoScheduleTitle(id, title string) (bool, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return false, nil
+	}
+	fields := map[string]any{
+		"title":      title,
+		"title_auto": false,
+		"updated_at": time.Now().UTC(),
+	}
+	res := s.db.Model(&Schedule{}).Where("id = ? AND title_auto = ?", id, true).Updates(fields)
+	if res.Error != nil {
+		return false, fmt.Errorf("store: apply auto schedule title: %w", res.Error)
+	}
+	return res.RowsAffected > 0, nil
 }
 
 // UpdateSchedule applies a field patch. Unknown ids report ErrNotFound

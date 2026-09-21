@@ -28,9 +28,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { api } from "@/lib/api"
-import type { Appearance } from "@/lib/appearance"
+import { normalizeAppearance, type Appearance } from "@/lib/appearance"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import type { LocalePref } from "@/lib/i18n"
 import { SettingsPersist } from "@/lib/settings-persist"
@@ -54,7 +53,7 @@ function sections(t: Translate) {
       id: "general",
       label: t("settings.nav.general"),
       icon: Palette,
-      keys: "appearance theme light dark font size serif mono width full wide standard comfortable log level data directory version language locale 语言 中文 english 外观 主题 字体 字号 铺满 宽屏 标准 宽度",
+      keys: "appearance theme light dark palette zwai fofa font size serif mono width full wide standard comfortable transcript user developer compact 语言 中文 english 外观 主题 配色 字体 字号 UI 正文 代码 铺满 宽屏 标准 宽度 用户 开发 精简",
     },
     {
       id: "personality",
@@ -95,7 +94,11 @@ function sections(t: Translate) {
   ] as const
 }
 
-type SectionId = ReturnType<typeof sections>[number]["id"]
+export type SettingsSectionId = ReturnType<typeof sections>[number]["id"]
+
+/** Sidebar, ⌘, and ⌘K open here. Model picker / unconfigured banner pass
+ *  `models` because that is the page they were already talking about. */
+export const SETTINGS_HOME_SECTION: SettingsSectionId = "general"
 
 /** Matches the left rail. The desktop title-bar strip paints the same
  *  column so the sidebar colour runs under the traffic lights. */
@@ -133,6 +136,7 @@ export function SettingsDialog({
   onLocaleChange,
   appearance,
   onAppearanceChange,
+  initialSection = SETTINGS_HOME_SECTION,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -147,6 +151,7 @@ export function SettingsDialog({
   onLocaleChange: (l: LocalePref) => void
   appearance: Appearance
   onAppearanceChange: (patch: Partial<Appearance>) => void
+  initialSection?: SettingsSectionId
 }) {
   const t = useT()
   const tRef = useRef(t)
@@ -155,7 +160,7 @@ export function SettingsDialog({
   const [settings, setSettings] = useState<Settings>()
   const [catalog, setCatalog] = useState<ToolDescriptor[]>([])
   const [query, setQuery] = useState("")
-  const [section, setSection] = useState<SectionId>("models")
+  const [section, setSection] = useState<SettingsSectionId>(initialSection)
 
   const onSavedRef = useRef(onSaved)
   onSavedRef.current = onSaved
@@ -183,7 +188,7 @@ export function SettingsDialog({
     useToasts.getState().dismiss("settings:save")
     useToasts.getState().dismiss("settings:load")
     setQuery("")
-    setSection("models")
+    setSection(initialSection)
     void Promise.all([api.settings(), api.tools()])
       .then(([s, tools]) => {
         setSettings(s)
@@ -195,7 +200,7 @@ export function SettingsDialog({
           title: tRef.current("settings.loadFailed"),
         }),
       )
-  }, [open])
+  }, [open, initialSection])
 
   useEffect(() => {
     persistRef.current?.setLocale(locale)
@@ -226,6 +231,12 @@ export function SettingsDialog({
   const visibleNav = nav.filter((s) =>
     settingsMatch(query, s.label, s.keys),
   )
+  // Radix used to fire an empty value when the panes were not TabsContent.
+  // An unknown id paints a blank sheet with no rail highlight.
+  const page: SettingsSectionId =
+    visibleNav.find((s) => s.id === section)?.id ??
+    visibleNav[0]?.id ??
+    SETTINGS_HOME_SECTION
 
   useEffect(() => {
     if (!query.trim()) return
@@ -260,12 +271,7 @@ export function SettingsDialog({
           className="flex min-h-0 flex-1 overflow-hidden"
           onSubmit={(e) => e.preventDefault()}
         >
-          <Tabs
-            orientation="vertical"
-            value={section}
-            onValueChange={(v) => setSection(v as SectionId)}
-            className="flex min-h-0 flex-1"
-          >
+          <div className="flex min-h-0 flex-1">
             <aside
               className={cn(
                 RAIL_WIDTH,
@@ -308,24 +314,38 @@ export function SettingsDialog({
                 </div>
               </div>
 
-              <TabsList className="flex h-auto w-full flex-col items-stretch gap-0.5 bg-transparent px-2 py-0">
-                {visibleNav.map((s) => (
-                  <TabsTrigger
-                    key={s.id}
-                    value={s.id}
-                    className={cn(
-                      chromeTypeClass,
-                      "h-8 w-full justify-start gap-2 rounded-md px-2 text-muted-foreground shadow-none data-[state=active]:bg-sidebar-accent data-[state=active]:text-foreground data-[state=active]:shadow-none",
-                    )}
-                  >
-                    <s.icon
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    {s.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+              <div
+                role="tablist"
+                aria-orientation="vertical"
+                className="flex h-auto w-full flex-col items-stretch gap-0.5 px-2"
+              >
+                {visibleNav.map((s) => {
+                  const on = s.id === page
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={on}
+                      data-state={on ? "active" : "inactive"}
+                      className={cn(
+                        chromeTypeClass,
+                        "inline-flex h-8 w-full items-center justify-start gap-2 rounded-md px-2 shadow-none",
+                        on
+                          ? "bg-sidebar-accent text-foreground"
+                          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+                      )}
+                      onClick={() => setSection(s.id)}
+                    >
+                      <s.icon
+                        className="size-4 text-muted-foreground"
+                        aria-hidden
+                      />
+                      {s.label}
+                    </button>
+                  )
+                })}
+              </div>
 
               <DialogDescription
                 className={cn(
@@ -349,68 +369,72 @@ export function SettingsDialog({
                   {t("settings.noMatch")}
                 </p>
               ) : (
-                <>
-                  <TabsContent value="personality" className={settingsScrollTab}>
-                    <PersonalityTab
-                      settings={settings}
-                      onChange={apply}
-                      query={query}
-                    />
-                  </TabsContent>
-                  <TabsContent value="models" className={settingsScrollTab}>
-                    <ModelsTab
-                      settings={settings}
-                      onChange={apply}
-                      query={query}
-                    />
-                  </TabsContent>
-                  <TabsContent value="swarm" className={settingsScrollTab}>
-                    <SwarmTab
-                      settings={settings}
-                      onChange={apply}
-                      query={query}
-                    />
-                  </TabsContent>
-                  <TabsContent value="tools" className={settingsScrollTab}>
-                    <ToolsTab
-                      settings={settings}
-                      catalog={catalog}
-                      onChange={apply}
-                      query={query}
-                    />
-                  </TabsContent>
-                  <TabsContent value="memory" className={settingsScrollTab}>
-                    <MemorySettings
-                      settings={settings}
-                      onChange={apply}
-                      query={query}
-                    />
-                  </TabsContent>
-                  <TabsContent value="remote" className={settingsScrollTab}>
-                    <RemoteTab
-                      settings={settings}
-                      onChange={apply}
-                      query={query}
-                    />
-                  </TabsContent>
-                  <TabsContent value="general" className={settingsScrollTab}>
+                <div
+                  role="tabpanel"
+                  data-state="active"
+                  className={settingsScrollTab}
+                >
+                  {page === "general" ? (
                     <GeneralTab
                       theme={theme}
                       onThemeChange={onThemeChange}
                       locale={locale}
                       onLocaleChange={onLocaleChange}
-                      appearance={appearance}
+                      appearance={normalizeAppearance(appearance)}
                       onAppearanceChange={onAppearanceChange}
                       meta={meta}
                       settings={settings}
                       onChange={apply}
                       query={query}
                     />
-                  </TabsContent>
-                </>
+                  ) : null}
+                  {page === "personality" ? (
+                    <PersonalityTab
+                      settings={settings}
+                      onChange={apply}
+                      query={query}
+                    />
+                  ) : null}
+                  {page === "models" ? (
+                    <ModelsTab
+                      settings={settings}
+                      onChange={apply}
+                      query={query}
+                    />
+                  ) : null}
+                  {page === "swarm" ? (
+                    <SwarmTab
+                      settings={settings}
+                      onChange={apply}
+                      query={query}
+                    />
+                  ) : null}
+                  {page === "tools" ? (
+                    <ToolsTab
+                      settings={settings}
+                      catalog={catalog}
+                      onChange={apply}
+                      query={query}
+                    />
+                  ) : null}
+                  {page === "memory" ? (
+                    <MemorySettings
+                      settings={settings}
+                      onChange={apply}
+                      query={query}
+                    />
+                  ) : null}
+                  {page === "remote" ? (
+                    <RemoteTab
+                      settings={settings}
+                      onChange={apply}
+                      query={query}
+                    />
+                  ) : null}
+                </div>
               )}
             </div>
-          </Tabs>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

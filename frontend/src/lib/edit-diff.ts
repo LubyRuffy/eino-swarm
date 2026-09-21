@@ -1,5 +1,5 @@
 /** Reconstruct an `edit` / `write` as a line hunk. The tool result is only a
- *  status sentence (`ok: replaced block in …` / `Updated file …`); the
+ *  status sentence (`ok: replaced block in …` / `Updated file <abs> (N bytes)`); the
  *  change itself is in the args. */
 
 export type DiffOp = "eq" | "add" | "del"

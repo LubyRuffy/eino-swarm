@@ -160,6 +160,15 @@ describe("ToolRow", () => {
     )
     expect(screen.getByRole("button", { name: /edit/ })).toHaveTextContent("+1")
     expect(screen.getByRole("button", { name: /edit/ })).toHaveTextContent("−1")
+    expect(screen.getByTestId("marquee")).toHaveTextContent("pkg/alpha.go")
+    expect(screen.getByTestId("marquee")).not.toHaveTextContent("+1")
+    const counts = screen.getByTestId("edit-counts")
+    expect(counts).toHaveTextContent("+1")
+    expect(counts).toHaveTextContent("−1")
+    expect(screen.getByText("+1")).toHaveClass("group-hover:text-diff-add")
+    expect(screen.getByText("+1")).not.toHaveClass("text-diff-add")
+    expect(screen.getByText("−1")).toHaveClass("group-hover:text-diff-del")
+    expect(screen.getByText("−1")).not.toHaveClass("text-diff-del")
     expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /edit/ }))
     expect(screen.getByTestId("file-diff")).toBeInTheDocument()
@@ -174,11 +183,13 @@ describe("ToolRow", () => {
             file_path: "pkg/alpha.go",
             content: "package alpha\n",
           }),
-          result: "Updated file pkg/alpha.go",
+          result: "Updated file /resolved/pkg/alpha.go (32 bytes)",
         })}
       />,
     )
     expect(screen.getByRole("button", { name: /write/ })).toHaveTextContent("+1")
+    expect(screen.getByTestId("edit-counts")).toHaveTextContent("+1")
+    expect(screen.getByTestId("edit-counts")).not.toHaveTextContent("−")
     expect(screen.queryByTestId("file-diff")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /write/ }))
     expect(screen.getByTestId("file-diff")).toBeInTheDocument()
@@ -224,7 +235,7 @@ describe("ToolRow", () => {
         block={toolBlock({
           name: "write",
           args,
-          result: "Updated file pkg/alpha.go",
+          result: "Updated file /resolved/pkg/alpha.go (32 bytes)",
         })}
       />,
     )

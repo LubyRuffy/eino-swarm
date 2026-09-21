@@ -279,4 +279,10 @@ func TestWriteSkillRefusesANearDuplicateAndAllowsARewrite(t *testing.T) {
 		"1. run the checks\n2. tag"); err != nil {
 		t.Fatalf("an unrelated subject must still store: %v", err)
 	}
+
+	if _, err := s.WriteSkill("weekly-rollup-send",
+		"when sending a weekly summary to whoever asked",
+		"1. write the summary\n2. send it"); err == nil {
+		t.Fatal("a shared name stem must be refused as a duplicate")
+	}
 }

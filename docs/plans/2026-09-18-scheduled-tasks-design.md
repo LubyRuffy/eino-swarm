@@ -209,9 +209,10 @@ open origin thread come from SSE.
 shadcn + existing CSS variables. Copy through `messages-en.ts` /
 `messages-zh.ts`.
 
-- Sidebar **Scheduled** (unread badge). Sheet: Active/Paused, next run,
-  recent runs, pause/resume/cancel/Run now, create-standalone form
-  (title, prompt, cadence, project).
+- Sidebar **Scheduled** (unread badge). Page: Active/Paused/Completed, next run,
+  click a row to edit title/prompt/cadence (pause/resume/cancel/Run now in that
+  drawer), create-standalone form
+  (prompt, cadence, project; title is generated until edited).
 - Open findings → that fire's conversation. Quiet standalone threads stay
   archived and out of Recents.
 - Active wake on the open conversation: short banner (next check, cancel),

@@ -1,4 +1,5 @@
 import {
+  Code2,
   FoldHorizontal,
   Moon,
   PanelLeft,
@@ -24,11 +25,12 @@ import {
   SIDEBAR_WIDTH_DEFAULT,
   SIDEBAR_WIDTH_VAR,
 } from "@/lib/sidebar-width"
-import type { ContentWidthPref } from "@/lib/appearance"
+import type { ContentWidthPref, TranscriptModePref } from "@/lib/appearance"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import type { Meta, Project, Thread, ThreadStatus } from "@/lib/types"
 import { cn, formatDuration } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
+import { useApp } from "@/store/app"
 
 /** The window title bar. It spans the full width: traffic lights + sidebar
  *  toggle on the left (Codex/Cursor), the conversation on the rest. In desktop
@@ -48,8 +50,10 @@ export function Header({
   onToggleTheme,
   onToggleLocale,
   onToggleContentWidth,
+  onToggleTranscriptMode,
   onOpenTerminal,
   contentWidth,
+  transcriptMode,
   dark,
   terminalOpen,
   terminalEnabled,
@@ -73,21 +77,24 @@ export function Header({
   onToggleTheme: () => void
   onToggleLocale: () => void
   onToggleContentWidth: () => void
+  onToggleTranscriptMode: () => void
   onOpenTerminal: () => void
   contentWidth: ContentWidthPref
+  transcriptMode: TranscriptModePref
   dark: boolean
   terminalOpen: boolean
   terminalEnabled: boolean
 }) {
   const t = useT()
+  const scheduled = useApp((s) => s.scheduleInboxOpen)
   // The elapsed clock ticks here, not in App: a once-a-second setState in
   // the shell used to re-parse every markdown block in the conversation.
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!status.running) return
+    if (!status.running || scheduled) return
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(id)
-  }, [status.running])
+  }, [status.running, scheduled])
   const elapsedMs =
     status.running && status.started_at
       ? Math.max(0, now - new Date(status.started_at).getTime())
@@ -99,6 +106,10 @@ export function Header({
   const widthLabel = wide
     ? t("header.switchToStandard")
     : t("header.switchToWide")
+  const developer = transcriptMode === "developer"
+  const modeLabel = developer
+    ? t("header.switchToUser")
+    : t("header.switchToDeveloper")
   return (
     <header
       data-drag-region
@@ -134,7 +145,7 @@ export function Header({
             a 48px bar. The model name lives on the composer; repeating it here
             ate the same row. */}
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {project ? (
+          {!scheduled && project ? (
             <>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -161,11 +172,13 @@ export function Header({
             className={cn(chromeTypeClass, "min-w-0 truncate")}
             data-testid="thread-title"
           >
-            {thread?.title || t("header.newConversation")}
+            {scheduled
+              ? t("schedule.inboxTitle")
+              : thread?.title || t("header.newConversation")}
           </p>
         </div>
 
-        {status.running ? (
+        {scheduled ? null : status.running ? (
           <Badge
             variant={status.awaiting_answer ? "ask" : "warning"}
             data-testid="status-badge"
@@ -200,7 +213,7 @@ export function Header({
           </Badge>
         )}
 
-        {status.turn_id ? (
+        {!scheduled && status.turn_id ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <CopyButton text={status.turn_id} />
@@ -261,6 +274,17 @@ export function Header({
           <Button
             variant="ghost"
             size="icon-sm"
+            onClick={onToggleTranscriptMode}
+            title={modeLabel}
+            aria-label={modeLabel}
+            aria-pressed={developer}
+            className={developer ? "text-foreground" : "text-muted-foreground"}
+          >
+            <Code2 />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onOpenTerminal}
             disabled={!terminalEnabled}
             aria-label={t("header.terminal")}
@@ -274,16 +298,18 @@ export function Header({
           >
             <SquareTerminal />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onTogglePanel}
-            aria-label={t("header.togglePanel")}
-            title={`${t("header.togglePanel")} (⌘\\)`}
-            className={panelOpen ? "text-foreground" : "text-muted-foreground"}
-          >
-            <PanelRight />
-          </Button>
+          {scheduled ? null : (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={onTogglePanel}
+              aria-label={t("header.togglePanel")}
+              title={`${t("header.togglePanel")} (⌘\\)`}
+              className={panelOpen ? "text-foreground" : "text-muted-foreground"}
+            >
+              <PanelRight />
+            </Button>
+          )}
         </div>
       </div>
     </header>

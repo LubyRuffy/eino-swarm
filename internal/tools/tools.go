@@ -154,7 +154,11 @@ func Build(ctx context.Context, cfg *config.Config, workspaceDir string) (*Set, 
 		glob.ToolName:  func() (tool.BaseTool, error) { return glob.New(glob.Config{DefaultBaseDir: workspaceDir}) },
 		grep.ToolName:  func() (tool.BaseTool, error) { return grep.New(grep.Config{DefaultBaseDir: workspaceDir}) },
 		einoexec.ToolName: func() (tool.BaseTool, error) {
-			return einoexec.New(einoexec.Config{DefaultBaseDir: workspaceDir})
+			inner, err := einoexec.New(einoexec.Config{DefaultBaseDir: workspaceDir})
+			if err != nil {
+				return nil, err
+			}
+			return wrapExecSleepBias(inner)
 		},
 		websearch.ToolName: func() (tool.BaseTool, error) {
 			return websearch.New(ctx, websearch.Config{

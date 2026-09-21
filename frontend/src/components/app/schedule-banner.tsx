@@ -51,8 +51,12 @@ export function ScheduleBanner({
           <span className="min-w-0 flex-1" />
         )}
         {when ? (
-          <span data-testid="schedule-next" className="shrink-0 text-muted-foreground">
-            {t("schedule.nextCheck", { time: when })}
+          <span
+            data-testid="schedule-next"
+            className="max-w-[9rem] shrink-0 truncate text-muted-foreground"
+            title={t("schedule.nextCheck", { time: when })}
+          >
+            {when}
           </span>
         ) : (
           <span data-testid="schedule-next" className="sr-only">

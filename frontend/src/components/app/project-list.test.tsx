@@ -56,8 +56,8 @@ function renderList(props: Partial<Parameters<typeof ProjectList>[0]> = {}) {
 }
 
 describe("Project list", () => {
-  // The sidebar scrollport already has px-2. Wrapping this section in
-  // another one pushed Projects 8px further in than Recents.
+  // The sidebar scrollport already has the list px token. Wrapping this
+  // section in another gutter pushed Projects further in than Recents.
   it("shares the conversation list gutter instead of adding its own", () => {
     renderList()
     expect(screen.getByTestId("project-list")).not.toHaveClass("px-2")
@@ -110,7 +110,7 @@ describe("Project list", () => {
   })
 
   // The directory glyph is the fold: open folder vs closed folder.
-  // Topic titles keep the same size-4 slot so they sit under the name.
+  // Topic titles keep the same 16px slot so they sit under the name.
   it("swaps the folder glyph with expand, and lines topic names under the project name", () => {
     const threads = [
       topic({ id: "th_open", title: "Open topic" }),
@@ -124,13 +124,13 @@ describe("Project list", () => {
     expect(screen.queryByTestId("row-chevron")).not.toBeInTheDocument()
     expect(screen.queryByTestId("project-fold")).not.toBeInTheDocument()
     expect(screen.getByTestId("project-folder")).toHaveAttribute("data-open", "true")
-    expect(screen.getByTestId("project-kind")).toHaveClass("size-4")
+    expect(screen.getByTestId("project-kind")).toHaveClass("sidebar-kind")
     const kinds = screen.getAllByTestId("row-kind")
     expect(kinds).toHaveLength(2)
-    for (const slot of kinds) expect(slot).toHaveClass("size-4")
-    expect(screen.getByTestId("project-row")).toHaveClass("pl-2")
+    for (const slot of kinds) expect(slot).toHaveClass("sidebar-kind")
+    expect(screen.getByTestId("project-row")).toHaveClass("sidebar-row")
     for (const row of screen.getAllByTestId("thread-row")) {
-      expect(row).toHaveClass("pl-2")
+      expect(row).toHaveClass("sidebar-row")
       expect(row).not.toHaveClass("pl-5")
     }
     expect(
@@ -229,14 +229,17 @@ describe("Project list", () => {
     expect(screen.getByTestId("thread-row").querySelector("[data-drag-handle]")).toBeNull()
   })
 
-  // py-1.5 around a 28px menu button stacked each row to 40px.
-  it("keeps folder and topic rows at the compact height", () => {
+  // The old trap was py-1.5 around a 28px menu button stacking to 40px.
+  // Rows use the chrome-density token; menus stay icon-xs so they cannot pad it.
+  it("keeps folder and topic rows at the directory token height", () => {
     renderList({
       threadsByProject: { pj_1: [topic({ id: "th_1", title: "A topic" })] },
       expanded: { pj_1: true },
     })
-    expect(screen.getByTestId("project-row")).toHaveClass("h-7")
-    expect(screen.getByTestId("thread-row")).toHaveClass("h-7")
+    expect(screen.getByTestId("project-row")).toHaveClass("sidebar-row")
+    expect(screen.getByTestId("thread-row")).toHaveClass("sidebar-row")
+    expect(screen.getByTestId("project-row")).not.toHaveClass("h-7")
+    expect(screen.getByTestId("thread-row")).not.toHaveClass("h-7")
     expect(screen.getByTestId("project-row")).not.toHaveClass("py-1.5")
     expect(screen.getByTestId("thread-row")).not.toHaveClass("py-1.5")
   })

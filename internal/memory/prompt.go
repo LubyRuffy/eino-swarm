@@ -67,8 +67,10 @@ the only write that lands is one that reduces the character count.
 	fmt.Fprintf(&b, `
 Use %s to record a procedure worth following again: a workflow with several
 steps that worked, a recovery from a failure, a correction you were given.
-One subject is one skill. A create that collides with an existing skill is
-refused and names that skill — patch that one rather than adding a second name.
+One subject is one skill. Names that share a stem are the same subject —
+patch or merge rather than adding a second name. A create that collides with
+an existing skill is refused and names that skill. Leftover families are
+folded into one skill after a turn.
 
 Sub-agents receive the same notes snapshot and skills index, and they have %s.
 They cannot call %s or %s. Their final message is the task result; they may
@@ -190,8 +192,51 @@ project, and write it yourself:
   index entry whose name or summary might already cover the subject. A create
   that collides is refused and names the existing skill — patch that one, or
   delete it first. Do not add a second skill whose name is the first plus a
-  suffix.
+  suffix, and do not add a chapter-skill that shares a name stem with one
+  already recorded. If the catalog lists a family of names that share a
+  subject, merge them with %s (name is the skill to keep, sources are the
+  others) so a later conversation is not handed competing procedures.
 
 Finish with one short line naming what you stored, or that you stored nothing.`,
-		ToolMemory, ToolSkillManage, ToolSkillView)
+		ToolMemory, ToolSkillManage, ToolSkillView, ToolSkillManage)
+}
+
+// ReviewCatalog is appended to the reviewer's user message so it can see the
+// skills already recorded. The system prompt is a fixed instruction and does
+// not carry the live index — without this, the reviewer invents a second
+// name for a subject that is already stored.
+func ReviewCatalog(skills []SkillInfo, families [][]string) string {
+	if len(skills) == 0 && len(families) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Skills already recorded in this project:\n\n")
+	if len(skills) == 0 {
+		b.WriteString("(none)\n")
+	} else {
+		for _, s := range skills {
+			fmt.Fprintf(&b, "- %s — %s\n", s.Name, s.Description)
+		}
+	}
+	if len(families) > 0 {
+		b.WriteString("\nThese recorded skills share a subject and must become one skill. Merge each group so a later conversation is not handed competing procedures:\n")
+		for _, fam := range families {
+			fmt.Fprintf(&b, "- %s\n", strings.Join(fam, ", "))
+		}
+	}
+	return b.String()
+}
+
+// AttachReviewCatalog puts the live index after the conversation. An empty
+// catalog is a no-op so an empty turn stays empty and is not reviewed.
+func AttachReviewCatalog(transcript, catalog string) string {
+	catalog = strings.TrimSpace(catalog)
+	if catalog == "" {
+		return transcript
+	}
+	transcript = strings.TrimRight(transcript, "\n")
+	if strings.TrimSpace(transcript) == "" {
+		return catalog
+	}
+	return transcript + "\n\n" + catalog
 }

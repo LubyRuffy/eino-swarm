@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react"
 
-import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots"
+import { SidebarKindSlot, sidebarRowClass, sidebarStackClass } from "@/components/app/sidebar-slots"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
 import { reorderById } from "@/lib/reorder"
 import { splitSidebarPreview } from "@/lib/sidebar-preview"
@@ -52,7 +52,7 @@ export function SidebarThreadGroup({
     onReorder?.(reorderById(threads, from, to).map((th) => th.id))
   })
   return (
-    <>
+    <div className={sidebarStackClass}>
       {shown.map((thread) => (
         <SidebarThreadRow
           key={thread.id}
@@ -71,7 +71,7 @@ export function SidebarThreadGroup({
       {hidden.length > 0 ? (
         <SidebarShowMore expanded={expanded} onToggle={() => setExpanded((open) => !open)} />
       ) : null}
-    </>
+    </div>
   )
 }
 

@@ -1,14 +1,20 @@
 import type { ReactNode } from "react"
 import { ChevronRight } from "lucide-react"
 
+import { HostChrome } from "@/components/host-chrome"
+import { InboxSkeleton } from "@/components/inbox-skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { localeSwitchLabel, t } from "@/lib/i18n"
+import { t } from "@/lib/i18n"
+import { inboxPreview } from "@/lib/inbox-preview"
 import { collectLive } from "@/lib/resume"
 import type { ProjectView, RunningView, ThreadView } from "@/lib/rpc"
+import type { SavedLink } from "@/lib/store"
 import { cn } from "@/lib/cn"
 
 export function HomeScreen({
+  hosts,
+  activeFingerprint,
   projects,
   threads,
   running,
@@ -16,12 +22,19 @@ export function HomeScreen({
   onOpen,
   onMore,
   onStart,
+  onSelectHost,
+  onAddHost,
   onUnlink,
+  onRetry,
   path,
   connected = true,
   reconnecting = false,
+  connecting = false,
+  error,
   onToggleLocale,
 }: {
+  hosts: SavedLink[]
+  activeFingerprint: string
   projects: ProjectView[]
   threads: ThreadView[]
   running: RunningView[]
@@ -29,98 +42,85 @@ export function HomeScreen({
   onOpen: (id: string) => void
   onMore: () => void
   onStart: (text: string, projectId: string) => void
+  onSelectHost: (fingerprint: string) => void
+  onAddHost: () => void
   onUnlink: () => void
+  onRetry?: () => void
   path: string
   connected?: boolean
   reconnecting?: boolean
+  connecting?: boolean
+  error?: string
   onToggleLocale?: () => void
 }) {
   const live = collectLive(running, threads)
   const skip = new Set(live.map((r) => r.thread_id))
   const grouped = groupThreads(projects, threads, skip)
+  const waiting = connecting || (!connected && live.length === 0 && grouped.length === 0)
   return (
     <main className="mx-auto flex h-full max-w-lg flex-col overflow-hidden">
-      <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold tracking-tight">{t("home.app")}</h1>
-          <span
-            className={cn(
-              "size-2 rounded-full",
-              reconnecting
-                ? "animate-pulse bg-destructive"
-                : !connected
-                  ? "bg-destructive"
-                  : path === "direct"
-                    ? "bg-[hsl(var(--running))]"
-                    : "bg-muted-foreground/50",
-            )}
-            title={
-              reconnecting
-                ? t("home.reconnecting")
-                : !connected
-                  ? t("home.offline")
-                  : path === "direct"
-                    ? t("home.direct")
-                    : t("home.relay")
-            }
-            aria-label={`path=${reconnecting ? "reconnecting" : connected ? path : "offline"}`}
-          />
-        </div>
-        <div className="flex items-center gap-1">
-          {onToggleLocale ? (
-            <Button variant="ghost" onClick={onToggleLocale} aria-label={localeSwitchLabel()}>
-              {localeSwitchLabel()}
+      <HostChrome
+        hosts={hosts}
+        activeFingerprint={activeFingerprint}
+        path={path}
+        connected={connected}
+        reconnecting={reconnecting}
+        onSelect={onSelectHost}
+        onAdd={onAddHost}
+        onUnlink={onUnlink}
+        onToggleLocale={onToggleLocale}
+      />
+
+      {waiting ? (
+        <InboxSkeleton pending={connecting || reconnecting} error={error} onRetry={onRetry} />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">
+          {error ? (
+            <p className="text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          ) : null}
+          {live.length > 0 ? (
+            <InboxSection title={t("home.inProgress")}>
+              {live.map((r) => (
+                <ThreadRow
+                  key={r.thread_id}
+                  id={r.thread_id}
+                  title={r.title || r.thread_id}
+                  detail={
+                    r.ask_user
+                      ? t("home.ask")
+                      : inboxPreview(r.action) || (r.waiting ? t("home.waiting") : t("thread.running"))
+                  }
+                  live
+                  onOpen={onOpen}
+                />
+              ))}
+            </InboxSection>
+          ) : null}
+
+          {grouped.map((g) => (
+            <InboxSection key={g.id || "recent"} title={g.name}>
+              {g.threads.map((th) => (
+                <ThreadRow
+                  key={th.id}
+                  id={th.id}
+                  title={th.title || th.id}
+                  detail={inboxPreview(th.summary) || undefined}
+                  onOpen={onOpen}
+                />
+              ))}
+            </InboxSection>
+          ))}
+          {more ? (
+            <Button variant="outline" onClick={onMore}>
+              {t("home.more")}
             </Button>
           ) : null}
-          <Button variant="ghost" onClick={onUnlink}>
-            {t("home.unlink")}
-          </Button>
         </div>
-      </header>
+      )}
 
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">
-        {live.length > 0 ? (
-          <InboxSection title={t("home.inProgress")}>
-            {live.map((r) => (
-              <ThreadRow
-                key={r.thread_id}
-                id={r.thread_id}
-                title={r.title || r.thread_id}
-                detail={
-                  r.ask_user
-                    ? t("home.ask")
-                    : r.waiting && !r.turn_id
-                      ? t("home.waiting")
-                      : r.action || t("thread.running")
-                }
-                live
-                onOpen={onOpen}
-              />
-            ))}
-          </InboxSection>
-        ) : null}
-
-        {grouped.map((g) => (
-          <InboxSection key={g.id || "recent"} title={g.name}>
-            {g.threads.map((th) => (
-              <ThreadRow
-                key={th.id}
-                id={th.id}
-                title={th.title || th.id}
-                detail={th.summary}
-                onOpen={onOpen}
-              />
-            ))}
-          </InboxSection>
-        ))}
-        {more ? (
-          <Button variant="outline" onClick={onMore}>
-            {t("home.more")}
-          </Button>
-        ) : null}
-      </div>
-
-      <NewThreadForm projects={projects} onStart={onStart} />
+      <NewThreadForm projects={projects} onStart={onStart} disabled={waiting || !connected} />
     </main>
   )
 }
@@ -208,15 +208,18 @@ function groupThreads(projects: ProjectView[], threads: ThreadView[], skip: Set<
 function NewThreadForm({
   projects,
   onStart,
+  disabled,
 }: {
   projects: ProjectView[]
   onStart: (text: string, projectId: string) => void
+  disabled?: boolean
 }) {
   return (
     <form
       className="flex shrink-0 flex-col gap-2 border-t border-border bg-background px-3 py-2"
       onSubmit={(e) => {
         e.preventDefault()
+        if (disabled) return
         const fd = new FormData(e.currentTarget)
         const text = String(fd.get("text") ?? "").trim()
         const projectId = String(fd.get("project") ?? "")
@@ -230,6 +233,7 @@ function NewThreadForm({
         <select
           name="project"
           aria-label={t("home.project")}
+          disabled={disabled}
           className="flex h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
         >
           <option value="">{t("home.defaultProject")}</option>
@@ -247,8 +251,9 @@ function NewThreadForm({
           aria-label={t("home.newMessage")}
           placeholder={t("home.newMessage")}
           className="h-11 bg-muted"
+          disabled={disabled}
         />
-        <Button type="submit" className="h-11 shrink-0">
+        <Button type="submit" className="h-11 shrink-0" disabled={disabled}>
           {t("home.start")}
         </Button>
       </div>

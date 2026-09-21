@@ -28,7 +28,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   from the list lands at its latest turn — and lights that tick — not the top
   of the history. A long log loads from the live edge first; older turns appear
   when you scroll up, and clicking a tick still above that tail pages it in
-  before scrolling. New tokens while you are
+  before scrolling. A click is re-applied after those older pages land, so a
+  load that started at the top cannot swallow it. New tokens while you are
   reading light a jump-to-latest control; click it to return and follow again.
 - **A ring on the composer shows how full the last manager prompt is.** Hover
   it for the compact count against this model's window, plus this-turn billed
@@ -54,9 +55,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   composer that has not been sent yet still drops immediately.
 - **Quote a passage into the next message.** Select text in the transcript (or a
   sub-agent's log) and **Add to chat**. It still works while a turn is
-  streaming. The snippet lands as a compact chip on the composer — edit or
-  drop it — and is sent in `<selected_text>` next to whatever you type
-  (`<user_request>`), instead of being dumped into the box.
+  streaming. The snippet lands as a count chip on the composer — hover to
+  read, edit or drop it — and is sent in `<selected_text>` next to whatever
+  you type (`<user_request>`), instead of being dumped into the box.
 - **Interactive questions (`ask_user`).** When a preference would waste work
   if guessed, the manager pauses this turn with a numbered question dialog.
   The card says **Your answer needed**, the title bar says **Your turn**, and
@@ -69,12 +70,24 @@ uploads, downloads and the live event stream have exactly one implementation.
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   When progress is gated on time or a condition not worth polling now, it is
   told to wake and end the turn instead of spinning or asking you to remind
-  it. Estimated remaining time is biased short (about a third, then that
-  interval) so a check lands before the work is already done; extra checks
-  are expected. A named clock time you asked for is still honored.   The sidebar **Scheduled** control opens the inbox dialog: a list with
-  search and **All / Active / Paused / Completed**, defaulting to Active.
-  **Create** opens the add-wait form; rows stay title plus cadence and next
-  check until you expand them for pause, resume, cancel, or Run now.
+  it. A parallel `exec` that sleeps and then checks progress is fine; that
+  sleep and `schedule_wake` both bias estimated remaining time short (about
+  a third, then that interval) so a check lands before the work is already
+  done; extra checks are expected. A named clock time you asked for is still
+  honored.
+  The sidebar **Scheduled** control opens the list in the main column: search
+  and **All / Active / Paused / Completed**, defaulting to Active.
+  **Create** opens a right-hand drawer (**New**) for the add-wait form — the task
+  description only (a short inbox name is generated, same namer as conversations),
+  then Details (**Runs in**: new conversation each run, or wake an
+  existing one; **Project** is the workspace for a minted conversation) and
+  Frequency. **Expand** fills that column so a long instruction is readable.
+  Click a wait to edit it in the same drawer: title, task, and cadence
+  (`PATCH`; changing cadence recomputes the next run from now). Pause, resume,
+  cancel, and Run now live there too. Destination (Runs in / Project) stays
+  as created. The conversation
+  Agents/Files/Trace rail stays hidden on this page, like Settings. Rows stay
+  title plus cadence and next check; click one for the editor.
   An active wake on the open conversation
   shows a banner with the next check and the wait's title or prompt, **Run now**, and **Cancel wait** (not
   an icon-only dismiss — that sat under the goal banner's X). Run now and
@@ -143,15 +156,23 @@ uploads, downloads and the live event stream have exactly one implementation.
   shows a ticking "Working for 1m 12s · 2 sub-agents running" instead of looking
   frozen. While it is running, that line — and the live tool / sub-agent rows —
   sweep, and scroll if the text does not fit.
-- **Thinking stays a 10-line window.** While the model is reasoning, the block
+- **Thinking stays a 10-line window in developer view.** While the model is reasoning, the block
   caps at ten lines and follows new tokens; earlier lines stay reachable by
   scrolling, with a fade at the top so it is obvious they are there. The
   **Thinking** label sweeps like the other live status lines. Click the row to
   hide it while it is still running. After it finishes it collapses to **Thought**.
+  **User view** (the default) folds that thought, tool calls, and mid-turn
+  answers into one live ticker. The current activity swaps in vertically, and
+  the line itself still scrolls left-to-right when it does not fit:
+  thinking text (or **Thinking**), **Planning next moves** between model
+  turns, **Editing** / **Reading** / **Exec** while a tool is in flight.
+  The final answer stays visible. Settings → General, the title-bar code
+  icon, or ⌘K switches to developer view.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
   (finished ones are not re-parsed on every token; fenced code is highlighted
-  and copyable; `$…$` / `$$…$$` render as formulas), a `chart` fence becomes a
+  and copyable; `$…$` / `$$…$$` render as formulas; a GFM table stays inside
+  the column), a `chart` fence becomes a
   plot when the JSON is a comparison and does not flicker while later tokens
   arrive, and typing in the composer
   does not rebuild the conversation.
@@ -212,9 +233,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   of a grey dump; markdown still renders as prose. An `edit` or `write`
   stays collapsed like `exec`; open the row to see a highlighted diff of
   what landed — red gone, green new — instead of the one-line status the
-  tool returns to the model (`ok: replaced block`, `Updated file`). A huge
+  tool returns to the model (`ok: replaced block`, `Updated file … (N bytes)`). A huge
   write is clipped in that view; the collapsed row still shows the path
-  plus the real `+N` (write) or `+N −M` (edit). Agents are
+  plus the real `+N` (write) or `+N −M` (edit). Those counts stay the
+  row colour until hover (or focus), then additions go green and
+  deletions red. Agents are
   told which OS, shell and date they are on, so they stop emitting GNU-only
   flags on a Mac.
 - **Answers can include charts.** When the numbers in a reply are easier to
@@ -254,13 +277,16 @@ go run ./cmd/zwai web
 ```
 
 First launch writes `~/.zwai-swarm/config.yaml` and shows a setup banner until a
-model is configured. Open **Settings** (⌘,) — a full-page sheet, sections in the
+model is configured. Open **Settings** (⌘,) — a full-page sheet that starts on
+**General**, with sections in the
 left rail (on the desktop window, **Back to app** sits below the traffic
 lights). Each page is a list of compact rows (name and hint left, control
 right). Edits write themselves; **Back to app** flushes the last keystroke.
 Chrome language is **Settings → General**, the **中 / EN** control in the title
 bar, or ⌘K → Switch language. Agents still answer in the language you are using.
-Font and size are **Settings → General**. Size scales the conversation; chrome
+Theme is **Settings → General**: System / Light / Dark cards, then **Color theme**
+ZWAI (default chrome) or FOFA (intelligence-console palette, both light and dark).
+The title-bar sun/moon still flips light / dark. Font and size are **Settings → General**. Size scales the conversation; chrome
 (sidebar, Settings, title bar) stays the same. Conversation width is the title-bar
 control (standard reading column vs wide, filling the space between the
 sidebars), **Settings → General**, or ⌘K. How you want the manager to work
@@ -303,7 +329,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    a Gateway Key. A missing hub toasts over the sheet (× to close).
    **Keep this computer awake** stays on by default so a plugged-in host
    does not idle-sleep while a phone still expects it. Turn it off if you
-   want the machine to sleep. **Bound phones** names each device by the
+   want the machine to sleep. **This computer's name** is what the phone
+   paints on the host chip (blank uses this machine's hostname). **Bound phones** names each device by the
    model the phone reports after it connects, not only the fingerprint.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
@@ -311,7 +338,13 @@ end-to-end tests run on and the fastest way to see the UI work.
    `mobile/android`). The home-screen icon is the same ZWAI mark as the Dock.
    **Scan QR** is the product path. After bind, a live turn
    (or the last thread this phone opened) opens immediately; otherwise the
-   inbox lists projects and the latest 5 threads. The transcript opens on the
+   inbox lists In progress, then projects / Recents with the latest 5 idle
+   threads (live rows do not consume that quota). A later launch with
+   saved tickets shows host chips (the name this PC sent) and a connecting skeleton — not the scan
+   form, which would look like the phone was never bound. **Add a PC** sits
+   beside the chips. Switching a chip opens that PC. In-progress rows show
+   findings or **Waiting**, not `schedule_wake` / `report_schedule` JSON.
+   The transcript opens on the
    last turn, already at the live edge; Earlier or pull up loads older rows. A tap
    paints the chrome immediately; the transcript is a short tail, not the
    whole turn. Markdown
@@ -370,9 +403,9 @@ What you get:
    arrives after the last model call becomes a follow-up turn.
 4. **Quote the conversation.** Select a passage and **Add to chat** when you want
    the next message to point at it — including while a turn is still streaming.
-   The composer shows a truncated chip (edit or drop); send with an empty box
-   if the quote is the whole request. The model sees `<selected_text>` and
-   `<user_request>` as separate blocks.
+   The composer shows a count chip at rest (hover to read, edit or drop);
+   send with an empty box if the quote is the whole request. The model sees
+   `<selected_text>` and `<user_request>` as separate blocks.
 5. **What this turn cost.** The **Trace** tab shows status, duration, billed
    tokens, and the turn id (`zwai trace <id>` replays the full dump). The event
    log stays folded until you open **Full log**.
@@ -455,7 +488,16 @@ because they ride in every prompt — once full, a write that would
 grow the notes is refused, even a replace with a longer note. Something
 shorter has to land first. Creating a skill that already covers the same
 subject is refused: the result names the existing skill so the next call is
-a patch, not a second name.
+a patch, not a second name. Skills that share a name stem (the same procedure
+split into chapter-skills) are refused the same way, and leftover families are
+folded into one skill after a finished turn — automatically, including when
+auto-review is off or the manager already wrote this turn. The fold is reported
+as a `memory_review` when it changed the catalog. Editing a skill file by hand
+does **not** fold until the next turn; **Tidy overlapping skills** on the Skills
+heading runs the same fold immediately. Reload first if you edited files
+outside the app. The click walks scan → group → fold, then names what was
+merged, deleted and created, with counts (scanned / merged / deleted / created
+/ remaining).
 
 Memory lives in the data directory, never in your working directory, so a project
 pointed at a repository leaves nothing in it. A procedure that already lives in

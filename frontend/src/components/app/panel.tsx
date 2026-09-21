@@ -65,6 +65,7 @@ export function RightPanel({
   const [width, setWidth] = useState(352)
   return (
     <aside
+      data-testid="side-panel"
       className="relative flex h-full min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-card"
       style={{ width }}
     >

@@ -302,7 +302,8 @@ func mockCodeAndMathBlock() string {
 }
 
 func mockCodeAndMathSource() string {
-	return "\nThe reports add as $n$.\n\n```go\nfunc Len(s string) int { return len(s) }\n```\n"
+	a, b, c := strings.Repeat("x", 120), strings.Repeat("y", 120), strings.Repeat("z", 120)
+	return "\nThe reports add as $n$.\n\n```go\nfunc Len(s string) int { return len(s) }\n```\n\n| a | b | c |\n| --- | --- | --- |\n| " + a + " | " + b + " | " + c + " |\n"
 }
 
 // ---------- worker script ----------

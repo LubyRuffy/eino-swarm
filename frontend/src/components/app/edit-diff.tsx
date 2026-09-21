@@ -8,6 +8,7 @@ import {
   type EditDiff,
 } from "@/lib/edit-diff"
 import { languageFromPath, tokenizeSource, type SourceToken } from "@/lib/source-highlight"
+import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 
 const ROW_CLASS: Record<DiffOp, string> = {
@@ -28,6 +29,38 @@ const MARK: Record<DiffOp, string> = {
   del: "−",
 }
 
+/** Collapsed `+N −M`. Idle inherits the row colour; hover/focus paints
+ *  add/del so the counts stay quiet until you are looking at them.
+ *  Needs a `group` ancestor — Disclosure already has one. */
+export function EditCountMarks({
+  added,
+  removed,
+  className,
+}: {
+  added: number
+  removed: number
+  className?: string
+}) {
+  if (added <= 0 && removed <= 0) return null
+  return (
+    <span
+      data-testid="edit-counts"
+      className={cn("inline-flex shrink-0 items-baseline gap-1 tabular-nums", className)}
+    >
+      {added > 0 ? (
+        <span className="transition-colors group-hover:text-diff-add group-focus-within:text-diff-add">
+          +{added}
+        </span>
+      ) : null}
+      {removed > 0 ? (
+        <span className="transition-colors group-hover:text-diff-del group-focus-within:text-diff-del">
+          −{removed}
+        </span>
+      ) : null}
+    </span>
+  )
+}
+
 /** Highlighted hunk for an `edit` / `write` call. Built from the args, not
  *  the status sentence the tool returns to the model. */
 export function EditDiffView({ diff }: { diff: EditDiff }) {
@@ -43,8 +76,9 @@ export function EditDiffView({ diff }: { diff: EditDiff }) {
       aria-label={label}
     >
       {label ? (
-        <p className="truncate border-b border-border px-2 py-1 text-[11px] text-muted-foreground">
-          {label}
+        <p className="flex min-w-0 items-center gap-1.5 border-b border-border px-2 py-1 text-[11px] text-muted-foreground">
+          {diff.path ? <span className="min-w-0 truncate">{diff.path}</span> : null}
+          <EditCountMarks added={diff.added} removed={diff.removed} />
         </p>
       ) : null}
       {painted.empty ? (

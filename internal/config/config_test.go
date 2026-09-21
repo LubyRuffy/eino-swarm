@@ -887,7 +887,8 @@ func TestUILocaleNormalizesToSystemEnOrZh(t *testing.T) {
 		t.Fatalf("an older config must follow the system language: %+v", older.UI)
 	}
 	if older.UI.Font != DefaultFont || older.UI.FontSize != DefaultFontSize ||
-		older.UI.ContentWidth != DefaultContentWidth {
+		older.UI.ContentWidth != DefaultContentWidth ||
+		older.UI.Palette != DefaultPalette {
 		t.Fatalf("an older config must keep the current column and type: %+v", older.UI)
 	}
 

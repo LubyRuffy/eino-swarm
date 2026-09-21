@@ -201,4 +201,17 @@ describe("MemoMarkdown", () => {
     expect(screen.queryByTestId("transcript-chart-pending")).not.toBeInTheDocument()
     expect(screen.getByText(/"type":"nope"/)).toBeInTheDocument()
   })
+
+  // A long unbreakable cell used to set the column's min-content and paint
+  // under the side panel. The scrollport is the cap; the cell still renders.
+  it("parks a gfm table in a scrollport so a long cell cannot widen the column", () => {
+    const cell = "x".repeat(80)
+    render(<MemoMarkdown text={`| k | v |\n| --- | --- |\n| a | ${cell} |`} />)
+    const table = screen.getByRole("table")
+    expect(table.parentElement).toHaveAttribute("data-testid", "markdown-table")
+    expect(table.parentElement).toHaveClass("md-table")
+    expect(table.parentElement?.className).toMatch(/\boverflow-x-auto\b/)
+    expect(screen.getByText(cell)).toBeInTheDocument()
+    expect(document.body.textContent).not.toMatch(/fofa|body=|FatalError/i)
+  })
 })

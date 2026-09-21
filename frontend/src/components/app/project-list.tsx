@@ -13,7 +13,9 @@ import { SidebarSection } from "@/components/app/sidebar-section"
 import {
   SidebarGlyphMark,
   SidebarKindSlot,
+  sidebarFolderStackClass,
   sidebarRowClass,
+  sidebarStackClass,
 } from "@/components/app/sidebar-slots"
 import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { AskMark } from "@/components/app/ask-mark"
@@ -110,33 +112,35 @@ export function ProjectList({
         </Button>
       }
     >
-      {projects.map((project) => (
-        <ProjectRow
-          key={project.id}
-          project={project}
-          threads={threadsByProject[project.id] ?? []}
-          open={Boolean(expanded[project.id])}
-          activeId={activeId}
-          runningId={runningId}
-          waitingIds={waitingIds}
-          askingIds={askingIds}
-          drag={sortable.bind(project.id)}
-          onSelect={onSelect}
-          onToggle={onToggle}
-          onNewConversation={onNewConversation}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onOpenSkill={onOpenSkill}
-          onOpenThread={onOpenThread}
-          onRenameThread={onRenameThread}
-          onDeleteThread={onDeleteThread}
-          onReorderThreads={onReorderThreads}
-          onPinThread={onPinThread}
-        />
-      ))}
+      <div className={sidebarFolderStackClass}>
+        {projects.map((project) => (
+          <ProjectRow
+            key={project.id}
+            project={project}
+            threads={threadsByProject[project.id] ?? []}
+            open={Boolean(expanded[project.id])}
+            activeId={activeId}
+            runningId={runningId}
+            waitingIds={waitingIds}
+            askingIds={askingIds}
+            drag={sortable.bind(project.id)}
+            onSelect={onSelect}
+            onToggle={onToggle}
+            onNewConversation={onNewConversation}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onOpenSkill={onOpenSkill}
+            onOpenThread={onOpenThread}
+            onRenameThread={onRenameThread}
+            onDeleteThread={onDeleteThread}
+            onReorderThreads={onReorderThreads}
+            onPinThread={onPinThread}
+          />
+        ))}
+      </div>
 
       {projects.length === 0 ? (
-        <p className={cn(chromeTypeClass, "px-2 py-2 text-sidebar-foreground/70")}>
+        <p className={cn(chromeTypeClass, "px-[var(--sidebar-row-px)] py-3 text-sidebar-foreground/70")}>
           {t("projects.empty")}
         </p>
       ) : null}
@@ -196,7 +200,7 @@ function ProjectRow({
     !busy &&
     threads.some((thread) => Boolean(waitingIds?.has(thread.id)))
   return (
-    <div className="mb-0.5" data-testid="project-wrap" data-id={project.id}>
+    <div className={sidebarStackClass} data-testid="project-wrap" data-id={project.id}>
       <div
         {...drag}
         data-testid="project-row"
@@ -221,7 +225,7 @@ function ProjectRow({
               <FolderOpen
                 data-testid="project-folder"
                 data-open="true"
-                className="size-4 shrink-0"
+                className="size-[16px] shrink-0"
                 aria-hidden="true"
               />
             ) : (
@@ -229,7 +233,7 @@ function ProjectRow({
                 <Folder
                   data-testid="project-folder"
                   data-open="false"
-                  className="size-4 shrink-0"
+                  className="size-[16px] shrink-0"
                   aria-hidden="true"
                 />
                 {asking ? (
@@ -298,7 +302,7 @@ function ProjectRow({
         </Button>
       </div>
       {open ? (
-        <div data-testid="project-threads">
+        <div data-testid="project-threads" className={sidebarStackClass}>
           <SidebarThreadGroup
             threads={threads}
             activeId={activeId}

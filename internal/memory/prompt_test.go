@@ -44,6 +44,9 @@ func TestPromptCarriesTheProjectInstructionAndTheNotes(t *testing.T) {
 	if !strings.Contains(out, "one or two sentences") || !strings.Contains(out, "collides") {
 		t.Fatalf("the manager must see the same quality bar the tools enforce:\n%s", out)
 	}
+	if !strings.Contains(out, "share a stem") {
+		t.Fatalf("the manager must be told a shared stem is the same subject:\n%s", out)
+	}
 }
 
 // Only names and summaries. Inlining every procedure would make the prompt
@@ -156,7 +159,8 @@ func TestMemoryPromptsStayGenericAndGrounded(t *testing.T) {
 	prompts := map[string]string{
 		"sections": PromptSections("", Snapshot{Limit: 100},
 			[]SkillInfo{{Name: "n", Description: "d"}}, 50, true),
-		"review": ReviewPrompt(),
+		"review":  ReviewPrompt(),
+		"catalog": ReviewCatalog([]SkillInfo{{Name: "n", Description: "d"}}, [][]string{{"n", "n-extra"}}),
 		"worker": WorkerPromptSections(Snapshot{Limit: 100},
 			[]SkillInfo{{Name: "n", Description: "d"}}, 50),
 	}
@@ -202,10 +206,43 @@ func TestReviewPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 			t.Fatalf("the reviewer must be told about %q:\n%s", want, p)
 		}
 	}
-	for _, want := range []string{"not continuing", "nothing worth storing", "write nothing", "do not retry", "collides", "remaining count", "one or two"} {
+	for _, want := range []string{"not continuing", "nothing worth storing", "write nothing", "do not retry", "collides", "remaining count", "one or two", "merge", "stem"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("the reviewer must be allowed to store nothing (%q missing):\n%s", want, p)
 		}
+	}
+}
+
+func TestReviewCatalogListsSkillsAndFamiliesWithoutInventingAConversation(t *testing.T) {
+	if ReviewCatalog(nil, nil) != "" {
+		t.Fatal("an empty catalog must not become a review transcript")
+	}
+	bare := ReviewCatalog(nil, [][]string{{"weekly-rollup-notes", "weekly-rollup-send"}})
+	if !strings.Contains(bare, "(none)") || !strings.Contains(bare, "weekly-rollup-notes, weekly-rollup-send") {
+		t.Fatalf("a family with no index rows:\n%s", bare)
+	}
+	out := ReviewCatalog(
+		[]SkillInfo{{Name: "weekly-rollup-notes", Description: "when filing notes"}},
+		[][]string{{"weekly-rollup-notes", "weekly-rollup-send"}},
+	)
+	if !strings.Contains(out, "weekly-rollup-notes — when filing notes") {
+		t.Fatalf("index missing:\n%s", out)
+	}
+	if !strings.Contains(out, "weekly-rollup-notes, weekly-rollup-send") {
+		t.Fatalf("family missing:\n%s", out)
+	}
+	if !strings.Contains(out, "must become one skill") {
+		t.Fatalf("the catalog must say the family has to be folded:\n%s", out)
+	}
+	joined := AttachReviewCatalog("Conversation to review:\n\nhuman: hi\n", out)
+	if !strings.HasPrefix(joined, "Conversation to review:") || !strings.Contains(joined, "Skills already recorded") {
+		t.Fatalf("attached catalog:\n%s", joined)
+	}
+	if AttachReviewCatalog("Conversation to review:\n", "") != "Conversation to review:\n" {
+		t.Fatal("an empty catalog must not rewrite the transcript")
+	}
+	if got := AttachReviewCatalog("  ", "Skills already recorded"); got != "Skills already recorded" {
+		t.Fatalf("an empty transcript must still carry a catalog that exists: %q", got)
 	}
 }
 

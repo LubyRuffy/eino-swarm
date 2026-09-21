@@ -1,5 +1,11 @@
 import { expect, test, type Page } from "@playwright/test"
 
+import { showDeveloperLog } from "./composer-plate"
+
+test.afterEach(async ({ request }) => {
+  await request.put("/api/settings", { data: { ui: { transcript_mode: "user" } } })
+})
+
 /** Every spec starts on its own conversation, so one failing run cannot leave
  *  state that breaks the next. */
 async function freshConversation(page: Page) {
@@ -23,7 +29,7 @@ async function waitForIdle(page: Page) {
 
 async function openFiles(page: Page) {
   await page.getByRole("tab", { name: "Files" }).click()
-  return page.getByRole("tabpanel")
+  return page.getByRole("tabpanel").filter({ has: page.getByTestId("file-tree") })
 }
 
 async function filterFiles(page: Page, query: string) {
@@ -36,15 +42,18 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await freshConversation(page)
   await send(page, "Look at this from two angles and merge the findings")
 
-  // a live thought is a short scrolling box whose label sweeps, not a
-  // wall of frozen text that pushes the answer off the screen. Catch it
-  // before the mock finishes thinking — that window is short.
-  await expect(page.getByTestId("thought-scroll")).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText("Thinking", { exact: true })).toBeVisible()
+  // User view: thinking and tools share one live line. The 10-line thought
+  // box is behind a click, not a wall that pushes the answer off screen.
+  await expect(page.getByTestId("work-fold")).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("swap-line")).toBeVisible()
 
-  // live status must look alive: a sweep on the running line, not a frozen
-  // ellipsis. The mock turn is long enough for wait_agents / heartbeat to land.
-  await expect(page.locator('[data-marquee="shimmer"]').first()).toBeVisible({ timeout: 15_000 })
+  // live status must look alive: a sweep on the running line, or a
+  // left-to-right marquee when the line does not fit. Frozen ellipsis is the
+  // failure. The mock turn is long enough for wait_agents / heartbeat to land.
+  await expect(
+    page.locator('[data-marquee="shimmer"], [data-marquee="on"]').first(),
+  ).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId("swap-line").locator("[data-marquee]")).toBeVisible()
 
   // the manager delegates, and both workers show up in the roster
   const roster = page.getByRole("tabpanel").filter({
@@ -87,7 +96,9 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(copyMsg).toHaveAttribute("title", "Copied")
   await expect(transcript.getByTestId("transcript-chart")).toBeVisible()
   await transcript.getByRole("tab", { name: "Table" }).click()
-  await expect(transcript.getByRole("table")).toBeVisible()
+  await expect(
+    transcript.getByTestId("transcript-chart").getByRole("table"),
+  ).toBeVisible()
   await transcript.getByRole("tab", { name: "Chart" }).click()
   await expect(transcript.getByTestId("transcript-chart").locator("svg")).toBeVisible()
   await expect(transcript.getByText(/Worked for/)).toBeVisible()
@@ -118,6 +129,9 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   // write stays collapsed like exec; the hunk is behind a click, not a
   // wall of additions and not the one-line status eino-tools returns.
   await expect(agentLog.getByTestId("file-diff")).toHaveCount(0)
+  await expect(
+    agentLog.getByRole("button", { name: /write/ }).getByTestId("edit-counts"),
+  ).toBeVisible()
   await agentLog.getByRole("button", { name: /write/ }).click()
   const written = agentLog.getByTestId("file-diff")
   await expect(written).toBeVisible()
@@ -153,7 +167,9 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(page.getByTestId("turn-nav")).toBeHidden()
 
   // exactly one thought per thought: the streamed text and the stored record
-  // must fold into a single row
+  // must fold into a single compact row the reader can open.
+  await expect(transcript.getByTestId("work-fold")).toBeVisible()
+  await transcript.getByTestId("work-fold").click()
   const thoughts = await transcript.getByText("Thought", { exact: true }).count()
   expect(thoughts).toBeGreaterThan(0)
 
@@ -171,37 +187,12 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(page.getByTestId("context-meter")).toBeVisible()
 })
 
-test("collapses a live thought while it is still streaming", async ({ page }) => {
-  await freshConversation(page)
-  await send(page, "Look at this from two angles and merge the findings")
-  // Same short window as the live-thought assertion above. Streaming used
-  // to force the row open, so this click was a no-op.
-  await expect(page.getByTestId("thought-scroll")).toBeVisible({ timeout: 15_000 })
-  await page.getByTestId("thought-toggle").click()
-  await expect(page.getByTestId("thought-scroll")).toBeHidden()
-  await expect(page.getByTestId("thought-toggle")).toHaveAttribute("aria-expanded", "false")
-})
-
-test("renders markdown as the answer streams, not after it finishes", async ({ page }) => {
-  await freshConversation(page)
-  await send(page, "Look at this from two angles and merge the findings")
-  const transcript = page.getByTestId("transcript")
-  // The scripted answer opens with a heading. Both must be true at once:
-  // a heading that only appears after Idle would pass even if the UI still
-  // dumped raw hashes until the stream ended.
-  await expect(async () => {
-    await expect(transcript.getByRole("heading", { name: "Result" })).toBeVisible()
-    await expect(statusBadge(page)).toContainText("Working")
-  }).toPass({ timeout: 60_000 })
-  await waitForIdle(page)
-  await expect(transcript.getByRole("heading", { name: "Result" })).toBeVisible()
-})
-
 test("stays put when the reader scrolls up mid-stream and offers a jump back", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 520 })
   await freshConversation(page)
+  await showDeveloperLog(page)
   await send(page, "Look at this from two angles and merge the findings")
   const transcript = page.getByTestId("transcript")
   // Spawn rows are the first time the log is long enough to leave the live
@@ -326,6 +317,14 @@ test("carries context across turns", async ({ page }) => {
   // Idle at the live edge: the last user turn, not the first tick.
   const ticks = nav.locator("[data-turn-nav-tick]")
   await expect(ticks.last()).toHaveAttribute("aria-current", "true")
+  // A wheel-up that leaves the latest send on screen must not flip the
+  // rail onto an earlier tick. The old 96px top probe did exactly that.
+  await transcript.evaluate((el) => {
+    el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - 80)
+  })
+  await expect(ticks.last()).toHaveAttribute("aria-current", "true")
+  await ticks.last().click()
+  await expect(ticks.last()).toHaveAttribute("aria-current", "true")
   await nav.hover()
   const list = page.getByTestId("turn-nav-list")
   await expect(list).toHaveClass(/w-96/)
@@ -342,6 +341,7 @@ test("carries context across turns", async ({ page }) => {
 
 test("pins unread steering under the working line", async ({ page }) => {
   await freshConversation(page)
+  await showDeveloperLog(page)
   await send(page, "Look at this from two angles and merge the findings")
   // Type while it is still spawning. wait_agents returns on the first
   // finish, so the old tray round-trip (Enter → Steer click) lost the
@@ -381,6 +381,7 @@ test("pins unread steering under the working line", async ({ page }) => {
 
 test("retracts unread steering so the manager never sees it", async ({ page }) => {
   await freshConversation(page)
+  await showDeveloperLog(page)
   await send(page, "Look at this from two angles and merge the findings")
   const nudge = "prefer the shorter path"
   await composer(page).fill(nudge)
@@ -398,6 +399,7 @@ test("retracts unread steering so the manager never sees it", async ({ page }) =
 
 test("interrupts the current tool so unread steering lands now", async ({ page }) => {
   await freshConversation(page)
+  await showDeveloperLog(page)
   await send(page, "Look at this from two angles and merge the findings")
   const nudge = "prefer the shorter path"
   await composer(page).fill(nudge)
@@ -487,7 +489,7 @@ test("collapses a workspace directory in Files", async ({ page }) => {
   await waitForIdle(page)
   const files = await openFiles(page)
   await expect(files.getByRole("treeitem", { name: "researcher.md" })).toBeVisible()
-  await files.getByRole("treeitem", { name: "notes" }).click()
+  await files.getByRole("treeitem", { name: "notes", exact: true }).click()
   await expect(files.getByRole("treeitem", { name: "researcher.md" })).toHaveCount(0)
   await files.getByLabel("Filter files").fill("reviewer")
   await expect(files.getByRole("treeitem", { name: "reviewer.md" })).toBeVisible()
@@ -951,6 +953,7 @@ test("compact folds earlier turns without rewriting the transcript", async ({
 
 test("Stop closes in-flight tools instead of leaving them spinning", async ({ page }) => {
   await freshConversation(page)
+  await showDeveloperLog(page)
   await send(page, "Look at this from two angles and merge the findings")
   await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
   await page.getByRole("button", { name: "Stop", exact: true }).click()

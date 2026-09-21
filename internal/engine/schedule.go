@@ -96,6 +96,13 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 		return nil, err
 	}
 
+	title := in.Title
+	titleAuto := false
+	if title == "" {
+		title = titleFrom(in.Prompt)
+		titleAuto = true
+	}
+
 	row := &store.Schedule{
 		Kind:            in.Kind,
 		OriginThreadID:  in.OriginThreadID,
@@ -104,7 +111,8 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 		ProviderID:      in.ProviderID,
 		Model:           in.Model,
 		ReasoningEffort: in.ReasoningEffort,
-		Title:           in.Title,
+		Title:           title,
+		TitleAuto:       titleAuto,
 		Prompt:          in.Prompt,
 		DelayS:          in.DelayS,
 		EveryS:          in.EveryS,
@@ -122,6 +130,7 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 		return nil, err
 	}
 	e.recordScheduleArmed(row)
+	e.kickScheduleTitle(row)
 	return row, nil
 }
 
@@ -279,6 +288,7 @@ func (e *Engine) PatchScheduleFields(id string, p ScheduleFields) (*store.Schedu
 	fields := map[string]any{}
 	if p.Title != nil {
 		fields["title"] = strings.TrimSpace(*p.Title)
+		fields["title_auto"] = false
 	}
 	if p.Prompt != nil {
 		prompt := strings.TrimSpace(*p.Prompt)

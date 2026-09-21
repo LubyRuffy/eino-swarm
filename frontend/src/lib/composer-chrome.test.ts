@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest"
 
 import {
+  COMPOSER_FADE_AIR_PX,
+  COMPOSER_FADE_OVERHANG_PX,
+  COMPOSER_FADE_OVERHANG_VAR,
   COMPOSER_PAD_VAR,
   COMPOSER_STAGE_ATTR,
   clearComposerPad,
+  composerPadPx,
   resizeComposerArea,
   syncComposerPad,
 } from "./composer-chrome"
@@ -21,19 +25,40 @@ afterEach(() => {
   document.body.replaceChildren()
 })
 
+describe("composerPadPx", () => {
+  // Pins live in the dock. A 45% opaque stop over dock+hang covered them
+  // on a tall stack and the last answer on a compact one. Pad follows the
+  // dock; the slab behind it is what hides chip gaps.
+  it("grows with the dock so goal and wait pins stay in the slab", () => {
+    expect(composerPadPx(92)).toBe(92 + COMPOSER_FADE_AIR_PX)
+    expect(composerPadPx(220)).toBe(220 + COMPOSER_FADE_AIR_PX)
+  })
+
+  it("ignores a jsdom zero height", () => {
+    expect(composerPadPx(0)).toBe(0)
+  })
+})
+
 describe("syncComposerPad", () => {
   // The last turn has to be able to scroll out from under the box. A missing
   // stage is a unit-test render, not a hole in the real shell.
-  it("writes the box height onto the conversation stage", () => {
+  it("writes the dock plus join air onto the conversation stage", () => {
     const { stage, child } = stageWithChild()
     syncComposerPad(child, 144)
-    expect(stage.style.getPropertyValue(COMPOSER_PAD_VAR)).toBe("144px")
+    expect(stage.style.getPropertyValue(COMPOSER_PAD_VAR)).toBe(
+      `${144 + COMPOSER_FADE_AIR_PX}px`,
+    )
+    expect(stage.style.getPropertyValue(COMPOSER_FADE_OVERHANG_VAR)).toBe(
+      `${COMPOSER_FADE_OVERHANG_PX}px`,
+    )
   })
 
   it("rounds a fractional height so the pad is a CSS pixel", () => {
     const { stage, child } = stageWithChild()
     syncComposerPad(child, 144.6)
-    expect(stage.style.getPropertyValue(COMPOSER_PAD_VAR)).toBe("145px")
+    expect(stage.style.getPropertyValue(COMPOSER_PAD_VAR)).toBe(
+      `${145 + COMPOSER_FADE_AIR_PX}px`,
+    )
   })
 
   it("ignores a zero height so a jsdom layout cannot wipe the CSS fallback", () => {
@@ -56,6 +81,7 @@ describe("clearComposerPad", () => {
     syncComposerPad(child, 144)
     clearComposerPad(child)
     expect(stage.style.getPropertyValue(COMPOSER_PAD_VAR)).toBe("")
+    expect(stage.style.getPropertyValue(COMPOSER_FADE_OVERHANG_VAR)).toBe("")
   })
 })
 
@@ -74,5 +100,14 @@ describe("resizeComposerArea", () => {
     Object.defineProperty(el, "scrollHeight", { value: 480, configurable: true })
     resizeComposerArea(el, { maxPx: 200 })
     expect(el.style.height).toBe("200px")
+    expect(el.style.overflowY).toBe("auto")
+  })
+
+  it("hides the scrollbar while the draft still fits", () => {
+    const el = document.createElement("textarea")
+    Object.defineProperty(el, "scrollHeight", { value: 48, configurable: true })
+    resizeComposerArea(el, { maxPx: 200 })
+    expect(el.style.height).toBe("48px")
+    expect(el.style.overflowY).toBe("hidden")
   })
 })

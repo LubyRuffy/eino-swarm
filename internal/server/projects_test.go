@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
@@ -113,6 +114,7 @@ func TestProjectRoutesRefuseWhatTheyShould(t *testing.T) {
 	h.json(http.MethodDelete, "/api/projects/pj_missing", nil, http.StatusNotFound)
 	h.json(http.MethodGet, "/api/projects/pj_missing/memory", nil, http.StatusNotFound)
 	h.json(http.MethodPut, "/api/projects/pj_missing/memory", map[string]any{"text": "x"}, http.StatusNotFound)
+	h.json(http.MethodPost, "/api/projects/pj_missing/memory/tidy-skills", nil, http.StatusNotFound)
 	h.json(http.MethodGet, "/api/projects/pj_missing/skills/anything", nil, http.StatusNotFound)
 
 	// A project needs a name, and a body that is not JSON is a bad request
@@ -197,6 +199,9 @@ func TestMemoryRoutesReadEditAndPrune(t *testing.T) {
 	got := h.json(http.MethodGet, "/api/projects/"+id+"/memory", nil, http.StatusOK)["memory"].(map[string]any)
 	if got["dir"] == "" || got["enabled"] != true {
 		t.Fatalf("memory=%v", got)
+	}
+	if got["needs_tidy"] != false {
+		t.Fatalf("an empty catalog is already tidy: %v", got["needs_tidy"])
 	}
 	// The panel iterates the skills, so an empty store must send a list and
 	// never JSON null.
@@ -453,4 +458,102 @@ func (h *harness) waitForTitleEvent(turnID string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	h.t.Fatalf("turn %s was never named", turnID)
+}
+
+func plantProjectSkill(t *testing.T, dir, name, desc, body string) {
+	t.Helper()
+	path := filepath.Join(dir, memory.SkillsDir, name, memory.SkillFile)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	raw := "---\nname: " + name + "\ndescription: " + desc + "\n---\n\n" + body + "\n"
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A catalog edited by hand does not wait for a turn. The Memory panel's
+// tidy is the same fold, and GET says when it is still needed.
+func TestTidySkillsFoldsAPlantedFamily(t *testing.T) {
+	h := newHarness(t)
+	p := h.newProject(map[string]any{"name": "P"})
+	id := p["id"].(string)
+	dir := h.app.Engine.ProjectMemory(id).Dir()
+	plantProjectSkill(t, dir, "weekly-rollup-notes", "when filing notes", "1. gather notes")
+	plantProjectSkill(t, dir, "weekly-rollup-send", "when sending", "1. send it")
+
+	before := h.json(http.MethodGet, "/api/projects/"+id+"/memory", nil, http.StatusOK)["memory"].(map[string]any)
+	if before["needs_tidy"] != true {
+		t.Fatalf("a planted family must be marked for tidy: %v", before)
+	}
+
+	got := h.json(http.MethodPost, "/api/projects/"+id+"/memory/tidy-skills", nil, http.StatusOK)
+	if got["folded"] != true {
+		t.Fatalf("the family must fold: %v", got)
+	}
+	report := got["report"].(map[string]any)
+	if report["scanned"].(float64) != 2 || report["after"].(float64) != 1 {
+		t.Fatalf("report counts=%v", report)
+	}
+	created := report["created"].([]any)
+	deleted := report["deleted"].([]any)
+	if len(created) != 1 || created[0] != "weekly-rollup" {
+		t.Fatalf("created=%v", created)
+	}
+	if len(deleted) != 2 {
+		t.Fatalf("deleted=%v", deleted)
+	}
+	merged := report["merged"].([]any)
+	if len(merged) != 1 || merged[0].(map[string]any)["keep"] != "weekly-rollup" {
+		t.Fatalf("merged=%v", merged)
+	}
+	mem := got["memory"].(map[string]any)
+	if mem["needs_tidy"] != false {
+		t.Fatalf("after a fold the catalog is tidy: %v", mem)
+	}
+	skills := mem["skills"].([]any)
+	if len(skills) != 1 || skills[0].(map[string]any)["name"] != "weekly-rollup" {
+		t.Fatalf("skills=%v", skills)
+	}
+
+	again := h.json(http.MethodPost, "/api/projects/"+id+"/memory/tidy-skills", nil, http.StatusOK)
+	if again["folded"] != false {
+		t.Fatalf("a second tidy is a no-op: %v", again)
+	}
+}
+
+func TestTidySkillsReportsAnUnreadableStore(t *testing.T) {
+	h := newHarness(t)
+	p := h.newProject(map[string]any{"name": "P"})
+	id := p["id"].(string)
+	dir := h.app.Engine.ProjectMemory(id).Dir()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, memory.SkillsDir), []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.json(http.MethodPost, "/api/projects/"+id+"/memory/tidy-skills", nil, http.StatusBadRequest)
+}
+
+func TestTidySkillsReportsWhenNotesCannotBeReadAfterTheFold(t *testing.T) {
+	h := newHarness(t)
+	p := h.newProject(map[string]any{"name": "P"})
+	id := p["id"].(string)
+	dir := h.app.Engine.ProjectMemory(id).Dir()
+	if err := os.MkdirAll(filepath.Join(dir, "MEMORY.md"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	h.json(http.MethodPost, "/api/projects/"+id+"/memory/tidy-skills", nil, http.StatusBadRequest)
+}
+
+func TestTidySkillsRefusesAfterShutdown(t *testing.T) {
+	h := newHarness(t)
+	p := h.newProject(map[string]any{"name": "P"})
+	id := p["id"].(string)
+	h.app.Engine.Shutdown()
+	got := h.json(http.MethodPost, "/api/projects/"+id+"/memory/tidy-skills", nil, http.StatusConflict)
+	if got["code"] != "idle" {
+		t.Fatalf("tidy after shutdown=%v", got)
+	}
 }

@@ -41,6 +41,16 @@ describe("slim rpc", () => {
     expect(decoded.threads).toHaveLength(5)
   })
 
+  it("keeps the computer name the host sent", () => {
+    const decoded = decodeResponse(
+      new TextEncoder().encode(
+        JSON.stringify({ v: 1, id: "1", ok: true, host: "desk-one" }),
+      ),
+    )
+    expect(decoded.host).toBe("desk-one")
+    expect(decoded.host).not.toMatch(/MacBook Pro|iMac|Office/)
+  })
+
   it("encodes watch with since and decodes an event push", () => {
     const req = encodeRequest({
       v: PROTOCOL_V,

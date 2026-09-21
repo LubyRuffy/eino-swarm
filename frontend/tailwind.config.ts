@@ -125,6 +125,17 @@ export default {
           from: { backgroundPosition: "200% center" },
           to: { backgroundPosition: "-200% center" },
         },
+        // Compact transcript: the previous activity leaves upward, the
+        // next one arrives from below. Same motion Cursor uses on the
+        // live working line.
+        "swap-in": {
+          from: { transform: "translateY(100%)", opacity: "0" },
+          to: { transform: "translateY(0)", opacity: "1" },
+        },
+        "swap-out": {
+          from: { transform: "translateY(0)", opacity: "1" },
+          to: { transform: "translateY(-100%)", opacity: "0" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -132,6 +143,8 @@ export default {
         breathe: "breathe 1.6s ease-in-out infinite",
         marquee: "marquee 12s linear infinite",
         shimmer: "shimmer 2.2s ease-in-out infinite",
+        "swap-in": "swap-in 0.22s ease-out both",
+        "swap-out": "swap-out 0.22s ease-out both",
       },
     },
   },

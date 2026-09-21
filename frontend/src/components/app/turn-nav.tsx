@@ -39,6 +39,9 @@ export function TurnNav({
   const [open, setOpen] = useState(false)
   const [hovered, setHovered] = useState<string>()
   const [active, setActive] = useState<string | undefined>(() => items.at(-1)?.id)
+  // A click must keep that tick until the reader moves. Measure after
+  // scrollIntoView used to overwrite it with whatever sat under the probe.
+  const stickRef = useRef<string | undefined>(undefined)
 
   const itemKey = items.map((i) => `${i.id}\0${i.text}`).join("\n")
   const itemsRef = useRef(items)
@@ -46,12 +49,21 @@ export function TurnNav({
   const listRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
+    stickRef.current = undefined
+  }, [itemKey])
+
+  useLayoutEffect(() => {
     const root = scrollerRef.current
     if (!root) return
     const measure = () => {
       const list = itemsRef.current
       if (pinned) {
+        stickRef.current = undefined
         setActive(list.at(-1)?.id)
+        return
+      }
+      if (stickRef.current) {
+        setActive(stickRef.current)
         return
       }
       setActive(
@@ -69,22 +81,39 @@ export function TurnNav({
         ),
       )
     }
+    const onWheel = () => {
+      if (!stickRef.current) return
+      stickRef.current = undefined
+      measure()
+    }
     measure()
     if (typeof ResizeObserver === "undefined") {
       root.addEventListener("scroll", measure, { passive: true })
-      return () => root.removeEventListener("scroll", measure)
+      root.addEventListener("wheel", onWheel, { passive: true })
+      return () => {
+        root.removeEventListener("scroll", measure)
+        root.removeEventListener("wheel", onWheel)
+      }
     }
     const ro = new ResizeObserver(measure)
     ro.observe(root)
     const inner = root.firstElementChild
     if (inner) ro.observe(inner)
     root.addEventListener("scroll", measure, { passive: true })
+    root.addEventListener("wheel", onWheel, { passive: true })
     return () => {
       ro.disconnect()
       root.removeEventListener("scroll", measure)
+      root.removeEventListener("wheel", onWheel)
     }
     // itemKey is id+text; a streamed answer must not rebuild the rail.
   }, [scrollerRef, itemKey, pinned])
+
+  const jump = (id: string) => {
+    stickRef.current = id
+    setActive(id)
+    onJump(id)
+  }
 
   const highlight = hovered ?? active ?? items.at(-1)?.id
 
@@ -116,7 +145,7 @@ export function TurnNav({
     const id = items[next]?.id
     if (!id) return
     setHovered(id)
-    onJump(id)
+    jump(id)
   }
 
   return (
@@ -163,7 +192,7 @@ export function TurnNav({
                 )}
                 onMouseEnter={() => setHovered(item.id)}
                 onFocus={() => setHovered(item.id)}
-                onClick={() => onJump(item.id)}
+                onClick={() => jump(item.id)}
               >
                 <span
                   className={cn(
@@ -197,7 +226,7 @@ export function TurnNav({
                     : "text-muted-foreground hover:text-foreground",
                 )}
                 onMouseEnter={() => setHovered(item.id)}
-                onClick={() => onJump(item.id)}
+                onClick={() => jump(item.id)}
               >
                 <span className="line-clamp-2 break-words">
                   {previewText(item.text, TURN_NAV_LIST_PREVIEW)}

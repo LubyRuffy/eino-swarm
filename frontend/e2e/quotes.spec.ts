@@ -29,6 +29,8 @@ test("quotes selected transcript text into the next message", async ({ page }) =
   await bubble.selectText()
   await page.getByRole("menuitem", { name: "Add to chat" }).click()
   await expect(page.getByLabel("1 annotation")).toBeVisible()
+  await expect(page.getByTestId("quote-snippet")).toHaveCount(0)
+  await page.getByLabel("1 annotation").hover()
   await expect(page.getByTestId("quote-snippet")).toContainText("Selected text:")
   await expect(page.getByTestId("quote-snippet")).toContainText(first)
   await expect(page.getByRole("button", { name: "Edit selected text 1" })).toBeVisible()
@@ -62,8 +64,9 @@ test("quotes selected text while a turn is still streaming", async ({ page }) =>
   await expect(add).toBeVisible()
 
   // A live thought's inner scroll and auto-follow used to flash the pill
-  // then hide it on the next token.
-  await expect(page.getByTestId("thought-scroll")).toBeVisible({ timeout: 15_000 })
+  // then hide it on the next token. User view folds that thought; the
+  // compact row is the thing that is still streaming.
+  await expect(page.getByTestId("work-fold")).toBeVisible({ timeout: 15_000 })
   await expect(add).toBeVisible()
   await add.click()
   await expect(page.getByLabel("1 annotation")).toBeVisible()

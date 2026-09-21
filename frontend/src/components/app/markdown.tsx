@@ -144,6 +144,19 @@ function codeText(children: ReactNode): string {
   return String(children ?? "").replace(/\n$/, "")
 }
 
+/** A GFM table's min-content is the longest token. Wrapping it is what
+ *  keeps that token from widening the conversation under the side panel. */
+function MarkdownTable({
+  node: _node,
+  ...props
+}: ComponentPropsWithoutRef<"table"> & { node?: unknown }) {
+  return (
+    <div className="md-table thin-scrollbar min-w-0 max-w-full overflow-x-auto" data-testid="markdown-table">
+      <table {...props} />
+    </div>
+  )
+}
+
 function MarkdownLink({
   href,
   children,
@@ -177,4 +190,5 @@ const COMPONENTS: Components = {
   a: MarkdownLink,
   pre: MarkdownPre,
   code: MarkdownInlineCode,
+  table: MarkdownTable,
 }

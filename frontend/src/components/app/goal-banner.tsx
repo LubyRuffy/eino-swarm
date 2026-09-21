@@ -124,9 +124,7 @@ export function GoalBanner({
         ? idle && !capped
           ? t("goal.idleHint")
           : t("goal.capHint")
-        : waiting && !running
-          ? t("goal.waitHint")
-          : ""
+        : ""
 
   const save = () => {
     if (!open.current) return
@@ -141,7 +139,11 @@ export function GoalBanner({
   }
 
   return (
-    <div data-testid="goal-banner" className={composerPinClass}>
+    <div
+      data-testid="goal-banner"
+      data-waiting={waiting ? "true" : undefined}
+      className={composerPinClass}
+    >
       <div className="flex items-center gap-2">
         <Flag className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
         <span className="shrink-0 text-muted-foreground">{state}</span>
@@ -220,7 +222,8 @@ export function GoalBanner({
       {reason ? (
         <p
           data-testid="goal-reason"
-          className="mt-0.5 line-clamp-2 text-muted-foreground"
+          className="mt-0.5 truncate text-muted-foreground"
+          title={reason}
         >
           {reason}
         </p>

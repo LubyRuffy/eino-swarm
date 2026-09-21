@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { projectOf, useProjects } from "@/store/projects"
 import type { Project, ProjectMemory } from "@/lib/types"
+import { emptyTidyReport } from "@/lib/skill-tidy"
 
 // The interesting behaviour here is which project's memory ends up on screen,
 // so the API is faked and the panel is left out of it.
@@ -28,6 +29,10 @@ const { fake, FakeApiError } = vi.hoisted(() => {
       conflict: false,
       skills: {} as Record<string, { name: string; description: string; updated_at: string }[]>,
       reordered: [] as string[],
+      tidied: [] as string[],
+      tidyDelays: {} as Record<string, number>,
+      tidyFolded: false,
+      foldedSkills: {} as Record<string, { name: string; description: string; updated_at: string }[]>,
     },
   }
 })
@@ -77,6 +82,40 @@ vi.mock("@/lib/api", () => ({
     deleteSkill: async (id: string, name: string) => {
       fake.deleted.push(`${id}/${name}`)
     },
+    tidySkills: async (id: string) => {
+      const delay = fake.tidyDelays[id] ?? 0
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay))
+      fake.tidied.push(id)
+      if (fake.fail) throw new Error("cannot tidy skills")
+      const skills = fake.foldedSkills[id] ?? fake.skills[id] ?? []
+      const before = (fake.skills[id] ?? []).length
+      const report = fake.tidyFolded
+        ? {
+            scanned: before,
+            before,
+            after: skills.length,
+            families: 1,
+            unchanged: 0,
+            created: ["weekly-rollup"],
+            deleted: ["weekly-rollup-notes", "weekly-rollup-send"],
+            merged: [
+              {
+                keep: "weekly-rollup",
+                dropped: ["weekly-rollup-notes", "weekly-rollup-send"],
+                created: true,
+              },
+            ],
+          }
+        : emptyTidyReport(before)
+      return {
+        memory: { ...memory(id), skills, needs_tidy: false },
+        report,
+        changes: fake.tidyFolded
+          ? [{ target: "skill_manage", action: "merge", name: "weekly-rollup" }]
+          : [],
+        folded: fake.tidyFolded,
+      }
+    },
   },
 }))
 
@@ -112,6 +151,10 @@ beforeEach(() => {
   fake.conflict = false
   fake.skills = {}
   fake.reordered = []
+  fake.tidied.length = 0
+  fake.tidyDelays = {}
+  fake.tidyFolded = false
+  fake.foldedSkills = {}
   useProjects.setState({
     projects: [],
     selectedId: undefined,
@@ -122,6 +165,9 @@ beforeEach(() => {
     reviewing: false,
     reviewHint: undefined,
     pendingReviewTurnId: undefined,
+    tidying: false,
+    tidyReport: undefined,
+    tidyError: undefined,
     error: undefined,
   })
 })
@@ -292,6 +338,80 @@ describe("the memory panel's data", () => {
   it("ignores a skill deletion with no project open", async () => {
     await useProjects.getState().removeSkill("a-procedure")
     expect(fake.deleted).toEqual([])
+  })
+
+  it("folds overlapping skills and copies the index onto the project", async () => {
+    fake.projects = [project("a")]
+    fake.skills = {
+      pj_a: [
+        { name: "weekly-rollup-notes", description: "when filing", updated_at: "" },
+        { name: "weekly-rollup-send", description: "when sending", updated_at: "" },
+      ],
+    }
+    fake.foldedSkills = {
+      pj_a: [{ name: "weekly-rollup", description: "when filing the week", updated_at: "" }],
+    }
+    fake.tidyFolded = true
+    await useProjects.getState().refresh()
+    await useProjects.getState().loadMemory("pj_a")
+    await useProjects.getState().tidySkills()
+    expect(fake.tidied).toEqual(["pj_a"])
+    expect(useProjects.getState().tidying).toBe(false)
+    expect(useProjects.getState().tidyReport?.created).toEqual(["weekly-rollup"])
+    expect(useProjects.getState().tidyReport?.deleted).toEqual([
+      "weekly-rollup-notes",
+      "weekly-rollup-send",
+    ])
+    expect(useProjects.getState().memory?.skills.map((s) => s.name)).toEqual([
+      "weekly-rollup",
+    ])
+    expect(useProjects.getState().projects[0].skills?.map((s) => s.name)).toEqual([
+      "weekly-rollup",
+    ])
+  })
+
+  it("says so when the catalog was already tidy", async () => {
+    await useProjects.getState().loadMemory("pj_a")
+    await useProjects.getState().tidySkills()
+    expect(useProjects.getState().tidyReport?.merged).toEqual([])
+    expect(useProjects.getState().tidyError).toBeUndefined()
+  })
+
+  it("stops spinning and reports a tidy that failed", async () => {
+    await useProjects.getState().loadMemory("pj_a")
+    fake.fail = true
+    await useProjects.getState().tidySkills()
+    expect(useProjects.getState().tidying).toBe(false)
+    expect(useProjects.getState().tidyError).toBe("cannot tidy skills")
+  })
+
+  it("does nothing when asked to tidy with no project open", async () => {
+    await useProjects.getState().tidySkills()
+    expect(fake.tidied).toEqual([])
+  })
+
+  it("ignores a slow tidy for a project that is no longer open", async () => {
+    fake.tidyDelays = { pj_slow: 30 }
+    fake.tidyFolded = true
+    fake.foldedSkills = {
+      pj_slow: [{ name: "kept", description: "when it applies", updated_at: "" }],
+    }
+    await useProjects.getState().loadMemory("pj_slow")
+    const slow = useProjects.getState().tidySkills()
+    await useProjects.getState().loadMemory("pj_fast")
+    await slow
+    expect(useProjects.getState().memoryProjectId).toBe("pj_fast")
+    expect(useProjects.getState().tidying).toBe(false)
+    expect(useProjects.getState().memory?.skills).toEqual([])
+    expect(useProjects.getState().tidyReport).toBeUndefined()
+  })
+
+  it("dismisses the last tidy report", async () => {
+    await useProjects.getState().loadMemory("pj_a")
+    await useProjects.getState().tidySkills()
+    expect(useProjects.getState().tidyReport).toBeDefined()
+    useProjects.getState().clearTidy()
+    expect(useProjects.getState().tidyReport).toBeUndefined()
   })
 })
 

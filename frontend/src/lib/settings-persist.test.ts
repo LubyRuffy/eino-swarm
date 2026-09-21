@@ -59,8 +59,14 @@ describe("persistPayload", () => {
     expect(patch.ui).toEqual({
       locale: "zh",
       font: "system",
-      font_size: "medium",
+      ui_font_size: "medium",
+      content_font: "ui",
+      font_size: "ui",
+      code_font: "mono",
+      code_font_size: "content",
       content_width: "comfortable",
+      transcript_mode: "user",
+      palette: "zwai",
     })
   })
 
@@ -88,8 +94,14 @@ describe("persistPayload", () => {
         ui: {
           locale: "en",
           font: "serif",
+          ui_font_size: "medium",
+          content_font: "ui",
           font_size: "large",
+          code_font: "mono",
+          code_font_size: "content",
           content_width: "full",
+          transcript_mode: "user",
+          palette: "zwai",
         },
       },
       "zh",
@@ -97,8 +109,14 @@ describe("persistPayload", () => {
     expect(patch.ui).toEqual({
       locale: "zh",
       font: "serif",
+      ui_font_size: "medium",
+      content_font: "ui",
       font_size: "large",
+      code_font: "mono",
+      code_font_size: "content",
       content_width: "full",
+      transcript_mode: "user",
+      palette: "zwai",
     })
   })
 })
@@ -175,8 +193,14 @@ describe("SettingsPersist", () => {
     expect(write.mock.calls[0][0].ui).toEqual({
       locale: "zh",
       font: "system",
-      font_size: "medium",
+      ui_font_size: "medium",
+      content_font: "ui",
+      font_size: "ui",
+      code_font: "mono",
+      code_font_size: "content",
       content_width: "comfortable",
+      transcript_mode: "user",
+      palette: "zwai",
     })
     expect(write.mock.calls[0][0].log).toEqual({ level: "debug" })
   })

@@ -2,6 +2,7 @@ package remote
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -75,6 +76,80 @@ func TestListDefaultsToFiveAndOmitsProjectSecrets(t *testing.T) {
 	more := Handle(e, config.RemoteConfig{ThreadLimit: 5}, Request{ID: "2", Op: OpMore, Cursor: resp.Next}, "relay", "sess")
 	if !more.OK || len(more.Threads) != 2 {
 		t.Fatalf("more %+v", more)
+	}
+}
+
+// In progress used to sit on the same 5-slot page as Recents. Four live
+// rows left the project list with one leftover, which is how the inbox
+// looked empty under a busy roster.
+func TestListRecentPageDoesNotCountLiveRows(t *testing.T) {
+	e := testEngine(t)
+	p, err := e.CreateProject("work", "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	for i := 0; i < 6; i++ {
+		th, err := e.CreateThread("", "", p.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := e.Store().UpdateThread(th.ID, map[string]any{
+			"title":          fmt.Sprintf("idle-%d", i),
+			"last_active_at": now.Add(time.Duration(i) * time.Second),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	liveIDs := make(map[string]struct{}, 4)
+	for i := 0; i < 4; i++ {
+		th, err := e.CreateThread("", "", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := e.CreateSchedule(engine.ScheduleInput{
+			Kind: store.ScheduleThread, ThreadID: th.ID,
+			Title: "wake", Prompt: "Continue the wait.", DelayS: 3600,
+			CreatedBy: store.ScheduleCreatedManager,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := e.Store().UpdateThread(th.ID, map[string]any{
+			"title":          fmt.Sprintf("live-%d", i),
+			"last_active_at": now.Add(time.Hour).Add(time.Duration(i) * time.Second),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		liveIDs[th.ID] = struct{}{}
+	}
+	listed := Handle(e, config.RemoteConfig{ThreadLimit: 5, SummaryChars: 40}, Request{ID: "l", Op: OpList}, "relay", "s")
+	if !listed.OK {
+		t.Fatalf("list %+v", listed)
+	}
+	if len(listed.Running) != 4 {
+		t.Fatalf("roster %d %+v", len(listed.Running), listed.Running)
+	}
+	if len(listed.Threads) != 5 {
+		t.Fatalf("idle page %d %+v", len(listed.Threads), listed.Threads)
+	}
+	for _, row := range listed.Threads {
+		if _, ok := liveIDs[row.ID]; ok {
+			t.Fatalf("live row ate the recents quota: %s", row.Title)
+		}
+		if row.ProjectID != p.ID || !strings.HasPrefix(row.Title, "idle-") {
+			t.Fatalf("want project idle recents, got %+v", row)
+		}
+	}
+	if !listed.More || listed.Next == "" {
+		t.Fatal("6 idle, page 5, need more")
+	}
+	more := Handle(e, config.RemoteConfig{ThreadLimit: 5}, Request{ID: "m", Op: OpMore, Cursor: listed.Next}, "relay", "s")
+	if !more.OK || len(more.Threads) != 1 {
+		t.Fatalf("more %+v", more)
+	}
+	got := more.Threads[0]
+	if _, ok := liveIDs[got.ID]; ok || !strings.HasPrefix(got.Title, "idle-") {
+		t.Fatalf("more must stay on idle recents %+v", got)
 	}
 }
 
@@ -221,18 +296,16 @@ func TestPhoneListAndOpenSurfaceGoalAndParkedWait(t *testing.T) {
 		t.Fatalf("waiting action must stay off the wire for i18n, got %q", listed.Running[0].Action)
 	}
 	wide := Handle(e, config.RemoteConfig{ThreadLimit: 20, SummaryChars: 40}, Request{ID: "w", Op: OpList}, "relay", "s")
-	found := false
+	if !wide.OK {
+		t.Fatalf("wide %+v", wide)
+	}
 	for _, row := range wide.Threads {
-		if row.ID != th.ID {
-			continue
-		}
-		found = true
-		if !row.Waiting {
-			t.Fatal("listing row must carry waiting")
+		if row.ID == th.ID {
+			t.Fatal("a parked wait belongs on the live roster, not the recents page")
 		}
 	}
-	if !found {
-		t.Fatal("parked thread missing from the wide list")
+	if len(wide.Running) != 1 || wide.Running[0].ThreadID != th.ID || !wide.Running[0].Waiting {
+		t.Fatalf("wide roster %+v", wide.Running)
 	}
 
 	open := Handle(e, config.RemoteConfig{SummaryChars: 40}, Request{ID: "o", Op: OpOpen, ThreadID: th.ID}, "relay", "s")

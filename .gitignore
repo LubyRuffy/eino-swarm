@@ -36,6 +36,7 @@ frontend/test-results-drop/
 
 # Scratch from running the app against this checkout
 /notes/
+/output/
 
 # Wails build artifacts
 /bin/

@@ -115,6 +115,7 @@ export type RemoteResponse = {
   code?: string
   path?: string
   session_id?: string
+  host?: string
   projects?: ProjectView[]
   threads?: ThreadView[]
   running?: RunningView[]

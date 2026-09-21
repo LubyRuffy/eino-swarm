@@ -9,6 +9,7 @@ test("phone settings shows a pairing QR control", async ({ page }) => {
   await expect(dialog.getByLabel("Host Token")).toHaveCount(0)
   await expect(dialog.getByLabel("Event text on the phone")).toBeVisible()
   await expect(dialog.getByLabel("Events on the phone")).toBeVisible()
+  await expect(dialog.getByLabel("This computer's name")).toBeVisible()
   await expect(dialog.getByLabel("Keep this computer awake")).toBeVisible()
   await expect(dialog.getByText("Bound phones")).toBeVisible()
   await expect(dialog.getByText("No phones bound yet.")).toBeVisible()

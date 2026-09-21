@@ -1,13 +1,14 @@
-import { ChevronRight, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react"
+import { ChevronRight, Layers, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { MemoMarkdown } from "@/components/app/markdown"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
+import { SkillTidyCard } from "@/components/app/skill-tidy-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
-import type { Project, ProjectMemory, Skill } from "@/lib/types"
+import type { Project, ProjectMemory, Skill, SkillTidyReport } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
 export interface MemoryPanelProps {
@@ -18,10 +19,17 @@ export interface MemoryPanelProps {
   onDeleteSkill: (name: string) => void
   onRefresh: () => void
   onReview: () => void
+  onTidySkills: () => void
   /** A click is in flight; the matching memory_review has not arrived. */
   reviewing?: boolean
   /** What the last click decided, once it has an answer. */
   reviewHint?: string
+  /** True between a tidy click and the response. */
+  tidying?: boolean
+  /** What the last tidy decided. Absent until a click has an answer. */
+  tidyReport?: SkillTidyReport
+  tidyError?: string
+  onDismissTidy?: () => void
   /** Only wired where the host can open a file manager. */
   onReveal?: () => void
   /** A write landed while this tab was not the one on screen. */
@@ -48,8 +56,13 @@ export function MemoryPanel({
   onDeleteSkill,
   onRefresh,
   onReview,
+  onTidySkills,
   reviewing,
   reviewHint,
+  tidying,
+  tidyReport,
+  tidyError,
+  onDismissTidy,
   onReveal,
   onSeen,
   focusSkill,
@@ -215,9 +228,30 @@ export function MemoryPanel({
       </section>
 
       <section className="flex min-h-0 flex-1 flex-col gap-2">
-        <h3 className="shrink-0 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {t("memory.skills")}
-        </h3>
+        <div className="flex shrink-0 items-center gap-2">
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {t("memory.skills")}
+          </h3>
+          <Button
+            variant={memory?.needs_tidy ? "outline" : "ghost"}
+            size="icon-sm"
+            onClick={onTidySkills}
+            disabled={tidying}
+            aria-busy={tidying}
+            aria-label={t("memory.tidySkills")}
+            title={t("memory.tidySkills")}
+          >
+            {tidying ? <Loader2 className="animate-spin" /> : <Layers />}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">{t("memory.skillsHint")}</p>
+        <SkillTidyCard
+          tidying={Boolean(tidying)}
+          skillCount={memory?.skills.length ?? 0}
+          report={tidyReport}
+          error={tidyError}
+          onDismiss={onDismissTidy}
+        />
         <div
           data-testid="skills-list"
           className="thin-scrollbar min-h-0 min-w-0 flex-1 overflow-auto"

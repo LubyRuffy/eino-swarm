@@ -64,7 +64,7 @@ import { formatQuotedMessage, type Quote } from "@/lib/quote"
 import type { Attachment, Followup, ModelInfo, UsageSnapshot } from "@/lib/types"
 import { windowForSelection } from "@/lib/usage"
 import { useT, type Translate } from "@/lib/use-t"
-import { chromeTypeClass } from "@/lib/chrome-type"
+import { chromeTypeClass, contentTypeClass } from "@/lib/chrome-type"
 import { cn } from "@/lib/utils"
 import { activeWake } from "@/lib/schedule-view"
 import { useApp } from "@/store/app"
@@ -401,43 +401,53 @@ export function Composer({
       data-testid="composer"
       className="pointer-events-none absolute inset-x-0 bottom-0 z-10"
     >
-      {/* Codex-style: the box sits on the transcript. A hairline here would
-          turn it into a toolbar docked to the bottom, which is the cheap
-          look. The fade is the join; pointer-events stay off so the faded
-          lines are still selectable and the scrollbar still drags. */}
+      {/* Codex-style: pins + box are one plate on the transcript. A
+          hairline would turn it into a docked toolbar. The slab hides
+          chip gaps; the fade is only the join above that plate. */}
       <div
         aria-hidden
         data-testid="composer-fade"
-        className="composer-fade pointer-events-none absolute inset-x-0 -top-24 bottom-0"
+        className="composer-fade pointer-events-none absolute inset-x-0 bottom-full"
+      />
+      <div
+        aria-hidden
+        data-testid="composer-slab"
+        className="composer-slab pointer-events-none absolute inset-0"
       />
       <div
         ref={dockRef}
+        data-testid="composer-dock"
         className="pointer-events-auto relative z-10 content-column content-gutter pb-3"
       >
-        <PlanBanner
-          mode={planMode}
-          markdown={planMarkdown}
-          running={running}
-          onImplement={onImplementPlan}
-          onEdit={onSavePlan}
-          onLeave={onLeavePlan}
-        />
-        <GoalBanner
-          goal={goal ?? ""}
-          complete={goalComplete}
-          blocked={goalBlocked}
-          blockReason={goalBlockReason}
-          turnError={goalBlocked ? lastTurnError : undefined}
-          capped={goalCapped}
-          idle={goalIdle}
-          running={running}
-          waiting={parkedWait}
-          startedAt={goalStartedAt}
-          onClear={() => onClearGoal?.()}
-          onEdit={onEditGoal}
-          onResume={onResumeGoal}
-        />
-        <ScheduleBanner />
+        <div
+          data-testid="composer-pins"
+          className="relative z-10 mb-1.5 flex flex-col gap-1 empty:hidden"
+        >
+          <PlanBanner
+            mode={planMode}
+            markdown={planMarkdown}
+            running={running}
+            onImplement={onImplementPlan}
+            onEdit={onSavePlan}
+            onLeave={onLeavePlan}
+          />
+          <GoalBanner
+            goal={goal ?? ""}
+            complete={goalComplete}
+            blocked={goalBlocked}
+            blockReason={goalBlockReason}
+            turnError={goalBlocked ? lastTurnError : undefined}
+            capped={goalCapped}
+            idle={goalIdle}
+            running={running}
+            waiting={parkedWait}
+            startedAt={goalStartedAt}
+            onClear={() => onClearGoal?.()}
+            onEdit={onEditGoal}
+            onResume={onResumeGoal}
+          />
+          <ScheduleBanner />
+        </div>
         <div
           data-testid="composer-drop"
           className="relative"
@@ -520,7 +530,10 @@ export function Composer({
                   ? t("composer.placeholderRunning")
                   : t("composer.placeholder")
             }
-            className="max-h-[200px] min-h-[44px] rounded-none border-0 bg-transparent px-4 py-3 shadow-none focus-visible:ring-0"
+            className={cn(
+              contentTypeClass,
+              "max-h-[200px] min-h-[44px] overflow-y-hidden rounded-none border-0 bg-transparent px-4 py-3 shadow-none focus-visible:ring-0",
+            )}
             onChange={(e) => {
               const next = normalizeSlashPrefix(e.target.value)
               if (echoRef.current && next.trim() === echoRef.current) {

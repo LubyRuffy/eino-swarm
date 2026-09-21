@@ -258,6 +258,17 @@ describe("schedule store", () => {
     expect(useApp.getState().error).toBeUndefined()
   })
 
+  it("leaves Scheduled when opening a conversation", async () => {
+    await useApp.getState().boot()
+    useApp.getState().openScheduleInbox()
+    expect(useApp.getState().scheduleInboxOpen).toBe(true)
+    const id = useApp.getState().activeId
+    expect(id).toBeTruthy()
+    await useApp.getState().openThread(id!)
+    expect(useApp.getState().scheduleInboxOpen).toBe(false)
+    expect(useApp.getState().activeId).toBe(id)
+  })
+
   it("refreshes waits when a due tick is skipped busy", async () => {
     await useApp.getState().boot()
     const afterBoot = fake.listed

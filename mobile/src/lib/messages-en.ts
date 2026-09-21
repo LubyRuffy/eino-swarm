@@ -8,10 +8,16 @@ export const en = {
   "scan.showPaste": "Paste URI instead",
   "scan.hidePaste": "Hide paste",
   "scan.retry": "Retry",
+  "scan.connecting": "Connecting",
+  "scan.connectingHint": "Opening the saved link to this PC.",
   "scan.hostOffline":
     "This PC is not on the hub. Show a new QR after the desktop reconnects.",
 
   "home.app": "zwai",
+  "home.menu": "Menu",
+  "home.hosts": "Computers",
+  "home.addHost": "Add a PC",
+  "home.close": "Close",
   "home.inProgress": "In progress",
   "home.recent": "Recent",
   "home.more": "More",

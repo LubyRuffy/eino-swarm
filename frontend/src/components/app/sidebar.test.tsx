@@ -45,13 +45,17 @@ describe("Sidebar chrome", () => {
     expect(screen.queryByTestId("sidebar-chrome")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Hide conversations" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /^New conversation$/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^New conversation$/ })).toHaveStyle({
+      height: "var(--sidebar-row-height)",
+    })
   })
 
   it("always offers the Scheduled inbox section", () => {
     render(<Sidebar threads={[]} {...noop} />)
     const trigger = screen.getByRole("button", { name: /Scheduled/ })
-    expect(trigger).toHaveAttribute("aria-haspopup", "dialog")
+    expect(trigger).not.toHaveAttribute("aria-haspopup")
     expect(trigger.querySelector("[data-testid=section-fold]")).toBeNull()
+    expect(trigger).toHaveClass("sidebar-section-label")
     expect(screen.getByTestId("schedule-inbox")).toBeInTheDocument()
   })
 
@@ -61,6 +65,17 @@ describe("Sidebar chrome", () => {
     expect(noop.onNew).toHaveBeenCalled()
   })
 
+  it("paints Settings as a full-width hover pill, not a tiny ghost chip", () => {
+    render(<Sidebar threads={[]} {...noop} />)
+    const button = screen.getByRole("button", { name: "Settings" })
+    expect(button.className).toMatch(/\bw-full\b/)
+    expect(button.className).toMatch(/\brounded-full\b/)
+    expect(button.className).toMatch(/hover:bg-sidebar-accent/)
+    expect(button).toHaveStyle({ height: "var(--sidebar-row-height)" })
+    fireEvent.click(button)
+    expect(noop.onSettings).toHaveBeenCalled()
+  })
+
   it("keeps Projects on the same gutter as Recents", () => {
     render(
       <Sidebar
@@ -68,8 +83,8 @@ describe("Sidebar chrome", () => {
         {...noop}
       />,
     )
-    expect(screen.getByRole("button", { name: "Projects" })).toHaveClass("px-2", "h-7")
-    expect(screen.getByRole("button", { name: "Recents" })).toHaveClass("px-2", "h-7")
+    expect(screen.getByRole("button", { name: "Projects" })).toHaveClass("sidebar-section-label")
+    expect(screen.getByRole("button", { name: "Recents" })).toHaveClass("sidebar-section-label")
     expect(screen.queryByText("Today")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "All conversations" })).not.toBeInTheDocument()
     expect(screen.getByTestId("project-list")).not.toHaveClass("px-2")
@@ -429,9 +444,10 @@ describe("Sidebar pin and folders", () => {
   it("does not mark Recents with a project-topic icon", () => {
     render(<Sidebar threads={[thread("th_1", "Loose")]} activeId="th_1" {...noop} />)
     expect(screen.getByTestId("thread-row")).toHaveAttribute("aria-current", "true")
-    expect(screen.getByTestId("thread-row")).toHaveClass("h-7")
+    expect(screen.getByTestId("thread-row")).toHaveClass("sidebar-row")
+    expect(screen.getByTestId("thread-row")).not.toHaveClass("h-7")
     expect(screen.queryByTestId("thread-kind")).not.toBeInTheDocument()
-    expect(screen.getByTestId("row-kind")).toHaveClass("size-4")
+    expect(screen.getByTestId("row-kind")).toHaveClass("sidebar-kind")
     expect(screen.getByTestId("row-kind")).toBeEmptyDOMElement()
     expect(
       screen.getByRole("button", { name: "Recents" }).querySelector("[data-testid=section-fold]"),

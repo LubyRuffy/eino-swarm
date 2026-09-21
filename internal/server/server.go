@@ -100,6 +100,7 @@ func New(opts Options) (*Server, error) {
 		api.DELETE("/projects/:id", s.deleteProject)
 		api.GET("/projects/:id/memory", s.getMemory)
 		api.PUT("/projects/:id/memory", s.putMemory)
+		api.POST("/projects/:id/memory/tidy-skills", s.tidySkills)
 		api.GET("/projects/:id/skills/:name", s.getSkill)
 		api.DELETE("/projects/:id/skills/:name", s.deleteSkill)
 

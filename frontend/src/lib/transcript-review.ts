@@ -35,6 +35,7 @@ const NOTE_VERBS: Record<string, string> = {
 const SKILL_VERBS: Record<string, string> = {
   create: "recorded",
   patch: "updated",
+  merge: "merged",
   delete: "removed",
 }
 
@@ -78,6 +79,8 @@ function changePreview(c: { action?: string; name?: string; text?: string; targe
       ? "+"
       : c.action === "remove" || c.action === "delete"
         ? "−"
+        : c.action === "merge"
+          ? "+"
         : "~"
   const label = c.name ? `skill ${c.name}` : "note"
   const text = (c.text ?? "").trim()

@@ -70,6 +70,7 @@ func (p *LinkPump) Close() {
 }
 
 func (p *LinkPump) reply(resp Response) {
+	resp = withHost(resp, p.cfg)
 	raw, err := json.Marshal(resp)
 	if err != nil {
 		return

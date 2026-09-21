@@ -80,6 +80,33 @@ func pageThreads(all []store.Thread, cursor string, limit int) (page []store.Thr
 	return page, next, more
 }
 
+// runningIDs is the In progress roster. Those rows already have a home;
+// they must not also consume thread_limit or Recents starves to leftovers.
+func runningIDs(rows []RunningView) map[string]struct{} {
+	ids := make(map[string]struct{}, len(rows))
+	for _, r := range rows {
+		if r.ThreadID == "" {
+			continue
+		}
+		ids[r.ThreadID] = struct{}{}
+	}
+	return ids
+}
+
+func excludeLiveThreads(all []store.Thread, live map[string]struct{}) []store.Thread {
+	if len(live) == 0 {
+		return all
+	}
+	out := make([]store.Thread, 0, len(all))
+	for _, th := range all {
+		if _, ok := live[th.ID]; ok {
+			continue
+		}
+		out = append(out, th)
+	}
+	return out
+}
+
 func threadView(eng *engine.Engine, th store.Thread, cfg config.RemoteConfig) ThreadView {
 	st := eng.Status(th.ID)
 	title := strings.TrimSpace(th.Title)
@@ -90,7 +117,7 @@ func threadView(eng *engine.Engine, th store.Thread, cfg config.RemoteConfig) Th
 		Running:      st.Running,
 		Waiting:      st.Waiting,
 		LastActiveAt: th.LastActiveAt,
-		Summary:      threadSummary(eng, th.ID, cfg.SummaryChars),
+		Summary:      threadSummary(eng, th.ID, summaryChars(cfg)),
 	}
 }
 
@@ -99,23 +126,16 @@ func threadSummary(eng *engine.Engine, threadID string, chars int) string {
 	if err != nil || len(turns) == 0 {
 		return ""
 	}
-	for i := len(turns) - 1; i >= 0; i-- {
-		if t := oneLine(turns[i].Final); t != "" {
-			return truncate(t, chars)
-		}
-		if t := oneLine(turns[i].UserText); t != "" {
-			return truncate(t, chars)
-		}
-	}
-	return ""
+	return summaryFromTurns(turns, chars)
 }
 
-func runningViews(eng *engine.Engine) []RunningView {
+func runningViews(eng *engine.Engine, cfg config.RemoteConfig) []RunningView {
 	ids := eng.Running()
 	waiting := eng.Waiting()
 	if len(ids) == 0 && len(waiting) == 0 {
 		return nil
 	}
+	chars := summaryChars(cfg)
 	seen := make(map[string]int, len(ids)+len(waiting))
 	out := make([]RunningView, 0, len(ids)+len(waiting))
 	for _, id := range ids {
@@ -124,7 +144,7 @@ func runningViews(eng *engine.Engine) []RunningView {
 			continue
 		}
 		seen[id] = len(out)
-		out = append(out, runningView(eng, th))
+		out = append(out, runningView(eng, th, chars))
 	}
 	for _, id := range waiting {
 		if i, ok := seen[id]; ok {
@@ -135,14 +155,14 @@ func runningViews(eng *engine.Engine) []RunningView {
 		if err != nil {
 			continue
 		}
-		v := runningView(eng, th)
+		v := runningView(eng, th, chars)
 		v.Waiting = true
 		out = append(out, v)
 	}
 	return out
 }
 
-func runningView(eng *engine.Engine, th *store.Thread) RunningView {
+func runningView(eng *engine.Engine, th *store.Thread, chars int) RunningView {
 	st := eng.Status(th.ID)
 	v := RunningView{
 		ThreadID: th.ID,
@@ -161,15 +181,7 @@ func runningView(eng *engine.Engine, th *store.Thread) RunningView {
 	if err != nil {
 		return v
 	}
-	for i := len(evts) - 1; i >= 0; i-- {
-		if evts[i].TurnID != st.TurnID {
-			continue
-		}
-		if evts[i].Kind == "tool_call" && strings.TrimSpace(evts[i].Text) != "" {
-			v.Action = strings.TrimSpace(evts[i].Text)
-			return v
-		}
-	}
+	v.Action = clipPreview(runningPreview(evts, st.TurnID), chars)
 	return v
 }
 
@@ -229,7 +241,7 @@ func threadDetail(eng *engine.Engine, th *store.Thread, cfg config.RemoteConfig)
 		d.GoalStartedAt = th.GoalStartedAt.UTC().Format(time.RFC3339)
 	}
 	if st.Running {
-		rv := runningView(eng, th)
+		rv := runningView(eng, th, summaryChars(cfg))
 		d.Running = &rv
 	}
 	return d

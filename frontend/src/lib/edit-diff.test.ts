@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   DIFF_LINE_CAP,
   clipDiff,
+  editCountLabel,
   parseEditDiff,
   parseFileChange,
   parseWriteDiff,
@@ -178,5 +179,13 @@ describe("clipDiff", () => {
     expect(clipped.hidden).toBe(0)
     expect(clipped.hunks[0].lines).toHaveLength(2)
     expect(DIFF_LINE_CAP).toBeGreaterThan(2)
+  })
+})
+
+describe("editCountLabel", () => {
+  it("omits a zero side instead of painting +0 or −0", () => {
+    expect(editCountLabel({ added: 8, removed: 2 })).toBe("+8 −2")
+    expect(editCountLabel({ added: 2, removed: 0 })).toBe("+2")
+    expect(editCountLabel({ added: 0, removed: 1 })).toBe("−1")
   })
 })

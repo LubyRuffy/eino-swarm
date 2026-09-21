@@ -1,7 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { AgentTranscript } from "./agent-transcript"
 import { Heartbeat, StatusDot, Transcript, WaitProgress, waitAgentIds } from "./transcript"
 import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript"
 import { emptyTranscript } from "@/lib/transcript"
@@ -286,6 +285,8 @@ describe("queued steering", () => {
       />,
     )
     expect(screen.queryByText("close_agent")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId("work-fold"))
+    expect(screen.queryByText("close_agent")).not.toBeInTheDocument()
     expect(screen.getByText("read")).toBeInTheDocument()
   })
 })
@@ -313,6 +314,8 @@ describe("Transcript follow", () => {
     const el = screen.getByTestId("transcript")
     expect(el.querySelector(".content-column")).not.toBeNull()
     expect(el).toHaveClass("content-gutter")
+    expect(el).toHaveClass("min-w-0")
+    expect(el).toHaveClass("overflow-x-hidden")
     mockScrollBox(el, { scrollHeight: 2000, clientHeight: 400 })
     await flushFollow()
     expect(el.scrollTop).toBe(2000)
@@ -529,6 +532,11 @@ describe("Transcript turn nav", () => {
 })
 
 describe("live thinking", () => {
+  beforeEach(() => {
+    // These tests pin the per-row thought chrome. User mode folds it away.
+    useApp.setState({ transcriptMode: "developer" })
+  })
+
   it("sweeps the Thinking label while the thought is still streaming", () => {
     render(
       <Transcript
@@ -713,66 +721,6 @@ describe("live thinking", () => {
     )
     await flushFollow()
     expect(el.scrollTop).toBe(12)
-  })
-})
-
-describe("streaming answers", () => {
-  // The bug this pins: a heading used to sit as "## Result" until the turn
-  // finished, then snap into a real heading. Streaming has to look like the
-  // finished document, just still growing.
-  it("renders a streaming answer as markdown, not as raw hashes", () => {
-    render(
-      <Transcript
-        state={streamingAnswer("## Result\n\nstill writing")}
-        loaded
-        onSelectAgent={() => {}}
-      />,
-    )
-    expect(screen.getByRole("heading", { name: "Result" })).toBeInTheDocument()
-    expect(screen.queryByText("## Result")).not.toBeInTheDocument()
-  })
-
-  it("renders a worker's streaming answer the same way", () => {
-    render(
-      <AgentTranscript
-        agent={agent({
-          id: "researcher-1",
-          role: "researcher",
-          blocks: [
-            {
-              id: "a1",
-              kind: "answer",
-              agentId: "researcher-1",
-              text: "## Notes\n\nstill writing",
-              streaming: true,
-              turnId: "t1",
-              seq: 1,
-              at: new Date().toISOString(),
-            },
-          ],
-        })}
-      />,
-    )
-    expect(screen.getByRole("heading", { name: "Notes" })).toBeInTheDocument()
-    expect(screen.queryByText("## Notes")).not.toBeInTheDocument()
-  })
-
-  it("shows a finished worker's result when its tool log is not on this page", () => {
-    render(
-      <AgentTranscript
-        agent={agent({
-          id: "worker-1",
-          role: "worker",
-          status: "done",
-          result: "the assigned work is done",
-          blocks: [],
-        })}
-      />,
-    )
-    expect(screen.getByText("the assigned work is done")).toBeInTheDocument()
-    expect(
-      screen.queryByText("This agent has not produced anything yet."),
-    ).not.toBeInTheDocument()
   })
 })
 

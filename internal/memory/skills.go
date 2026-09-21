@@ -89,6 +89,12 @@ func (s *Store) WriteSkill(name, description, body string) (Skill, error) {
 	if err := ValidSkillName(name); err != nil {
 		return Skill{}, err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.writeSkillLocked(name, description, body, nil)
+}
+
+func (s *Store) writeSkillLocked(name, description, body string, except map[string]struct{}) (Skill, error) {
 	description = strings.Join(strings.Fields(description), " ")
 	if description == "" {
 		return Skill{}, fmt.Errorf("memory: a skill needs a one-line description saying when it applies")
@@ -97,9 +103,7 @@ func (s *Store) WriteSkill(name, description, body string) (Skill, error) {
 	if body == "" {
 		return Skill{}, fmt.Errorf("memory: a skill needs steps in its body, not only a description")
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if err := s.rejectDuplicateSkill(name, description, body); err != nil {
+	if err := s.rejectDuplicateSkill(name, description, body, except); err != nil {
 		return Skill{}, err
 	}
 	if err := writeAtomic(s.skillPath(name), renderSkill(name, description, body)); err != nil {
@@ -146,6 +150,10 @@ func (s *Store) DeleteSkill(name string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.deleteSkillLocked(name)
+}
+
+func (s *Store) deleteSkillLocked(name string) error {
 	if _, err := os.Stat(s.skillPath(name)); os.IsNotExist(err) {
 		return ErrNoMatch
 	}
@@ -165,7 +173,7 @@ func (s *Store) skillPath(name string) string {
 // for a subject already stored. Overwriting the same name is how a skill is
 // rewritten; colliding with a different name is how the index fills with
 // twins the manager cannot tell apart.
-func (s *Store) rejectDuplicateSkill(name, description, body string) error {
+func (s *Store) rejectDuplicateSkill(name, description, body string, except map[string]struct{}) error {
 	entries, err := os.ReadDir(s.skillsDir())
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -175,6 +183,9 @@ func (s *Store) rejectDuplicateSkill(name, description, body string) error {
 	}
 	for _, e := range entries {
 		if !e.IsDir() || e.Name() == name || ValidSkillName(e.Name()) != nil {
+			continue
+		}
+		if _, skip := except[e.Name()]; skip {
 			continue
 		}
 		other, err := s.readSkill(e.Name())

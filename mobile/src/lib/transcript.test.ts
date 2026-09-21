@@ -119,7 +119,7 @@ describe("compact transcript", () => {
     expect(blocks.some((b) => b.text.includes("sch_x"))).toBe(false)
   })
 
-  it("keeps report tool args after a quiet envelope result so the chip can preview findings", () => {
+  it("turns report findings into a notice and hides schedule tool names", () => {
     const args = JSON.stringify({ findings: "one thing changed", quiet: false })
     let blocks: CompactBlock[] = []
     blocks = applyEvent(
@@ -141,11 +141,28 @@ describe("compact transcript", () => {
       }),
     )
     expect(blocks).toHaveLength(1)
-    expect(blocks[0].kind).toBe("tool")
-    expect(blocks[0].toolName).toBe("report_schedule")
-    expect(blocks[0].args).toBe(args)
-    expect(blocks[0].text).toBe(JSON.stringify({ ok: true, quiet: false }))
-    expect(blocks[0].pending).toBe(false)
+    expect(blocks[0].kind).toBe("notice")
+    expect(blocks[0].text).toBe("one thing changed")
+    expect(blocks[0].toolName).toBeUndefined()
+    blocks = applyEvent(
+      [],
+      ev({
+        seq: 32,
+        kind: "tool_call",
+        tool_call_id: "w",
+        text: `schedule_wake({"every_s":30,"prompt":"Continue the wait."})`,
+      }),
+    )
+    expect(blocks).toEqual([])
+    blocks = applyEvent(
+      [],
+      ev({
+        seq: 33,
+        kind: "tool_call",
+        text: `report_schedule({"findings":""})`,
+      }),
+    )
+    expect(blocks).toEqual([])
   })
 
   it("does not paint a progress pulse as a notice", () => {

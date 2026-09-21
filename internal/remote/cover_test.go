@@ -63,6 +63,32 @@ func TestPageThreadsBogusCursor(t *testing.T) {
 	}
 }
 
+func TestExcludeLiveThreadsSkipsRosterIDs(t *testing.T) {
+	all := []store.Thread{{ID: "a"}, {ID: "b"}, {ID: "c"}}
+	got := excludeLiveThreads(all, nil)
+	if len(got) != 3 || &got[0] != &all[0] {
+		t.Fatal("empty live must keep the same slice")
+	}
+	got = excludeLiveThreads(all, map[string]struct{}{"b": {}})
+	if len(got) != 2 || got[0].ID != "a" || got[1].ID != "c" {
+		t.Fatalf("%+v", got)
+	}
+	got = excludeLiveThreads(all, map[string]struct{}{"a": {}, "b": {}, "c": {}})
+	if len(got) != 0 {
+		t.Fatalf("%+v", got)
+	}
+	ids := runningIDs([]RunningView{{ThreadID: "a"}, {ThreadID: ""}, {ThreadID: "b"}})
+	if len(ids) != 2 {
+		t.Fatalf("%v", ids)
+	}
+	if _, ok := ids["a"]; !ok {
+		t.Fatal("missing a")
+	}
+	if _, ok := ids[""]; ok {
+		t.Fatal("empty id leaked")
+	}
+}
+
 func TestHostTokenFileErrorSurfaces(t *testing.T) {
 	e := testEngine(t)
 	cfg := e.Config()

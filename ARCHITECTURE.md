@@ -95,21 +95,21 @@ id; remote replies include pairlink `session_id` and `path`.
 | `internal/config` | `config.yaml` under the data directory: load, normalize, atomic save, `OPENAI_*` seeding on first run. Nothing else in the tree hardcodes an endpoint or model. |
 | `internal/store` | gorm + pure-Go SQLite. Conversations, transcript messages, turns, the event timeline, model-call records, attachments, follow-ups waiting for the current turn, `schedules` / `schedule_runs`, conversation search (`search_docs` + FTS5 `thread_fts`, optional `search_chunks`), and `remote_devices` (phone model + last-seen keyed by pairlink fingerprint). Sidebar lists conversations and projects by `sort_rank` then last activity (`last_active_at` / `updated_at`); unranked rows interleave by activity so they cannot sit above ranked work that just ran. A drop pins ranks. Quiet standalone fires are archived out of Recents. See [docs/DATA_MODEL.md](docs/DATA_MODEL.md). |
 | `internal/provider` | builds eino chat models from config, lists an endpoint's catalog (`GET {base_url}/models`), records per-call telemetry, POSTs OpenAI-compatible `/embeddings` when search is on, and provides the scripted offline provider used by `--mock` and the tests (character n-grams stand in for a real embed). The provider request timeout is idle time between bytes, not the whole streamed body: a thinking model that is still emitting tokens is not cut off. |
-| `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. `BindExecOutput` is the host binder that tees `exec` stdout/stderr into `NotifyToolDelta` without the swarm library importing eino-tools. |
-| `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the three agent tools (`memory`, `skill_view`, `skill_manage`), the prompt sections they are rendered into, and the reviewer's instruction. Owns the files; knows nothing about conversations. |
-| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a pending thread wake (waiting is the next turn), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from the event log (skipped when the manager already wrote), and resolves an in-app terminal's working directory from the conversation or project the client named. A clock + ticker (`StartScheduler`) fires due waits (`schedule_fired`) or skips a busy target (`schedule_skipped`) without bursting missed ticks; event kinds `schedule` / `schedule_fired` / `schedule_skipped` / `schedule_report` / `schedule_cancelled` are the wire contract. |
+| `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. `BindExecOutput` is the host binder that tees `exec` stdout/stderr into `NotifyToolDelta` without the swarm library importing eino-tools. A wrapper shortens a remaining-time `sleep` / `Start-Sleep` of five seconds or more to about a third of that duration so a progress poll still runs instead of sitting out the full estimate. |
+| `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the three agent tools (`memory`, `skill_view`, `skill_manage` including `merge`), the prompt sections they are rendered into, the reviewer's instruction, and the deterministic family fold that keeps one subject as one skill. Owns the files; knows nothing about conversations. |
+| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a pending thread wake (waiting is the next turn), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from the event log (note extraction skipped when the manager already wrote; leftover skill families still fold), and resolves an in-app terminal's working directory from the conversation or project the client named. A clock + ticker (`StartScheduler`) fires due waits (`schedule_fired`) or skips a busy target (`schedule_skipped`) without bursting missed ticks; event kinds `schedule` / `schedule_fired` / `schedule_skipped` / `schedule_report` / `schedule_cancelled` are the wire contract. |
 | `internal/search` | ⌘K ranking. FTS5 is always on. Embeddings are off until Settings pins a model; then query vectors fuse with keywords via reciprocal rank fusion (`k=60`). Indexing embeddings is a background queue so a turn is not blocked on `/embeddings`. A failed query embed falls back to keywords. |
 | `internal/server` | gin: REST, SSE, upload/download, trace, PTY terminals, embedded assets. See [docs/API.md](docs/API.md). |
 | `internal/terminal` | PTY sessions for the in-app shell. The HTTP layer names a conversation or a project; this package never takes a client-supplied path. |
 | `internal/app` | wiring shared by both shells, plus listen/serve/shutdown, `openURL` and `revealPath`. `App.New` starts the schedule ticker (`Engine.StartScheduler`), the pairlink remote host, and the search embed worker; `Shutdown` stops the search worker before closing SQLite. |
 | `internal/wakeup` | process-wide sleep assertion for phone remote. `Set` is idempotent. Darwin uses `caffeinate -s -w <pid>` (AC-only); Linux `systemd-inhibit` when present; Windows `SetThreadExecutionState`. Tests install a recorder so `go test` does not caffeinate the builder. |
-| `internal/remote` | phone RPC over pairlink: QR offers, sealed JSON (`hello`/`list`/`more`/`open`/`start`/`send`/`steer`/`stop`/`answer`/`watch`/`unwatch`/`log`/`run_now`/`cancel_wait`/`resume_goal`). `hello` stores the phone's model line on `remote_devices` keyed by the link fingerprint so `GET /api/remote/bindings` can show a name, not only hex. `watch` with `since` 0 returns a live-edge snapshot (at most 24 stored events from the last turn) as the RPC `ready` `{events, more, seq, status}` (`status.waiting` / `status.wake` while a thread wait is parked); `log` `{before}` (or `before` 0 = older than that window, size `watch_events`) pages older events when the phone pulls up. Live and lagged catch-up still push `event`; goal/schedule/`done` frames include `status` so a parked `/goal` is not idle. Same kinds as desktop SSE (`PushKinds` frozen against `frontend/src/lib/stream.ts`), seq-identical, bodies clipped (`event_chars`, empty `spawned` text, 64KiB frame cap). Does not expose loopback `/api` to the internet. |
-| `mobile/` | Capacitor iOS (`ios/`, Swift Package Manager) and Android (`android/`) apps plus the web shell. Camera scan of `pairlink:v1:…` is the product path; paste is the same URI. After bind, a live turn (or the last thread this phone opened, including a parked wait) opens immediately; otherwise the inbox lists projects and the latest threads. A parked wait is In progress with **Waiting**, not a quiet Recent row. Opening a conversation shows the standing `/goal` (Pursuing / Done / Blocked / Paused) and, while idle, the wait banner with next check, **Run now** and **Cancel wait**. A tap paints the chrome from the listing immediately; `watch` then folds a live-edge snapshot (not the whole last turn) and jumps to the tail; **Earlier** sits above the log (pulling up also pages). User and assistant text is markdown (GFM, math); tools stay collapsed (name + a field preview, not the packed JSON). A `progress` pulse is dropped (desktop live chrome, not a chat row). `wait_agents` is a status-count chip, not the `elapsed_ms` roster. Schedule kinds are the same one-liners as desktop (armed / fired / cancelled); `schedule_report` stays on the tool row. Settings, PTY, Files and Trace stay on the PC. WebSocket relay only (UDP hole-punch lives in the Go client). The ticket socket keepalives with punch-ping data frames and reconnects a drop; the inbox paints a banner instead of staying clickable-but-dead. Launcher and splash are the desktop `appicon.png` mark (`go run ./mobile/scripts/genicons.go`), not Capacitor's default lattice. Hub URL is typed on the PC, never compiled into the app. |
+| `internal/remote` | phone RPC over pairlink: QR offers, sealed JSON (`hello`/`list`/`more`/`open`/`start`/`send`/`steer`/`stop`/`answer`/`watch`/`unwatch`/`log`/`run_now`/`cancel_wait`/`resume_goal`). `hello` stores the phone's model line on `remote_devices` keyed by the link fingerprint so `GET /api/remote/bindings` can show a name, not only hex. OK replies include `host` (`remote.display_name`) so the phone chip is this PC, not the hub hostname. `watch` with `since` 0 returns a live-edge snapshot (at most 24 stored events from the last turn) as the RPC `ready` `{events, more, seq, status}` (`status.waiting` / `status.wake` while a thread wait is parked); `log` `{before}` (or `before` 0 = older than that window, size `watch_events`) pages older events when the phone pulls up. Live and lagged catch-up still push `event`; goal/schedule/`done` frames include `status` so a parked `/goal` is not idle. Same kinds as desktop SSE (`PushKinds` frozen against `frontend/src/lib/stream.ts`), seq-identical, bodies clipped (`event_chars`, empty `spawned` text, 64KiB frame cap). `list.running[].action` and `list.threads[].summary` are human one-liners (`preview.go`): findings / command / assistant prose, never a `tool_call` envelope. `list.threads` is the idle recents page (`thread_limit`); live rows are `list.running` and do not consume that quota. Does not expose loopback `/api` to the internet. |
+| `mobile/` | Capacitor iOS (`ios/`, Swift Package Manager) and Android (`android/`) apps plus the web shell. Camera scan of `pairlink:v1:…` is the product path; paste is the same URI. After bind, a live turn (or the last thread this phone opened, including a parked wait) opens immediately; otherwise the inbox lists In progress, then projects and Recents of the latest idle threads (`thread_limit`; live rows do not consume that quota). A relaunch with saved tickets paints host chips (this PC's `host` name) and a connecting skeleton; the scan form is only when unbound (or after Unlink of the last PC). Add a PC is a side sheet. A parked wait is In progress with **Waiting**, not a quiet Recent row. Inbox subtitles are human text (`inboxPreview`): findings, a command, or assistant prose — not `schedule_wake({…})` / `report_schedule({…})` / `memory({…})`. Opening a conversation shows the standing `/goal` (Pursuing / Done / Blocked / Paused) and, while idle, the wait banner with next check, **Run now** and **Cancel wait**. A tap paints the chrome from the listing immediately; `watch` then folds a live-edge snapshot (not the whole last turn) and jumps to the tail; **Earlier** sits above the log (pulling up also pages). User and assistant text is markdown (GFM, math); tools stay collapsed (name + a field preview, not the packed JSON). A `progress` pulse is dropped (desktop live chrome, not a chat row). `wait_agents` is a status-count chip, not the `elapsed_ms` roster. Schedule kinds are the same one-liners as desktop (armed / fired / cancelled); `schedule_wake` / `cancel_schedule` tool rows stay off the transcript (the schedule events already notice); a findings `report_schedule` is that prose as a notice, and a quiet report is omitted. Settings, PTY, Files and Trace stay on the PC. WebSocket relay only (UDP hole-punch lives in the Go client). The ticket socket keepalives with punch-ping data frames and reconnects a drop; the inbox paints a banner instead of staying clickable-but-dead. Launcher and splash are the desktop `appicon.png` mark (`go run ./mobile/scripts/genicons.go`), not Capacitor's default lattice. Hub URL is typed on the PC, never compiled into the app. |
 | `internal/desktop` | wails3 single window pointed at the local server URL. Hidden title bar (no NSToolbar); traffic lights are centred in the 48px HTML header and the front end pads to the zoom button's measured right edge. The top 48px drags natively. A title-bar double-click is a front-end `wails:drag:doubleclick` — Wails will not zoom on the second mousedown itself, because that races the drag. The Dock / taskbar mark is an embedded PNG, inset to Apple's 824/1024 icon grid, rounded to a macOS squircle at runtime, and handed to Wails as `application.Options.Icon`, so `go run` on macOS does not keep the generic Unix-exec glyph, a square canvas, or a tile larger than a bundled `.app`. On macOS, `ReexecIfUnbundled` copies that binary into `~/Library/Caches/zwai/zwai.app` (`NSLocalNetworkUsageDescription`, stable `CFBundleIdentifier`) so Sequoia+ Local Network privacy can allow LAN model endpoints; a naked `go run` executable is identifier `a.out` and gets `no route to host` while Terminal curl works. Quit cancels the event stream so the window is not frozen waiting for it. |
 | `internal/slash` | shared composer-command parse for a **whole-line** send: leading `/`, fullwidth `／`, or IME punctuation `、`; ASCII identifier name, rest is the argument. Used by the engine and the TUI so a glued CJK `/goal` cannot become a user task. The web composer also opens the same catalog on an **inline** `/` token (after existing text); that menu lives in `frontend/src/lib/slash.ts`. Picking **goal** / **plan** completes `/name ` in the box; wiping the token is not a pick. |
 | `internal/tui` | terminal renderer for `zwai tui`, on the same swarm, config, manager prompt and workspace tools as the app. No `--task` opens a composer and keeps the session; `--task` is the one-shot reproduction path. `--goal` / `--plan` without `--task` start immediately and still keep the composer after that run ends. `/` opens a Codex-style command popup (`/goal`, `/plan`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; aliases stay hidden until typed). `/goal <objective>` starts that text as the next turn. `/plan` unmounts write/edit/exec and similar and writes `$ZWAI_HOME/plans/tui/PLAN.md`. `/implement` accepts the plan. `ask_user` is a blocking overlay (digits pick; typing is Other); piped stdin fails the tool instead of hanging. Enter on `/model` or `/reason` opens a picker. The idle composer parks the real terminal cursor at the insert point so IME preedit is not drawn at column 0 (bubbletea v1 homes the hardware cursor after each frame). A `schedule_wake` / `cancel_schedule` / findings `report_schedule` is a one-line status notice; quiet reports and skips stay off that line. There is no inbox. |
 | `cmd/zwai` | subcommand table: `desktop`, `web`, `tui`, `trace`, `config`. |
-| `frontend/` | React + TypeScript + Tailwind + shadcn/ui. `go:embed` in `frontend/embed.go` is the shipped binary; from a checkout `frontend.Load` rebuilds `dist/` when the sources changed (`//go:generate go run generate.go`, same path as `make frontend`) and returns that directory, because embed is a compile-time snapshot and a clone only has `dist/.gitkeep`. The HTTP server copies the tree into memory at start so a later Vite rebuild cannot delete hashed JS out from under a live window, and a missing `/assets/*` file is a 404 rather than the SPA shell (WebKit will not execute HTML as a module). `npm install` uses `registry.npmjs.org` (project `.npmrc`) so a user-level mirror cannot write lockfile tarball hosts that npm 12 then refuses as remote packages. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.font_size` / `ui.content_width` the same way. `font_size` scales conversation text (`--ui-font-size`); sidebar / Settings / title bar stay `--chrome-font-size`. The title-bar width control (and ⌘K) flips `content_width` between the reading column and a fill that sits against the sidebars. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, Recents for conversations with no project, and **Scheduled** (a dialog trigger with unread in the accessible name, not a fold; the inbox lists, pauses, runs, creates, and opens findings; `skipped_busy` alerts inside the dialog). Schedule state lives in `frontend/src/store/app-schedule.ts` so `App.tsx` does not re-render for the inbox. An active thread wake on the open conversation is a one-line composer pin next to `/goal` (named Run now / Cancel wait as icon controls). The armed-wait notice still labels those two actions. The banner hides while that conversation is working. The sidebar listing tick also refreshes `GET /api/schedules` (a dropped GET does not toast) so a replayed arm chip cannot freeze the banner on the first `next_run_at`; a later GET or fire wins. `schedule_skipped` refreshes that list too — a busy tick advances the due time. A parked wait still marks the sidebar row with a breathing clock (`waitingThreadIds`, listing `waiting`) and the title bar says Waiting instead of Idle (`status.waiting`, kept across `done`); a live turn on that row still uses the progress dot. A conversation blocked on `ask_user` uses a pinging question mark (`askingThreadIds` / `thread.awaiting_answer`) and the title bar says **Your turn** instead of Working — the working pulse means the swarm is busy, not that the human has to pick. A project folder or Recents shows the five conversations active in the last seven days; the rest sit behind Show more. A project folder icon is the fold control (open vs closed directory). A running conversation's progress occupies that same column. A folder that contains a running conversation or a parked wait stays open like the active one, so the mark is visible without clicking in; an explicitly collapsed folder keeps a progress mark (or the wait clock, or the ask ping) on the directory glyph. Reorder is a title drag past 8px, with no grip glyph. Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). The title-bar terminal (⌘J) is a bottom PTY; each click starts a new session whose working directory is the open conversation's workspace (the project's directory when it has one). |
+| `frontend/` | React + TypeScript + Tailwind + shadcn/ui. `go:embed` in `frontend/embed.go` is the shipped binary; from a checkout `frontend.Load` rebuilds `dist/` when the sources changed (`//go:generate go run generate.go`, same path as `make frontend`) and returns that directory, because embed is a compile-time snapshot and a clone only has `dist/.gitkeep`. The HTTP server copies the tree into memory at start so a later Vite rebuild cannot delete hashed JS out from under a live window, and a missing `/assets/*` file is a 404 rather than the SPA shell (WebKit will not execute HTML as a module). `npm install` uses `registry.npmjs.org` (project `.npmrc`) so a user-level mirror cannot write lockfile tarball hosts that npm 12 then refuses as remote packages. Chrome strings go through `frontend/src/lib/i18n.ts` (`en` / `zh`); the pin is `ui.locale` in `config.yaml` plus a `localStorage` cache, because desktop binds a random loopback. Typeface, size and conversation column width ride `ui.font` / `ui.ui_font_size` / `ui.font_size` / `ui.content_width` the same way. `ui.palette` (`zwai` / `fofa`) swaps the named color set (`html[data-palette]`); light / dark is still the title-bar pin. `ui_font_size` scales chrome (`--chrome-font-size`) and directory row/gap density; `font_size` scales conversation text (`--ui-font-size`) and must not pack the list. The title-bar width control (and ⌘K) flips `content_width` between the reading column and a fill that sits against the sidebars. The sidebar splits Pinned (a `PATCH pinned` flag), project folders with nested conversations, Recents for conversations with no project, and **Scheduled** (a page trigger with unread in the accessible name, not a fold; `aria-current="page"` while open; the list is the main column; the conversation Agents/Files/Trace rail stays off, like Settings; Create opens a right drawer (task description, Details Runs in + Project, Frequency; a short inbox name is generated; Expand fills the column so a long instruction is readable); `skipped_busy` alerts on the page). Schedule state lives in `frontend/src/store/app-schedule.ts` so `App.tsx` does not re-render for the inbox. An active thread wake on the open conversation is a one-line composer pin next to `/goal` (named Run now / Cancel wait as icon controls). The armed-wait notice still labels those two actions. The banner hides while that conversation is working. The sidebar listing tick also refreshes `GET /api/schedules` (a dropped GET does not toast) so a replayed arm chip cannot freeze the banner on the first `next_run_at`; a later GET or fire wins. `schedule_skipped` refreshes that list too — a busy tick advances the due time. A parked wait still marks the sidebar row with a breathing clock (`waitingThreadIds`, listing `waiting`) and the title bar says Waiting instead of Idle (`status.waiting`, kept across `done`); a live turn on that row still uses the progress dot. A conversation blocked on `ask_user` uses a pinging question mark (`askingThreadIds` / `thread.awaiting_answer`) and the title bar says **Your turn** instead of Working — the working pulse means the swarm is busy, not that the human has to pick. A project folder or Recents shows the five conversations active in the last seven days; the rest sit behind Show more. A project folder icon is the fold control (open vs closed directory). A running conversation's progress occupies that same column. A folder that contains a running conversation or a parked wait stays open like the active one, so the mark is visible without clicking in; an explicitly collapsed folder keeps a progress mark (or the wait clock, or the ask ping) on the directory glyph. Reorder is a title drag past 8px, with no grip glyph. Section headers and folders remember expand/collapse in `localStorage`. Skills stay behind `GET /api/projects/:id/skills/:name` and the Memory tab; `GET /api/projects` still carries the skill index for that panel. A drop in the sidebar is `PUT /api/threads/reorder` or `PUT /api/projects/reorder` (a click selects; a drag past 8px reorders, including from the title). The title-bar terminal (⌘J) is a bottom PTY; each click starts a new session whose working directory is the open conversation's workspace (the project's directory when it has one). |
 
 ## Conversation search
 
@@ -189,10 +189,13 @@ worker before closing SQLite.
    Workers get JSON deny stubs (`workers cannot schedule`).
    The manager prompt has a generic `## Waiting` section after Asking the
    human: gated progress calls `schedule_wake` and ends the turn; it must
-   not spin, block a tool, or wait for the human to remind it. Estimated
-   remaining time is biased short (about a third, then that interval) so a
-   finish is noticed soon; extra checks are expected, and a named clock time
-   the human asked for is still honored. Open wakes for this conversation
+   not spin, block a tool, or wait for the human to remind it. A parallel
+   `exec` that sleeps and then checks progress is fine. Estimated remaining
+   time is biased short (about a third, then that interval) so a finish is
+   noticed soon; extra checks are expected, and a named clock time the human
+   asked for is still honored. `exec` shortens a sleep of five seconds or
+   more to about a third of that duration so a padded wait cannot hide
+   inside a blocked tool. Open wakes for this conversation
    are injected in extra (`## Scheduled`) so the
    model can upsert. A pending wake is the next `/goal` turn — ending a
    wait-turn does not imply an immediate auto-continue. Cancelling that
@@ -412,22 +415,32 @@ worker before closing SQLite.
    same turn id as `memory-reviewer`, and one `memory_review` event says what
    changed. The log it reads is clipped per message and in total, so a turn
    that read a large file cannot make the review cost more than the work. The
-   tools refuse a second skill on the same subject, a note longer than
+   tools refuse a second skill on the same subject (including a shared name
+   stem), a note longer than
    `memory.entry_max`, and a note that restates a recorded skill — the
-   instruction alone did not stop the store filling with twins. Reviews of one
+   instruction alone did not stop the store filling with twins. After the
+   reviewer finishes — or instead, when auto-review is skipped — leftover
+   skill families are folded into one skill under the shared stem, so a
+   catalog that already grew chapter-skills still collapses without anyone
+   asking. The Memory panel can run that same fold on demand after a hand
+   edit (`POST /api/projects/:id/memory/tidy-skills`); the response names
+   what was merged, deleted and created, with counts. Opening the tab does
+   not rewrite files. Reviews of one
    project are serialized: two turns finishing together would each read the same
    bounded notes, both decide there is room, and one would lose its entry. Only
    a turn that finished cleanly is reviewed, and `Shutdown` waits for the ones
    in flight before exiting.
-9. **Title** (untitled conversations, `swarm.auto_title`): a goroutine asks the
+9. **Title** (untitled conversations and untitled waits, `swarm.auto_title`): a goroutine asks the
    configured namer (the conversation's model, or `swarm.title_provider` /
    `swarm.title_model` when pinned) for a short sidebar name from the opening
-   message. The first message stays as a placeholder until it lands. Waiting for
+   message, or a short inbox label from a wait's prompt. The first message /
+   truncated prompt stays as a placeholder until it lands. Waiting for
    the first finish used to rename the sidebar after a long first turn. A user
-   rename in between wins. The
-  call is recorded under the turn as `title-namer`, and one `title` event
-  carries the name; the transcript does not render it. The Trace tab's Full
-  log still lists the event. `Shutdown` waits for namers too.
+   rename (or a schedule title PATCH) in between wins. The
+  conversation call is recorded under the turn as `title-namer`, and one `title` event
+  carries the name; the transcript does not render it. Naming a wait does **not**
+  emit that event — it would rename the origin conversation. The Trace tab's Full
+  log still lists the conversation event. `Shutdown` waits for namers too.
 
 ## Why the event stream is built this way
 
@@ -469,9 +482,13 @@ The front end folds this stream into blocks per agent in
 after `schedule_fired` with no findings report, drops that turn's chat bubbles;
 an armed wait or findings report plus empty `done` keeps the chip). The phone
 reducer (`mobile/src/lib/transcript.ts`) maps those kinds to the same
-one-liners and skips the JSON payload; `progress` pulses are dropped the
+one-liners and skips the JSON payload; a `schedule_wake` / `cancel_schedule`
+tool call is omitted (the schedule event already noticed) and a findings
+`report_schedule` becomes that prose as a notice; `progress` pulses are dropped the
 way desktop keeps them off the transcript; a `wait_agents` result is a
 count chip (`mobile/src/lib/tool-preview.ts` roster), not the agent array.
+The inbox subtitle (`mobile/src/lib/inbox-preview.ts`, filled on the host by
+`internal/remote/preview.go`) is the same human line, not the raw `tool_call`.
 Run now / Cancel wait live on the wait banner (`run_now` / `cancel_wait`),
 not inside the transcript chip. Pairing a tool call with its result by
 `tool_call_id` (agents issue several in one message, and they finish out of
@@ -484,15 +501,17 @@ command returned. The latest line rides the summary while it runs; open the
 row to watch the tail (wheel-up unpins). Other pending tool rows still start
 open and fold when the result lands, the way a finished thought does.
 An `edit` or `write` also stays collapsed: eino-tools only returns a status
-sentence (`ok: replaced block in …` / `Updated file …`), so the desktop UI
-rebuilds a highlighted hunk from the args (`frontend/src/lib/edit-diff.ts`)
-and shows it when the row is opened. Edit uses paired `search_block` /
-`replace_block` (empty replace deletes) or `patch`; write treats `content`
-as all additions. A huge
+sentence (`ok: replaced block in …` / `Updated file <abs> (N bytes)`), so the
+desktop UI rebuilds a highlighted hunk from the args
+(`frontend/src/lib/edit-diff.ts`) and shows it when the row is opened. Edit
+uses paired `search_block` / `replace_block` (empty replace deletes) or
+`patch`; write treats `content` as all additions (omitting it, or sending
+`contents`, is a tool error — not an empty file). A huge
 write is clipped in the expanded view (400 lines); the `+N` on the collapsed
-row is still the real size. The collapsed summary adds `+N` (write) or
-`+N −M` (edit). `viewTool` attaches the hunk once so the row and the
-body do not re-parse the args.
+row is still the real size. The collapsed row (and the expanded hunk
+header) shows `+N` (write) or `+N −M` (edit) as a sibling of the path —
+idle they inherit the row colour, hover/focus paints add/del. `viewTool`
+attaches the hunk once so the row and the body do not re-parse the args.
 A turn that ends (`done` / `error`, including a user interrupt) or an
 agent that `finished` closes any tool still `pending`: interrupt cancels
 in-flight calls without a `tool_result`, and leaving them pending keeps the
@@ -528,8 +547,10 @@ Completed answers are
 memoised so a later token does not re-parse the rest of the conversation.
 **Settings is a full-page sheet, not a modal.** Opening it must not re-render
 the transcript or run Radix `hideOthers` across it — a long conversation made
-that click stall for seconds. `frontend/src/App.tsx` keeps the open flag off
-the shell's state; the dialog is `modal={false}`.
+that click stall for seconds. `frontend/src/store/settings-sheet.ts` keeps the
+open flag and landing page off the shell's state; the dialog is `modal={false}`.
+Sidebar / ⌘, / ⌘K land on General; the model picker's Edit providers and the
+unconfigured banner land on Models.
 A failed **Settings** action (Discover models, Phone pairing, saving or
 loading the sheet, saving a project) is a toast portaled onto `document.body`
 (`frontend/src/components/app/toast-stack.tsx`, `.toast-layer` above dialog
@@ -540,6 +561,18 @@ that follows new tokens and fades at the top once earlier lines have left the
 viewport; the **Thinking** label uses `MarqueeText` so it sweeps rather than
 sitting frozen. It starts open; a click on the row hides it even while tokens
 are still arriving (`thoughtExpanded`) — streaming must not force it back open.
+`ui.transcript_mode` (`user` default, `developer`) changes what the main
+transcript shows: user view folds consecutive reasoning, tool, spawn, and
+mid-turn answer blocks behind one `WorkFold` (`frontend/src/lib/work-fold.ts`)
+whose live summary is a one-line `SwapLine` (`frontend/src/components/app/swap-line.tsx`).
+A new activity slides the previous line up; the current line is always
+`MarqueeText`, so overflow still scrolls left-to-right. The copy is the
+latest thought line (or **Thinking**), **Planning next moves** while the
+turn is running with nothing streaming, and **Editing** / **Reading** /
+**Exec** `{name}` for a pending tool. Developer view is the previous
+every-row log. `ask_user`, iteration-limit, errors and notices stay outside
+the fold. Find still opens a matching collapsed row. The Agents tab is
+already an inspection surface and is not folded.
 Two or more **human** user turns grow a compact tick cluster in the middle of the left
 edge of the transcript (`frontend/src/lib/turn-nav.ts`): the rail is split by
 `user_message`, so a `/goal` auto-continue or a wait fire is the same
@@ -552,6 +585,13 @@ second scrollbar beside the list. The active tick is the turn that owns
 the viewport, snapping to the latest when the scroller is at the bottom
 or still following the live edge — measuring at scrollTop 0 on open used
 to light the first tick while the reader was looking at the last turn.
+A wheel-up that leaves the latest send on screen still lights that tick:
+the probe is the bottom of the pane, not a line 96px from the top
+(collapsed earlier turns used to keep the third tick current, and a
+click then looked dead). A click sticks until the reader wheels again,
+and the jump stays pending across a lazy history prepend — clearing it
+on the first scrollIntoView used to lose the click when the sentinel
+page landed.
 A thought's top fade stays inside that thought's stacking context so it cannot
 cover the ticks. Jumping cancels auto-follow in the same click
 so a live token cannot yank the viewport back to the bottom.
@@ -570,7 +610,8 @@ pill is a snapshot of that range: a live stream's auto-follow scroll and the
 text-node replacements of a streaming markdown block used to dismiss it.
 Selecting also unpins follow (`zwai:quote-selection`) so the live edge does
 not yank the highlight. The snippet is stored as a composer annotation —
-compact chips (edit or drop), not a dump of the quote into the textarea —
+a count chip at rest; hover (or focus) to read, edit or drop, not a dump
+of the quote into the textarea —
 and tagged onto the next send as `<selected_text>` / `<user_request>` so the
 model can tell a highlight from the instruction (`frontend/src/lib/quote.ts`,
 `frontend/src/lib/selection.ts`).

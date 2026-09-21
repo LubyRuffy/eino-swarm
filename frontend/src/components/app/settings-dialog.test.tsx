@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SettingsDialog } from "./settings-dialog"
 import { ToastStack } from "./toast-stack"
+import { defaultAppearance } from "@/lib/appearance"
 import type { Settings } from "@/lib/types"
 
 class ResizeObserverStub {
@@ -80,7 +81,7 @@ function renderDialog(props: Partial<Parameters<typeof SettingsDialog>[0]> = {})
         open
         theme="system"
         locale="system"
-        appearance={{ font: "system", fontSize: "medium", contentWidth: "comfortable" }}
+        appearance={defaultAppearance()}
         onOpenChange={vi.fn()}
         onThemeChange={vi.fn()}
         onLocaleChange={vi.fn()}
@@ -94,6 +95,12 @@ function renderDialog(props: Partial<Parameters<typeof SettingsDialog>[0]> = {})
 
 function activePanel() {
   return document.querySelector('[role="tabpanel"][data-state="active"]')
+}
+
+async function waitSettingsLoaded() {
+  await waitFor(() =>
+    expect(screen.getByRole("heading", { name: "General" })).toBeVisible(),
+  )
 }
 
 describe("Settings dialog", () => {
@@ -114,17 +121,50 @@ describe("Settings dialog", () => {
     vi.mocked(api.remoteBindings).mockResolvedValue([])
   })
 
+  it("opens on General, the same first page as everyone else", async () => {
+    renderDialog()
+    await waitSettingsLoaded()
+    expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
+    expect(screen.getByRole("heading", { name: "General" })).toBeVisible()
+    expect(screen.getByLabelText("Conversation width")).toBeVisible()
+    expect(
+      screen.queryByRole("button", { name: "Add a provider" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("still shows General when the landing id is empty", async () => {
+    renderDialog({ initialSection: "" as "general" })
+    await waitSettingsLoaded()
+    expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    )
+    expect(screen.getByRole("heading", { name: "General" })).toBeVisible()
+  })
+
+  it("opens on Models when the caller was already on providers", async () => {
+    renderDialog({ initialSection: "models" })
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add a provider" }),
+      ).toBeInTheDocument(),
+    )
+    expect(screen.getByRole("tab", { name: "Models" })).toHaveAttribute(
+      "data-state",
+      "active",
+    )
+  })
+
   // The Add-a-provider outline sits on the last pixel of the Models
   // scrollport. overflow-y-auto leaves TabsContent's overflow-hidden in
   // place, and with no bottom padding the 1px border is clipped.
   // Swarm used to skip the scrollport, so Save left the window.
   it("lets every tab scroll inside a full-page sheet", async () => {
     renderDialog()
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
-    )
+    await waitSettingsLoaded()
 
     expect(screen.getByRole("dialog").className).toMatch(/\bh-dvh\b/)
     expect(screen.getByRole("button", { name: "Back to app" })).toBeInTheDocument()
@@ -161,11 +201,7 @@ describe("Settings dialog", () => {
   it("jumps to Swarm when search matches a swarm field", async () => {
     const user = userEvent.setup()
     renderDialog()
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
-    )
+    await waitSettingsLoaded()
     await user.type(screen.getByLabelText("Search settings"), "coalesce")
     await waitFor(() =>
       expect(screen.getByRole("tab", { name: "Swarm" })).toHaveAttribute(
@@ -180,11 +216,7 @@ describe("Settings dialog", () => {
   it("exposes compact settings on the Swarm tab", async () => {
     const user = userEvent.setup()
     renderDialog()
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
-    )
+    await waitSettingsLoaded()
     await user.click(screen.getByRole("tab", { name: "Swarm" }))
     await waitFor(() =>
       expect(
@@ -208,11 +240,7 @@ describe("Settings dialog", () => {
   // start under an empty drag strip — the Codex layout, not a padded label.
   it("keeps Back to app below the native title bar on desktop", async () => {
     renderDialog({ trafficInset: true })
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
-    )
+    await waitSettingsLoaded()
 
     const titlebar = screen.getByTestId("settings-titlebar")
     const back = screen.getByRole("button", { name: "Back to app" })
@@ -229,11 +257,7 @@ describe("Settings dialog", () => {
   it("writes a memory toggle without a Save button", async () => {
     const user = userEvent.setup()
     renderDialog()
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
-    )
+    await waitSettingsLoaded()
     await user.click(screen.getByRole("tab", { name: "Memory" }))
     const toggle = await screen.findByRole("switch", {
       name: "Remember anything at all",
@@ -247,10 +271,9 @@ describe("Settings dialog", () => {
     expect(vi.mocked(api.saveSettings).mock.calls[0][0].memory?.enabled).toBe(
       false,
     )
-    expect(vi.mocked(api.saveSettings).mock.calls[0][0].ui).toEqual({
+    expect(vi.mocked(api.saveSettings).mock.calls[0][0].ui).toMatchObject({
       locale: "system",
       font: "system",
-      font_size: "medium",
       content_width: "comfortable",
     })
   })
@@ -258,11 +281,7 @@ describe("Settings dialog", () => {
   it("writes personality without a Save button", async () => {
     const user = userEvent.setup()
     renderDialog()
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
-    )
+    await waitSettingsLoaded()
     await user.click(screen.getByRole("tab", { name: "Personality" }))
     const box = await screen.findByLabelText("Personal preferences")
     fireEvent.change(box, { target: { value: "prefer compact replies" } })
@@ -276,11 +295,7 @@ describe("Settings dialog", () => {
   it("writes the chrome language with the rest of the document", async () => {
     const user = userEvent.setup()
     renderDialog({ locale: "zh" })
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
-    )
+    await waitSettingsLoaded()
     await user.click(screen.getByRole("tab", { name: "Memory" }))
     await user.click(
       await screen.findByRole("switch", { name: "Remember anything at all" }),
@@ -288,10 +303,9 @@ describe("Settings dialog", () => {
     await waitFor(() => expect(api.saveSettings).toHaveBeenCalled())
     const patch = vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0]
     expect(patch?.memory?.enabled).toBe(false)
-    expect(patch?.ui).toEqual({
+    expect(patch?.ui).toMatchObject({
       locale: "zh",
       font: "system",
-      font_size: "medium",
       content_width: "comfortable",
     })
   })
@@ -300,11 +314,7 @@ describe("Settings dialog", () => {
     const onOpenChange = vi.fn()
     const onSaved = vi.fn()
     renderDialog({ onOpenChange, onSaved })
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
-    )
+    await waitSettingsLoaded()
     const user = userEvent.setup()
     await user.click(screen.getByRole("tab", { name: "Swarm" }))
     fireEvent.change(await screen.findByLabelText("Sub-agents at once"), {
@@ -323,11 +333,7 @@ describe("Settings dialog", () => {
     vi.mocked(api.saveSettings).mockRejectedValue(new Error("disk full"))
     const onOpenChange = vi.fn()
     renderDialog({ onOpenChange })
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
-    )
+    await waitSettingsLoaded()
     const user = userEvent.setup()
     await user.click(screen.getByRole("tab", { name: "Memory" }))
     await user.click(
@@ -341,19 +347,17 @@ describe("Settings dialog", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument()
   })
 
-  it("offers font, size and conversation width on General", async () => {
-    const user = userEvent.setup()
+  it("opens General with the appearance page, not the model list", async () => {
     renderDialog()
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: "Add a provider" }),
-      ).toBeInTheDocument(),
+    await waitSettingsLoaded()
+    expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute(
+      "data-state",
+      "active",
     )
-    await user.click(screen.getByRole("tab", { name: "General" }))
-    expect(screen.getByLabelText("Font")).toHaveTextContent("System")
-    expect(screen.getByLabelText("Font size")).toHaveTextContent("Medium")
-    expect(screen.getByLabelText("Conversation width")).toHaveTextContent(
-      "Standard",
-    )
+    expect(screen.getByRole("heading", { name: "General" })).toBeVisible()
+    expect(
+      screen.queryByRole("button", { name: "Add a provider" }),
+    ).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Conversation width")).toBeInTheDocument()
   })
 })

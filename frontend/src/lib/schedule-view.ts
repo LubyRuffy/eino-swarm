@@ -1,4 +1,4 @@
-import type { Schedule, ScheduleRun } from "@/lib/types"
+import type { Schedule, ScheduleCreate, SchedulePatch, ScheduleRun } from "@/lib/types"
 
 export function scheduleHeadline(row: Pick<Schedule, "title" | "prompt">): string {
   const title = (row.title ?? "").trim()
@@ -95,6 +95,70 @@ export function scheduleCadenceSpec(
   if (row.every_s > 0) return { kind: "every", seconds: row.every_s }
   if (row.delay_s > 0) return { kind: "delay", seconds: row.delay_s }
   return { kind: "none" }
+}
+
+export type ScheduleCadenceKind = "delay" | "every" | "cron"
+
+/** Inbox form cadence from a stored row. `none` becomes an empty delay. */
+export function cadenceFormFields(
+  row: Pick<Schedule, "delay_s" | "every_s" | "cron">,
+): { cadence: ScheduleCadenceKind; value: string } {
+  const spec = scheduleCadenceSpec(row)
+  if (spec.kind === "cron") return { cadence: "cron", value: spec.expr }
+  if (spec.kind === "every") return { cadence: "every", value: String(spec.seconds) }
+  if (spec.kind === "delay") return { cadence: "delay", value: String(spec.seconds) }
+  return { cadence: "delay", value: "" }
+}
+
+export function cadenceCreateFields(
+  cadence: ScheduleCadenceKind,
+  value: string,
+): Pick<ScheduleCreate, "delay_s" | "every_s" | "cron"> {
+  if (cadence === "every") return { every_s: Number(value) }
+  if (cadence === "cron") return { cron: value.trim() }
+  return { delay_s: Number(value) }
+}
+
+function sameCadence(a: CadenceSpec, b: CadenceSpec): boolean {
+  if (a.kind !== b.kind) return false
+  if (a.kind === "cron" && b.kind === "cron") return a.expr === b.expr
+  if (
+    (a.kind === "every" || a.kind === "delay") &&
+    (b.kind === "every" || b.kind === "delay")
+  ) {
+    return a.seconds === b.seconds
+  }
+  return true
+}
+
+/** Fields the inbox should PATCH. Cadence is omitted when it did not
+ *  change — sending it would recompute next_run_at from now. */
+export function schedulePatchDiff(
+  row: Pick<Schedule, "title" | "prompt" | "delay_s" | "every_s" | "cron">,
+  draft: {
+    title?: string
+    prompt?: string
+    cadence: ScheduleCadenceKind
+    cadenceValue: string
+  },
+): SchedulePatch | undefined {
+  const patch: SchedulePatch = {}
+  if (draft.title !== undefined && draft.title.trim() !== (row.title ?? "").trim()) {
+    patch.title = draft.title.trim()
+  }
+  if (draft.prompt !== undefined && draft.prompt.trim() !== (row.prompt ?? "").trim()) {
+    patch.prompt = draft.prompt.trim()
+  }
+  const drafted = cadenceCreateFields(draft.cadence, draft.cadenceValue)
+  const next = scheduleCadenceSpec({
+    delay_s: drafted.delay_s ?? 0,
+    every_s: drafted.every_s ?? 0,
+    cron: drafted.cron ?? "",
+  })
+  if (!sameCadence(scheduleCadenceSpec(row), next)) {
+    Object.assign(patch, drafted)
+  }
+  return Object.keys(patch).length > 0 ? patch : undefined
 }
 
 export type CadenceUnit = "second" | "minute" | "hour"

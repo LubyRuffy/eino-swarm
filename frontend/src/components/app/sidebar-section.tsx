@@ -1,6 +1,11 @@
 import { ChevronRight } from "lucide-react"
 import type { ReactNode } from "react"
 
+import {
+  sidebarSectionClass,
+  sidebarSectionLabelClass,
+  sidebarStackClass,
+} from "@/components/app/sidebar-slots"
 import { cn } from "@/lib/utils"
 
 /** Pinned, Projects, Recents: a labelled disclosure. The chevron after
@@ -22,13 +27,13 @@ export function SidebarSection({
   children?: ReactNode
 }) {
   return (
-    <section className="mb-2" data-testid={testId}>
-      <div className="group flex h-7 items-center pr-2">
+    <section className={sidebarSectionClass} data-testid={testId}>
+      <div className="group flex h-[var(--sidebar-section-label-height)] items-center pr-1">
         <button
           type="button"
           aria-expanded={open}
           onClick={onToggle}
-          className="flex h-7 min-w-0 flex-1 items-center gap-0.5 px-2 text-left text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60"
+          className={sidebarSectionLabelClass}
         >
           <span className="truncate">{label}</span>
           <ChevronRight
@@ -45,7 +50,7 @@ export function SidebarSection({
         </button>
         {actions}
       </div>
-      {open ? children : null}
+      {open ? <div className={sidebarStackClass}>{children}</div> : null}
     </section>
   )
 }

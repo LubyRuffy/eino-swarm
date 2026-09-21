@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest"
+
+import {
+  emptyTidyReport,
+  joinNames,
+  normalizeTidyReport,
+  tidyFolded,
+} from "./skill-tidy"
+
+describe("skill tidy report", () => {
+  it("treats a missing payload as a tidy catalog of the scanned size", () => {
+    const report = normalizeTidyReport(undefined, 4)
+    expect(report).toEqual(emptyTidyReport(4))
+    expect(tidyFolded(report)).toBe(false)
+  })
+
+  it("keeps created, deleted and merged names for the panel to list", () => {
+    const report = normalizeTidyReport({
+      scanned: 3,
+      before: 3,
+      after: 2,
+      families: 1,
+      unchanged: 1,
+      created: ["a-procedure"],
+      deleted: ["a-procedure-notes", "a-procedure-send"],
+      merged: [
+        {
+          keep: "a-procedure",
+          dropped: ["a-procedure-notes", "a-procedure-send"],
+          created: true,
+        },
+      ],
+    })
+    expect(tidyFolded(report)).toBe(true)
+    expect(joinNames(report.deleted)).toBe("a-procedure-notes, a-procedure-send")
+    expect(report.created).toEqual(["a-procedure"])
+    expect(report.merged[0]?.keep).toBe("a-procedure")
+  })
+
+  it("drops blank names rather than painting empty rows", () => {
+    const report = normalizeTidyReport({
+      created: ["kept", "  "],
+      deleted: [""],
+      merged: [{ keep: "", dropped: ["gone"], created: false }],
+    })
+    expect(report.created).toEqual(["kept"])
+    expect(report.deleted).toEqual([])
+    expect(report.merged).toEqual([])
+  })
+
+  it("counts a fold that only created or deleted names as folded", () => {
+    expect(
+      tidyFolded(
+        normalizeTidyReport({
+          created: ["kept"],
+          deleted: ["chapter"],
+          merged: [],
+        }),
+      ),
+    ).toBe(true)
+    expect(tidyFolded(normalizeTidyReport({ merged: [] }))).toBe(false)
+  })
+})

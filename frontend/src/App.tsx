@@ -1,25 +1,29 @@
-import { AlertTriangle, X } from "lucide-react"
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { create } from "zustand"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import {
+  AppHeader,
+  AppPalette,
+  AppSettings,
+  ConfiguredBanner,
+  ErrorBanner,
+  isDark,
+  SettingsIdleChrome,
+} from "@/components/app/app-chrome"
 import { Composer } from "@/components/app/composer"
 import { DeleteProjectDialog } from "@/components/app/delete-project-dialog"
 import { EmptyState } from "@/components/app/empty-state"
 import { FindBar, useFindController } from "@/components/app/find-bar"
-import { Header } from "@/components/app/header"
-import { Palette } from "@/components/app/palette"
 import { RightPanel, type PanelTab } from "@/components/app/panel"
 import { ProjectDialog } from "@/components/app/project-dialog"
 import { SelectionMenu } from "@/components/app/selection-menu"
-import { SettingsDialog } from "@/components/app/settings-dialog"
+import { ScheduleInbox } from "@/components/app/schedule-inbox"
 import { Sidebar } from "@/components/app/sidebar"
 import { ToastStack } from "@/components/app/toast-stack"
 import { TerminalPanel } from "@/components/app/terminal-panel"
 import { Transcript } from "@/components/app/transcript"
-import { Button } from "@/components/ui/button"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
-import { toggleContentWidth } from "@/lib/appearance"
+import { toggleContentWidth, toggleTranscriptMode } from "@/lib/appearance"
 import { attachExternalLinkHandler } from "@/lib/external-links"
 import { findShortcut } from "@/lib/find"
 import { appendQuote, type Quote } from "@/lib/quote"
@@ -29,29 +33,20 @@ import { isWelcomePane, visibleManagerBlockCount } from "@/lib/welcome"
 import type { Project, SkillInfo } from "@/lib/types"
 import { startSidebarSync } from "@/lib/sidebar-sync"
 import { askingThreadIds } from "@/lib/thread-title"
-import { toggleLocalePref, useT } from "@/lib/use-t"
+import { toggleLocalePref } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { useApp } from "@/store/app"
-import { activeWake, waitingThreadIds } from "@/store/app-schedule"
+import { waitingThreadIds } from "@/store/app-schedule"
 import { projectOf, useProjects } from "@/store/projects"
 import { useTerminal } from "@/store/terminal"
-
-/** Settings is a full-page sheet. Keeping `open` off AppShell's state is
- *  the difference between painting the conversation and not: a setState
- *  here used to re-render a 10k-block transcript on the same click. */
-const useSettingsSheet = create<{ open: boolean }>(() => ({ open: false }))
-
-function openSettings() {
-  useSettingsSheet.setState({ open: true })
-}
+import { openSettings, useSettingsSheet } from "@/store/settings-sheet"
 
 export function App() {
   const boot = useApp((s) => s.boot)
   const openNative = useApp((s) => s.meta?.capabilities?.open_url)
   const booted = useRef(false)
   useEffect(() => {
-    // StrictMode mounts twice in development; booting twice would open two
-    // event streams for the same conversation.
+    // StrictMode double-mount must not open two event streams.
     if (booted.current) return
     booted.current = true
     void boot()
@@ -205,6 +200,12 @@ function AppShell() {
     })
   }, [setAppearance])
 
+  const toggleMode = useCallback(() => {
+    setAppearance({
+      transcriptMode: toggleTranscriptMode(useApp.getState().transcriptMode),
+    })
+  }, [setAppearance])
+
   const openAgent = useCallback(
     (id: string) => {
       selectAgent(id)
@@ -229,7 +230,8 @@ function AppShell() {
         paletteOpen ||
         useSettingsSheet.getState().open ||
         Boolean(projectDialog) ||
-        Boolean(doomedProject)
+        Boolean(doomedProject) ||
+        useApp.getState().scheduleInboxOpen
       const findAction = findShortcut(e, findOpen)
       if (findAction && !dialogOpen) {
         e.preventDefault()
@@ -309,6 +311,7 @@ function AppShell() {
         onToggleTheme={toggleTheme}
         onToggleLocale={toggleLocale}
         onToggleContentWidth={toggleWidth}
+        onToggleTranscriptMode={toggleMode}
         onOpenTerminal={spawnTerminal}
       />
       <div className="flex min-h-0 min-w-0 flex-1">
@@ -335,16 +338,14 @@ function AppShell() {
         ) : null}
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <ConfiguredBanner onConfigure={openSettings} />
+          <ConfiguredBanner onConfigure={() => openSettings("models")} />
           <ErrorBanner />
-          {/* The composer paints on this stage; it writes --composer-pad here
-              so the last transcript line can scroll out from under the box. */}
           <div
             data-composer-stage=""
             data-testid="composer-stage"
             className="relative min-h-0 min-w-0 flex-1"
           >
-            <div className="absolute inset-0 flex min-h-0 flex-col">
+            <div className="absolute inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden">
               <TranscriptPane
                 onSelectAgent={openAgent}
                 onPickIdea={pickIdea}
@@ -359,7 +360,7 @@ function AppShell() {
               focusSignal={focusSignal}
               quotes={quotes}
               onQuotesChange={setQuotes}
-              onEditProviders={openSettings}
+              onEditProviders={() => openSettings("models")}
             />
             {findOpen ? (
               <FindBar
@@ -372,6 +373,7 @@ function AppShell() {
                 onClose={closeFind}
               />
             ) : null}
+            <ScheduleInbox />
           </div>
           <TerminalPanel onNew={spawnTerminal} />
         </main>
@@ -398,6 +400,7 @@ function AppShell() {
         onToggleTheme={toggleTheme}
         onToggleLocale={toggleLocale}
         onToggleContentWidth={toggleWidth}
+        onToggleTranscriptMode={toggleMode}
         onToggleSidebar={toggleSidebar}
         onFind={openFind}
         onOpenTerminal={spawnTerminal}
@@ -420,19 +423,6 @@ function AppShell() {
 
       <AppSettings trafficInset={trafficLights} />
     </>
-  )
-}
-
-function SettingsIdleChrome({ children }: { children: ReactNode }) {
-  const open = useSettingsSheet((s) => s.open)
-  return (
-    <div
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-      hidden={open}
-      inert={open || undefined}
-    >
-      {children}
-    </div>
   )
 }
 
@@ -558,102 +548,6 @@ function AppSidebar({
       onReorderProjects={(ids) => void reorderProjects(ids)}
       onPin={(id, pinned) => void pinThread(id, pinned)}
     />
-  )
-}
-
-function AppHeader({
-  panelOpen,
-  sidebarOpen,
-  trafficInset,
-  onTogglePanel,
-  onToggleSidebar,
-  onToggleTheme,
-  onToggleLocale,
-  onToggleContentWidth,
-  onOpenTerminal,
-}: {
-  panelOpen: boolean
-  sidebarOpen: boolean
-  trafficInset: boolean
-  onTogglePanel: () => void
-  onToggleSidebar: () => void
-  onToggleTheme: () => void
-  onToggleLocale: () => void
-  onToggleContentWidth: () => void
-  onOpenTerminal: () => void
-}) {
-  const threads = useApp((s) => s.threads)
-  const activeId = useApp((s) => s.activeId)
-  const status = useApp((s) => s.status)
-  const schedules = useApp((s) => s.schedules)
-  const meta = useApp((s) => s.meta)
-  const connected = useApp((s) => s.connected)
-  const theme = useApp((s) => s.theme)
-  const contentWidth = useApp((s) => s.contentWidth)
-  const projects = useProjects((s) => s.projects)
-  const selectedId = useProjects((s) => s.selectedId)
-  const terminalOpen = useTerminal((s) => s.open)
-  const thread = threads.find((t) => t.id === activeId)
-  return (
-    <Header
-      thread={thread}
-      project={projectOf(projects, thread?.project_id)}
-      status={status}
-      waiting={Boolean(status.waiting) || Boolean(activeWake(schedules, activeId))}
-      meta={meta}
-      connected={connected || !activeId}
-      panelOpen={panelOpen}
-      sidebarOpen={sidebarOpen}
-      trafficInset={trafficInset}
-      onTogglePanel={onTogglePanel}
-      onToggleSidebar={onToggleSidebar}
-      onToggleTheme={onToggleTheme}
-      onToggleLocale={onToggleLocale}
-      onToggleContentWidth={onToggleContentWidth}
-      onOpenTerminal={onOpenTerminal}
-      contentWidth={contentWidth}
-      dark={isDark(theme)}
-      terminalOpen={terminalOpen}
-      terminalEnabled={Boolean(activeId || selectedId)}
-    />
-  )
-}
-
-function ConfiguredBanner({ onConfigure }: { onConfigure: () => void }) {
-  const t = useT()
-  const meta = useApp((s) => s.meta)
-  if (!meta || meta.configured) return null
-  return (
-    <div className="flex items-center gap-2 border-b border-border bg-running/10 px-4 py-2 text-sm">
-      <AlertTriangle className="size-4 shrink-0 text-running" />
-      <span className="min-w-0 flex-1">
-        {t("banner.unconfigured")}
-      </span>
-      <Button size="sm" variant="outline" onClick={onConfigure}>
-        {t("banner.configure")}
-      </Button>
-    </div>
-  )
-}
-
-function ErrorBanner() {
-  const t = useT()
-  const error = useApp((s) => s.error)
-  const setError = useApp((s) => s.setError)
-  if (!error) return null
-  return (
-    <div className="flex items-start gap-2 border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-      <span className="min-w-0 flex-1">{error}</span>
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        aria-label={t("banner.dismiss")}
-        onClick={() => setError(undefined)}
-      >
-        <X />
-      </Button>
-    </div>
   )
 }
 
@@ -832,6 +726,7 @@ function AppPanel({
   const meta = useApp((s) => s.meta)
   const usage = useApp((s) => s.usage)
   const activeId = useApp((s) => s.activeId)
+  const scheduled = useApp((s) => s.scheduleInboxOpen)
   const upload = useApp((s) => s.upload)
   const removeFile = useApp((s) => s.removeFile)
   const refreshFiles = useApp((s) => s.refreshFiles)
@@ -843,6 +738,11 @@ function AppPanel({
   const loadMemory = useProjects((s) => s.loadMemory)
   const saveMemory = useProjects((s) => s.saveMemory)
   const removeSkill = useProjects((s) => s.removeSkill)
+  const tidySkills = useProjects((s) => s.tidySkills)
+  const clearTidy = useProjects((s) => s.clearTidy)
+  const tidying = useProjects((s) => s.tidying)
+  const tidyReport = useProjects((s) => s.tidyReport)
+  const tidyError = useProjects((s) => s.tidyError)
   const memoryUnread = useProjects((s) => s.memoryUnread)
   const seeMemory = useProjects((s) => s.seeMemory)
   const memoryProjectId = useProjects((s) => s.memoryProjectId)
@@ -861,6 +761,9 @@ function AppPanel({
     conversationProject
   const memoryForProject =
     project && memoryProjectId === project.id ? memory : undefined
+  // Scheduled is a page, not a conversation. The Agents/Files/Trace rail
+  // belongs to the thread underneath; Settings hides it the same way.
+  if (scheduled) return null
   return (
     <RightPanel
       tab={tab}
@@ -886,8 +789,13 @@ function AppPanel({
               onDeleteSkill: (name) => void removeSkill(name),
               onRefresh: () => void loadMemory(project.id),
               onReview: () => void reviewNow(),
+              onTidySkills: () => void tidySkills(),
               reviewing,
               reviewHint,
+              tidying,
+              tidyReport,
+              tidyError,
+              onDismissTidy: clearTidy,
               unread: memoryUnread,
               onSeen: seeMemory,
               focusSkill: focusSkill?.name,
@@ -907,93 +815,3 @@ function AppPanel({
   )
 }
 
-function AppPalette({
-  open,
-  onOpenChange,
-  onNew,
-  onSettings,
-  onToggleTheme,
-  onToggleLocale,
-  onToggleContentWidth,
-  onToggleSidebar,
-  onFind,
-  onOpenTerminal,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onNew: () => void
-  onSettings: () => void
-  onToggleTheme: () => void
-  onToggleLocale: () => void
-  onToggleContentWidth: () => void
-  onToggleSidebar: () => void
-  onFind: () => void
-  onOpenTerminal: () => void
-}) {
-  const threads = useApp((s) => s.threads)
-  const openThread = useApp((s) => s.openThread)
-  return (
-    <Palette
-      open={open}
-      onOpenChange={onOpenChange}
-      threads={threads}
-      onOpen={(id) => void openThread(id)}
-      onNew={onNew}
-      onSettings={onSettings}
-      onToggleTheme={onToggleTheme}
-      onToggleLocale={onToggleLocale}
-      onToggleContentWidth={onToggleContentWidth}
-      onToggleSidebar={onToggleSidebar}
-      onFind={onFind}
-      onOpenTerminal={onOpenTerminal}
-    />
-  )
-}
-
-function AppSettings({
-  trafficInset,
-}: {
-  trafficInset: boolean
-}) {
-  const open = useSettingsSheet((s) => s.open)
-  const onOpenChange = useCallback((next: boolean) => {
-    useSettingsSheet.setState({ open: next })
-  }, [])
-  const meta = useApp((s) => s.meta)
-  const theme = useApp((s) => s.theme)
-  const setTheme = useApp((s) => s.setTheme)
-  const locale = useApp((s) => s.locale)
-  const setLocale = useApp((s) => s.setLocale)
-  const font = useApp((s) => s.font)
-  const fontSize = useApp((s) => s.fontSize)
-  const contentWidth = useApp((s) => s.contentWidth)
-  const setAppearance = useApp((s) => s.setAppearance)
-  const refreshAfterSettings = useCallback(() => {
-    // boot() would reopen threads[0] and yank the conversation that is
-    // sitting under this sheet. Meta + models is what Settings changed.
-    void Promise.all([api.meta(), api.models()]).then(([meta, listed]) => {
-      useApp.setState({ meta, models: listed.models })
-    })
-  }, [])
-  return (
-    <SettingsDialog
-      open={open}
-      onOpenChange={onOpenChange}
-      meta={meta}
-      theme={theme}
-      onThemeChange={setTheme}
-      locale={locale}
-      onLocaleChange={setLocale}
-      appearance={{ font, fontSize, contentWidth }}
-      onAppearanceChange={setAppearance}
-      onSaved={refreshAfterSettings}
-      trafficInset={trafficInset}
-    />
-  )
-}
-
-function isDark(theme: string): boolean {
-  if (theme === "dark") return true
-  if (theme === "light") return false
-  return Boolean(window.matchMedia?.("(prefers-color-scheme: dark)").matches)
-}

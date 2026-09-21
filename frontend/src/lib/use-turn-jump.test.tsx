@@ -103,4 +103,37 @@ describe("useTurnJump", () => {
     render(<Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />)
     expect(document.body.textContent).not.toMatch(/notes\.md|summarize|look into this/)
   })
+
+  it("re-applies a jump after older history prepends", () => {
+    // Click found the row and cleared pending. A sentinel page that started
+    // at the top then prepends without restoring, so the click looks dead
+    // unless the jump is still pending for that layout.
+    const loadUntilTurn = vi.fn(async () => false)
+    const view = render(
+      <Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "jump" }))
+    expect(intoView).toHaveBeenCalledTimes(1)
+    intoView.mockClear()
+
+    view.rerender(
+      <Harness ids={["tn_older", "tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />,
+    )
+    expect(intoView).toHaveBeenCalledTimes(1)
+  })
+
+  it("stops following a jump once the reader wheels", () => {
+    const loadUntilTurn = vi.fn(async () => false)
+    const view = render(
+      <Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "jump" }))
+    fireEvent.wheel(screen.getByTestId("scroller"), { deltaY: -40 })
+    intoView.mockClear()
+
+    view.rerender(
+      <Harness ids={["tn_older", "tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />,
+    )
+    expect(intoView).not.toHaveBeenCalled()
+  })
 })

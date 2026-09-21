@@ -117,9 +117,17 @@
   .md-body table {
     @apply w-full border-collapse text-xs;
   }
+  .md-body .md-table {
+    @apply min-w-0 max-w-full overflow-x-auto;
+  }
   .md-body th,
   .md-body td {
     @apply border border-border px-2 py-1 text-left;
+    overflow-wrap: anywhere;
+  }
+  .md-body :is(th, td) code {
+    overflow-wrap: anywhere;
+    word-break: break-all;
   }
   .md-body th {
     @apply font-medium;

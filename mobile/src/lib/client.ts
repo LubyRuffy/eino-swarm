@@ -23,7 +23,6 @@ import {
 } from "./rpc"
 import {
   loadOrCreateIdentity,
-  saveLink,
   type SavedLink,
 } from "./store"
 
@@ -396,7 +395,6 @@ export async function bindFromURI(
     sessionID: bytesToHex(redeemed.sessionID),
     fingerprint: fingerprint(redeemed.hostPub),
   }
-  saveLink(saved)
   return { offer, saved, identity, redeemed }
 }
 

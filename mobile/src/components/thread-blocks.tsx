@@ -4,6 +4,7 @@ import { PhoneMarkdown } from "@/components/markdown"
 import { t } from "@/lib/i18n"
 import { parseQuotedMessage } from "@/lib/quote"
 import type { CompactBlock } from "@/lib/transcript"
+import { scheduleToolNotice } from "@/lib/inbox-preview"
 import {
   dropPackedJson,
   jsonPreview,
@@ -47,6 +48,11 @@ export function renderBlock(b: CompactBlock) {
   }
   if (b.kind === "tool") {
     if (b.toolName === "close_agent") return null
+    const notice = scheduleToolNotice(b.toolName || "", b.args || b.text)
+    if (notice !== undefined) {
+      if (!notice) return null
+      return <p className="text-[11px] text-muted-foreground">{localizeNotice(notice)}</p>
+    }
     return <ToolChip block={b} />
   }
   if (b.kind === "spawn") {

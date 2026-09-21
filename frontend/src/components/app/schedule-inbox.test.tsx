@@ -2,7 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { Sidebar } from "./sidebar"
+import { ScheduleInbox } from "./schedule-inbox"
+import { ScheduleInboxForm } from "./schedule-inbox-form"
 import type { Schedule, ScheduleRun } from "@/lib/types"
+import { runsInThreadValue } from "@/lib/schedule-dest"
 import { useApp } from "@/store/app"
 import { useProjects } from "@/store/projects"
 
@@ -36,7 +39,9 @@ vi.mock("@/lib/api", () => {
     patchSchedule: async (id: string, patch: Record<string, unknown>) => {
       fake.patched.push({ id, patch })
       const row = fake.rows.find((s) => s.id === id)
-      return { ...row, id, ...patch }
+      const next = { ...row, id, ...patch } as Schedule
+      fake.rows = fake.rows.map((s) => (s.id === id ? next : s))
+      return next
     },
     runSchedule: async (id: string) => {
       if (fake.runBusy) {
@@ -92,6 +97,22 @@ const noop = {
   onReorder: vi.fn(),
   onReorderProjects: vi.fn(),
   onPin: vi.fn(),
+}
+
+function renderInbox() {
+  return render(
+    <>
+      <Sidebar threads={[]} {...noop} />
+      <div data-testid="composer-stage" className="relative">
+        <ScheduleInbox />
+      </div>
+    </>,
+  )
+}
+
+async function openPage() {
+  fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+  await waitFor(() => expect(screen.getByTestId("schedule-page")).toBeInTheDocument())
 }
 
 function wait(partial: Partial<Schedule> = {}): Schedule {
@@ -161,11 +182,11 @@ describe("Scheduled inbox", () => {
     expect(screen.getByTestId("schedule-unread")).toHaveTextContent("3")
   })
 
-  it("is a dialog trigger, not a collapsed fold", () => {
+  it("is a page control, not a collapsed fold", () => {
     render(<Sidebar threads={[]} {...noop} />)
     const trigger = screen.getByRole("button", { name: /Scheduled/ })
-    expect(trigger).toHaveAttribute("aria-haspopup", "dialog")
-    expect(trigger).toHaveAttribute("aria-expanded", "false")
+    expect(trigger).not.toHaveAttribute("aria-haspopup")
+    expect(trigger).not.toHaveAttribute("aria-expanded")
     expect(trigger.querySelector("[data-testid=section-fold]")).toBeNull()
     expect(screen.getByTestId("schedule-inbox").querySelector("[data-testid=section-fold]")).toBeNull()
   })
@@ -174,60 +195,185 @@ describe("Scheduled inbox", () => {
     useApp.setState({ scheduleUnread: 2 })
     render(<Sidebar threads={[]} {...noop} />)
     const trigger = screen.getByRole("button", { name: /Scheduled/ })
-    expect(trigger).toHaveAttribute("aria-haspopup", "dialog")
+    expect(trigger).not.toHaveAttribute("aria-haspopup")
     expect(trigger).toHaveAccessibleName(/Scheduled, 2 unread/)
   })
 
-  it("marks the trigger expanded while the inbox dialog is open", async () => {
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
-    // Modal inert hides the trigger from the a11y tree; the attribute still
-    // has to flip so a screen reader that inspects the control is not lied to.
-    expect(screen.getByTestId("schedule-inbox")).toHaveAttribute("aria-expanded", "true")
+  it("marks the sidebar row as the current page while Scheduled is open", async () => {
+    renderInbox()
+    await openPage()
+    expect(screen.getByTestId("schedule-inbox")).toHaveAttribute("aria-current", "page")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
-  it("lists waits as a compact row and can pause or run now after expanding", async () => {
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+  it("deselects the open conversation while Scheduled is the page", async () => {
+    render(
+      <>
+        <Sidebar
+          threads={[
+            {
+              id: "th_1",
+              title: "A chat",
+              project_id: "",
+              provider_id: "default",
+              reasoning_effort: "",
+              archived: false,
+              created_at: "2026-09-19T00:00:00.000Z",
+              last_active_at: "2026-09-19T00:00:00.000Z",
+              running: false,
+            },
+          ]}
+          activeId="th_1"
+          {...noop}
+        />
+        <div data-testid="composer-stage" className="relative">
+          <ScheduleInbox />
+        </div>
+      </>,
+    )
+    expect(screen.getByTestId("thread-row")).toHaveAttribute("aria-current", "true")
+    await openPage()
+    expect(screen.getByTestId("thread-row")).not.toHaveAttribute("aria-current")
+    expect(screen.getByTestId("schedule-inbox")).toHaveAttribute("aria-current", "page")
+  })
+
+  it("lists waits as a compact row and opens an editor for pause or run now", async () => {
+    renderInbox()
+    await openPage()
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/Periodic check/)
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/Every 1 minute/)
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/Next run now/)
     expect(screen.queryByTestId("schedule-prompt")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument()
     fireEvent.click(screen.getByTestId("schedule-row-toggle"))
+    expect(screen.getByTestId("schedule-edit-drawer")).toBeInTheDocument()
+    expect(screen.getByTestId("schedule-row")).toHaveAttribute("data-selected", "true")
+    expect(screen.getByLabelText("Title")).toHaveValue("Periodic check")
+    expect(screen.getByLabelText("Task")).toHaveValue("Continue the wait.")
+    expect(screen.getByLabelText("Every (seconds)")).toHaveValue(60)
+    expect(screen.getByLabelText("Runs in")).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Pause" }))
     await waitFor(() =>
       expect(fake.patched).toEqual([{ id: "sch_1", patch: { status: "paused" } }]),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Resume" })).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId("schedule-row")).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: "Active" })).toHaveAttribute(
+      "aria-selected",
+      "true",
     )
     fireEvent.click(screen.getByRole("button", { name: "Run now" }))
     await waitFor(() => expect(fake.ran).toEqual(["sch_1"]))
   })
 
-  it("keeps the create form behind Create so the list stays a list", async () => {
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+  it("opens a right drawer for Create so the list stays a list", async () => {
+    renderInbox()
+    await openPage()
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("schedule-create-drawer")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Create" }))
-    expect(screen.getByLabelText("Title")).toBeInTheDocument()
-    expect(screen.getByLabelText("Prompt")).toBeInTheDocument()
-    expect(screen.getByLabelText("Cadence")).toBeInTheDocument()
+    const drawer = screen.getByTestId("schedule-create-drawer")
+    expect(drawer).toHaveTextContent("New")
+    expect(drawer).toHaveTextContent("New conversation each run")
+    expect(drawer).toHaveTextContent("Details")
+    expect(drawer).toHaveTextContent("Frequency")
+    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument()
+    expect(drawer).toContainElement(screen.getByLabelText("Task"))
+    expect(screen.getByLabelText("Runs in")).toBeInTheDocument()
+    expect(screen.getByLabelText("Repeat")).toBeInTheDocument()
     expect(screen.getByLabelText("Delay (seconds)")).toBeInTheDocument()
     expect(screen.getByLabelText("Project")).toBeInTheDocument()
-    expect(screen.getByRole("dialog").textContent).not.toMatch(/0 9 \*|GitHub|deploy/i)
-    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    expect(screen.getByTestId("schedule-list")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Expand" })).toBeInTheDocument()
+    expect(screen.getByTestId("schedule-page").textContent).not.toMatch(/0 9 \*|GitHub|deploy/i)
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    expect(screen.queryByLabelText("Task")).not.toBeInTheDocument()
+    expect(screen.getByTestId("schedule-list")).toBeInTheDocument()
+  })
+
+  it("saves title, prompt, and cadence from the editor", async () => {
+    renderInbox()
+    await openPage()
+    fireEvent.click(screen.getByTestId("schedule-row-toggle"))
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Mine" } })
+    fireEvent.change(screen.getByLabelText("Task"), { target: { value: "Check again." } })
+    fireEvent.change(screen.getByLabelText("Every (seconds)"), { target: { value: "120" } })
+    expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() =>
+      expect(fake.patched).toEqual([
+        {
+          id: "sch_1",
+          patch: { title: "Mine", prompt: "Check again.", every_s: 120 },
+        },
+      ]),
+    )
+  })
+
+  it("keeps cadence off the PATCH when only the title changed", async () => {
+    renderInbox()
+    await openPage()
+    fireEvent.click(screen.getByTestId("schedule-row-toggle"))
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Mine" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() =>
+      expect(fake.patched).toEqual([{ id: "sch_1", patch: { title: "Mine" } }]),
+    )
+  })
+
+  it("closes the editor when the same row is clicked again", async () => {
+    renderInbox()
+    await openPage()
+    fireEvent.click(screen.getByTestId("schedule-row-toggle"))
+    expect(screen.getByTestId("schedule-edit-drawer")).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId("schedule-row-toggle"))
+    expect(screen.queryByTestId("schedule-edit-drawer")).not.toBeInTheDocument()
+  })
+
+  it("closes the edit drawer on Escape before leaving the page", async () => {
+    renderInbox()
+    await openPage()
+    fireEvent.click(screen.getByTestId("schedule-row-toggle"))
+    expect(screen.getByTestId("schedule-edit-drawer")).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(screen.getByTestId("schedule-page")).toBeInTheDocument()
+    expect(screen.queryByTestId("schedule-edit-drawer")).not.toBeInTheDocument()
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(screen.queryByTestId("schedule-page")).not.toBeInTheDocument()
+  })
+
+  it("shows a finished wait read-only", async () => {
+    fake.rows = [
+      wait({
+        id: "sch_done",
+        title: "old",
+        status: "done",
+        next_run_at: "2026-09-19T01:00:00.000Z",
+      }),
+    ]
+    fake.runs = []
+    useApp.setState({ schedules: fake.rows })
+    renderInbox()
+    await openPage()
+    fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
+    fireEvent.click(screen.getByTestId("schedule-row-toggle"))
+    const drawer = screen.getByTestId("schedule-edit-drawer")
+    expect(drawer).toHaveTextContent("old")
+    expect(screen.getByLabelText("Task")).toHaveValue("Continue the wait.")
+    expect(screen.getByLabelText("Task")).toHaveAttribute("readOnly")
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Run now" })).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument()
   })
 
   it("submits a standalone wait from the create form", async () => {
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    renderInbox()
+    await openPage()
     fireEvent.click(screen.getByRole("button", { name: "Create" }))
-    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "wake" } })
-    fireEvent.change(screen.getByLabelText("Prompt"), {
+    fireEvent.change(screen.getByLabelText("Task"), {
       target: { value: "Continue the wait." },
     })
     fireEvent.change(screen.getByLabelText("Delay (seconds)"), { target: { value: "30" } })
@@ -236,19 +382,44 @@ describe("Scheduled inbox", () => {
       expect(fake.created).toEqual([
         {
           kind: "standalone",
-          title: "wake",
           prompt: "Continue the wait.",
           delay_s: 30,
         },
       ]),
     )
-    expect(screen.queryByLabelText("Title")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Task")).not.toBeInTheDocument()
+  })
+
+  it("wakes an existing conversation instead of minting one", () => {
+    const onSubmit = vi.fn()
+    render(
+      <ScheduleInboxForm
+        prompt="Continue the wait."
+        cadence="delay"
+        cadenceValue="45"
+        projectId="pj_ignored"
+        runsIn={runsInThreadValue("th_live")}
+        onPrompt={vi.fn()}
+        onCadence={vi.fn()}
+        onCadenceValue={vi.fn()}
+        onProjectId={vi.fn()}
+        onRunsIn={vi.fn()}
+        onSubmit={onSubmit}
+      />,
+    )
+    expect(screen.queryByLabelText("Project")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Add wait" }))
+    expect(onSubmit).toHaveBeenCalledWith({
+      kind: "thread",
+      thread_id: "th_live",
+      prompt: "Continue the wait.",
+      delay_s: 45,
+    })
   })
 
   it("opens unread findings in that fire's conversation", async () => {
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    renderInbox()
+    await openPage()
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Open findings" })).toBeInTheDocument(),
     )
@@ -256,6 +427,7 @@ describe("Scheduled inbox", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open findings" }))
     await waitFor(() => expect(fake.marked).toEqual(["srun_1"]))
     await waitFor(() => expect(fake.opened).toEqual(["th_findings"]))
+    await waitFor(() => expect(screen.queryByTestId("schedule-page")).not.toBeInTheDocument())
   })
 
   it("keeps several unread fires behind one Open findings control", async () => {
@@ -283,10 +455,11 @@ describe("Scheduled inbox", () => {
         updated_at: "2026-09-19T04:00:00.000Z",
       },
     ]
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
-    expect(screen.getByRole("dialog").className).toMatch(/\boverflow-hidden\b/)
+    renderInbox()
+    await openPage()
+    expect(screen.getByTestId("schedule-page").className).toMatch(/\binset-0\b/)
+    expect(screen.getByTestId("schedule-page").className).toMatch(/\boverflow-hidden\b/)
+    expect(screen.getByTestId("schedule-page").className).not.toMatch(/max-h-\[85vh\]/)
     expect(screen.getByTestId("schedule-list").className).toMatch(/\boverflow-y-auto\b/)
     expect(screen.getByTestId("schedule-row")).toHaveClass("shrink-0")
     await waitFor(() =>
@@ -325,8 +498,8 @@ describe("Scheduled inbox", () => {
         updated_at: "2026-09-19T04:00:00.000Z",
       },
     ]
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+    renderInbox()
+    await openPage()
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Open findings (2)" })).toBeInTheDocument(),
     )
@@ -335,11 +508,10 @@ describe("Scheduled inbox", () => {
     await waitFor(() => expect(fake.opened).toEqual(["th_same"]))
   })
 
-  it("shows skipped_busy inside the inbox dialog", async () => {
+  it("shows skipped_busy on the scheduled page", async () => {
     fake.runBusy = true
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    renderInbox()
+    await openPage()
     fireEvent.click(screen.getByTestId("schedule-row-toggle"))
     fireEvent.click(screen.getByRole("button", { name: "Run now" }))
     const alert = await waitFor(() => screen.getByRole("alert"))
@@ -364,9 +536,8 @@ describe("Scheduled inbox", () => {
     ]
     fake.runs = []
     useApp.setState({ schedules: fake.rows })
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    renderInbox()
+    await openPage()
     const rows = screen.getAllByTestId("schedule-row")
     expect(rows).toHaveLength(1)
     expect(rows[0].textContent).toMatch(/Continue the wait/)
@@ -402,9 +573,8 @@ describe("Scheduled inbox", () => {
       },
     ]
     useApp.setState({ schedules: fake.rows })
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    renderInbox()
+    await openPage()
     expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
     expect(screen.getByText("No waits in this view.")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
@@ -424,9 +594,8 @@ describe("Scheduled inbox", () => {
     ]
     fake.runs = []
     useApp.setState({ schedules: fake.rows })
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    renderInbox()
+    await openPage()
     expect(screen.getByText("No waits in this view.")).toBeInTheDocument()
     expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
@@ -440,8 +609,8 @@ describe("Scheduled inbox", () => {
     ]
     fake.runs = []
     useApp.setState({ schedules: fake.rows })
-    render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+    renderInbox()
+    await openPage()
     await waitFor(() => expect(screen.getAllByTestId("schedule-row")).toHaveLength(2))
     fireEvent.change(screen.getByLabelText("Search waits"), { target: { value: "alpha" } })
     expect(screen.getAllByTestId("schedule-row")).toHaveLength(1)
@@ -449,5 +618,55 @@ describe("Scheduled inbox", () => {
     fireEvent.change(screen.getByLabelText("Search waits"), { target: { value: "zzzz" } })
     expect(screen.getByText("No matching waits.")).toBeInTheDocument()
     expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
+  })
+
+  it("closes the create drawer on Escape before leaving the page", async () => {
+    renderInbox()
+    await openPage()
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    expect(screen.getByTestId("schedule-create-drawer")).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(screen.getByTestId("schedule-page")).toBeInTheDocument()
+    expect(screen.queryByTestId("schedule-create-drawer")).not.toBeInTheDocument()
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(screen.queryByTestId("schedule-page")).not.toBeInTheDocument()
+  })
+
+  it("expands the create drawer over the list so a long task is readable", async () => {
+    renderInbox()
+    await openPage()
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    const drawer = screen.getByTestId("schedule-create-drawer")
+    expect(drawer).not.toHaveAttribute("data-expanded")
+    expect(screen.getByTestId("schedule-list-pane")).not.toHaveClass("hidden")
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }))
+    expect(drawer).toHaveAttribute("data-expanded", "true")
+    expect(screen.getByRole("button", { name: "Collapse" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    )
+    expect(screen.getByTestId("schedule-list-pane")).toHaveClass("hidden")
+    expect(screen.getByLabelText("Task")).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(drawer).toBeInTheDocument()
+    expect(drawer).not.toHaveAttribute("data-expanded")
+    expect(screen.getByTestId("schedule-list-pane")).not.toHaveClass("hidden")
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }))
+    fireEvent.click(screen.getByRole("button", { name: "Collapse" }))
+    expect(drawer).not.toHaveAttribute("data-expanded")
+    fireEvent.click(screen.getByRole("button", { name: "Expand" }))
+    fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    expect(screen.getByTestId("schedule-create-drawer")).not.toHaveAttribute(
+      "data-expanded",
+    )
+  })
+
+  it("leaves the page on Escape", async () => {
+    renderInbox()
+    await openPage()
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(screen.queryByTestId("schedule-page")).not.toBeInTheDocument()
+    expect(screen.getByTestId("schedule-inbox")).not.toHaveAttribute("aria-current")
   })
 })

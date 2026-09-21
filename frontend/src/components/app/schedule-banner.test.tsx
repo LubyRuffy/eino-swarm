@@ -53,7 +53,7 @@ describe("ScheduleBanner", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run now" }))
     expect(onRunNow).toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Cancel wait" })).toBeInTheDocument()
-    expect(screen.getByTestId("schedule-banner").className).toContain("bg-muted/40")
+    expect(screen.getByTestId("schedule-banner").className).toContain("bg-background")
   })
 
   it("hides when there is no active thread wake", () => {

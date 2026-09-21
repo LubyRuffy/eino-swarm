@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
+import { AddHostSheet } from "@/components/add-host-sheet"
 import { HomeScreen } from "@/components/home-screen"
 import { LinkBanner } from "@/components/link-banner"
 import { ScanScreen } from "@/components/scan-screen"
@@ -29,6 +30,7 @@ import {
   OpUnwatch,
   OpWatch,
 } from "@/lib/rpc"
+import { phoneShell } from "@/lib/phone-shell"
 import { pickResumeThread, detailFromListing, rosterFingerprint } from "@/lib/resume"
 import {
   applyOpenDetail,
@@ -39,12 +41,31 @@ import {
   prependOlder,
   type PhoneView,
 } from "@/lib/session"
-import { clearLastThreadId, clearLink, loadLastThreadId, loadSavedLink, saveLastThreadId } from "@/lib/store"
+import {
+  clearLastThreadId,
+  clearLink,
+  loadActiveFingerprint,
+  loadLastThreadId,
+  loadSavedLink,
+  loadSavedLinks,
+  removeLink,
+  saveActiveFingerprint,
+  saveHostLabel,
+  saveLastThreadId,
+  saveLink,
+} from "@/lib/store"
 
 export function App() {
   const [locale, setLocaleTick] = useState(getLocale())
+  const [hosts, setHosts] = useState(() => loadSavedLinks())
+  const [activeFp, setActiveFp] = useState(
+    () => loadActiveFingerprint() || loadSavedLinks()[0]?.fingerprint || "",
+  )
+  const [adding, setAdding] = useState(false)
+  const [addError, setAddError] = useState<string>()
   const [link, setLink] = useState<DeviceLink | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(() => loadSavedLinks().length > 0)
+  const [bindBusy, setBindBusy] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
   const [error, setError] = useState<string>()
   const [projects, setProjects] = useState<ProjectView[]>([])
@@ -61,6 +82,7 @@ export function App() {
   const loadGen = useRef(0)
   const recoveringRef = useRef(false)
   const unlinkingRef = useRef(false)
+  const bindGen = useRef(0)
   const recoverAttempt = useRef(0)
   const retryTimer = useRef(0)
   const rosterFp = useRef("")
@@ -71,6 +93,15 @@ export function App() {
   const commitView = (next: PhoneView) => {
     viewRef.current = next
     setView(next)
+  }
+
+  const takeHostName = (resp: RemoteResponse) => {
+    const name = resp.host?.trim()
+    if (!name) return
+    const fp = loadActiveFingerprint()
+    if (!fp) return
+    saveHostLabel(fp, name)
+    setHosts(loadSavedLinks())
   }
 
   const applyList = (resp: RemoteResponse, append: boolean, target?: DeviceLink) => {
@@ -90,6 +121,7 @@ export function App() {
       if (fp === rosterFp.current) {
         const cur = target ?? linkRef.current
         if (resp.path && cur) cur.path = resp.path
+        takeHostName(resp)
         return
       }
       rosterFp.current = fp
@@ -104,6 +136,7 @@ export function App() {
     setCursor(resp.next ?? "")
     const cur = target ?? linkRef.current
     if (resp.path && cur) cur.path = resp.path
+    takeHostName(resp)
   }
 
   const attachPush = (next: DeviceLink) => {
@@ -116,7 +149,9 @@ export function App() {
       setError(t("err.reconnect"))
       void recoverRef.current()
     }
-    void next.announceDevice()
+    void next.announceDevice().then((resp) => {
+      if (resp) takeHostName(resp)
+    })
   }
 
   const openThreadOn = async (target: DeviceLink, id: string) => {
@@ -165,24 +200,31 @@ export function App() {
     if (!force && linkRef.current?.alive()) return
     const saved = loadSavedLink()
     if (!saved) return
+    const gen = bindGen.current
     recoveringRef.current = true
     setReconnecting(true)
     try {
       let next = linkRef.current
       if (force || !next?.alive()) {
         next = await openSaved(saved)
+        if (gen !== bindGen.current) {
+          next.close()
+          return
+        }
         attachPush(next)
         const prev = linkRef.current
         linkRef.current = next
         setLink(next)
         if (prev && prev !== next) prev.close()
       }
+      if (gen !== bindGen.current) return
       recoverAttempt.current = 0
       setError(undefined)
       const id = viewRef.current.threadId
       if (id) await openThreadOn(next, id)
       else await consumeFirstList(next, await next.rpc({ op: OpList }))
     } catch (e) {
+      if (gen !== bindGen.current) return
       setError(linkError(e))
       recoverAttempt.current += 1
       const delay = Math.min(15_000, 1000 * 2 ** Math.min(recoverAttempt.current - 1, 4))
@@ -199,18 +241,31 @@ export function App() {
 
   const boot = useCallback(async () => {
     const saved = loadSavedLink()
-    if (!saved) return
+    if (!saved || unlinkingRef.current) {
+      setBusy(false)
+      return
+    }
+    const gen = bindGen.current
     setBusy(true)
     try {
       const next = await openSaved(saved)
+      if (gen !== bindGen.current) {
+        next.close()
+        return
+      }
       attachPush(next)
       linkRef.current = next
       setLink(next)
       await consumeFirstList(next, await next.rpc({ op: OpList }))
     } catch (e) {
+      if (gen !== bindGen.current) return
       setError(bindError(e))
+      window.clearTimeout(retryTimer.current)
+      retryTimer.current = window.setTimeout(() => {
+        void recoverRef.current()
+      }, 1000)
     } finally {
-      setBusy(false)
+      if (gen === bindGen.current) setBusy(false)
     }
   }, [])
 
@@ -252,20 +307,55 @@ export function App() {
   }, [link, view.detail])
 
   const onURI = async (uri: string) => {
-    setBusy(true)
-    setError(undefined)
+    const isAdd = adding
+    setBindBusy(true)
+    if (isAdd) setAddError(undefined)
+    else setError(undefined)
+    let next: DeviceLink | undefined
+    let attached = false
     try {
       const bound = await bindFromURI(uri)
-      const next = new DeviceLink(bound.identity, bound.redeemed.hostPub, bound.redeemed.sessionID)
+      next = new DeviceLink(bound.identity, bound.redeemed.hostPub, bound.redeemed.sessionID)
       await next.connect(bound.saved.hubURL, bound.saved.ticket)
+      bindGen.current += 1
+      const gen = bindGen.current
+      window.clearTimeout(retryTimer.current)
+      saveLink(bound.saved)
+      const prev = linkRef.current
+      if (prev && prev !== next) {
+        prev.close()
+        linkRef.current = null
+      }
+      setLink(null)
+      resumedRef.current = false
+      loadGen.current += 1
+      rosterFp.current = ""
+      setThreads([])
+      setProjects([])
+      setRunning([])
+      commitView(emptyView())
+      setHosts(loadSavedLinks())
+      setActiveFp(bound.saved.fingerprint)
+      setAdding(false)
+      setAddError(undefined)
+      setBusy(true)
+      if (gen !== bindGen.current) {
+        next.close()
+        return
+      }
       attachPush(next)
+      attached = true
       linkRef.current = next
       setLink(next)
       await consumeFirstList(next, await next.rpc({ op: OpList }))
+      if (gen === bindGen.current) setBusy(false)
     } catch (e) {
-      setError(bindError(e))
+      if (!attached) next?.close()
+      const msg = bindError(e)
+      if (isAdd) setAddError(msg)
+      else setError(msg)
     } finally {
-      setBusy(false)
+      setBindBusy(false)
     }
   }
 
@@ -337,18 +427,91 @@ export function App() {
     }
   }
 
-  if (!link) {
+  const unlink = () => {
+    bindGen.current += 1
+    unlinkingRef.current = true
+    window.clearTimeout(retryTimer.current)
+    const cur = linkRef.current
+    if (cur) {
+      void cur.rpc({ op: OpUnwatch }).catch(() => undefined)
+      cur.close()
+    }
+    const fp = loadSavedLink()?.fingerprint
+    if (fp) removeLink(fp)
+    else clearLink()
+    const rest = loadSavedLinks()
+    setHosts(rest)
+    resumedRef.current = false
+    loadGen.current += 1
+    rosterFp.current = ""
+    linkRef.current = null
+    setLink(null)
+    setThreads([])
+    setProjects([])
+    setRunning([])
+    setError(undefined)
+    setAddError(undefined)
+    setBindBusy(false)
+    setReconnecting(false)
+    setAdding(false)
+    commitView(emptyView())
+    unlinkingRef.current = false
+    if (rest[0]) {
+      saveActiveFingerprint(rest[0].fingerprint)
+      setActiveFp(rest[0].fingerprint)
+      setBusy(true)
+      void boot()
+      return
+    }
+    setActiveFp("")
+    setBusy(false)
+  }
+
+  const selectHost = (fp: string) => {
+    if (fp === activeFp && linkRef.current?.alive()) return
+    bindGen.current += 1
+    window.clearTimeout(retryTimer.current)
+    linkRef.current?.close()
+    linkRef.current = null
+    setLink(null)
+    resumedRef.current = false
+    loadGen.current += 1
+    rosterFp.current = ""
+    setThreads([])
+    setProjects([])
+    setRunning([])
+    setError(undefined)
+    setReconnecting(false)
+    commitView(emptyView())
+    saveActiveFingerprint(fp)
+    setActiveFp(fp)
+    setBusy(true)
+    void boot()
+  }
+
+  if (phoneShell(hosts.length) === "scan") {
     return (
       <ScanScreen
         key={locale}
         onURI={(uri) => void onURI(uri)}
-        busy={busy}
+        busy={bindBusy}
         error={error}
-        onRetry={loadSavedLink() ? () => void boot() : undefined}
         onToggleLocale={flipLocale}
       />
     )
   }
+
+  const sheet = adding ? (
+    <AddHostSheet
+      onURI={(uri) => void onURI(uri)}
+      busy={bindBusy}
+      error={addError}
+      onClose={() => {
+        setAdding(false)
+        setAddError(undefined)
+      }}
+    />
+  ) : null
 
   const banner = (
     <LinkBanner
@@ -358,7 +521,7 @@ export function App() {
     />
   )
 
-  if (view.detail) {
+  if (view.detail && link) {
     const detail = view.detail
     return (
       <div className="flex h-full min-w-0 flex-col overflow-hidden">
@@ -443,25 +606,37 @@ export function App() {
             }}
           />
         </div>
+        {sheet}
       </div>
     )
   }
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
-      {banner}
+      {link ? banner : null}
       <div className="min-h-0 flex-1">
         <HomeScreen
           key={locale}
+          hosts={hosts}
+          activeFingerprint={activeFp}
           projects={projects}
           threads={threads}
           running={running}
           more={more}
-          path={link.path}
-          connected={link.alive()}
+          path={link?.path ?? "relay"}
+          connected={Boolean(link?.alive())}
           reconnecting={reconnecting}
+          connecting={busy || reconnecting}
+          error={!link ? error : undefined}
           onOpen={(id) => void openThread(id)}
+          onSelectHost={selectHost}
+          onAddHost={() => {
+            setAddError(undefined)
+            setAdding(true)
+          }}
+          onRetry={() => void boot()}
           onMore={async () => {
+            if (!link) return
             try {
               applyList(await link.rpc({ op: OpMore, cursor }), true)
             } catch (e) {
@@ -469,6 +644,7 @@ export function App() {
             }
           }}
           onStart={async (text, projectId) => {
+            if (!link) return
             try {
               const r = await link.rpc({
                 op: OpStart,
@@ -481,26 +657,11 @@ export function App() {
               fail(e)
             }
           }}
-          onUnlink={() => {
-            unlinkingRef.current = true
-            window.clearTimeout(retryTimer.current)
-            void link.rpc({ op: OpUnwatch }).catch(() => undefined)
-            link.close()
-            clearLink()
-            resumedRef.current = false
-            loadGen.current += 1
-            setLink(null)
-            setThreads([])
-            setProjects([])
-            setRunning([])
-            setError(undefined)
-            setReconnecting(false)
-            commitView(emptyView())
-            unlinkingRef.current = false
-          }}
+          onUnlink={unlink}
           onToggleLocale={flipLocale}
         />
       </div>
+      {sheet}
     </div>
   )
 }

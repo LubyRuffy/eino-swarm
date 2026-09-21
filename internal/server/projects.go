@@ -145,6 +145,10 @@ type memoryView struct {
 	Enabled bool               `json:"enabled"`
 	Memory  memory.Snapshot    `json:"memory"`
 	Skills  []memory.SkillInfo `json:"skills"`
+	// NeedsTidy is true when the catalog still holds a same-subject family.
+	// The panel uses it to mark the tidy control, not to fold on load — a
+	// GET must not rewrite files the user came to read.
+	NeedsTidy bool `json:"needs_tidy"`
 }
 
 func (s *Server) getMemory(c *gin.Context) {
@@ -152,27 +156,39 @@ func (s *Server) getMemory(c *gin.Context) {
 	if !ok {
 		return
 	}
-	mem := s.engine.ProjectMemory(p.ID)
-	snap, err := mem.Read()
+	view, err := s.memoryViewOf(p)
 	if err != nil {
 		s.fail(c, err)
 		return
 	}
+	c.JSON(http.StatusOK, gin.H{"memory": view})
+}
+
+func (s *Server) memoryViewOf(p *store.Project) (memoryView, error) {
+	mem := s.engine.ProjectMemory(p.ID)
+	snap, err := mem.Read()
+	if err != nil {
+		return memoryView{}, err
+	}
 	skills, err := mem.ListSkills()
 	if err != nil {
-		s.fail(c, err)
-		return
+		return memoryView{}, err
 	}
 	if skills == nil {
 		// The panel iterates this, so it must never arrive as JSON null.
 		skills = []memory.SkillInfo{}
 	}
-	c.JSON(http.StatusOK, gin.H{"memory": memoryView{
-		Dir:     mem.Dir(),
-		Enabled: s.engine.MemoryEnabled(p),
-		Memory:  snap,
-		Skills:  skills,
-	}})
+	families, err := mem.SkillFamilyNames()
+	if err != nil {
+		families = nil
+	}
+	return memoryView{
+		Dir:       mem.Dir(),
+		Enabled:   s.engine.MemoryEnabled(p),
+		Memory:    snap,
+		Skills:    skills,
+		NeedsTidy: len(families) > 0,
+	}, nil
 }
 
 type putMemoryRequest struct {
@@ -238,6 +254,32 @@ func (s *Server) deleteSkill(c *gin.Context) {
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// tidySkills folds leftover skill families on demand. A finished turn already
+// does this; the Memory panel's button is for a catalog the user just edited
+// by hand, which would otherwise wait until the next turn.
+func (s *Server) tidySkills(c *gin.Context) {
+	p, ok := s.project(c)
+	if !ok {
+		return
+	}
+	report, err := s.engine.FoldProjectSkills(p.ID)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	view, err := s.memoryViewOf(p)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"memory":  view,
+		"report":  report,
+		"changes": report.Changes,
+		"folded":  report.Folded(),
+	})
 }
 
 // failSkill maps the store's "nothing matches" to a 404. A skill name arrives

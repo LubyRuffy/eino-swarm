@@ -57,6 +57,7 @@ type Response struct {
 	Code      string        `json:"code,omitempty"`
 	Path      string        `json:"path,omitempty"`
 	SessionID string        `json:"session_id,omitempty"`
+	Host      string        `json:"host,omitempty"`
 	Projects  []ProjectView `json:"projects,omitempty"`
 	Threads   []ThreadView  `json:"threads,omitempty"`
 	Running   []RunningView `json:"running,omitempty"`
@@ -122,9 +123,14 @@ type RunningView struct {
 	ThreadID string `json:"thread_id"`
 	Title    string `json:"title"`
 	TurnID   string `json:"turn_id,omitempty"`
-	Action   string `json:"action,omitempty"`
-	AskUser  bool   `json:"ask_user,omitempty"`
-	Waiting  bool   `json:"waiting,omitempty"`
+	// Action is a one-line human preview of the live turn: assistant
+	// prose or a tool payload field (findings, command, path). Raw
+	// tool_call envelopes stay off the wire. Empty when the latest
+	// work is bookkeeping (schedule_wake, memory, …) so the phone can
+	// localize Waiting / running.
+	Action  string `json:"action,omitempty"`
+	AskUser bool   `json:"ask_user,omitempty"`
+	Waiting bool   `json:"waiting,omitempty"`
 }
 
 type ThreadDetail struct {

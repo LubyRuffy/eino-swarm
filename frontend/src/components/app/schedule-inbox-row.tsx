@@ -1,5 +1,3 @@
-import { useState } from "react"
-
 import { Button } from "@/components/ui/button"
 import { type MessageKey, type Vars } from "@/lib/i18n"
 import { cn } from "@/lib/utils"
@@ -7,7 +5,7 @@ import { useT } from "@/lib/use-t"
 import type { Schedule, ScheduleRun } from "@/lib/types"
 import {
   cadenceAmount,
-  isLiveSchedule,
+  inboxStatusTab,
   isScheduleDue,
   scheduleCadenceSpec,
   scheduleHeadline,
@@ -57,30 +55,28 @@ export function scheduleMetaLine(row: Schedule, t: TFn, nowMs?: number): string 
 export function ScheduleInboxRow({
   row,
   runs,
-  onPause,
-  onResume,
-  onCancel,
-  onRunNow,
+  selected = false,
+  onSelect,
   onOpenFindings,
 }: {
   row: Schedule
   runs: ScheduleRun[]
-  onPause: () => void
-  onResume: () => void
-  onCancel: () => void
-  onRunNow: () => void
+  selected?: boolean
+  onSelect: () => void
   onOpenFindings: (run: ScheduleRun) => void
 }) {
   const t = useT()
-  const [open, setOpen] = useState(false)
   const headline = scheduleHeadline(row) || row.id
   const findings = unreadFindings(runs)
-  const live = isLiveSchedule(row)
-  const tab = row.status === "paused" ? "paused" : live ? "active" : "completed"
+  const tab = inboxStatusTab(row.status)
   return (
     <li
       data-testid="schedule-row"
-      className="min-w-0 shrink-0 border-b border-border last:border-b-0"
+      data-selected={selected ? "true" : undefined}
+      className={cn(
+        "min-w-0 shrink-0 border-b border-border last:border-b-0",
+        selected && "bg-accent",
+      )}
     >
       <div className="flex min-w-0 items-start gap-3 py-2.5">
         <span
@@ -96,44 +92,15 @@ export function ScheduleInboxRow({
           <button
             type="button"
             data-testid="schedule-row-toggle"
-            aria-expanded={open}
+            aria-current={selected ? "true" : undefined}
             className="block w-full min-w-0 text-left"
-            onClick={() => setOpen((on) => !on)}
+            onClick={onSelect}
           >
             <p className="truncate text-sm font-medium">{headline}</p>
             <p className="mt-0.5 truncate text-xs text-muted-foreground">
               {scheduleMetaLine(row, t)}
             </p>
           </button>
-          {open ? (
-            <div className="mt-2 flex min-w-0 flex-wrap gap-1">
-              {row.status === "active" ? (
-                <Button type="button" variant="ghost" size="sm" onClick={onPause}>
-                  {t("schedule.pause")}
-                </Button>
-              ) : row.status === "paused" ? (
-                <Button type="button" variant="ghost" size="sm" onClick={onResume}>
-                  {t("schedule.resume")}
-                </Button>
-              ) : null}
-              {live ? (
-                <>
-                  <Button type="button" variant="ghost" size="sm" onClick={onRunNow}>
-                    {t("schedule.runNow")}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={t("schedule.cancel")}
-                    onClick={onCancel}
-                  >
-                    {t("schedule.cancel")}
-                  </Button>
-                </>
-              ) : null}
-            </div>
-          ) : null}
         </div>
         <FindingsControl findings={findings} onOpen={onOpenFindings} />
       </div>

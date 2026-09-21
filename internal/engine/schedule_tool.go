@@ -291,16 +291,20 @@ func (e *Engine) replaceThreadWake(threadID, id string, in ScheduleInput) (*stor
 	if err != nil {
 		return nil, err
 	}
-	if err := e.store.UpdateSchedule(id, map[string]any{
+	fields := map[string]any{
 		"prompt":      in.Prompt,
-		"title":       in.Title,
 		"delay_s":     in.DelayS,
 		"every_s":     in.EveryS,
 		"cron":        in.Cron,
 		"max_runs":    in.MaxRuns,
 		"until_at":    in.UntilAt,
 		"next_run_at": next,
-	}); err != nil {
+	}
+	if in.Title != "" {
+		fields["title"] = in.Title
+		fields["title_auto"] = false
+	}
+	if err := e.store.UpdateSchedule(id, fields); err != nil {
 		return nil, err
 	}
 	got, err := e.store.GetSchedule(id)
@@ -308,6 +312,7 @@ func (e *Engine) replaceThreadWake(threadID, id string, in ScheduleInput) (*stor
 		return nil, err
 	}
 	e.recordScheduleArmed(got)
+	e.kickScheduleTitle(got)
 	return got, nil
 }
 

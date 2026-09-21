@@ -146,10 +146,24 @@ describe("activeNavId", () => {
     { id: "tn_c", top: 800 },
   ]
 
-  it("picks the last message whose top has crossed the probe", () => {
+  it("picks the last message that has entered the viewport", () => {
     expect(activeNavId(items, 380, 300)).toBe("tn_b")
     expect(activeNavId(items, 0, 300)).toBe("tn_a")
     expect(activeNavId(items, 780, 300)).toBe("tn_c")
+  })
+
+  it("stays on the latest send once that row is on screen after a wheel-up", () => {
+    // Collapsed earlier turns occupy the top 96px the old probe used.
+    // The reader is on the latest bubble in the lower pane, not at the
+    // live-edge slack, so isFollowBottom does not save this.
+    const tight = [
+      { id: "tn_a", top: 0 },
+      { id: "tn_b", top: 40 },
+      { id: "tn_c", top: 80 },
+      { id: "tn_d", top: 200 },
+    ]
+    expect(activeNavId(tight, 0, 800, 2000)).toBe("tn_d")
+    expect(activeNavId(tight, 0, 800, 2000, false)).toBe("tn_d")
   })
 
   it("pins the latest turn when the scroller is at the bottom", () => {
@@ -170,6 +184,10 @@ describe("activeNavId", () => {
         1200,
       ),
     ).toBe("tn_c")
+  })
+
+  it("does not light a turn that is still below the fold", () => {
+    expect(activeNavId(items, 0, 300, 1200)).toBe("tn_a")
   })
 
   it("is empty when there is nothing to jump to", () => {

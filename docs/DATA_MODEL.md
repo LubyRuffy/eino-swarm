@@ -310,7 +310,8 @@ engine enforces that exactly one is set.
 | `thread_id` | wakes only: the conversation to wake. Empty on standalone rows |
 | `project_id` | standalone workspace; empty means that fire gets its own directory |
 | `provider_id`, `model`, `reasoning_effort` | standalone; wakes use the target conversation's model |
-| `title`, `prompt` | display name + durable per-run instruction (user text) |
+| `title`, `prompt` | display name + durable per-run instruction (user text). `title` may start as a truncated prompt |
+| `title_auto` | true while the engine still owns the inbox label. A PATCH/tool title or a landed generated name clears it so a later namer cannot overwrite the list |
 | `delay_s`, `every_s`, `cron` | one-shot delay, interval, or 5-field cron. Engine layer |
 | `status` | `active`, `paused`, `done`, `cancelled`. Claim marks a delay `done`. `report_schedule` `next_in_s` may flip `done` → `active` under the same cap as create/resume; cancelled and paused stay dead |
 | `next_run_at`, `last_run_at` | UTC. Due = `status=active` AND `next_run_at <= now` |
@@ -340,7 +341,7 @@ pinned to that `project_id`.
 
 ```
 $ZWAI_HOME (default ~/.zwai-swarm)/
-├── config.yaml                ui.locale / ui.font / ui.font_size / ui.content_width
+├── config.yaml                ui.locale / ui.font / ui.ui_font_size / ui.content_font / ui.font_size / ui.code_font / ui.code_font_size / ui.content_width / ui.transcript_mode / ui.palette
 ├── zwai.db
 ├── inputs/
 │   └── th_ab12…/              pasted images, named by `img_` id
@@ -366,9 +367,13 @@ app data, never a file in the user's workspace. `SKILL.md` follows the
 [agentskills.io](https://agentskills.io) layout: YAML frontmatter with `name`
 and `description`, then the procedure as markdown. Agent writes to `MEMORY.md`
 are also capped per paragraph (`memory.entry_max`); a create that collides with
-an existing skill is refused; a note that restates a skill's summary or steps
-is refused. Hand-edits and the Memory panel still use the
-total `char_limit` only.
+an existing skill (same subject, shared name stem, or a copied procedure) is
+refused; a note that restates a skill's summary or steps is refused. After a
+finished turn, leftover families are folded into one `SKILL.md` under the
+shared stem. A hand edit of those files does not fold until the next turn, or
+until `POST /api/projects/:id/memory/tidy-skills` (the response names what was
+merged, deleted and created). Hand-edits of notes and the
+Memory panel still use the total `char_limit` only.
 
 **Memory lives here, never in your working directory.** A project pointed at a
 repository must not leave files in it, and a memory that was in the repository

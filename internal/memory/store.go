@@ -17,6 +17,8 @@
 // would exceed the limit fails and reports what is already stored: the agent
 // consolidates instead of accumulating. Skills are not injected — only their
 // names and one-line summaries are — so they are not bounded the same way.
+// They are quality-bounded instead: a create that restates a recorded subject
+// is refused, and leftover families are folded into one skill after a turn.
 package memory
 
 import (

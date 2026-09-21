@@ -252,7 +252,12 @@ describe("Composer chrome", () => {
   // that makes it sit on the transcript instead.
   it("sits on the transcript with a fade instead of a hairline", () => {
     renderComposer()
-    expect(screen.getByTestId("composer-fade")).toBeInTheDocument()
+    const fade = screen.getByTestId("composer-fade")
+    expect(fade).toBeInTheDocument()
+    expect(fade.className).toMatch(/\bbottom-full\b/)
+    expect(fade.className).not.toMatch(/-top-\d+/)
+    expect(screen.getByTestId("composer-slab").className).toMatch(/\binset-0\b/)
+    expect(screen.getByTestId("composer-dock")).toBeInTheDocument()
     expect(screen.getByTestId("composer").className).not.toMatch(/border-t/)
     expect(
       screen.getByTestId("composer").querySelector(".content-column"),
@@ -260,6 +265,19 @@ describe("Composer chrome", () => {
     expect(
       screen.getByTestId("composer").querySelector(".content-gutter"),
     ).not.toBeNull()
+    expect(screen.getByTestId("composer-pins").className).toMatch(/\bempty:hidden\b/)
+  })
+
+  // Goal / plan / wait used to leak transcript between chips, so the fade
+  // was stretched opaque over them — and over the last answer. They sit
+  // in the dock; the slab is the plate behind that whole stack.
+  it("keeps goal and wait pins on the same plate as the input", () => {
+    renderComposer({ goal: "a standing objective" })
+    const dock = screen.getByTestId("composer-dock")
+    expect(dock).toContainElement(screen.getByTestId("composer-pins"))
+    expect(dock).toContainElement(screen.getByTestId("goal-banner"))
+    expect(dock).toContainElement(screen.getByTestId("composer-drop"))
+    expect(screen.getByTestId("composer-slab").className).toMatch(/\binset-0\b/)
   })
 
   // Default Textarea is bg-background + rounded-md. That square fill
@@ -269,6 +287,9 @@ describe("Composer chrome", () => {
     const input = screen.getByTestId("composer-input")
     expect(input.className).toMatch(/\bbg-transparent\b/)
     expect(input.className).not.toMatch(/\bbg-background\b/)
+    expect(input.className).toContain("--ui-font-size")
+    expect(input.className).not.toMatch(/\btext-sm\b/)
+    expect(input.className).toMatch(/\boverflow-y-hidden\b/)
   })
 })
 

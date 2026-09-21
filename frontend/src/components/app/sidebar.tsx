@@ -8,7 +8,8 @@ import { ResizeHandle } from "@/components/app/resize-handle"
 import { SidebarSection } from "@/components/app/sidebar-section"
 import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
-import { ScheduleInbox, ScheduleInboxTrigger } from "@/components/app/schedule-inbox"
+import { ScheduleInboxTrigger } from "@/components/app/schedule-inbox"
+import { useApp } from "@/store/app"
 import {
   isProjectExpanded,
   readProjectExpanded,
@@ -82,6 +83,8 @@ export function Sidebar({
   onPin: (id: string, pinned: boolean) => void
 }) {
   const t = useT()
+  const inboxOpen = useApp((s) => s.scheduleInboxOpen)
+  const currentId = inboxOpen ? undefined : activeId
   const buckets = useMemo(() => sidebarBuckets(threads), [threads])
   const [startWidth] = useState(hydrateSidebarWidth)
   const [doomed, setDoomed] = useState<Thread>()
@@ -92,7 +95,7 @@ export function Sidebar({
     setSections(next)
     writeSectionExpanded(next)
   }
-  const activeProjectId = threads.find((th) => th.id === activeId)?.project_id
+  const activeProjectId = threads.find((th) => th.id === currentId)?.project_id
   const busyProjects = useMemo(
     () => runningProjectIds(threads, runningId, waitingIds),
     [threads, runningId, waitingIds],
@@ -132,7 +135,7 @@ export function Sidebar({
         min={SIDEBAR_WIDTH_MIN}
         max={SIDEBAR_WIDTH_MAX}
       />
-      <div className="flex items-center gap-1 px-3 pb-2 pt-3">
+      <div className="flex items-center gap-1.5 px-[var(--sidebar-list-px)] pb-2 pt-2">
         <Button
           variant="secondary"
           size="sm"
@@ -140,6 +143,7 @@ export function Sidebar({
             chromeTypeClass,
             "min-w-0 flex-1 justify-start gap-2 overflow-hidden",
           )}
+          style={{ height: "var(--sidebar-row-height)" }}
           onClick={onNew}
         >
           <MessageSquarePlus className="shrink-0" />
@@ -149,6 +153,10 @@ export function Sidebar({
           variant="ghost"
           size="icon-sm"
           className="shrink-0"
+          style={{
+            width: "var(--sidebar-row-height)",
+            height: "var(--sidebar-row-height)",
+          }}
           onClick={onSearch}
           title={t("sidebar.search")}
         >
@@ -156,7 +164,7 @@ export function Sidebar({
         </Button>
       </div>
 
-      <div className="thin-scrollbar flex-1 overflow-y-auto px-2 pb-2">
+      <div className="thin-scrollbar flex-1 overflow-y-auto px-[var(--sidebar-list-px)] pb-3 pt-1">
         {buckets.pinned.length > 0 ? (
           <SidebarSection
             testId="pinned-list"
@@ -168,7 +176,7 @@ export function Sidebar({
               <SidebarThreadRow
                 key={thread.id}
                 thread={thread}
-                active={thread.id === activeId}
+                active={thread.id === currentId}
                 running={thread.running || thread.id === runningId}
                 waiting={waitingIds?.has(thread.id)}
                 asking={Boolean(askingIds?.has(thread.id) || thread.awaiting_answer)}
@@ -185,7 +193,7 @@ export function Sidebar({
           projects={projects}
           threadsByProject={buckets.byProject}
           expanded={openByProject}
-          activeId={activeId}
+          activeId={currentId}
           runningId={runningId}
           waitingIds={waitingIds}
           askingIds={askingIds}
@@ -219,7 +227,7 @@ export function Sidebar({
           >
             <SidebarThreadGroup
               threads={buckets.recents}
-              activeId={activeId}
+              activeId={currentId}
               runningId={runningId}
               waitingIds={waitingIds}
               askingIds={askingIds}
@@ -230,7 +238,7 @@ export function Sidebar({
             />
           </SidebarSection>
         ) : threads.length === 0 ? (
-          <p className={cn(chromeTypeClass, "px-2 py-6 text-sidebar-foreground/70")}>
+          <p className={cn(chromeTypeClass, "px-[var(--sidebar-row-px)] py-6 text-sidebar-foreground/70")}>
             {t("sidebar.empty")}
           </p>
         ) : null}
@@ -238,15 +246,19 @@ export function Sidebar({
         <ScheduleInboxTrigger />
       </div>
 
-      <div className="flex items-center justify-between border-t border-sidebar-border px-3 py-2">
+      <div className="border-t border-sidebar-border px-[var(--sidebar-list-px)] py-2.5">
         <Button
           variant="ghost"
           size="sm"
-          className={cn(chromeTypeClass, "gap-2")}
+          className={cn(
+            chromeTypeClass,
+            "w-full justify-between rounded-full px-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
+          )}
+          style={{ height: "var(--sidebar-row-height)" }}
           onClick={onSettings}
         >
+          <span>{t("sidebar.settings")}</span>
           <Settings />
-          {t("sidebar.settings")}
         </Button>
       </div>
       <ConfirmDeleteDialog
@@ -264,7 +276,6 @@ export function Sidebar({
           if (doomed) onDelete(doomed.id)
         }}
       />
-      <ScheduleInbox />
     </aside>
   )
 }

@@ -77,6 +77,18 @@ describe("TurnNav", () => {
     expect(onJump).toHaveBeenCalledWith("tn_a")
   })
 
+  it("keeps the clicked tick current until the reader wheels", () => {
+    renderNav()
+    fireEvent.click(screen.getByRole("button", { name: "first request" }))
+    expect(screen.getByRole("button", { name: "first request" })).toHaveAttribute(
+      "aria-current",
+      "true",
+    )
+    expect(screen.getByRole("button", { name: "second request" })).not.toHaveAttribute(
+      "aria-current",
+    )
+  })
+
   it("lights the latest tick while following the live edge", () => {
     const scroller = { current: document.createElement("div") }
     render(

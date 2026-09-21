@@ -23,6 +23,19 @@ describe("summariseToolCall", () => {
     expect(summariseToolCall("exec", "echo hi")).toBe("echo hi")
   })
 
+  it("names a skill merge by the keeper and the sources", () => {
+    expect(
+      summariseToolCall(
+        "skill_manage",
+        JSON.stringify({
+          action: "merge",
+          name: "a-procedure",
+          sources: ["a-procedure-notes", "a-procedure-send"],
+        }),
+      ),
+    ).toBe("merge · a-procedure · a-procedure-notes, a-procedure-send")
+  })
+
   it("flattens a multiline command for the one-line summary", () => {
     expect(summariseToolCall("exec", JSON.stringify({ command: "echo hi\n&& ls" }))).toBe(
       "echo hi && ls",
@@ -182,7 +195,7 @@ describe("toolRowSummary", () => {
 })
 
 describe("file change view", () => {
-  it("puts plus/minus counts on an edit path, not the JSON envelope", () => {
+  it("puts the path on an edit summary and the plus/minus counts on the hunk, not the JSON envelope", () => {
     const view = viewTool(
       "edit",
       JSON.stringify({
@@ -192,17 +205,17 @@ describe("file change view", () => {
       }),
       "ok: replaced block in pkg/alpha.go",
     )
-    expect(view.summary).toContain("pkg/alpha.go")
-    expect(view.summary).toMatch(/\+1/)
-    expect(view.summary).toMatch(/−1/)
+    expect(view.summary).toBe("pkg/alpha.go")
+    expect(view.summary).not.toMatch(/\+1/)
     expect(view.summary).not.toContain("search_block")
     expect(view.summary).not.toContain("{")
-    expect(toolRowSummary(view)).toContain("+1")
+    expect(toolRowSummary(view)).toBe("pkg/alpha.go")
     expect(view.diff?.added).toBe(1)
+    expect(view.diff?.removed).toBe(1)
     expect(view.body).toBe("")
   })
 
-  it("shows only a minus count when replace_block is empty", () => {
+  it("counts only a deletion when replace_block is empty", () => {
     const view = viewTool(
       "edit",
       JSON.stringify({
@@ -212,27 +225,24 @@ describe("file change view", () => {
       }),
       "ok: replaced block in notes.txt",
     )
-    expect(view.summary).toContain("notes.txt")
-    expect(view.summary).toMatch(/−1/)
-    expect(view.summary).not.toMatch(/\+0/)
+    expect(view.summary).toBe("notes.txt")
     expect(view.diff?.added).toBe(0)
     expect(view.diff?.removed).toBe(1)
   })
 
-  it("puts an added-line count on a write path, not the status sentence", () => {
+  it("puts the write path on the summary and the added-line count on the hunk, not the status sentence", () => {
     const view = viewTool(
       "write",
       JSON.stringify({
         file_path: "pkg/alpha.go",
         content: "package alpha\nfunc Alpha() {}\n",
       }),
-      "Updated file pkg/alpha.go",
+      "Updated file /resolved/pkg/alpha.go (32 bytes)",
     )
-    expect(view.summary).toContain("pkg/alpha.go")
-    expect(view.summary).toMatch(/\+2/)
+    expect(view.summary).toBe("pkg/alpha.go")
     expect(view.summary).not.toContain("content")
     expect(view.summary).not.toContain("{")
-    expect(toolRowSummary(view)).toContain("+2")
+    expect(toolRowSummary(view)).toBe("pkg/alpha.go")
     expect(view.diff?.added).toBe(2)
     expect(view.body).toBe("")
   })
@@ -241,7 +251,7 @@ describe("file change view", () => {
     const view = viewTool(
       "write",
       JSON.stringify({ file_path: "pkg/alpha.go", content: "" }),
-      "Updated file pkg/alpha.go",
+      "Updated file /resolved/pkg/alpha.go (0 bytes)",
     )
     expect(view.summary).toBe("pkg/alpha.go")
     expect(view.summary).not.toMatch(/\+0/)

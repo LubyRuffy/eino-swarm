@@ -7,6 +7,7 @@ import {
 } from "lucide-react"
 import { useMemo, useState } from "react"
 
+import { EditCountMarks } from "@/components/app/edit-diff"
 import { MarqueeText } from "@/components/app/marquee"
 import { ShellCommand } from "@/components/app/shell-command"
 import { ToolResultBody } from "@/components/app/tool-result"
@@ -71,6 +72,9 @@ export function ToolRow({ block, reveal }: { block: Block; reveal?: boolean }) {
               className={view.failed ? "text-[13px] text-destructive" : "text-[13px] text-muted-foreground"}
             />
           )}
+          {view.diff ? (
+            <EditCountMarks added={view.diff.added} removed={view.diff.removed} />
+          ) : null}
           {expanded ? (
             <ChevronDown className="ml-auto size-3.5 shrink-0 opacity-60" />
           ) : (

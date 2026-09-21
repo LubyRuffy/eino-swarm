@@ -116,13 +116,17 @@ func TestSummaryFallsBackToUserTextAndRunningAction(t *testing.T) {
 	}
 	st := e.Status(th.ID)
 	if err := e.Store().AppendEvent(&store.Event{
-		ThreadID: th.ID, TurnID: st.TurnID, Kind: "tool_call", Text: "read",
+		ThreadID: th.ID, TurnID: st.TurnID, Kind: "tool_call",
+		Text: `exec({"command":"echo hi","cwd":"."})`,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	listed := Handle(e, config.RemoteConfig{}, Request{ID: "r", Op: OpList}, "relay", "s")
-	if !listed.OK || len(listed.Running) == 0 || listed.Running[0].Action != "read" {
+	if !listed.OK || len(listed.Running) == 0 || listed.Running[0].Action != "echo hi" {
 		t.Fatalf("running %+v", listed.Running)
+	}
+	if strings.Contains(listed.Running[0].Action, "exec") || strings.Contains(listed.Running[0].Action, "{") {
+		t.Fatalf("tool envelope leaked onto the inbox: %q", listed.Running[0].Action)
 	}
 }
 

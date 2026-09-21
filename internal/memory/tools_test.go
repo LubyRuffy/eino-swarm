@@ -412,6 +412,52 @@ func TestSkillManageRefusesANearDuplicateCreate(t *testing.T) {
 	}
 }
 
+func TestSkillManageMergesAFamilyIntoOneSkill(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "memory")
+	s := New(dir, 2000)
+	var changes []Change
+	byName := map[string]tool.InvokableTool{}
+	for _, bt := range Tools(s, func(c Change) { changes = append(changes, c) }) {
+		info, _ := bt.Info(context.Background())
+		byName[info.Name] = bt.(tool.InvokableTool)
+	}
+	plantSkill(t, dir, "weekly-rollup-notes", "when filing notes", "1. gather notes")
+	plantSkill(t, dir, "weekly-rollup-send", "when sending", "1. send it")
+
+	res := run(t, byName[ToolSkillManage], map[string]any{
+		"action": "merge", "name": "weekly-rollup",
+		"sources": []string{"weekly-rollup-notes", "weekly-rollup-send"},
+	})
+	if res["success"] != true || res["name"] != "weekly-rollup" {
+		t.Fatalf("merge=%v", res)
+	}
+	deleted, _ := res["deleted"].([]any)
+	if len(deleted) != 2 {
+		t.Fatalf("deleted=%v", res["deleted"])
+	}
+	if list, _ := s.ListSkills(); len(list) != 1 || list[0].Name != "weekly-rollup" {
+		t.Fatalf("skills=%v", list)
+	}
+	if len(changes) != 1 || changes[0].Action != "merge" || changes[0].Name != "weekly-rollup" {
+		t.Fatalf("changes=%+v", changes)
+	}
+
+	if res := run(t, byName[ToolSkillManage], map[string]any{
+		"action": "merge", "name": "weekly-rollup", "sources": []string{},
+	}); res["success"] != false {
+		t.Fatalf("empty merge=%v", res)
+	}
+
+	plantSkill(t, dir, "weekly-rollup-notes", "when filing notes", "1. gather notes")
+	plantSkill(t, dir, "weekly-rollup-send", "when sending", "1. send it")
+	if res := run(t, byName[ToolSkillManage], map[string]any{
+		"action": "merge", "name": "weekly-rollup",
+		"sources": []string{"weekly-rollup-notes"},
+	}); res["success"] != false || res["existing"] != "weekly-rollup-send" {
+		t.Fatalf("partial merge must collide with the sibling: %v", res)
+	}
+}
+
 func TestMemoryToolRefusesARunbookNoteAndARestatedSkill(t *testing.T) {
 	s := NewLimited(filepath.Join(t.TempDir(), "memory"), 2000, 40)
 	var changes []Change

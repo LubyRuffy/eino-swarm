@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Languages, MessageSquare, MessageSquarePlus, PanelLeft, Search, Settings, SquareTerminal, SunMoon, UnfoldHorizontal } from "lucide-react"
+import { Languages, Code2, MessageSquare, MessageSquarePlus, PanelLeft, Search, Settings, SquareTerminal, SunMoon, UnfoldHorizontal } from "lucide-react"
 
 import {
   CommandDialog,
@@ -32,6 +32,7 @@ export function Palette({
   onToggleTheme,
   onToggleLocale,
   onToggleContentWidth,
+  onToggleTranscriptMode,
   onToggleSidebar,
   onFind,
   onOpenTerminal,
@@ -45,6 +46,7 @@ export function Palette({
   onToggleTheme: () => void
   onToggleLocale: () => void
   onToggleContentWidth: () => void
+  onToggleTranscriptMode: () => void
   onToggleSidebar: () => void
   onFind: () => void
   onOpenTerminal: () => void
@@ -156,6 +158,13 @@ export function Palette({
           >
             <UnfoldHorizontal />
             {t("palette.width")}
+          </CommandItem>
+          <CommandItem
+            value="transcript user developer compact tools thinking 用户 开发 精简"
+            onSelect={() => run(onToggleTranscriptMode)}
+          >
+            <Code2 />
+            {t("palette.transcriptMode")}
           </CommandItem>
           <CommandItem
             value="terminal shell 终端"

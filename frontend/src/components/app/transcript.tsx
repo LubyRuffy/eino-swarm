@@ -55,6 +55,7 @@ import { useHistoryWindow } from "@/lib/use-history-window"
 import { TURN_NAV_MIN, resolveTurnNavItems } from "@/lib/turn-nav"
 import { useTurnJump } from "@/lib/use-turn-jump"
 import { cn, formatDuration, formatMessageTime } from "@/lib/utils"
+import { contentTypeClass } from "@/lib/chrome-type"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
 import { copyText } from "@/lib/copy-text"
 import { displayQuotedText, formatQuotedMessage, parseQuotedMessage } from "@/lib/quote"
@@ -148,9 +149,12 @@ export function Transcript({
     loadOlder,
   })
   // After useHistoryWindow so a prepend restore cannot undo the jump.
+  // blockCount + loading, not lastText: a live token must not keep
+  // slamming the clicked row to the top of the pane.
   const jumpTo = useTurnJump({
     scrollerRef,
-    growthKey,
+    growthKey: `${blockCount}:${historyLoading}`,
+    threadId,
     unpin,
     loadUntilTurn,
   })
@@ -203,14 +207,16 @@ export function Transcript({
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1">
+    <div className="relative flex min-h-0 min-w-0 flex-1">
       <TurnNav items={navItems} scrollerRef={scrollerRef} onJump={jumpTo} pinned={pinned} />
       <div
         ref={scrollerRef}
         data-testid="transcript"
         data-quote-source=""
         className={cn(
-          "thin-scrollbar content-gutter min-h-0 flex-1 overflow-y-auto [overflow-anchor:none] pt-6 pb-composer",
+          // Hidden X: a GFM table's min-content used to stretch this flex
+          // item under the side panel. Tables scroll inside .md-table.
+          "thin-scrollbar content-gutter min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [overflow-anchor:none] pt-6 pb-composer",
           navItems.length >= TURN_NAV_MIN && "pl-10 sm:pl-12",
         )}
       >
@@ -240,6 +246,7 @@ export function Transcript({
                     onCancelEdit={cancelEdit}
                   />
                 )}
+                revealIds={revealIds}
               />
             )
           })}
@@ -576,7 +583,7 @@ function Answer({ block, showClock }: { block: Block; showClock?: boolean }) {
       <CopyButton text={block.text} size="icon-2xs" className="text-muted-foreground" />
     ) : null
   return (
-    <div className="group/msg relative py-2" data-testid="assistant-message">
+    <div className="group/msg relative min-w-0 py-2" data-testid="assistant-message">
       <div className="md">
         <MemoMarkdown text={block.text} streaming={block.streaming} />
       </div>
@@ -895,7 +902,10 @@ function UserMessage({
               aria-label={t("transcript.editMessage")}
               value={draft}
               rows={4}
-              className="min-h-[4.5rem] border-0 bg-transparent px-1 py-1 leading-6 text-secondary-foreground shadow-none focus-visible:ring-0"
+              className={cn(
+                contentTypeClass,
+                "min-h-[4.5rem] border-0 bg-transparent px-1 py-1 text-secondary-foreground shadow-none focus-visible:ring-0",
+              )}
               onChange={(e) => setDraft(e.target.value)}
               onCompositionStart={() => {
                 cancelIme.current?.()
@@ -941,7 +951,10 @@ function UserMessage({
           <>
             <div
               data-testid="user-message"
-              className="rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 leading-6 text-secondary-foreground"
+              className={cn(
+                contentTypeClass,
+                "rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-secondary-foreground",
+              )}
             >
               <InputThumbs
                 threadId={threadId}

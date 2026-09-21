@@ -306,6 +306,38 @@ func waitThreadRunning(t *testing.T, h *harness, threadID string) {
 	t.Fatal("conversation never went busy")
 }
 
+func TestUntitledScheduleCreateGetsAGeneratedTitle(t *testing.T) {
+	h := newHarness(t)
+	created := h.json(http.MethodPost, "/api/schedules", map[string]any{
+		"kind": "standalone", "prompt": scheduleWaitPrompt, "every_s": 60,
+	}, http.StatusCreated)
+	row := created["schedule"].(map[string]any)
+	if row["title_auto"] != true {
+		t.Fatalf("untitled create must be machine-owned: %v", created)
+	}
+	planted, _ := row["title"].(string)
+	if strings.TrimSpace(planted) == "" {
+		t.Fatal("create must plant a placeholder")
+	}
+	id, _ := row["id"].(string)
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		got := h.json(http.MethodGet, "/api/schedules/"+id, nil, http.StatusOK)
+		sch := got["schedule"].(map[string]any)
+		title, _ := sch["title"].(string)
+		if sch["title_auto"] == false && title != "" && title != planted && title != scheduleWaitPrompt {
+			for _, w := range []string{"CI", "deploy", "GitHub"} {
+				if strings.Contains(title, w) {
+					t.Fatalf("leaked %q", w)
+				}
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("namer never replaced the placeholder")
+}
+
 func TestScheduleCreateRejectsGarbage(t *testing.T) {
 	h := newHarness(t)
 	resp := h.do(http.MethodPost, "/api/schedules", "\"not an object\"")

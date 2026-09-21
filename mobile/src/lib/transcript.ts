@@ -6,6 +6,7 @@ import {
 } from "./ask"
 import type { RemoteEvent } from "./rpc"
 import { looksPacked } from "./tool-preview"
+import { scheduleToolNotice } from "./inbox-preview"
 
 export type BlockKind =
   | "user"
@@ -86,6 +87,13 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
           callId: ev.tool_call_id,
           questions: parseAskToolArgs(parsed.args) ?? [],
         })
+        return next
+      }
+      const notice = scheduleToolNotice(parsed.name, parsed.args)
+      if (notice !== undefined) {
+        if (notice) {
+          next.push({ id: blockId(ev), kind: "notice", text: notice })
+        }
         return next
       }
       next.push({

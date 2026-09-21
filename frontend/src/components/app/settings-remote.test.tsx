@@ -54,6 +54,7 @@ const base: Settings = {
     event_chars: 4000,
     watch_events: 80,
     keep_awake: true,
+    display_name: "desk-one",
   },
 }
 
@@ -105,6 +106,7 @@ describe("RemoteTab", () => {
     expect(screen.getByLabelText("Event text on the phone")).toHaveValue(4000)
     expect(screen.getByLabelText("Events on the phone")).toHaveValue(80)
     expect(screen.getByLabelText("Keep this computer awake")).toBeChecked()
+    expect(screen.getByLabelText("This computer's name")).toHaveValue("desk-one")
   })
 
   it("paints the reported phone model instead of a bare fingerprint", async () => {
@@ -124,6 +126,20 @@ describe("RemoteTab", () => {
     )
     expect(screen.getByText(/aa11bb22cc33dd44/)).toBeInTheDocument()
     expect(screen.getByText(/Last connected 2026-09-20T16:03:32Z/)).toBeInTheDocument()
+  })
+
+  it("renames this computer without inventing a sample host label", async () => {
+    const onChange = vi.fn()
+    render(<RemoteTab settings={base} onChange={onChange} />)
+    await waitFor(() =>
+      expect(screen.getByLabelText("This computer's name")).toBeInTheDocument(),
+    )
+    fireEvent.change(screen.getByLabelText("This computer's name"), {
+      target: { value: "Lab bench" },
+    })
+    const next = onChange.mock.calls[0][0] as Settings
+    expect(next.remote?.display_name).toBe("Lab bench")
+    expect(JSON.stringify(next.remote)).not.toMatch(/MacBook Pro|iMac|Office|codex-apps/)
   })
 
   it("toggles keep-awake without inventing a sample phrase", async () => {

@@ -171,11 +171,25 @@ func nameRelated(a, b string) bool {
 	if len(sa) >= 2 && strings.Join(sa, "-") == strings.Join(sb, "-") {
 		return true
 	}
+	// A shared stem of two or more tokens is one subject written as several
+	// chapter-skills. Jaccard on the full names misses that: the extra
+	// chapter words dilute the score below 2/3.
+	if tokenPrefixLen(sa, sb) >= nameShareMin {
+		return true
+	}
 	if isTokenPrefix(sa, sb) || isTokenPrefix(sb, sa) {
 		return true
 	}
 	inter, union := tokenListOverlap(ta, tb)
 	return inter >= nameShareMin && union > 0 && float64(inter)/float64(union) >= 2.0/3.0
+}
+
+func tokenPrefixLen(a, b []string) int {
+	n := 0
+	for n < len(a) && n < len(b) && a[n] == b[n] {
+		n++
+	}
+	return n
 }
 
 func nameTokenIntersect(a, b string) int {

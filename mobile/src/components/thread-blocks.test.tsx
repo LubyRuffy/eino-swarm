@@ -53,7 +53,7 @@ describe("thread blocks", () => {
     setLocale("en")
   })
 
-  it("summarises a packed report tool from findings, not the envelope", () => {
+  it("shows report findings as a notice, not the tool name", () => {
     render(
       <>
         {renderBlock({
@@ -65,7 +65,7 @@ describe("thread blocks", () => {
         })}
       </>,
     )
-    expect(screen.getByText("report_schedule")).toBeInTheDocument()
+    expect(screen.queryByText("report_schedule")).not.toBeInTheDocument()
     expect(screen.getByText("one thing changed")).toBeInTheDocument()
     expect(screen.queryByText(/"ok":true/)).not.toBeInTheDocument()
   })
@@ -109,6 +109,22 @@ describe("thread blocks", () => {
     expect(screen.getByText(/worker done/)).toBeInTheDocument()
     expect(screen.getByText(/helper failed/)).toBeInTheDocument()
     expect(screen.queryByText(/elapsed_ms/)).not.toBeInTheDocument()
+  })
+
+  it("hides a wake tool chip", () => {
+    const { container } = render(
+      <>
+        {renderBlock({
+          id: "w",
+          kind: "tool",
+          toolName: "schedule_wake",
+          text: "",
+          args: `{"every_s":30,"prompt":"Continue the wait."}`,
+        })}
+      </>,
+    )
+    expect(container).toBeEmptyDOMElement()
+    expect(screen.queryByText("schedule_wake")).not.toBeInTheDocument()
   })
 
   it("hides close_agent bookkeeping", () => {

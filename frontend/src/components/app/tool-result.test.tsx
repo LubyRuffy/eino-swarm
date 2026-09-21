@@ -224,7 +224,7 @@ describe("ToolResultBody", () => {
           file_path: "pkg/alpha.go",
           content: "package alpha\nfunc Alpha() {}\n",
         })}
-        result="Updated file pkg/alpha.go"
+        result="Updated file /resolved/pkg/alpha.go (32 bytes)"
       />,
     )
     const body = screen.getByTestId("file-diff")
@@ -241,7 +241,7 @@ describe("ToolResultBody", () => {
       <ToolResultBody
         name="write"
         args={JSON.stringify({ file_path: "pkg/alpha.go", content: "" })}
-        result="Updated file pkg/alpha.go"
+        result="Updated file /resolved/pkg/alpha.go (32 bytes)"
       />,
     )
     expect(screen.getByTestId("file-diff")).toHaveTextContent("pkg/alpha.go")
@@ -256,7 +256,7 @@ describe("ToolResultBody", () => {
       <ToolResultBody
         name="write"
         args={JSON.stringify({ file_path: "pkg/alpha.go", content })}
-        result="Updated file pkg/alpha.go"
+        result="Updated file /resolved/pkg/alpha.go (32 bytes)"
       />,
     )
     const body = screen.getByTestId("file-diff")

@@ -17,8 +17,11 @@ import {
   keepArmedWakes,
   laterScheduleDue,
   parseArmedSchedule,
+  cadenceFormFields,
+  cadenceCreateFields,
   scheduleCadenceSpec,
   scheduleHeadline,
+  schedulePatchDiff,
   unreadFindings,
 } from "./schedule-view"
 
@@ -257,6 +260,76 @@ describe("schedule-view", () => {
         threadId: "th_1",
       }).map((row) => row.id),
     ).toEqual(["sch_live"])
+  })
+
+  it("diffs inbox edits so an unchanged cadence does not reset next_run_at", () => {
+    const row = wait({
+      title: "wake",
+      prompt: "Continue the wait.",
+      delay_s: 0,
+      every_s: 60,
+      cron: "",
+    })
+    expect(cadenceFormFields(row)).toEqual({ cadence: "every", value: "60" })
+    expect(cadenceFormFields({ delay_s: 90, every_s: 0, cron: "" })).toEqual({
+      cadence: "delay",
+      value: "90",
+    })
+    expect(cadenceFormFields({ delay_s: 0, every_s: 0, cron: "0 * * * *" })).toEqual({
+      cadence: "cron",
+      value: "0 * * * *",
+    })
+    expect(cadenceCreateFields("every", "120")).toEqual({ every_s: 120 })
+    expect(
+      schedulePatchDiff(row, {
+        title: "wake",
+        prompt: "Continue the wait.",
+        cadence: "every",
+        cadenceValue: "60",
+      }),
+    ).toBeUndefined()
+    expect(
+      schedulePatchDiff(row, {
+        title: "Mine",
+        prompt: "Continue the wait.",
+        cadence: "every",
+        cadenceValue: "60",
+      }),
+    ).toEqual({ title: "Mine" })
+    expect(
+      schedulePatchDiff(row, {
+        title: "wake",
+        prompt: "Check again.",
+        cadence: "every",
+        cadenceValue: "60",
+      }),
+    ).toEqual({ prompt: "Check again." })
+    expect(
+      schedulePatchDiff(row, {
+        title: "wake",
+        prompt: "Continue the wait.",
+        cadence: "every",
+        cadenceValue: "120",
+      }),
+    ).toEqual({ every_s: 120 })
+    expect(
+      schedulePatchDiff(row, {
+        title: "wake",
+        prompt: "Continue the wait.",
+        cadence: "delay",
+        cadenceValue: "60",
+      }),
+    ).toEqual({ delay_s: 60 })
+    expect(
+      JSON.stringify(
+        schedulePatchDiff(row, {
+          title: "wake",
+          prompt: "Continue the wait.",
+          cadence: "cron",
+          cadenceValue: "0 9 * * *",
+        }),
+      ),
+    ).not.toMatch(/CI|deploy|GitHub/)
   })
 })
 

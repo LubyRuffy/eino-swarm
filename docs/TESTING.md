@@ -16,10 +16,10 @@ deterministic and fast enough to run on every change.
 |---|---|---|
 | Go unit tests | config, store, memory, provider, tools, engine, search, server, CLI, TUI, and the swarm library | `go test -race -cover -timeout 20m ./...` |
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), conversation search (`GET /api/search` finds a body the title does not contain; embeddings stay off until a model is pinned), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
-| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (compact chips; tagged `<selected_text>` / `<user_request>` on send; Copy message without the wire tags; the Add to chat snapshot surviving a live stream), clipboard image paste, copying transcript text when the Clipboard API refuses (execCommand fallback), file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window` / `use-turn-jump`), dismissible settings toasts, ⌘K palette body search (`thread-search` / `palette.test`, stale hits cleared while the next query is in flight), semantic-search settings (off until a model is named) | `cd frontend && npm test` |
-| End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet; Bound phones paints a reported model) | `cd frontend && npm run e2e` |
-| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default; Android release Gradle reads version/signing from env (no password in git); `android-release` refuses a store upload without a keystore, skips JDK 17, copies the APK to `bin/` | `cd mobile && npm test` |
-| Phone E2E | scan screen + paste of the same `pairlink:v1` URI (camera is the product path on device) | `cd mobile && npm run e2e` |
+| Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (count chip at rest, hover to read/edit/drop; tagged `<selected_text>` / `<user_request>` on send; Copy message without the wire tags; the Add to chat snapshot surviving a live stream), clipboard image paste, copying transcript text when the Clipboard API refuses (execCommand fallback), file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `ui_font_size` / `font_size` / `content_width` / `transcript_mode` / `palette`, directory density), tail-first history pages (`thread-log` / `thread-history` / `use-history-window` / `use-turn-jump`), dismissible settings toasts, ⌘K palette body search (`thread-search` / `palette.test`, stale hits cleared while the next query is in flight), semantic-search settings (off until a model is named) | `cd frontend && npm test` |
+| End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, directory rows tracking UI size, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet; Bound phones paints a reported model) | `cd frontend && npm run e2e` |
+| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, saved-ticket host chips + connecting skeleton (not the scan form), multiple tickets, computer name from `hello`/`list` `host` (not the hub hostname), slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default; Android release Gradle reads version/signing from env (no password in git); `android-release` refuses a store upload without a keystore, skips JDK 17, copies the APK to `bin/` | `cd mobile && npm test` |
+| Phone E2E | scan screen + paste of the same `pairlink:v1` URI (camera is the product path on device); a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a sheet | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, Start | see `mobile/README.md` (not in `make check`) |
 
 Current Go coverage, from `go test -race -cover -timeout 20m ./...`:
@@ -27,10 +27,10 @@ Current Go coverage, from `go test -race -cover -timeout 20m ./...`:
 | package | coverage |
 |---|---|
 | `frontend` | 92.9% |
-| `internal/memory` | 96.8% |
+| `internal/memory` | 97.0% |
 | `internal/provider` | 92.1% |
 | `.` (swarm library) | 95.0% |
-| `internal/tools` | 97.5% |
+| `internal/tools` | 98.3% |
 | `internal/store` | 90.7% |
 | `internal/search` | 90.6% |
 | `internal/engine` | 90.5% |
@@ -41,7 +41,7 @@ Current Go coverage, from `go test -race -cover -timeout 20m ./...`:
 | `internal/tui` | 87.6% |
 | `internal/app` | 87.9% |
 | `cmd/zwai` | 84.7% |
-| `internal/remote` | 92.7% |
+| `internal/remote` | 94.1% |
 | `internal/wakeup` | 95.7% |
 
 `internal/wakeup` is the phone-host sleep assertion. `TestSetDoesNotBounceTheAssertion`
@@ -53,12 +53,20 @@ wiring: pairing on holds, the switch off releases, Reload does not drop.
 `TestDecorateBindingsJoinsHubRowsOntoLocalLabels` are why Bound phones
 can show a model: `hello` is keyed by the pairlink fingerprint, a quiet
 reconnect does not wipe the label, and a phone that has not said hello
-stays a fingerprint. `TestHostOfferAndServeLinkOverRelay` sends `hello`
+stays a fingerprint. `TestHelloAndListNameThisComputer` plus
+`mobile/src/lib/store.test.ts` are why the phone chip is this PC's
+`display_name`, not the hub hostname, and why a second scan of the same
+fingerprint replaces the ticket.
+`TestBlankRemoteDisplayNameSeedsTheMachineHostname` is why a blank Settings
+name becomes the hostname instead of a compiled label. `TestHostOfferAndServeLinkOverRelay` sends `hello`
 and asserts the bindings list carries that label. `mobile/src/lib/device.test.ts`
 builds the one-line label from platform + UA.
 
 `internal/remote` is the phone RPC. `TestListDefaultsToFiveAndOmitsProjectSecrets`
-is why the phone never sees a project prompt. `TestSlimListPayloadStaysBounded`
+is why the phone never sees a project prompt. `TestListRecentPageDoesNotCountLiveRows`
+is why In progress does not eat the Recents quota: four parked waits plus
+six idle conversations still return five project rows, and More stays on
+that idle list. `TestSlimListPayloadStaysBounded`
 caps the default list. `TestUDPBlockedListAndSendStayOnRelay` is the
 UDP-blocked path: QR pixels round-trip to the same URI, then list and send
 stay on `path=relay`. `TestWatchLiveSendAndUnwatch` plus the kinds freeze
@@ -78,6 +86,11 @@ pages older than that window.
 `TestPhoneListAndOpenSurfaceGoalAndParkedWait` is why a parked `/goal` wait
 is on the phone roster (`waiting`) even when it is not on the recent page,
 and why `open` carries the objective flags plus the wake snapshot.
+`TestHumanLineDropsScheduleAndMemoryJargon` plus
+`TestListActionOmitsAWakeEnvelope` are why `list.running[].action` is
+findings / a command / assistant prose, not `schedule_wake({…})` or
+`memory({…})`, and why a quiet scheduled check does not become the Recents
+subtitle.
 `TestRunNowCancelWaitAndResumeGoalMapOntoTheEngine` is Run now / Cancel wait /
 Start goal over pairlink. `TestWatchReadyAndArmPushCarryWaitingStatus` is why
 `watch` `ready` and a live `schedule` frame carry `status.waiting` / `wake`.
@@ -105,6 +118,9 @@ slots (`go run ./mobile/scripts/genicons.go`).
 `mobile/src/lib/resume.test.ts` is why bind opens a live turn (or the last
 thread, including a parked wait) instead of parking on New conversation,
 and why a tap paints a listing stub instead of freezing on the inbox.
+`mobile/src/lib/phone-shell.test.ts` and `mobile/src/app.test.tsx` are why a
+saved ticket paints host chips and a connecting skeleton on the first frame
+instead of the scan form, and why Add a PC is a sheet.
 `rosterFingerprint` is why a 2s inbox poll that repeats the same roster
 does not remount the row mid-tap. `mobile/src/components/markdown.test.tsx` renders `$n$` as KaTeX and copies a
 fenced body (including when the Clipboard API refuses), paints `**bold**` and GFM tables, and keeps a filesystem path
@@ -112,14 +128,16 @@ from becoming a webview navigation. `mobile/src/lib/copy-text.test.ts` is why
 that copy is not a dead button in a webview. `mobile/src/components/thread-blocks.test.tsx`
 is why a user bubble uses that same markdown, not the source markers.
 `mobile/src/components/home-screen.test.tsx` is why a parked wait sits in
-In progress as Waiting, not a quiet Recents row.
+In progress as Waiting, not a quiet Recents row, and why a live
+`schedule_wake` / `report_schedule` envelope is not the subtitle.
+`mobile/src/lib/inbox-preview.test.ts` pulls findings and drops the tool name.
 `mobile/src/components/thread-screen.test.tsx` is why a standing `/goal` is
 Pursuing / Done / Blocked / Paused with Start, a parked wait is Waiting
 with Run now / Cancel wait rather than a silent Send box, a long
 objective stays one truncated line so that chrome cannot cover the composer,
 and Earlier sits outside the scroller so a live-edge tail can still page.
 A long tool path must not stretch the column (`min-w-0` / `break-words`).
-`mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, a `progress` pulse is not a notice, and a `report_schedule` row keeps its args after the result envelope.
+`mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, a `progress` pulse is not a notice, and a findings `report_schedule` is that prose as a notice rather than a tool chip.
 `mobile/src/lib/tool-preview.test.ts` pulls `findings` (not `prompt`) for the collapsed chip, and a wait roster is counts rather than `elapsed_ms`.
 `mobile/src/components/thread-blocks.test.tsx` keeps that roster off the user bubble and the expanded tool body. Camera on a real device is the product path (`make mobile-ios` /
 `make mobile-android`).
@@ -181,6 +199,10 @@ tests can tell a generated name from a quoted first message.
 `internal/engine/title_test.go` is why that namer runs from the opening
 message, a later turn does not get a second name, and an interrupted
 opening turn still keeps the landed name.
+`internal/engine/schedule_title_test.go` is why an untitled wait plants the
+truncated prompt then the same namer replaces it, an explicit or PATCH
+title wins, `AutoTitle` off leaves the placeholder, and naming a wait
+does not emit a conversation `title` event.
 
 It answers as a **compact summarizer** (`compact-summarizer`) and as a
 **session-memory** writer (`session-memory`) with a short briefing derived
@@ -288,6 +310,8 @@ min-interval wait on the first manager step.
 human waits, lists `{schedules, unread}`, pauses/cancels, run-now on
 idle starts a `ScheduleContinue` turn, run-now while the conversation is
 busy is `409 skipped_busy`, and reading a findings run clears unread.
+An omitted `title` plants a placeholder and the namer replaces it
+(`TestUntitledScheduleCreateGetsAGeneratedTitle`).
 `TestRunScheduleNowConsumesAFutureCronSlot` is why an early cron run-now
 advances past the pending slot instead of leaving `next_run_at` on that
 same due time.
@@ -300,16 +324,19 @@ is the one parked row the phone banner and Run now / Cancel wait target
 (soonest `next_run_at`, not a paused or alien conversation).
 `PendingWakeThreadIDs` is the listing batch of
 those same conversations so the sidebar does not query per row.
+`internal/store/schedule_title_test.go` is why `ApplyAutoScheduleTitle`
+is a compare-and-swap: a PATCH in between wins.
 `internal/engine/schedule_test.go` is why `Status.Waiting` and `Waiting()`
 follow an armed thread wake without starting a turn.
 `internal/server/schedules_test.go` is why GET `/api/threads/:id` and the
 listing carry `waiting` while a thread wake is parked.
 `internal/engine/prompt_test.go` is why the manager prompt has `## Waiting`
 (`schedule_wake`, do not wait for the human to remind, `report_schedule`,
-estimated waits about a third of remaining time, extra checks, do not pad)
-without CI / deploy / pull-request / cron-job samples, why an open `/goal`
-names a pending wake as the next turn, and why extra lists this
-conversation's active wakes from a real `CreateSchedule` row.
+a parallel `exec` progress-poll sleep is allowed, do not sleep the full
+remaining time, estimated waits about a third, extra checks, do not pad)
+without CI / deploy / pull-request / cron-job samples or a sample duration,
+why an open `/goal` names a pending wake as the next turn, and why extra
+lists this conversation's active wakes from a real `CreateSchedule` row.
 `internal/engine/plan_test.go` is why planning unmounts write/exec,
 `propose_plan` writes the file, Implement remounts those tools,
 deleting a conversation takes `PLAN.md` with it, and
@@ -322,6 +349,12 @@ planning drops write/exec and a paused `/goal` stays held after Implement.
 `internal/engine/project_test.go` and `internal/memory/prompt_test.go`
 are why a project worker gets `skill_view` and the notes/skills snapshot,
 not `memory` / `skill_manage`, and why that worker prompt stays generic.
+`internal/memory/families_test.go` and `internal/engine/review_test.go` are why
+a shared name stem is one skill, leftover families fold after a finished turn
+without a reviewer call when auto-review is off, the fold is still on the
+turn id as `memory_review`, `FoldProjectSkills` tidies the same catalog
+without a conversation (and refuses after shutdown), and a tidy report names
+what was created, deleted, and left unchanged.
 
 ```bash
 go run ./cmd/zwai web --mock --no-open --data-dir /tmp/zwai-demo
@@ -504,8 +537,13 @@ Conventions in these tests:
 crosses 1000 lines: a memory review on the same turn id shows in `zwai trace`.
 `internal/provider/provider_wait_test.go` is wait_agents progress parsing.
 `internal/tools/pin_test.go` is why a UTF-8 `read` whose first 4096 bytes
-cut a rune stays `encoding=utf-8`, and why an empty `edit` `replace_block`
-deletes instead of the old catch-all missing-payload error.
+cut a rune stays `encoding=utf-8`, why an empty `edit` `replace_block`
+deletes instead of the old catch-all missing-payload error, and why
+`write` refuses a missing/`contents` body instead of claiming `Updated file`
+while emptying the disk.
+`internal/tools/execwait_test.go` is why `exec` still runs a progress-poll
+sleep and shortens one of five seconds or more to about a third of that
+duration (a sub-second pause between commands is left as written).
 
 ## Front-end unit tests
 
@@ -585,18 +623,30 @@ Several things are tested here, some as pure logic and some in jsdom:
   later `next_run_at`, a fire marks that conversation's live
   wake done, and a stale empty GET cannot wipe the
   open conversation's live wait.   `schedule-inbox.test.tsx` /
+  `schedule-dest.test.ts` cover Runs in (standalone vs a thread wake), a
+  Create drawer with a Task field and no Title, click-to-edit (`schedule-edit-drawer`)
+  that PATCHes title / prompt / cadence without resending an unchanged interval,
+  pause/run-now in that drawer, a finished wait read-only, and
   `schedule-banner.test.tsx` / `app-schedule.test.ts` cover the sidebar
-  dialog trigger (`aria-haspopup="dialog"`, unread in the accessible name),
+  page control (`aria-current="page"` while open, unread in the accessible name),
   pause/run-now/create labels, unread badge, busy run-now `skipped_busy` as a
-  labelled alert inside the inbox dialog, the composer wake banner's labeled
+  labelled alert on the scheduled page, the composer wake banner's labeled
   Run now / Cancel wait (`schedule-wait-actions.test.tsx`), the banner hiding
   while the conversation is working, a parked wait painting a breathing clock
   on the sidebar row and Waiting on the title bar (`waitingThreadIds`,
   `wait-mark.tsx`), run-now painting the open conversation Working,
   a `schedule_skipped` stream event refreshing the list, and a silent
-  schedule GET that must not toast. The inbox defaults to Active; Completed
-  lists done and cancelled waits. Create stays behind the header control so
-  the list does not share height with the form. Several unread fires on one wait collapse
+  schedule GET that must not toast. The inbox is the main column (`schedule-page`,
+  `absolute inset-0`); it defaults to Active; Completed
+  lists done and cancelled waits. The conversation side panel is hidden
+  (`side-panel`). Create opens `schedule-create-drawer` so the form does not
+  sit on the list; Expand fills the column (`data-expanded`, list pane hidden;
+  Escape collapses first). The form is a Task field plus Details (Runs in:
+  new conversation each run, or wake a listed chat; Project only for a minted
+  conversation) and Frequency (Repeat + delay/every/cron). Click a row for
+  `schedule-edit-drawer` (title in the header, Task + locked destination +
+  cadence; Save is dirty-only). Pause keeps a selected wait on the Active
+  tab while the editor is open. Escape then closes the drawer, then the page. Several unread fires on one wait collapse
   to one Open findings control (a count when there is more than one) so
   finished reports stay off the row (`unreadFindings` newest-first; opening
   a conversation marks every unread fire on that thread; wait rows are
@@ -621,10 +671,14 @@ Several things are tested here, some as pure logic and some in jsdom:
   conversation shares a fixed height instead of overflowing a second
   scrollbar. The hover list is a wider two-line preview of those sends, not a
   shadowed popover of fake bubbles. The active tick
-  is the last message whose top has crossed a probe near the viewport, or the
+  is the last human turn that has entered the viewport (not a 96px line
+  from the top — a wheel-up used to keep an earlier tick current while
+  the latest send was already on screen), or the
   latest turn when the scroller is at the bottom or still following the live
   edge (opening a conversation used to measure at scrollTop 0 and keep the
-  first tick current), turns not yet mounted are skipped rather than treated
+  first tick current). A click sticks until the reader wheels again, and
+  the pending jump is re-applied after a lazy prepend (clearing it on the
+  first scrollIntoView used to swallow the click). Turns not yet mounted are skipped rather than treated
   as offset 0, and a
   missing id after a conversation switch is a no-op. The rail stays hidden until
   there are two user turns; hover opens the list; a click (or arrow keys) jumps.
@@ -640,7 +694,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   the reader already reached the top, in which case they stay on the newly
   loaded rows. A jump to an unloaded turn keeps paging until that user row exists
   (`use-turn-jump`: the scroll waits for the row to mount — scrolling in the
-  fetch callback missed; `loadUntilTurn` joins an in-flight sentinel page
+  fetch callback missed; a click that already found its row stays pending
+  across a lazy prepend, because a sentinel page started at the top used
+  to land after the jump, skip restore, and swallow the click; `loadUntilTurn`
+  joins an in-flight sentinel page
   instead of treating `historyLoading` as the end of the log, and fetches max
   pages rather than the 24-row viewport).
   A worker-only tail keeps paging until a non-quiet, non-spawn manager row exists so the
@@ -734,7 +791,8 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/store/plan-events.ts`**: thread flags for `/plan` events live here so
   `app.ts` is not the owner of that protocol.
 - **`src/lib/transcript-review.test.ts`**: memory review notices, title and
-  session-memory rows, rewind, `ask_user` cards, and plan notices. Split
+  session-memory rows, rewind, `ask_user` cards, and plan notices. A merged
+  skill is named in the transcript the same way a recorded one is. Split
   from `transcript.test.ts` so neither file crosses 1000 lines.
 - **`src/lib/transcript-ask.ts`** and **`src/components/app/ask-card.tsx`**: an
   `ask_user` tool_call becomes a question block; the host injects Other; a
@@ -761,6 +819,16 @@ Several things are tested here, some as pure logic and some in jsdom:
   a width comparison (jsdom cannot layout a real line), a longer line gets a
   longer loop, and a live `MarqueeText` is marked `data-marquee="shimmer"` while
   idle text stays `"off"`.
+- **`src/lib/work-fold.ts`**, **`src/components/app/work-fold.tsx`**, and
+  **`src/components/app/swap-line.tsx`**: user mode groups consecutive
+  thinking / tools / mid-turn answers; developer mode is a flat list.
+  `ask_user` / errors / notices split the group. A live ticker is one
+  current activity (a pending tool beats a streaming thought; a running
+  turn with neither is **Planning next moves**). Copy is **Thinking** or
+  the latest thought line, **Editing** / **Reading** / **Exec** `{name}`
+  for file and shell tools. `SwapLine` always wraps `MarqueeText` so a
+  long line still scrolls left-to-right; changing the activity key slides
+  the previous line up.
 - **`src/lib/chart-spec.ts`**: a `chart` fence body is JSON for bar / line /
   area / pie. Parallel `labels`+`values`, a values object, and missing x/y
   still parse; a single row, an unknown type, and junk do not; a truncated
@@ -801,7 +869,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   follows new tokens and fades at the top once earlier lines have left; the
   **Thinking** label sweeps (`MarqueeText`) until it collapses to **Thought**.
   Clicking the row hides it while tokens still arrive; later deltas do not
-  force it back open.   Opening an `exec` row wraps the full command with shell
+  force it back open. User mode (`transcript.test.tsx`, `work-fold.test.tsx`)
+  folds that thought and the tools behind one `WorkFold`: the live summary
+  is a `SwapLine` of **Thinking** / the latest thought line, **Planning next
+  moves**, or **Editing** / **Reading** / **Exec**, still on `MarqueeText`.
+  Developer mode is the previous every-row log. Opening an `exec` row wraps the full command with shell
   highlighting instead of leaving it truncated (`transcript-exec.test.tsx`).
   A pending `exec` does not paint stdout until that click
   (`tool-row.test.tsx`); the latest line stays on the summary. A finished
@@ -852,8 +924,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   Enter while composition is live, or on the key that just confirmed it, leaves
   the draft in the box; the next settled Enter sends. A CJK IME writing the
   committed string back after send is swallowed so a leftover Enter cannot
-  queue the live turn; a different draft still sends. The chrome is a fade over
+  queue the live turn; a different draft still sends.   The chrome is a fade over
   the transcript, not a top border, so a docked toolbar cannot regress in.
+  Goal / plan / wait pins sit in the dock with the input; a slab behind
+  that plate hides chip gaps, and the fade is only the join above it.
+  The draft uses `--ui-font-size` (content type), not Textarea `text-sm`.
   The model control is always a switcher, even with one ready name.
   ⌘Enter marks the send as steer; Enter while running queues. The Queued tray
   (`queue-tray.tsx`) names the count, edits a row in place (Enter saves and
@@ -877,6 +952,7 @@ Several things are tested here, some as pure logic and some in jsdom:
   inline edit that saves on blur and cancels on Escape, and
   elapsed time from `goal_started_at`. A failed-turn sentinel is localized
   and yields to the turn's public error when that is on the transcript.
+  A parked wait does not reprint the wait essay — the schedule chip owns that.
 - **`src/lib/models.ts`**: choice ids round-trip through a tab separator,
   `groupModels` keeps server order, and auxiliary choices skip blanks.
 - **`src/components/app/model-settings.tsx`**, rendered in jsdom: providers
@@ -891,17 +967,23 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/lib/composer-chrome.ts`**: the composer writes `--composer-pad` onto the
   conversation stage from its own height; a zero height (jsdom) leaves the CSS
   fallback so a unit test cannot collapse the transcript into the box.
-  `resizeComposerArea` skips the `height: auto` measure while `composing` is
-  set, so an IME candidate window is not laid out on every preedit key.
+  `composerPadPx` is dock height plus join air so goal / plan / wait pins
+  stay in the dock (the slab behind it hides chip gaps) and the last answer
+  is not under a % opaque hang. Fade overhang is px on the same stage so
+  content font-size cannot grow a rem wash. `resizeComposerArea` skips the
+  `height: auto` measure while `composing` is set, so an IME candidate
+  window is not laid out on every preedit key. Overflow is `hidden` until
+  `scrollHeight` exceeds the cap, then `auto`.
 - **`src/lib/tool-view.ts`**: a built-in tool's JSON args collapse to the
   command / query / path the user needs to see, `execCommand` keeps newlines
   so an expanded row can show a heredoc, `exec` payloads become stdout
   plus a failed flag when the exit code is not 0, and `web_search` payloads
-  become a list of hits. An `edit` or `write` summary is the path plus `+N −M`
-  from the reconstructed hunk (`ToolView.diff` is that hunk, parsed once).
-  An empty write is the path with no `+0`. A refused memory write puts the
-  refusal on the collapsed row (`toolRowSummary`), not only inside the
-  disclosure. Assertions check structure, not any particular query.
+  become a list of hits. An `edit` or `write` summary is the path;
+  `+N −M` lives on `ToolView.diff` (that hunk, parsed once) and the row
+  paints it as a sibling of the path. An empty write is the path with
+  no `+0`. A refused memory write puts the refusal on the collapsed
+  row (`toolRowSummary`), not only inside the disclosure. Assertions
+  check structure, not any particular query.
 - **`src/lib/edit-diff.ts`**: an `edit` call's `search_block` / `replace_block`
   (or apply_patch `patch`) becomes line hunks. Shared prefix/suffix stay
   context; the middle is an LCS (capped so a huge replace cannot freeze
@@ -929,8 +1011,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   does not paint `tool-output` until the row is opened (latest line on the
   summary); a finished exec stays collapsed unless the reader clicked; a
   pending `web_search` still opens and folds when the result lands; a
-  finished `edit` or `write` stays collapsed (`+N −M` on the summary) until
-  the reader opens it, including while the call is still pending.
+  finished `edit` or `write` stays collapsed (`+N −M` beside the path,
+  muted until hover/focus) until the reader opens it, including while
+  the call is still pending.
 - **`src/components/app/tool-result.tsx`**, rendered in jsdom: a markdown `read`
   renders headings, a `*.go` `read` paints keywords onto tokens and keeps line
   numbers, an unknown suffix stays uncoloured, `exec` shows
@@ -942,9 +1025,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   paints 400 rows plus the leftover count.
 - **`src/components/app/source-code.tsx`**, rendered in jsdom: a numbered
   listing maps token kinds onto the syntax CSS variables.
-- **`src/components/app/edit-diff.tsx`**, rendered in jsdom (via `tool-result`):
-  add/delete rows carry `data-diff`, a `*.go` hunk still paints keywords, and
-  an empty write shows the empty-file copy. Tokenizing is per painted
+- **`src/components/app/edit-diff.tsx`**, rendered in jsdom (via `tool-result`
+  and `edit-diff.test.tsx`): add/delete rows carry `data-diff`, a `*.go`
+  hunk still paints keywords, an empty write shows the empty-file copy,
+  and `EditCountMarks` inherit the row until `group-hover` /
+  `group-focus-within` split add from delete. Tokenizing is per painted
   hunk, not per table row.
 - **`src/components/app/shell-command.tsx`**, rendered in jsdom: the expanded
   command wraps instead of truncating, and the collapsed preview stays one
@@ -953,11 +1038,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   **`src/components/app/sidebar-section.tsx`**,
   **`src/components/app/sidebar-slots.tsx`**,
   **`src/components/app/sidebar-thread-row.tsx`**, and
-  **`src/components/app/sidebar-thread-group.tsx`**, rendered in jsdom: the list
+  **`src/components/app/sidebar-thread-group.tsx`**, rendered in jsdom
+  (`sidebar-slots.test.ts` pins chrome-relative density, not rem): the list
   starts with New conversation; there is no title-bar chrome row and no hide
-  control — those live on the window title bar. Projects and Recents share
-  the scrollport gutter: wrapping the project section in a second `px-2` is
-  rejected so it cannot sit 8px further in than Recents. The list starts at
+  control — those live on the window title bar. Settings is a full-width
+  rounded pill at the bottom that fills `sidebar-accent` on hover. Projects and Recents share
+  `sidebar-section-label` (same px gutter as the rows). Wrapping the project
+  section in a second `px-2` is rejected so it cannot sit further in than Recents. The list starts at
   256px, the arrow keys change that width (CSS variable, not a React `width`
   style), a remembered width is restored, and the resize strip sits on the
   right edge (`z-20`) with the aside stacked above the transcript (`z-10`) so
@@ -976,10 +1063,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   animation cannot smear the icon. A blocked `ask_user` replaces that
   progress with a pinging question mark (`ask-mark`; the ping is allowed to
   overflow). Recents,
-  Pinned and nested titles keep a `size-4` spacer so they share a
+  Pinned and nested titles keep a `sidebar-kind` spacer so they share a
   column with the project name. A section chevron is hover-only
-  while that section is open. Folder and topic rows are `h-7`
-  so the row menus do not pad the list out. Clicking Pinned, Projects,
+  while that section is open. Folder and topic rows are `sidebar-row`
+  (`--sidebar-row-height` from UI chrome size, not rem) with a 2px stack gap so the
+  selected pill floats; row menus stay `icon-xs` so they cannot pad the
+  list out. Content font size must not shrink that directory; UI size grows it
+  (12px chrome → 26px row, 13 → 28, 16 → 34). Clicking Pinned, Projects,
   or Recents folds that section (`aria-expanded`);
   a reload keeps the fold. A project folder and Recents show at most
   five conversations from the last seven days; **Show more** reveals
@@ -1030,31 +1120,40 @@ Several things are tested here, some as pure logic and some in jsdom:
   control flips light / dark; `aria-pressed` is on while the column is wide.
 - **`src/lib/settings-persist.ts`**: edits coalesce into one `PUT` after
   400ms; `flush` writes immediately; a failed write does not block the next.
-  The `ui` object always carries locale, font, size and column width so a
+  The `ui` object always carries locale, font, size, column width and palette so a
   swarm edit cannot reset General.
 - **`src/lib/appearance.ts`**: chrome tokens (`system`/`serif`/`mono`,
-  `small`/`medium`/`large`, `comfortable`/`full`) map to CSS variables and
+  `small`/`medium`/`large`, `comfortable`/`full`, `zwai`/`fofa`) map to CSS variables and
   `data-*` attributes. Junk becomes the current defaults. A `localStorage`
   cache paints the first frame; `GET /api/meta` is the source of truth.
   `toggleContentWidth` is the title-bar / ⌘K flip. `--content-gutter`
-  shrinks in `full` so the column sits against the sidebars. Font size
-  writes `--ui-font-size` only (12 / 13 / 16px; `medium` matches chrome);
-  `--chrome-font-size` stays in CSS so Large cannot balloon the sidebar or
-  Settings.
-- **`src/lib/chrome-type.ts`**: the shared 13px regular class for window
+  shrinks in `full` so the column sits against the sidebars. UI size
+  writes `--chrome-font-size` and the directory density tokens
+  (`src/lib/chrome-density.ts`); content size writes `--ui-font-size`
+  (`ui` follows chrome) and must not change row height. Code size writes `--code-font-size`.
+  `palette` writes `data-palette` so `index.css` can swap the FOFA token sheet.
+- **`src/components/app/theme-cards.tsx`**, rendered in jsdom: Settings →
+  General paints System / Light / Dark preview cards and a Color theme
+  menu (ZWAI / FOFA). The cards restyle with the named set.
+- **`src/lib/chrome-type.ts`**: the shared chrome-size regular class for window
   chrome (sidebar, Settings, title bar, composer controls), plus the
-  muted one-line chip (`composerPinClass`) for goal / plan / wait above
-  the composer.
+  muted opaque chip (`composerPinClass`) for goal / plan / wait above
+  the composer so transcript lines cannot show through. Content type includes `--ui-font-size` so it beats
+  Textarea `text-sm`.
 - **`src/components/app/settings-dialog.tsx`**, rendered in jsdom: Settings
   is a full-page sheet (`h-dvh`) with **Back to app**, a labelled search
-  box, and a left rail of tabs. The dialog title is screen-reader only —
+  box, and a left rail of tabs. Opening the sheet lands on **General**
+  unless the caller passed `initialSection` (the model picker uses Models).
+  The dialog title is screen-reader only —
   the visible page heading is the section name (General, Models, …). There
   is no Save/Cancel: edits debounce into
   `PUT /api/settings` (locale rides along) and **Back to app** flushes.
   Searching a Swarm-only word jumps to that
   section and hides Models. The Personality tab writes personal preferences
   into `personality.instructions`. The Swarm tab exposes compact keep-messages,
-  the auto-compact token budget. Every page scrolls with `overflow-auto` and
+  the auto-compact token budget. The selected page is a `tabpanel` switch
+  (not Radix `TabsContent`, which hid every pane after settings loaded).
+  Every page scrolls with `overflow-auto` and
   bottom padding, so an outline at the
   end of the tab (Add a provider) is not clipped. `overflow-y-auto` is
   rejected because it would leave the shared `overflow-hidden` in place.
@@ -1069,6 +1168,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   computer awake** defaults on and toggles `remote.keep_awake`. A binding
   with a reported model paints that line, not a bare fingerprint.
   `src/lib/remote-binding.ts` is the title / last-seen join.
+- **`src/store/settings-sheet.ts`**: sidebar / ⌘, / ⌘K open General;
+  a provider shortcut opens Models.
 - **`src/store/toasts.ts`**: same-id replace, a cap of 4, `toastError` as
   the settings failure helper.
 - **`src/components/app/settings-field.tsx`**, rendered in jsdom: a row
@@ -1137,7 +1238,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   no longer open is ignored (one project's notes under another's name is worse
   than none), a refused create or edit reaches the dialog so it can show the
   message against the field that caused it, and a memory reload copies the skill
-  index onto the project so the Memory tab updates without a second listing.
+  index onto the project so the Memory tab updates without a second listing. A
+  tidy click folds overlapping skills, copies the new index onto the project,
+  and ignores a slow response for a project that is no longer open.
 - **`src/components/app/project-dialog.tsx`**, rendered in jsdom: a rejected
   working directory is shown under that field and the dialog stays open, a
   generic save failure toasts (× dismisses it), a
@@ -1174,7 +1277,12 @@ Several things are tested here, some as pure logic and some in jsdom:
   review are adopted unless the user is mid-edit — in which case a conflict
   banner keeps what they typed and offers Reload — and a write that landed
   while the tab was closed is a badge, not a silent panel. Deleting a skill
-  asks first.
+  asks first. **Tidy overlapping skills** sits on the Skills heading, walks
+  scan → group → fold (held long enough to read), then a report of merged /
+  deleted / created names plus counts; a tidy catalog still shows the zeros.
+- **`src/components/app/skill-tidy-card.tsx`** and **`src/lib/skill-tidy.ts`**:
+  progress steps advance even when the POST is instant, then the card lists
+  what was merged, deleted and created; dismiss clears it.
 
 ## End-to-end tests
 
@@ -1202,15 +1310,17 @@ long enough for Steer; unit tests leave it unset.
 
 | spec | covers |
 |---|---|
-| `e2e/conversation.spec.ts` | a full swarm turn, a live thought in a 10-line scrolling box whose **Thinking** label sweeps, clicking that row hiding the thought while it still streams, a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title from the opening message (not the raw request, not a transcript row), a heading rendered as a heading while the turn is still Working, a chart in the scripted answer with Chart/Table tabs (and after reload), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge, switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, **Steer** on that queued row injecting and emptying the tray, editing a queued row and submitting it so that message goes to the back of the FIFO, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, hovering a user request or the last finished answer fading in the reserved event clock without a layout jump, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
-| `e2e/quotes.spec.ts` | quoting selected transcript text into the next send as an editable composer annotation (chips, not `<selected_text>` tags in the bubble), and Add to chat still landing while a thought is streaming |
-| `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, hovering a project row revealing a new-conversation control that starts one in that project rather than Recents (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, a sixth topic in the folder sitting behind **Show more** until it is opened, and a running conversation keeping its sidebar progress after switching to a new conversation (an explicit folder collapse keeps a clipped breathe-dot on the glyph, not a smear) |
-| `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour) and `$n$` as KaTeX |
+| `e2e/work-fold.spec.ts` | user-mode work folded behind one live ticker (`work-fold`); click expands the thought box and click again collapses it |
+| `e2e/conversation.spec.ts` | a full swarm turn, user-mode work folded behind one live ticker (`work-fold` + `swap-line` + `MarqueeText` shimmer or left-to-right scroll), a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title from the opening message (not the raw request, not a transcript row), a chart in the scripted answer with Chart/Table tabs (and after reload), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge (developer view, so spawn rows exist to overflow), switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, **Steer** on that queued row injecting and emptying the tray, editing a queued row and submitting it so that message goes to the back of the FIFO, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, hovering a user request or the last finished answer fading in the reserved event clock without a layout jump, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
+| `e2e/quotes.spec.ts` | quoting selected transcript text into the next send as an editable composer annotation (count chip at rest, hover for the snippet, not `<selected_text>` tags in the bubble), and Add to chat still landing while a turn is streaming (user-mode work fold, not the inner thought box) |
+| `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, Tidy overlapping skills saying when the catalog is already tidy (scan/group/fold then counts), hovering a project row revealing a new-conversation control that starts one in that project rather than Recents (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, a sixth topic in the folder sitting behind **Show more** until it is opened, and a running conversation keeping its sidebar progress after switching to a new conversation (an explicit folder collapse keeps a clipped breathe-dot on the glyph, not a smear) |
+| `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour), `$n$` as KaTeX, a GFM table that stays inside the conversation column (not under the side panel), and a heading rendered as a heading while the turn is still Working |
 | `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |
-| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled inbox (Create, title, prompt, Every (seconds) 60, Add wait), expand the row, Run now, unread / Open findings landing on the minted conversation with a `Scheduled check.` chip and no user bubble of the protocol wrapper; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
+| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled page in the main column (Create opens the right drawer, Task only — the inbox name is generated — Repeat → On an interval, Every (seconds) 60, Add wait; Agents/Files/Trace rail hidden; Expand fills the page (`data-expanded`) then Collapse restores the list), click the row to open the editor, Run now, Escape back to the conversation, unread / Open findings landing on the minted conversation whose title matches that generated name, with a `Scheduled check.` chip and no user bubble of the protocol wrapper; REST create then click-to-edit title/prompt/cadence and Save; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
 | `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Keep this computer awake, Bound phones empty copy, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. |
-| `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR control; junk paste errors; a syntactically valid URI uses the same bind path |
-| `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline, Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, the tool catalogue on a never-saved config, settings written to the config file and read back, personality round-tripping through Settings → Personality, pinning a title-generation model when more than one name is listed, opening a collapsed provider row then discovering models into the default-model dropdown, a failed listing toasting over that open provider (in viewport, × dismisses it), **Back to app** remaining on screen on a short window when the Swarm page is long, Back to app sitting in the first 48px of a browser sheet (the desktop title-bar strip is not shipped to the tab), the Add-a-provider outline staying inside the Models scrollport, semantic search off by default on Models, ⌘K finding a conversation by words in its body, theme switching persisted, chrome language switching (restored to English because locale is in the shared yaml), the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), font / size / conversation width round-tripping through Settings → General, renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
+| `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR control; junk paste errors; a syntactically valid URI uses the same bind path; a saved ticket shows host chips and Connecting, not the scan form; Add a PC is a sheet |
+| `e2e/settings.spec.ts` | Settings sheet: tool catalogue on a never-saved config, round-trip through the config file, per-note memory cap, personality, pinning a title-generation model, discovering models into the default dropdown, a failed listing toasting over the open provider, **Back to app** on a short window when Swarm is long, the Add-a-provider outline inside the Models scrollport, semantic search off by default, Color theme / font / conversation width, directory rows tracking UI size not conversation size, chrome language switching (restored to English) |
+| `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline (pins and the box share one slab; the join sits on that plate), Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, ⌘K finding a conversation by words in its body, theme switching persisted, the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
 
 E2E tests run against `frontend/dist`. Playwright starts
 `go run ./cmd/zwai web --mock --no-open`, which rebuilds that bundle when the
@@ -1255,7 +1365,8 @@ a client at all is verified in the engine and reducer tests.
 - **The phone apps**: `make mobile-ios` / `make mobile-android`. Scan the
   pairing QR from Settings → Phone. Paste is the same URI when the camera is
   missing. After bind, a live turn (or the last thread this phone opened)
-  opens; otherwise the inbox is the compact screen on the same conversation
+  opens; a later launch with saved tickets shows host chips and a connecting
+  skeleton, not the scan form. Otherwise the inbox is the compact screen on the same conversation
   bus (send / follow-up / steer / stop / ask); Settings, Files, PTY and Trace
   stay on the PC. The hub hostname is typed on the PC, never shipped in the binary.
   Simulators: iOS can use a loopback hub; Android needs `adb reverse` onto

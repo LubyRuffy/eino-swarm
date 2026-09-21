@@ -1,8 +1,8 @@
 import { normalizeSelectedText } from "@/lib/selection"
 
 /** One snippet the user pulled out of the transcript to send with the next
- *  message. The composer shows these as annotations, not as textarea text,
- *  so the question stays editable on its own. */
+ *  message. The composer shows a count chip at rest (hover to read / edit /
+ *  drop), not as textarea text, so the question stays editable on its own. */
 export interface Quote {
   id: string
   text: string

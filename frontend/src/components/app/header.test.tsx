@@ -7,7 +7,8 @@ import {
   SIDEBAR_WIDTH_DEFAULT,
   SIDEBAR_WIDTH_VAR,
 } from "@/lib/sidebar-width"
-import type { ThreadStatus } from "@/lib/types"
+import type { Thread, ThreadStatus } from "@/lib/types"
+import { useApp } from "@/store/app"
 
 const idle: ThreadStatus = { running: false }
 
@@ -24,8 +25,10 @@ function renderHeader(props: Partial<Parameters<typeof Header>[0]> = {}) {
         onToggleTheme={vi.fn()}
         onToggleLocale={vi.fn()}
         onToggleContentWidth={vi.fn()}
+        onToggleTranscriptMode={vi.fn()}
         onOpenTerminal={vi.fn()}
         contentWidth="comfortable"
+        transcriptMode="user"
         dark={false}
         terminalOpen={false}
         terminalEnabled
@@ -117,6 +120,27 @@ describe("Header project chip", () => {
     renderHeader()
     expect(screen.queryByTestId("thread-project")).not.toBeInTheDocument()
     expect(screen.getByTestId("thread-title")).toHaveTextContent("New conversation")
+    expect(screen.getByRole("button", { name: "Toggle side panel" })).toBeInTheDocument()
+  })
+
+  it("names the title bar Scheduled while that page is open", () => {
+    useApp.setState({ scheduleInboxOpen: true })
+    const thread: Thread = {
+      id: "th_1",
+      title: "A chat",
+      project_id: "pj_1",
+      provider_id: "default",
+      reasoning_effort: "",
+      archived: false,
+      created_at: "",
+      last_active_at: "",
+      running: false,
+    }
+    renderHeader({ project, thread })
+    expect(screen.getByTestId("thread-title")).toHaveTextContent("Scheduled")
+    expect(screen.queryByTestId("thread-project")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("status-badge")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Toggle side panel" })).not.toBeInTheDocument()
   })
 })
 
@@ -244,6 +268,24 @@ describe("Header conversation width", () => {
     renderHeader({ contentWidth: "full" })
     expect(
       screen.getByRole("button", { name: "Switch to standard layout" }),
+    ).toHaveAttribute("aria-pressed", "true")
+  })
+})
+
+describe("Header transcript mode", () => {
+  it("offers developer view from the compact default", () => {
+    const onToggleTranscriptMode = vi.fn()
+    renderHeader({ onToggleTranscriptMode, transcriptMode: "user" })
+    const btn = screen.getByRole("button", { name: "Switch to developer view" })
+    expect(btn).toHaveAttribute("aria-pressed", "false")
+    fireEvent.click(btn)
+    expect(onToggleTranscriptMode).toHaveBeenCalled()
+  })
+
+  it("offers user view while developer mode is on", () => {
+    renderHeader({ transcriptMode: "developer" })
+    expect(
+      screen.getByRole("button", { name: "Switch to user view" }),
     ).toHaveAttribute("aria-pressed", "true")
   })
 })

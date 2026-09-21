@@ -45,8 +45,9 @@ func TestMetaTellsTheUIWhatItCanDo(t *testing.T) {
 		t.Fatalf("a fresh install follows the system language, got %v", got["locale"])
 	}
 	ui, _ := got["ui"].(map[string]any)
-	if ui["font"] != "system" || ui["font_size"] != "medium" || ui["content_width"] != "comfortable" {
-		t.Fatalf("a fresh install keeps the current column and type, got %v", got["ui"])
+	if ui["font"] != "system" || ui["font_size"] != "ui" || ui["content_width"] != "comfortable" ||
+		ui["palette"] != "zwai" {
+		t.Fatalf("a fresh install keeps the current column, type and palette, got %v", got["ui"])
 	}
 	// the composer builds its thinking-level menu from this, so it must arrive
 	levels, ok := got["reasoning_levels"].([]any)
@@ -247,6 +248,43 @@ func TestLocaleRoundTripsThroughSettingsAndMeta(t *testing.T) {
 	}
 }
 
+func TestRemoteDisplayNameRoundTripsThroughSettings(t *testing.T) {
+	h := newHarness(t)
+	got := h.json(http.MethodGet, "/api/settings", nil, http.StatusOK)
+	settings, _ := got["settings"].(map[string]any)
+	remote, _ := settings["remote"].(map[string]any)
+	seeded, _ := remote["display_name"].(string)
+	if strings.TrimSpace(seeded) == "" {
+		t.Fatal("GET must seed a computer name so the phone chip is not a hash")
+	}
+	for _, leak := range []string{"Office", "MacBook Pro", "iMac", "codex-apps"} {
+		if seeded == leak {
+			t.Fatalf("seeded name must not be a sample label %q", leak)
+		}
+	}
+	out := h.json(http.MethodPut, "/api/settings", map[string]any{
+		"remote": map[string]any{
+			"enabled":       false,
+			"hub_url":       "",
+			"display_name":  "Lab bench",
+			"thread_limit":  5,
+			"summary_chars": 280,
+			"open_turns":    6,
+			"event_chars":   4000,
+			"watch_events":  80,
+			"keep_awake":    true,
+		},
+	}, http.StatusOK)
+	settings, _ = out["settings"].(map[string]any)
+	remote, _ = settings["remote"].(map[string]any)
+	if remote["display_name"] != "Lab bench" {
+		t.Fatalf("settings did not echo the computer name: %v", remote)
+	}
+	if h.app.Config.Remote.DisplayName != "Lab bench" {
+		t.Fatalf("display name not stored: %+v", h.app.Config.Remote)
+	}
+}
+
 // Font, size and column width ride the same ui object as locale. A
 // language-only PUT must not reset them; GET /api/meta must report them so
 // the next load paints before Settings is opened.
@@ -267,6 +305,9 @@ func TestUIChromeRoundTripsThroughSettingsAndMeta(t *testing.T) {
 	}
 	if ui["locale"] != "system" {
 		t.Fatalf("a font PUT must keep the language: %v", ui)
+	}
+	if ui["palette"] != "zwai" {
+		t.Fatalf("a font PUT must keep the default palette: %v", ui)
 	}
 	if h.app.Config.UI.Font != "serif" || h.app.Config.UI.FontSize != "large" ||
 		h.app.Config.UI.ContentWidth != "full" {
@@ -304,6 +345,48 @@ func TestUIChromeRoundTripsThroughSettingsAndMeta(t *testing.T) {
 	}
 	if h.app.Config.UI.Locale != "zh" {
 		t.Fatalf("a font PUT must keep the language: %+v", h.app.Config.UI)
+	}
+	if h.app.Config.UI.TranscriptMode != "user" {
+		t.Fatalf("missing transcript mode must default to user, got %q", h.app.Config.UI.TranscriptMode)
+	}
+
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"ui": map[string]any{"transcript_mode": "developer"},
+	}, http.StatusOK)
+	if h.app.Config.UI.TranscriptMode != "developer" {
+		t.Fatalf("transcript mode not stored: %+v", h.app.Config.UI)
+	}
+	if h.app.Config.UI.Locale != "zh" || h.app.Config.UI.Font != "system" {
+		t.Fatalf("a transcript-mode PUT must keep chrome: %+v", h.app.Config.UI)
+	}
+
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"ui": map[string]any{"transcript_mode": "verbose"},
+	}, http.StatusOK)
+	if h.app.Config.UI.TranscriptMode != "user" {
+		t.Fatalf("junk transcript mode must become user, got %q", h.app.Config.UI.TranscriptMode)
+	}
+
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"ui": map[string]any{"palette": "fofa"},
+	}, http.StatusOK)
+	if h.app.Config.UI.Palette != "fofa" {
+		t.Fatalf("palette not stored: %+v", h.app.Config.UI)
+	}
+	if h.app.Config.UI.Locale != "zh" || h.app.Config.UI.TranscriptMode != "user" {
+		t.Fatalf("a palette PUT must keep chrome: %+v", h.app.Config.UI)
+	}
+	meta = h.json(http.MethodGet, "/api/meta", nil, http.StatusOK)
+	metaUI, _ = meta["ui"].(map[string]any)
+	if metaUI["palette"] != "fofa" {
+		t.Fatalf("meta must report palette so boot can apply it: %v", meta["ui"])
+	}
+
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"ui": map[string]any{"palette": "codex"},
+	}, http.StatusOK)
+	if h.app.Config.UI.Palette != "zwai" {
+		t.Fatalf("junk palette must become zwai, got %q", h.app.Config.UI.Palette)
 	}
 }
 

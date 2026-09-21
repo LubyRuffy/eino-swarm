@@ -1,28 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { defaultAppearance } from "@/lib/appearance"
 import { useApp } from "@/store/app"
 
 const fake = vi.hoisted(() => ({
-  savedUI: undefined as
-    | {
-        locale?: string
-        font?: string
-        font_size?: string
-        content_width?: string
-      }
-    | undefined,
+  savedUI: undefined as Record<string, string> | undefined,
 }))
 
 vi.mock("@/lib/api", () => ({
   api: {
-    saveSettings: async (patch: {
-      ui?: {
-        locale?: string
-        font?: string
-        font_size?: string
-        content_width?: string
-      }
-    }) => {
+    saveSettings: async (patch: { ui?: Record<string, string> }) => {
       if (patch.ui) fake.savedUI = patch.ui
       return patch
     },
@@ -33,11 +20,21 @@ beforeEach(() => {
   fake.savedUI = undefined
   useApp.setState({
     locale: "en",
-    font: "system",
-    fontSize: "medium",
-    contentWidth: "comfortable",
+    ...defaultAppearance(),
   })
 })
+
+const chrome = {
+  font: "system",
+  ui_font_size: "medium",
+  content_font: "ui",
+  font_size: "ui",
+  code_font: "mono",
+  code_font_size: "content",
+  content_width: "comfortable",
+  transcript_mode: "user",
+  palette: "zwai",
+}
 
 describe("locale preference", () => {
   // Desktop binds a random loopback, so localStorage-only would forget the
@@ -46,12 +43,7 @@ describe("locale preference", () => {
     await useApp.getState().setLocale("zh")
     expect(useApp.getState().locale).toBe("zh")
     expect(document.documentElement.lang).toBe("zh-CN")
-    expect(fake.savedUI).toEqual({
-      locale: "zh",
-      font: "system",
-      font_size: "medium",
-      content_width: "comfortable",
-    })
+    expect(fake.savedUI).toEqual({ locale: "zh", ...chrome })
   })
 
   it("applies a boot locale without rewriting settings", () => {
@@ -62,7 +54,18 @@ describe("locale preference", () => {
 })
 
 describe("appearance preference", () => {
-  it("writes typeface and column through settings so the next boot keeps them", async () => {
+  it("writes transcript mode through settings so the next boot keeps it", async () => {
+    await useApp.getState().setAppearance({ transcriptMode: "developer" })
+    expect(useApp.getState().transcriptMode).toBe("developer")
+    expect(document.documentElement.dataset.transcriptMode).toBe("developer")
+    expect(fake.savedUI).toEqual({
+      locale: "en",
+      ...chrome,
+      transcript_mode: "developer",
+    })
+  })
+
+  it("writes the typeface and conversation width through settings", async () => {
     await useApp.getState().setAppearance({
       font: "serif",
       fontSize: "large",
@@ -74,9 +77,21 @@ describe("appearance preference", () => {
     expect(document.documentElement.dataset.contentWidth).toBe("full")
     expect(fake.savedUI).toEqual({
       locale: "en",
+      ...chrome,
       font: "serif",
       font_size: "large",
       content_width: "full",
+    })
+  })
+
+  it("writes the named color set through settings so the next boot keeps it", async () => {
+    await useApp.getState().setAppearance({ palette: "fofa" })
+    expect(useApp.getState().palette).toBe("fofa")
+    expect(document.documentElement.dataset.palette).toBe("fofa")
+    expect(fake.savedUI).toEqual({
+      locale: "en",
+      ...chrome,
+      palette: "fofa",
     })
   })
 
@@ -91,9 +106,8 @@ describe("appearance preference", () => {
     await useApp.getState().setLocale("zh")
     expect(fake.savedUI).toEqual({
       locale: "zh",
+      ...chrome,
       font: "serif",
-      font_size: "medium",
-      content_width: "comfortable",
     })
   })
 })

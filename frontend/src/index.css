@@ -8,6 +8,7 @@
   :root {
     --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
       "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --font-content: var(--font-sans);
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
 
     --background: 0 0% 100%;
@@ -96,14 +97,30 @@
        the fallback is only the first paint and jsdom. */
     --composer-pad: 7.5rem;
 
+    /* Join above the composer slab. Pixels, not rem: conversation size is
+       html rem, and a rem overhang used to wash out the last answer. */
+    --composer-fade-overhang: 96px;
+
     /* Conversation column. comfortable is max-w-3xl; Settings / the title
        bar overwrite this when the human picks full width. */
     --content-max: 48rem;
     --content-gutter: 2rem;
     --ui-font-size: 13px;
-    /* Sidebar / Settings / title bar / composer controls. Font size
-       overwrites --ui-font-size; this one stays so chrome does not balloon. */
+    --code-font-size: 13px;
+    /* Sidebar / Settings / title bar / composer controls. Follows UI font size. */
     --chrome-font-size: 13px;
+
+    /* Directory tracks chrome size. html rem is the transcript; using it
+       here packed titles whenever conversation size was 13px. applyAppearance
+       overwrites these with rounded px so 13px chrome is a 28px row. */
+    --sidebar-row-height: calc(var(--chrome-font-size) * 2.15);
+    --sidebar-row-px: calc(var(--chrome-font-size) * 0.62);
+    --sidebar-row-gap: 2px;
+    --sidebar-folder-gap: calc(var(--chrome-font-size) * 0.46);
+    --sidebar-section-gap: calc(var(--chrome-font-size) * 0.77);
+    --sidebar-section-label-height: calc(var(--chrome-font-size) * 1.7);
+    --sidebar-list-px: calc(var(--chrome-font-size) * 0.77);
+    --sidebar-kind: calc(var(--chrome-font-size) * 1.23);
 
     /* Pairing QR plate. A camera needs a white field even in dark chrome. */
     --qr-plate: 0 0% 100%;
@@ -174,6 +191,136 @@
     --qr-plate: 0 0% 100%;
   }
 
+  /* FOFA intelligence-console palette. Tokens map the design roles onto
+     the same shadcn names so components stay token-only. */
+  html[data-palette="fofa"] {
+    --background: 210 20% 98%;
+    --foreground: 234 30% 18%;
+    --card: 0 0% 100%;
+    --card-foreground: 234 30% 18%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 234 30% 18%;
+    --primary: 180 95% 37%;
+    --primary-foreground: 222 77% 7%;
+    --secondary: 204 20% 95%;
+    --secondary-foreground: 234 30% 18%;
+    --muted: 204 20% 95%;
+    --muted-foreground: 202 12% 41%;
+    --accent: 204 20% 95%;
+    --accent-foreground: 234 30% 18%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 224 14% 86%;
+    --input: 224 14% 86%;
+    --ring: 180 95% 37%;
+    --radius: 0.5rem;
+
+    --sidebar: 0 0% 100%;
+    --sidebar-foreground: 202 12% 41%;
+    --sidebar-accent: 204 20% 95%;
+    --sidebar-border: 223 18% 92%;
+
+    --running: 32 95% 44%;
+    --done: 142 76% 36%;
+    --failed: 0 72% 51%;
+    --ask: 180 95% 37%;
+
+    --find: 180 60% 82%;
+    --find-foreground: 222 77% 7%;
+    --find-active: 180 95% 37%;
+    --find-active-foreground: 222 77% 7%;
+
+    --chart-1: 180 95% 37%;
+    --chart-2: 214 99% 57%;
+    --chart-3: 181 93% 27%;
+    --chart-4: 221 43% 40%;
+    --chart-5: 32 95% 44%;
+
+    --file-folder: 214 99% 45%;
+    --file-code: 180 95% 32%;
+    --file-doc: 221 43% 40%;
+    --file-config: 32 95% 44%;
+    --file-image: 181 93% 27%;
+
+    --syntax-keyword: 214 90% 42%;
+    --syntax-command: 180 95% 32%;
+    --syntax-string: 181 70% 28%;
+    --syntax-comment: 202 12% 48%;
+    --syntax-operator: 32 95% 40%;
+    --syntax-flag: 214 50% 38%;
+    --syntax-variable: 180 80% 30%;
+    --syntax-prompt: 214 99% 45%;
+
+    --diff-add: 142 76% 32%;
+    --diff-add-bg: 142 40% 94%;
+    --diff-del: 0 72% 46%;
+    --diff-del-bg: 0 70% 96%;
+  }
+
+  html[data-palette="fofa"].dark {
+    --background: 222 77% 7%;
+    --foreground: 0 0% 100%;
+    --card: 222 50% 10%;
+    --card-foreground: 0 0% 100%;
+    --popover: 223 38% 15%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 180 96% 48%;
+    --primary-foreground: 222 77% 7%;
+    --secondary: 221 43% 14%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 221 43% 14%;
+    --muted-foreground: 210 32% 74%;
+    --accent: 221 33% 20%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 220 15% 18%;
+    --input: 221 33% 20%;
+    --ring: 180 96% 48%;
+    --radius: 0.5rem;
+
+    --sidebar: 219 77% 5%;
+    --sidebar-foreground: 210 32% 74%;
+    --sidebar-accent: 221 33% 20%;
+    --sidebar-border: 220 15% 16%;
+
+    --running: 38 92% 50%;
+    --done: 142 71% 45%;
+    --failed: 0 84% 60%;
+    --ask: 180 96% 48%;
+
+    --find: 180 50% 22%;
+    --find-foreground: 0 0% 100%;
+    --find-active: 180 96% 48%;
+    --find-active-foreground: 222 77% 7%;
+
+    --chart-1: 180 96% 48%;
+    --chart-2: 214 99% 57%;
+    --chart-3: 210 32% 74%;
+    --chart-4: 181 93% 40%;
+    --chart-5: 38 92% 50%;
+
+    --file-folder: 214 99% 57%;
+    --file-code: 180 96% 48%;
+    --file-doc: 210 32% 74%;
+    --file-config: 38 92% 50%;
+    --file-image: 181 93% 40%;
+
+    --syntax-keyword: 214 90% 72%;
+    --syntax-command: 180 96% 48%;
+    --syntax-string: 181 55% 58%;
+    --syntax-comment: 210 14% 56%;
+    --syntax-operator: 38 92% 50%;
+    --syntax-flag: 214 50% 70%;
+    --syntax-variable: 180 70% 62%;
+    --syntax-prompt: 214 99% 70%;
+
+    --diff-add: 142 71% 45%;
+    --diff-add-bg: 142 40% 10%;
+    --diff-del: 0 84% 60%;
+    --diff-del-bg: 0 40% 12%;
+  }
+
   * {
     @apply border-border;
   }
@@ -218,7 +365,74 @@
   .content-column {
     width: 100%;
     max-width: var(--content-max, 48rem);
+    min-width: 0;
     margin-inline: auto;
+  }
+
+  /* Settings → General theme cards. Faces use their own tokens so a
+     light preview stays light while the window is dark. */
+  .theme-swatch {
+    height: 4.75rem;
+    overflow: hidden;
+    border-radius: calc(var(--radius) + 2px);
+    border: 1px solid hsl(var(--border));
+  }
+  .theme-swatch-face {
+    height: 100%;
+    padding: 0.4rem 0.35rem 0.3rem;
+    background: hsl(var(--swatch-chrome));
+  }
+  .theme-swatch-page {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+    gap: 0.22rem;
+    border-radius: 0.45rem;
+    background: hsl(var(--swatch-page));
+    padding: 0.45rem 0.4rem;
+  }
+  .theme-swatch-bar {
+    display: block;
+    height: 0.28rem;
+    border-radius: 999px;
+    background: hsl(var(--swatch-bar));
+  }
+  .theme-swatch-bar-accent {
+    width: 42%;
+    background: hsl(var(--swatch-accent));
+  }
+  .theme-swatch-bar-mid {
+    width: 72%;
+  }
+  .theme-swatch-bar-short {
+    width: 54%;
+  }
+  .theme-swatch-split {
+    clip-path: inset(0 0 0 50%);
+  }
+  [data-swatch="zwai-light"] {
+    --swatch-chrome: 240 5% 92%;
+    --swatch-page: 0 0% 100%;
+    --swatch-bar: 240 6% 86%;
+    --swatch-accent: 240 6% 12%;
+  }
+  [data-swatch="zwai-dark"] {
+    --swatch-chrome: 240 8% 8%;
+    --swatch-page: 240 7% 12%;
+    --swatch-bar: 240 5% 22%;
+    --swatch-accent: 0 0% 92%;
+  }
+  [data-swatch="fofa-light"] {
+    --swatch-chrome: 204 20% 95%;
+    --swatch-page: 0 0% 100%;
+    --swatch-bar: 224 14% 86%;
+    --swatch-accent: 180 95% 37%;
+  }
+  [data-swatch="fofa-dark"] {
+    --swatch-chrome: 219 77% 5%;
+    --swatch-page: 222 50% 10%;
+    --swatch-bar: 220 15% 22%;
+    --swatch-accent: 180 96% 48%;
   }
 
   /* Phone keeps 1rem. sm+ uses --content-gutter so full width can sit
@@ -232,23 +446,30 @@
     }
   }
 
+  /* Conversation body. Chrome uses --font-sans / --chrome-font-size. */
+  .content-type {
+    font-family: var(--font-content, var(--font-sans));
+    font-size: var(--ui-font-size);
+  }
+
   /* Rendered markdown from the model. Prose plugins bring a lot of opinions
      and a lot of kilobytes; these are the few rules the answers actually
      need. Sizes are rem so Settings → Font size scales the answer too. */
   .md {
-    @apply text-[1em] leading-6;
+    font-family: var(--font-content, var(--font-sans));
+    font-size: var(--ui-font-size);
+    @apply min-w-0 leading-6;
   }
   .md > * + * {
     @apply mt-3;
   }
-  .md h1 {
-    @apply text-xl font-semibold mt-5;
-  }
-  .md h2 {
-    @apply text-lg font-semibold mt-5;
-  }
+  /* Headings keep weight, not a second size — sidebar titles and body
+     titles should read as the same type unless Settings splits them. */
+  .md h1,
+  .md h2,
   .md h3 {
-    @apply text-base font-semibold mt-4;
+    @apply font-semibold mt-4;
+    font-size: inherit;
   }
   .md ul {
     @apply list-disc pl-5 space-y-1;
@@ -263,7 +484,9 @@
     @apply border-l-2 border-border pl-3 text-muted-foreground;
   }
   .md code {
-    @apply font-mono text-[0.8125rem] bg-muted rounded px-1 py-0.5;
+    font-family: var(--font-mono);
+    font-size: var(--code-font-size);
+    @apply bg-muted rounded px-1 py-0.5;
   }
   .md pre {
     @apply bg-muted rounded-md p-3 overflow-x-auto;
@@ -289,6 +512,12 @@
   .md .katex-error {
     color: hsl(var(--destructive));
   }
+  /* A GFM table's min-content is the longest token. The scrollport is
+     the cap; overflow-wrap is what lets a wide table still sit in the
+     reading column instead of painting under the side panel. */
+  .md .md-table {
+    @apply min-w-0 max-w-full overflow-x-auto;
+  }
   .md table {
     @apply w-full text-sm border-collapse;
   }
@@ -298,6 +527,11 @@
   .md th,
   .md td {
     @apply border border-border px-2 py-1 text-left align-top;
+    overflow-wrap: anywhere;
+  }
+  .md :is(th, td) code {
+    overflow-wrap: anywhere;
+    word-break: break-all;
   }
 
   /* Streamed text is appended character by character; without this, a long
@@ -331,12 +565,20 @@
     );
   }
 
-  /* Wash the transcript into the composer so the last lines sit under the
-     box instead of dying against a hairline. Token, not a hex. */
+  /* One plate behind goal / plan / wait pins and the input. Chip gaps
+     used to show transcript; stretching a % opaque fade over the hang
+     covered them and the last answer. Token, not a hex. */
+  .composer-slab {
+    background: hsl(var(--background));
+  }
+
+  /* Join above that plate. Height is px so content font-size cannot grow
+     the wash over the last answer. */
   .composer-fade {
+    height: var(--composer-fade-overhang, 96px);
     background: linear-gradient(
       to top,
-      hsl(var(--background)) 18%,
+      hsl(var(--background)) 0%,
       hsl(var(--background) / 0) 100%
     );
   }
@@ -379,6 +621,23 @@
     background: transparent;
   }
 
+  /* Directory rows. Height is the token, not Tailwind h-7, so a 13px
+     root cannot fold 28px into 23px. */
+  .sidebar-row {
+    height: var(--sidebar-row-height);
+    padding-inline: var(--sidebar-row-px);
+  }
+
+  .sidebar-section-label {
+    height: var(--sidebar-section-label-height);
+    padding-inline: var(--sidebar-row-px);
+  }
+
+  .sidebar-kind {
+    width: 16px;
+    height: 16px;
+  }
+
   .pl-traffic {
     padding-left: var(--traffic-light-inset);
   }
@@ -397,7 +656,9 @@
 @media (prefers-reduced-motion: reduce) {
   .animate-marquee,
   .animate-shimmer,
-  .animate-ping {
+  .animate-ping,
+  .animate-swap-in,
+  .animate-swap-out {
     animation: none !important;
   }
 }

@@ -391,6 +391,7 @@ describe("inactive tab panels", () => {
           onDeleteSkill: () => {},
           onRefresh: () => {},
           onReview: () => {},
+          onTidySkills: () => {},
         }}
         {...noop}
       />,
@@ -423,6 +424,7 @@ describe("inactive tab panels", () => {
           onDeleteSkill: () => {},
           onRefresh: () => {},
           onReview: () => {},
+          onTidySkills: () => {},
         }}
         {...noop}
         files={[

@@ -2,6 +2,7 @@ import type {
   Attachment,
   FileEntry,
   MemoryEntries,
+  MemoryChange,
   Meta,
   ModelInfo,
   Project,
@@ -12,6 +13,7 @@ import type {
   Settings,
   SearchResult,
   Skill,
+  SkillTidyReport,
   SwarmEvent,
   Thread,
   ThreadStatus,
@@ -191,6 +193,13 @@ export const api = {
       `/api/projects/${projectId}/skills/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
+  tidySkills: (projectId: string) =>
+    request<{
+      memory: ProjectMemory
+      report: SkillTidyReport
+      changes: MemoryChange[]
+      folded: boolean
+    }>(`/api/projects/${projectId}/memory/tidy-skills`, { method: "POST" }),
 
   threads: (archived = false, projectId?: string) => {
     const params = new URLSearchParams()

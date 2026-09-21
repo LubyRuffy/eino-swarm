@@ -140,6 +140,19 @@ export function RemoteTab({
         </Field>
         <Field
           query={query}
+          label={t("settings.remote.displayName")}
+          hint={t("settings.remote.displayNameHint")}
+          wide
+        >
+          <Input
+            value={remote.display_name}
+            onChange={(e) => update({ display_name: e.target.value })}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </Field>
+        <Field
+          query={query}
           label={t("settings.remote.threadLimit")}
           hint={t("settings.remote.threadLimitHint")}
         >

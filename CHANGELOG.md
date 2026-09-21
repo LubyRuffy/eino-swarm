@@ -13,6 +13,39 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Named color themes.** Settings → General has System / Light / Dark cards
+  and a **Color theme** menu: **ZWAI** (default chrome) or **FOFA** (intelligence-console
+  palette, both light and dark). `ui.palette` in `config.yaml`. The title-bar
+  sun/moon still flips light / dark.
+
+- **Edit a scheduled wait.** Click a row in Scheduled to open the same
+  right-hand drawer as Create, filled with that wait. Title, task, and cadence
+  `PATCH` (`next_run_at` only moves when cadence actually changed). Pause,
+  Run now, and cancel sit in that panel. Destination (Runs in / Project) stays
+  as created. A finished wait is read-only.
+
+- **Skill families fold themselves after a turn.** A create that shares a
+  name stem with a recorded skill is refused (patch or merge, not a second
+  chapter-skill). Leftover families — the same procedure split across several
+  names — collapse into one skill under that stem after a finished turn,
+  including when auto-review is off or the manager already wrote. The fold is
+  a `skill_manage` `merge` on the `memory_review` event. `skill_manage` also
+  accepts `merge` (name to keep, `sources` to fold in). The Memory panel's
+  **Tidy overlapping skills** control (`POST /api/projects/:id/memory/tidy-skills`)
+  runs the same fold on demand after a hand edit, which would otherwise wait
+  until the next turn. A click shows scan → group → fold progress, then a
+  report of what was merged, deleted and created, with counts.
+
+- **User / developer transcript view.** Settings → General, the title-bar
+  code icon, and ⌘K pin `ui.transcript_mode` (`user` default / `developer`).
+  User view folds consecutive thinking, tool calls, and mid-turn answers
+  behind one live line. The current activity swaps in vertically; the line
+  itself still marquees left-to-right: thinking text (or **Thinking**),
+  **Planning next moves** between model turns, **Editing** / **Reading** /
+  **Exec** while a tool is in flight. Click the row to expand. Developer
+  view is the previous every-row log. `ask_user`, errors, and notices stay
+  visible.
+
 - **Android release APK/AAB from the Makefile.** `make mobile-android-release`
   syncs the phone web bundle, builds the release package, and copies it to
   `bin/`. Signing is `ANDROID_KEYSTORE*` or a gitignored
@@ -26,6 +59,13 @@ co-working app built on it. The library API is unchanged except where noted
   sends `hello` with a one-line label (OS + version + model from the UA).
   Settings → Phone uses that instead of a bare fingerprint, with last
   connected when the PC has seen the link.
+
+- **A phone can bind more than one PC.** Tickets stay on the device,
+  keyed by fingerprint; scanning the same PC again replaces that ticket.
+  Inbox chips switch one WebSocket at a time. Settings → Phone has
+  **This computer's name** (`remote.display_name`; blank seeds the
+  hostname). `hello` / `list` replies carry `host` so the chip is that
+  name, not the hub hostname.
 
 - **Phone pairing can keep this computer awake.** Settings → Phone has
   **Keep this computer awake** (on by default). While pairing is on, the
@@ -47,17 +87,131 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- **Edit `+N −M` stays quiet until you look.** Collapsed `edit` / `write`
+  rows (and the expanded hunk header) inherit the row colour at rest;
+  hover or focus paints additions green and deletions red. The counts
+  sit beside the path so a long name cannot truncate them.
+
+- **Composer pins do not leak the transcript.** Chips are opaque
+  (`bg-background`) and stacked with a 4px gap. Goal, plan, wait, and the
+  input share one slab behind the dock; the fade is only the join above
+  that plate. A parked goal no longer reprints the wait essay on top of
+  the wait chip. Blocked reasons stay one truncated line.
+
+- **Conversation list density tracks UI size.** Directory rows, gutters
+  and section gaps follow `ui.ui_font_size` (12px → 26px row, 13px → 28px,
+  16px → 34px). Conversation size still cannot pack the list — that is
+  chrome, not transcript rem. Row menus stay compact; they do not pad the
+  list.
+
+- **Settings opens on General.** Sidebar, ⌘,, and ⌘K land on appearance and
+  language. The model picker’s **Edit providers** and the unconfigured banner
+  still open Models. The conversation-list Settings row is a full-width rounded
+  hover pill. Models-tab E2E opens that page explicitly; it is not mounted
+  while General is showing.
+
+### Fixed
+
+- **The last answer is not painted over by the composer fade.** Goal / plan /
+  wait pins and the input are one dock. An opaque slab sits behind that
+  whole plate (so chip gaps cannot show transcript). The fade is only a
+  96px join above it — not a 45% rem hang that covered pins on a tall
+  stack and the last lines on a compact one. `--composer-pad` follows the
+  dock plus a little air into the join.
+
+- **`write` from eino-tools no longer reports success on a missing body.**
+  Omitting `content`, sending `contents`, or passing a non-string body used
+  to return `Updated file …` while emptying the file. Pin is
+  `a8587cb` ([#8](https://github.com/LubyRuffy/eino-tools/issues/8)).
+  Success now names the resolved path and byte count after a read-back.
+  The transcript still paints the hunk from the args.
+
+- **An `exec` progress-poll sleep still runs; a long one is biased short.**
+  A parallel `exec` that sleeps and then prints progress is fine. Estimated
+  remaining time was already biased short on `schedule_wake`, but the same
+  padded wait was inlined as a full-length `sleep`, so a fast command sat
+  idle until that sleep ended. `exec` now shortens a sleep of five seconds
+  or more to about a third of that duration (the sleep still runs) and the
+  manager prompt uses the same clock. Extra checks are expected.
+
+- **Jump-rail clicks survive a lazy history prepend.** Scrolling up starts
+  a sentinel page; clicking a tick then jumped and cleared the pending
+  scroll, so the prepend (especially one that started near the top and
+  skipped restore) left the click looking dead. The jump stays pending
+  across those pages until the reader wheels. The active tick is the last
+  send that has entered the viewport, not a 96px line from the top.
+
+- **Markdown tables stay in the conversation column.** A long cell used
+  to set the transcript's min-content and paint under the side panel.
+  Cells wrap unbreakable tokens; extra columns scroll inside the answer.
+
+- **Phone Recents is no longer leftovers from In progress.** Live turns
+  and parked waits used to occupy the same `thread_limit` page as idle
+  conversations, so a busy roster left one project row. `list.threads` is
+  now the idle recents page; `list.running` is a separate roster.
+
+- **Phone relaunch keeps the inbox chrome.** A saved pairing ticket
+  paints host chips and a connecting skeleton, then the inbox. The scan
+  form is only when this phone has never bound, or after Unlink of the
+  last PC. Add a PC sits beside the chips (and in the menu) as a sheet,
+  so it cannot replace the app. Multiple tickets stay on the phone;
+  switching chips opens that PC. The chip label is the name this PC
+  sent (`host`), not the hub hostname.
+
+- **Phone inbox subtitles are human text.** In progress / Recents used to
+  dump the latest `tool_call` (`schedule_wake({…})`, `report_schedule({…})`,
+  `memory({…})`). The host now sends findings / a command / assistant
+  prose (or nothing, so the phone can say Waiting), and the phone still
+  strips those envelopes from an older host. A findings `report_schedule`
+  in the thread is that prose as a notice, not a tool name.
+
+- **Quoted composer chips stay collapsed.** Add to chat used to park the
+  highlight as a second bubble in the box. The composer now shows the count
+  chip at rest; hover (or focus, or a tap) reveals the snippet to read,
+  edit, or drop it.
+
+- **Empty composer has no scrollbar.** Padding plus a wrapping
+  placeholder used to overflow by a pixel and paint a thumb. Overflow
+  stays hidden until the draft hits the 200px cap.
+
+- **Composer type matches the conversation.** The box used shadcn `text-sm`
+  on top of the content size, so what you type looked smaller than the
+  transcript. It now uses `--ui-font-size` like the body.
+
+- **Settings no longer opens on a blank page.** The right-hand pane is the
+  selected section (General by default), not a Radix `TabsContent` that stayed
+  hidden after the config loaded.
+
+- **The window paints after boot.** Settings was allocating a new appearance
+  object on every Zustand snapshot, which React 19 treats as an infinite loop
+  and leaves a white screen.
+
+### Changed
+
 - **Composer pins are one-line chips.** Goal, plan, and waiting sit on a
   muted Codex-style row above the box (status, truncated title, age or
   next check, icon controls). The transcript wait notice still labels
   Run now / Cancel wait.
 
-- **Conversation body matches Settings by default.** `ui.font_size`
-  `medium` is 13px (same as chrome). Small is 12px, large is 16px. Markdown
-  follows the root at `1em`. Chrome still ignores Font size.
+- **Font settings are UI / content / code, Codex-style.** Each row is a
+  face plus a size. Content defaults to **Same as UI** so sidebar titles
+  and the transcript are one size; markdown headings no longer jump a
+  size. `ui.font_size: ui` follows chrome. Small / medium / large stay
+  12 / 13 / 16px.
 
-- **Scheduled inbox is a filtered list.** Search, **All / Active / Paused /
-  Completed** (Active is the default), and **Create** in the header. Rows
+- **Scheduled inbox is a main-column page.** Sidebar **Scheduled** selects
+  the view (`aria-current="page"`), same shape as Codex Scheduled / Cursor
+  Automations. The conversation Agents/Files/Trace rail stays off. Search,
+  **All / Active / Paused / Completed** (Active is the default), and **Create**
+  stay pinned on the list; **Create** opens a right drawer so the form is not
+  stacked on the rows. The form is Codex-shaped: one task field, then
+  Details (Runs in / Project) and Frequency (Repeat + value). A short inbox
+  name is generated from that task (same `title-namer` as conversations); the
+  truncated prompt is the placeholder until it lands. **Expand** fills the
+  Scheduled column so a long instruction is readable (Escape collapses first,
+  then closes the drawer). Runs in is
+  standalone (new conversation each fire) or a thread wake — not a third kind.
+  Escape closes the drawer first, then the page. Rows
   are a title plus cadence and next check; expand for pause / Run now /
   Cancel wait. Finished reports stay behind **Open findings**.
 
@@ -76,10 +230,11 @@ co-working app built on it. The library API is unchanged except where noted
   later turn, or a namer that already failed, does not get a second try.
 
 - **Quoted sends tag the highlight separately from the request.** Composer
-  chips are one truncated line (edit / drop), the same shape as a Cursor
-  annotation. The payload uses `<selected_text>` / `<user_request>` so the
-  model does not have to guess where the quote ends. User and steer bubbles
-  render those as chips plus the instruction, not the wire tags.
+  annotations are a count chip at rest (hover to read, edit or drop), the
+  same shape as a Cursor annotation. The payload uses `<selected_text>` /
+  `<user_request>` so the model does not have to guess where the quote
+  ends. User and steer bubbles render those as chips plus the instruction,
+  not the wire tags.
 
 - **Scheduled waits bias short of remaining-time estimates.** The manager
   used to be told to pick a cadence that can miss a beat, so a check often
@@ -125,7 +280,7 @@ co-working app built on it. The library API is unchanged except where noted
   those summaries, so a live wait looked like a wall of finished reports.
   Live rows stay a wait: **Open findings**, with a count when there is more
   than one. Opening a conversation marks every unread fire that landed on
-  that same thread. The dialog no longer grows sideways.
+  that same thread. The page no longer grows sideways.
 
 - **`GET /api/threads` carries `title_auto`.** The listing omitted it, so a
   `done` refresh treated a generated name as still machine-owned and snapped
@@ -422,7 +577,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 - **An `edit` or `write` in the transcript is a highlighted hunk, not a
   status line.** eino-tools still returns `ok: replaced block in …` /
-  `Updated file …` (that string is what the model sees). The UI rebuilds
+  `Updated file <abs> (N bytes)` (that string is what the model sees). The UI rebuilds
   the change from the args: `search_block` / `replace_block` or `patch`
   for edit, `content` for write (all additions). Red deletions, green
   additions, syntax colours from the path suffix, `+N` (write) or `+N −M`

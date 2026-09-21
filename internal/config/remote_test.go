@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -220,6 +221,69 @@ func TestHostTokenDirectoryIsAnError(t *testing.T) {
 	}
 	if cfg.HasHostToken() {
 		t.Fatal("directory is not a token")
+	}
+}
+
+func TestBlankRemoteDisplayNameSeedsTheMachineHostname(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	prev := machineName
+	t.Cleanup(func() { machineName = prev })
+	machineName = func() (string, error) { return "desk-one", nil }
+
+	cfg, err := Load(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote.DisplayName != "desk-one" {
+		t.Fatalf("blank name must seed the hostname, got %q", cfg.Remote.DisplayName)
+	}
+	for _, leak := range []string{"Office", "MacBook Pro", "iMac", "codex-apps"} {
+		if cfg.Remote.DisplayName == leak {
+			t.Fatalf("default must not be a sample label %q", leak)
+		}
+	}
+}
+
+func TestSavedRemoteDisplayNameIsKept(t *testing.T) {
+	t.Setenv("OPENAI_BASE_URL", "")
+	t.Setenv("OPENAI_API_KEY", "")
+	t.Setenv("OPENAI_MODEL", "")
+	dir := t.TempDir()
+	raw := []byte("remote:\n  display_name: Lab bench\n")
+	if err := os.WriteFile(filepath.Join(dir, FileName), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Remote.DisplayName != "Lab bench" {
+		t.Fatalf("saved name %q", cfg.Remote.DisplayName)
+	}
+}
+
+func TestSeedRemoteDisplayName(t *testing.T) {
+	prev := machineName
+	t.Cleanup(func() { machineName = prev })
+
+	machineName = func() (string, error) { return "  box-2  ", nil }
+	if got := SeedRemoteDisplayName(""); got != "box-2" {
+		t.Fatalf("blank seeds trimmed hostname, got %q", got)
+	}
+	if got := SeedRemoteDisplayName("  Lab  "); got != "Lab" {
+		t.Fatalf("explicit name %q", got)
+	}
+
+	machineName = func() (string, error) { return "", errors.New("no name") }
+	if got := SeedRemoteDisplayName(""); got != "" {
+		t.Fatalf("failed hostname must stay blank, got %q", got)
+	}
+
+	long := strings.Repeat("n", MaxRemoteDisplayName+8)
+	if got := SeedRemoteDisplayName(long); got != strings.Repeat("n", MaxRemoteDisplayName) {
+		t.Fatalf("clip runes=%d %q", len([]rune(got)), got)
 	}
 }
 

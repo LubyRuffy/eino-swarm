@@ -75,6 +75,18 @@ describe("the memory review", () => {
     )
   })
 
+  it("names a merged skill the same way it names a recorded one", () => {
+    const state = fold([
+      review({
+        changed: true,
+        skills: [{ name: "a-procedure", action: "merge", text: "a-procedure-notes, a-procedure-send" }],
+      }),
+    ])
+    const notices = manager(state).blocks.filter((b) => b.kind === "notice")
+    expect(notices).toHaveLength(1)
+    expect(notices[0].text).toBe('Memory updated: skill "a-procedure" merged.')
+  })
+
   it("previews what was written when the review asked to be verbose", () => {
     const state = fold([
       review({

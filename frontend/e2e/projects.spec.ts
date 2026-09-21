@@ -162,6 +162,17 @@ test("Review now says when there is nothing to review", async ({ page }) => {
   await expect(page.getByTestId("review-status")).toContainText(/nothing to review/i)
 })
 
+test("Tidy skills says when the catalog is already tidy", async ({ page }) => {
+  const project = `Project ${Date.now()}`
+  await createProject(page, project)
+  await startInProject(page, project)
+  await openMemory(page)
+  await page.getByRole("button", { name: "Tidy overlapping skills" }).click()
+  await expect(page.getByRole("progressbar", { name: "Tidy progress" })).toBeVisible()
+  await expect(page.getByTestId("tidy-status")).toContainText(/already tidy/i)
+  await expect(page.getByTestId("tidy-stats")).toContainText(/0 scanned/)
+})
+
 test("a conversation outside a project has no memory to show", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "New conversation", exact: true }).click()

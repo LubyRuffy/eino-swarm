@@ -190,6 +190,57 @@ export function SettingsChoice({
   )
 }
 
+export function SettingsTwinChoice({
+  label,
+  hint,
+  query = "",
+  search,
+  left,
+  right,
+}: {
+  label: string
+  hint?: string
+  query?: string
+  search?: Array<string | undefined | null>
+  left: {
+    value?: string
+    onValueChange: (value: string) => void
+    ariaLabel: string
+    children: ReactNode
+  }
+  right: {
+    value?: string
+    onValueChange: (value: string) => void
+    ariaLabel: string
+    children: ReactNode
+  }
+}) {
+  return (
+    <SettingsRow label={label} hint={hint} query={query} search={search}>
+      <div className="flex items-center gap-1.5">
+        <Select value={left.value} onValueChange={left.onValueChange}>
+          <SelectTrigger
+            aria-label={left.ariaLabel}
+            className={cn(settingsSelectTriggerClass, "max-w-[9.5rem]")}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>{left.children}</SelectContent>
+        </Select>
+        <Select value={right.value} onValueChange={right.onValueChange}>
+          <SelectTrigger
+            aria-label={right.ariaLabel}
+            className={cn(settingsSelectTriggerClass, "max-w-[8.5rem]")}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>{right.children}</SelectContent>
+        </Select>
+      </div>
+    </SettingsRow>
+  )
+}
+
 export function SettingsSection({
   title,
   description,

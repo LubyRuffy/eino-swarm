@@ -64,7 +64,7 @@ export function SidebarThreadRow({
       <Input
         autoFocus
         value={draft}
-        className={cn("h-7", chromeTypeClass)}
+        className={cn("h-[28px]", chromeTypeClass)}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={(e) => {

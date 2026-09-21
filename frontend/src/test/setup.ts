@@ -43,6 +43,10 @@ if (typeof globalThis.ResizeObserver === "undefined") {
   globalThis.ResizeObserver = ResizeObserverStub as typeof ResizeObserver
 }
 
+if (typeof Element !== "undefined") {
+  Element.prototype.scrollIntoView = function () {}
+}
+
 afterEach(async () => {
   memory.clear()
   applyLocale("en")

@@ -2,15 +2,15 @@ import { Quote as QuoteIcon } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { QuoteSnippet } from "@/components/app/quoted-message"
-import { Badge } from "@/components/ui/badge"
+import { badgeVariants } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { editQuote, removeQuote, type Quote } from "@/lib/quote"
 import { annotationLabelFor } from "@/lib/i18n"
+import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 
-/** Chips in the composer: one truncated line per highlight, edit or drop
- *  before they go out with the next send. The count badge is the summary
- *  Cursor/Codex put next to the box; the chips are what was selected. */
+/** Count chip at rest. Hover (or focus / a tap) opens the highlight so
+ *  it can be read, edited or dropped — not a second bubble in the box. */
 export function ComposerQuotes({
   quotes,
   onChange,
@@ -19,50 +19,87 @@ export function ComposerQuotes({
   onChange: (quotes: Quote[]) => void
 }) {
   const t = useT()
+  const rootRef = useRef<HTMLDivElement>(null)
   const [editingId, setEditingId] = useState<string>()
+  const [hovered, setHovered] = useState(false)
+  const [pinned, setPinned] = useState(false)
 
   useEffect(() => {
-    if (quotes.length === 0) setEditingId(undefined)
+    if (quotes.length === 0) {
+      setEditingId(undefined)
+      setHovered(false)
+      setPinned(false)
+    }
   }, [quotes.length])
 
   if (quotes.length === 0) return null
 
+  const showDetails = hovered || pinned || Boolean(editingId)
+  const label = annotationLabelFor(quotes.length, t.locale)
+
+  const closeIfLeft = (next: EventTarget | null) => {
+    if (!rootRef.current?.contains(next as Node | null)) setHovered(false)
+  }
+
   return (
-    <div className="flex flex-col gap-1.5 px-3 pt-3" data-testid="composer-quotes">
-      <ul className="flex flex-col gap-1.5">
-        {quotes.map((q, i) => (
-          <li key={q.id}>
-            {editingId === q.id ? (
-              <QuoteEditor
-                index={i}
-                quote={q}
-                onSave={(text) => {
-                  onChange(editQuote(quotes, q.id, text))
-                  setEditingId(undefined)
-                }}
-                onCancel={() => setEditingId(undefined)}
-              />
-            ) : (
-              <QuoteSnippet
-                index={i}
-                text={q.text}
-                onEdit={() => setEditingId(q.id)}
-                onRemove={() => onChange(removeQuote(quotes, q.id))}
-              />
-            )}
-          </li>
-        ))}
-      </ul>
-      <div>
-        <Badge
-          variant="outline"
+    <div
+      ref={rootRef}
+      className="relative"
+      data-testid="composer-quotes"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {showDetails ? (
+        <div
+          id="composer-quote-details"
+          data-testid="quote-details"
+          className="flex flex-col gap-1.5 px-3 pt-3"
+        >
+          <ul className="flex flex-col gap-1.5">
+            {quotes.map((q, i) => (
+              <li key={q.id}>
+                {editingId === q.id ? (
+                  <QuoteEditor
+                    index={i}
+                    quote={q}
+                    onSave={(text) => {
+                      onChange(editQuote(quotes, q.id, text))
+                      setEditingId(undefined)
+                    }}
+                    onCancel={() => setEditingId(undefined)}
+                  />
+                ) : (
+                  <QuoteSnippet
+                    detail
+                    index={i}
+                    text={q.text}
+                    onEdit={() => setEditingId(q.id)}
+                    onRemove={() => onChange(removeQuote(quotes, q.id))}
+                  />
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className={showDetails ? "px-3 pt-1.5" : "px-3 pt-3"}>
+        <button
+          type="button"
           data-testid="quote-chip"
-          aria-label={annotationLabelFor(quotes.length, t.locale)}
-          className="rounded-full"
+          aria-label={label}
+          aria-expanded={showDetails}
+          aria-controls={showDetails ? "composer-quote-details" : undefined}
+          className={cn(
+            badgeVariants({ variant: "outline" }),
+            "rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          )}
+          onClick={() => setPinned((v) => !v)}
+          onFocus={() => setHovered(true)}
+          onBlur={(e) => closeIfLeft(e.relatedTarget)}
         >
           <QuoteIcon className="size-3" />
-          {annotationLabelFor(quotes.length, t.locale)}
-        </Badge>
+          {label}
+        </button>
       </div>
     </div>
   )
@@ -98,7 +135,7 @@ function QuoteEditor({
       aria-label={t("quote.edit", { n })}
       value={draft}
       rows={3}
-      className="min-h-[4.5rem] px-2 py-1.5 text-xs"
+      className="min-h-[4.5rem] bg-background px-2 py-1.5 text-xs"
       onChange={(e) => setDraft(e.target.value)}
       onKeyDown={(e) => {
         if (e.key === "Escape") {

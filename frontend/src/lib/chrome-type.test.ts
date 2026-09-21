@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { chromeTypeClass, composerPinClass } from "./chrome-type"
+import { cn } from "./utils"
+import { chromeTypeClass, composerPinClass, contentTypeClass } from "./chrome-type"
 
 describe("chromeTypeClass", () => {
   it("pins chrome to the CSS token so Font size cannot balloon the sidebar", () => {
@@ -12,9 +13,20 @@ describe("chromeTypeClass", () => {
 })
 
 describe("composerPinClass", () => {
-  it("is a muted chip, not a card", () => {
-    expect(composerPinClass).toContain("bg-muted/40")
+  it("is an opaque chip so transcript lines cannot show through", () => {
+    expect(composerPinClass).toContain("bg-background")
     expect(composerPinClass).toContain("--chrome-font-size")
-    expect(composerPinClass).not.toMatch(/\bbg-card\b/)
+    expect(composerPinClass).not.toMatch(/bg-muted/)
+  })
+})
+
+describe("contentTypeClass", () => {
+  it("uses the content face and size tokens, beating Textarea text-sm", () => {
+    expect(contentTypeClass).toContain("content-type")
+    expect(contentTypeClass).toContain("--ui-font-size")
+    expect(contentTypeClass).not.toMatch(/\btext-sm\b/)
+    const merged = cn("text-sm shadow-sm", contentTypeClass)
+    expect(merged).toContain("--ui-font-size")
+    expect(merged).not.toMatch(/\btext-sm\b/)
   })
 })

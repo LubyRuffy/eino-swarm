@@ -32,12 +32,16 @@ async function waitUntilUnread(request: APIRequestContext) {
 
 async function openInbox(page: Page) {
   await page.getByTestId("schedule-inbox").click()
-  await expect(page.getByRole("dialog")).toBeVisible()
+  await expect(page.getByTestId("schedule-page")).toBeVisible()
+  await expect(page.getByTestId("side-panel")).toHaveCount(0)
 }
 
 async function closeInbox(page: Page) {
-  await page.keyboard.press("Escape")
-  await expect(page.getByRole("dialog")).toHaveCount(0)
+  for (let i = 0; i < 4; i++) {
+    if ((await page.getByTestId("schedule-page").count()) === 0) return
+    await page.keyboard.press("Escape")
+  }
+  await expect(page.getByTestId("schedule-page")).toHaveCount(0)
 }
 
 async function revealThread(page: Page, id: string) {
@@ -57,22 +61,38 @@ test("standalone wait from the inbox runs now and opens findings", async ({
   test.setTimeout(120_000)
   await freshConversation(page)
 
-  await openInbox(page)
-  const inbox = page.getByRole("dialog")
+	await openInbox(page)
+  const inbox = page.getByTestId("schedule-page")
   await inbox.getByRole("button", { name: "Create" }).click()
-  await inbox.getByLabel("Title").fill("periodic check")
-  await inbox.getByLabel("Prompt").fill("Continue the wait.")
-  await inbox.getByLabel("Cadence").click()
-  await page.getByRole("option", { name: "Every (seconds)" }).click()
+  await expect(page.getByTestId("schedule-create-drawer")).toBeVisible()
+  await inbox.getByLabel("Task").fill("Continue the wait.")
+  await inbox.getByLabel("Repeat").click()
+  await page.getByRole("option", { name: "On an interval" }).click()
   await inbox.getByLabel("Every (seconds)").fill("60")
   await inbox.getByRole("button", { name: "Add wait" }).click()
+  await expect(page.getByTestId("schedule-create-drawer")).toHaveCount(0)
   await expect(inbox.getByTestId("schedule-row")).toBeVisible()
-  await expect(inbox.getByTestId("schedule-row")).toContainText("periodic check")
+  let named = ""
+  await expect
+    .poll(
+      async () => {
+        const body = (await (await request.get("/api/schedules")).json()) as {
+          schedules?: Array<{ title?: string; title_auto?: boolean }>
+        }
+        const row = body.schedules?.[0]
+        named = (row?.title ?? "").trim()
+        return Boolean(row && row.title_auto === false && named)
+      },
+      { timeout: 30_000 },
+    )
+    .toBeTruthy()
+  await expect(inbox.getByTestId("schedule-row")).toContainText(named)
 
   await inbox.getByTestId("schedule-row-toggle").click()
+  await expect(page.getByTestId("schedule-edit-drawer")).toBeVisible()
   await inbox.getByRole("button", { name: "Run now" }).click()
-  // The dialog inert-hides the title-bar status badge; close it so Idle is
-  // readable, then wait for the minted turn via unread.
+  // Leave the page so the title-bar Idle badge is readable, then wait for
+  // the minted turn via unread.
   await closeInbox(page)
   await waitForIdle(page)
   await waitUntilUnread(request)
@@ -86,11 +106,11 @@ test("standalone wait from the inbox runs now and opens findings", async ({
   await expect(findings).toBeVisible()
   await findings.click()
 
-  await expect(page.getByRole("dialog")).toHaveCount(0)
-  await expect(page.getByTestId("thread-title")).toHaveText("periodic check")
+  await expect(page.getByTestId("schedule-page")).toHaveCount(0)
+  await expect(page.getByTestId("thread-title")).toHaveText(named)
   await expect(
     page.locator('[data-testid="thread-row"][aria-current="true"]'),
-  ).toContainText("periodic check")
+  ).toContainText(named)
   await expect(page.getByTestId("schedule-notice")).toContainText("Scheduled check.")
   await expect(page.getByTestId("transcript")).not.toContainText(
     "This turn is a scheduled check.",
@@ -201,4 +221,62 @@ test("a thread wake banner can run now instead of waiting", async ({
   await expect(statusBadge(page)).toContainText("Waiting", { timeout: 60_000 })
   await expect(page.getByTestId("schedule-banner")).toBeVisible()
   await expect(row.getByTestId("wait-mark")).toBeVisible()
+})
+
+test("create drawer expand fills the scheduled page", async ({ page }) => {
+  await freshConversation(page)
+  await openInbox(page)
+  const inbox = page.getByTestId("schedule-page")
+  await inbox.getByRole("button", { name: "Create" }).click()
+  const drawer = page.getByTestId("schedule-create-drawer")
+  await expect(page.getByTestId("schedule-list-pane")).toBeVisible()
+  await drawer.getByRole("button", { name: "Expand" }).click()
+  await expect(drawer).toHaveAttribute("data-expanded", "true")
+  await expect(page.getByTestId("schedule-list-pane")).toBeHidden()
+  await inbox.getByLabel("Task").fill("Continue the wait.")
+  await drawer.getByRole("button", { name: "Collapse" }).click()
+  await expect(drawer).not.toHaveAttribute("data-expanded", "true")
+  await expect(page.getByTestId("schedule-list-pane")).toBeVisible()
+})
+
+test("inbox editor patches title, prompt, and cadence", async ({ page, request }) => {
+  await freshConversation(page)
+  const created = await request.post("/api/schedules", {
+    data: {
+      kind: "standalone",
+      title: "Periodic check",
+      prompt: "Continue the wait.",
+      every_s: 60,
+    },
+  })
+  expect(created.status()).toBe(201)
+
+  await openInbox(page)
+  const inbox = page.getByTestId("schedule-page")
+  await inbox
+    .getByTestId("schedule-row")
+    .filter({ hasText: "Periodic check" })
+    .getByTestId("schedule-row-toggle")
+    .click()
+  const drawer = page.getByTestId("schedule-edit-drawer")
+  await expect(drawer).toBeVisible()
+  await inbox.getByLabel("Title").fill("Renamed wait")
+  await inbox.getByLabel("Task").fill("Check again.")
+  await inbox.getByLabel("Every (seconds)").fill("90")
+  await inbox.getByRole("button", { name: "Save" }).click()
+  await expect
+    .poll(
+      async () => {
+        const body = (await (await request.get("/api/schedules")).json()) as {
+          schedules?: Array<{ title?: string; prompt?: string; every_s?: number }>
+        }
+        const row = (body.schedules ?? []).find((s) => s.title === "Renamed wait")
+        return row?.prompt === "Check again." && row?.every_s === 90
+      },
+      { timeout: 15_000 },
+    )
+    .toBeTruthy()
+  await expect(
+    inbox.getByTestId("schedule-row").filter({ hasText: "Renamed wait" }),
+  ).toBeVisible()
 })

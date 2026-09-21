@@ -25,7 +25,7 @@ const (
 type Change struct {
 	// Target is ToolMemory or ToolSkillManage.
 	Target string `json:"target"`
-	// Action is add / replace / remove for memory, create / patch / delete for
+	// Action is add / replace / remove for memory, create / patch / merge / delete for
 	// a skill.
 	Action string `json:"action"`
 	// Name is the skill's name, empty for memory.
@@ -261,31 +261,35 @@ func (t *skillManageTool) Info(context.Context) (*schema.ToolInfo, error) {
 			"human made. Not worth recording: a single tool call, or anything specific to one " +
 			"request. One subject is one skill. Call skill_view on any index entry that might " +
 			"already cover the subject; a create that collides is refused and names the " +
-			"existing skill — patch that one (or delete it first).",
+			"existing skill — patch that one, or merge the group (name is the skill to keep, " +
+			"sources are the others).",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"action": {Type: schema.String, Required: true,
-				Desc: "create, patch or delete",
-				Enum: []string{"create", "patch", "delete"}},
+				Desc: "create, patch, merge or delete",
+				Enum: []string{"create", "patch", "merge", "delete"}},
 			"name": {Type: schema.String, Required: true,
 				Desc: "lower-case letters, digits and hyphens; naming the procedure, not the request"},
 			"description": {Type: schema.String,
-				Desc: "one line saying when to use this skill; required for create"},
+				Desc: "one line saying when to use this skill; required for create, optional for merge"},
 			"content": {Type: schema.String,
-				Desc: "the procedure in Markdown: the steps and the tool calls to make; required for create"},
+				Desc: "the procedure in Markdown: the steps and the tool calls to make; required for create, optional for merge"},
 			"old_text": {Type: schema.String, Desc: "for patch: the text to replace, unique in the body"},
 			"new_text": {Type: schema.String, Desc: "for patch: what to put in its place"},
+			"sources": {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String},
+				Desc: "for merge: names of skills to fold into name"},
 		}),
 	}, nil
 }
 
 func (t *skillManageTool) InvokableRun(_ context.Context, args string, _ ...tool.Option) (string, error) {
 	var a struct {
-		Action      string `json:"action"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Content     string `json:"content"`
-		OldText     string `json:"old_text"`
-		NewText     string `json:"new_text"`
+		Action      string   `json:"action"`
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Content     string   `json:"content"`
+		OldText     string   `json:"old_text"`
+		NewText     string   `json:"new_text"`
+		Sources     []string `json:"sources"`
 	}
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
 		return failure("could not read the arguments: %v", err), nil
@@ -332,8 +336,27 @@ func (t *skillManageTool) InvokableRun(_ context.Context, args string, _ ...tool
 		}
 		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: name})
 		return marshal(map[string]any{"success": true, "name": name}), nil
+	case "merge":
+		skill, deleted, err := t.store.MergeSkills(name, a.Sources, a.Description, a.Content)
+		if err != nil {
+			var dup *DuplicateSkillError
+			if errors.As(err, &dup) {
+				names, _ := t.store.ListSkills()
+				return marshal(map[string]any{
+					"success":              false,
+					"error":                dup.Error(),
+					"existing":             dup.Name,
+					"existing_description": dup.Description,
+					"available":            skillNames(names),
+				}), nil
+			}
+			return failure("%s", err.Error()), nil
+		}
+		t.onChange(Change{Target: ToolSkillManage, Action: action, Name: skill.Name,
+			Text: clipText(strings.Join(deleted, ", "))})
+		return marshal(map[string]any{"success": true, "name": skill.Name, "deleted": deleted}), nil
 	default:
-		return failure("unknown action %q; use create, patch or delete", a.Action), nil
+		return failure("unknown action %q; use create, patch, merge or delete", a.Action), nil
 	}
 }
 

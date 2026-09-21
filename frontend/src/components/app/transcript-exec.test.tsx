@@ -1,8 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react"
+import { beforeEach } from "vitest"
 
 import { Transcript } from "./transcript"
 import type { AgentState } from "@/lib/transcript"
 import { emptyTranscript, reduceEvents } from "@/lib/transcript"
+import { useApp } from "@/store/app"
 
 function agent(partial: Partial<AgentState> & { id: string }): AgentState {
   return {
@@ -15,6 +17,10 @@ function agent(partial: Partial<AgentState> & { id: string }): AgentState {
 }
 
 describe("Transcript exec rows", () => {
+  beforeEach(() => {
+    // These tests pin the per-row exec chrome. User mode folds it away.
+    useApp.setState({ transcriptMode: "developer" })
+  })
   it("hides the full command until the row is opened, then wraps every character", () => {
     const command = "cd /tmp/workspace/pkg && for d in alpha beta; do echo $d; done"
     render(

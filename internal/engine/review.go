@@ -39,7 +39,8 @@ type reviewPool struct {
 	stopped bool
 	// gates serializes the reviews of one project. Two turns finishing
 	// together would otherwise read the same bounded store, each decide there
-	// is room, and one of them would lose its entry.
+	// is room, and one of them would lose its entry. The Memory panel's tidy
+	// takes the same gate so a click cannot fold while a reviewer is writing.
 	gates map[string]chan struct{}
 	wg    sync.WaitGroup
 }
@@ -87,15 +88,18 @@ func (p *reviewPool) stop(wait time.Duration) bool {
 }
 
 // scheduleReview starts the post-turn review, if this turn is one worth
-// reviewing.
+// reviewing, and always folds leftover skill families on a finished turn
+// with memory on. The fold is the quality guarantee that does not wait for
+// anyone to ask: a catalog that grew chapter-skills still collapses.
 //
-// Only a turn that finished cleanly: an interrupted or failed turn has nothing
-// reliable to learn from, and someone who pressed stop did not ask for its
-// half-finished approach to become a skill.
+// Only a turn that finished cleanly is reviewed: an interrupted or failed
+// turn has nothing reliable to learn from, and someone who pressed stop did
+// not ask for its half-finished approach to become a skill. Folding is the
+// same rule — it runs after the work, not instead of it.
 func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string,
 	pc *projectContext, final string,
 ) {
-	if !e.cfg.Memory.AutoReview || status != store.TurnDone || !pc.memoryLive() {
+	if status != store.TurnDone || !pc.memoryLive() {
 		return
 	}
 	events, err := e.store.ListTurnEvents(turn.ID)
@@ -103,12 +107,10 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 		e.log.Warn("could not read events for the memory review", "turn", turn.ID, "err", err)
 		return
 	}
-	if managerWroteMemory(events) {
-		return
-	}
+	skipLLM := !e.cfg.Memory.AutoReview || managerWroteMemory(events)
 	transcript := renderReviewFromEvents(events, e.sessionMemoryOf(threadID), final)
-	if strings.TrimSpace(transcript) == "" {
-		return
+	if !skipLLM && strings.TrimSpace(transcript) == "" {
+		skipLLM = true
 	}
 	gate := e.reviews.begin(pc.project.ID)
 	if gate == nil {
@@ -124,6 +126,10 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 				e.log.Error("memory review panicked", "turn", turn.ID, "panic", r)
 			}
 		}()
+		if skipLLM {
+			e.foldSkillsAfterTurn(threadID, turn, pc)
+			return
+		}
 		e.runReview(threadID, turn, pc, transcript)
 	}()
 }
@@ -225,7 +231,7 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 	builder, err := e.pool.ModelBuilder(ctx, turn.ProviderID, turn.Model, turn.ReasoningEffort,
 		e.callRecorder(threadID, turn.ID))
 	if err != nil {
-		e.recordReview(threadID, turn.ID, reviewOutcome{Err: err.Error()})
+		e.finishReview(threadID, turn, pc, reviewOutcome{Err: err.Error()})
 		return
 	}
 	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
@@ -239,12 +245,12 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 		MaxIterations: e.cfg.Memory.ReviewIterations(),
 	})
 	if err != nil {
-		e.recordReview(threadID, turn.ID, reviewOutcome{Err: err.Error()})
+		e.finishReview(threadID, turn, pc, reviewOutcome{Err: err.Error()})
 		return
 	}
 
 	iter := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent}).
-		Run(ctx, []adk.Message{schema.UserMessage(transcript)})
+		Run(ctx, []adk.Message{schema.UserMessage(e.reviewUserMessage(pc, transcript))})
 	final := ""
 	for {
 		ev, ok := iter.Next()
@@ -270,10 +276,90 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 	if len(outcome.Notes) == 0 {
 		outcome.Notes = nil
 	}
-	outcome.Notify = e.cfg.Memory.NotifyLevel()
 	result := outcome
 	mu.Unlock()
-	e.recordReview(threadID, turn.ID, result)
+	e.finishReview(threadID, turn, pc, result)
+}
+
+// reviewUserMessage is the conversation plus the live skills index. The
+// instruction is fixed; the index has to ride on the user turn or the
+// reviewer cannot merge a family it cannot see.
+func (e *Engine) reviewUserMessage(pc *projectContext, transcript string) string {
+	if pc == nil || pc.memory == nil {
+		return transcript
+	}
+	skills, err := pc.memory.ListSkills()
+	if err != nil {
+		return transcript
+	}
+	families, err := pc.memory.SkillFamilyNames()
+	if err != nil {
+		families = nil
+	}
+	return memory.AttachReviewCatalog(transcript, memory.ReviewCatalog(skills, families))
+}
+
+// finishReview folds leftover skill families, then records the outcome. The
+// fold runs even when the model never started: catalog hygiene is not a
+// function of whether this turn had something new to extract.
+func (e *Engine) finishReview(threadID string, turn *store.Turn, pc *projectContext, outcome reviewOutcome) {
+	e.applySkillFold(pc, &outcome)
+	if len(outcome.Notes) == 0 {
+		outcome.Notes = nil
+	}
+	e.recordReview(threadID, turn.ID, outcome)
+}
+
+func (e *Engine) foldSkillsAfterTurn(threadID string, turn *store.Turn, pc *projectContext) {
+	outcome := reviewOutcome{}
+	e.applySkillFold(pc, &outcome)
+	if !outcome.Changed && outcome.Err == "" {
+		return
+	}
+	if outcome.Note == "" && outcome.Changed {
+		outcome.Note = "Folded overlapping skills."
+	}
+	e.recordReview(threadID, turn.ID, outcome)
+}
+
+func (e *Engine) applySkillFold(pc *projectContext, outcome *reviewOutcome) {
+	if pc == nil || pc.memory == nil || outcome == nil {
+		return
+	}
+	changes, err := pc.memory.FoldSkillFamilies()
+	if err != nil {
+		if outcome.Err == "" {
+			outcome.Err = err.Error()
+		}
+		return
+	}
+	for _, c := range changes {
+		outcome.Changed = true
+		outcome.Changes = append(outcome.Changes, c)
+		if c.Target == memory.ToolSkillManage {
+			outcome.Skills = append(outcome.Skills, c)
+		}
+	}
+}
+
+// FoldProjectSkills is the Memory panel's tidy: the same family fold that
+// runs after a turn, without needing a conversation. A SKILL.md edited in
+// Finder is otherwise left as it was until the next turn finishes. The
+// report names what was merged, deleted and created so a click is not a
+// one-line shrug.
+func (e *Engine) FoldProjectSkills(projectID string) (memory.FoldReport, error) {
+	var zero memory.FoldReport
+	if _, err := e.store.GetProject(projectID); err != nil {
+		return zero, err
+	}
+	gate := e.reviews.begin(projectID)
+	if gate == nil {
+		return zero, ErrIdle
+	}
+	defer e.reviews.done()
+	gate <- struct{}{}
+	defer func() { <-gate }()
+	return e.ProjectMemory(projectID).FoldSkillFamiliesReport()
 }
 
 // recordReview stores the review's outcome on the turn it reviewed, so the one

@@ -91,8 +91,11 @@ export function turnNavSelector(id: string): string {
 /** The turn that owns the viewport. Items must already be in document order.
  *  Following the live edge is always the latest turn — measuring at scrollTop
  *  0 before the opener has jumped to the bottom used to light the first tick.
- *  Missing rows (a tail-loaded conversation) are skipped rather than treated
- *  as offset 0, which would pin the rail to the top of the history. */
+ *  After a wheel-up the probe is the bottom of the pane, not a line 96px
+ *  from the top: collapsed earlier turns used to keep the third tick current
+ *  while the latest send was already in the reading area, and clicks looked
+ *  dead. Missing rows (a tail-loaded conversation) are skipped rather than
+ *  treated as offset 0, which would pin the rail to the top of the history. */
 export function activeNavId(
   items: { id: string; top?: number }[],
   scrollTop: number,
@@ -108,7 +111,7 @@ export function activeNavId(
   }
   const placed = items.filter((item) => typeof item.top === "number")
   if (placed.length === 0) return last.id
-  const probe = scrollTop + Math.min(96, Math.max(24, clientHeight * 0.2))
+  const probe = scrollTop + Math.max(0, clientHeight - 8)
   let current = placed[0].id
   for (const item of placed) {
     if ((item.top ?? 0) <= probe) current = item.id
