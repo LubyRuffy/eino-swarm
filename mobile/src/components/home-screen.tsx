@@ -35,7 +35,7 @@ export function HomeScreen({
   const skip = new Set(live.map((r) => r.thread_id))
   const grouped = groupThreads(projects, threads, skip)
   return (
-    <main className="mx-auto flex h-[100dvh] max-w-lg flex-col overflow-hidden">
+    <main className="mx-auto flex h-full max-w-lg flex-col overflow-hidden">
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <h1 className="text-lg font-semibold tracking-tight">{t("home.app")}</h1>

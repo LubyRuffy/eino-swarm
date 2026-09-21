@@ -129,7 +129,7 @@ export function ThreadScreen({
         ref={scroller}
         className={cn(
           "flex min-h-0 flex-1 flex-col overflow-y-auto px-3 py-3",
-          caughtUp && !atTail && "invisible",
+          !atTail && "invisible",
         )}
         onScroll={(e) => {
           const el = e.currentTarget

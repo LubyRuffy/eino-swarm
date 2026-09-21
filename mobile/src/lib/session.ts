@@ -140,9 +140,13 @@ function oldestOf(
   more: boolean,
   fallback: number,
 ): number {
-  if (stored[0]?.seq) return stored[0].seq
-  if (more && lastSeq > 0) return lastSeq + 1
-  return fallback
+  let n = fallback
+  if (stored[0]?.seq) n = stored[0].seq
+  else if (more && lastSeq > 0) n = lastSeq + 1
+  // A log cursor that already walked older than this snapshot must not
+  // jump forward because a later ready reused lastSeq+1 as the window.
+  if (fallback > 0 && (n <= 0 || fallback < n)) return fallback
+  return n
 }
 
 function applyLiveEvent(view: PhoneView, ev: RemoteEvent): PhoneView {

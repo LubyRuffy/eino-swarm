@@ -134,7 +134,26 @@ describe("phone watch session", () => {
     expect(view.hasMore).toBe(true)
     expect(view.oldestSeq).toBe(3)
     view = applyPush(view, ready({ seq: 8, status: { running: false } }))
-    expect(view.hasMore).toBe(false)
+    expect(view.hasMore).toBe(true)
+    expect(view.oldestSeq).toBe(2)
+  })
+
+  it("does not walk a log cursor forward on a later empty ready", () => {
+    let view = applyPush(openView(detail()), ready({ seq: 4, more: true, events: [] }))
+    expect(view.oldestSeq).toBe(5)
+    view = prependOlder(view, [], true, 3)
+    expect(view.oldestSeq).toBe(3)
+    view = applyPush(view, ready({ seq: 8, more: true, events: [] }))
+    expect(view.hasMore).toBe(true)
+    expect(view.oldestSeq).toBe(3)
+  })
+
+  it("keeps a log cursor when ready has more but no last-turn rows", () => {
+    const view = applyPush(openView(detail()), ready({ seq: 4, more: true, events: [] }))
+    expect(view.caughtUp).toBe(true)
+    expect(view.hasMore).toBe(true)
+    expect(view.oldestSeq).toBe(5)
+    expect(view.blocks).toEqual([])
   })
 
   it("keeps a live streaming answer when older rows are prepended", () => {

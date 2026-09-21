@@ -47,7 +47,7 @@ export function ScanScreen({
   const shown = error || localError
 
   return (
-    <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col gap-5 px-5 py-8">
+    <main className="mx-auto flex h-full max-w-md flex-col gap-5 overflow-y-auto px-5 py-8">
       <header className="flex items-start justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">{t("scan.title")}</h1>
         {onToggleLocale ? (

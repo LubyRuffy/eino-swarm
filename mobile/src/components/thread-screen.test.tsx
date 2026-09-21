@@ -185,8 +185,9 @@ describe("ThreadScreen", () => {
         onAnswerStructured={vi.fn()}
       />,
     )
-    expect(screen.getByText("Loading")).toBeInTheDocument()
-    expect(screen.queryByText("now")).not.toBeInTheDocument()
+    expect(screen.getByText("now")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Loading" })).toBeDisabled()
+    expect(document.querySelector("ol")).toHaveClass("invisible")
     const transcript = document.querySelector("ol")
     if (!transcript) throw new Error("missing transcript")
     Object.defineProperty(transcript, "scrollTop", { value: 4, configurable: true })

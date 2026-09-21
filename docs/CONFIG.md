@@ -295,7 +295,7 @@ in Settings → Phone.
 | `summary_chars` | `280` | truncate assistant/summary text on the phone |
 | `open_turns` | `6` | completed turns included when a thread is opened |
 | `event_chars` | `4000` | max characters of each watched event body on the phone. `tool_delta` is clipped to `summary_chars`. `spawned` text is always empty |
-| `watch_events` | `80` | max stored events from the last turn when the phone opens a conversation (`watch` with `since` 0, one `ready.events` frame), and the page size for `log` when it pulls up for older rows. A reconnect with `since` > 0 still replays the gap on that same `ready` snapshot |
+| `watch_events` | `80` | max stored events from the last turn when the phone opens a conversation (`watch` with `since` 0; the snapshot is the `watch` RPC `ready`), and the page size for `log` when it pulls up for older rows (`before` 0 pages older than that window). A reconnect with `since` > 0 still replays the gap on that same `ready` snapshot |
 
 The Host Token and the long-term X25519 key live as files, not in this YAML:
 

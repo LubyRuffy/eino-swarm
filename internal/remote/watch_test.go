@@ -3,6 +3,7 @@ package remote
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -41,6 +42,89 @@ func TestPhoneSendIsVisibleOnSubscribe(t *testing.T) {
 	}
 }
 
+func TestWatchRejectsMissingAndUnknownThread(t *testing.T) {
+	e := testEngine(t)
+	pump, log := testPump(t, e)
+	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "1", Op: OpWatch})
+	pump.Dispatch(raw)
+	missing := log.waitID(t, "1", 2*time.Second)
+	if missing.OK || missing.Code != "bad_request" {
+		t.Fatalf("missing %+v", missing)
+	}
+	raw, _ = json.Marshal(Request{V: ProtocolV, ID: "2", Op: OpWatch, ThreadID: "nope"})
+	pump.Dispatch(raw)
+	unknown := log.waitID(t, "2", 2*time.Second)
+	if unknown.OK {
+		t.Fatalf("unknown %+v", unknown)
+	}
+}
+
+func TestWatchFailsWhenHistoryLoadFails(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("hist", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prev := readWatchHistory
+	t.Cleanup(func() { readWatchHistory = prev })
+	readWatchHistory = func(*LinkPump, string, int64) ([]store.Event, bool, error) {
+		return nil, false, errors.New("history closed")
+	}
+	pump, log := testPump(t, e)
+	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
+	pump.Dispatch(raw)
+	got := log.waitID(t, "w", 2*time.Second)
+	if got.OK {
+		t.Fatalf("history %+v", got)
+	}
+}
+
+func TestWatchFailsWhenStoreCloses(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("closed", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pump, log := testPump(t, e)
+	if err := e.Store().Close(); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
+	pump.Dispatch(raw)
+	got := log.waitID(t, "w", 2*time.Second)
+	if got.OK {
+		t.Fatalf("closed store %+v", got)
+	}
+}
+
+func TestWatchHighestNilStoreKeepsSince(t *testing.T) {
+	if watchHighest(0, nil, true, nil, "t") != 0 {
+		t.Fatal("nil store")
+	}
+	if watchHighest(4, nil, false, nil, "t") != 4 {
+		t.Fatal("since without more")
+	}
+	e := testEngine(t)
+	th, err := e.CreateThread("hi", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().AppendEvent(&store.Event{
+		ThreadID: th.ID, Kind: "user_message", Text: "m",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if watchHighest(9, nil, true, e.Store(), th.ID) != 9 {
+		t.Fatal("tail older than since")
+	}
+	if err := e.Store().Close(); err != nil {
+		t.Fatal(err)
+	}
+	if watchHighest(0, nil, true, e.Store(), th.ID) != 0 {
+		t.Fatal("closed store")
+	}
+}
+
 func TestWatchReplayMatchesEngineReplaySeq(t *testing.T) {
 	e := testEngine(t)
 	th, err := e.CreateThread("watch", "", "")
@@ -62,6 +146,9 @@ func TestWatchReplayMatchesEngineReplaySeq(t *testing.T) {
 	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
 	pump.Dispatch(raw)
 	ready := log.waitOp(t, OpReady, 3*time.Second)
+	if ready.ID != "w" {
+		t.Fatalf("watch RPC must return the snapshot, got id %q", ready.ID)
+	}
 	if ready.Seq != replay[len(replay)-1].Seq {
 		t.Fatalf("ready seq %d replay %d", ready.Seq, replay[len(replay)-1].Seq)
 	}
@@ -598,6 +685,26 @@ func TestEncodeEventPushShrinksThenDropsOversizedEnvelope(t *testing.T) {
 	}
 }
 
+func TestRunWatchFailsWhenStoreCloses(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("rw-closed", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pump, log := testPump(t, e)
+	sub := e.Subscribe(th.ID)
+	if err := e.Store().Close(); err != nil {
+		t.Fatal(err)
+	}
+	pump.runWatch(context.Background(), sub, th.ID, 0)
+	for _, r := range log.snapshot() {
+		if !r.OK {
+			return
+		}
+	}
+	t.Fatal("closed store must fail the watch")
+}
+
 func TestRunWatchStopsWhenSubscriptionCloses(t *testing.T) {
 	e := testEngine(t)
 	th, err := e.CreateThread("subclose", "", "")
@@ -644,6 +751,39 @@ func TestSecondWatchReplacesTheFirst(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("second watch did not ready")
+}
+
+func TestWatchEmptyLastTurnReadyStillPages(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("empty-last", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := &store.Turn{ThreadID: th.ID, Status: store.TurnRunning}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().AppendEvent(&store.Event{
+		ThreadID: th.ID, Kind: "user_message", Text: "prev",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pump, log := testPump(t, e)
+	raw, _ := json.Marshal(Request{V: ProtocolV, ID: "w", Op: OpWatch, ThreadID: th.ID})
+	pump.Dispatch(raw)
+	ready := log.waitOp(t, OpReady, 3*time.Second)
+	if ready.ID != "w" {
+		t.Fatalf("watch id %q", ready.ID)
+	}
+	if !ready.More {
+		t.Fatal("older rows must still be pageable")
+	}
+	if len(ready.Events) != 0 {
+		t.Fatalf("empty last turn leaked %+v", textsOfViews(ready.Events))
+	}
+	if ready.Seq != 1 {
+		t.Fatalf("cursor seq %d", ready.Seq)
+	}
 }
 
 func TestPushEventDropsOversizedDelta(t *testing.T) {

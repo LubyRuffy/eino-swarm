@@ -160,19 +160,74 @@ func TestLogSkipsAPageThePhoneWouldNotRender(t *testing.T) {
 	}
 }
 
-func TestLogRejectsMissingBeforeAndUnknownThread(t *testing.T) {
+func TestLogRejectsUnknownThreadAndMissingThread(t *testing.T) {
 	e := testEngine(t)
 	missing := Handle(e, config.RemoteConfig{}, Request{ID: "1", Op: OpLog, ThreadID: "nope", Before: 2}, "relay", "s")
 	if missing.OK || missing.Code != "not_found" {
 		t.Fatalf("missing %+v", missing)
 	}
-	noBefore := Handle(e, config.RemoteConfig{}, Request{ID: "2", Op: OpLog, ThreadID: "x"}, "relay", "s")
-	if noBefore.OK || noBefore.Code != "bad_request" {
-		t.Fatalf("before %+v", noBefore)
+	unknown := Handle(e, config.RemoteConfig{}, Request{ID: "2", Op: OpLog, ThreadID: "x"}, "relay", "s")
+	if unknown.OK || unknown.Code != "not_found" {
+		t.Fatalf("unknown %+v", unknown)
 	}
 	noThread := Handle(e, config.RemoteConfig{}, Request{ID: "3", Op: OpLog, Before: 1}, "relay", "s")
 	if noThread.OK || noThread.Code != "bad_request" {
 		t.Fatalf("thread %+v", noThread)
+	}
+}
+
+func TestLogZeroBeforePagesOlderThanLastTurn(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("zero", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := &store.Turn{ThreadID: th.ID, Status: store.TurnDone}
+	if err := e.Store().CreateTurn(first); err != nil {
+		t.Fatal(err)
+	}
+	second := &store.Turn{ThreadID: th.ID, Status: store.TurnRunning}
+	if err := e.Store().CreateTurn(second); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().AppendEvent(&store.Event{
+		ThreadID: th.ID, TurnID: first.ID, Kind: "user_message", Text: "old",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().AppendEvent(&store.Event{
+		ThreadID: th.ID, TurnID: second.ID, Kind: "user_message", Text: "now",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp := Handle(e, config.RemoteConfig{WatchEvents: 8}, Request{
+		ID: "l", Op: OpLog, ThreadID: th.ID,
+	}, "relay", "s")
+	if !resp.OK || len(resp.Events) != 1 || resp.Events[0].Text != "old" {
+		t.Fatalf("zero before %+v", resp)
+	}
+}
+
+func TestLogZeroBeforeOnEmptyLastTurnUsesTheTail(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("empty-log", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := &store.Turn{ThreadID: th.ID, Status: store.TurnRunning}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().AppendEvent(&store.Event{
+		ThreadID: th.ID, Kind: "user_message", Text: "prev",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp := Handle(e, config.RemoteConfig{WatchEvents: 8}, Request{
+		ID: "l", Op: OpLog, ThreadID: th.ID,
+	}, "relay", "s")
+	if !resp.OK || len(resp.Events) != 1 || resp.Events[0].Text != "prev" {
+		t.Fatalf("empty last %+v", resp)
 	}
 }
 

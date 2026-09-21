@@ -21,6 +21,13 @@ var lagCheckInterval = 200 * time.Millisecond
 // ticker path does not depend on filling engine.subscriberBuffer.
 var watchLagged = func(sub *engine.Subscription) bool { return sub.Lagged() }
 
+// readWatchHistory is last-turn (or replay) for a new watch. Tests fail it
+// after GetThread so a closed store cannot hide this path — GetThread
+// would 404 first.
+var readWatchHistory = func(p *LinkPump, threadID string, since int64) ([]store.Event, bool, error) {
+	return p.watchHistory(threadID, since)
+}
+
 // LinkPump is one device connection: RPC on Recv, watch pushes on Send.
 type LinkPump struct {
 	eng       *engine.Engine
@@ -98,20 +105,17 @@ func (p *LinkPump) startWatch(req Request) Response {
 	p.cancel = cancel
 	p.watching = tid
 	p.mu.Unlock()
-	history, hasMore, err := p.watchHistory(tid, req.Since)
-	if err != nil || ctx.Err() != nil {
+	history, hasMore, err := readWatchHistory(p, tid, req.Since)
+	if err != nil {
 		cancel()
 		sub.Close()
 		p.mu.Lock()
-		if p.cancel != nil {
+		if p.watching == tid {
 			p.cancel = nil
 			p.watching = ""
 		}
 		p.mu.Unlock()
-		if err != nil {
-			return fail(req.ID, p.path, p.sessionID, "", fmtErr(err))
-		}
-		return fail(req.ID, p.path, p.sessionID, "cancelled", "watch cancelled")
+		return fail(req.ID, p.path, p.sessionID, "", fmtErr(err))
 	}
 	highest := watchHighest(req.Since, history, hasMore, p.eng.Store(), tid)
 	resp := p.readySnapshot(req.ID, tid, history, hasMore, highest)
