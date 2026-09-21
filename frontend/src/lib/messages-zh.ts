@@ -371,6 +371,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "schedule.statusDone": "已完成",
   "schedule.statusCancelled": "已取消",
   "schedule.openFindings": "打开发现",
+  "schedule.openFindingsCount": "打开发现（{n}）",
   "schedule.skippedBusy": "当前会话正在进行回合。",
   "schedule.waiting": "等待中",
   "schedule.error": "错误",

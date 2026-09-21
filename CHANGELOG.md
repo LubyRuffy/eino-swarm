@@ -13,6 +13,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Bound phones show the phone's model.** After the app connects it
+  sends `hello` with a one-line label (OS + version + model from the UA).
+  Settings → Phone uses that instead of a bare fingerprint, with last
+  connected when the PC has seen the link.
+
 - **Phone pairing can keep this computer awake.** Settings → Phone has
   **Keep this computer awake** (on by default). While pairing is on, the
   host process holds a system sleep assertion so a phone can still reach
@@ -95,11 +100,12 @@ co-working app built on it. The library API is unchanged except where noted
   overlapping bars. The dialog scrolls as a whole; each wait row does not
   shrink.
 
-- **Scheduled inbox no longer repeats Open findings off the card.** Several
-  unread fires used to paint one button each, so the row overflowed and the
-  kind/status badges slid out of view. One fire still uses **Open findings**;
-  several become a stacked, truncated list of those summaries. The dialog no
-  longer grows sideways.
+- **Scheduled inbox no longer dumps completed findings on the wait card.**
+  Several unread fires used to paint one button each, then a stacked list of
+  those summaries, so a live wait looked like a wall of finished reports.
+  Live rows stay a wait: **Open findings**, with a count when there is more
+  than one. Opening a conversation marks every unread fire that landed on
+  that same thread. The dialog no longer grows sideways.
 
 - **`GET /api/threads` carries `title_auto`.** The listing omitted it, so a
   `done` refresh treated a generated name as still machine-owned and snapped

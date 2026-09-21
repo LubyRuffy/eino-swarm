@@ -6,8 +6,11 @@ Everything except the settings and the phone-pairing key files lives in one SQLi
 $ZWAI_HOME (default ~/.zwai-swarm)/zwai.db
 ```
 
-Phone pairing is not in this database. `$ZWAI_HOME/remote/host_token` and
-`$ZWAI_HOME/remote/identity` are 0600 files. Bindings live on the pairlink hub.
+Phone pairing keys are not in this database. `$ZWAI_HOME/remote/host_token` and
+`$ZWAI_HOME/remote/identity` are 0600 files. Bindings (id, fingerprint,
+session) live on the pairlink hub. The phone-reported model and last-seen
+time live here in `remote_devices`, keyed by that fingerprint, so Settings
+can name a bound phone after it has connected once.
 A watched phone reads the same `EVENT` rows the desktop SSE does (clipped
 bodies, same `kind`/`seq`); first paint is the last turn on one `ready`
 snapshot (the `watch` RPC reply), older rows come from `log` paging. It does not get a second copy
@@ -329,7 +332,7 @@ pinned to that `project_id`.
 | `thread_id` | the conversation that ran: the wake target, or the conversation minted for a standalone fire |
 | `turn_id` | the turn that ran, when one started. Empty on a skip |
 | `status` | `skipped_busy`, `running`, `findings`, `quiet`, `error` |
-| `summary` | short findings text the inbox shows on the wait row, and as the stacked Open findings labels when several fires are unread. Empty on quiet |
+| `summary` | short findings text the inbox shows on an ended wait that still has one unread fire. Live waits keep that text off the card and open it through **Open findings**. Empty on quiet |
 | `unread` | true for `findings` and `error`. Quiet runs are not unread |
 | `created_at`, `updated_at`, `ended_at` | `ended_at` is null while `running` |
 
@@ -404,6 +407,19 @@ rows whose `model` is not the current name.
 | `text_hash` | sha256 of the passage; unchanged text is not re-embedded |
 | `dim` | vector length |
 | `vector` | packed float32 |
+
+## `remote_devices` — bound phone labels
+
+The hub list is fingerprints. After a phone links, this PC stores the
+model line it sent (`hello`) so Settings → Phone can show that instead
+of hex. A quiet reconnect (no `hello` yet) updates `seen_at` and must
+not wipe `label`.
+
+| column | notes |
+|---|---|
+| `device_fp` | text, PK. pairlink fingerprint (16 hex chars) |
+| `label` | the phone-reported one-line model, clipped to 80 runes |
+| `seen_at` | last time this fingerprint opened a link |
 
 ## Lifecycle and retention
 

@@ -222,13 +222,13 @@ describe("Scheduled inbox", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Open findings" })).toBeInTheDocument(),
     )
-    expect(screen.getByTestId("schedule-findings")).toHaveTextContent("Something changed.")
+    expect(screen.queryByTestId("schedule-findings")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Open findings" }))
     await waitFor(() => expect(fake.marked).toEqual(["srun_1"]))
     await waitFor(() => expect(fake.opened).toEqual(["th_findings"]))
   })
 
-  it("collapses several unread fires into a stacked list instead of a button per fire", async () => {
+  it("keeps several unread fires behind one Open findings control", async () => {
     fake.runs = [
       {
         id: "srun_old",
@@ -260,13 +260,49 @@ describe("Scheduled inbox", () => {
     expect(screen.getByRole("dialog").className).toMatch(/\boverflow-y-auto\b/)
     expect(screen.getByTestId("schedule-row")).toHaveClass("shrink-0")
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "later change" })).toBeInTheDocument(),
+      expect(screen.getByRole("button", { name: "Open findings (2)" })).toBeInTheDocument(),
     )
-    expect(screen.queryByRole("button", { name: "Open findings" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "later change" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "earlier change" })).not.toBeInTheDocument()
     expect(screen.queryByTestId("schedule-findings")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "earlier change" }))
-    await waitFor(() => expect(fake.marked).toEqual(["srun_old"]))
-    await waitFor(() => expect(fake.opened).toEqual(["th_old"]))
+    fireEvent.click(screen.getByRole("button", { name: "Open findings (2)" }))
+    await waitFor(() => expect(fake.marked).toEqual(["srun_new"]))
+    await waitFor(() => expect(fake.opened).toEqual(["th_new"]))
+  })
+
+  it("marks every unread fire on the opened conversation", async () => {
+    fake.runs = [
+      {
+        id: "srun_old",
+        schedule_id: "sch_1",
+        thread_id: "th_same",
+        turn_id: "tn_old",
+        status: "findings",
+        summary: "earlier change",
+        unread: true,
+        created_at: "2026-09-19T03:00:00.000Z",
+        updated_at: "2026-09-19T03:00:00.000Z",
+      },
+      {
+        id: "srun_new",
+        schedule_id: "sch_1",
+        thread_id: "th_same",
+        turn_id: "tn_new",
+        status: "findings",
+        summary: "later change",
+        unread: true,
+        created_at: "2026-09-19T04:00:00.000Z",
+        updated_at: "2026-09-19T04:00:00.000Z",
+      },
+    ]
+    render(<Sidebar threads={[]} {...noop} />)
+    fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Open findings (2)" })).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Open findings (2)" }))
+    await waitFor(() => expect(fake.marked).toEqual(["srun_new", "srun_old"]))
+    await waitFor(() => expect(fake.opened).toEqual(["th_same"]))
   })
 
   it("shows skipped_busy inside the inbox dialog", async () => {
@@ -340,6 +376,7 @@ describe("Scheduled inbox", () => {
     fireEvent.click(screen.getByRole("button", { name: /Scheduled/ }))
     await waitFor(() => expect(screen.getByTestId("schedule-row")).toBeInTheDocument())
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/old/)
+    expect(screen.getByTestId("schedule-findings")).toHaveTextContent("Something changed.")
     expect(screen.queryByRole("button", { name: /Show ended/ })).not.toBeInTheDocument()
   })
 

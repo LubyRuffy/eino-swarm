@@ -286,18 +286,23 @@ a high-contrast QR of that URI.
 
 ```json
 {"bindings": [{"id": "…", "device_fp": "abcd1234efgh5678",
-               "created_at": "…", "session_id": "…"}]}
+               "device": "…", "created_at": "…",
+               "last_seen": "…", "session_id": "…"}]}
 ```
 
-Fingerprints only. No Host Token, no session keys.
+`device` and `last_seen` are what this PC learned after the phone
+connected (`hello`). They are omitted until then. No Host Token, no
+session keys.
 
 ### `POST /api/remote/bindings/:id/revoke`
 
 Drops that phone. Further tickets fail at the hub.
 
 The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
-`list` / `more` / `open` / `start` / `send` / `steer` / `stop` / `answer` /
-`watch` / `unwatch` / `log` / `run_now` / `cancel_wait` / `resume_goal`.
+`hello` / `list` / `more` / `open` / `start` / `send` / `steer` / `stop` /
+`answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
+`resume_goal`. `hello` `{text}` is the phone's one-line model; the host
+keys it by the pairlink fingerprint, not a client-supplied id.
 Default list size is 5 threads; `more` pages threads. `log`
 `{thread_id, before}` pages older transcript events (newest page older than
 `before`, size `watch_events`). `run_now` and `cancel_wait` target the soonest

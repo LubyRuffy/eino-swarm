@@ -123,10 +123,7 @@ describe("RemoteTab", () => {
       expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument(),
     )
     expect(screen.getByText(/aa11bb22cc33dd44/)).toBeInTheDocument()
-    expect(screen.getByText(/Last connected/)).toBeInTheDocument()
-    expect(screen.queryByRole("heading", { name: "Bound phones" })?.closest("section")?.textContent ?? "").not.toMatch(
-      /^aa11bb22cc33dd44$/,
-    )
+    expect(screen.getByText(/Last connected 2026-09-20T16:03:32Z/)).toBeInTheDocument()
   })
 
   it("toggles keep-awake without inventing a sample phrase", async () => {

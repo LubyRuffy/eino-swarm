@@ -4,7 +4,9 @@ iOS and Android apps. The camera scan of a `pairlink:v1:…` QR is the product
 path; paste is the same URI, not a second protocol. After bind, a live
 turn (or the last thread this phone opened) opens immediately; otherwise
 the inbox lists projects and threads. The phone talks to the PC over
-pairlink (WebSocket relay). It keepalives that socket (the hub idle-drops
+pairlink (WebSocket relay). After the ticket socket is up it sends `hello`
+with a one-line model (OS + version + device) so Settings → Phone can
+name the binding. It keepalives that socket (the hub idle-drops
 a quiet connection) and reconnects a drop without unlinking. It never
 calls zwai `/api`.
 

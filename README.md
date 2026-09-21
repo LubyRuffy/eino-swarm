@@ -86,9 +86,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   comes from the live schedule row, not the first arm snapshot — a refresh
   used to look like the timer jumped. A scheduled check reports through `report_schedule`;
   empty findings stay quiet. Quiet standalone runs stay out of Recents;
-  findings open from the inbox — **Open findings** on a single unread fire,
-  or a stacked list of those summaries when several fires are unread, so the
-  row cannot overflow the dialog.
+  findings open from the inbox — **Open findings** on a live wait, with a
+  count when several fires are unread, so finished reports stay off the card.
   Workers cannot schedule. Caps live in
   Settings → Swarm.
 - **`/plan` before changing anything.** Planning unmounts write/edit/exec
@@ -303,7 +302,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    a Gateway Key. A missing hub toasts over the sheet (× to close).
    **Keep this computer awake** stays on by default so a plugged-in host
    does not idle-sleep while a phone still expects it. Turn it off if you
-   want the machine to sleep.
+   want the machine to sleep. **Bound phones** names each device by the
+   model the phone reports after it connects, not only the fingerprint.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
 3. On the phone, open the **zwai** iOS or Android app (`mobile/ios`,

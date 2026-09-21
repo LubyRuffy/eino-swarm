@@ -18,7 +18,7 @@ deterministic and fast enough to run on every change.
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), conversation search (`GET /api/search` finds a body the title does not contain; embeddings stay off until a model is pinned), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
 | Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (compact chips; tagged `<selected_text>` / `<user_request>` on send; Copy message without the wire tags; the Add to chat snapshot surviving a live stream), clipboard image paste, copying transcript text when the Clipboard API refuses (execCommand fallback), file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `font_size` / `content_width`), tail-first history pages (`thread-log` / `thread-history` / `use-history-window` / `use-turn-jump`), dismissible settings toasts, ⌘K palette body search (`thread-search` / `palette.test`, stale hits cleared while the next query is in flight), semantic-search settings (off until a model is named) | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet) | `cd frontend && npm run e2e` |
-| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, launcher is the zwai mark not Capacitor's default | `cd mobile && npm test` |
+| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default | `cd mobile && npm test` |
 | Phone E2E | scan screen + paste of the same `pairlink:v1` URI (camera is the product path on device) | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, Start | see `mobile/README.md` (not in `make check`) |
 
@@ -31,7 +31,7 @@ Current Go coverage, from `go test -race -cover -timeout 20m ./...`:
 | `internal/provider` | 92.1% |
 | `.` (swarm library) | 95.0% |
 | `internal/tools` | 97.5% |
-| `internal/store` | 90.5% |
+| `internal/store` | 90.7% |
 | `internal/search` | 90.6% |
 | `internal/engine` | 90.5% |
 | `internal/config` | 91.9% |
@@ -41,7 +41,7 @@ Current Go coverage, from `go test -race -cover -timeout 20m ./...`:
 | `internal/tui` | 87.6% |
 | `internal/app` | 87.9% |
 | `cmd/zwai` | 84.7% |
-| `internal/remote` | 92.5% |
+| `internal/remote` | 92.7% |
 | `internal/wakeup` | 95.7% |
 
 `internal/wakeup` is the phone-host sleep assertion. `TestSetDoesNotBounceTheAssertion`
@@ -49,6 +49,13 @@ is why a settings reload cannot release and re-acquire (idle sleep wins that
 gap). `TestDarwinCaffeinateUsesSystemSleepAndParentPID` freezes `caffeinate -s
 -w <pid>`. `TestHostKeepAwakeFollowsPairingAndSurvivesReload` is the host
 wiring: pairing on holds, the switch off releases, Reload does not drop.
+`TestHelloStoresThePhoneLabelOnThisFingerprint` plus
+`TestDecorateBindingsJoinsHubRowsOntoLocalLabels` are why Bound phones
+can show a model: `hello` is keyed by the pairlink fingerprint, a quiet
+reconnect does not wipe the label, and a phone that has not said hello
+stays a fingerprint. `TestHostOfferAndServeLinkOverRelay` sends `hello`
+and asserts the bindings list carries that label. `mobile/src/lib/device.test.ts`
+builds the one-line label from platform + UA.
 
 `internal/remote` is the phone RPC. `TestListDefaultsToFiveAndOmitsProjectSecrets`
 is why the phone never sees a project prompt. `TestSlimListPayloadStaysBounded`
@@ -585,9 +592,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   schedule GET that must not toast. Ended waits stay out of the inbox
   until **Show ended**, except an ended row that still has unread findings.
   Several unread fires on one wait collapse
-  to one Open findings control (a stacked summary list when there is more
-  than one) so the dialog cannot grow sideways (`unreadFindings` newest-first;
-  wait rows are `shrink-0` so a tall create form cannot squash them). A `session_memory` event is
+  to one Open findings control (a count when there is more than one) so
+  finished reports stay off the card (`unreadFindings` newest-first; opening
+  a conversation marks every unread fire on that thread; wait rows are
+  `shrink-0` so a tall create form cannot squash them). A `session_memory` event is
   quiet on the manager like a generated title — no chat row, no extra worker.
   Finished `goal_session` /
   `goal_continued` turns fold behind a one-line Worked-for row in
@@ -1046,7 +1054,9 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/components/app/settings-remote.tsx`**, rendered in jsdom: a pairing
   offer paints a QR; a stored host token is never echoed; a failed offer
   toasts over the sheet instead of a red line under Phone; **Keep this
-  computer awake** defaults on and toggles `remote.keep_awake`.
+  computer awake** defaults on and toggles `remote.keep_awake`. A binding
+  with a reported model paints that line, not a bare fingerprint.
+  `src/lib/remote-binding.ts` is the title / last-seen join.
 - **`src/store/toasts.ts`**: same-id replace, a cap of 4, `toastError` as
   the settings failure helper.
 - **`src/components/app/settings-field.tsx`**, rendered in jsdom: a row
