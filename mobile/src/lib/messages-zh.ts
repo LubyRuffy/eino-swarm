@@ -40,6 +40,10 @@ export const zh: Record<MessageKey, string> = {
   "thread.earlier": "更早",
   "thread.loading": "加载中",
   "thread.tool": "工具",
+  "thread.rosterDone": "{n} 完成",
+  "thread.rosterFailed": "{n} 失败",
+  "thread.rosterRunning": "{n} 进行中",
+  "thread.rosterUndelivered": "{n} 未送达",
 
   "notice.scheduleArmed": "已设置等待。",
   "notice.scheduleCancelled": "等待已取消。",

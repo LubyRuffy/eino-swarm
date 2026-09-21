@@ -147,4 +147,30 @@ describe("compact transcript", () => {
     expect(blocks[0].text).toBe(JSON.stringify({ ok: true, quiet: false }))
     expect(blocks[0].pending).toBe(false)
   })
+
+  it("does not paint a progress pulse as a notice", () => {
+    const pulse = JSON.stringify({
+      elapsed_ms: 0,
+      agents: [{ agent_id: "w1", role: "worker", status: "done", elapsed_ms: 0 }],
+    })
+    const blocks = applyEvent([], ev({ seq: 40, kind: "progress", text: pulse }))
+    expect(blocks).toEqual([])
+  })
+
+  it("skips packed cap and compact envelopes instead of dumping them", () => {
+    let blocks: CompactBlock[] = []
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 41, kind: "max_iterations", text: JSON.stringify({ limit: 8, extend_by: 8 }) }),
+    )
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 42, kind: "compacted", text: JSON.stringify({ through_seq: 9 }) }),
+    )
+    blocks = applyEvent(blocks, ev({ seq: 43, kind: "goal", text: "keep going" }))
+    expect(blocks.map((b) => b.kind)).toEqual(["notice"])
+    expect(blocks[0].text).toBe("keep going")
+    expect(blocks.some((b) => b.text.includes("elapsed_ms"))).toBe(false)
+    expect(blocks.some((b) => b.text.includes("through_seq"))).toBe(false)
+  })
 })

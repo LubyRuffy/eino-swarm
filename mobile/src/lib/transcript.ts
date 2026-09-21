@@ -151,14 +151,20 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
     case "plan_updated":
     case "plan_implemented":
     case "plan_cancelled":
-    case "progress":
     case "max_iterations":
     case "max_iterations_continued":
     case "model_retry":
     case "compacted":
-      if (ev.text) {
+      // Packed JSON here is a pulse/cap/retry envelope. Desktop never
+      // paints it into the chat; a notice would be the elapsed_ms wall.
+      if (ev.text && !looksPacked(ev.text)) {
         next.push({ id: blockId(ev), kind: "notice", text: ev.text })
       }
+      return next
+    case "progress":
+      // Live chrome on desktop, not a transcript fact. Pulses are not
+      // stored; stacking each one on the phone was a new JSON dump every
+      // progress_interval_seconds.
       return next
     case "schedule":
       next.push({ id: blockId(ev), kind: "notice", text: "A wait is armed." })

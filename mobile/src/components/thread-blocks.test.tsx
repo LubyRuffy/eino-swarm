@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
 import { setLocale } from "@/lib/i18n"
@@ -52,5 +52,46 @@ describe("thread blocks", () => {
     expect(screen.getByText("report_schedule")).toBeInTheDocument()
     expect(screen.getByText("one thing changed")).toBeInTheDocument()
     expect(screen.queryByText(/"ok":true/)).not.toBeInTheDocument()
+  })
+
+  it("summarises a wait roster as counts, not the elapsed_ms dump", () => {
+    setLocale("en")
+    const report = JSON.stringify({
+      elapsed_ms: 0,
+      agents: [
+        { agent_id: "w1", role: "worker", status: "done", elapsed_ms: 0 },
+        { agent_id: "w2", role: "helper", status: "failed", elapsed_ms: 0 },
+      ],
+    })
+    render(
+      <>
+        {renderBlock({
+          id: "5",
+          kind: "tool",
+          toolName: "wait_agents",
+          text: report,
+        })}
+        {renderBlock({
+          id: "6",
+          kind: "user",
+          text: "keep going\n" + report,
+        })}
+        {renderBlock({
+          id: "7",
+          kind: "notice",
+          text: report,
+        })}
+      </>,
+    )
+    expect(screen.getByText("wait_agents")).toBeInTheDocument()
+    expect(screen.getByText("1 done · 1 failed")).toBeInTheDocument()
+    expect(screen.getByText("keep going")).toBeInTheDocument()
+    expect(screen.queryByText(/elapsed_ms/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/"agent_id"/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/w1/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /wait_agents/ }))
+    expect(screen.getByText(/worker done/)).toBeInTheDocument()
+    expect(screen.getByText(/helper failed/)).toBeInTheDocument()
+    expect(screen.queryByText(/elapsed_ms/)).not.toBeInTheDocument()
   })
 })

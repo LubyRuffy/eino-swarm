@@ -42,9 +42,17 @@ co-working app built on it. The library API is unchanged except where noted
   `report_schedule` is not a JSON wall. Schedule kinds use the same
   one-liners as desktop (`A wait is armed.` / `Scheduled check.` /
   `A wait was cancelled.`); the phone does not paint the wake payload or
-  offer Run now / Cancel wait.
+  offer Run now / Cancel wait. A `progress` pulse is live chrome on
+  desktop, not a chat row; `wait_agents` stays a count chip (`n done ·
+  m failed`), never the `elapsed_ms` roster JSON.
 
 ### Fixed
+
+- **The phone no longer paints a `wait_agents` / `progress` roster as a JSON wall.**
+  Desktop never puts `elapsed_ms` in the chat (a pulse is live chrome; a
+  finished wait is a collapsed tool). The phone was stacking every pulse as
+  a notice and expanding the tool into the full agent array. Pulses are
+  dropped; the chip is a status count; expand is `role status` lines.
 
 - **A parked `/goal` wait no longer looks like the swarm died.** An armed
   `schedule_wake` correctly stops auto-continue, but `done` wiped the header

@@ -39,6 +39,10 @@ export const en = {
   "thread.earlier": "Earlier",
   "thread.loading": "Loading",
   "thread.tool": "tool",
+  "thread.rosterDone": "{n} done",
+  "thread.rosterFailed": "{n} failed",
+  "thread.rosterRunning": "{n} running",
+  "thread.rosterUndelivered": "{n} undelivered",
 
   "notice.scheduleArmed": "A wait is armed.",
   "notice.scheduleCancelled": "A wait was cancelled.",

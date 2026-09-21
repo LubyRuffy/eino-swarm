@@ -8,13 +8,15 @@ pairlink (WebSocket relay). It never calls zwai `/api`.
 
 The phone is a compact screen on the same conversation as the desktop: same
 event kinds and seq (`watch` / `unwatch` / `log`), clipped bodies so a frame
-stays under 64KiB. First paint is the last turn on one `ready.events`
-snapshot, already at the tail; pulling up pages older events. User and
+stays under 64KiB. First paint is the last turn on the `watch` RPC
+`ready` snapshot, already at the tail; pulling up (or Earlier) pages older
+events. User and
 assistant rows render markdown; a path link does not navigate the
 webview. Tool rows stay collapsed until tapped, with a one-line field
-preview instead of the packed JSON. A `schedule` event is **A wait is
-armed.**, not the wake payload; `schedule_report` stays on the
-`report_schedule` chip. Send, follow-up, steer, stop,
+preview instead of the packed JSON. A `progress` pulse is not a chat
+row. `wait_agents` is a status count, not the `elapsed_ms` roster. A
+`schedule` event is **A wait is armed.**, not the wake payload;
+`schedule_report` stays on the `report_schedule` chip. Send, follow-up, steer, stop,
 ask, `/goal` and `/plan` land on the PC engine; the other window sees them
 live. Settings, Files, PTY and Trace stay on the PC.
 

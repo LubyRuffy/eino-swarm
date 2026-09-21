@@ -3,14 +3,23 @@ import { useState } from "react"
 import { PhoneMarkdown } from "@/components/markdown"
 import { t } from "@/lib/i18n"
 import type { CompactBlock } from "@/lib/transcript"
-import { jsonPreview, looksPacked } from "@/lib/tool-preview"
+import {
+  dropPackedJson,
+  jsonPreview,
+  looksPacked,
+  rosterCounts,
+  rosterLines,
+  type RosterCounts,
+} from "@/lib/tool-preview"
 import { cn } from "@/lib/cn"
 
 export function renderBlock(b: CompactBlock) {
   if (b.kind === "user") {
+    const text = dropPackedJson(b.text)
+    if (!text && !b.hasImages) return null
     return (
       <div className="ml-6 break-words rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
-        <PhoneMarkdown text={b.text} />
+        {text ? <PhoneMarkdown text={text} /> : null}
         {b.hasImages ? (
           <p className="mt-1 text-xs text-muted-foreground">{t("thread.image")}</p>
         ) : null}
@@ -18,16 +27,20 @@ export function renderBlock(b: CompactBlock) {
     )
   }
   if (b.kind === "steer") {
+    const text = dropPackedJson(b.text)
+    if (!text) return null
     return (
       <div className="ml-6 break-words rounded-2xl bg-accent px-3 py-2 text-sm">
-        <PhoneMarkdown text={b.text} />
+        <PhoneMarkdown text={text} />
       </div>
     )
   }
   if (b.kind === "answer") {
+    const text = dropPackedJson(b.text)
+    if (!text) return null
     return (
       <div className={cn("mr-4 text-sm leading-relaxed", b.streaming && "opacity-90")}>
-        <PhoneMarkdown text={b.text} />
+        <PhoneMarkdown text={text} />
       </div>
     )
   }
@@ -85,17 +98,31 @@ function ToolChip({ block }: { block: CompactBlock }) {
 }
 
 function toolChipSummary(b: CompactBlock): string {
+  const roster = formatRoster(rosterCounts(b.text) || rosterCounts(b.args))
+  if (roster) return roster
   const line = lastLine(b.text)
   if (line && !looksPacked(line) && line !== b.toolName) return clip(line, 72)
   return clip(jsonPreview(b.text) || jsonPreview(b.args), 72)
 }
 
 function packedBody(block: CompactBlock): string {
+  const roster = rosterLines(block.text)
+  if (roster.length) return roster.join("\n")
   const preview = jsonPreview(block.text) || jsonPreview(block.args)
   if (preview) return clip(preview, 400)
   const raw = block.text.trim()
-  if (!raw || raw === block.toolName) return ""
+  if (!raw || raw === block.toolName || rosterCounts(raw)) return ""
   return clip(raw, 400)
+}
+
+function formatRoster(counts: RosterCounts | null): string {
+  if (!counts) return ""
+  const parts: string[] = []
+  if (counts.done) parts.push(t("thread.rosterDone", { n: counts.done }))
+  if (counts.failed) parts.push(t("thread.rosterFailed", { n: counts.failed }))
+  if (counts.running) parts.push(t("thread.rosterRunning", { n: counts.running }))
+  if (counts.undelivered) parts.push(t("thread.rosterUndelivered", { n: counts.undelivered }))
+  return parts.join(" · ")
 }
 
 function lastLine(text: string): string {
@@ -118,6 +145,6 @@ function localizeNotice(text: string): string {
     case "Scheduled check.":
       return t("notice.scheduleFired")
     default:
-      return text
+      return looksPacked(text) ? "" : text
   }
 }
