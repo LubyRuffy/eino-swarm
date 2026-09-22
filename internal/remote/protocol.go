@@ -127,10 +127,16 @@ type RunningView struct {
 	// prose or a tool payload field (findings, command, path). Raw
 	// tool_call envelopes stay off the wire. Empty when the latest
 	// work is bookkeeping (schedule_wake, memory, …) so the phone can
-	// localize Waiting / running.
+	// localize Waiting / running. A parked wait has no live turn, so it
+	// carries the thread's own summary instead of nothing at all.
 	Action  string `json:"action,omitempty"`
 	AskUser bool   `json:"ask_user,omitempty"`
 	Waiting bool   `json:"waiting,omitempty"`
+	// LastActiveAt dates the row. An In progress row is not in the
+	// `threads` list — `list` drops it so Recents does not repeat it — so
+	// this is the only place a parked wait's age can come from, and a wait
+	// armed last week reading like today's work is the whole problem.
+	LastActiveAt time.Time `json:"last_active_at"`
 }
 
 type ThreadDetail struct {

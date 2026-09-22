@@ -165,16 +165,21 @@ func runningViews(eng *engine.Engine, cfg config.RemoteConfig) []RunningView {
 func runningView(eng *engine.Engine, th *store.Thread, chars int) RunningView {
 	st := eng.Status(th.ID)
 	v := RunningView{
-		ThreadID: th.ID,
-		Title:    strings.TrimSpace(th.Title),
-		TurnID:   st.TurnID,
-		AskUser:  st.AwaitingAnswer,
+		ThreadID:     th.ID,
+		Title:        strings.TrimSpace(th.Title),
+		TurnID:       st.TurnID,
+		AskUser:      st.AwaitingAnswer,
+		LastActiveAt: th.LastActiveAt,
 	}
 	if st.AwaitingAnswer {
 		v.Action = "ask_user"
 		return v
 	}
 	if st.TurnID == "" {
+		// A parked wait is an In progress row with no live turn. Without a
+		// line it is a title and a badge, which says nothing about what is
+		// being waited on; the thread's own summary does.
+		v.Action = threadSummary(eng, th.ID, chars)
 		return v
 	}
 	evts, err := eng.Store().ListEvents(th.ID, 0, 0)

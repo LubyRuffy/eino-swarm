@@ -292,8 +292,10 @@ func TestPhoneListAndOpenSurfaceGoalAndParkedWait(t *testing.T) {
 	if len(listed.Running) != 1 || listed.Running[0].ThreadID != th.ID || !listed.Running[0].Waiting {
 		t.Fatalf("roster must carry the parked wait %+v", listed.Running)
 	}
+	// Nothing has been said in this thread yet, so the row carries no line
+	// and the phone localizes Waiting itself. It must not invent one.
 	if listed.Running[0].Action != "" {
-		t.Fatalf("waiting action must stay off the wire for i18n, got %q", listed.Running[0].Action)
+		t.Fatalf("a wait with nothing to summarise must stay blank, got %q", listed.Running[0].Action)
 	}
 	wide := Handle(e, config.RemoteConfig{ThreadLimit: 20, SummaryChars: 40}, Request{ID: "w", Op: OpList}, "relay", "s")
 	if !wide.OK {
@@ -352,6 +354,61 @@ func TestPhoneListAndOpenSurfaceGoalAndParkedWait(t *testing.T) {
 	}
 	if !held.Detail.GoalCapped || !held.Detail.GoalIdle {
 		t.Fatalf("pause flags %+v", held.Detail)
+	}
+}
+
+// An In progress row that is only a title and a Waiting badge does not say
+// what is being waited on. A parked wait has no live turn to preview, so the
+// thread's own summary is the line.
+func TestAParkedWaitCarriesItsSummarySoTheRowIsNotJustABadge(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("parked", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	turn := &store.Turn{
+		ThreadID: th.ID,
+		Status:   store.TurnDone,
+		UserText: "the question that was asked",
+		Final:    "what the run concluded",
+	}
+	if err := e.Store().CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.CreateSchedule(engine.ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Title: "wake", Prompt: "Continue the wait.", DelayS: 3600,
+		CreatedBy: store.ScheduleCreatedManager,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	parked, err := e.Store().GetThread(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := Handle(e, config.RemoteConfig{ThreadLimit: 5, SummaryChars: 40}, Request{ID: "l", Op: OpList}, "relay", "s")
+	if !listed.OK || len(listed.Running) != 1 {
+		t.Fatalf("roster %+v", listed)
+	}
+	row := listed.Running[0]
+	if !row.Waiting || row.TurnID != "" {
+		t.Fatalf("expected a parked wait, got %+v", row)
+	}
+	if row.Action != "what the run concluded" {
+		t.Fatalf("a parked wait must carry its summary, got %q", row.Action)
+	}
+	// list drops an In progress thread from `threads` so Recents does not
+	// repeat it, so this row is the only place its age can come from.
+	for _, th := range listed.Threads {
+		if th.ID == row.ThreadID {
+			t.Fatal("a roster row must not also be a Recents row")
+		}
+	}
+	if row.LastActiveAt.IsZero() {
+		t.Fatal("a parked wait with no date reads like today's work")
+	}
+	if !row.LastActiveAt.Equal(parked.LastActiveAt) {
+		t.Fatalf("row dated %v, thread %v", row.LastActiveAt, parked.LastActiveAt)
 	}
 }
 
