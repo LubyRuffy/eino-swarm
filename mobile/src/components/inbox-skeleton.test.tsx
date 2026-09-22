@@ -16,7 +16,7 @@ describe("InboxSkeleton", () => {
   it("keeps retry on the inbox after a failed restore", () => {
     setLocale("en")
     const onRetry = vi.fn()
-    render(<InboxSkeleton error={t("err.reconnect")} onRetry={onRetry} />)
+    render(<InboxSkeleton error={t("err.net.closed", { reason: "offline" })} onRetry={onRetry} />)
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: t("scan.retry") }))
     expect(onRetry).toHaveBeenCalledOnce()

@@ -15,7 +15,12 @@ never bound (the header Back control does the same pop). The phone talks to the 
 pairlink (WebSocket relay). After the ticket socket is up it sends `hello`
 with a one-line model (OS + version + device) so Settings → Phone can
 name the binding. It keepalives that socket (the hub idle-drops
-a quiet connection) and reconnects a drop without unlinking. It never
+a quiet connection) and reconnects a drop without unlinking. The chip dot
+is green while that socket is up and gray while it is not; relay versus
+direct stays on the dot's title, not its color. A failure says whether
+nothing answered (server off, network cut, or a timeout, with the machine
+reason) or the server refused (its own text). `host offline` is still
+"this PC is not on the hub". It never
 calls zwai `/api`.
 
 The phone is a compact screen on the same conversation as the desktop: same

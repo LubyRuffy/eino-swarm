@@ -102,9 +102,11 @@ on screen until that `ready` (a tap is not a freeze).
 minting a QR the phone will redeem as `host offline`: status follows idle-drop
 and reconnect of that WebSocket.
 `mobile/src/lib/client.test.ts` is why a phone ticket socket keepalives
-with a punch-ping data frame, rejects in-flight RPC on `onclose`, maps
-that drop to the reconnect copy instead of a frozen inbox, and sends
-`hello` with the model line once the session is up.
+with a punch-ping data frame, rejects in-flight RPC on `onclose`, maps an
+abnormal close to the can't-reach copy and a close reason to a server
+refusal (not one reconnect sentence), and sends `hello` with the model
+line once the session is up. `mobile/src/components/host-chrome.test.tsx`
+is why that chip is green while the socket is up and gray while it is not.
 The Capacitor shell in `mobile/` has its own unit tests
 and a Playwright paste/scan screen; `mobile/native-project.test.ts` asserts the
 iOS and Android trees ship with camera permission, no compiled hub URL, and

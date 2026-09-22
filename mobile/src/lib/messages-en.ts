@@ -92,7 +92,13 @@ export const en = {
   "ask.submit": "Submit",
   "ask.other": "Other",
 
-  "err.reconnect": "Connection lost. Retry to bind again without unlinking.",
+  "err.net.down":
+    "Can't reach this PC. The server may be off, or the network blocked the socket. Retry reconnects without unlinking. ({reason})",
+  "err.net.timeout":
+    "This PC did not answer in time. Retry reconnects without unlinking. ({reason})",
+  "err.net.closed":
+    "The link dropped. Retry reconnects without unlinking. ({reason})",
+  "err.remote": "The server rejected the request: {detail}",
   "err.rpc": "The request failed.",
   "err.open": "Could not open that conversation.",
   "err.watch": "Could not follow that conversation.",

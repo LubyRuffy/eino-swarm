@@ -44,7 +44,11 @@ describe("HostChrome", () => {
       "aria-selected",
       "false",
     )
-    expect(screen.getByLabelText("path=relay")).toBeInTheDocument()
+    const pip = screen.getByLabelText("path=relay")
+    expect(pip.className).toContain("bg-[hsl(var(--online))]")
+    expect(pip.className).not.toContain("primary-foreground")
+    expect(pip.className).not.toContain("muted-foreground")
+    expect(pip).toHaveAttribute("title", t("home.relay"))
     expect(screen.getByRole("tab", { name: "lab" }).querySelector("[aria-label^='path=']")).toBeNull()
     expect(screen.queryByText(t("scan.title"))).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("tab", { name: "lab" }))
@@ -67,6 +71,9 @@ describe("HostChrome", () => {
         onUnlink={onUnlink}
       />,
     )
+    const pip = screen.getByLabelText("path=direct")
+    expect(pip.className).toContain("bg-[hsl(var(--online))]")
+    expect(pip).toHaveAttribute("title", t("home.direct"))
     expect(screen.queryByRole("button", { name: t("home.unlink") })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: t("home.menu") }))
     fireEvent.click(screen.getByRole("menuitem", { name: t("home.addHost") }))
@@ -74,5 +81,24 @@ describe("HostChrome", () => {
     fireEvent.click(screen.getByRole("button", { name: t("home.menu") }))
     fireEvent.click(screen.getByRole("menuitem", { name: t("home.unlink") }))
     expect(onUnlink).toHaveBeenCalledOnce()
+  })
+
+  it("paints a down PC gray, not the online green", () => {
+    setLocale("en")
+    render(
+      <HostChrome
+        hosts={[host("a", "desk-one")]}
+        activeFingerprint="a"
+        path="relay"
+        connected={false}
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    const pip = screen.getByLabelText("path=offline")
+    expect(pip.className).toContain("bg-muted-foreground")
+    expect(pip.className).not.toContain("--online")
+    expect(pip).toHaveAttribute("title", t("home.offline"))
   })
 })
