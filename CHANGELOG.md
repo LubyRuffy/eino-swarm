@@ -2227,6 +2227,22 @@ were left out on purpose, so that what shipped is complete rather than broad:
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
 
+## [0.1.2] - 2026-09-22
+
+The phone's inbox and composer, redesigned.
+
+### Added
+
+- **Android companion APK.**
+  [`zwai-0.1.2-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.2/zwai-0.1.2-android.apk)
+  on [v0.1.2](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.2)
+  (versionName `0.1.2`, versionCode `102`). Debug-signed sideload
+  (`ANDROID_UNSIGNED=1`), same key as v0.1.1, so it updates that install in
+  place. Inbox rows are cards with a state badge and an age; starting a
+  conversation and answering inside one are one growing composer; a short
+  conversation rests on the composer and scrolling off a live tail raises a
+  jump back to it.
+
 ## [0.1.1] - 2026-09-22
 
 Phone transcript uses the same compact fold as desktop user view.

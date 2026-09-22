@@ -102,12 +102,13 @@ and a 15.0+ deployment target.
 ## Android release
 
 Sideload APKs ship on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
-[v0.1.1](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.1) attaches
-[`zwai-0.1.1-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.1/zwai-0.1.1-android.apk)
-(versionName `0.1.1`, versionCode `101`).
-[v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0) is the
-previous sideload. A later APK signed with a different key cannot update an
-install in place.
+[v0.1.2](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.2) attaches
+[`zwai-0.1.2-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.2/zwai-0.1.2-android.apk)
+(versionName `0.1.2`, versionCode `102`).
+[v0.1.1](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.1) and
+[v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0) are the
+previous sideloads; all three carry the same debug key, so each updates the
+last in place. A later APK signed with a different key cannot.
 
 `make mobile-android-release` syncs the web bundle, builds the Gradle
 `release` variant, and copies the APK/AAB to `bin/`. Play/store signing
