@@ -445,4 +445,28 @@ describe("HomeScreen", () => {
     expect(screen.getAllByRole("button", { name: /^Open live / })).toHaveLength(4)
     expect(screen.getAllByRole("button", { name: /^Open idle / })).toHaveLength(5)
   })
+
+  it("says it is loading more and will not take a second tap", () => {
+    const onMore = vi.fn()
+    render(
+      <HomeScreen
+        {...chrome()}
+        path="relay"
+        projects={[]}
+        threads={[]}
+        running={[]}
+        more
+        loadingMore
+        onOpen={vi.fn()}
+        onMore={onMore}
+        onNewChat={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    const button = screen.getByRole("button", { name: "Loading more" })
+    expect(button).toBeDisabled()
+    expect(button).toHaveAttribute("aria-busy", "true")
+    fireEvent.click(button)
+    expect(onMore).not.toHaveBeenCalled()
+  })
 })

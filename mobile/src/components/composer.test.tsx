@@ -114,4 +114,32 @@ describe("Composer", () => {
     expect(screen.getByText("queued")).toBeInTheDocument()
     expect(screen.getByText("chips")).toBeInTheDocument()
   })
+
+  it("offers only the levels it was given and sends a file with no text", () => {
+    setLocale("en")
+    const onSubmit = vi.fn()
+    render(
+      <Composer
+        label="Message"
+        sendLabel="Send"
+        models={[
+          { provider_id: "a", provider_label: "Alpha", model: "one", default: true },
+          { provider_id: "b", provider_label: "Beta", model: "two" },
+        ]}
+        reasoningLevels={["low"]}
+        onSubmit={onSubmit}
+      />,
+    )
+    expect(screen.getByRole("option", { name: "one" })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "two" })).toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "Low thinking" })).toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: "Medium thinking" })).not.toBeInTheDocument()
+    const file = new File(["x"], "notes.txt", { type: "text/plain" })
+    fireEvent.change(screen.getByTestId("file-input"), { target: { files: [file] } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(onSubmit).toHaveBeenCalledWith(
+      "",
+      expect.objectContaining({ files: [file], images: [], model: "one" }),
+    )
+  })
 })

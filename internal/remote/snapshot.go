@@ -239,6 +239,9 @@ func threadDetail(eng *engine.Engine, th *store.Thread, cfg config.RemoteConfig)
 		GoalCapped:      th.GoalCapped,
 		GoalIdle:        th.GoalIdle,
 		PlanOn:          th.PlanMode,
+		ProviderID:      th.ProviderID,
+		Model:           th.Model,
+		Reasoning:       th.ReasoningEffort,
 		Waiting:         st.Waiting,
 		Wake:            wakeView(eng, th.ID, cfg),
 	}

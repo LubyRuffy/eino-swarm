@@ -1,15 +1,15 @@
 import { useLayoutEffect, useRef, useState } from "react"
-import { ArrowDown, ChevronLeft } from "lucide-react"
+import { ArrowDown, ChevronLeft, Loader2 } from "lucide-react"
 
 import { AskCard } from "@/components/ask-card"
-import { Composer } from "@/components/composer"
+import { Composer, type ComposerExtra } from "@/components/composer"
 import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
 import { ThreadLog } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
 import { t } from "@/lib/i18n"
 import type { CompactBlock } from "@/lib/transcript"
 import { pendingAsk } from "@/lib/transcript"
-import type { ThreadDetail } from "@/lib/rpc"
+import type { ModelChoice, ThreadDetail } from "@/lib/rpc"
 import { cn } from "@/lib/cn"
 
 export function ThreadScreen({
@@ -22,6 +22,11 @@ export function ThreadScreen({
   onOlder,
   onSend,
   onSteer,
+  composerPending,
+  models,
+  reasoningLevels,
+  catalogBusy,
+  onTune,
   onStop,
   onAnswer,
   onAnswerStructured,
@@ -36,8 +41,13 @@ export function ThreadScreen({
   caughtUp?: boolean
   onBack: () => void
   onOlder?: () => void
-  onSend: (text: string) => void
-  onSteer: (text: string) => void
+  onSend: (text: string, extra?: ComposerExtra) => void
+  onSteer: (text: string, extra?: ComposerExtra) => void
+  composerPending?: boolean
+  models?: ModelChoice[]
+  reasoningLevels?: string[]
+  catalogBusy?: boolean
+  onTune?: (next: { providerId: string; model: string; reasoning: string }) => void
   onStop: () => void
   onAnswer: (text: string) => void
   onAnswerStructured: (
@@ -49,6 +59,7 @@ export function ThreadScreen({
   onResumeGoal?: () => void
 }) {
   const ask = pendingAsk(blocks)
+  const opening = !caughtUp && blocks.length === 0
   const asking = Boolean(detail.running?.ask_user || ask?.pending)
   const running = Boolean(detail.running)
   const waiting = Boolean(detail.waiting && !running)
@@ -168,11 +179,30 @@ export function ThreadScreen({
             disabled={loadingOlder || !caughtUp}
             onClick={loadOlder}
           >
-            {loadingOlder || !caughtUp ? t("thread.loading") : t("thread.earlier")}
+            {loadingOlder || !caughtUp ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Loader2 className="size-3.5 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden />
+                {t("thread.loading")}
+              </span>
+            ) : (
+              t("thread.earlier")
+            )}
           </Button>
         </div>
       ) : null}
 
+      {opening ? (
+        <div
+          role="status"
+          aria-busy="true"
+          className="flex min-h-0 flex-1 flex-col justify-end gap-3 px-4 py-6"
+        >
+          <span className="sr-only">{t("thread.loading")}</span>
+          <div className="h-4 w-2/3 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+          <div className="h-4 w-1/2 animate-pulse rounded-full bg-muted motion-reduce:animate-none" />
+          <div className="h-16 animate-pulse rounded-2xl bg-muted motion-reduce:animate-none" />
+        </div>
+      ) : (
       <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
         {/* Android WebView will not scroll a flex-column <ol>. Bounded
             overflow box; Earlier sits above so paging is not a dead drag. */}
@@ -203,14 +233,11 @@ export function ThreadScreen({
           {/* Bottom-aligned: a short conversation sits above the composer
               instead of floating under a screen of blank. */}
           <div className="flex min-h-full min-w-0 w-full flex-col justify-end gap-2">
-            {!caughtUp && blocks.length === 0 ? (
-              <p className="px-1 text-xs text-muted-foreground">{t("thread.loading")}</p>
-            ) : (
-              <ThreadLog blocks={blocks} running={running} />
-            )}
+            <ThreadLog blocks={blocks} running={running} />
             {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
               <AskCard
                 questions={ask.questions!}
+                disabled={composerPending}
                 onSubmit={(answers) => onAnswerStructured(ask.callId || "", answers)}
               />
             ) : null}
@@ -232,6 +259,7 @@ export function ThreadScreen({
           </button>
         ) : null}
       </div>
+      )}
 
       <Composer
         // The box and the button cannot share a name, or a screen reader
@@ -241,6 +269,14 @@ export function ThreadScreen({
         hint={running && !asking ? t("thread.sendHint") : undefined}
         steerLabel={running && !asking ? t("thread.steer") : undefined}
         onSteer={running && !asking ? onSteer : undefined}
+        pending={composerPending}
+        models={models}
+        reasoningLevels={reasoningLevels}
+        providerId={detail.provider_id}
+        model={detail.model}
+        reasoning={detail.reasoning ?? ""}
+        catalogBusy={catalogBusy}
+        onTune={onTune}
         onSubmit={asking ? onAnswer : onSend}
       />
     </main>

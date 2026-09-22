@@ -141,3 +141,30 @@ test("the composer grows with the text and send stays off while it is empty", as
   await box.fill("   ")
   await expect(send).toBeDisabled()
 })
+
+test("a page loaded with more is still there after the inbox refreshes", async ({ page }) => {
+  await page.goto(WALKTHROUGH)
+  await backToInbox(page)
+  await page.getByRole("button", { name: "更多" }).click()
+  const older = page.getByRole("button", { name: /^打开 Page past the first$/ })
+  await expect(older).toBeVisible()
+  await page.waitForTimeout(2500)
+  await expect(older).toBeVisible()
+  await expect(page.getByRole("button", { name: "更多" })).toHaveCount(0)
+})
+
+test("opening a conversation shows loading before the transcript", async ({ page }) => {
+  await page.goto("/?mock=1&tick=0&pause=open")
+  await expect(page.getByRole("status")).toContainText("加载中")
+  await expect(page.getByTestId("transcript")).toBeVisible()
+  await expect(page.getByRole("status")).toHaveCount(0)
+})
+
+test("the composer can pick a model, a thinking level, and a file", async ({ page }) => {
+  await page.goto(WALKTHROUGH)
+  await expect(page.getByLabel("模型")).toBeVisible()
+  await expect(page.getByLabel("思考强度")).toBeVisible()
+  await expect(page.getByLabel("添加文件")).toBeVisible()
+  await expect(page.getByRole("option", { name: "scripted" })).toHaveCount(1)
+  await expect(page.getByRole("option", { name: "低思考" })).toHaveCount(1)
+})

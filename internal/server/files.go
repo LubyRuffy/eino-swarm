@@ -9,13 +9,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/gin-gonic/gin"
 )
 
-// maxUploadSize bounds one uploaded file. Without a cap, a mis-click on a disk
-// image fills the user's data directory.
-const maxUploadSize = 256 << 20
+// The cap lives on the engine so a phone put cannot accept a file the desktop
+// upload would refuse.
 
 func (s *Server) listFiles(c *gin.Context) {
 	th, ok := s.thread(c)
@@ -77,8 +77,8 @@ func (s *Server) uploadFiles(c *gin.Context) {
 
 	saved := make([]*store.Attachment, 0, len(headers))
 	for _, fh := range headers {
-		if fh.Size > maxUploadSize {
-			badRequest(c, "%s is larger than the %d MiB upload limit", fh.Filename, maxUploadSize>>20)
+		if fh.Size > engine.MaxUploadBytes {
+			badRequest(c, "%s is larger than the %d MiB upload limit", fh.Filename, engine.MaxUploadBytes>>20)
 			return
 		}
 		att, err := s.engine.SaveUpload(th.ID, fh.Filename, copyFrom(fh))
@@ -105,7 +105,7 @@ func copyFrom(fh *multipart.FileHeader) func(dst string) error {
 			return fmt.Errorf("create %s: %w", filepath.Base(dst), err)
 		}
 		defer out.Close()
-		if _, err := io.Copy(out, io.LimitReader(src, maxUploadSize)); err != nil {
+		if _, err := io.Copy(out, io.LimitReader(src, engine.MaxUploadBytes)); err != nil {
 			return fmt.Errorf("write upload: %w", err)
 		}
 		return nil

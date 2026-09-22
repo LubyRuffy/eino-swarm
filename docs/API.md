@@ -343,7 +343,7 @@ Drops that phone. Further tickets fail at the hub.
 The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `hello` / `list` / `more` / `open` / `start` / `send` / `steer` / `stop` /
 `answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
-`resume_goal`. `hello` `{text}` is the phone's one-line model; the host
+`resume_goal` / `catalog` / `tune` / `put`. `hello` `{text}` is the phone's one-line model; the host
 keys it by the pairlink fingerprint, not a client-supplied id.
 OK replies carry `host` (this PC's `remote.display_name`) so the phone can
 label the chip; an older host omits it and the phone falls back to a short
@@ -351,7 +351,11 @@ fingerprint, never the hub hostname.
 Default list size is 5 idle recents (`thread_limit`); live turns and
 parked waits sit on `list.running` and do not occupy that quota, so In
 progress cannot starve the project / Recents list. `more` pages that idle
-list. `log` `{thread_id, before}` pages older transcript events (newest page older than
+list. A later `list` is still the first page: the phone patches that page
+and keeps rows already loaded with `more`. A row that left the first page
+is not kept just because it was there last time. Replacing the window with
+the first page alone is how an expanded inbox collapsed on the next poll.
+`log` `{thread_id, before}` pages older transcript events (newest page older than
 `before`, size `watch_events`). `run_now` and `cancel_wait` target the soonest
 armed thread wake on `{thread_id}` (`409 idle` when none is parked;
 `409 skipped_busy` when Run now cannot start). `resume_goal` starts the next
@@ -372,7 +376,8 @@ quiet scheduled checks and the protocol wrapper (`This turn is a scheduled
 check.`) are skipped rather than painted as the Recents subtitle.
 `open.detail` carries the standing objective flags (`goal_on`, complete /
 blocked / capped / idle, `goal_started_at`) and the parked `wake`
-(`id`, clipped title/prompt, `next_run_at`).
+(`id`, clipped title/prompt, `next_run_at`), plus `provider_id`, `model`,
+and `reasoning` so the composer can show this conversation's selection.
 The phone client opens a live turn (or the last thread it used) after the
 first `list`; a parked wait counts as live. `open` is that resume, not a new
 protocol.
@@ -400,7 +405,27 @@ filtered page can still advance the cursor instead of killing paging. A later
 `since` or `lagged` replays the gap from the database, not dropped. `spawned`
 bodies are stripped; `tool_delta` is one line; other text is capped by
 `event_chars` (default 4000). A frame over 64KiB is dropped rather than
-tearing the link. Settings, Files, PTY and Trace stay on the PC.
+tearing the link.
+
+`catalog` lists ready models (`provider_id`, `provider_label`, `model`,
+`default`) and `reasoning_levels`. It carries no keys, URLs, or context
+windows. A catalog that would not fit a pairlink frame is `too_large`.
+`tune` `{thread_id, provider_id, model, reasoning}` sets that conversation.
+Omitting `reasoning` leaves the level; `""` is the model's default. An
+unknown level is refused.
+`put` uploads one chunk: `{put_id, name, mime, part, parts, data}`. `data`
+is base64 of at most 36KiB, so the JSON frame stays under 64KiB. The whole
+file is at most 256MiB, the same cap as a desktop upload. `put_id` matches
+`[A-Za-z0-9_-]{1,64}`, `name` is one path segment, and a retried part must
+be the same bytes. `start`, `send`, and `steer` name finished ids in
+`puts`. An image (`image/*`, or a png/jpg/gif/webp name when the type is
+empty) is vision, capped again when it is decoded (8MiB, 8 images). Other
+bytes land in the workspace. The PC decides what the turn is: text with no
+attachments while a turn runs is a follow-up; attachments while a turn
+runs steer; an idle conversation starts a turn. The phone uploads, then
+calls `send` or `steer`; it does not reimplement that policy.
+The file browser, Settings, PTY and Trace stay on the PC. The phone
+composer can still attach a file or an image.
 
 ## Projects
 

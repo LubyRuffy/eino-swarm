@@ -21,6 +21,10 @@ var (
 	maxImages     = 8
 )
 
+// MaxUploadBytes is the largest single file a person can hand a conversation.
+// The desktop upload and a phone put share it: a disk image is not a prompt.
+const MaxUploadBytes = 256 << 20
+
 // RawImage is one pasted image as the HTTP body carries it: base64 pixels
 // plus the type the browser claimed. DecodeImages is what makes that safe.
 type RawImage struct {

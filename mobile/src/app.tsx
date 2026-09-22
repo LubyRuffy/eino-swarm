@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 
 import { AddHostSheet } from "@/components/add-host-sheet"
+import type { ComposerExtra } from "@/components/composer"
 import { HomeScreen } from "@/components/home-screen"
 import { LinkBanner } from "@/components/link-banner"
 import { NewChatScreen } from "@/components/new-chat-screen"
@@ -17,7 +18,9 @@ import {
 } from "@/lib/client"
 import { openLink, type RemoteLink } from "@/lib/link"
 import { getLocale, t, toggleLocale } from "@/lib/i18n"
+import { emptyInbox, inboxThreads, reduceInbox } from "@/lib/inbox-window"
 import type {
+  ModelChoice,
   ProjectView,
   RemoteResponse,
   RunningView,
@@ -26,6 +29,7 @@ import type {
 import {
   OpAnswer,
   OpCancelWait,
+  OpCatalog,
   OpList,
   OpLog,
   OpMore,
@@ -37,6 +41,7 @@ import {
   OpStart,
   OpSteer,
   OpStop,
+  OpTune,
   OpUnwatch,
   OpWatch,
 } from "@/lib/rpc"
@@ -65,6 +70,7 @@ import {
   saveLastThreadId,
   saveLink,
 } from "@/lib/store"
+import { sendComposed } from "@/lib/turn-send"
 
 export function App() {
   const [locale, setLocaleTick] = useState(getLocale())
@@ -85,9 +91,15 @@ export function App() {
   const [threads, setThreads] = useState<ThreadView[]>([])
   const [running, setRunning] = useState<RunningView[]>([])
   const [more, setMore] = useState(false)
-  const [cursor, setCursor] = useState("")
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [models, setModels] = useState<ModelChoice[]>([])
+  const [levels, setLevels] = useState<string[]>([])
+  const [catalogBusy, setCatalogBusy] = useState(false)
+  const [composerPending, setComposerPending] = useState(false)
   const [view, setView] = useState<PhoneView>(emptyView())
   const [loadingOlder, setLoadingOlder] = useState(false)
+  const inboxRef = useRef(emptyInbox())
+  const moreBusy = useRef(false)
   const linkRef = useRef<RemoteLink | null>(null)
   const viewRef = useRef<PhoneView>(view)
   const addingRef = useRef(false)
@@ -121,39 +133,41 @@ export function App() {
     setHosts(loadSavedLinks())
   }
 
+  const resetRoster = () => {
+    inboxRef.current = emptyInbox()
+    rosterFp.current = ""
+    moreBusy.current = false
+    setLoadingMore(false)
+    setThreads([])
+    setProjects([])
+    setRunning([])
+    setMore(false)
+    setModels([])
+    setLevels([])
+  }
+
   const applyList = (resp: RemoteResponse, append: boolean, target?: RemoteLink) => {
     if (!resp.ok) {
       setError(remoteError(resp.error || resp.code || ""))
       return
     }
-    const nextThreads = append ? undefined : (resp.threads ?? [])
-    if (!append && nextThreads) {
-      const fp = rosterFingerprint(
-        resp.projects ?? [],
-        nextThreads,
-        resp.running ?? [],
-        Boolean(resp.more),
-        resp.next ?? "",
-      )
-      if (fp === rosterFp.current) {
-        const cur = target ?? linkRef.current
-        if (resp.path && cur) cur.path = resp.path
-        takeHostName(resp)
-        return
-      }
-      rosterFp.current = fp
-    } else if (append) {
-      rosterFp.current = ""
-    }
-    setError(undefined)
-    if (resp.projects) setProjects(resp.projects)
-    setThreads((prev) => (append ? [...prev, ...(resp.threads ?? [])] : (resp.threads ?? [])))
-    setRunning(resp.running ?? [])
-    setMore(Boolean(resp.more))
-    setCursor(resp.next ?? "")
+    // Head is page one. Tail is what More already loaded. A quiet poll
+    // must not put those rows back, and a row that left page one is not
+    // kept just because it was there last time.
+    const next = reduceInbox(inboxRef.current, resp, append ? "append" : "replace")
+    const merged = inboxThreads(next)
+    const fp = rosterFingerprint(next.projects, merged, next.running, next.more, next.cursor)
     const cur = target ?? linkRef.current
     if (resp.path && cur) cur.path = resp.path
     takeHostName(resp)
+    if (!append && fp === rosterFp.current) return
+    rosterFp.current = fp
+    inboxRef.current = next
+    setError(undefined)
+    setProjects(next.projects)
+    setThreads(merged)
+    setRunning(next.running)
+    setMore(next.more)
   }
 
   const attachPush = (next: RemoteLink) => {
@@ -328,6 +342,26 @@ export function App() {
     return () => window.clearInterval(id)
   }, [link, view.detail])
 
+  useEffect(() => {
+    if (!link?.alive()) return
+    let gone = false
+    setCatalogBusy(true)
+    void link
+      .rpc({ op: OpCatalog })
+      .then((r) => {
+        if (gone || linkRef.current !== link || !r.ok) return
+        setModels(r.models ?? [])
+        setLevels(r.reasoning_levels ?? [])
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!gone) setCatalogBusy(false)
+      })
+    return () => {
+      gone = true
+    }
+  }, [link])
+
   const onURI = async (uri: string) => {
     const isAdd = adding
     setBindBusy(true)
@@ -351,10 +385,7 @@ export function App() {
       setLink(null)
       resumedRef.current = false
       loadGen.current += 1
-      rosterFp.current = ""
-      setThreads([])
-      setProjects([])
-      setRunning([])
+      resetRoster()
       commitView(emptyView())
       setHosts(loadSavedLinks())
       setActiveFp(bound.saved.fingerprint)
@@ -401,32 +432,113 @@ export function App() {
     await openThreadOn(target, id)
   }
 
-  const startConversation = async (text: string, projectId: string) => {
+  const startConversation = async (text: string, projectId: string, extra?: ComposerExtra) => {
     const target = linkRef.current
     if (!target?.alive()) {
       setError(linkError(new LinkFault("offline", "network")))
       void recover()
-      return
+      throw new Error("offline")
     }
+    setComposerPending(true)
     try {
-      const r = await target.rpc({
-        op: OpStart,
-        text,
-        project_id: projectId || undefined,
-      })
-      const started = r.threads?.[0]
+      const r = await sendComposed(
+        (req) => target.rpc(req),
+        {
+          op: OpStart,
+          text,
+          project_id: projectId || undefined,
+        },
+        extra,
+      )
+      const started = r.ok ? r.threads?.[0] : undefined
       // A refusal has to leave the compose screen up: the text the user
       // typed only exists in that box.
       if (!started) {
         setError(r.error || r.code ? remoteError(r.error || r.code || "") : t("err.start"))
-        return
+        throw new Error("refused")
       }
       setComposing(false)
       setComposeProject("")
       await openThread(started.id)
       applyList(await target.rpc({ op: OpList }), false)
     } catch (e) {
+      if (e instanceof Error && (e.message === "refused" || e.message === "offline")) throw e
       fail(e)
+      throw e
+    } finally {
+      setComposerPending(false)
+    }
+  }
+
+  const postTurn = async (op: string, threadId: string, text: string, extra?: ComposerExtra) => {
+    const target = linkRef.current
+    if (!target?.alive()) {
+      setError(linkError(new LinkFault("offline", "network")))
+      throw new Error("offline")
+    }
+    setComposerPending(true)
+    try {
+      const r = await sendComposed((req) => target.rpc(req), { op, thread_id: threadId, text }, extra)
+      if (!r.ok) {
+        setError(remoteError(r.error || r.code || ""))
+        throw new Error("refused")
+      }
+      if (op === OpSend) commitView(markRunning(viewRef.current))
+    } catch (e) {
+      if (e instanceof Error && (e.message === "refused" || e.message === "offline")) throw e
+      fail(e)
+      throw e
+    } finally {
+      setComposerPending(false)
+    }
+  }
+
+  const tuneThread = async (
+    threadId: string,
+    next: { providerId: string; model: string; reasoning: string },
+  ) => {
+    const target = linkRef.current
+    if (!target) return
+    try {
+      const r = await target.rpc({
+        op: OpTune,
+        thread_id: threadId,
+        provider_id: next.providerId,
+        model: next.model,
+        reasoning: next.reasoning,
+      })
+      if (!r.ok) {
+        setError(remoteError(r.error || r.code || ""))
+        return
+      }
+      const cur = viewRef.current
+      if (cur.detail?.id !== threadId) return
+      commitView({
+        ...cur,
+        detail: {
+          ...cur.detail,
+          provider_id: next.providerId,
+          model: next.model,
+          reasoning: next.reasoning,
+        },
+      })
+    } catch (e) {
+      fail(e)
+    }
+  }
+
+  const loadMore = async () => {
+    const target = linkRef.current
+    if (!target?.alive() || moreBusy.current || !inboxRef.current.more) return
+    moreBusy.current = true
+    setLoadingMore(true)
+    try {
+      applyList(await target.rpc({ op: OpMore, cursor: inboxRef.current.cursor }), true)
+    } catch (e) {
+      fail(e)
+    } finally {
+      moreBusy.current = false
+      setLoadingMore(false)
     }
   }
 
@@ -522,12 +634,9 @@ export function App() {
     setHosts(rest)
     resumedRef.current = false
     loadGen.current += 1
-    rosterFp.current = ""
     linkRef.current = null
     setLink(null)
-    setThreads([])
-    setProjects([])
-    setRunning([])
+    resetRoster()
     setError(undefined)
     setAddError(undefined)
     setBindBusy(false)
@@ -557,10 +666,7 @@ export function App() {
     setLink(null)
     resumedRef.current = false
     loadGen.current += 1
-    rosterFp.current = ""
-    setThreads([])
-    setProjects([])
-    setRunning([])
+    resetRoster()
     setError(undefined)
     setReconnecting(false)
     commitView(emptyView())
@@ -623,12 +729,16 @@ export function App() {
             initialProject={composeProject}
             connected={Boolean(link?.alive())}
             connecting={busy || reconnecting}
+            models={models}
+            reasoningLevels={levels}
+            catalogBusy={catalogBusy}
+            pending={composerPending}
             onSelectHost={selectHost}
             onBack={() => {
               setComposing(false)
               setComposeProject("")
             }}
-            onStart={(text, projectId) => void startConversation(text, projectId)}
+            onStart={(text, projectId, extra) => startConversation(text, projectId, extra)}
           />
         </div>
         {sheet}
@@ -650,23 +760,15 @@ export function App() {
             hasMore={view.hasMore}
             loadingOlder={loadingOlder}
             caughtUp={view.caughtUp}
+            composerPending={composerPending}
+            models={models}
+            reasoningLevels={levels}
+            catalogBusy={catalogBusy}
+            onTune={(next) => void tuneThread(detail.id, next)}
             onBack={() => void closeThread()}
             onOlder={() => void loadOlder()}
-            onSend={async (text) => {
-              try {
-                await link.rpc({ op: OpSend, thread_id: detail.id, text })
-                commitView(markRunning(viewRef.current))
-              } catch (e) {
-                fail(e)
-              }
-            }}
-            onSteer={async (text) => {
-              try {
-                await link.rpc({ op: OpSteer, thread_id: detail.id, text })
-              } catch (e) {
-                fail(e)
-              }
-            }}
+            onSend={(text, extra) => postTurn(OpSend, detail.id, text, extra)}
+            onSteer={(text, extra) => postTurn(OpSteer, detail.id, text, extra)}
             onStop={async () => {
               try {
                 await link.rpc({ op: OpStop, thread_id: detail.id })
@@ -740,6 +842,7 @@ export function App() {
           threads={threads}
           running={running}
           more={more}
+          loadingMore={loadingMore}
           path={link?.path ?? "relay"}
           connected={Boolean(link?.alive())}
           reconnecting={reconnecting}
@@ -768,14 +871,7 @@ export function App() {
               fail(e)
             }
           }}
-          onMore={async () => {
-            if (!link) return
-            try {
-              applyList(await link.rpc({ op: OpMore, cursor }), true)
-            } catch (e) {
-              fail(e)
-            }
-          }}
+          onMore={() => void loadMore()}
           onUnlink={unlink}
           onToggleLocale={flipLocale}
         />

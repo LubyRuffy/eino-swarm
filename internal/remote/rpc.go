@@ -13,10 +13,17 @@ import (
 // Handle runs one slim RPC against the local engine. Pairlink only
 // transports the bytes; this is the application protocol.
 func Handle(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
-	return withHost(dispatch(eng, cfg, req, path, sessionID), cfg)
+	return HandleWith(eng, cfg, nil, req, path, sessionID)
 }
 
-func dispatch(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
+// HandleWith is Handle plus the link's upload staging. A nil stage still
+// serves every op that does not carry bytes; put and a send that names puts
+// fail closed instead of pretending the file arrived.
+func HandleWith(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req Request, path, sessionID string) Response {
+	return withHost(dispatch(eng, cfg, stage, req, path, sessionID), cfg)
+}
+
+func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req Request, path, sessionID string) Response {
 	if req.V != 0 && req.V != ProtocolV {
 		return fail(req.ID, path, sessionID, "bad_version", "unsupported protocol version")
 	}
@@ -26,12 +33,17 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, se
 	case OpOpen:
 		return handleOpen(eng, cfg, req, path, sessionID)
 	case OpStart:
-		return handleStart(eng, cfg, req, path, sessionID)
+		return composeStart(eng, cfg, stage, req, path, sessionID)
 	case OpSend:
-		return handleSend(eng, req, path, sessionID)
+		return composeSend(eng, stage, req, path, sessionID)
 	case OpSteer:
-		err := eng.Steer(req.ThreadID, req.Text)
-		return opErr(req.ID, path, sessionID, err)
+		return composeSteer(eng, stage, req, path, sessionID)
+	case OpCatalog:
+		return handleCatalog(eng, req, path, sessionID)
+	case OpTune:
+		return handleTune(eng, req, path, sessionID)
+	case OpPut:
+		return acceptPut(stage, req, path, sessionID)
 	case OpStop:
 		err := eng.Interrupt(req.ThreadID)
 		return opErr(req.ID, path, sessionID, err)
@@ -92,35 +104,6 @@ func handleOpen(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, 
 	resp := okBase(req.ID, path, sessionID)
 	resp.Detail = d
 	return resp
-}
-
-func handleStart(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
-	th, err := eng.CreateThread("", "", strings.TrimSpace(req.ProjectID))
-	if err != nil {
-		return mapErr(req.ID, path, sessionID, err)
-	}
-	if _, err := eng.StartTurn(th.ID, req.Text); err != nil {
-		return mapErr(req.ID, path, sessionID, err)
-	}
-	resp := okBase(req.ID, path, sessionID)
-	loaded, err := eng.Store().GetThread(th.ID)
-	if err != nil {
-		return mapErr(req.ID, path, sessionID, err)
-	}
-	resp.Threads = []ThreadView{threadView(eng, *loaded, cfg)}
-	resp.Running = runningViews(eng, cfg)
-	return resp
-}
-
-func handleSend(eng *engine.Engine, req Request, path, sessionID string) Response {
-	st := eng.Status(req.ThreadID)
-	var err error
-	if st.Running {
-		_, err = eng.EnqueueFollowup(req.ThreadID, req.Text)
-	} else {
-		_, err = eng.StartTurn(req.ThreadID, req.Text)
-	}
-	return opErr(req.ID, path, sessionID, err)
 }
 
 func handleAnswer(eng *engine.Engine, req Request, path, sessionID string) Response {

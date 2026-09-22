@@ -114,6 +114,9 @@ E2E suite.
 - The event kind strings travel over the wire and sit in the database. Renaming
   one breaks replay of existing conversations; `TestNotifyKindsAreStableAcrossTheWire`
   is there to make that a deliberate act.
+- A phone inbox poll is another first page. Rows already loaded with `more`
+  stay; a row that left page one does not. Replacing the whole list from
+  page one puts More back and hides what was just expanded.
 
 ## Comments and naming
 

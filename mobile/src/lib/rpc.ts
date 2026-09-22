@@ -18,6 +18,9 @@ export const OpRunNow = "run_now"
 export const OpCancelWait = "cancel_wait"
 export const OpResumeGoal = "resume_goal"
 export const OpHello = "hello"
+export const OpCatalog = "catalog"
+export const OpTune = "tune"
+export const OpPut = "put"
 
 export type RemoteRequest = {
   v: number
@@ -31,6 +34,23 @@ export type RemoteRequest = {
   answers?: unknown
   since?: number
   before?: number
+  provider_id?: string
+  model?: string
+  reasoning?: string
+  puts?: string[]
+  put_id?: string
+  name?: string
+  mime?: string
+  part?: number
+  parts?: number
+  data?: string
+}
+
+export type ModelChoice = {
+  provider_id: string
+  provider_label?: string
+  model: string
+  default?: boolean
 }
 
 export type ProjectView = { id: string; name: string }
@@ -102,6 +122,9 @@ export type ThreadDetail = {
   goal_idle?: boolean
   goal_started_at?: string
   plan_on?: boolean
+  provider_id?: string
+  model?: string
+  reasoning?: string
   waiting?: boolean
   wake?: WakeView
   running?: RunningView
@@ -129,6 +152,9 @@ export type RemoteResponse = {
   event?: RemoteEvent
   events?: RemoteEvent[]
   status?: WatchStatus
+  models?: ModelChoice[]
+  reasoning_levels?: string[]
+  put?: { id: string; name?: string; ready: boolean; kind?: string }
 }
 
 export function encodeRequest(req: RemoteRequest): Uint8Array {

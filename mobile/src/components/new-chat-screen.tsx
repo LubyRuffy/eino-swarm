@@ -2,10 +2,10 @@ import { ChevronLeft, Monitor } from "lucide-react"
 import { useState } from "react"
 
 import { ChoiceRail } from "@/components/choice-rail"
-import { Composer } from "@/components/composer"
+import { Composer, type ComposerExtra } from "@/components/composer"
 import { Button } from "@/components/ui/button"
 import { t } from "@/lib/i18n"
-import type { ProjectView } from "@/lib/rpc"
+import type { ModelChoice, ProjectView } from "@/lib/rpc"
 import { linkLabel, type SavedLink } from "@/lib/store"
 
 /** Starting a conversation is its own screen: which PC and which project it
@@ -18,6 +18,10 @@ export function NewChatScreen({
   initialProject = "",
   connected = true,
   connecting = false,
+  models,
+  reasoningLevels,
+  catalogBusy,
+  pending,
   onSelectHost,
   onBack,
   onStart,
@@ -28,9 +32,13 @@ export function NewChatScreen({
   initialProject?: string
   connected?: boolean
   connecting?: boolean
+  models?: ModelChoice[]
+  reasoningLevels?: string[]
+  catalogBusy?: boolean
+  pending?: boolean
   onSelectHost: (fingerprint: string) => void
   onBack: () => void
-  onStart: (text: string, projectId: string) => void
+  onStart: (text: string, projectId: string, extra?: ComposerExtra) => void
 }) {
   // A project id from another PC must not ride in as a selection this PC
   // cannot honour.
@@ -86,8 +94,12 @@ export function NewChatScreen({
         label={t("home.newMessage")}
         sendLabel={t("home.start")}
         disabled={!connected}
+        pending={pending}
         hint={connecting ? t("scan.connecting") : undefined}
-        onSubmit={(text) => onStart(text, project)}
+        models={models}
+        reasoningLevels={reasoningLevels}
+        catalogBusy={catalogBusy}
+        onSubmit={(text, extra) => (extra ? onStart(text, project, extra) : onStart(text, project))}
       />
     </main>
   )

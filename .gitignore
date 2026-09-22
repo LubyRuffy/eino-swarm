@@ -1,3 +1,7 @@
+# Local worktrees and downloaded issue screenshots
+.worktrees/
+.issue-assets/
+
 # Go build output
 /zwai
 /swarm-real

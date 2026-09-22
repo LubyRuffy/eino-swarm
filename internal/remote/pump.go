@@ -45,6 +45,7 @@ type LinkPump struct {
 	cancel   context.CancelFunc
 	watching string
 	watchWG  sync.WaitGroup
+	stage    *Staging
 }
 
 func newLinkPump(eng *engine.Engine, cfg config.RemoteConfig, l *client.Link) *LinkPump {
@@ -55,6 +56,7 @@ func newLinkPump(eng *engine.Engine, cfg config.RemoteConfig, l *client.Link) *L
 		sessionID: l.SessionID(),
 		deviceFP:  crypto.Fingerprint(l.PeerPub),
 		send:      l.Send,
+		stage:     NewStaging(),
 	}
 	if eng != nil {
 		p.devices = eng.Store()
@@ -101,7 +103,7 @@ func (p *LinkPump) Dispatch(msg []byte) {
 		p.touchDevice(req.Text)
 		p.reply(okBase(req.ID, p.path, p.sessionID))
 	default:
-		p.reply(Handle(p.eng, p.cfg, req, p.path, p.sessionID))
+		p.reply(HandleWith(p.eng, p.cfg, p.stage, req, p.path, p.sessionID))
 	}
 }
 

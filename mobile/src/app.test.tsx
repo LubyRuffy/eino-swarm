@@ -6,6 +6,7 @@ import { t } from "@/lib/i18n"
 import {
   OpHello,
   OpList,
+  OpMore,
   OpOpen,
   OpStart,
   OpUnwatch,
@@ -438,6 +439,79 @@ describe("starting a conversation is its own screen", () => {
   })
 })
 
+describe("inbox window and thread loading", () => {
+  afterEach(() => {
+    cleanup()
+    vi.useRealTimers()
+    vi.mocked(openSaved).mockReset()
+  })
+
+  it("keeps a row loaded with more after the inbox polls", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] })
+    seedLink()
+    const row = (id: string, title: string) => ({
+      id,
+      title,
+      running: false,
+      last_active_at: "2026-01-01T00:00:00Z",
+    })
+    vi.mocked(openSaved).mockResolvedValue(
+      hostLink({
+        list: async () => ({
+          v: 1,
+          id: "l",
+          ok: true,
+          threads: [row("a", "alpha"), row("b", "beta")],
+          running: [],
+          more: true,
+          next: "older",
+        }),
+        more: async () => ({
+          v: 1,
+          id: "m",
+          ok: true,
+          threads: [row("c", "paged")],
+          running: [],
+          more: false,
+          next: "",
+        }),
+      }),
+    )
+    render(<App />)
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: t("home.more") })).toBeInTheDocument()
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: t("home.more") }))
+    })
+    expect(screen.getByRole("button", { name: t("home.open", { title: "paged" }) })).toBeInTheDocument()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(screen.getByRole("button", { name: t("home.open", { title: "paged" }) })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: t("home.more") })).not.toBeInTheDocument()
+  })
+
+  it("shows loading outside the transcript while open has not answered", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(
+      hostLink({
+        open: () => new Promise(() => undefined),
+      }),
+    )
+    render(<App />)
+    const open = t("home.open", { title: "th-1" })
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: open })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: open }))
+    const status = await screen.findByRole("status")
+    expect(status).toHaveTextContent(t("thread.loading"))
+    expect(status.closest("[data-testid='transcript']")).toBeNull()
+    expect(screen.queryByTestId("transcript")).not.toBeInTheDocument()
+  })
+})
+
 /** Add a PC is a menu row: the corner it used to share is New chat now. */
 function openAddHost() {
   fireEvent.click(screen.getByRole("button", { name: t("home.menu") }))
@@ -458,6 +532,7 @@ function hostLink(opts?: {
   open?: () => Promise<RemoteResponse>
   watch?: () => Promise<RemoteResponse>
   start?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
+  more?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
 }): DeviceLink {
   const threads = opts?.threads ?? [
     { id: "th-1", title: "th-1", running: false, last_active_at: "2026-01-01T00:00:00Z" },
@@ -475,6 +550,7 @@ function hostLink(opts?: {
         if (opts?.list) return opts.list()
         return { v: 1, id: "l", ok: true, threads, running, projects: opts?.projects ?? [] }
       }
+      if (req.op === OpMore && opts?.more) return opts.more(req)
       if (req.op === OpOpen) {
         if (opts?.open) return opts.open()
         return {

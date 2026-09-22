@@ -67,7 +67,12 @@ builds the one-line label from platform + UA.
 is why the phone never sees a project prompt. `TestListRecentPageDoesNotCountLiveRows`
 is why In progress does not eat the Recents quota: four parked waits plus
 six idle conversations still return five project rows, and More stays on
-that idle list. `TestSlimListPayloadStaysBounded`
+that idle list. `TestCatalogListsReadyModelsAndHidesEndpointSecrets` is why
+the phone's model list has a second provider and no endpoint secret.
+`TestPngBytesNamedAsTextStayAFile` is why a png named like a text file is
+still a file, and `TestABadSelectionDoesNotLeaveAnEmptyConversation` is
+why a refused model does not leave an empty thread.
+`TestSlimListPayloadStaysBounded`
 caps the default list. `TestUDPBlockedListAndSendStayOnRelay` is the
 UDP-blocked path: QR pixels round-trip to the same URI, then list and send
 stay on `path=relay`. `TestWatchLiveSendAndUnwatch` plus the kinds freeze
@@ -160,7 +165,13 @@ could not get past the scan form. `mobile/e2e/walkthrough.spec.ts` drives
 those screens on it: live rows separate from recents with an age on each,
 a turn that folds its work behind the answer, a short conversation resting
 on the composer rather than under blank space, New chat (and a project row)
-opening what it started, and inbox search narrowing the rows.
+opening what it started, inbox search narrowing the rows, a page loaded
+with More still there after the inbox refreshes, a loading status while
+open is held (`?pause=open`), and the composer's model, thinking level,
+and attach control.
+`mobile/src/lib/inbox-window.test.ts` is why a later first page does not
+drop rows More already loaded, and why a page-one row that left that page
+does not stay.
 
 `mobile/src/components/composer.test.tsx` is why Enter sends but Shift+Enter
 and an IME candidate list do not, why send stays off until there is

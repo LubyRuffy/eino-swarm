@@ -550,10 +550,31 @@ describe("ThreadScreen", () => {
     expect(screen.getByRole("button", { name: "Loading" })).toBeDisabled()
     const transcript = screen.getByTestId("transcript")
     expect(transcript).toHaveClass("invisible")
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
     Object.defineProperty(transcript, "scrollTop", { value: 4, configurable: true })
     Object.defineProperty(transcript, "scrollHeight", { value: 800, configurable: true })
     Object.defineProperty(transcript, "clientHeight", { value: 400, configurable: true })
     fireEvent.scroll(transcript)
     expect(onOlder).not.toHaveBeenCalled()
+  })
+
+  it("shows loading outside the transcript when the conversation has not arrived", () => {
+    setLocale("en")
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live" }}
+        blocks={[]}
+        caughtUp={false}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    const status = screen.getByRole("status")
+    expect(status).toHaveTextContent("Loading")
+    expect(screen.queryByTestId("transcript")).not.toBeInTheDocument()
   })
 })

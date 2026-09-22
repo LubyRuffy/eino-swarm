@@ -13,6 +13,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **The phone composer matches the PC.** It can pick a ready model, a
+  thinking level, and attach a file or an image. An image is vision; other
+  files land in the workspace. The phone uploads, then sends; the PC decides
+  whether that is a new turn, a follow-up, or a steer.
+
 - **One engine per data directory.** Desktop, web, and the terminal attach
   to `zwai engine` over loopback HTTP. The first shell starts it; a later
   shell does not open the database or start a second swarm. Closing a
@@ -189,6 +194,17 @@ co-working app built on it. The library API is unchanged except where noted
   counts; whitespace does not. A `/goal` or `/plan` prompt that is still
   waiting for its argument keeps Send disabled beside Stop. Esc still
   stops the turn.
+
+- **More on the phone inbox survives the next refresh.** The inbox is a
+  loaded window: the first page plus rows already brought in with More. A
+  later first-page list patches that page and keeps the rest. A row that
+  left the first page is not kept just because it was there last time.
+  The control shows that it is loading.
+
+- **Opening a conversation is not a blank screen.** Until the transcript
+  arrives, the body shows a loading status. A request that is still in
+  flight (More, send, loading older) shows motion instead of a frozen
+  control.
 
 - **Tidy skills stays with the project.** The Memory panel kept one tidy
   card for the whole app, so leaving a project and coming back dropped the

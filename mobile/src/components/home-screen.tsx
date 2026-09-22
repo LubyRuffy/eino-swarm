@@ -1,4 +1,4 @@
-import { SquarePen } from "lucide-react"
+import { Loader2, SquarePen } from "lucide-react"
 import { Children, useState, type ReactNode } from "react"
 
 import { HomeBar } from "@/components/home-bar"
@@ -21,6 +21,7 @@ export function HomeScreen({
   threads,
   running,
   more,
+  loadingMore = false,
   onOpen,
   onMore,
   onNewChat,
@@ -42,6 +43,7 @@ export function HomeScreen({
   threads: ThreadView[]
   running: RunningView[]
   more: boolean
+  loadingMore?: boolean
   onOpen: (id: string) => void
   onMore: () => void
   onNewChat: (projectId: string) => void
@@ -137,8 +139,16 @@ export function HomeScreen({
             ))}
             {empty && !error ? query ? <NoMatch /> : <EmptyInbox /> : null}
             {more && !query ? (
-              <Button variant="outline" onClick={onMore}>
-                {t("home.more")}
+              <Button
+                variant="outline"
+                onClick={onMore}
+                disabled={loadingMore}
+                aria-busy={loadingMore || undefined}
+              >
+                {loadingMore ? (
+                  <Loader2 className="size-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden />
+                ) : null}
+                {loadingMore ? t("home.loadingMore") : t("home.more")}
               </Button>
             ) : null}
           </div>

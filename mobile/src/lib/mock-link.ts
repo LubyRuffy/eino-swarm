@@ -1,6 +1,7 @@
 import {
   OpAnswer,
   OpCancelWait,
+  OpCatalog,
   OpEvent,
   OpHello,
   OpList,
@@ -14,6 +15,8 @@ import {
   OpStart,
   OpSteer,
   OpStop,
+  OpPut,
+  OpTune,
   OpUnwatch,
   OpWatch,
   PROTOCOL_V,
@@ -48,6 +51,12 @@ export function mockTickMs(search = location.search): number {
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_TICK_MS
 }
 
+/** Holds open long enough for a loading status to be visible. The default
+ *  walkthrough does not wait. */
+export function mockPauseOpenMs(search = location.search): number {
+  return new URLSearchParams(search).get("pause") === "open" ? 1200 : 0
+}
+
 type MockThread = {
   id: string
   title: string
@@ -59,6 +68,9 @@ type MockThread = {
   askUser: boolean
   minutesAgo: number
   goal?: string
+  providerID?: string
+  model?: string
+  reasoning?: string
   events: RemoteEvent[]
 }
 
@@ -212,9 +224,26 @@ export class MockHost {
       projects,
       threads: this.threads.filter((th) => !th.running && !th.waiting).map((th) => this.view(th)),
       running,
-      more: false,
-      next: "",
+      // One idle row lives past this page so More is a real page, not a
+      // button that appends nothing. The first page never includes it.
+      more: true,
+      next: "older",
     }
+  }
+
+  older(): ThreadView {
+    return this.view({
+      id: "t-older",
+      title: "Page past the first",
+      projectID: "",
+      summary: "",
+      running: false,
+      waiting: false,
+      action: "",
+      askUser: false,
+      minutesAgo: 90,
+      events: [],
+    })
   }
 
   at(th: MockThread): string {
@@ -246,6 +275,9 @@ export class MockHost {
       running: th.running
         ? { thread_id: th.id, title: th.title, action: th.action }
         : undefined,
+      provider_id: th.providerID,
+      model: th.model,
+      reasoning: th.reasoning,
     }
   }
 
@@ -415,8 +447,36 @@ export class MockLink {
       case OpList:
         return this.ok({ id, ...this.host.listing() })
       case OpMore:
-        return this.ok({ id, threads: [], more: false, next: "" })
+        return this.ok({ id, threads: [this.host.older()], more: false, next: "" })
+      case OpCatalog:
+        return this.ok({
+          id,
+          models: [
+            {
+              provider_id: "walkthrough",
+              provider_label: "Walkthrough",
+              model: "scripted",
+              default: true,
+            },
+          ],
+          reasoning_levels: ["low", "medium", "high"],
+        })
+      case OpTune: {
+        const th = thread()
+        if (!th) return this.missing(id)
+        if (req.provider_id) th.providerID = req.provider_id
+        if (req.model) th.model = req.model
+        if (req.reasoning !== undefined) th.reasoning = req.reasoning
+        return this.ok({ id })
+      }
+      case OpPut:
+        return this.ok({
+          id,
+          put: { id: req.put_id ?? "", ready: (req.part ?? 0) > 0 && req.part === req.parts },
+        })
       case OpOpen: {
+        const pause = mockPauseOpenMs()
+        if (pause > 0) await new Promise((resolve) => window.setTimeout(resolve, pause))
         const th = thread()
         if (!th) return this.missing(id)
         return this.ok({ id, detail: this.host.detail(th) })

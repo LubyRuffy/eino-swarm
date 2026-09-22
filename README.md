@@ -346,7 +346,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    down, and a short chime when the pairing QR is read. After bind, a live turn
    (or the last thread this phone opened) opens immediately; otherwise the
    inbox lists In progress, then projects / Recents with the latest 5 idle
-   threads (live rows do not consume that quota). The list does not compose:
+   threads (live rows do not consume that quota). **More** loads the next
+   idle page, and a later refresh keeps those rows. The list does not compose:
    search and **New chat** sit under it, the header corner is **New chat**,
    and each project row's right side starts one already in that project.
    A later launch with
@@ -356,8 +357,11 @@ end-to-end tests run on and the fastest way to see the UI work.
    findings or **Waiting**, not `schedule_wake` / `report_schedule` JSON.
    The transcript opens on the
    last turn, already at the live edge; Earlier or pull up loads older rows. A tap
-   paints the chrome immediately; the transcript is a short tail, not the
-   whole turn. Markdown
+   paints the chrome immediately; until that conversation arrives the body
+   shows a loading status, not a blank screen. The transcript is a short tail, not the
+   whole turn. The composer matches the PC: a model, a thinking level, and a
+   file or image. An image is shown to the model; other files go into the
+   workspace. Markdown
    renders in the transcript. Adjacent thoughts and tool calls fold into one
    row; an answer stays on screen and splits that row. Open it to see each
    tool, still collapsed to a one-line preview.
@@ -365,8 +369,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    `/goal` wait paints **Pursuing** plus **Waiting** (next check, Run now,
    Cancel wait) instead of a silent composer. A long objective stays one
    line so that chrome cannot cover the wait or the box. A dropped hub socket is a
-   reconnect banner, not a frozen inbox. Settings, files,
-   PTY and Trace stay on the PC.
+   reconnect banner, not a frozen inbox. The file browser, Settings,
+   PTY and Trace stay on the PC. The composer can still attach a file or an image.
    `make mobile-ios` / `make mobile-android` open Xcode or Android Studio
    after copying the web bundle. `make mobile-android-release` writes the
    signed APK/AAB to `bin/` (set `ANDROID_KEYSTORE*` or a gitignored

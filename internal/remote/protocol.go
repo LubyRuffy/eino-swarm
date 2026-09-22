@@ -26,6 +26,9 @@ const (
 	OpCancelWait = "cancel_wait"
 	OpResumeGoal = "resume_goal"
 	OpHello      = "hello"
+	OpCatalog    = "catalog"
+	OpTune       = "tune"
+	OpPut        = "put"
 )
 
 // MaxPushPayload is pairlink's plaintext cap. A tool_delta that would
@@ -45,31 +48,67 @@ type Request struct {
 	Answers   json.RawMessage `json:"answers,omitempty"`
 	Since     int64           `json:"since,omitempty"`
 	Before    int64           `json:"before,omitempty"`
+	// ProviderID and Model switch the conversation's endpoint. Empty leaves it.
+	ProviderID string `json:"provider_id,omitempty"`
+	Model      string `json:"model,omitempty"`
+	// Reasoning is a pointer so the phone can select the empty default.
+	// A missing field leaves the conversation's level alone.
+	Reasoning *string `json:"reasoning,omitempty"`
+	// Puts are finished upload ids from OpPut, consumed by start/send/steer.
+	Puts []string `json:"puts,omitempty"`
+	// Put fields stream one file or image across frames. Pairlink's plaintext
+	// cap is 64KiB, so a photo cannot ride in a single request.
+	PutID string `json:"put_id,omitempty"`
+	Name  string `json:"name,omitempty"`
+	MIME  string `json:"mime,omitempty"`
+	Part  int    `json:"part,omitempty"`
+	Parts int    `json:"parts,omitempty"`
+	Data  string `json:"data,omitempty"`
 }
 
 // Response is what the PC replies. Path and SessionID are pairlink
 // metadata so zwai trace can join the remote hop.
 type Response struct {
-	V         int           `json:"v"`
-	ID        string        `json:"id"`
-	OK        bool          `json:"ok"`
-	Error     string        `json:"error,omitempty"`
-	Code      string        `json:"code,omitempty"`
-	Path      string        `json:"path,omitempty"`
-	SessionID string        `json:"session_id,omitempty"`
-	Host      string        `json:"host,omitempty"`
-	Projects  []ProjectView `json:"projects,omitempty"`
-	Threads   []ThreadView  `json:"threads,omitempty"`
-	Running   []RunningView `json:"running,omitempty"`
-	More      bool          `json:"more,omitempty"`
-	Next      string        `json:"next,omitempty"`
-	Detail    *ThreadDetail `json:"detail,omitempty"`
-	Op        string        `json:"op,omitempty"`
-	ThreadID  string        `json:"thread_id,omitempty"`
-	Seq       int64         `json:"seq,omitempty"`
-	Event     *EventView    `json:"event,omitempty"`
-	Events    []EventView   `json:"events,omitempty"`
-	Status    *WatchStatus  `json:"status,omitempty"`
+	V               int           `json:"v"`
+	ID              string        `json:"id"`
+	OK              bool          `json:"ok"`
+	Error           string        `json:"error,omitempty"`
+	Code            string        `json:"code,omitempty"`
+	Path            string        `json:"path,omitempty"`
+	SessionID       string        `json:"session_id,omitempty"`
+	Host            string        `json:"host,omitempty"`
+	Projects        []ProjectView `json:"projects,omitempty"`
+	Threads         []ThreadView  `json:"threads,omitempty"`
+	Running         []RunningView `json:"running,omitempty"`
+	More            bool          `json:"more,omitempty"`
+	Next            string        `json:"next,omitempty"`
+	Detail          *ThreadDetail `json:"detail,omitempty"`
+	Op              string        `json:"op,omitempty"`
+	ThreadID        string        `json:"thread_id,omitempty"`
+	Seq             int64         `json:"seq,omitempty"`
+	Event           *EventView    `json:"event,omitempty"`
+	Events          []EventView   `json:"events,omitempty"`
+	Status          *WatchStatus  `json:"status,omitempty"`
+	Models          []ModelView   `json:"models,omitempty"`
+	ReasoningLevels []string      `json:"reasoning_levels,omitempty"`
+	Put             *PutView      `json:"put,omitempty"`
+}
+
+// ModelView is one composer row. No endpoint, key, or token window: the phone
+// only needs enough to pick a name the PC already knows.
+type ModelView struct {
+	ProviderID    string `json:"provider_id"`
+	ProviderLabel string `json:"provider_label,omitempty"`
+	Model         string `json:"model"`
+	Default       bool   `json:"default,omitempty"`
+}
+
+// PutView is the progress of one chunked upload on this link.
+type PutView struct {
+	ID    string `json:"id"`
+	Name  string `json:"name,omitempty"`
+	Ready bool   `json:"ready"`
+	Kind  string `json:"kind,omitempty"`
 }
 
 type WatchStatus struct {
@@ -151,6 +190,9 @@ type ThreadDetail struct {
 	GoalIdle        bool         `json:"goal_idle,omitempty"`
 	GoalStartedAt   string       `json:"goal_started_at,omitempty"`
 	PlanOn          bool         `json:"plan_on,omitempty"`
+	ProviderID      string       `json:"provider_id,omitempty"`
+	Model           string       `json:"model,omitempty"`
+	Reasoning       string       `json:"reasoning,omitempty"`
 	Waiting         bool         `json:"waiting,omitempty"`
 	Wake            *WakeView    `json:"wake,omitempty"`
 	Running         *RunningView `json:"running,omitempty"`
