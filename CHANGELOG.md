@@ -2261,6 +2261,12 @@ The phone checks GitHub Releases and can install a newer Android build.
   version. The download stays on this repo; a release-asset host is only
   accepted as a redirect.
 
+### Changed
+
+- **The phone inbox no longer composes.** Search and **New chat** sit under
+  the list; the header corner is **New chat**. A project row starts a
+  conversation already in that project. New chat is its own screen.
+
 ## [0.1.2] - 2026-09-22
 
 The phone's inbox and composer, redesigned.
