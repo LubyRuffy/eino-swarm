@@ -1,11 +1,11 @@
 import { useLayoutEffect, useRef, useState } from "react"
-import { ChevronLeft } from "lucide-react"
+import { ArrowDown, ChevronLeft } from "lucide-react"
 
 import { AskCard } from "@/components/ask-card"
+import { Composer } from "@/components/composer"
 import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
 import { ThreadLog } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/input"
 import { t } from "@/lib/i18n"
 import type { CompactBlock } from "@/lib/transcript"
 import { pendingAsk } from "@/lib/transcript"
@@ -56,6 +56,7 @@ export function ThreadScreen({
   const stick = useRef(true)
   const pinHeight = useRef<number | null>(null)
   const [atTail, setAtTail] = useState(false)
+  const [behind, setBehind] = useState(false)
 
   const loadOlder = () => {
     if (!onOlder || loadingOlder || !hasMore || !caughtUp) return
@@ -76,9 +77,20 @@ export function ThreadScreen({
       if (el.scrollTop < 48 && hasMore) loadOlder()
       return
     }
-    if (stick.current) el.scrollTop = el.scrollHeight
+    if (stick.current) {
+      el.scrollTop = el.scrollHeight
+      if (behind) setBehind(false)
+    }
     if (!atTail) setAtTail(true)
-  }, [caughtUp, blocks, loadingOlder, hasMore, atTail])
+  }, [caughtUp, blocks, loadingOlder, hasMore, atTail, behind])
+
+  const toLatest = () => {
+    const el = scroller.current
+    if (!el) return
+    stick.current = true
+    setBehind(false)
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+  }
 
   const onPullStart = (y: number) => {
     pullY.current = y
@@ -107,7 +119,7 @@ export function ThreadScreen({
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {running || waiting ? (
             <span
-              className="size-1.5 shrink-0 rounded-full bg-[hsl(var(--running))]"
+              className="size-1.5 shrink-0 rounded-full bg-[hsl(var(--running))] motion-safe:animate-pulse"
               aria-hidden
             />
           ) : null}
@@ -161,108 +173,76 @@ export function ThreadScreen({
         </div>
       ) : null}
 
-      {/* Android WebView will not scroll a flex-column <ol>. Bounded
-          overflow box; Earlier sits above so paging is not a dead drag. */}
-      <div
-        ref={scroller}
-        data-testid="transcript"
-        className={cn(
-          "min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-scroll overscroll-y-contain touch-pan-y px-3 py-3 [-webkit-overflow-scrolling:touch]",
-          !atTail && "invisible",
-        )}
-        onScroll={(e) => {
-          const el = e.currentTarget
-          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
-          if (!atTail) return
-          if (el.scrollTop < 48) loadOlder()
-        }}
-        onTouchStart={(e) => onPullStart(e.touches[0]?.clientY ?? 0)}
-        onTouchMove={(e) => onPullMove(e.touches[0]?.clientY ?? 0)}
-        onTouchEnd={() => {
-          pullY.current = null
-        }}
-      >
-        <div className="flex min-w-0 w-full flex-col gap-2">
-          {!caughtUp && blocks.length === 0 ? (
-            <p className="px-1 text-xs text-muted-foreground">{t("thread.loading")}</p>
-          ) : (
-            <ThreadLog blocks={blocks} running={running} />
+      <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Android WebView will not scroll a flex-column <ol>. Bounded
+            overflow box; Earlier sits above so paging is not a dead drag. */}
+        <div
+          ref={scroller}
+          data-testid="transcript"
+          className={cn(
+            "min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-scroll overscroll-y-contain touch-pan-y px-3 py-3 [-webkit-overflow-scrolling:touch]",
+            !atTail && "invisible",
           )}
-          {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
-            <AskCard
-              questions={ask.questions!}
-              onSubmit={(answers) => onAnswerStructured(ask.callId || "", answers)}
-            />
-          ) : null}
+          onScroll={(e) => {
+            const el = e.currentTarget
+            const gap = el.scrollHeight - el.scrollTop - el.clientHeight
+            stick.current = gap < 48
+            // The button is for a reader who scrolled away, not for the two
+            // pixels of slack a streaming answer leaves behind.
+            const away = gap > 240
+            if (away !== behind) setBehind(away)
+            if (!atTail) return
+            if (el.scrollTop < 48) loadOlder()
+          }}
+          onTouchStart={(e) => onPullStart(e.touches[0]?.clientY ?? 0)}
+          onTouchMove={(e) => onPullMove(e.touches[0]?.clientY ?? 0)}
+          onTouchEnd={() => {
+            pullY.current = null
+          }}
+        >
+          {/* Bottom-aligned: a short conversation sits above the composer
+              instead of floating under a screen of blank. */}
+          <div className="flex min-h-full min-w-0 w-full flex-col justify-end gap-2">
+            {!caughtUp && blocks.length === 0 ? (
+              <p className="px-1 text-xs text-muted-foreground">{t("thread.loading")}</p>
+            ) : (
+              <ThreadLog blocks={blocks} running={running} />
+            )}
+            {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
+              <AskCard
+                questions={ask.questions!}
+                onSubmit={(answers) => onAnswerStructured(ask.callId || "", answers)}
+              />
+            ) : null}
+          </div>
         </div>
+        {behind && atTail ? (
+          <button
+            type="button"
+            data-testid="to-latest"
+            aria-label={t("thread.toLatest")}
+            className={cn(
+              "absolute bottom-3 left-1/2 flex size-9 -translate-x-1/2 items-center justify-center",
+              "rounded-full border border-border bg-card text-foreground shadow-md",
+              "transition-opacity active:bg-accent",
+            )}
+            onClick={toLatest}
+          >
+            <ArrowDown className="size-4" aria-hidden />
+          </button>
+        ) : null}
       </div>
 
       <Composer
-        asking={asking}
-        running={running && !asking}
-        onSend={onSend}
-        onSteer={onSteer}
-        onAnswer={onAnswer}
+        // The box and the button cannot share a name, or a screen reader
+        // announces two "Answer" controls and a test cannot pick either.
+        label={asking ? t("thread.answerBox") : t("thread.message")}
+        sendLabel={asking ? t("thread.answer") : running ? t("thread.followUp") : t("thread.send")}
+        hint={running && !asking ? t("thread.sendHint") : undefined}
+        steerLabel={running && !asking ? t("thread.steer") : undefined}
+        onSteer={running && !asking ? onSteer : undefined}
+        onSubmit={asking ? onAnswer : onSend}
       />
     </main>
-  )
-}
-
-function Composer({
-  asking,
-  running,
-  onSend,
-  onSteer,
-  onAnswer,
-}: {
-  asking: boolean
-  running: boolean
-  onSend: (text: string) => void
-  onSteer: (text: string) => void
-  onAnswer: (text: string) => void
-}) {
-  const [text, setText] = useState("")
-  const submit = (mode: "send" | "steer" | "answer") => {
-    const v = text.trim()
-    if (!v) return
-    if (mode === "steer") onSteer(v)
-    else if (mode === "answer") onAnswer(v)
-    else onSend(v)
-    setText("")
-  }
-  const label = asking
-    ? t("thread.answer")
-    : running
-      ? t("thread.followUp")
-      : t("thread.send")
-  return (
-    <form
-      className="flex min-w-0 shrink-0 items-end gap-2 border-t border-border bg-background px-3 py-2"
-      onSubmit={(e) => {
-        e.preventDefault()
-        submit(asking ? "answer" : "send")
-      }}
-    >
-      <Textarea
-        aria-label={asking ? t("thread.answer") : t("thread.message")}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        rows={1}
-        className="min-h-10 max-h-24 flex-1 resize-none rounded-2xl border-0 bg-muted px-3 py-2"
-      />
-      {running ? (
-        <Button
-          type="button"
-          variant="ghost"
-          className="h-10 shrink-0 px-3"
-          onClick={() => submit("steer")}
-        >
-          {t("thread.steer")}
-        </Button>
-      ) : null}
-      <Button type="submit" className={cn("h-10 shrink-0 rounded-2xl px-4")}>
-        {label}
-      </Button>
-    </form>
   )
 }

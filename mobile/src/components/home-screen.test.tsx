@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { HomeScreen } from "./home-screen"
@@ -208,6 +208,138 @@ describe("HomeScreen", () => {
     )
     expect(screen.getAllByText("one thing changed")).toHaveLength(2)
     expect(screen.queryByText(/report_schedule/)).not.toBeInTheDocument()
+  })
+
+  it("says the inbox is empty instead of showing a blank screen", () => {
+    render(
+      <HomeScreen
+        {...chrome()}
+        path="relay"
+        projects={[]}
+        threads={[]}
+        running={[]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onStart={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("Nothing running")).toBeInTheDocument()
+    expect(screen.getByLabelText("New message")).toBeInTheDocument()
+  })
+
+  it("starts in the project the chips are set to", () => {
+    const onStart = vi.fn()
+    render(
+      <HomeScreen
+        {...chrome()}
+        path="relay"
+        projects={[
+          { id: "p1", name: "work" },
+          { id: "p2", name: "notes" },
+        ]}
+        threads={[]}
+        running={[]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onStart={onStart}
+        onUnlink={vi.fn()}
+      />,
+    )
+    const chips = screen.getByRole("radiogroup", { name: "Project" })
+    expect(within(chips).getByRole("radio", { name: "Default" })).toBeChecked()
+    fireEvent.click(within(chips).getByRole("radio", { name: "notes" }))
+    fireEvent.change(screen.getByLabelText("New message"), { target: { value: "go" } })
+    fireEvent.click(screen.getByRole("button", { name: "Start" }))
+    expect(onStart).toHaveBeenCalledWith("go", "p2")
+  })
+
+  // A parked wait is never also a Recents row, so the roster row is the only
+  // place its line and its age can come from. A wait armed two hours ago
+  // that reads as a bare badge says nothing about what it is waiting on.
+  it("dates a parked wait and says what it is waiting on", () => {
+    render(
+      <HomeScreen
+        {...chrome()}
+        path="relay"
+        projects={[]}
+        threads={[]}
+        running={[
+          {
+            thread_id: "t1",
+            title: "thread 1",
+            waiting: true,
+            action: "checking again later",
+            last_active_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+          },
+        ]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onStart={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("checking again later")).toBeInTheDocument()
+    expect(screen.getByText("2h ago")).toBeInTheDocument()
+  })
+
+  // Running is happening now; a date on it would only be the date of the
+  // frame that painted it.
+  it("does not date a row that is running", () => {
+    render(
+      <HomeScreen
+        {...chrome()}
+        path="relay"
+        projects={[]}
+        threads={[]}
+        running={[
+          {
+            thread_id: "t1",
+            title: "thread 1",
+            turn_id: "tu",
+            action: "reading a file",
+            last_active_at: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+          },
+        ]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onStart={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("Running")).toBeInTheDocument()
+    expect(screen.queryByText("2h ago")).not.toBeInTheDocument()
+  })
+
+  it("reloads the roster when the list is pulled down", async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined)
+    render(
+      <HomeScreen
+        {...chrome()}
+        path="relay"
+        projects={[]}
+        threads={[]}
+        running={[]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onStart={vi.fn()}
+        onUnlink={vi.fn()}
+        onRefresh={onRefresh}
+      />,
+    )
+    const scroller = screen.getByTestId("inbox-scroller")
+    Object.defineProperty(scroller, "scrollTop", { value: 0, configurable: true })
+    fireEvent.touchStart(scroller, { touches: [{ clientY: 0 }] })
+    fireEvent.touchMove(scroller, { touches: [{ clientY: 200 }] })
+    await act(async () => {
+      fireEvent.touchEnd(scroller)
+    })
+    expect(onRefresh).toHaveBeenCalled()
   })
 
   it("keeps five project recents when in-progress is a separate roster", () => {

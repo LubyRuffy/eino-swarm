@@ -83,6 +83,45 @@ describe("HostChrome", () => {
     expect(onUnlink).toHaveBeenCalledOnce()
   })
 
+  // The tabs share one row with the menu and Add. Past three or four PCs the
+  // row scrolls, and the chip naming the PC you are on can be the one off it.
+  it("scrolls the PC you switched to back into the row", () => {
+    setLocale("en")
+    const seen: Element[] = []
+    const spy = vi.fn(function (this: Element) {
+      seen.push(this)
+    })
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      value: spy,
+      configurable: true,
+      writable: true,
+    })
+    const hosts = [host("a", "desk-one"), host("b", "lab"), host("c", "shed")]
+    const view = render(
+      <HostChrome
+        hosts={hosts}
+        activeFingerprint="a"
+        path="relay"
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(seen.at(-1)).toBe(screen.getByRole("tab", { name: "desk-one" }))
+
+    view.rerender(
+      <HostChrome
+        hosts={hosts}
+        activeFingerprint="c"
+        path="relay"
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(seen.at(-1)).toBe(screen.getByRole("tab", { name: "shed" }))
+  })
+
   it("paints a down PC gray, not the online green", () => {
     setLocale("en")
     render(

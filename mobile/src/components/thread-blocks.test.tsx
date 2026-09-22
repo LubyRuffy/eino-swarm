@@ -29,6 +29,18 @@ describe("thread blocks", () => {
     expect(screen.getByText("going").closest("strong")).toBeTruthy()
   })
 
+  // A bubble stretched to the column for three words is a banner, and the
+  // eye loses which side of the conversation it is reading.
+  it("keeps what you said hugging its own text on your side of the column", () => {
+    const { container } = render(
+      <>{renderBlock({ id: "u", kind: "user", text: "hi" })}</>,
+    )
+    const bubble = container.firstElementChild as HTMLElement
+    expect(bubble.className).toContain("ml-auto")
+    expect(bubble.className).toContain("w-fit")
+    expect(bubble.className).not.toContain("max-w-full")
+  })
+
   it("splits a quoted user bubble so the tags are not the message", () => {
     render(
       <>

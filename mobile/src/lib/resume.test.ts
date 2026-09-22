@@ -29,6 +29,29 @@ describe("collectLive", () => {
     expect(live[0].waiting).toBe(true)
     expect(pickResumeThread("", [], [parked])).toBe("w")
   })
+
+  // A host that flags the wait on the thread and sends an empty roster is
+  // the only source of that row's line and date; synthesising a bare
+  // title leaves the inbox with a badge and nothing else.
+  it("carries the thread's own line and date onto a row it synthesises", () => {
+    const parked = thread("w", false)
+    parked.waiting = true
+    parked.summary = "checking again later"
+    const live = collectLive([], [parked])
+    expect(live[0].action).toBe("checking again later")
+    expect(live[0].last_active_at).toBe(parked.last_active_at)
+  })
+
+  // The roster is the host's own answer. A thread row repeating a stale
+  // line must not overwrite what the live turn is actually doing.
+  it("does not let the listing overwrite a roster row the host already sent", () => {
+    const parked = thread("w", false)
+    parked.waiting = true
+    parked.summary = "stale"
+    const live = collectLive([run("w", { waiting: true, action: "fresh" })], [parked])
+    expect(live).toHaveLength(1)
+    expect(live[0].action).toBe("fresh")
+  })
 })
 
 describe("pickResumeThread", () => {
@@ -73,6 +96,21 @@ describe("detailFromListing", () => {
       id: "missing",
       title: "missing",
     })
+  })
+
+  // A parked wait's row carries the thread's summary as its line. Reading
+  // that as a live turn puts Stop and a steer box over the Waiting header
+  // and the schedule banner until `open` comes back and undoes it.
+  it("does not read a parked wait's line as a turn that is running", () => {
+    const parked = thread("w", false)
+    parked.waiting = true
+    const stub = detailFromListing(
+      "w",
+      [run("w", { waiting: true, action: "checking again later" })],
+      [parked],
+    )
+    expect(stub.waiting).toBe(true)
+    expect(stub.running).toBeUndefined()
   })
 })
 

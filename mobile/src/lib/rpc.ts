@@ -52,6 +52,7 @@ export type RunningView = {
   action?: string
   ask_user?: boolean
   waiting?: boolean
+  last_active_at?: string
 }
 
 export type TurnView = {

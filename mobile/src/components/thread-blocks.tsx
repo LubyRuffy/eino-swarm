@@ -26,7 +26,9 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text && !b.hasImages) return null
     return (
-      <div className="ml-6 min-w-0 max-w-full break-words rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
+      // A bubble as wide as the screen for three words reads as a banner.
+      // What you said hugs its own text and sits on the side you typed from.
+      <div className="ml-auto w-fit min-w-0 max-w-[85%] break-words rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
         {text ? <QuotedPhoneText text={text} /> : null}
         {b.hasImages ? (
           <p className="mt-1 text-xs text-muted-foreground">{t("thread.image")}</p>
@@ -38,7 +40,7 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text) return null
     return (
-      <div className="ml-6 min-w-0 max-w-full break-words rounded-2xl bg-accent px-3 py-2 text-sm">
+      <div className="ml-auto w-fit min-w-0 max-w-[85%] break-words rounded-2xl bg-accent px-3 py-2 text-sm">
         <QuotedPhoneText text={text} />
       </div>
     )

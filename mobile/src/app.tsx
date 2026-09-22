@@ -11,9 +11,9 @@ import {
   DeviceLink,
   LinkFault,
   linkError,
-  openSaved,
   remoteError,
 } from "@/lib/client"
+import { openLink, type RemoteLink } from "@/lib/link"
 import { getLocale, t, toggleLocale } from "@/lib/i18n"
 import type {
   ProjectView,
@@ -72,7 +72,7 @@ export function App() {
   )
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string>()
-  const [link, setLink] = useState<DeviceLink | null>(null)
+  const [link, setLink] = useState<RemoteLink | null>(null)
   const [busy, setBusy] = useState(() => loadSavedLinks().length > 0)
   const [bindBusy, setBindBusy] = useState(false)
   const [reconnecting, setReconnecting] = useState(false)
@@ -84,7 +84,7 @@ export function App() {
   const [cursor, setCursor] = useState("")
   const [view, setView] = useState<PhoneView>(emptyView())
   const [loadingOlder, setLoadingOlder] = useState(false)
-  const linkRef = useRef<DeviceLink | null>(null)
+  const linkRef = useRef<RemoteLink | null>(null)
   const viewRef = useRef<PhoneView>(view)
   const addingRef = useRef(false)
   const resumedRef = useRef(false)
@@ -115,7 +115,7 @@ export function App() {
     setHosts(loadSavedLinks())
   }
 
-  const applyList = (resp: RemoteResponse, append: boolean, target?: DeviceLink) => {
+  const applyList = (resp: RemoteResponse, append: boolean, target?: RemoteLink) => {
     if (!resp.ok) {
       setError(remoteError(resp.error || resp.code || ""))
       return
@@ -150,7 +150,7 @@ export function App() {
     takeHostName(resp)
   }
 
-  const attachPush = (next: DeviceLink) => {
+  const attachPush = (next: RemoteLink) => {
     next.onPush = (resp) => {
       if (resp.path) next.path = resp.path
       commitView(applyPush(viewRef.current, resp))
@@ -165,7 +165,7 @@ export function App() {
     })
   }
 
-  const openThreadOn = async (target: DeviceLink, id: string) => {
+  const openThreadOn = async (target: RemoteLink, id: string) => {
     const staying = viewRef.current.threadId === id && Boolean(viewRef.current.detail)
     // A cleared threadId means Back already left. A check that only bails
     // when some other id is current treats "left" as still here, and the
@@ -202,7 +202,7 @@ export function App() {
     }
   }
 
-  const consumeFirstList = async (target: DeviceLink, resp: RemoteResponse) => {
+  const consumeFirstList = async (target: RemoteLink, resp: RemoteResponse) => {
     applyList(resp, false, target)
     if (!resp.ok || resumedRef.current || viewRef.current.detail) return
     const id = pickResumeThread(loadLastThreadId(), resp.running ?? [], resp.threads ?? [])
@@ -222,7 +222,7 @@ export function App() {
     try {
       let next = linkRef.current
       if (force || !next?.alive()) {
-        next = await openSaved(saved)
+        next = await openLink(saved)
         if (gen !== bindGen.current) {
           next.close()
           return
@@ -264,7 +264,7 @@ export function App() {
     const gen = bindGen.current
     setBusy(true)
     try {
-      const next = await openSaved(saved)
+      const next = await openLink(saved)
       if (gen !== bindGen.current) {
         next.close()
         return
@@ -563,7 +563,7 @@ export function App() {
     return (
       <div className="flex h-full min-w-0 flex-col overflow-hidden">
         {banner}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="screen-push flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ThreadScreen
             key={locale + detail.id}
             detail={detail}
@@ -672,6 +672,18 @@ export function App() {
             setAdding(true)
           }}
           onRetry={() => void boot()}
+          onRefresh={async () => {
+            const target = linkRef.current
+            if (!target?.alive()) {
+              await recover(true)
+              return
+            }
+            try {
+              applyList(await target.rpc({ op: OpList }), false)
+            } catch (e) {
+              fail(e)
+            }
+          }}
           onMore={async () => {
             if (!link) return
             try {

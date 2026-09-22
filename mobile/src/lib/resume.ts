@@ -14,10 +14,14 @@ export function collectLive(running: RunningView[], threads: ThreadView[]): Runn
   for (const r of running) push(r)
   for (const th of threads) {
     if (!th.running && !th.waiting) continue
+    // A host that flags the wait on the thread and leaves the roster empty
+    // still owes the row a line and a date; the thread carries both.
     push({
       thread_id: th.id,
       title: th.title,
       waiting: th.waiting,
+      action: th.summary,
+      last_active_at: th.last_active_at,
     })
   }
   return out
@@ -79,7 +83,10 @@ export function detailFromListing(
   const th = threads.find((t) => t.id === id)
   const title = (th?.title || live?.title || "").trim() || id
   const waiting = Boolean(live?.waiting || th?.waiting)
-  const liveTurn = Boolean(live && (live.turn_id || live.ask_user || live.action))
+  // A parked wait also carries a line now, so a line alone no longer means
+  // a turn is running. Painting one anyway swaps the Waiting header and the
+  // schedule banner for Stop until `open` comes back and undoes it.
+  const liveTurn = Boolean(live && (live.turn_id || live.ask_user || (live.action && !waiting)))
   return {
     id,
     title,

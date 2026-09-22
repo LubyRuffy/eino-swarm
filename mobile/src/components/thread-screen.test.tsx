@@ -397,6 +397,138 @@ describe("ThreadScreen", () => {
     expect(onOlder).toHaveBeenCalledTimes(1)
   })
 
+  // A two-line conversation used to float under a screen of blank, with the
+  // only content pinned to the top and the composer far below it.
+  it("sits a short conversation on top of the composer, not under a blank screen", () => {
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live" }}
+        blocks={[{ id: "1", kind: "answer", text: "now" }]}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    const column = screen.getByTestId("transcript").firstElementChild
+    expect(column).toHaveClass("justify-end")
+    expect(column).toHaveClass("min-h-full")
+  })
+
+  it("offers a way back to the tail once the reader scrolls away", () => {
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live" }}
+        blocks={[{ id: "1", kind: "answer", text: "now" }]}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    const transcript = screen.getByTestId("transcript")
+    expect(screen.queryByTestId("to-latest")).not.toBeInTheDocument()
+    const scrollTo = vi.fn()
+    Object.defineProperty(transcript, "scrollTo", { value: scrollTo, configurable: true })
+    // Writable: sticking to the tail assigns scrollTop on every repaint.
+    Object.defineProperty(transcript, "scrollTop", {
+      value: 0,
+      configurable: true,
+      writable: true,
+    })
+    Object.defineProperty(transcript, "scrollHeight", { value: 2000, configurable: true })
+    Object.defineProperty(transcript, "clientHeight", { value: 400, configurable: true })
+    fireEvent.scroll(transcript)
+    fireEvent.click(screen.getByTestId("to-latest"))
+    expect(scrollTo).toHaveBeenCalled()
+  })
+
+  // A streaming answer leaves a few pixels of slack. A button that appears
+  // for those is a button that is always on screen.
+  it("does not offer that button for the slack a live answer leaves", () => {
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live" }}
+        blocks={[{ id: "1", kind: "answer", text: "now" }]}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    const transcript = screen.getByTestId("transcript")
+    Object.defineProperty(transcript, "scrollTop", { value: 1440, configurable: true })
+    Object.defineProperty(transcript, "scrollHeight", { value: 2000, configurable: true })
+    Object.defineProperty(transcript, "clientHeight", { value: 400, configurable: true })
+    fireEvent.scroll(transcript)
+    expect(screen.queryByTestId("to-latest")).not.toBeInTheDocument()
+  })
+
+  it("says a follow-up is queued, and drops steer once the turn ends", () => {
+    setLocale("en")
+    const { rerender } = render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live", running: { thread_id: "t1", title: "live" } }}
+        blocks={[]}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    expect(screen.getByText("Queued after this turn")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Steer" })).toBeInTheDocument()
+    rerender(
+      <ThreadScreen
+        detail={{ id: "t1", title: "live" }}
+        blocks={[]}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    expect(screen.queryByText("Queued after this turn")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Steer" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument()
+  })
+
+  // Steering a question would drop the answer the run is parked on.
+  it("routes the box to the answer while a question is pending", () => {
+    setLocale("en")
+    const onAnswer = vi.fn()
+    render(
+      <ThreadScreen
+        detail={{
+          id: "t1",
+          title: "live",
+          running: { thread_id: "t1", title: "live", ask_user: true },
+        }}
+        blocks={[]}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={onAnswer}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Steer" })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Your answer"), { target: { value: "B" } })
+    fireEvent.click(screen.getByRole("button", { name: "Answer" }))
+    expect(onAnswer).toHaveBeenCalledWith("B")
+  })
+
   it("holds the transcript until watch is caught up", () => {
     const onOlder = vi.fn()
     render(
