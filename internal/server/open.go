@@ -15,9 +15,9 @@ type openURLRequest struct {
 
 var errBadExternalURL = errors.New("the URL must be an absolute http(s) address")
 
-// openURL launches the platform browser. Only the desktop shell supplies the
-// hook: a web tab already has a browser, and spawning one on the server host
-// would be the wrong machine.
+// openURL launches the platform browser. The hook is nil unless this process
+// is a desktop window or a loopback engine serving one. A browser tab does
+// not call this.
 func (s *Server) openURL(c *gin.Context) {
 	if s.opts.OpenURL == nil {
 		c.JSON(http.StatusNotImplemented, gin.H{

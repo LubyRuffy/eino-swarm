@@ -68,7 +68,8 @@ is rendered as "Default" and is not listed. `capabilities.memory` mirrors
 `memory.enabled`: the UI disables a project's memory switch when the whole
 install has memory off, rather than offering something that will not happen.
 `capabilities.open_url` is true for a desktop window and for an engine bound
-to loopback, where an http(s) link is opened with the system browser.
+to loopback. The desktop shell calls `POST /api/open`. A browser tab on that
+engine does not: it opens a new window, because one process serves both.
 `capabilities.reveal` follows the same rule. A non-loopback bind has neither.
 `locale` is `system`, `en` or `zh` — the chrome language from `ui.locale`. The UI applies it
 on boot without writing it back. `ui` is the rest of the chrome: `font`
@@ -1253,8 +1254,9 @@ resolved working directory. Missing project: `404`.
 ### `POST /api/open`
 
 Body `{"url": "https://example.invalid/docs"}`. Opens the URL in the platform
-browser. **Desktop only**: in a browser this is `501` and `capabilities.open_url`
-is false, so the UI uses a new tab (`window.open`) instead. Only absolute
+browser. The desktop shell calls this. A browser tab does not, even when
+`capabilities.open_url` is true, and uses a new window instead. A non-loopback
+bind leaves the hook unset, so this is `501`. Only absolute
 `http`/`https` URLs are accepted (`400` otherwise). The webview must never
 navigate to the destination — that would replace the app with a third-party
 page.

@@ -46,9 +46,9 @@ type Options struct {
 	// supplies it; in a browser the download endpoint is the way to get a file
 	// out, so the UI hides the affordance when this is absent.
 	Reveal func(path string) error
-	// OpenURL opens an http(s) URL in the platform browser. Only the desktop
-	// shell supplies it; a browser tab uses window.open instead, so a web
-	// server never spawns windows on the host.
+	// OpenURL opens an http(s) URL in the platform browser. A loopback engine
+	// supplies it so the desktop window can leave the webview. A browser tab
+	// on that same process does not call it.
 	OpenURL func(url string) error
 }
 

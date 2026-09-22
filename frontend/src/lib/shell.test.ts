@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest"
 
-import { desktopShellFrom, startPresence, uniqueSurfaces } from "./shell"
+import { desktopShellFrom, openLinksNatively, startPresence, uniqueSurfaces } from "./shell"
 
 describe("desktopShellFrom", () => {
   it("treats the desktop query and the native bridge as a window", () => {
@@ -11,6 +11,14 @@ describe("desktopShellFrom", () => {
   })
 })
 
+describe("openLinksNatively", () => {
+  it("uses the system browser only in the desktop window", () => {
+    expect(openLinksNatively(true, true)).toBe(true)
+    expect(openLinksNatively(true, false)).toBe(false)
+    expect(openLinksNatively(false, true)).toBe(false)
+    expect(openLinksNatively(undefined, false)).toBe(false)
+  })
+})
 describe("uniqueSurfaces", () => {
   it("keeps the first of each surface and drops blanks", () => {
     expect(

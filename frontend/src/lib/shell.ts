@@ -14,6 +14,13 @@ export function desktopShell(): boolean {
   return desktopShellFrom(window.location.search, w._wails != null)
 }
 
+/** A loopback engine advertises open_url because the desktop window has no
+ *  other way out of the webview. A browser tab on that same process opens
+ *  a new window itself; calling the endpoint would spawn a browser on the host. */
+export function openLinksNatively(capability: boolean | undefined, shell: boolean): boolean {
+  return Boolean(capability) && shell
+}
+
 export function uniqueSurfaces(clients: { surface?: string }[] | undefined): string[] {
   const out: string[] = []
   const seen = new Set<string>()

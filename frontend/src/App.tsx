@@ -35,7 +35,7 @@ import { startSidebarSync } from "@/lib/sidebar-sync"
 import { askingThreadIds } from "@/lib/thread-title"
 import { toggleLocalePref } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
-import { desktopShell } from "@/lib/shell"
+import { desktopShell, openLinksNatively } from "@/lib/shell"
 import { useApp } from "@/store/app"
 import { waitingThreadIds } from "@/store/app-schedule"
 import { projectOf, useProjects } from "@/store/projects"
@@ -44,7 +44,7 @@ import { openSettings, useSettingsSheet } from "@/store/settings-sheet"
 
 export function App() {
   const boot = useApp((s) => s.boot)
-  const openNative = useApp((s) => s.meta?.capabilities?.open_url)
+  const openNative = openLinksNatively(useApp((s) => s.meta?.capabilities?.open_url), desktopShell())
   const booted = useRef(false)
   useEffect(() => {
     // StrictMode double-mount must not open two event streams.
