@@ -2194,6 +2194,20 @@ were left out on purpose, so that what shipped is complete rather than broad:
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
 
+## [0.1.1] - 2026-09-22
+
+Phone transcript uses the same compact fold as desktop user view.
+
+### Added
+
+- **Android companion APK.**
+  [`zwai-0.1.1-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.1/zwai-0.1.1-android.apk)
+  on [v0.1.1](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.1)
+  (versionName `0.1.1`, versionCode `101`). Debug-signed sideload
+  (`ANDROID_UNSIGNED=1`). Adjacent thoughts and tools fold into one row;
+  answers stay on screen. A different signing key cannot update the v0.1.0
+  install in place.
+
 ## [0.1.0] - 2026-09-22
 
 First GitHub Release. Tag `v0.1.0` is `1faf1a8`.

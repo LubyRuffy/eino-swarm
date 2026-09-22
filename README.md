@@ -336,8 +336,8 @@ end-to-end tests run on and the fastest way to see the UI work.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
 3. On the phone, open the **zwai** iOS or Android app. The Android sideload
-   APK is on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0)
-   (`zwai-0.1.0-android.apk`). Building from this repo is `mobile/ios` /
+   APK is on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.1)
+   (`zwai-0.1.1-android.apk`). Building from this repo is `mobile/ios` /
    `mobile/android`. The home-screen icon is the same ZWAI mark as the Dock.
    **Scan QR** opens a live viewfinder: a frame, a beam that sweeps up and
    down, and a short chime when the pairing QR is read. After bind, a live turn
