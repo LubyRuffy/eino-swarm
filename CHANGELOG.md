@@ -159,6 +159,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **Tidy skills stays with the project.** The Memory panel kept one tidy
+  card for the whole app, so leaving a project and coming back dropped the
+  progress or the result. The card is stored per project: another project
+  does not show it, and opening the one that was tidied shows the in-flight
+  progress or the finished report. A memory reload already in flight does
+  not put the pre-tidy skill list back under that report. Dismissing the
+  card, or deleting the project, still clears it.
+
 - **A live phone link no longer looks offline.** The host-chip dot is green
   while the socket is up (relay and direct) and gray while it is down.
   Reconnecting stays a red pulse. The path name stays on the dot's title.

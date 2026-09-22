@@ -1289,9 +1289,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   message against the field that caused it, and a memory reload copies the skill
   index onto the project so the Memory tab updates without a second listing. A
   tidy click folds overlapping skills, copies the new index onto the project,
-  ignores a slow response for a project that is no longer open, and keeps the
-  tidy card when the same project's memory is re-read (a catalog tidy records
-  `memory_review`, which would otherwise wipe the result).
+  and keeps the tidy card when the same project's memory is re-read (a catalog
+  tidy records `memory_review`, which would otherwise wipe the result). The
+  card is per project: a slow tidy does not paint onto the project now open,
+  opening the project that was tidied shows the in-flight progress or the
+  finished report, a failed tidy stays on the project that asked, a memory
+  read that started during the tidy does not put the pre-tidy list back, and
+  dismissing the card or deleting the project does not bring it back.
 - **`src/components/app/project-dialog.tsx`**, rendered in jsdom: a rejected
   working directory is shown under that field and the dialog stays open, a
   generic save failure toasts (× dismisses it), a

@@ -48,11 +48,14 @@ interface ProjectsState {
   removeSkill: (name: string) => Promise<void>
   tidySkills: () => Promise<void>
   clearTidy: () => void
-  /** True between a tidy click and the response. */
+  /** True between a tidy click and the response, for the project on screen. */
   tidying: boolean
-  /** What the last tidy decided. Absent until a click has an answer. */
+  /** What the last tidy decided for the project on screen. */
   tidyReport?: SkillTidyReport
   tidyError?: string
+  /** One slot per project. The fields above are only the open project's slot,
+   *  so leaving and coming back does not throw the click away. */
+  tidySlots: Record<string, TidySlot>
   noteMemoryWrite: () => void
   seeMemory: () => void
   setError: (message?: string) => void
@@ -64,6 +67,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   memoryUnread: false,
   reviewing: false,
   tidying: false,
+  tidySlots: {},
 
   beginReview: () =>
     set({ reviewing: true, reviewHint: undefined, pendingReviewTurnId: undefined }),
@@ -126,12 +130,18 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   remove: async (id) => {
     try {
       await api.deleteProject(id)
-      set((s) => ({
-        projects: s.projects.filter((p) => p.id !== id),
-        selectedId: s.selectedId === id ? undefined : s.selectedId,
-        memory: s.memoryProjectId === id ? undefined : s.memory,
-        memoryProjectId: s.memoryProjectId === id ? undefined : s.memoryProjectId,
-      }))
+      set((s) => {
+        const tidySlots = dropSlot(s.tidySlots, id)
+        const leaving = s.memoryProjectId === id
+        return {
+          projects: s.projects.filter((p) => p.id !== id),
+          selectedId: s.selectedId === id ? undefined : s.selectedId,
+          memory: leaving ? undefined : s.memory,
+          memoryProjectId: leaving ? undefined : s.memoryProjectId,
+          tidySlots,
+          ...(leaving ? viewOf(slotOf(tidySlots)) : {}),
+        }
+      })
     } catch (e) {
       set({ error: message(e) })
     }
@@ -153,27 +163,34 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       set({
         memory: undefined,
         memoryProjectId: undefined,
-        tidying: false,
-        tidyReport: undefined,
-        tidyError: undefined,
+        ...viewOf(slotOf(get().tidySlots)),
       })
       return
     }
     // A catalog tidy records memory_review on the same turn. Re-reading the
-    // files must not wipe the card the click just painted.
+    // files must not wipe the card the click just painted. Opening a different
+    // project shows that project's slot instead of deleting the one we left:
+    // the click belongs to the project, and coming back has to find it.
     const switched = get().memoryProjectId !== id
+    const inflight = slotOf(get().tidySlots, id).tidying
     set({
       memoryLoading: true,
       memoryProjectId: id,
-      ...(switched
-        ? { tidying: false, tidyReport: undefined, tidyError: undefined }
-        : {}),
+      ...(switched ? viewOf(slotOf(get().tidySlots, id)) : {}),
     })
     try {
       const memory = await api.memory(id)
       // The panel may have moved on while this was in flight; showing one
       // project's notes under another's name is worse than showing none.
       if (get().memoryProjectId !== id) return
+      const slot = slotOf(get().tidySlots, id)
+      // This read started while a tidy was still running and the tidy has
+      // since written the catalog. Applying the older snapshot would put
+      // the pre-tidy list back under the card that says the fold happened.
+      if (inflight && !slot.tidying && slot.report) {
+        set({ memoryLoading: false })
+        return
+      }
       set((s) => ({
         memory,
         memoryLoading: false,
@@ -227,25 +244,33 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   tidySkills: async () => {
     const id = get().memoryProjectId
     if (!id) return
-    set({ tidying: true, tidyReport: undefined, tidyError: undefined })
+    set((s) => applySlot(s, id, { tidying: true, report: undefined, error: undefined }))
     try {
       const result = await api.tidySkills(id)
-      if (get().memoryProjectId !== id) return
+      const report = normalizeTidyReport(result.report, result.memory.skills.length)
       set((s) => ({
-        tidying: false,
-        tidyReport: normalizeTidyReport(result.report, result.memory.skills.length),
-        memory: result.memory,
+        ...applySlot(s, id, { tidying: false, report, error: undefined }),
+        // The sidebar index follows the catalog even when another project is
+        // on screen. The notes on screen stay the open project's.
         projects: s.projects.map((p) =>
           p.id === id ? { ...p, skills: result.memory.skills } : p,
         ),
+        ...(s.memoryProjectId === id ? { memory: result.memory } : {}),
       }))
     } catch (e) {
-      if (get().memoryProjectId !== id) return
-      set({ tidying: false, tidyError: message(e) })
+      const error = message(e)
+      set((s) => applySlot(s, id, { tidying: false, error }))
     }
   },
 
-  clearTidy: () => set({ tidyReport: undefined, tidyError: undefined }),
+  clearTidy: () => {
+    const id = get().memoryProjectId
+    if (!id) {
+      set({ tidyReport: undefined, tidyError: undefined })
+      return
+    }
+    set((s) => applySlot(s, id, { report: undefined, error: undefined }))
+  },
 
   noteMemoryWrite: () => set({ memoryUnread: true }),
   seeMemory: () => set({ memoryUnread: false }),
@@ -260,6 +285,56 @@ export function projectOf(
 ): Project | undefined {
   if (!projectId) return undefined
   return projects.find((p) => p.id === projectId)
+}
+
+/** A tidy click's card, kept after the panel moves on. */
+interface TidySlot {
+  tidying: boolean
+  report?: SkillTidyReport
+  error?: string
+}
+
+function slotOf(slots: Record<string, TidySlot>, id?: string): TidySlot {
+  if (!id) return { tidying: false }
+  return slots[id] ?? { tidying: false }
+}
+
+function paintSlot(
+  slots: Record<string, TidySlot>,
+  id: string,
+  patch: Partial<TidySlot>,
+): Record<string, TidySlot> {
+  const prev = slots[id] ?? { tidying: false }
+  return { ...slots, [id]: { ...prev, ...patch } }
+}
+
+function dropSlot(slots: Record<string, TidySlot>, id: string): Record<string, TidySlot> {
+  if (!(id in slots)) return slots
+  const next = { ...slots }
+  delete next[id]
+  return next
+}
+
+function viewOf(slot: TidySlot) {
+  return {
+    tidying: slot.tidying,
+    tidyReport: slot.report,
+    tidyError: slot.error,
+  }
+}
+
+/** Write one project's card and, when that project is the one on screen,
+ *  the fields the panel actually reads. */
+function applySlot(
+  s: { tidySlots: Record<string, TidySlot>; memoryProjectId?: string },
+  id: string,
+  patch: Partial<TidySlot>,
+) {
+  const tidySlots = paintSlot(s.tidySlots, id, patch)
+  return {
+    tidySlots,
+    ...(s.memoryProjectId === id ? viewOf(tidySlots[id]) : {}),
+  }
 }
 
 function message(e: unknown): string {
