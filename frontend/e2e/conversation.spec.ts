@@ -418,6 +418,22 @@ test("interrupts the current tool so unread steering lands now", async ({ page }
   await expect(statusBadge(page)).not.toContainText("Idle")
 })
 
+test("the corner button becomes Send once a running turn has a draft", async ({ page }) => {
+  await freshConversation(page)
+  await send(page, "Look at this from two angles and merge the findings")
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible()
+  const later = "queue from the button"
+  await composer(page).fill(later)
+  const sendButton = page.getByRole("button", { name: "Send", exact: true })
+  await expect(sendButton).toBeVisible()
+  await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
+  await sendButton.click()
+  await expect(page.getByTestId("followup-queue")).toContainText(later)
+  // The click queued. It did not cancel the turn that was already running.
+  await expect(statusBadge(page)).toContainText("Working")
+  await expect(statusBadge(page)).not.toContainText("Idle")
+})
+
 test("Enter while working queues until the turn finishes", async ({ page }) => {
   await freshConversation(page)
   await send(page, "Look at this from two angles and merge the findings")

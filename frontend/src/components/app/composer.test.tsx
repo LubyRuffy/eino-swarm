@@ -212,6 +212,52 @@ describe("Composer follow-up queue", () => {
   })
 })
 
+describe("Composer corner button while a turn is running", () => {
+  // Stop on an empty box is the cancel. The moment Enter would queue or
+  // steer, that same slot has to become Send — a button that still says
+  // Stop will not get clicked by someone who wanted to submit.
+  it("replaces Stop with Send once the draft can be queued", () => {
+    const onSend = vi.fn()
+    const onStop = vi.fn()
+    renderComposer({ running: true, onSend, onStop })
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull()
+
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "draft" } })
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(onSend).toHaveBeenCalledWith("draft", undefined, { steer: false })
+    expect(onStop).not.toHaveBeenCalled()
+
+    fireEvent.change(input, { target: { value: "" } })
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull()
+  })
+
+  // Spaces are not a message. The square has to stay Stop, or an accidental
+  // click while the box looks empty would try to send nothing.
+  it("keeps Stop when the running draft is only whitespace", () => {
+    renderComposer({ running: true })
+    fireEvent.change(screen.getByTestId("composer-input"), {
+      target: { value: "   \n" },
+    })
+    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy()
+    expect(screen.queryByRole("button", { name: "Send" })).toBeNull()
+  })
+
+  // A quote chip is a payload with an empty textarea. The swap is about
+  // "Enter would submit", not about the box containing characters.
+  it("replaces Stop with Send when a quote is the whole draft", () => {
+    renderComposer({
+      running: true,
+      quotes: [{ id: "q1", text: "alpha" }],
+    })
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled()
+  })
+})
+
 describe("Composer quotes", () => {
   it("prefixes selected text onto the send and clears the chip", () => {
     const onSend = vi.fn()
@@ -767,6 +813,8 @@ describe("Composer slash commands", () => {
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled()
     fireEvent.change(input, { target: { value: "/goal keep going" } })
     expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled()
+    // The argument is a submit. Stop has to leave, same as any other draft.
+    expect(screen.queryByRole("button", { name: "Stop" })).toBeNull()
   })
 
   it("leaves a bare /goal prompt in the box instead of wiping it", () => {

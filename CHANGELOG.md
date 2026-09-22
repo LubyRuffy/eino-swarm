@@ -182,6 +182,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **Typing while a turn runs turns the corner button into Send.** The
+  button used to stay Stop after a draft was in the box, so the click that
+  should queue or steer looked like a cancel and did not get pressed. Stop
+  stays only while there is nothing to submit. A quote, file, or image
+  counts; whitespace does not. A `/goal` or `/plan` prompt that is still
+  waiting for its argument keeps Send disabled beside Stop. Esc still
+  stops the turn.
+
 - **Tidy skills stays with the project.** The Memory panel kept one tidy
   card for the whole app, so leaving a project and coming back dropped the
   progress or the result. The card is stored per project: another project

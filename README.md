@@ -425,7 +425,10 @@ What you get:
 
 Keyboard: Enter sends (while a turn is running it queues a follow-up; the live
 turn's own words are not queued; an IME
-confirmation — keeping leftover Latin as typed — is not a send) · `/` at the
+confirmation — keeping leftover Latin as typed — is not a send) · the corner
+button is Stop while a turn is running and the box has nothing to submit, and
+Send once it does (text, a quote, a file, or an image; whitespace does not
+count) · `/` at the
 start of the box opens built-in commands · ⌘Enter steers
 the draft into the current turn · Shift+Enter a newline · `⌘K` command palette
 (titles, bodies, and meaning when embeddings are on) · `⌘N` new

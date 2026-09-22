@@ -27,6 +27,10 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  composerCornerActions,
+  composerDraftSubmittable,
+} from "@/lib/composer-actions"
 import { clearComposerPad, resizeComposerArea, syncComposerPad } from "@/lib/composer-chrome"
 import {
   filesFromDataTransfer,
@@ -268,17 +272,24 @@ export function Composer({
   const slashOpen = slashItems.length > 0
   const awaitingArg = slashAwaitingArg(text)
   const sendReady = slashSubmitReady(text)
-  const sendDisabled =
-    Boolean(disabled) ||
-    uploading ||
-    Boolean(awaitingArg) ||
-    (!sendReady &&
-      !slashOpen &&
-      !text.trim() &&
-      pending.length === 0 &&
-      quoted.length === 0 &&
-      pasted.length === 0)
-  const showSend = !running || Boolean(awaitingArg) || sendReady
+  const awaitingArgument = Boolean(awaitingArg)
+  // Same predicate as the corner swap. A quote, file, or image with an
+  // empty box is still a submit; whitespace and a half-typed /goal are not.
+  const submittable = composerDraftSubmittable({
+    text,
+    attachmentCount: pending.length,
+    quoteCount: quoted.length,
+    imageCount: pasted.length,
+    slashOpen,
+    slashReady: sendReady,
+    awaitingArgument,
+  })
+  const sendDisabled = Boolean(disabled) || uploading || !submittable
+  const corner = composerCornerActions({
+    running,
+    submittable,
+    awaitingArgument,
+  })
 
   useEffect(() => {
     setSlashIndex(0)
@@ -683,7 +694,7 @@ export function Composer({
                 window={meterWindow}
                 scale={contextBudget ?? 0}
               />
-              {running ? (
+              {corner.stop ? (
                 <Button
                   size="icon"
                   variant="secondary"
@@ -694,7 +705,7 @@ export function Composer({
                   <Square className="size-3.5 fill-current" />
                 </Button>
               ) : null}
-              {showSend ? (
+              {corner.send ? (
                 <Button
                   size="icon"
                   disabled={sendDisabled}
