@@ -141,7 +141,40 @@ and Earlier sits outside the scroller so a live-edge tail can still page.
 A long tool path must not stretch the column (`min-w-0` / `break-words`).
 `mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, a `progress` pulse is not a notice, a findings `report_schedule` is that prose as a notice rather than a tool chip, and adjacent thoughts and tools fold while an answer stays visible and splits the group.
 `mobile/src/lib/tool-preview.test.ts` pulls `findings` (not `prompt`) for the collapsed chip, and a wait roster is counts rather than `elapsed_ms`.
-`mobile/src/components/thread-blocks.test.tsx` keeps that roster off the user bubble and the expanded tool body. Camera on a real device is the product path (`make mobile-ios` /
+`mobile/src/components/thread-blocks.test.tsx` keeps that roster off the user bubble and the expanded tool body.
+
+`mobile/src/lib/mock-link.test.ts` is why the walkthrough host answers the
+same ops with the same shapes, streams a turn to whoever is watching, says
+the turn is over on the frame that ends it, and is one PC seen down two
+sockets rather than two PCs (React strict mode opens two). Without it the
+inbox and a conversation had no end-to-end coverage, because Playwright
+could not get past the scan form. `mobile/e2e/walkthrough.spec.ts` drives
+those screens on it: live rows separate from recents with an age on each,
+a turn that folds its work behind the answer, a short conversation resting
+on the composer rather than under blank space, and Start from the inbox
+opening what it started.
+
+`mobile/src/components/composer.test.tsx` is why Enter sends but Shift+Enter
+and an IME candidate list do not, why send stays off until there is
+something to send, and why the box grows with the text but stops before the
+transcript loses its last answer. `mobile/src/components/inbox-row.test.tsx`
+is why a pending question is filled rather than tinted like a wait, and
+`mobile/src/lib/when.test.ts` is why a PC whose clock runs ahead reads as
+`just now` instead of a negative age.
+`TestAParkedWaitCarriesItsSummarySoTheRowIsNotJustABadge` is why that row
+has a line and a date at all: `list` keeps a roster thread out of
+`threads`, so reading either off the Recents list would have read nothing.
+`mobile/src/components/home-screen.test.tsx` is why Running has no date
+(it is happening now) and a wait does, and `mobile/src/lib/resume.test.ts`
+is why a host that flags the wait on the thread and sends an empty roster
+still gets both, without a stale thread line overwriting a roster row the
+host did send. `detailFromListing` is why that line does not then read as a
+turn: the stub a tap paints would swap the Waiting header and the schedule
+banner for Stop for the one frame before `open` answers, which no
+Playwright assertion is fast enough to see.
+`mobile/src/components/pull-to-refresh.test.tsx` is why a short tug scrolls
+and a long one reloads, and why a drag that starts mid-list is never a
+reload. Camera on a real device is the product path (`make mobile-ios` /
 `make mobile-android`).
 
 `frontend` is the embed plus the incremental Vite rebuild (`Ensure` /

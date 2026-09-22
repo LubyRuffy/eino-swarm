@@ -335,7 +335,11 @@ are not on the recent page, so the inbox cannot hide a hung-looking `/goal`.
 (assistant prose, or a tool payload field such as findings / command / path),
 clipped to `summary_chars`. Raw `tool_call` JSON and lifecycle tools
 (`schedule_wake`, `report_schedule`, `memory`, …) stay off that field; empty
-means the phone should show Waiting or running in its own language.
+means the phone should show Waiting or running in its own language. A parked
+wait has no live turn to preview, so its `action` is the thread's own summary
+instead. `list.running[].last_active_at` dates the row: a roster row is not
+repeated in `list.threads`, so this is the only place the age of a wait armed
+last week can come from.
 `list.threads[].summary` is the same kind of line for an idle conversation:
 quiet scheduled checks and the protocol wrapper (`This turn is a scheduled
 check.`) are skipped rather than painted as the Recents subtitle.

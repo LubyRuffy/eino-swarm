@@ -13,6 +13,19 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **The phone's screens can be walked without a PC.** `?mock=1` boots onto
+  the inbox against a scripted host that answers the same ops with the same
+  shapes over no network and no model. Playwright could previously only
+  reach the scan form, so the inbox and a conversation had no end-to-end
+  coverage; `mobile/e2e/walkthrough.spec.ts` now drives both. `&tick=0`
+  plays a turn as fast as the browser paints.
+
+- **Jump to latest on the phone.** Scrolling away from a live tail raises a
+  button back to it; the slack a streaming answer leaves does not.
+
+- **Pull the phone inbox down to reload.** A short tug still scrolls, and a
+  drag that starts mid-list is never a reload.
+
 - **Android APK on GitHub Releases.** [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0)
   attaches [`zwai-0.1.0-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.0/zwai-0.1.0-android.apk)
   (versionName `0.1.0`, versionCode `100`). Debug-signed sideload
@@ -95,6 +108,26 @@ co-working app built on it. The library API is unchanged except where noted
   matched to a log.
 
 ### Changed
+
+- **The phone inbox reads at a glance.** Rows are cards with a state badge
+  (Running / Waiting / Waiting for an answer) and the age of the row, so a
+  stale thread is not mistaken for today's. A parked wait carries the
+  thread's own summary instead of a title and a bare badge — the host sends
+  it as the row's line when there is no live turn to preview, and dates the
+  row (`list.running[].last_active_at`) because an In progress row is never
+  also a Recents row and had nowhere else to get its age. The header is
+  one row naming which PC this is rather than two rows repeating the app's
+  name, and an empty inbox says so.
+
+- **Starting a conversation and answering inside one are the same control.**
+  One rounded box that grows with the text up to a cap, a round send button
+  that stays off until there is something to send, and Enter to send
+  (Shift+Enter is a newline; an IME candidate list is never a send). The
+  inbox's native `<select>` for the project is a chip row above it. While a
+  turn is live the box also offers steer and says a plain send is queued.
+
+- **A short conversation sits on the composer.** The phone transcript is
+  bottom-aligned, so two messages no longer float under a screen of blank.
 
 - **Phone scan is a live viewfinder.** Scan QR keeps the camera preview open
   with a frame and a beam that sweeps up and down, then plays a short chime

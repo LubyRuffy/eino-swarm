@@ -40,10 +40,42 @@ wait is the banner (next check, **Run now**, **Cancel wait**).
 `schedule_report` stays on the `report_schedule` chip. A standing
 `/goal` is Pursuing / Done / Blocked / Paused, not a muted strip that
 vanishes on complete. The objective is one truncated line (the full text
-stays on the PC); a novel cannot cover Run now or the composer. Parked
-waits are In progress on the inbox. Send,
+stays on the PC); a novel cannot cover Run now or the composer. Send,
 follow-up, steer, stop, ask, `/goal` and `/plan` land on the PC engine; the
 other window sees them live. Settings, Files, PTY and Trace stay on the PC.
+
+A conversation sits on the composer rather than under a screen of blank:
+a short thread is bottom-aligned, and scrolling away from the tail raises
+**Jump to latest**. Starting a conversation and answering inside one are
+the same control (`components/composer.tsx`): one rounded box that grows
+with the text up to a cap, Enter sends (Shift+Enter is a newline, and an
+IME candidate list is never a send), and the round button stays off until
+there is something to send. While a turn is live the box also offers
+steer, and says a plain send is queued after this turn.
+
+Inbox rows are cards, not a settings list. State is a badge — Running /
+Waiting / Waiting for an answer — and an idle row carries its age
+(`lib/when.ts`), so a stale thread is not mistaken for today's. A parked
+wait is an In progress row with the thread's own summary, because the host
+sends that as the row's line when there is no live turn to preview. The
+header is one row: which PC this is, not the app's own name. Pulling the
+list down past the top reloads the roster; an empty inbox says so.
+
+## Walking the screens without a PC
+
+`?mock=1` boots onto the inbox against a scripted host (`lib/mock-link.ts`):
+projects, a live turn, a parked wait, and idle recents. It answers the same
+ops with the same shapes over no network and no model, so the inbox and a
+conversation can be driven in a browser and in Playwright — the screens
+behind the scan form used to have no end-to-end coverage at all. Add
+`&tick=0` to play a turn as fast as the browser paints; the default paces it
+so a human can watch. Conversations live on the host rather than on a link,
+because one PC seen down two sockets is still one PC (React strict mode
+opens two).
+
+```bash
+npm run dev     # then open http://127.0.0.1:5173/?mock=1
+```
 
 The native trees `ios/` and `android/` live in git. `npx cap add` is already
 done. A re-add restores Capacitor's cyan launcher; the zwai mark is
