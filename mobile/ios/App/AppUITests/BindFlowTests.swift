@@ -39,6 +39,10 @@ final class BindFlowTests: XCTestCase {
     let seed = app.buttons.matching(NSPredicate(format: "label CONTAINS 'sim-flow'")).firstMatch
     XCTAssertTrue(seed.waitForExistence(timeout: 8), "seed conversation missing after bind")
 
+    // Starting is its own screen now: the inbox only reads and finds.
+    let newChat = app.buttons["New chat"].firstMatch
+    XCTAssertTrue(newChat.waitForExistence(timeout: 4), "New chat missing on the inbox")
+    newChat.tap()
     let compose = app.textFields["New message"]
     XCTAssertTrue(compose.waitForExistence(timeout: 4), "compose field missing")
     compose.tap()

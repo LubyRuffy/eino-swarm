@@ -36,7 +36,7 @@ export const zh: Record<MessageKey, string> = {
   "home.waiting": "等待中",
   "home.running": "进行中",
   "home.emptyTitle": "还没有会话",
-  "home.emptyHint": "给这台 PC 派个活，它就会出现在这里。",
+  "home.emptyHint": "点「新建对话」给这台 PC 派个活，它就会出现在这里。",
   "home.refresh": "刷新",
   "home.refreshing": "正在刷新",
   "home.pullToRefresh": "下拉刷新",
@@ -51,7 +51,16 @@ export const zh: Record<MessageKey, string> = {
   "thread.steerHint": "插话给本轮",
 
   "home.newMessage": "新消息",
+  "home.newChat": "新建对话",
+  "home.newChatIn": "在{name}新建对话",
+  "home.search": "搜索对话",
+  "home.searchClear": "清除搜索",
+  "home.searchEmpty": "没有匹配的对话。",
   "home.open": "打开 {title}",
+
+  "compose.title": "新建对话",
+  "compose.hint": "选好在哪台 PC、哪个项目里跑。",
+  "compose.offline": "这台 PC 连不上。换一台，或在上面点重试。",
   "home.relay": "中继",
   "home.direct": "直连",
   "home.offline": "已断开",
@@ -122,8 +131,17 @@ export const zh: Record<MessageKey, string> = {
   "err.net.closed": "连接断了。点重试会再连，不会解除绑定。（{reason}）",
   "err.remote": "服务端拒绝了这次请求：{detail}",
   "err.rpc": "请求失败。",
+  "err.start": "没能开始新对话。",
   "err.open": "打不开这个对话。",
   "err.watch": "跟不上这个对话。",
+
+  "update.available": "有新版本 {version}",
+  "update.upgrade": "更新",
+  "update.later": "以后再说",
+  "update.downloading": "正在下载更新",
+  "update.permission": "先允许本应用安装未知应用，再点一次更新。",
+  "update.failed": "更新没下载下来。再点一次更新。",
+
   "locale.en": "EN",
   "locale.zh": "中文",
 }

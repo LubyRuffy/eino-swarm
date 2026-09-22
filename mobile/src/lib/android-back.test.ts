@@ -8,16 +8,23 @@ describe("android system back", () => {
   })
 
   it("pops the add-PC sheet before a conversation", () => {
-    expect(androidBackLayer({ sheet: true, thread: true })).toBe("sheet")
-    expect(androidBackLayer({ sheet: true, thread: false })).toBe("sheet")
+    expect(androidBackLayer({ sheet: true, compose: true, thread: true })).toBe("sheet")
+    expect(androidBackLayer({ sheet: true, compose: false, thread: false })).toBe("sheet")
+  })
+
+  // New conversation is opened from the inbox and paints over a resumed
+  // thread, so back leaves the compose screen before it leaves that thread.
+  it("pops the new-conversation screen before a conversation", () => {
+    expect(androidBackLayer({ sheet: false, compose: true, thread: true })).toBe("compose")
+    expect(androidBackLayer({ sheet: false, compose: true, thread: false })).toBe("compose")
   })
 
   it("pops a conversation back to the inbox", () => {
-    expect(androidBackLayer({ sheet: false, thread: true })).toBe("thread")
+    expect(androidBackLayer({ sheet: false, compose: false, thread: true })).toBe("thread")
   })
 
   it("finishes only from the inbox or the unbound scan screen", () => {
-    expect(androidBackLayer({ sheet: false, thread: false })).toBe("root")
+    expect(androidBackLayer({ sheet: false, compose: false, thread: false })).toBe("root")
   })
 
   it("installs one hook and removes it on unmount", () => {

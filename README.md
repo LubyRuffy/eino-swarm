@@ -336,17 +336,23 @@ end-to-end tests run on and the fastest way to see the UI work.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
 3. On the phone, open the **zwai** iOS or Android app. The Android sideload
-   APK is on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.2)
-   (`zwai-0.1.2-android.apk`). Building from this repo is `mobile/ios` /
+   APK is on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.3)
+   (`zwai-0.1.3-android.apk`). A newer Android build offers **Update** on the
+   phone: it downloads that APK from GitHub Releases and opens the system
+   installer. iOS opens the release page. **Not now** hides that version.
+   Building from this repo is `mobile/ios` /
    `mobile/android`. The home-screen icon is the same ZWAI mark as the Dock.
    **Scan QR** opens a live viewfinder: a frame, a beam that sweeps up and
    down, and a short chime when the pairing QR is read. After bind, a live turn
    (or the last thread this phone opened) opens immediately; otherwise the
    inbox lists In progress, then projects / Recents with the latest 5 idle
-   threads (live rows do not consume that quota). A later launch with
+   threads (live rows do not consume that quota). The list does not compose:
+   search and **New chat** sit under it, the header corner is **New chat**,
+   and each project row's right side starts one already in that project.
+   A later launch with
    saved tickets shows host chips (the name this PC sent) and a connecting skeleton — not the scan
-   form, which would look like the phone was never bound. **Add a PC** sits
-   beside the chips. Switching a chip opens that PC. In-progress rows show
+   form, which would look like the phone was never bound. **Add a PC** is on
+   the menu. Switching a chip opens that PC. In-progress rows show
    findings or **Waiting**, not `schedule_wake` / `report_schedule` JSON.
    The transcript opens on the
    last turn, already at the live edge; Earlier or pull up loads older rows. A tap

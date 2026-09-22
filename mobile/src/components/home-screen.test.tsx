@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { HomeScreen } from "./home-screen"
@@ -27,9 +27,9 @@ function chrome(): {
 }
 
 describe("HomeScreen", () => {
-  it("lists five threads, in-progress, and a start field", () => {
+  it("lists five threads, in-progress, and find-and-start instead of a message box", () => {
     const onOpen = vi.fn()
-    const onStart = vi.fn()
+    const onNewChat = vi.fn()
     render(
       <HomeScreen
         {...chrome()}
@@ -46,7 +46,7 @@ describe("HomeScreen", () => {
         more
         onOpen={onOpen}
         onMore={vi.fn()}
-        onStart={onStart}
+        onNewChat={onNewChat}
         onUnlink={vi.fn()}
       />,
     )
@@ -54,12 +54,13 @@ describe("HomeScreen", () => {
     expect(screen.getByText("In progress")).toBeInTheDocument()
     expect(screen.getByText("thread 4")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText("New message"), {
-      target: { value: "hello" },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Start" }))
-    expect(onStart).toHaveBeenCalledWith("hello", "")
-    expect(screen.queryByText("New conversation")).not.toBeInTheDocument()
+    // Reading what is already running is the inbox's job. A message box here
+    // asked which PC and which project before either had been chosen.
+    expect(screen.queryByLabelText("New message")).not.toBeInTheDocument()
+    expect(screen.queryByRole("radiogroup", { name: "Project" })).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Search conversations")).toBeInTheDocument()
+    fireEvent.click(screen.getByTestId("new-chat"))
+    expect(onNewChat).toHaveBeenCalledWith("")
     fireEvent.click(screen.getByRole("button", { name: "Open thread 2" }))
     expect(onOpen).toHaveBeenCalledWith("t2")
     expect(screen.getAllByText("thread 0")).toHaveLength(1)
@@ -84,7 +85,7 @@ describe("HomeScreen", () => {
         more={false}
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )
@@ -111,7 +112,7 @@ describe("HomeScreen", () => {
         more={false}
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )
@@ -140,7 +141,7 @@ describe("HomeScreen", () => {
         more={false}
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )
@@ -168,7 +169,7 @@ describe("HomeScreen", () => {
         more={false}
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )
@@ -202,12 +203,64 @@ describe("HomeScreen", () => {
         more={false}
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )
     expect(screen.getAllByText("one thing changed")).toHaveLength(2)
     expect(screen.queryByText(/report_schedule/)).not.toBeInTheDocument()
+  })
+
+  // A project with no threads is still a place a conversation can start.
+  // Recent and In progress are not projects, so they do not grow that control.
+  it("starts in the project whose row was tapped, including one with no threads", () => {
+    const onNewChat = vi.fn()
+    render(
+      <HomeScreen
+        {...chrome()}
+        path="relay"
+        projects={[
+          { id: "p1", name: "work" },
+          { id: "p2", name: "notes" },
+        ]}
+        threads={[
+          {
+            id: "t1",
+            title: "alpha",
+            project_id: "p1",
+            running: false,
+            last_active_at: "2026-01-01T00:00:00Z",
+          },
+          {
+            id: "t2",
+            title: "loose",
+            running: false,
+            last_active_at: "2026-01-01T00:00:00Z",
+          },
+        ]}
+        running={[{ thread_id: "t3", title: "gamma", action: "reading" }]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onNewChat={onNewChat}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("heading", { name: "notes" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Open loose" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "New chat in Recent" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "New chat in In progress" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "New chat in notes" }))
+    expect(onNewChat).toHaveBeenCalledWith("p2")
+    fireEvent.click(screen.getByRole("button", { name: "New chat in work" }))
+    expect(onNewChat).toHaveBeenLastCalledWith("p1")
+
+    fireEvent.change(screen.getByLabelText("Search conversations"), {
+      target: { value: "alpha" },
+    })
+    expect(screen.getByRole("button", { name: "New chat in work" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "New chat in notes" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "Recent" })).not.toBeInTheDocument()
   })
 
   it("says the inbox is empty instead of showing a blank screen", () => {
@@ -221,39 +274,59 @@ describe("HomeScreen", () => {
         more={false}
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )
     expect(screen.getByText("Nothing running")).toBeInTheDocument()
-    expect(screen.getByLabelText("New message")).toBeInTheDocument()
+    expect(screen.getByTestId("new-chat")).toBeInTheDocument()
   })
 
-  it("starts in the project the chips are set to", () => {
-    const onStart = vi.fn()
+  // Search runs on the roster the phone already holds; a keystroke over a
+  // relay would land after the next one.
+  it("filters the rows to what was typed and says so when nothing matches", () => {
     render(
       <HomeScreen
         {...chrome()}
         path="relay"
-        projects={[
-          { id: "p1", name: "work" },
-          { id: "p2", name: "notes" },
+        projects={[]}
+        threads={[
+          {
+            id: "t1",
+            title: "alpha",
+            running: false,
+            last_active_at: "2026-01-01T00:00:00Z",
+          },
+          {
+            id: "t2",
+            title: "beta",
+            running: false,
+            last_active_at: "2026-01-01T00:00:00Z",
+          },
         ]}
-        threads={[]}
-        running={[]}
-        more={false}
+        running={[{ thread_id: "t3", title: "gamma", action: "reading" }]}
+        more
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={onStart}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )
-    const chips = screen.getByRole("radiogroup", { name: "Project" })
-    expect(within(chips).getByRole("radio", { name: "Default" })).toBeChecked()
-    fireEvent.click(within(chips).getByRole("radio", { name: "notes" }))
-    fireEvent.change(screen.getByLabelText("New message"), { target: { value: "go" } })
-    fireEvent.click(screen.getByRole("button", { name: "Start" }))
-    expect(onStart).toHaveBeenCalledWith("go", "p2")
+    const box = screen.getByLabelText("Search conversations")
+    fireEvent.change(box, { target: { value: "bet" } })
+    expect(screen.getByRole("button", { name: "Open beta" })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Open alpha" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Open gamma" })).not.toBeInTheDocument()
+    // More pages the roster, not the filter; it would drop the query's rows.
+    expect(screen.queryByRole("button", { name: "More" })).not.toBeInTheDocument()
+
+    fireEvent.change(box, { target: { value: "no such row" } })
+    expect(screen.getByText("No conversation matches that.")).toBeInTheDocument()
+    expect(screen.queryByText("Nothing running")).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }))
+    expect(screen.getByRole("button", { name: "Open alpha" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open gamma" })).toBeInTheDocument()
   })
 
   // A parked wait is never also a Recents row, so the roster row is the only
@@ -278,7 +351,7 @@ describe("HomeScreen", () => {
         more={false}
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )
@@ -307,7 +380,7 @@ describe("HomeScreen", () => {
         more={false}
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )
@@ -327,7 +400,7 @@ describe("HomeScreen", () => {
         more={false}
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
         onRefresh={onRefresh}
       />,
@@ -363,7 +436,7 @@ describe("HomeScreen", () => {
         more
         onOpen={vi.fn()}
         onMore={vi.fn()}
-        onStart={vi.fn()}
+        onNewChat={vi.fn()}
         onUnlink={vi.fn()}
       />,
     )

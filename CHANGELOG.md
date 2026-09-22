@@ -13,6 +13,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **The phone checks GitHub Releases and can install a newer Android build.**
+  On launch, and again when it returns to the foreground, it reads the latest
+  release itself. Android downloads `zwai-*-android.apk` and opens the system
+  installer. iOS opens the release page. Not now hides that version. The
+  browser walkthrough does not check.
+
 - **The phone's screens can be walked without a PC.** `?mock=1` boots onto
   the inbox against a scripted host that answers the same ops with the same
   shapes over no network and no model. Playwright could previously only
@@ -108,6 +114,13 @@ co-working app built on it. The library API is unchanged except where noted
   matched to a log.
 
 ### Changed
+
+- **The phone inbox no longer composes.** Search and **New chat** sit under
+  the list, and the header corner is **New chat** (Add a PC stays on the
+  menu). Each project row's right side starts a conversation already in
+  that project, including a project that has no threads yet. New chat is
+  its own screen: which PC, which project, then the message. Answering
+  inside a conversation is still the same box.
 
 - **The phone inbox reads at a glance.** Rows are cards with a state badge
   (Running / Waiting / Waiting for an answer) and the age of the row, so a
@@ -2234,6 +2247,19 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.3] - 2026-09-22
+
+The phone checks GitHub Releases and can install a newer Android build.
+
+### Added
+
+- **In-app Android update.** On launch, and when the app returns to the
+  foreground, it reads the latest GitHub release itself. **Update** downloads
+  `zwai-*-android.apk` and opens the system installer (versionName `0.1.3`,
+  versionCode `103`). iOS opens the release page. **Not now** hides that
+  version. The download stays on this repo; a release-asset host is only
+  accepted as a redirect.
 
 ## [0.1.2] - 2026-09-22
 

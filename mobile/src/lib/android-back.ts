@@ -3,12 +3,18 @@
  *  Activity back would finish the task from a conversation. */
 export const ANDROID_BACK_HOOK = "__zwaiAndroidBack"
 
-export type AndroidBackLayer = "sheet" | "thread" | "root"
+export type AndroidBackLayer = "sheet" | "compose" | "thread" | "root"
 
-/** The add-PC sheet sits above a conversation, which sits above the inbox
- *  (or the unbound scan screen). Only the root finishes the activity. */
-export function androidBackLayer(input: { sheet: boolean; thread: boolean }): AndroidBackLayer {
+/** The add-PC sheet sits above the new-conversation screen, which sits above
+ *  a conversation, which sits above the inbox (or the unbound scan screen).
+ *  Only the root finishes the activity. */
+export function androidBackLayer(input: {
+  sheet: boolean
+  compose: boolean
+  thread: boolean
+}): AndroidBackLayer {
   if (input.sheet) return "sheet"
+  if (input.compose) return "compose"
   if (input.thread) return "thread"
   return "root"
 }

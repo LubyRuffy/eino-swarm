@@ -74,16 +74,41 @@ test("a short conversation sits on the composer instead of under a blank screen"
   expect(Math.abs(gap)).toBeLessThan(24)
 })
 
-test("starting from the inbox opens the new conversation", async ({ page }) => {
+// The inbox is for reading what runs; starting is a screen that asks which
+// PC and which project first.
+test("New chat picks a PC and a project, then opens what it started", async ({ page }) => {
   await page.goto(WALKTHROUGH)
   await backToInbox(page)
+  await expect(page.getByLabel("新消息")).toHaveCount(0)
 
+  await page.getByTestId("new-chat").click()
+  await expect(page.getByRole("radiogroup", { name: "电脑" }).getByRole("radio")).toHaveCount(1)
   await page.getByRole("radio", { name: "Field notes" }).click()
   await page.getByLabel("新消息").fill("a fresh one")
   await page.getByRole("button", { name: "开始" }).click()
 
   await expect(page.getByRole("heading", { name: "a fresh one" })).toBeVisible()
   await expect(page.getByTestId("transcript").getByText("Here is what changed:")).toBeVisible()
+})
+
+test("a project row opens new chat already in that project", async ({ page }) => {
+  await page.goto(WALKTHROUGH)
+  await backToInbox(page)
+  await page.getByRole("button", { name: "在Field notes新建对话" }).click()
+  await expect(page.getByRole("radio", { name: "Field notes" })).toBeChecked()
+  await expect(page.getByRole("radio", { name: "默认" })).not.toBeChecked()
+})
+
+test("search narrows the inbox to the row that was typed", async ({ page }) => {
+  await page.goto(WALKTHROUGH)
+  await backToInbox(page)
+
+  await page.getByLabel("搜索对话").fill("nightly")
+  await expect(page.getByRole("button", { name: /^打开 Watch the nightly export$/ })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^打开 Trim the layout pass$/ })).toHaveCount(0)
+
+  await page.getByRole("button", { name: "清除搜索" }).click()
+  await expect(page.getByRole("button", { name: /^打开 Trim the layout pass$/ })).toBeVisible()
 })
 
 // An In progress row is not always a turn. A wait opens onto its own

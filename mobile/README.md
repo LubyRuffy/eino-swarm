@@ -46,12 +46,20 @@ other window sees them live. Settings, Files, PTY and Trace stay on the PC.
 
 A conversation sits on the composer rather than under a screen of blank:
 a short thread is bottom-aligned, and scrolling away from the tail raises
-**Jump to latest**. Starting a conversation and answering inside one are
-the same control (`components/composer.tsx`): one rounded box that grows
-with the text up to a cap, Enter sends (Shift+Enter is a newline, and an
-IME candidate list is never a send), and the round button stays off until
-there is something to send. While a turn is live the box also offers
-steer, and says a plain send is queued after this turn.
+**Jump to latest**. Answering inside a conversation is one rounded box
+(`components/composer.tsx`) that grows with the text up to a cap, Enter
+sends (Shift+Enter is a newline, and an IME candidate list is never a
+send), and the round button stays off until there is something to send.
+While a turn is live the box also offers steer, and says a plain send is
+queued after this turn.
+
+The inbox does not compose. Search and **New chat** sit under the list,
+and the header corner is the same **New chat** — Add a PC stays on the
+menu, not a second control beside the chips. Each project row's right side
+starts a conversation already in that project, including a project that
+has no threads yet. **New chat** is its own screen: which PC, which
+project, then that same box. Android's system back leaves the screen
+before it leaves a conversation.
 
 Inbox rows are cards, not a settings list. State is a badge — Running /
 Waiting / Waiting for an answer — and an idle row carries its age
@@ -59,7 +67,8 @@ Waiting / Waiting for an answer — and an idle row carries its age
 wait is an In progress row with the thread's own summary, because the host
 sends that as the row's line when there is no live turn to preview. The
 header is one row: which PC this is, not the app's own name. Pulling the
-list down past the top reloads the roster; an empty inbox says so.
+list down past the top reloads the roster; an empty inbox says so. Search
+filters the roster this phone already holds.
 
 ## Walking the screens without a PC
 
@@ -102,13 +111,14 @@ and a 15.0+ deployment target.
 ## Android release
 
 Sideload APKs ship on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
-[v0.1.2](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.2) attaches
-[`zwai-0.1.2-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.2/zwai-0.1.2-android.apk)
-(versionName `0.1.2`, versionCode `102`).
+[v0.1.3](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.3) attaches
+[`zwai-0.1.3-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.3/zwai-0.1.3-android.apk)
+(versionName `0.1.3`, versionCode `103`).
+[v0.1.2](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.2),
 [v0.1.1](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.1) and
 [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0) are the
-previous sideloads; all three carry the same debug key, so each updates the
-last in place. A later APK signed with a different key cannot.
+previous sideloads; they share the debug key, so each updates the last in
+place. A later APK signed with a different key cannot.
 
 `make mobile-android-release` syncs the web bundle, builds the Gradle
 `release` variant, and copies the APK/AAB to `bin/`. Play/store signing
@@ -144,6 +154,19 @@ only stores the device identity and the redeem ticket on the phone. Camera
 and cleartext (user-typed hub URLs, including `http` on a LAN) are declared
 in `Info.plist` and `AndroidManifest.xml`; nothing compiles a hub hostname.
 
+## Updates
+
+The installed app checks [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases)
+itself (`https://api.github.com/repos/LubyRuffy/eino-swarm/releases/latest`).
+It does not ask the PC. The browser walkthrough (`?mock=1`) does not check,
+so a desk session never phones GitHub. A newer `zwai-*-android.apk` on
+Android is downloaded and handed to the system installer — the sheet still
+needs a tap, and the first time Android may ask to allow installs from this
+app. iOS has no package on that feed, so Update opens the release page.
+**Not now** hides that version until a later one is published. A failed
+check stays quiet. The download only follows `github.com/LubyRuffy/eino-swarm`
+and GitHub's release-asset hosts.
+
 ## Simulators
 
 The viewfinder is the product path on a device with a camera. Simulators paste the same `pairlink:v1`
@@ -175,7 +198,7 @@ xcodebuild test -project App.xcodeproj -scheme App \
 
 `BindFlowTests` reuses a saved bind when the scan screen is gone. A live
 or last thread may already be open; the test taps Back to reach the inbox,
-then asserts `path=` plus the seed conversation and Starts a new thread. It is
+then asserts `path=` plus the seed conversation, opens New chat, and Starts a new thread. It is
 not part of `make check`. English accessibility names (`Pairing URI`,
 `Paste and bind`, `New message`, `Start`, `Back`, `Stop` / `Follow-up` /
 `Send`) are the unit-test locale (`en`); Playwright `e2e/scan.spec.ts` uses

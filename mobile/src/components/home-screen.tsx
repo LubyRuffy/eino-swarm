@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react"
+import { SquarePen } from "lucide-react"
+import { Children, useState, type ReactNode } from "react"
 
-import { Composer } from "@/components/composer"
+import { HomeBar } from "@/components/home-bar"
 import { HostChrome } from "@/components/host-chrome"
 import { InboxRow, type RowState } from "@/components/inbox-row"
 import { InboxSkeleton } from "@/components/inbox-skeleton"
@@ -8,10 +9,10 @@ import { PullToRefresh } from "@/components/pull-to-refresh"
 import { Button } from "@/components/ui/button"
 import { t } from "@/lib/i18n"
 import { inboxPreview } from "@/lib/inbox-preview"
+import { searchRunning, searchThreads } from "@/lib/inbox-search"
 import { collectLive } from "@/lib/resume"
 import type { ProjectView, RunningView, ThreadView } from "@/lib/rpc"
 import type { SavedLink } from "@/lib/store"
-import { cn } from "@/lib/cn"
 
 export function HomeScreen({
   hosts,
@@ -22,7 +23,7 @@ export function HomeScreen({
   more,
   onOpen,
   onMore,
-  onStart,
+  onNewChat,
   onSelectHost,
   onAddHost,
   onUnlink,
@@ -43,7 +44,7 @@ export function HomeScreen({
   more: boolean
   onOpen: (id: string) => void
   onMore: () => void
-  onStart: (text: string, projectId: string) => void
+  onNewChat: (projectId: string) => void
   onSelectHost: (fingerprint: string) => void
   onAddHost: () => void
   onUnlink: () => void
@@ -56,11 +57,19 @@ export function HomeScreen({
   error?: string
   onToggleLocale?: () => void
 }) {
-  const [project, setProject] = useState("")
-  const live = collectLive(running, threads)
-  const skip = new Set(live.map((r) => r.thread_id))
-  const grouped = groupThreads(projects, threads, skip)
-  const waiting = connecting || (!connected && live.length === 0 && grouped.length === 0)
+  const [query, setQuery] = useState("")
+  const roster = collectLive(running, threads)
+  const skip = new Set(roster.map((r) => r.thread_id))
+  const live = searchRunning(roster, query)
+  const grouped = groupThreads(projects, searchThreads(threads, query), skip).filter(
+    // A project with nothing left to show is still a place to start one,
+    // unless a search just proved it has no match.
+    (g) => g.threads.length > 0 || (!query && g.id !== ""),
+  )
+  // The skeleton means "nothing has arrived yet", so it reads the roster
+  // rather than the filtered rows: a query that matches nothing is an
+  // answer, not a reason to paint a dead link as still loading.
+  const waiting = connecting || (!connected && running.length === 0 && threads.length === 0)
   const empty = live.length === 0 && grouped.length === 0
   return (
     <main className="mx-auto flex h-full max-w-lg flex-col overflow-hidden">
@@ -72,6 +81,7 @@ export function HomeScreen({
         reconnecting={reconnecting}
         onSelect={onSelectHost}
         onAdd={onAddHost}
+        onNewChat={() => onNewChat("")}
         onUnlink={onUnlink}
         onToggleLocale={onToggleLocale}
       />
@@ -107,7 +117,11 @@ export function HomeScreen({
             ) : null}
 
             {grouped.map((g) => (
-              <InboxSection key={g.id || "recent"} title={g.name}>
+              <InboxSection
+                key={g.id || "recent"}
+                title={g.name}
+                onNew={g.id ? () => onNewChat(g.id) : undefined}
+              >
                 {g.threads.map((th) => (
                   <InboxRow
                     key={th.id}
@@ -121,8 +135,8 @@ export function HomeScreen({
                 ))}
               </InboxSection>
             ))}
-            {empty && !error ? <EmptyInbox /> : null}
-            {more ? (
+            {empty && !error ? query ? <NoMatch /> : <EmptyInbox /> : null}
+            {more && !query ? (
               <Button variant="outline" onClick={onMore}>
                 {t("home.more")}
               </Button>
@@ -131,17 +145,7 @@ export function HomeScreen({
         </PullToRefresh>
       )}
 
-      <Composer
-        label={t("home.newMessage")}
-        sendLabel={t("home.start")}
-        disabled={waiting || !connected}
-        above={
-          projects.length > 0 ? (
-            <ProjectChips projects={projects} value={project} onChange={setProject} />
-          ) : null
-        }
-        onSubmit={(text) => onStart(text, project)}
-      />
+      <HomeBar query={query} onQuery={setQuery} onNewChat={() => onNewChat("")} />
     </main>
   )
 }
@@ -161,52 +165,46 @@ function EmptyInbox() {
   )
 }
 
-function ProjectChips({
-  projects,
-  value,
-  onChange,
-}: {
-  projects: ProjectView[]
-  value: string
-  onChange: (id: string) => void
-}) {
-  const rows = [{ id: "", name: t("home.defaultProject") }, ...projects]
+function NoMatch() {
   return (
-    <div
-      role="radiogroup"
-      aria-label={t("home.project")}
-      className="rail mb-2 flex gap-1.5 overflow-x-auto pb-0.5"
-    >
-      {rows.map((p) => (
-        <button
-          key={p.id || "default"}
-          type="button"
-          role="radio"
-          aria-checked={p.id === value}
-          className={cn(
-            "h-7 shrink-0 rounded-full px-3 text-xs transition-colors",
-            p.id === value
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-muted-foreground",
-          )}
-          onClick={() => onChange(p.id)}
-        >
-          {p.name}
-        </button>
-      ))}
-    </div>
+    <p className="px-6 py-16 text-center text-[13px] text-muted-foreground">
+      {t("home.searchEmpty")}
+    </p>
   )
 }
 
-function InboxSection({ title, children }: { title: string; children: ReactNode }) {
+function InboxSection({
+  title,
+  onNew,
+  children,
+}: {
+  title: string
+  onNew?: () => void
+  children: ReactNode
+}) {
   return (
     <section className="flex flex-col gap-1.5">
-      <h2 className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {title}
-      </h2>
-      <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
-        {children}
-      </ul>
+      <div className="flex min-h-7 items-center gap-2 px-1">
+        <h2 className="min-w-0 flex-1 truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h2>
+        {onNew ? (
+          <button
+            type="button"
+            aria-label={t("home.newChatIn", { name: title })}
+            className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full bg-muted px-2.5 text-xs font-medium active:bg-accent"
+            onClick={onNew}
+          >
+            <SquarePen className="size-3.5" aria-hidden />
+            {t("home.newChat")}
+          </button>
+        ) : null}
+      </div>
+      {Children.count(children) > 0 ? (
+        <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+          {children}
+        </ul>
+      ) : null}
     </section>
   )
 }
@@ -227,8 +225,7 @@ function groupThreads(projects: ProjectView[], threads: ThreadView[], skip: Set<
   }
   const out: { id: string; name: string; threads: ThreadView[] }[] = []
   for (const p of projects) {
-    const list = by.get(p.id)
-    if (list?.length) out.push({ id: p.id, name: p.name, threads: list })
+    out.push({ id: p.id, name: p.name, threads: by.get(p.id) ?? [] })
   }
   if (rest.length) out.push({ id: "", name: t("home.recent"), threads: rest })
   return out

@@ -1,4 +1,4 @@
-import { Menu, Monitor, Plus } from "lucide-react"
+import { Menu, Monitor, SquarePen } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -14,6 +14,7 @@ export function HostChrome({
   reconnecting = false,
   onSelect,
   onAdd,
+  onNewChat,
   onUnlink,
   onToggleLocale,
 }: {
@@ -24,6 +25,7 @@ export function HostChrome({
   reconnecting?: boolean
   onSelect: (fingerprint: string) => void
   onAdd: () => void
+  onNewChat: () => void
   onUnlink: () => void
   onToggleLocale?: () => void
 }) {
@@ -146,14 +148,17 @@ export function HostChrome({
           )
         })}
       </div>
+      {/* Add a PC is on the menu at the other end of this row; the corner
+          belongs to the thing you reach for every time you pick up the phone. */}
       <Button
         type="button"
         variant="ghost"
+        data-testid="new-chat-top"
         className="size-10 shrink-0 px-0"
-        aria-label={t("home.addHost")}
-        onClick={onAdd}
+        aria-label={t("home.newChat")}
+        onClick={onNewChat}
       >
-        <Plus className="size-5" aria-hidden />
+        <SquarePen className="size-5" aria-hidden />
       </Button>
     </header>
   )

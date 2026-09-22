@@ -3,8 +3,10 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { AddHostSheet } from "@/components/add-host-sheet"
 import { HomeScreen } from "@/components/home-screen"
 import { LinkBanner } from "@/components/link-banner"
+import { NewChatScreen } from "@/components/new-chat-screen"
 import { ScanScreen } from "@/components/scan-screen"
 import { ThreadScreen } from "@/components/thread-screen"
+import { UpdateNotice } from "@/components/update-notice"
 import {
   bindFromURI,
   bindError,
@@ -71,6 +73,8 @@ export function App() {
     () => loadActiveFingerprint() || loadSavedLinks()[0]?.fingerprint || "",
   )
   const [adding, setAdding] = useState(false)
+  const [composing, setComposing] = useState(false)
+  const [composeProject, setComposeProject] = useState("")
   const [addError, setAddError] = useState<string>()
   const [link, setLink] = useState<RemoteLink | null>(null)
   const [busy, setBusy] = useState(() => loadSavedLinks().length > 0)
@@ -87,6 +91,7 @@ export function App() {
   const linkRef = useRef<RemoteLink | null>(null)
   const viewRef = useRef<PhoneView>(view)
   const addingRef = useRef(false)
+  const composingRef = useRef(false)
   const resumedRef = useRef(false)
   const olderBusy = useRef(false)
   const loadGen = useRef(0)
@@ -100,6 +105,7 @@ export function App() {
   linkRef.current = link
   viewRef.current = view
   addingRef.current = adding
+  composingRef.current = composing
 
   const commitView = (next: PhoneView) => {
     viewRef.current = next
@@ -395,6 +401,35 @@ export function App() {
     await openThreadOn(target, id)
   }
 
+  const startConversation = async (text: string, projectId: string) => {
+    const target = linkRef.current
+    if (!target?.alive()) {
+      setError(linkError(new LinkFault("offline", "network")))
+      void recover()
+      return
+    }
+    try {
+      const r = await target.rpc({
+        op: OpStart,
+        text,
+        project_id: projectId || undefined,
+      })
+      const started = r.threads?.[0]
+      // A refusal has to leave the compose screen up: the text the user
+      // typed only exists in that box.
+      if (!started) {
+        setError(r.error || r.code ? remoteError(r.error || r.code || "") : t("err.start"))
+        return
+      }
+      setComposing(false)
+      setComposeProject("")
+      await openThread(started.id)
+      applyList(await target.rpc({ op: OpList }), false)
+    } catch (e) {
+      fail(e)
+    }
+  }
+
   const loadOlder = async () => {
     const target = linkRef.current
     if (!target || olderBusy.current) return
@@ -447,12 +482,19 @@ export function App() {
   backRef.current = () => {
     const layer = androidBackLayer({
       sheet: addingRef.current,
+      compose: composingRef.current,
       thread: Boolean(viewRef.current.detail),
     })
     if (layer === "sheet") {
       addingRef.current = false
       setAdding(false)
       setAddError(undefined)
+      return true
+    }
+    if (layer === "compose") {
+      composingRef.current = false
+      setComposing(false)
+      setComposeProject("")
       return true
     }
     if (layer === "thread") {
@@ -491,6 +533,8 @@ export function App() {
     setBindBusy(false)
     setReconnecting(false)
     setAdding(false)
+    setComposing(false)
+    setComposeProject("")
     commitView(emptyView())
     unlinkingRef.current = false
     if (rest[0]) {
@@ -528,13 +572,18 @@ export function App() {
 
   if (phoneShell(hosts.length) === "scan") {
     return (
-      <ScanScreen
-        key={locale}
-        onURI={(uri) => void onURI(uri)}
-        busy={bindBusy}
-        error={error}
-        onToggleLocale={flipLocale}
-      />
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <UpdateNotice />
+        <div className="min-h-0 flex-1">
+          <ScanScreen
+            key={locale}
+            onURI={(uri) => void onURI(uri)}
+            busy={bindBusy}
+            error={error}
+            onToggleLocale={flipLocale}
+          />
+        </div>
+      </div>
     )
   }
 
@@ -558,10 +607,40 @@ export function App() {
     />
   )
 
+  if (composing) {
+    return (
+      <div className="flex h-full min-w-0 flex-col overflow-hidden">
+        <UpdateNotice />
+        {link ? banner : null}
+        <div className="screen-push flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          {/* Keyed on the locale only: switching PC re-picks the project,
+              and remounting would also throw away the typed message. */}
+          <NewChatScreen
+            key={locale}
+            hosts={hosts}
+            activeFingerprint={activeFp}
+            projects={projects}
+            initialProject={composeProject}
+            connected={Boolean(link?.alive())}
+            connecting={busy || reconnecting}
+            onSelectHost={selectHost}
+            onBack={() => {
+              setComposing(false)
+              setComposeProject("")
+            }}
+            onStart={(text, projectId) => void startConversation(text, projectId)}
+          />
+        </div>
+        {sheet}
+      </div>
+    )
+  }
+
   if (view.detail && link) {
     const detail = view.detail
     return (
       <div className="flex h-full min-w-0 flex-col overflow-hidden">
+        <UpdateNotice />
         {banner}
         <div className="screen-push flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ThreadScreen
@@ -650,6 +729,7 @@ export function App() {
 
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
+      <UpdateNotice />
       {link ? banner : null}
       <div className="min-h-0 flex-1">
         <HomeScreen
@@ -666,6 +746,10 @@ export function App() {
           connecting={busy || reconnecting}
           error={!link ? error : undefined}
           onOpen={(id) => void openThread(id)}
+          onNewChat={(projectId) => {
+            setComposeProject(projectId)
+            setComposing(true)
+          }}
           onSelectHost={selectHost}
           onAddHost={() => {
             setAddError(undefined)
@@ -688,20 +772,6 @@ export function App() {
             if (!link) return
             try {
               applyList(await link.rpc({ op: OpMore, cursor }), true)
-            } catch (e) {
-              fail(e)
-            }
-          }}
-          onStart={async (text, projectId) => {
-            if (!link) return
-            try {
-              const r = await link.rpc({
-                op: OpStart,
-                text,
-                project_id: projectId || undefined,
-              })
-              applyList(await link.rpc({ op: OpList }), false)
-              if (r.threads?.[0]) await openThread(r.threads[0].id)
             } catch (e) {
               fail(e)
             }

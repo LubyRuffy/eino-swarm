@@ -3,7 +3,16 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { openSaved, type DeviceLink } from "@/lib/client"
 import { t } from "@/lib/i18n"
-import { OpHello, OpList, OpOpen, OpUnwatch, OpWatch, type RemoteResponse } from "@/lib/rpc"
+import {
+  OpHello,
+  OpList,
+  OpOpen,
+  OpStart,
+  OpUnwatch,
+  OpWatch,
+  type RemoteRequest,
+  type RemoteResponse,
+} from "@/lib/rpc"
 import { saveLink } from "@/lib/store"
 
 vi.mock("@/lib/client", async (importOriginal) => {
@@ -27,6 +36,11 @@ describe("App boot chrome", () => {
   afterEach(() => {
     cleanup()
     vi.mocked(openSaved).mockReset()
+  })
+
+  it("does not offer an app update in the browser", () => {
+    render(<App />)
+    expect(screen.queryByRole("button", { name: t("update.upgrade") })).not.toBeInTheDocument()
   })
 
   it("shows the scan form only when this phone has never bound", () => {
@@ -82,7 +96,7 @@ describe("App boot chrome", () => {
     seedLink()
     vi.mocked(openSaved).mockReturnValue(new Promise(() => undefined))
     render(<App />)
-    fireEvent.click(screen.getByRole("button", { name: t("home.addHost") }))
+    openAddHost()
     expect(screen.getByRole("dialog", { name: t("home.addHost") })).toBeInTheDocument()
     expect(screen.getByRole("tablist")).toBeInTheDocument()
     expect(screen.getByText(t("scan.connecting"))).toBeInTheDocument()
@@ -93,7 +107,7 @@ describe("App boot chrome", () => {
     seedLink()
     vi.mocked(openSaved).mockReturnValue(new Promise(() => undefined))
     render(<App />)
-    fireEvent.click(screen.getByRole("button", { name: t("home.addHost") }))
+    openAddHost()
     expect(screen.getByRole("dialog", { name: t("home.addHost") })).toBeInTheDocument()
     let stayed = false
     await act(async () => {
@@ -114,7 +128,7 @@ describe("App boot chrome", () => {
         t("err.net.closed", { reason: "offline" }),
       )
     })
-    fireEvent.click(screen.getByRole("button", { name: t("home.addHost") }))
+    openAddHost()
     const dialog = screen.getByRole("dialog", { name: t("home.addHost") })
     expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: t("scan.camera") })).toBeEnabled()
@@ -300,6 +314,136 @@ describe("system back leaves a conversation for the inbox", () => {
   })
 })
 
+describe("starting a conversation is its own screen", () => {
+  afterEach(() => {
+    cleanup()
+    vi.mocked(openSaved).mockReset()
+  })
+
+  it("picks the PC and the project there, then opens what it started", async () => {
+    const asked: Partial<RemoteRequest>[] = []
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(
+      hostLink({
+        projects: [{ id: "p2", name: "notes" }],
+        start: async (req) => {
+          asked.push(req)
+          return {
+            v: 1,
+            id: "s",
+            ok: true,
+            threads: [
+              { id: "th-2", title: "th-2", running: true, last_active_at: "2026-01-01T00:00:00Z" },
+            ],
+          }
+        },
+      }),
+    )
+    render(<App />)
+    await waitFor(() => {
+      expect(screen.getByTestId("new-chat")).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId("new-chat"))
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "notes" })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("radio", { name: "notes" }))
+    fireEvent.change(screen.getByLabelText(t("home.newMessage")), { target: { value: "go" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: t("home.start") }))
+    })
+    expect(asked).toEqual([
+      expect.objectContaining({ op: OpStart, text: "go", project_id: "p2" }),
+    ])
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: t("thread.back") })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole("radio", { name: "notes" })).not.toBeInTheDocument()
+  })
+
+  it("a project row opens new chat already on that project", async () => {
+    const asked: Partial<RemoteRequest>[] = []
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(
+      hostLink({
+        projects: [{ id: "p2", name: "notes" }],
+        start: async (req) => {
+          asked.push(req)
+          return {
+            v: 1,
+            id: "s",
+            ok: true,
+            threads: [
+              { id: "th-2", title: "th-2", running: true, last_active_at: "2026-01-01T00:00:00Z" },
+            ],
+          }
+        },
+      }),
+    )
+    render(<App />)
+    const startHere = t("home.newChatIn", { name: "notes" })
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: startHere })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: startHere }))
+    expect(screen.getByRole("radio", { name: "notes" })).toBeChecked()
+    fireEvent.change(screen.getByLabelText(t("home.newMessage")), { target: { value: "go" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: t("home.start") }))
+    })
+    expect(asked).toEqual([
+      expect.objectContaining({ op: OpStart, text: "go", project_id: "p2" }),
+    ])
+  })
+
+  it("system back leaves the new-conversation screen on the inbox", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(hostLink())
+    render(<App />)
+    await waitFor(() => {
+      expect(screen.getByTestId("new-chat")).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId("new-chat"))
+    expect(screen.getByLabelText(t("home.newMessage"))).toBeInTheDocument()
+    let stayed = false
+    await act(async () => {
+      stayed = systemBack()
+    })
+    expect(stayed).toBe(true)
+    expect(screen.queryByLabelText(t("home.newMessage"))).not.toBeInTheDocument()
+    expect(screen.getByRole("tablist", { name: t("home.hosts") })).toBeInTheDocument()
+    expect(systemBack()).toBe(false)
+  })
+
+  // The typed message only exists in that box, so a refusal must not take
+  // the screen away with it.
+  it("keeps the screen and says so when the PC refuses the start", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(
+      hostLink({ start: async () => ({ v: 1, id: "s", ok: false, error: "quota" }) }),
+    )
+    render(<App />)
+    await waitFor(() => {
+      expect(screen.getByTestId("new-chat-top")).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByTestId("new-chat-top"))
+    fireEvent.change(screen.getByLabelText(t("home.newMessage")), { target: { value: "go" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: t("home.start") }))
+    })
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(t("err.remote", { detail: "quota" }))
+    })
+    expect(screen.getByLabelText(t("home.newMessage"))).toBeInTheDocument()
+  })
+})
+
+/** Add a PC is a menu row: the corner it used to share is New chat now. */
+function openAddHost() {
+  fireEvent.click(screen.getByRole("button", { name: t("home.menu") }))
+  fireEvent.click(screen.getByRole("menuitem", { name: t("home.addHost") }))
+}
+
 function systemBack(): boolean {
   const fn = window.__zwaiAndroidBack
   if (!fn) throw new Error("android back hook missing")
@@ -309,9 +453,11 @@ function systemBack(): boolean {
 function hostLink(opts?: {
   threads?: { id: string; title: string; running: boolean; last_active_at: string }[]
   running?: { thread_id: string; title: string }[]
+  projects?: { id: string; name: string }[]
   list?: () => Promise<RemoteResponse>
   open?: () => Promise<RemoteResponse>
   watch?: () => Promise<RemoteResponse>
+  start?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
 }): DeviceLink {
   const threads = opts?.threads ?? [
     { id: "th-1", title: "th-1", running: false, last_active_at: "2026-01-01T00:00:00Z" },
@@ -322,11 +468,12 @@ function hostLink(opts?: {
     alive: () => true,
     close: () => undefined,
     announceDevice: async () => undefined,
-    rpc: async (req: { op: string; thread_id?: string }): Promise<RemoteResponse> => {
+    rpc: async (req: Partial<RemoteRequest>): Promise<RemoteResponse> => {
       if (req.op === OpHello) return { v: 1, id: "h", ok: true }
+      if (req.op === OpStart && opts?.start) return opts.start(req)
       if (req.op === OpList) {
         if (opts?.list) return opts.list()
-        return { v: 1, id: "l", ok: true, threads, running, projects: [] }
+        return { v: 1, id: "l", ok: true, threads, running, projects: opts?.projects ?? [] }
       }
       if (req.op === OpOpen) {
         if (opts?.open) return opts.open()

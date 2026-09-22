@@ -17,6 +17,8 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        // Before the bridge starts, or the page's install() never finds it.
+        registerPlugin(AppUpdatePlugin.class);
         super.onCreate(savedInstanceState);
         // Conversation and add-PC are React state, not WebView history.
         // Activity's default back finishes the task from those screens.

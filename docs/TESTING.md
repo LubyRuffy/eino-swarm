@@ -18,9 +18,9 @@ deterministic and fast enough to run on every change.
 | HTTP tests | every endpoint, SSE replay and resume, the tail log page (`GET /log`, including the live-edge roster sidecar), one worker's log (`GET /agents/:agent/log`), upload path traversal, restart recovery (leftover turns, in-flight sub-agents, and the follow-up queue continue; in-flight tools are closed), PTY terminals (`GET /terminal`, same-origin / loopback Origin, DNS-rebind Host refused, project cwd), phone pairing status/token/offer (`/api/remote/*`, token never echoed), conversation search (`GET /api/search` finds a body the title does not contain; embeddings stay off until a model is pinned), SPA freeze (a Vite rebuild of `dist/` cannot steal hashed JS from a live window; a missing `/assets/*` file is 404 text, not the HTML shell) | `go test ./internal/server/` |
 | Front-end unit tests | the event reducer that turns the stream into blocks, the store's conversation targeting, quoting selected transcript text into the composer (count chip at rest, hover to read/edit/drop; tagged `<selected_text>` / `<user_request>` on send; Copy message without the wire tags; the Add to chat snapshot surviving a live stream), clipboard image paste, copying transcript text when the Clipboard API refuses (copy event plant, not a silent execCommand true), file drop onto the composer, find-in-conversation matching (count vs a paint window so a live turn does not freeze), http(s) links leaving the window, sidebar drag order (title drag after 8px, first click still opens), Scheduled inbox / wake banner / notice Run now and cancel / live waits sort first and show prompt / Swarm schedule caps, chrome i18n (`en`/`zh` key parity, locale persist through settings), appearance tokens (`font` / `ui_font_size` / `font_size` / `content_width` / `transcript_mode` / `palette`, directory density), tail-first history pages (`thread-log` / `thread-history` / `use-history-window` / `use-turn-jump`), dismissible settings toasts, ⌘K palette body search (`thread-search` / `palette.test`, stale hits cleared while the next query is in flight), semantic-search settings (off until a model is named) | `cd frontend && npm test` |
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, directory rows tracking UI size, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet; Bound phones paints a reported model) | `cd frontend && npm run e2e` |
-| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, live viewfinder (frame, sweeping beam, chime on a pairlink QR), saved-ticket host chips + connecting skeleton (not the scan form), multiple tickets, computer name from `hello`/`list` `host` (not the hub hostname), slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default; Android system back pops a conversation or Add a PC and finishes only from the inbox or the unbound scan screen; Android release Gradle reads version/signing from env (no password in git); `android-release` refuses a store upload without a keystore, skips JDK 17, copies the APK to `bin/` | `cd mobile && npm test` |
-| Phone E2E | scan screen opens a live viewfinder (frame, sweeping beam, fake-camera preview) and paste of the same `pairlink:v1` URI; a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a sheet | `cd mobile && npm run e2e` |
-| Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, Start | see `mobile/README.md` (not in `make check`) |
+| Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, live viewfinder (frame, sweeping beam, chime on a pairlink QR), saved-ticket host chips + connecting skeleton (not the scan form), multiple tickets, computer name from `hello`/`list` `host` (not the hub hostname), slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default; Android system back pops Add a PC, then the new-conversation screen, then a conversation, and finishes only from the inbox or the unbound scan screen; inbox search filters the roster already on the phone; a project row starts a conversation in that project; Android release Gradle reads version/signing from env (no password in git); `android-release` refuses a store upload without a keystore, skips JDK 17, copies the APK to `bin/` | `cd mobile && npm test` |
+| Phone E2E | scan screen opens a live viewfinder (frame, sweeping beam, fake-camera preview) and paste of the same `pairlink:v1` URI; a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a menu sheet; New chat and a project row open the start screen | `cd mobile && npm run e2e` |
+| Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, New chat, Start | see `mobile/README.md` (not in `make check`) |
 
 Current Go coverage, from `go test -race -cover -timeout 20m ./...`:
 
@@ -143,6 +143,13 @@ A long tool path must not stretch the column (`min-w-0` / `break-words`).
 `mobile/src/lib/tool-preview.test.ts` pulls `findings` (not `prompt`) for the collapsed chip, and a wait roster is counts rather than `elapsed_ms`.
 `mobile/src/components/thread-blocks.test.tsx` keeps that roster off the user bubble and the expanded tool body.
 
+`mobile/src/lib/app-update.test.ts` is why the phone asks GitHub Releases
+itself, ignores a draft, a prerelease, the version already installed, and
+any artefact that is not this repo's `zwai-*-android.apk` on a GitHub host.
+`mobile/src/components/update-notice.test.tsx` is why Update starts that
+install and why Not now hides the bar. The browser walkthrough does not
+check, so `mobile/src/app.test.tsx` still sees no Update button.
+
 `mobile/src/lib/mock-link.test.ts` is why the walkthrough host answers the
 same ops with the same shapes, streams a turn to whoever is watching, says
 the turn is over on the frame that ends it, and is one PC seen down two
@@ -151,8 +158,8 @@ inbox and a conversation had no end-to-end coverage, because Playwright
 could not get past the scan form. `mobile/e2e/walkthrough.spec.ts` drives
 those screens on it: live rows separate from recents with an age on each,
 a turn that folds its work behind the answer, a short conversation resting
-on the composer rather than under blank space, and Start from the inbox
-opening what it started.
+on the composer rather than under blank space, New chat (and a project row)
+opening what it started, and inbox search narrowing the rows.
 
 `mobile/src/components/composer.test.tsx` is why Enter sends but Shift+Enter
 and an IME candidate list do not, why send stays off until there is
