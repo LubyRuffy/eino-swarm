@@ -45,7 +45,7 @@ func (m swarmTUI) View() string {
 		w, h = 110, 34
 	}
 	menu := ""
-	if m.interactive && !m.busy && m.ask == nil {
+	if m.interactive && (!m.busy || m.remote) && m.ask == nil {
 		menu = m.slashMenu(w)
 	}
 	leftW := w*3/5 - 3
@@ -72,8 +72,12 @@ func (m swarmTUI) View() string {
 	right = m.roster(rightW, bodyH)
 
 	bar := cTitle.Render(" swarm-tui ") + cDim.Render("←/→ agent · t thinking · enter tools · esc manager · q quit")
-	if m.interactive && !m.busy {
-		bar = cTitle.Render(" swarm-tui ") + cDim.Render("enter send · / commands · shift+tab reason · ctrl+c quit")
+	if m.interactive && (m.remote || !m.busy) {
+		hint := "enter send · / commands · shift+tab reason · ctrl+c quit"
+		if m.remote {
+			hint = "enter send · alt+enter steer · ctrl+x stop · ctrl+c quit"
+		}
+		bar = cTitle.Render(" swarm-tui ") + cDim.Render(hint)
 	}
 	sep := cDim.Render(strings.Repeat("─", maxInt(0, w)))
 
@@ -103,7 +107,9 @@ func (m swarmTUI) View() string {
 }
 
 func (m swarmTUI) composer(w int) string {
-	if m.busy {
+	// A remote turn still takes a follow-up, a steer, or a stop. The
+	// in-process screen has nowhere to put that line, so it only shows status.
+	if m.busy && !m.remote {
 		return cDim.Render(trunc("running…", maxInt(1, w)))
 	}
 	prefix := cTitle.Render(composerPrompt)

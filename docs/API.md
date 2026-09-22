@@ -1,9 +1,8 @@
 # HTTP API
 
 Everything the UI does goes through this API, and the desktop window uses exactly
-the same endpoints as the browser. Base URL is the server's own origin:
-`http://127.0.0.1:8787` for `zwai web` by default, a random loopback port in
-desktop mode (printed on startup and used by the window).
+the same endpoints as the browser. Base URL is the engine's own origin:
+the URL in `engine.json` (a random loopback port unless `--addr` was set).
 
 - All bodies are JSON unless stated otherwise; timestamps are RFC 3339 with
   milliseconds.
@@ -19,7 +18,7 @@ desktop mode (printed on startup and used by the window).
 | `404` | no such conversation / turn / file / project / skill / unread steer / schedule / schedule run |
 | `409` | `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable |
 | `429` | too many terminals are already open |
-| `501` | the shell cannot do this (`reveal` / `open` outside the desktop app) |
+| `501` | the shell cannot do this (`reveal` / `open` when this process is not a loopback engine or the desktop app) |
 
 ## Meta
 
@@ -30,7 +29,7 @@ What the UI reads once at startup to decide what to render.
 ```json
 {
   "version": "dev",
-  "mode": "web",
+  "mode": "engine",
   "mock": false,
   "configured": true,
   "default_provider": "default",
@@ -52,20 +51,26 @@ What the UI reads once at startup to decide what to render.
   "ui": {"locale": "system", "font": "system", "ui_font_size": "medium",
          "content_font": "ui", "font_size": "ui", "code_font": "mono",
          "code_font_size": "content", "content_width": "comfortable",
-         "transcript_mode": "user", "palette": "zwai"}
+         "transcript_mode": "user", "palette": "zwai"},
+  "clients": [{"id": "pc_ab12", "surface": "desktop", "pid": 4242}]
 }
 ```
 
-`mode` is `web` or `desktop`. `configured` is false until a default provider has
+`mode` is `engine` for the shared process. Older notes that said `web` or
+`desktop` described a process that was itself the window; shells now attach
+to one engine. `clients` lists shells holding a presence connection
+(`desktop`, `web`, `tui`). A reserve that never connects is absent. The
+title bar names them when two or more are connected. `configured` is false until a default provider has
 a base URL and a model name — the UI shows a setup banner until then. `mock` is
 true when running on the scripted offline provider. `reasoning_levels` is the
 ordered set of explicit thinking levels the composer offers; the empty default
 is rendered as "Default" and is not listed. `capabilities.memory` mirrors
 `memory.enabled`: the UI disables a project's memory switch when the whole
 install has memory off, rather than offering something that will not happen.
-`capabilities.open_url` is true only in the desktop app, where an http(s) link
-is opened with the system browser instead of inside the webview. `locale` is
-`system`, `en` or `zh` — the chrome language from `ui.locale`. The UI applies it
+`capabilities.open_url` is true for a desktop window and for an engine bound
+to loopback, where an http(s) link is opened with the system browser.
+`capabilities.reveal` follows the same rule. A non-loopback bind has neither.
+`locale` is `system`, `en` or `zh` — the chrome language from `ui.locale`. The UI applies it
 on boot without writing it back. `ui` is the rest of the chrome: `font`
 (`system` / `serif` / `mono`), `ui_font_size` (`small` / `medium` / `large`;
 chrome and directory density),
@@ -79,6 +84,27 @@ behind a live ticker: **Thinking** / **Planning next moves** / **Editing**
 `palette` (`zwai` / `fofa`; named color set, each with light and dark).
 `locale` is also at the top level so
 an older client that only reads that field still pins the dictionary.
+
+## Presence
+
+A shell counts as connected only while it holds the GET open. The engine
+uses that list, not a writer lock, to decide when it may exit.
+
+### `POST /api/presence`
+
+```json
+{ "surface": "tui", "pid": 4242 }
+```
+
+`surface` is `desktop`, `web`, or `tui`. Anything else is `400`. The
+response is `{ "id": "pc_…" }`. `pid` may be omitted.
+
+### `GET /api/presence/:id`
+
+Server-sent events. The first frame is a comment (`: held`). Later frames
+are `: ping`. The connection stays open until the client drops or another
+GET for the same id replaces it (an EventSource reconnect). An unknown id
+is `404`. Dropping the socket removes the client from `GET /api/meta`.
 
 ## Settings, models and tools
 

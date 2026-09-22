@@ -58,20 +58,42 @@ func TestOpenBrowserLaunchesTheURL(t *testing.T) {
 	}
 }
 
-// The reveal hook is what the desktop app gives the server; in a browser it
-// must be absent so the API can say the feature is unavailable.
+// Reveal and open-url are for a desktop window and for an engine bound to
+// loopback. A browser, and an engine on a public address, must not spawn
+// a file manager or a browser on the host.
 func TestRevealIsWiredOnlyForDesktop(t *testing.T) {
-	if revealFor(server.ModeWeb) != nil {
+	if revealFor(server.ModeWeb, "127.0.0.1:1") != nil {
 		t.Fatal("a web server must not spawn a file manager on the host")
 	}
-	if revealFor(server.ModeDesktop) == nil {
+	if revealFor(server.ModeDesktop, "") == nil {
 		t.Fatal("the desktop shell needs the reveal hook")
 	}
-	if openURLFor(server.ModeWeb) != nil {
+	if revealFor(server.ModeEngine, "127.0.0.1:9") == nil {
+		t.Fatal("a loopback engine is the desktop's file manager")
+	}
+	if revealFor(server.ModeEngine, "") == nil || revealFor(server.ModeEngine, "[::1]:9") == nil {
+		t.Fatal("an unset or IPv6 loopback bind is still this machine")
+	}
+	if revealFor(server.ModeEngine, "0.0.0.0:9") != nil {
+		t.Fatal("a public bind must not spawn a file manager")
+	}
+	if openURLFor(server.ModeWeb, "127.0.0.1:1") != nil {
 		t.Fatal("a web server must not spawn a browser on the host")
 	}
-	if openURLFor(server.ModeDesktop) == nil {
+	if openURLFor(server.ModeDesktop, "") == nil {
 		t.Fatal("the desktop shell needs the open-url hook")
+	}
+	if openURLFor(server.ModeEngine, "localhost:9") == nil {
+		t.Fatal("a loopback engine opens links on this machine")
+	}
+	if openURLFor(server.ModeEngine, "192.0.2.1:9") != nil {
+		t.Fatal("a public bind must not open a browser on the host")
+	}
+	if !loopbackBind(":9") || !loopbackBind("127.0.0.1") {
+		t.Fatal("an empty host and a bare loopback address are this machine")
+	}
+	if loopbackBind("example.invalid") {
+		t.Fatal("a name that is not loopback must not count")
 	}
 
 	dir := t.TempDir()
@@ -148,6 +170,9 @@ func TestListenReportsABadAddress(t *testing.T) {
 
 func TestOpenURLPicksAPlatformCommand(t *testing.T) {
 	got := swapLaunch(t)
+	if err := OpenURL("http://127.0.0.1:1234"); err != nil {
+		t.Fatal(err)
+	}
 	if err := openURL("http://127.0.0.1:1234"); err != nil {
 		t.Fatal(err)
 	}

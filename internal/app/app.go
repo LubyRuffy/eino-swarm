@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,14 +109,18 @@ func New(opts Options) (*App, error) {
 	if assets == nil && !opts.NoAssets {
 		assets = frontend.Assets()
 	}
+	addr := opts.Addr
+	if addr == "" {
+		addr = cfg.Server.Addr
+	}
 	srv, err := server.New(server.Options{
 		Engine:  eng,
 		Logger:  logger,
 		Version: opts.Version,
 		Mode:    opts.Mode,
 		Assets:  assets,
-		Reveal:  revealFor(opts.Mode),
-		OpenURL: openURLFor(opts.Mode),
+		Reveal:  revealFor(opts.Mode, addr),
+		OpenURL: openURLFor(opts.Mode, addr),
 	})
 	if err != nil {
 		idx.Stop()
@@ -124,10 +129,6 @@ func New(opts Options) (*App, error) {
 		return nil, err
 	}
 
-	addr := opts.Addr
-	if addr == "" {
-		addr = cfg.Server.Addr
-	}
 	host := remote.New(eng, cfg, logger)
 	host.Start()
 	srv.SetRemote(host)
@@ -237,7 +238,9 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 }
 
-// OpenBrowser points the user's browser at the running server.
+// OpenURL opens url in the system browser. Shells that attached to an engine
+// they do not own use this; they have no App to ask.
+func OpenURL(url string) error { return openURL(url) }
 func (a *App) OpenBrowser() error {
 	url := a.URL()
 	if url == "" {
@@ -267,20 +270,35 @@ func openURL(url string) error {
 // revealFor returns the file-manager hook, but only for the desktop shell:
 // spawning a file manager on the server's machine is a reasonable thing for a
 // desktop app to do and an unreasonable one for a web server.
-func revealFor(mode string) func(string) error {
-	if mode != server.ModeDesktop {
-		return nil
+func revealFor(mode, addr string) func(string) error {
+	if mode == server.ModeDesktop || (mode == server.ModeEngine && loopbackBind(addr)) {
+		return revealPath
 	}
-	return revealPath
+	return nil
 }
 
-// openURLFor is the desktop-only browser hook. A web server must not spawn
-// windows on the host; the tab already has a browser.
-func openURLFor(mode string) func(string) error {
-	if mode != server.ModeDesktop {
-		return nil
+func openURLFor(mode, addr string) func(string) error {
+	if mode == server.ModeDesktop || (mode == server.ModeEngine && loopbackBind(addr)) {
+		return openURL
 	}
-	return openURL
+	return nil
+}
+
+// loopbackBind is the only listen address that may spawn Finder or a browser.
+// A shared engine on 127.0.0.1 is the desktop. A non-loopback web bind is not.
+func loopbackBind(addr string) bool {
+	if strings.TrimSpace(addr) == "" {
+		return true
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	if host == "" || host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func revealPath(path string) error {

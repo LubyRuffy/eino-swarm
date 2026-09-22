@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm"
@@ -120,14 +121,23 @@ type swarmTUI struct {
 	busy        bool
 	input       string
 	prompts     chan string
-	choice      *Switcher
-	notice      string
-	ime         *imeAnchor
-	slashIndex  int
-	slashQuery  string
-	askHost     *AskHost
-	ask         *askOverlay
-	plan        *PlanState
+	// steers and stops are the remote screen's ⌘Enter and Stop. Nil on the
+	// in-process screen, which has no engine to post them to.
+	steers     chan string
+	stops      chan struct{}
+	choice     *Switcher
+	notice     string
+	ime        *imeAnchor
+	slashIndex int
+	slashQuery string
+	askHost    *AskHost
+	ask        *askOverlay
+	plan       *PlanState
+	// remote means this screen is a client of zwai engine. The event stream
+	// paints the user line. The composer stays open while a turn runs:
+	// Enter queues a follow-up, alt+enter steers, ctrl+x stops the turn.
+	remote bool
+	asking *atomic.Bool
 }
 
 // notificationMsg wraps a swarm.Notification as a bubbletea message.
@@ -136,6 +146,11 @@ type swarmTUI struct {
 type notificationMsg struct {
 	swarm.Notification
 	idle bool
+	// userText is a stored user line from the engine. The remote screen does
+	// not also insert one when you press Enter.
+	userText string
+	// notice is a one-line status that is not a transcript block.
+	notice string
 }
 
 func newModel(reg *swarm.Registry) swarmTUI {
@@ -143,7 +158,18 @@ func newModel(reg *swarm.Registry) swarmTUI {
 		reg:      reg,
 		manager:  &agentState{id: swarm.DefaultManagerID, role: "manager", open: map[int]bool{}},
 		selected: -1,
+		asking:   &atomic.Bool{},
 	}
+}
+
+func (m *swarmTUI) setAsking(v bool) {
+	if m.asking != nil {
+		m.asking.Store(v)
+	}
+}
+
+func (m *swarmTUI) isAsking() bool {
+	return m.asking != nil && m.asking.Load()
 }
 
 func (m *swarmTUI) byID(id string) *agentState {
@@ -215,6 +241,9 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 		if note := scheduleNotice(name, toolArgsOf(n.Text)); note != "" {
 			m.notice = note
 		}
+		if name == "ask_user" {
+			m.setAsking(true)
+		}
 	case swarm.NotifyToolDelta:
 		if blk := a.toolBlock(n.ToolCallID); blk != nil {
 			view := viewToolResult(blk.toolName, n.Text)
@@ -229,6 +258,9 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 			blk.open = false // done: collapse to summary line
 			if a.curTool == blk {
 				a.curTool = nil
+			}
+			if blk.toolName == "ask_user" {
+				m.setAsking(false)
 			}
 		}
 	case swarm.NotifyError:
@@ -299,8 +331,21 @@ func (m swarmTUI) onTick() (tea.Model, tea.Cmd) {
 			if !ok {
 				return m, tea.Quit
 			}
+			if n.userText != "" {
+				m.manager.blocks = append(m.manager.blocks, &block{
+					kind: blockUser, agentID: m.manager.id, answer: n.userText, open: true,
+				})
+			}
+			if n.notice != "" {
+				m.notice = n.notice
+			}
 			if n.idle {
 				m.busy = false
+				if n.userText == "" && n.Text == "" && n.AgentID == "" {
+					continue
+				}
+			}
+			if n.userText != "" && n.Text == "" && n.AgentID == "" {
 				continue
 			}
 			m.apply(n.Notification)

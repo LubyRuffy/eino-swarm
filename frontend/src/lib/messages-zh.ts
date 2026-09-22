@@ -26,7 +26,12 @@ export const zh: { [K in keyof typeof en]: string } = {
   "header.lostStreamWeb":
     "与服务器的事件流断开。会自行重试并补上漏掉的事件。",
   "header.workingIn": "工作目录 {path}",
+  "header.shared": "同时开着 {where}",
   "header.languageMark": "EN",
+
+  "surface.desktop": "桌面",
+  "surface.web": "浏览器",
+  "surface.tui": "终端",
 
   "sidebar.newConversation": "新对话",
   "sidebar.search": "搜索会话 (⌘K)",

@@ -325,9 +325,15 @@ export interface ToolDescriptor {
   default_off: boolean
 }
 
+export interface PresenceClient {
+  id: string
+  surface: string
+  pid?: number
+}
+
 export interface Meta {
   version: string
-  mode: "web" | "desktop"
+  mode: "web" | "desktop" | "engine"
   mock: boolean
   configured: boolean
   default_provider: string
@@ -341,6 +347,8 @@ export interface Meta {
    *  that only read this field still pin the dictionary. */
   locale?: string
   ui?: UISettings
+  /** Shells holding a presence connection. Empty when this process has none. */
+  clients?: PresenceClient[]
 }
 
 export interface SwarmLimits {

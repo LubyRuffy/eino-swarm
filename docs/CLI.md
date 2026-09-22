@@ -3,6 +3,7 @@
 ```
 zwai [desktop] [--data-dir DIR] [--mock]
 zwai web  [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
+zwai engine [--addr HOST:PORT] [--data-dir DIR] [--mock]
 zwai tui  [--task "..."] [--goal "..."] [--plan "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
 zwai trace <turn-id|conversation-id> [--full] [--data-dir DIR]
 zwai config [path|init|show] [--data-dir DIR]
@@ -35,21 +36,29 @@ Three conveniences worth knowing:
 
 ## `zwai desktop`
 
-Opens the app in a native window (Wails 3). The window loads a local HTTP server
-on a **random loopback port** — a fixed port would collide with whatever else you
-run, and the window is told the URL anyway. Closing the window abandons
-in-memory runs and closes the database. Unfinished turns stay `running` so the
-next start continues them; a user **Stop** is the only path that records
-`cancelled`. The live event stream is cancelled immediately so the window does
-not freeze; a stuck REST call still has a 5s ceiling.
+Opens the app in a native window (Wails 3). The window loads the data
+directory's engine on a **random loopback port** — a fixed port would collide
+with whatever else you run, and the window is told the URL anyway
+(`?shell=desktop`, so the traffic lights belong to this window). Closing the
+window disconnects it. It does not stop the engine, and it does not mark a
+turn `cancelled`. The engine exits on its own after a few seconds once no
+shell is connected, the phone hub is down, and nothing is running. A turn
+that is still going keeps the process up. A user **Stop** is the only path
+that records `cancelled`. If the engine process is killed, the next shell
+takes the lock and resumes orphaned turns.
+
+A second `zwai desktop` on the same data directory opens another window on
+the same engine. Both can type. The title bar names the connected shells
+when more than one is attached.
 
 A checkout with no `frontend/dist/index.html` (or with TypeScript newer than
 the last build) runs `npm install` then `npm run build` before the window
 opens, against `registry.npmjs.org` (the project `.npmrc`, not a user-level
 mirror). Ctrl-C during that first install stops it.
 
-Desktop is the only mode that can show a file in the platform file manager; the
-UI hides that control everywhere else. On macOS the hidden title bar
+A loopback engine can show a file in the platform file manager and open
+http(s) links in the system browser. A non-loopback bind cannot; the UI
+hides those controls. On macOS the hidden title bar
 drags like a native window; double-click zooms or restores it. The traffic
 lights are centred in that bar next to the sidebar toggle. Full-page
 Settings keeps the same empty strip so **Back to app** is not under the
@@ -73,10 +82,13 @@ Serves the same app over HTTP and opens your browser.
 | `--addr HOST:PORT` | the configured `server.addr` (`127.0.0.1:8787`) | listen address. `:0` or `127.0.0.1:0` picks a free port and prints it. |
 | `--no-open` | off | do not open a browser. Also honoured: `server.open_browser: false`. |
 
-The URL is printed on startup. `Ctrl-C` shuts down cleanly: in-memory runs stop
-and unfinished turns stay `running`, so the next start continues them. In-flight
-tool calls the previous process never finished are marked stopped, not left
-spinning. A user **Stop** in the UI is the only path that records `cancelled`.
+The URL is printed on startup. `Ctrl-C` stops this waiter. It does not stop
+the engine while another shell, the phone, or a turn is still using it.
+Unfinished turns are not marked `cancelled`. A user **Stop** in the UI is the
+only path that records `cancelled`.
+
+`--mock` attaches only to a mock engine. A live non-mock engine on the same
+data directory is an error, not a second process.
 
 ```bash
 zwai web --addr 0.0.0.0:8787   # reachable from your LAN — see the warning below
@@ -86,50 +98,57 @@ zwai web --addr 0.0.0.0:8787   # reachable from your LAN — see the warning bel
 > the agents run with full access to the machine. Bind to a public interface only
 > on a network you control.
 
+## `zwai engine`
+
+The process that owns one data directory. You do not have to start it:
+`desktop`, `web`, and `tui` spawn it when `engine.json` is missing or the
+pid is dead, then attach. A second spawn attaches to the URL already
+published. The child is in its own session, so the shell that started it
+can exit.
+
+| flag | default | meaning |
+|---|---|---|
+| `--addr HOST:PORT` | `127.0.0.1:0` | listen address. `:0` picks a free port and writes it to `engine.json`. |
+| `--mock` | off | this lease is the scripted offline provider. A client with the other setting gets an error instead of a second engine. |
+
+The process exits after a short idle grace when three things are true
+together: no shell holds a presence connection, the phone hub socket is
+down, and no turn is running. A reserve that never connects does not count.
+Killing the process releases the lock. A process that still holds the lock
+but does not answer `/api/meta` is reported; it is not killed.
+
 ## `zwai tui`
 
-The same swarm, the same config, the same toolset, and the same manager
-prompt as the app (OS, shell, date, delegation policy, advertised tools).
-The typed task is the user message, not the system prompt — otherwise the
-manager thinks it has no `web_search` and spawns a worker just to search.
-When `personality.instructions` is set, that
-section is prepended to the manager instruction the same way the app does
-(before `--goal`, so a standing objective is still last). Launch it with no task and it stays open at a
-composer, the way the other terminal CLIs do: type a task, Enter sends, the
-transcript stays, the next Enter is the next turn. The idle composer parks
+The terminal is a client of the same engine as the window. It reads and
+writes the same conversations. Launch it with no task and it stays open at
+a composer on the latest conversation: type a task, Enter sends, the
+transcript stays, the next Enter while a turn is running becomes a
+follow-up, alt+enter injects into the running turn, and ctrl+x stops
+that turn without leaving the screen. An `ask_user` that is waiting still
+accepts a typed answer.
+The idle composer parks
 the real terminal cursor at the insert point so CJK IME preedit follows the
 committed text (a painted block caret left the hardware cursor at column 0,
 which is where the IME attached). Type `/` for a Codex-style command popup
 (`/goal`, `/plan`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; `/quit` appears once you
-type it). `/goal <objective>` starts that text as the next turn (a CJK
-objective glued to the name, a fullwidth `／`, or the CJK punctuation comma
-`、`, still counts). `/plan <task>`
-enters planning, unmounts write/edit/exec and similar, and starts that task.
-Bare `/plan` only enters planning. `/implement` (hidden until typed) accepts
-the plan and starts the work. `ask_user` pauses the same run with an overlay
-(digits pick an option; typing is Other). Piped stdin fails the tool instead
-of hanging. Enter on `/model` or `/reason` opens the catalog / thinking-level
-picker. The transcript follows the live edge: a finished answer stays
-on screen instead of folding to its first line, and a folded thought
-previews the last line that was streaming. `--task` is the one-shot path for reproducing a misbehaving UI run —
-it starts immediately and exits when that run finishes. `--goal` without `--task`
-is the same start: the objective is the first user message, auto-continues until
-`complete_goal` / `block_goal`, then the composer comes back. `--plan` without
-`--task` is the same start in planning: the text is the first user message,
-write/edit/exec are unmounted, and the draft lands in `$ZWAI_HOME/plans/tui/PLAN.md`.
-Pass `--task` (or leftover words) only when the first user line should differ from the standing objective.
-
-Nothing is written to the database in this mode; use the app when you want the
-conversation kept.
+type it). `/goal`, `/plan` and `/implement` are sent to the engine.
+`/model NAME` and `/reason LEVEL` patch that conversation.
+`/clear` only clears this screen. `ctrl+c` leaves the terminal; it does
+not stop a turn the engine is still running. `ctrl+x` does. `--task` stores a turn and
+this process can exit when that turn settles; the row stays in Recents.
+`--goal` alone sends `/goal`. `--goal` with a separate task sets the
+objective, then sends the task. `--plan` alone sends `/plan`. `--plan`
+with a task turns planning on, then sends the task. `--workspace` is a
+project working directory, not a scratch folder.
 
 | flag | meaning |
 |---|---|
-| `--task "..."` | run this task immediately, then exit. Words after the flags also count as the task, so quoting is optional: `zwai tui summarise the notes`. Omit it to wait at the composer (`ctrl+c` leaves), unless `--goal` or `--plan` is set. |
-| `--goal "..."` | standing objective. The manager gets `complete_goal`, `block_goal`, and `reopen_goal` and, if it does not call `complete_goal` or `block_goal`, the TUI starts another run (up to `swarm.goal_max_auto_turns`) instead of returning the composer / exiting. A continuation that makes no counted tool progress returns the composer instead of looping. A failed run that is not a recoverable model error blocks the objective the same way `block_goal` does. A truncated tool-call JSON, a `429`, or a dropped stream retries inside the same turn twice, then auto-continues. Each run ends when the manager stops calling tools. `swarm.goal_session_max_iterations` is only eino's ReAct slice — hitting it extends the same run without spending the auto-continue budget. The app's `/goal` is the same pursuit on a saved conversation. Omit `--task` and the objective is also the first user message — it starts immediately. Pass `--task` (or leftover words) only when the first line should steer, not restate the objective. |
-| `--plan "..."` | enter planning immediately (same as `/plan`). Write/edit/exec and similar are unmounted; `ask_user` and `propose_plan` stay. Entering plan pauses an open `--goal`; `/implement` does not resume it. Omit `--task` and the plan text is also the first user message. |
-| `--model NAME` | the model name this session sends. Default: the provider's configured model. The catalog is whatever Settings last discovered (plus that default). Interactive sessions also switch with `/model` and `/model NAME`. |
-| `--reasoning LEVEL` | thinking level for this session: empty/`default`, `low`, `medium`, or `high`. Empty sends no `reasoning_effort`, so a non-reasoning endpoint is not handed a field it rejects. Interactive sessions cycle with `shift+tab` or `/reason LEVEL`. |
-| `--workspace DIR` | the directory relative tool paths resolve against. Default: a temporary directory that is removed on exit. |
+| `--task "..."` | run this task immediately. The process can exit when the turn settles. Words after the flags also count as the task, so quoting is optional: `zwai tui summarise the notes`. Omit it to wait at the composer (`ctrl+c` leaves), unless `--goal` or `--plan` is set. |
+| `--goal "..."` | standing objective on the conversation. Omit `--task` and the terminal sends `/goal` with this text and keeps the composer. Pass `--task` (or leftover words) when the first line should differ from the objective; the objective is patched first. |
+| `--plan "..."` | enter planning. Omit `--task` and the text is sent as `/plan`. With `--task`, planning is turned on and the task is the first user line. |
+| `--model NAME` | model name patched onto the conversation before the first line. Default: the provider's configured model. |
+| `--reasoning LEVEL` | thinking level patched onto the conversation: empty/`default`, `low`, `medium`, or `high`. Empty sends no `reasoning_effort`. |
+| `--workspace DIR` | project working directory for this conversation. Omit it and a new conversation uses the engine's usual workspace. An interactive attach with no task reuses the latest conversation and does not create a project. |
 
 ## `zwai trace`
 

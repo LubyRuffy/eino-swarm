@@ -298,8 +298,8 @@ first model call cannot lose the race against `fork_context` / resume.
 | `swarm-real` | a real endpoint, real tools |
 | `swarmwatch` | consuming the notification stream |
 
-The terminal renderer is not an example: it is `internal/tui`, reachable as
-`zwai tui` (interactive) or `zwai tui --task "…"` (one-shot).
+The terminal is not an example: it is `internal/tui`, a client of the data
+directory's engine (`zwai tui`, or `zwai tui --task "…"` for one stored turn).
 
 ```bash
 go test -race ./...

@@ -528,7 +528,7 @@ zwai web --no-open          # do not open a browser
 zwai tui                    # interactive terminal; type / for commands
 zwai tui --goal "..."       # standing objective; starts immediately, composer stays after
 zwai tui --plan "..."       # planning first; write/edit/exec unmounted until Implement
-zwai tui --task "..."       # one task, then exit — handy for reproducing a UI run
+zwai tui --task "..."       # one task, then this process can exit; the conversation stays
 zwai tui --model NAME --reasoning high   # same session, pinned model and thinking level
 zwai trace tn_ab12…         # replay one turn; also accepts a conversation id
 zwai trace th_cd34… --full  # untruncated event text
@@ -537,13 +537,18 @@ zwai config show            # what it says (the API key is redacted)
 zwai --data-dir /tmp/demo   # use a throwaway data directory
 ```
 
-`--data-dir` works on every subcommand, as does `--mock`. See [docs/CLI.md](docs/CLI.md).
+`--data-dir` works on every subcommand, as does `--mock`. Desktop, web, and
+the terminal share one engine for that directory: the first shell starts
+it, the next one attaches, and closing a window does not stop a turn that
+is still running. See [docs/CLI.md](docs/CLI.md).
 
 ## Where things live
 
 ```
 ~/.zwai-swarm/            $ZWAI_HOME overrides this
 ├── config.yaml           settings (0600; the API key is in here)
+├── engine.lock           one engine process for this directory
+├── engine.json           pid and URL of that process
 ├── zwai.db               conversations, transcripts, event timeline, model calls
 ├── remote/               Host Token and device identity; not in yaml
 ├── workspaces/<thread>/  one directory per standalone conversation, `uploads/` inside it

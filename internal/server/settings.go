@@ -29,11 +29,16 @@ type metaView struct {
 	Swarm           config.SwarmConfig `json:"swarm"`
 	Locale          string             `json:"locale"`
 	UI              config.UIConfig    `json:"ui"`
+	Clients         []PresenceClient   `json:"clients"`
 }
 
 func (s *Server) getMeta(c *gin.Context) {
 	cfg := s.engine.Config()
 	pool := s.engine.Providers()
+	clients := s.Clients()
+	if clients == nil {
+		clients = []PresenceClient{}
+	}
 	c.JSON(http.StatusOK, metaView{
 		Version:         s.opts.Version,
 		Mode:            s.opts.Mode,
@@ -52,9 +57,10 @@ func (s *Server) getMeta(c *gin.Context) {
 			"open_url": s.opts.OpenURL != nil,
 			"memory":   cfg.Memory.Enabled,
 		},
-		Swarm:  cfg.Swarm,
-		Locale: cfg.UI.Locale,
-		UI:     cfg.UI,
+		Swarm:   cfg.Swarm,
+		Locale:  cfg.UI.Locale,
+		UI:      cfg.UI,
+		Clients: clients,
 	})
 }
 

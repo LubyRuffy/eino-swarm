@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,8 +12,8 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/frontend"
 	"github.com/LubyRuffy/eino-swarm/internal/app"
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/desktop"
-	"github.com/LubyRuffy/eino-swarm/internal/server"
 )
 
 // shutdownGrace is how long in-flight requests get to finish before the
@@ -27,73 +28,61 @@ func runDesktop(args []string) error {
 	if err := desktop.ReexecIfUnbundled(); err != nil {
 		return err
 	}
-	// The app is shut down by opts.OnShutdown when the window closes.
-	opts, _, err := startDesktopServer(args)
+	// Closing the window leaves the engine running. Later shells are attached
+	// to that process, not to this one.
+	opts, err := startDesktopServer(args)
 	if err != nil {
 		return err
 	}
 	return desktop.Run(opts)
 }
 
-// startDesktopServer does everything the desktop command does except open the
-// window: load the config, start the local server, and describe the window to
-// open. Splitting it out keeps the part that can fail testable, because the
-// part that cannot be tested is a native window.
-func startDesktopServer(args []string) (desktop.Options, *app.App, error) {
+// startDesktopServer resolves the engine URL and describes the window. It does
+// not own the engine: OnShutdown must not shut it down.
+func startDesktopServer(args []string) (desktop.Options, error) {
 	fs := flag.NewFlagSet("desktop", flag.ExitOnError)
 	dataDir := fs.String("data-dir", "", "data directory")
 	mock := fs.Bool("mock", false, "run on the scripted offline provider")
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"data-dir": true})); err != nil {
-		return desktop.Options{}, nil, err
+		return desktop.Options{}, err
 	}
-
-	a, err := assembleApp(app.Options{
-		DataDir: *dataDir,
-		// A random loopback port: a fixed one collides with whatever else the
-		// user is running, and the window is told the URL anyway.
-		Addr:    "127.0.0.1:0",
-		Mock:    *mock,
-		Mode:    server.ModeDesktop,
-		Version: version,
-	})
+	raw, err := ensureEngine(*dataDir, "127.0.0.1:0", *mock)
 	if err != nil {
-		return desktop.Options{}, nil, err
+		return desktop.Options{}, err
 	}
-	url, err := a.Listen()
-	if err != nil {
-		return desktop.Options{}, nil, err
-	}
-	go func() {
-		if err := a.Serve(); err != nil {
-			a.Logger.Error("the local server stopped", "err", err)
-		}
-	}()
-
 	return desktop.Options{
-		URL:     url,
+		URL:     shellURL(raw, "desktop"),
 		Title:   "zwai",
 		Version: version,
-		Logger:  a.Logger,
 		OnShutdown: func() {
-			ctx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
-			defer cancel()
-			a.Shutdown(ctx)
+			// The window is a client. The engine exits on its own when no
+			// shell, phone, or turn is left.
 		},
-	}, a, nil
+	}, nil
+}
+
+func shellURL(base, shell string) string {
+	u, err := url.Parse(base)
+	if err != nil {
+		return base
+	}
+	q := u.Query()
+	q.Set("shell", shell)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func runWeb(args []string) error {
-	// Ctrl-C has to stop in-memory runs and close the database. Unfinished
-	// turns stay marked running so the next start continues them.
+	// Ctrl-C stops this waiter. It does not stop the engine while another
+	// shell, a phone, or a turn is still using it.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(stop)
 	return serveWeb(args, stop, nil)
 }
 
-// serveWeb is runWeb with its two environmental dependencies injected: the
-// stop signal and a hook fired once the server is listening. Tests drive both
-// instead of sending themselves signals.
+// serveWeb attaches to the engine (starting one if needed), prints the URL,
+// and blocks until stop. The engine process is not shut down here.
 func serveWeb(args []string, stop <-chan os.Signal, ready func(url string)) error {
 	fs := flag.NewFlagSet("web", flag.ExitOnError)
 	addr := fs.String("addr", "", "listen address (default: the configured one)")
@@ -104,43 +93,26 @@ func serveWeb(args []string, stop <-chan os.Signal, ready func(url string)) erro
 		return err
 	}
 
-	a, err := assembleApp(app.Options{
-		DataDir: *dataDir,
-		Addr:    *addr,
-		Mock:    *mock,
-		Mode:    server.ModeWeb,
-		Version: version,
-	})
+	cfg, err := config.Load(*dataDir)
 	if err != nil {
 		return err
 	}
-	url, err := a.Listen()
+	listen, err := ensureEngine(*dataDir, *addr, *mock)
 	if err != nil {
 		return err
 	}
-	fmt.Println("zwai is running at", url)
-	if !*noOpen && a.Config.Server.OpenBrowser {
-		if err := a.OpenBrowser(); err != nil {
-			a.Logger.Warn("could not open a browser", "err", err)
+	fmt.Println("zwai is running at", listen)
+	if !*noOpen && cfg.Server.OpenBrowser {
+		if err := app.OpenURL(listen); err != nil {
+			fmt.Fprintln(os.Stderr, "zwai: could not open a browser:", err)
 		}
 	}
-
-	errs := make(chan error, 1)
-	go func() { errs <- a.Serve() }()
 	if ready != nil {
-		ready(url)
+		ready(listen)
 	}
-
-	select {
-	case err := <-errs:
-		return err
-	case <-stop:
-		fmt.Println("\nstopping…")
-		ctx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
-		defer cancel()
-		a.Shutdown(ctx)
-		return nil
-	}
+	<-stop
+	fmt.Println("\nstopping…")
+	return nil
 }
 
 // assembleApp rebuilds the UI from a checkout when the sources changed,

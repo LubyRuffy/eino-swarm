@@ -303,3 +303,64 @@ describe("Header terminal", () => {
     expect(screen.getByRole("button", { name: "Open terminal" })).toBeDisabled()
   })
 })
+
+describe("Header shared clients", () => {
+  it("names the shells only when more than one is connected", () => {
+    renderHeader({
+      meta: {
+        version: "",
+        mode: "engine",
+        mock: false,
+        configured: true,
+        default_provider: "",
+        reasoning_levels: [],
+        data_dir: "",
+        capabilities: {},
+        swarm: {
+          max_concurrent: 1,
+          agent_timeout_seconds: 1,
+          max_turns: 1,
+          manager_max_iterations: 1,
+          progress_interval_seconds: 1,
+          delta_coalesce_ms: 1,
+          auto_title: false,
+        },
+        clients: [{ id: "pc_a", surface: "desktop" }],
+      },
+    })
+    expect(screen.queryByTestId("shared-clients")).toBeNull()
+  })
+
+  it("lists each connected surface without taking the composer away", () => {
+    renderHeader({
+      status: { running: true },
+      meta: {
+        version: "",
+        mode: "engine",
+        mock: false,
+        configured: true,
+        default_provider: "",
+        reasoning_levels: [],
+        data_dir: "",
+        capabilities: {},
+        swarm: {
+          max_concurrent: 1,
+          agent_timeout_seconds: 1,
+          max_turns: 1,
+          manager_max_iterations: 1,
+          progress_interval_seconds: 1,
+          delta_coalesce_ms: 1,
+          auto_title: false,
+        },
+        clients: [
+          { id: "pc_a", surface: "desktop" },
+          { id: "pc_b", surface: "tui" },
+        ],
+      },
+    })
+    expect(screen.getByTestId("shared-clients")).toHaveTextContent(
+      "Also open in Desktop · Terminal",
+    )
+    expect(screen.getByTestId("status-badge")).toHaveTextContent("Working")
+  })
+})

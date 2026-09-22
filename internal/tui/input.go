@@ -12,7 +12,9 @@ func (m swarmTUI) onKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.ask != nil {
 		return m.onAskKey(msg)
 	}
-	if m.interactive && !m.busy {
+	// The in-process screen parks the composer while a turn runs. A remote
+	// client does not: the engine is shared, and this keyboard still sends.
+	if m.interactive && (m.remote || !m.busy || m.isAsking()) {
 		return m.onComposerKey(msg)
 	}
 	return m.onNavKey(msg)
@@ -25,6 +27,10 @@ func (m swarmTUI) onComposerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
+	case "ctrl+x":
+		return m, m.signalStop()
+	case "alt+enter":
+		return m, m.submitSteer()
 	case "enter":
 		if len(items) > 0 {
 			return m.pickSlash(items[m.clampedSlashIndex(len(items))], true)
@@ -165,7 +171,13 @@ func (m *swarmTUI) navigate(key string) {
 
 func (m *swarmTUI) submit() tea.Cmd {
 	text := strings.TrimSpace(m.input)
-	if text == "" || m.busy || m.prompts == nil {
+	if text == "" || m.prompts == nil {
+		return nil
+	}
+	if m.remote {
+		return m.submitRemote(text)
+	}
+	if m.busy && !m.isAsking() {
 		return nil
 	}
 	if name, arg, ok := parseTUICommand(text); ok {
@@ -202,6 +214,69 @@ func (m *swarmTUI) submit() tea.Cmd {
 		answer:  text,
 		open:    true,
 	})
+	ch := m.prompts
+	return func() tea.Msg {
+		ch <- text
+		return nil
+	}
+}
+
+// submitSteer is alt+enter on a remote client: inject into the running turn
+// instead of queueing a follow-up. An idle engine starts a turn from it.
+func (m *swarmTUI) submitSteer() tea.Cmd {
+	text := strings.TrimSpace(m.input)
+	if text == "" || !m.remote || m.steers == nil {
+		return nil
+	}
+	m.input = ""
+	m.notice = ""
+	ch := m.steers
+	return func() tea.Msg {
+		ch <- text
+		return nil
+	}
+}
+
+// signalStop is ctrl+x on a remote client. It cancels the running turn and
+// leaves this screen up. ctrl+c is the one that disconnects.
+func (m *swarmTUI) signalStop() tea.Cmd {
+	if !m.remote || m.stops == nil || (!m.busy && !m.isAsking()) {
+		return nil
+	}
+	ch := m.stops
+	return func() tea.Msg {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+		return nil
+	}
+}
+
+// submitRemote hands the line to the engine. /exit still leaves this screen.
+// Everything else, including /goal, is the engine's command.
+func (m *swarmTUI) submitRemote(text string) tea.Cmd {
+	if name, _, ok := parseTUICommand(text); ok {
+		switch name {
+		case "exit", "quit":
+			m.quitting = true
+			m.input = ""
+			return tea.Quit
+		case "help", "clear":
+			_, arg, _ := parseTUICommand(text)
+			m.input = ""
+			m.notice = m.applyCommand(name, arg)
+			if m.quitting {
+				return tea.Quit
+			}
+			return nil
+		}
+	}
+	m.input = ""
+	m.notice = ""
+	if !m.isAsking() {
+		m.busy = true
+	}
 	ch := m.prompts
 	return func() tea.Msg {
 		ch <- text

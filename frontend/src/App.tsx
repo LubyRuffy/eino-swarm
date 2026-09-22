@@ -35,6 +35,7 @@ import { startSidebarSync } from "@/lib/sidebar-sync"
 import { askingThreadIds } from "@/lib/thread-title"
 import { toggleLocalePref } from "@/lib/use-t"
 import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
+import { desktopShell } from "@/lib/shell"
 import { useApp } from "@/store/app"
 import { waitingThreadIds } from "@/store/app-schedule"
 import { projectOf, useProjects } from "@/store/projects"
@@ -125,8 +126,7 @@ function AppShell() {
   const setAppearance = useApp((s) => s.setAppearance)
   const selectAgent = useApp((s) => s.selectAgent)
   const activeId = useApp((s) => s.activeId)
-  const mode = useApp((s) => s.meta?.mode)
-  const trafficLights = mode === "desktop" && isMac()
+  const trafficLights = desktopShell() && isMac()
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((open) => {

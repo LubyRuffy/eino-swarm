@@ -270,7 +270,7 @@ business context. Edit it in **Settings → Personality**.
 
 | key | default | meaning |
 |---|---|---|
-| `instructions` | empty | added to the manager's system prompt of **every** conversation. Empty omits the section entirely, so a blank setting costs no tokens. The text sits before a project's instruction; when the two conflict, the project wins. Sub-agents do not see it — they get a task from the manager, the same way they do not see the project instruction. `zwai tui` prepends the same section to its Extra. |
+| `instructions` | empty | added to the manager's system prompt of **every** conversation. Empty omits the section entirely, so a blank setting costs no tokens. The text sits before a project's instruction; when the two conflict, the project wins. Sub-agents do not see it — they get a task from the manager, the same way they do not see the project instruction. The shared engine applies the same section, so `zwai tui` sees it too. |
 
 ## `log`
 

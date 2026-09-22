@@ -26,6 +26,10 @@ import (
 const (
 	ModeWeb     = "web"
 	ModeDesktop = "desktop"
+	// ModeEngine is the shared process shells attach to. Chrome (traffic
+	// lights, drag) is decided by the shell, not by this value, because one
+	// process serves every window.
+	ModeEngine = "engine"
 )
 
 // Options configures a server.
@@ -33,7 +37,7 @@ type Options struct {
 	Engine  *engine.Engine
 	Logger  *slog.Logger
 	Version string
-	// Mode is ModeWeb or ModeDesktop.
+	// Mode is ModeWeb, ModeDesktop, or ModeEngine.
 	Mode string
 	// Assets serves the built front end. When nil the API still works, which
 	// is what the handler tests and `zwai trace` rely on.
@@ -57,6 +61,7 @@ type Server struct {
 	terminals *terminal.Hub
 	remote    *remote.Host
 	search    *search.Service
+	presence  *presence
 }
 
 // New builds the server and its routes.
@@ -72,7 +77,11 @@ func New(opts Options) (*Server, error) {
 	}
 	gin.SetMode(gin.ReleaseMode)
 
-	s := &Server{opts: opts, engine: opts.Engine, log: opts.Logger, terminals: terminal.NewHub(terminal.MaxSessions)}
+	s := &Server{
+		opts: opts, engine: opts.Engine, log: opts.Logger,
+		terminals: terminal.NewHub(terminal.MaxSessions),
+		presence:  newPresence(),
+	}
 	r := gin.New()
 	r.Use(gin.Recovery(), s.accessLog())
 	// A local app has no cross-origin clients to serve, and a permissive CORS
@@ -84,6 +93,8 @@ func New(opts Options) (*Server, error) {
 	api.Use(s.rejectForeignOrigin())
 	{
 		api.GET("/meta", s.getMeta)
+		api.POST("/presence", s.postPresence)
+		api.GET("/presence/:id", s.holdPresence)
 		api.POST("/open", s.openURL)
 		api.GET("/settings", s.getSettings)
 		api.PUT("/settings", s.putSettings)
@@ -187,7 +198,7 @@ func (s *Server) SetSearch(svc *search.Service) { s.search = svc }
 func (s *Server) accessLog() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
-		if strings.HasSuffix(path, "/events") || strings.HasSuffix(path, "/terminal") {
+		if strings.HasSuffix(path, "/events") || strings.HasSuffix(path, "/terminal") || strings.Contains(path, "/presence/") {
 			c.Next()
 			return
 		}

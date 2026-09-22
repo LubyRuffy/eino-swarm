@@ -27,6 +27,7 @@ import {
 } from "@/lib/sidebar-width"
 import type { ContentWidthPref, TranscriptModePref } from "@/lib/appearance"
 import { chromeTypeClass } from "@/lib/chrome-type"
+import { desktopShell, uniqueSurfaces } from "@/lib/shell"
 import type { Meta, Project, Thread, ThreadStatus } from "@/lib/types"
 import { cn, formatDuration } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
@@ -213,6 +214,20 @@ export function Header({
           </Badge>
         )}
 
+        {(meta?.clients?.length ?? 0) >= 2 ? (
+          <Badge variant="outline" data-testid="shared-clients">
+            {t("header.shared", {
+              where: uniqueSurfaces(meta?.clients)
+                .map((surface) =>
+                  surface === "desktop" || surface === "web" || surface === "tui"
+                    ? t(`surface.${surface}`)
+                    : surface,
+                )
+                .join(" · "),
+            })}
+          </Badge>
+        ) : null}
+
         {!scheduled && status.turn_id ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -233,7 +248,7 @@ export function Header({
               </Badge>
             </TooltipTrigger>
             <TooltipContent>
-              {meta?.mode === "desktop"
+              {desktopShell()
                 ? t("header.lostStreamDesktop")
                 : t("header.lostStreamWeb")}
             </TooltipContent>

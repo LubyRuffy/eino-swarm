@@ -10,6 +10,7 @@ import {
   type Appearance,
 } from "@/lib/appearance"
 import { ApiError, api } from "@/lib/api"
+import { desktopShell, startPresence } from "@/lib/shell"
 import {
   applyLocale,
   normalizeLocalePref,
@@ -217,6 +218,7 @@ export const useApp = create<AppState>((set, get) => ({
       transcript_mode: get().transcriptMode,
       palette: get().palette,
     }))
+    startPresence(api, desktopShell() ? "desktop" : "web")
     try {
       const [meta, models, threads] = await Promise.all([
         api.meta(),
@@ -255,9 +257,13 @@ export const useApp = create<AppState>((set, get) => ({
    *  this is the background pass that keeps folder progress honest. */
   syncThreads: async () => {
     try {
-      const incoming = await api.threads()
+      const [incoming, meta] = await Promise.all([
+        api.threads(),
+        api.meta().catch(() => undefined),
+      ])
       set((s) => ({
         threads: applyThreadListing(s.threads, incoming, s.activeId, s.status),
+        ...(meta ? { meta } : {}),
       }))
     } catch {
       // A background tick is not a user action.

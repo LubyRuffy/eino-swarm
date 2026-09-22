@@ -36,10 +36,11 @@ Current Go coverage, from `go test -race -cover -timeout 20m ./...`:
 | `internal/engine` | 90.5% |
 | `internal/config` | 91.9% |
 | `internal/terminal` | 97.8% |
-| `internal/server` | 90.4% |
+| `internal/server` | 90.6% |
 | `internal/slash` | 92.9% |
-| `internal/tui` | 87.6% |
-| `internal/app` | 87.9% |
+| `internal/lease` | 91.7% |
+| `internal/tui` | 87.7% |
+| `internal/app` | 88.7% |
 | `cmd/zwai` | 84.7% |
 | `internal/remote` | 94.1% |
 | `internal/wakeup` | 95.7% |
@@ -195,8 +196,7 @@ production `desktop` / `web` go through.
 
 What is deliberately not unit-tested: `main`, `runDesktop`/`runWeb`/`runTUI` (thin
 wrappers around functions that *are* tested), `desktop.Run` (opens a native
-window) and `tui.Run` (drives a real terminal; `runConfig` is the testable
-payload). The rest of `internal/desktop`
+window) and `tui.RunClient` (drives a real terminal). The rest of `internal/desktop`
 is tested: traffic-light geometry, hopping AppKit geometry onto the main
 thread (Wails delivers window events off-thread), the quit-time
 `Window #1 not found` filter, that the Dock icon is a real PNG with
@@ -208,10 +208,11 @@ Info.plist under the cache dir (the `syscall.Exec` re-exec itself cannot
 run in a unit test). The window itself still cannot be opened in a unit
 test. Each untestable shell was
 split so that everything which can fail is testable: `startDesktopServer`
-returns the window options and the live server without opening a window,
-`serveWeb` takes an injected stop signal, and `assembleTUI` / `buildTUISwarm`
-assemble the swarm without a terminal (same manager prompt and workspace
-tools as the app). The window itself is verified by hand — see below.
+returns the window options without opening a window, and closing that
+window does not stop the engine. `serveWeb` takes an injected stop signal
+and leaves the engine up. `runTUI` attaches with `ensureEngine` and
+`tui.RunClient`. `assembleTUI` / `buildTUISwarm` still build an in-process
+swarm for renderer tests. The window itself is verified by hand — see below.
 
 ## The scripted offline provider
 
@@ -1446,9 +1447,9 @@ Reproduce it, then read it:
 ```bash
 zwai trace <turn-id>          # the timeline plus every model call
 zwai trace <turn-id> --full    # untruncated text
-zwai tui                       # interactive; type a task, then enter
+zwai tui                       # interactive client of the same engine
 zwai tui --goal "..."          # standing objective; starts immediately
-zwai tui --task "..."          # the same swarm, one-shot, no UI in the way
+zwai tui --task "..."          # one stored turn; this process can exit when it settles
 ```
 
 Raise `log.level` to `debug` in the config for one line per HTTP request and per

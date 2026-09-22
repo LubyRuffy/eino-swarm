@@ -342,6 +342,9 @@ pinned to that `project_id`.
 ```
 $ZWAI_HOME (default ~/.zwai-swarm)/
 ├── config.yaml                ui.locale / ui.font / ui.ui_font_size / ui.content_font / ui.font_size / ui.code_font / ui.code_font_size / ui.content_width / ui.transcript_mode / ui.palette
+├── engine.lock                exclusive lease; the kernel drops it when the process dies
+├── engine.json                pid, url, mock, started_at of the live engine
+├── engine.log                 stderr of an engine a shell spawned
 ├── zwai.db
 ├── inputs/
 │   └── th_ab12…/              pasted images, named by `img_` id
@@ -359,6 +362,14 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
                 └── <skill-name>/   lowercase, digits and dashes only
                     └── SKILL.md
 ```
+
+`engine.lock` is an `flock` held by the one process that may open
+`zwai.db`. `engine.json` is rewritten atomically when that process starts
+listening (`pid`, `url`, `mock`, `started_at`). A dead pid or a missing
+file means the next shell may take the lock. A live pid whose
+`GET /api/meta` fails, or whose `data_dir` is not this directory, is left
+alone. `mock` is part of the lease: a `--mock` client will not attach to a
+non-mock engine.
 
 `MEMORY.md` and `SKILL.md` are plain files, written atomically through a
 temporary file and a rename, so a crash mid-write leaves the old version rather

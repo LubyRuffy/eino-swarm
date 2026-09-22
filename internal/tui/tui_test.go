@@ -547,6 +547,10 @@ func keyMsg(key string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyBackspace}
 	case "ctrl+c":
 		return tea.KeyMsg{Type: tea.KeyCtrlC}
+	case "ctrl+x":
+		return tea.KeyMsg{Type: tea.KeyCtrlX}
+	case "alt+enter":
+		return tea.KeyMsg{Type: tea.KeyEnter, Alt: true}
 	case "ctrl+h":
 		return tea.KeyMsg{Type: tea.KeyCtrlH}
 	case "shift+tab":

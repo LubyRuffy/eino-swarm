@@ -77,6 +77,7 @@ const fake = vi.hoisted(() => ({
     | undefined,
   subscribeSince: [] as number[],
   answers: [] as Array<Record<string, unknown>>,
+  metaBody: undefined as Record<string, unknown> | undefined,
 }))
 
 vi.mock("@/lib/api", () => {
@@ -102,7 +103,8 @@ vi.mock("@/lib/api", () => {
   return {
     ApiError,
     api: {
-      meta: async () => ({ mode: "web", configured: true, capabilities: {} }),
+      meta: async () =>
+        fake.metaBody ?? { mode: "web", configured: true, capabilities: {} },
       models: async () => ({
         models: fake.listedModels,
         default: "default",
@@ -384,6 +386,7 @@ beforeEach(() => {
   fake.logRoster = []
   fake.logHandler = undefined
   fake.subscribeSince.length = 0
+  fake.metaBody = undefined
   useApp.setState({
     threads: [],
     activeId: undefined,
@@ -983,5 +986,20 @@ describe("sidebar running", () => {
     useApp.setState({ error: undefined })
     await useApp.getState().syncThreads()
     expect(useApp.getState().error).toBeUndefined()
+  })
+
+  it("refreshes which shells are attached on the same tick as the list", async () => {
+    fake.metaBody = {
+      mode: "engine",
+      configured: true,
+      capabilities: {},
+      clients: [
+        { id: "pc_a", surface: "desktop" },
+        { id: "pc_b", surface: "tui" },
+      ],
+    }
+    fake.listedThreads = []
+    await useApp.getState().syncThreads()
+    expect(useApp.getState().meta?.clients).toHaveLength(2)
   })
 })

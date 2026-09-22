@@ -25,7 +25,12 @@ export const en = {
   "header.lostStreamWeb":
     "Lost the event stream to the server. It retries on its own and replays anything missed.",
   "header.workingIn": "Working in {path}",
+  "header.shared": "Also open in {where}",
   "header.languageMark": "中",
+
+  "surface.desktop": "Desktop",
+  "surface.web": "Browser",
+  "surface.tui": "Terminal",
 
   "sidebar.newConversation": "New conversation",
   "sidebar.search": "Search conversations (⌘K)",

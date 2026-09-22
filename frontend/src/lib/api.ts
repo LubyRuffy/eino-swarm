@@ -120,6 +120,19 @@ function withToolLists(s: Settings): Settings {
 export const api = {
   meta: () => request<Meta>("/api/meta"),
 
+  presence: (surface: "desktop" | "web" | "tui") =>
+    request<{ id: string }>("/api/presence", {
+      method: "POST",
+      body: JSON.stringify({ surface }),
+    }),
+
+  /** Keeps the shell counted until the page closes. EventSource reconnects
+   *  the same id, which the engine treats as one client. */
+  holdPresence: (id: string) => {
+    const stream = new EventSource(`/api/presence/${encodeURIComponent(id)}`)
+    return () => stream.close()
+  },
+
   settings: () =>
     request<{ settings: Settings }>("/api/settings").then((r) =>
       withToolLists(r.settings),

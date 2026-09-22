@@ -522,8 +522,8 @@ func TestTUIPlanUnmountsMutatingTools(t *testing.T) {
 	}
 }
 
-// Without a workspace the terminal run gets a scratch directory that is
-// cleaned up, rather than writing into whatever directory it was started in.
+// assembleTUI is the in-process builder the renderer tests call. The CLI
+// path does not use it and does not create a scratch directory.
 func TestTUIUsesAScratchWorkspace(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "")
 	t.Setenv("OPENAI_API_KEY", "")
@@ -553,52 +553,63 @@ func TestTUIRefusesAnUnconfiguredProvider(t *testing.T) {
 	}
 }
 
-// The desktop command has to bring up a real local server before the window
-// can load anything.
-func TestDesktopStartsALocalServer(t *testing.T) {
+// Closing the desktop window must not take the engine down. Another shell
+// may already be attached to it.
+func TestDesktopWindowCloseLeavesTheEngineUp(t *testing.T) {
 	t.Setenv("OPENAI_BASE_URL", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
-	opts, a, err := startDesktopServer([]string{"--mock", "--data-dir", t.TempDir()})
+	t.Cleanup(stopTestEngine)
+
+	opts, err := startDesktopServer([]string{"--mock", "--data-dir", t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(opts.URL, "http://127.0.0.1:") {
-		t.Fatalf("the window would load %q, which is not a local server", opts.URL)
+	if !strings.HasPrefix(opts.URL, "http://127.0.0.1:") || !strings.Contains(opts.URL, "shell=desktop") {
+		t.Fatalf("the window would load %q", opts.URL)
 	}
-	if opts.OnShutdown == nil {
-		t.Fatal("closing the window must shut the engine down")
-	}
-
-	resp, err := http.Get(opts.URL + "/api/meta")
-	if err != nil {
-		t.Fatalf("the window would have loaded a dead URL: %v", err)
-	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	// the desktop shell advertises what only it can do
-	if !strings.Contains(string(body), `"mode":"desktop"`) ||
-		!strings.Contains(string(body), `"reveal":true`) ||
-		!strings.Contains(string(body), `"open_url":true`) {
+	base := strings.Split(opts.URL, "?")[0]
+	body := httpGet(t, base+"/api/meta")
+	if !strings.Contains(body, `"mode":"engine"`) ||
+		!strings.Contains(body, `"reveal":true`) ||
+		!strings.Contains(body, `"open_url":true`) {
 		t.Fatalf("meta=%s", body)
 	}
-
 	opts.OnShutdown()
-	if _, err := http.Get(opts.URL + "/api/meta"); err == nil {
-		t.Fatal("closing the window left the server running")
-	}
-	if a == nil {
-		t.Fatal("no app was returned")
+	if got := httpGet(t, base+"/api/meta"); !strings.Contains(got, `"mode":"engine"`) {
+		t.Fatalf("closing the window stopped the engine: %s", got)
 	}
 }
 
-// `zwai web` has to serve the app and then shut down cleanly: a Ctrl-C that
-// leaves turns marked running makes the next start look broken.
-func TestWebServesAndShutsDownCleanly(t *testing.T) {
+func stopTestEngine() {
+	if activeEngineStop != nil {
+		activeEngineStop()
+		activeEngineStop = nil
+	}
+}
+
+func httpGet(t *testing.T, url string) string {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: %d %s", url, resp.StatusCode, body)
+	}
+	return string(body)
+}
+
+// Ctrl-C in `zwai web` stops the waiter, not the engine. A turn left running
+// is not a user Stop, so it must not be marked cancelled.
+func TestWebWaiterStopLeavesTheEngineUp(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("OPENAI_BASE_URL", "")
 	t.Setenv("OPENAI_API_KEY", "")
 	t.Setenv("OPENAI_MODEL", "")
+	t.Cleanup(stopTestEngine)
 
 	stop := make(chan os.Signal, 1)
 	urls := make(chan string, 1)
@@ -616,21 +627,15 @@ func TestWebServesAndShutsDownCleanly(t *testing.T) {
 	case url = <-urls:
 	case err := <-errs:
 		t.Fatalf("the server stopped before it was listening: %v", err)
-	case <-time.After(20 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("the server never came up")
 	}
 
-	resp, err := http.Get(url + "/api/meta")
-	if err != nil {
-		t.Fatalf("GET meta: %v", err)
+	body := httpGet(t, url+"/api/meta")
+	if !strings.Contains(body, `"mode":"engine"`) {
+		t.Fatalf("meta: %s", body)
 	}
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), `"mode":"web"`) {
-		t.Fatalf("meta: %d %s", resp.StatusCode, body)
-	}
-	// start a turn so shutdown has something in flight to abandon
-	resp, err = http.Post(url+"/api/threads", "application/json", strings.NewReader("{}"))
+	resp, err := http.Post(url+"/api/threads", "application/json", strings.NewReader("{}"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -653,14 +658,27 @@ func TestWebServesAndShutsDownCleanly(t *testing.T) {
 			t.Fatalf("web returned %v", err)
 		}
 	case <-time.After(20 * time.Second):
-		t.Fatal("the server did not stop on a signal")
+		t.Fatal("the waiter did not return on a signal")
 	}
-	if _, err := http.Get(url + "/api/meta"); err == nil {
-		t.Fatal("the server is still serving after shutdown")
+	if got := httpGet(t, url+"/api/meta"); !strings.Contains(got, `"mode":"engine"`) {
+		t.Fatalf("the waiter stopped the engine: %s", got)
+	}
+	stopTestEngine()
+	deadline := time.Now().Add(10 * time.Second)
+	var down bool
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url + "/api/meta")
+		if err != nil {
+			down = true
+			break
+		}
+		resp.Body.Close()
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !down {
+		t.Fatal("the engine did not exit after it was stopped")
 	}
 
-	// Quit is not a user Stop: leftover turns stay running so the next start
-	// continues them. A turn that finished before the signal landed is done.
 	st, err := store.Open(filepath.Join(dir, "zwai.db"))
 	if err != nil {
 		t.Fatal(err)

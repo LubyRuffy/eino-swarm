@@ -19,21 +19,83 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 )
 
-// runTUI runs the terminal swarm. With --task it is a one-shot reproduction
-// of the app; without one it stays open at a composer. --goal without --task
-// starts immediately, then keeps that composer after the pursuit ends.
+// runTUI attaches the terminal to the data directory's engine. It does not
+// open the database or start a second swarm. With --task the process can
+// exit when the turn settles; the conversation stays in the engine.
 func runTUI(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	setup, err := assembleTUI(ctx, args)
+	opts, err := tuiLaunch(args)
 	if err != nil {
 		return err
 	}
-	defer setup.cleanup()
-
-	tui.RunSession(ctx, setup.session)
+	base, err := ensureEngine(opts.dataDir, "127.0.0.1:0", opts.mock)
+	if err != nil {
+		return err
+	}
+	tui.RunClient(ctx, tui.ClientConfig{
+		BaseURL:     base,
+		Task:        opts.task,
+		Goal:        opts.goal,
+		Plan:        opts.plan,
+		Model:       opts.model,
+		Reasoning:   opts.reasoning,
+		Interactive: opts.interactive,
+		Workspace:   opts.workspace,
+	})
 	return nil
+}
+
+type tuiLaunchOpts struct {
+	dataDir     string
+	mock        bool
+	task        string
+	goal        string
+	plan        string
+	model       string
+	reasoning   string
+	interactive bool
+	workspace   string
+}
+
+func tuiLaunch(args []string) (tuiLaunchOpts, error) {
+	fs := flag.NewFlagSet("tui", flag.ExitOnError)
+	task := fs.String("task", "", "the task to work on")
+	goal := fs.String("goal", "", "standing objective to pursue until complete_goal or block_goal")
+	plan := fs.String("plan", "", "explore and write a plan before changing anything")
+	modelName := fs.String("model", "", "model name for this session (default: the provider's configured model)")
+	reasoning := fs.String("reasoning", "", "thinking level: default, low, medium, high")
+	dataDir := fs.String("data-dir", "", "data directory")
+	mock := fs.Bool("mock", false, "run on the scripted offline provider")
+	workspace := fs.String("workspace", "", "directory the agents may read and write")
+	if err := fs.Parse(reorderFlags(args, map[string]bool{
+		"task": true, "goal": true, "plan": true, "model": true, "reasoning": true, "data-dir": true, "workspace": true,
+	})); err != nil {
+		return tuiLaunchOpts{}, err
+	}
+	explicit := strings.TrimSpace(*task + " " + strings.Join(fs.Args(), " "))
+	text := explicit
+	goalText := strings.TrimSpace(*goal)
+	planText := strings.TrimSpace(*plan)
+	if text == "" && planText != "" && goalText == "" {
+		text = "/plan " + planText
+	}
+	effort, err := tuiReasoningFlag(*reasoning)
+	if err != nil {
+		return tuiLaunchOpts{}, err
+	}
+	return tuiLaunchOpts{
+		dataDir:     *dataDir,
+		mock:        *mock,
+		task:        text,
+		goal:        goalText,
+		plan:        planText,
+		model:       strings.TrimSpace(*modelName),
+		reasoning:   effort,
+		interactive: explicit == "",
+		workspace:   *workspace,
+	}, nil
 }
 
 type tuiSetup struct {

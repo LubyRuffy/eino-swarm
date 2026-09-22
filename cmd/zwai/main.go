@@ -7,8 +7,9 @@
 //	zwai trace     print everything that happened in one turn
 //	zwai config    show or create the configuration file
 //
-// Every shell runs the same engine over the same data directory, so a
-// conversation started in one is there in the others.
+// Every shell talks to one engine process for a data directory. The process
+// that holds the lock is `zwai engine`. Desktop, web, and tui attach to it;
+// they do not each open the database.
 package main
 
 import (
@@ -41,6 +42,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 		err = runWeb(args[1:])
 	case "tui":
 		err = runTUI(args[1:])
+	case "engine":
+		err = runEngine(args[1:])
 	case "trace":
 		err = runTrace(args[1:])
 	case "config":
@@ -136,6 +139,9 @@ usage:
 
   zwai web [--addr HOST:PORT] [--no-open] [--data-dir DIR] [--mock]
         serve the same app in your browser
+
+  zwai engine [--addr HOST:PORT] [--data-dir DIR] [--mock]
+        the long-lived process shells attach to; started for you when none is running
 
   zwai tui [--task "..."] [--goal "..."] [--plan "..."] [--model NAME] [--reasoning LEVEL] [--workspace DIR] [--data-dir DIR] [--mock]
         terminal swarm: omit --task for a composer; --goal / --plan start that work immediately

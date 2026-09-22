@@ -13,6 +13,16 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **One engine per data directory.** Desktop, web, and the terminal attach
+  to `zwai engine` over loopback HTTP. The first shell starts it; a later
+  shell does not open the database or start a second swarm. Closing a
+  window or leaving the terminal only drops that presence connection. The
+  process exits when no shell is connected, the phone hub is down, and no
+  turn is running. `zwai tui --task` is a stored conversation. The title
+  bar names the connected shells when more than one is attached, and the
+  composer stays enabled. Enter while a turn runs queues a follow-up,
+  alt+enter steers the running turn, and ctrl+x stops it.
+
 - **The phone checks GitHub Releases and can install a newer Android build.**
   On launch, and again when it returns to the foreground, it reads the latest
   release itself. Android downloads `zwai-*-android.apk` and opens the system
