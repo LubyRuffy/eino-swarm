@@ -426,8 +426,12 @@ worker before closing SQLite.
    still folds leftover stems, then runs the same reviewer against the live
    catalog (no notes, content merge/patch/delete). The response names what was
    merged, deleted, created and patched, with counts, and `reviewed` when the
-   model ran. Model calls hang on the project's latest finished turn when there
-   is one. Opening the tab does
+   model ran. The panel keeps that card on the project that was tidied:
+   opening another project shows that project's card (or none), and coming
+   back shows the progress while the request is still running, or the report
+   once it has finished. A memory read that started during the tidy does not
+   paint the pre-tidy catalog over the result. Model calls hang on the
+   project's latest finished turn when there is one. Opening the tab does
    not rewrite files. Reviews of one
    project are serialized: two turns finishing together would each read the same
    bounded notes, both decide there is room, and one would lose its entry. Only

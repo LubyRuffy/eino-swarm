@@ -23,6 +23,8 @@ const { fake, FakeApiError } = vi.hoisted(() => {
     fake: {
       projects: [] as unknown[],
       memoryDelays: {} as Record<string, number>,
+      blockMemory: new Set<string>(),
+      releaseMemory: {} as Record<string, () => void>,
       deleted: [] as string[],
       saved: [] as string[],
       fail: false,
@@ -31,6 +33,8 @@ const { fake, FakeApiError } = vi.hoisted(() => {
       reordered: [] as string[],
       tidied: [] as string[],
       tidyDelays: {} as Record<string, number>,
+      blockTidy: new Set<string>(),
+      releaseTidy: {} as Record<string, () => void>,
       tidyFolded: false,
       foldedSkills: {} as Record<string, { name: string; description: string; updated_at: string }[]>,
     },
@@ -65,10 +69,19 @@ vi.mock("@/lib/api", () => ({
       })
     },
     memory: async (id: string) => {
+      // Snapshot before the wait. A read that started first has to stay
+      // the older catalog, or a tidy that lands during the wait cannot be
+      // told apart from this response.
+      const snap = memory(id)
+      if (fake.blockMemory.has(id)) {
+        await new Promise<void>((resolve) => {
+          fake.releaseMemory[id] = resolve
+        })
+      }
       const delay = fake.memoryDelays[id] ?? 0
       if (delay > 0) await new Promise((r) => setTimeout(r, delay))
       if (fake.fail) throw new Error("cannot read memory")
-      return memory(id)
+      return snap
     },
     saveMemory: async (id: string, text: string, rev?: string) => {
       fake.saved.push(`${id}:${text}:${rev ?? ""}`)
@@ -83,12 +96,21 @@ vi.mock("@/lib/api", () => ({
       fake.deleted.push(`${id}/${name}`)
     },
     tidySkills: async (id: string) => {
+      if (fake.blockTidy.has(id)) {
+        await new Promise<void>((resolve) => {
+          fake.releaseTidy[id] = resolve
+        })
+      }
       const delay = fake.tidyDelays[id] ?? 0
       if (delay > 0) await new Promise((r) => setTimeout(r, delay))
       fake.tidied.push(id)
       if (fake.fail) throw new Error("cannot tidy skills")
-      const skills = fake.foldedSkills[id] ?? fake.skills[id] ?? []
       const before = (fake.skills[id] ?? []).length
+      const skills = fake.foldedSkills[id] ?? fake.skills[id] ?? []
+      // The server has written the catalog by the time the POST returns.
+      // A later GET must see that, or switching back looks like the tidy
+      // never happened. Count `before` first: this assignment is the write.
+      fake.skills[id] = skills
       const report = fake.tidyFolded
         ? {
             scanned: before,
@@ -145,6 +167,8 @@ function memory(id: string): ProjectMemory {
 beforeEach(() => {
   fake.projects = []
   fake.memoryDelays = {}
+  fake.blockMemory = new Set()
+  fake.releaseMemory = {}
   fake.deleted.length = 0
   fake.saved.length = 0
   fake.fail = false
@@ -153,6 +177,8 @@ beforeEach(() => {
   fake.reordered = []
   fake.tidied.length = 0
   fake.tidyDelays = {}
+  fake.blockTidy = new Set()
+  fake.releaseTidy = {}
   fake.tidyFolded = false
   fake.foldedSkills = {}
   useProjects.setState({
@@ -168,6 +194,7 @@ beforeEach(() => {
     tidying: false,
     tidyReport: undefined,
     tidyError: undefined,
+    tidySlots: {},
     error: undefined,
   })
 })
@@ -388,6 +415,112 @@ describe("the memory panel's data", () => {
   it("does nothing when asked to tidy with no project open", async () => {
     await useProjects.getState().tidySkills()
     expect(fake.tidied).toEqual([])
+  })
+
+  // The card is per project. Leaving must not paint it on the project now
+  // open, and coming back must not look like the click never happened.
+  it("restores a finished tidy after opening another project", async () => {
+    fake.blockTidy.add("pj_a")
+    fake.tidyFolded = true
+    fake.foldedSkills = {
+      pj_a: [{ name: "kept", description: "when it applies", updated_at: "" }],
+    }
+    fake.projects = [project("a"), project("b")]
+    await useProjects.getState().refresh()
+    await useProjects.getState().loadMemory("pj_a")
+    const pending = useProjects.getState().tidySkills()
+    await useProjects.getState().loadMemory("pj_b")
+    fake.releaseTidy["pj_a"]()
+    await pending
+    expect(useProjects.getState().memoryProjectId).toBe("pj_b")
+    expect(useProjects.getState().tidying).toBe(false)
+    expect(useProjects.getState().tidyReport).toBeUndefined()
+    expect(useProjects.getState().memory?.skills).toEqual([])
+    await useProjects.getState().loadMemory("pj_a")
+    expect(useProjects.getState().tidyReport?.merged.length).toBeGreaterThan(0)
+    expect(useProjects.getState().memory?.skills.map((s) => s.name)).toEqual(["kept"])
+    await useProjects.getState().loadMemory("pj_b")
+    expect(useProjects.getState().tidyReport).toBeUndefined()
+  })
+
+  it("shows an in-flight tidy again after leaving and returning", async () => {
+    fake.blockTidy.add("pj_a")
+    await useProjects.getState().loadMemory("pj_a")
+    const pending = useProjects.getState().tidySkills()
+    expect(useProjects.getState().tidying).toBe(true)
+    await useProjects.getState().loadMemory("pj_b")
+    expect(useProjects.getState().tidying).toBe(false)
+    expect(useProjects.getState().tidyReport).toBeUndefined()
+    await useProjects.getState().loadMemory("pj_a")
+    expect(useProjects.getState().tidying).toBe(true)
+    expect(useProjects.getState().memoryProjectId).toBe("pj_a")
+    fake.releaseTidy["pj_a"]()
+    await pending
+    expect(useProjects.getState().tidying).toBe(false)
+    expect(useProjects.getState().tidyReport).toBeDefined()
+    expect(useProjects.getState().memoryProjectId).toBe("pj_a")
+  })
+
+  it("keeps a failed tidy on the project that asked, not the one open now", async () => {
+    fake.blockTidy.add("pj_a")
+    await useProjects.getState().loadMemory("pj_a")
+    const pending = useProjects.getState().tidySkills()
+    await useProjects.getState().loadMemory("pj_b")
+    fake.fail = true
+    fake.releaseTidy["pj_a"]()
+    await pending
+    expect(useProjects.getState().memoryProjectId).toBe("pj_b")
+    expect(useProjects.getState().tidyError).toBeUndefined()
+    fake.fail = false
+    await useProjects.getState().loadMemory("pj_a")
+    expect(useProjects.getState().tidyError).toBe("cannot tidy skills")
+    expect(useProjects.getState().tidying).toBe(false)
+  })
+
+  it("keeps the tidied catalog when an older read finishes after it", async () => {
+    fake.skills = {
+      pj_a: [
+        { name: "old-a", description: "when it applies", updated_at: "" },
+        { name: "old-b", description: "when it applies", updated_at: "" },
+      ],
+    }
+    fake.foldedSkills = {
+      pj_a: [{ name: "kept", description: "when it applies", updated_at: "" }],
+    }
+    fake.tidyFolded = true
+    await useProjects.getState().loadMemory("pj_a")
+    fake.blockTidy.add("pj_a")
+    const pending = useProjects.getState().tidySkills()
+    fake.blockMemory.add("pj_a")
+    const reload = useProjects.getState().loadMemory("pj_a")
+    fake.releaseTidy["pj_a"]()
+    await pending
+    expect(useProjects.getState().memory?.skills.map((s) => s.name)).toEqual(["kept"])
+    fake.releaseMemory["pj_a"]()
+    await reload
+    expect(useProjects.getState().memory?.skills.map((s) => s.name)).toEqual(["kept"])
+    expect(useProjects.getState().tidyReport).toBeDefined()
+    expect(useProjects.getState().memoryLoading).toBe(false)
+  })
+
+  it("drops a tidy card when its project is deleted", async () => {
+    await useProjects.getState().loadMemory("pj_a")
+    await useProjects.getState().tidySkills()
+    expect(useProjects.getState().tidyReport).toBeDefined()
+    await useProjects.getState().remove("pj_a")
+    expect(useProjects.getState().memoryProjectId).toBeUndefined()
+    expect(useProjects.getState().tidyReport).toBeUndefined()
+    await useProjects.getState().loadMemory("pj_a")
+    expect(useProjects.getState().tidyReport).toBeUndefined()
+  })
+
+  it("does not bring back a tidy the user already dismissed", async () => {
+    await useProjects.getState().loadMemory("pj_a")
+    await useProjects.getState().tidySkills()
+    useProjects.getState().clearTidy()
+    await useProjects.getState().loadMemory("pj_b")
+    await useProjects.getState().loadMemory("pj_a")
+    expect(useProjects.getState().tidyReport).toBeUndefined()
   })
 
   it("ignores a slow tidy for a project that is no longer open", async () => {
