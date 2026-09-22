@@ -90,7 +90,11 @@ export const zh: Record<MessageKey, string> = {
   "ask.submit": "提交",
   "ask.other": "其他",
 
-  "err.reconnect": "连接中断。点重试会再连，不会解除绑定。",
+  "err.net.down":
+    "连不上这台 PC。服务可能没开，或网络被挡住。点重试会再连，不会解除绑定。（{reason}）",
+  "err.net.timeout": "这台 PC 在时限内没有应答。点重试会再连，不会解除绑定。（{reason}）",
+  "err.net.closed": "连接断了。点重试会再连，不会解除绑定。（{reason}）",
+  "err.remote": "服务端拒绝了这次请求：{detail}",
   "err.rpc": "请求失败。",
   "err.open": "打不开这个对话。",
   "err.watch": "跟不上这个对话。",

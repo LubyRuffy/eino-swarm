@@ -4,6 +4,7 @@ import {
   bindError,
   deliverResponse,
   DeviceLink,
+  faultFromClose,
   hubError,
   linkError,
   redeemOffer,
@@ -78,14 +79,43 @@ describe("hubError", () => {
 })
 
 describe("bindError", () => {
-  it("maps a host-offline redeem to the scan copy", async () => {
+  it("splits a dead socket from a server refusal", async () => {
     const { setLocale, t } = await import("./i18n")
     setLocale("en")
+    const down = t("err.net.down", { reason: "ws error" })
+    const timed = t("err.net.timeout", { reason: "rpc timeout" })
+    const closed = t("err.net.closed", { reason: "offline" })
+    const remote = t("err.remote", { detail: "quota" })
     expect(bindError(new Error("host offline"))).toBe(t("scan.hostOffline"))
-    expect(bindError("ws timeout")).toBe(t("err.reconnect"))
-    expect(linkError(new Error("offline"))).toBe(t("err.reconnect"))
-    expect(linkError(new Error("rpc timeout"))).toBe(t("err.reconnect"))
-    expect(bindError("still the original")).toBe("still the original")
+    expect(bindError("ws timeout")).toBe(t("err.net.down", { reason: "ws timeout" }))
+    expect(linkError(new Error("ws error"))).toBe(down)
+    expect(linkError(new Error("offline"))).toBe(closed)
+    expect(linkError(new Error("rpc timeout"))).toBe(timed)
+    expect(linkError(new Error("handshake timeout"))).toBe(
+      t("err.net.timeout", { reason: "handshake timeout" }),
+    )
+    expect(linkError(new Error("quota"))).toBe(remote)
+    expect(linkError(new TypeError("Failed to fetch"))).toBe(
+      t("err.net.down", { reason: "fetch failed" }),
+    )
+    expect(down).not.toBe(remote)
+    expect(down).not.toBe(timed)
+    expect(down).not.toBe(closed)
+    expect(remote).not.toContain("ws error")
+    expect(hubError(500, '{"error":"quota"}').message).toBe("quota")
+    expect(linkError(hubError(500, '{"error":"quota"}'))).toBe(remote)
+    expect(linkError(hubError(409, '{"error":"host offline"}'))).toBe(t("scan.hostOffline"))
+    expect(linkError(faultFromClose({ code: 1006 }))).toBe(
+      t("err.net.down", { reason: "ws close 1006" }),
+    )
+    expect(linkError(faultFromClose({ code: 1000 }))).toBe(closed)
+    expect(linkError(faultFromClose({ code: 1011, reason: "quota" }))).toBe(remote)
+    expect(linkError(faultFromClose({ code: 1011 }))).toBe(
+      t("err.remote", { detail: "ws close 1011" }),
+    )
+    expect(linkError(faultFromClose({ code: 1011 }))).not.toBe(
+      t("err.net.down", { reason: "ws close 1011" }),
+    )
   })
 })
 
@@ -197,10 +227,28 @@ describe("DeviceLink drop", () => {
     link.onDisconnect = onDisconnect
     const pending = link.rpc({ op: OpList })
     sock.close()
-    await expect(pending).rejects.toThrow("offline")
+    await expect(pending).rejects.toThrow("ws close 1006")
     expect(onDisconnect).toHaveBeenCalledOnce()
+    expect(linkError(onDisconnect.mock.calls[0][0])).toBe(
+      (await import("./i18n")).t("err.net.down", { reason: "ws close 1006" }),
+    )
     expect(link.alive()).toBe(false)
     await expect(link.rpc({ op: OpList })).rejects.toThrow("offline")
+  })
+
+  it("treats a close reason as the server speaking, not a dead socket", async () => {
+    const { setLocale, t } = await import("./i18n")
+    setLocale("en")
+    const { link, sock } = await livePair()
+    const onDisconnect = vi.fn()
+    link.onDisconnect = onDisconnect
+    const pending = link.rpc({ op: OpList })
+    sock.onclose?.({ code: 1011, reason: "quota" } as CloseEvent)
+    await expect(pending).rejects.toThrow("quota")
+    expect(linkError(onDisconnect.mock.calls[0][0])).toBe(t("err.remote", { detail: "quota" }))
+    expect(linkError(onDisconnect.mock.calls[0][0])).not.toBe(
+      t("err.net.down", { reason: "quota" }),
+    )
   })
 
   it("does not call onDisconnect when the user unlinks", async () => {

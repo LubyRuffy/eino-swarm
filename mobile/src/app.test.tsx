@@ -53,7 +53,9 @@ describe("App boot chrome", () => {
     vi.mocked(openSaved).mockRejectedValue(new Error("offline"))
     render(<App />)
     await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toBe(t("err.reconnect"))
+      expect(screen.getByRole("alert").textContent).toBe(
+        t("err.net.closed", { reason: "offline" }),
+      )
     })
     expect(screen.getByRole("tablist")).toBeInTheDocument()
     expect(screen.queryByRole("heading", { name: t("scan.title") })).not.toBeInTheDocument()
@@ -108,13 +110,46 @@ describe("App boot chrome", () => {
     vi.mocked(openSaved).mockRejectedValue(new Error("offline"))
     render(<App />)
     await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toBe(t("err.reconnect"))
+      expect(screen.getByRole("alert").textContent).toBe(
+        t("err.net.closed", { reason: "offline" }),
+      )
     })
     fireEvent.click(screen.getByRole("button", { name: t("home.addHost") }))
     const dialog = screen.getByRole("dialog", { name: t("home.addHost") })
     expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: t("scan.camera") })).toBeEnabled()
-    expect(screen.getByRole("alert").textContent).toBe(t("err.reconnect"))
+    expect(screen.getByRole("alert").textContent).toBe(
+      t("err.net.closed", { reason: "offline" }),
+    )
+  })
+
+  it("says the PC may be off when the socket never opens", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockRejectedValue(new Error("ws error"))
+    render(<App />)
+    const down = t("err.net.down", { reason: "ws error" })
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(down)
+    })
+    expect(down).not.toBe(t("err.remote", { detail: "ws error" }))
+    expect(screen.getByLabelText("path=offline").className).toContain("bg-muted-foreground")
+    expect(screen.getByLabelText("path=offline").className).not.toContain("--online")
+  })
+
+  it("labels a server refusal instead of a dropped socket", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(
+      hostLink({
+        list: async () => ({ v: 1, id: "l", ok: false, error: "quota" }),
+      }),
+    )
+    render(<App />)
+    const remote = t("err.remote", { detail: "quota" })
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(remote)
+    })
+    expect(remote).not.toBe(t("err.net.down", { reason: "quota" }))
+    expect(screen.getByLabelText("path=relay").className).toContain("bg-[hsl(var(--online))]")
   })
 })
 
@@ -274,6 +309,7 @@ function systemBack(): boolean {
 function hostLink(opts?: {
   threads?: { id: string; title: string; running: boolean; last_active_at: string }[]
   running?: { thread_id: string; title: string }[]
+  list?: () => Promise<RemoteResponse>
   open?: () => Promise<RemoteResponse>
   watch?: () => Promise<RemoteResponse>
 }): DeviceLink {
@@ -288,7 +324,10 @@ function hostLink(opts?: {
     announceDevice: async () => undefined,
     rpc: async (req: { op: string; thread_id?: string }): Promise<RemoteResponse> => {
       if (req.op === OpHello) return { v: 1, id: "h", ok: true }
-      if (req.op === OpList) return { v: 1, id: "l", ok: true, threads, running, projects: [] }
+      if (req.op === OpList) {
+        if (opts?.list) return opts.list()
+        return { v: 1, id: "l", ok: true, threads, running, projects: [] }
+      }
       if (req.op === OpOpen) {
         if (opts?.open) return opts.open()
         return {

@@ -126,6 +126,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A live phone link no longer looks offline.** The host-chip dot is green
+  while the socket is up (relay and direct) and gray while it is down.
+  Reconnecting stays a red pulse. The path name stays on the dot's title.
+
+- **Phone connection errors say which failure they are.** A socket that
+  never gets an answer (server off, network cut, timeout) is not the same
+  sentence as a server refusal. The machine reason or the server's text
+  stays on the line. `host offline` is still the hub copy.
+
 - **Android back no longer quits from a conversation.** The system back key
   pops a conversation, or Add a PC, to the screen under it. The activity
   finishes only from the inbox, or from the scan screen when nothing is bound.

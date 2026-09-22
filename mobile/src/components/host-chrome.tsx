@@ -122,16 +122,15 @@ export function HostChrome({
               <Monitor className="size-3.5 shrink-0" aria-hidden />
               <span className="max-w-28 truncate">{label}</span>
               {selected ? (
+                // Color is liveness. Path stays on the title; gray on this chip reads as down.
                 <span
                   className={cn(
                     "size-1.5 shrink-0 rounded-full",
                     reconnecting
                       ? "animate-pulse bg-destructive"
-                      : !connected
-                        ? "bg-destructive"
-                        : path === "direct"
-                          ? "bg-[hsl(var(--running))]"
-                          : "bg-primary-foreground/70",
+                      : connected
+                        ? "bg-[hsl(var(--online))]"
+                        : "bg-muted-foreground",
                   )}
                   title={
                     reconnecting

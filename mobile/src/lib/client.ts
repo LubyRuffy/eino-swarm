@@ -33,13 +33,47 @@ export const RPC_TIMEOUT_MS = 15_000
 export const WS_OPEN_TIMEOUT_MS = 10_000
 export const HANDSHAKE_TIMEOUT_MS = 5_000
 
-const DROP_MESSAGES = new Set([
-  "offline",
-  "ws error",
-  "ws timeout",
-  "rpc timeout",
-  "handshake timeout",
-])
+const NET_DOWN = new Set(["ws error", "ws timeout", "fetch failed"])
+const NET_TIMEOUT = new Set(["rpc timeout", "handshake timeout"])
+const NET_CLOSED = new Set(["offline"])
+// No close frame, or the peer vanished: the browser will not say why.
+const CLOSE_DOWN = new Set([0, 1001, 1006, 1015])
+const CLOSE_CLEAN = new Set([1000, 1005])
+
+export type FaultKind = "network" | "remote"
+
+export class LinkFault extends Error {
+  readonly kind: FaultKind
+  constructor(code: string, kind: FaultKind) {
+    super(code)
+    this.name = "LinkFault"
+    this.kind = kind
+  }
+}
+
+// A WebSocket error event has no status. The close code is the fact:
+// 1006/1015 never got a frame (server down or the network cut); a reason
+// or an application close code is the peer answering.
+export function faultFromClose(ev: { code?: number; reason?: string }): LinkFault {
+  const reason = typeof ev.reason === "string" ? ev.reason.trim() : ""
+  if (reason) return new LinkFault(reason, "remote")
+  const code = typeof ev.code === "number" ? ev.code : 1006
+  if (CLOSE_CLEAN.has(code)) return new LinkFault("offline", "network")
+  if (CLOSE_DOWN.has(code)) return new LinkFault(`ws close ${code}`, "network")
+  return new LinkFault(`ws close ${code}`, "remote")
+}
+
+export function linkFault(err: unknown): LinkFault {
+  if (err instanceof LinkFault) return err
+  if (err instanceof TypeError) return new LinkFault("fetch failed", "network")
+  const raw = err instanceof Error ? err.message : String(err)
+  if (raw === "host offline" || NET_DOWN.has(raw) || NET_TIMEOUT.has(raw) || NET_CLOSED.has(raw)) {
+    return new LinkFault(raw, "network")
+  }
+  const close = /^ws close (\d+)$/.exec(raw)
+  if (close) return faultFromClose({ code: Number(close[1]) })
+  return new LinkFault(raw, "remote")
+}
 
 export type RedeemResult = {
   ticket: string
@@ -49,26 +83,40 @@ export type RedeemResult = {
 
 export function hubError(status: number, text: string): Error {
   const trimmed = text.trim()
+  let msg = trimmed || String(status)
   if (trimmed.startsWith("{")) {
     try {
       const body = JSON.parse(trimmed) as { error?: string }
-      if (body.error?.trim()) return new Error(body.error.trim())
+      if (body.error?.trim()) msg = body.error.trim()
     } catch {
       // raw text is still the error
     }
   }
-  return new Error(trimmed || String(status))
+  if (msg === "host offline") return new LinkFault(msg, "network")
+  return new LinkFault(msg, "remote")
 }
 
 export function bindError(err: unknown): string {
   return linkError(err)
 }
 
+export function remoteError(detail: string): string {
+  const text = detail.trim()
+  if (!text) return t("err.rpc")
+  return t("err.remote", { detail: text })
+}
+
 export function linkError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err)
-  if (raw === "host offline") return t("scan.hostOffline")
-  if (DROP_MESSAGES.has(raw)) return t("err.reconnect")
-  return raw
+  const fault = linkFault(err)
+  if (fault.message === "host offline") return t("scan.hostOffline")
+  if (fault.kind === "remote") return remoteError(fault.message)
+  if (NET_TIMEOUT.has(fault.message)) {
+    return t("err.net.timeout", { reason: fault.message })
+  }
+  if (NET_DOWN.has(fault.message) || fault.message.startsWith("ws close ")) {
+    return t("err.net.down", { reason: fault.message })
+  }
+  return t("err.net.closed", { reason: fault.message })
 }
 
 export type PendingWait = {
@@ -153,7 +201,10 @@ export class DeviceLink {
     ws.binaryType = "arraybuffer"
     this.ws = ws
     await new Promise<void>((resolve, reject) => {
-      const timer = window.setTimeout(() => reject(new Error("ws timeout")), WS_OPEN_TIMEOUT_MS)
+      const timer = window.setTimeout(
+        () => reject(new LinkFault("ws timeout", "network")),
+        WS_OPEN_TIMEOUT_MS,
+      )
       const fail = (err: Error) => {
         window.clearTimeout(timer)
         reject(err)
@@ -162,13 +213,21 @@ export class DeviceLink {
         window.clearTimeout(timer)
         resolve()
       }
-      ws.onerror = () => fail(new Error("ws error"))
-      ws.onclose = () => fail(new Error("offline"))
+      ws.onerror = () => {
+        window.setTimeout(() => {
+          if (ws.readyState !== 1) fail(new LinkFault("ws error", "network"))
+        }, 0)
+      }
+      ws.onclose = (ev) => fail(faultFromClose(ev))
     })
     await this.handshake()
     ws.onmessage = (ev) => this.onMessage(ev)
-    ws.onerror = () => this.drop(new Error("ws error"))
-    ws.onclose = () => this.drop(new Error("offline"))
+    ws.onerror = () => {
+      window.setTimeout(() => {
+        if (this.ws === ws) this.drop(new LinkFault("ws error", "network"))
+      }, 0)
+    }
+    ws.onclose = (ev) => this.drop(faultFromClose(ev))
     this.startKeepAlive()
   }
 
@@ -183,7 +242,7 @@ export class DeviceLink {
   }
 
   private handshake(): Promise<void> {
-    if (!this.ws) return Promise.reject(new Error("offline"))
+    if (!this.ws) return Promise.reject(new LinkFault("offline", "network"))
     const { hs, msg } = initiate(this.identity, this.hostPub)
     this.ws.send(
       marshalFrame({
@@ -195,25 +254,33 @@ export class DeviceLink {
       }),
     )
     return new Promise((resolve, reject) => {
-      const t = window.setTimeout(() => reject(new Error("handshake timeout")), HANDSHAKE_TIMEOUT_MS)
+      const timer = window.setTimeout(
+        () => reject(new LinkFault("handshake timeout", "network")),
+        HANDSHAKE_TIMEOUT_MS,
+      )
       const fail = (err: Error) => {
-        window.clearTimeout(t)
+        window.clearTimeout(timer)
         reject(err)
       }
-      this.ws!.onclose = () => fail(new Error("offline"))
-      this.ws!.onerror = () => fail(new Error("ws error"))
+      const sock = this.ws!
+      sock.onerror = () => {
+        window.setTimeout(() => {
+          if (!this.sess) fail(new LinkFault("ws error", "network"))
+        }, 0)
+      }
+      sock.onclose = (ev) => fail(faultFromClose(ev))
       this.ws!.onmessage = (ev) => {
         try {
           const fr = unmarshalFrame(asBytes(ev.data))
           if (fr.type === TYPE_HANDSHAKE && equalBytes(fr.src, this.hostPub)) {
             this.sess = finish(hs, fr.payload)
-            window.clearTimeout(t)
+            window.clearTimeout(timer)
             resolve()
             return
           }
           this.onFrame(fr)
         } catch (err) {
-          window.clearTimeout(t)
+          window.clearTimeout(timer)
           reject(err)
         }
       }
@@ -248,7 +315,7 @@ export class DeviceLink {
   async rpc(
     partial: Omit<RemoteRequest, "v" | "id"> & { id?: string },
   ): Promise<RemoteResponse> {
-    if (!this.alive() || !this.sess || !this.ws) throw new Error("offline")
+    if (!this.alive() || !this.sess || !this.ws) throw new LinkFault("offline", "network")
     const req: RemoteRequest = {
       v: PROTOCOL_V,
       id: partial.id ?? nextRPCId(),
@@ -257,8 +324,8 @@ export class DeviceLink {
     const p = new Promise<RemoteResponse>((resolve, reject) => {
       const timer = window.setTimeout(() => {
         this.pending.delete(req.id)
-        reject(new Error("rpc timeout"))
-        this.drop(new Error("rpc timeout"))
+        reject(new LinkFault("rpc timeout", "network"))
+        this.drop(new LinkFault("rpc timeout", "network"))
       }, this.rpcTimeoutMs)
       this.pending.set(req.id, { resolve, reject, timer })
     })
@@ -274,8 +341,8 @@ export class DeviceLink {
       )
     } catch {
       this.clearWait(req.id)
-      this.drop(new Error("offline"))
-      throw new Error("offline")
+      this.drop(new LinkFault("offline", "network"))
+      throw new LinkFault("offline", "network")
     }
     return p
   }
@@ -286,7 +353,7 @@ export class DeviceLink {
     const ws = this.ws
     this.ws = null
     this.sess = null
-    this.failPending(new Error("offline"))
+    this.failPending(new LinkFault("offline", "network"))
     try {
       ws?.close()
     } catch {
@@ -322,7 +389,7 @@ export class DeviceLink {
         }),
       )
     } catch {
-      this.drop(new Error("offline"))
+      this.drop(new LinkFault("offline", "network"))
     }
   }
 

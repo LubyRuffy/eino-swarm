@@ -5,7 +5,15 @@ import { HomeScreen } from "@/components/home-screen"
 import { LinkBanner } from "@/components/link-banner"
 import { ScanScreen } from "@/components/scan-screen"
 import { ThreadScreen } from "@/components/thread-screen"
-import { bindFromURI, bindError, DeviceLink, linkError, openSaved } from "@/lib/client"
+import {
+  bindFromURI,
+  bindError,
+  DeviceLink,
+  LinkFault,
+  linkError,
+  openSaved,
+  remoteError,
+} from "@/lib/client"
 import { getLocale, t, toggleLocale } from "@/lib/i18n"
 import type {
   ProjectView,
@@ -109,7 +117,7 @@ export function App() {
 
   const applyList = (resp: RemoteResponse, append: boolean, target?: DeviceLink) => {
     if (!resp.ok) {
-      setError(resp.error || resp.code || t("err.rpc"))
+      setError(remoteError(resp.error || resp.code || ""))
       return
     }
     const nextThreads = append ? undefined : (resp.threads ?? [])
@@ -147,9 +155,9 @@ export function App() {
       if (resp.path) next.path = resp.path
       commitView(applyPush(viewRef.current, resp))
     }
-    next.onDisconnect = () => {
+    next.onDisconnect = (err) => {
       if (linkRef.current !== next || unlinkingRef.current) return
-      setError(t("err.reconnect"))
+      setError(linkError(err))
       void recoverRef.current()
     }
     void next.announceDevice().then((resp) => {
@@ -167,7 +175,7 @@ export function App() {
       const r = await target.rpc({ op: OpOpen, thread_id: id })
       if (!stillThisThread()) return false
       if (!r.detail) {
-        setError(r.error || t("err.open"))
+        setError(r.error ? remoteError(r.error) : t("err.open"))
         if (id === loadLastThreadId()) clearLastThreadId()
         if (!staying) viewRef.current = emptyView()
         return false
@@ -180,7 +188,7 @@ export function App() {
       const w = await target.rpc({ op: OpWatch, thread_id: id })
       if (!stillThisThread()) return false
       if (!w.ok) {
-        setError(w.error || w.code || t("err.watch"))
+        setError(w.error || w.code ? remoteError(w.error || w.code || "") : t("err.watch"))
         if (!staying) viewRef.current = emptyView()
         return false
       }
@@ -377,7 +385,7 @@ export function App() {
   const openThread = async (id: string) => {
     const target = linkRef.current
     if (!target?.alive()) {
-      setError(t("err.reconnect"))
+      setError(linkError(new LinkFault("offline", "network")))
       void recover()
       return
     }
@@ -405,7 +413,7 @@ export function App() {
       })
       if (loadGen.current !== gen || viewRef.current.threadId !== threadId) return
       if (!r.ok) {
-        setError(r.error || r.code || t("err.rpc"))
+        setError(remoteError(r.error || r.code || ""))
         return
       }
       commitView(prependOlder(viewRef.current, r.events ?? [], Boolean(r.more), r.seq ?? 0))
