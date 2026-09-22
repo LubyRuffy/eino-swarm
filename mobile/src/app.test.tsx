@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { openSaved } from "@/lib/client"
+import { openSaved, type DeviceLink } from "@/lib/client"
 import { t } from "@/lib/i18n"
+import { OpHello, OpList, OpOpen, OpUnwatch, OpWatch, type RemoteResponse } from "@/lib/rpc"
 import { saveLink } from "@/lib/store"
 
 vi.mock("@/lib/client", async (importOriginal) => {
@@ -32,6 +33,8 @@ describe("App boot chrome", () => {
     render(<App />)
     expect(screen.getByRole("button", { name: t("scan.camera") })).toBeInTheDocument()
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument()
+    expect(systemBack()).toBe(false)
+    expect(screen.getByRole("button", { name: t("scan.camera") })).toBeInTheDocument()
   })
 
   it("paints host tabs and a connecting inbox when a ticket is saved", () => {
@@ -84,6 +87,22 @@ describe("App boot chrome", () => {
     expect(screen.getByRole("button", { name: t("scan.camera") })).toBeEnabled()
   })
 
+  it("system back closes Add a PC and stays on the inbox", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockReturnValue(new Promise(() => undefined))
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: t("home.addHost") }))
+    expect(screen.getByRole("dialog", { name: t("home.addHost") })).toBeInTheDocument()
+    let stayed = false
+    await act(async () => {
+      stayed = systemBack()
+    })
+    expect(stayed).toBe(true)
+    expect(screen.queryByRole("dialog", { name: t("home.addHost") })).not.toBeInTheDocument()
+    expect(screen.getByRole("tablist", { name: t("home.hosts") })).toBeInTheDocument()
+    expect(systemBack()).toBe(false)
+  })
+
   it("keeps a restore error on the inbox when Add a PC is open", async () => {
     seedLink()
     vi.mocked(openSaved).mockRejectedValue(new Error("offline"))
@@ -98,3 +117,194 @@ describe("App boot chrome", () => {
     expect(screen.getByRole("alert").textContent).toBe(t("err.reconnect"))
   })
 })
+
+describe("system back leaves a conversation for the inbox", () => {
+  afterEach(() => {
+    cleanup()
+    vi.mocked(openSaved).mockReset()
+  })
+
+  it("pops an open conversation and finishes only from the inbox", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(hostLink())
+    render(<App />)
+    const open = t("home.open", { title: "th-1" })
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: open })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: open }))
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: t("thread.back") })).toBeInTheDocument()
+    })
+    let stayed = false
+    await act(async () => {
+      stayed = systemBack()
+    })
+    expect(stayed).toBe(true)
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: open })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole("button", { name: t("thread.back") })).not.toBeInTheDocument()
+    expect(systemBack()).toBe(false)
+    expect(screen.getByRole("tablist", { name: t("home.hosts") })).toBeInTheDocument()
+  })
+
+  it("header Back returns to the inbox", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(hostLink())
+    render(<App />)
+    const open = t("home.open", { title: "th-1" })
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: open })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: open }))
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: t("thread.back") })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: t("thread.back") }))
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: open })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole("heading", { name: "th-1" })).not.toBeInTheDocument()
+  })
+
+  it("returns from a resumed live conversation instead of treating it as the root", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(
+      hostLink({
+        running: [{ thread_id: "th-1", title: "th-1" }],
+        threads: [],
+      }),
+    )
+    render(<App />)
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: t("thread.back") })).toBeInTheDocument()
+    })
+    let stayed = false
+    await act(async () => {
+      stayed = systemBack()
+    })
+    expect(stayed).toBe(true)
+    await waitFor(() => {
+      expect(screen.getByRole("tablist", { name: t("home.hosts") })).toBeInTheDocument()
+    })
+    expect(screen.queryByRole("button", { name: t("thread.back") })).not.toBeInTheDocument()
+    expect(systemBack()).toBe(false)
+  })
+
+  it("does not paint the conversation back when open replies after Back", async () => {
+    let releaseOpen: (resp: RemoteResponse) => void = () => undefined
+    const openGate = new Promise<RemoteResponse>((resolve) => {
+      releaseOpen = resolve
+    })
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(
+      hostLink({
+        open: () => openGate,
+      }),
+    )
+    render(<App />)
+    const open = t("home.open", { title: "th-1" })
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: open })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: open }))
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: t("thread.back") })).toBeInTheDocument()
+    })
+    await act(async () => {
+      expect(systemBack()).toBe(true)
+    })
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: open })).toBeInTheDocument()
+    })
+    await act(async () => {
+      releaseOpen({
+        v: 1,
+        id: "late",
+        ok: true,
+        detail: { id: "th-1", title: "th-1" },
+      })
+    })
+    expect(screen.queryByRole("button", { name: t("thread.back") })).not.toBeInTheDocument()
+    expect(screen.getByRole("tablist", { name: t("home.hosts") })).toBeInTheDocument()
+  })
+
+  it("does not surface a late watch failure after Back", async () => {
+    let releaseWatch: (resp: RemoteResponse) => void = () => undefined
+    let watchStarted = false
+    const watchGate = new Promise<RemoteResponse>((resolve) => {
+      releaseWatch = resolve
+    })
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(
+      hostLink({
+        watch: () => {
+          watchStarted = true
+          return watchGate
+        },
+      }),
+    )
+    render(<App />)
+    const open = t("home.open", { title: "th-1" })
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: open })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole("button", { name: open }))
+    await waitFor(() => {
+      expect(watchStarted).toBe(true)
+    })
+    await act(async () => {
+      expect(systemBack()).toBe(true)
+    })
+    await act(async () => {
+      releaseWatch({ v: 1, id: "late-watch", ok: false, error: "watch failed" })
+    })
+    expect(screen.queryByText("watch failed")).not.toBeInTheDocument()
+    expect(screen.getByRole("tablist", { name: t("home.hosts") })).toBeInTheDocument()
+  })
+})
+
+function systemBack(): boolean {
+  const fn = window.__zwaiAndroidBack
+  if (!fn) throw new Error("android back hook missing")
+  return fn()
+}
+
+function hostLink(opts?: {
+  threads?: { id: string; title: string; running: boolean; last_active_at: string }[]
+  running?: { thread_id: string; title: string }[]
+  open?: () => Promise<RemoteResponse>
+  watch?: () => Promise<RemoteResponse>
+}): DeviceLink {
+  const threads = opts?.threads ?? [
+    { id: "th-1", title: "th-1", running: false, last_active_at: "2026-01-01T00:00:00Z" },
+  ]
+  const running = opts?.running ?? []
+  const link = {
+    path: "relay",
+    alive: () => true,
+    close: () => undefined,
+    announceDevice: async () => undefined,
+    rpc: async (req: { op: string; thread_id?: string }): Promise<RemoteResponse> => {
+      if (req.op === OpHello) return { v: 1, id: "h", ok: true }
+      if (req.op === OpList) return { v: 1, id: "l", ok: true, threads, running, projects: [] }
+      if (req.op === OpOpen) {
+        if (opts?.open) return opts.open()
+        return {
+          v: 1,
+          id: "o",
+          ok: true,
+          detail: { id: req.thread_id ?? "th-1", title: "th-1" },
+        }
+      }
+      if (req.op === OpWatch) {
+        if (opts?.watch) return opts.watch()
+        return { v: 1, id: "w", ok: true, op: "ready", events: [] }
+      }
+      if (req.op === OpUnwatch) return { v: 1, id: "u", ok: true }
+      return { v: 1, id: "x", ok: true }
+    },
+  }
+  return link as unknown as DeviceLink
+}

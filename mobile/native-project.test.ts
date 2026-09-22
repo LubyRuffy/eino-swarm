@@ -35,6 +35,7 @@ describe("native phone apps", () => {
     const manifest = read("android/app/src/main/AndroidManifest.xml")
     expect(manifest).toMatch(/android\.permission\.CAMERA/)
     expect(manifest).toMatch(/usesCleartextTraffic="true"/)
+    expect(manifest).toMatch(/enableOnBackInvokedCallback="true"/)
     expect(manifest).not.toMatch(leakedHost)
     const gradle = read("android/app/build.gradle")
     expect(gradle).toMatch(/applicationId ["']com\.lubyruffy\.zwai["']/)
@@ -67,6 +68,24 @@ describe("native phone apps", () => {
     expect(makefile).toMatch(/mobile-android-release/)
     const pkg = JSON.parse(read("package.json"))
     expect(pkg.scripts["cap:android-release"]).toMatch(/android-release/)
+  })
+
+  it("asks the page before Android back finishes the activity", () => {
+    // A conversation is React state. WebView history stays empty, so the
+    // activity back dispatcher must not finish until the page says it is
+    // on the inbox or the unbound scan screen.
+    const java = read("android/app/src/main/java/com/lubyruffy/zwai/MainActivity.java")
+    const hook = read("src/lib/android-back.ts").match(/ANDROID_BACK_HOOK = "([^"]+)"/)?.[1]
+    expect(hook).toBeTruthy()
+    expect(java).toContain(hook)
+    expect(java).toMatch(/OnBackPressedCallback/)
+    expect(java).toMatch(/evaluateJavascript/)
+    expect(java).toMatch(/setEnabled\(false\)/)
+    expect(java).toMatch(/postDelayed/)
+    expect(java).toMatch(/removeCallbacks/)
+    const finishes = java.split("finish()").length - 1
+    expect(finishes).toBe(1)
+    expect(java).toMatch(/private void leaveApp[\s\S]*finish\(\)/)
   })
 
   it("does not compile a hub URL into the Capacitor config", () => {

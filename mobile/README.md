@@ -7,7 +7,10 @@ the inbox lists projects and threads. A later launch with saved tickets
 paints host chips (the name this PC sent on `hello`/`list`) and a connecting
 skeleton; the scan form is only when this
 phone has never bound (or after Unlink of the last PC). Add a PC is a
-side control that opens a sheet. The phone talks to the PC over
+side control that opens a sheet. Android's system back returns from a
+conversation, or from that sheet, to the screen under it. The activity
+finishes only from the inbox, or from the scan screen when this phone has
+never bound (the header Back control does the same pop). The phone talks to the PC over
 pairlink (WebSocket relay). After the ticket socket is up it sends `hello`
 with a one-line model (OS + version + device) so Settings → Phone can
 name the binding. It keepalives that socket (the hub idle-drops

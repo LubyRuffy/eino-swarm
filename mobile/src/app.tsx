@@ -30,6 +30,7 @@ import {
   OpUnwatch,
   OpWatch,
 } from "@/lib/rpc"
+import { androidBackLayer, installAndroidBack } from "@/lib/android-back"
 import { phoneShell } from "@/lib/phone-shell"
 import { pickResumeThread, detailFromListing, rosterFingerprint } from "@/lib/resume"
 import {
@@ -77,6 +78,7 @@ export function App() {
   const [loadingOlder, setLoadingOlder] = useState(false)
   const linkRef = useRef<DeviceLink | null>(null)
   const viewRef = useRef<PhoneView>(view)
+  const addingRef = useRef(false)
   const resumedRef = useRef(false)
   const olderBusy = useRef(false)
   const loadGen = useRef(0)
@@ -89,6 +91,7 @@ export function App() {
   const recoverRef = useRef<(force?: boolean) => Promise<void>>(async () => undefined)
   linkRef.current = link
   viewRef.current = view
+  addingRef.current = adding
 
   const commitView = (next: PhoneView) => {
     viewRef.current = next
@@ -156,22 +159,26 @@ export function App() {
 
   const openThreadOn = async (target: DeviceLink, id: string) => {
     const staying = viewRef.current.threadId === id && Boolean(viewRef.current.detail)
+    // A cleared threadId means Back already left. A check that only bails
+    // when some other id is current treats "left" as still here, and the
+    // late open paints the conversation back over the inbox.
+    const stillThisThread = () => viewRef.current.threadId === id
     try {
       const r = await target.rpc({ op: OpOpen, thread_id: id })
+      if (!stillThisThread()) return false
       if (!r.detail) {
         setError(r.error || t("err.open"))
         if (id === loadLastThreadId()) clearLastThreadId()
         if (!staying) viewRef.current = emptyView()
         return false
       }
-      if (viewRef.current.threadId && viewRef.current.threadId !== id) return false
       saveLastThreadId(id)
       loadGen.current += 1
       olderBusy.current = false
       setLoadingOlder(false)
       commitView(applyOpenDetail(viewRef.current, r.detail))
       const w = await target.rpc({ op: OpWatch, thread_id: id })
-      if (viewRef.current.threadId && viewRef.current.threadId !== id) return false
+      if (!stillThisThread()) return false
       if (!w.ok) {
         setError(w.error || w.code || t("err.watch"))
         if (!staying) viewRef.current = emptyView()
@@ -180,6 +187,7 @@ export function App() {
       commitView(applyPush(viewRef.current, { ...w, op: w.op || OpReady }))
       return true
     } catch (e) {
+      if (!stillThisThread()) return false
       setError(linkError(e))
       if (!staying) viewRef.current = emptyView()
       return false
@@ -426,6 +434,27 @@ export function App() {
       fail(e)
     }
   }
+
+  const backRef = useRef<() => boolean>(() => false)
+  backRef.current = () => {
+    const layer = androidBackLayer({
+      sheet: addingRef.current,
+      thread: Boolean(viewRef.current.detail),
+    })
+    if (layer === "sheet") {
+      addingRef.current = false
+      setAdding(false)
+      setAddError(undefined)
+      return true
+    }
+    if (layer === "thread") {
+      void closeThread()
+      return true
+    }
+    return false
+  }
+
+  useEffect(() => installAndroidBack(() => backRef.current()), [])
 
   const unlink = () => {
     bindGen.current += 1

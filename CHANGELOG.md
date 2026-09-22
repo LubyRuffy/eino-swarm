@@ -112,6 +112,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **Android back no longer quits from a conversation.** The system back key
+  pops a conversation, or Add a PC, to the screen under it. The activity
+  finishes only from the inbox, or from the scan screen when nothing is bound.
+  A reply that arrives after Back does not paint that conversation again.
+  A dropped WebView result cannot stick the key.
+
 - **The last answer is not painted over by the composer fade.** Goal / plan /
   wait pins and the input are one dock. An opaque slab sits behind that
   whole plate (so chip gaps cannot show transcript). The fade is only a
