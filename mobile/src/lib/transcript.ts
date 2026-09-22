@@ -5,13 +5,15 @@ import {
   type AskQuestion,
 } from "./ask"
 import type { RemoteEvent } from "./rpc"
-import { looksPacked } from "./tool-preview"
+import { t } from "./i18n"
+import { flatten, jsonPreview, looksPacked } from "./tool-preview"
 import { scheduleToolNotice } from "./inbox-preview"
 
 export type BlockKind =
   | "user"
   | "steer"
   | "answer"
+  | "reasoning"
   | "tool"
   | "question"
   | "notice"
@@ -47,7 +49,37 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
     case "steer":
       next.push({ id: blockId(ev), kind: "steer", text: ev.text })
       return next
+    case "reasoning_delta": {
+      const i = lastIndex(next, (b) => b.kind === "reasoning" && Boolean(b.streaming))
+      if (i >= 0) {
+        next[i] = { ...next[i], text: ev.text, streaming: true }
+        return next
+      }
+      next.push({
+        id: blockId(ev),
+        kind: "reasoning",
+        text: ev.text,
+        streaming: true,
+      })
+      return next
+    }
+    case "reasoning": {
+      const i = lastIndex(next, (b) => b.kind === "reasoning" && Boolean(b.streaming))
+      if (i >= 0) {
+        next[i] = {
+          ...next[i],
+          text: ev.text || next[i].text,
+          streaming: false,
+        }
+        return next
+      }
+      if (ev.text) {
+        next.push({ id: blockId(ev), kind: "reasoning", text: ev.text })
+      }
+      return next
+    }
     case "delta": {
+      settleReasoning(next)
       const i = lastIndex(next, (b) => b.kind === "answer" && Boolean(b.streaming))
       if (i >= 0) {
         next[i] = { ...next[i], text: ev.text }
@@ -62,6 +94,7 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
       return next
     }
     case "agent_message": {
+      settleReasoning(next)
       const i = lastIndex(next, (b) => b.kind === "answer" && Boolean(b.streaming))
       if (i >= 0) {
         next[i] = {
@@ -77,6 +110,7 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
       return next
     }
     case "tool_call": {
+      settleReasoning(next)
       const parsed = splitToolCall(ev.text)
       if (parsed.name === ASK_TOOL) {
         next.push({
@@ -213,4 +247,140 @@ function lastIndex(
     if (pred(blocks[i])) return i
   }
   return -1
+}
+
+function settleReasoning(blocks: CompactBlock[]) {
+  const i = lastIndex(blocks, (b) => b.kind === "reasoning" && Boolean(b.streaming))
+  if (i >= 0) blocks[i] = { ...blocks[i], streaming: false }
+}
+
+const OMITTED_TOOLS = new Set(["spawn_agent", "close_agent"])
+
+export type PhoneItem =
+  | { type: "block"; block: CompactBlock }
+  | { type: "work"; blocks: CompactBlock[] }
+
+export type PhoneTickerKind =
+  | "thinking"
+  | "planning"
+  | "editing"
+  | "reading"
+  | "exec"
+  | "using"
+
+export type PhoneTicker = {
+  kind: PhoneTickerKind
+  detail: string
+}
+
+/** Bookkeeping the phone never paints. Skipping it keeps a thought and the
+ *  next real tool in one fold. */
+export function isPhoneOmitted(block: CompactBlock): boolean {
+  if (block.kind === "spawn") return true
+  if (block.kind !== "tool") return false
+  const name = block.toolName ?? ""
+  if (OMITTED_TOOLS.has(name)) return true
+  return scheduleToolNotice(name, block.args || "") === ""
+}
+
+function isAlwaysVisible(block: CompactBlock): boolean {
+  return (
+    block.kind === "user" ||
+    block.kind === "steer" ||
+    block.kind === "answer" ||
+    block.kind === "question" ||
+    block.kind === "error" ||
+    block.kind === "notice"
+  )
+}
+
+/** Compact mode (the phone default) folds consecutive thinking and tools.
+ *  An answer stays on screen and splits the group. */
+export function foldPhoneItems(blocks: CompactBlock[]): PhoneItem[] {
+  const items: PhoneItem[] = []
+  let group: CompactBlock[] = []
+  const flush = () => {
+    if (group.length === 0) return
+    items.push({ type: "work", blocks: group })
+    group = []
+  }
+  for (const block of blocks) {
+    if (isPhoneOmitted(block)) continue
+    if (isAlwaysVisible(block)) {
+      flush()
+      items.push({ type: "block", block })
+      continue
+    }
+    if (block.kind === "reasoning" || block.kind === "tool") {
+      group.push(block)
+      continue
+    }
+    flush()
+    items.push({ type: "block", block })
+  }
+  flush()
+  return items
+}
+
+/** One current activity on the live tail. Idle folds keep the count. */
+export function phoneWorkTicker(
+  blocks: CompactBlock[],
+  running: boolean,
+): PhoneTicker | null {
+  if (!running) return null
+  let pending: CompactBlock | undefined
+  let thought: CompactBlock | undefined
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i]
+    if (!pending && b.kind === "tool" && b.pending) pending = b
+    if (!thought && b.kind === "reasoning" && b.streaming) thought = b
+  }
+  if (pending) return toolTicker(pending)
+  if (thought) return { kind: "thinking", detail: lastLine(thought.text) }
+  return { kind: "planning", detail: "" }
+}
+
+export function formatPhoneTicker(frame: PhoneTicker): string {
+  switch (frame.kind) {
+    case "planning":
+      return t("thread.planningMoves")
+    case "thinking":
+      return frame.detail.trim() || t("thread.thinking")
+    case "editing":
+      return t("thread.workEditing", { name: frame.detail })
+    case "reading":
+      return t("thread.workReading", { name: frame.detail })
+    case "exec":
+      return t("thread.workExec", { name: frame.detail })
+    default:
+      return frame.detail
+  }
+}
+
+function toolTicker(block: CompactBlock): PhoneTicker {
+  const name = block.toolName || ""
+  const preview = jsonPreview(block.args) || jsonPreview(block.text)
+  if (name === "read") {
+    return { kind: "reading", detail: fileLeaf(preview) || name }
+  }
+  if (name === "edit" || name === "write") {
+    return { kind: "editing", detail: fileLeaf(preview) || name }
+  }
+  if (name === "exec" || name === "python_runner") {
+    return { kind: "exec", detail: flatten(preview) || name }
+  }
+  const detail = preview && preview !== name ? `${name}  ${preview}` : name
+  return { kind: "using", detail }
+}
+
+function fileLeaf(path: string): string {
+  const s = path.trim().replace(/\\/g, "/")
+  if (!s) return ""
+  const i = s.lastIndexOf("/")
+  return i >= 0 ? s.slice(i + 1) : s
+}
+
+function lastLine(text: string): string {
+  const lines = text.split("\n").map((row) => row.trim()).filter(Boolean)
+  return lines[lines.length - 1] ?? ""
 }

@@ -352,7 +352,9 @@ end-to-end tests run on and the fastest way to see the UI work.
    last turn, already at the live edge; Earlier or pull up loads older rows. A tap
    paints the chrome immediately; the transcript is a short tail, not the
    whole turn. Markdown
-   renders in the transcript. Tools stay collapsed with a one-line preview.
+   renders in the transcript. Adjacent thoughts and tool calls fold into one
+   row; an answer stays on screen and splits that row. Open it to see each
+   tool, still collapsed to a one-line preview.
    A `wait_agents` chip is a status count, not the roster JSON. A parked
    `/goal` wait paints **Pursuing** plus **Waiting** (next check, Run now,
    Cancel wait) instead of a silent composer. A long objective stays one

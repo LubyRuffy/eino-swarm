@@ -184,6 +184,11 @@ co-working app built on it. The library API is unchanged except where noted
   stay on screen and split the group; however many thought / tool rows
   sit together still merge into one fold.
 
+- **The phone defaults to the same compact transcript.** Adjacent thoughts
+  and tool calls collapse into one row. Answers stay on screen and split
+  the group. The live tail says **Thinking** / **Planning next moves** /
+  **Editing** / **Reading** / **Exec**; opening the row shows the pieces.
+
 - **The last answer is not painted over by the composer fade.** Goal / plan /
   wait pins and the input are one dock. An opaque slab sits behind that
   whole plate (so chip gaps cannot show transcript). The fade is only a

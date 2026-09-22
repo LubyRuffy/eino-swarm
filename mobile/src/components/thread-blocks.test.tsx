@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import { setLocale } from "@/lib/i18n"
 
-import { renderBlock } from "./thread-blocks"
+import { renderBlock, ThreadLog } from "./thread-blocks"
 
 describe("thread blocks", () => {
   it("renders markdown in a user bubble instead of the source markers", () => {
@@ -170,5 +170,103 @@ describe("thread blocks", () => {
       </>,
     )
     expect(document.querySelector(".md-body")).toHaveClass("break-words")
+  })
+
+  it("keeps a mid-turn answer on screen and folds only adjacent work", () => {
+    setLocale("en")
+    render(
+      <ThreadLog
+        blocks={[
+          { id: "r", kind: "reasoning", text: "first pass" },
+          {
+            id: "k",
+            kind: "tool",
+            toolName: "read",
+            text: "read",
+            args: `{"file_path":"src/lib/appearance.ts"}`,
+          },
+          { id: "a", kind: "answer", text: "still working the layout" },
+          { id: "k2", kind: "tool", toolName: "grep", text: "grep" },
+          { id: "a2", kind: "answer", text: "here is the result" },
+        ]}
+      />,
+    )
+    expect(screen.getByText("still working the layout")).toBeInTheDocument()
+    expect(screen.getByText("here is the result")).toBeInTheDocument()
+    expect(screen.getAllByTestId("work-fold")).toHaveLength(2)
+    expect(screen.queryByText("read")).not.toBeInTheDocument()
+    expect(screen.queryByText("grep")).not.toBeInTheDocument()
+    expect(screen.queryByText("first pass")).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByTestId("work-fold")[0])
+    expect(screen.getByTestId("phone-thought")).toHaveTextContent("first pass")
+    expect(screen.getByText("read")).toBeInTheDocument()
+  })
+
+  it("merges however many adjacent thoughts and tools sit together", () => {
+    setLocale("en")
+    render(
+      <ThreadLog
+        blocks={[
+          { id: "r", kind: "reasoning", text: "first pass" },
+          { id: "k", kind: "tool", toolName: "read", text: "read" },
+          { id: "r2", kind: "reasoning", text: "next" },
+          { id: "k2", kind: "tool", toolName: "grep", text: "grep" },
+          { id: "a", kind: "answer", text: "done" },
+        ]}
+      />,
+    )
+    expect(screen.getAllByTestId("work-fold")).toHaveLength(1)
+    expect(screen.getByTestId("work-fold")).toHaveTextContent("Thought · 2 tools")
+    expect(screen.getByText("done")).toBeInTheDocument()
+  })
+
+  it("tickers only the latest work row, and not once an answer is already on screen", () => {
+    setLocale("en")
+    render(
+      <ThreadLog
+        running
+        blocks={[
+          { id: "r", kind: "reasoning", text: "first pass" },
+          {
+            id: "k",
+            kind: "tool",
+            toolName: "read",
+            text: "read",
+            pending: false,
+          },
+          { id: "a", kind: "answer", text: "partial" },
+          {
+            id: "ex",
+            kind: "tool",
+            toolName: "exec",
+            text: "exec",
+            args: `{"command":"printf x"}`,
+            pending: true,
+          },
+        ]}
+      />,
+    )
+    const folds = screen.getAllByTestId("work-fold")
+    expect(folds[0]).toHaveTextContent("Thought · 1 tool")
+    expect(folds[0]).not.toHaveTextContent("Planning next moves")
+    expect(folds[1]).toHaveTextContent("Exec printf x")
+    expect(screen.getByText("partial")).toBeInTheDocument()
+  })
+
+  it("does not keep Planning on a fold once the answer is on screen", () => {
+    setLocale("en")
+    render(
+      <ThreadLog
+        running
+        blocks={[
+          { id: "r", kind: "reasoning", text: "first pass" },
+          { id: "k", kind: "tool", toolName: "read", text: "read", pending: false },
+          { id: "a", kind: "answer", text: "partial", streaming: true },
+        ]}
+      />,
+    )
+    expect(screen.getByTestId("work-fold")).toHaveTextContent("Thought · 1 tool")
+    expect(screen.getByTestId("work-fold")).not.toHaveTextContent("Planning next moves")
+    expect(screen.getByText("partial")).toBeInTheDocument()
   })
 })

@@ -29,8 +29,11 @@ stays under 64KiB. First paint is a live-edge snapshot on the `watch` RPC
 `ready`, already at the tail; a tap shows the chrome before that returns.
 **Earlier** sits above the log; pulling up also pages older events. User and
 assistant rows render markdown; a path link does not navigate the
-webview. Tool rows stay collapsed until tapped, with a one-line field
-preview instead of the packed JSON. A `progress` pulse is not a chat
+webview. Adjacent thoughts and tool calls fold into one row (the same
+compact rule as desktop user view, and the phone's only view). An
+answer stays on screen and splits that row. The live tail is **Thinking**
+/ **Planning next moves** / **Editing** / **Reading** / **Exec**; open
+the row for the pieces. A `progress` pulse is not a chat
 row. `wait_agents` is a status count, not the `elapsed_ms` roster. A
 `schedule` event is still **A wait is armed.** in the transcript; the live
 wait is the banner (next check, **Run now**, **Cancel wait**).

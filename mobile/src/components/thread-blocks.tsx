@@ -1,9 +1,15 @@
 import { useState } from "react"
+import { ChevronRight } from "lucide-react"
 
 import { PhoneMarkdown } from "@/components/markdown"
 import { t } from "@/lib/i18n"
 import { parseQuotedMessage } from "@/lib/quote"
-import type { CompactBlock } from "@/lib/transcript"
+import {
+  foldPhoneItems,
+  formatPhoneTicker,
+  phoneWorkTicker,
+  type CompactBlock,
+} from "@/lib/transcript"
 import { scheduleToolNotice } from "@/lib/inbox-preview"
 import {
   dropPackedJson,
@@ -44,6 +50,15 @@ export function renderBlock(b: CompactBlock) {
       <div className={cn("mr-4 min-w-0 break-words text-sm leading-relaxed", b.streaming && "opacity-90")}>
         <PhoneMarkdown text={text} />
       </div>
+    )
+  }
+  if (b.kind === "reasoning") {
+    const text = dropPackedJson(b.text)
+    if (!text) return null
+    return (
+      <p data-testid="phone-thought" className="whitespace-pre-wrap text-xs text-muted-foreground">
+        {text}
+      </p>
     )
   }
   if (b.kind === "tool") {
@@ -175,4 +190,99 @@ function localizeNotice(text: string): string {
     default:
       return looksPacked(text) ? "" : text
   }
+}
+
+/** Phone default is compact: adjacent thoughts and tools are one row.
+ *  Answers stay outside that row. */
+export function ThreadLog({
+  blocks,
+  running = false,
+}: {
+  blocks: CompactBlock[]
+  running?: boolean
+}) {
+  const items = foldPhoneItems(blocks)
+  let lastWork = -1
+  items.forEach((item, i) => {
+    if (item.type === "work") lastWork = i
+  })
+  const laterAnswer =
+    lastWork >= 0 &&
+    items.slice(lastWork + 1).some((item) => item.type === "block" && item.block.kind === "answer")
+  return (
+    <>
+      {items.map((item, i) => {
+        if (item.type === "work") {
+          return (
+            <WorkFold
+              key={item.blocks[0]?.id ?? `work-${i}`}
+              blocks={item.blocks}
+              live={running && i === lastWork && !laterAnswer}
+            />
+          )
+        }
+        const node = renderBlock(item.block)
+        if (!node) return null
+        return (
+          <div key={item.block.id} className="min-w-0 max-w-full">
+            {node}
+          </div>
+        )
+      })}
+    </>
+  )
+}
+
+function WorkFold({ blocks, live }: { blocks: CompactBlock[]; live: boolean }) {
+  const [open, setOpen] = useState(false)
+  const frame = phoneWorkTicker(blocks, live)
+  const failed = blocks.some((b) => b.failed)
+  const label = frame ? formatPhoneTicker(frame) : foldLabel(blocks)
+  return (
+    <div className="min-w-0 max-w-full">
+      <button
+        type="button"
+        data-testid="work-fold"
+        className={cn(
+          "flex min-w-0 max-w-full items-center gap-1 text-left text-xs text-muted-foreground",
+          failed && "text-destructive",
+        )}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <ChevronRight
+          aria-hidden
+          className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")}
+        />
+        <span className="min-w-0 truncate">{label}</span>
+      </button>
+      {open ? (
+        <div className="mt-1 flex flex-col gap-1 pl-4">
+          {blocks.map((b) => {
+            const node = renderBlock(b)
+            if (!node) return null
+            return (
+              <div key={b.id} className="min-w-0 max-w-full">
+                {node}
+              </div>
+            )
+          })}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function foldLabel(blocks: CompactBlock[]): string {
+  let thoughts = 0
+  let tools = 0
+  for (const b of blocks) {
+    if (b.kind === "reasoning") thoughts++
+    if (b.kind === "tool") tools++
+  }
+  const toolLabel =
+    tools === 1 ? t("thread.workFoldTool") : t("thread.workFoldTools", { n: tools })
+  if (thoughts > 0 && tools > 0) return t("thread.workFoldBoth", { tools: toolLabel })
+  if (tools > 0) return toolLabel
+  return t("thread.thought")
 }

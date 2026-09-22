@@ -139,7 +139,7 @@ with Run now / Cancel wait rather than a silent Send box, a long
 objective stays one truncated line so that chrome cannot cover the composer,
 and Earlier sits outside the scroller so a live-edge tail can still page.
 A long tool path must not stretch the column (`min-w-0` / `break-words`).
-`mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, a `progress` pulse is not a notice, and a findings `report_schedule` is that prose as a notice rather than a tool chip.
+`mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, a `progress` pulse is not a notice, a findings `report_schedule` is that prose as a notice rather than a tool chip, and adjacent thoughts and tools fold while an answer stays visible and splits the group.
 `mobile/src/lib/tool-preview.test.ts` pulls `findings` (not `prompt`) for the collapsed chip, and a wait roster is counts rather than `elapsed_ms`.
 `mobile/src/components/thread-blocks.test.tsx` keeps that roster off the user bubble and the expanded tool body. Camera on a real device is the product path (`make mobile-ios` /
 `make mobile-android`).

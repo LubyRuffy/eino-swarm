@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
+import { setLocale } from "@/lib/i18n"
 import { ThreadScreen } from "./thread-screen"
 
 describe("ThreadScreen", () => {
@@ -295,6 +296,7 @@ describe("ThreadScreen", () => {
   })
 
   it("keeps a tool result collapsed until tapped", () => {
+    setLocale("en")
     render(
       <ThreadScreen
         detail={{ id: "t1", title: "live" }}
@@ -315,9 +317,12 @@ describe("ThreadScreen", () => {
         onAnswerStructured={vi.fn()}
       />,
     )
-    expect(screen.getByText("exec")).toBeInTheDocument()
-    expect(document.body.textContent).not.toContain('{"n":1')
+    expect(screen.getByTestId("work-fold")).toHaveTextContent("1 tool")
+    expect(screen.queryByText("exec")).not.toBeInTheDocument()
     expect(screen.queryByText("worker")).not.toBeInTheDocument()
+    expect(document.body.textContent).not.toContain('{"n":1')
+    fireEvent.click(screen.getByTestId("work-fold"))
+    expect(screen.getByText("exec")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /exec/ }))
     expect(document.body.textContent).toContain('{"n":1')
   })

@@ -3,7 +3,7 @@ import { ChevronLeft } from "lucide-react"
 
 import { AskCard } from "@/components/ask-card"
 import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
-import { renderBlock } from "@/components/thread-blocks"
+import { ThreadLog } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/input"
 import { t } from "@/lib/i18n"
@@ -186,15 +186,7 @@ export function ThreadScreen({
           {!caughtUp && blocks.length === 0 ? (
             <p className="px-1 text-xs text-muted-foreground">{t("thread.loading")}</p>
           ) : (
-            blocks.map((b) => {
-              const node = renderBlock(b)
-              if (!node) return null
-              return (
-                <div key={b.id} className="min-w-0 max-w-full">
-                  {node}
-                </div>
-              )
-            })
+            <ThreadLog blocks={blocks} running={running} />
           )}
           {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
             <AskCard

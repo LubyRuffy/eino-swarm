@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
-import { applyEvent, pendingAsk, type CompactBlock } from "./transcript"
+import { setLocale } from "./i18n"
+import { applyEvent, foldPhoneItems, formatPhoneTicker, pendingAsk, phoneWorkTicker, type CompactBlock } from "./transcript"
 import type { RemoteEvent } from "./rpc"
 
 function ev(partial: Partial<RemoteEvent> & Pick<RemoteEvent, "kind" | "seq">): RemoteEvent {
@@ -189,5 +190,100 @@ describe("compact transcript", () => {
     expect(blocks[0].text).toBe("keep going")
     expect(blocks.some((b) => b.text.includes("elapsed_ms"))).toBe(false)
     expect(blocks.some((b) => b.text.includes("through_seq"))).toBe(false)
+  })
+
+  it("keeps a streamed thought as one block, then closes it when the answer starts", () => {
+    let blocks: CompactBlock[] = []
+    blocks = applyEvent(blocks, ev({ seq: 50, kind: "reasoning_delta", text: "first" }))
+    blocks = applyEvent(blocks, ev({ seq: 51, kind: "reasoning_delta", text: "first\ncloser" }))
+    blocks = applyEvent(blocks, ev({ seq: 52, kind: "reasoning", text: "first\ncloser" }))
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].kind).toBe("reasoning")
+    expect(blocks[0].streaming).toBe(false)
+    expect(blocks[0].text).toBe("first\ncloser")
+    blocks = applyEvent(blocks, ev({ seq: 53, kind: "delta", text: "hi" }))
+    expect(blocks.map((b) => b.kind)).toEqual(["reasoning", "answer"])
+  })
+})
+
+describe("foldPhoneItems", () => {
+  function row(partial: Partial<CompactBlock> & Pick<CompactBlock, "kind">): CompactBlock {
+    return { id: partial.id ?? partial.kind, text: partial.text ?? "", ...partial }
+  }
+
+  it("keeps an answer visible and splits the fold around it", () => {
+    const items = foldPhoneItems([
+      row({ id: "u", kind: "user", text: "ask" }),
+      row({ id: "r", kind: "reasoning", text: "looking" }),
+      row({ id: "a", kind: "answer", text: "mid" }),
+      row({ id: "k", kind: "tool", text: "grep", toolName: "grep" }),
+      row({ id: "a2", kind: "answer", text: "done" }),
+    ])
+    expect(items.map((i) => i.type)).toEqual(["block", "work", "block", "work", "block"])
+    expect(items[1]).toMatchObject({ type: "work", blocks: [{ id: "r" }] })
+    expect(items[2]).toMatchObject({ type: "block", block: { id: "a" } })
+    expect(items[3]).toMatchObject({ type: "work", blocks: [{ id: "k" }] })
+  })
+
+  it("merges adjacent thoughts and tools, skipping spawn bookkeeping", () => {
+    const items = foldPhoneItems([
+      row({ id: "r", kind: "reasoning", text: "looking" }),
+      row({
+        id: "sc",
+        kind: "tool",
+        toolName: "spawn_agent",
+        text: "spawn_agent",
+      }),
+      row({ id: "sp", kind: "spawn", text: "worker" }),
+      row({ id: "k", kind: "tool", text: "read", toolName: "read" }),
+      row({ id: "r2", kind: "reasoning", text: "again" }),
+      row({ id: "a", kind: "answer", text: "done" }),
+    ])
+    expect(items).toHaveLength(2)
+    expect(items[0]).toMatchObject({
+      type: "work",
+      blocks: [{ id: "r" }, { id: "k" }, { id: "r2" }],
+    })
+    expect(items[1]).toMatchObject({ type: "block", block: { id: "a" } })
+  })
+
+  it("names the live tail and stays quiet once the turn is idle", () => {
+    setLocale("en")
+    const thought = row({
+      id: "r",
+      kind: "reasoning",
+      text: "first\ncloser",
+      streaming: true,
+    })
+    expect(phoneWorkTicker([thought], true)?.kind).toBe("thinking")
+    expect(phoneWorkTicker([thought], true)?.detail).toBe("closer")
+    expect(phoneWorkTicker([thought], false)).toBeNull()
+
+    const read = row({
+      id: "rd",
+      kind: "tool",
+      toolName: "read",
+      text: "read",
+      args: `{"file_path":"src/lib/appearance.ts"}`,
+      pending: true,
+    })
+    expect(phoneWorkTicker([thought, read], true)).toMatchObject({
+      kind: "reading",
+      detail: "appearance.ts",
+    })
+
+    const idle = row({
+      id: "k",
+      kind: "tool",
+      toolName: "read",
+      text: "read",
+      pending: false,
+    })
+    expect(phoneWorkTicker([row({ id: "r2", kind: "reasoning", text: "done" }), idle], true)?.kind).toBe(
+      "planning",
+    )
+    expect(formatPhoneTicker({ kind: "planning", detail: "" })).toBe("Planning next moves")
+    expect(formatPhoneTicker({ kind: "thinking", detail: "" })).toBe("Thinking")
+    expect(formatPhoneTicker({ kind: "exec", detail: "printf x" })).toBe("Exec printf x")
   })
 })
