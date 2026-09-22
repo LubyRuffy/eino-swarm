@@ -1,8 +1,13 @@
 export const en = {
   "scan.title": "Scan to bind this PC",
   "scan.hint":
-    "Open zwai Settings → Phone and point the camera at the pairing QR. Paste is the same URI when there is no camera.",
+    "Open zwai Settings → Phone and hold the pairing QR in the frame. Paste is the same URI when there is no camera.",
   "scan.camera": "Scan QR",
+  "scan.aim": "Place the pairing QR inside the frame",
+  "scan.close": "Close scanner",
+  "scan.cameraDenied": "Camera access is off. Allow the camera, or paste the URI.",
+  "scan.noCamera": "This device has no camera. Paste the URI.",
+  "scan.cameraFailed": "The camera did not start. Paste the URI.",
   "scan.uri": "Pairing URI",
   "scan.paste": "Paste and bind",
   "scan.showPaste": "Paste URI instead",

@@ -85,7 +85,7 @@ describe("foldTurnItems", () => {
     expect(items[2]).toEqual({ type: "block", block: answer })
   })
 
-  it("pulls an answer that is followed by more tools into the fold", () => {
+  it("keeps a mid-turn answer visible and splits the fold around it", () => {
     const mid = block({ id: "mid", kind: "answer", text: "looking", seq: 3 })
     const later = block({
       id: "k2",
@@ -101,11 +101,43 @@ describe("foldTurnItems", () => {
     })
     const final = block({ id: "a2", kind: "answer", text: "done", seq: 5 })
     const items = foldTurnItems([user, thought, mid, later, final], "user")
-    expect(items[0]?.type).toBe("block")
+    expect(items.map((i) => i.type)).toEqual([
+      "block",
+      "work",
+      "block",
+      "work",
+      "block",
+    ])
     expect(items[1]?.type).toBe("work")
     if (items[1]?.type !== "work") throw new Error("expected work")
-    expect(items[1].blocks.map((b) => b.id)).toEqual(["r", "mid", "k2"])
-    expect(items[2]).toEqual({ type: "block", block: final })
+    expect(items[1].blocks.map((b) => b.id)).toEqual(["r"])
+    expect(items[2]).toEqual({ type: "block", block: mid })
+    expect(items[3]?.type).toBe("work")
+    if (items[3]?.type !== "work") throw new Error("expected work")
+    expect(items[3].blocks.map((b) => b.id)).toEqual(["k2"])
+    expect(items[4]).toEqual({ type: "block", block: final })
+  })
+
+  it("merges however many adjacent thoughts and tools sit together", () => {
+    const t2 = block({ id: "r2", kind: "reasoning", text: "next", seq: 4 })
+    const k2 = block({
+      id: "k2",
+      kind: "tool",
+      text: "grep",
+      seq: 5,
+      tool: {
+        callId: "c2",
+        name: "grep",
+        args: `{"pattern":"alpha"}`,
+        pending: false,
+      },
+    })
+    const items = foldTurnItems([user, thought, tool, t2, k2, answer], "user")
+    expect(items).toHaveLength(3)
+    expect(items[1]?.type).toBe("work")
+    if (items[1]?.type !== "work") throw new Error("expected work")
+    expect(items[1].blocks.map((b) => b.id)).toEqual(["r", "k", "r2", "k2"])
+    expect(items[2]).toEqual({ type: "block", block: answer })
   })
 
   it("keeps a live trailing answer visible so the reply is not swallowed", () => {

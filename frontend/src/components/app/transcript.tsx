@@ -224,14 +224,16 @@ export function Transcript({
           {historyHasMore ? (
             <div ref={sentinelRef} data-testid="history-sentinel" className="h-4" />
           ) : null}
-          {groups.map(([turnId, turnBlocks]) => {
+          {groups.map(([turnId, turnBlocks], i) => {
             const clockAnswerId = responseClockBlockId(turnBlocks)
+            const turn = turnById.get(turnId)
+            const live = i === groups.length - 1 && Boolean(state.running) && turn?.status === "running"
             return (
               <GoalSessionTurn
                 key={turnId}
-                turnId={turnId}
                 blocks={turnBlocks}
-                turn={turnById.get(turnId)}
+                turn={turn}
+                live={live}
                 renderBlock={(b) => (
                   <BlockView
                     key={b.id}
@@ -875,7 +877,7 @@ function UserMessage({
   }
 
   return (
-    <div className="mb-2 mt-6 flex scroll-mt-6 justify-end first:mt-0">
+    <div className="mb-2 mt-6 flex scroll-mt-6 justify-end first:mt-0" data-turn-nav={block.turnId}>
       <div className="group/msg flex max-w-[85%] flex-col items-end">
         {editing ? (
           <div

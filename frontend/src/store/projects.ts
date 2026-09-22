@@ -150,15 +150,24 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   loadMemory: async (projectId) => {
     const id = projectId ?? get().memoryProjectId
     if (!id) {
-      set({ memory: undefined, memoryProjectId: undefined })
+      set({
+        memory: undefined,
+        memoryProjectId: undefined,
+        tidying: false,
+        tidyReport: undefined,
+        tidyError: undefined,
+      })
       return
     }
+    // A catalog tidy records memory_review on the same turn. Re-reading the
+    // files must not wipe the card the click just painted.
+    const switched = get().memoryProjectId !== id
     set({
       memoryLoading: true,
       memoryProjectId: id,
-      tidying: false,
-      tidyReport: undefined,
-      tidyError: undefined,
+      ...(switched
+        ? { tidying: false, tidyReport: undefined, tidyError: undefined }
+        : {}),
     })
     try {
       const memory = await api.memory(id)

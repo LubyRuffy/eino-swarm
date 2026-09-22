@@ -1,11 +1,8 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import { useRef } from "react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import { useTurnJump } from "./use-turn-jump"
-
-const intoView = vi.fn()
-const originalScroll = HTMLElement.prototype.scrollIntoView
 
 function Harness({
   ids,
@@ -35,24 +32,28 @@ function Harness({
   )
 }
 
+function watchScrollTop(el: HTMLElement) {
+  const calls: number[] = []
+  let value = el.scrollTop
+  Object.defineProperty(el, "scrollTop", {
+    configurable: true,
+    get: () => value,
+    set: (next: number) => {
+      value = Number(next)
+      calls.push(value)
+    },
+  })
+  return calls
+}
+
 describe("useTurnJump", () => {
-  beforeEach(() => {
-    intoView.mockReset()
-    HTMLElement.prototype.scrollIntoView = intoView
-  })
-
-  afterEach(() => {
-    HTMLElement.prototype.scrollIntoView = originalScroll
-  })
-
   it("scrolls a mounted row without paging", () => {
     const loadUntilTurn = vi.fn(async () => false)
     render(<Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />)
+    const calls = watchScrollTop(screen.getByTestId("scroller"))
     fireEvent.click(screen.getByRole("button", { name: "jump" }))
     expect(loadUntilTurn).not.toHaveBeenCalled()
-    expect(intoView).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: "auto", block: "start" }),
-    )
+    expect(calls.length).toBeGreaterThan(0)
   })
 
   it("pages then scrolls once the row mounts, not when the fetch resolves", async () => {
@@ -66,19 +67,18 @@ describe("useTurnJump", () => {
         }),
     )
     const view = render(<Harness ids={["tn_late"]} loadUntilTurn={loadUntilTurn} />)
+    const calls = watchScrollTop(screen.getByTestId("scroller"))
     fireEvent.click(screen.getByRole("button", { name: "jump" }))
     expect(loadUntilTurn).toHaveBeenCalledTimes(1)
-    expect(intoView).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
 
     await act(async () => {
       finish(true)
     })
-    expect(intoView).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
 
     view.rerender(<Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />)
-    expect(intoView).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: "auto", block: "start" }),
-    )
+    expect(calls.length).toBeGreaterThan(0)
   })
 
   it("drops a pending jump when paging never finds the row", async () => {
@@ -90,12 +90,13 @@ describe("useTurnJump", () => {
         }),
     )
     const view = render(<Harness ids={["tn_late"]} loadUntilTurn={loadUntilTurn} />)
+    const calls = watchScrollTop(screen.getByTestId("scroller"))
     fireEvent.click(screen.getByRole("button", { name: "jump" }))
     await act(async () => {
       finish(false)
     })
     view.rerender(<Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />)
-    expect(intoView).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
   })
 
   it("does not take its ids from a hardcoded sample", () => {
@@ -112,14 +113,15 @@ describe("useTurnJump", () => {
     const view = render(
       <Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />,
     )
+    const calls = watchScrollTop(screen.getByTestId("scroller"))
     fireEvent.click(screen.getByRole("button", { name: "jump" }))
-    expect(intoView).toHaveBeenCalledTimes(1)
-    intoView.mockClear()
+    expect(calls.length).toBe(1)
+    calls.length = 0
 
     view.rerender(
       <Harness ids={["tn_older", "tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />,
     )
-    expect(intoView).toHaveBeenCalledTimes(1)
+    expect(calls.length).toBe(1)
   })
 
   it("stops following a jump once the reader wheels", () => {
@@ -127,13 +129,14 @@ describe("useTurnJump", () => {
     const view = render(
       <Harness ids={["tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />,
     )
+    const calls = watchScrollTop(screen.getByTestId("scroller"))
     fireEvent.click(screen.getByRole("button", { name: "jump" }))
     fireEvent.wheel(screen.getByTestId("scroller"), { deltaY: -40 })
-    intoView.mockClear()
+    calls.length = 0
 
     view.rerender(
       <Harness ids={["tn_older", "tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />,
     )
-    expect(intoView).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
   })
 })

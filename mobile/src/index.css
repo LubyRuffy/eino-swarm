@@ -28,6 +28,7 @@
     --radius: 0.65rem;
     --running: 38 92% 50%;
     --qr-plate: 0 0% 100%;
+    --scrim: 240 10% 4%;
   }
 
   .dark {
@@ -50,6 +51,7 @@
     --ring: 240 5% 50%;
     --running: 38 92% 50%;
     --qr-plate: 0 0% 100%;
+    --scrim: 240 10% 4%;
   }
 
   * {
@@ -132,4 +134,95 @@
   .md-body th {
     @apply font-medium;
   }
+}
+
+@layer components {
+  .scan-stage {
+    background: hsl(var(--scrim));
+  }
+  .scan-shade {
+    background: hsl(var(--scrim) / 0.72);
+  }
+  .scan-aim {
+    color: hsl(var(--qr-plate));
+  }
+  .scan-frame {
+    position: relative;
+    width: min(72vw, 17.5rem);
+    aspect-ratio: 1;
+    overflow: hidden;
+    flex: none;
+  }
+  .scan-corner {
+    position: absolute;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-color: hsl(var(--qr-plate));
+  }
+  .scan-corner-tl {
+    top: 0;
+    left: 0;
+    border-top: 3px solid;
+    border-left: 3px solid;
+  }
+  .scan-corner-tr {
+    top: 0;
+    right: 0;
+    border-top: 3px solid;
+    border-right: 3px solid;
+  }
+  .scan-corner-bl {
+    bottom: 0;
+    left: 0;
+    border-bottom: 3px solid;
+    border-left: 3px solid;
+  }
+  .scan-corner-br {
+    bottom: 0;
+    right: 0;
+    border-bottom: 3px solid;
+    border-right: 3px solid;
+  }
+  .scan-beam {
+    position: absolute;
+    left: 6%;
+    right: 6%;
+    height: 2px;
+    top: 8%;
+    background: hsl(var(--qr-plate));
+    box-shadow: 0 0 8px hsl(var(--qr-plate)), 0 0 18px hsl(var(--running));
+    animation: scan-beam 2.2s ease-in-out infinite;
+  }
+  .scan-beam::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 2px;
+    height: 4.5rem;
+    background: linear-gradient(to top, hsl(var(--running) / 0.72), transparent);
+  }
+  @keyframes scan-beam {
+    0% {
+      top: 8%;
+    }
+    50% {
+      top: 90%;
+    }
+    100% {
+      top: 8%;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .scan-beam {
+      animation: none;
+      top: 50%;
+    }
+  }
+}
+
+.scan-close {
+  border-color: hsl(var(--qr-plate) / 0.85);
+  background: transparent;
+  color: hsl(var(--qr-plate));
 }

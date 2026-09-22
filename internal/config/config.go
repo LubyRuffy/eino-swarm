@@ -517,6 +517,9 @@ const (
 	// budget belongs in a skill, where only the summary rides in the prompt.
 	DefaultMemoryEntryMax      = 360
 	DefaultReviewMaxIterations = 8
+	// DefaultTidyMaxIterations caps the Memory panel's catalog reviewer. A
+	// post-turn review is a handful of writes; a tidy is the whole index.
+	DefaultTidyMaxIterations   = 24
 	DefaultSkillsIndexMax      = 50
 	DefaultMemoryNotifications = MemoryNotifyOn
 	dirPerm                    = 0o700

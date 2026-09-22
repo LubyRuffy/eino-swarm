@@ -445,6 +445,69 @@ func TestMockReviewerCuratesMemoryFromTheConversation(t *testing.T) {
 	}
 }
 
+func TestMockCatalogTidyMergesAListedFamilyAndLeavesATidyCatalogAlone(t *testing.T) {
+	m := newMockModel("memory-reviewer")
+	ctx := context.Background()
+	family := []*schema.Message{
+		schema.SystemMessage("Curate the catalog."),
+		schema.UserMessage("Catalog to curate:\n\nSkills already recorded in this project:\n\n- weekly-rollup-notes — when filing notes\n- weekly-rollup-send — when sending\n\nThese recorded skills share a subject and must become one skill. Merge each group so a later conversation is not handed competing procedures:\n- weekly-rollup-notes, weekly-rollup-send\n"),
+	}
+	first, err := m.Generate(ctx, family)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first.ToolCalls) != 1 || first.ToolCalls[0].Function.Name != "skill_manage" {
+		t.Fatalf("a listed family must be merged: %+v", first.ToolCalls)
+	}
+	if !strings.Contains(first.ToolCalls[0].Function.Arguments, `"action":"merge"`) {
+		t.Fatalf("merge missing: %s", first.ToolCalls[0].Function.Arguments)
+	}
+	if strings.Contains(first.ToolCalls[0].Function.Arguments, `"action":"create"`) ||
+		strings.Contains(first.ToolCalls[0].Function.Name, "memory") {
+		t.Fatal("a catalog tidy must not store a conversation clip")
+	}
+
+	tidy := newMockModel("memory-reviewer")
+	alone, err := tidy.Generate(ctx, []*schema.Message{
+		schema.SystemMessage("Curate the catalog."),
+		schema.UserMessage("Catalog to curate:\n\nSkills already recorded in this project:\n\n- weekly-rollup — when filing the week\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(alone.ToolCalls) != 0 || !strings.Contains(alone.Content, "already curated") {
+		t.Fatalf("a tidy catalog must not be rewritten: %+v", alone)
+	}
+
+	// eino ChatModelAgent streams. The marker can sit after an earlier user
+	// turn the runner injects; first-user-only matching would then spend a
+	// whole TidyIterations cap pacing tokens.
+	later := []*schema.Message{
+		schema.UserMessage("Conversation to review:\n\nhuman: hi\n"),
+		schema.UserMessage("Catalog to curate:\n\n- alpha-prep — when preparing\n"),
+	}
+	if !isCatalogTidy(later) {
+		t.Fatal("a catalog marker on a later user turn must still select the tidy script")
+	}
+}
+
+func TestMockCatalogTidyStreamIsInstant(t *testing.T) {
+	m := newMockModel("memory-reviewer")
+	start := time.Now()
+	sr, err := m.Stream(context.Background(), []*schema.Message{
+		schema.UserMessage("Catalog to curate:\n\n- alpha-prep — when preparing\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := schema.ConcatMessageStream(sr); err != nil {
+		t.Fatal(err)
+	}
+	if d := time.Since(start); d > 200*time.Millisecond {
+		t.Fatalf("catalog tidy streaming must not pace chunks, took %s", d)
+	}
+}
+
 func TestMockTitleNamerNamesTheConversation(t *testing.T) {
 	m := newMockModel("title-namer")
 	out, err := m.Generate(context.Background(), []*schema.Message{

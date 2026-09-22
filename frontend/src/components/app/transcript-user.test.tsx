@@ -50,7 +50,10 @@ describe("user message actions", () => {
     Object.defineProperty(document, "execCommand", {
       configurable: true,
       writable: true,
-      value: vi.fn(() => true),
+      value: vi.fn(() => {
+        fireCopyEvent()
+        return true
+      }),
     })
     render(<Transcript state={twoTurns()} loaded onSelectAgent={() => {}} />)
     fireEvent.click(screen.getAllByRole("button", { name: "Copy message" })[0])
@@ -215,6 +218,14 @@ describe("user message actions", () => {
     expect(screen.getByRole("button", { name: "Edit message" })).toBeInTheDocument()
   })
 })
+
+function fireCopyEvent() {
+  const ev = new Event("copy", { bubbles: true, cancelable: true })
+  Object.defineProperty(ev, "clipboardData", {
+    value: { setData: vi.fn() },
+  })
+  document.dispatchEvent(ev)
+}
 
 function imageOnlyTurn(): TranscriptState {
   const at = new Date().toISOString()

@@ -1,8 +1,8 @@
 # Changelog
 
 All notable changes to this project are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project has not
-tagged a release yet.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). GitHub Releases start
+at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 
 ## [Unreleased]
 
@@ -12,6 +12,11 @@ co-working app built on it. The library API is unchanged except where noted
 `SetMaxConcurrent`).
 
 ### Added
+
+- **Android APK on GitHub Releases.** [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0)
+  attaches [`zwai-0.1.0-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.0/zwai-0.1.0-android.apk)
+  (versionName `0.1.0`, versionCode `100`). Debug-signed sideload
+  (`ANDROID_UNSIGNED=1`), not a Play bundle.
 
 - **Named color themes.** Settings → General has System / Light / Dark cards
   and a **Color theme** menu: **ZWAI** (default chrome) or **FOFA** (intelligence-console
@@ -31,15 +36,19 @@ co-working app built on it. The library API is unchanged except where noted
   including when auto-review is off or the manager already wrote. The fold is
   a `skill_manage` `merge` on the `memory_review` event. `skill_manage` also
   accepts `merge` (name to keep, `sources` to fold in). The Memory panel's
-  **Tidy overlapping skills** control (`POST /api/projects/:id/memory/tidy-skills`)
-  runs the same fold on demand after a hand edit, which would otherwise wait
-  until the next turn. A click shows scan → group → fold progress, then a
-  report of what was merged, deleted and created, with counts.
+  **Tidy skills** control (`POST /api/projects/:id/memory/tidy-skills`) still
+  folds leftover name-stem families, then asks the memory-reviewer to curate
+  the live catalog by content — same agent as post-turn review, no notes, so
+  a click is a model call rather than a filename scan. Progress is scan →
+  review (held until the model returns). The response names what was merged,
+  deleted, created and patched, with counts, and `reviewed` is true when the
+  model ran. Model calls hang on the project's latest finished turn when there
+  is one.
 
 - **User / developer transcript view.** Settings → General, the title-bar
   code icon, and ⌘K pin `ui.transcript_mode` (`user` default / `developer`).
-  User view folds consecutive thinking, tool calls, and mid-turn answers
-  behind one live line. The current activity swaps in vertically; the line
+  User view folds consecutive thinking and tool calls behind one live
+  line. Answers stay visible. The current activity swaps in vertically; the line
   itself still marquees left-to-right: thinking text (or **Thinking**),
   **Planning next moves** between model turns, **Editing** / **Reading** /
   **Exec** while a tool is in flight. Click the row to expand. Developer
@@ -87,6 +96,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- **Phone scan is a live viewfinder.** Scan QR keeps the camera preview open
+  with a frame and a beam that sweeps up and down, then plays a short chime
+  when it reads a `pairlink:v1` QR. Paste is still the same URI when the
+  camera is missing or denied.
+
 - **Edit `+N −M` stays quiet until you look.** Collapsed `edit` / `write`
   rows (and the expanded hunk header) inherit the row colour at rest;
   hover or focus paints additions green and deletions red. The counts
@@ -117,6 +131,49 @@ co-working app built on it. The library API is unchanged except where noted
   finishes only from the inbox, or from the scan screen when nothing is bound.
   A reply that arrives after Back does not paint that conversation again.
   A dropped WebView result cannot stick the key.
+
+- **Scrolling up pages before the reader hits the top 48px.** The oldest
+  loaded turn-nav row could sit on screen — third from the end of a long
+  rail, with a partial older turn still above it — and neither the 48px
+  gate nor the 80px sentinel would fetch. Leaving the live edge now pages
+  when that row is inside one viewport. An older page that does not move
+  the seq cursor clears `has_more` instead of spinning the sentinel.
+
+- **Catalog tidy hangs on the latest finished turn, not the sidebar's first.**
+  A pinned or just-opened older conversation used to steal the Memory
+  panel's model calls and `memory_review` event. `zwai trace` of the turn
+  that just finished then missed them.
+
+- **Tidy skills keeps its report when the matching review lands.** Catalog
+  tidy records `memory_review` so `zwai trace` still reaches it; that event
+  used to re-read the Memory panel and wipe the card the click had just
+  painted.
+
+- **Mock Tidy skills does not pace reviewer tokens.** Catalog tidy is a
+  synchronous Memory-panel click; chunking the reviewer like a chat held
+  the button on "Asking the model".
+
+- **Jump-rail clicks pin the send at the top of the pane.** The target
+  was the whole turn group and used native `scrollIntoView`, so a thought
+  fold or compact notice sitting above the first tick stayed on screen.
+  The anchor is the user bubble; the jump writes the transcript
+  scroller's `scrollTop`.
+
+- **Copy no longer reports success with an empty pasteboard.** WebKit's
+  `execCommand("copy")` returns true for a hidden 1px textarea even when
+  paste is blank. The click now plants `text/plain` on the `copy` event;
+  a silent true falls through to the Clipboard API instead of flipping
+  the button to Copied.
+
+- **User-mode `Planning next moves` stays on the live tail.** Older turns
+  that never got a `done` (or a notice-split earlier work group in the
+  same turn) used to keep the live ticker after the conversation had
+  already moved on. Only the newest running turn's latest work row
+  tickers now; finished folds keep the thought / tool count.
+
+- **User-mode folds only adjacent thinking and tools.** Mid-turn answers
+  stay on screen and split the group; however many thought / tool rows
+  sit together still merge into one fold.
 
 - **The last answer is not painted over by the composer fade.** Goal / plan /
   wait pins and the input are one dock. An opaque slab sits behind that
@@ -2122,3 +2179,15 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.0] - 2026-09-22
+
+First GitHub Release. Tag `v0.1.0` is `1faf1a8`.
+
+### Added
+
+- **Android companion APK.**
+  [`zwai-0.1.0-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.0/zwai-0.1.0-android.apk)
+  on [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
+  Pair from Settings → Phone. `adb install` works. A later APK signed with a
+  different key cannot update this install in place.

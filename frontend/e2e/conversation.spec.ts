@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test"
 
-import { showDeveloperLog } from "./composer-plate"
+import { liveWorkFold, showDeveloperLog, userMessageGap } from "./composer-plate"
 
 test.afterEach(async ({ request }) => {
   await request.put("/api/settings", { data: { ui: { transcript_mode: "user" } } })
@@ -44,7 +44,7 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
 
   // User view: thinking and tools share one live line. The 10-line thought
   // box is behind a click, not a wall that pushes the answer off screen.
-  await expect(page.getByTestId("work-fold")).toBeVisible({ timeout: 15_000 })
+  await expect(liveWorkFold(page)).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId("swap-line")).toBeVisible()
 
   // live status must look alive: a sweep on the running line, or a
@@ -167,9 +167,11 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(page.getByTestId("turn-nav")).toBeHidden()
 
   // exactly one thought per thought: the streamed text and the stored record
-  // must fold into a single compact row the reader can open.
-  await expect(transcript.getByTestId("work-fold")).toBeVisible()
-  await transcript.getByTestId("work-fold").click()
+  // must fold into a compact row the reader can open. Answers split groups,
+  // so a finished turn can have several folds.
+  const folds = transcript.getByTestId("work-fold")
+  await expect(folds.first()).toBeVisible()
+  await folds.first().click()
   const thoughts = await transcript.getByText("Thought", { exact: true }).count()
   expect(thoughts).toBeGreaterThan(0)
 
@@ -337,6 +339,7 @@ test("carries context across turns", async ({ page }) => {
   await expect(
     transcript.getByText("First task: outline the work", { exact: true }),
   ).toBeInViewport()
+  expect(await userMessageGap(transcript, "First task: outline the work")).toBeLessThan(72)
 })
 
 test("pins unread steering under the working line", async ({ page }) => {

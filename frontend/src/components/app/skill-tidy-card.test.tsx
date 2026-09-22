@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { SkillTidyCard } from "./skill-tidy-card"
-import { TIDY_STEP_MS, emptyTidyReport } from "@/lib/skill-tidy"
+import { TIDY_SCAN_MS, emptyTidyReport } from "@/lib/skill-tidy"
 import type { SkillTidyReport } from "@/lib/types"
 
 const folded: SkillTidyReport = {
@@ -13,6 +13,7 @@ const folded: SkillTidyReport = {
   unchanged: 1,
   created: ["a-procedure"],
   deleted: ["a-procedure-notes", "a-procedure-send"],
+  patched: [],
   merged: [
     {
       keep: "a-procedure",
@@ -20,44 +21,35 @@ const folded: SkillTidyReport = {
       created: true,
     },
   ],
+  reviewed: true,
 }
 
 describe("Skill tidy card", () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it("walks the scan, group and fold steps while a tidy is in flight", () => {
+  it("scans then parks on the model step while a tidy is in flight", () => {
     render(<SkillTidyCard tidying skillCount={3} />)
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1")
     expect(screen.getByText(/Scanning 3 skills/)).toBeInTheDocument()
 
     act(() => {
-      vi.advanceTimersByTime(TIDY_STEP_MS)
+      vi.advanceTimersByTime(TIDY_SCAN_MS)
     })
-    expect(screen.getByText(/Finding overlapping groups/)).toBeInTheDocument()
-
-    act(() => {
-      vi.advanceTimersByTime(TIDY_STEP_MS)
-    })
-    expect(screen.getByText(/Collapsing overlapping groups/)).toBeInTheDocument()
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "3")
+    expect(screen.getByText(/Asking the model to review the catalog/)).toBeInTheDocument()
+    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2")
   })
 
-  it("holds the progress until the steps have been shown, then lists what changed", () => {
+  it("lists what changed as soon as the model returns", () => {
     const { rerender } = render(<SkillTidyCard tidying skillCount={3} />)
     rerender(<SkillTidyCard tidying={false} skillCount={2} report={folded} />)
-    expect(screen.getByRole("progressbar")).toBeInTheDocument()
-    expect(screen.queryByTestId("tidy-stats")).not.toBeInTheDocument()
-
-    act(() => {
-      vi.advanceTimersByTime(TIDY_STEP_MS * 2)
-    })
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
-    expect(screen.getByText(/Folded overlapping skills/)).toBeInTheDocument()
+    expect(screen.getByText(/Skills curated/)).toBeInTheDocument()
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/3 scanned/)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/1 merged/)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/2 deleted/)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/1 created/)
+    expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/0 updated/)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/2 remaining/)
     expect(screen.getByText("Merged")).toBeInTheDocument()
     expect(
@@ -69,18 +61,25 @@ describe("Skill tidy card", () => {
     expect(screen.getByText("a-procedure")).toBeInTheDocument()
   })
 
-  it("says so when nothing overlapped, with the counts still visible", () => {
+  it("says so when the model looked and kept the catalog, with the counts still visible", () => {
     render(
       <SkillTidyCard
         tidying={false}
         skillCount={2}
-        report={emptyTidyReport(2)}
+        report={{ ...emptyTidyReport(2), reviewed: true }}
       />,
     )
-    expect(screen.getByText(/already tidy/)).toBeInTheDocument()
+    expect(screen.getByText(/nothing to merge/i)).toBeInTheDocument()
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/2 scanned/)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/0 merged/)
     expect(screen.queryByText("Merged")).not.toBeInTheDocument()
+  })
+
+  it("does not pretend the model ran on an empty catalog", () => {
+    render(
+      <SkillTidyCard tidying={false} skillCount={0} report={emptyTidyReport(0)} />,
+    )
+    expect(screen.getByText(/No skills to curate/)).toBeInTheDocument()
   })
 
   it("keeps a failed tidy visible", () => {

@@ -14,7 +14,7 @@ describe("skill tidy report", () => {
     expect(tidyFolded(report)).toBe(false)
   })
 
-  it("keeps created, deleted and merged names for the panel to list", () => {
+  it("keeps created, deleted, patched and merged names for the panel to list", () => {
     const report = normalizeTidyReport({
       scanned: 3,
       before: 3,
@@ -23,6 +23,7 @@ describe("skill tidy report", () => {
       unchanged: 1,
       created: ["a-procedure"],
       deleted: ["a-procedure-notes", "a-procedure-send"],
+      patched: ["a-procedure"],
       merged: [
         {
           keep: "a-procedure",
@@ -30,25 +31,30 @@ describe("skill tidy report", () => {
           created: true,
         },
       ],
+      reviewed: true,
     })
     expect(tidyFolded(report)).toBe(true)
     expect(joinNames(report.deleted)).toBe("a-procedure-notes, a-procedure-send")
     expect(report.created).toEqual(["a-procedure"])
+    expect(report.patched).toEqual(["a-procedure"])
     expect(report.merged[0]?.keep).toBe("a-procedure")
+    expect(report.reviewed).toBe(true)
   })
 
   it("drops blank names rather than painting empty rows", () => {
     const report = normalizeTidyReport({
       created: ["kept", "  "],
       deleted: [""],
+      patched: ["  "],
       merged: [{ keep: "", dropped: ["gone"], created: false }],
     })
     expect(report.created).toEqual(["kept"])
     expect(report.deleted).toEqual([])
+    expect(report.patched).toEqual([])
     expect(report.merged).toEqual([])
   })
 
-  it("counts a fold that only created or deleted names as folded", () => {
+  it("counts a fold that only created, deleted or patched names as folded", () => {
     expect(
       tidyFolded(
         normalizeTidyReport({
@@ -58,6 +64,7 @@ describe("skill tidy report", () => {
         }),
       ),
     ).toBe(true)
-    expect(tidyFolded(normalizeTidyReport({ merged: [] }))).toBe(false)
+    expect(tidyFolded(normalizeTidyReport({ patched: ["kept"] }))).toBe(true)
+    expect(tidyFolded(normalizeTidyReport({ merged: [], reviewed: true }))).toBe(false)
   })
 })

@@ -1,3 +1,4 @@
+import { isFollowBottom } from "./follow-scroll"
 import type { SwarmEvent } from "./types"
 
 /** One viewport of tool rows, plus a little overscan. Opening a conversation
@@ -85,4 +86,22 @@ export function shouldLoadOlderHistory(
   if (!hasMore || loading) return false
   if (scrollHeight <= clientHeight + 8) return true
   return scrollTop < 48
+}
+
+/** The reader has left the live edge and is close to the loaded slice.
+ *  `scrollTop < 48` never fired while the third turn-nav from the end was
+ *  already on screen and a partial older turn still sat above it.
+ *  `oldestTurnFromTop` is that row's distance from the viewport top
+ *  (negative once it has scrolled above). */
+export function readerNearOlderHistory(
+  scrollTop: number,
+  scrollHeight: number,
+  clientHeight: number,
+  oldestTurnFromTop?: number,
+): boolean {
+  if (clientHeight <= 0) return false
+  if (isFollowBottom(scrollHeight, scrollTop, clientHeight)) return false
+  if (scrollTop < clientHeight) return true
+  if (oldestTurnFromTop === undefined) return false
+  return oldestTurnFromTop < clientHeight && oldestTurnFromTop > -clientHeight
 }

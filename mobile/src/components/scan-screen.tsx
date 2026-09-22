@@ -1,11 +1,12 @@
 import { useState } from "react"
 import { Camera } from "lucide-react"
 
+import { ScanViewfinder } from "@/components/scan-viewfinder"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/input"
 import { localeSwitchLabel, t } from "@/lib/i18n"
 import { parseOffer } from "@/lib/offer"
-import { scanPairlinkURI } from "@/lib/scan"
+import { primeScanChime } from "@/lib/scan-chime"
 
 export function ScanScreen({
   onURI,
@@ -22,6 +23,7 @@ export function ScanScreen({
 }) {
   const [paste, setPaste] = useState("")
   const [localError, setLocalError] = useState<string>()
+  const [live, setLive] = useState(false)
 
   const submitPaste = () => {
     setLocalError(undefined)
@@ -33,15 +35,11 @@ export function ScanScreen({
     }
   }
 
-  const scan = async () => {
+  const openScanner = () => {
+    if (busy) return
     setLocalError(undefined)
-    try {
-      const uri = await scanPairlinkURI()
-      setPaste(uri)
-      onURI(uri)
-    } catch (e) {
-      setLocalError(e instanceof Error ? e.message : String(e))
-    }
+    primeScanChime()
+    setLive(true)
   }
 
   const shown = error || localError
@@ -65,7 +63,7 @@ export function ScanScreen({
         </header>
       )}
       <p className="text-sm leading-relaxed text-muted-foreground">{t("scan.hint")}</p>
-      <Button onClick={() => void scan()} disabled={busy} aria-label={t("scan.camera")}>
+      <Button type="button" onClick={openScanner} disabled={busy} aria-label={t("scan.camera")}>
         <Camera className="size-4" />
         {t("scan.camera")}
       </Button>
@@ -86,6 +84,20 @@ export function ScanScreen({
         <p className="text-sm text-destructive" role="alert">
           {shown}
         </p>
+      ) : null}
+      {live ? (
+        <ScanViewfinder
+          onClose={() => setLive(false)}
+          onURI={(uri) => {
+            setPaste(uri)
+            setLive(false)
+            onURI(uri)
+          }}
+          onError={(message) => {
+            setLive(false)
+            setLocalError(message)
+          }}
+        />
       ) : null}
     </main>
   )

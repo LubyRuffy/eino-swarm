@@ -1,10 +1,10 @@
 import type { SkillTidyMerge, SkillTidyReport } from "./types"
 
-/** How long each tidy progress step stays on screen. A fold is usually
- *  milliseconds; holding the steps is the only way a click shows a process. */
-export const TIDY_STEP_MS = 240
+/** How long the scan step stays on screen before parking on the model call.
+ *  The request is still in flight; this is not fake progress after it returns. */
+export const TIDY_SCAN_MS = 400
 
-export const TIDY_PROGRESS_STEPS = ["scan", "group", "fold"] as const
+export const TIDY_PROGRESS_STEPS = ["scan", "review"] as const
 
 export type TidyProgressStep = (typeof TIDY_PROGRESS_STEPS)[number]
 
@@ -17,7 +17,9 @@ export function emptyTidyReport(scanned = 0): SkillTidyReport {
     unchanged: scanned,
     created: [],
     deleted: [],
+    patched: [],
     merged: [],
+    reviewed: false,
   }
 }
 
@@ -26,7 +28,8 @@ export function tidyFolded(report?: SkillTidyReport): boolean {
   return (
     report.merged.length > 0 ||
     report.deleted.length > 0 ||
-    report.created.length > 0
+    report.created.length > 0 ||
+    report.patched.length > 0
   )
 }
 
@@ -37,9 +40,11 @@ export function namesOf(list: string[] | undefined): string[] {
 export function normalizeTidyReport(raw: Partial<SkillTidyReport> | undefined, scanned = 0): SkillTidyReport {
   const created = namesOf(raw?.created)
   const deleted = namesOf(raw?.deleted)
+  const patched = namesOf(raw?.patched)
   const merged = Array.isArray(raw?.merged) ? raw.merged.map(normalizeMerge).filter((m) => m.keep) : []
   const before = num(raw?.before, scanned)
   const after = num(raw?.after, Math.max(0, before - deleted.length + created.length))
+  const err = typeof raw?.err === "string" && raw.err.trim() !== "" ? raw.err : undefined
   return {
     scanned: num(raw?.scanned, scanned),
     before,
@@ -48,7 +53,10 @@ export function normalizeTidyReport(raw: Partial<SkillTidyReport> | undefined, s
     unchanged: num(raw?.unchanged, Math.max(0, before - deleted.length - merged.filter((m) => !m.created).length)),
     created,
     deleted,
+    patched,
     merged,
+    reviewed: raw?.reviewed === true,
+    err,
   }
 }
 

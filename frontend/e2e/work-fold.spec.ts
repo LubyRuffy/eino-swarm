@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
+import { liveWorkFold } from "./composer-plate"
+
 /** User-view folding lives here so conversation.spec.ts stays under 1000. */
 async function freshConversation(page: Page) {
   await page.goto("/")
@@ -13,7 +15,7 @@ test("collapses live thinking and tools behind one row", async ({ page }) => {
     "Look at this from two angles and merge the findings",
   )
   await page.getByTestId("composer-input").press("Enter")
-  const fold = page.getByTestId("work-fold")
+  const fold = liveWorkFold(page)
   await expect(fold).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId("thought-scroll")).toBeHidden()
   await fold.click()

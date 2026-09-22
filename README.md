@@ -21,7 +21,7 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 - **Jump inside a long conversation.** Once you have sent two messages, a short
   tick cluster sits in the middle of the transcript's left edge. Hover it for a
-  two-line list of your own turns; click one to scroll there. A long
+  two-line list of your own turns; click one to pin that send at the top of the pane. A long
   conversation packs the ticks into a minimap instead of stacking a second
   scrollbar on the rail. Auto-follow unpins so a
   live stream does not yank you back to the bottom. Opening another conversation
@@ -161,12 +161,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   scrolling, with a fade at the top so it is obvious they are there. The
   **Thinking** label sweeps like the other live status lines. Click the row to
   hide it while it is still running. After it finishes it collapses to **Thought**.
-  **User view** (the default) folds that thought, tool calls, and mid-turn
-  answers into one live ticker. The current activity swaps in vertically, and
+  **User view** (the default) folds adjacent thoughts and tool calls into
+  one live ticker. Answers stay on screen and split the fold. The current
+  activity swaps in vertically, and
   the line itself still scrolls left-to-right when it does not fit:
   thinking text (or **Thinking**), **Planning next moves** between model
   turns, **Editing** / **Reading** / **Exec** while a tool is in flight.
-  The final answer stays visible. Settings → General, the title-bar code
+  Settings → General, the title-bar code
   icon, or ⌘K switches to developer view.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
@@ -334,9 +335,12 @@ end-to-end tests run on and the fastest way to see the UI work.
    model the phone reports after it connects, not only the fingerprint.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
-3. On the phone, open the **zwai** iOS or Android app (`mobile/ios`,
-   `mobile/android`). The home-screen icon is the same ZWAI mark as the Dock.
-   **Scan QR** is the product path. After bind, a live turn
+3. On the phone, open the **zwai** iOS or Android app. The Android sideload
+   APK is on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0)
+   (`zwai-0.1.0-android.apk`). Building from this repo is `mobile/ios` /
+   `mobile/android`. The home-screen icon is the same ZWAI mark as the Dock.
+   **Scan QR** opens a live viewfinder: a frame, a beam that sweeps up and
+   down, and a short chime when the pairing QR is read. After bind, a live turn
    (or the last thread this phone opened) opens immediately; otherwise the
    inbox lists In progress, then projects / Recents with the latest 5 idle
    threads (live rows do not consume that quota). A later launch with
@@ -359,7 +363,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    after copying the web bundle. `make mobile-android-release` writes the
    signed APK/AAB to `bin/` (set `ANDROID_KEYSTORE*` or a gitignored
    `mobile/android/keystore.properties`; `ANDROID_UNSIGNED=1` is a debug-signed
-   sideload APK, not a Play bundle).
+   sideload APK, not a Play bundle). Published sideload APKs also land on
+   [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
 
 Traffic starts on the hub as ciphertext and upgrades to UDP when punching
 works. Conversations never enter the hub database.
@@ -493,11 +498,12 @@ split into chapter-skills) are refused the same way, and leftover families are
 folded into one skill after a finished turn — automatically, including when
 auto-review is off or the manager already wrote this turn. The fold is reported
 as a `memory_review` when it changed the catalog. Editing a skill file by hand
-does **not** fold until the next turn; **Tidy overlapping skills** on the Skills
-heading runs the same fold immediately. Reload first if you edited files
-outside the app. The click walks scan → group → fold, then names what was
-merged, deleted and created, with counts (scanned / merged / deleted / created
-/ remaining).
+does **not** fold until the next turn; **Tidy skills** on the Skills
+heading still folds leftover name-stem families, then asks the model to curate
+the whole catalog by content. That is a real reviewer call — it takes as long
+as the model takes. Reload first if you edited files outside the app. The click
+walks scan → review, then names what was merged, deleted, created and patched,
+with counts (scanned / merged / deleted / created / updated / remaining).
 
 Memory lives in the data directory, never in your working directory, so a project
 pointed at a repository leaves nothing in it. A procedure that already lives in

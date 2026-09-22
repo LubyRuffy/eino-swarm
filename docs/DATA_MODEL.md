@@ -371,8 +371,9 @@ an existing skill (same subject, shared name stem, or a copied procedure) is
 refused; a note that restates a skill's summary or steps is refused. After a
 finished turn, leftover families are folded into one `SKILL.md` under the
 shared stem. A hand edit of those files does not fold until the next turn, or
-until `POST /api/projects/:id/memory/tidy-skills` (the response names what was
-merged, deleted and created). Hand-edits of notes and the
+until `POST /api/projects/:id/memory/tidy-skills` (stems fold first, then the
+reviewer curates the live catalog; the response names what was merged, deleted,
+created and patched). Hand-edits of notes and the
 Memory panel still use the total `char_limit` only.
 
 **Memory lives here, never in your working directory.** A project pointed at a

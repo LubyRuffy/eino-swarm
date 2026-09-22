@@ -41,6 +41,7 @@ function Harness({
   loading = false,
   pinned = false,
   growthKey = "1:1",
+  withTurn = false,
   loadOlder,
 }: {
   loaded?: boolean
@@ -48,6 +49,7 @@ function Harness({
   loading?: boolean
   pinned?: boolean
   growthKey?: string
+  withTurn?: boolean
   loadOlder: (clientHeight?: number) => Promise<void>
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
@@ -63,6 +65,7 @@ function Harness({
   return (
     <div data-testid="scroller" ref={scrollerRef}>
       {hasMore ? <div data-testid="history-sentinel" ref={sentinelRef} /> : null}
+      {withTurn ? <div data-testid="turn-row" data-turn-nav="tn_old" /> : null}
       <div>body</div>
     </div>
   )
@@ -159,6 +162,40 @@ describe("useHistoryWindow", () => {
       clientHeight: 400,
       scrollTop: 400,
     })
+    fireEvent.scroll(el)
+    expect(loadOlder).not.toHaveBeenCalled()
+  })
+
+  it("pages from a scroll once the oldest loaded turn is on screen", () => {
+    const loadOlder = vi.fn(async () => undefined)
+    const view = render(
+      <Harness loaded={false} hasMore withTurn loadOlder={loadOlder} />,
+    )
+    const el = screen.getByTestId("scroller")
+    const row = screen.getByTestId("turn-row")
+    mockScroller(el, { scrollHeight: 8000, clientHeight: 400, scrollTop: 2400 })
+    el.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+    row.getBoundingClientRect = () => ({ top: 180 }) as DOMRect
+    view.rerender(<Harness loaded hasMore withTurn loadOlder={loadOlder} />)
+    expect(loadOlder).not.toHaveBeenCalled()
+    fireEvent.scroll(el)
+    expect(loadOlder).toHaveBeenCalledTimes(1)
+    expect(loadOlder).toHaveBeenCalledWith(400)
+  })
+
+  it("does not page from the live edge just because the oldest turn is visible", () => {
+    const loadOlder = vi.fn(async () => undefined)
+    const view = render(
+      <Harness loaded={false} hasMore withTurn pinned loadOlder={loadOlder} />,
+    )
+    const el = screen.getByTestId("scroller")
+    const row = screen.getByTestId("turn-row")
+    mockScroller(el, { scrollHeight: 8000, clientHeight: 400, scrollTop: 7600 })
+    el.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+    row.getBoundingClientRect = () => ({ top: 120 }) as DOMRect
+    view.rerender(
+      <Harness loaded hasMore withTurn pinned loadOlder={loadOlder} />,
+    )
     fireEvent.scroll(el)
     expect(loadOlder).not.toHaveBeenCalled()
   })

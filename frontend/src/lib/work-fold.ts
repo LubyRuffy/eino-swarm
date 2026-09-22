@@ -52,13 +52,13 @@ function isAlwaysVisible(block: Block): boolean {
     block.kind === "question" ||
     block.kind === "confirm" ||
     block.kind === "error" ||
-    block.kind === "notice"
+    block.kind === "notice" ||
+    block.kind === "answer"
   )
 }
 
-/** User mode folds consecutive thinking, tools, spawns, and answers that
- *  sit between them. ask_user / errors / notices split the group so the
- *  human still sees the thing they have to act on. */
+/** User mode folds consecutive thinking, tools, and spawns. Answers stay
+ *  visible — they split the group so 正文 is never behind the ticker. */
 export function foldTurnItems(
   blocks: Block[],
   mode: TranscriptModePref,
@@ -66,11 +66,6 @@ export function foldTurnItems(
   const visible = blocks.filter((b) => !isOmittedBlock(b))
   if (mode !== "user") {
     return visible.map((block) => ({ type: "block", block }))
-  }
-
-  let lastFoldable = -1
-  for (let i = 0; i < visible.length; i++) {
-    if (isFoldableBlock(visible[i]!)) lastFoldable = i
   }
 
   const items: TurnItem[] = []
@@ -81,14 +76,13 @@ export function foldTurnItems(
     group = []
   }
 
-  visible.forEach((block, i) => {
+  visible.forEach((block) => {
     if (isAlwaysVisible(block)) {
       flush()
       items.push({ type: "block", block })
       return
     }
-    const midAnswer = block.kind === "answer" && i < lastFoldable
-    if (isFoldableBlock(block) || midAnswer) {
+    if (isFoldableBlock(block)) {
       group.push(block)
       return
     }
@@ -115,7 +109,6 @@ export function workFoldStats(blocks: Block[]): WorkFoldStats {
       if (b.tool?.failed) failed = true
     }
     if (b.kind === "spawn" && b.streaming) live = true
-    if (b.kind === "answer" && b.streaming) live = true
   }
   return { thoughts, tools, failed, live }
 }

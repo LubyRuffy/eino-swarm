@@ -790,7 +790,7 @@ func TestReviewUserMessageAttachesTheLiveCatalog(t *testing.T) {
 }
 
 // A catalog edited in Finder does not wait for a turn: the Memory panel's
-// tidy is the same fold, on demand.
+// tidy still folds leftover stems, then the reviewer curates what is left.
 func TestFoldProjectSkillsTidiesWithoutATurn(t *testing.T) {
 	e := newTestEngine(t)
 	p, _ := projectThread(t, e)
@@ -803,6 +803,9 @@ func TestFoldProjectSkillsTidiesWithoutATurn(t *testing.T) {
 	}
 	if !rep.Folded() || len(rep.Changes) != 1 || rep.Changes[0].Action != "merge" {
 		t.Fatalf("report=%+v", rep)
+	}
+	if !rep.Reviewed {
+		t.Fatal("a catalog with skills left after the fold must still call the reviewer")
 	}
 	if strings.Join(rep.Created, ",") != "weekly-rollup" {
 		t.Fatalf("created=%v", rep.Created)
@@ -826,6 +829,9 @@ func TestFoldProjectSkillsOnATidyCatalogIsANoop(t *testing.T) {
 	}
 	if rep.Folded() || len(rep.Changes) != 0 {
 		t.Fatalf("a tidy catalog must not rewrite: %+v", rep)
+	}
+	if !rep.Reviewed {
+		t.Fatal("a non-empty catalog must still call the reviewer, even when nothing overlapped")
 	}
 	if rep.Scanned != 1 || rep.After != 1 {
 		t.Fatalf("counts=%+v", rep)

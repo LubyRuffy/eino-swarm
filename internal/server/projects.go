@@ -256,9 +256,12 @@ func (s *Server) deleteSkill(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// tidySkills folds leftover skill families on demand. A finished turn already
-// does this; the Memory panel's button is for a catalog the user just edited
-// by hand, which would otherwise wait until the next turn.
+// tidySkills curates the skill catalog on demand: stem families fold first,
+// then the memory-reviewer reads the live index and merge/patch/deletes by
+// content. A finished turn already folds stems; the Memory panel's button is
+// for a catalog the user just edited, and for overlap the filename heuristic
+// cannot see. Sync: the body is the outcome. Model calls hang on the project's
+// latest finished turn when there is one.
 func (s *Server) tidySkills(c *gin.Context) {
 	p, ok := s.project(c)
 	if !ok {
@@ -275,10 +278,11 @@ func (s *Server) tidySkills(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"memory":  view,
-		"report":  report,
-		"changes": report.Changes,
-		"folded":  report.Folded(),
+		"memory":   view,
+		"report":   report,
+		"changes":  report.Changes,
+		"folded":   report.Folded(),
+		"reviewed": report.Reviewed,
 	})
 }
 

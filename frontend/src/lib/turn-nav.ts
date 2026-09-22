@@ -124,8 +124,10 @@ export function prefersInstantScroll(win: Window = window): boolean {
   return Boolean(win.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches)
 }
 
-/** Scroll the user row into view. Returns false when it is not in this scroller
- *  — a stale id after a conversation switch, not a throw. */
+/** Pin the send to the top of THIS scroller. Returns false when it is not
+ *  in the pane — a stale id after a conversation switch, not a throw.
+ *  Native scrollIntoView also yanks the window and honours scroll-margin,
+ *  so a thought fold sitting above the first tick stayed on screen. */
 export function scrollTurnIntoView(
   root: HTMLElement,
   id: string,
@@ -133,12 +135,14 @@ export function scrollTurnIntoView(
 ): boolean {
   const el = root.querySelector(turnNavSelector(id))
   if (!(el instanceof HTMLElement)) return false
+  const top = Math.max(0, offsetInScroller(el, root))
   const view = root.ownerDocument.defaultView
   const reduce = view ? prefersInstantScroll(view) : instant
-  el.scrollIntoView({
-    behavior: instant || reduce ? "auto" : "smooth",
-    block: "start",
-  })
+  if (!instant && !reduce && typeof root.scrollTo === "function") {
+    root.scrollTo({ top, behavior: "smooth" })
+    return true
+  }
+  root.scrollTop = top
   return true
 }
 

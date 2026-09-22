@@ -9,6 +9,10 @@ export default defineConfig({
     ...devices["Pixel 7"],
     baseURL: "http://127.0.0.1:4174",
     locale: "zh-CN",
+    permissions: ["camera"],
+    launchOptions: {
+      args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
+    },
   },
   webServer: {
     command: "npm run build && npm run preview",

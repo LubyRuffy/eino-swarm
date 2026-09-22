@@ -119,14 +119,41 @@ func TestAnExplicitTitleIsNeverGeneratedOver(t *testing.T) {
 
 func TestAUserRenameBeatsASlowNamer(t *testing.T) {
 	e := newTestEngine(t)
+	// The mock namer is one Generate. Without a hold it can land before
+	// RenameThread and emit a title that was still machine-owned. The
+	// rule is a rename that arrives while that call is in flight.
+	started := make(chan struct{})
+	release := make(chan struct{})
+	orig := titleGenerate
+	titleGenerate = func(ctx context.Context, m model.BaseChatModel, msgs []*schema.Message) (*schema.Message, error) {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+		return orig(ctx, m, msgs)
+	}
+	t.Cleanup(func() { titleGenerate = orig })
+
 	th, _ := e.CreateThread("", "", "")
 	turn, err := e.StartTurn(th.ID, "look into the reporting pipeline")
 	if err != nil {
 		t.Fatal(err)
 	}
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the namer never started")
+	}
 	if err := e.RenameThread(th.ID, "Keep this"); err != nil {
 		t.Fatal(err)
 	}
+	close(release)
 	waitForTurn(t, e, turn.ID)
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {

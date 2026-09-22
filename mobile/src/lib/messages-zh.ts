@@ -3,8 +3,13 @@ import type { MessageKey } from "./messages-en"
 export const zh: Record<MessageKey, string> = {
   "scan.title": "扫码绑定这台 PC",
   "scan.hint":
-    "打开 zwai 设置 → 手机，用摄像头扫配对 QR。没有摄像头时粘贴同一条 URI。",
+    "打开 zwai 设置 → 手机，把配对二维码放进取景框。没有摄像头时粘贴同一条 URI。",
   "scan.camera": "扫描二维码",
+  "scan.aim": "把配对二维码放进取景框",
+  "scan.close": "关闭扫码",
+  "scan.cameraDenied": "没有摄像头权限。允许相机，或粘贴 URI。",
+  "scan.noCamera": "这台设备没有摄像头。请粘贴 URI。",
+  "scan.cameraFailed": "摄像头没打开。请粘贴 URI。",
   "scan.uri": "配对 URI",
   "scan.paste": "粘贴并绑定",
   "scan.showPaste": "改为粘贴 URI",

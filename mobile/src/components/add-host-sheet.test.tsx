@@ -5,10 +5,6 @@ import { AddHostSheet } from "./add-host-sheet"
 import { setLocale, t } from "@/lib/i18n"
 import { encodeOffer } from "@/lib/offer"
 
-vi.mock("@/lib/scan", () => ({
-  scanPairlinkURI: vi.fn(),
-}))
-
 describe("AddHostSheet", () => {
   it("keeps the bind form in a dialog so it cannot replace the inbox", () => {
     setLocale("en")

@@ -500,6 +500,9 @@ func TestTidySkillsFoldsAPlantedFamily(t *testing.T) {
 	if len(created) != 1 || created[0] != "weekly-rollup" {
 		t.Fatalf("created=%v", created)
 	}
+	if report["reviewed"] != true {
+		t.Fatalf("a catalog with skills must call the reviewer: %v", report)
+	}
 	if len(deleted) != 2 {
 		t.Fatalf("deleted=%v", deleted)
 	}
@@ -519,6 +522,9 @@ func TestTidySkillsFoldsAPlantedFamily(t *testing.T) {
 	again := h.json(http.MethodPost, "/api/projects/"+id+"/memory/tidy-skills", nil, http.StatusOK)
 	if again["folded"] != false {
 		t.Fatalf("a second tidy is a no-op: %v", again)
+	}
+	if again["reviewed"] != true {
+		t.Fatalf("a leftover skill must still be reviewed: %v", again)
 	}
 }
 

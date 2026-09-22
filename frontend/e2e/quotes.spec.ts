@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
+import { liveWorkFold } from "./composer-plate"
+
 async function freshConversation(page: Page) {
   await page.goto("/")
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
@@ -66,7 +68,7 @@ test("quotes selected text while a turn is still streaming", async ({ page }) =>
   // A live thought's inner scroll and auto-follow used to flash the pill
   // then hide it on the next token. User view folds that thought; the
   // compact row is the thing that is still streaming.
-  await expect(page.getByTestId("work-fold")).toBeVisible({ timeout: 15_000 })
+  await expect(liveWorkFold(page)).toBeVisible({ timeout: 15_000 })
   await expect(add).toBeVisible()
   await add.click()
   await expect(page.getByLabel("1 annotation")).toBeVisible()

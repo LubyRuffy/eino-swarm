@@ -252,6 +252,9 @@ func TestMemoryHelpersFallBackToDefaults(t *testing.T) {
 	if m.ReviewIterations() != DefaultReviewMaxIterations {
 		t.Fatalf("ReviewIterations=%d", m.ReviewIterations())
 	}
+	if m.TidyIterations() != DefaultTidyMaxIterations {
+		t.Fatalf("TidyIterations=%d", m.TidyIterations())
+	}
 	if m.IndexMax() != DefaultSkillsIndexMax {
 		t.Fatalf("IndexMax=%d", m.IndexMax())
 	}
@@ -266,6 +269,13 @@ func TestMemoryHelpersFallBackToDefaults(t *testing.T) {
 	if m.Limit() != 10 || m.EntryLimit() != 10 || m.ReviewIterations() != 2 || m.IndexMax() != 3 ||
 		m.NotifyLevel() != MemoryNotifyVerbose {
 		t.Fatalf("configured values ignored: %+v", m)
+	}
+	if m.TidyIterations() != DefaultTidyMaxIterations {
+		t.Fatalf("a tiny review cap must not starve a catalog tidy: %d", m.TidyIterations())
+	}
+	m.ReviewMaxIterations = DefaultTidyMaxIterations + 4
+	if m.TidyIterations() != DefaultTidyMaxIterations+4 {
+		t.Fatalf("a larger review cap must lift the tidy cap: %d", m.TidyIterations())
 	}
 	m.EntryMax = 8
 	if m.EntryLimit() != 8 {

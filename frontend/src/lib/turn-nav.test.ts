@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { describe, expect, it } from "vitest"
 
 import type { Block } from "./transcript"
 import {
@@ -200,15 +200,31 @@ describe("scrollTurnIntoView", () => {
     const root = document.createElement("div")
     const row = document.createElement("div")
     row.setAttribute("data-turn-nav", "tn_a")
-    const intoView = vi.fn()
-    row.scrollIntoView = intoView
     root.appendChild(row)
+    root.getBoundingClientRect = () => ({ top: 0 } as DOMRect)
+    row.getBoundingClientRect = () => ({ top: 120 } as DOMRect)
 
     expect(scrollTurnIntoView(root, "tn_a", true)).toBe(true)
-    expect(intoView).toHaveBeenCalledWith(
-      expect.objectContaining({ behavior: "auto", block: "start" }),
-    )
+    expect(root.scrollTop).toBe(120)
     expect(scrollTurnIntoView(root, "tn_missing", true)).toBe(false)
+  })
+
+  it("pins the send at the pane top so earlier work is not left peeking", () => {
+    // Native scrollIntoView honours scroll-margin and also yanks the window,
+    // so a thought fold sitting above the first tick stayed on screen.
+    const root = document.createElement("div")
+    const earlier = document.createElement("div")
+    const row = document.createElement("div")
+    row.setAttribute("data-turn-nav", "tn_a")
+    root.appendChild(earlier)
+    root.appendChild(row)
+    root.scrollTop = 0
+    root.getBoundingClientRect = () => ({ top: 0 } as DOMRect)
+    earlier.getBoundingClientRect = () => ({ top: 0 } as DOMRect)
+    row.getBoundingClientRect = () => ({ top: 480 } as DOMRect)
+
+    expect(scrollTurnIntoView(root, "tn_a", true)).toBe(true)
+    expect(root.scrollTop).toBe(480)
   })
 
   it("builds an attribute selector that matches the row", () => {

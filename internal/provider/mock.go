@@ -40,7 +40,10 @@ func newMockModel(role string) model.BaseChatModel {
 	case managerRole, "":
 		return &mockModel{script: managerScript, role: managerRole}
 	case reviewerRole:
-		return &mockModel{script: reviewerScript, role: reviewerRole}
+		// Catalog tidy is a synchronous HTTP click. Pacing tokens like the
+		// manager would hold the Memory panel on "Asking the model" for
+		// every chunk, and a 24-round cap makes that a timeout.
+		return &mockModel{script: reviewerScript, instant: true, role: reviewerRole}
 	case titleRole:
 		return &mockModel{script: titleNamerScript, role: titleRole}
 	case compactRole, sessionMemoryRole:
@@ -364,6 +367,9 @@ func workerScript(role string) mockScript {
 // here may encode a particular task: the same text would otherwise show up in
 // screenshots and test expectations as if the product had decided it.
 func reviewerScript(turn int, msgs []*schema.Message) *schema.Message {
+	if isCatalogTidy(msgs) {
+		return catalogTidyScript(turn, msgs)
+	}
 	task := oneLine(firstUserText(msgs))
 	tag := conversationTag(task)
 	clip := clipRunes(task, 96)
@@ -394,6 +400,80 @@ func reviewerScript(turn int, msgs []*schema.Message) *schema.Message {
 	default:
 		return schema.AssistantMessage("Stored one note and one skill from this conversation.", nil)
 	}
+}
+
+func isCatalogTidy(msgs []*schema.Message) bool {
+	for _, m := range msgs {
+		if m == nil {
+			continue
+		}
+		if strings.Contains(plainUserText(m), "Catalog to curate:") {
+			return true
+		}
+	}
+	return false
+}
+
+// catalogTidyScript curates the index it was handed. When the catalog lists
+// a family to merge, it folds the first group; otherwise it stores nothing.
+// Derived from the message, never from a baked-in procedure.
+func catalogTidyScript(turn int, msgs []*schema.Message) *schema.Message {
+	switch turn {
+	case 1:
+		groups := catalogMergeGroups(firstUserText(msgs))
+		if len(groups) == 0 {
+			return schema.AssistantMessage("Catalog already curated.", nil)
+		}
+		keep := groups[0][0]
+		sources := groups[0][1:]
+		args, _ := json.Marshal(map[string]any{
+			"action":  "merge",
+			"name":    keep,
+			"sources": sources,
+		})
+		return &schema.Message{
+			Role: schema.Assistant,
+			ToolCalls: []schema.ToolCall{
+				call("mock-skill-merge-1", "skill_manage", string(args)),
+			},
+		}
+	default:
+		return schema.AssistantMessage("Folded overlapping skills.", nil)
+	}
+}
+
+func catalogMergeGroups(text string) [][]string {
+	var groups [][]string
+	in := false
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.Contains(line, "must become one skill") {
+			in = true
+			continue
+		}
+		if !in {
+			continue
+		}
+		if !strings.HasPrefix(line, "- ") {
+			if line == "" {
+				continue
+			}
+			in = false
+			continue
+		}
+		raw := strings.TrimPrefix(line, "- ")
+		var names []string
+		for _, p := range strings.Split(raw, ",") {
+			n := strings.TrimSpace(p)
+			if n != "" {
+				names = append(names, n)
+			}
+		}
+		if len(names) >= 2 {
+			groups = append(groups, names)
+		}
+	}
+	return groups
 }
 
 // ---------- title namer script ----------

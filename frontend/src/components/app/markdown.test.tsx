@@ -148,7 +148,10 @@ describe("MemoMarkdown", () => {
     Object.defineProperty(document, "execCommand", {
       configurable: true,
       writable: true,
-      value: vi.fn(() => true),
+      value: vi.fn(() => {
+        fireCopyEvent()
+        return true
+      }),
     })
     render(<MemoMarkdown text={"```\nalpha\n```"} />)
     fireEvent.click(screen.getByRole("button", { name: "Copy code" }))
@@ -215,3 +218,11 @@ describe("MemoMarkdown", () => {
     expect(document.body.textContent).not.toMatch(/fofa|body=|FatalError/i)
   })
 })
+
+function fireCopyEvent() {
+  const ev = new Event("copy", { bubbles: true, cancelable: true })
+  Object.defineProperty(ev, "clipboardData", {
+    value: { setData: vi.fn() },
+  })
+  document.dispatchEvent(ev)
+}

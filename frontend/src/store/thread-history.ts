@@ -159,9 +159,12 @@ export async function loadOlderHistory(
         set({ historyLoading: false })
         return
       }
+      // Empty body with has_more still true never moved the cursor, so the
+      // sentinel stayed hot and the reader could not get past this page.
+      const advanced = historyOldestSeq() < before
       set({
         transcript,
-        historyHasMore: Boolean(page.has_more),
+        historyHasMore: advanced && Boolean(page.has_more),
         historyLoading: false,
       })
     } catch (e) {

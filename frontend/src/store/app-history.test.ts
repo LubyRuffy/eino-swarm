@@ -329,6 +329,26 @@ describe("openThread", () => {
     expect(useApp.getState().historyHasMore).toBe(false)
   })
 
+  it("stops paging when an older page does not move the cursor", async () => {
+    fake.logEvents = [
+      {
+        thread_id: "th_old",
+        turn_id: "tn_b",
+        seq: 9,
+        kind: "user_message",
+        agent_id: "manager",
+        text: "later",
+        created_at: new Date().toISOString(),
+      },
+    ]
+    fake.logHasMore = true
+    await useApp.getState().boot()
+    fake.logHandler = () => ({ events: [], has_more: true })
+    await useApp.getState().loadOlder(400)
+    expect(useApp.getState().historyHasMore).toBe(false)
+    expect(useApp.getState().historyLoading).toBe(false)
+  })
+
   it("pages past a worker-only tail so a running conversation is not a blank pane", async () => {
     const at = new Date().toISOString()
     fake.logHandler = (opts) => {

@@ -465,12 +465,15 @@ typed them (`400`).
 
 ### `POST /api/projects/:id/memory/tidy-skills` → `200`
 
-Folds leftover skill families on demand — the same catalog hygiene that runs
-after a finished turn, without needing a conversation. A `SKILL.md` edited
-in Finder is otherwise left as it was until the next turn. Sync: the body is
-the outcome, not a `memory_review` event (there is no turn to hang it on).
-Serializes with that project's in-flight reviewer so a click cannot fold
-while a review is still writing.
+Curates the skill catalog on demand. Stem families fold first — the same
+hygiene that runs after a finished turn — then the memory-reviewer reads the
+live index and merge / patch / delete by content. A `SKILL.md` edited in
+Finder, or a pile of uniquely named duplicates the filename heuristic cannot
+see, is otherwise left as it was. Sync: the body is the outcome. Model calls
+and a quiet `memory_review` (`notify: off`) hang on the project's latest
+finished turn when there is one; without a turn the reviewer still runs
+against the default provider. Serializes with that project's in-flight
+reviewer so a click cannot fold while a review is still writing.
 
 ```json
 {"memory": { "dir": "…", "enabled": true, "memory": {…}, "skills": […], "needs_tidy": false },
@@ -478,14 +481,17 @@ while a review is still writing.
    "scanned": 3, "before": 3, "after": 2, "families": 1, "unchanged": 1,
    "created": ["weekly-rollup"],
    "deleted": ["weekly-rollup-notes", "weekly-rollup-send"],
+   "patched": [],
    "merged": [{"keep": "weekly-rollup", "dropped": ["weekly-rollup-notes", "weekly-rollup-send"], "created": true}],
-   "changes": [{"target": "skill_manage", "action": "merge", "name": "weekly-rollup", "text": "…"}]
+   "changes": [{"target": "skill_manage", "action": "merge", "name": "weekly-rollup", "text": "…"}],
+   "reviewed": true
  },
  "changes": [{"target": "skill_manage", "action": "merge", "name": "weekly-rollup", "text": "…"}],
- "folded": true}
+ "folded": true,
+ "reviewed": true}
 ```
 
-`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created, and the leftover count. `created` is the keeper when the shared stem was not already a skill; merging into an existing keeper leaves `created` empty. `folded` is false and the name lists are empty when the catalog was already tidy. `changes` duplicates `report.changes` so a client that only read the first version still works.
+`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works. `report.err` is set when the model call failed after the stem fold already landed.
 `409 idle` after shutdown. `404` for a project nobody has.
 
 ### `GET /api/projects/:id/skills/:name`
@@ -1102,9 +1108,11 @@ tool refusal — it does not appear in `changes`. After the reviewer finishes �
 or instead, when auto-review is skipped or off — leftover skill families are
 folded into one skill under the shared stem. That fold is a `merge` change on
 the same `memory_review` event when it landed, and is the only event recorded
-when the reviewer did not run. The Memory panel can run the same fold without
-a turn (`POST /api/projects/:id/memory/tidy-skills`); that path has no
-`memory_review` event because there is no turn id to hang it on. The turn's status is not affected — a failed
+when the reviewer did not run. The Memory panel's tidy
+(`POST /api/projects/:id/memory/tidy-skills`) still folds leftover stems, then
+runs the reviewer against the catalog. Model calls and a quiet `memory_review`
+(`notify: off`) hang on the project's latest finished turn when there is one.
+The turn's status is not affected — a failed
 review (`err`) costs a note, not the answer.
 
 `notify` is `off`, `on` or `verbose` — `memory.notifications` at the moment the

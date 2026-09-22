@@ -77,6 +77,27 @@ func TestViewToolsIsSkillViewOnly(t *testing.T) {
 	if len(WriteNames()) != 2 {
 		t.Fatalf("WriteNames=%v", WriteNames())
 	}
+	if CatalogTools(nil, nil) != nil {
+		t.Fatal("a nil store must not invent catalog tools")
+	}
+	gotCat := CatalogTools(s, nil)
+	if len(gotCat) != 2 {
+		t.Fatalf("catalog tools=%d", len(gotCat))
+	}
+	names := map[string]bool{}
+	for _, bt := range gotCat {
+		info, err := bt.Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		names[info.Name] = true
+	}
+	if !names[ToolSkillView] || !names[ToolSkillManage] || names[ToolMemory] {
+		t.Fatalf("catalog tools=%v", names)
+	}
+	if len(CatalogNames()) != 2 || CatalogNames()[0] != ToolSkillView || CatalogNames()[1] != ToolSkillManage {
+		t.Fatalf("CatalogNames=%v", CatalogNames())
+	}
 	for _, name := range WriteNames() {
 		if name == ToolSkillView {
 			t.Fatal("skill_view is not a write")

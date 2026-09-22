@@ -201,6 +201,42 @@ Finish with one short line naming what you stored, or that you stored nothing.`,
 		ToolMemory, ToolSkillManage, ToolSkillView, ToolSkillManage)
 }
 
+// CatalogTidyPrompt is the Memory panel's skill tidy. There is no
+// conversation: the job is the recorded catalog, not extracting a new note.
+func CatalogTidyPrompt() string {
+	return fmt.Sprintf(`You are curating this project's recorded skills. There is no
+conversation attached. You are not extracting notes and you are not
+replying to the human.
+
+One subject is one skill. Names that look different can still be the same
+procedure. Call %s on every index entry whose name or summary might already
+cover another, then:
+
+- %s merge — name is the skill to keep, sources are the others. Prefer a
+  short keeper. Rewrite description and body so the surviving skill is the
+  procedure, not a concatenation of chapter headings.
+- patch a keeper when only the wording should change.
+- delete a skill that is obsolete, empty, or fully covered by another.
+- create only when merge needs a keeper name that is not already a skill.
+
+Do not add notes. Do not invent a procedure that is not already recorded.
+When nothing overlaps, write nothing and say so in one line.
+
+Finish with one short line naming what you merged, deleted or rewrote, or
+that the catalog needed nothing.`, ToolSkillView, ToolSkillManage)
+}
+
+// CatalogTidyMessage is the user turn for a catalog-only review. The
+// instruction is fixed; the live index has to ride here or the reviewer
+// cannot merge a family it cannot see.
+func CatalogTidyMessage(catalog string) string {
+	catalog = strings.TrimSpace(catalog)
+	if catalog == "" {
+		return "Catalog to curate:\n\n(none)"
+	}
+	return "Catalog to curate:\n\n" + catalog
+}
+
 // ReviewCatalog is appended to the reviewer's user message so it can see the
 // skills already recorded. The system prompt is a fixed instruction and does
 // not carry the live index — without this, the reviewer invents a second

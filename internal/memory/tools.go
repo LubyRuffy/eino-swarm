@@ -66,11 +66,30 @@ func ViewTools(s *Store) []tool.BaseTool {
 	return []tool.BaseTool{&skillViewTool{store: s}}
 }
 
+// CatalogTools is the Memory panel's tidy set: open a skill, then merge,
+// patch or delete. Notes stay out — a catalog pass is not a conversation
+// review, and writing MEMORY.md from it would invent facts nobody said.
+func CatalogTools(s *Store, onChange func(Change)) []tool.BaseTool {
+	if s == nil {
+		return nil
+	}
+	if onChange == nil {
+		onChange = func(Change) {}
+	}
+	return []tool.BaseTool{
+		&skillViewTool{store: s},
+		&skillManageTool{store: s, onChange: onChange},
+	}
+}
+
 // Names lists the tools Tools returns, for the system prompt and for tracing.
 func Names() []string { return []string{ToolMemory, ToolSkillView, ToolSkillManage} }
 
 // ViewNames lists the tools ViewTools returns.
 func ViewNames() []string { return []string{ToolSkillView} }
+
+// CatalogNames lists the tools CatalogTools returns.
+func CatalogNames() []string { return []string{ToolSkillView, ToolSkillManage} }
 
 // WriteNames lists the tools that mutate the store. Workers must not get them.
 func WriteNames() []string { return []string{ToolMemory, ToolSkillManage} }

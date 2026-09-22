@@ -107,12 +107,18 @@ type FoldReport struct {
 	Unchanged int         `json:"unchanged"`
 	Created   []string    `json:"created"`
 	Deleted   []string    `json:"deleted"`
+	Patched   []string    `json:"patched"`
 	Merged    []FoldMerge `json:"merged"`
 	Changes   []Change    `json:"changes"`
+	Reviewed  bool        `json:"reviewed"`
+	Err       string      `json:"err,omitempty"`
 }
 
-// Folded is true when at least one family collapsed.
-func (r FoldReport) Folded() bool { return len(r.Merged) > 0 }
+// Folded is true when the catalog changed: a merge, a delete, a create, or
+// a rewrite. A model that looked and left everything is not a fold.
+func (r FoldReport) Folded() bool {
+	return len(r.Merged) > 0 || len(r.Deleted) > 0 || len(r.Created) > 0 || len(r.Patched) > 0
+}
 
 func emptyFoldReport(scanned int) FoldReport {
 	return FoldReport{
@@ -122,9 +128,110 @@ func emptyFoldReport(scanned int) FoldReport {
 		Unchanged: scanned,
 		Created:   []string{},
 		Deleted:   []string{},
+		Patched:   []string{},
 		Merged:    []FoldMerge{},
 		Changes:   []Change{},
 	}
+}
+
+// ComposeTidyReport is the Memory panel's outcome: a name diff plus the
+// tool writes, so a model that patched without renaming still shows up.
+func ComposeTidyReport(before, after []string, families int, changes []Change) FoldReport {
+	if before == nil {
+		before = []string{}
+	}
+	if after == nil {
+		after = []string{}
+	}
+	if changes == nil {
+		changes = []Change{}
+	}
+	report := emptyFoldReport(len(before))
+	report.Families = families
+	report.After = len(after)
+	report.Changes = changes
+	beforeSet := sliceSet(before)
+	afterSet := sliceSet(after)
+	created := map[string]struct{}{}
+	deleted := map[string]struct{}{}
+	patched := map[string]struct{}{}
+	for _, name := range after {
+		if _, ok := beforeSet[name]; !ok && name != "" {
+			created[name] = struct{}{}
+		}
+	}
+	for _, name := range before {
+		if _, ok := afterSet[name]; !ok && name != "" {
+			deleted[name] = struct{}{}
+		}
+	}
+	for _, c := range changes {
+		if c.Target != ToolSkillManage {
+			continue
+		}
+		switch c.Action {
+		case "merge":
+			dropped := splitDroppedNames(c.Text)
+			_, keepWasThere := beforeSet[c.Name]
+			report.Merged = append(report.Merged, FoldMerge{
+				Keep:    c.Name,
+				Dropped: dropped,
+				Created: c.Name != "" && !keepWasThere,
+			})
+		case "patch":
+			if c.Name != "" {
+				patched[c.Name] = struct{}{}
+			}
+		}
+	}
+	report.Created = sortedSetNames(created)
+	report.Deleted = sortedSetNames(deleted)
+	report.Patched = sortedSetNames(patched)
+	touched := map[string]struct{}{}
+	for n := range created {
+		touched[n] = struct{}{}
+	}
+	for n := range deleted {
+		touched[n] = struct{}{}
+	}
+	for n := range patched {
+		touched[n] = struct{}{}
+	}
+	for _, m := range report.Merged {
+		touched[m.Keep] = struct{}{}
+		for _, n := range m.Dropped {
+			touched[n] = struct{}{}
+		}
+	}
+	unchanged := 0
+	for _, n := range before {
+		if _, ok := touched[n]; !ok {
+			unchanged++
+		}
+	}
+	report.Unchanged = unchanged
+	return report
+}
+
+func splitDroppedNames(text string) []string {
+	var out []string
+	for _, p := range strings.Split(text, ",") {
+		n := strings.TrimSpace(p)
+		if n != "" {
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sortedSetNames(in map[string]struct{}) []string {
+	out := make([]string, 0, len(in))
+	for n := range in {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // FoldSkillFamilies rewrites each same-subject group as one skill and deletes

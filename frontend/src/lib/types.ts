@@ -143,7 +143,10 @@ export interface SkillTidyReport {
   unchanged: number
   created: string[]
   deleted: string[]
+  patched: string[]
   merged: SkillTidyMerge[]
+  reviewed?: boolean
+  err?: string
 }
 
 /** The payload of a `memory_review` event: what the post-turn review decided

@@ -160,6 +160,7 @@ func TestMemoryPromptsStayGenericAndGrounded(t *testing.T) {
 		"sections": PromptSections("", Snapshot{Limit: 100},
 			[]SkillInfo{{Name: "n", Description: "d"}}, 50, true),
 		"review":  ReviewPrompt(),
+		"tidy":    CatalogTidyPrompt(),
 		"catalog": ReviewCatalog([]SkillInfo{{Name: "n", Description: "d"}}, [][]string{{"n", "n-extra"}}),
 		"worker": WorkerPromptSections(Snapshot{Limit: 100},
 			[]SkillInfo{{Name: "n", Description: "d"}}, 50),
@@ -190,6 +191,10 @@ func TestMemoryPromptsStayGenericAndGrounded(t *testing.T) {
 	}
 	if !strings.Contains(worker, ToolSkillView) {
 		t.Fatal("the worker prompt must name skill_view")
+	}
+	tidy := prompts["tidy"]
+	if strings.Contains(tidy, ToolMemory) {
+		t.Fatalf("a catalog tidy must not write notes:\n%s", tidy)
 	}
 	if !strings.Contains(worker, "Most tasks have nothing to add") {
 		t.Fatal("the worker prompt must allow returning nothing extra")
@@ -243,6 +248,37 @@ func TestReviewCatalogListsSkillsAndFamiliesWithoutInventingAConversation(t *tes
 	}
 	if got := AttachReviewCatalog("  ", "Skills already recorded"); got != "Skills already recorded" {
 		t.Fatalf("an empty transcript must still carry a catalog that exists: %q", got)
+	}
+}
+
+func TestCatalogTidyPromptSetsTheBarAndNamesItsTools(t *testing.T) {
+	p := CatalogTidyPrompt()
+	for _, want := range []string{ToolSkillManage, ToolSkillView, "conversation attached", "write nothing", "merge"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("the catalog tidy must be told about %q:\n%s", want, p)
+		}
+	}
+	if strings.Contains(p, ToolMemory) {
+		t.Fatal("a catalog tidy that can write notes will invent them")
+	}
+}
+
+func TestCatalogTidyMessageWrapsTheIndexWithoutInventingAConversation(t *testing.T) {
+	if CatalogTidyMessage("") != "Catalog to curate:\n\n(none)" {
+		t.Fatal("an empty catalog still needs a user turn or the reviewer has nothing to answer")
+	}
+	out := CatalogTidyMessage(ReviewCatalog(
+		[]SkillInfo{{Name: "weekly-rollup", Description: "when filing the week"}},
+		nil,
+	))
+	if !strings.HasPrefix(out, "Catalog to curate:") {
+		t.Fatalf("catalog tidy must mark itself, or the mock reviewer stores a conversation clip:\n%s", out)
+	}
+	if !strings.Contains(out, "weekly-rollup — when filing the week") {
+		t.Fatalf("index missing:\n%s", out)
+	}
+	if strings.Contains(out, "Conversation to review") {
+		t.Fatal("a catalog tidy is not a conversation review")
 	}
 }
 

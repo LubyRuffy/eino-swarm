@@ -22,7 +22,8 @@ type MemoryConfig struct {
 	EntryMax int `yaml:"entry_max" json:"entry_max"`
 	// ReviewMaxIterations caps the reviewer's ReAct loop. It reads one
 	// conversation and writes a handful of files; a high cap only buys a
-	// runaway.
+	// runaway. The Memory panel's catalog tidy uses TidyIterations instead:
+	// a whole index is more than one conversation.
 	ReviewMaxIterations int `yaml:"review_max_iterations" json:"review_max_iterations"`
 	// SkillsIndexMax is how many skills the prompt lists. Only the name and
 	// the one-line summary are listed, so the agent pays for the index and not
@@ -40,6 +41,20 @@ func (m MemoryConfig) ReviewIterations() int {
 		return DefaultReviewMaxIterations
 	}
 	return m.ReviewMaxIterations
+}
+
+// TidyIterations caps the Memory panel's catalog reviewer. A post-turn
+// review reads one conversation; a tidy may open and merge many skills, so
+// the conversation cap is a floor, not a ceiling.
+func (m MemoryConfig) TidyIterations() int {
+	n := m.ReviewMaxIterations
+	if n <= 0 {
+		n = DefaultReviewMaxIterations
+	}
+	if n < DefaultTidyMaxIterations {
+		return DefaultTidyMaxIterations
+	}
+	return n
 }
 
 // Limit is the MEMORY.md character budget.

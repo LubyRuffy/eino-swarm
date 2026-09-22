@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
-import { WorkFold } from "./work-fold"
+import { WorkFold, TurnBlockList } from "./work-fold"
 import type { Block } from "@/lib/transcript"
 
 function block(partial: Partial<Block> & { kind: Block["kind"] }): Block {
@@ -181,5 +181,101 @@ describe("WorkFold live ticker", () => {
     )
     expect(screen.queryByTestId("swap-line")).toBeNull()
     expect(screen.getByTestId("work-fold").querySelector(".animate-spin")).toBeNull()
+  })
+})
+
+describe("TurnBlockList live ticker", () => {
+  it("only tickers the latest work group in a live turn", () => {
+    render(
+      <TurnBlockList
+        running
+        mode="user"
+        renderBlock={paint}
+        blocks={[
+          block({
+            id: "r1",
+            kind: "reasoning",
+            text: "first pass",
+            seq: 1,
+          }),
+          block({
+            id: "k1",
+            kind: "tool",
+            seq: 2,
+            tool: {
+              callId: "c1",
+              name: "read",
+              args: `{"file_path":"notes.md"}`,
+              pending: false,
+            },
+          }),
+          block({
+            id: "n1",
+            kind: "notice",
+            text: "Memory updated.",
+            seq: 3,
+          }),
+          block({
+            id: "k2",
+            kind: "tool",
+            seq: 4,
+            tool: {
+              callId: "c2",
+              name: "wait_agents",
+              args: `{"agent_ids":["a-1"]}`,
+              pending: true,
+            },
+          }),
+        ]}
+      />,
+    )
+    const folds = screen.getAllByTestId("work-fold")
+    expect(folds).toHaveLength(2)
+    expect(folds[0]).not.toHaveTextContent("Planning next moves")
+    expect(folds[0]).toHaveTextContent("Thought · 1 tool")
+    expect(folds[1]).toHaveTextContent("wait_agents")
+    expect(folds[1].querySelector("[data-testid=swap-line]")).toBeTruthy()
+  })
+
+  it("keeps a mid-turn answer visible and splits the fold around it", () => {
+    render(
+      <TurnBlockList
+        mode="user"
+        renderBlock={paint}
+        blocks={[
+          block({ id: "r1", kind: "reasoning", text: "first pass", seq: 1 }),
+          block({
+            id: "k1",
+            kind: "tool",
+            seq: 2,
+            tool: {
+              callId: "c1",
+              name: "read",
+              args: `{"file_path":"notes.md"}`,
+              pending: false,
+            },
+          }),
+          block({ id: "a1", kind: "answer", text: "still working the layout", seq: 3 }),
+          block({
+            id: "k2",
+            kind: "tool",
+            seq: 4,
+            tool: {
+              callId: "c2",
+              name: "grep",
+              args: `{"pattern":"alpha"}`,
+              pending: false,
+            },
+          }),
+          block({ id: "a2", kind: "answer", text: "here is the result", seq: 5 }),
+        ]}
+      />,
+    )
+    expect(screen.getByTestId("row-a1")).toBeInTheDocument()
+    expect(screen.getByTestId("row-a2")).toBeInTheDocument()
+    expect(screen.getAllByTestId("work-fold")).toHaveLength(2)
+    expect(screen.queryByTestId("row-r1")).toBeNull()
+    expect(screen.queryByTestId("row-k1")).toBeNull()
+    expect(screen.queryByTestId("row-k2")).toBeNull()
   })
 })

@@ -336,4 +336,88 @@ describe("goal session fold", () => {
     expect(screen.queryByTestId("goal-session")).not.toBeInTheDocument()
     expect(screen.getByText("Continuing the standing objective.")).toBeInTheDocument()
   })
+
+  it("does not leave Planning next moves on a turn that is no longer the live one", () => {
+    const started = "2026-01-01T00:00:00.000Z"
+    const ended = "2026-01-01T00:00:09.000Z"
+    const state: TranscriptState = {
+      ...emptyTranscript(),
+      running: true,
+      agentOrder: ["manager"],
+      agents: {
+        manager: {
+          id: "manager",
+          role: "manager",
+          status: "running",
+          activity: "",
+          blocks: [
+            block({
+              id: "r1",
+              kind: "reasoning",
+              text: "first pass",
+              turnId: "tn_old",
+              seq: 1,
+            }),
+            block({
+              id: "k1",
+              kind: "tool",
+              text: "read",
+              turnId: "tn_old",
+              seq: 2,
+              tool: {
+                callId: "c1",
+                name: "read",
+                args: `{"file_path":"notes.md"}`,
+                pending: false,
+              },
+            }),
+            block({
+              id: "n2",
+              kind: "notice",
+              text: "Continuing the standing objective.",
+              turnId: "tn_live",
+              seq: 3,
+            }),
+            block({
+              id: "k2",
+              kind: "tool",
+              text: "wait_agents",
+              turnId: "tn_live",
+              seq: 4,
+              tool: {
+                callId: "c2",
+                name: "wait_agents",
+                args: `{"agent_ids":["a-1"]}`,
+                pending: true,
+              },
+            }),
+          ],
+        },
+      },
+      turns: [
+        {
+          id: "tn_old",
+          userText: "",
+          status: "running",
+          startedAt: started,
+          endedAt: ended,
+          session: true,
+          agentIds: [],
+        },
+        {
+          id: "tn_live",
+          userText: "",
+          status: "running",
+          session: true,
+          agentIds: [],
+        },
+      ],
+    }
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    const folds = screen.getAllByTestId("work-fold")
+    expect(folds.length).toBeGreaterThanOrEqual(2)
+    expect(folds[0]).not.toHaveTextContent("Planning next moves")
+    expect(folds[0]).toHaveTextContent("Thought · 1 tool")
+    expect(folds.at(-1)).toHaveTextContent("wait_agents")
+  })
 })

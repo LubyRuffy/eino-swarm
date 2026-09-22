@@ -372,3 +372,46 @@ func TestFoldFamilyContentFallsBackWhenNoDescriptionExists(t *testing.T) {
 		t.Fatalf("body=%q", body)
 	}
 }
+
+func TestComposeTidyReportDiffsNamesAndKeepsPatchWrites(t *testing.T) {
+	rep := ComposeTidyReport(
+		[]string{"alpha-prep", "beta-finish"},
+		[]string{"alpha-prep"},
+		0,
+		[]Change{
+			{Target: ToolSkillManage, Action: "merge", Name: "alpha-prep", Text: "beta-finish"},
+			{Target: ToolSkillManage, Action: "patch", Name: "alpha-prep", Text: "rewritten"},
+		},
+	)
+	if !rep.Folded() || strings.Join(rep.Deleted, ",") != "beta-finish" {
+		t.Fatalf("report=%+v", rep)
+	}
+	if strings.Join(rep.Patched, ",") != "alpha-prep" {
+		t.Fatalf("patched=%v", rep.Patched)
+	}
+	if len(rep.Merged) != 1 || rep.Merged[0].Keep != "alpha-prep" || rep.Merged[0].Created {
+		t.Fatalf("merged=%+v", rep.Merged)
+	}
+}
+
+func TestComposeTidyReportTreatsANewKeeperAsCreated(t *testing.T) {
+	rep := ComposeTidyReport(
+		[]string{"alpha-notes", "alpha-send"},
+		[]string{"alpha"},
+		1,
+		[]Change{{Target: ToolSkillManage, Action: "merge", Name: "alpha", Text: "alpha-notes, alpha-send"}},
+	)
+	if strings.Join(rep.Created, ",") != "alpha" || !rep.Merged[0].Created {
+		t.Fatalf("created=%v merged=%+v", rep.Created, rep.Merged)
+	}
+	if rep.Families != 1 || rep.After != 1 || rep.Unchanged != 0 {
+		t.Fatalf("counts=%+v", rep)
+	}
+}
+
+func TestComposeTidyReportOnAnUnchangedCatalogIsANoop(t *testing.T) {
+	rep := ComposeTidyReport([]string{"alpha-prep"}, []string{"alpha-prep"}, 0, nil)
+	if rep.Folded() || rep.Reviewed || len(rep.Changes) != 0 || rep.Unchanged != 1 {
+		t.Fatalf("noop=%+v", rep)
+	}
+}

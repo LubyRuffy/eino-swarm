@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   TIDY_PROGRESS_STEPS,
-  TIDY_STEP_MS,
+  TIDY_SCAN_MS,
   joinNames,
   tidyFolded,
 } from "@/lib/skill-tidy"
@@ -27,33 +27,22 @@ export function SkillTidyCard({
 }) {
   const t = useT()
   const [step, setStep] = useState(0)
-  const [holding, setHolding] = useState(false)
 
   useEffect(() => {
-    if (!tidying) return
+    if (!tidying) {
+      setStep(0)
+      return
+    }
     setStep(0)
-    setHolding(true)
+    const id = window.setTimeout(() => setStep(1), TIDY_SCAN_MS)
+    return () => window.clearTimeout(id)
   }, [tidying])
 
-  useEffect(() => {
-    if (tidying) return
-    if (step >= TIDY_PROGRESS_STEPS.length - 1) setHolding(false)
-  }, [tidying, step])
-
-  useEffect(() => {
-    if (!tidying && !holding) return
-    if (step >= TIDY_PROGRESS_STEPS.length - 1 && !tidying) return
-    const id = window.setInterval(() => {
-      setStep((current) => Math.min(current + 1, TIDY_PROGRESS_STEPS.length - 1))
-    }, TIDY_STEP_MS)
-    return () => window.clearInterval(id)
-  }, [tidying, holding, step])
-
-  const showProgress = tidying || holding
-  if (!showProgress && !report && !error) return null
+  if (!tidying && !report && !error) return null
 
   const folded = tidyFolded(report)
   const scanned = report?.scanned ?? skillCount
+  const failed = Boolean(error || report?.err)
 
   return (
     <div
@@ -62,16 +51,18 @@ export function SkillTidyCard({
       className="grid shrink-0 gap-2 rounded-md border border-border bg-muted/40 px-2 py-2 text-xs"
     >
       <div className="flex items-start gap-2">
-        <p className={`min-w-0 flex-1 font-medium ${error && !showProgress ? "text-destructive" : "text-foreground"}`}>
-          {showProgress
+        <p className={`min-w-0 flex-1 font-medium ${failed && !tidying ? "text-destructive" : "text-foreground"}`}>
+          {tidying
             ? t("memory.tidying")
-            : error
-              ? error
+            : error || report?.err
+              ? error || report?.err
               : folded
                 ? t("memory.tidyDone")
-                : t("memory.tidyNone")}
+                : report?.reviewed
+                  ? t("memory.tidyNone")
+                  : t("memory.tidyEmpty")}
         </p>
-        {!showProgress && onDismiss ? (
+        {!tidying && onDismiss ? (
           <Button
             variant="ghost"
             size="icon-xs"
@@ -84,31 +75,19 @@ export function SkillTidyCard({
         ) : null}
       </div>
 
-      {showProgress ? (
-        <TidyProgress step={step} scanned={scanned} spinning={tidying} />
-      ) : error ? null : report ? (
+      {tidying ? (
+        <TidyProgress step={step} scanned={scanned} />
+      ) : report ? (
         <TidyResult report={report} />
       ) : null}
     </div>
   )
 }
 
-function TidyProgress({
-  step,
-  scanned,
-  spinning,
-}: {
-  step: number
-  scanned: number
-  spinning: boolean
-}) {
+function TidyProgress({ step, scanned }: { step: number; scanned: number }) {
   const t = useT()
-  const labels = [
-    t("memory.tidyScan", { n: scanned }),
-    t("memory.tidyGroup"),
-    t("memory.tidyFold"),
-  ]
-  const width = step === 0 ? "w-1/3" : step === 1 ? "w-2/3" : "w-full"
+  const labels = [t("memory.tidyScan", { n: scanned }), t("memory.tidyReview")]
+  const width = step === 0 ? "w-1/2" : "w-full"
   return (
     <div className="grid gap-2">
       <div
@@ -123,13 +102,11 @@ function TidyProgress({
       </div>
       <ol className="grid gap-1">
         {labels.map((label, i) => {
-          const last = i === labels.length - 1
           const current = i === step
-          const done = i < step || (last && current && !spinning)
-          const showSpin = current && (spinning || !last)
+          const done = i < step
           return (
             <li key={label} className="flex items-center gap-2 text-muted-foreground">
-              {showSpin && !done ? (
+              {current ? (
                 <Loader2 className="size-3.5 animate-spin" aria-hidden />
               ) : done ? (
                 <Check className="size-3.5 text-done" aria-hidden />
@@ -160,6 +137,9 @@ function TidyResult({ report }: { report: SkillTidyReport }) {
         <Badge variant={report.created.length ? "success" : "outline"}>
           {t("memory.tidyStatCreated", { n: report.created.length })}
         </Badge>
+        <Badge variant={report.patched.length ? "success" : "outline"}>
+          {t("memory.tidyStatPatched", { n: report.patched.length })}
+        </Badge>
         <Badge variant="outline">{t("memory.tidyStatLeft", { n: report.after })}</Badge>
       </div>
       {report.merged.length > 0 ? (
@@ -178,6 +158,9 @@ function TidyResult({ report }: { report: SkillTidyReport }) {
       ) : null}
       {report.created.length > 0 ? (
         <TidyNameList title={t("memory.tidyCreated")} items={report.created} />
+      ) : null}
+      {report.patched.length > 0 ? (
+        <TidyNameList title={t("memory.tidyPatched")} items={report.patched} />
       ) : null}
     </div>
   )

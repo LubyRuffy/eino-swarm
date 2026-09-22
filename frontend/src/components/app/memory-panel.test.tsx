@@ -254,7 +254,7 @@ describe("Memory panel", () => {
       screen.getByRole("button", { name: "Review this conversation now" }),
     )
     fireEvent.click(screen.getByRole("button", { name: "Reload memory" }))
-    fireEvent.click(screen.getByRole("button", { name: "Tidy overlapping skills" }))
+    fireEvent.click(screen.getByRole("button", { name: "Tidy skills" }))
     fireEvent.click(
       screen.getByRole("button", { name: "Delete the skill a-procedure" }),
     )
@@ -268,11 +268,9 @@ describe("Memory panel", () => {
 
   it("spins and says so while skills are being tidied", () => {
     renderPanel({ tidying: true })
-    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/Folding overlapping/)
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/Asking the model/)
     expect(screen.getByText(/Scanning 1 skills/)).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: "Tidy overlapping skills" }),
-    ).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Tidy skills" })).toBeDisabled()
   })
 
   it("reports a tidy that folded nothing", () => {
@@ -285,10 +283,12 @@ describe("Memory panel", () => {
         unchanged: 1,
         created: [],
         deleted: [],
+        patched: [],
         merged: [],
+        reviewed: true,
       },
     })
-    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/already tidy/)
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/nothing to merge/i)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/1 scanned/)
   })
 
@@ -302,12 +302,14 @@ describe("Memory panel", () => {
         unchanged: 0,
         created: ["a-procedure"],
         deleted: ["a-procedure-notes"],
+        patched: [],
         merged: [
           { keep: "a-procedure", dropped: ["a-procedure-notes"], created: true },
         ],
+        reviewed: true,
       },
     })
-    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/Folded overlapping/)
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/Skills curated/)
     expect(screen.getByText("a-procedure-notes → a-procedure")).toBeInTheDocument()
   })
 
@@ -318,7 +320,7 @@ describe("Memory panel", () => {
 
   it("marks the tidy control when the catalog still has a family", () => {
     renderPanel({ memory: { ...memory, needs_tidy: true } })
-    expect(screen.getByRole("button", { name: "Tidy overlapping skills" })).toHaveClass(
+    expect(screen.getByRole("button", { name: "Tidy skills" })).toHaveClass(
       "border",
     )
   })

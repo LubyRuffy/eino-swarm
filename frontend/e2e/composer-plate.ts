@@ -1,4 +1,18 @@
-import type { Page } from "@playwright/test"
+import type { Locator, Page } from "@playwright/test"
+
+/** Distance from the transcript pane top to the named user bubble. */
+export function userMessageGap(transcript: Locator, text: string) {
+  return transcript.evaluate((el, needle) => {
+    const nodes = el.querySelectorAll('[data-testid="user-message"]')
+    for (let i = 0; i < nodes.length; i++) {
+      const n = nodes.item(i)
+      if (!n?.textContent?.includes(String(needle))) continue
+      if (!(n instanceof HTMLElement)) return 999
+      return n.getBoundingClientRect().top - el.getBoundingClientRect().top
+    }
+    return 999
+  }, text)
+}
 
 /** User view folds spawn / wait_agents. Specs that assert on that chrome
  *  flip the title-bar toggle first; the product default stays compact.
@@ -7,6 +21,13 @@ export async function showDeveloperLog(page: Page) {
   const toUser = page.getByRole("button", { name: "Switch to user view" })
   if (await toUser.isVisible()) return
   await page.getByRole("button", { name: "Switch to developer view" }).click()
+}
+
+/** User view keeps a fold per thought/tool group. The live ticker is the
+ *  last group of the running turn — matching every work-fold is a strict-mode
+ *  miss once an earlier answer has split the groups. */
+export function liveWorkFold(page: Page) {
+  return page.getByTestId("work-fold").filter({ has: page.locator(".animate-spin") })
 }
 
 /** Live geometry of the composer plate: slab behind pins+box, join above. */

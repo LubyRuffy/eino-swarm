@@ -9,6 +9,7 @@ import {
   historyOldestSeq,
   logPageSize,
   mergeLogEvents,
+  readerNearOlderHistory,
   shouldLoadOlderHistory,
   type ThreadLog,
   uniqueStoredEvents,
@@ -65,6 +66,28 @@ describe("shouldLoadOlderHistory", () => {
   it("does not fetch while a page is already in flight or the log is complete", () => {
     expect(shouldLoadOlderHistory(true, true, 0, 200, 400)).toBe(false)
     expect(shouldLoadOlderHistory(false, false, 0, 200, 400)).toBe(false)
+  })
+})
+
+describe("readerNearOlderHistory", () => {
+  it("pages once the reader is inside the top viewport", () => {
+    expect(readerNearOlderHistory(80, 4000, 400)).toBe(true)
+    expect(readerNearOlderHistory(399, 4000, 400)).toBe(true)
+  })
+
+  it("pages when the oldest loaded turn is on screen and the top is still far", () => {
+    // Third turn-nav from the end can sit in the pane while scrollTop is
+    // thousands of pixels — the 48px gate never saw it.
+    expect(readerNearOlderHistory(2400, 8000, 400, 180)).toBe(true)
+    expect(readerNearOlderHistory(2400, 8000, 400, -120)).toBe(true)
+  })
+
+  it("does not page from the live edge or from the middle of a long slice", () => {
+    expect(readerNearOlderHistory(3600, 4000, 400, -3000)).toBe(false)
+    // Overflow is one short viewport, but the reader is still at the bottom.
+    expect(readerNearOlderHistory(200, 600, 400, 40)).toBe(false)
+    expect(readerNearOlderHistory(2400, 8000, 400, 900)).toBe(false)
+    expect(readerNearOlderHistory(2400, 8000, 400)).toBe(false)
   })
 })
 

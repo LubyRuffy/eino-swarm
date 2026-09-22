@@ -10,6 +10,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
 )
@@ -209,48 +210,103 @@ type reviewOutcome struct {
 	Notify string `json:"notify,omitempty"`
 }
 
-// runReview drives one reviewer agent to completion.
-func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext, transcript string) {
-	ctx, cancel := context.WithTimeout(context.Background(), e.cfg.Swarm.AgentTimeout())
-	defer cancel()
+// reviewRun is one reviewer agent: post-turn extraction or the Memory panel's
+// catalog tidy. Same agent id so a trace still names the cost memory-reviewer.
+type reviewRun struct {
+	threadID    string
+	turnID      string
+	providerID  string
+	model       string
+	effort      string
+	description string
+	instruction string
+	userMsg     string
+	maxIter     int
+	tools       []tool.BaseTool
+}
 
+func collectReviewChange(outcome *reviewOutcome, c memory.Change) {
+	outcome.Changed = true
+	outcome.Changes = append(outcome.Changes, c)
+	if c.Target == memory.ToolSkillManage {
+		outcome.Skills = append(outcome.Skills, c)
+		return
+	}
+	if outcome.Notes == nil {
+		outcome.Notes = map[string]int{}
+	}
+	outcome.Notes[c.Action]++
+}
+
+// runReview drives one post-turn reviewer to completion.
+func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext, transcript string) {
 	var mu sync.Mutex
 	outcome := reviewOutcome{Notes: map[string]int{}}
 	onChange := func(c memory.Change) {
 		mu.Lock()
 		defer mu.Unlock()
-		outcome.Changed = true
-		outcome.Changes = append(outcome.Changes, c)
-		if c.Target == memory.ToolSkillManage {
-			outcome.Skills = append(outcome.Skills, c)
-			return
-		}
-		outcome.Notes[c.Action]++
+		collectReviewChange(&outcome, c)
 	}
+	e.driveReviewer(reviewRun{
+		threadID:    threadID,
+		turnID:      turn.ID,
+		providerID:  turn.ProviderID,
+		model:       turn.Model,
+		effort:      turn.ReasoningEffort,
+		description: "curates this project's memory after a conversation",
+		instruction: memory.ReviewPrompt(),
+		userMsg:     e.reviewUserMessage(pc, transcript),
+		maxIter:     e.cfg.Memory.ReviewIterations(),
+		tools:       memory.Tools(pc.memory, onChange),
+	}, &mu, &outcome)
+	mu.Lock()
+	if len(outcome.Notes) == 0 {
+		outcome.Notes = nil
+	}
+	result := outcome
+	mu.Unlock()
+	e.finishReview(threadID, turn, pc, result)
+}
 
-	builder, err := e.pool.ModelBuilder(ctx, turn.ProviderID, turn.Model, turn.ReasoningEffort,
-		e.callRecorder(threadID, turn.ID))
+// driveReviewer runs one ChatModelAgent with the memory tools. The caller
+// owns the outcome lock for onChange; this function writes Err and Note.
+func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOutcome) {
+	ctx, cancel := context.WithTimeout(context.Background(), e.cfg.Swarm.AgentTimeout())
+	defer cancel()
+
+	if run.maxIter <= 0 {
+		run.maxIter = e.cfg.Memory.ReviewIterations()
+	}
+	if strings.TrimSpace(run.description) == "" {
+		run.description = "curates this project's memory"
+	}
+	builder, err := e.pool.ModelBuilder(ctx, run.providerID, run.model, run.effort,
+		e.callRecorder(run.threadID, run.turnID))
 	if err != nil {
-		e.finishReview(threadID, turn, pc, reviewOutcome{Err: err.Error()})
+		mu.Lock()
+		outcome.Err = err.Error()
+		mu.Unlock()
 		return
 	}
 	agent, err := adk.NewChatModelAgent(ctx, &adk.ChatModelAgentConfig{
 		Name:        ReviewAgentID,
-		Description: "curates this project's memory after a conversation",
-		Instruction: memory.ReviewPrompt(),
+		Description: run.description,
+		Instruction: run.instruction,
 		Model:       builder(ReviewAgentID, ReviewAgentID),
 		ToolsConfig: adk.ToolsConfig{
-			ToolsNodeConfig: compose.ToolsNodeConfig{Tools: memory.Tools(pc.memory, onChange)},
+			ToolsNodeConfig: compose.ToolsNodeConfig{Tools: run.tools},
 		},
-		MaxIterations: e.cfg.Memory.ReviewIterations(),
+		MaxIterations: run.maxIter,
 	})
 	if err != nil {
-		e.finishReview(threadID, turn, pc, reviewOutcome{Err: err.Error()})
+		mu.Lock()
+		outcome.Err = err.Error()
+		mu.Unlock()
 		return
 	}
 
 	iter := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent}).
-		Run(ctx, []adk.Message{schema.UserMessage(e.reviewUserMessage(pc, transcript))})
+		Run(ctx, []adk.Message{schema.UserMessage(run.userMsg)})
 	final := ""
 	for {
 		ev, ok := iter.Next()
@@ -273,12 +329,7 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 
 	mu.Lock()
 	outcome.Note = oneLine(final)
-	if len(outcome.Notes) == 0 {
-		outcome.Notes = nil
-	}
-	result := outcome
 	mu.Unlock()
-	e.finishReview(threadID, turn, pc, result)
 }
 
 // reviewUserMessage is the conversation plus the live skills index. The
@@ -340,26 +391,6 @@ func (e *Engine) applySkillFold(pc *projectContext, outcome *reviewOutcome) {
 			outcome.Skills = append(outcome.Skills, c)
 		}
 	}
-}
-
-// FoldProjectSkills is the Memory panel's tidy: the same family fold that
-// runs after a turn, without needing a conversation. A SKILL.md edited in
-// Finder is otherwise left as it was until the next turn finishes. The
-// report names what was merged, deleted and created so a click is not a
-// one-line shrug.
-func (e *Engine) FoldProjectSkills(projectID string) (memory.FoldReport, error) {
-	var zero memory.FoldReport
-	if _, err := e.store.GetProject(projectID); err != nil {
-		return zero, err
-	}
-	gate := e.reviews.begin(projectID)
-	if gate == nil {
-		return zero, ErrIdle
-	}
-	defer e.reviews.done()
-	gate <- struct{}{}
-	defer func() { <-gate }()
-	return e.ProjectMemory(projectID).FoldSkillFamiliesReport()
 }
 
 // recordReview stores the review's outcome on the turn it reviewed, so the one

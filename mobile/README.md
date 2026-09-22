@@ -1,7 +1,8 @@
 # zwai phone
 
-iOS and Android apps. The camera scan of a `pairlink:v1:…` QR is the product
-path; paste is the same URI, not a second protocol. After bind, a live
+iOS and Android apps. Scan QR opens a live viewfinder on a `pairlink:v1:…`
+QR: a frame, a beam that sweeps up and down, and a short chime when it reads.
+Paste is the same URI, not a second protocol. After bind, a live
 turn (or the last thread this phone opened) opens immediately; otherwise
 the inbox lists projects and threads. A later launch with saved tickets
 paints host chips (the name this PC sent on `hello`/`list`) and a connecting
@@ -60,6 +61,10 @@ and a 15.0+ deployment target.
 
 ## Android release
 
+Sideload APKs ship on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
+[v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0) attaches
+[`zwai-0.1.0-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.0/zwai-0.1.0-android.apk).
+
 `make mobile-android-release` syncs the web bundle, builds the Gradle
 `release` variant, and copies the APK/AAB to `bin/`. Play/store signing
 needs `ANDROID_KEYSTORE*` or a gitignored `mobile/android/keystore.properties`
@@ -96,7 +101,7 @@ in `Info.plist` and `AndroidManifest.xml`; nothing compiles a hub hostname.
 
 ## Simulators
 
-Camera is still the product path. Simulators paste the same `pairlink:v1`
+The viewfinder is the product path on a device with a camera. Simulators paste the same `pairlink:v1`
 URI minted by `POST /api/remote/offer`. Do not log that URI.
 
 iOS Simulator shares the Mac loopback, so a hub on `127.0.0.1` is reachable.

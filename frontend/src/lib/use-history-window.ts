@@ -6,7 +6,8 @@ import {
   type RefObject,
 } from "react"
 
-import { shouldLoadOlderHistory } from "@/lib/thread-log"
+import { readerNearOlderHistory, shouldLoadOlderHistory } from "@/lib/thread-log"
+import { TURN_NAV_ATTR, offsetInScroller } from "@/lib/turn-nav"
 
 /** Load older history when the live edge does not fill the pane, or when
  *  the reader reaches the top sentinel. Prepending must not jump the
@@ -30,30 +31,38 @@ export function useHistoryWindow({
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null)
   const heightBefore = useRef(0)
+  const wasPinned = useRef(pinned)
 
   const requestOlder = useCallback(
-    (opts?: { fromSentinel?: boolean }) => {
+    (opts?: { fromSentinel?: boolean; fromScroll?: boolean }) => {
       const el = scrollerRef.current
       if (!el || !hasMore || loading) return
       // The sentinel's rootMargin is 80px. IntersectionObserver fires once
       // on enter; a scrollTop<48 gate ate that shot, then dragging to 0
       // did nothing because the sentinel never left the root.
-      if (
-        !opts?.fromSentinel &&
-        !shouldLoadOlderHistory(
-          hasMore,
-          loading,
+      // Scroll uses a wider lead: the oldest loaded turn-nav row on screen
+      // is already the end of this page, even when scrollTop is still huge.
+      const pixel = shouldLoadOlderHistory(
+        hasMore,
+        loading,
+        el.scrollTop,
+        el.scrollHeight,
+        el.clientHeight,
+      )
+      const near =
+        Boolean(opts?.fromScroll) &&
+        !pinned &&
+        readerNearOlderHistory(
           el.scrollTop,
           el.scrollHeight,
           el.clientHeight,
+          oldestTurnFromViewportTop(el),
         )
-      ) {
-        return
-      }
+      if (!opts?.fromSentinel && !pixel && !near) return
       heightBefore.current = el.scrollTop > 48 ? el.scrollHeight : 0
       void loadOlder(el.clientHeight)
     },
-    [hasMore, loading, loadOlder, scrollerRef],
+    [hasMore, loading, loadOlder, pinned, scrollerRef],
   )
 
   useLayoutEffect(() => {
@@ -78,10 +87,19 @@ export function useHistoryWindow({
     requestOlder()
   }, [loaded, growthKey, requestOlder])
 
+  // The scroll event that leaves the live edge still sees pinned=true.
+  // Check once the flag flips, or that gesture never pages.
+  useEffect(() => {
+    const leftLiveEdge = wasPinned.current && !pinned
+    wasPinned.current = pinned
+    if (!loaded || !leftLiveEdge) return
+    requestOlder({ fromScroll: true })
+  }, [loaded, pinned, requestOlder])
+
   useEffect(() => {
     const el = scrollerRef.current
     if (!el || !loaded) return
-    const onScroll = () => requestOlder()
+    const onScroll = () => requestOlder({ fromScroll: true })
     el.addEventListener("scroll", onScroll, { passive: true })
     return () => el.removeEventListener("scroll", onScroll)
   }, [loaded, requestOlder, scrollerRef])
@@ -103,4 +121,12 @@ export function useHistoryWindow({
   }, [loaded, hasMore, loading, requestOlder, scrollerRef])
 
   return sentinelRef
+}
+
+/** First user row in the loaded slice. Distance from the viewport top;
+ *  negative once that row has scrolled above the pane. */
+function oldestTurnFromViewportTop(root: HTMLElement): number | undefined {
+  const marker = root.querySelector(`[${TURN_NAV_ATTR}]`)
+  if (!(marker instanceof HTMLElement)) return undefined
+  return offsetInScroller(marker, root) - root.scrollTop
 }

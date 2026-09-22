@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it } from "vitest"
 
 import { Transcript } from "./transcript"
 import type { TranscriptState } from "@/lib/transcript"
@@ -102,6 +102,11 @@ function reasoningState(text: string, streaming: boolean): TranscriptState {
 }
 
 describe("user transcript mode", () => {
+  afterEach(() => {
+    cleanup()
+    useApp.setState({ transcriptMode: "user" })
+  })
+
   it("folds thinking and tools behind one row and keeps the answer", () => {
     render(
       <Transcript
@@ -140,6 +145,46 @@ describe("user transcript mode", () => {
     fireEvent.click(screen.getByTestId("work-fold"))
     expect(screen.getByTestId("thought-toggle")).toBeInTheDocument()
     expect(screen.getByText("read")).toBeInTheDocument()
+  })
+
+  it("keeps a mid-turn answer on screen without opening the fold", () => {
+    const state = mixedWorkState()
+    const manager = state.agents.manager
+    manager.blocks = [
+      manager.blocks[0]!,
+      manager.blocks[1]!,
+      {
+        id: "mid",
+        kind: "answer",
+        agentId: "manager",
+        text: "still working the layout",
+        turnId: "t1",
+        seq: 3,
+        at: new Date().toISOString(),
+      },
+      {
+        id: "k2",
+        kind: "tool",
+        agentId: "manager",
+        text: "grep",
+        tool: {
+          callId: "c2",
+          name: "grep",
+          args: `{"pattern":"alpha"}`,
+          pending: false,
+        },
+        turnId: "t1",
+        seq: 4,
+        at: new Date().toISOString(),
+      },
+      manager.blocks[2]!,
+    ]
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByText("still working the layout")).toBeInTheDocument()
+    expect(screen.getAllByTestId("work-fold")).toHaveLength(2)
+    expect(screen.queryByText("read")).toBeNull()
+    expect(screen.queryByText("grep")).toBeNull()
+    expect(screen.getByText("here is the result")).toBeInTheDocument()
   })
 
   it("shows every thought and tool row in developer mode", () => {

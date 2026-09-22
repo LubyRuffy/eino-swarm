@@ -406,6 +406,26 @@ describe("the memory panel's data", () => {
     expect(useProjects.getState().tidyReport).toBeUndefined()
   })
 
+  it("keeps the tidy report when the same project's memory is re-read", async () => {
+    await useProjects.getState().loadMemory("pj_a")
+    await useProjects.getState().tidySkills()
+    expect(useProjects.getState().tidyReport).toBeDefined()
+    await useProjects.getState().loadMemory("pj_a")
+    expect(useProjects.getState().tidyReport).toBeDefined()
+    expect(useProjects.getState().tidying).toBe(false)
+  })
+
+  it("keeps tidying when a review event reloads the same project", async () => {
+    fake.tidyDelays = { pj_a: 30 }
+    await useProjects.getState().loadMemory("pj_a")
+    const pending = useProjects.getState().tidySkills()
+    await useProjects.getState().loadMemory("pj_a")
+    expect(useProjects.getState().tidying).toBe(true)
+    await pending
+    expect(useProjects.getState().tidying).toBe(false)
+    expect(useProjects.getState().tidyReport).toBeDefined()
+  })
+
   it("dismisses the last tidy report", async () => {
     await useProjects.getState().loadMemory("pj_a")
     await useProjects.getState().tidySkills()

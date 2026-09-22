@@ -18,17 +18,20 @@ export function groupByTurn(blocks: Block[]): [string, Block[]][] {
 }
 
 export function GoalSessionTurn({
-  turnId,
   blocks,
   turn,
   revealIds,
   renderBlock,
+  live = false,
 }: {
-  turnId: string
   blocks: Block[]
   turn?: TurnState
   revealIds?: Set<string>
   renderBlock: (b: Block) => ReactNode
+  /** Live ticker belongs on the newest running turn only. Older sessions
+   *  that never got a `done` still look "running" in the store; they must
+   *  not keep Planning next moves after the conversation has moved on. */
+  live?: boolean
 }) {
   const t = useT()
   const failed = turn?.status === "error"
@@ -45,12 +48,12 @@ export function GoalSessionTurn({
   if (!finishedSession) {
     const ordered = split ? [...split.leading, ...split.work, ...split.trailing] : blocks
     return (
-      <div className="flex scroll-mt-6 flex-col gap-1" data-turn-nav={turnId}>
+      <div className="flex flex-col gap-1">
         <TurnBlockList
           blocks={ordered}
           revealIds={revealIds}
           renderBlock={renderBlock}
-          running={turn?.status === "running"}
+          running={live}
         />
         <TurnFooter turn={turn} />
       </div>
@@ -68,7 +71,7 @@ export function GoalSessionTurn({
   const durationLabel =
     turn?.status === "done" ? t("transcript.workedFor") : t("transcript.stoppedAfter")
   return (
-    <div className="flex min-w-0 scroll-mt-6 flex-col gap-1" data-turn-nav={turnId}>
+    <div className="flex min-w-0 flex-col gap-1">
       <TurnBlockList
         blocks={leading}
         revealIds={revealIds}

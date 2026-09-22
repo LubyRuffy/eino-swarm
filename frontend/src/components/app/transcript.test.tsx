@@ -520,6 +520,30 @@ describe("Transcript turn nav", () => {
     expect(screen.getByRole("navigation", { name: "Jump to a message" })).toBeInTheDocument()
   })
 
+  it("anchors the send, not the thought sitting above it", () => {
+    const at = new Date().toISOString()
+    const state = twoTurns(at)
+    state.agents.manager.blocks = [
+      state.agents.manager.blocks[0]!,
+      {
+        id: "r1",
+        kind: "reasoning",
+        agentId: "manager",
+        text: "thinking about it",
+        turnId: "tn_a",
+        seq: 2,
+        at,
+      },
+      state.agents.manager.blocks[1]!,
+    ]
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByText("alpha").closest("[data-turn-nav]")).toHaveAttribute(
+      "data-turn-nav",
+      "tn_a",
+    )
+    expect(screen.getByTestId("work-fold").closest("[data-turn-nav]")).toBeNull()
+  })
+
   it("hides the rail on a single turn", () => {
     const state = twoTurns()
     state.agents.manager = {
