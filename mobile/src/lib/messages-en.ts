@@ -155,6 +155,13 @@ export const en = {
   "update.downloadingBytes": "Downloading the update · {size}",
   "update.permission": "Allow this app to install unknown apps, then tap Update again.",
   "update.failed": "The update did not download. Tap Update to try again.",
+  "update.check": "Check for updates",
+  "update.checking": "Checking the latest version",
+  "update.current": "This is the latest version",
+  "update.ask": "Version {version} is available. Update?",
+  "update.noArtifact": "This release has nothing this phone can install.",
+  "update.noLocalVersion": "This phone's version could not be read.",
+  "update.badResponse": "The version response could not be read.",
 
   "locale.en": "EN",
   "locale.zh": "中文",

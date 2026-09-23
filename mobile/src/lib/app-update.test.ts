@@ -4,16 +4,21 @@ import { setLocale, t } from "./i18n"
 import {
   allowedDownloadURL,
   allowedReleasePage,
+  checkAppVersionNow,
   checkForAppUpdate,
+  classifyLatestRelease,
   dismissUpdate,
   downloadStatus,
   formatByteSize,
   installUpdate,
   isNewer,
   offerFromRelease,
+  parseVersion,
   RELEASE_REPO,
   RELEASES_LATEST_URL,
   listenDownloadProgress,
+  responseErrorText,
+  webShellVersion,
   type UpdateOffer,
   type UpdateStore,
 } from "./app-update"
@@ -297,5 +302,185 @@ describe("download progress", () => {
     expect(removed).toBe(true)
     listener?.({ received: 20, total: 40 })
     expect(seen).toHaveLength(2)
+  })
+})
+
+describe("manual version check", () => {
+  it("keeps the response's own error and does not invent one from the status", () => {
+    setLocale("en")
+    expect(
+      responseErrorText(403, "Forbidden", JSON.stringify({ message: "feed refused the check" })),
+    ).toBe("feed refused the check")
+    expect(responseErrorText(403, "Forbidden", JSON.stringify({ message: "", error: "nope" }))).toBe(
+      "nope",
+    )
+    expect(responseErrorText(403, "Forbidden", JSON.stringify({ message: 3 }))).toBe("403 Forbidden")
+    expect(responseErrorText(502, "Bad Gateway", "{")).toBe("502 Bad Gateway")
+    expect(responseErrorText(502, "Bad Gateway", JSON.stringify(["nope"]))).toBe("502 Bad Gateway")
+    expect(responseErrorText(400, "Bad Request", "missing token")).toBe("missing token")
+    expect(responseErrorText(502, "Bad Gateway", "<html>nope</html>")).toBe("502 Bad Gateway")
+    expect(responseErrorText(400, "Bad Request", "x".repeat(400))).toBe("400 Bad Request")
+    expect(responseErrorText(0, "", "")).toBe(t("update.badResponse"))
+  })
+
+  it("says current, available, or unreadable without treating a side message as the verdict", () => {
+    setLocale("en")
+    expect(classifyLatestRelease("android", "2.4.0", { ...release(), message: "feed refused the check" })).toEqual({
+      status: "current",
+    })
+    expect(classifyLatestRelease("android", "2.4.1", release())).toEqual({ status: "current" })
+    expect(classifyLatestRelease("android", "2.3.0", release({ prerelease: true }))).toEqual({
+      status: "current",
+    })
+    expect(classifyLatestRelease("ios", "2.3.0", release())).toEqual({
+      status: "available",
+      offer: { version: "2.4.0", pageURL: page, apkURL: "" },
+    })
+    expect(classifyLatestRelease("android", "1.0.0", { tag_name: "v2.0.0" })).toEqual({
+      status: "error",
+      message: t("update.noArtifact"),
+    })
+    expect(classifyLatestRelease("android", "1.0.0", { message: "not a release" })).toEqual({
+      status: "error",
+      message: "not a release",
+    })
+    expect(classifyLatestRelease("android", "", release())).toEqual({
+      status: "error",
+      message: t("update.noLocalVersion"),
+    })
+    expect(classifyLatestRelease("android", "1.0.0", null)).toEqual({
+      status: "error",
+      message: t("update.badResponse"),
+    })
+  })
+
+  it("always asks the feed, even when a quiet check would reuse cache or stay hidden", async () => {
+    const store = memoryStore()
+    store.setItem(
+      "zwai.phone.update.cache",
+      JSON.stringify({ at: 1_000, current: "2.3.0", offer: null }),
+    )
+    dismissUpdate("2.4.0", store)
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(release()), { status: 200 }))
+    const asked = await checkAppVersionNow({
+      platform: "android",
+      version: "2.3.0",
+      now: 2_000,
+      fetcher,
+      store,
+    })
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(asked).toEqual({
+      status: "available",
+      offer: { version: "2.4.0", pageURL: page, apkURL: apk },
+    })
+
+    const quiet = vi.fn()
+    expect(
+      await checkForAppUpdate({
+        platform: "android",
+        version: "2.3.0",
+        now: 2_000,
+        fetcher: quiet,
+        store,
+      }),
+    ).toBeNull()
+    expect(quiet).not.toHaveBeenCalled()
+  })
+
+  it("returns the feed's error and does not cache that failure as up to date", async () => {
+    const store = memoryStore()
+    const fetcher = vi.fn(async () => {
+      return new Response(JSON.stringify({ message: "feed refused the check" }), {
+        status: 403,
+        statusText: "Forbidden",
+      })
+    })
+    expect(
+      await checkAppVersionNow({
+        platform: "android",
+        version: "1.0.0",
+        now: 50,
+        fetcher,
+        store,
+      }),
+    ).toEqual({ status: "error", message: "feed refused the check" })
+    expect(store.getItem("zwai.phone.update.cache")).toBeNull()
+
+    fetcher.mockResolvedValueOnce(new Response("<html>nope</html>", { status: 502, statusText: "Bad Gateway" }))
+    expect(
+      await checkAppVersionNow({ platform: "android", version: "1.0.0", now: 60, fetcher, store }),
+    ).toEqual({ status: "error", message: "502 Bad Gateway" })
+    fetcher.mockResolvedValueOnce(new Response("not-json", { status: 200 }))
+    expect(
+      await checkAppVersionNow({ platform: "android", version: "1.0.0", now: 65, fetcher, store }),
+    ).toEqual({ status: "error", message: t("update.badResponse") })
+    expect(store.getItem("zwai.phone.update.cache")).toBeNull()
+
+    fetcher.mockRejectedValueOnce(new Error("socket reset"))
+    expect(
+      await checkAppVersionNow({ platform: "android", version: "1.0.0", now: 70, fetcher, store }),
+    ).toEqual({ status: "error", message: "socket reset" })
+
+    const quiet = vi.fn(async () => new Response(JSON.stringify({ message: "feed refused the check" }), { status: 403 }))
+    expect(
+      await checkForAppUpdate({
+        platform: "android",
+        version: "1.0.0",
+        now: 80,
+        fetcher: quiet,
+        store: memoryStore(),
+      }),
+    ).toBeNull()
+  })
+
+  it("remembers a successful check so the quiet bar does not ask again immediately", async () => {
+    const store = memoryStore()
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify(release({ tag_name: "v1.2.0" })), { status: 200 }),
+    )
+    expect(
+      await checkAppVersionNow({
+        platform: "android",
+        version: "1.2.0",
+        now: 90,
+        fetcher,
+        store,
+      }),
+    ).toEqual({ status: "current" })
+    const quiet = vi.fn()
+    expect(
+      await checkForAppUpdate({
+        platform: "android",
+        version: "1.2.0",
+        now: 100,
+        fetcher: quiet,
+        store,
+      }),
+    ).toBeNull()
+    expect(quiet).not.toHaveBeenCalled()
+  })
+
+  it("compares a web check against the shell version instead of claiming there is no app", async () => {
+    const current = webShellVersion()
+    expect(parseVersion(current)).not.toBeNull()
+    const parsed = parseVersion(current)!
+    const newer = `${parsed[0]}.${parsed[1]}.${parsed[2] + 1}`
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(release({ tag_name: "v" + current })), { status: 200 }))
+    expect(
+      await checkAppVersionNow({ platform: "web", now: 3, fetcher, store: memoryStore() }),
+    ).toEqual({ status: "current" })
+    fetcher.mockResolvedValueOnce(
+      new Response(JSON.stringify(release({ tag_name: "v" + newer })), { status: 200 }),
+    )
+    const update = await checkAppVersionNow({
+      platform: "web",
+      now: 4,
+      fetcher,
+      store: memoryStore(),
+    })
+    expect(update.status).toBe("available")
+    if (update.status === "available") expect(update.offer.version).toBe(newer)
   })
 })

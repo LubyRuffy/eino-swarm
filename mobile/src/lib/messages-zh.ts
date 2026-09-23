@@ -153,6 +153,13 @@ export const zh: Record<MessageKey, string> = {
   "update.downloadingBytes": "正在下载更新 · {size}",
   "update.permission": "先允许本应用安装未知应用，再点一次更新。",
   "update.failed": "更新没下载下来。再点一次更新。",
+  "update.check": "检查新版本",
+  "update.checking": "正在获取版本",
+  "update.current": "已经是最新版本",
+  "update.ask": "有新版本 {version}，是否升级？",
+  "update.noArtifact": "这份发布没有可安装的包。",
+  "update.noLocalVersion": "读不到当前版本。",
+  "update.badResponse": "版本响应无法识别。",
 
   "locale.en": "EN",
   "locale.zh": "中文",

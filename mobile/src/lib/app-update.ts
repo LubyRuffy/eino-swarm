@@ -14,6 +14,16 @@ export const RELEASE_REPO = "LubyRuffy/eino-swarm"
 /** Quiet for six hours. A foreground resume must not hammer the unauthenticated cap. */
 export const UPDATE_CHECK_TTL_MS = 6 * 60 * 60 * 1000
 
+// Vite replaces this with the phone package version. The browser shell has
+// no installed binary, so a manual check compares that. Tests and `tsc` see
+// the declaration; the built page sees the string.
+declare const __ZWAI_WEB_VERSION__: string
+
+/** The browser shell has no installed binary. A manual check compares this. */
+export function webShellVersion(): string {
+  return typeof __ZWAI_WEB_VERSION__ === "string" ? __ZWAI_WEB_VERSION__ : ""
+}
+
 const DISMISS_KEY = "zwai.phone.update.dismissed"
 const CACHE_KEY = "zwai.phone.update.cache"
 
@@ -35,6 +45,11 @@ export type UpdateStore = {
 }
 
 export type InstallResult = "installed" | "permission" | "failed"
+
+export type VersionCheckResult =
+  | { status: "current" }
+  | { status: "available"; offer: UpdateOffer }
+  | { status: "error"; message: string }
 
 export type DownloadProgress = {
   received: number
@@ -254,6 +269,101 @@ export async function checkForAppUpdate(opts: {
   } catch {
     return visibleOffer(cache?.offer ?? null, dismissed, current)
   }
+}
+
+/** JSON `message` / `error`, otherwise a short body, otherwise the status line. */
+export function responseErrorText(status: number, statusText: string, body: string): string {
+  const trimmed = body.trim()
+  const fromJSON = jsonErrorMessage(trimmed)
+  if (fromJSON) return fromJSON
+  const looksJSON = trimmed.startsWith("{") || trimmed.startsWith("[")
+  if (!looksJSON && trimmed && !trimmed.startsWith("<") && trimmed.length <= 300) return trimmed
+  const line = [status > 0 ? String(status) : "", statusText.trim()].filter(Boolean).join(" ")
+  if (line) return line
+  return t("update.badResponse")
+}
+
+function jsonErrorMessage(raw: string): string {
+  if (!raw.startsWith("{") && !raw.startsWith("[")) return ""
+  try {
+    const v = JSON.parse(raw) as { message?: unknown; error?: unknown }
+    if (typeof v.message === "string" && v.message.trim()) return v.message.trim()
+    if (typeof v.error === "string" && v.error.trim()) return v.error.trim()
+  } catch {
+    return ""
+  }
+  return ""
+}
+
+/** A public release the phone can act on. Drafts and prereleases are not an update. */
+export function classifyLatestRelease(
+  platform: string,
+  current: string,
+  body: unknown,
+): VersionCheckResult {
+  if (!parseVersion(current)) {
+    return { status: "error", message: t("update.noLocalVersion") }
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return { status: "error", message: t("update.badResponse") }
+  }
+  const row = body as { tag_name?: unknown; draft?: unknown; prerelease?: unknown; message?: unknown }
+  if (row.draft === true || row.prerelease === true) return { status: "current" }
+  const tag = typeof row.tag_name === "string" ? row.tag_name : ""
+  if (!parseVersion(tag)) {
+    const message = typeof row.message === "string" ? row.message.trim() : ""
+    return { status: "error", message: message || t("update.badResponse") }
+  }
+  if (!isNewer(tag, current)) return { status: "current" }
+  const offer = offerFromRelease(platform, current, body)
+  if (!offer) return { status: "error", message: t("update.noArtifact") }
+  return { status: "available", offer }
+}
+
+/** A tap always hits the feed. The quiet bar's cache and Not now do not answer it. */
+export async function checkAppVersionNow(opts: {
+  platform?: string
+  version?: string
+  now?: number
+  fetcher?: typeof fetch
+  store?: UpdateStore
+} = {}): Promise<VersionCheckResult> {
+  const platform = opts.platform ?? Capacitor.getPlatform()
+  let current = (opts.version ?? "").trim()
+  if (!current) current = (await installedVersion()).trim()
+  if (!parseVersion(current) && platform === "web") current = webShellVersion()
+  const fetcher = opts.fetcher ?? fetch
+  const store = opts.store ?? safeStorage()
+  const now = opts.now ?? Date.now()
+  let res: Response
+  try {
+    res = await fetcher(RELEASES_LATEST_URL, {
+      headers: { Accept: "application/vnd.github+json" },
+    })
+  } catch (err) {
+    return { status: "error", message: errorText(err) }
+  }
+  if (!res.ok) {
+    let raw = ""
+    try {
+      raw = await res.text()
+    } catch (err) {
+      return { status: "error", message: errorText(err) }
+    }
+    return { status: "error", message: responseErrorText(res.status, res.statusText, raw) }
+  }
+  let body: unknown
+  try {
+    body = JSON.parse(await res.text())
+  } catch {
+    return { status: "error", message: t("update.badResponse") }
+  }
+  const result = classifyLatestRelease(platform, current, body)
+  if (result.status !== "error" && parseVersion(current)) {
+    const offer = result.status === "available" ? result.offer : null
+    store.setItem(CACHE_KEY, JSON.stringify({ at: now, current, offer }))
+  }
+  return result
 }
 
 export async function installUpdate(

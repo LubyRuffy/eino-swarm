@@ -13,6 +13,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **The phone menu can check for a new version.** Check for updates shows
+  that it is fetching. The current build says so. A newer one asks before
+  installing. A failed request shows the response's own error. The automatic
+  bar still stays quiet when a poll fails, and Not now still only hides that
+  bar.
+
 - **The PC and the phone tell the hub their names.** Register sends this
   computer's name. Redeem sends the phone's model line. An empty name does
   not clear one the hub already kept. The sealed hello is unchanged.

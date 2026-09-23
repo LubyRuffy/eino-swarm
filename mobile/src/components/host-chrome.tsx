@@ -2,6 +2,7 @@ import { Menu, Monitor, SquarePen } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { VersionCheck } from "@/components/version-check"
 import { cn } from "@/lib/cn"
 import { localeSwitchLabel, t } from "@/lib/i18n"
 import { linkLabel, type SavedLink } from "@/lib/store"
@@ -30,6 +31,7 @@ export function HostChrome({
   onToggleLocale?: () => void
 }) {
   const [menu, setMenu] = useState(false)
+  const [versionCheck, setVersionCheck] = useState(false)
   const rail = useRef<HTMLDivElement>(null)
   const pathKind = reconnecting ? "reconnecting" : connected ? path : "offline"
 
@@ -81,6 +83,14 @@ export function HostChrome({
             >
               {t("home.unlink")}
             </MenuRow>
+            <MenuRow
+              onClick={() => {
+                setMenu(false)
+                setVersionCheck(true)
+              }}
+            >
+              {t("update.check")}
+            </MenuRow>
             {onToggleLocale ? (
               <MenuRow
                 onClick={() => {
@@ -94,6 +104,7 @@ export function HostChrome({
           </div>
         </>
       ) : null}
+      {versionCheck ? <VersionCheck onClose={() => setVersionCheck(false)} /> : null}
       <h1 className="sr-only">{t("home.app")}</h1>
       <div
         ref={rail}
