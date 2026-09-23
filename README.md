@@ -332,8 +332,11 @@ end-to-end tests run on and the fastest way to see the UI work.
    **Keep this computer awake** stays on by default so a plugged-in host
    does not idle-sleep while a phone still expects it. Turn it off if you
    want the machine to sleep. **This computer's name** is what the phone
-   paints on the host chip (blank uses this machine's hostname). **Bound phones** names each device by the
-   model the phone reports after it connects, not only the fingerprint.
+   paints on the host chip (blank uses this machine's hostname). That same
+   name is sent when this PC registers with the hub. **Bound phones** names each device by the
+   model the phone reports after it connects, not only the fingerprint. The
+   phone also sends that model line when it redeems the QR, so a gateway
+   list can show it without reading the sealed session.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
 3. On the phone, open the **zwai** iOS or Android app. The Android sideload

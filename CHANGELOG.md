@@ -13,6 +13,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **The PC and the phone tell the hub their names.** Register sends this
+  computer's name. Redeem sends the phone's model line. An empty name does
+  not clear one the hub already kept. The sealed hello is unchanged.
+
 - **One engine per data directory.** Desktop, web, and the terminal attach
   to `zwai engine` over loopback HTTP. The first shell starts it; a later
   shell does not open the database or start a second swarm. Closing a

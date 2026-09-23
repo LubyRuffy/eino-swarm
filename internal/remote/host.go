@@ -87,7 +87,8 @@ func (h *Host) startLocked() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	if err := client.RegisterHost(ctx, hub, token, id); err != nil {
+	// The gateway list reads this label. It is the same name the phone paints, not the hub URL.
+	if err := client.RegisterHostLabel(ctx, hub, token, config.SeedRemoteDisplayName(cfg.Remote.DisplayName), id); err != nil {
 		cancel()
 		h.err = err.Error()
 		h.log.Warn("remote host register failed", "err", err)

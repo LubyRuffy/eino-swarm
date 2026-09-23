@@ -141,6 +141,7 @@ export async function redeemOffer(
     body: JSON.stringify({
       code: offer.code,
       device_pub: bytesToB64url(device.pub),
+      name: deviceLabel(),
     }),
   })
   const text = await res.text()

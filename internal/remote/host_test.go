@@ -33,6 +33,7 @@ func TestHostOfferAndServeLinkOverRelay(t *testing.T) {
 	cfg := e.Config()
 	cfg.Remote.Enabled = true
 	cfg.Remote.HubURL = srv.URL
+	cfg.Remote.DisplayName = "desk-one"
 	if err := cfg.WriteHostToken(token); err != nil {
 		t.Fatal(err)
 	}
@@ -43,6 +44,10 @@ func TestHostOfferAndServeLinkOverRelay(t *testing.T) {
 	st := h.Status()
 	if !st.Online || st.Fingerprint == "" || st.Error != "" {
 		t.Fatalf("status %+v", st)
+	}
+	saved, err := hubStore.HostByTokenHash(ctx, pstore.HashSecret(token))
+	if err != nil || saved.Name != "desk-one" {
+		t.Fatalf("hub stored %q %v", saved.Name, err)
 	}
 
 	offer, err := h.Offer(ctx)
