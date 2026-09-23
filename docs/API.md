@@ -80,7 +80,8 @@ chrome and directory density),
 `code_font` / `code_font_size`,
 `content_width` (`comfortable` / `full`), `transcript_mode` (`user` /
 `developer`; `user` folds thinking and tools
-behind a live ticker: **Thinking** / **Planning next moves** / **Editing**
+behind a live ticker: **Thinking** / **Planning next moves** (under a
+closed answer, not above it) / **Editing**
 / **Reading** / **Exec**), and
 `palette` (`zwai` / `fofa`; named color set, each with light and dark).
 `locale` is also at the top level so

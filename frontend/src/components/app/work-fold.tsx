@@ -12,6 +12,8 @@ import { useApp } from "@/store/app"
 import {
   foldTurnItems,
   formatWorkTicker,
+  liveWorkIndex,
+  planningTailAfterAnswer,
   workFoldStats,
   workTickerFrames,
   type WorkFoldStats,
@@ -35,10 +37,8 @@ export function TurnBlockList({
   const stored = useApp((s) => s.transcriptMode)
   const view = mode ?? stored
   const items = useMemo(() => foldTurnItems(blocks, view), [blocks, view])
-  let lastWork = -1
-  items.forEach((item, i) => {
-    if (item.type === "work") lastWork = i
-  })
+  const liveAt = liveWorkIndex(items, running)
+  const planningTail = planningTailAfterAnswer(items, running)
   return (
     <>
       {items.map((item, i) =>
@@ -49,12 +49,27 @@ export function TurnBlockList({
             key={item.blocks[0]?.id ?? "work"}
             blocks={item.blocks}
             reveal={item.blocks.some((b) => revealIds.has(b.id))}
-            running={running && i === lastWork}
+            running={i === liveAt}
             renderBlock={renderBlock}
           />
         ),
       )}
+      {planningTail ? <PlanningTail /> : null}
     </>
+  )
+}
+
+function PlanningTail() {
+  const t = useT()
+  return (
+    <div
+      data-testid="planning-tail"
+      role="status"
+      className="flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1 text-sm text-muted-foreground"
+    >
+      <Loader2 aria-hidden className="size-3.5 shrink-0 animate-spin" />
+      <SwapLine itemKey="planning:tail" text={t("transcript.planningMoves")} active />
+    </div>
   )
 }
 

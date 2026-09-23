@@ -322,6 +322,36 @@ export function foldPhoneItems(blocks: CompactBlock[]): PhoneItem[] {
   return items
 }
 
+const PHONE_TAIL_BLOCKER = new Set(["question", "error"])
+
+/** Quiet gap after a closed answer. The ticker belongs under that text.
+ *  A streaming answer is the activity; a question or an error is the tail
+ *  instead. A pending tool is not this gap. */
+export function phonePlanningTail(items: PhoneItem[], running: boolean): boolean {
+  if (!running) return false
+  let last = -1
+  let blocks: CompactBlock[] | undefined
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (item.type !== "work") continue
+    last = i
+    blocks = item.blocks
+  }
+  if (!blocks) return false
+  let sawAnswer = false
+  for (let i = last + 1; i < items.length; i++) {
+    const item = items[i]
+    if (item.type !== "block") continue
+    const kind = item.block.kind
+    if (PHONE_TAIL_BLOCKER.has(kind)) return false
+    if (kind !== "answer") continue
+    if (item.block.streaming) return false
+    sawAnswer = true
+  }
+  if (!sawAnswer) return false
+  return phoneWorkTicker(blocks, true)?.kind === "planning"
+}
+
 /** One current activity on the live tail. Idle folds keep the count. */
 export function phoneWorkTicker(
   blocks: CompactBlock[],

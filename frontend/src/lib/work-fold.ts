@@ -193,6 +193,56 @@ function toolFrame(block: Block): WorkTickerFrame | undefined {
   }
 }
 
+/** Index of the work row that may show the live ticker. An answer that
+ *  already follows that row is the tail — ticking the fold paints
+ *  Planning next moves above the text it is supposed to follow. */
+export function liveWorkIndex(items: TurnItem[], running: boolean): number {
+  if (!running) return -1
+  let last = -1
+  for (let i = 0; i < items.length; i++) {
+    if (items[i]!.type === "work") last = i
+  }
+  if (last < 0) return -1
+  for (let i = last + 1; i < items.length; i++) {
+    const item = items[i]!
+    if (item.type === "block" && item.block.kind === "answer") return -1
+  }
+  return last
+}
+
+const TAIL_BLOCKER = new Set(["question", "confirm", "error"])
+
+/** Quiet gap after a closed answer. The ticker belongs under that text.
+ *  A streaming answer is the activity; a question, confirm, or error is
+ *  the tail instead. A pending tool is not this gap. */
+export function planningTailAfterAnswer(
+  items: TurnItem[],
+  running: boolean,
+): boolean {
+  if (!running) return false
+  let last = -1
+  let blocks: Block[] | undefined
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]!
+    if (item.type !== "work") continue
+    last = i
+    blocks = item.blocks
+  }
+  if (!blocks) return false
+  let sawAnswer = false
+  for (let i = last + 1; i < items.length; i++) {
+    const item = items[i]!
+    if (item.type !== "block") continue
+    const kind = item.block.kind
+    if (TAIL_BLOCKER.has(kind)) return false
+    if (kind !== "answer") continue
+    if (item.block.streaming) return false
+    sawAnswer = true
+  }
+  if (!sawAnswer) return false
+  return workTickerFrames(blocks, true)[0]?.kind === "planning"
+}
+
 /** One current activity. Execution beats thinking; a quiet gap between
  *  model turns is Planning next moves, not a frozen empty row. Idle turns
  *  keep the finished fold label even if a leftover tool is still pending. */

@@ -280,5 +280,25 @@ describe("thread blocks", () => {
     expect(screen.getByTestId("work-fold")).toHaveTextContent("Thought · 1 tool")
     expect(screen.getByTestId("work-fold")).not.toHaveTextContent("Planning next moves")
     expect(screen.getByText("partial")).toBeInTheDocument()
+    expect(screen.queryByTestId("planning-tail")).not.toBeInTheDocument()
+  })
+
+  it("puts Planning under a closed answer instead of on the fold above it", () => {
+    setLocale("en")
+    render(
+      <ThreadLog
+        running
+        blocks={[
+          { id: "r", kind: "reasoning", text: "first pass" },
+          { id: "k", kind: "tool", toolName: "read", text: "read", pending: false },
+          { id: "a", kind: "answer", text: "landed" },
+        ]}
+      />,
+    )
+    expect(screen.getByTestId("work-fold")).toHaveTextContent("Thought · 1 tool")
+    expect(screen.getByTestId("work-fold")).not.toHaveTextContent("Planning next moves")
+    const tail = screen.getByTestId("planning-tail")
+    expect(tail).toHaveTextContent("Planning next moves")
+    expect(screen.getByText("landed").compareDocumentPosition(tail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   })
 })

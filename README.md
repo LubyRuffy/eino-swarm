@@ -166,7 +166,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   activity swaps in vertically, and
   the line itself still scrolls left-to-right when it does not fit:
   thinking text (or **Thinking**), **Planning next moves** between model
-  turns, **Editing** / **Reading** / **Exec** while a tool is in flight.
+  turns (under a closed answer, not on the fold above it), **Editing** /
+  **Reading** / **Exec** while a tool is in flight.
   Settings → General, the title-bar code
   icon, or ⌘K switches to developer view.
 - **It stays live without freezing the window.** Streamed tokens are folded into

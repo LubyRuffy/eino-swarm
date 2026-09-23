@@ -187,6 +187,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **User-mode Planning next moves no longer sits above the answer.** The
+  live ticker was glued to the latest thought/tool fold. An answer splits
+  that fold, so the gap line stayed above text that had already landed.
+  The fold goes back to the thought / tool count. While that answer is
+  still streaming there is no Planning row. Once it has closed and the
+  turn is still in the quiet gap, Planning next moves renders under the
+  answer. The phone transcript does the same.
+
 - **Typing while a turn runs turns the corner button into Send.** The
   button used to stay Stop after a draft was in the box, so the click that
   should queue or steer looked like a cancel and did not get pressed. Stop

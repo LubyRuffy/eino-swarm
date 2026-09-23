@@ -8,6 +8,8 @@ import {
   formatWorkTicker,
   isFoldableBlock,
   isOmittedBlock,
+  liveWorkIndex,
+  planningTailAfterAnswer,
   workFoldStats,
   workTickerFrames,
   type WorkTickerFrame,
@@ -309,6 +311,71 @@ describe("workTickerFrames", () => {
       kind: "exec",
       detail: "printf x",
     })
+  })
+
+  it("keeps Planning off a fold an answer already follows", () => {
+    const items = foldTurnItems(
+      [
+        thought,
+        tool,
+        block({ id: "n", kind: "notice", text: "Memory updated.", seq: 4 }),
+        block({ ...answer, seq: 5 }),
+      ],
+      "user",
+    )
+    expect(liveWorkIndex(items, true)).toBe(-1)
+    expect(liveWorkIndex(items, false)).toBe(-1)
+    expect(liveWorkIndex(foldTurnItems([answer], "user"), true)).toBe(-1)
+    expect(planningTailAfterAnswer(items, true)).toBe(true)
+    expect(planningTailAfterAnswer(items, false)).toBe(false)
+
+    const streaming = foldTurnItems(
+      [thought, tool, block({ ...answer, streaming: true })],
+      "user",
+    )
+    expect(planningTailAfterAnswer(streaming, true)).toBe(false)
+
+    const asked = foldTurnItems(
+      [
+        thought,
+        tool,
+        answer,
+        block({ id: "q", kind: "question", text: "which one", seq: 5 }),
+      ],
+      "user",
+    )
+    expect(planningTailAfterAnswer(asked, true)).toBe(false)
+
+    const pending = foldTurnItems(
+      [
+        thought,
+        block({
+          id: "p",
+          kind: "tool",
+          seq: 3,
+          tool: {
+            callId: "c",
+            name: "exec",
+            args: `{"command":"printf x"}`,
+            pending: true,
+          },
+        }),
+        answer,
+      ],
+      "user",
+    )
+    expect(planningTailAfterAnswer(pending, true)).toBe(false)
+    expect(planningTailAfterAnswer(foldTurnItems([answer], "user"), true)).toBe(false)
+    expect(
+      planningTailAfterAnswer(
+        foldTurnItems(
+          [thought, block({ id: "n2", kind: "notice", text: "Memory updated.", seq: 4 })],
+          "user",
+        ),
+        true,
+      ),
+    ).toBe(false)
+    expect(liveWorkIndex(foldTurnItems([thought, tool], "user"), true)).toBe(0)
   })
 
   it("uses Planning next moves in the gap between model turns", () => {

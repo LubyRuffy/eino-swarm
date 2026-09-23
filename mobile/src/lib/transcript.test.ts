@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest"
 
 import { setLocale } from "./i18n"
-import { applyEvent, foldPhoneItems, formatPhoneTicker, pendingAsk, phoneWorkTicker, type CompactBlock } from "./transcript"
+import {
+  applyEvent,
+  foldPhoneItems,
+  formatPhoneTicker,
+  pendingAsk,
+  phonePlanningTail,
+  phoneWorkTicker,
+  type CompactBlock,
+} from "./transcript"
 import type { RemoteEvent } from "./rpc"
 
 function ev(partial: Partial<RemoteEvent> & Pick<RemoteEvent, "kind" | "seq">): RemoteEvent {
@@ -283,6 +291,61 @@ describe("foldPhoneItems", () => {
       "planning",
     )
     expect(formatPhoneTicker({ kind: "planning", detail: "" })).toBe("Planning next moves")
+    const closed = foldPhoneItems([
+      row({ id: "r3", kind: "reasoning", text: "first pass" }),
+      idle,
+      row({ id: "a", kind: "answer", text: "landed" }),
+    ])
+    expect(phonePlanningTail(closed, true)).toBe(true)
+    expect(phonePlanningTail(closed, false)).toBe(false)
+    expect(
+      phonePlanningTail(
+        foldPhoneItems([
+          row({ id: "r4", kind: "reasoning", text: "first pass" }),
+          idle,
+          row({ id: "a2", kind: "answer", text: "partial", streaming: true }),
+        ]),
+        true,
+      ),
+    ).toBe(false)
+    expect(
+      phonePlanningTail(
+        foldPhoneItems([
+          row({ id: "r5", kind: "reasoning", text: "first pass" }),
+          idle,
+          row({ id: "a3", kind: "answer", text: "landed" }),
+          row({ id: "q", kind: "question", text: "which one" }),
+        ]),
+        true,
+      ),
+    ).toBe(false)
+    expect(phonePlanningTail(foldPhoneItems([row({ id: "a4", kind: "answer", text: "only" })]), true)).toBe(
+      false,
+    )
+    expect(
+      phonePlanningTail(foldPhoneItems([row({ id: "r6", kind: "reasoning", text: "still looking" })]), true),
+    ).toBe(false)
+    expect(
+      phonePlanningTail(
+        foldPhoneItems([
+          row({ id: "r7", kind: "reasoning", text: "first pass" }),
+          row({ id: "p", kind: "tool", toolName: "exec", text: "exec", pending: true }),
+          row({ id: "a5", kind: "answer", text: "landed" }),
+        ]),
+        true,
+      ),
+    ).toBe(false)
+    expect(
+      phonePlanningTail(
+        foldPhoneItems([
+          row({ id: "r8", kind: "reasoning", text: "first pass" }),
+          idle,
+          row({ id: "a6", kind: "answer", text: "landed" }),
+          row({ id: "e", kind: "error", text: "nope" }),
+        ]),
+        true,
+      ),
+    ).toBe(false)
     expect(formatPhoneTicker({ kind: "thinking", detail: "" })).toBe("Thinking")
     expect(formatPhoneTicker({ kind: "exec", detail: "printf x" })).toBe("Exec printf x")
   })

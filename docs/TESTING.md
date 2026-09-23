@@ -145,7 +145,7 @@ with Run now / Cancel wait rather than a silent Send box, a long
 objective stays one truncated line so that chrome cannot cover the composer,
 and Earlier sits outside the scroller so a live-edge tail can still page.
 A long tool path must not stretch the column (`min-w-0` / `break-words`).
-`mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, a `progress` pulse is not a notice, a findings `report_schedule` is that prose as a notice rather than a tool chip, and adjacent thoughts and tools fold while an answer stays visible and splits the group.
+`mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, a `progress` pulse is not a notice, a findings `report_schedule` is that prose as a notice rather than a tool chip, adjacent thoughts and tools fold while an answer stays visible and splits the group, and Planning sits under a closed answer instead of on the fold above it.
 `mobile/src/lib/tool-preview.test.ts` pulls `findings` (not `prompt`) for the collapsed chip, and a wait roster is counts rather than `elapsed_ms`.
 `mobile/src/components/thread-blocks.test.tsx` keeps that roster off the user bubble and the expanded tool body.
 
@@ -889,7 +889,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   Answers stay visible and split the group. `ask_user` / errors / notices split the group. A live ticker is one
   current activity on the newest running turn's latest work row only
   (a pending tool beats a streaming thought; a live gap with neither is
-  **Planning next moves**). Older folds keep the thought / tool count.
+  **Planning next moves**). An answer after that fold is the tail, so the
+  fold keeps its count; Planning renders under a closed answer and stays
+  off while the answer is still streaming. Older folds keep the thought / tool count.
   Copy is **Thinking** or the latest thought line, **Editing** / **Reading** /
   **Exec** `{name}` for file and shell tools. `SwapLine` always wraps `MarqueeText` so a
   long line still scrolls left-to-right; changing the activity key slides

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ChevronRight } from "lucide-react"
+import { ChevronRight, Loader2 } from "lucide-react"
 
 import { PhoneMarkdown } from "@/components/markdown"
 import { t } from "@/lib/i18n"
@@ -7,6 +7,7 @@ import { parseQuotedMessage } from "@/lib/quote"
 import {
   foldPhoneItems,
   formatPhoneTicker,
+  phonePlanningTail,
   phoneWorkTicker,
   type CompactBlock,
 } from "@/lib/transcript"
@@ -211,6 +212,7 @@ export function ThreadLog({
   const laterAnswer =
     lastWork >= 0 &&
     items.slice(lastWork + 1).some((item) => item.type === "block" && item.block.kind === "answer")
+  const planningTail = phonePlanningTail(items, running)
   return (
     <>
       {items.map((item, i) => {
@@ -231,7 +233,21 @@ export function ThreadLog({
           </div>
         )
       })}
+      {planningTail ? <PlanningTail /> : null}
     </>
+  )
+}
+
+function PlanningTail() {
+  return (
+    <p
+      data-testid="planning-tail"
+      role="status"
+      className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+    >
+      <Loader2 aria-hidden className="size-3 shrink-0 motion-safe:animate-spin motion-reduce:animate-none" />
+      {t("thread.planningMoves")}
+    </p>
   )
 }
 

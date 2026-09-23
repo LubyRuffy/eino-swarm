@@ -590,8 +590,9 @@ whose live summary is a one-line `SwapLine` (`frontend/src/components/app/swap-l
 Answers stay visible and split the fold.
 A new activity slides the previous line up; the current line is always
 `MarqueeText`, so overflow still scrolls left-to-right. The copy is the
-latest thought line (or **Thinking**), **Planning next moves** while the
-newest running turn has nothing streaming, and **Editing** / **Reading** /
+latest thought line (or **Thinking**), **Planning next moves** under a
+closed answer while the newest running turn is in the gap (not on the fold
+above that text, and not while the answer is still streaming), and **Editing** / **Reading** /
 **Exec** `{name}` for a pending tool. Earlier turns — even ones still
 marked running in the store — keep the collapsed thought / tool count.
 Developer view is the previous every-row log. `ask_user`, iteration-limit, errors and notices stay outside

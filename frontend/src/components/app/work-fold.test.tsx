@@ -278,4 +278,54 @@ describe("TurnBlockList live ticker", () => {
     expect(screen.queryByTestId("row-k1")).toBeNull()
     expect(screen.queryByTestId("row-k2")).toBeNull()
   })
+
+  it("puts Planning under a finished answer instead of on the fold above it", () => {
+    render(
+      <TurnBlockList
+        running
+        mode="user"
+        renderBlock={paint}
+        blocks={[
+          block({ id: "r1", kind: "reasoning", text: "first pass", seq: 1 }),
+          block({
+            id: "k1",
+            kind: "tool",
+            seq: 2,
+            tool: {
+              callId: "c1",
+              name: "read",
+              args: `{"file_path":"notes.md"}`,
+              pending: false,
+            },
+          }),
+          block({ id: "a1", kind: "answer", text: "here is the result", seq: 3 }),
+        ]}
+      />,
+    )
+    const fold = screen.getByTestId("work-fold")
+    const answer = screen.getByTestId("row-a1")
+    const tail = screen.getByTestId("planning-tail")
+    expect(fold).toHaveTextContent("Thought · 1 tool")
+    expect(fold).not.toHaveTextContent("Planning next moves")
+    expect(tail).toHaveTextContent("Planning next moves")
+    expect(fold.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(answer.compareDocumentPosition(tail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("does not paint Planning while the answer after the fold is still streaming", () => {
+    render(
+      <TurnBlockList
+        running
+        mode="user"
+        renderBlock={paint}
+        blocks={[
+          block({ id: "r1", kind: "reasoning", text: "first pass", seq: 1 }),
+          block({ id: "a1", kind: "answer", text: "partial", seq: 2, streaming: true }),
+        ]}
+      />,
+    )
+    expect(screen.getByTestId("work-fold")).toHaveTextContent("Thought")
+    expect(screen.queryByText("Planning next moves")).toBeNull()
+    expect(screen.queryByTestId("planning-tail")).toBeNull()
+  })
 })
