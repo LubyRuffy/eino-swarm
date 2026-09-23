@@ -110,7 +110,8 @@ E2E suite.
   that says the turn finished.
 - Errors get mapped by `server.fail`: `store.ErrNotFound` → `404`, `ErrBusy` /
   `ErrIdle` → `409` with a `code`. Add to that map rather than writing statuses
-  inline in a handler.
+  inline in a handler. A tool result must not be that sentinel's text. An
+  upsert tool given an id that matches no row follows the omit-id path.
 - The event kind strings travel over the wire and sit in the database. Renaming
   one breaks replay of existing conversations; `TestNotifyKindsAreStableAcrossTheWire`
   is there to make that a deliberate act.

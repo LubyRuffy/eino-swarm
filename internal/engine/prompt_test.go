@@ -171,6 +171,7 @@ func TestManagerPromptWaitingCopyStaysGeneric(t *testing.T) {
 		"do not stretch",
 		"A parallel exec",
 		"Do not sleep the full remaining time",
+		"Any other id is ignored",
 	} {
 		if !strings.Contains(prompt, need) {
 			t.Fatalf("missing %q:\n%s", need, prompt)
@@ -377,6 +378,9 @@ func TestScheduleSectionFormatsCadenceTypes(t *testing.T) {
 	}
 	if !strings.Contains(got, "next=2026-09-18T12:00:00Z") {
 		t.Fatalf("next missing:\n%s", got)
+	}
+	if !strings.Contains(got, "Any other id is ignored") {
+		t.Fatalf("an unlisted id must not be described as a hard failure:\n%s", got)
 	}
 	if scheduleSection(nil) != "" {
 		t.Fatal("no rows must omit the heading")

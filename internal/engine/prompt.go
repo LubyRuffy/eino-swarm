@@ -162,7 +162,8 @@ use this to confirm an obvious next step.
 When progress is gated on time or a condition that is not worth polling in this
 turn, call schedule_wake and end the turn. Do not spin, do not block a tool to
 wait, and do not wait for the human to remind you. Do not schedule work that
-can finish now. Do not use a wake instead of ask_user.
+can finish now. Do not use a wake instead of ask_user. Pass id only to select
+a wait already listed on this conversation. Any other id is ignored.
 
 A parallel exec may keep working in one call and sleep in another before
 printing progress. That sleep, and schedule_wake, use the same clock: when
@@ -357,7 +358,7 @@ func scheduleSection(rows []store.Schedule) string {
 		return ""
 	}
 	var b strings.Builder
-	b.WriteString("## Scheduled\n\nOpen waits on this conversation. schedule_wake without an id replaces the existing wake; pass id to target one.\n\n")
+	b.WriteString("## Scheduled\n\nOpen waits on this conversation. Pass one of these ids to replace that wait. Any other id is ignored and the open wake is replaced or armed.\n\n")
 	for _, row := range rows {
 		fmt.Fprintf(&b, "- id=%s next=%s cadence=%s prompt=%s\n",
 			row.ID,

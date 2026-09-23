@@ -192,7 +192,11 @@ worker before closing SQLite.
    generic cue (it does not resume a paused `/goal`).
    The manager also gets `schedule_wake`, `schedule_task`, `cancel_schedule`,
    and `report_schedule` next to `ask_user`. `schedule_wake` upserts a wait
-   on this conversation (omitting `id` replaces the open wake). `schedule_task` fails unless the current turn is
+   on this conversation (omitting `id` replaces the open wake). An `id` that
+   matches no stored wait is ignored and follows that same path, so a label
+   cannot come back as `store: not found`. An id that names another
+   conversation, or a wait that is no longer active, still fails.
+   `schedule_task` fails unless the current turn is
    human-originated (`!GoalContinue && !ScheduleContinue && !ImplementPlan`).
    `report_schedule` fails unless `ScheduleContinue`; empty findings are
    quiet. `next_in_s` rearms an already-active interval, or a delay that

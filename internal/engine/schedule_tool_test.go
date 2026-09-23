@@ -498,7 +498,9 @@ func TestManagerScheduleToolsAreWired(t *testing.T) {
 	}
 }
 
-func TestScheduleWakeUnknownIdIsJSON(t *testing.T) {
+func TestScheduleWakeUnknownIdArmsInsteadOfStoreNotFound(t *testing.T) {
+	// An id that names no row is a label. The store sentinel makes the
+	// caller give up on the timer and poll inside the turn.
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{})
@@ -506,8 +508,19 @@ func TestScheduleWakeUnknownIdIsJSON(t *testing.T) {
 		return e.scheduleWakeJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(),
 		`{"id":"sch_missing","prompt":"`+scheduleToolWaitPrompt+`","every_s":60}`)
-	if err != nil || !strings.Contains(out, `"ok":false`) {
-		t.Fatalf("unknown id: %s %v", out, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out, "store: not found") {
+		t.Fatalf("store sentinel leaked to the caller: %s", out)
+	}
+	got := mustToolOK(t, out)
+	row, err := e.Store().GetSchedule(got.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.ThreadID != th.ID || row.Status != store.ScheduleActive || row.EveryS != 60 {
+		t.Fatalf("row=%+v", row)
 	}
 }
 

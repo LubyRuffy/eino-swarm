@@ -51,7 +51,7 @@ func scheduleWakeCadenceParams() map[string]*schema.ParameterInfo {
 // ScheduleWakeTool upserts a thread wake on the current conversation.
 func ScheduleWakeTool(run func(args string) (string, error)) tool.BaseTool {
 	params := scheduleWakeCadenceParams()
-	params["id"] = &schema.ParameterInfo{Type: schema.String, Desc: "optional id of an existing wait on this conversation to replace"}
+	params["id"] = &schema.ParameterInfo{Type: schema.String, Desc: "id of a wait already on this conversation. Omit to replace the open wake or arm one. An id that matches no stored wait is ignored."}
 	return newScheduleTool(ToolScheduleWake, scheduleWakeDesc, params, run)
 }
 
@@ -219,21 +219,33 @@ func (e *Engine) scheduleWakeJSON(threadID, _, args string) (string, error) {
 	in.ThreadID = threadID
 	in.OriginThreadID = threadID
 	in.CreatedBy = store.ScheduleCreatedManager
-	id := strings.TrimSpace(a.ID)
-	explicit := id != ""
-	if !explicit {
-		found, listErr := e.openThreadWakeID(threadID)
-		if listErr != nil {
-			return scheduleToolFailure("%s", listErr.Error()), nil
+	// A non-empty id only selects a row that already exists. Callers treat
+	// id as a label; handing back the store sentinel makes them abandon the
+	// timer and poll inside the turn. A missing row follows the omit-id
+	// path. A row that is not a live wake on this conversation still fails.
+	if id := strings.TrimSpace(a.ID); id != "" {
+		_, err := e.store.GetSchedule(id)
+		if err == nil {
+			row, err := e.replaceThreadWake(threadID, id, in)
+			if err != nil {
+				return scheduleToolFailure("%s", err.Error()), nil
+			}
+			return scheduleArmedOK(row.ID), nil
 		}
-		id = found
+		if !errors.Is(err, store.ErrNotFound) {
+			return scheduleToolFailure("%s", err.Error()), nil
+		}
 	}
-	if id != "" {
-		row, err := e.replaceThreadWake(threadID, id, in)
+	found, listErr := e.openThreadWakeID(threadID)
+	if listErr != nil {
+		return scheduleToolFailure("%s", listErr.Error()), nil
+	}
+	if found != "" {
+		row, err := e.replaceThreadWake(threadID, found, in)
 		if err == nil {
 			return scheduleArmedOK(row.ID), nil
 		}
-		if explicit {
+		if !errors.Is(err, store.ErrNotFound) {
 			return scheduleToolFailure("%s", err.Error()), nil
 		}
 	}
