@@ -192,11 +192,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
-- **`schedule_wake` arms when `id` is not a stored wait.** A label in `id`
-  used to return `store: not found`, and the caller polled inside the turn.
-  An id that matches no row is ignored: the open wake on this conversation
-  is replaced, or a new one is armed. An id that names another conversation,
-  or a wait that is no longer active, still fails.
+- **`schedule_wake` does not take an id.** The tool offered an optional id
+  and the prompt said to pass one. The first arm has no id to copy, so the
+  model invented a label and got `store: not found`. The host assigns the
+  id. The tool arms or replaces the open wait on this conversation.
+  `cancel_schedule` copies an id from the Scheduled list. A leftover id that
+  names a live wait on this conversation still replaces that wait. Any other
+  leftover id does not fail the arm. An id for another conversation, or a
+  wait that is no longer active, still fails.
 
 - **Android update shows download progress.** The banner used to say only
   that a download was in flight. It now shows the percent when the server

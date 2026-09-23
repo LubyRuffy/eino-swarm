@@ -8,7 +8,9 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-func TestScheduleWakeIdParamSaysUnstoredIdsAreIgnored(t *testing.T) {
+func TestScheduleWakeSchemaHasNoId(t *testing.T) {
+	// An optional id is a name the model invents. The first arm has nothing
+	// to copy, so the field must not be on the tool.
 	info, err := ScheduleWakeTool(nil).Info(context.Background())
 	if err != nil || info == nil || info.ParamsOneOf == nil {
 		t.Fatalf("info: %+v %v", info, err)
@@ -17,13 +19,11 @@ func TestScheduleWakeIdParamSaysUnstoredIdsAreIgnored(t *testing.T) {
 	if err != nil || js == nil || js.Properties == nil {
 		t.Fatalf("schema: %+v %v", js, err)
 	}
-	prop, ok := js.Properties.Get("id")
-	if !ok || prop == nil || !strings.Contains(prop.Description, "is ignored") {
-		desc := ""
-		if prop != nil {
-			desc = prop.Description
-		}
-		t.Fatalf("id param: ok=%v desc=%q", ok, desc)
+	if prop, ok := js.Properties.Get("id"); ok || prop != nil {
+		t.Fatalf("schedule_wake must not offer an id, got %+v", prop)
+	}
+	if strings.Contains(info.Desc, "pass id") {
+		t.Fatalf("wake desc still asks for an id:\n%s", info.Desc)
 	}
 }
 

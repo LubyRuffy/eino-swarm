@@ -191,11 +191,15 @@ worker before closing SQLite.
    clears the flag, remounts those tools, and starts an execute turn with a
    generic cue (it does not resume a paused `/goal`).
    The manager also gets `schedule_wake`, `schedule_task`, `cancel_schedule`,
-   and `report_schedule` next to `ask_user`. `schedule_wake` upserts a wait
-   on this conversation (omitting `id` replaces the open wake). An `id` that
-   matches no stored wait is ignored and follows that same path, so a label
-   cannot come back as `store: not found`. An id that names another
-   conversation, or a wait that is no longer active, still fails.
+   and `report_schedule` next to `ask_user`. `schedule_wake` does not take an
+   id. It arms or replaces the open wait on this conversation; the host
+   assigns the id. An optional id on that tool is a name the model invents
+   on the first arm, when nothing is listed to copy. `cancel_schedule` is
+   what takes an id, copied from the open-wait list. A leftover id on
+   `schedule_wake` is honored only when it names a live wait on this
+   conversation. Any other leftover id is not a name and does not fail the
+   arm. An id that names another conversation, or a wait that is no longer
+   active, still fails.
    `schedule_task` fails unless the current turn is
    human-originated (`!GoalContinue && !ScheduleContinue && !ImplementPlan`).
    `report_schedule` fails unless `ScheduleContinue`; empty findings are

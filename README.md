@@ -68,8 +68,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   follow-up.
 - **Scheduled waits.** The manager can arm a wake on this conversation
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
-  An `id` selects a wait already on this conversation. Any other id is
-  ignored and the open wake is replaced, or a new one is armed.
+  `schedule_wake` does not take an id. It arms or replaces the open wait;
+  the host assigns the id. Cancel copies an id from the open-wait list.
   When progress is gated on time or a condition not worth polling now, it is
   told to wake and end the turn instead of spinning or asking you to remind
   it. A parallel `exec` that sleeps and then checks progress is fine; that

@@ -326,10 +326,10 @@ not an ask; answering clears the list). `internal/server/ask_test.go` is why
 the thread listing marks `awaiting_answer` while the questionnaire is open.
 `internal/engine/schedule_tool_test.go` is why `schedule_wake` upserts on
 this conversation (including when the model omits `id`), and
-`internal/engine/schedule_wake_id_test.go` is why an `id` that matches no
-stored wait is ignored instead of returning `store: not found` — it still
-replaces the open wake, while another conversation's id or a finished id
-does not arm a new one. `schedule_task` refuses a `GoalContinue` /
+`internal/engine/schedule_wake_id_test.go` is why that tool's schema has no
+`id` — a leftover id that matches no stored wait still arms instead of
+returning `store: not found`, it still replaces the open wake, while another
+conversation's id or a finished id does not arm a new one. `schedule_task` refuses a `GoalContinue` /
 `ScheduleContinue` / plan-implement turn, empty `report_schedule` findings
 are quiet, `next_in_s` rearms a delay that claim already marked `done`,
 garbage arguments come back as JSON `ok:false`, and workers get a deny stub.

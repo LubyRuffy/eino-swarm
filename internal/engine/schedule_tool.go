@@ -50,9 +50,10 @@ func scheduleWakeCadenceParams() map[string]*schema.ParameterInfo {
 
 // ScheduleWakeTool upserts a thread wake on the current conversation.
 func ScheduleWakeTool(run func(args string) (string, error)) tool.BaseTool {
-	params := scheduleWakeCadenceParams()
-	params["id"] = &schema.ParameterInfo{Type: schema.String, Desc: "id of a wait already on this conversation. Omit to replace the open wake or arm one. An id that matches no stored wait is ignored."}
-	return newScheduleTool(ToolScheduleWake, scheduleWakeDesc, params, run)
+	// No id parameter. An optional id is a name the model invents on the
+	// first arm, when this conversation has no wait to copy. The host
+	// assigns the id. cancel_schedule is what takes one.
+	return newScheduleTool(ToolScheduleWake, scheduleWakeDesc, scheduleWakeCadenceParams(), run)
 }
 
 // ScheduleTaskTool creates a standalone job. The handler must refuse
@@ -219,10 +220,11 @@ func (e *Engine) scheduleWakeJSON(threadID, _, args string) (string, error) {
 	in.ThreadID = threadID
 	in.OriginThreadID = threadID
 	in.CreatedBy = store.ScheduleCreatedManager
-	// A non-empty id only selects a row that already exists. Callers treat
-	// id as a label; handing back the store sentinel makes them abandon the
-	// timer and poll inside the turn. A missing row follows the omit-id
-	// path. A row that is not a live wake on this conversation still fails.
+	// The tool schema has no id. A leftover one is only honored when it
+	// names a live wait on this conversation, because a previous tool
+	// result showed that id. Anything else is not a name: follow the
+	// omit-id path instead of returning the store sentinel. A row that is
+	// not a live wake on this conversation still fails.
 	if id := strings.TrimSpace(a.ID); id != "" {
 		_, err := e.store.GetSchedule(id)
 		if err == nil {
