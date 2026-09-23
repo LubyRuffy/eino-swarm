@@ -2282,6 +2282,21 @@ were left out on purpose, so that what shipped is complete rather than broad:
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
 
+## [0.1.6] - 2026-09-23
+
+Phone sideload. versionName `0.1.6`, versionCode `106`. Same debug key as
+v0.1.5, so an installed 0.1.5 updates in place.
+[`zwai-0.1.6-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.6/zwai-0.1.6-android.apk)
+is on [v0.1.6](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.6).
+
+### Added
+
+- **The phone menu can check for a new version.** Check for updates shows
+  that it is fetching. The current build says so. A newer one asks before
+  installing. A failed request shows the response's own error. The automatic
+  bar still stays quiet when a poll fails, and Not now still only hides that
+  bar.
+
 ## [0.1.5] - 2026-09-23
 
 Phone sideload. versionName `0.1.5`, versionCode `105`. Same debug key as

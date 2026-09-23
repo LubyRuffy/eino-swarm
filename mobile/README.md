@@ -111,9 +111,10 @@ and a 15.0+ deployment target.
 ## Android release
 
 Sideload APKs ship on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
-[v0.1.5](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.5) attaches
-[`zwai-0.1.5-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.5/zwai-0.1.5-android.apk)
-(versionName `0.1.5`, versionCode `105`).
+[v0.1.6](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.6) attaches
+[`zwai-0.1.6-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.6/zwai-0.1.6-android.apk)
+(versionName `0.1.6`, versionCode `106`).
+[v0.1.5](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.5),
 [v0.1.4](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.4),
 [v0.1.3](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.3),
 [v0.1.2](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.2),
@@ -168,7 +169,9 @@ otherwise how much has arrived. The sheet still
 needs a tap, and the first time Android may ask to allow installs from this
 app. iOS has no package on that feed, so Update opens the release page.
 **Not now** hides that version until a later one is published. A failed
-check stays quiet. The download only follows `github.com/LubyRuffy/eino-swarm`
+automatic check stays quiet. **Menu → Check for updates** always requests:
+it shows that it is fetching, says when this build is current, asks before
+an install, and shows the response's own error. The download only follows `github.com/LubyRuffy/eino-swarm`
 and GitHub's release-asset hosts.
 
 ## Simulators
