@@ -22,7 +22,7 @@ describe("redeemOffer", () => {
     const device = generateIdentity()
     const hostPub = generateIdentity().pub
     const sid = new Uint8Array(16).fill(7)
-    const fetcher = vi.fn(async () => {
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
       return new Response(
         JSON.stringify({
           ticket: "abc123",
@@ -46,7 +46,7 @@ describe("redeemOffer", () => {
     expect(got.hostPub).toEqual(hostPub)
     expect(fetcher).toHaveBeenCalledOnce()
     expect(JSON.stringify(fetcher.mock.calls)).toContain("pairings/redeem")
-    const posted = JSON.parse(String(fetcher.mock.calls[0][1].body)) as { name?: string }
+    const posted = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as { name?: string }
     expect(posted.name).toBeTruthy()
     expect(posted.name).not.toBe("127.0.0.1")
     expect(TICKET_PROTO).toBe("pairlink.ticket.")

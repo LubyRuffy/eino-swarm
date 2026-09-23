@@ -2276,6 +2276,29 @@ were left out on purpose, so that what shipped is complete rather than broad:
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
 
+## [0.1.5] - 2026-09-23
+
+Phone sideload. versionName `0.1.5`, versionCode `105`. Same debug key as
+v0.1.4, so an installed 0.1.4 updates in place.
+[`zwai-0.1.5-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.5/zwai-0.1.5-android.apk)
+is on [v0.1.5](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.5).
+
+### Fixed
+
+- **Android update shows download progress.** The banner used to say only
+  that a download was in flight. It now shows the percent when the server
+  sends a length, and the bytes received when it does not, with a bar for
+  the percent.
+
+- **The same assistant sentence no longer floods the transcript.** A gateway
+  that resends the whole buffer in each stream chunk was concatenated, so
+  one sentence was painted again on every event. A longer chunk that already
+  contains the buffer replaces it, and an exact resend of a long buffer is
+  dropped. A one-rune or short-token repeat still concatenates. On the phone,
+  a late snapshot of the answer already on the tail updates that bubble
+  instead of stacking another copy; a tool, question, or user message
+  between two identical lines keeps both.
+
 ## [0.1.4] - 2026-09-23
 
 Phone sideload. versionName `0.1.4`, versionCode `104`. Same debug key as

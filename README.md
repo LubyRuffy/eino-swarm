@@ -340,8 +340,8 @@ end-to-end tests run on and the fastest way to see the UI work.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
    be pasted if the camera is missing.
 3. On the phone, open the **zwai** iOS or Android app. The Android sideload
-   APK is on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.4)
-   (`zwai-0.1.4-android.apk`). A newer Android build offers **Update** on the
+   APK is on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.5)
+   (`zwai-0.1.5-android.apk`). A newer Android build offers **Update** on the
    phone: it downloads that APK from GitHub Releases and opens the system
    installer. iOS opens the release page. **Not now** hides that version.
    Building from this repo is `mobile/ios` /
