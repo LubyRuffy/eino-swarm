@@ -13,11 +13,6 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
-- **The phone composer matches the PC.** It can pick a ready model, a
-  thinking level, and attach a file or an image. An image is vision; other
-  files land in the workspace. The phone uploads, then sends; the PC decides
-  whether that is a new turn, a follow-up, or a steer.
-
 - **One engine per data directory.** Desktop, web, and the terminal attach
   to `zwai engine` over loopback HTTP. The first shell starts it; a later
   shell does not open the database or start a second swarm. Closing a
@@ -186,33 +181,6 @@ co-working app built on it. The library API is unchanged except where noted
   while General is showing.
 
 ### Fixed
-
-- **User-mode Planning next moves no longer sits above the answer.** The
-  live ticker was glued to the latest thought/tool fold. An answer splits
-  that fold, so the gap line stayed above text that had already landed.
-  The fold goes back to the thought / tool count. While that answer is
-  still streaming there is no Planning row. Once it has closed and the
-  turn is still in the quiet gap, Planning next moves renders under the
-  answer. The phone transcript does the same.
-
-- **Typing while a turn runs turns the corner button into Send.** The
-  button used to stay Stop after a draft was in the box, so the click that
-  should queue or steer looked like a cancel and did not get pressed. Stop
-  stays only while there is nothing to submit. A quote, file, or image
-  counts; whitespace does not. A `/goal` or `/plan` prompt that is still
-  waiting for its argument keeps Send disabled beside Stop. Esc still
-  stops the turn.
-
-- **More on the phone inbox survives the next refresh.** The inbox is a
-  loaded window: the first page plus rows already brought in with More. A
-  later first-page list patches that page and keeps the rest. A row that
-  left the first page is not kept just because it was there last time.
-  The control shows that it is loading.
-
-- **Opening a conversation is not a blank screen.** Until the transcript
-  arrives, the body shows a loading status. A request that is still in
-  flight (More, send, loading older) shows motion instead of a frozen
-  control.
 
 - **Tidy skills stays with the project.** The Memory panel kept one tidy
   card for the whole app, so leaving a project and coming back dropped the
@@ -2289,6 +2257,49 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.4] - 2026-09-23
+
+Phone sideload. versionName `0.1.4`, versionCode `104`. Same debug key as
+v0.1.3, so an installed 0.1.3 updates in place.
+
+### Added
+
+- **The phone composer matches the PC.** It can pick a ready model, a
+  thinking level, and attach a file or an image. An image is vision; other
+  files land in the workspace. The phone uploads, then sends; the PC decides
+  whether that is a new turn, a follow-up, or a steer.
+  [`zwai-0.1.4-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.4/zwai-0.1.4-android.apk)
+  is on [v0.1.4](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.4).
+
+### Fixed
+
+- **User-mode Planning next moves no longer sits above the answer.** The
+  live ticker was glued to the latest thought/tool fold. An answer splits
+  that fold, so the gap line stayed above text that had already landed.
+  The fold goes back to the thought / tool count. While that answer is
+  still streaming there is no Planning row. Once it has closed and the
+  turn is still in the quiet gap, Planning next moves renders under the
+  answer. The phone transcript does the same.
+
+- **More on the phone inbox survives the next refresh.** The inbox is a
+  loaded window: the first page plus rows already brought in with More. A
+  later first-page list patches that page and keeps the rest. A row that
+  left the first page is not kept just because it was there last time.
+  The control shows that it is loading.
+
+- **Opening a conversation is not a blank screen.** Until the transcript
+  arrives, the body shows a loading status. A request that is still in
+  flight (More, send, loading older) shows motion instead of a frozen
+  control.
+
+- **Typing while a turn runs turns the corner button into Send.** The
+  button used to stay Stop after a draft was in the box, so the click that
+  should queue or steer looked like a cancel and did not get pressed. Stop
+  stays only while there is nothing to submit. A quote, file, or image
+  counts; whitespace does not. A `/goal` or `/plan` prompt that is still
+  waiting for its argument keeps Send disabled beside Stop. Esc still
+  stops the turn.
 
 ## [0.1.3] - 2026-09-22
 
