@@ -129,9 +129,10 @@ and a 15.0+ deployment target.
 ## Android release
 
 Sideload APKs ship on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
-[v0.1.7](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.7) attaches
-[`zwai-0.1.7-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.7/zwai-0.1.7-android.apk)
-(versionName `0.1.7`, versionCode `107`). iOS is `0.1.7` (107).
+[v0.1.8](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.8) attaches
+[`zwai-0.1.8-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.8/zwai-0.1.8-android.apk)
+(versionName `0.1.8`, versionCode `108`). iOS is `0.1.8` (108).
+[v0.1.7](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.7),
 [v0.1.6](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.6),
 [v0.1.5](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.5),
 [v0.1.4](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.4),

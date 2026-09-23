@@ -2345,6 +2345,24 @@ were left out on purpose, so that what shipped is complete rather than broad:
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
 
+## [0.1.8] - 2026-09-23
+
+Phone sideload. versionName `0.1.8`, versionCode `108`. Same debug key as
+v0.1.7, so an installed 0.1.7 updates in place. iOS marketing version
+`0.1.8`, build `108`.
+[`zwai-0.1.8-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.8/zwai-0.1.8-android.apk)
+is on [v0.1.8](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.8).
+
+### Fixed
+
+- **A phone chat with a model streams, and the thought stays visible.**
+  Completions are read as they arrive. The thought is the same live row as
+  a PC thread.
+- **A phone image on the responses wire still reaches a chat-only front.**
+  An image part that front rejects is sent once more as chat completions.
+  A rejected reasoning summary is omitted and the responses call is tried
+  again.
+
 ## [0.1.7] - 2026-09-23
 
 Phone sideload. versionName `0.1.7`, versionCode `107`. Same debug key as
