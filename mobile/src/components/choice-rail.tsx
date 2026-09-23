@@ -19,11 +19,13 @@ export function ChoiceRail({
   onChange: (id: string) => void
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    // min-w-0: a flex item's default minimum is the width of its chips, which
+    // pushes the screen past the phone instead of scrolling the row.
+    <div className="flex min-w-0 flex-col gap-1.5">
       <h2 className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
         {label}
       </h2>
-      <div role="radiogroup" aria-label={label} className="rail flex gap-1.5 overflow-x-auto pb-0.5">
+      <div role="radiogroup" aria-label={label} className="rail flex min-w-0 gap-1.5 overflow-x-auto pb-0.5">
         {choices.map((c) => (
           <button
             key={c.id || "default"}

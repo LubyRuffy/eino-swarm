@@ -82,6 +82,35 @@ test("a short conversation sits on the composer instead of under a blank screen"
 
 // The inbox is for reading what runs; starting is a screen that asks which
 // PC and which project first.
+test("new chat keeps the project row and the message box inside a narrow screen", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 })
+  await page.goto(WALKTHROUGH)
+  await backToInbox(page)
+  await page.getByTestId("new-chat").click()
+  // The screen slides in. Measuring during that slide reports a column
+  // that has not yet landed.
+  await page.locator(".screen-push").evaluate((el) =>
+    Promise.all(el.getAnimations().map((a) => a.finished)),
+  )
+
+  const width = page.viewportSize()?.width ?? 0
+  // The column used to size itself to the chips and the model row, so both
+  // ran past a narrow phone.
+  for (const locator of [
+    page.locator("main"),
+    page.getByRole("radiogroup", { name: "项目" }),
+    page.getByLabel("新消息"),
+    page.getByLabel("模型"),
+  ]) {
+    const box = await locator.boundingBox()
+    expect(box).toBeTruthy()
+    expect(box!.x).toBeGreaterThanOrEqual(-1)
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width + 1)
+  }
+})
+
 test("New chat picks a PC and a project, then opens what it started", async ({ page }) => {
   await page.goto(WALKTHROUGH)
   await backToInbox(page)

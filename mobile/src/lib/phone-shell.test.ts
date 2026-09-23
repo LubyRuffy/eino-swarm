@@ -11,4 +11,8 @@ describe("phoneShell", () => {
     expect(phoneShell(1)).toBe("home")
     expect(phoneShell(2)).toBe("home")
   })
+
+  it("paints the inbox chrome once a model is saved, even with no PC", () => {
+    expect(phoneShell(0, 1)).toBe("home")
+  })
 })

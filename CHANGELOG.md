@@ -13,6 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **The phone can talk to a model without a PC.** Menu → Models (or Connect a
+  model on the scan screen) saves an OpenAI-compatible endpoint: base URL,
+  optional key, chat completions or responses, discover, timeout. After one
+  is saved, a Chat tab sits on the top row. That chat uses the same composer
+  as a PC thread: model, thinking level, image or file. A text file is sent
+  as text; an image is vision. The key stays on the phone.
+
 - **The phone menu can check for a new version.** Check for updates shows
   that it is fetching. The current build says so. A newer one asks before
   installing. A failed request shows the response's own error. The automatic
@@ -197,6 +204,25 @@ co-working app built on it. The library API is unchanged except where noted
   while General is showing.
 
 ### Fixed
+
+- **A phone chat with a model of its own no longer loses or repeats the reply.**
+  Leaving the conversation stops the call, so Back does not hide Stop and
+  leave the composer stuck. A gateway that resends the whole buffer is not
+  concatenated. A finished JSON body whose text contains `data:` is still the
+  answer. A responses stream that sends only the completed snapshot is shown.
+  A dropped socket is a failure, not a finished empty reply. A hang before
+  the first byte uses the same idle timeout. Discover does not wipe a name
+  typed while the model list is loading.
+
+- **New chat on the phone stays on the screen.** The start screen is a flex
+  column. `mx-auto` there does not stretch, so the project chips and the
+  message box sized themselves and ran past the edge. The column now has a
+  definite width; extra projects scroll sideways, and the model and thinking
+  picks shrink instead of widening the box.
+
+- **iOS declares why the camera component references the photo library.**
+  App Store processing rejected the binary because those purpose strings
+  were missing. The app still only asks for the camera.
 
 - **A live phone conversation stays under its project.** In progress used to
   be the only place that row appeared, because `list` keeps it off the idle

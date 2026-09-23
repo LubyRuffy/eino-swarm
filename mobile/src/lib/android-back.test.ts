@@ -23,6 +23,11 @@ describe("android system back", () => {
     expect(androidBackLayer({ sheet: false, compose: false, thread: true })).toBe("thread")
   })
 
+  it("pops a direct-model thread back to the chat list", () => {
+    expect(androidBackLayer({ sheet: false, compose: false, thread: false, chat: true })).toBe("chat")
+    expect(androidBackLayer({ sheet: true, compose: false, thread: false, chat: true })).toBe("sheet")
+  })
+
   it("finishes only from the inbox or the unbound scan screen", () => {
     expect(androidBackLayer({ sheet: false, compose: false, thread: false })).toBe("root")
   })

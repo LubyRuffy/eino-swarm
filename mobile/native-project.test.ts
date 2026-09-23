@@ -17,6 +17,11 @@ describe("native phone apps", () => {
     expect(existsSync(plistPath), "ios project missing — cap add ios").toBe(true)
     const plist = read("ios/App/App/Info.plist")
     expect(plist).toMatch(/NSCameraUsageDescription/)
+    // The camera component links the photo library. App Store processing
+    // rejects the binary when those purpose strings are absent, even though
+    // this app only requests the camera.
+    expect(plist).toMatch(/NSPhotoLibraryUsageDescription/)
+    expect(plist).toMatch(/NSPhotoLibraryAddUsageDescription/)
     expect(plist).toMatch(/NSAllowsArbitraryLoads/)
     expect(plist).not.toMatch(leakedHost)
     const pbx = read("ios/App/App.xcodeproj/project.pbxproj")

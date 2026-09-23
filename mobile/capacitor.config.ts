@@ -13,6 +13,13 @@ const config: CapacitorConfig = {
     androidScheme: "https",
     cleartext: true,
   },
+  plugins: {
+    // The webview origin is not one a model endpoint allows. The platform
+    // HTTP stack places the call. A buffered body is still a valid reply.
+    CapacitorHttp: {
+      enabled: true,
+    },
+  },
 }
 
 export default config

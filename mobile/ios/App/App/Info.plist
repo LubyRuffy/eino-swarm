@@ -49,6 +49,10 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>The camera reads the pairing QR shown on the computer.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>The camera component references the photo library. This app reads the pairing code with the camera and does not open photos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>The camera component references saving a photo. This app reads the pairing code with the camera and does not save photos.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoads</key>

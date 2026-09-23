@@ -130,6 +130,11 @@ describe("Composer", () => {
         onSubmit={onSubmit}
       />,
     )
+    // A select's minimum is the option text. Left at that width, the model
+    // and the thinking level push the box off a phone.
+    expect(screen.getByLabelText("Model")).toHaveClass("min-w-0")
+    expect(screen.getByLabelText("Thinking level")).toHaveClass("min-w-0")
+    expect(screen.getByLabelText("Message")).toHaveClass("min-w-0")
     expect(screen.getByRole("option", { name: "one" })).toBeInTheDocument()
     expect(screen.getByRole("option", { name: "two" })).toBeInTheDocument()
     expect(screen.getByRole("option", { name: "Low thinking" })).toBeInTheDocument()

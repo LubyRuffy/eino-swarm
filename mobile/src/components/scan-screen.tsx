@@ -14,12 +14,14 @@ export function ScanScreen({
   error,
   onToggleLocale,
   embedded,
+  onAddModel,
 }: {
   onURI: (uri: string) => void
   busy?: boolean
   error?: string
   onToggleLocale?: () => void
   embedded?: boolean
+  onAddModel?: () => void
 }) {
   const [paste, setPaste] = useState("")
   const [localError, setLocalError] = useState<string>()
@@ -80,6 +82,11 @@ export function ScanScreen({
       <Button variant="outline" onClick={submitPaste} disabled={busy}>
         {t("scan.paste")}
       </Button>
+      {onAddModel && !embedded ? (
+        <Button type="button" variant="outline" onClick={onAddModel}>
+          {t("chat.connect")}
+        </Button>
+      ) : null}
       {shown ? (
         <p className="text-sm text-destructive" role="alert">
           {shown}

@@ -157,7 +157,9 @@ picks the Gradle task (default both). JDK 21 is required (Capacitor
 Hub URL and pairing live on the PC (Settings → Phone). This app
 only stores the device identity and the redeem ticket on the phone. Camera
 and cleartext (user-typed hub URLs, including `http` on a LAN) are declared
-in `Info.plist` and `AndroidManifest.xml`; nothing compiles a hub hostname.
+in `Info.plist` and `AndroidManifest.xml`. The iOS camera component also
+references the photo library, so those purpose strings are declared too;
+the app itself only asks for the camera. Nothing compiles a hub hostname.
 
 ## Updates
 

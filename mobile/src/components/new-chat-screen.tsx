@@ -46,7 +46,10 @@ export function NewChatScreen({
     projects.some((p) => p.id === initialProject) ? initialProject : "",
   )
   return (
-    <main className="mx-auto flex h-full max-w-lg flex-col overflow-hidden">
+    // mx-auto on a flex child does not stretch. Without a definite width the
+    // chip row and the composer size themselves, and whatever passes the
+    // edge cannot be scrolled back.
+    <main className="mx-auto flex h-full min-w-0 w-full max-w-lg flex-col overflow-hidden">
       <header className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2">
         <Button
           type="button"
@@ -60,7 +63,7 @@ export function NewChatScreen({
         <h1 className="min-w-0 flex-1 truncate text-[15px] font-medium">{t("compose.title")}</h1>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3 py-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-3 py-4">
         <p className="px-1 text-[13px] text-muted-foreground">{t("compose.hint")}</p>
         <ChoiceRail
           label={t("home.hosts")}

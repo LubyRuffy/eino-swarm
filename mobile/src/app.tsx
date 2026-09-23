@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { AddHostSheet } from "@/components/add-host-sheet"
 import type { ComposerExtra } from "@/components/composer"
+import { DirectChatScreen } from "@/components/direct-chat-screen"
 import { HomeScreen } from "@/components/home-screen"
+import { ProviderSheet } from "@/components/provider-sheet"
 import { LinkBanner } from "@/components/link-banner"
 import { NewChatScreen } from "@/components/new-chat-screen"
 import { ScanScreen } from "@/components/scan-screen"
@@ -46,6 +48,7 @@ import {
   OpWatch,
 } from "@/lib/rpc"
 import { androidBackLayer, installAndroidBack } from "@/lib/android-back"
+import { loadProviders, type DirectProvider } from "@/lib/direct-provider"
 import { phoneShell } from "@/lib/phone-shell"
 import { pickResumeThread, detailFromListing, rosterFingerprint } from "@/lib/resume"
 import {
@@ -75,6 +78,11 @@ import { sendComposed } from "@/lib/turn-send"
 export function App() {
   const [locale, setLocaleTick] = useState(getLocale())
   const [hosts, setHosts] = useState(() => loadSavedLinks())
+  const [providers, setProviders] = useState(() => loadProviders())
+  const [surface, setSurface] = useState<"hosts" | "chat">(() =>
+    loadProviders().length > 0 && loadSavedLinks().length === 0 ? "chat" : "hosts",
+  )
+  const [modelsOpen, setModelsOpen] = useState(false)
   const [activeFp, setActiveFp] = useState(
     () => loadActiveFingerprint() || loadSavedLinks()[0]?.fingerprint || "",
   )
@@ -110,6 +118,10 @@ export function App() {
   const recoveringRef = useRef(false)
   const unlinkingRef = useRef(false)
   const bindGen = useRef(0)
+  const modelsRef = useRef(false)
+  const surfaceRef = useRef(surface)
+  const directOpenRef = useRef(false)
+  const directCloseRef = useRef<() => void>(() => undefined)
   const recoverAttempt = useRef(0)
   const retryTimer = useRef(0)
   const rosterFp = useRef("")
@@ -118,6 +130,8 @@ export function App() {
   viewRef.current = view
   addingRef.current = adding
   composingRef.current = composing
+  modelsRef.current = modelsOpen
+  surfaceRef.current = surface
 
   const commitView = (next: PhoneView) => {
     viewRef.current = next
@@ -225,6 +239,7 @@ export function App() {
   const consumeFirstList = async (target: RemoteLink, resp: RemoteResponse) => {
     applyList(resp, false, target)
     if (!resp.ok || resumedRef.current || viewRef.current.detail) return
+    if (surfaceRef.current === "chat") return
     const id = pickResumeThread(loadLastThreadId(), resp.running ?? [], resp.threads ?? [])
     if (!id) return
     commitView(openView(detailFromListing(id, resp.running ?? [], resp.threads ?? [])))
@@ -593,14 +608,25 @@ export function App() {
   const backRef = useRef<() => boolean>(() => false)
   backRef.current = () => {
     const layer = androidBackLayer({
-      sheet: addingRef.current,
-      compose: composingRef.current,
-      thread: Boolean(viewRef.current.detail),
+      sheet: addingRef.current || modelsRef.current,
+      compose: composingRef.current && surfaceRef.current !== "chat",
+      thread: Boolean(viewRef.current.detail) && surfaceRef.current !== "chat",
+      chat: surfaceRef.current === "chat" && directOpenRef.current,
     })
     if (layer === "sheet") {
+      if (modelsRef.current) {
+        modelsRef.current = false
+        setModelsOpen(false)
+        return true
+      }
       addingRef.current = false
       setAdding(false)
       setAddError(undefined)
+      return true
+    }
+    if (layer === "chat") {
+      directOpenRef.current = false
+      directCloseRef.current()
       return true
     }
     if (layer === "compose") {
@@ -658,6 +684,7 @@ export function App() {
   }
 
   const selectHost = (fp: string) => {
+    setSurface("hosts")
     if (fp === activeFp && linkRef.current?.alive()) return
     bindGen.current += 1
     window.clearTimeout(retryTimer.current)
@@ -676,7 +703,30 @@ export function App() {
     void boot()
   }
 
-  if (phoneShell(hosts.length) === "scan") {
+  const commitProviders = (next: DirectProvider[]) => {
+    const appeared = providers.length === 0 && next.length > 0
+    setProviders(next)
+    if (next.length === 0) setSurface("hosts")
+    else if (appeared) {
+      setSurface("chat")
+      setComposing(false)
+    }
+  }
+
+  const openChat = () => {
+    setSurface("chat")
+    setComposing(false)
+  }
+
+  const modelSheet = modelsOpen ? (
+    <ProviderSheet
+      providers={providers}
+      onClose={() => setModelsOpen(false)}
+      onChange={commitProviders}
+    />
+  ) : null
+
+  if (phoneShell(hosts.length, providers.length) === "scan") {
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <UpdateNotice />
@@ -687,8 +737,10 @@ export function App() {
             busy={bindBusy}
             error={error}
             onToggleLocale={flipLocale}
+            onAddModel={() => setModelsOpen(true)}
           />
         </div>
+        {modelSheet}
       </div>
     )
   }
@@ -713,7 +765,7 @@ export function App() {
     />
   )
 
-  if (composing) {
+  if (composing && surface !== "chat") {
     return (
       <div className="flex h-full min-w-0 flex-col overflow-hidden">
         <UpdateNotice />
@@ -742,11 +794,12 @@ export function App() {
           />
         </div>
         {sheet}
+        {modelSheet}
       </div>
     )
   }
 
-  if (view.detail && link) {
+  if (view.detail && link && surface !== "chat") {
     const detail = view.detail
     return (
       <div className="flex h-full min-w-0 flex-col overflow-hidden">
@@ -825,6 +878,43 @@ export function App() {
           />
         </div>
         {sheet}
+        {modelSheet}
+      </div>
+    )
+  }
+
+  if (surface === "chat") {
+    return (
+      <div className="flex h-full min-w-0 flex-col overflow-hidden">
+        <UpdateNotice />
+        {link ? banner : null}
+        <div className="min-h-0 flex-1">
+          <DirectChatScreen
+            key={locale}
+            hosts={hosts}
+            activeFingerprint={activeFp}
+            path={link?.path ?? "relay"}
+            connected={Boolean(link?.alive())}
+            reconnecting={reconnecting}
+            providers={providers}
+            onSelectHost={selectHost}
+            onAddHost={() => {
+              setAddError(undefined)
+              setAdding(true)
+            }}
+            onUnlink={unlink}
+            onToggleLocale={flipLocale}
+            onModels={() => setModelsOpen(true)}
+            onOpenChange={(open) => {
+              directOpenRef.current = open
+            }}
+            onBindClose={(close) => {
+              directCloseRef.current = close
+            }}
+          />
+        </div>
+        {sheet}
+        {modelSheet}
       </div>
     )
   }
@@ -874,9 +964,13 @@ export function App() {
           onMore={() => void loadMore()}
           onUnlink={unlink}
           onToggleLocale={flipLocale}
+          showChat={providers.length > 0}
+          onSelectChat={openChat}
+          onModels={() => setModelsOpen(true)}
         />
       </div>
       {sheet}
+      {modelSheet}
     </div>
   )
 }

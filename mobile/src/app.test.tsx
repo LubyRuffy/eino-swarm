@@ -14,6 +14,7 @@ import {
   type RemoteRequest,
   type RemoteResponse,
 } from "@/lib/rpc"
+import { saveProviders } from "@/lib/direct-provider"
 import { saveLink } from "@/lib/store"
 
 vi.mock("@/lib/client", async (importOriginal) => {
@@ -42,6 +43,27 @@ describe("App boot chrome", () => {
   it("does not offer an app update in the browser", () => {
     render(<App />)
     expect(screen.queryByRole("button", { name: t("update.upgrade") })).not.toBeInTheDocument()
+  })
+
+  it("shows a chat tab instead of the scan form once a model is saved", async () => {
+    saveProviders([
+      {
+        id: "p-1",
+        label: "Desk",
+        baseURL: "https://endpoint.invalid/v1",
+        apiKey: "",
+        api: "chat",
+        model: "one",
+        catalog: ["one"],
+        timeoutSeconds: 300,
+      },
+    ])
+    render(<App />)
+    expect(screen.getByRole("tab", { name: t("chat.tab") })).toHaveAttribute("aria-selected", "true")
+    expect(screen.queryByRole("button", { name: t("scan.camera") })).not.toBeInTheDocument()
+    expect(screen.getByRole("option", { name: "one" })).toBeInTheDocument()
+    expect(screen.getByLabelText(t("composer.thinking"))).toBeInTheDocument()
+    expect(screen.getByLabelText(t("composer.attach"))).toBeInTheDocument()
   })
 
   it("shows the scan form only when this phone has never bound", () => {

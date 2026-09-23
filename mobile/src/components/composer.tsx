@@ -126,7 +126,7 @@ export function Composer({
   }
 
   return (
-    <div className="shrink-0 border-t border-border bg-background px-3 pb-3 pt-2">
+    <div className="min-w-0 shrink-0 border-t border-border bg-background px-3 pb-3 pt-2">
       {above}
       {attached.length > 0 ? (
         <ul className="mb-2 flex flex-col gap-1">
@@ -150,7 +150,7 @@ export function Composer({
       ) : null}
       <form
         className={cn(
-          "flex items-end gap-1.5 rounded-3xl bg-muted p-1.5 transition-colors",
+          "flex min-w-0 items-end gap-1.5 rounded-3xl bg-muted p-1.5 transition-colors",
           "focus-within:ring-1 focus-within:ring-ring",
         )}
         aria-busy={pending || undefined}
@@ -194,7 +194,7 @@ export function Composer({
             void fire(onSubmit)
           }}
           className={cn(
-            "min-h-9 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-5",
+            "min-h-9 min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-5",
             "placeholder:text-muted-foreground focus-visible:outline-none disabled:opacity-60",
           )}
         />
@@ -216,7 +216,7 @@ export function Composer({
           )}
         </button>
       </form>
-      <div className="mt-1.5 flex items-center gap-1.5">
+      <div className="mt-1.5 flex min-w-0 items-center gap-1.5">
         <input
           ref={fileRef}
           type="file"
@@ -245,7 +245,7 @@ export function Composer({
         {models.length > 0 ? (
           <select
             aria-label={t("composer.model")}
-            className="h-8 min-w-0 flex-1 truncate rounded-full bg-muted px-2 text-xs text-foreground"
+            className="h-8 w-0 min-w-0 flex-1 truncate rounded-full bg-muted px-2 text-xs text-foreground"
             value={choiceValue(pick.providerId, pick.model)}
             disabled={disabled || pending}
             onChange={(e) => {
@@ -267,7 +267,7 @@ export function Composer({
         {reasoningLevels.length > 0 ? (
           <select
             aria-label={t("composer.thinking")}
-            className="h-8 max-w-[46%] shrink-0 truncate rounded-full bg-muted px-2 text-xs text-foreground"
+            className="h-8 min-w-0 max-w-[46%] shrink truncate rounded-full bg-muted px-2 text-xs text-foreground"
             value={level}
             disabled={disabled || pending}
             onChange={(e) => tune({ providerId: pick.providerId, model: pick.model, reasoning: e.target.value })}

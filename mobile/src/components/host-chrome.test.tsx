@@ -167,4 +167,45 @@ describe("HostChrome", () => {
     expect(pip.className).not.toContain("--online")
     expect(pip).toHaveAttribute("title", t("home.offline"))
   })
+
+  it("adds a chat tab only after a model exists, and does not mark a PC selected under it", () => {
+    setLocale("en")
+    const onSelectChat = vi.fn()
+    const onModels = vi.fn()
+    const { rerender } = render(
+      <HostChrome
+        hosts={[host("a", "desk-one")]}
+        activeFingerprint="a"
+        path="relay"
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onNewChat={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    expect(screen.queryByRole("tab", { name: t("chat.tab") })).not.toBeInTheDocument()
+    rerender(
+      <HostChrome
+        hosts={[host("a", "desk-one")]}
+        activeFingerprint="a"
+        path="relay"
+        showChat
+        chatSelected
+        onSelect={vi.fn()}
+        onSelectChat={onSelectChat}
+        onAdd={vi.fn()}
+        onNewChat={vi.fn()}
+        onUnlink={vi.fn()}
+        onModels={onModels}
+      />,
+    )
+    expect(screen.getByRole("tablist", { name: t("home.nav") })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: t("chat.tab") })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("tab", { name: "desk-one" })).toHaveAttribute("aria-selected", "false")
+    fireEvent.click(screen.getByRole("tab", { name: t("chat.tab") }))
+    expect(onSelectChat).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole("button", { name: t("home.menu") }))
+    fireEvent.click(screen.getByRole("menuitem", { name: t("chat.models") }))
+    expect(onModels).toHaveBeenCalledOnce()
+  })
 })

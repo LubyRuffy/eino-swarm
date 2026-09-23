@@ -40,6 +40,14 @@ describe("NewChatScreen", () => {
     expect(within(pcs).getByRole("radio", { name: "lab" })).not.toBeChecked()
 
     const projects = screen.getByRole("radiogroup", { name: t("home.project") })
+    // A flex column sizes to its chips unless the row can shrink. The
+    // message box then leaves the phone with them.
+    expect(projects).toHaveClass("min-w-0")
+    expect(projects).toHaveClass("overflow-x-auto")
+    expect(screen.getByRole("heading", { name: t("compose.title") }).closest("main")).toHaveClass(
+      "min-w-0",
+      "w-full",
+    )
     expect(within(projects).getByRole("radio", { name: t("home.defaultProject") })).toBeChecked()
     fireEvent.click(within(projects).getByRole("radio", { name: "notes" }))
 

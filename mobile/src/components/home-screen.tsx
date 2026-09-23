@@ -56,6 +56,9 @@ export function HomeScreen({
   onUnlink,
   onRetry,
   onRefresh,
+  showChat = false,
+  onSelectChat,
+  onModels,
   path,
   connected = true,
   reconnecting = false,
@@ -78,6 +81,9 @@ export function HomeScreen({
   onUnlink: () => void
   onRetry?: () => void
   onRefresh?: () => Promise<void> | void
+  showChat?: boolean
+  onSelectChat?: () => void
+  onModels?: () => void
   path: string
   connected?: boolean
   reconnecting?: boolean
@@ -122,6 +128,9 @@ export function HomeScreen({
         onNewChat={() => onNewChat("")}
         onUnlink={onUnlink}
         onToggleLocale={onToggleLocale}
+        showChat={showChat}
+        onSelectChat={onSelectChat}
+        onModels={onModels}
       />
 
       {waiting ? (

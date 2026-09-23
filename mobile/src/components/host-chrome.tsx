@@ -1,4 +1,4 @@
-import { Menu, Monitor, SquarePen } from "lucide-react"
+import { Menu, MessageSquare, Monitor, SquarePen } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -18,6 +18,10 @@ export function HostChrome({
   onNewChat,
   onUnlink,
   onToggleLocale,
+  showChat = false,
+  chatSelected = false,
+  onSelectChat,
+  onModels,
 }: {
   hosts: SavedLink[]
   activeFingerprint: string
@@ -29,6 +33,11 @@ export function HostChrome({
   onNewChat: () => void
   onUnlink: () => void
   onToggleLocale?: () => void
+  /** A saved endpoint. The tab stays off until one exists. */
+  showChat?: boolean
+  chatSelected?: boolean
+  onSelectChat?: () => void
+  onModels?: () => void
 }) {
   const [menu, setMenu] = useState(false)
   const [versionCheck, setVersionCheck] = useState(false)
@@ -40,7 +49,7 @@ export function HostChrome({
   useEffect(() => {
     const chip = rail.current?.querySelector('[aria-selected="true"]')
     chip?.scrollIntoView?.({ behavior: "smooth", block: "nearest", inline: "nearest" })
-  }, [activeFingerprint, hosts.length])
+  }, [activeFingerprint, hosts.length, chatSelected, showChat])
 
   return (
     // One row: which PC this is beats repeating the app's own name.
@@ -75,6 +84,16 @@ export function HostChrome({
             >
               {t("home.addHost")}
             </MenuRow>
+            {onModels ? (
+              <MenuRow
+                onClick={() => {
+                  setMenu(false)
+                  onModels()
+                }}
+              >
+                {t("chat.models")}
+              </MenuRow>
+            ) : null}
             <MenuRow
               onClick={() => {
                 setMenu(false)
@@ -109,11 +128,29 @@ export function HostChrome({
       <div
         ref={rail}
         role="tablist"
-        aria-label={t("home.hosts")}
+        aria-label={showChat ? t("home.nav") : t("home.hosts")}
         className="rail flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
       >
+        {showChat ? (
+          <button
+            type="button"
+            role="tab"
+            aria-label={t("chat.tab")}
+            aria-selected={chatSelected}
+            className={cn(
+              "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium",
+              chatSelected
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-muted-foreground",
+            )}
+            onClick={onSelectChat}
+          >
+            <MessageSquare className="size-3.5 shrink-0" aria-hidden />
+            <span className="max-w-28 truncate">{t("chat.tab")}</span>
+          </button>
+        ) : null}
         {hosts.map((host) => {
-          const selected = host.fingerprint === activeFingerprint
+          const selected = !chatSelected && host.fingerprint === activeFingerprint
           const label = linkLabel(host, hosts)
           return (
             <button
