@@ -11,6 +11,7 @@ import {
   modelsURL,
   normalizeApiStyle,
   normalizeReasoning,
+  peelThought,
   pieceFromData,
   redact,
   replyFromJSON,
@@ -96,12 +97,15 @@ describe("openai wire", () => {
       ],
       "medium",
     )
-    expect(body.reasoning).toEqual({ effort: "medium" })
+    expect(body.reasoning).toEqual({ effort: "medium", summary: "auto" })
     const input = body.input as { role: string; content: { type: string }[] }[]
     expect(input[0].content[0].type).toBe("input_text")
     expect(input[1].content[0].type).toBe("output_text")
     expect(input[2].content[0].type).toBe("input_image")
     expect(responsesRequestBody("m", turns, "")).not.toHaveProperty("reasoning")
+    expect(responsesRequestBody("m", turns, "high", { summary: false }).reasoning).toEqual({
+      effort: "high",
+    })
   })
 
   it("reads model ids and ignores a duplicate", () => {
@@ -149,6 +153,23 @@ describe("openai wire", () => {
       text: "yo",
       reasoning: "",
     })
+  })
+
+  it("reads a thought part, a reasoning detail, and a wrapped thought", () => {
+    expect(
+      pieceFromData(
+        '{"choices":[{"delta":{"content":[{"type":"reasoning_text","text":"th"},{"type":"text","text":"pong"}]}}]}',
+      ),
+    ).toEqual({ text: "pong", reasoning: "th" })
+    expect(
+      pieceFromData('{"choices":[{"delta":{"reasoning_details":[{"text":"th"}]}}]}'),
+    ).toEqual({ text: "", reasoning: "th" })
+    expect(peelThought("<think>th</think>pong")).toEqual({ text: "pong", reasoning: "th" })
+    expect(peelThought("<thinking>th</thinking>pong")).toEqual({ text: "pong", reasoning: "th" })
+    expect(peelThought("<think>th")).toEqual({ text: "", reasoning: "th" })
+    expect(peelThought("a<thi")).toEqual({ text: "a", reasoning: "" })
+    expect(peelThought("a<thi", true)).toEqual({ text: "a<thi", reasoning: "" })
+    expect(peelThought("see <b>x</b>")).toEqual({ text: "see <b>x</b>", reasoning: "" })
   })
 
   it("reads responses deltas and skips the completed snapshot", () => {

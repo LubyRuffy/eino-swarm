@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react"
 import { Composer, type ComposerExtra } from "@/components/composer"
 import { HostChrome } from "@/components/host-chrome"
 import { PhoneMarkdown } from "@/components/markdown"
+import { ThreadLog } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
 import {
   AttachmentTooBig,
@@ -20,6 +21,7 @@ import {
   type DirectThread,
 } from "@/lib/direct-threads"
 import { t } from "@/lib/i18n"
+import type { CompactBlock } from "@/lib/transcript"
 import { streamCompletion } from "@/lib/openai-client"
 import { ModelCallError, redact } from "@/lib/openai-wire"
 import type { SavedLink } from "@/lib/store"
@@ -301,36 +303,62 @@ export function DirectChatScreen({
 }
 
 function MessageRow({ message, live }: { message: DirectMessage; live: boolean }) {
-  const mine = message.role === "user"
-  return (
-    <div className={mine ? "flex justify-end" : "flex justify-start"}>
-      <div className={mine ? "max-w-[85%] rounded-2xl bg-muted px-3 py-2" : "max-w-[85%] px-1 py-1"}>
-        {message.attachments?.length ? (
-          <ul className="mb-1 flex flex-col gap-1">
-            {message.attachments.map((item) => (
-              <li key={item.name} className="truncate text-xs text-muted-foreground">
-                {item.name}
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        {message.reasoning ? (
-          <details className="mb-1 text-xs text-muted-foreground" open={live || undefined}>
-            <summary>{t("thread.thought")}</summary>
-            <p className="whitespace-pre-wrap">{message.reasoning}</p>
-          </details>
-        ) : null}
-        {message.text ? <PhoneMarkdown text={message.text} /> : null}
-        {live && !message.text && !message.reasoning && !message.error ? (
-          <p className="text-sm text-muted-foreground">{t("thread.thinking")}</p>
-        ) : null}
-        {message.error ? (
-          <p className="text-sm text-destructive" role="alert">
-            {message.error}
-          </p>
-        ) : null}
+  if (message.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl bg-muted px-3 py-2">
+          <AttachmentChips items={message.attachments} />
+          {message.text ? <PhoneMarkdown text={message.text} /> : null}
+        </div>
       </div>
+    )
+  }
+  return (
+    <div className="min-w-0 max-w-full">
+      <AttachmentChips items={message.attachments} />
+      <ThreadLog blocks={assistantBlocks(message, live)} running={live && !message.error} />
+      {message.error ? (
+        <p className="text-sm text-destructive" role="alert">
+          {message.error}
+        </p>
+      ) : null}
     </div>
+  )
+}
+
+function assistantBlocks(message: DirectMessage, live: boolean): CompactBlock[] {
+  const blocks: CompactBlock[] = []
+  const thought = message.reasoning ?? ""
+  const thinking = live && !message.text && !message.error
+  if (thought || thinking) {
+    blocks.push({
+      id: `${message.id}:thought`,
+      kind: "reasoning",
+      text: thought,
+      streaming: thinking,
+    })
+  }
+  if (message.text) {
+    blocks.push({
+      id: `${message.id}:answer`,
+      kind: "answer",
+      text: message.text,
+      streaming: live && !message.error,
+    })
+  }
+  return blocks
+}
+
+function AttachmentChips({ items }: { items: DirectMessage["attachments"] }) {
+  if (!items?.length) return null
+  return (
+    <ul className="mb-1 flex flex-col gap-1">
+      {items.map((item) => (
+        <li key={item.name} className="truncate text-xs text-muted-foreground">
+          {item.name}
+        </li>
+      ))}
+    </ul>
   )
 }
 

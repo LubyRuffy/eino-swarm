@@ -205,6 +205,22 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A phone image on the responses wire still reaches a chat-only front.**
+  A responses front that translates onto chat completions rejects an image
+  part as having no chat equivalent. That turn is sent once more as chat
+  completions. A rejected reasoning summary is dropped and the same
+  responses call is tried again, so a text turn stays on responses. A
+  responses endpoint that accepts the body is not called twice.
+
+- **A phone chat with a model streams, and the thought stays visible.** The
+  platform HTTP stack returns a POST body in one piece, so the reply appeared
+  at the end and the thought was a disclosure that closed when the turn
+  finished. Completions now read each chunk (`StreamBody` on the device,
+  `fetch` in the browser). The thought is the same live row as a PC thread.
+  A responses call that sets a thinking level also asks for a summary, which
+  is the text that API returns. A thought the endpoint wraps in think tags
+  is that row.
+
 - **A phone chat with a model of its own no longer loses or repeats the reply.**
   Leaving the conversation stops the call, so Back does not hide Stop and
   leave the composer stuck. A gateway that resends the whole buffer is not

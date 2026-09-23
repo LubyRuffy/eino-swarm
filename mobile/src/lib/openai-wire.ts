@@ -82,6 +82,7 @@ export function responsesRequestBody(
   model: string,
   turns: WireTurn[],
   reasoning: string,
+  opts?: { summary?: boolean },
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model,
@@ -89,7 +90,13 @@ export function responsesRequestBody(
     input: turns.map(responsesMessage),
   }
   const effort = normalizeReasoning(reasoning)
-  if (effort) body.reasoning = { effort }
+  // effort alone can reason and return no readable text. summary is the
+  // part the responses API will actually send. A front that rejects the
+  // field is retried without it; the default stays on.
+  if (effort) {
+    body.reasoning =
+      opts?.summary === false ? { effort } : { effort, summary: "auto" }
+  }
   return body
 }
 
@@ -178,11 +185,68 @@ function parseSSEBlock(raw: string): SSEEvent | null {
   return { event, data: data.join("\n") }
 }
 
+const resentMinRunes = 12
+
+const thoughtOpens = [
+  { name: "thinking", open: "<thinking>" },
+  { name: "think", open: "<think>" },
+] as const
+
+/** Pulls a thought the endpoint wrapped in think tags out of the answer.
+ *  An unfinished opener stays in the thought. A trailing prefix of an opener
+ *  is held back until the next chunk, unless flush is set at the end. */
+export function peelThought(raw: string, flush = false): { text: string; reasoning: string } {
+  let text = ""
+  let reasoning = ""
+  let rest = raw
+  while (rest) {
+    let at = -1
+    let open = ""
+    let name = ""
+    for (const tag of thoughtOpens) {
+      const i = rest.indexOf(tag.open)
+      if (i >= 0 && (at < 0 || i < at)) {
+        at = i
+        open = tag.open
+        name = tag.name
+      }
+    }
+    if (at < 0) {
+      text += rest
+      break
+    }
+    text += rest.slice(0, at)
+    const after = at + open.length
+    const close = `</${name}>`
+    const end = rest.indexOf(close, after)
+    if (end < 0) {
+      reasoning += rest.slice(after)
+      break
+    }
+    reasoning += rest.slice(after, end)
+    rest = rest.slice(end + close.length)
+  }
+  if (!flush) {
+    const held = trailingTagPrefix(text)
+    if (held) text = text.slice(0, text.length - held.length)
+  }
+  return { text, reasoning }
+}
+
+function trailingTagPrefix(text: string): string {
+  const max = "<thinking>".length - 1
+  const start = Math.max(0, text.length - max)
+  for (let i = start; i < text.length; i++) {
+    const suffix = text.slice(i)
+    if (suffix.includes(">")) continue
+    if (thoughtOpens.some((tag) => tag.open.startsWith(suffix))) return suffix
+  }
+  return ""
+}
+
 /** A gateway that puts the whole buffer in every chunk must not paint the
  *  sentence again. A one-rune repeat is still a repeat; a sentence-sized
  *  echo is the snapshot. Same rule as signal.absorbChunk. */
-const resentMinRunes = 12
-
 export function absorbChunk(prev: string, chunk: string): string {
   if (!chunk) return prev
   if (!prev) return chunk
@@ -226,9 +290,13 @@ export function replyFromJSON(json: unknown): StreamPiece {
 function recordPiece(root: Record<string, unknown> | null): StreamPiece {
   const choice = firstRecord(root?.choices)
   const message = asRecord(choice?.message) ?? choice
-  const fromChoice = textOf(message?.content) || textOf(choice?.text)
+  const parts = contentParts(message?.content)
+  const fromChoice = parts.text || textOf(choice?.text)
   const fromReason =
-    stringOf(message?.reasoning_content) || stringOf(message?.reasoning)
+    parts.reasoning ||
+    textish(message?.reasoning_content) ||
+    textish(message?.reasoning) ||
+    textish(message?.reasoning_details)
   if (fromChoice || fromReason) return { text: fromChoice, reasoning: fromReason }
   const kind = stringOf(root?.type)
   if (kind.endsWith(".done")) {
@@ -275,8 +343,9 @@ function deltaPiece(json: unknown): StreamPiece | null {
   if (!root) return null
   const type = stringOf(root.type)
   if (type.endsWith(".done") || type === "response.completed") return null
-  if (typeof root.delta === "string" && type.includes("reasoning")) {
-    return { text: "", reasoning: root.delta }
+  if (type.includes("reasoning")) {
+    const extra = typeof root.delta === "string" ? root.delta : textish(root.delta)
+    if (extra) return { text: "", reasoning: extra }
   }
   if (typeof root.delta === "string" && (type.includes("output_text") || type === "")) {
     return { text: root.delta, reasoning: "" }
@@ -284,9 +353,14 @@ function deltaPiece(json: unknown): StreamPiece | null {
   const choice = firstRecord(root.choices)
   const delta = asRecord(choice?.delta)
   if (!delta) return null
-  const text = textOf(delta.content) || stringOf(delta.text)
+  const parts = contentParts(delta.content)
+  const text = parts.text || stringOf(delta.text)
   const reasoning =
-    stringOf(delta.reasoning_content) || stringOf(delta.reasoning) || stringOf(delta.reasoning_text)
+    parts.reasoning ||
+    textish(delta.reasoning_content) ||
+    textish(delta.reasoning) ||
+    textish(delta.reasoning_text) ||
+    textish(delta.reasoning_details)
   if (!text && !reasoning) return null
   return { text, reasoning }
 }
@@ -302,11 +376,14 @@ function outputPiece(root: Record<string, unknown> | null): StreamPiece {
   for (const item of output) {
     const row = asRecord(item)
     if (!row) continue
-    if (row.type === "reasoning") {
-      reasoning += summaryText(row.summary)
+    if (row.type === "reasoning" || isThoughtKind(stringOf(row.type))) {
+      const parts = contentParts(row.content)
+      reasoning += summaryText(row.summary) + parts.reasoning + parts.text
       continue
     }
-    text += textOf(row.content)
+    const parts = contentParts(row.content)
+    reasoning += parts.reasoning
+    text += parts.text
   }
   return { text, reasoning }
 }
@@ -338,14 +415,38 @@ function errorMessage(json: unknown): string {
 }
 
 function textOf(content: unknown): string {
-  if (typeof content === "string") return content
-  if (!Array.isArray(content)) return ""
-  return content
-    .map((part) => {
-      const row = asRecord(part)
-      return stringOf(row?.text) || stringOf(row?.refusal)
-    })
-    .join("")
+  return contentParts(content).text
+}
+
+function contentParts(content: unknown): { text: string; reasoning: string } {
+  if (typeof content === "string") return { text: content, reasoning: "" }
+  if (!Array.isArray(content)) return { text: "", reasoning: "" }
+  let text = ""
+  let reasoning = ""
+  for (const part of content) {
+    const row = asRecord(part)
+    const value = stringOf(row?.text) || stringOf(row?.refusal)
+    if (isThoughtKind(stringOf(row?.type))) reasoning += value
+    else text += value
+  }
+  return { text, reasoning }
+}
+
+function isThoughtKind(kind: string): boolean {
+  return kind.includes("reason") || kind === "thinking" || kind === "thought"
+}
+
+function textish(value: unknown): string {
+  if (typeof value === "string") return value
+  if (Array.isArray(value)) return value.map(textish).join("")
+  const row = asRecord(value)
+  if (!row) return ""
+  return (
+    stringOf(row.text) ||
+    stringOf(row.reasoning) ||
+    stringOf(row.content) ||
+    summaryText(row.summary)
+  )
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

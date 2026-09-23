@@ -72,6 +72,22 @@ header is one row: which PC this is, not the app's own name. Pulling the
 list down past the top reloads the roster; an empty inbox says so. Search
 filters the roster this phone already holds.
 
+## A model on the phone
+
+Menu → Models saves an OpenAI-compatible endpoint: base URL, optional key,
+chat completions or responses, discover, timeout. After one is saved, a
+Chat tab sits on the top row, including when no PC is bound. That chat uses
+the same composer as a PC thread. The reply streams. The thought is the
+same live row as a PC thread: the latest line while it is arriving, the
+full text when the row is opened. Discover uses the platform HTTP stack so
+the webview origin is not the caller. The completion is read as it arrives
+(`StreamBody` on the device) because that stack returns a POST body in one
+piece. An image is vision; a text file is sent as text. A responses front
+that rejects the image part is asked once more as chat completions. A
+rejected reasoning summary is omitted and the responses call is tried
+again. The key stays on
+the phone.
+
 ## Walking the screens without a PC
 
 `?mock=1` boots onto the inbox against a scripted host (`lib/mock-link.ts`):

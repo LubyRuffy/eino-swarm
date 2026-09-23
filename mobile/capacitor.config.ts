@@ -15,7 +15,9 @@ const config: CapacitorConfig = {
   },
   plugins: {
     // The webview origin is not one a model endpoint allows. The platform
-    // HTTP stack places the call. A buffered body is still a valid reply.
+    // HTTP stack places discover and the other calls. A completion does not
+    // use it: that stack returns the POST body in one piece. StreamBody
+    // reads the bytes as they arrive.
     CapacitorHttp: {
       enabled: true,
     },

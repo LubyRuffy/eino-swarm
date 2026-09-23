@@ -134,7 +134,13 @@ instead of the scan form, and why Add a PC is a sheet. A saved model does the
 same: the scan form stays hidden and a Chat tab is the first screen
 (`direct-chat-screen.test.tsx`, `provider-sheet.test.tsx`,
 `openai-wire.test.ts`, `openai-client.test.ts`). `mobile/e2e/direct-chat.spec.ts`
-drives discover and a reply against a routed endpoint.
+drives discover and a reply against a routed endpoint, and opens the thought
+row after the answer. A multi-event body paints one token per turn
+(`openai-client.test.ts`), including a device chunk source that delivers
+bytes before the call returns. A responses rejection of an image part is
+sent once more as chat completions, and that retry uses `image_url`
+(`openai-client.test.ts`). A rejected reasoning summary is omitted and the
+responses call is tried again. A different responses 400 is not retried.
 `rosterFingerprint` is why a 2s inbox poll that repeats the same roster
 does not remount the row mid-tap. `mobile/src/components/markdown.test.tsx` renders `$n$` as KaTeX and copies a
 fenced body (including when the Clipboard API refuses), paints `**bold**` and GFM tables, and keeps a filesystem path

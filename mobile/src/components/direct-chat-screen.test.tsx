@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
+import { streamCompletion } from "@/lib/openai-client"
 import { DirectChatScreen } from "./direct-chat-screen"
 import { maxAttachmentBytes } from "@/lib/attachments"
 import { saveProviders, type DirectProvider } from "@/lib/direct-provider"
@@ -18,9 +19,9 @@ const provider: DirectProvider = {
   timeoutSeconds: 300,
 }
 
-function harness(complete = vi.fn(async (input: { onDelta: (piece: StreamPiece) => void; turns: WireTurn[] }) => {
+function harness(complete: typeof streamCompletion = async (input) => {
   input.onDelta({ text: "pong", reasoning: "" })
-})) {
+}) {
   saveProviders([provider])
   return render(
     <DirectChatScreen
@@ -52,7 +53,9 @@ describe("DirectChatScreen", () => {
     fireEvent.change(screen.getByLabelText(t("thread.message")), { target: { value: "ping" } })
     fireEvent.click(screen.getByRole("button", { name: t("thread.send") }))
     await waitFor(() => expect(screen.getByText("pong")).toBeInTheDocument())
-    expect(screen.getByText("because")).toBeInTheDocument()
+    expect(screen.queryByTestId("phone-thought")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByTestId("work-fold"))
+    expect(screen.getByTestId("phone-thought")).toHaveTextContent("because")
     expect(complete.mock.calls[0]?.[0]).toMatchObject({ model: "one", reasoning: "high" })
   })
 
@@ -112,6 +115,47 @@ describe("DirectChatScreen", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     fireEvent.change(screen.getByLabelText(t("thread.message")), { target: { value: "again" } })
     expect(screen.getByRole("button", { name: t("thread.send") })).toBeEnabled()
+  })
+
+  it("shows the thought while the reply is still arriving", async () => {
+    setLocale("en")
+    let release!: () => void
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const encoder = new TextEncoder()
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        const stream = new ReadableStream({
+          async start(controller) {
+            controller.enqueue(
+              encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"because"}}]}\n\n'),
+            )
+            await gate
+            controller.enqueue(
+              encoder.encode('data: {"choices":[{"delta":{"content":"pong"}}]}\n\ndata: [DONE]\n\n'),
+            )
+            controller.close()
+          },
+        })
+        return new Response(stream)
+      }),
+    )
+    try {
+      harness(streamCompletion)
+      fireEvent.change(screen.getByLabelText(t("thread.message")), { target: { value: "ping" } })
+      fireEvent.click(screen.getByRole("button", { name: t("thread.send") }))
+      await waitFor(() => expect(screen.getByTestId("work-fold")).toHaveTextContent("because"))
+      expect(screen.queryByText("pong")).not.toBeInTheDocument()
+      expect(screen.queryByTestId("phone-thought")).not.toBeInTheDocument()
+      release()
+      await waitFor(() => expect(screen.getByText("pong")).toBeInTheDocument())
+      fireEvent.click(screen.getByTestId("work-fold"))
+      expect(screen.getByTestId("phone-thought")).toHaveTextContent("because")
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it("shows the endpoint's refusal on the reply", async () => {

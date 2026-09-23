@@ -16,14 +16,14 @@ test("connecting a model adds a chat tab and answers on the phone", async ({ pag
     }
     if (url.endsWith("/responses")) {
       wire = "responses"
-      const sent = route.request().postDataJSON() as { reasoning?: { effort?: string } }
-      expect(sent.reasoning).toEqual({ effort: "high" })
+      const sent = route.request().postDataJSON() as { reasoning?: { effort?: string; summary?: string } }
+      expect(sent.reasoning).toEqual({ effort: "high", summary: "auto" })
       await route.fulfill({
         status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          output: [{ type: "message", content: [{ type: "output_text", text: "pong" }] }],
-        }),
+        contentType: "text/event-stream",
+        body:
+          'data: {"type":"response.reasoning_summary_text.delta","delta":"step"}\n\n' +
+          'data: {"type":"response.output_text.delta","delta":"pong"}\n\n',
       })
       return
     }
@@ -49,5 +49,8 @@ test("connecting a model adds a chat tab and answers on the phone", async ({ pag
   await page.getByLabel("消息").fill("ping")
   await page.getByRole("button", { name: "发送" }).click()
   await expect(page.getByText("pong")).toBeVisible()
+  await expect(page.getByTestId("work-fold")).toBeVisible()
+  await page.getByTestId("work-fold").click()
+  await expect(page.getByTestId("phone-thought")).toHaveText("step")
   expect(wire).toBe("responses")
 })

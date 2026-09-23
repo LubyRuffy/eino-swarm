@@ -374,8 +374,11 @@ end-to-end tests run on and the fastest way to see the UI work.
    an OpenAI-compatible endpoint on the phone: base URL, optional API key,
    **Chat completions** or **Responses**, Discover, and a timeout. After one
    is saved, a **Chat** tab appears on the top row. That chat uses the same
-   composer. An image is vision; a text file is sent as text. The key stays
-   on the phone and is not sent to a paired PC. Markdown
+  composer. An image is vision; a text file is sent as text. A responses
+  front that rejects the image part is asked once more as chat completions,
+  so the image still arrives. The reply
+  streams, and the thought is the same live row as a PC thread. The key stays
+  on the phone and is not sent to a paired PC. Markdown
    renders in the transcript. Adjacent thoughts and tool calls fold into one
    row; an answer stays on screen and splits that row. Open it to see each
    tool, still collapsed to a one-line preview.
