@@ -172,10 +172,15 @@ type RunningView struct {
 	AskUser bool   `json:"ask_user,omitempty"`
 	Waiting bool   `json:"waiting,omitempty"`
 	// LastActiveAt dates the row. An In progress row is not in the
-	// `threads` list — `list` drops it so Recents does not repeat it — so
-	// this is the only place a parked wait's age can come from, and a wait
-	// armed last week reading like today's work is the whole problem.
+	// `threads` list — `list` drops it so Recents does not repeat it and
+	// it does not consume thread_limit — so this is the only place a
+	// parked wait's age can come from, and a wait armed last week reading
+	// like today's work is the whole problem.
 	LastActiveAt time.Time `json:"last_active_at"`
+	// ProjectID is the folder this conversation belongs to. The idle page
+	// still omits the row; the phone uses this to list it under the project
+	// as well as under In progress. Empty when the conversation has no project.
+	ProjectID string `json:"project_id,omitempty"`
 }
 
 type ThreadDetail struct {

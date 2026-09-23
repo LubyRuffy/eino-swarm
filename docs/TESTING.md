@@ -67,7 +67,9 @@ builds the one-line label from platform + UA.
 is why the phone never sees a project prompt. `TestListRecentPageDoesNotCountLiveRows`
 is why In progress does not eat the Recents quota: four parked waits plus
 six idle conversations still return five project rows, and More stays on
-that idle list. `TestCatalogListsReadyModelsAndHidesEndpointSecrets` is why
+that idle list. `TestRunningRosterCarriesTheProjectSoTheFolderStillListsIt`
+is why a live row still names its project: the phone lists it under that
+folder without putting it back on the idle page. `TestCatalogListsReadyModelsAndHidesEndpointSecrets` is why
 the phone's model list has a second provider and no endpoint secret.
 `TestPngBytesNamedAsTextStayAFile` is why a png named like a text file is
 still a file, and `TestABadSelectionDoesNotLeaveAnEmptyConversation` is
@@ -136,8 +138,13 @@ from becoming a webview navigation. `mobile/src/lib/copy-text.test.ts` is why
 that copy plants on the `copy` event instead of trusting WebKit's boolean. `mobile/src/components/thread-blocks.test.tsx`
 is why a user bubble uses that same markdown, not the source markers.
 `mobile/src/components/home-screen.test.tsx` is why a parked wait sits in
-In progress as Waiting, not a quiet Recents row, and why a live
+In progress as Waiting, not a quiet Recents row, why a live conversation
+is also listed under its project, why that project folds (and stays folded
+across a remount) while the new-conversation control is an icon, and why a live
 `schedule_wake` / `report_schedule` envelope is not the subtitle.
+`mobile/src/lib/inbox-groups.test.ts` is why a roster row with a project
+lands in that folder even when `threads` omitted it, and why a live row
+with no project stays out of Recents.
 `mobile/src/lib/inbox-preview.test.ts` pulls findings and drops the tool name.
 `mobile/src/components/thread-screen.test.tsx` is why a standing `/goal` is
 Pursuing / Done / Blocked / Paused with Start, a parked wait is Waiting
@@ -170,8 +177,9 @@ inbox and a conversation had no end-to-end coverage, because Playwright
 could not get past the scan form. `mobile/e2e/walkthrough.spec.ts` drives
 those screens on it: live rows separate from recents with an age on each,
 a turn that folds its work behind the answer, a short conversation resting
-on the composer rather than under blank space, New chat (and a project row)
-opening what it started, inbox search narrowing the rows, a page loaded
+on the composer rather than under blank space, New chat (and a project row's
+icon) opening what it started, a project folder folding while its live row
+stays under In progress, inbox search narrowing the rows, a page loaded
 with More still there after the inbox refreshes, a loading status while
 open is held (`?pause=open`), and the composer's model, thinking level,
 and attach control.

@@ -214,6 +214,7 @@ export class MockHost {
       .map((th) => ({
         thread_id: th.id,
         title: th.title,
+        project_id: th.projectID || undefined,
         // A parked wait has no live turn, so the host sends its summary.
         action: th.action || (th.waiting ? th.summary : ""),
         ask_user: th.askUser,

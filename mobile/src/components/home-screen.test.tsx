@@ -250,7 +250,9 @@ describe("HomeScreen", () => {
     expect(screen.queryByRole("button", { name: "Open loose" })).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "New chat in Recent" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "New chat in In progress" })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "New chat in notes" }))
+    const startNotes = screen.getByRole("button", { name: "New chat in notes" })
+    expect(startNotes.textContent?.trim()).toBe("")
+    fireEvent.click(startNotes)
     expect(onNewChat).toHaveBeenCalledWith("p2")
     fireEvent.click(screen.getByRole("button", { name: "New chat in work" }))
     expect(onNewChat).toHaveBeenLastCalledWith("p1")
@@ -444,6 +446,55 @@ describe("HomeScreen", () => {
     expect(screen.getByRole("heading", { name: "work" })).toBeInTheDocument()
     expect(screen.getAllByRole("button", { name: /^Open live / })).toHaveLength(4)
     expect(screen.getAllByRole("button", { name: /^Open idle / })).toHaveLength(5)
+  })
+
+  // In progress is a roster, not a replacement for the folder. Folding the
+  // project hides its rows and still leaves the live copy, and Back must
+  // not forget the fold.
+  it("keeps a live conversation under its project and folds that project", () => {
+    const props = {
+      ...chrome(),
+      path: "relay" as const,
+      projects: [{ id: "p", name: "work" }],
+      threads: [
+        {
+          id: "idle",
+          title: "idle",
+          project_id: "p",
+          running: false,
+          last_active_at: "2026-01-01T00:00:00Z",
+        },
+      ],
+      running: [{ thread_id: "hot", title: "hot", project_id: "p", action: "reading" }],
+      more: false,
+      onOpen: vi.fn(),
+      onMore: vi.fn(),
+      onNewChat: vi.fn(),
+      onUnlink: vi.fn(),
+    }
+    const first = render(<HomeScreen {...props} />)
+    expect(screen.getAllByRole("button", { name: "Open hot" })).toHaveLength(2)
+    expect(screen.getAllByText("Running")).toHaveLength(2)
+    expect(screen.getByRole("button", { name: "Open idle" })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "work" }))
+    expect(screen.getByRole("button", { name: "work" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("button", { name: "Open idle" })).not.toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "Open hot" })).toHaveLength(1)
+    expect(screen.getByRole("button", { name: "New chat in work" })).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText("Search conversations"), { target: { value: "idle" } })
+    expect(screen.getByRole("button", { name: "Open idle" })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Search conversations"), { target: { value: "" } })
+    expect(screen.queryByRole("button", { name: "Open idle" })).not.toBeInTheDocument()
+
+    first.unmount()
+    render(<HomeScreen {...props} />)
+    expect(screen.getByRole("button", { name: "work" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("button", { name: "Open idle" })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "work" }))
+    expect(screen.getAllByRole("button", { name: "Open hot" })).toHaveLength(2)
   })
 
   it("says it is loading more and will not take a second tap", () => {

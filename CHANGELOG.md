@@ -135,6 +135,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- **A phone project row is an icon, and the folder folds.** The control on
+  the right of a project starts a conversation in that project and no longer
+  prints a label beside the icon. Tapping the project name collapses and
+  expands its conversations. The fold is remembered, including after opening
+  a conversation and coming back.
+
 - **The phone inbox no longer composes.** Search and **New chat** sit under
   the list, and the header corner is **New chat** (Add a PC stays on the
   menu). Each project row's right side starts a conversation already in
@@ -191,6 +197,12 @@ co-working app built on it. The library API is unchanged except where noted
   while General is showing.
 
 ### Fixed
+
+- **A live phone conversation stays under its project.** In progress used to
+  be the only place that row appeared, because `list` keeps it off the idle
+  page. `list.running[].project_id` names the folder, and the inbox shows the
+  same conversation there too. Recents still does not repeat a live row, and
+  the idle page still does not spend `thread_limit` on it.
 
 - **`schedule_wake` does not take an id.** The tool offered an optional id
   and the prompt said to pass one. The first arm has no id to copy, so the

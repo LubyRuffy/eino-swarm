@@ -9,7 +9,8 @@ export function collectLive(running: RunningView[], threads: ThreadView[]): Runn
   const push = (row: RunningView) => {
     if (!row.thread_id || seen.has(row.thread_id)) return
     seen.add(row.thread_id)
-    out.push(row)
+    // Copy so a project backfill cannot mutate the roster the caller holds.
+    out.push({ ...row })
   }
   for (const r of running) push(r)
   for (const th of threads) {
@@ -19,10 +20,17 @@ export function collectLive(running: RunningView[], threads: ThreadView[]): Runn
     push({
       thread_id: th.id,
       title: th.title,
+      project_id: th.project_id,
       waiting: th.waiting,
       action: th.summary,
       last_active_at: th.last_active_at,
     })
+  }
+  const projectOf = new Map(threads.map((th) => [th.id, th.project_id]))
+  for (const row of out) {
+    if (row.project_id) continue
+    const id = projectOf.get(row.thread_id)
+    if (id) row.project_id = id
   }
   return out
 }
@@ -55,7 +63,9 @@ export function rosterFingerprint(
   const ps = projects.map((p) => `${p.id}\0${p.name}`).join("|")
   const live = running
     .map((r) =>
-      [r.thread_id, r.title, r.action ?? "", r.waiting ? "1" : "", r.turn_id ?? "", r.ask_user ? "1" : ""].join("\0"),
+      [r.thread_id, r.title, r.action ?? "", r.waiting ? "1" : "", r.turn_id ?? "", r.ask_user ? "1" : "", r.project_id ?? ""].join(
+        "\0",
+      ),
     )
     .join("|")
   const th = threads

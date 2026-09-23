@@ -73,6 +73,9 @@ export type RunningView = {
   ask_user?: boolean
   waiting?: boolean
   last_active_at?: string
+  // Which project folder this live row belongs to. list omits it from
+  // threads; the inbox still paints it under that project.
+  project_id?: string
 }
 
 export type TurnView = {

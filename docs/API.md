@@ -371,7 +371,10 @@ means the phone should show Waiting or running in its own language. A parked
 wait has no live turn to preview, so its `action` is the thread's own summary
 instead. `list.running[].last_active_at` dates the row: a roster row is not
 repeated in `list.threads`, so this is the only place the age of a wait armed
-last week can come from.
+last week can come from. `list.running[].project_id` is that conversation's
+project when it has one. The phone lists the row under that project as well
+as under In progress. The row stays off `list.threads`, so it still does not
+consume `thread_limit` or show up in Recents.
 `list.threads[].summary` is the same kind of line for an idle conversation:
 quiet scheduled checks and the protocol wrapper (`This turn is a scheduled
 check.`) are skipped rather than painted as the Recents subtitle.

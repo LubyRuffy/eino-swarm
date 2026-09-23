@@ -44,6 +44,7 @@ describe("the walkthrough host", () => {
     // A live row must not also eat a slot in the idle recents page.
     expect((r.threads ?? []).some((t) => liveIDs.has(t.id))).toBe(false)
     expect((r.threads ?? []).every((t) => t.last_active_at)).toBe(true)
+    expect(r.running?.find((x) => x.thread_id === "t-live")?.project_id).toBe("p-platform")
   })
 
   it("opens a thread and hands watch a snapshot already at the tail", async () => {

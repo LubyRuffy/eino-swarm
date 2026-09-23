@@ -52,6 +52,19 @@ describe("collectLive", () => {
     expect(live).toHaveLength(1)
     expect(live[0].action).toBe("fresh")
   })
+
+  // The host often sends the live row only on the roster. The folder still
+  // needs the project, and filling it in must not rewrite the caller's row.
+  it("copies the project onto a roster row that omitted it", () => {
+    const row = run("a", { action: "read" })
+    const th = thread("a", true)
+    th.project_id = "p"
+    const live = collectLive([row], [th])
+    expect(live[0].project_id).toBe("p")
+    expect(row.project_id).toBeUndefined()
+    const named = collectLive([run("a", { project_id: "from-host" })], [th])
+    expect(named[0].project_id).toBe("from-host")
+  })
 })
 
 describe("pickResumeThread", () => {
@@ -123,5 +136,8 @@ describe("rosterFingerprint", () => {
     const b = rosterFingerprint(projects, threads, running, false, "")
     expect(a).toBe(b)
     expect(rosterFingerprint(projects, threads, [run("a", { action: "exec" })], false, "")).not.toBe(a)
+    expect(rosterFingerprint(projects, threads, [run("a", { action: "read", project_id: "p" })], false, "")).not.toBe(
+      a,
+    )
   })
 })

@@ -19,16 +19,22 @@ test("the inbox separates live work from recents and says how old a row is", asy
   await expect(page.getByRole("tab", { name: /Walkthrough PC/ })).toBeVisible()
   await expect(page.getByText("进行中", { exact: true }).first()).toBeVisible()
 
-  // Running is happening now, so it carries no age; a wait does, and a
-  // roster row is never also a Recents row it could borrow one from.
+  // Running is happening now, so it carries no age; a wait does. The same
+  // row also sits under its project. Recents still does not repeat it.
   const live = page.getByRole("button", { name: /^打开 Trim the layout pass$/ })
-  await expect(live.getByTestId("row-state")).toHaveAttribute("data-state", "running")
-  await expect(live).not.toContainText("前")
+  await expect(live).toHaveCount(2)
+  await expect(live.nth(0).getByTestId("row-state")).toHaveAttribute("data-state", "running")
+  await expect(live.nth(1).getByTestId("row-state")).toHaveAttribute("data-state", "running")
+  await expect(live.nth(0)).not.toContainText("前")
+  await expect(live.nth(1)).not.toContainText("前")
   const parked = page.getByRole("button", { name: /^打开 Watch the nightly export$/ })
-  await expect(parked.getByTestId("row-state")).toHaveAttribute("data-state", "waiting")
+  await expect(parked).toHaveCount(2)
+  await expect(parked.nth(0).getByTestId("row-state")).toHaveAttribute("data-state", "waiting")
+  await expect(parked.nth(1).getByTestId("row-state")).toHaveAttribute("data-state", "waiting")
   // A parked wait has no live action; its own summary is what the row says.
-  await expect(parked).toContainText("Checking again after the next run")
-  await expect(parked).toContainText("前")
+  await expect(parked.nth(0)).toContainText("Checking again after the next run")
+  await expect(parked.nth(0)).toContainText("前")
+  await expect(parked.nth(1)).toContainText("Checking again after the next run")
 
   const idle = page.getByRole("button", { name: /^打开 Sweep the unused exports$/ })
   await expect(idle.getByTestId("row-state")).toHaveCount(0)
@@ -94,9 +100,29 @@ test("New chat picks a PC and a project, then opens what it started", async ({ p
 test("a project row opens new chat already in that project", async ({ page }) => {
   await page.goto(WALKTHROUGH)
   await backToInbox(page)
-  await page.getByRole("button", { name: "在Field notes新建对话" }).click()
+  const startHere = page.getByRole("button", { name: "在Field notes新建对话" })
+  await expect(startHere).toHaveText("")
+  await startHere.click()
   await expect(page.getByRole("radio", { name: "Field notes" })).toBeChecked()
   await expect(page.getByRole("radio", { name: "默认" })).not.toBeChecked()
+})
+
+test("a project folds and the live row under it stays in progress", async ({ page }) => {
+  await page.goto(WALKTHROUGH)
+  await backToInbox(page)
+
+  const folder = page.getByRole("button", { name: "Platform", exact: true })
+  await expect(folder).toHaveAttribute("aria-expanded", "true")
+  await folder.click()
+  await expect(folder).toHaveAttribute("aria-expanded", "false")
+  await expect(page.getByRole("button", { name: /^打开 Sweep the unused exports$/ })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: /^打开 Trim the layout pass$/ })).toHaveCount(1)
+  await expect(page.getByRole("button", { name: "在Platform新建对话" })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^打开 Summarise this week$/ })).toBeVisible()
+
+  await folder.click()
+  await expect(page.getByRole("button", { name: /^打开 Sweep the unused exports$/ })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^打开 Trim the layout pass$/ })).toHaveCount(2)
 })
 
 test("search narrows the inbox to the row that was typed", async ({ page }) => {
@@ -104,11 +130,11 @@ test("search narrows the inbox to the row that was typed", async ({ page }) => {
   await backToInbox(page)
 
   await page.getByLabel("搜索对话").fill("nightly")
-  await expect(page.getByRole("button", { name: /^打开 Watch the nightly export$/ })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^打开 Watch the nightly export$/ })).toHaveCount(2)
   await expect(page.getByRole("button", { name: /^打开 Trim the layout pass$/ })).toHaveCount(0)
 
   await page.getByRole("button", { name: "清除搜索" }).click()
-  await expect(page.getByRole("button", { name: /^打开 Trim the layout pass$/ })).toBeVisible()
+  await expect(page.getByRole("button", { name: /^打开 Trim the layout pass$/ })).toHaveCount(2)
 })
 
 // An In progress row is not always a turn. A wait opens onto its own
@@ -119,7 +145,7 @@ test("tapping a parked wait opens a wait, not a turn you can stop", async ({ pag
   await page.goto(WALKTHROUGH)
   await backToInbox(page)
 
-  await page.getByRole("button", { name: /^打开 Watch the nightly export$/ }).click()
+  await page.getByRole("button", { name: /^打开 Watch the nightly export$/ }).first().click()
   await expect(page.getByRole("heading", { name: "Watch the nightly export" })).toBeVisible()
   await expect(page.getByRole("button", { name: "停止" })).toHaveCount(0)
   await expect(page.getByRole("button", { name: "立即运行" })).toBeVisible()

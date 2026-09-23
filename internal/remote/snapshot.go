@@ -170,6 +170,7 @@ func runningView(eng *engine.Engine, th *store.Thread, chars int) RunningView {
 		TurnID:       st.TurnID,
 		AskUser:      st.AwaitingAnswer,
 		LastActiveAt: th.LastActiveAt,
+		ProjectID:    th.ProjectID,
 	}
 	if st.AwaitingAnswer {
 		v.Action = "ask_user"

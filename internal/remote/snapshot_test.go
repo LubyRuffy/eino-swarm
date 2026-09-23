@@ -153,6 +153,60 @@ func TestListRecentPageDoesNotCountLiveRows(t *testing.T) {
 	}
 }
 
+// list keeps a live row off the idle page so Recents and the quota stay
+// honest. The project folder can only show that same row if the roster
+// names the project.
+func TestRunningRosterCarriesTheProjectSoTheFolderStillListsIt(t *testing.T) {
+	e := testEngine(t)
+	p, err := e.CreateProject("work", "", "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	th, err := e.CreateThread("live", "", p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.CreateSchedule(engine.ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Title: "wake", Prompt: "Continue the wait.", DelayS: 3600,
+		CreatedBy: store.ScheduleCreatedManager,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	loose, err := e.CreateThread("loose", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.StartTurn(loose.ID, "go"); err != nil {
+		t.Fatal(err)
+	}
+	listed := Handle(e, config.RemoteConfig{ThreadLimit: 5}, Request{ID: "l", Op: OpList}, "relay", "s")
+	if !listed.OK {
+		t.Fatalf("list %+v", listed)
+	}
+	var parked, running *RunningView
+	for i := range listed.Running {
+		row := &listed.Running[i]
+		switch row.ThreadID {
+		case th.ID:
+			parked = row
+		case loose.ID:
+			running = row
+		}
+	}
+	if parked == nil || parked.ProjectID != p.ID {
+		t.Fatalf("parked project %+v", parked)
+	}
+	if running == nil || running.ProjectID != "" {
+		t.Fatalf("a conversation with no project must not invent one: %+v", running)
+	}
+	for _, row := range listed.Threads {
+		if row.ID == th.ID || row.ID == loose.ID {
+			t.Fatalf("live row ate the idle page: %+v", row)
+		}
+	}
+}
+
 func TestOpenTruncatesAssistantText(t *testing.T) {
 	e := testEngine(t)
 	th, err := e.CreateThread("open-me", "", "")

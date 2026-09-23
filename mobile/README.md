@@ -55,10 +55,12 @@ queued after this turn.
 
 The inbox does not compose. Search and **New chat** sit under the list,
 and the header corner is the same **New chat** — Add a PC stays on the
-menu, not a second control beside the chips. Each project row's right side
-starts a conversation already in that project, including a project that
-has no threads yet. **New chat** is its own screen: which PC, which
-project, then that same box. Android's system back leaves the screen
+menu, not a second control beside the chips. Each project row folds.
+The icon on its right starts a conversation already in that project,
+including a project that has no threads yet. A conversation shown under
+In progress stays listed under its project too. **New chat** is its own
+screen: which PC, which project, then that same box. Android's system back
+leaves the screen
 before it leaves a conversation.
 
 Inbox rows are cards, not a settings list. State is a badge — Running /
