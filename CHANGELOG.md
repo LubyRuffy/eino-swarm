@@ -2329,6 +2329,29 @@ were left out on purpose, so that what shipped is complete rather than broad:
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
 
+## [0.1.7] - 2026-09-23
+
+Phone sideload. versionName `0.1.7`, versionCode `107`. Same debug key as
+v0.1.6, so an installed 0.1.6 updates in place. iOS marketing version
+`0.1.7`, build `107`.
+[`zwai-0.1.7-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.7/zwai-0.1.7-android.apk)
+is on [v0.1.7](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.7).
+
+### Added
+
+- **The phone can talk to a model without a PC.** Menu → Models (or Connect a
+  model on the scan screen) saves an OpenAI-compatible endpoint: base URL,
+  optional key, chat completions or responses, discover, timeout. After one
+  is saved, a Chat tab sits on the top row. That chat uses the same composer
+  as a PC thread: model, thinking level, image or file.
+
+### Fixed
+
+- **A phone chat with a model of its own no longer loses or repeats the reply.**
+  Leaving the conversation stops the call. A gateway that resends the whole
+  buffer is not concatenated. A dropped socket is a failure, not an empty
+  reply.
+
 ## [0.1.6] - 2026-09-23
 
 Phone sideload. versionName `0.1.6`, versionCode `106`. Same debug key as
