@@ -161,7 +161,9 @@ The installed app checks [GitHub Releases](https://github.com/LubyRuffy/eino-swa
 itself (`https://api.github.com/repos/LubyRuffy/eino-swarm/releases/latest`).
 It does not ask the PC. The browser walkthrough (`?mock=1`) does not check,
 so a desk session never phones GitHub. A newer `zwai-*-android.apk` on
-Android is downloaded and handed to the system installer — the sheet still
+Android is downloaded and handed to the system installer. While the bytes
+are moving, the banner shows the percent when the response has a length,
+otherwise how much has arrived. The sheet still
 needs a tap, and the first time Android may ask to allow installs from this
 app. iOS has no package on that feed, so Update opens the release page.
 **Not now** hides that version until a later one is published. A failed

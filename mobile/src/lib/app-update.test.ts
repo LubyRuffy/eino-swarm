@@ -1,15 +1,19 @@
 import { describe, expect, it, vi } from "vitest"
 
+import { setLocale, t } from "./i18n"
 import {
   allowedDownloadURL,
   allowedReleasePage,
   checkForAppUpdate,
   dismissUpdate,
+  downloadStatus,
+  formatByteSize,
   installUpdate,
   isNewer,
   offerFromRelease,
   RELEASE_REPO,
   RELEASES_LATEST_URL,
+  listenDownloadProgress,
   type UpdateOffer,
   type UpdateStore,
 } from "./app-update"
@@ -240,5 +244,58 @@ describe("app update", () => {
     expect(await installUpdate({ version: "2.4.0", pageURL: "", apkURL: "" }, "ios", { installApk, openPage })).toBe(
       "failed",
     )
+  })
+})
+
+describe("download progress", () => {
+  it("shows a percent when the length is known and bytes when it is not", () => {
+    setLocale("en")
+    expect(formatByteSize(512)).toBe("512 B")
+    expect(formatByteSize(1536)).toBe("1.5 KB")
+    expect(formatByteSize(20 * 1024)).toBe("20 KB")
+    expect(downloadStatus(null)).toEqual({ text: t("update.downloading"), percent: null })
+    expect(downloadStatus({ received: 0, total: 0 })).toEqual({
+      text: t("update.downloading"),
+      percent: null,
+    })
+    expect(downloadStatus({ received: 40, total: 100 })).toEqual({
+      text: t("update.downloadingProgress", { percent: 40 }),
+      percent: 40,
+    })
+    expect(downloadStatus({ received: 150, total: 100 }).percent).toBe(100)
+    expect(downloadStatus({ received: 1536, total: 0 })).toEqual({
+      text: t("update.downloadingBytes", { size: "1.5 KB" }),
+      percent: null,
+    })
+    expect(downloadStatus({ received: -1, total: Number.NaN })).toEqual({
+      text: t("update.downloading"),
+      percent: null,
+    })
+  })
+
+  it("forwards native progress only after the listener is attached", async () => {
+    const seen: { received: number; total: number }[] = []
+    let listener: ((event: { received?: number; total?: number }) => void) | undefined
+    let removed = false
+    const stop = await listenDownloadProgress((progress) => seen.push(progress), {
+      async addListener(_event, cb) {
+        listener = cb
+        return {
+          async remove() {
+            removed = true
+          },
+        }
+      },
+    })
+    listener?.({ received: 10, total: 40 })
+    listener?.({ received: -5, total: 0 })
+    expect(seen).toEqual([
+      { received: 10, total: 40 },
+      { received: 0, total: 0 },
+    ])
+    stop()
+    expect(removed).toBe(true)
+    listener?.({ received: 20, total: 40 })
+    expect(seen).toHaveLength(2)
   })
 })

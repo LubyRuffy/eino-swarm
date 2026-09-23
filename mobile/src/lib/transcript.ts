@@ -85,6 +85,13 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
         next[i] = { ...next[i], text: ev.text }
         return next
       }
+      // A late snapshot arrives after the answer was closed. It carries the
+      // full text so far; pushing it stacks the same sentence again.
+      const tail = tailAnswer(next)
+      if (tail >= 0 && answerContinues(next[tail].text, ev.text)) {
+        next[tail] = { ...next[tail], text: ev.text, streaming: true }
+        return next
+      }
       next.push({
         id: blockId(ev),
         kind: "answer",
@@ -104,6 +111,8 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
         }
         return next
       }
+      const tail = tailAnswer(next)
+      if (tail >= 0 && ev.text && next[tail].text === ev.text) return next
       if (ev.text) {
         next.push({ id: blockId(ev), kind: "answer", text: ev.text })
       }
@@ -252,6 +261,32 @@ function lastIndex(
 function settleReasoning(blocks: CompactBlock[]) {
   const i = lastIndex(blocks, (b) => b.kind === "reasoning" && Boolean(b.streaming))
   if (i >= 0) blocks[i] = { ...blocks[i], streaming: false }
+}
+
+const ANSWER_BOUNDARY = new Set<BlockKind>([
+  "tool",
+  "question",
+  "user",
+  "steer",
+  "spawn",
+  "error",
+])
+
+/** The answer still on the tail, until a later turn of speech starts. */
+function tailAnswer(blocks: CompactBlock[]): number {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const kind = blocks[i].kind
+    if (ANSWER_BOUNDARY.has(kind)) return -1
+    if (kind === "answer") return i
+  }
+  return -1
+}
+
+/** A delta is the text so far. Equal or longer-with-the-same-prefix continues
+ *  the bubble. A shorter different start is a new sentence. */
+function answerContinues(prev: string, next: string): boolean {
+  if (!prev || !next) return false
+  return next === prev || next.startsWith(prev)
 }
 
 const OMITTED_TOOLS = new Set(["spawn_agent", "close_agent"])

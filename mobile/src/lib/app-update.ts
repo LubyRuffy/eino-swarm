@@ -2,6 +2,8 @@ import { App } from "@capacitor/app"
 import { Browser } from "@capacitor/browser"
 import { Capacitor, registerPlugin } from "@capacitor/core"
 
+import { t } from "./i18n"
+
 // The phone asks GitHub itself. This is the sideload channel, not a hub
 // the user types on the PC. A feed configured on the desktop was the long way.
 export const RELEASES_LATEST_URL =
@@ -34,14 +36,36 @@ export type UpdateStore = {
 
 export type InstallResult = "installed" | "permission" | "failed"
 
+export type DownloadProgress = {
+  received: number
+  total: number
+}
+
+export type DownloadStatus = {
+  text: string
+  percent: number | null
+}
+
+type ProgressEvent = {
+  received?: number
+  total?: number
+}
+
 type AppUpdatePlugin = {
   install(opts: { url: string }): Promise<void>
+  addListener(
+    eventName: "progress",
+    listenerFunc: (event: ProgressEvent) => void,
+  ): Promise<{ remove(): Promise<void> }>
 }
 
 const AppUpdate = registerPlugin<AppUpdatePlugin>("AppUpdate", {
   web: () => ({
     async install() {
       throw new Error("unsupported")
+    },
+    async addListener() {
+      return { async remove() {} }
     },
   }),
 })
@@ -255,6 +279,66 @@ export async function installUpdate(
   } catch (err) {
     if (errorText(err).includes("install_permission")) return "permission"
     return "failed"
+  }
+}
+
+export function normalizeProgress(event: ProgressEvent | null | undefined): DownloadProgress {
+  const received = finiteBytes(event?.received)
+  const total = finiteBytes(event?.total)
+  return { received, total }
+}
+
+function finiteBytes(n: unknown): number {
+  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return 0
+  return Math.floor(n)
+}
+
+/** 1536 → "1.5 KB". The banner needs a size when the server omits a length. */
+export function formatByteSize(n: number): string {
+  const bytes = finiteBytes(n)
+  const units = ["B", "KB", "MB", "GB"]
+  let value = bytes
+  let i = 0
+  while (value >= 1024 && i < units.length - 1) {
+    value /= 1024
+    i += 1
+  }
+  const digits = i === 0 || value >= 10 ? 0 : 1
+  return `${value.toFixed(digits)} ${units[i]}`
+}
+
+/** Percent when the length is known. Otherwise the bytes already on disk. */
+export function downloadStatus(progress: DownloadProgress | null): DownloadStatus {
+  const received = finiteBytes(progress?.received)
+  const total = finiteBytes(progress?.total)
+  if (total > 0) {
+    const percent = Math.min(100, Math.floor((received / total) * 100))
+    return { text: t("update.downloadingProgress", { percent }), percent }
+  }
+  if (received > 0) {
+    return { text: t("update.downloadingBytes", { size: formatByteSize(received) }), percent: null }
+  }
+  return { text: t("update.downloading"), percent: null }
+}
+
+/** Resolves once the native listener is attached, so the download cannot
+ *  start first and drop the early byte counts. */
+export async function listenDownloadProgress(
+  onProgress: (progress: DownloadProgress) => void,
+  plugin: Pick<AppUpdatePlugin, "addListener"> = AppUpdate,
+): Promise<() => void> {
+  let live = true
+  try {
+    const handle = await plugin.addListener("progress", (event) => {
+      if (!live) return
+      onProgress(normalizeProgress(event))
+    })
+    return () => {
+      live = false
+      void handle.remove()
+    }
+  } catch {
+    return () => {}
   }
 }
 

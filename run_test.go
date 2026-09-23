@@ -6,6 +6,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
@@ -154,6 +155,75 @@ func TestStreamDeltasAreCleanPrefixes(t *testing.T) {
 	if len(reasoning) == 0 || reasoning[len(reasoning)-1].Text != "let me think" {
 		t.Fatalf("reasoning accumulation broken: %+v", reasoning)
 	}
+}
+
+// A gateway that resends the whole buffer in each chunk must not glue those
+// copies together. Short token repeats still concatenate: that is the model
+// saying the token twice, not a snapshot echo.
+func TestAbsorbChunkKeepsFragmentsAndDropsResentBuffers(t *testing.T) {
+	if got := absorbChunk("Hel", "lo "); got != "Hello " {
+		t.Fatalf("fragment=%q", got)
+	}
+	if got := absorbChunk("a", "a"); got != "aa" {
+		t.Fatalf("one-rune repeat=%q", got)
+	}
+	if got := absorbChunk("ok", "ok"); got != "okok" {
+		t.Fatalf("short repeat=%q", got)
+	}
+	if got := absorbChunk("Hel", "Hello"); got != "Hello" {
+		t.Fatalf("snapshot=%q", got)
+	}
+	resent := "status update from the run"
+	if utf8.RuneCountInString(resent) < resentMinRunes {
+		t.Fatalf("fixture shorter than the resend threshold: %d", utf8.RuneCountInString(resent))
+	}
+	if got := absorbChunk(resent, resent); got != resent {
+		t.Fatalf("resent buffer=%q", got)
+	}
+	if got := absorbChunk("", "Hel"); got != "Hel" {
+		t.Fatalf("empty prev=%q", got)
+	}
+	if got := absorbChunk("Hel", ""); got != "Hel" {
+		t.Fatalf("empty chunk=%q", got)
+	}
+}
+
+func TestCumulativeStreamChunksDoNotRepeatTheAnswer(t *testing.T) {
+	rec := &recorder{}
+	reg := NewRegistry()
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &chunkedModel{turns: []turnScript{{
+			reasoning: []string{"think ", "think it through", "think it through"},
+			content:   []string{"status ", "status update", "status update"},
+		}}}
+	}
+	res, err := reg.RunWith(context.Background(),
+		RunConfig{Instruction: "be terse", Task: "report"}, rec.cb())
+	if err != nil {
+		t.Fatalf("RunWith: %v", err)
+	}
+	if res.Final != "status update" {
+		t.Fatalf("final=%q", res.Final)
+	}
+	deltas := rec.ofKind(NotifyDelta)
+	if len(deltas) != 2 || deltas[0].Text != "status " || deltas[1].Text != "status update" {
+		t.Fatalf("deltas=%v", textsOf(deltas))
+	}
+	if strings.Count(deltas[1].Text, "status update") != 1 {
+		t.Fatalf("snapshot glued on: %q", deltas[1].Text)
+	}
+	reasoning := rec.ofKind(NotifyReasoningDelta)
+	if len(reasoning) != 2 || reasoning[1].Text != "think it through" {
+		t.Fatalf("reasoning=%v", textsOf(reasoning))
+	}
+}
+
+func textsOf(notes []Notification) []string {
+	out := make([]string, len(notes))
+	for i, n := range notes {
+		out[i] = n.Text
+	}
+	return out
 }
 
 // Each turn starts a fresh accumulator: turn 2's delta must not carry turn 1's

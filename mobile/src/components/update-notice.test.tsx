@@ -1,13 +1,25 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-vi.mock("@/lib/app-update", () => ({
-  checkForAppUpdate: vi.fn(),
-  installUpdate: vi.fn(),
-  dismissUpdate: vi.fn(),
-}))
+vi.mock("@/lib/app-update", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/app-update")>("@/lib/app-update")
+  return {
+    ...actual,
+    checkForAppUpdate: vi.fn(),
+    installUpdate: vi.fn(),
+    dismissUpdate: vi.fn(),
+    listenDownloadProgress: vi.fn(async () => () => undefined),
+  }
+})
 
-import { checkForAppUpdate, dismissUpdate, installUpdate, type UpdateOffer } from "@/lib/app-update"
+import {
+  checkForAppUpdate,
+  dismissUpdate,
+  installUpdate,
+  listenDownloadProgress,
+  type DownloadProgress,
+  type UpdateOffer,
+} from "@/lib/app-update"
 import { setLocale, t } from "@/lib/i18n"
 
 import { UpdateNotice } from "./update-notice"
@@ -24,6 +36,8 @@ describe("UpdateNotice", () => {
     vi.mocked(checkForAppUpdate).mockReset()
     vi.mocked(installUpdate).mockReset()
     vi.mocked(dismissUpdate).mockReset()
+    vi.mocked(listenDownloadProgress).mockReset()
+    vi.mocked(listenDownloadProgress).mockResolvedValue(() => undefined)
   })
 
   it("stays out of the way when nothing is newer", async () => {
@@ -64,9 +78,32 @@ describe("UpdateNotice", () => {
     const button = await screen.findByRole("button", { name: t("update.upgrade") })
     fireEvent.click(button)
     fireEvent.click(button)
-    expect(installUpdate).toHaveBeenCalledOnce()
+    // The listener attaches before the download, so the call is not sync.
+    await waitFor(() => expect(installUpdate).toHaveBeenCalledOnce())
     finish("installed")
     await waitFor(() => expect(button).not.toBeDisabled())
+  })
+
+  it("shows how much of the package has arrived", async () => {
+    vi.mocked(checkForAppUpdate).mockResolvedValue(offer)
+    let finish: (result: "installed") => void = () => undefined
+    vi.mocked(installUpdate).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        }),
+    )
+    vi.mocked(listenDownloadProgress).mockImplementation(async (onProgress: (progress: DownloadProgress) => void) => {
+      onProgress({ received: 40, total: 100 })
+      return () => undefined
+    })
+    render(<UpdateNotice />)
+    fireEvent.click(await screen.findByRole("button", { name: t("update.upgrade") }))
+    const bar = await screen.findByRole("progressbar")
+    expect(bar).toHaveAttribute("aria-valuenow", "40")
+    expect(screen.getByRole("status")).toHaveTextContent(t("update.downloadingProgress", { percent: 40 }))
+    finish("installed")
+    await waitFor(() => expect(screen.queryByRole("progressbar")).not.toBeInTheDocument())
   })
 
   it("hides that version after Not now", async () => {

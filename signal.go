@@ -8,6 +8,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
@@ -357,15 +358,20 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 			continue
 		}
 		if rc := chunk.ReasoningContent; rc != "" {
-			s.touch(lastLine(rc))
-			s.emit(Notification{Kind: NotifyReasoningDelta, Text: s.addReasoning(rc)})
-			s.raw(&schema.Message{Role: schema.Assistant, ReasoningContent: rc})
+			acc, changed := s.addReasoning(rc)
+			if changed {
+				s.touch(lastLine(rc))
+				s.emit(Notification{Kind: NotifyReasoningDelta, Text: acc})
+				s.raw(&schema.Message{Role: schema.Assistant, ReasoningContent: rc})
+			}
 		}
 		if c := chunk.Content; c != "" {
-			s.touch(lastLine(c))
-			acc := s.addAnswer(c)
-			s.emit(Notification{Kind: NotifyDelta, Text: acc})
-			s.raw(&schema.Message{Role: schema.Assistant, Content: acc})
+			acc, changed := s.addAnswer(c)
+			if changed {
+				s.touch(lastLine(c))
+				s.emit(Notification{Kind: NotifyDelta, Text: acc})
+				s.raw(&schema.Message{Role: schema.Assistant, Content: acc})
+			}
 		}
 		if len(chunk.ToolCalls) > 0 {
 			chunks = append(chunks, chunk.ToolCalls...)
@@ -401,18 +407,55 @@ func (s *streamAcc) beginTurn() {
 	s.emit(Notification{Kind: NotifyTurn, Text: "turn " + itoa(turn)})
 }
 
-func (s *streamAcc) addAnswer(chunk string) string {
+func (s *streamAcc) addAnswer(chunk string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.answer.WriteString(chunk)
-	return s.answer.String()
+	return writeChunk(&s.answer, chunk)
 }
 
-func (s *streamAcc) addReasoning(chunk string) string {
+func (s *streamAcc) addReasoning(chunk string) (string, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.reason.WriteString(chunk)
-	return s.reason.String()
+	return writeChunk(&s.reason, chunk)
+}
+
+// resentMinRunes is the shortest buffer an exact second copy is treated as
+// a gateway resending the snapshot. A one-rune or short-token repeat is
+// still a repeat; a sentence-sized echo is how the same line floods the
+// transcript.
+const resentMinRunes = 12
+
+// absorbChunk folds one provider chunk into the text so far.
+//
+// Deltas are increments ("Hel" then "lo"). Some gateways put the whole
+// buffer in every chunk. Concatenating those paints the same sentence
+// again on every event. A longer chunk that already starts with the
+// buffer is that snapshot. An exact resend of a long buffer is the same
+// bug, not the model repeating a short token.
+func absorbChunk(prev, chunk string) string {
+	if chunk == "" {
+		return prev
+	}
+	if prev == "" {
+		return chunk
+	}
+	if chunk == prev && utf8.RuneCountInString(prev) >= resentMinRunes {
+		return prev
+	}
+	if len(chunk) > len(prev) && strings.HasPrefix(chunk, prev) {
+		return chunk
+	}
+	return prev + chunk
+}
+
+func writeChunk(buf *strings.Builder, chunk string) (string, bool) {
+	next := absorbChunk(buf.String(), chunk)
+	if next == buf.String() {
+		return next, false
+	}
+	buf.Reset()
+	buf.WriteString(next)
+	return next, true
 }
 
 func (s *streamAcc) answerText() string {

@@ -9,6 +9,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 import androidx.core.content.FileProvider;
+import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -31,6 +32,12 @@ public class AppUpdatePlugin extends Plugin {
     static final long MAX_BYTES = 200L * 1024L * 1024L;
     static final int MAX_HOPS = 5;
     static final String REPO_PREFIX = "/LubyRuffy/eino-swarm/";
+    static final long PROGRESS_EVERY_NS = 200_000_000L;
+
+    /** received/total byte counts. total is negative when the server omitted a length. */
+    interface ByteProgress {
+        void onProgress(long received, long total);
+    }
 
     @PluginMethod
     public void install(PluginCall call) {
@@ -54,7 +61,7 @@ public class AppUpdatePlugin extends Plugin {
         }
         new Thread(() -> {
             try {
-                File apk = download(activity, url);
+                File apk = download(activity, url, (received, total) -> publishProgress(activity, received, total));
                 activity.runOnUiThread(() -> {
                     if (activity.isDestroyed()) {
                         call.reject("no_activity");
@@ -100,7 +107,15 @@ public class AppUpdatePlugin extends Plugin {
         return null;
     }
 
-    static File download(Activity activity, String start) throws Exception {
+    private void publishProgress(Activity activity, long received, long total) {
+        if (activity == null || activity.isDestroyed()) return;
+        JSObject data = new JSObject();
+        data.put("received", received);
+        data.put("total", total > 0 ? total : 0);
+        activity.runOnUiThread(() -> notifyListeners("progress", data));
+    }
+
+    static File download(Activity activity, String start, ByteProgress progress) throws Exception {
         String current = start;
         for (int hop = 0; hop <= MAX_HOPS; hop++) {
             String next = allowed(current, hop == 0);
@@ -129,6 +144,7 @@ public class AppUpdatePlugin extends Plugin {
                 conn.disconnect();
                 throw new IllegalStateException("status");
             }
+            long length = conn.getContentLengthLong();
             File out = new File(activity.getCacheDir(), "zwai-update.apk");
             boolean wrote = false;
             try (InputStream in = conn.getInputStream(); FileOutputStream fos = new FileOutputStream(out)) {
@@ -137,6 +153,7 @@ public class AppUpdatePlugin extends Plugin {
                 int have = 0;
                 long total = 0;
                 boolean zip = false;
+                long marked = 0;
                 int n;
                 while ((n = in.read(buf)) >= 0) {
                     if (!zip) {
@@ -153,8 +170,14 @@ public class AppUpdatePlugin extends Plugin {
                     total += n;
                     if (total > MAX_BYTES) throw new IllegalStateException("size");
                     fos.write(buf, 0, n);
+                    long now = System.nanoTime();
+                    if (progress != null && (marked == 0 || now - marked >= PROGRESS_EVERY_NS)) {
+                        progress.onProgress(total, length);
+                        marked = now;
+                    }
                 }
                 if (!zip) throw new IllegalStateException("empty");
+                if (progress != null) progress.onProgress(total, length);
                 wrote = true;
             } finally {
                 conn.disconnect();

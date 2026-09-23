@@ -186,6 +186,20 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **Android update shows download progress.** The banner used to say only
+  that a download was in flight. It now shows the percent when the server
+  sends a length, and the bytes received when it does not, with a bar for
+  the percent.
+
+- **The same assistant sentence no longer floods the transcript.** A gateway
+  that resends the whole buffer in each stream chunk was concatenated, so
+  one sentence was painted again on every event. A longer chunk that already
+  contains the buffer replaces it, and an exact resend of a long buffer is
+  dropped. A one-rune or short-token repeat still concatenates. On the phone,
+  a late snapshot of the answer already on the tail updates that bubble
+  instead of stacking another copy; a tool, question, or user message
+  between two identical lines keeps both.
+
 - **Tidy skills stays with the project.** The Memory panel kept one tidy
   card for the whole app, so leaving a project and coming back dropped the
   progress or the result. The card is stored per project: another project

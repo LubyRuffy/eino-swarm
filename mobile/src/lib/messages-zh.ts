@@ -149,6 +149,8 @@ export const zh: Record<MessageKey, string> = {
   "update.upgrade": "更新",
   "update.later": "以后再说",
   "update.downloading": "正在下载更新",
+  "update.downloadingProgress": "正在下载更新 · {percent}%",
+  "update.downloadingBytes": "正在下载更新 · {size}",
   "update.permission": "先允许本应用安装未知应用，再点一次更新。",
   "update.failed": "更新没下载下来。再点一次更新。",
 

@@ -151,6 +151,8 @@ export const en = {
   "update.upgrade": "Update",
   "update.later": "Not now",
   "update.downloading": "Downloading the update",
+  "update.downloadingProgress": "Downloading the update · {percent}%",
+  "update.downloadingBytes": "Downloading the update · {size}",
   "update.permission": "Allow this app to install unknown apps, then tap Update again.",
   "update.failed": "The update did not download. Tap Update to try again.",
 

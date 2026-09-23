@@ -212,6 +212,35 @@ describe("compact transcript", () => {
     blocks = applyEvent(blocks, ev({ seq: 53, kind: "delta", text: "hi" }))
     expect(blocks.map((b) => b.kind)).toEqual(["reasoning", "answer"])
   })
+
+  it("does not stack a snapshot that restates the answer already on screen", () => {
+    let blocks = applyEvent([], ev({ seq: 60, kind: "agent_message", text: "status update" }))
+    blocks = applyEvent(blocks, ev({ seq: 0, kind: "delta", text: "status update" }))
+    blocks = applyEvent(blocks, ev({ seq: 0, kind: "delta", text: "status update, continued" }))
+    blocks = applyEvent(blocks, ev({ seq: 61, kind: "agent_message", text: "status update, continued" }))
+    expect(blocks.map((b) => b.text)).toEqual(["status update, continued"])
+    blocks = applyEvent(blocks, ev({ seq: 62, kind: "agent_message", text: "a different line" }))
+    expect(blocks.map((b) => b.text)).toEqual(["status update, continued", "a different line"])
+  })
+
+  it("keeps the same sentence when a tool sits between the two copies", () => {
+    let blocks = applyEvent([], ev({ seq: 70, kind: "agent_message", text: "status update" }))
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 71, kind: "tool_call", tool_call_id: "c1", text: "exec({\"cmd\":\"true\"})" }),
+    )
+    blocks = applyEvent(blocks, ev({ seq: 72, kind: "agent_message", text: "status update" }))
+    expect(blocks.filter((b) => b.kind === "answer").map((b) => b.text)).toEqual([
+      "status update",
+      "status update",
+    ])
+  })
+
+  it("opens a new bubble when the next delta is not the same text so far", () => {
+    let blocks = applyEvent([], ev({ seq: 80, kind: "agent_message", text: "status update" }))
+    blocks = applyEvent(blocks, ev({ seq: 0, kind: "delta", text: "next" }))
+    expect(blocks.map((b) => b.text)).toEqual(["status update", "next"])
+  })
 })
 
 describe("foldPhoneItems", () => {

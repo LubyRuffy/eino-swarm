@@ -138,7 +138,10 @@ type Notification struct {
 Two properties a consumer depends on:
 
 - **Deltas carry the full text so far, not a fragment.** Replace your buffer with
-  it. A dropped delta then costs nothing.
+  it. A dropped delta then costs nothing. A provider chunk that already
+  contains that buffer replaces it instead of being concatenated, and an
+  exact resend of a long buffer is not emitted again. Short token repeats
+  still concatenate.
 - **`ToolCallID` pairs a call with its result.** Agents issue several tool calls
   in one message and they return out of order; matching by name or by arrival
   order produces the wrong pairing exactly when a run gets interesting.

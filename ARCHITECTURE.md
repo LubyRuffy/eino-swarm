@@ -503,7 +503,10 @@ The front end folds this stream into blocks per agent in
 after `schedule_fired` with no findings report, drops that turn's chat bubbles;
 an armed wait or findings report plus empty `done` keeps the chip). The phone
 reducer (`mobile/src/lib/transcript.ts`) maps those kinds to the same
-one-liners and skips the JSON payload; a `schedule_wake` / `cancel_schedule`
+one-liners and skips the JSON payload. A delta that restates the answer
+already on the tail replaces that bubble, and a second completed copy of
+the same text does not stack another one; a tool, question, or user message
+between them keeps both. A `schedule_wake` / `cancel_schedule`
 tool call is omitted (the schedule event already noticed) and a findings
 `report_schedule` becomes that prose as a notice; `progress` pulses are dropped the
 way desktop keeps them off the transcript; a `wait_agents` result is a
