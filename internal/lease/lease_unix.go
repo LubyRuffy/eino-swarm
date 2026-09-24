@@ -46,3 +46,7 @@ func fileIdentity(path string) (uint64, uint64) {
 func signalStop(pid int) error {
 	return syscall.Kill(pid, syscall.SIGTERM)
 }
+
+func signalKill(pid int) error {
+	return syscall.Kill(pid, syscall.SIGKILL)
+}

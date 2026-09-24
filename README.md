@@ -570,7 +570,9 @@ zwai --data-dir /tmp/demo   # use a throwaway data directory
 `--data-dir` works on every subcommand, as does `--mock`. Desktop, web, and
 the terminal share one engine for that directory: the first shell starts
 it, the next one attaches, and closing a window does not stop a turn that
-is still running. See [docs/CLI.md](docs/CLI.md).
+is still running. A newer binary waits for that turn, prints a check every
+10s, and after 30s asks before it force-stops the old process. See
+[docs/CLI.md](docs/CLI.md).
 
 ## Where things live
 

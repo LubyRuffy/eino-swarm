@@ -49,9 +49,14 @@ takes the lock and resumes orphaned turns.
 
 Opening a **different build** (another version, or a binary that replaced
 the file on disk) waits until no conversation is in a model call, then
-stops that engine and starts one from the binary you just launched. A
-question waiting on the human, and a schedule that has not fired, do not
-count as that call. A second window of the same build still attaches.
+stops that engine and starts one from the binary you just launched. Every
+10s it prints a check while a turn is still in that call. At 30s, and again
+every 30s after the answer, a terminal asks whether to force-stop; `y`,
+`yes`, or `是` kills the old process and switches. Anything else keeps
+waiting. If that process exits during the wait, this shell starts its own.
+With no terminal it does not force. A question waiting on the human, and a schedule
+that has not fired, do not count as that call. A second window of the same
+build still attaches.
 
 A second `zwai desktop` on the same data directory opens another window on
 the same engine. Both can type. The app menu (the `…` at the bottom-left of

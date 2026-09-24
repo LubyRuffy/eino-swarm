@@ -312,6 +312,61 @@ func TestStopEndsTheProcess(t *testing.T) {
 	}
 }
 
+func TestKillEndsAProcessThatIgnoresStop(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SIGTERM cannot be trapped")
+	}
+	cmd := exec.Command("bash", "-c", "trap '' TERM; sleep 30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(waited)
+	}()
+	// Start returns when the process exists, not when the trap is installed.
+	// A signal in that gap uses the default action and the test never reaches
+	// the kill that follows an ignored stop.
+	time.Sleep(200 * time.Millisecond)
+	if !pidAlive(cmd.Process.Pid) {
+		t.Fatal("the process exited before the force kill")
+	}
+	if err := Kill(cmd.Process.Pid); err != nil {
+		_ = cmd.Process.Kill()
+		t.Fatal(err)
+	}
+	<-waited
+	if pidAlive(cmd.Process.Pid) {
+		t.Fatal("kill returned while the process was still alive")
+	}
+	if err := Kill(0); err == nil {
+		t.Fatal("pid 0 is not an engine")
+	}
+	if err := Kill(cmd.Process.Pid); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestKillReportsAProcessThatSurvivesBothSignals(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SIGTERM cannot be trapped")
+	}
+	prev := killProcess
+	t.Cleanup(func() { killProcess = prev })
+	killProcess = func(int) error { return nil }
+	cmd := exec.Command("bash", "-c", "trap '' TERM; sleep 30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	time.Sleep(200 * time.Millisecond)
+	err := Kill(cmd.Process.Pid)
+	if err == nil || !strings.Contains(err.Error(), "did not exit") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
 func TestStopGivesUpWhenTheProcessIgnoresTheSignal(t *testing.T) {
 	cmd := exec.Command("bash", "-c", "trap '' TERM; sleep 30")
 	if err := cmd.Start(); err != nil {

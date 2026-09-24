@@ -88,9 +88,18 @@ func SameEngine(live Record, self Build) bool {
 	return live.Dev == self.Dev && live.Ino == self.Ino
 }
 
+// stopWait is how long Stop gives a process that was asked to exit.
+// killTermWait is shorter: the user already confirmed a force replace,
+// so a turn that ignores the request must not hold the lock.
+const (
+	stopWait     = 8 * time.Second
+	killTermWait = 2 * time.Second
+)
+
 // Stop asks the live engine to exit and waits until the pid is gone.
 // The lock stays held until that process dies, so a second engine must not
-// start before this returns.
+// start before this returns. A process that ignores the signal is left
+// running; Kill is the confirmed force path.
 func Stop(pid int) error {
 	if pid <= 0 {
 		return fmt.Errorf("lease: bad pid")
@@ -101,14 +110,43 @@ func Stop(pid int) error {
 		}
 		return fmt.Errorf("lease: stop engine: %w", err)
 	}
-	deadline := time.Now().Add(8 * time.Second)
+	if waitUntilStopped(pid, stopWait) {
+		return nil
+	}
+	return fmt.Errorf("lease: engine %d did not exit", pid)
+}
+
+// Kill is a confirmed force replace. It asks the process to exit, then
+// ends it if that request is ignored. The next shell cannot take the lock
+// while this pid is still alive.
+func Kill(pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("lease: bad pid")
+	}
+	_ = signalStop(pid)
+	if waitUntilStopped(pid, killTermWait) {
+		return nil
+	}
+	// killProcess is signalKill except when a test has to show the
+	// failure after both signals. A live pid here still holds the lock.
+	_ = killProcess(pid)
+	if waitUntilStopped(pid, killTermWait) {
+		return nil
+	}
+	return fmt.Errorf("lease: engine %d did not exit", pid)
+}
+
+var killProcess = signalKill
+
+func waitUntilStopped(pid int, d time.Duration) bool {
+	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
 		if !pidAlive(pid) {
-			return nil
+			return true
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return fmt.Errorf("lease: engine %d did not exit", pid)
+	return !pidAlive(pid)
 }
 
 // Hold is an exclusive lock on one data directory. Release on shutdown.

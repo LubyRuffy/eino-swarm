@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- **Replacing an older engine no longer waits forever.** A turn still in a model call holds the old process. Every 10s the new shell prints a check. At 30s a terminal asks whether to force-stop; confirming kills that process and starts this binary. Declining waits another 30s. No terminal keeps waiting.
+
 - **Conversation width, developer view, and who else is connected moved into the app menu.** That is the `…` control at the bottom-left of the conversation list, beside Settings. The title bar keeps the status badge, the terminal, and the side panel.
 
 ### Added

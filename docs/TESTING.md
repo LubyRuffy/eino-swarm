@@ -256,7 +256,13 @@ and leaves the engine up. `runTUI` attaches with `ensureEngine` and
 `tui.RunClient`. `TestEnsureEngineReplacesAnOlderBuild` is why a newer
 binary stops the process it would otherwise attach to; `TestEnsureEngineWaitsUntilTheTurnIsNotExecuting`
 is why that stop waits out a model call and does not wait on a question or
-a parked schedule. `TestSameEngineIsTheBinaryThatWasStarted`
+a parked schedule. `TestReplaceAsksBeforeItKillsATurnThatWillNotFinish` is
+the 10s check and the 30s force question; `TestEnsureEngineKillsWhenTheUserForces`
+is why a yes kills the old process while the turn is still running.
+`TestEnsureEngineStartsWhenTheOldProcessDiesWhileWaiting` is why a process
+that exits during that wait does not fail the launch.
+`TestKillEndsAProcessThatIgnoresStop` is why that kill follows a ignored
+SIGTERM with SIGKILL. `TestSameEngineIsTheBinaryThatWasStarted`
 is the match (version plus executable identity). `assembleTUI` / `buildTUISwarm` still build an in-process
 swarm for renderer tests. The window itself is verified by hand — see below.
 

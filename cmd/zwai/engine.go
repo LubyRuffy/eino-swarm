@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -12,6 +13,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -149,11 +152,22 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 		// talking to the build they thought they replaced. A turn that is
 		// actually calling the model finishes first. A parked schedule and
 		// a question waiting on the human are not that turn.
-		if err := waitUntilQuiet(rec.URL); err != nil {
-			return "", err
-		}
-		if err := lease.Stop(rec.PID); err != nil {
-			return "", err
+		force, err := waitUntilQuiet(rec.URL)
+		if err != nil {
+			// The process can exit while this shell is waiting. A dead pid
+			// is the same as no engine; failing the launch would leave the
+			// user with nothing to attach to.
+			if _, discErr := lease.Discover(dir, mock); !errors.Is(discErr, lease.ErrNotRunning) {
+				return "", err
+			}
+		} else {
+			stop := lease.Stop
+			if force {
+				stop = lease.Kill
+			}
+			if err := stop(rec.PID); err != nil {
+				return "", err
+			}
 		}
 	case errors.Is(err, lease.ErrMockMismatch), errors.Is(err, lease.ErrUnreachable):
 		return "", err
@@ -166,25 +180,131 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 
 // quietPoll is how often a newer shell asks whether the live engine is
 // still in a model call. Short enough that a turn ending is not a long
-// pause before the window opens.
-const quietPoll = 200 * time.Millisecond
+// pause before the window opens. replaceHeartbeat is the status line
+// while that wait continues. replaceForceAfter is when the shell asks
+// before it kills the old process.
+const (
+	quietPoll         = 200 * time.Millisecond
+	replaceHeartbeat  = 10 * time.Second
+	replaceForceAfter = 30 * time.Second
+)
 
-func waitUntilQuiet(base string) error {
+// quietNow, quietSleep and confirmReplace are the wait loop's clock and
+// the yes/no question. Tests move the clock instead of sleeping 30s.
+var (
+	quietNow       = time.Now
+	quietSleep     = time.Sleep
+	confirmReplace = func() bool { return readForceReplace(os.Stdin, stdinIsTTY()) }
+)
+
+type replaceWait struct {
+	poll       time.Duration
+	heartbeat  time.Duration
+	forceAfter time.Duration
+	now        func() time.Time
+	sleep      func(time.Duration)
+	logf       func(string, ...any)
+	confirm    func() bool
+}
+
+// waitUntilQuiet reports whether the caller should kill the live engine.
+// False means no conversation is in a model call. True means the user
+// confirmed a force stop while one still was.
+func waitUntilQuiet(base string) (bool, error) {
 	client := &http.Client{Timeout: 2 * time.Second}
+	return waitToReplace(func() (bool, error) {
+		return engineBusy(client, base)
+	}, replaceWait{
+		poll: quietPoll, heartbeat: replaceHeartbeat, forceAfter: replaceForceAfter,
+		now: quietNow, sleep: quietSleep, logf: log.Printf, confirm: confirmReplace,
+	})
+}
+
+func waitToReplace(busy func() (bool, error), w replaceWait) (bool, error) {
+	if w.now == nil {
+		w.now = time.Now
+	}
+	if w.sleep == nil {
+		w.sleep = time.Sleep
+	}
+	if w.logf == nil {
+		w.logf = log.Printf
+	}
+	if w.confirm == nil {
+		w.confirm = confirmReplace
+	}
+	if w.poll <= 0 {
+		w.poll = quietPoll
+	}
+	started := w.now()
+	var lastBeat, lastAsk time.Time
 	told := false
 	for {
-		busy, err := engineBusy(client, base)
+		running, err := busy()
 		if err != nil {
-			return err
+			return false, err
 		}
-		if !busy {
-			return nil
+		if !running {
+			if told {
+				w.logf("the running turn finished; replacing the engine")
+			}
+			return false, nil
 		}
 		if !told {
-			log.Print("waiting for the running turn to finish before replacing the engine")
+			w.logf("waiting for the running turn to finish before replacing the engine")
 			told = true
 		}
-		time.Sleep(quietPoll)
+		now := w.now()
+		elapsed := now.Sub(started)
+		if w.heartbeat > 0 && elapsed >= w.heartbeat && (lastBeat.IsZero() || now.Sub(lastBeat) >= w.heartbeat) {
+			w.logf("engine replace: checked at %s; a turn is still running", elapsed.Round(time.Second))
+			lastBeat = now
+		}
+		if w.forceAfter > 0 && elapsed >= w.forceAfter && (lastAsk.IsZero() || now.Sub(lastAsk) >= w.forceAfter) {
+			if w.confirm() {
+				running, err = busy()
+				if err != nil {
+					return false, err
+				}
+				if !running {
+					w.logf("the running turn finished; replacing the engine")
+					return false, nil
+				}
+				w.logf("force-stopping the running turn and replacing the engine")
+				return true, nil
+			}
+			// Count the interval from the answer. A slow "no" must not
+			// be followed by another question on the next poll.
+			lastAsk = w.now()
+			w.logf("still waiting for the running turn to finish")
+		}
+		w.sleep(w.poll)
+	}
+}
+
+var toldNoTerminal sync.Once
+
+func readForceReplace(in io.Reader, tty bool) bool {
+	if !tty {
+		toldNoTerminal.Do(func() {
+			log.Print("engine replace: no terminal to confirm a force stop; still waiting")
+		})
+		return false
+	}
+	fmt.Fprint(os.Stderr, "Force stop the running turn and replace the engine? [y/N] ")
+	line, err := bufio.NewReader(in).ReadString('\n')
+	if err != nil && line == "" {
+		return false
+	}
+	return replaceConfirmed(line)
+}
+
+func replaceConfirmed(line string) bool {
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes", "是":
+		return true
+	default:
+		return false
 	}
 }
 

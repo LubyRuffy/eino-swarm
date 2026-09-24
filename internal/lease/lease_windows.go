@@ -62,6 +62,10 @@ func signalStop(pid int) error {
 	return p.Kill()
 }
 
+func signalKill(pid int) error {
+	return signalStop(pid)
+}
+
 func pidAlive(pid int) bool {
 	if pid <= 0 {
 		return false
