@@ -53,6 +53,12 @@ sends (Shift+Enter is a newline, and an IME candidate list is never a
 send), and the round button stays off until there is something to send.
 While a turn is live the box also offers steer, and says a plain send is
 queued after this turn.
+Select text in the PC conversation and tap **Add to chat** to attach it to
+the next message. The quote appears above the box and can be read, edited, or removed before
+sending. A quote can be sent by itself or with a typed request. The phone
+sends the same `<selected_text>` and `<user_request>` blocks as the desktop;
+the quote is not part of the editable message text. Direct model chat does
+not have a PC transcript to quote.
 
 The inbox does not compose. Search and **New chat** sit under the list,
 and the header corner is the same **New chat** — Add a PC stays on the
@@ -154,6 +160,13 @@ needs `ANDROID_KEYSTORE*` or a gitignored `mobile/android/keystore.properties`
 — missing those fails on purpose so a debug-signed APK cannot ship as a
 store build. `ANDROID_UNSIGNED=1` is the sideload path: debug-signed APK,
 no AAB (`adb install` works; Play will not).
+
+For a new mobile release, `npm version patch --no-git-tag-version` updates
+`package.json` and its lockfile; then `npm run version:sync-ios` derives every
+Xcode marketing/build setting from that package version. Verify the candidate
+against the latest Android Release and TestFlight build before tagging. This
+keeps the two phone platform versions together without editing each Xcode
+configuration by hand.
 
 ```bash
 # Sideload (emulator / adb). No tags on this checkout is fine.

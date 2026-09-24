@@ -29,7 +29,7 @@ export function renderBlock(b: CompactBlock) {
     return (
       // A bubble as wide as the screen for three words reads as a banner.
       // What you said hugs its own text and sits on the side you typed from.
-      <div className="ml-auto w-fit min-w-0 max-w-[85%] break-words rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
+      <div data-quote-text="" className="ml-auto w-fit min-w-0 max-w-[85%] break-words rounded-2xl bg-secondary px-3 py-2 text-sm text-secondary-foreground">
         {text ? <QuotedPhoneText text={text} /> : null}
         {b.hasImages ? (
           <p className="mt-1 text-xs text-muted-foreground">{t("thread.image")}</p>
@@ -41,7 +41,7 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text) return null
     return (
-      <div className="ml-auto w-fit min-w-0 max-w-[85%] break-words rounded-2xl bg-accent px-3 py-2 text-sm">
+      <div data-quote-text="" className="ml-auto w-fit min-w-0 max-w-[85%] break-words rounded-2xl bg-accent px-3 py-2 text-sm">
         <QuotedPhoneText text={text} />
       </div>
     )
@@ -50,7 +50,7 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text) return null
     return (
-      <div className={cn("mr-4 min-w-0 break-words text-sm leading-snug", b.streaming && "opacity-90")}>
+      <div data-quote-text="" className={cn("mr-4 min-w-0 break-words text-sm leading-snug", b.streaming && "opacity-90")}>
         <PhoneMarkdown text={text} />
       </div>
     )

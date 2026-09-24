@@ -362,12 +362,9 @@ test("switches the chrome language and restores English", async ({
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN")
   } finally {
     await request.put("/api/settings", { data: { ui: { locale: "system" } } })
-    const menu = page.getByRole("button", { name: "应用菜单" })
-    if (await menu.isVisible()) {
-      await menu.click()
-      const zh = page.getByRole("menuitem", { name: "切换语言" })
-      if (await zh.isVisible()) await zh.click()
-    }
+    // The Chinese menu is already open after the assertion. Reload applies
+    // the restored setting without clicking through its dismiss overlay.
+    await page.reload()
     await page.getByRole("button", { name: "App menu" }).click()
     await expect(page.getByRole("menuitem", { name: "Switch language" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("lang", "en")

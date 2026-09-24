@@ -58,6 +58,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   streaming. The snippet lands as a count chip on the composer — hover to
   read, edit or drop it — and is sent in `<selected_text>` next to whatever
   you type (`<user_request>`), instead of being dumped into the box.
+  On the phone, select text in the PC conversation and tap **Add to chat**.
+  The selected text appears above the message box, where it can be edited or removed;
+  sending it alone or with a message uses the same tagged format.
 - **Interactive questions (`ask_user`).** When a preference would waste work
   if guessed, the manager pauses this turn with a numbered question dialog.
   The card says **Your answer needed**, the title bar says **Your turn**, and

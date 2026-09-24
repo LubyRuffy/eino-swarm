@@ -5,6 +5,30 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("selected answer text becomes a removable quote in the next phone message", async ({ page }) => {
+  await page.goto(WALKTHROUGH)
+  await page.getByLabel("消息").fill("show result")
+  await page.getByRole("button", { name: "跟进" }).click()
+  const source = page.getByTestId("transcript").getByText("Here is what changed:")
+  await expect(source).toBeVisible()
+  await source.evaluate((element) => {
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    document.dispatchEvent(new Event("selectionchange"))
+  })
+  await page.getByRole("button", { name: "加入对话" }).click()
+  await expect(page.getByTestId("quote-draft")).toHaveValue("Here is what changed:")
+  await page.getByTestId("quote-draft").fill("")
+  await page.getByTestId("quote-draft").pressSequentially("Here is the corrected source:")
+  await page.getByLabel("消息").fill("解释这一句")
+  await page.getByRole("button", { name: /跟进|发送/ }).click()
+  await expect(page.getByTestId("quoted-message").last()).toContainText("Here is the corrected source:")
+  await expect(page.getByTestId("quoted-message").last()).toContainText("解释这一句")
+  await expect(page.getByTestId("quote-drafts")).toHaveCount(0)
+})
+
 async function backToInbox(page: Page) {
   await page.getByRole("button", { name: "返回" }).click()
   await expect(page.getByRole("tablist", { name: "电脑" })).toBeVisible()

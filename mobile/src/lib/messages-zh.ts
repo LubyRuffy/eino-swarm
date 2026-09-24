@@ -111,6 +111,9 @@ export const zh: Record<MessageKey, string> = {
   "thread.rosterUndelivered": "{n} 未送达",
 
   "quote.selected": "选中的文本",
+  "quote.add": "加入对话",
+  "quote.edit": "编辑引用 {n}",
+  "quote.remove": "移除引用 {n}",
 
   "notice.scheduleArmed": "已设置等待。",
   "notice.scheduleCancelled": "等待已取消。",

@@ -5,6 +5,84 @@ import { setLocale } from "@/lib/i18n"
 import { ThreadScreen } from "./thread-screen"
 
 describe("ThreadScreen", () => {
+  it("adds selected transcript text to the draft and sends it as a separate quote", () => {
+    setLocale("en")
+    const onSend = vi.fn()
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "talk" }}
+        blocks={[{ id: "a1", kind: "answer", text: "alpha beta" }]}
+        onBack={vi.fn()}
+        onSend={onSend}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    const source = screen.getByText("alpha beta")
+    const range = document.createRange()
+    range.selectNodeContents(source)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    fireEvent(document, new Event("selectionchange"))
+    fireEvent.click(screen.getByRole("button", { name: "Add to chat" }))
+    expect(screen.getByRole("textbox", { name: "Edit quote 1" })).toHaveValue("alpha beta")
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "explain" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(onSend).toHaveBeenCalledWith(
+      "<selected_text>\nalpha beta\n</selected_text>\n\n<user_request>\nexplain\n</user_request>",
+    )
+  })
+
+  it("does not quote selected composer text", () => {
+    setLocale("en")
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "talk" }}
+        blocks={[{ id: "a1", kind: "answer", text: "alpha beta" }]}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    const box = screen.getByLabelText("Message")
+    fireEvent.change(box, { target: { value: "outside" } })
+    const range = document.createRange()
+    range.selectNodeContents(box)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    fireEvent(document, new Event("selectionchange"))
+    expect(screen.queryByRole("button", { name: "Add to chat" })).not.toBeInTheDocument()
+  })
+
+  it("does not quote tool control text", () => {
+    setLocale("en")
+    render(
+      <ThreadScreen
+        detail={{ id: "t1", title: "talk" }}
+        blocks={[{ id: "tool1", kind: "tool", text: "opened", toolName: "read_file" }]}
+        onBack={vi.fn()}
+        onSend={vi.fn()}
+        onSteer={vi.fn()}
+        onStop={vi.fn()}
+        onAnswer={vi.fn()}
+        onAnswerStructured={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByTestId("work-fold"))
+    const source = screen.getByText("read_file")
+    const range = document.createRange()
+    range.selectNodeContents(source)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    fireEvent(document, new Event("selectionchange"))
+    expect(screen.queryByRole("button", { name: "Add to chat" })).not.toBeInTheDocument()
+  })
+
   it("maps send, steer and stop onto the live thread", () => {
     const onSend = vi.fn()
     const onSteer = vi.fn()

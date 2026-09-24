@@ -19,6 +19,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-221` The phone can select text in a PC conversation and add it to the
+  next message, follow-up, or steer. Quotes stay separate from the typed
+  request, can be edited or removed, and use the same `C-011` wire format as desktop.
+
+- `F-430` `npm run version:sync-ios` derives Xcode version and build settings
+  from the mobile package version (`C-010`) for a mobile release candidate.
+
 - **The desktop app menu sits at the bottom-left of the conversation list.** It flips light / dark, switches language, and shows the build version from `/api/meta`. Those two switches left the title bar.
 
 - **The phone menu shows the package version.** Open the menu and the build number sits under the rows, so a screenshot names the install.

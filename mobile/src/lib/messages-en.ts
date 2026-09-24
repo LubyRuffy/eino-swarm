@@ -108,6 +108,9 @@ export const en = {
   "thread.rosterUndelivered": "{n} undelivered",
 
   "quote.selected": "Selected text",
+  "quote.add": "Add to chat",
+  "quote.edit": "Edit quote {n}",
+  "quote.remove": "Remove quote {n}",
 
   "notice.scheduleArmed": "A wait is armed.",
   "notice.scheduleCancelled": "A wait was cancelled.",

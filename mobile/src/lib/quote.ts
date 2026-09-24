@@ -1,5 +1,4 @@
-/** Wire tags on a quoted desktop send. Phone does not mint these; it only
- *  splits them so a bubble is not one dump of highlight + instruction. */
+/** The phone and desktop use the same tagged quote format on the wire. */
 export const SELECTED_TEXT_TAG = "selected_text"
 export const USER_REQUEST_TAG = "user_request"
 export const SELECTED_TEXT_LABEL = "Selected text"
@@ -7,6 +6,21 @@ export const SELECTED_TEXT_LABEL = "Selected text"
 export interface QuotedPayload {
   quotes: string[]
   body: string
+}
+
+export function normalizeSelectedText(raw: string): string {
+  return raw.replace(/\u00a0/g, " ").replace(/\r\n?/g, "\n").trim()
+}
+
+export function formatQuotedMessage(quotes: readonly string[], draft: string): string {
+  const selected = quotes.map(normalizeSelectedText).filter(Boolean)
+  const body = draft.trim()
+  if (selected.length === 0) return body
+  const blocks = selected.map((text) =>
+    `<${SELECTED_TEXT_TAG}>\n${text.replaceAll(`</${SELECTED_TEXT_TAG}>`, `</ ${SELECTED_TEXT_TAG}>`)}\n</${SELECTED_TEXT_TAG}>`,
+  )
+  if (!body) return blocks.join("\n\n")
+  return `${blocks.join("\n\n")}\n\n<${USER_REQUEST_TAG}>\n${body.replaceAll(`</${USER_REQUEST_TAG}>`, `</ ${USER_REQUEST_TAG}>`)}\n</${USER_REQUEST_TAG}>`
 }
 
 export function parseQuotedMessage(text: string): QuotedPayload {

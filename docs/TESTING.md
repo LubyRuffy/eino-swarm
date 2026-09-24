@@ -1544,3 +1544,9 @@ or one call eating the wall clock.
   `frontend/src/lib/stream.test.ts` `wireKinds`.
 - A new user-visible flow needs an E2E test. If it cannot be driven in the
   browser, it probably cannot be driven by a user either.
+# Documentation structure
+
+`make docs-check` checks required documents, feature and contract IDs,
+cross-references, evidence paths, and links in the current snapshots. It is
+part of `make check`; semantic correctness still requires review against
+current entry points and tests.

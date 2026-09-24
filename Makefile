@@ -23,6 +23,7 @@ help:
 	@echo "make mobile-android  open the Android app in Android Studio"
 	@echo "make mobile-android-release  Android APK/AAB into bin/"
 	@echo "make check      formatting, vet, test, e2e"
+	@echo "make docs-check  validate feature and contract references"
 
 .PHONY: run
 run:
@@ -104,8 +105,12 @@ fmt-check:
 vet:
 	go vet ./...
 
+.PHONY: docs-check
+docs-check:
+	python3 tools/docs_check.py
+
 .PHONY: check
-check: fmt-check vet test e2e
+check: fmt-check vet docs-check test e2e
 
 .PHONY: clean
 clean:

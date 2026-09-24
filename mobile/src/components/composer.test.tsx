@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { setLocale } from "@/lib/i18n"
@@ -146,5 +146,52 @@ describe("Composer", () => {
       "",
       expect.objectContaining({ files: [file], images: [], model: "one" }),
     )
+  })
+
+  it("can send a quote alone and remove it before sending", () => {
+    const onSubmit = vi.fn()
+    const onQuotesChange = vi.fn()
+    const { rerender } = render(
+      <Composer label="Message" sendLabel="Send" quotes={["alpha"]} onQuotesChange={onQuotesChange} onSubmit={onSubmit} />,
+    )
+    expect(screen.getByRole("button", { name: "Send" })).toBeEnabled()
+    fireEvent.click(screen.getByRole("button", { name: "Remove quote 1" }))
+    expect(onQuotesChange).toHaveBeenCalledWith([])
+    rerender(<Composer label="Message" sendLabel="Send" quotes={[]} onQuotesChange={onQuotesChange} onSubmit={onSubmit} />)
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled()
+    rerender(<Composer label="Message" sendLabel="Send" quotes={["alpha"]} onQuotesChange={onQuotesChange} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(onSubmit).toHaveBeenCalledWith("<selected_text>\nalpha\n</selected_text>")
+  })
+
+  it("lets the user read and edit a selected quote before sending", () => {
+    const onSubmit = vi.fn()
+    const onQuotesChange = vi.fn()
+    const { rerender } = render(
+      <Composer label="Message" sendLabel="Send" quotes={["long original quote"]} onQuotesChange={onQuotesChange} onSubmit={onSubmit} />,
+    )
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit quote 1" }), { target: { value: "corrected quote" } })
+    expect(onQuotesChange).toHaveBeenCalledWith(["corrected quote"])
+    rerender(<Composer label="Message" sendLabel="Send" quotes={["corrected quote"]} onQuotesChange={onQuotesChange} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(onSubmit).toHaveBeenCalledWith("<selected_text>\ncorrected quote\n</selected_text>")
+  })
+
+  it("does not enable sending an emptied quote", () => {
+    const onSubmit = vi.fn()
+    render(<Composer label="Message" sendLabel="Send" quotes={["  "]} onQuotesChange={vi.fn()} onSubmit={onSubmit} />)
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled()
+  })
+
+  it("restores the text and quote after a failed send", async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error("offline"))
+    const onQuotesChange = vi.fn()
+    render(<Composer label="Message" sendLabel="Send" quotes={["alpha"]} onQuotesChange={onQuotesChange} onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "explain" } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    })
+    await vi.waitFor(() => expect(onQuotesChange).toHaveBeenLastCalledWith(["alpha"]))
+    expect(screen.getByLabelText("Message")).toHaveValue("explain")
   })
 })

@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from "react"
-import { ArrowDown, ChevronLeft, Loader2 } from "lucide-react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { ArrowDown, ChevronLeft, Loader2, MessageSquarePlus } from "lucide-react"
 
 import { AskCard } from "@/components/ask-card"
 import { Composer, type ComposerExtra } from "@/components/composer"
@@ -7,6 +7,7 @@ import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
 import { ThreadLog } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
 import { t } from "@/lib/i18n"
+import { normalizeSelectedText } from "@/lib/quote"
 import type { CompactBlock } from "@/lib/transcript"
 import { pendingAsk } from "@/lib/transcript"
 import type { FollowupView, ModelChoice, ThreadDetail } from "@/lib/rpc"
@@ -72,10 +73,36 @@ export function ThreadScreen({
   const running = Boolean(detail.running)
   const waiting = Boolean(detail.waiting && !running)
   const scroller = useRef<HTMLDivElement>(null)
+  const quoteSource = useRef<HTMLDivElement>(null)
+  const [selectedText, setSelectedText] = useState("")
+  const [quotes, setQuotes] = useState<string[]>([])
   const stick = useRef(true)
   const pinHeight = useRef<number | null>(null)
   const [atTail, setAtTail] = useState(false)
   const [behind, setBehind] = useState(false)
+
+  useEffect(() => {
+    if (asking) return
+    const read = () => {
+      const selection = window.getSelection()
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
+      const range = selection.getRangeAt(0)
+      const source = quoteSource.current
+      const inMessage = (node: Node) => {
+        const element = node instanceof Element ? node : node.parentElement
+        return element?.closest("[data-quote-text]")
+      }
+      if (!source?.contains(range.startContainer) || !source.contains(range.endContainer) ||
+        !inMessage(range.startContainer) || !inMessage(range.endContainer)) {
+        setSelectedText("")
+        return
+      }
+      setSelectedText(normalizeSelectedText(selection.toString()))
+      stick.current = false
+    }
+    document.addEventListener("selectionchange", read)
+    return () => document.removeEventListener("selectionchange", read)
+  }, [asking])
 
   const loadOlder = () => {
     if (!onOlder || loadingOlder || !hasMore || !caughtUp) return
@@ -242,7 +269,9 @@ export function ThreadScreen({
           {/* Bottom-aligned: a short conversation sits above the composer
               instead of floating under a screen of blank. */}
           <div className="flex min-h-full min-w-0 w-full flex-col justify-end gap-1.5">
-            <ThreadLog blocks={blocks} running={running} />
+            <div ref={quoteSource} data-quote-source="">
+              <ThreadLog blocks={blocks} running={running} />
+            </div>
             {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
               <AskCard
                 questions={ask.questions!}
@@ -252,6 +281,21 @@ export function ThreadScreen({
             ) : null}
           </div>
         </div>
+        {selectedText && !asking ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="absolute bottom-3 right-3 z-10 h-9 gap-1.5 rounded-full border border-border px-3 shadow-md"
+            onClick={() => {
+              setQuotes((current) => [...current, selectedText])
+              setSelectedText("")
+              window.getSelection()?.removeAllRanges()
+            }}
+          >
+            <MessageSquarePlus className="size-4" aria-hidden />
+            {t("quote.add")}
+          </Button>
+        ) : null}
         {behind && atTail ? (
           <button
             type="button"
@@ -279,6 +323,8 @@ export function ThreadScreen({
         />
       ) : null}
       <Composer
+        quotes={asking ? [] : quotes}
+        onQuotesChange={setQuotes}
         // The box and the button cannot share a name, or a screen reader
         // announces two "Answer" controls and a test cannot pick either.
         label={asking ? t("thread.answerBox") : t("thread.message")}

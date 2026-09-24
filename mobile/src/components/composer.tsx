@@ -3,6 +3,7 @@ import { ArrowUp, Loader2, Paperclip, X, Zap } from "lucide-react"
 
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
+import { formatQuotedMessage } from "@/lib/quote"
 import { isVisionFile } from "@/lib/put-chunks"
 import type { ModelChoice } from "@/lib/rpc"
 
@@ -29,6 +30,8 @@ export function Composer({
   pending,
   hint,
   above,
+  quotes = [],
+  onQuotesChange,
   steerLabel,
   onSteer,
   onSubmit,
@@ -47,6 +50,8 @@ export function Composer({
   pending?: boolean
   hint?: string
   above?: ReactNode
+  quotes?: string[]
+  onQuotesChange?: (quotes: string[]) => void
   steerLabel?: string
   onSteer?: Send
   onSubmit: Send
@@ -67,7 +72,8 @@ export function Composer({
   const images = attached.filter((file) => isVisionFile(file))
   const files = attached.filter((file) => !isVisionFile(file))
   const ready =
-    (text.trim().length > 0 || attached.length > 0) && !disabled && !pending
+    (text.trim().length > 0 || attached.length > 0 || quotes.some((quote) => quote.trim().length > 0)) &&
+    !disabled && !pending
   const showTools = models.length > 0 || reasoningLevels.length > 0 || catalogBusy
 
   // The conversation's selection arrives after catalog. A local edit is not
@@ -100,17 +106,20 @@ export function Composer({
   }
 
   const fire = async (send: Send) => {
-    const payload = text.trim()
+    const payload = formatQuotedMessage(quotes, text)
     if ((!payload && attached.length === 0) || disabled || pending) return
     const shot = attached
+    const selected = quotes
     const more = extra()
     setText("")
     setAttached([])
+    onQuotesChange?.([])
     try {
       await (more ? send(payload, more) : send(payload))
     } catch {
-      setText(payload)
+      setText(text)
       setAttached(shot)
+      onQuotesChange?.(selected)
     }
   }
 
@@ -128,6 +137,30 @@ export function Composer({
   return (
     <div className="min-w-0 shrink-0 border-t border-border bg-background px-3 pb-2 pt-1.5">
       {above}
+      {quotes.length > 0 ? (
+        <ul className="mb-2 flex flex-col gap-1" data-testid="quote-drafts">
+          {quotes.map((quote, i) => (
+            <li key={i} className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-muted px-3 py-1 text-xs">
+              <textarea
+                aria-label={t("quote.edit", { n: i + 1 })}
+                className="min-h-12 max-h-24 min-w-0 flex-1 resize-y overflow-auto bg-transparent text-xs focus-visible:outline-none"
+                rows={2}
+                value={quote}
+                data-testid="quote-draft"
+                onChange={(event) => onQuotesChange?.(quotes.map((current, j) => j === i ? event.target.value : current))}
+              />
+              <button
+                type="button"
+                aria-label={t("quote.remove", { n: i + 1 })}
+                className="text-muted-foreground"
+                onClick={() => onQuotesChange?.(quotes.filter((_, j) => j !== i))}
+              >
+                <X className="size-3.5" aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {attached.length > 0 ? (
         <ul className="mb-2 flex flex-col gap-1">
           {attached.map((file, i) => (
