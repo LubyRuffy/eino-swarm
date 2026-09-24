@@ -13,10 +13,6 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
-- **The phone paints a `chart` fence.** A closed comparison (bar, line, area,
-  pie) is a plot with a table of the same rows. A truncated fence waits. A
-  finished invalid body stays a code block, and a `json` fence is still code.
-
 - **The phone can talk to a model without a PC.** Menu → Models (or Connect a
   model on the scan screen) saves an OpenAI-compatible endpoint: base URL,
   optional key, chat completions or responses, discover, timeout. After one
@@ -2348,6 +2344,20 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.10] - 2026-09-24
+
+Phone sideload. versionName `0.1.10`, versionCode `110`. Same debug key as
+v0.1.9, so an installed 0.1.9 updates in place. iOS marketing version
+`0.1.10`, build `110`.
+[`zwai-0.1.10-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.10/zwai-0.1.10-android.apk)
+is on [v0.1.10](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.10).
+
+### Added
+
+- **The phone paints a `chart` fence.** A closed comparison (bar, line, area,
+  pie) is a plot with a table of the same rows. A truncated fence waits. A
+  finished invalid body stays a code block, and a `json` fence is still code.
 
 ## [0.1.9] - 2026-09-24
 
