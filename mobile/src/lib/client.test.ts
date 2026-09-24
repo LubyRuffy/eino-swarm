@@ -15,6 +15,7 @@ import type { RemoteResponse } from "./rpc"
 import { generateIdentity, respond } from "./crypto"
 import { bytesToB64url, bytesToHex } from "./bytes"
 import { marshalFrame, TYPE_DATA, TYPE_HANDSHAKE, TYPE_LABEL, TYPE_PUNCH_PING, unmarshalFrame } from "./frame"
+import { hubDeviceFields } from "./device"
 import { OpHello, OpList, PROTOCOL_V } from "./rpc"
 
 describe("redeemOffer", () => {
@@ -46,9 +47,14 @@ describe("redeemOffer", () => {
     expect(got.hostPub).toEqual(hostPub)
     expect(fetcher).toHaveBeenCalledOnce()
     expect(JSON.stringify(fetcher.mock.calls)).toContain("pairings/redeem")
-    const posted = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as { name?: string; version?: string }
+    const posted = JSON.parse(String(fetcher.mock.calls[0]?.[1]?.body)) as {
+      name?: string
+      model?: string
+      version?: string
+    }
     expect(posted.name).toBeTruthy()
     expect(posted.name).not.toBe("127.0.0.1")
+    expect(posted.model ?? "").toBe("")
     expect(posted.version).toBe("")
     expect(TICKET_PROTO).toBe("pairlink.ticket.")
   })
@@ -203,8 +209,12 @@ async function livePair(opts?: { keepAliveMs?: number; rpcTimeoutMs?: number; ve
   await waitUntil(() => sock.sent.length >= 2)
   const label = unmarshalFrame(sock.sent[0])
   expect(label.type).toBe(TYPE_LABEL)
-  const announced = JSON.parse(new TextDecoder().decode(label.payload)) as { version?: string }
-  expect(announced.version ?? "").toBe(opts?.version ?? "")
+  const announced = JSON.parse(new TextDecoder().decode(label.payload)) as {
+    name?: string
+    model?: string
+    version?: string
+  }
+  expect(announced).toEqual(hubDeviceFields(opts?.version ?? ""))
   const fr = unmarshalFrame(sock.sent[1])
   expect(fr.type).toBe(TYPE_HANDSHAKE)
   const { msg, sess } = respond(host, device.pub, fr.payload)

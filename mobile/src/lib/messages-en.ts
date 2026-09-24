@@ -171,6 +171,7 @@ export const en = {
   "update.current": "This is the latest version",
   "update.ask": "Version {version} is available. Update?",
   "update.noArtifact": "This release has nothing this phone can install.",
+  "update.iosSideload": "iOS does not install from here. The package on GitHub is for Android.",
   "update.noLocalVersion": "This phone's version could not be read.",
   "update.badResponse": "The version response could not be read.",
 

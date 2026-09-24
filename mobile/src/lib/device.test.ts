@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { clipDeviceLabel, DEVICE_LABEL_MAX, deviceLabel } from "./device"
+import { clipDeviceLabel, DEVICE_LABEL_MAX, deviceFacts, deviceLabel } from "./device"
 
 describe("deviceLabel", () => {
   it("builds a one-line model from platform and UA, not a marketing name", () => {
@@ -26,6 +26,24 @@ describe("deviceLabel", () => {
     expect(deviceLabel({ platform: "android", userAgent: "Mozilla/5.0 (Linux; Android 10; wv)" })).toBe(
       "Android 10",
     )
+  })
+
+  it("reports the hardware model beside the name and does not split the name to get it", () => {
+    const android = "Mozilla/5.0 (Linux; Android 14; Handset Build/TEST) AppleWebKit/537.36"
+    expect(deviceFacts({ platform: "android", userAgent: android })).toEqual({
+      name: "Android 14 Handset",
+      model: "Handset",
+    })
+    expect(deviceFacts({ platform: "ios", userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_2 like Mac OS X)" })).toEqual({
+      name: "iOS 18.2 iPhone",
+      model: "iPhone",
+    })
+    const unnamed = deviceFacts({
+      platform: "android",
+      userAgent: "Mozilla/5.0 (Linux; Android 10; wv)",
+    })
+    expect(unnamed).toEqual({ name: "Android 10", model: "" })
+    expect(unnamed.model).not.toBe("10")
   })
 
   it("does not invent a sample phrase when the UA is empty", () => {

@@ -156,6 +156,14 @@ co-working app built on it. The library API is unchanged except where noted
   is the local day and time; the ISO sits on the tooltip so a row can be
   matched to a log.
 
+### Fixed
+
+- **The phone tells the hub its hardware model as its own field.** Redeem and the relay `TypeLabel` send `name` and `model` separately. A name that contains a model string is not split to fill `model`. An empty model does not clear one the hub already stored. The desktop host already sends its display name and build on the host socket.
+
+- **iOS no longer offers the Android package as an update.** The automatic bar stays quiet on iOS. Check for updates says this feed's installer is Android. Android still downloads the APK.
+
+- **Adding a model on the phone stays inside the screen.** The sheet cannot grow past the viewport, and the fields use a 16px font so iOS does not zoom the page.
+
 ### Changed
 
 - **The phone build string matches the desktop release.** `mobile/package.json` and the iOS marketing version are `0.1.12` (build `112`), the same tag `zwai` reports. A compile was still printing `0.1.10`.

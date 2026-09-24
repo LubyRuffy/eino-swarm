@@ -8,13 +8,27 @@ export type DeviceLabelInput = {
   userAgent?: string
 }
 
-export function deviceLabel(input: DeviceLabelInput = {}): string {
+/** Name and model stay apart. A name that happens to contain a model is still
+ *  just the name; the model comes from the UA slot, not from splitting that line. */
+export function deviceFacts(input: DeviceLabelInput = {}): { name: string; model: string } {
   const platform = (input.platform ?? detectPlatform()).trim().toLowerCase()
   const ua = input.userAgent ?? (typeof navigator !== "undefined" ? navigator.userAgent : "")
-  const parts = [osName(platform, ua), osVersion(platform, ua), deviceModel(platform, ua)].filter(
-    Boolean,
-  )
-  return clipDeviceLabel(parts.join(" ") || fallbackLabel(platform))
+  const model = deviceModel(platform, ua)
+  const parts = [osName(platform, ua), osVersion(platform, ua), model].filter(Boolean)
+  return {
+    name: clipDeviceLabel(parts.join(" ") || fallbackLabel(platform)),
+    model: clipDeviceLabel(model),
+  }
+}
+
+export function deviceLabel(input: DeviceLabelInput = {}): string {
+  return deviceFacts(input).name
+}
+
+/** Hub label fields. Empty model stays empty; callers must not invent one from the name. */
+export function hubDeviceFields(version = "", input: DeviceLabelInput = {}) {
+  const facts = deviceFacts(input)
+  return { name: facts.name, model: facts.model, version }
 }
 
 export function clipDeviceLabel(raw: string): string {

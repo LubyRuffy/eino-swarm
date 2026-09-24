@@ -99,12 +99,18 @@ describe("app update", () => {
     expect(offerFromRelease("android", "1.0.0", notes)?.apkURL).toBe("")
   })
 
-  it("keeps the release page on iOS and leaves the apk off that offer", () => {
-    expect(offerFromRelease("ios", "2.3.0", release())).toEqual({
-      version: "2.4.0",
-      pageURL: page,
-      apkURL: "",
-    })
+  it("does not offer an Android release as an install on iOS", async () => {
+    expect(offerFromRelease("ios", "2.3.0", release())).toBeNull()
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(release()), { status: 200 }))
+    const store = memoryStore()
+    store.setItem(
+      "zwai.phone.update.cache",
+      JSON.stringify({ at: 1, current: "2.3.0", offer: { version: "2.4.0", pageURL: page, apkURL: "" } }),
+    )
+    expect(
+      await checkForAppUpdate({ platform: "ios", version: "2.3.0", now: 1, fetcher, store }),
+    ).toBeNull()
+    expect(fetcher).not.toHaveBeenCalled()
   })
 
   it("does not touch the network from the browser, and a fresh answer is reused", async () => {
@@ -333,8 +339,8 @@ describe("manual version check", () => {
       status: "current",
     })
     expect(classifyLatestRelease("ios", "2.3.0", release())).toEqual({
-      status: "available",
-      offer: { version: "2.4.0", pageURL: page, apkURL: "" },
+      status: "error",
+      message: t("update.iosSideload"),
     })
     expect(classifyLatestRelease("android", "1.0.0", { tag_name: "v2.0.0" })).toEqual({
       status: "error",

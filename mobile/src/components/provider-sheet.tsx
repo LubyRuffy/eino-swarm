@@ -92,7 +92,7 @@ export function ProviderSheet({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col justify-end">
+    <div className="fixed inset-0 z-40 flex w-full min-w-0 max-w-full flex-col justify-end overflow-x-hidden">
       <button
         type="button"
         className="absolute inset-0 bg-foreground/40"
@@ -103,7 +103,7 @@ export function ProviderSheet({
         role="dialog"
         aria-labelledby="provider-sheet-title"
         data-testid="provider-sheet"
-        className="relative z-10 flex max-h-[85%] flex-col overflow-hidden rounded-t-2xl border border-border bg-background pb-[env(safe-area-inset-bottom)]"
+        className="relative z-10 flex w-full min-w-0 max-w-full max-h-[85%] flex-col overflow-x-hidden overflow-y-hidden rounded-t-2xl border border-border bg-background pb-[env(safe-area-inset-bottom)]"
       >
         <div className="flex items-center justify-between px-5 pb-1 pt-3">
           <h2 id="provider-sheet-title" className="text-lg font-semibold tracking-tight">
@@ -121,7 +121,7 @@ export function ProviderSheet({
         </div>
         {editing ? (
           <form
-            className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-5 pb-5"
+            className="flex min-h-0 min-w-0 w-full flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-5 pb-5"
             onSubmit={(e) => {
               e.preventDefault()
               save()
@@ -130,6 +130,7 @@ export function ProviderSheet({
             <Field label={t("chat.name")}>
               <Input
                 aria-label={t("chat.name")}
+                className="text-base"
                 value={editing.label}
                 onChange={(e) => setEditing({ ...editing, label: e.target.value })}
               />
@@ -137,6 +138,7 @@ export function ProviderSheet({
             <Field label={t("chat.baseUrl")}>
               <Input
                 aria-label={t("chat.baseUrl")}
+                className="text-base"
                 value={editing.baseURL}
                 placeholder={t("chat.baseUrlPlaceholder")}
                 autoCapitalize="off"
@@ -148,6 +150,7 @@ export function ProviderSheet({
             <Field label={t("chat.apiKey")} hint={t("chat.apiKeyHint")}>
               <Input
                 aria-label={t("chat.apiKey")}
+                className="text-base"
                 type="password"
                 autoComplete="off"
                 value={editing.apiKey}
@@ -157,7 +160,7 @@ export function ProviderSheet({
             <Field label={t("chat.api")}>
               <select
                 aria-label={t("chat.api")}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                className="h-10 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-base"
                 value={editing.api}
                 onChange={(e) =>
                   setEditing({ ...editing, api: normalizeApiStyle(e.target.value) })
@@ -184,7 +187,7 @@ export function ProviderSheet({
                 {editing.catalog.length > 0 ? (
                   <select
                     aria-label={t("chat.defaultModel")}
-                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    className="h-10 w-full min-w-0 max-w-full rounded-md border border-input bg-background px-3 text-base"
                     value={editing.model || editing.catalog[0]}
                     onChange={(e) => setEditing({ ...editing, model: e.target.value })}
                   >
@@ -197,6 +200,7 @@ export function ProviderSheet({
                 ) : (
                   <Input
                     aria-label={t("chat.defaultModel")}
+                    className="text-base"
                     value={editing.model}
                     placeholder={t("chat.typeModel")}
                     onChange={(e) => setEditing({ ...editing, model: e.target.value })}
@@ -207,6 +211,7 @@ export function ProviderSheet({
             <Field label={t("chat.timeout")}>
               <Input
                 aria-label={t("chat.timeout")}
+                className="text-base"
                 type="number"
                 min={10}
                 value={editing.timeoutSeconds}

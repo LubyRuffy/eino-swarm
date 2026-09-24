@@ -169,6 +169,7 @@ export const zh: Record<MessageKey, string> = {
   "update.current": "已经是最新版本",
   "update.ask": "有新版本 {version}，是否升级？",
   "update.noArtifact": "这份发布没有可安装的包。",
+  "update.iosSideload": "iOS 不从这里安装。GitHub 上的安装包是 Android 的。",
   "update.noLocalVersion": "读不到当前版本。",
   "update.badResponse": "版本响应无法识别。",
 

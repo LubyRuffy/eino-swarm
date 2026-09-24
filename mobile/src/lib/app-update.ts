@@ -170,6 +170,8 @@ export function offerFromRelease(platform: string, current: string, body: unknow
   if (!parsed) return null
   const pageURL = typeof row.html_url === "string" ? allowedReleasePage(row.html_url) : ""
   const apkURL = platform === "android" ? pickApk(row.assets) : ""
+  // iOS cannot install the Android package. Opening the release page is not an install.
+  if (platform === "ios") return null
   if (!pageURL && !apkURL) return null
   return { version: parsed.join("."), pageURL, apkURL }
 }
@@ -252,7 +254,8 @@ export async function checkForAppUpdate(opts: {
   store?: UpdateStore
 } = {}): Promise<UpdateOffer | null> {
   const platform = opts.platform ?? Capacitor.getPlatform()
-  if (platform === "web") return null
+  // iOS has no package on this feed. A cached page offer must not bring the bar back.
+  if (platform === "web" || platform === "ios") return null
   const current = (opts.version ?? (await installedVersion())).trim()
   if (!parseVersion(current)) return null
   const store = opts.store ?? safeStorage()
@@ -322,7 +325,10 @@ export function classifyLatestRelease(
   }
   if (!isNewer(tag, current)) return { status: "current" }
   const offer = offerFromRelease(platform, current, body)
-  if (!offer) return { status: "error", message: t("update.noArtifact") }
+  if (!offer) {
+    if (platform === "ios") return { status: "error", message: t("update.iosSideload") }
+    return { status: "error", message: t("update.noArtifact") }
+  }
   return { status: "available", offer }
 }
 

@@ -14,7 +14,7 @@ import {
 } from "./frame"
 import { parseOffer, type Offer } from "./offer"
 import { softwareVersion } from "./app-update"
-import { deviceLabel } from "./device"
+import { deviceLabel, hubDeviceFields } from "./device"
 import {
   decodeResponse,
   encodeRequest,
@@ -146,8 +146,7 @@ export async function redeemOffer(
     body: JSON.stringify({
       code: offer.code,
       device_pub: bytesToB64url(device.pub),
-      name: deviceLabel(),
-      version,
+      ...hubDeviceFields(version),
     }),
   })
   const text = await res.text()
@@ -254,9 +253,7 @@ export class DeviceLink {
   /** Hub-visible name and software version. Not a sealed hello. */
   private announceLabels() {
     if (!this.ws || this.ws.readyState !== 1) return
-    const payload = new TextEncoder().encode(
-      JSON.stringify({ name: deviceLabel(), model: "", version: this.version }),
-    )
+    const payload = new TextEncoder().encode(JSON.stringify(hubDeviceFields(this.version)))
     this.ws.send(
       marshalFrame({
         type: TYPE_LABEL,

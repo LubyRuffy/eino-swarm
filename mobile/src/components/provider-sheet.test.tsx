@@ -17,6 +17,16 @@ function draft(patch: Partial<DirectProvider> = {}): DirectProvider {
 }
 
 describe("ProviderSheet", () => {
+  it("stays inside the screen when the form is open", () => {
+    setLocale("en")
+    render(<ProviderSheet providers={[]} onChange={vi.fn()} onClose={vi.fn()} discover={vi.fn()} />)
+    const sheet = screen.getByTestId("provider-sheet")
+    expect(sheet).toHaveClass("w-full", "max-w-full", "min-w-0", "overflow-x-hidden")
+    expect(sheet.parentElement).toHaveClass("overflow-x-hidden", "max-w-full")
+    expect(screen.getByLabelText(t("chat.baseUrl"))).toHaveClass("text-base")
+    expect(screen.getByLabelText(t("chat.api"))).toHaveClass("text-base")
+  })
+
   it("saves an endpoint and the wire the user picked", () => {
     setLocale("en")
     const onChange = vi.fn()
