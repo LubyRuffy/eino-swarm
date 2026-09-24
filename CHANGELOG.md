@@ -156,7 +156,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
-- **The phone build string matches the desktop release.** `mobile/package.json` and the iOS marketing version are `0.1.11` (build `111`), the same tag `zwai` reports. A compile was still printing `0.1.10`.
+- **The phone build string matches the desktop release.** `mobile/package.json` and the iOS marketing version are `0.1.12` (build `112`), the same tag `zwai` reports. A compile was still printing `0.1.10`.
 
 - **A new desktop replaces an older engine.** The window is a client. Closing it leaves the engine process up, so reopening a newer build used to keep talking to the previous one. A different version, or a rebuilt binary, waits until no conversation is in a model call, then asks that process to exit and starts its own. A question waiting on the human, and a schedule that has not fired, do not hold the old process. The same build still attaches.
 
@@ -2401,6 +2401,20 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.12] - 2026-09-24
+
+Phone sideload. versionName `0.1.12`, versionCode `112`. Same debug key as
+v0.1.11, so an installed 0.1.11 updates in place. iOS marketing version
+`0.1.12`, build `112`.
+[`zwai-0.1.12-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.12/zwai-0.1.12-android.apk)
+is on [v0.1.12](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.12).
+
+### Changed
+
+- **The phone inbox shows more on one screen.** Rows, section gaps, the host bar, and the search row are shorter. Project names stay in a tighter stack.
+- **The phone menu shows the package version.** The build number sits under the menu rows.
+- **Earlier stays on the page that just loaded.** Scrolling to the top does not ask for another page. The new rows stay at the top instead of leaving the last turn on screen.
 
 ## [0.1.11] - 2026-09-24
 
