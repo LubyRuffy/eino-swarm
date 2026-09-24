@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { VersionCheck } from "@/components/version-check"
 import { cn } from "@/lib/cn"
+import { webShellVersion } from "@/lib/app-update"
 import { localeSwitchLabel, t } from "@/lib/i18n"
 import { linkLabel, type SavedLink } from "@/lib/store"
 
@@ -53,11 +54,11 @@ export function HostChrome({
 
   return (
     // One row: which PC this is beats repeating the app's own name.
-    <header className="relative flex h-14 shrink-0 items-center gap-1 border-b border-border px-2">
+    <header className="relative flex h-12 shrink-0 items-center gap-1 border-b border-border px-1.5">
       <Button
         type="button"
         variant="ghost"
-        className="size-10 shrink-0 px-0"
+        className="size-9 shrink-0 px-0"
         aria-label={t("home.menu")}
         aria-expanded={menu}
         onClick={() => setMenu((open) => !open)}
@@ -120,6 +121,12 @@ export function HostChrome({
                 {localeSwitchLabel()}
               </MenuRow>
             ) : null}
+            <p
+              data-testid="app-version"
+              className="px-3 pb-1 pt-2 text-xs text-muted-foreground"
+            >
+              {t("home.version", { version: webShellVersion() })}
+            </p>
           </div>
         </>
       ) : null}
@@ -138,7 +145,7 @@ export function HostChrome({
             aria-label={t("chat.tab")}
             aria-selected={chatSelected}
             className={cn(
-              "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium",
+              "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium",
               chatSelected
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-muted-foreground",
@@ -160,7 +167,7 @@ export function HostChrome({
               aria-label={label}
               aria-selected={selected}
               className={cn(
-                "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm font-medium",
+                "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium",
                 selected
                   ? "bg-primary text-primary-foreground"
                   : "bg-muted text-muted-foreground",
@@ -202,7 +209,7 @@ export function HostChrome({
         type="button"
         variant="ghost"
         data-testid="new-chat-top"
-        className="size-10 shrink-0 px-0"
+        className="size-9 shrink-0 px-0"
         aria-label={t("home.newChat")}
         onClick={onNewChat}
       >

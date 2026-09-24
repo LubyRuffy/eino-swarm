@@ -45,7 +45,7 @@ that was actually running the turn.
    ctrl+x stops it and stays on the screen; ctrl+c only disconnects. The
    first `ask_user` answer wins; the other gets `ask_mismatch`.
 5. **Status names the clients, not a writer lock.** `GET /api/meta` lists
-   who is connected (`desktop`, `web`, `tui`). The title bar shows that list.
+   who is connected (`desktop`, `web`, `tui`). The app menu shows that list.
    Nothing in the composer is disabled because another shell is open.
 6. **Lifetime.** The engine exits only when all of these have been true for
    the idle grace: no presence connection, the phone hub socket is down, and
@@ -114,7 +114,7 @@ prompt.
 "clients": [{"id": "…", "surface": "tui", "pid": 4242}]
 ```
 
-The title bar reads the list. One client is quiet. Two or more name each
+The app menu reads the list. One client is quiet. Two or more name each
 surface so it is obvious the turn is shared.
 
 ## Idle rule
@@ -185,4 +185,4 @@ Tests that must exist before the behaviour is called done:
   process.
 - `zwai tui --task` leaves a thread the desktop API can list. It does not
   create a scratch directory.
-- The title bar names two surfaces and the composer still submits.
+- The app menu names two surfaces and the composer still submits.

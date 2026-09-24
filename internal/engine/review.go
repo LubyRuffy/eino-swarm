@@ -223,6 +223,10 @@ type reviewRun struct {
 	userMsg     string
 	maxIter     int
 	tools       []tool.BaseTool
+	// onText is the assistant prose so far, one call per streamed chunk.
+	// Tool-call frames are not prose. Nil on the post-turn review, which
+	// only keeps the finished line.
+	onText func(full string)
 }
 
 func collectReviewChange(outcome *reviewOutcome, c memory.Change) {
@@ -284,7 +288,7 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 		e.callRecorder(run.threadID, run.turnID))
 	if err != nil {
 		mu.Lock()
-		outcome.Err = err.Error()
+		outcome.Err = publicTurnError(err)
 		mu.Unlock()
 		return
 	}
@@ -300,12 +304,17 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 	})
 	if err != nil {
 		mu.Lock()
-		outcome.Err = err.Error()
+		outcome.Err = publicTurnError(err)
 		mu.Unlock()
 		return
 	}
 
-	iter := adk.NewRunner(ctx, adk.RunnerConfig{Agent: agent}).
+	// Streaming is only for a caller that paints the sentence as it arrives.
+	// The post-turn review wants one finished line and already ignores
+	// streamed halves; turning it on there would change which event is
+	// the conclusion.
+	runnerCfg := adk.RunnerConfig{Agent: agent, EnableStreaming: run.onText != nil}
+	iter := adk.NewRunner(ctx, runnerCfg).
 		Run(ctx, []adk.Message{schema.UserMessage(run.userMsg)})
 	final := ""
 	for {
@@ -318,11 +327,11 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 		}
 		if ev.Err != nil {
 			mu.Lock()
-			outcome.Err = ev.Err.Error()
+			outcome.Err = publicTurnError(ev.Err)
 			mu.Unlock()
 			break
 		}
-		if text := messageText(ev); text != "" {
+		if text := reviewAssistantText(ev, run.onText); text != "" {
 			final = text
 		}
 	}
@@ -410,9 +419,54 @@ func (e *Engine) recordReview(threadID, turnID string, outcome reviewOutcome) {
 	})
 }
 
-// messageText pulls the assistant text out of one agent event, ignoring the
-// streamed halves: the reviewer's answer is one short line and the complete
-// message is all anyone needs.
+// reviewAssistantText is the assistant prose of one event. A stream is
+// drained here — the iterator's MessageStream is exclusive — and onText
+// sees the text so far so a waiting panel is not a frozen bar. A tool
+// call is not the review's conclusion.
+func reviewAssistantText(ev *adk.AgentEvent, onText func(string)) string {
+	if ev == nil || ev.Output == nil || ev.Output.MessageOutput == nil {
+		return ""
+	}
+	out := ev.Output.MessageOutput
+	if out.IsStreaming {
+		return streamAssistantText(out.MessageStream, onText)
+	}
+	return messageText(ev)
+}
+
+// streamAssistantText reassembles content chunks. Each chunk is a delta;
+// the callback gets the whole sentence so far, the same way a lost delta
+// costs nothing on the conversation stream.
+func streamAssistantText(sr *schema.StreamReader[*schema.Message], onText func(string)) string {
+	if sr == nil {
+		return ""
+	}
+	defer sr.Close()
+	var b strings.Builder
+	for {
+		chunk, err := sr.Recv()
+		if err != nil {
+			break
+		}
+		// A delta often has an empty role after the first chunk. Requiring
+		// assistant there drops the rest of the sentence. A tool frame is
+		// still not the review.
+		if chunk == nil || chunk.Content == "" || len(chunk.ToolCalls) > 0 {
+			continue
+		}
+		if chunk.Role != "" && chunk.Role != schema.Assistant {
+			continue
+		}
+		b.WriteString(chunk.Content)
+		if onText != nil {
+			onText(b.String())
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// messageText pulls the assistant text out of one finished agent event.
+// Streamed halves are not a conclusion; the complete message is.
 func messageText(ev *adk.AgentEvent) string {
 	if ev.Output == nil || ev.Output.MessageOutput == nil {
 		return ""

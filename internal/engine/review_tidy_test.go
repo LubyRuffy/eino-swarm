@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -65,6 +66,34 @@ func TestFoldProjectSkillsCallsTheReviewerAndHangsItOnTheLatestTurn(t *testing.T
 	}
 	if reviews < 2 {
 		t.Fatalf("catalog tidy must record a memory_review on the turn, got %d", reviews)
+	}
+}
+
+// A click used to sit on a full bar with nothing moving. The watcher has to
+// see the scan and the reviewer's line before the report comes back.
+func TestFoldProjectSkillsWatchShowsTheReviewersLine(t *testing.T) {
+	e := newTestEngine(t)
+	p, _ := projectThread(t, e)
+	plantProjectSkill(t, e, p.ID, "alpha-prep", "when preparing", "1. prepare")
+
+	var scanned int
+	var lines []string
+	rep, err := e.FoldProjectSkillsWatch(p.ID, func(ev TidyEvent) {
+		switch ev.Phase {
+		case "scan":
+			scanned = ev.Scanned
+		case "text":
+			lines = append(lines, ev.Text)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Reviewed || scanned != 1 {
+		t.Fatalf("scanned=%d report=%+v", scanned, rep)
+	}
+	if len(lines) == 0 || !strings.Contains(lines[len(lines)-1], "curated") {
+		t.Fatalf("lines=%q", lines)
 	}
 }
 

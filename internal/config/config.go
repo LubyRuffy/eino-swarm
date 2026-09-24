@@ -58,8 +58,9 @@ type Provider struct {
 	// serves. The composer offers these without a provider row per name.
 	// Empty means only Model is available until someone discovers.
 	Catalog []string `yaml:"catalog" json:"catalog"`
-	// TimeoutSeconds is how long we wait for the next byte from the model
-	// (response headers or a stream chunk). 0 means DefaultRequestTimeout.
+	// TimeoutSeconds is how long a stream may stay silent after the first
+	// byte. The wait for that first byte is DefaultFirstByteTimeout.
+	// 0 means DefaultRequestTimeout.
 	// A call that is still streaming is not cut off; a silent endpoint is.
 	// Compact uses this idle clock; there is no second swarm compact timeout.
 	TimeoutSeconds int `yaml:"timeout_seconds" json:"timeout_seconds"`
@@ -479,8 +480,13 @@ func NormalizeReasoning(s string) string {
 // Defaults, all overridable from the config file.
 const (
 	DefaultAddr = "127.0.0.1:8787"
-	// DefaultRequestTimeout is how long a model call may stay silent.
-	DefaultRequestTimeout      = 5 * time.Minute
+	// DefaultRequestTimeout is how long a model call may stay silent
+	// after the response has started.
+	DefaultRequestTimeout = 5 * time.Minute
+	// DefaultFirstByteTimeout is how long we wait for the response to
+	// start. A dead HTTP/2 connection otherwise sits for the whole stream
+	// idle budget before anyone hears about it.
+	DefaultFirstByteTimeout    = 30 * time.Second
 	DefaultMaxConcurrent       = 6
 	DefaultAgentTimeoutSeconds = 600
 	DefaultMaxTurns            = 200

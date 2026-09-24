@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 )
 
@@ -26,7 +27,14 @@ func publicTurnError(err error) string {
 	if isInvalidToolJSON(err) {
 		return publicInvalidToolJSON
 	}
+	if isHeaderWaitTimeout(err) {
+		return fmt.Sprintf("the model sent no first byte within %s", config.DefaultFirstByteTimeout)
+	}
 	return stripGraphDump(err.Error())
+}
+
+func isHeaderWaitTimeout(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "timeout awaiting response headers")
 }
 
 func isInvalidToolJSON(err error) bool {

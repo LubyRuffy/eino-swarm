@@ -360,7 +360,7 @@ test("⌘F searches the conversation and Escape closes find before stopping a tu
 })
 
 
-test("switches conversation width from the title bar and fills the pane", async ({
+test("switches conversation width from the app menu and fills the pane", async ({
   page,
   request,
 }) => {
@@ -375,10 +375,12 @@ test("switches conversation width from the title bar and fills the pane", async 
     await expect(root).toHaveAttribute("data-content-width", "comfortable")
 
     const before = await columnFill(page)
-    await page.getByRole("button", { name: "Switch to wide layout" }).click()
+    await page.getByRole("button", { name: "App menu" }).click()
+    await page.getByRole("menuitem", { name: "Switch to wide layout" }).click()
     await expect(root).toHaveAttribute("data-content-width", "full")
+    await page.getByRole("button", { name: "App menu" }).click()
     await expect(
-      page.getByRole("button", { name: "Switch to standard layout" }),
+      page.getByRole("menuitem", { name: "Switch to standard layout" }),
     ).toHaveAttribute("aria-pressed", "true")
 
     const after = await columnFill(page)
@@ -388,7 +390,8 @@ test("switches conversation width from the title bar and fills the pane", async 
     await page.reload()
     await expect(root).toHaveAttribute("data-content-width", "full")
 
-    await page.getByRole("button", { name: "Switch to standard layout" }).click()
+    await page.getByRole("button", { name: "App menu" }).click()
+    await page.getByRole("menuitem", { name: "Switch to standard layout" }).click()
     await expect(root).toHaveAttribute("data-content-width", "comfortable")
   } finally {
     await request.put("/api/settings", {
@@ -415,7 +418,8 @@ test("switches theme and remembers it", async ({ page }) => {
   const root = page.locator("html")
   const wasDark = await root.evaluate((el) => el.classList.contains("dark"))
 
-  await page.getByRole("button", { name: "Switch theme" }).click()
+  await page.getByRole("button", { name: "App menu" }).click()
+  await page.getByRole("menuitem", { name: "Switch theme" }).click()
   await expect(root).toHaveClass(wasDark ? /^(?!.*dark).*$/ : /dark/)
 
   await page.reload()

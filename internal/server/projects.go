@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/gin-gonic/gin"
@@ -267,6 +268,10 @@ func (s *Server) tidySkills(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if wantsEventStream(c) {
+		s.tidySkillsStream(c, p)
+		return
+	}
 	report, err := s.engine.FoldProjectSkills(p.ID)
 	if err != nil {
 		s.fail(c, err)
@@ -277,13 +282,79 @@ func (s *Server) tidySkills(c *gin.Context) {
 		s.fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	c.JSON(http.StatusOK, tidyPayload(view, report))
+}
+
+func wantsEventStream(c *gin.Context) bool {
+	return strings.Contains(c.GetHeader("Accept"), "text/event-stream")
+}
+
+// tidySkillsStream is the same tidy, written as it happens. The bar on the
+// panel used to sit at full while the model was still reading the catalog.
+// A client that disconnects does not abort the fold: a half-written catalog
+// is worse than a panel that stopped listening.
+func (s *Server) tidySkillsStream(c *gin.Context, p *store.Project) {
+	w := c.Writer
+	h := w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("Connection", "keep-alive")
+	h.Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+	w.Flush()
+
+	ctx := c.Request.Context()
+	events := make(chan engine.TidyEvent, 32)
+	var report memory.FoldReport
+	var foldErr error
+	go func() {
+		defer close(events)
+		report, foldErr = s.engine.FoldProjectSkillsWatch(p.ID, func(ev engine.TidyEvent) {
+			select {
+			case events <- ev:
+			case <-ctx.Done():
+			}
+		})
+	}()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev, open := <-events:
+			if !open {
+				s.finishTidyStream(c, p, report, foldErr)
+				return
+			}
+			writeSSE(c, "tidy", ev, 0)
+			w.Flush()
+		}
+	}
+}
+
+func (s *Server) finishTidyStream(c *gin.Context, p *store.Project, report memory.FoldReport, foldErr error) {
+	if foldErr != nil {
+		writeSSE(c, "error", gin.H{"error": foldErr.Error()}, 0)
+		c.Writer.Flush()
+		return
+	}
+	view, err := s.memoryViewOf(p)
+	if err != nil {
+		writeSSE(c, "error", gin.H{"error": err.Error()}, 0)
+		c.Writer.Flush()
+		return
+	}
+	writeSSE(c, "done", tidyPayload(view, report), 0)
+	c.Writer.Flush()
+}
+
+func tidyPayload(view memoryView, report memory.FoldReport) gin.H {
+	return gin.H{
 		"memory":   view,
 		"report":   report,
 		"changes":  report.Changes,
 		"folded":   report.Folded(),
 		"reviewed": report.Reviewed,
-	})
+	}
 }
 
 // failSkill maps the store's "nothing matches" to a 404. A skill name arrives

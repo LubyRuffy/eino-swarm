@@ -28,16 +28,32 @@ describe("Skill tidy card", () => {
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
-  it("scans then parks on the model step while a tidy is in flight", () => {
-    render(<SkillTidyCard tidying skillCount={3} />)
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1")
+  it("estimates progress and keeps the bar short of full while the model is still writing", () => {
+    render(
+      <SkillTidyCard
+        tidying
+        skillCount={3}
+        live={{ text: "Reading the catalog and comparing procedures.", changes: [] }}
+      />,
+    )
+    const bar = screen.getByRole("progressbar")
+    expect(bar).toHaveAttribute("aria-valuemax", "100")
+    expect(Number(bar.getAttribute("aria-valuenow"))).toBeLessThan(92)
     expect(screen.getByText(/Scanning 3 skills/)).toBeInTheDocument()
+    const stream = screen.getByTestId("tidy-stream")
+    expect(stream).toHaveClass("max-h-32")
+    expect(stream).toHaveTextContent("Reading the catalog and comparing procedures.")
 
     act(() => {
       vi.advanceTimersByTime(TIDY_SCAN_MS)
     })
     expect(screen.getByText(/Asking the model to review the catalog/)).toBeInTheDocument()
-    expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2")
+    expect(Number(screen.getByRole("progressbar").getAttribute("aria-valuenow"))).toBeLessThan(92)
+
+    act(() => {
+      vi.advanceTimersByTime(30 * 60 * 1000)
+    })
+    expect(Number(screen.getByRole("progressbar").getAttribute("aria-valuenow"))).toBe(92)
   })
 
   it("lists what changed as soon as the model returns", () => {
@@ -45,6 +61,9 @@ describe("Skill tidy card", () => {
     rerender(<SkillTidyCard tidying={false} skillCount={2} report={folded} />)
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
     expect(screen.getByText(/Skills curated/)).toBeInTheDocument()
+    expect(screen.getByTestId("tidy-summary")).toHaveTextContent(
+      "Deleted 2, created 1, merged 1, updated 0.",
+    )
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/3 scanned/)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/1 merged/)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/2 deleted/)
@@ -85,6 +104,24 @@ describe("Skill tidy card", () => {
   it("keeps a failed tidy visible", () => {
     render(<SkillTidyCard tidying={false} skillCount={1} error="cannot tidy skills" />)
     expect(screen.getByTestId("tidy-status")).toHaveTextContent("cannot tidy skills")
+  })
+
+  it("turns a header timeout into a settings hint and does not say the catalog is empty", () => {
+    render(
+      <SkillTidyCard
+        tidying={false}
+        skillCount={8}
+        report={{
+          ...emptyTidyReport(8),
+          err: '[NodeRunError] failed to create chat completion: Post "https://example.invalid/v1/chat/completions": http2: timeout awaiting response headers\nnode path: [node_a, ChatModel]',
+        }}
+      />,
+    )
+    const status = screen.getByTestId("tidy-status")
+    expect(status).toHaveTextContent(/30s/)
+    expect(status).not.toHaveTextContent("NodeRunError")
+    expect(status).not.toHaveTextContent("example.invalid")
+    expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/8 remaining/)
   })
 
   it("dismisses the result on request", () => {

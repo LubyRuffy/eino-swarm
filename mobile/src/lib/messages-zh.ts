@@ -21,6 +21,7 @@ export const zh: Record<MessageKey, string> = {
 
   "home.app": "zwai",
   "home.menu": "菜单",
+  "home.version": "版本 {version}",
   "home.hosts": "电脑",
   "home.addHost": "添加 PC",
   "home.close": "关闭",

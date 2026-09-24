@@ -3,11 +3,16 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/LubyRuffy/eino-swarm/internal/lease"
@@ -106,6 +111,86 @@ func TestSpawnEngineReportsAChildThatExits(t *testing.T) {
 	_, err := spawnEngine(t.TempDir(), "127.0.0.1:0", true)
 	if err == nil || !strings.Contains(err.Error(), "not an engine") {
 		t.Fatalf("spawn = %v", err)
+	}
+}
+
+func TestEnsureEngineReplacesAnOlderBuild(t *testing.T) {
+	t.Cleanup(stopTestEngine)
+	dir := t.TempDir()
+	old := exec.Command("sleep", "30")
+	if err := old.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := make(chan error, 1)
+	go func() { waited <- old.Wait() }()
+	defer func() { _ = old.Process.Kill() }()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data_dir": dir, "mock": true, "version": "not-this-binary",
+		})
+	}))
+	defer srv.Close()
+	if err := lease.Publish(dir, lease.Record{
+		PID: old.Process.Pid, URL: srv.URL, Mock: true, Version: "not-this-binary",
+		Dev: 1, Ino: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	url, err := ensureEngine(dir, "127.0.0.1:0", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if url == srv.URL {
+		t.Fatal("the shell attached to the build it was supposed to replace")
+	}
+	if err := <-waited; err == nil {
+		t.Fatal("the old process was not signalled")
+	}
+}
+
+func TestEnsureEngineWaitsUntilTheTurnIsNotExecuting(t *testing.T) {
+	t.Cleanup(stopTestEngine)
+	dir := t.TempDir()
+	old := exec.Command("sleep", "30")
+	if err := old.Start(); err != nil {
+		t.Fatal(err)
+	}
+	waited := make(chan error, 1)
+	go func() { waited <- old.Wait() }()
+	defer func() { _ = old.Process.Kill() }()
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/threads" {
+			n := hits.Add(1)
+			running := n < 3
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"threads": []map[string]any{
+					{"running": running, "awaiting_answer": false},
+					{"running": true, "awaiting_answer": true},
+					{"running": false, "waiting": true},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data_dir": dir, "mock": true, "version": "not-this-binary",
+		})
+	}))
+	defer srv.Close()
+	if err := lease.Publish(dir, lease.Record{
+		PID: old.Process.Pid, URL: srv.URL, Mock: true, Version: "not-this-binary",
+		Dev: 9, Ino: 9,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ensureEngine(dir, "127.0.0.1:0", true); err != nil {
+		t.Fatal(err)
+	}
+	if hits.Load() < 3 {
+		t.Fatalf("replaced while a turn was still executing: polls=%d", hits.Load())
+	}
+	if err := <-waited; err == nil {
+		t.Fatal("the old process was not signalled after the turn finished")
 	}
 }
 

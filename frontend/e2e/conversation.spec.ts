@@ -1,42 +1,11 @@
 import { expect, test, type Page } from "@playwright/test"
 
 import { liveWorkFold, showDeveloperLog, userMessageGap } from "./composer-plate"
+import { composer, filterFiles, freshConversation, openFiles, send, statusBadge, waitForIdle } from "./session"
 
 test.afterEach(async ({ request }) => {
   await request.put("/api/settings", { data: { ui: { transcript_mode: "user" } } })
 })
-
-/** Every spec starts on its own conversation, so one failing run cannot leave
- *  state that breaks the next. */
-async function freshConversation(page: Page) {
-  await page.goto("/")
-  await page.getByRole("button", { name: "New conversation", exact: true }).click()
-  await expect(composer(page)).toBeVisible()
-}
-
-const composer = (page: Page) => page.getByTestId("composer-input")
-const statusBadge = (page: Page) => page.getByTestId("status-badge")
-
-async function send(page: Page, text: string) {
-  await composer(page).fill(text)
-  await composer(page).press("Enter")
-  await expect(statusBadge(page)).toContainText("Working")
-}
-
-async function waitForIdle(page: Page) {
-  await expect(statusBadge(page)).toContainText("Idle", { timeout: 60_000 })
-}
-
-async function openFiles(page: Page) {
-  await page.getByRole("tab", { name: "Files" }).click()
-  return page.getByRole("tabpanel").filter({ has: page.getByTestId("file-tree") })
-}
-
-async function filterFiles(page: Page, query: string) {
-  const panel = await openFiles(page)
-  await panel.getByLabel("Filter files").fill(query)
-  return panel
-}
 
 test("runs a swarm turn end to end and keeps it after a reload", async ({ page }) => {
   await freshConversation(page)
@@ -319,12 +288,13 @@ test("carries context across turns", async ({ page }) => {
   // Idle at the live edge: the last user turn, not the first tick.
   const ticks = nav.locator("[data-turn-nav-tick]")
   await expect(ticks.last()).toHaveAttribute("aria-current", "true")
-  // A wheel-up that leaves the latest send on screen must not flip the
-  // rail onto an earlier tick. The old 96px top probe did exactly that.
+  // At the top of the thread the first send owns the rail. The next input
+  // can still sit lower in the same pane; lighting that tick disagreed
+  // with the scrollbar.
   await transcript.evaluate((el) => {
-    el.scrollTop = Math.max(0, el.scrollHeight - el.clientHeight - 80)
+    el.scrollTop = 0
   })
-  await expect(ticks.last()).toHaveAttribute("aria-current", "true")
+  await expect(ticks.first()).toHaveAttribute("aria-current", "true")
   await ticks.last().click()
   await expect(ticks.last()).toHaveAttribute("aria-current", "true")
   await nav.hover()

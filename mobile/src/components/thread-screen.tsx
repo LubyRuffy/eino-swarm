@@ -74,17 +74,14 @@ export function ThreadScreen({
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const pinHeight = useRef<number | null>(null)
-  // A page that adds no height must not immediately ask again. Scroll is
-  // still at the top, so the next event would spin 加载中 with nothing new.
-  const olderStall = useRef(false)
   const [atTail, setAtTail] = useState(false)
   const [behind, setBehind] = useState(false)
 
-  const loadOlder = (manual = false) => {
+  const loadOlder = () => {
     if (!onOlder || loadingOlder || !hasMore || !caughtUp) return
-    if (!manual && olderStall.current) return
-    olderStall.current = false
-    pinHeight.current = scroller.current?.scrollHeight ?? 0
+    // The reader is already at the top, asking for what is above. Pinning
+    // the old offset hides that page and leaves the last turn on screen.
+    pinHeight.current = 0
     onOlder()
   }
 
@@ -96,14 +93,10 @@ export function ThreadScreen({
     el.style.overflowAnchor = "none"
     if (loadingOlder) return
     if (pinHeight.current != null) {
-      const grown = el.scrollHeight - pinHeight.current
-      el.scrollTop = el.scrollHeight - pinHeight.current
+      // Stay at the top. A follow-up request here never leaves 加载中:
+      // the new rows keep the scroller under the 48px tripwire.
+      el.scrollTop = 0
       pinHeight.current = null
-      if (grown <= 0) {
-        olderStall.current = true
-        return
-      }
-      if (el.scrollTop < 48 && hasMore) loadOlder()
       return
     }
     if (stick.current) {
@@ -130,7 +123,7 @@ export function ThreadScreen({
     if (start == null || !el || !hasMore) return
     if (el.scrollTop <= 0 && y - start > 48) {
       pullY.current = null
-      loadOlder(true)
+      loadOlder()
     }
   }
 
@@ -195,7 +188,7 @@ export function ThreadScreen({
             variant="ghost"
             className="h-8 text-xs text-muted-foreground"
             disabled={loadingOlder || !caughtUp}
-            onClick={() => loadOlder(true)}
+            onClick={loadOlder}
           >
             {loadingOlder || !caughtUp ? (
               <span className="inline-flex items-center gap-1.5">
@@ -228,7 +221,7 @@ export function ThreadScreen({
           ref={scroller}
           data-testid="transcript"
           className={cn(
-            "min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-scroll overscroll-y-contain touch-pan-y px-3 py-3 [-webkit-overflow-scrolling:touch]",
+            "min-h-0 min-w-0 w-full flex-1 overflow-x-hidden overflow-y-scroll overscroll-y-contain touch-pan-y px-3 py-2 [-webkit-overflow-scrolling:touch]",
             !atTail && "invisible",
           )}
           onScroll={(e) => {
@@ -239,8 +232,6 @@ export function ThreadScreen({
             // pixels of slack a streaming answer leaves behind.
             const away = gap > 240
             if (away !== behind) setBehind(away)
-            if (!atTail) return
-            if (el.scrollTop < 48) loadOlder()
           }}
           onTouchStart={(e) => onPullStart(e.touches[0]?.clientY ?? 0)}
           onTouchMove={(e) => onPullMove(e.touches[0]?.clientY ?? 0)}
@@ -250,7 +241,7 @@ export function ThreadScreen({
         >
           {/* Bottom-aligned: a short conversation sits above the composer
               instead of floating under a screen of blank. */}
-          <div className="flex min-h-full min-w-0 w-full flex-col justify-end gap-2">
+          <div className="flex min-h-full min-w-0 w-full flex-col justify-end gap-1.5">
             <ThreadLog blocks={blocks} running={running} />
             {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
               <AskCard

@@ -628,6 +628,35 @@ func TestOnlyTheReviewersFinishedAnswerIsItsReport(t *testing.T) {
 	}
 }
 
+// The Memory panel paints the reviewer's sentence while it is still arriving.
+// A tool-call frame is not that sentence.
+func TestStreamedReviewProseIsReportedAsItArrives(t *testing.T) {
+	sr, sw := schema.Pipe[*schema.Message](4)
+	go func() {
+		defer sw.Close()
+		_ = sw.Send(schema.AssistantMessage("Catalog ", nil), nil)
+		_ = sw.Send(&schema.Message{
+			Role: schema.Assistant,
+			ToolCalls: []schema.ToolCall{{
+				Function: schema.FunctionCall{Name: "skill_manage", Arguments: `{}`},
+			}},
+		}, nil)
+		_ = sw.Send(schema.AssistantMessage("already curated.", nil), nil)
+		_ = sw.Send(&schema.Message{Content: " done"}, nil)
+	}()
+	var got []string
+	text := streamAssistantText(sr, func(full string) { got = append(got, full) })
+	if text != "Catalog already curated. done" {
+		t.Fatalf("text=%q", text)
+	}
+	if len(got) != 3 || got[0] != "Catalog " || got[2] != text {
+		t.Fatalf("beats=%q", got)
+	}
+	if streamAssistantText(nil, func(string) { t.Fatal("nil stream") }) != "" {
+		t.Fatal("a missing stream is not prose")
+	}
+}
+
 func TestOneLineAndClipStayWithinTheirBounds(t *testing.T) {
 	if got := oneLine("  several   words\nacross lines "); got != "several words across lines" {
 		t.Fatalf("oneLine=%q", got)

@@ -32,6 +32,10 @@ import {
 
 const remoteToastId = "settings:remote"
 
+/** While the pairing plate is up, a phone can bind on the hub without this
+ *  page remounting. Leaving Phone was the only refresh. */
+export const BINDING_WATCH_MS = 1000
+
 export function RemoteTab({
   settings,
   onChange,
@@ -76,6 +80,24 @@ export function RemoteTab({
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(id)
   }, [offer?.expires_at])
+
+  useEffect(() => {
+    if (!offer) return
+    let stopped = false
+    const id = window.setInterval(() => {
+      if (document.hidden) return
+      void api
+        .remoteBindings()
+        .then((list) => {
+          if (!stopped) setBindings(list)
+        })
+        .catch(() => {})
+    }, BINDING_WATCH_MS)
+    return () => {
+      stopped = true
+      window.clearInterval(id)
+    }
+  }, [offer])
 
   const remaining = offer?.expires_at
     ? Math.max(0, Math.round((new Date(offer.expires_at).getTime() - now) / 1000))

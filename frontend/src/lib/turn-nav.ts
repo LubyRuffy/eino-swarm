@@ -88,14 +88,20 @@ export function turnNavSelector(id: string): string {
   return `[${TURN_NAV_ATTR}="${escaped}"]`
 }
 
+/** A send owns the rail once its top sits in this band under the pane top.
+ *  Seeing a later bubble lower down does not count: at scrollTop 0 the first
+ *  answer can still show the next input, and lighting that tick disagreed
+ *  with the scrollbar. The bottom edge and a 40% line both did that. */
+const NAV_TOP_BAND = 48
+
 /** The turn that owns the viewport. Items must already be in document order.
  *  Following the live edge is always the latest turn — measuring at scrollTop
  *  0 before the opener has jumped to the bottom used to light the first tick.
- *  After a wheel-up the probe is the bottom of the pane, not a line 96px
- *  from the top: collapsed earlier turns used to keep the third tick current
- *  while the latest send was already in the reading area, and clicks looked
- *  dead. Missing rows (a tail-loaded conversation) are skipped rather than
- *  treated as offset 0, which would pin the rail to the top of the history. */
+ *  Otherwise the probe is a short band under the top of the pane: the last
+ *  send that has reached it. A later send that is only visible below stays
+ *  inactive. Missing rows (a tail-loaded conversation) are skipped rather
+ *  than treated as offset 0, which would pin the rail to the top of the
+ *  history. */
 export function activeNavId(
   items: { id: string; top?: number }[],
   scrollTop: number,
@@ -111,7 +117,7 @@ export function activeNavId(
   }
   const placed = items.filter((item) => typeof item.top === "number")
   if (placed.length === 0) return last.id
-  const probe = scrollTop + Math.max(0, clientHeight - 8)
+  const probe = scrollTop + NAV_TOP_BAND
   let current = placed[0].id
   for (const item of placed) {
     if ((item.top ?? 0) <= probe) current = item.id

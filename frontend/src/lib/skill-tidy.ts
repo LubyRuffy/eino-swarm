@@ -1,10 +1,26 @@
 import type { SkillTidyMerge, SkillTidyReport } from "./types"
 
-/** How long the scan step stays on screen before parking on the model call.
- *  The request is still in flight; this is not fake progress after it returns. */
+/** How long the scan line stays current before the review line takes over.
+ *  The bar itself is tidyEstimateRatio, not this timer. */
 export const TIDY_SCAN_MS = 400
 
+/** The bar stops here until the request actually finishes. A catalog tidy
+ *  has no token budget the client can see, so the rest is an estimate. */
+export const TIDY_ESTIMATE_CAP = 0.92
+
+const TIDY_ESTIMATE_FLOOR_MS = 12_000
+const TIDY_ESTIMATE_MS_PER_SKILL = 8_000
+
 export const TIDY_PROGRESS_STEPS = ["scan", "review"] as const
+
+/** Fraction of the bar to paint while a tidy is still running. Grows with
+ *  elapsed time and the catalog size, and never reaches 1. */
+export function tidyEstimateRatio(elapsedMs: number, skillCount: number): number {
+  const n = Math.max(1, skillCount)
+  const expected = Math.max(TIDY_ESTIMATE_FLOOR_MS, n * TIDY_ESTIMATE_MS_PER_SKILL)
+  const raw = 1 - Math.exp(-Math.max(0, elapsedMs) / expected)
+  return Math.min(TIDY_ESTIMATE_CAP, raw)
+}
 
 export type TidyProgressStep = (typeof TIDY_PROGRESS_STEPS)[number]
 

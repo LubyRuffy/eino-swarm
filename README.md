@@ -170,8 +170,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   thinking text (or **Thinking**), **Planning next moves** between model
   turns (under a closed answer, not on the fold above it), **Editing** /
   **Reading** / **Exec** while a tool is in flight.
-  Settings → General, the title-bar code
-  icon, or ⌘K switches to developer view.
+  Settings → General, the app menu (`…` at the bottom-left of the
+  conversation list), or ⌘K switches to developer view.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
   (finished ones are not re-parsed on every token; fenced code is highlighted
@@ -287,14 +287,15 @@ model is configured. Open **Settings** (⌘,) — a full-page sheet that starts 
 left rail (on the desktop window, **Back to app** sits below the traffic
 lights). Each page is a list of compact rows (name and hint left, control
 right). Edits write themselves; **Back to app** flushes the last keystroke.
-Chrome language is **Settings → General**, the **中 / EN** control in the title
-bar, or ⌘K → Switch language. Agents still answer in the language you are using.
+Chrome language is **Settings → General**, the app menu at the bottom-left of
+the conversation list, or ⌘K → Switch language. Agents still answer in the language you are using.
 Theme is **Settings → General**: System / Light / Dark cards, then **Color theme**
 ZWAI (default chrome) or FOFA (intelligence-console palette, both light and dark).
-The title-bar sun/moon still flips light / dark. Font and size are **Settings → General**. Size scales the conversation; chrome
-(sidebar, Settings, title bar) stays the same. Conversation width is the title-bar
-control (standard reading column vs wide, filling the space between the
-sidebars), **Settings → General**, or ⌘K. How you want the manager to work
+That same menu flips light / dark, conversation width (standard reading column
+vs wide), and developer view, and it shows the build version plus which other
+shells are open. Font and size are **Settings → General**. Size scales the conversation; chrome
+(sidebar, Settings, title bar) stays the same. Conversation width is that app
+menu, **Settings → General**, or ⌘K. How you want the manager to work
 with you — tone, language habits, standing preferences — is
 **Settings → Personality**. It is added to every conversation's
 system prompt. A project's instruction is the business context; when the two
@@ -341,7 +342,9 @@ end-to-end tests run on and the fastest way to see the UI work.
    phone also sends that model line when it redeems the QR, so a gateway
    list can show it without reading the sealed session.
 2. **Show pairing QR**. The plate is large and high-contrast. The same URI can
-   be pasted if the camera is missing.
+   be pasted if the camera is missing. While that plate is up, **Bound phones**
+   refreshes on its own, so a phone that just bound shows up without leaving
+   the page.
 3. On the phone, open the **zwai** iOS or Android app. The Android sideload
    APK is on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.11)
    (`zwai-0.1.11-android.apk`). A newer Android build offers **Update** on the
@@ -534,9 +537,11 @@ as a `memory_review` when it changed the catalog. Editing a skill file by hand
 does **not** fold until the next turn; **Tidy skills** on the Skills
 heading still folds leftover name-stem families, then asks the model to curate
 the whole catalog by content. That is a real reviewer call — it takes as long
-as the model takes. Reload first if you edited files outside the app. The click
-walks scan → review, then names what was merged, deleted, created and patched,
-with counts (scanned / merged / deleted / created / updated / remaining).
+as the model takes. While it runs, the panel estimates progress (the bar stays
+short of full) and scrolls the model's reply in a short box. Reload first if
+you edited files outside the app. When it finishes, the card names what was
+merged, deleted, created and patched, with counts (scanned / merged / deleted /
+created / updated / remaining).
 
 Memory lives in the data directory, never in your working directory, so a project
 pointed at a repository leaves nothing in it. A procedure that already lives in

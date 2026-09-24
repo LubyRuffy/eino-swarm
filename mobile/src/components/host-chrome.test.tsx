@@ -107,6 +107,23 @@ describe("HostChrome", () => {
     expect(onUnlink).toHaveBeenCalledOnce()
   })
 
+  it("prints the package version in the menu so a screenshot names the build", () => {
+    setLocale("en")
+    render(
+      <HostChrome
+        hosts={[host("a", "desk-one")]}
+        activeFingerprint="a"
+        path="relay"
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onNewChat={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: t("home.menu") }))
+    expect(screen.getByTestId("app-version")).toHaveTextContent(/^Version \d+\.\d+\.\d+/)
+  })
+
   // The tabs share one row with the menu and Add. Past three or four PCs the
   // row scrolls, and the chip naming the PC you are on can be the one off it.
   it("scrolls the PC you switched to back into the row", () => {

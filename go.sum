@@ -2,8 +2,8 @@ codeberg.org/readeck/go-readability/v2 v2.1.2 h1:JBrdyYJBRPMBbodLM1b5KxCSDH+JqCk
 codeberg.org/readeck/go-readability/v2 v2.1.2/go.mod h1:Ut31sW4osSrJPR3T8eQslMh4+jbwimXqn0w0ReCT+PU=
 github.com/LubyRuffy/eino-tools v0.1.1-0.20260921095310-a8587cb9d704 h1:gPUQvUmK6Rtq+DxTEbJ6uNgQJ6LyG0GvQvvctTkqDBM=
 github.com/LubyRuffy/eino-tools v0.1.1-0.20260921095310-a8587cb9d704/go.mod h1:7scgMTMfFbPoWZxQDdLPiYXWvL9ihgP+2V3EmtNhcuE=
-github.com/LubyRuffy/pairlink v0.0.0-20260923013341-ee646fdb97c4 h1:syjJo5bizl5Kw1g7uTWxCDhItoMgbCOWBsfs7e6obhE=
-github.com/LubyRuffy/pairlink v0.0.0-20260923013341-ee646fdb97c4/go.mod h1:NePapFjZ8yWPyLdwkFqq60RlQ+znPEpecRt5nwtHIEo=
+github.com/LubyRuffy/pairlink v0.0.0-20260924021808-3e3676dc96d5 h1:VSyfTCQQNn5P9lTEeQu87BApxfVP8qo/bqzBsBCjQw4=
+github.com/LubyRuffy/pairlink v0.0.0-20260924021808-3e3676dc96d5/go.mod h1:LrougBPKQ02k4sDddargHAuqUZbjBBf2oBOWWQPwE/0=
 github.com/PuerkitoBio/goquery v1.13.0 h1:mqHbjD7Jmnul4DTR24LKTjo1uUmHUh072kteGV+xpFM=
 github.com/PuerkitoBio/goquery v1.13.0/go.mod h1:Hip5mdBL8K2wEGKJdr27sRaNwIdDajmCwB/ExUPwW+g=
 github.com/adrg/xdg v0.5.3 h1:xRnxJXne7+oWDatRhR1JLnvuccuIeCoBu2rtuLqQB78=

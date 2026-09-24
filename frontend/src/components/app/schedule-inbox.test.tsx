@@ -87,6 +87,8 @@ const noop = {
   onDelete: vi.fn(),
   onSearch: vi.fn(),
   onSettings: vi.fn(),
+  onToggleTheme: vi.fn(),
+  onToggleLocale: vi.fn(),
   projects: [],
   onSelectProject: vi.fn(),
   onNewProject: vi.fn(),

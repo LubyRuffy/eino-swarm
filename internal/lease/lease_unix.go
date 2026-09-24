@@ -30,3 +30,19 @@ func pidAlive(pid int) bool {
 	err := syscall.Kill(pid, 0)
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
+
+func fileIdentity(path string) (uint64, uint64) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0, 0
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok || st == nil {
+		return 0, 0
+	}
+	return uint64(st.Dev), uint64(st.Ino)
+}
+
+func signalStop(pid int) error {
+	return syscall.Kill(pid, syscall.SIGTERM)
+}

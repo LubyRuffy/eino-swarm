@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -9,6 +10,17 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
+// TidyEvent is one beat of a catalog tidy, pushed while the model is still
+// writing. The panel streams `text` (the prose so far) and names a skill
+// write as it lands. The finished report is not one of these.
+type TidyEvent struct {
+	Phase   string `json:"phase"`
+	Scanned int    `json:"scanned,omitempty"`
+	Text    string `json:"text,omitempty"`
+	Action  string `json:"action,omitempty"`
+	Name    string `json:"name,omitempty"`
+}
+
 // FoldProjectSkills is the Memory panel's tidy. Stem families still collapse
 // without a model — that is the cheap hygiene after a hand edit — and then
 // the reviewer reads the live catalog and merge/patch/deletes by content.
@@ -16,6 +28,17 @@ import (
 // call on purpose. Model calls hang on the project's latest finished turn
 // when there is one, so `zwai trace <turn>` still reaches them.
 func (e *Engine) FoldProjectSkills(projectID string) (memory.FoldReport, error) {
+	return e.foldProjectSkills(projectID, nil)
+}
+
+// FoldProjectSkillsWatch is the same tidy, with a live beat for each scan,
+// streamed sentence, and skill write. watch may be nil. It runs on the
+// tidy goroutine and must not block on the caller's locks.
+func (e *Engine) FoldProjectSkillsWatch(projectID string, watch func(TidyEvent)) (memory.FoldReport, error) {
+	return e.foldProjectSkills(projectID, watch)
+}
+
+func (e *Engine) foldProjectSkills(projectID string, watch func(TidyEvent)) (memory.FoldReport, error) {
 	var zero memory.FoldReport
 	if _, err := e.store.GetProject(projectID); err != nil {
 		return zero, err
@@ -32,6 +55,9 @@ func (e *Engine) FoldProjectSkills(projectID string) (memory.FoldReport, error) 
 	before, err := mem.ListSkills()
 	if err != nil {
 		return zero, err
+	}
+	if watch != nil {
+		watch(TidyEvent{Phase: "scan", Scanned: len(before)})
 	}
 	families, err := mem.SkillFamilyNames()
 	if err != nil {
@@ -57,8 +83,11 @@ func (e *Engine) FoldProjectSkills(projectID string) (memory.FoldReport, error) 
 	if len(remaining) > 0 {
 		onChange := func(c memory.Change) {
 			mu.Lock()
-			defer mu.Unlock()
 			collectReviewChange(&outcome, c)
+			mu.Unlock()
+			if watch != nil && c.Target == memory.ToolSkillManage {
+				watch(TidyEvent{Phase: "change", Action: c.Action, Name: c.Name})
+			}
 		}
 		userMsg, msgErr := catalogTidyUserMessage(mem)
 		if msgErr != nil {
@@ -75,6 +104,12 @@ func (e *Engine) FoldProjectSkills(projectID string) (memory.FoldReport, error) 
 			userMsg:     userMsg,
 			maxIter:     e.cfg.Memory.TidyIterations(),
 			tools:       memory.CatalogTools(mem, onChange),
+			onText: func(text string) {
+				if watch == nil || strings.TrimSpace(text) == "" {
+					return
+				}
+				watch(TidyEvent{Phase: "text", Text: text})
+			},
 		}, &mu, &outcome)
 		reviewed = true
 		mu.Lock()

@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -82,8 +86,10 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 		shut(a)
 		return err
 	}
+	build := lease.ThisBuild(version)
 	if err := lease.Publish(dir, lease.Record{
 		PID: os.Getpid(), URL: url, Mock: opts.Mock, StartedAt: time.Now().UTC(),
+		Version: build.Version, Dev: build.Dev, Ino: build.Ino,
 	}); err != nil {
 		shut(a)
 		return err
@@ -135,7 +141,20 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 	rec, err := lease.Discover(dir, mock)
 	switch {
 	case err == nil:
-		return rec.URL, nil
+		if lease.SameEngine(rec, lease.ThisBuild(version)) {
+			return rec.URL, nil
+		}
+		// A window restart is not a new engine. The binary the user just
+		// opened has to be the one holding the database, or the phone keeps
+		// talking to the build they thought they replaced. A turn that is
+		// actually calling the model finishes first. A parked schedule and
+		// a question waiting on the human are not that turn.
+		if err := waitUntilQuiet(rec.URL); err != nil {
+			return "", err
+		}
+		if err := lease.Stop(rec.PID); err != nil {
+			return "", err
+		}
 	case errors.Is(err, lease.ErrMockMismatch), errors.Is(err, lease.ErrUnreachable):
 		return "", err
 	}
@@ -143,6 +162,63 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 		return startInProcessEngine(dir, addr, mock)
 	}
 	return spawnEngine(dir, addr, mock)
+}
+
+// quietPoll is how often a newer shell asks whether the live engine is
+// still in a model call. Short enough that a turn ending is not a long
+// pause before the window opens.
+const quietPoll = 200 * time.Millisecond
+
+func waitUntilQuiet(base string) error {
+	client := &http.Client{Timeout: 2 * time.Second}
+	told := false
+	for {
+		busy, err := engineBusy(client, base)
+		if err != nil {
+			return err
+		}
+		if !busy {
+			return nil
+		}
+		if !told {
+			log.Print("waiting for the running turn to finish before replacing the engine")
+			told = true
+		}
+		time.Sleep(quietPoll)
+	}
+}
+
+func engineBusy(client *http.Client, base string) (bool, error) {
+	resp, err := client.Get(base + "/api/threads")
+	if err != nil {
+		return false, fmt.Errorf("engine: list conversations: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return false, err
+	}
+	// An engine that does not list conversations cannot be shown to be
+	// mid-call. Holding the replacement forever would leave the old binary
+	// in place, which is the failure this wait exists to avoid.
+	if resp.StatusCode != http.StatusOK {
+		return false, nil
+	}
+	var page struct {
+		Threads []struct {
+			Running        bool `json:"running"`
+			AwaitingAnswer bool `json:"awaiting_answer"`
+		} `json:"threads"`
+	}
+	if err := json.Unmarshal(body, &page); err != nil {
+		return false, fmt.Errorf("engine: list conversations: %w", err)
+	}
+	for _, th := range page.Threads {
+		if th.Running && !th.AwaitingAnswer {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func startInProcessEngine(dir, addr string, mock bool) (string, error) {

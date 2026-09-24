@@ -50,7 +50,7 @@ export function renderBlock(b: CompactBlock) {
     const text = dropPackedJson(b.text)
     if (!text) return null
     return (
-      <div className={cn("mr-4 min-w-0 break-words text-sm leading-relaxed", b.streaming && "opacity-90")}>
+      <div className={cn("mr-4 min-w-0 break-words text-sm leading-snug", b.streaming && "opacity-90")}>
         <PhoneMarkdown text={text} />
       </div>
     )

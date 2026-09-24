@@ -348,7 +348,7 @@ describe("ThreadScreen", () => {
     expect(transcript.tagName).not.toBe("OL")
   })
 
-  it("asks for earlier rows when the transcript is pulled up", () => {
+  it("does not ask for another page just because the transcript is at the top", () => {
     const onOlder = vi.fn()
     render(
       <ThreadScreen
@@ -371,10 +371,12 @@ describe("ThreadScreen", () => {
     Object.defineProperty(transcript, "scrollHeight", { value: 400, configurable: true })
     Object.defineProperty(transcript, "clientHeight", { value: 400, configurable: true })
     fireEvent.scroll(transcript)
-    expect(onOlder).toHaveBeenCalledTimes(2)
+    // Sitting at the top must not ask again. That tripwire kept 加载中 up
+    // while the last turn stayed on screen.
+    expect(onOlder).toHaveBeenCalledTimes(1)
   })
 
-  it("does not keep asking for earlier rows when a page added nothing", () => {
+  it("does not ask again when an earlier page adds nothing", () => {
     const onOlder = vi.fn()
     const props = {
       detail: { id: "t1", title: "live" },
@@ -416,9 +418,7 @@ describe("ThreadScreen", () => {
       onAnswerStructured: vi.fn(),
       onInterrupt,
     }
-    const view = render(
-      <ThreadScreen detail={detail} blocks={[]} {...handlers} />,
-    )
+    const view = render(<ThreadScreen detail={detail} blocks={[]} {...handlers} />)
     expect(screen.queryByRole("button", { name: "Interrupt" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument()
     view.rerender(

@@ -14,6 +14,9 @@ describe("InboxRow", () => {
     expect(badge).toHaveTextContent("Running")
     expect(badge).toHaveAttribute("data-state", "running")
     expect(screen.getByText("one line")).toBeInTheDocument()
+    const row = screen.getByRole("button", { name: "Open a thread" })
+    expect(row).toHaveClass("py-2")
+    expect(row).not.toHaveClass("min-h-16")
   })
 
   // A question is the one state that costs the user a turn if it is missed,

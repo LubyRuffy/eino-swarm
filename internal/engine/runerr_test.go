@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 )
 
@@ -20,6 +21,19 @@ func TestPublicTurnErrorRewritesASilentStream(t *testing.T) {
 	}
 	if !strings.Contains(got, "Settings") || !strings.Contains(got, "thinking") {
 		t.Fatalf("must say how to continue: %s", got)
+	}
+}
+
+func TestPublicTurnErrorRewritesAHeaderTimeout(t *testing.T) {
+	err := fmt.Errorf("[NodeRunError] failed to create chat completion: Post \"https://example.invalid/v1/chat/completions\": http2: timeout awaiting response headers\n---------------- node path: [node_a, ChatModel]")
+	got := publicTurnError(err)
+	for _, leak := range []string{"NodeRunError", "ChatModel", "node_a", "example.invalid", "http2"} {
+		if strings.Contains(got, leak) {
+			t.Fatalf("the transport dump leaked: %s", got)
+		}
+	}
+	if !strings.Contains(got, "first byte") || !strings.Contains(got, config.DefaultFirstByteTimeout.String()) {
+		t.Fatalf("must name the first-byte budget: %s", got)
 	}
 }
 

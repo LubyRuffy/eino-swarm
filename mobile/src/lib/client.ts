@@ -3,14 +3,17 @@ import { fingerprint, finish, initiate, type Identity, type Session } from "./cr
 import { t } from "./i18n"
 import {
   httpToWS,
+  KEY_SIZE,
   marshalFrame,
   originURL,
   TYPE_DATA,
   TYPE_HANDSHAKE,
+  TYPE_LABEL,
   TYPE_PUNCH_PING,
   unmarshalFrame,
 } from "./frame"
 import { parseOffer, type Offer } from "./offer"
+import { softwareVersion } from "./app-update"
 import { deviceLabel } from "./device"
 import {
   decodeResponse,
@@ -128,12 +131,14 @@ export type PendingWait = {
 export type DeviceLinkOpts = {
   keepAliveMs?: number
   rpcTimeoutMs?: number
+  version?: string
 }
 
 export async function redeemOffer(
   offer: Offer,
   device: Identity,
   fetcher: typeof fetch = fetch,
+  version = "",
 ): Promise<RedeemResult> {
   const res = await fetcher(originURL(offer.hubURL) + "/pairlink/v1/pairings/redeem", {
     method: "POST",
@@ -142,6 +147,7 @@ export async function redeemOffer(
       code: offer.code,
       device_pub: bytesToB64url(device.pub),
       name: deviceLabel(),
+      version,
     }),
   })
   const text = await res.text()
@@ -160,6 +166,16 @@ export async function redeemOffer(
   }
 }
 
+export function linkFromBind(bound: {
+  identity: Identity
+  redeemed: RedeemResult
+  version: string
+}): DeviceLink {
+  return new DeviceLink(bound.identity, bound.redeemed.hostPub, bound.redeemed.sessionID, {
+    version: bound.version,
+  })
+}
+
 export class DeviceLink {
   private ws: WebSocket | null = null
   private sess: Session | null = null
@@ -169,6 +185,7 @@ export class DeviceLink {
   private dropped = false
   private readonly keepAliveMs: number
   private readonly rpcTimeoutMs: number
+  private readonly version: string
   path = "relay"
   sessionIDHex = ""
   onPush?: (resp: RemoteResponse) => void
@@ -183,6 +200,7 @@ export class DeviceLink {
     this.sessionIDHex = bytesToHex(sessionID)
     this.keepAliveMs = opts.keepAliveMs ?? KEEP_ALIVE_MS
     this.rpcTimeoutMs = opts.rpcTimeoutMs ?? RPC_TIMEOUT_MS
+    this.version = opts.version ?? ""
   }
 
   alive(): boolean {
@@ -221,6 +239,7 @@ export class DeviceLink {
       }
       ws.onclose = (ev) => fail(faultFromClose(ev))
     })
+    this.announceLabels()
     await this.handshake()
     ws.onmessage = (ev) => this.onMessage(ev)
     ws.onerror = () => {
@@ -230,6 +249,23 @@ export class DeviceLink {
     }
     ws.onclose = (ev) => this.drop(faultFromClose(ev))
     this.startKeepAlive()
+  }
+
+  /** Hub-visible name and software version. Not a sealed hello. */
+  private announceLabels() {
+    if (!this.ws || this.ws.readyState !== 1) return
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ name: deviceLabel(), model: "", version: this.version }),
+    )
+    this.ws.send(
+      marshalFrame({
+        type: TYPE_LABEL,
+        dst: new Uint8Array(KEY_SIZE),
+        src: this.identity.pub,
+        sessionID: this.sessionID,
+        payload,
+      }),
+    )
   }
 
   /** Tell the PC the model line. An old host answers unknown_op; ignore it. */
@@ -452,10 +488,11 @@ function asBytes(data: unknown): Uint8Array {
 export async function bindFromURI(
   uri: string,
   fetcher: typeof fetch = fetch,
-): Promise<{ offer: Offer; saved: SavedLink; identity: Identity; redeemed: RedeemResult }> {
+): Promise<{ offer: Offer; saved: SavedLink; identity: Identity; redeemed: RedeemResult; version: string }> {
   const offer = parseOffer(uri)
   const identity = loadOrCreateIdentity()
-  const redeemed = await redeemOffer(offer, identity, fetcher)
+  const version = await softwareVersion()
+  const redeemed = await redeemOffer(offer, identity, fetcher, version)
   const saved: SavedLink = {
     hubURL: offer.hubURL,
     ticket: redeemed.ticket,
@@ -463,7 +500,7 @@ export async function bindFromURI(
     sessionID: bytesToHex(redeemed.sessionID),
     fingerprint: fingerprint(redeemed.hostPub),
   }
-  return { offer, saved, identity, redeemed }
+  return { offer, saved, identity, redeemed, version }
 }
 
 export async function openSaved(
@@ -475,6 +512,7 @@ export async function openSaved(
     identity,
     b64urlToBytes(saved.hostPub),
     hexToBytes(saved.sessionID),
+    { version: await softwareVersion() },
   )
   await link.connect(saved.hubURL, saved.ticket, open)
   return link

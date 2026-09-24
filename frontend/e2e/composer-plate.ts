@@ -15,12 +15,17 @@ export function userMessageGap(transcript: Locator, text: string) {
 }
 
 /** User view folds spawn / wait_agents. Specs that assert on that chrome
- *  flip the title-bar toggle first; the product default stays compact.
- *  The click writes config.yaml, so a second call is a no-op when already on. */
+ *  open the app menu (bottom-left …) and flip developer view; the product
+ *  default stays compact. The click writes config.yaml, so a second call
+ *  is a no-op when already on. */
 export async function showDeveloperLog(page: Page) {
-  const toUser = page.getByRole("button", { name: "Switch to user view" })
-  if (await toUser.isVisible()) return
-  await page.getByRole("button", { name: "Switch to developer view" }).click()
+  await page.getByRole("button", { name: "App menu" }).click()
+  const toDev = page.getByRole("menuitem", { name: "Switch to developer view" })
+  if (await toDev.isVisible()) {
+    await toDev.click()
+    return
+  }
+  await page.getByRole("button", { name: "App menu" }).click()
 }
 
 /** User view keeps a fold per thought/tool group. The live ticker is the

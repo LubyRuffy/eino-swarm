@@ -308,10 +308,6 @@ function AppShell() {
         trafficInset={trafficLights}
         onTogglePanel={() => setPanelOpen((open) => !open)}
         onToggleSidebar={toggleSidebar}
-        onToggleTheme={toggleTheme}
-        onToggleLocale={toggleLocale}
-        onToggleContentWidth={toggleWidth}
-        onToggleTranscriptMode={toggleMode}
         onOpenTerminal={spawnTerminal}
       />
       <div className="flex min-h-0 min-w-0 flex-1">
@@ -320,6 +316,8 @@ function AppShell() {
             onNew={() => void startThread()}
             onSearch={() => setPaletteOpen(true)}
             onSettings={openSettings}
+            onToggleTheme={toggleTheme}
+            onToggleLocale={toggleLocale}
             onNewProject={() => setProjectDialog({ open: true })}
             onNewInProject={(project) => void startThreadInProject(project)}
             onEditProject={(project) => setProjectDialog({ open: true, project })}
@@ -485,6 +483,8 @@ function AppSidebar({
   onNew,
   onSearch,
   onSettings,
+  onToggleTheme,
+  onToggleLocale,
   onNewProject,
   onNewInProject,
   onEditProject,
@@ -494,6 +494,8 @@ function AppSidebar({
   onNew: () => void
   onSearch: () => void
   onSettings: () => void
+  onToggleTheme: () => void
+  onToggleLocale: () => void
   onNewProject: () => void
   onNewInProject: (project: Project) => void
   onEditProject: (project: Project) => void
@@ -537,6 +539,8 @@ function AppSidebar({
       onReorder={(ids) => void reorderThreads(ids)}
       onSearch={onSearch}
       onSettings={onSettings}
+      onToggleTheme={onToggleTheme}
+      onToggleLocale={onToggleLocale}
       projects={projects}
       selectedProjectId={selectedProjectId}
       onSelectProject={(id) => void selectProject(id)}
@@ -743,6 +747,7 @@ function AppPanel({
   const tidying = useProjects((s) => s.tidying)
   const tidyReport = useProjects((s) => s.tidyReport)
   const tidyError = useProjects((s) => s.tidyError)
+  const tidyLive = useProjects((s) => s.tidyLive)
   const memoryUnread = useProjects((s) => s.memoryUnread)
   const seeMemory = useProjects((s) => s.seeMemory)
   const memoryProjectId = useProjects((s) => s.memoryProjectId)
@@ -795,6 +800,7 @@ function AppPanel({
               tidying,
               tidyReport,
               tidyError,
+              tidyLive,
               onDismissTidy: clearTidy,
               unread: memoryUnread,
               onSeen: seeMemory,

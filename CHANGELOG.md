@@ -11,7 +11,20 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Changed
+
+- **Conversation width, developer view, and who else is connected moved into the app menu.** That is the `…` control at the bottom-left of the conversation list, beside Settings. The title bar keeps the status badge, the terminal, and the side panel.
+
 ### Added
+
+- **The desktop app menu sits at the bottom-left of the conversation list.** It flips light / dark, switches language, and shows the build version from `/api/meta`. Those two switches left the title bar.
+
+- **The phone menu shows the package version.** Open the menu and the build number sits under the rows, so a screenshot names the install.
+
+- **The PC and the phone publish their software versions to the hub.** The
+  desktop sends the build stamped into `zwai`. The phone sends the installed
+  app version, and the web shell uses the package version. An empty string
+  does not clear one the hub already kept.
 
 - **The phone can talk to a model without a PC.** Menu → Models (or Connect a
   model on the scan screen) saves an OpenAI-compatible endpoint: base URL,
@@ -85,8 +98,9 @@ co-working app built on it. The library API is unchanged except where noted
   **Tidy skills** control (`POST /api/projects/:id/memory/tidy-skills`) still
   folds leftover name-stem families, then asks the memory-reviewer to curate
   the live catalog by content — same agent as post-turn review, no notes, so
-  a click is a model call rather than a filename scan. Progress is scan →
-  review (held until the model returns). The response names what was merged,
+  a click is a model call rather than a filename scan. While it runs, the
+  panel streams the model's prose in a short scroller and estimates progress
+  from the catalog size; the bar does not fill until the call returns. The response names what was merged,
   deleted, created and patched, with counts, and `reviewed` is true when the
   model ran. Model calls hang on the project's latest finished turn when there
   is one.
@@ -141,6 +155,19 @@ co-working app built on it. The library API is unchanged except where noted
   matched to a log.
 
 ### Changed
+
+- **The phone build string matches the desktop release.** `mobile/package.json` and the iOS marketing version are `0.1.11` (build `111`), the same tag `zwai` reports. A compile was still printing `0.1.10`.
+
+- **A new desktop replaces an older engine.** The window is a client. Closing it leaves the engine process up, so reopening a newer build used to keep talking to the previous one. A different version, or a rebuilt binary, waits until no conversation is in a model call, then asks that process to exit and starts its own. A question waiting on the human, and a schedule that has not fired, do not hold the old process. The same build still attaches.
+
+- **The phone inbox shows more on one screen.** Rows, section gaps,
+  the host bar, and the search row are shorter, and a conversation's
+  text sits on a tighter line height. Project names stay in the compact
+  stack from the previous change.
+
+- **Phone project rows sit closer together.** A folded project is a name
+  and an icon, so the inbox no longer leaves a blank slab between them.
+  In progress and Recent keep the wider gap used around conversation cards.
 
 - **A phone project row is an icon, and the folder folds.** The control on
   the right of a project starts a conversation in that project and no longer
@@ -212,6 +239,27 @@ co-working app built on it. The library API is unchanged except where noted
   still uses `auto_compact_tokens` (default 80000). A context-length
   rejection stores a lower per-model window (a stated maximum, otherwise the
   rejected prompt size) and retries the turn once. It never raises a window.
+
+- **Earlier on the phone loads one page and stays on that page.** Scrolling to the top used to ask again immediately, so the button sat on Loading and the last turn never left the screen. A full page was also packed to the sealed-frame cap, so the display name and the seal made the PC drop it; the phone then tore the link down. Interrupt stays on a queued follow-up.
+
+- **Waiting for a model to start is 30s, not the stream idle budget.** `timeout_seconds` still bounds silence after the first byte. Response headers that do not arrive within 30s fail, and that failure is tried once on a new connection. A tidy that dies there says so, without a graph dump, and does not report the catalog as empty.
+
+- **Jumping to a message pins that send at the top of the pane.** A click
+  on the first rail entry used to leave the previous turn on screen: a
+  history prepend near the top skipped scroll compensation, and
+  `scroll-margin` on the user row kept a gap. The pin runs again after
+  paint.
+
+- **Skill tidy no longer paints a full bar and then goes quiet.** The
+  progress is an estimate that stays short of full until the model returns.
+  `Accept: text/event-stream` on `POST /api/projects/:id/memory/tidy-skills`
+  streams the assistant prose (height-capped in the panel) and each skill
+  write. The finished card says how many were deleted, created, merged and
+  updated.
+
+- **Bound phones update while the pairing QR stays on screen.** Showing the
+  QR watches `GET /api/remote/bindings` until you leave Phone. A phone that
+  binds no longer stays invisible until you switch settings pages.
 
 - **A phone image on the responses wire still reaches a chat-only front.**
   A responses front that translates onto chat completions rejects an image
@@ -375,7 +423,8 @@ co-working app built on it. The library API is unchanged except where noted
   scroll, so the prepend (especially one that started near the top and
   skipped restore) left the click looking dead. The jump stays pending
   across those pages until the reader wheels. The active tick is the last
-  send that has entered the viewport, not a 96px line from the top.
+  send whose top has reached the top of the pane, not the last bubble
+  that is merely visible lower down.
 
 - **Markdown tables stay in the conversation column.** A long cell used
   to set the transcript's min-content and paint under the side panel.

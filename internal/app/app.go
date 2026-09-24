@@ -130,6 +130,7 @@ func New(opts Options) (*App, error) {
 	}
 
 	host := remote.New(eng, cfg, logger)
+	host.SetVersion(opts.Version)
 	host.Start()
 	srv.SetRemote(host)
 	srv.SetSearch(idx)

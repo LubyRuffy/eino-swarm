@@ -97,7 +97,7 @@
     @apply mt-0;
   }
   .md-body p {
-    @apply my-2 break-words leading-relaxed;
+    @apply my-1.5 break-words leading-snug;
   }
   .md-body pre {
     @apply my-2 overflow-x-auto rounded-md bg-muted p-3 text-xs;

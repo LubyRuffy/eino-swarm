@@ -1,6 +1,7 @@
 package server_test
 
 import (
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -525,6 +526,38 @@ func TestTidySkillsFoldsAPlantedFamily(t *testing.T) {
 	}
 	if again["reviewed"] != true {
 		t.Fatalf("a leftover skill must still be reviewed: %v", again)
+	}
+}
+
+// The panel follows the model. A JSON body that arrives only at the end
+// looks frozen; the stream has to carry the sentence first.
+func TestTidySkillsStreamsProseBeforeTheReport(t *testing.T) {
+	h := newHarness(t)
+	p := h.newProject(map[string]any{"name": "P"})
+	id := p["id"].(string)
+	dir := h.app.Engine.ProjectMemory(id).Dir()
+	plantProjectSkill(t, dir, "alpha-prep", "when preparing", "1. prepare")
+
+	req, err := http.NewRequest(http.MethodPost, h.srv.URL+"/api/projects/"+id+"/memory/tidy-skills", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+	resp, err := h.srv.Client().Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d: %s", resp.StatusCode, raw)
+	}
+	body := string(raw)
+	scanAt := strings.Index(body, `"phase":"scan"`)
+	textAt := strings.Index(body, "curated")
+	doneAt := strings.Index(body, "event: done")
+	if scanAt < 0 || textAt < 0 || doneAt < 0 || !(scanAt < textAt && textAt < doneAt) {
+		t.Fatalf("stream order scan=%d text=%d done=%d\n%s", scanAt, textAt, doneAt, body)
 	}
 }
 

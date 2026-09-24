@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -257,6 +258,109 @@ func TestDiscoverRejectsMetaThatIsNotJSON(t *testing.T) {
 	}
 	if _, err := Discover(dir, false); !errors.Is(err, ErrUnreachable) {
 		t.Fatalf("bad meta: %v", err)
+	}
+}
+
+func TestSameEngineIsTheBinaryThatWasStarted(t *testing.T) {
+	self := Build{Version: "dev", Dev: 1, Ino: 2}
+	if !SameEngine(Record{Version: "dev", Dev: 1, Ino: 2}, self) {
+		t.Fatal("the process that published this file is this binary")
+	}
+	if SameEngine(Record{Version: "0.1.10", Dev: 1, Ino: 2}, self) {
+		t.Fatal("a different stamped version is the previous install")
+	}
+	if SameEngine(Record{Version: "dev", Dev: 1, Ino: 9}, self) {
+		t.Fatal("a rebuilt file is not the process still running")
+	}
+	// A record written before builds were stored cannot be proven to be
+	// this binary. Leaving it up is how a restart keeps the old code.
+	if SameEngine(Record{Version: "dev"}, self) {
+		t.Fatal("an unstamped engine must be replaced")
+	}
+	if !SameEngine(Record{Version: "dev"}, Build{Version: "dev"}) {
+		t.Fatal("two builds with no file identity and the same version match")
+	}
+}
+
+func TestStopEndsTheProcess(t *testing.T) {
+	cmd := exec.Command("sleep", "30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	// The parent must reap. A zombie still answers kill(pid, 0), so Stop
+	// would wait out its deadline on a process that already exited.
+	waited := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(waited)
+	}()
+	if err := Stop(cmd.Process.Pid); err != nil {
+		_ = cmd.Process.Kill()
+		t.Fatal(err)
+	}
+	<-waited
+	if pidAlive(cmd.Process.Pid) {
+		t.Fatal("stop returned while the process was still alive")
+	}
+	if err := Stop(0); err == nil {
+		t.Fatal("pid 0 is not an engine")
+	}
+	// Already reaped: the signal fails and the pid is gone, which is the
+	// outcome Stop was asked for.
+	if err := Stop(cmd.Process.Pid); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStopGivesUpWhenTheProcessIgnoresTheSignal(t *testing.T) {
+	cmd := exec.Command("bash", "-c", "trap '' TERM; sleep 30")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+	if err := Stop(cmd.Process.Pid); err == nil {
+		t.Fatal("a process that ignores the stop must not be declared gone")
+	}
+}
+
+func TestThisBuildIsTheExecutableThatIsRunning(t *testing.T) {
+	b := ThisBuild("dev")
+	if b.Version != "dev" {
+		t.Fatalf("build %+v", b)
+	}
+	if runtime.GOOS != "windows" && (b.Dev == 0 || b.Ino == 0) {
+		t.Fatalf("build %+v", b)
+	}
+	if dev, ino := fileIdentity(filepath.Join(t.TempDir(), "missing")); dev != 0 || ino != 0 {
+		t.Fatalf("missing file identity %d %d", dev, ino)
+	}
+	t.Cleanup(func() { executablePath = os.Executable })
+	executablePath = func() (string, error) { return "", errors.New("no binary") }
+	if got := ThisBuild("dev"); got.Version != "dev" || got.Dev != 0 || got.Ino != 0 {
+		t.Fatalf("lookup failure %+v", got)
+	}
+}
+
+func TestDiscoverKeepsTheEngineVersion(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"data_dir": dir, "mock": false, "version": "0.1.10",
+		})
+	}))
+	defer srv.Close()
+	if err := Publish(dir, Record{
+		PID: os.Getpid(), URL: srv.URL, StartedAt: time.Now(),
+		Version: "stale", Dev: 4, Ino: 5,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	rec, err := Discover(dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Version != "0.1.10" || rec.Dev != 4 || rec.Ino != 5 {
+		t.Fatalf("live record %+v", rec)
 	}
 }
 

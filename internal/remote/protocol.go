@@ -37,9 +37,18 @@ const (
 // GroupRecent is the inbox section for conversations with no project.
 const GroupRecent = "recent"
 
-// MaxPushPayload is pairlink's plaintext cap. A tool_delta that would
-// blow this is clipped or dropped (seq 0) rather than tearing the link.
+// MaxPushPayload is pairlink's sealed-frame cap. Seal adds an 8-byte
+// counter and a 16-byte tag, and a reply may still stamp a display name,
+// so a JSON body packed to this size never leaves the PC.
 const MaxPushPayload = 64 << 10
+
+// plaintextBudget is the JSON a frame can carry and still seal.
+// 40 runes of display name are at most 160 bytes plus the host key.
+func plaintextBudget() int {
+	const sealOverhead = 8 + 16
+	const hostSlack = 256
+	return MaxPushPayload - sealOverhead - hostSlack
+}
 
 // Request is the slim RPC the phone sends over a sealed pairlink frame.
 type Request struct {

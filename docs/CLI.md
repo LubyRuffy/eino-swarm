@@ -47,9 +47,15 @@ that is still going keeps the process up. A user **Stop** is the only path
 that records `cancelled`. If the engine process is killed, the next shell
 takes the lock and resumes orphaned turns.
 
+Opening a **different build** (another version, or a binary that replaced
+the file on disk) waits until no conversation is in a model call, then
+stops that engine and starts one from the binary you just launched. A
+question waiting on the human, and a schedule that has not fired, do not
+count as that call. A second window of the same build still attaches.
+
 A second `zwai desktop` on the same data directory opens another window on
-the same engine. Both can type. The title bar names the connected shells
-when more than one is attached.
+the same engine. Both can type. The app menu (the `…` at the bottom-left of
+the conversation list) names the connected shells when more than one is attached.
 
 A checkout with no `frontend/dist/index.html` (or with TypeScript newer than
 the last build) runs `npm install` then `npm run build` before the window

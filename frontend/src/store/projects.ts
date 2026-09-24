@@ -3,7 +3,7 @@ import { create } from "zustand"
 import { applyPinnedOrder } from "@/lib/reorder"
 import { api, ApiError, type ProjectPatch } from "@/lib/api"
 import { reviewPanelHint } from "@/lib/transcript"
-import type { MemoryEntries, Project, ProjectMemory, ReviewOutcome, SkillTidyReport } from "@/lib/types"
+import type { MemoryEntries, Project, ProjectMemory, ReviewOutcome, SkillTidyReport, TidyLive } from "@/lib/types"
 import { normalizeTidyReport } from "@/lib/skill-tidy"
 
 /** Projects and the memory panel live in their own store.
@@ -53,6 +53,8 @@ interface ProjectsState {
   /** What the last tidy decided for the project on screen. */
   tidyReport?: SkillTidyReport
   tidyError?: string
+  /** Model prose and skill writes while this project's tidy is still open. */
+  tidyLive?: TidyLive
   /** One slot per project. The fields above are only the open project's slot,
    *  so leaving and coming back does not throw the click away. */
   tidySlots: Record<string, TidySlot>
@@ -244,9 +246,27 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   tidySkills: async () => {
     const id = get().memoryProjectId
     if (!id) return
-    set((s) => applySlot(s, id, { tidying: true, report: undefined, error: undefined }))
+    set((s) =>
+      applySlot(s, id, { tidying: true, report: undefined, error: undefined, live: { text: "", changes: [] } }),
+    )
     try {
-      const result = await api.tidySkills(id)
+      const result = await api.tidySkills(id, (ev) => {
+        set((s) => {
+          const prev = slotOf(s.tidySlots, id).live ?? { text: "", changes: [] }
+          if (ev.phase === "text" && typeof ev.text === "string") {
+            return applySlot(s, id, { live: { ...prev, text: ev.text } })
+          }
+          if (ev.phase === "change" && ev.action) {
+            return applySlot(s, id, {
+              live: {
+                ...prev,
+                changes: [...prev.changes, { action: ev.action, name: ev.name ?? "" }],
+              },
+            })
+          }
+          return s
+        })
+      })
       const report = normalizeTidyReport(result.report, result.memory.skills.length)
       set((s) => ({
         ...applySlot(s, id, { tidying: false, report, error: undefined }),
@@ -292,6 +312,7 @@ interface TidySlot {
   tidying: boolean
   report?: SkillTidyReport
   error?: string
+  live?: TidyLive
 }
 
 function slotOf(slots: Record<string, TidySlot>, id?: string): TidySlot {
@@ -320,6 +341,7 @@ function viewOf(slot: TidySlot) {
     tidying: slot.tidying,
     tidyReport: slot.report,
     tidyError: slot.error,
+    tidyLive: slot.live,
   }
 }
 

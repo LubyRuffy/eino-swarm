@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
-import type { Project, ProjectMemory, Skill, SkillTidyReport } from "@/lib/types"
+import type { Project, ProjectMemory, Skill, SkillTidyReport, TidyLive } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
 export interface MemoryPanelProps {
@@ -29,6 +29,8 @@ export interface MemoryPanelProps {
   /** What the last tidy decided. Absent until a click has an answer. */
   tidyReport?: SkillTidyReport
   tidyError?: string
+  /** Model prose and skill writes while the tidy request is still open. */
+  tidyLive?: TidyLive
   onDismissTidy?: () => void
   /** Only wired where the host can open a file manager. */
   onReveal?: () => void
@@ -62,6 +64,7 @@ export function MemoryPanel({
   tidying,
   tidyReport,
   tidyError,
+  tidyLive,
   onDismissTidy,
   onReveal,
   onSeen,
@@ -250,6 +253,7 @@ export function MemoryPanel({
           skillCount={memory?.skills.length ?? 0}
           report={tidyReport}
           error={tidyError}
+          live={tidyLive}
           onDismiss={onDismissTidy}
         />
         <div

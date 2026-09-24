@@ -9,7 +9,7 @@ import { PullToRefresh } from "@/components/pull-to-refresh"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
-import { groupInbox } from "@/lib/inbox-groups"
+import { groupInbox, type InboxGroup } from "@/lib/inbox-groups"
 import { GROUP_RECENT, INBOX_PREVIEW, type InboxGroupState } from "@/lib/inbox-window"
 import { inboxPreview } from "@/lib/inbox-preview"
 import { searchRunning, searchThreads } from "@/lib/inbox-search"
@@ -108,6 +108,39 @@ export function HomeScreen({
     // unless a search just proved it has no match.
     (g) => g.threads.length > 0 || (!query && g.id !== ""),
   )
+  const folders = grouped.filter((g) => g.id)
+  const recent = grouped.find((g) => !g.id)
+  const folderSection = (g: InboxGroup) => (
+    <InboxSection
+      key={g.id || "recent"}
+      title={g.name}
+      onNew={g.id ? () => onNewChat(g.id) : undefined}
+      collapsible={Boolean(g.id)}
+      // A query paints the folder open so a match is not stuck
+      // behind a fold. The saved fold returns when the query goes.
+      open={Boolean(query) || !folded.has(g.id)}
+      onToggle={() => toggleProject(g.id)}
+      more={Boolean(sectionMore(groups, g.id)?.more) && !query}
+      moreBusy={loadingGroup === sectionKey(g.id)}
+      moreLabel={loadingGroup === sectionKey(g.id) ? t("home.loadingMore") : t("home.more")}
+      onMore={() => onMore(sectionKey(g.id))}
+    >
+      {g.threads.map((th) => {
+        const row = projectRow(th, liveById.get(th.id))
+        return (
+          <InboxRow
+            key={th.id}
+            id={th.id}
+            title={th.title || th.id}
+            detail={row.detail}
+            state={row.state}
+            at={row.at}
+            onOpen={onOpen}
+          />
+        )
+      })}
+    </InboxSection>
+  )
   const toggleProject = (id: string) => {
     setFolded((prev) => {
       const next = new Set(prev)
@@ -143,8 +176,8 @@ export function HomeScreen({
       {waiting ? (
         <InboxSkeleton pending={connecting || reconnecting} error={error} onRetry={onRetry} />
       ) : (
-        <PullToRefresh onRefresh={onRefresh} className="flex-1 px-3 py-3">
-          <div className="flex flex-col gap-5">
+        <PullToRefresh onRefresh={onRefresh} className="flex-1 px-3 py-2">
+          <div className="flex flex-col gap-3" data-testid="inbox-list">
             {error ? (
               <p className="px-1 text-sm text-destructive" role="alert">
                 {error}
@@ -175,37 +208,14 @@ export function HomeScreen({
               </InboxSection>
             ) : null}
 
-            {grouped.map((g) => (
-              <InboxSection
-                key={g.id || "recent"}
-                title={g.name}
-                onNew={g.id ? () => onNewChat(g.id) : undefined}
-                collapsible={Boolean(g.id)}
-                // A query paints the folder open so a match is not stuck
-                // behind a fold. The saved fold returns when the query goes.
-                open={Boolean(query) || !folded.has(g.id)}
-                onToggle={() => toggleProject(g.id)}
-                more={Boolean(sectionMore(groups, g.id)?.more) && !query}
-                moreBusy={loadingGroup === sectionKey(g.id)}
-                moreLabel={loadingGroup === sectionKey(g.id) ? t("home.loadingMore") : t("home.more")}
-                onMore={() => onMore(sectionKey(g.id))}
-              >
-                {g.threads.map((th) => {
-                  const row = projectRow(th, liveById.get(th.id))
-                  return (
-                    <InboxRow
-                      key={th.id}
-                      id={th.id}
-                      title={th.title || th.id}
-                      detail={row.detail}
-                      state={row.state}
-                      at={row.at}
-                      onOpen={onOpen}
-                    />
-                  )
-                })}
-              </InboxSection>
-            ))}
+            {folders.length > 0 ? (
+              // Folded projects are a list of names, not a stack of sections.
+              // The same gap used around cards left a blank slab between them.
+              <div className="flex flex-col gap-0.5" data-testid="project-stack">
+                {folders.map((g) => folderSection(g))}
+              </div>
+            ) : null}
+            {recent ? folderSection(recent) : null}
             {empty && !error ? query ? <NoMatch /> : <EmptyInbox /> : null}
             {more && !sectioned && !query ? (
               <Button
@@ -300,8 +310,8 @@ function InboxSection({
 }) {
   const label = "truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
   return (
-    <section className="flex flex-col gap-1.5">
-      <div className="flex min-h-7 items-center gap-1 px-1">
+    <section className="flex flex-col gap-1">
+      <div className={cn("flex items-center gap-0.5 px-1", onNew ? "h-8" : "h-6")}>
         {collapsible ? (
           <h2 className="min-w-0 flex-1">
             <button
@@ -328,7 +338,7 @@ function InboxSection({
             type="button"
             variant="ghost"
             aria-label={t("home.newChatIn", { name: title })}
-            className="h-11 w-11 shrink-0 rounded-full px-0 text-muted-foreground"
+            className="size-8 shrink-0 rounded-full px-0 text-muted-foreground"
             onClick={onNew}
           >
             <SquarePen className="size-4" aria-hidden />
@@ -342,7 +352,7 @@ function InboxSection({
             <li>
               <Button
                 variant="ghost"
-                className="h-11 w-full rounded-none text-muted-foreground"
+                className="h-9 w-full rounded-none text-muted-foreground"
                 onClick={onMore}
                 disabled={moreBusy}
                 aria-busy={moreBusy || undefined}

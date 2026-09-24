@@ -352,17 +352,24 @@ test("switches the chrome language and restores English", async ({
   // every later spec that looks for "Idle" / "New conversation" dies.
   await page.goto("/")
   try {
-    await page.getByRole("button", { name: "Switch language" }).click()
-    await expect(page.getByRole("button", { name: "切换语言" })).toBeVisible()
+    await page.getByRole("button", { name: "App menu" }).click()
+    await page.getByRole("menuitem", { name: "Switch language" }).click()
+    await page.getByRole("button", { name: "应用菜单" }).click()
+    await expect(page.getByRole("menuitem", { name: "切换语言" })).toBeVisible()
     await expect(
       page.getByRole("button", { name: "新对话", exact: true }),
     ).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN")
   } finally {
     await request.put("/api/settings", { data: { ui: { locale: "system" } } })
-    const zh = page.getByRole("button", { name: "切换语言" })
-    if (await zh.isVisible()) await zh.click()
-    await expect(page.getByRole("button", { name: "Switch language" })).toBeVisible()
+    const menu = page.getByRole("button", { name: "应用菜单" })
+    if (await menu.isVisible()) {
+      await menu.click()
+      const zh = page.getByRole("menuitem", { name: "切换语言" })
+      if (await zh.isVisible()) await zh.click()
+    }
+    await page.getByRole("button", { name: "App menu" }).click()
+    await expect(page.getByRole("menuitem", { name: "Switch language" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("lang", "en")
   }
 })

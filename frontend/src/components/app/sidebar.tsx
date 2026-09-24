@@ -2,6 +2,7 @@ import { MessageSquarePlus, Search, Settings } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { ChromeMenu } from "@/components/app/chrome-menu"
 import { ProjectList } from "@/components/app/project-list"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import { ResizeHandle } from "@/components/app/resize-handle"
@@ -47,6 +48,8 @@ export function Sidebar({
   onDelete,
   onSearch,
   onSettings,
+  onToggleTheme,
+  onToggleLocale,
   projects,
   selectedProjectId,
   onSelectProject,
@@ -70,6 +73,8 @@ export function Sidebar({
   onDelete: (id: string) => void
   onSearch: () => void
   onSettings: () => void
+  onToggleTheme: () => void
+  onToggleLocale: () => void
   projects: Project[]
   selectedProjectId?: string
   onSelectProject: (id?: string) => void
@@ -246,13 +251,14 @@ export function Sidebar({
         <ScheduleInboxTrigger />
       </div>
 
-      <div className="border-t border-sidebar-border px-[var(--sidebar-list-px)] py-2.5">
+      <div className="flex items-center gap-1 border-t border-sidebar-border px-[var(--sidebar-list-px)] py-2.5">
+        <ChromeMenu onToggleTheme={onToggleTheme} onToggleLocale={onToggleLocale} />
         <Button
           variant="ghost"
           size="sm"
           className={cn(
             chromeTypeClass,
-            "w-full justify-between rounded-full px-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
+            "min-w-0 flex-1 justify-between rounded-full px-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
           )}
           style={{ height: "var(--sidebar-row-height)" }}
           onClick={onSettings}

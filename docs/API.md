@@ -60,7 +60,7 @@ What the UI reads once at startup to decide what to render.
 `desktop` described a process that was itself the window; shells now attach
 to one engine. `clients` lists shells holding a presence connection
 (`desktop`, `web`, `tui`). A reserve that never connects is absent. The
-title bar names them when two or more are connected. `configured` is false until a default provider has
+app menu (the `…` at the bottom-left of the conversation list) names them when two or more are connected. `configured` is false until a default provider has
 a base URL and a model name — the UI shows a setup banner until then. `mock` is
 true when running on the scripted offline provider. `reasoning_levels` is the
 ordered set of explicit thinking levels the composer offers; the empty default
@@ -335,7 +335,9 @@ a high-contrast QR of that URI.
 
 `device` and `last_seen` are what this PC learned after the phone
 connected (`hello`). They are omitted until then. No Host Token, no
-session keys.
+session keys. While the pairing QR is on screen, the desktop re-reads
+this list about once a second. A failed read leaves the list already
+painted.
 
 ### `POST /api/remote/bindings/:id/revoke`
 
@@ -534,11 +536,18 @@ Curates the skill catalog on demand. Stem families fold first — the same
 hygiene that runs after a finished turn — then the memory-reviewer reads the
 live index and merge / patch / delete by content. A `SKILL.md` edited in
 Finder, or a pile of uniquely named duplicates the filename heuristic cannot
-see, is otherwise left as it was. Sync: the body is the outcome. Model calls
+see, is otherwise left as it was. Without `Accept: text/event-stream` the
+body is the outcome, once. With that header the same call is
+`text/event-stream`: `tidy` events (`phase` `scan` / `text` / `change`)
+while the model is writing, then one `done` event whose `data` is the JSON
+body below, or `error` if the fold failed after the stream had started.
+`text` is the assistant prose so far, not a delta. A disconnect does not
+abort the fold. Model calls
 and a quiet `memory_review` (`notify: off`) hang on the project's latest
 finished turn when there is one; without a turn the reviewer still runs
 against the default provider. Serializes with that project's in-flight
-reviewer so a click cannot fold while a review is still writing.
+reviewer so a click cannot fold while a review is still writing. Pre-stream
+refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
 
 ```json
 {"memory": { "dir": "…", "enabled": true, "memory": {…}, "skills": […], "needs_tidy": false },
@@ -557,7 +566,6 @@ reviewer so a click cannot fold while a review is still writing.
 ```
 
 `report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works. `report.err` is set when the model call failed after the stem fold already landed.
-`409 idle` after shutdown. `404` for a project nobody has.
 
 ### `GET /api/projects/:id/skills/:name`
 

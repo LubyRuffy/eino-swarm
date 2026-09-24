@@ -211,6 +211,42 @@ describe("HomeScreen", () => {
     expect(screen.queryByText(/report_schedule/)).not.toBeInTheDocument()
   })
 
+  // Folded projects used to inherit the gap meant for cards, so each name
+  // sat in its own slab of blank space.
+  it("stacks project names tighter than the cards around them", () => {
+    render(
+      <HomeScreen
+        {...chrome()}
+        path="relay"
+        projects={[
+          { id: "p1", name: "work" },
+          { id: "p2", name: "notes" },
+        ]}
+        threads={[
+          {
+            id: "t1",
+            title: "loose",
+            running: false,
+            last_active_at: "2026-01-01T00:00:00Z",
+          },
+        ]}
+        running={[]}
+        more={false}
+        onOpen={vi.fn()}
+        onMore={vi.fn()}
+        onNewChat={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    const stack = screen.getByTestId("project-stack")
+    expect(stack).toHaveClass("gap-0.5")
+    expect(screen.getByTestId("inbox-list")).toHaveClass("gap-3")
+    expect(stack).toContainElement(screen.getByRole("heading", { name: "work" }))
+    expect(stack).toContainElement(screen.getByRole("heading", { name: "notes" }))
+    expect(stack).not.toContainElement(screen.getByRole("heading", { name: "Recent" }))
+    expect(screen.getByRole("button", { name: "New chat in work" })).toHaveClass("size-8")
+  })
+
   // A project with no threads is still a place a conversation can start.
   // Recent and In progress are not projects, so they do not grow that control.
   it("starts in the project whose row was tapped, including one with no threads", () => {

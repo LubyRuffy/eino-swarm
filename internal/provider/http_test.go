@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -25,6 +26,25 @@ func TestChatHTTPClientHasNoTotalTimeout(t *testing.T) {
 	}
 	if tr.idle != time.Second {
 		t.Fatalf("idle=%v", tr.idle)
+	}
+}
+
+func TestALongStreamIdleDoesNotExtendTheWaitForTheFirstByte(t *testing.T) {
+	c := chatHTTPClient(5 * time.Minute)
+	tr := c.Transport.(*idleTransport)
+	base, ok := tr.base.(*http.Transport)
+	if !ok {
+		t.Fatal("expected http.Transport")
+	}
+	if base.ResponseHeaderTimeout != config.DefaultFirstByteTimeout {
+		t.Fatalf("header timeout=%v want %v", base.ResponseHeaderTimeout, config.DefaultFirstByteTimeout)
+	}
+	if tr.idle != 5*time.Minute {
+		t.Fatalf("stream idle=%v", tr.idle)
+	}
+	short := chatHTTPClient(80 * time.Millisecond).Transport.(*idleTransport).base.(*http.Transport)
+	if short.ResponseHeaderTimeout != 80*time.Millisecond {
+		t.Fatalf("a shorter idle must also cap headers: %v", short.ResponseHeaderTimeout)
 	}
 }
 
@@ -122,6 +142,36 @@ func TestIdleClientCutsSlowHeaders(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "Timeout") && !strings.Contains(err.Error(), "timeout") {
 		t.Fatalf("want a header timeout, got %v", err)
+	}
+}
+
+// The first attempt can sit on a dead HTTP/2 connection until the header
+// budget is gone. The call itself never started, so the next connection
+// has to be allowed to answer.
+func TestIdleClientRetriesOnceAfterAHeaderTimeout(t *testing.T) {
+	idle := 40 * time.Millisecond
+	var n atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if n.Add(1) == 1 {
+			time.Sleep(4 * idle)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	}))
+	t.Cleanup(srv.Close)
+
+	resp, err := chatHTTPClient(idle).Post(srv.URL, "text/plain", strings.NewReader("body"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	got, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "ok" || n.Load() != 2 {
+		t.Fatalf("body=%q attempts=%d", got, n.Load())
 	}
 }
 

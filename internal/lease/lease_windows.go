@@ -52,6 +52,16 @@ func unlock(f *os.File) error {
 	return nil
 }
 
+func fileIdentity(path string) (uint64, uint64) { return 0, 0 }
+
+func signalStop(pid int) error {
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return p.Kill()
+}
+
 func pidAlive(pid int) bool {
 	if pid <= 0 {
 		return false

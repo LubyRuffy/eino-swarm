@@ -13,7 +13,8 @@ import { UpdateNotice } from "@/components/update-notice"
 import {
   bindFromURI,
   bindError,
-  DeviceLink,
+  linkFromBind,
+  type DeviceLink,
   LinkFault,
   linkError,
   remoteError,
@@ -396,7 +397,7 @@ export function App() {
     let attached = false
     try {
       const bound = await bindFromURI(uri)
-      next = new DeviceLink(bound.identity, bound.redeemed.hostPub, bound.redeemed.sessionID)
+      next = linkFromBind(bound)
       await next.connect(bound.saved.hubURL, bound.saved.ticket)
       bindGen.current += 1
       const gen = bindGen.current

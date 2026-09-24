@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { RemoteTab } from "./settings-remote"
+import { BINDING_WATCH_MS, RemoteTab } from "./settings-remote"
 import { ToastStack } from "./toast-stack"
 import type { Settings } from "@/lib/types"
 
@@ -58,7 +58,20 @@ const base: Settings = {
   },
 }
 
+const boundPhone = {
+  id: "b1",
+  device_fp: "aa11bb22cc33dd44",
+  device: "Phone 1.0 Device",
+  created_at: "2026-09-20T16:00:00Z",
+  last_seen: "2026-09-20T16:03:32Z",
+  session_id: "s1",
+}
+
 describe("RemoteTab", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   beforeEach(() => {
     vi.mocked(api.remoteStatus).mockResolvedValue({
       enabled: true,
@@ -109,17 +122,56 @@ describe("RemoteTab", () => {
     expect(screen.getByLabelText("This computer's name")).toHaveValue("desk-one")
   })
 
+  it("paints a phone that binds while the pairing QR stays up", async () => {
+    vi.useFakeTimers()
+    render(<RemoteTab settings={base} onChange={vi.fn()} />)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByText("No phones bound yet.")).toBeInTheDocument()
+    const before = vi.mocked(api.remoteBindings).mock.calls.length
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BINDING_WATCH_MS * 3)
+    })
+    expect(vi.mocked(api.remoteBindings).mock.calls.length).toBe(before)
+
+    fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId("remote-qr")).toBeInTheDocument()
+    expect(screen.getByText("No phones bound yet.")).toBeInTheDocument()
+
+    vi.mocked(api.remoteBindings).mockResolvedValue([boundPhone])
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BINDING_WATCH_MS)
+    })
+    expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument()
+  })
+
+  it("keeps the phones already shown when a later poll fails", async () => {
+    vi.useFakeTimers()
+    render(<RemoteTab settings={base} onChange={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: "Show pairing QR" }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    vi.mocked(api.remoteBindings).mockResolvedValueOnce([boundPhone])
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BINDING_WATCH_MS)
+    })
+    expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument()
+
+    vi.mocked(api.remoteBindings).mockRejectedValueOnce(new Error("hub down"))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BINDING_WATCH_MS)
+    })
+    expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument()
+  })
+
   it("paints the reported phone model instead of a bare fingerprint", async () => {
-    vi.mocked(api.remoteBindings).mockResolvedValue([
-      {
-        id: "b1",
-        device_fp: "aa11bb22cc33dd44",
-        device: "Phone 1.0 Device",
-        created_at: "2026-09-20T16:00:00Z",
-        last_seen: "2026-09-20T16:03:32Z",
-        session_id: "s1",
-      },
-    ])
+    vi.mocked(api.remoteBindings).mockResolvedValue([boundPhone])
     render(<RemoteTab settings={base} onChange={vi.fn()} />)
     await waitFor(() =>
       expect(screen.getByText("Phone 1.0 Device")).toBeInTheDocument(),

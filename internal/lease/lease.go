@@ -37,11 +37,78 @@ var (
 )
 
 // Record is the on-disk description of the engine a shell can attach to.
+// Version and the executable's identity are how a newer binary tells that
+// this process is not itself. A shell that only compared "is something
+// listening" would keep serving the old code after the user reopened the app.
 type Record struct {
 	PID       int       `json:"pid"`
 	URL       string    `json:"url"`
 	Mock      bool      `json:"mock"`
 	StartedAt time.Time `json:"started_at"`
+	Version   string    `json:"version,omitempty"`
+	Dev       uint64    `json:"exe_dev,omitempty"`
+	Ino       uint64    `json:"exe_ino,omitempty"`
+}
+
+// Build is this process: the stamped version plus the executable file the
+// kernel is running. Replacing the file (a new desktop, a rebuilt go run)
+// changes the inode even when both versions say "dev".
+type Build struct {
+	Version string
+	Dev     uint64
+	Ino     uint64
+}
+
+// executablePath is os.Executable except when a test has to force the
+// lookup to fail. The failure is "keep the version, drop the file identity".
+var executablePath = os.Executable
+
+// ThisBuild is the binary that is starting. A stat failure leaves the file
+// identity empty; version comparison still works for a stamped release.
+func ThisBuild(version string) Build {
+	b := Build{Version: version}
+	exe, err := executablePath()
+	if err != nil {
+		return b
+	}
+	b.Dev, b.Ino = fileIdentity(exe)
+	return b
+}
+
+// SameEngine reports whether the live process is this binary. A different
+// version, a different file, or a record from before builds were written
+// is not: the shell that just started has to be the one serving.
+func SameEngine(live Record, self Build) bool {
+	if live.Version != self.Version {
+		return false
+	}
+	if live.Dev == 0 && live.Ino == 0 {
+		return self.Dev == 0 && self.Ino == 0
+	}
+	return live.Dev == self.Dev && live.Ino == self.Ino
+}
+
+// Stop asks the live engine to exit and waits until the pid is gone.
+// The lock stays held until that process dies, so a second engine must not
+// start before this returns.
+func Stop(pid int) error {
+	if pid <= 0 {
+		return fmt.Errorf("lease: bad pid")
+	}
+	if err := signalStop(pid); err != nil {
+		if !pidAlive(pid) {
+			return nil
+		}
+		return fmt.Errorf("lease: stop engine: %w", err)
+	}
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		if !pidAlive(pid) {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return fmt.Errorf("lease: engine %d did not exit", pid)
 }
 
 // Hold is an exclusive lock on one data directory. Release on shutdown.
@@ -113,6 +180,7 @@ func Publish(dataDir string, rec Record) error {
 type metaView struct {
 	DataDir string `json:"data_dir"`
 	Mock    bool   `json:"mock"`
+	Version string `json:"version"`
 }
 
 // Discover reports the engine a shell should attach to.
@@ -155,5 +223,8 @@ func Discover(dataDir string, mock bool) (Record, error) {
 		return Record{}, ErrMockMismatch
 	}
 	rec.Mock = meta.Mock
+	if meta.Version != "" {
+		rec.Version = meta.Version
+	}
 	return rec, nil
 }

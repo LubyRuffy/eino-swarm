@@ -42,10 +42,6 @@ export function AppHeader({
   trafficInset,
   onTogglePanel,
   onToggleSidebar,
-  onToggleTheme,
-  onToggleLocale,
-  onToggleContentWidth,
-  onToggleTranscriptMode,
   onOpenTerminal,
 }: {
   panelOpen: boolean
@@ -53,21 +49,13 @@ export function AppHeader({
   trafficInset: boolean
   onTogglePanel: () => void
   onToggleSidebar: () => void
-  onToggleTheme: () => void
-  onToggleLocale: () => void
-  onToggleContentWidth: () => void
-  onToggleTranscriptMode: () => void
   onOpenTerminal: () => void
 }) {
   const threads = useApp((s) => s.threads)
   const activeId = useApp((s) => s.activeId)
   const status = useApp((s) => s.status)
   const schedules = useApp((s) => s.schedules)
-  const meta = useApp((s) => s.meta)
   const connected = useApp((s) => s.connected)
-  const theme = useApp((s) => s.theme)
-  const contentWidth = useApp((s) => s.contentWidth)
-  const transcriptMode = useApp((s) => s.transcriptMode)
   const projects = useProjects((s) => s.projects)
   const selectedId = useProjects((s) => s.selectedId)
   const terminalOpen = useTerminal((s) => s.open)
@@ -78,21 +66,13 @@ export function AppHeader({
       project={projectOf(projects, thread?.project_id)}
       status={status}
       waiting={Boolean(status.waiting) || Boolean(activeWake(schedules, activeId))}
-      meta={meta}
       connected={connected || !activeId}
       panelOpen={panelOpen}
       sidebarOpen={sidebarOpen}
       trafficInset={trafficInset}
       onTogglePanel={onTogglePanel}
       onToggleSidebar={onToggleSidebar}
-      onToggleTheme={onToggleTheme}
-      onToggleLocale={onToggleLocale}
-      onToggleContentWidth={onToggleContentWidth}
-      onToggleTranscriptMode={onToggleTranscriptMode}
       onOpenTerminal={onOpenTerminal}
-      contentWidth={contentWidth}
-      transcriptMode={transcriptMode}
-      dark={isDark(theme)}
       terminalOpen={terminalOpen}
       terminalEnabled={Boolean(activeId || selectedId)}
     />

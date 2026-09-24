@@ -20,6 +20,7 @@ export const en = {
 
   "home.app": "zwai",
   "home.menu": "Menu",
+  "home.version": "Version {version}",
   "home.hosts": "Computers",
   "home.addHost": "Add a PC",
   "home.close": "Close",

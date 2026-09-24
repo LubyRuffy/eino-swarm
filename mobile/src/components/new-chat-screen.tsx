@@ -50,11 +50,11 @@ export function NewChatScreen({
     // chip row and the composer size themselves, and whatever passes the
     // edge cannot be scrolled back.
     <main className="mx-auto flex h-full min-w-0 w-full max-w-lg flex-col overflow-hidden">
-      <header className="flex h-14 shrink-0 items-center gap-1 border-b border-border px-2">
+      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-1.5">
         <Button
           type="button"
           variant="ghost"
-          className="size-10 shrink-0 px-0"
+          className="size-9 shrink-0 px-0"
           aria-label={t("thread.back")}
           onClick={onBack}
         >
@@ -63,7 +63,7 @@ export function NewChatScreen({
         <h1 className="min-w-0 flex-1 truncate text-[15px] font-medium">{t("compose.title")}</h1>
       </header>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-5 overflow-x-hidden overflow-y-auto px-3 py-4">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 overflow-x-hidden overflow-y-auto px-3 py-3">
         <p className="px-1 text-[13px] text-muted-foreground">{t("compose.hint")}</p>
         <ChoiceRail
           label={t("home.hosts")}

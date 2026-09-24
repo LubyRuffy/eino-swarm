@@ -19,7 +19,7 @@ export function HomeBar({
   disabled?: boolean
 }) {
   return (
-    <div className="shrink-0 border-t border-border bg-background px-3 pb-3 pt-2">
+    <div className="shrink-0 border-t border-border bg-background px-3 pb-2 pt-1.5">
       <div className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
           <Search
@@ -31,7 +31,7 @@ export function HomeBar({
             aria-label={t("home.search")}
             placeholder={t("home.search")}
             value={query}
-            className="h-11 rounded-full bg-muted pl-9 pr-10"
+            className="h-9 rounded-full bg-muted pl-9 pr-10"
             onChange={(e) => onQuery(e.target.value)}
           />
           {query ? (
@@ -48,7 +48,7 @@ export function HomeBar({
         <Button
           type="button"
           data-testid="new-chat"
-          className="h-11 shrink-0 gap-1.5 rounded-full px-4"
+          className="h-9 shrink-0 gap-1.5 rounded-full px-3.5"
           disabled={disabled}
           onClick={onNewChat}
         >

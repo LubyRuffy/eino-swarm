@@ -1,11 +1,23 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  TIDY_ESTIMATE_CAP,
   emptyTidyReport,
   joinNames,
   normalizeTidyReport,
+  tidyEstimateRatio,
   tidyFolded,
 } from "./skill-tidy"
+
+describe("skill tidy estimate", () => {
+  it("starts empty and never paints a full bar before the tidy finishes", () => {
+    expect(tidyEstimateRatio(0, 8)).toBe(0)
+    expect(tidyEstimateRatio(1_000, 8)).toBeGreaterThan(0)
+    expect(tidyEstimateRatio(1_000, 8)).toBeLessThan(tidyEstimateRatio(10_000, 8))
+    expect(tidyEstimateRatio(60 * 60 * 1000, 8)).toBe(TIDY_ESTIMATE_CAP)
+    expect(tidyEstimateRatio(10_000, 40)).toBeLessThan(tidyEstimateRatio(10_000, 1))
+  })
+})
 
 describe("skill tidy report", () => {
   it("treats a missing payload as a tidy catalog of the scanned size", () => {

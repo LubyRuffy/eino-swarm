@@ -134,6 +134,18 @@ export interface SkillTidyMerge {
   created: boolean
 }
 
+/** One skill write the tidy stream reported before the model finished. */
+export interface TidyLiveChange {
+  action: string
+  name: string
+}
+
+/** Prose and writes seen while POST /memory/tidy-skills is still open. */
+export interface TidyLive {
+  text: string
+  changes: TidyLiveChange[]
+}
+
 /** What POST /memory/tidy-skills returns besides the refreshed catalog. */
 export interface SkillTidyReport {
   scanned: number

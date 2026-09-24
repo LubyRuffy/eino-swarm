@@ -126,7 +126,7 @@ export function Composer({
   }
 
   return (
-    <div className="min-w-0 shrink-0 border-t border-border bg-background px-3 pb-3 pt-2">
+    <div className="min-w-0 shrink-0 border-t border-border bg-background px-3 pb-2 pt-1.5">
       {above}
       {attached.length > 0 ? (
         <ul className="mb-2 flex flex-col gap-1">

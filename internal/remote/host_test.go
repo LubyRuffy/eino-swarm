@@ -39,6 +39,7 @@ func TestHostOfferAndServeLinkOverRelay(t *testing.T) {
 	}
 
 	h := New(e, cfg, nil)
+	h.SetVersion("0.1.21")
 	h.Start()
 	h.Start() // already has a conn; second start must be a no-op
 	st := h.Status()
@@ -46,8 +47,8 @@ func TestHostOfferAndServeLinkOverRelay(t *testing.T) {
 		t.Fatalf("status %+v", st)
 	}
 	saved, err := hubStore.HostByTokenHash(ctx, pstore.HashSecret(token))
-	if err != nil || saved.Name != "desk-one" {
-		t.Fatalf("hub stored %q %v", saved.Name, err)
+	if err != nil || saved.Name != "desk-one" || saved.Version != "0.1.21" {
+		t.Fatalf("hub stored name=%q version=%q %v", saved.Name, saved.Version, err)
 	}
 
 	offer, err := h.Offer(ctx)

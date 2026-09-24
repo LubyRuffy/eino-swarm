@@ -90,7 +90,7 @@ func encodeEventPushStatus(path, sessionID, threadID string, ev store.Event, cfg
 		if err != nil {
 			return nil, false
 		}
-		if len(raw) <= MaxPushPayload {
+		if len(raw) <= plaintextBudget() {
 			return raw, true
 		}
 		if view.Text == "" || view.Text == "…" {

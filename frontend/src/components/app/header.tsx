@@ -1,14 +1,4 @@
-import {
-  Code2,
-  FoldHorizontal,
-  Moon,
-  PanelLeft,
-  PanelRight,
-  SquareTerminal,
-  Sun,
-  UnfoldHorizontal,
-  WifiOff,
-} from "lucide-react"
+import { PanelLeft, PanelRight, SquareTerminal, WifiOff } from "lucide-react"
 import { useEffect, useState } from "react"
 
 import { CopyButton } from "@/components/app/transcript"
@@ -25,10 +15,9 @@ import {
   SIDEBAR_WIDTH_DEFAULT,
   SIDEBAR_WIDTH_VAR,
 } from "@/lib/sidebar-width"
-import type { ContentWidthPref, TranscriptModePref } from "@/lib/appearance"
 import { chromeTypeClass } from "@/lib/chrome-type"
-import { desktopShell, uniqueSurfaces } from "@/lib/shell"
-import type { Meta, Project, Thread, ThreadStatus } from "@/lib/types"
+import { desktopShell } from "@/lib/shell"
+import type { Project, Thread, ThreadStatus } from "@/lib/types"
 import { cn, formatDuration } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 import { useApp } from "@/store/app"
@@ -41,21 +30,13 @@ export function Header({
   project,
   status,
   waiting,
-  meta,
   connected,
   panelOpen,
   sidebarOpen,
   trafficInset,
   onTogglePanel,
   onToggleSidebar,
-  onToggleTheme,
-  onToggleLocale,
-  onToggleContentWidth,
-  onToggleTranscriptMode,
   onOpenTerminal,
-  contentWidth,
-  transcriptMode,
-  dark,
   terminalOpen,
   terminalEnabled,
 }: {
@@ -67,7 +48,6 @@ export function Header({
   status: ThreadStatus
   /** True while an active thread wake is parked. Still not `running`. */
   waiting?: boolean
-  meta?: Meta
   connected: boolean
   panelOpen: boolean
   sidebarOpen: boolean
@@ -75,14 +55,7 @@ export function Header({
   trafficInset?: boolean
   onTogglePanel: () => void
   onToggleSidebar: () => void
-  onToggleTheme: () => void
-  onToggleLocale: () => void
-  onToggleContentWidth: () => void
-  onToggleTranscriptMode: () => void
   onOpenTerminal: () => void
-  contentWidth: ContentWidthPref
-  transcriptMode: TranscriptModePref
-  dark: boolean
   terminalOpen: boolean
   terminalEnabled: boolean
 }) {
@@ -103,14 +76,6 @@ export function Header({
   const listLabel = sidebarOpen
     ? t("header.hideConversations")
     : t("header.showConversations")
-  const wide = contentWidth === "full"
-  const widthLabel = wide
-    ? t("header.switchToStandard")
-    : t("header.switchToWide")
-  const developer = transcriptMode === "developer"
-  const modeLabel = developer
-    ? t("header.switchToUser")
-    : t("header.switchToDeveloper")
   return (
     <header
       data-drag-region
@@ -214,20 +179,6 @@ export function Header({
           </Badge>
         )}
 
-        {(meta?.clients?.length ?? 0) >= 2 ? (
-          <Badge variant="outline" data-testid="shared-clients">
-            {t("header.shared", {
-              where: uniqueSurfaces(meta?.clients)
-                .map((surface) =>
-                  surface === "desktop" || surface === "web" || surface === "tui"
-                    ? t(`surface.${surface}`)
-                    : surface,
-                )
-                .join(" · "),
-            })}
-          </Badge>
-        ) : null}
-
         {!scheduled && status.turn_id ? (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -256,47 +207,6 @@ export function Header({
         ) : null}
 
         <div className="flex items-center" data-no-drag>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onToggleTheme}
-            title={t("header.switchTheme")}
-            aria-label={t("header.switchTheme")}
-          >
-            {dark ? <Sun /> : <Moon />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onToggleLocale}
-            title={t("header.switchLanguage")}
-            aria-label={t("header.switchLanguage")}
-            className={cn(chromeTypeClass, "px-1.5")}
-          >
-            {t("header.languageMark")}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onToggleContentWidth}
-            title={widthLabel}
-            aria-label={widthLabel}
-            aria-pressed={wide}
-            className={wide ? "text-foreground" : "text-muted-foreground"}
-          >
-            {wide ? <FoldHorizontal /> : <UnfoldHorizontal />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={onToggleTranscriptMode}
-            title={modeLabel}
-            aria-label={modeLabel}
-            aria-pressed={developer}
-            className={developer ? "text-foreground" : "text-muted-foreground"}
-          >
-            <Code2 />
-          </Button>
           <Button
             variant="ghost"
             size="icon-sm"

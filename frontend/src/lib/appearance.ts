@@ -92,12 +92,12 @@ const CONTENT_GUTTER: Record<ContentWidthPref, string> = {
   full: "1rem",
 }
 
-/** Title-bar / ⌘K flip. The stored tokens stay comfortable / full. */
+/** App menu / ⌘K flip. The stored tokens stay comfortable / full. */
 export function toggleContentWidth(pref: ContentWidthPref): ContentWidthPref {
   return pref === "full" ? "comfortable" : "full"
 }
 
-/** Title-bar flip between the compact transcript and every tool row. */
+/** App menu flip between the compact transcript and every tool row. */
 export function toggleTranscriptMode(
   pref: TranscriptModePref,
 ): TranscriptModePref {

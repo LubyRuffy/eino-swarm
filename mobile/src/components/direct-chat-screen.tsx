@@ -229,15 +229,15 @@ export function DirectChatScreen({
         />
       )}
       {open ? (
-        <div data-testid="transcript" className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-          <div className="flex flex-col gap-3">
+        <div data-testid="transcript" className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+          <div className="flex flex-col gap-1.5">
             {open.messages.map((message) => (
               <MessageRow key={message.id} message={message} live={pending && message.id === open.messages.at(-1)?.id} />
             ))}
           </div>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
           {threads.length === 0 ? (
             <div className="px-1">
               <p className="text-sm font-medium">{t("chat.emptyTitle")}</p>

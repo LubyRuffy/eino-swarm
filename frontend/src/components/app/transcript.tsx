@@ -877,7 +877,7 @@ function UserMessage({
   }
 
   return (
-    <div className="mb-2 mt-6 flex scroll-mt-6 justify-end first:mt-0" data-turn-nav={block.turnId}>
+    <div className="mb-2 mt-6 flex justify-end first:mt-0" data-turn-nav={block.turnId}>
       <div className="group/msg flex max-w-[85%] flex-col items-end">
         {editing ? (
           <div

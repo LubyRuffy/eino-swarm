@@ -22,14 +22,7 @@ function renderHeader(props: Partial<Parameters<typeof Header>[0]> = {}) {
         sidebarOpen
         onTogglePanel={vi.fn()}
         onToggleSidebar={vi.fn()}
-        onToggleTheme={vi.fn()}
-        onToggleLocale={vi.fn()}
-        onToggleContentWidth={vi.fn()}
-        onToggleTranscriptMode={vi.fn()}
         onOpenTerminal={vi.fn()}
-        contentWidth="comfortable"
-        transcriptMode="user"
-        dark={false}
         terminalOpen={false}
         terminalEnabled
         {...props}
@@ -244,50 +237,6 @@ describe("Header status", () => {
     expect(screen.getByTestId("status-badge")).not.toHaveTextContent("1s")
   })
 
-  it("offers a language switch next to the theme control", () => {
-    const onToggleLocale = vi.fn()
-    renderHeader({ onToggleLocale })
-    fireEvent.click(screen.getByRole("button", { name: "Switch language" }))
-    expect(onToggleLocale).toHaveBeenCalled()
-  })
-})
-
-describe("Header conversation width", () => {
-  // Settings already stores comfortable/full; the title-bar control is how
-  // a human actually finds it. Pressed means the column is already wide.
-  it("offers to switch to the wide column from the reading width", () => {
-    const onToggleContentWidth = vi.fn()
-    renderHeader({ onToggleContentWidth, contentWidth: "comfortable" })
-    const btn = screen.getByRole("button", { name: "Switch to wide layout" })
-    expect(btn).toHaveAttribute("aria-pressed", "false")
-    fireEvent.click(btn)
-    expect(onToggleContentWidth).toHaveBeenCalled()
-  })
-
-  it("offers to switch back to the reading column while wide", () => {
-    renderHeader({ contentWidth: "full" })
-    expect(
-      screen.getByRole("button", { name: "Switch to standard layout" }),
-    ).toHaveAttribute("aria-pressed", "true")
-  })
-})
-
-describe("Header transcript mode", () => {
-  it("offers developer view from the compact default", () => {
-    const onToggleTranscriptMode = vi.fn()
-    renderHeader({ onToggleTranscriptMode, transcriptMode: "user" })
-    const btn = screen.getByRole("button", { name: "Switch to developer view" })
-    expect(btn).toHaveAttribute("aria-pressed", "false")
-    fireEvent.click(btn)
-    expect(onToggleTranscriptMode).toHaveBeenCalled()
-  })
-
-  it("offers user view while developer mode is on", () => {
-    renderHeader({ transcriptMode: "developer" })
-    expect(
-      screen.getByRole("button", { name: "Switch to user view" }),
-    ).toHaveAttribute("aria-pressed", "true")
-  })
 })
 
 describe("Header terminal", () => {
@@ -301,66 +250,5 @@ describe("Header terminal", () => {
   it("does not offer a shell when there is nowhere to start it", () => {
     renderHeader({ terminalEnabled: false })
     expect(screen.getByRole("button", { name: "Open terminal" })).toBeDisabled()
-  })
-})
-
-describe("Header shared clients", () => {
-  it("names the shells only when more than one is connected", () => {
-    renderHeader({
-      meta: {
-        version: "",
-        mode: "engine",
-        mock: false,
-        configured: true,
-        default_provider: "",
-        reasoning_levels: [],
-        data_dir: "",
-        capabilities: {},
-        swarm: {
-          max_concurrent: 1,
-          agent_timeout_seconds: 1,
-          max_turns: 1,
-          manager_max_iterations: 1,
-          progress_interval_seconds: 1,
-          delta_coalesce_ms: 1,
-          auto_title: false,
-        },
-        clients: [{ id: "pc_a", surface: "desktop" }],
-      },
-    })
-    expect(screen.queryByTestId("shared-clients")).toBeNull()
-  })
-
-  it("lists each connected surface without taking the composer away", () => {
-    renderHeader({
-      status: { running: true },
-      meta: {
-        version: "",
-        mode: "engine",
-        mock: false,
-        configured: true,
-        default_provider: "",
-        reasoning_levels: [],
-        data_dir: "",
-        capabilities: {},
-        swarm: {
-          max_concurrent: 1,
-          agent_timeout_seconds: 1,
-          max_turns: 1,
-          manager_max_iterations: 1,
-          progress_interval_seconds: 1,
-          delta_coalesce_ms: 1,
-          auto_title: false,
-        },
-        clients: [
-          { id: "pc_a", surface: "desktop" },
-          { id: "pc_b", surface: "tui" },
-        ],
-      },
-    })
-    expect(screen.getByTestId("shared-clients")).toHaveTextContent(
-      "Also open in Desktop · Terminal",
-    )
-    expect(screen.getByTestId("status-badge")).toHaveTextContent("Working")
   })
 })

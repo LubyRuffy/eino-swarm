@@ -227,6 +227,12 @@ export function dismissUpdate(version: string, store: UpdateStore = safeStorage(
   store.setItem(DISMISS_KEY, v)
 }
 
+/** Native binary version, or the web shell package version. The hub stores this string as-is. */
+export async function softwareVersion(): Promise<string> {
+  const native = (await installedVersion()).trim()
+  return native || webShellVersion()
+}
+
 export async function installedVersion(): Promise<string> {
   if (Capacitor.getPlatform() === "web") return ""
   try {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -34,11 +35,24 @@ type Host struct {
 	// keepAlive is forwarded to pairlink. Zero is the library default.
 	// Tests stretch it so a short hub Idle can drop the socket.
 	keepAlive time.Duration
+	// version is this PC build. The hub stores it; this package does not invent one.
+	version string
 
 	// wake is the sleep assertion. It follows config, not the hub
 	// socket: Reload must not release and re-acquire or idle sleep
 	// wins the gap.
 	wake wakeup.Holder
+}
+
+// SetVersion is the PC build string published on register and TypeLabel.
+// Call it before Start. An empty string leaves a version the hub already has.
+func (h *Host) SetVersion(version string) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	h.version = strings.TrimSpace(version)
+	h.mu.Unlock()
 }
 
 func New(eng *engine.Engine, cfg *config.Config, log *slog.Logger) *Host {
@@ -87,8 +101,9 @@ func (h *Host) startLocked() {
 		return
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	// The gateway list reads this label. It is the same name the phone paints, not the hub URL.
-	if err := client.RegisterHostLabel(ctx, hub, token, config.SeedRemoteDisplayName(cfg.Remote.DisplayName), id); err != nil {
+	// The gateway list reads this label and the build string. Neither is the hub URL.
+	name := config.SeedRemoteDisplayName(cfg.Remote.DisplayName)
+	if err := client.RegisterHostMeta(ctx, nil, hub, token, name, h.version, id); err != nil {
 		cancel()
 		h.err = err.Error()
 		h.log.Warn("remote host register failed", "err", err)
@@ -99,6 +114,8 @@ func (h *Host) startLocked() {
 		Identity:  id,
 		Token:     token,
 		KeepAlive: h.keepAlive,
+		Name:      name,
+		Version:   h.version,
 	})
 	if err != nil {
 		cancel()

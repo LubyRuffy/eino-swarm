@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -272,6 +273,27 @@ func TestLogClosedStore(t *testing.T) {
 	resp := Handle(e, config.RemoteConfig{}, Request{ID: "l", Op: OpLog, ThreadID: th.ID, Before: 2}, "relay", "s")
 	if resp.OK {
 		t.Fatalf("closed %+v", resp)
+	}
+}
+
+func TestLogPageStillSealsAfterTheHostNameIsStamped(t *testing.T) {
+	// A page packed to the sealed cap used to fit in JSON and then die in
+	// Seal once the display name was added. The phone waited out the RPC,
+	// dropped the link, and Earlier never painted the previous turn.
+	fat := strings.Repeat("a", 4000)
+	events := make([]store.Event, 40)
+	for i := range events {
+		events[i] = store.Event{ThreadID: "t", Seq: int64(i + 1), Kind: "agent_message", Text: fat}
+	}
+	resp := packLogEvents("l", "relay", "s", "t", events, true, config.RemoteConfig{EventChars: 4000})
+	resp.Host = strings.Repeat("n", 40)
+	raw, err := json.Marshal(resp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const sealOverhead = 8 + 16
+	if len(resp.Events) == 0 || len(raw)+sealOverhead > MaxPushPayload {
+		t.Fatalf("sealed=%d events=%d", len(raw)+sealOverhead, len(resp.Events))
 	}
 }
 

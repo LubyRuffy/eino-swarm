@@ -122,7 +122,7 @@ func packLogEvents(id, path, sessionID, threadID string, events []store.Event, m
 			resp.Events = nil
 			return resp
 		}
-		if len(raw) <= MaxPushPayload {
+		if len(raw) <= plaintextBudget() {
 			return resp
 		}
 		views = views[1:]

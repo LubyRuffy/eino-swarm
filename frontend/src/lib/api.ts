@@ -55,6 +55,102 @@ export class ApiError extends Error {
   }
 }
 
+/** One beat of a streaming tidy: scan, prose so far, or a skill write. */
+export interface TidyStreamEvent {
+  phase?: string
+  scanned?: number
+  text?: string
+  action?: string
+  name?: string
+}
+
+export interface TidySkillsResult {
+  memory: ProjectMemory
+  report: SkillTidyReport
+  changes: MemoryChange[]
+  folded: boolean
+}
+
+async function streamTidy(
+  projectId: string,
+  onEvent?: (ev: TidyStreamEvent) => void,
+): Promise<TidySkillsResult> {
+  const res = await fetch(`/api/projects/${projectId}/memory/tidy-skills`, {
+    method: "POST",
+    headers: { Accept: "text/event-stream" },
+  })
+  if (!res.ok) {
+    let message = `${res.status} ${res.statusText}`
+    let code: string | undefined
+    let details: Record<string, unknown> | undefined
+    try {
+      const body = await res.json()
+      if (body && typeof body === "object") details = body as Record<string, unknown>
+      if (body?.error) message = body.error
+      if (body?.code) code = body.code
+    } catch {
+      // a non-JSON refusal is still a refusal
+    }
+    throw new ApiError(message, res.status, code, details)
+  }
+  let done: TidySkillsResult | undefined
+  let failed: string | undefined
+  await readSSE(res, (name, data) => {
+    if (name === "tidy") {
+      onEvent?.(data as TidyStreamEvent)
+      return
+    }
+    if (name === "done") done = data as TidySkillsResult
+    if (name === "error") {
+      const body = data as { error?: string }
+      failed = body.error || "tidy failed"
+    }
+  })
+  if (failed) throw new ApiError(failed, 500)
+  if (!done?.report || !done.memory) throw new ApiError("tidy ended without a result", 500)
+  return done
+}
+
+/** Reads one fetch body framed as SSE. Events are split on a blank line. */
+async function readSSE(
+  res: Response,
+  onEvent: (name: string, data: unknown) => void,
+): Promise<void> {
+  const body = res.body
+  if (!body) return
+  const reader = body.getReader()
+  const decode = new TextDecoder()
+  let buf = ""
+  for (;;) {
+    const chunk = await reader.read()
+    if (chunk.done) break
+    buf += decode.decode(chunk.value, { stream: true })
+    let cut = buf.indexOf("\n\n")
+    while (cut >= 0) {
+      emitSSE(buf.slice(0, cut), onEvent)
+      buf = buf.slice(cut + 2)
+      cut = buf.indexOf("\n\n")
+    }
+  }
+  if (buf.trim() !== "") emitSSE(buf, onEvent)
+}
+
+function emitSSE(block: string, onEvent: (name: string, data: unknown) => void) {
+  let name = "message"
+  const data: string[] = []
+  for (const line of block.split("\n")) {
+    if (line.startsWith(":")) continue
+    if (line.startsWith("event:")) name = line.slice(6).trim()
+    else if (line.startsWith("data:")) data.push(line.slice(5).trim())
+  }
+  if (data.length === 0) return
+  try {
+    onEvent(name, JSON.parse(data.join("\n")))
+  } catch {
+    // a broken frame is one lost beat, not a failed tidy
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -206,13 +302,10 @@ export const api = {
       `/api/projects/${projectId}/skills/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
-  tidySkills: (projectId: string) =>
-    request<{
-      memory: ProjectMemory
-      report: SkillTidyReport
-      changes: MemoryChange[]
-      folded: boolean
-    }>(`/api/projects/${projectId}/memory/tidy-skills`, { method: "POST" }),
+  tidySkills: (
+    projectId: string,
+    onEvent?: (ev: TidyStreamEvent) => void,
+  ) => streamTidy(projectId, onEvent),
 
   threads: (archived = false, projectId?: string) => {
     const params = new URLSearchParams()

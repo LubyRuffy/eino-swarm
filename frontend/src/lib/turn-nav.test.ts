@@ -146,24 +146,43 @@ describe("activeNavId", () => {
     { id: "tn_c", top: 800 },
   ]
 
-  it("picks the last message that has entered the viewport", () => {
+  it("picks the last message that has crossed the reading line", () => {
     expect(activeNavId(items, 380, 300)).toBe("tn_b")
     expect(activeNavId(items, 0, 300)).toBe("tn_a")
     expect(activeNavId(items, 780, 300)).toBe("tn_c")
   })
 
-  it("stays on the latest send once that row is on screen after a wheel-up", () => {
-    // Collapsed earlier turns occupy the top 96px the old probe used.
-    // The reader is on the latest bubble in the lower pane, not at the
-    // live-edge slack, so isFollowBottom does not save this.
+  it("keeps the first send while a later one has only entered the bottom", () => {
+    // A long first answer still fills the pane. The next bubble peeking
+    // at the bottom used to steal the tick, so the rail and the scrollbar
+    // disagreed about which turn the reader was on.
+    const longFirst = [
+      { id: "tn_a", top: 0 },
+      { id: "tn_b", top: 700 },
+      { id: "tn_c", top: 1400 },
+    ]
+    expect(activeNavId(longFirst, 0, 800, 4000)).toBe("tn_a")
+    expect(activeNavId(longFirst, 200, 800, 4000)).toBe("tn_a")
+  })
+
+  it("stays on the first send at the top even when the next input is visible", () => {
+    // The pane is at scrollTop 0. The next input sits lower in the same
+    // viewport. Lighting it disagreed with the scrollbar.
+    const onScreen = [
+      { id: "tn_a", top: 0 },
+      { id: "tn_b", top: 640 },
+    ]
+    expect(activeNavId(onScreen, 0, 800, 2000)).toBe("tn_a")
+  })
+
+  it("lights a later send once that row reaches the top of the pane", () => {
     const tight = [
       { id: "tn_a", top: 0 },
       { id: "tn_b", top: 40 },
       { id: "tn_c", top: 80 },
       { id: "tn_d", top: 200 },
     ]
-    expect(activeNavId(tight, 0, 800, 2000)).toBe("tn_d")
-    expect(activeNavId(tight, 0, 800, 2000, false)).toBe("tn_d")
+    expect(activeNavId(tight, 180, 800, 2000)).toBe("tn_d")
   })
 
   it("pins the latest turn when the scroller is at the bottom", () => {

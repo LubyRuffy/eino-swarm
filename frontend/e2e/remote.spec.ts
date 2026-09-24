@@ -23,6 +23,55 @@ test("phone settings shows a pairing QR control", async ({ page }) => {
   await expect(toast).toHaveCount(0)
 })
 
+test("a phone that binds while the QR stays up shows up without leaving Phone", async ({
+  page,
+}) => {
+  let offered = false
+  let afterOffer = 0
+  await page.route("**/api/remote/offer", async (route) => {
+    offered = true
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        uri: "pairlink:v1:http://127.0.0.1:9:code:spk",
+        pairing_id: "p1",
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        png: "data:image/png;base64,aaaa",
+      }),
+    })
+  })
+  await page.route("**/api/remote/bindings", async (route) => {
+    if (offered) afterOffer += 1
+    await route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        bindings:
+          !offered || afterOffer < 2
+            ? []
+            : [
+                {
+                  id: "b-new",
+                  device_fp: "cc22dd33ee44ff55",
+                  device: "Fresh Phone",
+                  created_at: "2026-09-24T01:00:00Z",
+                  last_seen: "2026-09-24T01:00:02Z",
+                  session_id: "s-new",
+                },
+              ],
+      }),
+    })
+  })
+  await page.goto("/")
+  await page.getByRole("button", { name: "Settings" }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("tab", { name: "Phone" }).click()
+  await expect(dialog.getByText("No phones bound yet.")).toBeVisible()
+  await dialog.getByRole("button", { name: "Show pairing QR" }).click()
+  await expect(page.getByTestId("remote-qr")).toBeVisible()
+  await expect(dialog.getByText("Fresh Phone")).toBeVisible()
+  await expect(dialog.getByText("No phones bound yet.")).toHaveCount(0)
+})
+
 test("bound phones paints the reported model instead of a bare fingerprint", async ({
   page,
 }) => {

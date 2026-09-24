@@ -51,7 +51,17 @@ export function useTurnJump({
     const id = pending.current
     if (!id) return
     tryScroll(id)
-  }, [growthKey, tryScroll])
+    const view = scrollerRef.current?.ownerDocument.defaultView
+    if (!view) return
+    // A prepend that started because the jump parked near the top skips
+    // scroll compensation. Measuring in this layout can still see the
+    // pre-prepend box. Pin again after paint.
+    const raf = view.requestAnimationFrame(() => {
+      if (pending.current !== id) return
+      tryScroll(id)
+    })
+    return () => view.cancelAnimationFrame(raf)
+  }, [growthKey, tryScroll, scrollerRef])
 
   return useCallback(
     (id: string) => {

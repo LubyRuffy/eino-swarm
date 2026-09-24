@@ -38,7 +38,7 @@ Current Go coverage, from `go test -race -cover -timeout 20m ./...`:
 | `internal/terminal` | 97.8% |
 | `internal/server` | 90.6% |
 | `internal/slash` | 92.9% |
-| `internal/lease` | 91.7% |
+| `internal/lease` | 92.2% |
 | `internal/tui` | 87.7% |
 | `internal/app` | 88.7% |
 | `cmd/zwai` | 84.7% |
@@ -156,11 +156,18 @@ across a remount) while the new-conversation control is an icon, and why a live
 lands in that folder even when `threads` omitted it, and why a live row
 with no project stays out of Recents.
 `mobile/src/lib/inbox-preview.test.ts` pulls findings and drops the tool name.
+`mobile/src/components/host-chrome.test.tsx` is why the menu prints the package version.
 `mobile/src/components/thread-screen.test.tsx` is why an empty earlier page does not immediately ask again, why Interrupt is only on a queued follow-up, and why a standing `/goal` is
 Pursuing / Done / Blocked / Paused with Start, a parked wait is Waiting
 with Run now / Cancel wait rather than a silent Send box, a long
 objective stays one truncated line so that chrome cannot cover the composer,
 and Earlier sits outside the scroller so a live-edge tail can still page.
+A scroll that is already at the top does not ask for another page; that
+request is the Earlier button or a pull. Interrupt is on a queued follow-up,
+not on every running turn.
+`TestLogPageStillSealsAfterTheHostNameIsStamped` is why an earlier page
+still fits after the display name and the seal, instead of vanishing and
+dropping the link.
 A long tool path must not stretch the column (`min-w-0` / `break-words`).
 `mobile/src/lib/transcript.test.ts` is why a `schedule` payload is **A wait is armed.**, not the JSON, a `progress` pulse is not a notice, a findings `report_schedule` is that prose as a notice rather than a tool chip, adjacent thoughts and tools fold while an answer stays visible and splits the group, and Planning sits under a closed answer instead of on the fold above it.
 `mobile/src/lib/tool-preview.test.ts` pulls `findings` (not `prompt`) for the collapsed chip, and a wait roster is counts rather than `elapsed_ms`.
@@ -246,7 +253,11 @@ split so that everything which can fail is testable: `startDesktopServer`
 returns the window options without opening a window, and closing that
 window does not stop the engine. `serveWeb` takes an injected stop signal
 and leaves the engine up. `runTUI` attaches with `ensureEngine` and
-`tui.RunClient`. `assembleTUI` / `buildTUISwarm` still build an in-process
+`tui.RunClient`. `TestEnsureEngineReplacesAnOlderBuild` is why a newer
+binary stops the process it would otherwise attach to; `TestEnsureEngineWaitsUntilTheTurnIsNotExecuting`
+is why that stop waits out a model call and does not wait on a question or
+a parked schedule. `TestSameEngineIsTheBinaryThatWasStarted`
+is the match (version plus executable identity). `assembleTUI` / `buildTUISwarm` still build an in-process
 swarm for renderer tests. The window itself is verified by hand — see below.
 
 ## The scripted offline provider
@@ -757,9 +768,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   conversation shares a fixed height instead of overflowing a second
   scrollbar. The hover list is a wider two-line preview of those sends, not a
   shadowed popover of fake bubbles. The active tick
-  is the last human turn that has entered the viewport (not a 96px line
-  from the top — a wheel-up used to keep an earlier tick current while
-  the latest send was already on screen), or the
+  is the last human turn whose top has reached a 48px band under the top
+  of the pane (a later input that is only visible lower down does not take
+  the tick — at scrollTop 0 that used to light the second send while the
+  scrollbar was still on the first), or the
   latest turn when the scroller is at the bottom or still following the live
   edge (opening a conversation used to measure at scrollTop 0 and keep the
   first tick current). A click sticks until the reader wheels again, and
@@ -767,7 +779,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   first scrollIntoView used to swallow the click). A click pins the user
   send at the top of the pane (`scrollTop` on the transcript scroller —
   `scrollIntoView` on the turn group left earlier work peeking above the
-  first tick). Turns not yet mounted are skipped rather than treated
+  first tick, and `scroll-margin` on the user row kept that gap). The pin
+  runs again after paint so a history prepend that skipped compensation
+  near the top cannot leave the previous turn on screen. Turns not yet mounted are skipped rather than treated
   as offset 0, and a
   missing id after a conversation switch is a no-op. The rail stays hidden until
   there are two user turns; hover opens the list; a click (or arrow keys) jumps.
@@ -1144,8 +1158,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   **`src/components/app/sidebar-thread-group.tsx`**, rendered in jsdom
   (`sidebar-slots.test.ts` pins chrome-relative density, not rem): the list
   starts with New conversation; there is no title-bar chrome row and no hide
-  control — those live on the window title bar. Settings is a full-width
-  rounded pill at the bottom that fills `sidebar-accent` on hover. Projects and Recents share
+  control — those live on the window title bar. Settings is a
+  rounded pill at the bottom that fills `sidebar-accent` on hover, beside an
+  app menu (conversation width, developer view, theme, language, which other shells are open, build version). Projects and Recents share
   `sidebar-section-label` (same px gutter as the rows). Wrapping the project
   section in a second `px-2` is rejected so it cannot sit further in than Recents. The list starts at
   256px, the arrow keys change that width (CSS variable, not a React `width`
@@ -1219,8 +1234,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   lives on the composer. A running turn counts from `status.started_at`
   (hours included); a missing start time is `Working` with no invented 1s.
   `awaiting_answer` is **Your turn** with `ask-mark`, not Waiting / Working;
-  `awaiting_continue` stays Waiting. A width control flips `comfortable` / `full` the same way the theme
-  control flips light / dark; `aria-pressed` is on while the column is wide.
+  `awaiting_continue` stays Waiting. Conversation width, developer view, who
+  else is connected, theme and language live in the sidebar app menu, not on
+  this bar.
 - **`src/lib/settings-persist.ts`**: edits coalesce into one `PUT` after
   400ms; `flush` writes immediately; a failed write does not block the next.
   The `ui` object always carries locale, font, size, column width and palette so a
@@ -1229,7 +1245,7 @@ Several things are tested here, some as pure logic and some in jsdom:
   `small`/`medium`/`large`, `comfortable`/`full`, `zwai`/`fofa`) map to CSS variables and
   `data-*` attributes. Junk becomes the current defaults. A `localStorage`
   cache paints the first frame; `GET /api/meta` is the source of truth.
-  `toggleContentWidth` is the title-bar / ⌘K flip. `--content-gutter`
+  `toggleContentWidth` is the app-menu / ⌘K flip. `--content-gutter`
   shrinks in `full` so the column sits against the sidebars. UI size
   writes `--chrome-font-size` and the directory density tokens
   (`src/lib/chrome-density.ts`); content size writes `--ui-font-size`
@@ -1269,7 +1285,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   offer paints a QR; a stored host token is never echoed; a failed offer
   toasts over the sheet instead of a red line under Phone; **Keep this
   computer awake** defaults on and toggles `remote.keep_awake`. A binding
-  with a reported model paints that line, not a bare fingerprint.
+  with a reported model paints that line, not a bare fingerprint. While the
+  QR is up, the bound-phone list is re-read; a phone that appears on a later
+  read is painted, and a failed read does not clear phones already shown.
+  Before the QR, that watch does not run.
   `src/lib/remote-binding.ts` is the title / last-seen join.
 - **`src/store/settings-sheet.ts`**: sidebar / ⌘, / ⌘K open General;
   a provider shortcut opens Models.
@@ -1386,13 +1405,14 @@ Several things are tested here, some as pure logic and some in jsdom:
   review are adopted unless the user is mid-edit — in which case a conflict
   banner keeps what they typed and offers Reload — and a write that landed
   while the tab was closed is a badge, not a silent panel. Deleting a skill
-  asks first. **Tidy skills** sits on the Skills heading, walks
-  scan → review (held while the model runs), then a report of merged /
-  deleted / created / patched names plus counts; a model that kept the
-  catalog still shows the zeros.
+  asks first. **Tidy skills** sits on the Skills heading. While the model
+  runs, the bar is an estimate that stays under full and the assistant prose
+  scrolls in a short box; then a report of merged / deleted / created /
+  patched names plus counts. A model that kept the catalog still shows the zeros.
 - **`src/components/app/skill-tidy-card.tsx`** and **`src/lib/skill-tidy.ts`**:
-  progress parks on the model step until the POST returns, then the card lists
-  what was merged, deleted, created and patched; dismiss clears it.
+  the bar is `tidyEstimateRatio` (capped until the POST returns) and the
+  stream box is height-capped; the finished card lists what was merged,
+  deleted, created and patched; dismiss clears it.
 
 ## End-to-end tests
 
@@ -1427,10 +1447,10 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour), `$n$` as KaTeX, a GFM table that stays inside the conversation column (not under the side panel), and a heading rendered as a heading while the turn is still Working |
 | `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |
 | `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled page in the main column (Create opens the right drawer, Task only — the inbox name is generated — Repeat → On an interval, Every (seconds) 60, Add wait; Agents/Files/Trace rail hidden; Expand fills the page (`data-expanded`) then Collapse restores the list), click the row to open the editor, Run now, Escape back to the conversation, unread / Open findings landing on the minted conversation whose title matches that generated name, with a `Scheduled check.` chip and no user bubble of the protocol wrapper; REST create then click-to-edit title/prompt/cadence and Save; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
-| `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Keep this computer awake, Bound phones empty copy, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. |
+| `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Keep this computer awake, Bound phones empty copy, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. A binding that appears on a later list read while the QR stays up is painted without leaving Phone. |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR opens a live viewfinder (four corners, a beam whose `scan-beam` animation is running, a fake-camera preview); junk paste errors; a syntactically valid URI uses the same bind path; a saved ticket shows host chips and Connecting, not the scan form; Add a PC is a sheet |
 | `e2e/settings.spec.ts` | Settings sheet: tool catalogue on a never-saved config, round-trip through the config file, per-note memory cap, personality, pinning a title-generation model, discovering models into the default dropdown, a failed listing toasting over the open provider, **Back to app** on a short window when Swarm is long, the Add-a-provider outline inside the Models scrollport, semantic search off by default, Color theme / font / conversation width, directory rows tracking UI size not conversation size, chrome language switching (restored to English) |
-| `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline (pins and the box share one slab; the join sits on that plate), Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, ⌘K finding a conversation by words in its body, theme switching persisted, the title-bar width control filling the pane in wide mode and restoring the reading column (also persisted), renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
+| `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline (pins and the box share one slab; the join sits on that plate), Projects and Recents sharing one left gutter (conversation titles in the icon column), collapsing Recents so its conversations stay hidden across reload, an external link opening a new window instead of replacing the app, ⌘K finding a conversation by words in its body, theme switching persisted, the app-menu width control filling the pane in wide mode and restoring the reading column (also persisted), renaming a conversation and deleting it after a confirm, and dragging a Recents conversation pinning that order across reload |
 
 E2E tests run against `frontend/dist`. Playwright starts
 `go run ./cmd/zwai web --mock --no-open`, which rebuilds that bundle when the

@@ -28,13 +28,13 @@ export function InboxRow({
         type="button"
         aria-label={t("home.open", { title })}
         className={cn(
-          "flex min-h-16 w-full flex-col gap-1 px-4 py-3 text-left",
+          "flex w-full flex-col gap-0.5 px-3 py-2 text-left",
           "transition-colors active:bg-accent",
         )}
         onClick={() => onOpen(id)}
       >
         <span className="flex w-full min-w-0 items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-[15px] font-medium leading-5">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium leading-5">
             {title}
           </span>
           {age ? (
@@ -46,7 +46,7 @@ export function InboxRow({
         <span className="flex w-full min-w-0 items-center gap-2">
           {state === "idle" ? null : <StatusBadge state={state} />}
           {detail ? (
-            <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-muted-foreground">
+            <span className="min-w-0 flex-1 truncate text-xs leading-4 text-muted-foreground">
               {detail}
             </span>
           ) : null}

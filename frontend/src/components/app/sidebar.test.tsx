@@ -15,6 +15,8 @@ const noop = {
   onDelete: vi.fn(),
   onSearch: vi.fn(),
   onSettings: vi.fn(),
+  onToggleTheme: vi.fn(),
+  onToggleLocale: vi.fn(),
   projects: [],
   onSelectProject: vi.fn(),
   onNewProject: vi.fn(),
@@ -68,7 +70,8 @@ describe("Sidebar chrome", () => {
   it("paints Settings as a full-width hover pill, not a tiny ghost chip", () => {
     render(<Sidebar threads={[]} {...noop} />)
     const button = screen.getByRole("button", { name: "Settings" })
-    expect(button.className).toMatch(/\bw-full\b/)
+    expect(button.className).toMatch(/\bflex-1\b/)
+    expect(screen.getByRole("button", { name: "App menu" })).toBeInTheDocument()
     expect(button.className).toMatch(/\brounded-full\b/)
     expect(button.className).toMatch(/hover:bg-sidebar-accent/)
     expect(button).toHaveStyle({ height: "var(--sidebar-row-height)" })
