@@ -13,6 +13,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **The phone paints a `chart` fence.** A closed comparison (bar, line, area,
+  pie) is a plot with a table of the same rows. A truncated fence waits. A
+  finished invalid body stays a code block, and a `json` fence is still code.
+
 - **The phone can talk to a model without a PC.** Menu → Models (or Connect a
   model on the scan screen) saves an OpenAI-compatible endpoint: base URL,
   optional key, chat completions or responses, discover, timeout. After one

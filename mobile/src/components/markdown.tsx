@@ -15,7 +15,9 @@ import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import "katex/dist/katex.min.css"
 
+import { PhoneChart, PhoneChartPending } from "@/components/phone-chart"
 import { Button } from "@/components/ui/button"
+import { parseChartSpec } from "@/lib/chart-spec"
 import { cn } from "@/lib/cn"
 import { copyText } from "@/lib/copy-text"
 import { t } from "@/lib/i18n"
@@ -105,6 +107,11 @@ function PhonePre({
   const fence = readFence(children)
   if (fence && MATH_LANGS.has(fence.lang.toLowerCase())) {
     return <PhoneMath tex={fence.text} display />
+  }
+  if (fence && fence.lang.toLowerCase() === "chart") {
+    const parsed = parseChartSpec(fence.text)
+    if (parsed.ok) return <PhoneChart spec={parsed.spec} />
+    if (parsed.incomplete) return <PhoneChartPending />
   }
   if (fence) {
     return (

@@ -143,8 +143,8 @@ sent once more as chat completions, and that retry uses `image_url`
 responses call is tried again. A different responses 400 is not retried.
 `rosterFingerprint` is why a 2s inbox poll that repeats the same roster
 does not remount the row mid-tap. `mobile/src/components/markdown.test.tsx` renders `$n$` as KaTeX and copies a
-fenced body (including when the Clipboard API refuses), paints `**bold**` and GFM tables, and keeps a filesystem path
-from becoming a webview navigation. `mobile/src/lib/copy-text.test.ts` is why
+fenced body (including when the Clipboard API refuses), paints `**bold**` and GFM tables, keeps a filesystem path
+from becoming a webview navigation, paints a `chart` fence as a plot with a table of the same rows, holds a truncated chart, and leaves a `json` fence and a finished invalid chart as code. `mobile/src/components/phone-chart.test.tsx` covers line, area, bar, stacked bar, and pie marks. `mobile/src/lib/copy-text.test.ts` is why
 that copy plants on the `copy` event instead of trusting WebKit's boolean. `mobile/src/components/thread-blocks.test.tsx`
 is why a user bubble uses that same markdown, not the source markers.
 `mobile/src/components/home-screen.test.tsx` is why a parked wait sits in

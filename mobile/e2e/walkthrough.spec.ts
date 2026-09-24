@@ -54,6 +54,9 @@ test("a turn plays into the transcript and folds its work behind the answer", as
   const transcript = page.getByTestId("transcript")
   await expect(transcript.getByText("walk the transcript")).toBeVisible()
   await expect(transcript.getByText("Here is what changed:")).toBeVisible()
+  await expect(transcript.getByTestId("phone-chart")).toBeVisible()
+  await transcript.getByRole("tab", { name: "表格" }).click()
+  await expect(transcript.getByRole("table", { name: "Counts" })).toBeVisible()
 
   // Tools do not each get a chat row; they collapse behind one fold.
   await expect(transcript.getByTestId("work-fold").last()).toContainText("2 个工具")

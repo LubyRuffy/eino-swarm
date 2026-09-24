@@ -571,9 +571,9 @@ payload on the `copy` event, so WKWebView cannot report Copied with an empty
 pasteboard when the Clipboard API refuses). `$...$` / `$$...$$` and `math` / `latex` / `tex` fences render as
 KaTeX (lazy-loaded, same as a `chart` plot). A fenced `chart` block
 whose body is a comparison (bar, line, area, pie JSON) paints as a plot
-with a Table tab for the same rows;
-an unclosed or truncated fence is a placeholder, and a finished invalid body
-stays code. The markdown `pre` renderer is a stable module-level component
+with a Table tab for the same rows.
+The phone paints the same fence in the webview (plot and table); an unclosed
+or truncated fence is a placeholder, and a finished invalid body stays code. The markdown `pre` renderer is a stable module-level component
 so a closed chart is not remounted (and Recharts does not flash empty) when
 later tokens arrive; it redraws only if the spec or the box size changes.
 Completed answers are

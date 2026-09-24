@@ -135,6 +135,12 @@ export const zh: Record<MessageKey, string> = {
   "markdown.copyFormula": "复制公式",
   "markdown.copied": "已复制",
 
+  "chart.untitled": "图表",
+  "chart.pending": "正在绘制图表",
+  "chart.tabPlot": "图表",
+  "chart.tabTable": "表格",
+  "chart.views": "图表或表格",
+
   "ask.title": "需要你选一下",
   "ask.submit": "提交",
   "ask.other": "其他",

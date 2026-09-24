@@ -67,6 +67,41 @@ describe("PhoneMarkdown", () => {
     expect(link).toHaveAttribute("target", "_blank")
   })
 
+  it("paints a chart fence as a plot and keeps a json fence as code", () => {
+    const body = JSON.stringify({
+      type: "line",
+      title: "Counts",
+      unit: "n",
+      x: "item",
+      y: "n",
+      data: [
+        { item: "a", n: 1 },
+        { item: "b", n: 4 },
+      ],
+    })
+    const { rerender } = render(<PhoneMarkdown text={"```chart\n" + body + "\n```"} />)
+    expect(screen.getByTestId("phone-chart")).toBeInTheDocument()
+    expect(screen.getByText("Counts")).toBeInTheDocument()
+    expect(screen.queryByTestId("markdown-code")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("tab", { name: "Table" }))
+    expect(screen.getByRole("table", { name: "Counts" })).toBeInTheDocument()
+    expect(screen.getByText("4")).toBeInTheDocument()
+
+    rerender(<PhoneMarkdown text={'```json\n{"type":"line"}\n```'} />)
+    expect(screen.queryByTestId("phone-chart")).not.toBeInTheDocument()
+    expect(screen.getByTestId("markdown-code")).toBeInTheDocument()
+  })
+
+  it("holds a truncated chart fence and leaves a finished invalid one as code", () => {
+    const { rerender } = render(<PhoneMarkdown text={'```chart\n{"type":"bar","x":"item"'} />)
+    expect(screen.getByTestId("phone-chart-pending")).toBeInTheDocument()
+    expect(screen.queryByTestId("phone-chart")).not.toBeInTheDocument()
+
+    rerender(<PhoneMarkdown text={'```chart\n{"type":"nope"}\n```'} />)
+    expect(screen.queryByTestId("phone-chart-pending")).not.toBeInTheDocument()
+    expect(screen.getByTestId("markdown-code")).toBeInTheDocument()
+  })
+
   it("does not turn a filesystem path into a navigable link", () => {
     render(<PhoneMarkdown text={"open [notes](/tmp/notes.md)"} />)
     expect(screen.queryByRole("link")).not.toBeInTheDocument()

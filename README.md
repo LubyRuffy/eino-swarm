@@ -248,8 +248,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   see as a comparison than as prose, the manager emits a `chart` fence
   (bar, line, area, pie) and leads with the takeaway — it is told not to
   dump the same series as a list, a markdown table, or emoji. The transcript
-  paints the plot; a Table tab shows the same rows. `zwai tui` still has
-  the JSON fence.
+  paints the plot; a Table tab shows the same rows. The phone paints that
+  same fence (plot, then table); a truncated fence waits, and a finished
+  invalid body stays a code block. `zwai tui` still has the JSON fence.
 - **Code and formulas render.** A fenced block with a language tag is
   highlighted (same colours as a `read` of that suffix) and has a copy
   control. `$…$` / `$$…$$` and `math` fences paint as formulas. The manager

@@ -135,6 +135,12 @@ export const en = {
   "markdown.copyFormula": "Copy formula",
   "markdown.copied": "Copied",
 
+  "chart.untitled": "Chart",
+  "chart.pending": "Drawing chart",
+  "chart.tabPlot": "Chart",
+  "chart.tabTable": "Table",
+  "chart.views": "Chart or table",
+
   "ask.title": "A question for you",
   "ask.submit": "Submit",
   "ask.other": "Other",
