@@ -74,11 +74,16 @@ export function ThreadScreen({
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const pinHeight = useRef<number | null>(null)
+  // A page that adds no height must not immediately ask again. Scroll is
+  // still at the top, so the next event would spin 加载中 with nothing new.
+  const olderStall = useRef(false)
   const [atTail, setAtTail] = useState(false)
   const [behind, setBehind] = useState(false)
 
-  const loadOlder = () => {
+  const loadOlder = (manual = false) => {
     if (!onOlder || loadingOlder || !hasMore || !caughtUp) return
+    if (!manual && olderStall.current) return
+    olderStall.current = false
     pinHeight.current = scroller.current?.scrollHeight ?? 0
     onOlder()
   }
@@ -91,8 +96,13 @@ export function ThreadScreen({
     el.style.overflowAnchor = "none"
     if (loadingOlder) return
     if (pinHeight.current != null) {
+      const grown = el.scrollHeight - pinHeight.current
       el.scrollTop = el.scrollHeight - pinHeight.current
       pinHeight.current = null
+      if (grown <= 0) {
+        olderStall.current = true
+        return
+      }
       if (el.scrollTop < 48 && hasMore) loadOlder()
       return
     }
@@ -120,7 +130,7 @@ export function ThreadScreen({
     if (start == null || !el || !hasMore) return
     if (el.scrollTop <= 0 && y - start > 48) {
       pullY.current = null
-      loadOlder()
+      loadOlder(true)
     }
   }
 
@@ -152,11 +162,6 @@ export function ThreadScreen({
             </span>
           ) : null}
         </div>
-        {running && onInterrupt ? (
-          <Button variant="ghost" className="h-8 shrink-0 px-2" onClick={onInterrupt}>
-            {t("queue.interrupt")}
-          </Button>
-        ) : null}
         {running ? (
           <Button
             variant="ghost"
@@ -190,7 +195,7 @@ export function ThreadScreen({
             variant="ghost"
             className="h-8 text-xs text-muted-foreground"
             disabled={loadingOlder || !caughtUp}
-            onClick={loadOlder}
+            onClick={() => loadOlder(true)}
           >
             {loadingOlder || !caughtUp ? (
               <span className="inline-flex items-center gap-1.5">

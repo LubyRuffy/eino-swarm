@@ -11,6 +11,12 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Fixed
+
+- **Earlier on the phone stops spinning when a page adds nothing.** The
+  next scroll does not ask again; tapping Earlier does. Interrupt stays on
+  a queued follow-up, not in the header of every running turn.
+
 ### Added
 
 - **The phone can talk to a model without a PC.** Menu → Models (or Connect a

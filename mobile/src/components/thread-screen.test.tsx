@@ -374,6 +374,68 @@ describe("ThreadScreen", () => {
     expect(onOlder).toHaveBeenCalledTimes(2)
   })
 
+  it("does not keep asking for earlier rows when a page added nothing", () => {
+    const onOlder = vi.fn()
+    const props = {
+      detail: { id: "t1", title: "live" },
+      blocks: [{ id: "1", kind: "answer" as const, text: "now" }],
+      hasMore: true,
+      onBack: vi.fn(),
+      onOlder,
+      onSend: vi.fn(),
+      onSteer: vi.fn(),
+      onStop: vi.fn(),
+      onAnswer: vi.fn(),
+      onAnswerStructured: vi.fn(),
+    }
+    const view = render(<ThreadScreen {...props} loadingOlder />)
+    view.rerender(<ThreadScreen {...props} />)
+    fireEvent.click(screen.getByRole("button", { name: "Earlier" }))
+    expect(onOlder).toHaveBeenCalledTimes(1)
+    view.rerender(<ThreadScreen {...props} loadingOlder />)
+    view.rerender(<ThreadScreen {...props} />)
+    fireEvent.scroll(screen.getByTestId("transcript"))
+    expect(onOlder).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole("button", { name: "Earlier" }))
+    expect(onOlder).toHaveBeenCalledTimes(2)
+  })
+
+  it("hides interrupt until a follow-up is actually waiting", () => {
+    const onInterrupt = vi.fn()
+    const detail = {
+      id: "t1",
+      title: "live",
+      running: { thread_id: "t1", title: "live" },
+    }
+    const handlers = {
+      onBack: vi.fn(),
+      onSend: vi.fn(),
+      onSteer: vi.fn(),
+      onStop: vi.fn(),
+      onAnswer: vi.fn(),
+      onAnswerStructured: vi.fn(),
+      onInterrupt,
+    }
+    const view = render(
+      <ThreadScreen detail={detail} blocks={[]} {...handlers} />,
+    )
+    expect(screen.queryByRole("button", { name: "Interrupt" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument()
+    view.rerender(
+      <ThreadScreen
+        detail={detail}
+        blocks={[]}
+        followups={[{ id: "f1", seq: 1, text: "later" }]}
+        {...handlers}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "Interrupt" }))
+    expect(onInterrupt).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId("followup-queue")).toContainElement(
+      screen.getByRole("button", { name: "Interrupt" }),
+    )
+  })
+
   it("loads earlier rows when the finger pulls down at the top", () => {
     const onOlder = vi.fn()
     render(

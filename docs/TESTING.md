@@ -156,7 +156,7 @@ across a remount) while the new-conversation control is an icon, and why a live
 lands in that folder even when `threads` omitted it, and why a live row
 with no project stays out of Recents.
 `mobile/src/lib/inbox-preview.test.ts` pulls findings and drops the tool name.
-`mobile/src/components/thread-screen.test.tsx` is why a standing `/goal` is
+`mobile/src/components/thread-screen.test.tsx` is why an empty earlier page does not immediately ask again, why Interrupt is only on a queued follow-up, and why a standing `/goal` is
 Pursuing / Done / Blocked / Paused with Start, a parked wait is Waiting
 with Run now / Cancel wait rather than a silent Send box, a long
 objective stays one truncated line so that chrome cannot cover the composer,
