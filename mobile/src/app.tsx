@@ -42,7 +42,6 @@ import {
   OpRunNow,
   OpFollowupDrop,
   OpFollowupSteer,
-  OpPreempt,
   OpSend,
   OpStart,
   OpSteer,
@@ -77,7 +76,7 @@ import {
   saveLastThreadId,
   saveLink,
 } from "@/lib/store"
-import { sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
+import { interruptPhoneFollowup, sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
 import { sendComposed } from "@/lib/turn-send"
 
 export function App() {
@@ -831,7 +830,7 @@ export function App() {
             followups={view.followups}
             onSteerFollowup={(id) => void queueFollowup(OpFollowupSteer, detail.id, id)}
             onDropFollowup={(id) => void queueFollowup(OpFollowupDrop, detail.id, id)}
-            onInterrupt={() => void queueFollowup(OpPreempt, detail.id)}
+            onInterrupt={(id) => void interruptPhoneFollowup(turnDeps, detail.id, id)}
             hasMore={view.hasMore}
             loadingOlder={loadingOlder}
             caughtUp={view.caughtUp}

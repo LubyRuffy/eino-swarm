@@ -3,11 +3,13 @@ import {
   OpCancelWait,
   OpCatalog,
   OpEvent,
+  OpFollowupSteer,
   OpHello,
   OpList,
   OpLog,
   OpMore,
   OpOpen,
+  OpPreempt,
   OpReady,
   OpResumeGoal,
   OpRunNow,
@@ -22,6 +24,7 @@ import {
   OpWatch,
   PROTOCOL_V,
   type ProjectView,
+  type FollowupView,
   type RemoteEvent,
   type RemoteRequest,
   type RemoteResponse,
@@ -73,6 +76,7 @@ type MockThread = {
   model?: string
   reasoning?: string
   events: RemoteEvent[]
+  followups?: FollowupView[]
 }
 
 type Step = { kind: string; text?: string; callID?: string; err?: string }
@@ -190,7 +194,15 @@ export class MockHost {
 
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
-    if (live) this.seed(live, scriptedTurn(live.title).slice(0, 4), true)
+    if (live) {
+      this.seed(live, scriptedTurn(live.title).slice(0, 4), true)
+      if (new URLSearchParams(location.search).get("queue") === "1") {
+        live.followups = [
+          { id: "first", seq: 1, text: "first waiting message" },
+          { id: "second", seq: 2, text: "second waiting message" },
+        ]
+      }
+    }
     const done = this.find("t-recent")
     if (done) this.seed(done, scriptedTurn(done.title), false)
   }
@@ -303,7 +315,7 @@ export class MockHost {
     return {
       events: th.events,
       seq: th.events[th.events.length - 1]?.seq ?? 0,
-      status: { running: th.running, waiting: th.waiting },
+      status: { running: th.running, waiting: th.waiting, followups: th.followups },
     }
   }
 
@@ -367,7 +379,7 @@ export class MockHost {
         op: OpEvent,
         thread_id: th.id,
         event: ev,
-        status: { running: th.running, waiting: th.waiting },
+        status: { running: th.running, waiting: th.waiting, followups: th.followups },
       })
     }
   }
@@ -525,6 +537,16 @@ export class MockLink {
         if (th && req.text) this.host.push(th, { kind: "steer", text: req.text })
         return this.ok({ id })
       }
+      case OpFollowupSteer: {
+        const th = thread()
+        const item = th?.followups?.find((row) => row.id === req.followup_id)
+        if (!th || !item) return this.missing(id)
+        th.followups = th.followups?.filter((row) => row.id !== item.id)
+        this.host.push(th, { kind: "steer", text: item.text })
+        return this.ok({ id, followups: th.followups })
+      }
+      case OpPreempt:
+        return this.ok({ id })
       case OpStop: {
         const th = thread()
         if (th) this.host.settle(th)

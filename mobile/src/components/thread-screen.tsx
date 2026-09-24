@@ -51,7 +51,7 @@ export function ThreadScreen({
   onSteer: (text: string, extra?: ComposerExtra) => void
   onSteerFollowup?: (id: string) => void
   onDropFollowup?: (id: string) => void
-  onInterrupt?: () => void
+  onInterrupt?: (id: string) => void
   composerPending?: boolean
   models?: ModelChoice[]
   reasoningLevels?: string[]
@@ -355,14 +355,14 @@ function QueueTray({
   items: FollowupView[]
   onSteer?: (id: string) => void
   onDrop?: (id: string) => void
-  onInterrupt?: () => void
+  onInterrupt?: (id: string) => void
 }) {
   return (
     <div data-testid="followup-queue" className="border-t border-border px-3 py-2">
       <div className="mb-1 flex items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">{t("queue.waiting")}</p>
         {onInterrupt ? (
-          <Button variant="ghost" className="h-8 px-2" onClick={onInterrupt}>
+          <Button variant="ghost" className="h-8 px-2" onClick={() => onInterrupt(items[0].id)}>
             {t("queue.interrupt")}
           </Button>
         ) : null}

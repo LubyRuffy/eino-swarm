@@ -157,14 +157,18 @@ lands in that folder even when `threads` omitted it, and why a live row
 with no project stays out of Recents.
 `mobile/src/lib/inbox-preview.test.ts` pulls findings and drops the tool name.
 `mobile/src/components/host-chrome.test.tsx` is why the menu prints the package version.
-`mobile/src/components/thread-screen.test.tsx` is why an empty earlier page does not immediately ask again, why Interrupt is only on a queued follow-up, and why a standing `/goal` is
+`mobile/src/components/thread-screen.test.tsx` is why an empty earlier page does not immediately ask again, why Interrupt is only on a queued follow-up and names the queue head, and why a standing `/goal` is
 Pursuing / Done / Blocked / Paused with Start, a parked wait is Waiting
 with Run now / Cancel wait rather than a silent Send box, a long
 objective stays one truncated line so that chrome cannot cover the composer,
 and Earlier sits outside the scroller so a live-edge tail can still page.
 A scroll that is already at the top does not ask for another page; that
 request is the Earlier button or a pull. Interrupt is on a queued follow-up,
-not on every running turn.
+not on every running turn. `mobile/src/lib/phone-turn.test.ts` verifies that
+this action promotes the selected waiting message before preempting the current
+manager step, leaves later messages queued, and tolerates a steer already read
+before the second RPC; `mobile/e2e/walkthrough.spec.ts` exercises the button
+through the phone screen against a scripted PC.
 `TestLogPageStillSealsAfterTheHostNameIsStamped` is why an earlier page
 still fits after the display name and the seal, instead of vanishing and
 dropping the link.

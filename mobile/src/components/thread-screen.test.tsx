@@ -509,6 +509,7 @@ describe("ThreadScreen", () => {
     )
     fireEvent.click(screen.getByRole("button", { name: "Interrupt" }))
     expect(onInterrupt).toHaveBeenCalledTimes(1)
+    expect(onInterrupt).toHaveBeenCalledWith("f1")
     expect(screen.getByTestId("followup-queue")).toContainElement(
       screen.getByRole("button", { name: "Interrupt" }),
     )

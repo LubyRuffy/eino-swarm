@@ -5,6 +5,20 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("interrupting a waiting phone message first inserts it into the live turn", async ({ page }) => {
+  await page.goto("/?mock=1&tick=0&queue=1")
+  const queue = page.getByTestId("followup-queue")
+  await expect(queue).toContainText("first waiting message")
+  await expect(queue).toContainText("second waiting message")
+
+  await queue.getByRole("button", { name: "中断插入" }).click()
+
+  await expect(queue).not.toContainText("first waiting message")
+  await expect(queue).toContainText("second waiting message")
+  await expect(page.getByTestId("transcript")).toContainText("first waiting message")
+  await expect(page.getByText("服务端拒绝了这次请求", { exact: false })).toHaveCount(0)
+})
+
 test("selected answer text becomes a removable quote in the next phone message", async ({ page }) => {
   await page.goto(WALKTHROUGH)
   await page.getByLabel("消息").fill("show result")

@@ -53,6 +53,10 @@ sends (Shift+Enter is a newline, and an IME candidate list is never a
 send), and the round button stays off until there is something to send.
 While a turn is live the box also offers steer, and says a plain send is
 queued after this turn.
+The waiting-message tray offers **Insert** on each row. **Interrupt and insert**
+promotes the oldest waiting message into the current turn, then interrupts
+the current manager step so it can read that message sooner; later messages
+remain queued.
 Select text in the PC conversation and tap **Add to chat** to attach it to
 the next message. The quote appears above the box and can be read, edited, or removed before
 sending. A quote can be sent by itself or with a typed request. The phone
