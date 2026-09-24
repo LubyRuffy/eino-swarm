@@ -13,25 +13,6 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
-- **The phone inbox pages each project on its own.** The first list shows
-  up to `thread_limit` conversations in every project and in Recents. More
-  sits on that section. In progress shows five, then More reveals the rest
-  already on the phone. The single More button under the whole inbox stays
-  only for a host that does not send `groups`.
-
-- **A follow-up typed during a turn stays on screen.** The phone lists the
-  waiting text, can steer one row into this turn, drop it, or interrupt so
-  unread steering lands now (`followup_drop`, `followup_steer`, `preempt`).
-
-### Fixed
-
-- **A phone chat on the responses API retries chat completions when that
-  URL never answers.** A dropped socket or a 404 used to stop as "the
-  endpoint rejected the request", with no stream and no thinking. A model
-  error from an endpoint that accepted the body is still shown once.
-
-### Added
-
 - **The phone can talk to a model without a PC.** Menu → Models (or Connect a
   model on the scan screen) saves an OpenAI-compatible endpoint: base URL,
   optional key, chat completions or responses, discover, timeout. After one
@@ -2363,6 +2344,33 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.9] - 2026-09-24
+
+Phone sideload. versionName `0.1.9`, versionCode `109`. Same debug key as
+v0.1.8, so an installed 0.1.8 updates in place. iOS marketing version
+`0.1.9`, build `109`.
+[`zwai-0.1.9-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.9/zwai-0.1.9-android.apk)
+is on [v0.1.9](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.9).
+
+### Added
+
+- **The phone inbox pages each project on its own.** The first list shows
+  up to `thread_limit` conversations in every project and in Recents. More
+  sits on that section. In progress shows five, then More reveals the rest
+  already on the phone. The single More button under the whole inbox stays
+  only for a host that does not send `groups`.
+
+- **A follow-up typed during a turn stays on screen.** The phone lists the
+  waiting text, can steer one row into this turn, drop it, or interrupt so
+  unread steering lands now (`followup_drop`, `followup_steer`, `preempt`).
+
+### Fixed
+
+- **A phone chat on the responses API retries chat completions when that
+  URL never answers.** A dropped socket or a 404 used to stop as "the
+  endpoint rejected the request", with no stream and no thinking. A model
+  error from an endpoint that accepted the body is still shown once.
 
 ## [0.1.8] - 2026-09-23
 
