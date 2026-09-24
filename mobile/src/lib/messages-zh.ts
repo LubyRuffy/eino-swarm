@@ -50,6 +50,10 @@ export const zh: Record<MessageKey, string> = {
   "thread.toLatest": "回到最新",
   "thread.sendHint": "排在本轮之后",
   "thread.steerHint": "插话给本轮",
+  "queue.waiting": "等这轮结束",
+  "queue.steer": "插入",
+  "queue.remove": "移除排队消息",
+  "queue.interrupt": "中断插入",
 
   "home.newMessage": "新消息",
   "composer.attach": "添加文件",
@@ -191,6 +195,7 @@ export const zh: Record<MessageKey, string> = {
   "chat.badUrl": "接口地址必须是 http 或 https。",
   "chat.tooBig": "这个文件太大，发不出去。",
   "chat.failed": "接口拒绝了这次请求。",
+  "chat.quiet": "接口没有应答。",
   "chat.timedOut": "接口没有继续返回。",
 
   "locale.en": "EN",

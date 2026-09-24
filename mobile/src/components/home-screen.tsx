@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
 import { groupInbox } from "@/lib/inbox-groups"
+import { GROUP_RECENT, INBOX_PREVIEW, type InboxGroupState } from "@/lib/inbox-window"
 import { inboxPreview } from "@/lib/inbox-preview"
 import { searchRunning, searchThreads } from "@/lib/inbox-search"
 import { collectLive } from "@/lib/resume"
@@ -48,6 +49,8 @@ export function HomeScreen({
   running,
   more,
   loadingMore = false,
+  groups = [],
+  loadingGroup = "",
   onOpen,
   onMore,
   onNewChat,
@@ -73,8 +76,10 @@ export function HomeScreen({
   running: RunningView[]
   more: boolean
   loadingMore?: boolean
+  groups?: InboxGroupState[]
+  loadingGroup?: string
   onOpen: (id: string) => void
-  onMore: () => void
+  onMore: (group?: string) => void
   onNewChat: (projectId: string) => void
   onSelectHost: (fingerprint: string) => void
   onAddHost: () => void
@@ -93,6 +98,8 @@ export function HomeScreen({
 }) {
   const [query, setQuery] = useState("")
   const [folded, setFolded] = useState(readFolded)
+  const [runningShown, setRunningShown] = useState(INBOX_PREVIEW)
+  const sectioned = groups.length > 0
   const roster = collectLive(running, threads)
   const liveById = new Map(roster.map((r) => [r.thread_id, r]))
   const live = searchRunning(roster, query)
@@ -144,8 +151,13 @@ export function HomeScreen({
               </p>
             ) : null}
             {live.length > 0 ? (
-              <InboxSection title={t("home.inProgress")}>
-                {live.map((r) => (
+              <InboxSection
+                title={t("home.inProgress")}
+                more={sectioned && live.length > runningShown}
+                moreLabel={t("home.more")}
+                onMore={() => setRunningShown((n) => n + INBOX_PREVIEW)}
+              >
+                {(sectioned ? live.slice(0, runningShown) : live).map((r) => (
                   <InboxRow
                     key={r.thread_id}
                     id={r.thread_id}
@@ -173,6 +185,10 @@ export function HomeScreen({
                 // behind a fold. The saved fold returns when the query goes.
                 open={Boolean(query) || !folded.has(g.id)}
                 onToggle={() => toggleProject(g.id)}
+                more={Boolean(sectionMore(groups, g.id)?.more) && !query}
+                moreBusy={loadingGroup === sectionKey(g.id)}
+                moreLabel={loadingGroup === sectionKey(g.id) ? t("home.loadingMore") : t("home.more")}
+                onMore={() => onMore(sectionKey(g.id))}
               >
                 {g.threads.map((th) => {
                   const row = projectRow(th, liveById.get(th.id))
@@ -191,10 +207,10 @@ export function HomeScreen({
               </InboxSection>
             ))}
             {empty && !error ? query ? <NoMatch /> : <EmptyInbox /> : null}
-            {more && !query ? (
+            {more && !sectioned && !query ? (
               <Button
                 variant="outline"
-                onClick={onMore}
+                onClick={() => onMore()}
                 disabled={loadingMore}
                 aria-busy={loadingMore || undefined}
               >
@@ -251,12 +267,24 @@ function NoMatch() {
   )
 }
 
+function sectionKey(id: string): string {
+  return id || GROUP_RECENT
+}
+
+function sectionMore(groups: InboxGroupState[], id: string): InboxGroupState | undefined {
+  return groups.find((g) => g.id === sectionKey(id))
+}
+
 function InboxSection({
   title,
   onNew,
   collapsible = false,
   open = true,
   onToggle,
+  more = false,
+  moreBusy = false,
+  moreLabel = "",
+  onMore,
   children,
 }: {
   title: string
@@ -264,6 +292,10 @@ function InboxSection({
   collapsible?: boolean
   open?: boolean
   onToggle?: () => void
+  more?: boolean
+  moreBusy?: boolean
+  moreLabel?: string
+  onMore?: () => void
   children: ReactNode
 }) {
   const label = "truncate text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
@@ -303,9 +335,22 @@ function InboxSection({
           </Button>
         ) : null}
       </div>
-      {open && Children.count(children) > 0 ? (
+      {open && (Children.count(children) > 0 || more) ? (
         <ul className="divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
           {children}
+          {more ? (
+            <li>
+              <Button
+                variant="ghost"
+                className="h-11 w-full rounded-none text-muted-foreground"
+                onClick={onMore}
+                disabled={moreBusy}
+                aria-busy={moreBusy || undefined}
+              >
+                {moreLabel}
+              </Button>
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </section>

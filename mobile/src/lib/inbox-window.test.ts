@@ -46,6 +46,27 @@ describe("reduceInbox", () => {
     expect(window.tail).toEqual([])
   })
 
+  it("pages one section and hides the global more button", () => {
+    const first = reduceInbox(
+      emptyInbox(),
+      {
+        groups: [
+          { id: "p", threads: [row("a")], more: true, next: "n1" },
+          { id: "recent", threads: [row("r")], more: false, next: "" },
+        ],
+        running: [],
+      },
+      "replace",
+    )
+    expect(first.grouped).toBe(true)
+    expect(first.more).toBe(false)
+    expect(inboxThreads(first).map((t) => t.id)).toEqual(["a", "r"])
+    const next = reduceInbox(first, { threads: [row("b")], more: false, next: "" }, "append", "p")
+    expect(inboxThreads(next).map((t) => t.id)).toEqual(["a", "r", "b"])
+    expect(next.groups.find((g) => g.id === "p")?.more).toBe(false)
+    expect(next.groups.find((g) => g.id === "recent")?.more).toBe(false)
+  })
+
   it("refreshes a tail row instead of listing it twice", () => {
     let window = reduceInbox(emptyInbox(), page(["a"], true, "c"), "replace")
     window = reduceInbox(window, page(["b"]), "append")

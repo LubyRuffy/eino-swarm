@@ -17,6 +17,7 @@ import {
   OpStop,
   OpPut,
   OpTune,
+  GROUP_RECENT,
   OpUnwatch,
   OpWatch,
   PROTOCOL_V,
@@ -221,14 +222,26 @@ export class MockHost {
         waiting: th.waiting,
         last_active_at: this.at(th),
       }))
+    const idle = this.threads.filter((th) => !th.running && !th.waiting).map((th) => this.view(th))
+    const section = (id: string, rows: ThreadView[], more: boolean) => ({
+      id,
+      threads: rows,
+      more,
+      next: more ? "older" : "",
+    })
     return {
       projects,
-      threads: this.threads.filter((th) => !th.running && !th.waiting).map((th) => this.view(th)),
+      threads: idle,
       running,
       // One idle row lives past this page so More is a real page, not a
       // button that appends nothing. The first page never includes it.
+      // Each folder pages itself; the loose row is the recent section.
       more: true,
       next: "older",
+      groups: [
+        ...projects.map((p) => section(p.id, idle.filter((th) => th.project_id === p.id), false)),
+        section(GROUP_RECENT, idle.filter((th) => !th.project_id), true),
+      ],
     }
   }
 

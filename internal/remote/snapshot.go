@@ -283,6 +283,9 @@ func watchStatus(eng *engine.Engine, threadID string, cfg config.RemoteConfig) *
 	if st.Waiting {
 		ws.Wake = wakeView(eng, threadID, cfg)
 	}
+	if rows, err := eng.ListFollowups(threadID); err == nil {
+		ws.Followups = followupViews(rows)
+	}
 	return ws
 }
 

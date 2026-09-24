@@ -20,7 +20,7 @@ import {
 } from "@/lib/client"
 import { openLink, type RemoteLink } from "@/lib/link"
 import { getLocale, t, toggleLocale } from "@/lib/i18n"
-import { emptyInbox, inboxThreads, reduceInbox } from "@/lib/inbox-window"
+import { emptyInbox, inboxThreads, reduceInbox, type InboxGroupState } from "@/lib/inbox-window"
 import type {
   ModelChoice,
   ProjectView,
@@ -39,6 +39,9 @@ import {
   OpReady,
   OpResumeGoal,
   OpRunNow,
+  OpFollowupDrop,
+  OpFollowupSteer,
+  OpPreempt,
   OpSend,
   OpStart,
   OpSteer,
@@ -73,6 +76,7 @@ import {
   saveLastThreadId,
   saveLink,
 } from "@/lib/store"
+import { sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
 import { sendComposed } from "@/lib/turn-send"
 
 export function App() {
@@ -99,6 +103,8 @@ export function App() {
   const [threads, setThreads] = useState<ThreadView[]>([])
   const [running, setRunning] = useState<RunningView[]>([])
   const [more, setMore] = useState(false)
+  const [groups, setGroups] = useState<InboxGroupState[]>([])
+  const [loadingGroup, setLoadingGroup] = useState("")
   const [loadingMore, setLoadingMore] = useState(false)
   const [models, setModels] = useState<ModelChoice[]>([])
   const [levels, setLevels] = useState<string[]>([])
@@ -156,11 +162,13 @@ export function App() {
     setProjects([])
     setRunning([])
     setMore(false)
+    setGroups([])
+    setLoadingGroup("")
     setModels([])
     setLevels([])
   }
 
-  const applyList = (resp: RemoteResponse, append: boolean, target?: RemoteLink) => {
+  const applyList = (resp: RemoteResponse, append: boolean, target?: RemoteLink, group?: string) => {
     if (!resp.ok) {
       setError(remoteError(resp.error || resp.code || ""))
       return
@@ -168,9 +176,10 @@ export function App() {
     // Head is page one. Tail is what More already loaded. A quiet poll
     // must not put those rows back, and a row that left page one is not
     // kept just because it was there last time.
-    const next = reduceInbox(inboxRef.current, resp, append ? "append" : "replace")
+    const next = reduceInbox(inboxRef.current, resp, append ? "append" : "replace", group)
     const merged = inboxThreads(next)
-    const fp = rosterFingerprint(next.projects, merged, next.running, next.more, next.cursor)
+    const groupSig = next.groups.map((g) => `${g.id}:${g.more ? 1 : 0}:${g.cursor}`).join(",")
+    const fp = rosterFingerprint(next.projects, merged, next.running, next.more, `${next.cursor}|${groupSig}`)
     const cur = target ?? linkRef.current
     if (resp.path && cur) cur.path = resp.path
     takeHostName(resp)
@@ -182,6 +191,7 @@ export function App() {
     setThreads(merged)
     setRunning(next.running)
     setMore(next.more)
+    setGroups(next.groups)
   }
 
   const attachPush = (next: RemoteLink) => {
@@ -485,28 +495,18 @@ export function App() {
     }
   }
 
-  const postTurn = async (op: string, threadId: string, text: string, extra?: ComposerExtra) => {
-    const target = linkRef.current
-    if (!target?.alive()) {
-      setError(linkError(new LinkFault("offline", "network")))
-      throw new Error("offline")
-    }
-    setComposerPending(true)
-    try {
-      const r = await sendComposed((req) => target.rpc(req), { op, thread_id: threadId, text }, extra)
-      if (!r.ok) {
-        setError(remoteError(r.error || r.code || ""))
-        throw new Error("refused")
-      }
-      if (op === OpSend) commitView(markRunning(viewRef.current))
-    } catch (e) {
-      if (e instanceof Error && (e.message === "refused" || e.message === "offline")) throw e
-      fail(e)
-      throw e
-    } finally {
-      setComposerPending(false)
-    }
+  const turnDeps = {
+    link: () => linkRef.current,
+    view: () => viewRef.current,
+    commit: commitView,
+    fail,
+    setError,
+    setPending: setComposerPending,
   }
+  const queueFollowup = (op: string, threadId: string, followupId?: string) =>
+    sendPhoneQueue(turnDeps, op, threadId, followupId)
+  const postTurn = (op: string, threadId: string, text: string, extra?: ComposerExtra) =>
+    sendPhoneTurn(turnDeps, op, threadId, text, extra)
 
   const tuneThread = async (
     threadId: string,
@@ -542,18 +542,35 @@ export function App() {
     }
   }
 
-  const loadMore = async () => {
+  const loadMore = async (group?: string) => {
     const target = linkRef.current
-    if (!target?.alive() || moreBusy.current || !inboxRef.current.more) return
+    if (!target?.alive() || moreBusy.current) return
+    const section = group ? inboxRef.current.groups.find((g) => g.id === group) : undefined
+    if (group) {
+      if (!section?.more) return
+    } else if (!inboxRef.current.more) {
+      return
+    }
     moreBusy.current = true
-    setLoadingMore(true)
+    if (group) setLoadingGroup(group)
+    else setLoadingMore(true)
     try {
-      applyList(await target.rpc({ op: OpMore, cursor: inboxRef.current.cursor }), true)
+      applyList(
+        await target.rpc({
+          op: OpMore,
+          cursor: group ? section?.cursor : inboxRef.current.cursor,
+          group,
+        }),
+        true,
+        undefined,
+        group,
+      )
     } catch (e) {
       fail(e)
     } finally {
       moreBusy.current = false
       setLoadingMore(false)
+      setLoadingGroup("")
     }
   }
 
@@ -810,6 +827,10 @@ export function App() {
             key={locale + detail.id}
             detail={detail}
             blocks={view.blocks}
+            followups={view.followups}
+            onSteerFollowup={(id) => void queueFollowup(OpFollowupSteer, detail.id, id)}
+            onDropFollowup={(id) => void queueFollowup(OpFollowupDrop, detail.id, id)}
+            onInterrupt={() => void queueFollowup(OpPreempt, detail.id)}
             hasMore={view.hasMore}
             loadingOlder={loadingOlder}
             caughtUp={view.caughtUp}
@@ -933,6 +954,8 @@ export function App() {
           running={running}
           more={more}
           loadingMore={loadingMore}
+          groups={groups}
+          loadingGroup={loadingGroup}
           path={link?.path ?? "relay"}
           connected={Boolean(link?.alive())}
           reconnecting={reconnecting}
@@ -961,7 +984,7 @@ export function App() {
               fail(e)
             }
           }}
-          onMore={() => void loadMore()}
+          onMore={(group) => void loadMore(group)}
           onUnlink={unlink}
           onToggleLocale={flipLocale}
           showChat={providers.length > 0}

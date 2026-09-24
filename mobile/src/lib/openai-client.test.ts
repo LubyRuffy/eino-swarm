@@ -171,6 +171,27 @@ describe("openai client", () => {
     expect(String(fetchImpl.mock.calls[1][0])).not.toContain("/chat/completions")
   })
 
+  it("retries chat completions when the responses URL never answers", async () => {
+    const fetchImpl = vi.fn(async (url: RequestInfo | URL) => {
+      if (String(url).endsWith("/responses")) throw new Error("socket")
+      return jsonResponse({
+        choices: [{ message: { content: "pong", reasoning_content: "th" } }],
+      })
+    })
+    const seen: string[] = []
+    await streamCompletion({
+      provider: provider({ api: "responses" }),
+      model: "m",
+      reasoning: "",
+      turns: [{ role: "user", parts: [{ kind: "text", text: "ping" }] }],
+      fetchImpl,
+      onDelta: (piece) => seen.push(piece.reasoning + ":" + piece.text),
+    })
+    expect(fetchImpl).toHaveBeenCalledTimes(2)
+    expect(String(fetchImpl.mock.calls[1][0])).toContain("/chat/completions")
+    expect(seen.at(-1)).toBe("th:pong")
+  })
+
   it("does not retry a responses rejection that is not a missing chat equivalent", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ error: { message: "model" } }, 400))
     await expect(

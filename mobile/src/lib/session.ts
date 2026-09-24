@@ -4,6 +4,7 @@ import {
   OpEvent,
   OpReady,
   type RemoteEvent,
+  type FollowupView,
   type RemoteResponse,
   type ThreadDetail,
   type WatchStatus,
@@ -25,6 +26,7 @@ export type PhoneView = {
   events: RemoteEvent[]
   blocks: CompactBlock[]
   detail: ThreadDetail | null
+  followups: FollowupView[]
 }
 
 export function emptyView(): PhoneView {
@@ -38,6 +40,7 @@ export function emptyView(): PhoneView {
     events: [],
     blocks: [],
     detail: null,
+    followups: [],
   }
 }
 
@@ -133,6 +136,7 @@ function applyReady(view: PhoneView, resp: RemoteResponse): PhoneView {
     events: stored,
     blocks,
     detail,
+    followups: resp.status?.followups ?? view.followups,
   }
 }
 
@@ -170,6 +174,7 @@ function applyLiveEvent(view: PhoneView, ev: RemoteEvent, status?: WatchStatus):
     events,
     blocks,
     detail,
+    followups: status?.followups ?? view.followups,
   }
 }
 

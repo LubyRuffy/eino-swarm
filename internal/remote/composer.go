@@ -123,7 +123,7 @@ func composeSend(eng *engine.Engine, stage *Staging, req Request, path, sessionI
 	if err := deliverUser(eng, req.ThreadID, in, eng.Status(req.ThreadID).Running); err != nil {
 		return mapErr(req.ID, path, sessionID, err)
 	}
-	return okBase(req.ID, path, sessionID)
+	return attachFollowups(eng, okBase(req.ID, path, sessionID), req.ThreadID)
 }
 
 func composeSteer(eng *engine.Engine, stage *Staging, req Request, path, sessionID string) Response {

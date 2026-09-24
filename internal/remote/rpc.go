@@ -44,6 +44,19 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 		return handleTune(eng, req, path, sessionID)
 	case OpPut:
 		return acceptPut(stage, req, path, sessionID)
+	case OpFollowupDrop:
+		if err := eng.DeleteFollowup(req.ThreadID, req.FollowupID); err != nil {
+			return mapErr(req.ID, path, sessionID, err)
+		}
+		return attachFollowups(eng, okBase(req.ID, path, sessionID), req.ThreadID)
+	case OpFollowupSteer:
+		err := eng.SteerFollowup(req.ThreadID, req.FollowupID)
+		if err != nil {
+			return mapErr(req.ID, path, sessionID, err)
+		}
+		return attachFollowups(eng, okBase(req.ID, path, sessionID), req.ThreadID)
+	case OpPreempt:
+		return opErr(req.ID, path, sessionID, eng.Preempt(req.ThreadID))
 	case OpStop:
 		err := eng.Interrupt(req.ThreadID)
 		return opErr(req.ID, path, sessionID, err)
@@ -87,12 +100,22 @@ func handleList(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, 
 	if err != nil {
 		return fail(req.ID, path, sessionID, "", fmtErr(err))
 	}
-	page, next, more := pageThreads(excludeLiveThreads(all, runningIDs(resp.Running)), req.Cursor, cfg.ThreadLimit)
+	idle := excludeLiveThreads(all, runningIDs(resp.Running))
+	bucket := idle
+	if req.Group != "" {
+		bucket = threadsInGroup(idle, req.Group)
+	}
+	page, next, more := pageThreads(bucket, req.Cursor, cfg.ThreadLimit)
 	for _, th := range page {
 		resp.Threads = append(resp.Threads, threadView(eng, th, cfg))
 	}
 	resp.More = more
 	resp.Next = next
+	// The first page names every section. A later page is one section, and
+	// an old phone never sends Group, so its global cursor is unchanged.
+	if req.Op == OpList && req.Group == "" && req.Cursor == "" {
+		resp.Groups = inboxGroups(eng, cfg, ps, idle)
+	}
 	return resp
 }
 

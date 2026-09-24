@@ -140,7 +140,7 @@ func TestStartHonorsThePickedModelAndATextSendStillQueues(t *testing.T) {
 	follow := Handle(e, config.RemoteConfig{}, Request{
 		ID: "f", Op: OpSend, ThreadID: tid, Text: "later",
 	}, "relay", "s")
-	if !follow.OK {
+	if !follow.OK || follow.Followups == nil || len(*follow.Followups) != 1 || (*follow.Followups)[0].Text != "later" {
 		t.Fatalf("%+v", follow)
 	}
 	rows, err := e.ListFollowups(tid)

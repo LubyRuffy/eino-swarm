@@ -520,4 +520,41 @@ describe("HomeScreen", () => {
     fireEvent.click(button)
     expect(onMore).not.toHaveBeenCalled()
   })
+
+  it("puts more on the section that still has rows, not under the whole inbox", () => {
+    const onMore = vi.fn()
+    render(
+      <HomeScreen
+        {...chrome()}
+        path="relay"
+        projects={[{ id: "p", name: "work" }]}
+        threads={[
+          {
+            id: "a",
+            title: "inside",
+            project_id: "p",
+            running: false,
+            last_active_at: "2026-01-01T00:00:00Z",
+          },
+        ]}
+        running={Array.from({ length: 6 }, (_, i) => ({
+          thread_id: "r" + i,
+          title: "live " + i,
+        }))}
+        more
+        groups={[
+          { id: "p", more: true, cursor: "n" },
+          { id: "recent", more: false, cursor: "" },
+        ]}
+        onOpen={vi.fn()}
+        onMore={onMore}
+        onNewChat={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    const buttons = screen.getAllByRole("button", { name: "More" })
+    expect(buttons).toHaveLength(2)
+    fireEvent.click(buttons[1])
+    expect(onMore).toHaveBeenCalledWith("p")
+  })
 })

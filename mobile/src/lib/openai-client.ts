@@ -92,7 +92,7 @@ export async function streamCompletion(input: {
       if (!ctrl.signal.aborted) ctrl.abort("timeout")
     }, idleMs)
   }
-  const postTurn = async (style: ApiStyle, omitSummary: boolean) => {
+  const postTurn = async (style: ApiStyle, omitSummary: boolean, onToken: () => void) => {
     const body =
       style === "responses"
         ? responsesRequestBody(input.model, input.turns, input.reasoning, {
@@ -121,7 +121,10 @@ export async function streamCompletion(input: {
         "http",
       )
     }
-    await readCompletion(iterator, input.onDelta, ctrl, idleMs)
+    await readCompletion(iterator, (piece) => {
+      onToken()
+      input.onDelta(piece)
+    }, ctrl, idleMs)
   }
   try {
     // A translator onto chat completions rejects a reasoning summary and an
@@ -132,28 +135,29 @@ export async function streamCompletion(input: {
     // is not called twice.
     let style: ApiStyle = api
     let omitSummary = false
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let sawToken = false
+    for (let attempt = 0; attempt < 4; attempt++) {
       try {
-        await postTurn(style, omitSummary)
+        await postTurn(style, omitSummary, () => {
+          sawToken = true
+        })
         break
       } catch (err) {
-        const kind =
-          style === "responses" &&
-          err instanceof ModelCallError &&
-          err.kind === "http" &&
-          !ctrl.signal.aborted &&
-          !input.signal?.aborted
-            ? rejectedField(err.message)
-            : ""
+        const stopped = ctrl.signal.aborted || Boolean(input.signal?.aborted)
+        if (stopped) throw err instanceof ModelCallError ? err : stopError(ctrl)
+        const modelErr =
+          err instanceof ModelCallError ? err : new ModelCallError("network", "http")
+        const retry = style === "responses" && !sawToken && modelErr.kind !== "abort"
+        const kind = retry && modelErr.kind === "http" ? rejectedField(modelErr.message) : ""
         if (kind === "summary" && !omitSummary) {
           omitSummary = true
           continue
         }
-        if (kind === "part") {
+        if (kind === "part" || (retry && fallbackToChat(modelErr))) {
           style = "chat"
           continue
         }
-        throw err
+        throw modelErr
       }
     }
   } catch (err) {
@@ -169,6 +173,15 @@ export async function streamCompletion(input: {
     clearTimeout(idleTimer)
     input.signal?.removeEventListener("abort", stop)
   }
+}
+
+function fallbackToChat(err: ModelCallError): boolean {
+  // A responses URL that never speaks is retried as chat completions.
+  // A model error from an endpoint that accepted the body is not sent twice.
+  if (err.kind === "parse" || err.message === "network") return true
+  if (err.kind !== "http") return false
+  const text = err.message.toLowerCase()
+  return text === "404" || text === "405" || text === "501" || text.includes("not found")
 }
 
 function rejectedField(message: string): "summary" | "part" | "" {

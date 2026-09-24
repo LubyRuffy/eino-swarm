@@ -343,6 +343,7 @@ Drops that phone. Further tickets fail at the hub.
 
 The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `hello` / `list` / `more` / `open` / `start` / `send` / `steer` / `stop` /
+`followup_drop` / `followup_steer` / `preempt` /
 `answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
 `resume_goal` / `catalog` / `tune` / `put`. `hello` `{text}` is the phone's one-line model; the host
 keys it by the pairlink fingerprint, not a client-supplied id.
@@ -351,7 +352,11 @@ label the chip; an older host omits it and the phone falls back to a short
 fingerprint, never the hub hostname.
 Default list size is 5 idle recents (`thread_limit`); live turns and
 parked waits sit on `list.running` and do not occupy that quota, so In
-progress cannot starve the project / Recents list. `more` pages that idle
+progress cannot starve the project / Recents list. `list.groups` is one
+first page per project plus `recent` (no project), each capped at
+`thread_limit`, with its own `more` / `next`. `more` `{group, cursor}`
+pages that section. `group` omitted keeps the global idle page for a phone
+that still has one More button. `more` pages that idle
 list. A later `list` is still the first page: the phone patches that page
 and keeps rows already loaded with `more`. A row that left the first page
 is not kept just because it was there last time. Replacing the window with

@@ -21,6 +21,10 @@ export const OpHello = "hello"
 export const OpCatalog = "catalog"
 export const OpTune = "tune"
 export const OpPut = "put"
+export const OpFollowupDrop = "followup_drop"
+export const OpFollowupSteer = "followup_steer"
+export const OpPreempt = "preempt"
+export const GROUP_RECENT = "recent"
 
 export type RemoteRequest = {
   v: number
@@ -44,6 +48,21 @@ export type RemoteRequest = {
   part?: number
   parts?: number
   data?: string
+  group?: string
+  followup_id?: string
+}
+
+export type FollowupView = {
+  id: string
+  seq: number
+  text: string
+}
+
+export type ThreadGroup = {
+  id: string
+  threads?: ThreadView[]
+  more?: boolean
+  next?: string
 }
 
 export type ModelChoice = {
@@ -90,6 +109,7 @@ export type WatchStatus = {
   awaiting_answer?: boolean
   waiting?: boolean
   wake?: WakeView
+  followups?: FollowupView[]
 }
 
 export type WakeView = {
@@ -158,6 +178,8 @@ export type RemoteResponse = {
   models?: ModelChoice[]
   reasoning_levels?: string[]
   put?: { id: string; name?: string; ready: boolean; kind?: string }
+  groups?: ThreadGroup[]
+  followups?: FollowupView[]
 }
 
 export function encodeRequest(req: RemoteRequest): Uint8Array {

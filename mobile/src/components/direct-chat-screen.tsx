@@ -383,7 +383,8 @@ function explain(err: unknown, secret: string): string {
     if (err.kind === "timeout") return t("chat.timedOut")
     if (err.kind === "abort") return ""
     const message = redact(err.message, secret)
-    if (!message || message === "network" || message === "parse" || message === "bad-url") {
+    if (message === "network" || message === "parse") return t("chat.quiet")
+    if (!message || message === "bad-url") {
       return t("chat.failed")
     }
     return message

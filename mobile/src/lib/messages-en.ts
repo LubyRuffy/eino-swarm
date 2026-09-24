@@ -97,6 +97,10 @@ export const en = {
   "thread.toLatest": "Jump to latest",
   "thread.sendHint": "Queued after this turn",
   "thread.steerHint": "Steer this turn",
+  "queue.waiting": "Waiting for this turn",
+  "queue.steer": "Steer",
+  "queue.remove": "Remove queued message",
+  "queue.interrupt": "Interrupt",
   "thread.rosterDone": "{n} done",
   "thread.rosterFailed": "{n} failed",
   "thread.rosterRunning": "{n} running",
@@ -194,6 +198,7 @@ export const en = {
   "chat.tooBig": "That file is too large to send.",
   "chat.failed": "The endpoint rejected the request.",
   "chat.timedOut": "The endpoint went quiet.",
+  "chat.quiet": "The endpoint did not answer.",
 
   "locale.en": "EN",
   "locale.zh": "中文",

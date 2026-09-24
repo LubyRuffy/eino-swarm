@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { t } from "@/lib/i18n"
 import type { CompactBlock } from "@/lib/transcript"
 import { pendingAsk } from "@/lib/transcript"
-import type { ModelChoice, ThreadDetail } from "@/lib/rpc"
+import type { FollowupView, ModelChoice, ThreadDetail } from "@/lib/rpc"
 import { cn } from "@/lib/cn"
 
 export function ThreadScreen({
@@ -20,8 +20,12 @@ export function ThreadScreen({
   caughtUp = true,
   onBack,
   onOlder,
+  followups = [],
   onSend,
   onSteer,
+  onSteerFollowup,
+  onDropFollowup,
+  onInterrupt,
   composerPending,
   models,
   reasoningLevels,
@@ -41,8 +45,12 @@ export function ThreadScreen({
   caughtUp?: boolean
   onBack: () => void
   onOlder?: () => void
+  followups?: FollowupView[]
   onSend: (text: string, extra?: ComposerExtra) => void
   onSteer: (text: string, extra?: ComposerExtra) => void
+  onSteerFollowup?: (id: string) => void
+  onDropFollowup?: (id: string) => void
+  onInterrupt?: () => void
   composerPending?: boolean
   models?: ModelChoice[]
   reasoningLevels?: string[]
@@ -144,6 +152,11 @@ export function ThreadScreen({
             </span>
           ) : null}
         </div>
+        {running && onInterrupt ? (
+          <Button variant="ghost" className="h-8 shrink-0 px-2" onClick={onInterrupt}>
+            {t("queue.interrupt")}
+          </Button>
+        ) : null}
         {running ? (
           <Button
             variant="ghost"
@@ -261,6 +274,14 @@ export function ThreadScreen({
       </div>
       )}
 
+      {followups.length > 0 ? (
+        <QueueTray
+          items={followups}
+          onSteer={onSteerFollowup}
+          onDrop={onDropFollowup}
+          onInterrupt={running ? onInterrupt : undefined}
+        />
+      ) : null}
       <Composer
         // The box and the button cannot share a name, or a screen reader
         // announces two "Answer" controls and a test cannot pick either.
@@ -280,5 +301,53 @@ export function ThreadScreen({
         onSubmit={asking ? onAnswer : onSend}
       />
     </main>
+  )
+}
+
+function QueueTray({
+  items,
+  onSteer,
+  onDrop,
+  onInterrupt,
+}: {
+  items: FollowupView[]
+  onSteer?: (id: string) => void
+  onDrop?: (id: string) => void
+  onInterrupt?: () => void
+}) {
+  return (
+    <div data-testid="followup-queue" className="border-t border-border px-3 py-2">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground">{t("queue.waiting")}</p>
+        {onInterrupt ? (
+          <Button variant="ghost" className="h-8 px-2" onClick={onInterrupt}>
+            {t("queue.interrupt")}
+          </Button>
+        ) : null}
+      </div>
+      <ul className="flex flex-col gap-1">
+        {items.map((item) => (
+          <li key={item.id} className="flex items-center gap-2">
+            <p className="min-w-0 flex-1 truncate text-sm">{item.text}</p>
+            <Button
+              variant="ghost"
+              className="h-8 shrink-0 px-2"
+              aria-label={t("queue.steer")}
+              onClick={() => onSteer?.(item.id)}
+            >
+              {t("queue.steer")}
+            </Button>
+            <Button
+              variant="ghost"
+              className="h-8 shrink-0 px-2 text-muted-foreground"
+              aria-label={t("queue.remove")}
+              onClick={() => onDrop?.(item.id)}
+            >
+              {t("queue.remove")}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

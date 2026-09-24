@@ -8,28 +8,34 @@ import (
 const (
 	ProtocolV = 1
 
-	OpList       = "list"
-	OpMore       = "more"
-	OpOpen       = "open"
-	OpStart      = "start"
-	OpSend       = "send"
-	OpSteer      = "steer"
-	OpStop       = "stop"
-	OpAnswer     = "answer"
-	OpWatch      = "watch"
-	OpUnwatch    = "unwatch"
-	OpLog        = "log"
-	OpEvent      = "event"
-	OpReady      = "ready"
-	OpLagged     = "lagged"
-	OpRunNow     = "run_now"
-	OpCancelWait = "cancel_wait"
-	OpResumeGoal = "resume_goal"
-	OpHello      = "hello"
-	OpCatalog    = "catalog"
-	OpTune       = "tune"
-	OpPut        = "put"
+	OpList          = "list"
+	OpMore          = "more"
+	OpOpen          = "open"
+	OpStart         = "start"
+	OpSend          = "send"
+	OpSteer         = "steer"
+	OpStop          = "stop"
+	OpAnswer        = "answer"
+	OpWatch         = "watch"
+	OpUnwatch       = "unwatch"
+	OpLog           = "log"
+	OpEvent         = "event"
+	OpReady         = "ready"
+	OpLagged        = "lagged"
+	OpRunNow        = "run_now"
+	OpCancelWait    = "cancel_wait"
+	OpResumeGoal    = "resume_goal"
+	OpHello         = "hello"
+	OpCatalog       = "catalog"
+	OpTune          = "tune"
+	OpPut           = "put"
+	OpFollowupDrop  = "followup_drop"
+	OpFollowupSteer = "followup_steer"
+	OpPreempt       = "preempt"
 )
+
+// GroupRecent is the inbox section for conversations with no project.
+const GroupRecent = "recent"
 
 // MaxPushPayload is pairlink's plaintext cap. A tool_delta that would
 // blow this is clipped or dropped (seq 0) rather than tearing the link.
@@ -64,34 +70,57 @@ type Request struct {
 	Part  int    `json:"part,omitempty"`
 	Parts int    `json:"parts,omitempty"`
 	Data  string `json:"data,omitempty"`
+	// Group pages one inbox section. "recent" is conversations with no
+	// project. A project id pages that folder. Empty is the global idle page.
+	Group string `json:"group,omitempty"`
+	// FollowupID names one queued message for drop or steer.
+	FollowupID string `json:"followup_id,omitempty"`
 }
 
 // Response is what the PC replies. Path and SessionID are pairlink
 // metadata so zwai trace can join the remote hop.
 type Response struct {
-	V               int           `json:"v"`
-	ID              string        `json:"id"`
-	OK              bool          `json:"ok"`
-	Error           string        `json:"error,omitempty"`
-	Code            string        `json:"code,omitempty"`
-	Path            string        `json:"path,omitempty"`
-	SessionID       string        `json:"session_id,omitempty"`
-	Host            string        `json:"host,omitempty"`
-	Projects        []ProjectView `json:"projects,omitempty"`
-	Threads         []ThreadView  `json:"threads,omitempty"`
-	Running         []RunningView `json:"running,omitempty"`
-	More            bool          `json:"more,omitempty"`
-	Next            string        `json:"next,omitempty"`
-	Detail          *ThreadDetail `json:"detail,omitempty"`
-	Op              string        `json:"op,omitempty"`
-	ThreadID        string        `json:"thread_id,omitempty"`
-	Seq             int64         `json:"seq,omitempty"`
-	Event           *EventView    `json:"event,omitempty"`
-	Events          []EventView   `json:"events,omitempty"`
-	Status          *WatchStatus  `json:"status,omitempty"`
-	Models          []ModelView   `json:"models,omitempty"`
-	ReasoningLevels []string      `json:"reasoning_levels,omitempty"`
-	Put             *PutView      `json:"put,omitempty"`
+	V               int             `json:"v"`
+	ID              string          `json:"id"`
+	OK              bool            `json:"ok"`
+	Error           string          `json:"error,omitempty"`
+	Code            string          `json:"code,omitempty"`
+	Path            string          `json:"path,omitempty"`
+	SessionID       string          `json:"session_id,omitempty"`
+	Host            string          `json:"host,omitempty"`
+	Projects        []ProjectView   `json:"projects,omitempty"`
+	Threads         []ThreadView    `json:"threads,omitempty"`
+	Running         []RunningView   `json:"running,omitempty"`
+	More            bool            `json:"more,omitempty"`
+	Next            string          `json:"next,omitempty"`
+	Detail          *ThreadDetail   `json:"detail,omitempty"`
+	Op              string          `json:"op,omitempty"`
+	ThreadID        string          `json:"thread_id,omitempty"`
+	Seq             int64           `json:"seq,omitempty"`
+	Event           *EventView      `json:"event,omitempty"`
+	Events          []EventView     `json:"events,omitempty"`
+	Status          *WatchStatus    `json:"status,omitempty"`
+	Models          []ModelView     `json:"models,omitempty"`
+	ReasoningLevels []string        `json:"reasoning_levels,omitempty"`
+	Put             *PutView        `json:"put,omitempty"`
+	Groups          []ThreadGroup   `json:"groups,omitempty"`
+	Followups       *[]FollowupView `json:"followups,omitempty"`
+}
+
+// ThreadGroup is one inbox section's idle page: a project, or recent.
+type ThreadGroup struct {
+	ID      string       `json:"id"`
+	Threads []ThreadView `json:"threads,omitempty"`
+	More    bool         `json:"more,omitempty"`
+	Next    string       `json:"next,omitempty"`
+}
+
+// FollowupView is a message waiting until this turn finishes. The phone
+// paints it immediately; the transcript will not mention it until then.
+type FollowupView struct {
+	ID   string `json:"id"`
+	Seq  int64  `json:"seq"`
+	Text string `json:"text"`
 }
 
 // ModelView is one composer row. No endpoint, key, or token window: the phone
@@ -112,11 +141,12 @@ type PutView struct {
 }
 
 type WatchStatus struct {
-	Running        bool      `json:"running,omitempty"`
-	TurnID         string    `json:"turn_id,omitempty"`
-	AwaitingAnswer bool      `json:"awaiting_answer,omitempty"`
-	Waiting        bool      `json:"waiting,omitempty"`
-	Wake           *WakeView `json:"wake,omitempty"`
+	Running        bool            `json:"running,omitempty"`
+	TurnID         string          `json:"turn_id,omitempty"`
+	AwaitingAnswer bool            `json:"awaiting_answer,omitempty"`
+	Waiting        bool            `json:"waiting,omitempty"`
+	Wake           *WakeView       `json:"wake,omitempty"`
+	Followups      *[]FollowupView `json:"followups,omitempty"`
 }
 
 // WakeView is the parked thread wait the phone paints. Prompt is clipped.
