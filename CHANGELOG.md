@@ -11,12 +11,6 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
-### Fixed
-
-- **Earlier on the phone stops spinning when a page adds nothing.** The
-  next scroll does not ask again; tapping Earlier does. Interrupt stays on
-  a queued follow-up, not in the header of every running turn.
-
 ### Added
 
 - **The phone can talk to a model without a PC.** Menu → Models (or Connect a
@@ -2350,6 +2344,20 @@ were left out on purpose, so that what shipped is complete rather than broad:
 - **A native directory picker** for a project's working directory. The field
   takes an absolute path and the server says so when it is not one; choosing a
   folder needs the desktop shell, not the browser.
+
+## [0.1.11] - 2026-09-24
+
+Phone sideload. versionName `0.1.11`, versionCode `111`. Same debug key as
+v0.1.10, so an installed 0.1.10 updates in place. iOS marketing version
+`0.1.11`, build `111`.
+[`zwai-0.1.11-android.apk`](https://github.com/LubyRuffy/eino-swarm/releases/download/v0.1.11/zwai-0.1.11-android.apk)
+is on [v0.1.11](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.11).
+
+### Fixed
+
+- **Earlier on the phone stops spinning when a page adds nothing.** The
+  next scroll does not ask again; tapping Earlier does. Interrupt stays on
+  a queued follow-up, not in the header of every running turn.
 
 ## [0.1.10] - 2026-09-24
 
