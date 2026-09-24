@@ -104,20 +104,9 @@ func (e *Engine) goalContextHot(th *store.Thread) bool {
 		return false
 	}
 	pct := e.cfg.Swarm.GoalCompactPercent()
-	limit := e.cfg.Swarm.AutoCompactLimit()
 	turnID := e.lastTurnID(th.ID)
 	if snap, err := e.Usage(th.ID, turnID); err == nil && snap.ContextTokens > 0 {
-		capTok := limit * pct / 100
-		if capTok <= 0 {
-			capTok = limit
-		}
-		if snap.ContextWindow > 0 {
-			windowCap := int(int64(snap.ContextWindow) * int64(pct) / 100)
-			if windowCap > 0 && windowCap < capTok {
-				capTok = windowCap
-			}
-		}
-		return snap.ContextTokens >= capTok
+		return snap.ContextTokens >= e.cfg.Swarm.CompactTrigger(snap.ContextWindow)
 	}
 	chars := e.contextChars(th)
 	budget := e.cfg.Swarm.ContextBudget()

@@ -128,8 +128,9 @@ func TestFoldWithBriefingRejectsATranscriptDump(t *testing.T) {
 func TestAutoCompactClearsOldReplayableResultsBeforeFolding(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
+	// 80% of 88 is 70, the line this fixture was written against.
+	pinContextWindow(e, 88)
 	m := e.newAutoCompact(th.ID, "tn", th)
-	m.threshold = 70
 	body := strings.Repeat("x", 80)
 	asst := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
 		{ID: "c1", Function: schema.FunctionCall{Name: read.ToolName}},
@@ -167,6 +168,7 @@ func TestAutoCompactClearsOldReplayableResultsBeforeFolding(t *testing.T) {
 func TestRosterPinComesFromTurnEventsNotFoldedMessages(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -221,6 +223,7 @@ func TestPinWorkerPairsSkipWhenTailAlreadyHasTheAgent(t *testing.T) {
 func TestAutoCompactRewritesStateAndRecordsNotice(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -313,6 +316,7 @@ drain:
 func TestAutoCompactStopsWhenTheTurnIsCanceled(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, _ := e.CreateThread("", "", "")
 	turn := plantUnfinishedTurn(t, e, th.ID, "third request")
@@ -383,6 +387,7 @@ func TestAutoCompactSummarizerStreamsTheBriefing(t *testing.T) {
 func TestAutoCompactSwallowsSummarizerErrors(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, _ := e.CreateThread("", "", "")
 	turn := plantUnfinishedTurn(t, e, th.ID, "third request")
@@ -431,6 +436,7 @@ func TestAutoCompactDoesNotPersistRejectedBriefing(t *testing.T) {
 
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, _ := e.CreateThread("", "", "")
 	turn := plantUnfinishedTurn(t, e, th.ID, "third request")
@@ -530,6 +536,8 @@ func TestAutoCompactFiresDuringATurnWhenOverBudget(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 200
 	e.Config().Swarm.CompactKeepMessages = 2
+	// 80% of 250 is 200, the same line the fixed budget used to be.
+	pinContextWindow(e, 250)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
 		t.Fatal(err)

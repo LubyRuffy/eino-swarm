@@ -656,7 +656,7 @@ export const en = {
     "Recent user and assistant messages that stay verbatim. Everything older becomes the briefing.",
   "settings.swarm.autoCompact": "Auto-compact at (tokens)",
   "settings.swarm.autoCompactHint":
-    "When a manager call would exceed this many prompt tokens, older messages are folded into a briefing. The transcript is unchanged.",
+    "Used when the model has no context window. A known window compacts at the percent below. Older messages are folded into a briefing. The transcript is unchanged.",
   "settings.swarm.goalTurns": "Goal auto-continue turns",
   "settings.swarm.goalTurnsHint":
     "How many consecutive turns the runtime may start to pursue an open /goal without another human message.",
@@ -665,7 +665,10 @@ export const en = {
     "Manager tool-round slice while pursuing a /goal. Hitting it keeps the same turn going — no confirm, no new session.",
   "settings.swarm.goalCompactPct": "Goal auto-compact at (%)",
   "settings.swarm.goalCompactPctHint":
-    "When context is at least this full, compact before starting the next /goal session.",
+    "How full a known context window must be before compression, in a turn and before the next /goal session.",
+  "settings.swarm.outputReserve": "Output reserve (tokens)",
+  "settings.swarm.outputReserveHint":
+    "Tokens kept free under a known window so the next completion still fits. The compact line is the lesser of the percent and window minus this reserve.",
   "settings.swarm.schedules": "Scheduled waits",
   "settings.swarm.scheduleMin": "Shortest wait (seconds)",
   "settings.swarm.scheduleMinHint":

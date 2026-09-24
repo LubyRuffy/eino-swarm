@@ -205,6 +205,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **Compression follows a confirmed context window.** A model with a known
+  window compacts at 80% of that window (`goal_auto_compact_percent`), and
+  at least `compact_output_reserve` tokens (default 8192) under the ceiling.
+  A 256k window compacts at 204800; a 1M window at 800000. An unknown window
+  still uses `auto_compact_tokens` (default 80000). A context-length
+  rejection stores a lower per-model window (a stated maximum, otherwise the
+  rejected prompt size) and retries the turn once. It never raises a window.
+
 - **A phone image on the responses wire still reaches a chat-only front.**
   A responses front that translates onto chat completions rejects an image
   part as having no chat equivalent. That turn is sent once more as chat

@@ -22,8 +22,10 @@ const (
 )
 
 // autoCompact rewrites the manager's ADK state before a model call once
-// billed/estimated prompt tokens pass swarm.auto_compact_tokens. The human
-// transcript is untouched; only what the next Generate sees shrinks.
+// billed/estimated prompt tokens pass the compact trigger: a percent of a
+// confirmed context window, or swarm.auto_compact_tokens when the window
+// is unknown. The human transcript is untouched; only what the next
+// Generate sees shrinks.
 type autoCompact struct {
 	adk.BaseChatModelAgentMiddleware
 	engine     *Engine
@@ -65,7 +67,8 @@ func (m *autoCompact) BeforeModelRewriteState(ctx context.Context,
 		return ctx, state, nil
 	}
 	tokens := promptTokenCount(state.Messages)
-	if tokens > m.threshold {
+	threshold := m.engine.compactThreshold(m.threadID)
+	if tokens > threshold {
 		cleared := microCompact(state.Messages, microcompactKeepResults)
 		if microCompactChanged(state.Messages, cleared) {
 			next := *state
@@ -75,7 +78,7 @@ func (m *autoCompact) BeforeModelRewriteState(ctx context.Context,
 			tokens = promptTokenCount(state.Messages)
 		}
 	}
-	if tokens <= m.threshold {
+	if tokens <= threshold {
 		return ctx, state, nil
 	}
 	m.mu.Lock()

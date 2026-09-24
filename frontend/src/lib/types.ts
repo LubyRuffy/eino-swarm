@@ -368,8 +368,10 @@ export interface SwarmLimits {
   context_char_budget?: number
   /** Recent replay messages that stay verbatim after /compact. */
   compact_keep_messages?: number
-  /** Prompt tokens that trigger in-turn compression. */
+  /** Prompt tokens that trigger compression when the model window is unknown. */
   auto_compact_tokens?: number
+  /** Tokens kept free under a confirmed window for the completion. */
+  compact_output_reserve?: number
   /** Consecutive engine-started turns that may pursue an open /goal. */
   goal_max_auto_turns?: number
   /** Manager tool rounds of one /goal ReAct slice. */

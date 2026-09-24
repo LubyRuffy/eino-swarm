@@ -277,10 +277,12 @@ worker before closing SQLite.
    newest-first, on the provider idle timeout — not a 15s cap; a failed
    refresh stamps the token watermark so the next Generate does not
    resend the same payload), then
-   folds when context is at or above `swarm.goal_auto_compact_percent` of
-   `min(model window, swarm.auto_compact_tokens)`, or when the session
-   briefing has moved since the last compact. A million-token window is
-   not the denominator. A
+   folds when context is at or above the compact trigger, or when the session
+   briefing has moved since the last compact. A confirmed window uses
+   `swarm.goal_auto_compact_percent` of that window, kept
+   `swarm.compact_output_reserve` tokens under the ceiling. An unknown
+   window uses `swarm.auto_compact_tokens`. A context-length rejection
+   stores a lower per-model window and retries the turn once. A
    human message or `PATCH` `goal_resume`
    clears a block or cap and starts again. An in-place edit (`PATCH` `goal_edit`)
    keeps the current status and, if a turn is running, steers the new text in.
@@ -306,7 +308,8 @@ worker before closing SQLite.
 4. `Registry.RunWith` drives the manager. Before each manager Generate,
    `BeforeModelRewriteState` middleware first clears older **replayable**
    tool results (file bodies, listings — not spawn/memory) once billed or
-   estimated prompt tokens exceed `swarm.auto_compact_tokens`. If that is
+   estimated prompt tokens exceed the compact trigger (percent of a confirmed
+   window, else `swarm.auto_compact_tokens`). If that is
    not enough, it folds older messages into a briefing. The preferred
    briefing is the conversation's rolling **session memory** (refreshed
    from the event log at token/tool breakpoints, newest events that fit a

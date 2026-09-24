@@ -428,11 +428,13 @@ func TestCompactBeforeGoalContinueSurvivesADeadSummarizer(t *testing.T) {
 	e.compactBeforeGoalContinue(th.ID)
 }
 
-func TestGoalContextHotUsesAutoCompactTokensOverAHugeWindow(t *testing.T) {
+func TestGoalContextHotUsesTheConfirmedWindow(t *testing.T) {
 	e := newTestEngine(t)
 	if e.goalContextHot(nil) {
 		t.Fatal("a missing thread is not hot")
 	}
+	// The fixed budget is tiny on purpose. A confirmed 128k mock window
+	// must still wait for 80% of that window, not 80% of 1000.
 	e.Config().Swarm.AutoCompactTokens = 1000
 	e.Config().Swarm.GoalAutoCompactPercent = 80
 	th, _ := e.CreateThread("", "", "")
@@ -442,24 +444,24 @@ func TestGoalContextHotUsesAutoCompactTokensOverAHugeWindow(t *testing.T) {
 	}
 	if err := e.Store().AppendLLMCall(&store.LLMCall{
 		ThreadID: th.ID, TurnID: turn.ID, AgentID: "manager",
-		PromptTokens: 900, TotalTokens: 910,
+		PromptTokens: 90_000, TotalTokens: 90_010,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ := e.Store().GetThread(th.ID)
-	if !e.goalContextHot(got) {
-		t.Fatal("900 tokens must be hot against 80% of auto_compact_tokens, not 80% of a 128k window")
+	if e.goalContextHot(got) {
+		t.Fatal("90000 tokens must stay cold: 80% of the 128k window is 102400, not 80% of auto_compact_tokens")
 	}
 
 	if err := e.Store().AppendLLMCall(&store.LLMCall{
 		ThreadID: th.ID, TurnID: turn.ID, AgentID: "manager",
-		PromptTokens: 100, TotalTokens: 110,
+		PromptTokens: 110_000, TotalTokens: 110_010,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	got, _ = e.Store().GetThread(th.ID)
-	if e.goalContextHot(got) {
-		t.Fatal("100 tokens must stay cold against 80% of auto_compact_tokens")
+	if !e.goalContextHot(got) {
+		t.Fatal("110000 tokens must be hot against 80% of the confirmed window")
 	}
 }
 
@@ -503,6 +505,7 @@ func TestGoalContextHotRepairsAZeroTokenCap(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 1
 	e.Config().Swarm.GoalAutoCompactPercent = 1
+	pinContextWindow(e, 1)
 	th, _ := e.CreateThread("", "", "")
 	turn := &store.Turn{ThreadID: th.ID, UserText: "keep going"}
 	if err := e.Store().CreateTurn(turn); err != nil {
@@ -516,7 +519,7 @@ func TestGoalContextHotRepairsAZeroTokenCap(t *testing.T) {
 	}
 	got, _ := e.Store().GetThread(th.ID)
 	if !e.goalContextHot(got) {
-		t.Fatal("1% of 1 token rounds to zero and must fall back to the auto_compact limit")
+		t.Fatal("1% of a 1-token window rounds to zero and must still count as full")
 	}
 }
 

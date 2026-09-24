@@ -49,6 +49,7 @@ func TestAutoCompactDoesNotSalvageSpawnPairsFromFoldedMessages(t *testing.T) {
 	// come back the next time someone "simplifies" Finalize.
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -64,6 +65,7 @@ func TestAutoCompactDoesNotSalvageSpawnPairsFromFoldedMessages(t *testing.T) {
 func TestAutoCompactRehydratesFinishedWorkersFromEvents(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -95,6 +97,7 @@ func TestAutoCompactRehydratesFinishedWorkersFromEvents(t *testing.T) {
 func TestAutoCompactRehydratesFinishedWorkersFromEarlierTurn(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -130,6 +133,7 @@ func TestAutoCompactRehydratesFinishedWorkersFromEarlierTurn(t *testing.T) {
 func TestAutoCompactKeepsInFlightWaitAgentsAfterFold(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -148,6 +152,7 @@ func TestAutoCompactKeepsInFlightWaitAgentsAfterFold(t *testing.T) {
 func TestAutoCompactKeepsLatestHumanAsAUserMessage(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -163,6 +168,7 @@ func TestAutoCompactKeepsLatestHumanAsAUserMessage(t *testing.T) {
 func TestAutoCompactClearsStaleBilledUsageAfterFold(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -178,6 +184,7 @@ func TestAutoCompactClearsStaleBilledUsageAfterFold(t *testing.T) {
 func TestAutoCompactPinsTwoWorkersFromEvents(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {

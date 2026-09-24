@@ -907,6 +907,9 @@ test("auto-compacts when prompt tokens pass the configured budget", async ({
   request,
 }) => {
   const { settings } = await (await request.get("/api/settings")).json()
+  const providers = settings.models.providers.map((p: { context_window?: number }, i: number) =>
+    i === 0 ? { ...p, context_window: 250 } : p,
+  )
   await request.put("/api/settings", {
     data: {
       swarm: {
@@ -914,6 +917,7 @@ test("auto-compacts when prompt tokens pass the configured budget", async ({
         compact_keep_messages: 2,
         auto_compact_tokens: 200,
       },
+      models: { default: settings.models.default, providers },
     },
   })
   try {
@@ -935,7 +939,9 @@ test("auto-compacts when prompt tokens pass the configured budget", async ({
     await expect(briefing).not.toContainText("through_seq")
     await expect(briefing).not.toHaveText(/^\s*$/)
   } finally {
-    await request.put("/api/settings", { data: { swarm: settings.swarm } })
+    await request.put("/api/settings", {
+      data: { swarm: settings.swarm, models: settings.models },
+    })
   }
 })
 

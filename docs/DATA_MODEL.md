@@ -132,7 +132,7 @@ of those replay messages become a briefing on the thread (`compact_summary`),
 copied from `session_memory` when that briefing exists;
 events stay, so the transcript the human sees does not change. The same
 columns are written mid-turn when a manager call would exceed
-`swarm.auto_compact_tokens` (after older replayable tool results are cleared). Compacted
+the compact trigger (after older replayable tool results are cleared). Compacted
 answers are not unfolded from the event log, even when later messages of
 the same turn are still live. Worker identity is **not** in this table: it
 lives on `spawned` / `finished` events. After a fold, synthetic

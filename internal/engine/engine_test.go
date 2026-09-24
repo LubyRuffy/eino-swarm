@@ -24,6 +24,13 @@ func newTestEngine(t *testing.T) *Engine {
 	return newTestEngineAt(t, t.TempDir())
 }
 
+// pinContextWindow makes the scripted provider report this ceiling. Without
+// it the mock pool pretends the window is 128000, and compression follows
+// that window instead of a test's token budget.
+func pinContextWindow(e *Engine, n int) {
+	e.Config().Models.Providers[0].ContextWindow = n
+}
+
 func newTestEngineAt(t *testing.T, dir string) *Engine {
 	t.Helper()
 	t.Setenv("OPENAI_BASE_URL", "")

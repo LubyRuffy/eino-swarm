@@ -620,7 +620,7 @@ export const zh: { [K in keyof typeof en]: string } = {
     "最近的用户和助手消息保持原文。更早的变成简报。",
   "settings.swarm.autoCompact": "自动压缩阈值（tokens）",
   "settings.swarm.autoCompactHint":
-    "主管一次调用的 prompt tokens 超过这个数，就把更早的消息折进简报。你看到的记录不变。",
+    "模型没有上下文窗口时用这个数。窗口已知时按下面的百分比压缩。更早的消息折进简报。你看到的记录不变。",
   "settings.swarm.goalTurns": "目标自动续跑回合",
   "settings.swarm.goalTurnsHint":
     "没有新的人工消息时，运行时最多自己开多少轮去追一个未完成的 /goal。",
@@ -629,7 +629,10 @@ export const zh: { [K in keyof typeof en]: string } = {
     "追 /goal 时主管每一段工具回合。到了就同一轮接着干，不弹确认、不切会话。",
   "settings.swarm.goalCompactPct": "目标自动压缩阈值（%）",
   "settings.swarm.goalCompactPctHint":
-    "上下文至少这么满时，开下一轮 /goal 会话前先 compact。",
+    "上下文窗口已知时，回合内和下一轮 /goal 之前都按这个比例压缩。",
+  "settings.swarm.outputReserve": "输出预留（tokens）",
+  "settings.swarm.outputReserveHint":
+    "已知窗口下给下一次回答留的 token。压缩线取百分比和「窗口减预留」里更小的那个。",
   "settings.swarm.schedules": "定时等待",
   "settings.swarm.scheduleMin": "最短等待（秒）",
   "settings.swarm.scheduleMinHint":

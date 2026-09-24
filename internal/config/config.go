@@ -224,10 +224,17 @@ type SwarmConfig struct {
 	// is open. Hitting it extends the same turn (no confirm, no
 	// auto-continue spent). Zero or negative is repaired to the default.
 	GoalSessionMaxIterations int `yaml:"goal_session_max_iterations" json:"goal_session_max_iterations"`
-	// GoalAutoCompactPercent is how full context must be (0-100) before an
-	// auto-continue compact runs. Zero or negative is repaired to the
-	// default; above 100 is clamped.
+	// GoalAutoCompactPercent is how full a confirmed context window must be
+	// (0-100) before compression runs, in-turn and before a goal
+	// auto-continue. Zero or negative is repaired to the default; above
+	// 100 is clamped. An unknown window ignores this and uses
+	// AutoCompactTokens.
 	GoalAutoCompactPercent int `yaml:"goal_auto_compact_percent" json:"goal_auto_compact_percent"`
+	// CompactOutputReserveTokens is how many tokens of a confirmed window
+	// stay free for the completion. The trigger is the lesser of the
+	// percent and window−reserve. Zero or negative is repaired to the
+	// default. A window smaller than the reserve uses the percent alone.
+	CompactOutputReserveTokens int `yaml:"compact_output_reserve" json:"compact_output_reserve"`
 	// ScheduleMinIntervalSeconds is the shortest cadence a schedule may
 	// use. Zero or negative is repaired to the default so a hand-edit
 	// cannot arm a sub-second loop.
@@ -489,9 +496,12 @@ const (
 	// the /compact command starts looking urgent; the human still chooses.
 	DefaultContextCharBudget   = 80_000
 	DefaultCompactKeepMessages = 6
-	// Below a million-token window, but high enough that a short turn is
-	// left alone. Past this, each extra ReAct round is mostly re-reading.
+	// Used only when the model has not reported a context window. A confirmed
+	// window compresses at GoalAutoCompactPercent of that window instead.
 	DefaultAutoCompactTokens = 80_000
+	// Room for the completion under a confirmed window. 80% of a 32k window
+	// would still leave the next answer nowhere to land.
+	DefaultCompactOutputReserveTokens = 8_192
 	// Enough consecutive auto-turns to finish a real objective; not enough
 	// to burn a weekend if the manager never calls complete_goal.
 	DefaultGoalMaxAutoTurns         = 12
@@ -558,6 +568,7 @@ func Default() *Config {
 			GoalMaxAutoTurns:           DefaultGoalMaxAutoTurns,
 			GoalSessionMaxIterations:   DefaultGoalSessionMaxIterations,
 			GoalAutoCompactPercent:     DefaultGoalAutoCompactPercent,
+			CompactOutputReserveTokens: DefaultCompactOutputReserveTokens,
 			ScheduleMinIntervalSeconds: DefaultScheduleMinIntervalSeconds,
 			ScheduleTickMS:             DefaultScheduleTickMS,
 			ScheduleMaxActive:          DefaultScheduleMaxActive,
@@ -746,6 +757,9 @@ func (c *Config) normalize() {
 		c.Swarm.GoalAutoCompactPercent = d.Swarm.GoalAutoCompactPercent
 	} else if c.Swarm.GoalAutoCompactPercent > 100 {
 		c.Swarm.GoalAutoCompactPercent = 100
+	}
+	if c.Swarm.CompactOutputReserveTokens <= 0 {
+		c.Swarm.CompactOutputReserveTokens = d.Swarm.CompactOutputReserveTokens
 	}
 	if c.Swarm.ScheduleMinIntervalSeconds <= 0 {
 		c.Swarm.ScheduleMinIntervalSeconds = d.Swarm.ScheduleMinIntervalSeconds

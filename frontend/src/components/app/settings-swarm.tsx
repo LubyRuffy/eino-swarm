@@ -176,6 +176,20 @@ export function SwarmTab({
         </Field>
         <Field
           query={query}
+          label={t("settings.swarm.outputReserve")}
+          hint={t("settings.swarm.outputReserveHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.swarm.compact_output_reserve}
+            onChange={(e) =>
+              update({ compact_output_reserve: Number(e.target.value) })
+            }
+          />
+        </Field>
+        <Field
+          query={query}
           label={t("settings.swarm.goalTurns")}
           hint={t("settings.swarm.goalTurnsHint")}
         >

@@ -153,6 +153,7 @@ func rewriteWithOurs(t *testing.T, stub *scriptedChatModel, msgs []*schema.Messa
 	// on its own; a live briefing here would skip the summarizer stub.
 	e.sessions.stop()
 	e.Config().Swarm.AutoCompactTokens = 10
+	pinContextWindow(e, 13)
 	e.Config().Swarm.CompactKeepMessages = 2
 	th, err := e.CreateThread("", "", "")
 	if err != nil {

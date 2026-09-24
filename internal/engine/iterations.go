@@ -84,6 +84,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	}
 	used := 0
 	modelRetries := 0
+	overflowRetries := 0
 	var res swarm.RunResult
 	var runErr error
 	restore, planted := rt.takeWorkerRestore()
@@ -117,6 +118,11 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			}
 		}
 		if !isMaxIterations(runErr) {
+			if runErr != nil && th != nil && isContextOverflow(runErr) && overflowRetries < 1 &&
+				e.learnContextCeiling(th.ProviderID, th.Model, runErr, promptTokenCount(messages)) {
+				overflowRetries++
+				continue
+			}
 			if runErr != nil && isRetryableModelError(runErr) && modelRetries < modelErrorRetries {
 				modelRetries++
 				rt.recordModelRetry(turn, modelRetries)

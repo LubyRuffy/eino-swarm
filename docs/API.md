@@ -42,7 +42,7 @@ What the UI reads once at startup to decide what to render.
              "auto_title": true, "title_provider": "", "title_model": "",
              "compact_provider": "", "compact_model": "",
              "context_char_budget": 80000, "compact_keep_messages": 6,
-             "auto_compact_tokens": 80000,
+             "auto_compact_tokens": 80000, "compact_output_reserve": 8192,
              "goal_max_auto_turns": 12,
              "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80,
              "schedule_min_interval_seconds": 30, "schedule_tick_ms": 1000,
@@ -130,7 +130,7 @@ provider carries `has_api_key` and `ready` instead.
             "auto_title": true, "title_provider": "", "title_model": "",
             "compact_provider": "", "compact_model": "",
             "context_char_budget": 80000, "compact_keep_messages": 6,
-            "auto_compact_tokens": 80000,
+            "auto_compact_tokens": 80000, "compact_output_reserve": 8192,
             "goal_max_auto_turns": 12,
             "goal_session_max_iterations": 40, "goal_auto_compact_percent": 80,
             "schedule_min_interval_seconds": 30, "schedule_tick_ms": 1000,
@@ -728,8 +728,14 @@ event and the thread is unchanged.
 Responds like `GET`.
 
 The same fold also runs **during a turn**, before a manager model call, when
-billed or estimated prompt tokens exceed `swarm.auto_compact_tokens` (default
-80000). Older replayable tool results are cleared first; if that is not
+billed or estimated prompt tokens exceed the compact trigger. A confirmed
+context window triggers at `goal_auto_compact_percent` of that window (default
+80), and at least `compact_output_reserve` tokens (default 8192) under the
+ceiling. An unknown window (`0`) uses `swarm.auto_compact_tokens` (default
+80000). A context-length rejection lowers that model's stored window to the
+stated maximum, or to the rejected prompt size when the error has no number,
+and never raises it; the turn retries once against the new line. Older
+replayable tool results are cleared first; if that is not
 enough, the session briefing is caught up and copied in, and only then is
 eino's summarizer used. That path is not this endpoint: the UI hears a live
 `compacted` event (`seq` 0, `phase: "start"`) and then a stored one with
@@ -1077,7 +1083,7 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `plan_implemented` | the human accepted the plan. Planning ended and an execute turn started. `text` is the generic cue |
 | `plan_cancelled` | the human left planning without implementing. `text` is `left planning` |
 | `goal_session` | historical: older builds forced a `/goal` turn to end so the next session could start. New runs do not emit it. `text` is JSON `{reason,elapsed_ms,rounds}` where `reason` is `time` (the removed wall-clock cut) or `iterations` (older builds that treated eino's ReAct slice as a session boundary). The turn is `done`, not cancelled. In-flight sub-agents were parked for the next session |
-| `compacted` | earlier replay was folded into a briefing, either by `/compact` or automatically at `swarm.auto_compact_tokens`. `text` is JSON `{summary,through_seq,chars_before?,chars_after?,auto?,tokens_before?,tokens_after?,phase?}`. `phase: "start"` is live only (`seq` 0) and means compression is in flight — clients keep the Working clock and show that in chrome (title bar **Compressing**, composer banner), not only as a transcript notice. A stored auto event has `auto: true` and the token counts. `err` is set when the summarizer failed and the thread is unchanged. The transcript notice is generic (the briefing is for later prompts); an icon on that row opens `summary` in a dialog |
+| `compacted` | earlier replay was folded into a briefing, either by `/compact` or automatically at the compact trigger (percent of a confirmed window, else `swarm.auto_compact_tokens`). `text` is JSON `{summary,through_seq,chars_before?,chars_after?,auto?,tokens_before?,tokens_after?,phase?}`. `phase: "start"` is live only (`seq` 0) and means compression is in flight — clients keep the Working clock and show that in chrome (title bar **Compressing**, composer banner), not only as a transcript notice. A stored auto event has `auto: true` and the token counts. `err` is set when the summarizer failed and the thread is unchanged. The transcript notice is generic (the briefing is for later prompts); an icon on that row opens `summary` in a dialog |
 | `rewound` | a live client should drop rows from `text` (the cut seq) onward. `seq` is 0, not stored — a reload already has the truncated log |
 | `schedule` | a wait was armed. `text` is JSON `{id,kind,title,prompt,thread_id,origin_thread_id,status,next_run_at}`. Older rows omit the extra keys. The transcript shows a short chip; the id lives in `detail` so cancel can target it. The client also merges this payload into the inbox list immediately so the composer banner does not wait on `GET /api/schedules`. `next_run_at` on that chip is a snapshot of the first due slot — a later GET or fire must not be rewound if the event is replayed |
 | `schedule_fired` | the runtime started this turn because a wait fired. Not a `user_message`. `text` is the short chip (`Scheduled check.`). Same Working-clock rule as `goal_continued` |

@@ -285,8 +285,9 @@ does not emit a conversation `title` event.
 It answers as a **compact summarizer** (`compact-summarizer`) and as a
 **session-memory** writer (`session-memory`) with a short briefing derived
 from the messages or events it was handed. A manager Generate whose
-billed or estimated prompt tokens exceed `swarm.auto_compact_tokens` (default
-80 000) is rewritten in `BeforeModelRewriteState` before the call: older
+billed or estimated prompt tokens exceed the compact trigger (80% of a
+confirmed window, else `swarm.auto_compact_tokens`, default 80 000) is rewritten
+in `BeforeModelRewriteState` before the call: older
 replayable tool results are cleared first, then older messages become that
 briefing (preferring the rolling session memory), the recent tail stays, and
 the human transcript is untouched. The briefing is streamed; silence uses the
@@ -311,7 +312,7 @@ so force does not resend, refresh wait is the provider idle timeout),
 `internal/engine/microcompact_test.go` (replayable results only),
 `internal/engine/goal_session_test.go` (historical wrap leftover stays
 generic and is dropped from leftover steers, heat vs
-`auto_compact_tokens` not a million-token window, wrap-up copied into
+80% of a confirmed window rather than the fixed token budget, wrap-up copied into
 session memory when the meter is still cold), and
 `internal/engine/autocompact_test.go` (under-budget
 skip, in-turn fire, summarizer errors swallowed, a canceled turn stopping compact, a rejected dump leaving ADK state and `compact_summary` alone, roster rehydrated from
