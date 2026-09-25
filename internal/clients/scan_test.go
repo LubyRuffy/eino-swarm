@@ -133,6 +133,21 @@ func TestBreathingFollowsEachToolsFinishMarker(t *testing.T) {
 	}
 }
 
+func TestSessionWithNoRequestIsNotListed(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	writeFileTime(t, filepath.Join(root, "projects", "work", "empty.jsonl"), "{\"type\":\"mode\"}\n", now)
+	cfg := config.ClientsConfig{
+		Enabled: true, ClaudeDir: root,
+		CodexDir: filepath.Join(root, "no-codex"), CursorDir: filepath.Join(root, "no-cursor"),
+		RecentDays: 3, RunningStaleSeconds: 90,
+	}
+	cat := List(cfg, now, 0)
+	if len(cat.Tools[0].Tasks) != 0 {
+		t.Fatalf("empty session listed: %+v", cat.Tools[0].Tasks)
+	}
+}
+
 func TestTitleSkipsToolWrappers(t *testing.T) {
 	root := t.TempDir()
 	now := time.Now()

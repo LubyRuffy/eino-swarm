@@ -188,7 +188,7 @@ func scanClaude(root string, now time.Time, stale time.Duration) []Task {
 				continue
 			}
 			h, ok := readHit(filepath.Join(dir, f.Name()))
-			if !ok {
+			if !ok || !hasTranscript(ToolClaude, h) {
 				continue
 			}
 			title, cwd := claudeTitle(h.head)
@@ -221,7 +221,7 @@ func scanCodex(root string, now time.Time, stale time.Duration) []Task {
 			return nil
 		}
 		h, ok := readHit(path)
-		if !ok {
+		if !ok || !hasTranscript(ToolCodex, h) {
 			return nil
 		}
 		title, cwd, id := codexMeta(h.head)
@@ -267,7 +267,7 @@ func scanCursor(root string, now time.Time, stale time.Duration) []Task {
 			}
 			path := filepath.Join(transcripts, id.Name(), id.Name()+".jsonl")
 			h, ok := readHit(path)
-			if !ok {
+			if !ok || !hasTranscript(ToolCursor, h) {
 				continue
 			}
 			title := cursorTitle(h.head)
@@ -285,6 +285,12 @@ func scanCursor(root string, now time.Time, stale time.Duration) []Task {
 		}
 	}
 	return out
+}
+
+// hasTranscript is false for a session file that never stored a request
+// or a reply. Those still sit on disk, and listing them opens an empty chat.
+func hasTranscript(tool string, h hit) bool {
+	return len(entriesFrom(tool, h.head)) > 0 || len(entriesFrom(tool, h.tail)) > 0
 }
 
 func freshStatus(mtime, now time.Time, stale time.Duration, open bool) string {

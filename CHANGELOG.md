@@ -27,6 +27,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 - **The top of a long local agent session still shows what the user typed.** A cut transcript keeps that opening request, then the latest lines.
 
+- **A local agent file with no request is not listed.** Opening one of those showed an empty chat under the directory name.
+
 - **More on a local agent list no longer jumps back to the first older page when the list refreshes.** Rows already loaded stay, and the next More click continues from there.
 
 - **编辑重发后，原消息的编辑框不再留在对话里。** 发送先收起编辑框。被截断的那一轮若又从直播流里冒出来，不再画回气泡，编辑态也不会重新打开。
