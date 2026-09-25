@@ -99,3 +99,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 契约内容：点击 Clients 的 More 后立即显示加载动效和文字，等待 RPC 时禁用重复点击；成功时追加较旧任务，失败时保留现有列表、显示错误并恢复按钮。
 - 允许行为：不同工具分组独立显示任务；禁止行为：无反馈的重复分页、失败后永久禁用或静默丢弃异常；失败语义：已有任务继续可见，错误显示在手机页面；不变量：一个分页请求在途时不重复发起；边界条件：慢响应、RPC 拒绝、切换 PC。
 - 证据：实现 `mobile/src/lib/client-poll.ts`, `mobile/src/components/client-groups.tsx`；测试 `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步手机 UI 测试和使用文档；来源：GitHub Issue #35。
+
+## C-015 Android Back follows visible phone layers
+
+- 状态：active；类型：lifecycle；作用范围：Android 手机壳、手机页面及覆盖层；关联功能：`F-220`, `F-223`。
+- 契约内容：系统返回先关闭当前可见的最上层详情或弹层；只有手机首页（收件箱、直接聊天列表或未绑定扫码页）返回时才允许 Android Activity 退出。Clients 任务详情与普通会话遵守相同层级。
+- 允许行为：详情关闭后留在原列表，再次从首页返回退出；禁止行为：详情可见时直接退出、迟到的任务读取结果在返回后重新打开详情；失败语义：返回动作不依赖网络请求成功；不变量：当前最上层优先消费返回；边界条件：异步任务读取中返回、多层覆盖、组件卸载。
+- 证据：实现 `mobile/src/lib/android-back.ts`, `mobile/src/components/client-groups.tsx`, `mobile/src/app.tsx`；测试 `mobile/src/lib/android-back.test.ts`, `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：新增手机覆盖层须同步测试系统返回和首页退出；来源：GitHub Issue #36。

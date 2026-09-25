@@ -1,9 +1,24 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { ClientGroups } from "./client-groups"
 
 describe("ClientGroups", () => {
+  it("does not reopen a task when its read finishes after Back", async () => {
+    let finish: (view: { id: string; title: string; status: string; entries: [] }) => void = () => undefined
+    const pending = new Promise<{ id: string; title: string; status: string; entries: [] }>((resolve) => { finish = resolve })
+    render(<ClientGroups
+      tools={[{ id: "codex", more: false, tasks: [{ id: "c1", title: "task", status: "done", updated_at: "2026-09-25T00:00:00Z" }] }]}
+      onMore={() => undefined}
+      onRead={() => pending}
+    />)
+    fireEvent.click(screen.getByRole("button", { name: "task" }))
+    expect(screen.getByTestId("client-transcript")).toBeInTheDocument()
+    await act(async () => expect(window.__zwaiAndroidBack?.()).toBe(true))
+    await act(async () => finish({ id: "c1", title: "task", status: "done", entries: [] }))
+    expect(screen.queryByTestId("client-transcript")).not.toBeInTheDocument()
+  })
+
   it("shows a spinner and disables Clients More while its page is loading", () => {
     const onMore = vi.fn()
     render(

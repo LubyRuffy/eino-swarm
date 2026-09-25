@@ -5,6 +5,17 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("Android Back closes a Clients task before the inbox can exit", async ({ page }) => {
+  await page.goto(WALKTHROUGH)
+  await page.getByRole("button", { name: "返回" }).click()
+  await page.getByRole("button", { name: "open session" }).click()
+  await expect(page.getByTestId("client-transcript")).toBeVisible()
+  expect(await page.evaluate(() => (window as Window & { __zwaiAndroidBack?: () => boolean }).__zwaiAndroidBack?.())).toBe(true)
+  await expect(page.getByTestId("client-transcript")).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "open session" })).toBeVisible()
+  expect(await page.evaluate(() => (window as Window & { __zwaiAndroidBack?: () => boolean }).__zwaiAndroidBack?.())).toBe(false)
+})
+
 test("Clients More shows progress during a slow page and then reveals the older task", async ({ page }) => {
   await page.goto("/?mock=1&tick=0&pause=clients")
   await page.getByRole("button", { name: "返回" }).click()

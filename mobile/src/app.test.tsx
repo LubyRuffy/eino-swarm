@@ -197,6 +197,26 @@ describe("system back leaves a conversation for the inbox", () => {
     vi.mocked(openSaved).mockReset()
   })
 
+  it("closes a Clients task before allowing Back from the inbox to exit", async () => {
+    seedLink()
+    vi.mocked(openSaved).mockResolvedValue(hostLink({
+      list: async () => ({
+        v: 1, id: "l", ok: true, threads: [], running: [],
+        clients: { enabled: true, tools: [{
+          id: "codex", more: false,
+          tasks: [{ id: "client-1", title: "client task", status: "done", updated_at: "2026-09-25T00:00:00Z" }],
+        }] },
+      }),
+    }))
+    render(<App />)
+    fireEvent.click(await screen.findByRole("button", { name: "client task" }))
+    expect(screen.getByTestId("client-transcript")).toBeInTheDocument()
+    await act(async () => expect(systemBack()).toBe(true))
+    expect(screen.queryByTestId("client-transcript")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "client task" })).toBeInTheDocument()
+    expect(systemBack()).toBe(false)
+  })
+
   it("pops an open conversation and finishes only from the inbox", async () => {
     seedLink()
     vi.mocked(openSaved).mockResolvedValue(hostLink())

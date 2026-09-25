@@ -1,8 +1,9 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 
 import { Composer } from "@/components/composer"
 import { Button } from "@/components/ui/button"
+import { installAndroidBack } from "@/lib/android-back"
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
 import { clientToolTitle } from "@/lib/local-clients"
@@ -32,6 +33,19 @@ export function ClientGroups({
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [view, setView] = useState<Reading | null>(null)
+  const readGeneration = useRef(0)
+  const viewVisible = Boolean(view) && tools.length > 0
+  const closeView = () => {
+    readGeneration.current++
+    setView(null)
+  }
+  useEffect(() => {
+    if (!viewVisible) return
+    return installAndroidBack(() => {
+      closeView()
+      return true
+    })
+  }, [viewVisible])
   if (tools.length === 0) return null
   return (
     <section className="flex flex-col gap-2" data-testid="client-groups">
@@ -84,6 +98,7 @@ export function ClientGroups({
                     type="button"
                     className="min-w-0 flex-1 truncate text-left text-sm"
                     onClick={() => {
+                      const request = ++readGeneration.current
                       const shell: Reading = {
                         title: task.title,
                         status: task.status,
@@ -94,6 +109,7 @@ export function ClientGroups({
                       }
                       setView(shell)
                       void onRead?.(task.id).then((doc) => {
+                        if (readGeneration.current !== request) return
                         if (!doc) {
                           setView({ ...shell, loading: false, failed: true })
                           return
@@ -106,6 +122,8 @@ export function ClientGroups({
                           failed: false,
                           loading: false,
                         })
+                      }).catch(() => {
+                        if (readGeneration.current === request) setView({ ...shell, loading: false, failed: true })
                       })
                     }}
                   >
@@ -146,7 +164,7 @@ export function ClientGroups({
               variant="ghost"
               className="size-9 px-0"
               aria-label={t("thread.back")}
-              onClick={() => setView(null)}
+              onClick={closeView}
             >
               <ChevronLeft className="size-5" />
             </Button>

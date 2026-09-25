@@ -23,6 +23,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-223` / `C-015`: Android 系统返回现在先关闭手机 Clients 任务详情并回到列表；只有再次从真正的首页返回才退出，迟到的任务读取结果不会重新打开详情（Issue #36）。
+
 - `F-223` / `C-014`: 手机 Clients 的 More 现在在分页 RPC 期间显示旋转动效和加载文字，阻止重复点击；请求失败会报错并恢复按钮，已显示任务保留（Issue #35）。
 
 - **`F-230` / `C-013`: Phone model selection matches the app typography.** The Android native select popup ignored the compact composer font and made the catalog oversized. An in-app, provider-grouped list now wraps long model names, preserves the provider/model pair, and closes on Back before leaving the chat.

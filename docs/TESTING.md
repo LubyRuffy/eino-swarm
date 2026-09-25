@@ -123,6 +123,9 @@ Gradle takes version/signing from the environment (no password in git).
 `mobile/src/app.test.tsx` and `mobile/src/components/client-groups.test.tsx`
 cover Clients More pending, duplicate tap, success, and failure. The mobile
 walkthrough holds a scripted Clients page briefly to verify the spinner.
+`mobile/src/lib/android-back.test.ts`, `mobile/src/app.test.tsx`, and the phone
+walkthrough prove that a Clients task consumes the first Android Back, root
+receives the next, and a delayed read cannot reopen a closed task.
 `mobile/scripts/android-release.test.ts` is why `make mobile-android-release`
 refuses a store upload without a keystore, skips JAVA_HOME 17, and copies
 the APK into `bin/`. `internal/update` is why a Mac desktop install only

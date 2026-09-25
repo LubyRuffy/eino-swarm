@@ -90,6 +90,10 @@ E2E suite.
   the tests are.
 - Labels must be associated with their inputs (`id`/`aria-label`). Playwright's
   `getByLabel` failing is usually a real accessibility bug, not a test problem.
+- On Android, only a phone root screen may let system
+  Back finish the Activity. A visible overlay owns the first Back press through
+  `installAndroidBack`; add a regression test that the overlay closes and the
+  next Back reaches root. The same rule covers locally owned Clients views.
 - `frontend/dist` is a Vite artefact and is gitignored. `go run ./cmd/zwai
   desktop` (and `web`) rebuild it when the TypeScript sources changed
   (`frontend.Ensure`, `//go:generate` in `frontend/embed.go`). A shipped

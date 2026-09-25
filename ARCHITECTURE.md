@@ -103,6 +103,15 @@ flowchart TB
 Path switches do not mint new session keys. `zwai trace` still keys off a turn
 id; remote replies include pairlink `session_id` and `path`.
 
+## Phone navigation
+
+Android calls `window.__zwaiAndroidBack`. `mobile/src/lib/android-back.ts`
+dispatches to the newest visible screen handler first. The app's root handler
+returns `false` only from a root screen (inbox, direct-chat list, or unbound
+scan), allowing the native Activity to exit. A Clients task is an overlay
+owned by `ClientGroups`, so it registers a temporary handler and removes it
+when the task closes; a pending task read cannot reopen it after Back.
+
 ## Modules
 
 | package | responsibility |

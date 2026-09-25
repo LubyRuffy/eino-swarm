@@ -72,7 +72,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-220 Read and control PC conversations
 
-- 目的：在手机查看同一对话并发送、跟进、插入及翻页；使用者：手机用户；入口：手机收件箱和对话页；输入：消息与操作，包括把队列首条等待消息中断插入当前轮次；输出：PC 上同一对话的事件；前置条件：已绑定且在线；失败表现：重连提示或 RPC 错误；关联契约：`C-002`, `C-003`, `C-006`；实现证据：`mobile/src/app.tsx`, `mobile/src/components/thread-screen.tsx`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/walkthrough.spec.ts`。
+- 目的：在手机查看同一对话并发送、跟进、插入及翻页；使用者：手机用户；入口：手机收件箱和对话页；输入：消息与操作，包括把队列首条等待消息中断插入当前轮次；输出：PC 上同一对话的事件；前置条件：已绑定且在线；失败表现：重连提示或 RPC 错误；关联契约：`C-002`, `C-003`, `C-006`, `C-015`；实现证据：`mobile/src/app.tsx`, `mobile/src/components/thread-screen.tsx`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/walkthrough.spec.ts`。
 
 ### F-221 Quote PC conversation text
 
@@ -84,7 +84,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-223 Inspect local client tasks on the phone
 
-- 目的：在已配对手机上只读查看 PC 的本地客户端任务；使用者：手机用户；入口：收件箱 → Clients → 工具分组和 More；输入：客户端任务页；输出：任务状态、记录及加载更多时的动效；前置条件：PC 已启用 Clients 且在线；失败表现：分页失败保留当前列表、显示错误并恢复 More；关联契约：`C-006`, `C-014`；实现证据：`mobile/src/lib/client-poll.ts`, `mobile/src/components/client-groups.tsx`, `mobile/src/app.test.tsx`, `mobile/e2e/walkthrough.spec.ts`。
+- 目的：在已配对手机上只读查看 PC 的本地客户端任务；使用者：手机用户；入口：收件箱 → Clients → 工具分组和 More；输入：客户端任务页；输出：任务状态、记录及加载更多时的动效；前置条件：PC 已启用 Clients 且在线；失败表现：分页失败保留当前列表、显示错误并恢复 More；关联契约：`C-006`, `C-014`, `C-015`；实现证据：`mobile/src/lib/client-poll.ts`, `mobile/src/components/client-groups.tsx`, `mobile/src/app.test.tsx`, `mobile/e2e/walkthrough.spec.ts`。
 
 ### F-230 Direct model chat
 

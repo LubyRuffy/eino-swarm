@@ -428,6 +428,8 @@ opens the same chat with the same locked composer. The switch is off until
 you turn it on.
 On the phone, Clients → More shows a loading spinner while the next page arrives.
 If that request fails, the existing rows stay visible and More can be retried.
+In a Clients task, Android Back returns to the list; Back from the root inbox
+exits the app.
 
 ## Using it
 

@@ -22,6 +22,13 @@ export function androidBackLayer(input: {
 }
 
 type BackHook = () => boolean
+const hooks: BackHook[] = []
+const dispatchBack = () => {
+  for (let i = hooks.length - 1; i >= 0; i--) {
+    if (hooks[i]()) return true
+  }
+  return false
+}
 
 declare global {
   interface Window {
@@ -30,8 +37,13 @@ declare global {
 }
 
 export function installAndroidBack(hook: BackHook): () => void {
-  window.__zwaiAndroidBack = hook
+  hooks.push(hook)
+  window.__zwaiAndroidBack = dispatchBack
   return () => {
-    if (window.__zwaiAndroidBack === hook) delete window.__zwaiAndroidBack
+    const index = hooks.lastIndexOf(hook)
+    if (index >= 0) hooks.splice(index, 1)
+    if (hooks.length === 0 && window.__zwaiAndroidBack === dispatchBack) {
+      delete window.__zwaiAndroidBack
+    }
   }
 }

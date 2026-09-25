@@ -35,12 +35,26 @@ describe("android system back", () => {
   it("installs one hook and removes it on unmount", () => {
     const first = () => true
     const stop = installAndroidBack(first)
-    expect(window.__zwaiAndroidBack).toBe(first)
+    expect(window.__zwaiAndroidBack?.()).toBe(true)
     const second = () => false
     const stopSecond = installAndroidBack(second)
+    expect(window.__zwaiAndroidBack?.()).toBe(true)
     stop()
-    expect(window.__zwaiAndroidBack).toBe(second)
+    expect(window.__zwaiAndroidBack?.()).toBe(false)
     stopSecond()
+    expect(window.__zwaiAndroidBack).toBeUndefined()
+  })
+
+  it("lets an open overlay consume Back before the app root", () => {
+    let rootCalls = 0
+    const stopRoot = installAndroidBack(() => { rootCalls++; return false })
+    const stopOverlay = installAndroidBack(() => true)
+    expect(window.__zwaiAndroidBack?.()).toBe(true)
+    expect(rootCalls).toBe(0)
+    stopOverlay()
+    expect(window.__zwaiAndroidBack?.()).toBe(false)
+    expect(rootCalls).toBe(1)
+    stopRoot()
     expect(window.__zwaiAndroidBack).toBeUndefined()
   })
 })
