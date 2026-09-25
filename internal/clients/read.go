@@ -20,7 +20,7 @@ const (
 )
 
 // Entry is one visible line of a foreign session. Role is user, assistant,
-// or tool. This is a reading, not a turn the engine can steer.
+// thinking, or tool. This is a reading, not a turn the engine can steer.
 type Entry struct {
 	Role string `json:"role"`
 	Text string `json:"text"`
@@ -292,13 +292,20 @@ func codexEntries(raw []byte) []Entry {
 			Role    string          `json:"role"`
 			Name    string          `json:"name"`
 			Content json.RawMessage `json:"content"`
+			Summary json.RawMessage `json:"summary"`
 		} `json:"payload"`
 	}
 	if json.Unmarshal(raw, &row) != nil {
 		return nil
 	}
-	if row.Payload.Type == "function_call" && strings.TrimSpace(row.Payload.Name) != "" {
-		return []Entry{{Role: "tool", Text: clipEntry(row.Payload.Name)}}
+	switch row.Payload.Type {
+	case "function_call", "custom_tool_call":
+		if name := strings.TrimSpace(row.Payload.Name); name != "" {
+			return []Entry{{Role: "tool", Text: clipEntry(name)}}
+		}
+		return nil
+	case "reasoning":
+		return thinkingFromSummary(row.Payload.Summary)
 	}
 	role := row.Payload.Role
 	if role != "user" && role != "assistant" {
@@ -308,31 +315,63 @@ func codexEntries(raw []byte) []Entry {
 }
 
 func textsAndTools(role string, content json.RawMessage) []Entry {
-	var out []Entry
-	if text := textOf(content); text != "" {
-		out = append(out, Entry{Role: role, Text: clipEntry(text)})
+	var blocks []struct {
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		Name     string `json:"name"`
+		Thinking string `json:"thinking"`
 	}
-	for _, name := range toolNames(content) {
-		out = append(out, Entry{Role: "tool", Text: clipEntry(name)})
+	if json.Unmarshal(content, &blocks) != nil {
+		if text := textOf(content); text != "" {
+			return []Entry{{Role: role, Text: clipEntry(text)}}
+		}
+		return nil
+	}
+	var out []Entry
+	for _, b := range blocks {
+		switch b.Type {
+		case "thinking":
+			text := strings.TrimSpace(b.Thinking)
+			if text == "" {
+				text = strings.TrimSpace(b.Text)
+			}
+			if text != "" {
+				out = append(out, Entry{Role: "thinking", Text: clipEntry(text)})
+			}
+		case "tool_use", "tool_call":
+			if name := strings.TrimSpace(b.Name); name != "" {
+				out = append(out, Entry{Role: "tool", Text: clipEntry(name)})
+			}
+		default:
+			if b.Type != "" && b.Type != "text" && b.Type != "input_text" {
+				continue
+			}
+			if text := visibleText(b.Text); text != "" {
+				out = append(out, Entry{Role: role, Text: clipEntry(text)})
+			}
+		}
 	}
 	return out
 }
 
-func toolNames(raw json.RawMessage) []string {
-	var blocks []struct {
+func thinkingFromSummary(raw json.RawMessage) []Entry {
+	var parts []struct {
 		Type string `json:"type"`
-		Name string `json:"name"`
+		Text string `json:"text"`
 	}
-	if json.Unmarshal(raw, &blocks) != nil {
+	if json.Unmarshal(raw, &parts) != nil {
 		return nil
 	}
-	var names []string
-	for _, b := range blocks {
-		if (b.Type == "tool_use" || b.Type == "tool_call") && strings.TrimSpace(b.Name) != "" {
-			names = append(names, b.Name)
+	var out []Entry
+	for _, p := range parts {
+		if p.Type != "" && p.Type != "summary_text" && p.Type != "text" {
+			continue
+		}
+		if text := strings.TrimSpace(p.Text); text != "" {
+			out = append(out, Entry{Role: "thinking", Text: clipEntry(text)})
 		}
 	}
-	return names
+	return out
 }
 
 // TrimKeepingRequest keeps the opening user request when a long session is

@@ -107,3 +107,27 @@ func TestReadUsesThePathTheListAlreadyFound(t *testing.T) {
 		t.Fatalf("cached read = %+v ok=%v", got, ok)
 	}
 }
+
+func TestThinkingStaysNextToTheToolItPreceded(t *testing.T) {
+	claude := []byte("{\"type\":\"assistant\",\"message\":{\"content\":[" +
+		"{\"type\":\"thinking\",\"thinking\":\"checked the path\"}," +
+		"{\"type\":\"tool_use\",\"name\":\"read\"}," +
+		"{\"type\":\"text\",\"text\":\"done\"}]}}\n")
+	got := entriesFrom(ToolClaude, claude)
+	if len(got) != 3 || got[0].Role != "thinking" || got[1].Role != "tool" || got[2].Role != "assistant" {
+		t.Fatalf("order = %+v", got)
+	}
+	if got[0].Text != "checked the path" || got[1].Text != "read" || got[2].Text != "done" {
+		t.Fatalf("text = %+v", got)
+	}
+	blank := entriesFrom(ToolClaude, []byte("{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"thinking\",\"thinking\":\"\"}]}}\n"))
+	if len(blank) != 0 {
+		t.Fatalf("empty thought = %+v", blank)
+	}
+	codex := []byte("{\"payload\":{\"type\":\"reasoning\",\"summary\":[{\"type\":\"summary_text\",\"text\":\"checked the path\"}]}}\n" +
+		"{\"payload\":{\"type\":\"custom_tool_call\",\"name\":\"read\"}}\n")
+	got = entriesFrom(ToolCodex, codex)
+	if len(got) != 2 || got[0].Role != "thinking" || got[1].Role != "tool" || got[1].Text != "read" {
+		t.Fatalf("codex = %+v", got)
+	}
+}

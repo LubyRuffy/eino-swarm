@@ -19,6 +19,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A local agent session keeps the opening request at the top.** It stays pinned while the rest scrolls. Adjacent thinking and tool calls start collapsed on one row, the same work fold as a conversation. A reply stays outside that row.
+
 - **Opening a local agent task no longer stays on the loading skeletons.** Sidebar polls share one disk walk, so the session read can get a connection. Titles drop the tool wrapper in front of the request.
 
 - **A local agent session shows the original request.** A slash command stays, and the injected skill text that rides along with it does not replace that request. Reply text keeps its line breaks.

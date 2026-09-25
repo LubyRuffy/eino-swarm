@@ -153,20 +153,16 @@ export function ClientGroups({
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {view.loading ? <p className="text-sm text-muted-foreground">{t("thread.loading")}</p> : null}
             {view.failed ? <p className="text-sm text-muted-foreground">{t("home.clientMissing")}</p> : null}
-            {(view.entries ?? []).map((entry, i) =>
-              entry.role === "user" ? (
-                <div key={`${entry.role}-${i}`} className="flex justify-end">
-                  <p className="max-w-[85%] rounded-2xl rounded-br-md bg-secondary px-3 py-2 text-sm text-secondary-foreground">
-                    {entry.text}
-                  </p>
-                </div>
+            {splitOpening(view.entries ?? []).opening.map((entry, i) => (
+              <div key={`open-${i}`} data-testid="client-request" className="sticky top-0 z-10 bg-background pb-2">
+                <ClientLine entry={entry} />
+              </div>
+            ))}
+            {foldClientEntries(splitOpening(view.entries ?? []).rest).map((row) =>
+              row.type === "work" ? (
+                <ClientWorkFold key={`work-${row.index}`} entries={row.entries} />
               ) : (
-                <p
-                  key={`${entry.role}-${i}`}
-                  className={cn("text-sm", entry.role === "tool" && "text-xs text-muted-foreground")}
-                >
-                  {entry.text}
-                </p>
+                <ClientLine key={`${row.entry.role}-${row.index}`} entry={row.entry} />
               ),
             )}
             {view.truncated ? (
@@ -183,5 +179,97 @@ export function ClientGroups({
         </section>
       ) : null}
     </section>
+  )
+}
+
+type ClientLineEntry = { role: string; text: string }
+
+type ClientRow =
+  | { type: "entry"; entry: ClientLineEntry; index: number }
+  | { type: "work"; entries: ClientLineEntry[]; index: number }
+
+function splitOpening(entries: ClientLineEntry[]): { opening: ClientLineEntry[]; rest: ClientLineEntry[] } {
+  let end = 0
+  while (end < entries.length && entries[end].role === "user") end++
+  if (end === 0) return { opening: [], rest: entries }
+  return { opening: entries.slice(0, end), rest: entries.slice(end) }
+}
+
+function foldClientEntries(entries: ClientLineEntry[]): ClientRow[] {
+  const rows: ClientRow[] = []
+  let group: ClientLineEntry[] = []
+  let groupAt = 0
+  const flush = () => {
+    if (group.length === 0) return
+    rows.push({ type: "work", entries: group, index: groupAt })
+    group = []
+  }
+  entries.forEach((entry, index) => {
+    if (entry.role === "thinking" || entry.role === "tool") {
+      if (group.length === 0) groupAt = index
+      group.push(entry)
+      return
+    }
+    flush()
+    rows.push({ type: "entry", entry, index })
+  })
+  flush()
+  return rows
+}
+
+function ClientLine({ entry }: { entry: ClientLineEntry }) {
+  if (entry.role === "user") {
+    return (
+      <div className="flex justify-end">
+        <p className="max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md bg-secondary px-3 py-2 text-sm text-secondary-foreground">
+          {entry.text}
+        </p>
+      </div>
+    )
+  }
+  if (entry.role === "tool") {
+    return <p className="text-xs text-muted-foreground">{entry.text}</p>
+  }
+  if (entry.role === "thinking") {
+    return <p className="whitespace-pre-wrap text-sm text-muted-foreground">{entry.text}</p>
+  }
+  return <p className="whitespace-pre-wrap text-sm">{entry.text}</p>
+}
+
+function ClientWorkFold({ entries }: { entries: ClientLineEntry[] }) {
+  const [open, setOpen] = useState(false)
+  let thoughts = 0
+  let tools = 0
+  for (const e of entries) {
+    if (e.role === "thinking") thoughts++
+    if (e.role === "tool") tools++
+  }
+  const toolLabel = tools === 1 ? t("thread.workFoldTool") : t("thread.workFoldTools", { n: tools })
+  const label =
+    thoughts > 0 && tools > 0
+      ? t("thread.workFoldBoth", { tools: toolLabel })
+      : tools > 0
+        ? toolLabel
+        : t("thread.thought")
+  return (
+    <div className="min-w-0">
+      <button
+        type="button"
+        data-testid="work-fold"
+        className="flex min-w-0 items-center gap-1 text-left text-xs text-muted-foreground"
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <ChevronRight aria-hidden className={cn("size-3 shrink-0 transition-transform", open && "rotate-90")} />
+        <span className="min-w-0 truncate">{label}</span>
+      </button>
+      {open ? (
+        <div className="mt-1 flex flex-col gap-1 pl-4">
+          {entries.map((entry, i) => (
+            <ClientLine key={`${entry.role}-${i}`} entry={entry} />
+          ))}
+        </div>
+      ) : null}
+    </div>
   )
 }

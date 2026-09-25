@@ -416,7 +416,8 @@ Settings → Clients → **Show local agent tasks** lists Claude, Codex, and Cur
 sessions already on this machine. The sidebar groups them under Clients. Each tool group folds. The first
 page is at most five tasks from the last three days; More shows the next five. A breathing light
 means that task is still running. Open a row and the session fills the main
-chat. The composer stays where it is and cannot be used. A paired phone
+chat. The opening request stays pinned at the top. Adjacent thinking and tool calls start collapsed, the same row as a
+conversation. The composer stays where it is and cannot be used. A paired phone
 opens the same chat with the same locked composer. The switch is off until
 you turn it on.
 
