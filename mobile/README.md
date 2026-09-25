@@ -83,6 +83,12 @@ header is one row: which PC this is, not the app's own name. Pulling the
 list down past the top reloads the roster; an empty inbox says so. Search
 filters the roster this phone already holds.
 
+When that PC has Settings → Clients → **Show local agent tasks** on, the
+inbox also lists Clients, then Claude, Codex, and Cursor. Each row is the
+task title and a light: breathing while it is still running, steady when
+it is finished. The first page is the last three days; More loads older
+tasks. The phone does not scan its own disk and the rows do not open.
+
 ## A model on the phone
 
 Menu → Models saves an OpenAI-compatible endpoint: base URL, optional key,
