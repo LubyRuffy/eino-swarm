@@ -381,7 +381,9 @@ end-to-end tests run on and the fastest way to see the UI work.
    until that conversation arrives the body
    shows a loading status, not a blank screen. The transcript is a short tail, not the
    whole turn. The composer matches the PC: a model, a thinking level, and a
-   file or image. An image is shown to the model; other files go into the
+   file or image. Tap the model button for an in-app list grouped by provider;
+   long model names wrap and Back closes the list before leaving the chat.
+   An image is shown to the model; other files go into the
    workspace. **Menu → Models** (on the scan screen, **Connect a model**) saves
    an OpenAI-compatible endpoint on the phone: base URL, optional API key,
    **Chat completions** or **Responses**, Discover, and a timeout. After one

@@ -85,3 +85,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
 - 允许行为：敏感值脱敏；禁止行为：丢掉诊断所需事件或输出令牌/完整 Cookie；失败语义：不存在的 id 报不存在；不变量：同 id 贯穿运行；边界条件：部分失败和重启恢复。
 - 证据：实现 `internal/engine`, `internal/server`, `internal/store`；测试 `internal/engine`, `internal/server`；变更规则：同步 CLI、API 和 Trace 测试；来源：`AGENTS.md`。
+
+## C-013 Phone model picker
+
+- 状态：active；类型：compatibility / lifecycle；作用范围：phone composer；关联功能：`F-230`。
+- 契约内容：手机输入框的模型按钮打开应用内分组列表，列表沿用应用字号并允许长模型名换行；选择后保留服务商和模型的配对关系，关闭后发送使用新选择。返回键先关闭列表，不退出对话或应用。
+- 允许行为：点击遮罩、关闭按钮或 Escape 关闭列表；禁止行为：依赖不受应用样式控制的系统原生选项弹窗，或把不同服务商的同名模型混为一个选项；失败语义：列表关闭后保留原选择；不变量：选择只改变当前输入框的服务商和模型；边界条件：长模型名、多服务商和 Android 系统返回键。
+- 证据：实现 `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.tsx`；测试 `mobile/src/components/composer.test.tsx`, `mobile/src/components/direct-chat-screen.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步手机模型选择测试和使用文档；来源：GitHub Issue #34。

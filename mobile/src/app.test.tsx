@@ -61,7 +61,7 @@ describe("App boot chrome", () => {
     render(<App />)
     expect(screen.getByRole("tab", { name: t("chat.tab") })).toHaveAttribute("aria-selected", "true")
     expect(screen.queryByRole("button", { name: t("scan.camera") })).not.toBeInTheDocument()
-    expect(screen.getByRole("option", { name: "one" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: t("composer.model") })).toHaveTextContent("one")
     expect(screen.getByLabelText(t("composer.thinking"))).toBeInTheDocument()
     expect(screen.getByLabelText(t("composer.attach"))).toBeInTheDocument()
   })

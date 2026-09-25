@@ -23,6 +23,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **`F-230` / `C-013`: Phone model selection matches the app typography.** The Android native select popup ignored the compact composer font and made the catalog oversized. An in-app, provider-grouped list now wraps long model names, preserves the provider/model pair, and closes on Back before leaving the chat.
+
 - **A local agent session keeps the opening request at the top.** It stays pinned while the rest scrolls. Adjacent thinking and tool calls start collapsed on one row, the same work fold as a conversation. A reply stays outside that row.
 
 - **A phone no longer drops the PC while local agent transcripts are scanned.** Inbox `list` does not walk Claude, Codex, or Cursor. That walk fills a snapshot beside the link. The phone reads it with `clients`, and a slow reply does not close the socket. The sidebar poll uses the same snapshot.

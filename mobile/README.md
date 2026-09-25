@@ -103,7 +103,9 @@ on screen and cannot send.
 Menu → Models saves an OpenAI-compatible endpoint: base URL, optional key,
 chat completions or responses, discover, timeout. After one is saved, a
 Chat tab sits on the top row, including when no PC is bound. That chat uses
-the same composer as a PC thread. The reply streams. The thought is the
+the same composer as a PC thread. Tap its model button to choose from an
+in-app, provider-grouped list; long names wrap, and Back closes the list.
+The reply streams. The thought is the
 same live row as a PC thread: the latest line while it is arriving, the
 full text when the row is opened. Discover uses the platform HTTP stack so
 the webview origin is not the caller. The completion is read as it arrives

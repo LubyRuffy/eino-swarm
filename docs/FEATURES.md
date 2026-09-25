@@ -83,7 +83,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-230 Direct model chat
 
-- 目的：手机在没有 PC 时直接连接模型；使用者：手机用户；入口：Models 和 Chat；输入：兼容端点、消息及附件；输出：流式回答；前置条件：端点可访问；失败表现：连接或模型错误；关联契约：`C-006`, `C-009`；实现证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/lib/openai-client.ts`。
+- 目的：手机在没有 PC 时直接连接模型，并在应用内按服务商选择模型；使用者：手机用户；入口：Models、Chat 和输入框模型按钮；输入：兼容端点、所选模型、消息及附件；输出：流式回答；前置条件：端点可访问；失败表现：连接或模型错误；关联契约：`C-006`, `C-009`, `C-013`；实现证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.test.tsx`, `mobile/src/lib/openai-client.ts`。
 
 ### F-240 Phone updates
 

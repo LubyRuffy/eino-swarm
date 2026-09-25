@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowUp, Loader2, Paperclip, X, Zap } from "lucide-react"
 
 import { cn } from "@/lib/cn"
@@ -6,6 +6,7 @@ import { t } from "@/lib/i18n"
 import { formatQuotedMessage } from "@/lib/quote"
 import { isVisionFile } from "@/lib/put-chunks"
 import type { ModelChoice } from "@/lib/rpc"
+import { ModelPicker } from "./model-picker"
 
 const noModels: ModelChoice[] = []
 const noLevels: string[] = []
@@ -67,6 +68,8 @@ export function Composer({
   const [attached, setAttached] = useState<File[]>([])
   const [pick, setPick] = useState(() => chosen(models, providerId, model))
   const [level, setLevel] = useState(reasoning)
+  const [modelPickerOpen, setModelPickerOpen] = useState(false)
+  const modelTextId = useId()
   const box = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const images = attached.filter((file) => isVisionFile(file))
@@ -276,26 +279,16 @@ export function Composer({
           </div>
         ) : null}
         {models.length > 0 ? (
-          <select
+          <button
+            type="button"
             aria-label={t("composer.model")}
-            className="h-8 w-0 min-w-0 flex-1 truncate rounded-full bg-muted px-2 text-xs text-foreground"
-            value={choiceValue(pick.providerId, pick.model)}
+            aria-describedby={modelTextId}
+            className="h-8 w-0 min-w-0 flex-1 truncate rounded-full bg-muted px-2 text-left text-xs text-foreground"
             disabled={disabled || pending}
-            onChange={(e) => {
-              const [providerIdNext, modelNext] = e.target.value.split("\t")
-              tune({ providerId: providerIdNext, model: modelNext, reasoning: level })
-            }}
+            onClick={() => setModelPickerOpen(true)}
           >
-            {groups(models).map((group) => (
-              <optgroup key={group.label} label={group.label}>
-                {group.rows.map((row) => (
-                  <option key={choiceValue(row.provider_id, row.model)} value={choiceValue(row.provider_id, row.model)}>
-                    {row.model}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
+            <span id={modelTextId}>{pick.model}</span>
+          </button>
         ) : null}
         {reasoningLevels.length > 0 ? (
           <select
@@ -315,6 +308,18 @@ export function Composer({
         ) : null}
         {showTools ? null : <span className="flex-1" />}
       </div>
+      {modelPickerOpen ? (
+        <ModelPicker
+          models={models}
+          providerId={pick.providerId}
+          model={pick.model}
+          onSelect={(nextProviderId, nextModel) => {
+            tune({ providerId: nextProviderId, model: nextModel, reasoning: level })
+            setModelPickerOpen(false)
+          }}
+          onClose={() => setModelPickerOpen(false)}
+        />
+      ) : null}
       {hint ? <p className="px-3 pt-1.5 text-[11px] text-muted-foreground">{hint}</p> : null}
     </div>
   )
@@ -328,22 +333,6 @@ function chosen(models: ModelChoice[], providerId: string, model: string) {
     ready.find((row) => row.default) ??
     ready[0]
   return { providerId: hit?.provider_id ?? providerId, model: hit?.model ?? model }
-}
-
-function choiceValue(providerId: string, model: string) {
-  return providerId + "\t" + model
-}
-
-function groups(models: ModelChoice[]) {
-  const out: { label: string; rows: ModelChoice[] }[] = []
-  for (const row of models) {
-    if (!row.model) continue
-    const label = row.provider_label || row.provider_id
-    const group = out.find((item) => item.label === label)
-    if (group) group.rows.push(row)
-    else out.push({ label, rows: [row] })
-  }
-  return out
 }
 
 function thinkingLabel(level: string) {

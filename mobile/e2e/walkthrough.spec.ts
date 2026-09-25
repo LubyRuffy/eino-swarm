@@ -5,6 +5,27 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("phone model chooser uses the app type scale and keeps long names on screen", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("zwai.phone.providers", JSON.stringify([{
+      id: "p-test", label: "Demo", baseURL: "https://endpoint.invalid/v1",
+      apiKey: "", api: "chat", model: "small",
+      catalog: ["small", "a-very-long-model-name-that-must-wrap-inside-the-phone"],
+      timeoutSeconds: 300,
+    }]))
+  })
+  await page.goto("/")
+  await page.getByRole("button", { name: "模型" }).click()
+  const picker = page.getByRole("dialog", { name: "模型" })
+  await expect(picker).toBeVisible()
+  const longName = picker.getByRole("radio", { name: "a-very-long-model-name-that-must-wrap-inside-the-phone" })
+  await expect(longName).toHaveCSS("font-size", "14px")
+  await expect(longName).toBeInViewport()
+  await longName.click()
+  await expect(picker).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "模型" })).toContainText("a-very-long-model-name")
+})
+
 test("worker activity opens in its own phone view without becoming a manager answer", async ({ page }) => {
   await page.goto("/?mock=1&tick=0&agents=1")
   await page.getByRole("button", { name: "返回" }).click()
@@ -280,6 +301,8 @@ test("the composer can pick a model, a thinking level, and a file", async ({ pag
   await expect(page.getByLabel("模型")).toBeVisible()
   await expect(page.getByLabel("思考强度")).toBeVisible()
   await expect(page.getByLabel("添加文件")).toBeVisible()
-  await expect(page.getByRole("option", { name: "scripted" })).toHaveCount(1)
+  await page.getByRole("button", { name: "模型" }).click()
+  await expect(page.getByRole("dialog", { name: "模型" }).getByRole("radio", { name: "scripted" })).toHaveCount(1)
+  await page.keyboard.press("Escape")
   await expect(page.getByRole("option", { name: "低思考" })).toHaveCount(1)
 })
