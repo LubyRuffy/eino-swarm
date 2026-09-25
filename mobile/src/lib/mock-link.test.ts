@@ -4,6 +4,7 @@ import { MockHost, MockLink, mockTickMs, resetMockHost, wantsMock } from "./mock
 import {
   OpEvent,
   OpList,
+  OpClients,
   OpOpen,
   OpReady,
   OpSend,
@@ -45,6 +46,16 @@ describe("the walkthrough host", () => {
     expect((r.threads ?? []).some((t) => liveIDs.has(t.id))).toBe(false)
     expect((r.threads ?? []).every((t) => t.last_active_at)).toBe(true)
     expect(r.running?.find((x) => x.thread_id === "t-live")?.project_id).toBe("p-platform")
+    expect(r.clients?.enabled).toBe(true)
+    expect(r.clients?.tools?.map((tool) => tool.id)).toEqual(["claude", "codex", "cursor"])
+  })
+
+  it("pages an older client session without opening it", async () => {
+    const link = new MockLink(host())
+    const older = await link.rpc({ op: OpClients, group: "claude", before: 1 })
+    const tasks = older.clients?.tools?.[0]?.tasks ?? []
+    expect(tasks.map((task) => task.title)).toEqual(["older session"])
+    expect(tasks.some((task) => task.title.includes("notes.md"))).toBe(false)
   })
 
   it("opens a thread and hands watch a snapshot already at the tail", async () => {

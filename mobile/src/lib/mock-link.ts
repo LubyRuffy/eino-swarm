@@ -5,6 +5,7 @@ import {
   OpEvent,
   OpFollowupSteer,
   OpHello,
+  OpClients,
   OpList,
   OpLog,
   OpMore,
@@ -258,7 +259,42 @@ export class MockHost {
         ...projects.map((p) => section(p.id, idle.filter((th) => th.project_id === p.id), false)),
         section(GROUP_RECENT, idle.filter((th) => !th.project_id), true),
       ],
+      clients: this.clientCatalog(),
     }
+  }
+
+  // The walkthrough stands in for a PC that has the clients switch on.
+  // Rows stay read-only; More only pages the scripted older session.
+  clientCatalog(before?: number, group?: string) {
+    const stamp = new Date().toISOString()
+    let tools = before
+      ? [
+          {
+            id: "claude",
+            more: false,
+            tasks: [{ id: "c-old", title: "older session", status: "done", updated_at: "2026-01-01T00:00:00Z" }],
+          },
+        ]
+      : [
+          {
+            id: "claude",
+            more: true,
+            next: "1",
+            tasks: [{ id: "c-open", title: "open session", status: "running", updated_at: stamp }],
+          },
+          {
+            id: "codex",
+            more: false,
+            tasks: [{ id: "c-live", title: "live session", status: "running", updated_at: stamp }],
+          },
+          {
+            id: "cursor",
+            more: false,
+            tasks: [{ id: "c-shut", title: "finished session", status: "done", updated_at: stamp }],
+          },
+        ]
+    if (group) tools = tools.filter((tool) => tool.id === group)
+    return { enabled: true, tools }
   }
 
   older(): ThreadView {
@@ -476,6 +512,11 @@ export class MockLink {
         return this.ok({ id })
       case OpList:
         return this.ok({ id, ...this.host.listing() })
+      case OpClients:
+        return this.ok({
+          id,
+          clients: this.host.clientCatalog(req.before, req.group),
+        })
       case OpMore:
         return this.ok({ id, threads: [this.host.older()], more: false, next: "" })
       case OpCatalog:

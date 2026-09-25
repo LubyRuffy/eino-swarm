@@ -108,7 +108,8 @@ the phone.
 ## Walking the screens without a PC
 
 `?mock=1` boots onto the inbox against a scripted host (`lib/mock-link.ts`):
-projects, a live turn, a parked wait, and idle recents. It answers the same
+projects, a live turn, a parked wait, idle recents, and the read-only
+Clients groups (Claude, Codex, Cursor). It answers the same
 ops with the same shapes over no network and no model, so the inbox and a
 conversation can be driven in a browser and in Playwright — the screens
 behind the scan form used to have no end-to-end coverage at all. Add
