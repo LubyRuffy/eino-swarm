@@ -432,6 +432,30 @@ export interface Settings {
   ui?: UISettings
   remote?: RemoteSettings
   search?: SearchSettings
+  clients?: ClientsSettings
+}
+
+/** Read-only local agent transcripts. Blank directories are filled on save. */
+export interface ClientsSettings {
+  enabled: boolean
+  claude_dir: string
+  codex_dir: string
+  cursor_dir: string
+  recent_days: number
+  running_stale_seconds: number
+}
+
+export function defaultClientsSettings(
+  clients?: Partial<ClientsSettings> | null,
+): ClientsSettings {
+  return {
+    enabled: clients?.enabled ?? false,
+    claude_dir: clients?.claude_dir ?? "",
+    codex_dir: clients?.codex_dir ?? "",
+    cursor_dir: clients?.cursor_dir ?? "",
+    recent_days: clients?.recent_days ?? 3,
+    running_stale_seconds: clients?.running_stale_seconds ?? 90,
+  }
 }
 
 /** Conversation search. Keyword indexing is always on; embeddings are opt-in. */

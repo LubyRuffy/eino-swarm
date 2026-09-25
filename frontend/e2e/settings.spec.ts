@@ -1,5 +1,24 @@
 import { expect, test } from "@playwright/test"
 
+test("local agent tasks stay hidden until the switch is on", async ({ page }) => {
+  await page.goto("/")
+  await expect(page.getByTestId("clients-list")).toHaveCount(0)
+  await page.getByRole("button", { name: "Settings" }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("tab", { name: "Clients" }).click()
+  const empty = "/tmp/zwai-e2e-clients-none"
+  await dialog.getByLabel("Claude directory").fill(empty)
+  await dialog.getByLabel("Codex directory").fill(empty)
+  await dialog.getByLabel("Cursor directory").fill(empty)
+  await dialog.getByLabel("Show local agent tasks").click()
+  await dialog.getByRole("button", { name: "Back to app" }).click()
+  await expect(page.getByTestId("clients-list")).toBeVisible()
+  await expect(page.getByTestId("client-tool-claude")).toBeVisible()
+  await expect(page.getByTestId("client-tool-codex")).toBeVisible()
+  await expect(page.getByTestId("client-tool-cursor")).toBeVisible()
+  await expect(page.getByTestId("client-task")).toHaveCount(0)
+})
+
 test("semantic search is off until a model is pinned", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "Settings" }).click()

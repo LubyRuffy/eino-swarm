@@ -35,6 +35,7 @@ vi.mock("@/lib/api", () => {
   return {
     ApiError,
     api: {
+    clients: async () => ({ enabled: false, tools: [] }),
     schedules: async () => ({ schedules: fake.rows, unread: fake.unread }),
     patchSchedule: async (id: string, patch: Record<string, unknown>) => {
       fake.patched.push({ id, patch })

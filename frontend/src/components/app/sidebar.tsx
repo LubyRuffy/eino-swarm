@@ -9,6 +9,7 @@ import { ResizeHandle } from "@/components/app/resize-handle"
 import { SidebarSection } from "@/components/app/sidebar-section"
 import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
+import { LocalClientsSection } from "@/components/app/local-clients"
 import { ScheduleInboxTrigger } from "@/components/app/schedule-inbox"
 import { useApp } from "@/store/app"
 import {
@@ -260,6 +261,7 @@ export function Sidebar({
           </p>
         ) : null}
 
+        <LocalClientsSection />
         <ScheduleInboxTrigger />
       </div>
 

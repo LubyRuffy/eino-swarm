@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 import { AddHostSheet } from "@/components/add-host-sheet"
 import type { ComposerExtra } from "@/components/composer"
-import { DirectChatScreen } from "@/components/direct-chat-screen"
+import { ChatSurface } from "@/components/chat-surface"
 import { HomeScreen } from "@/components/home-screen"
 import { ProviderSheet } from "@/components/provider-sheet"
 import { LinkBanner } from "@/components/link-banner"
@@ -23,21 +23,23 @@ import { openLink, type RemoteLink } from "@/lib/link"
 import { getLocale, t, toggleLocale } from "@/lib/i18n"
 import { emptyInbox, inboxThreads, reduceInbox, type InboxGroupState } from "@/lib/inbox-window"
 import type {
+  ClientTool,
   ModelChoice,
   ProjectView,
   RemoteResponse,
   RunningView,
   ThreadView,
 } from "@/lib/rpc"
+import { mergeClientTools } from "@/lib/local-clients"
 import {
   OpAnswer,
+  OpClients,
   OpCancelWait,
   OpCatalog,
   OpList,
   OpLog,
   OpMore,
   OpOpen,
-  OpReady,
   OpResumeGoal,
   OpRunNow,
   OpFollowupDrop,
@@ -48,14 +50,12 @@ import {
   OpStop,
   OpTune,
   OpUnwatch,
-  OpWatch,
 } from "@/lib/rpc"
 import { androidBackLayer, installAndroidBack } from "@/lib/android-back"
 import { loadProviders, type DirectProvider } from "@/lib/direct-provider"
 import { phoneShell } from "@/lib/phone-shell"
 import { pickResumeThread, detailFromListing, rosterFingerprint } from "@/lib/resume"
 import {
-  applyOpenDetail,
   applyPush,
   emptyView,
   markRunning,
@@ -64,7 +64,6 @@ import {
   type PhoneView,
 } from "@/lib/session"
 import {
-  clearLastThreadId,
   clearLink,
   loadActiveFingerprint,
   loadLastThreadId,
@@ -73,9 +72,9 @@ import {
   removeLink,
   saveActiveFingerprint,
   saveHostLabel,
-  saveLastThreadId,
   saveLink,
 } from "@/lib/store"
+import { openPhoneThread } from "@/lib/open-thread"
 import { interruptPhoneFollowup, sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
 import { sendComposed } from "@/lib/turn-send"
 
@@ -104,6 +103,8 @@ export function App() {
   const [running, setRunning] = useState<RunningView[]>([])
   const [more, setMore] = useState(false)
   const [groups, setGroups] = useState<InboxGroupState[]>([])
+  const [clientsOn, setClientsOn] = useState(false)
+  const [clientTools, setClientTools] = useState<ClientTool[]>([])
   const [loadingGroup, setLoadingGroup] = useState("")
   const [loadingMore, setLoadingMore] = useState(false)
   const [models, setModels] = useState<ModelChoice[]>([])
@@ -163,6 +164,8 @@ export function App() {
     setRunning([])
     setMore(false)
     setGroups([])
+    setClientsOn(false)
+    setClientTools([])
     setLoadingGroup("")
     setModels([])
     setLevels([])
@@ -183,6 +186,10 @@ export function App() {
     const cur = target ?? linkRef.current
     if (resp.path && cur) cur.path = resp.path
     takeHostName(resp)
+    if (resp.clients) {
+      setClientsOn(resp.clients.enabled)
+      setClientTools((prev) => mergeClientTools(prev, resp.clients?.tools ?? [], "replace"))
+    }
     if (!append && fp === rosterFp.current) return
     rosterFp.current = fp
     inboxRef.current = next
@@ -209,42 +216,24 @@ export function App() {
     })
   }
 
-  const openThreadOn = async (target: RemoteLink, id: string) => {
-    const staying = viewRef.current.threadId === id && Boolean(viewRef.current.detail)
-    // A cleared threadId means Back already left. A check that only bails
-    // when some other id is current treats "left" as still here, and the
-    // late open paints the conversation back over the inbox.
-    const stillThisThread = () => viewRef.current.threadId === id
-    try {
-      const r = await target.rpc({ op: OpOpen, thread_id: id })
-      if (!stillThisThread()) return false
-      if (!r.detail) {
-        setError(r.error ? remoteError(r.error) : t("err.open"))
-        if (id === loadLastThreadId()) clearLastThreadId()
-        if (!staying) viewRef.current = emptyView()
-        return false
-      }
-      saveLastThreadId(id)
-      loadGen.current += 1
-      olderBusy.current = false
-      setLoadingOlder(false)
-      commitView(applyOpenDetail(viewRef.current, r.detail))
-      const w = await target.rpc({ op: OpWatch, thread_id: id })
-      if (!stillThisThread()) return false
-      if (!w.ok) {
-        setError(w.error || w.code ? remoteError(w.error || w.code || "") : t("err.watch"))
-        if (!staying) viewRef.current = emptyView()
-        return false
-      }
-      commitView(applyPush(viewRef.current, { ...w, op: w.op || OpReady }))
-      return true
-    } catch (e) {
-      if (!stillThisThread()) return false
-      setError(linkError(e))
-      if (!staying) viewRef.current = emptyView()
-      return false
-    }
-  }
+  const openThreadOn = (target: RemoteLink, id: string) =>
+    openPhoneThread({
+      target,
+      id,
+      view: () => viewRef.current,
+      setView: (next) => {
+        viewRef.current = next
+      },
+      commitView,
+      setError,
+      bumpLoad: () => {
+        loadGen.current += 1
+      },
+      clearOlder: () => {
+        olderBusy.current = false
+        setLoadingOlder(false)
+      },
+    })
 
   const consumeFirstList = async (target: RemoteLink, resp: RemoteResponse) => {
     applyList(resp, false, target)
@@ -540,6 +529,15 @@ export function App() {
     } catch (e) {
       fail(e)
     }
+  }
+
+  const loadClientMore = (id: string, next?: string) => {
+    const target = linkRef.current
+    if (!target?.alive() || !next) return
+    void target.rpc({ op: OpClients, group: id, before: Number(next) }).then((resp) => {
+      const tools = resp.clients?.tools
+      if (tools) setClientTools((prev) => mergeClientTools(prev, tools, "append"))
+    })
   }
 
   const loadMore = async (group?: string) => {
@@ -906,37 +904,32 @@ export function App() {
 
   if (surface === "chat") {
     return (
-      <div className="flex h-full min-w-0 flex-col overflow-hidden">
-        <UpdateNotice />
-        {link ? banner : null}
-        <div className="min-h-0 flex-1">
-          <DirectChatScreen
-            key={locale}
-            hosts={hosts}
-            activeFingerprint={activeFp}
-            path={link?.path ?? "relay"}
-            connected={Boolean(link?.alive())}
-            reconnecting={reconnecting}
-            providers={providers}
-            onSelectHost={selectHost}
-            onAddHost={() => {
-              setAddError(undefined)
-              setAdding(true)
-            }}
-            onUnlink={unlink}
-            onToggleLocale={flipLocale}
-            onModels={() => setModelsOpen(true)}
-            onOpenChange={(open) => {
-              directOpenRef.current = open
-            }}
-            onBindClose={(close) => {
-              directCloseRef.current = close
-            }}
-          />
-        </div>
-        {sheet}
-        {modelSheet}
-      </div>
+      <ChatSurface
+        locale={locale}
+        hosts={hosts}
+        activeFingerprint={activeFp}
+        path={link?.path ?? "relay"}
+        connected={Boolean(link?.alive())}
+        reconnecting={reconnecting}
+        providers={providers}
+        banner={link ? banner : null}
+        sheet={sheet}
+        modelSheet={modelSheet}
+        onSelectHost={selectHost}
+        onAddHost={() => {
+          setAddError(undefined)
+          setAdding(true)
+        }}
+        onUnlink={unlink}
+        onToggleLocale={flipLocale}
+        onModels={() => setModelsOpen(true)}
+        onOpenChange={(open) => {
+          directOpenRef.current = open
+        }}
+        onBindClose={(close) => {
+          directCloseRef.current = close
+        }}
+      />
     )
   }
 
@@ -985,6 +978,9 @@ export function App() {
             }
           }}
           onMore={(group) => void loadMore(group)}
+          clientsOn={clientsOn}
+          clientTools={clientTools}
+          onClientMore={(id, next) => void loadClientMore(id, next)}
           onUnlink={unlink}
           onToggleLocale={flipLocale}
           showChat={providers.length > 0}

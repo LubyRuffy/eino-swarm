@@ -81,6 +81,7 @@ type settingsView struct {
 	UI          config.UIConfig          `json:"ui"`
 	Remote      config.RemoteConfig      `json:"remote"`
 	Search      config.SearchConfig      `json:"search"`
+	Clients     config.ClientsConfig     `json:"clients"`
 }
 
 type providerView struct {
@@ -107,6 +108,7 @@ func toSettingsView(cfg *config.Config) settingsView {
 	v.UI = cfg.UI
 	v.Remote = cfg.Remote
 	v.Search = cfg.Search
+	v.Clients = cfg.Clients
 	v.Models.Default = cfg.Models.Default
 	for _, p := range cfg.Models.Providers {
 		catalog := p.Catalog
@@ -164,6 +166,7 @@ type putSettingsRequest struct {
 	UI          *config.UIConfig          `json:"ui"`
 	Remote      *config.RemoteConfig      `json:"remote"`
 	Search      *config.SearchConfig      `json:"search"`
+	Clients     *config.ClientsConfig     `json:"clients"`
 }
 
 func (s *Server) putSettings(c *gin.Context) {
@@ -203,6 +206,9 @@ func (s *Server) putSettings(c *gin.Context) {
 	}
 	if req.Search != nil {
 		next.Search = *req.Search
+	}
+	if req.Clients != nil {
+		next.Clients = *req.Clients
 	}
 	if req.Models != nil {
 		existing := map[string]config.Provider{}

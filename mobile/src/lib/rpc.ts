@@ -24,6 +24,7 @@ export const OpPut = "put"
 export const OpFollowupDrop = "followup_drop"
 export const OpFollowupSteer = "followup_steer"
 export const OpPreempt = "preempt"
+export const OpClients = "clients"
 export const GROUP_RECENT = "recent"
 
 export type RemoteRequest = {
@@ -180,6 +181,27 @@ export type RemoteResponse = {
   put?: { id: string; name?: string; ready: boolean; kind?: string }
   groups?: ThreadGroup[]
   followups?: FollowupView[]
+  clients?: ClientCatalog
+}
+
+export type ClientTask = {
+  id: string
+  title: string
+  status: "running" | "done" | string
+  updated_at: string
+  older?: boolean
+}
+
+export type ClientTool = {
+  id: string
+  tasks: ClientTask[]
+  more: boolean
+  next?: string
+}
+
+export type ClientCatalog = {
+  enabled: boolean
+  tools?: ClientTool[]
 }
 
 export function encodeRequest(req: RemoteRequest): Uint8Array {

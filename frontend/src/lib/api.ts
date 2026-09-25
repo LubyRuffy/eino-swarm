@@ -26,8 +26,9 @@ import type {
   SchedulePatch,
   ScheduleRun,
 } from "./types"
-import { defaultRemoteSettings, defaultSearchSettings } from "./types"
+import { defaultClientsSettings, defaultRemoteSettings, defaultSearchSettings } from "./types"
 import { normalizeUISettings } from "./appearance"
+import type { ClientCatalog } from "./local-clients"
 import type { SendImage } from "./paste-image"
 import type { ThreadLog } from "./thread-log"
 
@@ -210,6 +211,7 @@ function withToolLists(s: Settings): Settings {
     ui: normalizeUISettings(s.ui),
     remote: defaultRemoteSettings(s.remote),
     search: defaultSearchSettings(s.search),
+    clients: defaultClientsSettings(s.clients),
   }
 }
 
@@ -238,6 +240,11 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(patch),
     }).then((r) => withToolLists(r.settings)),
+
+  clients: (before?: string) => {
+    const q = before ? `?before=${encodeURIComponent(before)}` : ""
+    return request<ClientCatalog>(`/api/clients${q}`)
+  },
 
   search: (q: string, limit?: number) => {
     const params = new URLSearchParams({ q })
