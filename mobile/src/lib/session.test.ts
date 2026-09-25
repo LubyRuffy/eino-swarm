@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import type { RemoteEvent, RemoteResponse, ThreadDetail } from "./rpc"
 import { OpEvent, OpReady } from "./rpc"
 import { applyOpenDetail, applyPush, emptyView, markRunning, openView, prependOlder } from "./session"
+import { managerBlocks, phoneAgents } from "./transcript"
 
 function detail(partial?: Partial<ThreadDetail>): ThreadDetail {
   return { id: "t1", title: "one", ...partial }
@@ -43,6 +44,38 @@ function ready(partial?: Partial<RemoteResponse>): RemoteResponse {
 }
 
 describe("phone watch session", () => {
+  it("rebuilds worker identity and separate log after older pages load", () => {
+    let view = applyPush(openView(detail()), ready({
+      seq: 5, more: true,
+      events: [
+        ev({ seq: 4, kind: "agent_message", agent_id: "manager", text: "manager answer" }),
+        ev({ seq: 5, kind: "finished", agent_id: "w1", text: "done" }),
+      ],
+    }))
+    view = prependOlder(view, [
+      ev({ seq: 1, kind: "spawned", agent_id: "w1", role: "reader", text: "" }),
+      ev({ seq: 2, kind: "reasoning", agent_id: "w1", text: "read evidence" }),
+      ev({ seq: 3, kind: "agent_message", agent_id: "w1", text: "worker answer" }),
+    ], false)
+    expect(managerBlocks(view.blocks).map((b) => b.text)).toEqual(["manager answer"])
+    expect(phoneAgents(view.blocks)).toMatchObject([{
+      id: "w1", role: "reader", status: "done",
+      blocks: [{ kind: "spawn" }, { kind: "reasoning" }, { kind: "answer", text: "worker answer" }],
+    }])
+  })
+
+  it("keeps simultaneous manager and worker live text while paging older history", () => {
+    let view = applyPush(openView(detail()), ready({ seq: 2, more: true,
+      events: [ev({ seq: 2, kind: "spawned", agent_id: "w1", role: "reader" })],
+    }))
+    view = applyPush(view, push(ev({ seq: 0, kind: "delta", agent_id: "manager", text: "manager live" })))
+    view = applyPush(view, push(ev({ seq: 0, kind: "delta", agent_id: "w1", text: "worker live" })))
+    view = prependOlder(view, [ev({ seq: 1, kind: "user_message", text: "request" })], false)
+    expect(managerBlocks(view.blocks).find((b) => b.kind === "answer"))
+      .toMatchObject({ text: "manager live", streaming: true })
+    expect(phoneAgents(view.blocks)[0].blocks.find((b) => b.kind === "answer"))
+      .toMatchObject({ text: "worker live", streaming: true })
+  })
   it("does not paint catch-up until ready, then folds it in one shot", () => {
     let view = openView(detail())
     view = applyPush(view, push(ev({ seq: 1, kind: "user_message", text: "hi" })))

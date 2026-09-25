@@ -202,15 +202,13 @@ function foldEvents(events: RemoteEvent[]): CompactBlock[] {
 }
 
 function restoreStreaming(blocks: CompactBlock[], prev: CompactBlock[]): CompactBlock[] {
-  const live = [...prev].reverse().find((b) => b.streaming)
-  if (!live) return blocks
-  const i = blocks.findIndex((b) => b.id === live.id)
-  if (i >= 0) {
-    const next = blocks.slice()
-    next[i] = live
-    return next
+  const next = blocks.slice()
+  for (const live of prev.filter((b) => b.streaming)) {
+    const i = next.findIndex((b) => b.id === live.id)
+    if (i >= 0) next[i] = live
+    else next.push(live)
   }
-  return blocks.concat(live)
+  return next
 }
 
 function applyWatchStatus(detail: ThreadDetail, st: WatchStatus, snapshot: boolean): ThreadDetail {

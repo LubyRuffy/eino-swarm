@@ -18,6 +18,7 @@ export type BlockKind =
   | "question"
   | "notice"
   | "spawn"
+  | "finish"
   | "error"
 
 export type CompactBlock = {
@@ -32,9 +33,44 @@ export type CompactBlock = {
   args?: string
   hasImages?: boolean
   questions?: AskQuestion[]
+  agentId?: string
 }
 
 export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
+  const worker = ev.agent_id && ev.agent_id !== "manager" ? ev.agent_id : undefined
+  if (ev.kind === "finished" && worker) {
+    return blocks.map((b) => b.agentId === worker ? settleWorkerBlock(b, Boolean(ev.err)) : b)
+      .concat({ id: `${worker}:${blockId(ev)}`, kind: "finish", agentId: worker, text: ev.err || ev.text, failed: Boolean(ev.err) })
+  }
+  if (ev.kind === "cleanup") {
+    const settled = applyEventForAgent(blocks.filter((b) => !b.agentId), ev)
+    const kept = blocks.filter((b) => b.agentId)
+    const closed = phoneAgents(blocks).filter((a) => a.status === "running")
+      .map((a) => ({ id: `${a.id}:${blockId(ev)}`, kind: "finish" as const, agentId: a.id, text: "" }))
+    return settled.concat(kept.map((b) => settleWorkerBlock(b, false)), closed)
+  }
+  const positions: number[] = []
+  const own = blocks.filter((b, i) => {
+    if (b.agentId !== worker) return false
+    positions.push(i)
+    return true
+  })
+  const reduced = applyEventForAgent(own, ev)
+  const next = blocks.slice()
+  for (let i = 0; i < reduced.length; i++) {
+    const block = worker ? { ...reduced[i], agentId: worker, id: positions[i] === undefined ? `${worker}:${reduced[i].id}` : reduced[i].id } : reduced[i]
+    if (positions[i] === undefined) next.push(block)
+    else next[positions[i]] = block
+  }
+  return next
+}
+
+function settleWorkerBlock(block: CompactBlock, failed: boolean): CompactBlock {
+  if (!block.streaming && !block.pending) return block
+  return { ...block, streaming: false, pending: false, failed: failed || block.failed }
+}
+
+function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
   const next = blocks.slice()
   switch (ev.kind) {
     case "user_message":
@@ -244,6 +280,46 @@ export function pendingAsk(blocks: CompactBlock[]): CompactBlock | undefined {
   return [...blocks].reverse().find((b) => b.kind === "question" && b.pending)
 }
 
+export type PhoneAgent = {
+  id: string
+  role: string
+  status: "running" | "done" | "failed"
+  blocks: CompactBlock[]
+  activity: string
+}
+
+export function managerBlocks(blocks: CompactBlock[]): CompactBlock[] {
+  return blocks.filter((b) => !b.agentId)
+}
+
+export function phoneAgents(blocks: CompactBlock[]): PhoneAgent[] {
+  const agents = new Map<string, PhoneAgent>()
+  for (const block of blocks) {
+    const id = block.agentId
+    if (!id) continue
+    let agent = agents.get(id)
+    if (!agent) {
+      agent = { id, role: id, status: "running", blocks: [], activity: "" }
+      agents.set(id, agent)
+    }
+    if (block.kind === "spawn") {
+      agent.role = block.text || agent.role
+      agent.status = "running"
+    } else if (block.kind === "finish") {
+      agent.status = block.failed ? "failed" : "done"
+      if (block.failed) agent.activity = block.text.slice(0, 80)
+    } else if (block.kind === "answer" || block.kind === "reasoning") {
+      agent.status = "running"
+      agent.activity = lastLine(block.text).slice(0, 80)
+    } else if (block.kind === "tool") {
+      agent.status = "running"
+      agent.activity = block.toolName || block.text.slice(0, 80)
+    }
+    if (block.kind !== "finish" || block.failed) agent.blocks.push(block)
+  }
+  return [...agents.values()]
+}
+
 function blockId(ev: RemoteEvent): string {
   return `${ev.seq}:${ev.kind}:${ev.tool_call_id ?? ""}`
 }
@@ -311,7 +387,7 @@ export type PhoneTicker = {
 /** Bookkeeping the phone never paints. Skipping it keeps a thought and the
  *  next real tool in one fold. */
 export function isPhoneOmitted(block: CompactBlock): boolean {
-  if (block.kind === "spawn") return true
+  if (block.kind === "spawn" || (block.kind === "finish" && !block.failed)) return true
   if (block.kind !== "tool") return false
   const name = block.toolName ?? ""
   if (OMITTED_TOOLS.has(name)) return true

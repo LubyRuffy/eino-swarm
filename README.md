@@ -374,8 +374,11 @@ end-to-end tests run on and the fastest way to see the UI work.
    the menu. Switching a chip opens that PC. In-progress rows show
    findings or **Waiting**, not `schedule_wake` / `report_schedule` JSON.
    The transcript opens on the
-   last turn, already at the live edge; Earlier or pull up loads older rows. A tap
-   paints the chrome immediately; until that conversation arrives the body
+   last turn, already at the live edge; Earlier or pull up loads older rows.
+   **Agents / 子 Agent** shows each worker's status and opens its separate
+   activity log. The phone shows only Pairlink-permitted, clipped events,
+   not the worker's launch instruction. A tap paints the chrome immediately;
+   until that conversation arrives the body
    shows a loading status, not a blank screen. The transcript is a short tail, not the
    whole turn. The composer matches the PC: a model, a thinking level, and a
    file or image. An image is shown to the model; other files go into the

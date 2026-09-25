@@ -79,7 +79,7 @@ type MockThread = {
   followups?: FollowupView[]
 }
 
-type Step = { kind: string; text?: string; callID?: string; err?: string }
+type Step = { kind: string; text?: string; callID?: string; err?: string; agentID?: string; role?: string }
 
 const projects: ProjectView[] = [
   { id: "p-platform", name: "Platform" },
@@ -204,7 +204,19 @@ export class MockHost {
       }
     }
     const done = this.find("t-recent")
-    if (done) this.seed(done, scriptedTurn(done.title), false)
+    if (done) {
+      this.seed(done, scriptedTurn(done.title), false)
+      if (new URLSearchParams(location.search).get("agents") === "1") {
+        this.seed(done, [
+          { kind: "spawned", agentID: "worker-1", role: "reader" },
+          { kind: "reasoning", agentID: "worker-1", text: "Checking the source." },
+          { kind: "tool_call", agentID: "worker-1", text: "read({})", callID: "worker-call" },
+          { kind: "tool_result", agentID: "worker-1", text: "Evidence found.", callID: "worker-call" },
+          { kind: "agent_message", agentID: "worker-1", text: "worker answer" },
+          { kind: "finished", agentID: "worker-1", role: "reader", text: "worker answer" },
+        ], false)
+      }
+    }
   }
 
   stop() {
@@ -409,6 +421,8 @@ export class MockHost {
       thread_id: th.id,
       seq: streamed ? 0 : this.seq,
       kind: step.kind,
+      agent_id: step.agentID,
+      role: step.role,
       text: step.text ?? "",
       tool_call_id: callID,
       err: step.err,

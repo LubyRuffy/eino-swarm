@@ -35,8 +35,14 @@ compact rule as desktop user view, and the phone's only view). An
 answer stays on screen and splits that row. The live tail is **Thinking**
 / **Planning next moves** / **Editing** / **Reading** / **Exec**; open
 the row for the pieces. A `progress` pulse is not a chat
-row. `wait_agents` is a status count, not the `elapsed_ms` roster. A
-`schedule` event is still **A wait is armed.** in the transcript; the live
+row. `wait_agents` is a status count, not the `elapsed_ms` roster.
+A conversation with sub-agents offers **Agents / 子 Agent** in its header. The
+list shows each role, ID, status, and latest permitted activity; open a row
+for that agent's separate thought, tool, and answer log. **Earlier** loads
+older events into the same list and log. Worker answers do not appear as
+manager answers. Pairlink strips worker launch instructions and clips event
+bodies; the phone does not offer the desktop-only full instruction view.
+The `schedule` event is still **A wait is armed.** in the transcript; the live
 wait is the banner (next check, **Run now**, **Cancel wait**).
 `schedule_report` stays on the `report_schedule` chip. A standing
 `/goal` is Pursuing / Done / Blocked / Paused, not a muted strip that

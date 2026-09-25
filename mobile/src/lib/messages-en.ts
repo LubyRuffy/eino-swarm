@@ -72,6 +72,10 @@ export const en = {
   "when.days": "{n}d ago",
 
   "thread.back": "Back",
+  "thread.agents": "Agents",
+  "thread.agent.running": "running",
+  "thread.agent.done": "done",
+  "thread.agent.failed": "failed",
   "thread.stop": "Stop",
   "thread.send": "Send",
   "thread.followUp": "Follow-up",
