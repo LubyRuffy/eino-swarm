@@ -166,8 +166,9 @@ is false until Settings turns it on; then `tools` is three groups
 (default 3). `more` and `next` mean another page exists, still inside that
 window or older than it. `GET /api/clients?before=<unix ms>` returns the
 next five per tool. `GET /api/clients/task?id=` returns that session's title, status, and
-visible lines (`user`, `assistant`, `tool`). It does not send, steer, or
-resume. A missing id is 404. The phone uses `client_read` with `task_id`
+visible lines (`user`, `assistant`, `tool`). The desktop and the phone
+render that payload in the main chat and leave the composer locked. It does
+not send, steer, or resume. A missing id is 404. The phone uses `client_read` with `task_id`
 and reads `client_view`.
 
 A paired phone gets the same list on the inbox `list` reply as `clients`,

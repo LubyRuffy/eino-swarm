@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react"
 
-import { ClientTranscriptDialog } from "@/components/app/client-transcript"
 import { SidebarSection } from "@/components/app/sidebar-section"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
+import { openClient, useOpenClient } from "@/lib/client-open"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import {
   mergeClientTools,
@@ -15,14 +15,14 @@ import { cn } from "@/lib/utils"
 
 const POLL_MS = 1500
 
-/** Read-only tool groups. A row is not a button: this list does not open
- *  or steer the foreign session. */
+/** Read-only tool groups. A row opens the session in the main chat.
+ *  The composer stays on screen and cannot send. */
 export function LocalClientsSection() {
   const t = useT()
   const [enabled, setEnabled] = useState(false)
   const [tools, setTools] = useState<ClientTool[]>([])
   const [open, setOpen] = useState<Record<string, boolean>>({})
-  const [reading, setReading] = useState<string | null>(null)
+  const reading = useOpenClient()
 
   useEffect(() => {
     let stop = false
@@ -62,7 +62,6 @@ export function LocalClientsSection() {
   }
 
   return (
-    <>
     <SidebarSection
       testId="clients-list"
       label={t("sidebar.clients")}
@@ -87,8 +86,11 @@ export function LocalClientsSection() {
                 <li key={task.id} data-testid="client-task">
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2 px-[var(--sidebar-row-px)] py-1 text-left"
-                    onClick={() => setReading(task.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-[var(--sidebar-row-px)] py-1 text-left",
+                      reading?.id === task.id && "bg-sidebar-accent text-sidebar-accent-foreground",
+                    )}
+                    onClick={() => openClient({ id: task.id, title: task.title, status: task.status })}
                   >
                   <span
                     data-testid="client-status"
@@ -127,7 +129,5 @@ export function LocalClientsSection() {
         </SidebarSection>
       ))}
     </SidebarSection>
-    <ClientTranscriptDialog id={reading} onClose={() => setReading(null)} />
-  </>
   )
 }

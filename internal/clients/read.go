@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -90,7 +91,40 @@ func splitTaskID(id string) (tool, rest string, ok bool) {
 	}
 }
 
+var (
+	pathMu sync.Mutex
+	paths  = map[string]string{}
+)
+
+// rememberSession keeps the file List already opened, so a later read does
+// not walk every transcript again.
+func rememberSession(id, path string) {
+	if id == "" || path == "" {
+		return
+	}
+	pathMu.Lock()
+	paths[id] = path
+	pathMu.Unlock()
+}
+
+func cachedSession(id string) (string, bool) {
+	pathMu.Lock()
+	path, ok := paths[id]
+	pathMu.Unlock()
+	if !ok {
+		return "", false
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() {
+		return "", false
+	}
+	return path, true
+}
+
 func findSession(cfg config.ClientsConfig, tool, rest string) (string, bool) {
+	if path, ok := cachedSession(tool + ":" + rest); ok {
+		return path, true
+	}
 	switch tool {
 	case ToolClaude:
 		return walkFile(filepath.Join(cfg.ClaudeDir, "projects"), rest+".jsonl")

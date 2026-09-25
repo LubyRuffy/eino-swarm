@@ -255,11 +255,12 @@ export function Composer({
   }, [text])
 
   useEffect(() => {
+    if (disabled) return
     const el = areaRef.current
     if (!el) return
     el.focus()
     el.setSelectionRange(el.value.length, el.value.length)
-  }, [focusSignal])
+  }, [focusSignal, disabled])
 
   const quoted = quotes ?? []
   const meterWindow = windowForSelection(models, provider, model)
@@ -428,7 +429,11 @@ export function Composer({
       <div
         ref={dockRef}
         data-testid="composer-dock"
-        className="pointer-events-auto relative z-10 content-column content-gutter pb-3"
+        aria-disabled={disabled || undefined}
+        className={cn(
+          "relative z-10 content-column content-gutter pb-3",
+          disabled ? "pointer-events-none opacity-60" : "pointer-events-auto",
+        )}
       >
         <div
           data-testid="composer-pins"
@@ -535,11 +540,13 @@ export function Composer({
             aria-expanded={slashOpen}
             aria-controls={slashOpen ? "slash-menu" : undefined}
             placeholder={
-              awaitingAnswer
-                ? t("composer.placeholderAsk")
-                : running
-                  ? t("composer.placeholderRunning")
-                  : t("composer.placeholder")
+              disabled
+                ? t("sidebar.clientReadOnly")
+                : awaitingAnswer
+                  ? t("composer.placeholderAsk")
+                  : running
+                    ? t("composer.placeholderRunning")
+                    : t("composer.placeholder")
             }
             className={cn(
               contentTypeClass,

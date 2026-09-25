@@ -16,6 +16,7 @@ import {
   SIDEBAR_WIDTH_VAR,
 } from "@/lib/sidebar-width"
 import { chromeTypeClass } from "@/lib/chrome-type"
+import { useOpenClient } from "@/lib/client-open"
 import { desktopShell } from "@/lib/shell"
 import type { Project, Thread, ThreadStatus } from "@/lib/types"
 import { cn, formatDuration } from "@/lib/utils"
@@ -61,14 +62,15 @@ export function Header({
 }) {
   const t = useT()
   const scheduled = useApp((s) => s.scheduleInboxOpen)
+  const client = useOpenClient()
   // The elapsed clock ticks here, not in App: a once-a-second setState in
   // the shell used to re-parse every markdown block in the conversation.
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!status.running || scheduled) return
+    if (!status.running || scheduled || client) return
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(id)
-  }, [status.running, scheduled])
+  }, [status.running, scheduled, client])
   const elapsedMs =
     status.running && status.started_at
       ? Math.max(0, now - new Date(status.started_at).getTime())
@@ -111,7 +113,7 @@ export function Header({
             a 48px bar. The model name lives on the composer; repeating it here
             ate the same row. */}
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {!scheduled && project ? (
+          {!scheduled && !client && project ? (
             <>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -138,13 +140,30 @@ export function Header({
             className={cn(chromeTypeClass, "min-w-0 truncate")}
             data-testid="thread-title"
           >
-            {scheduled
-              ? t("schedule.inboxTitle")
-              : thread?.title || t("header.newConversation")}
+            {client
+              ? client.title
+              : scheduled
+                ? t("schedule.inboxTitle")
+                : thread?.title || t("header.newConversation")}
           </p>
         </div>
 
-        {scheduled ? null : status.running ? (
+        {client ? (
+          <Badge
+            variant={client.status === "running" ? "warning" : "outline"}
+            data-testid="status-badge"
+          >
+            <span
+              className={cn(
+                "size-1.5 rounded-full",
+                client.status === "running"
+                  ? "animate-breathe bg-running"
+                  : "bg-muted-foreground",
+              )}
+            />
+            {client.status === "running" ? t("sidebar.clientRunning") : t("sidebar.clientDone")}
+          </Badge>
+        ) : scheduled ? null : status.running ? (
           <Badge
             variant={status.awaiting_answer ? "ask" : "warning"}
             data-testid="status-badge"
@@ -179,7 +198,7 @@ export function Header({
           </Badge>
         )}
 
-        {!scheduled && status.turn_id ? (
+        {!scheduled && !client && status.turn_id ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <CopyButton text={status.turn_id} />

@@ -39,3 +39,20 @@ func TestReadShowsTheSessionWithoutOpeningATurn(t *testing.T) {
 		t.Fatal("switch off still read a session")
 	}
 }
+
+func TestReadUsesThePathTheListAlreadyFound(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "elsewhere", "s1.jsonl")
+	body := "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"open session\"}]}}\n"
+	writeFileTime(t, path, body, time.Now())
+	rememberSession("claude:cached", path)
+	cfg := config.ClientsConfig{
+		Enabled: true, ClaudeDir: filepath.Join(root, "missing"),
+		CodexDir: filepath.Join(root, "no-codex"), CursorDir: filepath.Join(root, "no-cursor"),
+		RecentDays: 3, RunningStaleSeconds: 90,
+	}
+	got, ok := Read(cfg, "claude:cached", time.Now())
+	if !ok || got.Title != "open session" {
+		t.Fatalf("cached read = %+v ok=%v", got, ok)
+	}
+}

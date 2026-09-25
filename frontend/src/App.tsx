@@ -9,6 +9,7 @@ import {
   isDark,
   SettingsIdleChrome,
 } from "@/components/app/app-chrome"
+import { ClientChat } from "@/components/app/client-transcript"
 import { Composer } from "@/components/app/composer"
 import { DeleteProjectDialog } from "@/components/app/delete-project-dialog"
 import { EmptyState } from "@/components/app/empty-state"
@@ -23,6 +24,7 @@ import { TerminalPanel } from "@/components/app/terminal-panel"
 import { Transcript } from "@/components/app/transcript"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { api } from "@/lib/api"
+import { closeClient, useOpenClient } from "@/lib/client-open"
 import { toggleContentWidth, toggleTranscriptMode } from "@/lib/appearance"
 import { attachExternalLinkHandler } from "@/lib/external-links"
 import { findShortcut } from "@/lib/find"
@@ -127,6 +129,7 @@ function AppShell() {
   const selectAgent = useApp((s) => s.selectAgent)
   const activeId = useApp((s) => s.activeId)
   const trafficLights = desktopShell() && isMac()
+  const client = useOpenClient()
 
   const toggleSidebar = useCallback(() => {
     setSidebarOpen((open) => {
@@ -168,6 +171,7 @@ function AppShell() {
   )
 
   const startThread = useCallback(async () => {
+    closeClient()
     await newThread()
     focusComposer()
   }, [newThread, focusComposer])
@@ -177,6 +181,7 @@ function AppShell() {
       // Select first so the folder expands onto the conversation we are
       // about to create. Creating first and then refreshing used to wipe
       // the new row if the listing raced the insert.
+      closeClient()
       if (useProjects.getState().selectedId !== project.id) {
         useProjects.getState().select(project.id)
       }
@@ -344,15 +349,20 @@ function AppShell() {
             className="relative min-h-0 min-w-0 flex-1"
           >
             <div className="absolute inset-0 flex min-h-0 min-w-0 flex-col overflow-hidden">
-              <TranscriptPane
-                onSelectAgent={openAgent}
-                onPickIdea={pickIdea}
-                findQuery={findOpen ? findQuery : ""}
-                findIndex={findIndex}
-                onFindCount={setFindTotal}
-              />
+              {client ? (
+                <ClientChat id={client.id} />
+              ) : (
+                <TranscriptPane
+                  onSelectAgent={openAgent}
+                  onPickIdea={pickIdea}
+                  findQuery={findOpen ? findQuery : ""}
+                  findIndex={findIndex}
+                  onFindCount={setFindTotal}
+                />
+              )}
             </div>
             <AppComposer
+              locked={client != null}
               prefill={prefill}
               prefillToken={prefillToken}
               focusSignal={focusSignal}
@@ -533,7 +543,10 @@ function AppSidebar({
       waitingIds={waitingIds}
       askingIds={askingIds}
       onNew={onNew}
-      onOpen={(id) => void openThread(id)}
+      onOpen={(id) => {
+        closeClient()
+        void openThread(id)
+      }}
       onRename={(id, title) => void renameThread(id, title)}
       onDelete={(id) => void deleteThread(id)}
       onReorder={(ids) => void reorderThreads(ids)}
@@ -615,6 +628,7 @@ function AppComposer({
   quotes,
   onQuotesChange,
   onEditProviders,
+  locked,
 }: {
   prefill: string
   prefillToken: number
@@ -622,6 +636,7 @@ function AppComposer({
   quotes: Quote[]
   onQuotesChange: (quotes: Quote[]) => void
   onEditProviders: () => void
+  locked?: boolean
 }) {
   // Do not select `usage` here. That pulse is one object per model call and
   // would re-render the controlled textarea while a CJK IME is composing.
@@ -672,11 +687,14 @@ function AppComposer({
         if (activeId)
           void api.patchThread(activeId, { reasoning_effort: level }).then(() => refreshThreads())
       }}
-      onSend={(text, images, opts) => void send(text, images, opts)}
+      onSend={
+        locked ? () => undefined : (text, images, opts) => void send(text, images, opts)
+      }
       onStop={() => void interrupt()}
       onUpload={upload}
       onRefreshModels={() => refreshCatalogs()}
       onEditProviders={onEditProviders}
+      disabled={locked}
       prefill={prefill}
       prefillToken={prefillToken}
       focusSignal={focusSignal}
@@ -766,9 +784,10 @@ function AppPanel({
     conversationProject
   const memoryForProject =
     project && memoryProjectId === project.id ? memory : undefined
-  // Scheduled is a page, not a conversation. The Agents/Files/Trace rail
-  // belongs to the thread underneath; Settings hides it the same way.
-  if (scheduled) return null
+  const clientOpen = useOpenClient() != null
+  // Scheduled is a page, not a conversation. A foreign session uses the same
+  // column and is not this thread's agents, files, or trace.
+  if (scheduled || clientOpen) return null
   return (
     <RightPanel
       tab={tab}

@@ -59,6 +59,7 @@ export const en = {
   "sidebar.clientMore": "More",
   "sidebar.clientEmpty": "No tasks in the last 3 days",
   "sidebar.clientReadOnly": "Read only. This does not send or resume.",
+  "sidebar.clientMissing": "Could not read this session.",
   "sidebar.clientTruncated": "Showing the latest part of a long session.",
   "sidebar.newInRecents": "Start a conversation",
   "sidebar.pin": "Pin",

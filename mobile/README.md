@@ -94,7 +94,8 @@ inbox also lists Clients, then Claude, Codex, and Cursor. Each row is the
 task title and a light: breathing while it is still running, steady when
 it is finished. Each tool group folds. The first page is at most five
 tasks from the last three days; More loads the next five. The phone does
-not scan its own disk. Opening a row reads that session and does not send.
+not scan its own disk. Opening a row fills the chat. The composer stays
+on screen and cannot send.
 
 ## A model on the phone
 

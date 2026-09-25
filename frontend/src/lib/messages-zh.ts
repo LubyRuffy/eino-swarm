@@ -60,6 +60,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "sidebar.clientMore": "更多",
   "sidebar.clientEmpty": "最近 3 天没有任务",
   "sidebar.clientReadOnly": "只读。这里不会发送，也不会接管。",
+  "sidebar.clientMissing": "读不到这场会话。",
   "sidebar.clientTruncated": "会话很长，只显示最近一段。",
   "sidebar.newInRecents": "新建对话",
   "sidebar.pin": "置顶",

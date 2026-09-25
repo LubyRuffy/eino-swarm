@@ -51,6 +51,16 @@ function renderComposer(props: Partial<Parameters<typeof Composer>[0]> = {}) {
   )
 }
 
+describe("Composer locked", () => {
+  it("ignores the keyboard and the pointer when a foreign session is open", () => {
+    renderComposer({ disabled: true })
+    const input = screen.getByTestId("composer-input")
+    expect(input).toBeDisabled()
+    expect(input).toHaveAttribute("placeholder", "Read only. This does not send or resume.")
+    expect(screen.getByTestId("composer-dock").className).toContain("pointer-events-none")
+  })
+})
+
 describe("Composer model switcher", () => {
   it("stays a switcher when only one model is ready", () => {
     renderComposer()

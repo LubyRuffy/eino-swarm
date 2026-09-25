@@ -166,8 +166,10 @@ func scanClaude(root string, now time.Time, stale time.Duration) []Task {
 			if title == "" {
 				title = strings.TrimSuffix(f.Name(), ".jsonl")
 			}
+			id := ToolClaude + ":" + strings.TrimSuffix(f.Name(), ".jsonl")
+			rememberSession(id, h.path)
 			out = append(out, Task{
-				ID:        ToolClaude + ":" + strings.TrimSuffix(f.Name(), ".jsonl"),
+				ID:        id,
 				Title:     title,
 				CWD:       cwd,
 				UpdatedAt: h.mtime,
@@ -200,8 +202,10 @@ func scanCodex(root string, now time.Time, stale time.Duration) []Task {
 		if title == "" {
 			title = id
 		}
+		taskID := ToolCodex + ":" + id
+		rememberSession(taskID, h.path)
 		out = append(out, Task{
-			ID:        ToolCodex + ":" + id,
+			ID:        taskID,
 			Title:     title,
 			CWD:       cwd,
 			UpdatedAt: h.mtime,
@@ -241,8 +245,10 @@ func scanCursor(root string, now time.Time, stale time.Duration) []Task {
 			if title == "" {
 				title = id.Name()
 			}
+			taskID := ToolCursor + ":" + id.Name()
+			rememberSession(taskID, h.path)
 			out = append(out, Task{
-				ID:        ToolCursor + ":" + id.Name(),
+				ID:        taskID,
 				Title:     title,
 				UpdatedAt: h.mtime,
 				Status:    cursorStatus(h.tail, h.mtime, now, stale),
