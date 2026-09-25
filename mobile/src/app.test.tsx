@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { openSaved, type DeviceLink } from "@/lib/client"
 import { t } from "@/lib/i18n"
 import {
+  OpClients,
   OpHello,
   OpList,
   OpMore,
@@ -514,6 +515,53 @@ describe("inbox window and thread loading", () => {
     expect(screen.queryByRole("button", { name: t("home.more") })).not.toBeInTheDocument()
   })
 
+  it("keeps Clients More busy until its page arrives and ignores a second tap", async () => {
+    seedLink()
+    let finish: (value: RemoteResponse) => void = () => undefined
+    const pending = new Promise<RemoteResponse>((resolve) => { finish = resolve })
+    const clients = vi.fn((_req: Partial<RemoteRequest>) => pending)
+    vi.mocked(openSaved).mockResolvedValue(hostLink({
+      list: async () => ({
+        v: 1, id: "l", ok: true, threads: [], running: [],
+        clients: { enabled: true, tools: [{ id: "codex", more: true, next: "42", tasks: [] }] },
+      }),
+      clients,
+    }))
+    render(<App />)
+    const button = await screen.findByTestId("client-more-codex")
+    fireEvent.click(button)
+    expect(button).toHaveAttribute("aria-busy", "true")
+    fireEvent.click(button)
+    expect(clients.mock.calls.filter(([req]) => req.group === "codex")).toHaveLength(1)
+    await act(async () => finish({
+      v: 1, id: "c", ok: true,
+      clients: { enabled: true, tools: [{ id: "codex", more: false, tasks: [{ id: "older", title: "older", status: "done", updated_at: "2026-09-25T00:00:00Z" }] }] },
+    }))
+    expect(screen.getByRole("button", { name: "older" })).toBeInTheDocument()
+    expect(screen.queryByTestId("client-more-codex")).not.toBeInTheDocument()
+  })
+
+  it("restores Clients More after a failed page request", async () => {
+    seedLink()
+    let rejectPage: (reason: Error) => void = () => undefined
+    const pending = new Promise<RemoteResponse>((_, reject) => { rejectPage = reject })
+    vi.mocked(openSaved).mockResolvedValue(hostLink({
+      list: async () => ({
+        v: 1, id: "l", ok: true, threads: [], running: [],
+        clients: { enabled: true, tools: [{ id: "codex", more: true, next: "42", tasks: [] }] },
+      }),
+      clients: (req) => req.group ? pending : Promise.resolve({ v: 1, id: "p", ok: true }),
+    }))
+    render(<App />)
+    const button = await screen.findByTestId("client-more-codex")
+    fireEvent.click(button)
+    expect(button).toHaveAttribute("aria-busy", "true")
+    await act(async () => rejectPage(new Error("page offline")))
+    expect(button).not.toBeDisabled()
+    expect(button).not.toHaveAttribute("aria-busy")
+    expect(screen.getByRole("alert")).toHaveTextContent("page offline")
+  })
+
   it("shows loading outside the transcript while open has not answered", async () => {
     seedLink()
     vi.mocked(openSaved).mockResolvedValue(
@@ -555,6 +603,7 @@ function hostLink(opts?: {
   watch?: () => Promise<RemoteResponse>
   start?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
   more?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
+  clients?: (req: Partial<RemoteRequest>) => Promise<RemoteResponse>
 }): DeviceLink {
   const threads = opts?.threads ?? [
     { id: "th-1", title: "th-1", running: false, last_active_at: "2026-01-01T00:00:00Z" },
@@ -573,6 +622,7 @@ function hostLink(opts?: {
         return { v: 1, id: "l", ok: true, threads, running, projects: opts?.projects ?? [] }
       }
       if (req.op === OpMore && opts?.more) return opts.more(req)
+      if (req.op === OpClients && opts?.clients) return opts.clients(req)
       if (req.op === OpOpen) {
         if (opts?.open) return opts.open()
         return {

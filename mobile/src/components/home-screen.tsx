@@ -71,6 +71,7 @@ export function HomeScreen({
   onToggleLocale,
   clientsOn = false,
   clientTools = [],
+  loadingClientMore = "",
   onClientMore,
   onClientRead,
 }: {
@@ -102,6 +103,7 @@ export function HomeScreen({
   onToggleLocale?: () => void
   clientsOn?: boolean
   clientTools?: ClientTool[]
+  loadingClientMore?: string
   onClientMore?: (id: string, next?: string) => void
   onClientRead?: (id: string) => Promise<import("@/lib/rpc").ClientView | null>
 }) {
@@ -228,6 +230,7 @@ export function HomeScreen({
             {clientsOn ? (
               <ClientGroups
                 tools={clientTools}
+                loadingMore={loadingClientMore}
                 onMore={(id, next) => onClientMore?.(id, next)}
                 onRead={onClientRead}
               />

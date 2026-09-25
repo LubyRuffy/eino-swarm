@@ -426,6 +426,8 @@ chat. The opening request stays pinned at the top. Adjacent thinking and tool ca
 conversation. The composer stays where it is and cannot be used. A paired phone
 opens the same chat with the same locked composer. The switch is off until
 you turn it on.
+On the phone, Clients → More shows a loading spinner while the next page arrives.
+If that request fails, the existing rows stay visible and More can be retried.
 
 ## Using it
 

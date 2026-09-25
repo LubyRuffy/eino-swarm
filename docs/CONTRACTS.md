@@ -92,3 +92,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 契约内容：手机输入框的模型按钮打开应用内分组列表，列表沿用应用字号并允许长模型名换行；选择后保留服务商和模型的配对关系，关闭后发送使用新选择。返回键先关闭列表，不退出对话或应用。
 - 允许行为：点击遮罩、关闭按钮或 Escape 关闭列表；禁止行为：依赖不受应用样式控制的系统原生选项弹窗，或把不同服务商的同名模型混为一个选项；失败语义：列表关闭后保留原选择；不变量：选择只改变当前输入框的服务商和模型；边界条件：长模型名、多服务商和 Android 系统返回键。
 - 证据：实现 `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.tsx`；测试 `mobile/src/components/composer.test.tsx`, `mobile/src/components/direct-chat-screen.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步手机模型选择测试和使用文档；来源：GitHub Issue #34。
+
+## C-014 Phone client pagination feedback
+
+- 状态：active；类型：lifecycle；作用范围：phone Clients 分页；关联功能：`F-223`。
+- 契约内容：点击 Clients 的 More 后立即显示加载动效和文字，等待 RPC 时禁用重复点击；成功时追加较旧任务，失败时保留现有列表、显示错误并恢复按钮。
+- 允许行为：不同工具分组独立显示任务；禁止行为：无反馈的重复分页、失败后永久禁用或静默丢弃异常；失败语义：已有任务继续可见，错误显示在手机页面；不变量：一个分页请求在途时不重复发起；边界条件：慢响应、RPC 拒绝、切换 PC。
+- 证据：实现 `mobile/src/lib/client-poll.ts`, `mobile/src/components/client-groups.tsx`；测试 `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步手机 UI 测试和使用文档；来源：GitHub Issue #35。

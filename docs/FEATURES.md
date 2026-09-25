@@ -18,6 +18,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-220` Read and control PC conversations
     - `F-221` Quote PC conversation text
     - `F-222` Inspect sub-agents on the phone
+    - `F-223` Inspect local client tasks on the phone
     - `F-230` Direct model chat
     - `F-240` Phone updates
   - `F-300` Programmatic access
@@ -80,6 +81,10 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-222 Inspect sub-agents on the phone
 
 - 目的：在手机查看 PC 对话中的子 Agent 而不混入主 Agent 回答；使用者：已配对手机用户；入口：对话页 → 子 Agent／Agents → 子 Agent 行；输入：Pairlink 已允许的事件及更早历史页；输出：角色、ID、运行／完成／失败状态、活动摘要和独立的思考、工具、回答记录；前置条件：PC 端有可回放的子 Agent 事件；失败表现：离线时沿用重连提示，未加载到启动事件前角色暂以 ID 显示；关联契约：`C-003`, `C-006`；实现证据：`mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/thread-screen.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`。
+
+### F-223 Inspect local client tasks on the phone
+
+- 目的：在已配对手机上只读查看 PC 的本地客户端任务；使用者：手机用户；入口：收件箱 → Clients → 工具分组和 More；输入：客户端任务页；输出：任务状态、记录及加载更多时的动效；前置条件：PC 已启用 Clients 且在线；失败表现：分页失败保留当前列表、显示错误并恢复 More；关联契约：`C-006`, `C-014`；实现证据：`mobile/src/lib/client-poll.ts`, `mobile/src/components/client-groups.tsx`, `mobile/src/app.test.tsx`, `mobile/e2e/walkthrough.spec.ts`。
 
 ### F-230 Direct model chat
 

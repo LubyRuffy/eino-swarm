@@ -63,6 +63,10 @@ export function mockPauseOpenMs(search = location.search): number {
   return new URLSearchParams(search).get("pause") === "open" ? 1200 : 0
 }
 
+function mockPauseClientsMs(search = location.search): number {
+  return new URLSearchParams(search).get("pause") === "clients" ? 1200 : 0
+}
+
 type MockThread = {
   id: string
   title: string
@@ -539,6 +543,9 @@ export class MockLink {
           },
         })
       case OpClients:
+        if (req.group && mockPauseClientsMs()) {
+          await new Promise((resolve) => setTimeout(resolve, mockPauseClientsMs()))
+        }
         return this.ok({
           id,
           clients: this.host.clientCatalog(req.before, req.group),

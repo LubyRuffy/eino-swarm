@@ -5,6 +5,18 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("Clients More shows progress during a slow page and then reveals the older task", async ({ page }) => {
+  await page.goto("/?mock=1&tick=0&pause=clients")
+  await page.getByRole("button", { name: "返回" }).click()
+  const more = page.getByTestId("client-more-claude")
+  await more.click()
+  await expect(more).toHaveAttribute("aria-busy", "true")
+  await expect(more).toContainText("正在加载更多")
+  await expect(more).toBeDisabled()
+  await expect(page.getByRole("button", { name: "older session" })).toBeVisible()
+  await expect(more).toHaveCount(0)
+})
+
 test("phone model chooser uses the app type scale and keeps long names on screen", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("zwai.phone.providers", JSON.stringify([{

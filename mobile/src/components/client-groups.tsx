@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 
 import { Composer } from "@/components/composer"
 import { Button } from "@/components/ui/button"
@@ -21,10 +21,12 @@ type Reading = {
  *  screen and cannot send. */
 export function ClientGroups({
   tools,
+  loadingMore = "",
   onMore,
   onRead,
 }: {
   tools: ClientTool[]
+  loadingMore?: string
   onMore: (id: string, next?: string) => void
   onRead?: (id: string) => Promise<ClientView | null>
 }) {
@@ -116,11 +118,19 @@ export function ClientGroups({
               <li>
                 <Button
                   variant="ghost"
-                  className="h-9 w-full rounded-none text-muted-foreground"
+                  className={cn(
+                    "h-9 w-full gap-2 rounded-none text-muted-foreground",
+                    loadingMore === tool.id && "disabled:opacity-100",
+                  )}
                   data-testid={`client-more-${tool.id}`}
                   onClick={() => onMore(tool.id, tool.next)}
+                  disabled={Boolean(loadingMore)}
+                  aria-busy={loadingMore === tool.id || undefined}
                 >
-                  {t("home.more")}
+                  {loadingMore === tool.id ? (
+                    <Loader2 className="size-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden />
+                  ) : null}
+                  {loadingMore === tool.id ? t("home.loadingMore") : t("home.more")}
                 </Button>
               </li>
             ) : null}

@@ -120,6 +120,9 @@ and a Playwright paste/scan screen; `mobile/native-project.test.ts` asserts the
 iOS and Android trees ship with camera permission, no compiled hub URL, and
 the zwai launcher (not Capacitor's default icon), and that Android release
 Gradle takes version/signing from the environment (no password in git).
+`mobile/src/app.test.tsx` and `mobile/src/components/client-groups.test.tsx`
+cover Clients More pending, duplicate tap, success, and failure. The mobile
+walkthrough holds a scripted Clients page briefly to verify the spinner.
 `mobile/scripts/android-release.test.ts` is why `make mobile-android-release`
 refuses a store upload without a keystore, skips JAVA_HOME 17, and copies
 the APK into `bin/`. `internal/update` is why a Mac desktop install only

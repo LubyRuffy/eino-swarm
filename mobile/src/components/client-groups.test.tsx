@@ -4,6 +4,28 @@ import { describe, expect, it, vi } from "vitest"
 import { ClientGroups } from "./client-groups"
 
 describe("ClientGroups", () => {
+  it("shows a spinner and disables Clients More while its page is loading", () => {
+    const onMore = vi.fn()
+    render(
+      <ClientGroups
+        tools={[
+          { id: "codex", more: true, next: "42", tasks: [] },
+          { id: "claude", more: true, next: "38", tasks: [] },
+        ]}
+        loadingMore="codex"
+        onMore={onMore}
+      />,
+    )
+    const button = screen.getByTestId("client-more-codex")
+    expect(button).toHaveAttribute("aria-busy", "true")
+    expect(button).toBeDisabled()
+    expect(button).toHaveTextContent("Loading more")
+    expect(button.querySelector("svg.motion-safe\\:animate-spin")).not.toBeNull()
+    expect(screen.getByTestId("client-more-claude")).toBeDisabled()
+    fireEvent.click(button)
+    expect(onMore).not.toHaveBeenCalled()
+  })
+
   it("shows a running light and does not open the task", () => {
     const onMore = vi.fn()
     render(

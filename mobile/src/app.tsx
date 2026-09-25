@@ -29,12 +29,11 @@ import type {
   RunningView,
   ThreadView,
 } from "@/lib/rpc"
-import { useClientPoll } from "@/lib/client-poll"
+import { useClientPages, useClientPoll } from "@/lib/client-poll"
 import { mergeClientTools } from "@/lib/local-clients"
 import { readClientTask } from "@/lib/read-client"
 import {
   OpAnswer,
-  OpClients,
   OpCancelWait,
   OpCatalog,
   OpList,
@@ -117,6 +116,7 @@ export function App() {
   const inboxRef = useRef(emptyInbox())
   const moreBusy = useRef(false)
   const linkRef = useRef<RemoteLink | null>(null)
+  const clientPages = useClientPages(linkRef, setClientTools, setError)
   const viewRef = useRef<PhoneView>(view)
   const addingRef = useRef(false)
   const composingRef = useRef(false)
@@ -160,6 +160,7 @@ export function App() {
     rosterFp.current = ""
     moreBusy.current = false
     setLoadingMore(false)
+    clientPages.reset()
     setThreads([])
     setProjects([])
     setRunning([])
@@ -532,15 +533,6 @@ export function App() {
     } catch (e) {
       fail(e)
     }
-  }
-
-  const loadClientMore = (id: string, next?: string) => {
-    const target = linkRef.current
-    if (!target?.alive() || !next) return
-    void target.rpc({ op: OpClients, group: id, before: Number(next) }, { dropOnTimeout: false }).then((resp) => {
-      const tools = resp.clients?.tools
-      if (tools) setClientTools((prev) => mergeClientTools(prev, tools, "append"))
-    })
   }
 
   const loadMore = async (group?: string) => {
@@ -983,7 +975,8 @@ export function App() {
           onMore={(group) => void loadMore(group)}
           clientsOn={clientsOn}
           clientTools={clientTools}
-          onClientMore={(id, next) => void loadClientMore(id, next)}
+          loadingClientMore={clientPages.loadingMore}
+          onClientMore={(id, next) => void clientPages.loadMore(id, next)}
           onClientRead={(id) => readClientTask(linkRef.current, id)}
           onUnlink={unlink}
           onToggleLocale={flipLocale}
