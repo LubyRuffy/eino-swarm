@@ -23,6 +23,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 - **A local agent session shows the original request.** A slash command stays, and the injected skill text that rides along with it does not replace that request. Reply text keeps its line breaks.
 
+- **Opening a local agent task with no visible lines no longer blanks the window.** The session payload sends an empty list instead of null.
+
 - **More on a local agent list no longer jumps back to the first older page when the list refreshes.** Rows already loaded stay, and the next More click continues from there.
 
 - **编辑重发后，原消息的编辑框不再留在对话里。** 发送先收起编辑框。被截断的那一轮若又从直播流里冒出来，不再画回气泡，编辑态也不会重新打开。

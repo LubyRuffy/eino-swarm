@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -62,6 +63,17 @@ func TestReadKeepsTheCommandAndSkipsInjectedContext(t *testing.T) {
 	joined := strings.Join(texts, "|")
 	if !strings.Contains(joined, "user:/tool") || strings.Contains(joined, "injected context") || !strings.Contains(joined, "line one\nline two") {
 		t.Fatalf("entries = %s", joined)
+	}
+	raw, err := json.Marshal(got)
+	if err != nil || !strings.Contains(string(raw), `"entries":[`) {
+		t.Fatalf("entries json = %s err=%v", raw, err)
+	}
+	onlyMeta := "{\"type\":\"user\",\"isMeta\":true,\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"injected context\"}]}}\n"
+	writeFileTime(t, filepath.Join(root, "projects", "work", "s2.jsonl"), onlyMeta, time.Now())
+	empty, ok := Read(cfg, "claude:s2", time.Now())
+	raw, err = json.Marshal(empty)
+	if !ok || err != nil || !strings.Contains(string(raw), `"entries":[]`) {
+		t.Fatalf("empty entries json = %s ok=%v err=%v", raw, ok, err)
 	}
 }
 

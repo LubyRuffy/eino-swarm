@@ -59,7 +59,7 @@ export function ClientChat({ id }: { id: string }) {
         {!doc && !failed
           ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-2/3" />)
           : null}
-        {doc?.entries.map((entry, i) =>
+        {(doc?.entries ?? []).map((entry, i) =>
           entry.role === "user" ? (
             <div key={`${entry.role}-${i}`} className="flex justify-end">
               <div

@@ -153,7 +153,7 @@ export function ClientGroups({
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
             {view.loading ? <p className="text-sm text-muted-foreground">{t("thread.loading")}</p> : null}
             {view.failed ? <p className="text-sm text-muted-foreground">{t("home.clientMissing")}</p> : null}
-            {view.entries.map((entry, i) =>
+            {(view.entries ?? []).map((entry, i) =>
               entry.role === "user" ? (
                 <div key={`${entry.role}-${i}`} className="flex justify-end">
                   <p className="max-w-[85%] rounded-2xl rounded-br-md bg-secondary px-3 py-2 text-sm text-secondary-foreground">

@@ -57,6 +57,9 @@ func Read(cfg config.ClientsConfig, id string, now time.Time) (Transcript, bool)
 	body, clipped := readSession(path)
 	entries := entriesFrom(tool, body)
 	truncated := clipped
+	if entries == nil {
+		entries = []Entry{}
+	}
 	if len(entries) > entryCap {
 		entries = entries[len(entries)-entryCap:]
 		truncated = true
