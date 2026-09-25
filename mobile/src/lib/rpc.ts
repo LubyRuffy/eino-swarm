@@ -25,6 +25,7 @@ export const OpFollowupDrop = "followup_drop"
 export const OpFollowupSteer = "followup_steer"
 export const OpPreempt = "preempt"
 export const OpClients = "clients"
+export const OpClientRead = "client_read"
 export const GROUP_RECENT = "recent"
 
 export type RemoteRequest = {
@@ -51,6 +52,7 @@ export type RemoteRequest = {
   data?: string
   group?: string
   followup_id?: string
+  task_id?: string
 }
 
 export type FollowupView = {
@@ -182,6 +184,17 @@ export type RemoteResponse = {
   groups?: ThreadGroup[]
   followups?: FollowupView[]
   clients?: ClientCatalog
+  client_view?: ClientView
+}
+
+export type ClientEntry = { role: string; text: string }
+
+export type ClientView = {
+  id: string
+  title: string
+  status: string
+  entries: ClientEntry[]
+  truncated?: boolean
 }
 
 export type ClientTask = {

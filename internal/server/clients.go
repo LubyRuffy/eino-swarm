@@ -5,7 +5,10 @@ import (
 	"strconv"
 	"time"
 
+	"strings"
+
 	"github.com/LubyRuffy/eino-swarm/internal/clients"
+	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,4 +23,18 @@ func (s *Server) getClients(c *gin.Context) {
 		before = n
 	}
 	c.JSON(http.StatusOK, clients.List(s.engine.Config().Clients, time.Now(), before))
+}
+
+func (s *Server) getClientTask(c *gin.Context) {
+	id := strings.TrimSpace(c.Query("id"))
+	if id == "" {
+		badRequest(c, "id is required")
+		return
+	}
+	doc, ok := clients.Read(s.engine.Config().Clients, id, time.Now())
+	if !ok {
+		s.fail(c, store.ErrNotFound)
+		return
+	}
+	c.JSON(http.StatusOK, doc)
 }

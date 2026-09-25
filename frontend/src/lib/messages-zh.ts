@@ -59,6 +59,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "sidebar.clientDone": "已完成",
   "sidebar.clientMore": "更多",
   "sidebar.clientEmpty": "最近 3 天没有任务",
+  "sidebar.clientReadOnly": "只读。这里不会发送，也不会接管。",
+  "sidebar.clientTruncated": "会话很长，只显示最近一段。",
   "sidebar.newInRecents": "新建对话",
   "sidebar.pin": "置顶",
   "sidebar.unpin": "取消置顶",

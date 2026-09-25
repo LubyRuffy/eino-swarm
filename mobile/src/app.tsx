@@ -31,6 +31,7 @@ import type {
   ThreadView,
 } from "@/lib/rpc"
 import { mergeClientTools } from "@/lib/local-clients"
+import { readClientTask } from "@/lib/read-client"
 import {
   OpAnswer,
   OpClients,
@@ -981,6 +982,7 @@ export function App() {
           clientsOn={clientsOn}
           clientTools={clientTools}
           onClientMore={(id, next) => void loadClientMore(id, next)}
+          onClientRead={(id) => readClientTask(linkRef.current, id)}
           onUnlink={unlink}
           onToggleLocale={flipLocale}
           showChat={providers.length > 0}

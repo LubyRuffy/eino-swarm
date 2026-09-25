@@ -32,6 +32,8 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 		return handleList(eng, cfg, req, path, sessionID)
 	case OpClients:
 		return handleClients(eng, req, path, sessionID)
+	case OpClientRead:
+		return handleClientRead(eng, req, path, sessionID)
 	case OpOpen:
 		return handleOpen(eng, cfg, req, path, sessionID)
 	case OpStart:

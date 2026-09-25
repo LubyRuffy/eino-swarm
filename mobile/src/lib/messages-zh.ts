@@ -35,6 +35,8 @@ export const zh: Record<MessageKey, string> = {
   "home.clientRunning": "执行中",
   "home.clientDone": "已完成",
   "home.clientEmpty": "最近 3 天没有任务",
+  "home.clientReadOnly": "只读。这里不会发送，也不会接管。",
+  "home.clientTruncated": "会话很长，只显示最近一段。",
   "home.loadingMore": "正在加载更多",
   "home.unlink": "解除绑定",
   "home.project": "项目",

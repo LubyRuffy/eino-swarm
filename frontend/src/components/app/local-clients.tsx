@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 
+import { ClientTranscriptDialog } from "@/components/app/client-transcript"
 import { SidebarSection } from "@/components/app/sidebar-section"
 import { Button } from "@/components/ui/button"
 import { api } from "@/lib/api"
@@ -21,6 +22,7 @@ export function LocalClientsSection() {
   const [enabled, setEnabled] = useState(false)
   const [tools, setTools] = useState<ClientTool[]>([])
   const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [reading, setReading] = useState<string | null>(null)
 
   useEffect(() => {
     let stop = false
@@ -60,6 +62,7 @@ export function LocalClientsSection() {
   }
 
   return (
+    <>
     <SidebarSection
       testId="clients-list"
       label={t("sidebar.clients")}
@@ -81,11 +84,12 @@ export function LocalClientsSection() {
           ) : (
             <ul>
               {tool.tasks.map((task) => (
-                <li
-                  key={task.id}
-                  data-testid="client-task"
-                  className="flex items-center gap-2 px-[var(--sidebar-row-px)] py-1"
-                >
+                <li key={task.id} data-testid="client-task">
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-[var(--sidebar-row-px)] py-1 text-left"
+                    onClick={() => setReading(task.id)}
+                  >
                   <span
                     data-testid="client-status"
                     data-status={task.status}
@@ -103,6 +107,7 @@ export function LocalClientsSection() {
                   <span className={cn(chromeTypeClass, "min-w-0 flex-1 truncate text-sidebar-foreground")}>
                     {task.title}
                   </span>
+                  </button>
                 </li>
               ))}
             </ul>
@@ -122,5 +127,7 @@ export function LocalClientsSection() {
         </SidebarSection>
       ))}
     </SidebarSection>
+    <ClientTranscriptDialog id={reading} onClose={() => setReading(null)} />
+  </>
   )
 }

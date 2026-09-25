@@ -5,17 +5,20 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
 import { clientToolTitle } from "@/lib/local-clients"
-import type { ClientTool } from "@/lib/rpc"
+import type { ClientTool, ClientView } from "@/lib/rpc"
 
 /** Read-only. A task row is not a control: the phone cannot steer it. */
 export function ClientGroups({
   tools,
   onMore,
+  onRead,
 }: {
   tools: ClientTool[]
   onMore: (id: string, next?: string) => void
+  onRead?: (id: string) => Promise<ClientView | null>
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({})
+  const [view, setView] = useState<ClientView | null>(null)
   if (tools.length === 0) return null
   return (
     <section className="flex flex-col gap-2" data-testid="client-groups">
@@ -64,7 +67,17 @@ export function ClientGroups({
                         : "bg-muted-foreground",
                     )}
                   />
-                  <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 truncate text-left text-sm"
+                    onClick={() => {
+                      void onRead?.(task.id).then((doc) => {
+                        if (doc) setView(doc)
+                      })
+                    }}
+                  >
+                    {task.title}
+                  </button>
                 </li>
               ))
             )}
@@ -84,6 +97,23 @@ export function ClientGroups({
           )}
         </div>
       ))}
+      {view ? (
+        <section className="fixed inset-0 z-40 flex flex-col gap-3 bg-background p-4" data-testid="client-transcript">
+          <button type="button" className="text-left text-sm text-muted-foreground" onClick={() => setView(null)}>
+            {t("thread.back")}
+          </button>
+          <h2 className="text-base font-medium">{view.title}</h2>
+          <p className="text-xs text-muted-foreground">{t("home.clientReadOnly")}</p>
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto">
+            {view.entries.map((entry, i) => (
+              <p key={`${entry.role}-${i}`} className="text-sm">
+                <span className="text-muted-foreground">{entry.role}</span> {entry.text}
+              </p>
+            ))}
+            {view.truncated ? <p className="text-xs text-muted-foreground">{t("home.clientTruncated")}</p> : null}
+          </div>
+        </section>
+      ) : null}
     </section>
   )
 }

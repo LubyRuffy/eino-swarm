@@ -99,6 +99,7 @@ func New(opts Options) (*Server, error) {
 		api.GET("/settings", s.getSettings)
 		api.PUT("/settings", s.putSettings)
 		api.GET("/clients", s.getClients)
+		api.GET("/clients/task", s.getClientTask)
 		api.GET("/search", s.getSearch)
 		api.GET("/models", s.getModels)
 		api.POST("/models/discover", s.discoverModels)

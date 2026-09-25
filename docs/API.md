@@ -165,7 +165,10 @@ is false until Settings turns it on; then `tools` is three groups
 `updated_at`, and `status` (`running` or `done`). The first page is at most five tasks from the last `clients.recent_days`
 (default 3). `more` and `next` mean another page exists, still inside that
 window or older than it. `GET /api/clients?before=<unix ms>` returns the
-next five per tool. Rows are not conversations: nothing here sends, steers, or resumes.
+next five per tool. `GET /api/clients/task?id=` returns that session's title, status, and
+visible lines (`user`, `assistant`, `tool`). It does not send, steer, or
+resume. A missing id is 404. The phone uses `client_read` with `task_id`
+and reads `client_view`.
 
 A paired phone gets the same list on the inbox `list` reply as `clients`,
 clipped to 30 tasks per tool. `clients` with `before` and optional `group`

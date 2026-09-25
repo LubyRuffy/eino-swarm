@@ -33,6 +33,7 @@ const (
 	OpFollowupSteer = "followup_steer"
 	OpPreempt       = "preempt"
 	OpClients       = "clients"
+	OpClientRead    = "client_read"
 )
 
 // GroupRecent is the inbox section for conversations with no project.
@@ -85,6 +86,8 @@ type Request struct {
 	Group string `json:"group,omitempty"`
 	// FollowupID names one queued message for drop or steer.
 	FollowupID string `json:"followup_id,omitempty"`
+	// TaskID selects one local agent session for a read-only view.
+	TaskID string `json:"task_id,omitempty"`
 }
 
 // Response is what the PC replies. Path and SessionID are pairlink
@@ -116,6 +119,7 @@ type Response struct {
 	Groups          []ThreadGroup   `json:"groups,omitempty"`
 	Followups       *[]FollowupView `json:"followups,omitempty"`
 	Clients         *ClientCatalog  `json:"clients,omitempty"`
+	ClientView      *ClientView     `json:"client_view,omitempty"`
 }
 
 // ClientCatalog is the read-only local-agent list. Enabled false means the
@@ -132,6 +136,22 @@ type ClientTool struct {
 	Tasks []ClientTask `json:"tasks"`
 	More  bool         `json:"more"`
 	Next  string       `json:"next,omitempty"`
+}
+
+// ClientView is the read-only body of one foreign session.
+type ClientView struct {
+	ID        string        `json:"id"`
+	Title     string        `json:"title"`
+	Status    string        `json:"status"`
+	UpdatedAt time.Time     `json:"updated_at"`
+	Entries   []ClientEntry `json:"entries"`
+	Truncated bool          `json:"truncated,omitempty"`
+}
+
+// ClientEntry is one visible line. Role is user, assistant, or tool.
+type ClientEntry struct {
+	Role string `json:"role"`
+	Text string `json:"text"`
 }
 
 // ClientTask is one foreign session. Status is "running" or "done".

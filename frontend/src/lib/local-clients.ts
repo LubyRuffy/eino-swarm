@@ -16,6 +16,16 @@ export type ClientTool = {
   next?: string
 }
 
+export type ClientEntry = { role: string; text: string }
+
+export type ClientTranscript = {
+  id: string
+  title: string
+  status: "running" | "done" | string
+  entries: ClientEntry[]
+  truncated?: boolean
+}
+
 export type ClientCatalog = {
   enabled: boolean
   tools: ClientTool[]

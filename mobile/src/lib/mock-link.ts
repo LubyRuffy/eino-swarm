@@ -5,6 +5,7 @@ import {
   OpEvent,
   OpFollowupSteer,
   OpHello,
+  OpClientRead,
   OpClients,
   OpList,
   OpLog,
@@ -526,6 +527,16 @@ export class MockLink {
         return this.ok({ id })
       case OpList:
         return this.ok({ id, ...this.host.listing() })
+      case OpClientRead:
+        return this.ok({
+          id,
+          client_view: {
+            id: req.task_id ?? "",
+            title: "open session",
+            status: "running",
+            entries: [{ role: "user", text: "open session" }],
+          },
+        })
       case OpClients:
         return this.ok({
           id,

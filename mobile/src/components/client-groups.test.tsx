@@ -19,8 +19,8 @@ describe("ClientGroups", () => {
       />,
     )
     expect(screen.getByTestId("client-status")).toHaveAttribute("data-status", "running")
-    expect(screen.getByTestId("client-task").querySelector("button")).toBeNull()
-    expect(screen.queryByRole("button", { name: "fresh task" })).toBeNull()
+    fireEvent.click(screen.getByRole("button", { name: "fresh task" }))
+    expect(onMore).not.toHaveBeenCalled()
   })
 
   it("folds a tool group and hides its tasks", () => {

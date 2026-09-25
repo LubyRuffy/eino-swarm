@@ -31,6 +31,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 - **Local agent groups fold, and each page is five tasks.** More continues five at a time past the first page, including tasks older than three days.
 
+- **Opening a local agent row shows its progress and text.** The view is read-only on the desktop and on a paired phone. It does not send or resume.
+
 - `C-006` 手机回放按 `agent_id` 分离主 Agent 与子 Agent；仍只接收 Pairlink 允许且按 `event_chars` 裁剪的事件，子 Agent 启动指令继续留在 PC（Issue #30）。
 
 - **The ungrouped sidebar section is Conversations, with a new-conversation icon on the header.** It used to read Recents. The icon starts a conversation outside any project, same as the button at the top of the list.

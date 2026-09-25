@@ -72,6 +72,7 @@ export function HomeScreen({
   clientsOn = false,
   clientTools = [],
   onClientMore,
+  onClientRead,
 }: {
   hosts: SavedLink[]
   activeFingerprint: string
@@ -102,6 +103,7 @@ export function HomeScreen({
   clientsOn?: boolean
   clientTools?: ClientTool[]
   onClientMore?: (id: string, next?: string) => void
+  onClientRead?: (id: string) => Promise<import("@/lib/rpc").ClientView | null>
 }) {
   const [query, setQuery] = useState("")
   const [folded, setFolded] = useState(readFolded)
@@ -224,7 +226,11 @@ export function HomeScreen({
             ) : null}
             {recent ? folderSection(recent) : null}
             {clientsOn ? (
-              <ClientGroups tools={clientTools} onMore={(id, next) => onClientMore?.(id, next)} />
+              <ClientGroups
+                tools={clientTools}
+                onMore={(id, next) => onClientMore?.(id, next)}
+                onRead={onClientRead}
+              />
             ) : null}
             {empty && !error && !clientsOn ? query ? <NoMatch /> : <EmptyInbox /> : null}
             {more && !sectioned && !query ? (

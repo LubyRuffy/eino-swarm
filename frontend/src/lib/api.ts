@@ -245,6 +245,10 @@ export const api = {
     const q = before ? `?before=${encodeURIComponent(before)}` : ""
     return request<ClientCatalog>(`/api/clients${q}`)
   },
+  clientTask: (id: string) =>
+    request<import("@/lib/local-clients").ClientTranscript>(
+      `/api/clients/task?id=${encodeURIComponent(id)}`,
+    ),
 
   search: (q: string, limit?: number) => {
     const params = new URLSearchParams({ q })
