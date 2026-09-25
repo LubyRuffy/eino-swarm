@@ -74,6 +74,33 @@ describe("streamed text", () => {
     expect(reasoning.text).toBe("Let me think")
   })
 
+  // A streaming model emits the commentary, then tool_call_delta while the
+  // arguments are still being written, then the sealed agent_message of that
+  // same commentary (the accumulator flushes it when the call is issued).
+  // Sealing the bubble on the delta leaves the sealed text above the tools
+  // and the flush paints the same paragraph again underneath.
+  it("keeps one commentary when tool arguments stream before the sealed message", () => {
+    const text = "The service is stopped. I will check the config and bring it up."
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "delta", text }),
+      ev({ kind: "tool_call_delta", text: "exec(12)", tool_call_id: "c1" }),
+      ev({ kind: "tool_call_delta", text: "exec(40)", tool_call_id: "c2" }),
+      ev({ kind: "agent_message", text }),
+      ev({ kind: "tool_call", text: 'exec({"command":"tailscale status"})', tool_call_id: "c1" }),
+      ev({ kind: "tool_call", text: 'exec({"command":"scutil --nc list"})', tool_call_id: "c2" }),
+    ])
+    const answers = manager(state).blocks.filter((b) => b.kind === "answer")
+    expect(answers).toHaveLength(1)
+    expect(answers[0].text).toBe(text)
+    expect(answers[0].streaming).toBeFalsy()
+    const tools = manager(state).blocks.filter((b) => b.kind === "tool")
+    expect(tools).toHaveLength(2)
+    const answerAt = manager(state).blocks.findIndex((b) => b.kind === "answer")
+    const firstTool = manager(state).blocks.findIndex((b) => b.kind === "tool")
+    expect(answerAt).toBeLessThan(firstTool)
+  })
+
   // The complete text arrives after the deltas; it must land in the same block
   // rather than duplicating the answer under it.
   it("folds the complete message into the streamed block", () => {

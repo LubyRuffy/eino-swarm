@@ -41,7 +41,7 @@ func handleClientRead(eng *engine.Engine, req Request, path, sessionID string) R
 
 func handleClients(eng *engine.Engine, req Request, path, sessionID string) Response {
 	resp := okBase(req.ID, path, sessionID)
-	resp.Clients = clientCatalog(eng.Config().Clients, req.Before)
+	resp.Clients = clientCatalog(eng.Config().Clients, req.Before, true)
 	if req.Group != "" && resp.Clients != nil {
 		filtered := []ClientTool{}
 		for _, tool := range resp.Clients.Tools {
@@ -54,9 +54,19 @@ func handleClients(eng *engine.Engine, req Request, path, sessionID string) Resp
 	return resp
 }
 
-func clientCatalog(cfg config.ClientsConfig, before int64) *ClientCatalog {
-	cat := clients.List(cfg, time.Now(), before)
-	out := &ClientCatalog{Enabled: cat.Enabled}
+// clientCatalog reads the last finished walk. includePending keeps a
+// not-yet-scanned catalog on the clients op so that poll can show the
+// switch without waiting. The inbox list omits it: a pending payload
+// would ride the same RPC that has to answer inside the phone's timeout.
+func clientCatalog(cfg config.ClientsConfig, before int64, includePending bool) *ClientCatalog {
+	cat := clients.View(cfg, time.Now(), before)
+	if cat.Pending && !includePending {
+		return nil
+	}
+	out := &ClientCatalog{Enabled: cat.Enabled, Pending: cat.Pending}
+	if cat.Pending {
+		return out
+	}
 	if !cat.Enabled {
 		return out
 	}

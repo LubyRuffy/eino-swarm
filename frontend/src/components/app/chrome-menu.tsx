@@ -4,7 +4,8 @@ import { useState } from "react"
 import { isDark } from "@/components/app/app-chrome"
 import { Button } from "@/components/ui/button"
 import { toggleContentWidth, toggleTranscriptMode } from "@/lib/appearance"
-import { uniqueSurfaces } from "@/lib/shell"
+import { requestDesktopUpdateCheck } from "@/components/app/desktop-update"
+import { desktopShell, uniqueSurfaces } from "@/lib/shell"
 import { useT } from "@/lib/use-t"
 import { useApp } from "@/store/app"
 
@@ -125,6 +126,16 @@ export function ChromeMenu({
             >
               {t("header.switchLanguage")}
             </button>
+            {desktopShell() ? (
+              <button
+                type="button"
+                role="menuitem"
+                className={itemClass}
+                onClick={() => run(requestDesktopUpdateCheck)}
+              >
+                {t("sidebar.checkUpdate")}
+              </button>
+            ) : null}
             {shared || version ? (
               <div className="mt-1 border-t">
                 {shared ? (

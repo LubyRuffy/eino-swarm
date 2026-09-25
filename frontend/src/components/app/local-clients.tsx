@@ -35,6 +35,7 @@ export function LocalClientsSection() {
         .then((cat) => {
           if (stop) return
           setEnabled((on) => (on === cat.enabled ? on : cat.enabled))
+          if (cat.pending) return
           setTools((prev) => {
             const incoming = cat.tools ?? []
             if (!cat.enabled && prev.length === 0 && incoming.length === 0) return prev

@@ -27,6 +27,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/search"
 	"github.com/LubyRuffy/eino-swarm/internal/server"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/update"
 )
 
 // Options configures the process.
@@ -121,6 +122,7 @@ func New(opts Options) (*App, error) {
 		Assets:  assets,
 		Reveal:  revealFor(opts.Mode, addr),
 		OpenURL: openURLFor(opts.Mode, addr),
+		Updater: &update.Service{Current: opts.Version},
 	})
 	if err != nil {
 		idx.Stop()

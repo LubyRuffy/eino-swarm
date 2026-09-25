@@ -12,6 +12,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-160` Trace and diagnostics
     - `F-170` Settings and providers
     - `F-180` PC text quoting
+    - `F-190` Desktop updates
   - `F-200` Phone
     - `F-210` Pair a phone with a PC
     - `F-220` Read and control PC conversations
@@ -60,6 +61,10 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：把选中的对话原文与提问分开提交；使用者：PC 用户；入口：选中 transcript 文本 → Add to chat；输入：选区和可选请求；输出：可编辑引用与带标签的消息；前置条件：选区在对话来源内；失败表现：无有效选区时不显示操作；关联契约：`C-011`；实现证据：`frontend/src/components/app/selection-menu.tsx`, `frontend/src/lib/quote.ts`, `frontend/src/components/app/selection-menu.test.tsx`。
 
+### F-190 Desktop updates
+
+- 目的：在 Mac 桌面应用里看到版本，并从 GitHub Release 升级到更新的 `zwai.app`；使用者：Mac 桌面用户；入口：侧边栏版本、菜单 Check for updates；输入：本仓库最新 Release 的 `zwai-<version>-darwin-<arch>.zip`；输出：替换当前应用并重新打开；前置条件：运行的是带数字版本号的 `zwai.app`；失败表现：菜单检查显示错误，自动检查保持安静；关联契约：`C-010`；实现证据：`internal/update`, `frontend/src/components/app/desktop-update.tsx`, `internal/desktop/pack`。
+
 ### F-210 Pair a phone with a PC
 
 - 目的：安全绑定手机和 PC；使用者：手机用户；入口：Settings → Phone QR、扫码或粘贴；输入：pairlink URI；输出：加密连接和设备列表；前置条件：hub 和 PC 在线；失败表现：网络、过期或 host offline；关联契约：`C-006`；实现证据：`internal/remote`, `mobile/src/components/scan-screen.tsx`, `mobile/src/lib/link.ts`。
@@ -106,4 +111,4 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
-- 目的：构建 PC 与手机产物；使用者：维护者；入口：Makefile 和 mobile npm scripts；输入：源码与构建环境；输出：二进制、应用或 Android APK/AAB；前置条件：Go、Node、对应 SDK；失败表现：构建或签名错误；关联契约：`C-010`；实现证据：`Makefile`, `mobile/package.json`, `mobile/scripts/android-release.ts`, `mobile/README.md`。
+- 目的：构建 PC 与手机产物，并用 `make release` 把 Mac zip 与 Android APK 发到同一个 GitHub Release；使用者：维护者；入口：Makefile；输入：源码、版本号与构建环境；输出：二进制、macOS `zwai.app` zip、Android APK/AAB，以及带这两个安装包的 Release；前置条件：Go、Node、对应 SDK、已登录的 gh；失败表现：构建、签名或上传错误，缺任一安装包则发布失败；关联契约：`C-010`；实现证据：`Makefile`, `internal/release`, `internal/desktop/pack`, `mobile/package.json`, `mobile/scripts/android-release.ts`, `mobile/README.md`。

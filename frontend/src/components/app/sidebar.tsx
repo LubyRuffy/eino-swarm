@@ -35,6 +35,17 @@ import type { Project, SkillInfo, Thread } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 import { cn } from "@/lib/utils"
 
+function SidebarVersion() {
+  const t = useT()
+  const version = useApp((s) => s.meta?.version ?? "")
+  if (!version) return null
+  return (
+    <p data-testid="sidebar-version" className="truncate px-2 pb-1 text-xs text-muted-foreground">
+      {t("sidebar.version", { version })}
+    </p>
+  )
+}
+
 /** Conversations, grouped the way people remember them: pins to watch,
  *  project folders, Recents for everything else. */
 export function Sidebar({
@@ -265,7 +276,9 @@ export function Sidebar({
         <ScheduleInboxTrigger />
       </div>
 
-      <div className="flex items-center gap-1 border-t border-sidebar-border px-[var(--sidebar-list-px)] py-2.5">
+      <div className="border-t border-sidebar-border px-[var(--sidebar-list-px)] py-2.5">
+        <SidebarVersion />
+        <div className="flex items-center gap-1">
         <ChromeMenu onToggleTheme={onToggleTheme} onToggleLocale={onToggleLocale} />
         <Button
           variant="ghost"
@@ -280,6 +293,7 @@ export function Sidebar({
           <span>{t("sidebar.settings")}</span>
           <Settings />
         </Button>
+        </div>
       </div>
       <ConfirmDeleteDialog
         open={Boolean(doomed)}

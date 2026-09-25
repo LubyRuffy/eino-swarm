@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
+import { DesktopUpdateBanner } from "@/components/app/desktop-update"
 import {
   AppHeader,
   AppPalette,
@@ -341,6 +342,7 @@ function AppShell() {
         ) : null}
 
         <main className="flex min-w-0 flex-1 flex-col">
+          <DesktopUpdateBanner />
           <ConfiguredBanner onConfigure={() => openSettings("models")} />
           <ErrorBanner />
           <div

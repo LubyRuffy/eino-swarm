@@ -232,7 +232,10 @@ app. iOS has no package on that feed, so Update opens the release page.
 automatic check stays quiet. **Menu → Check for updates** always requests:
 it shows that it is fetching, says when this build is current, asks before
 an install, and shows the response's own error. The download only follows `github.com/LubyRuffy/eino-swarm`
-and GitHub's release-asset hosts.
+and GitHub's release-asset hosts. The Mac desktop app uses that same
+release: `zwai-<version>-darwin-<arch>.zip` (a `zwai.app`), built with
+`make release VERSION=x.y.z` builds that zip and this APK, then attaches
+both to one GitHub Release. See `docs/CLI.md`.
 
 ## Simulators
 

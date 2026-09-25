@@ -22,6 +22,8 @@ help:
 	@echo "make mobile-ios   open the iOS app in Xcode"
 	@echo "make mobile-android  open the Android app in Android Studio"
 	@echo "make mobile-android-release  Android APK/AAB into bin/"
+	@echo "make desktop-release  macOS zwai.app zip into bin/ (darwin host)"
+	@echo "make release      Mac zip + Android APK onto one GitHub Release (needs gh)"
 	@echo "make check      formatting, vet, test, e2e"
 	@echo "make docs-check  validate feature and contract references"
 
@@ -81,6 +83,20 @@ mobile-ios: mobile-sync
 .PHONY: mobile-android
 mobile-android: mobile-sync
 	cd mobile && npx cap open android
+
+.PHONY: desktop-release
+desktop-release: frontend
+	go run ./internal/desktop/pack -version "$(VERSION)" -o bin
+
+# One tag, both installers. VERSION is major.minor.patch. gh must be logged in.
+# A missing Release is created. An existing one is updated. Other releases stay.
+.PHONY: release
+release:
+	go run ./internal/release/cmd -version "$(VERSION)" -check
+	$(MAKE) desktop-release
+	@test -d mobile/node_modules || (cd mobile && npm install)
+	cd mobile && ANDROID_ARTIFACT=apk VERSION="$(VERSION)" npm run cap:android-release
+	go run ./internal/release/cmd -version "$(VERSION)" -dir bin
 
 .PHONY: mobile-android-release
 mobile-android-release:

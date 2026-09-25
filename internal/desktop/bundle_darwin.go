@@ -46,7 +46,7 @@ func prepareBundle(exe, cacheDir string) (string, error) {
 		return "", nil
 	}
 	appDir := filepath.Join(cacheDir, "zwai", "zwai.app")
-	if err := writeAppBundle(exe, appDir); err != nil {
+	if err := writeAppBundle(exe, appDir, ""); err != nil {
 		return "", fmt.Errorf("desktop: local-network app bundle: %w", err)
 	}
 	return filepath.Join(appDir, "Contents", "MacOS", macBundleName), nil
@@ -56,12 +56,21 @@ func alreadyBundled(exe string) bool {
 	return strings.Contains(filepath.ToSlash(filepath.Clean(exe)), ".app/Contents/MacOS/")
 }
 
-func writeAppBundle(exe, appDir string) error {
+// WriteMacApp copies exe into a zwai.app whose short version is the
+// release triple. An empty version keeps the cache bundle's placeholder.
+func WriteMacApp(exe, appDir, version string) error {
+	return writeAppBundle(exe, appDir, version)
+}
+
+func writeAppBundle(exe, appDir, version string) error {
+	if version != "" && strings.Trim(version, "0123456789.") != "" {
+		return fmt.Errorf("desktop: version %q is not a release triple", version)
+	}
 	macOSDir := filepath.Join(appDir, "Contents", "MacOS")
 	if err := os.MkdirAll(macOSDir, 0o755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(appDir, "Contents", "Info.plist"), []byte(macInfoPlist()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(appDir, "Contents", "Info.plist"), []byte(macInfoPlist(version)), 0o644); err != nil {
 		return err
 	}
 	dest := filepath.Join(macOSDir, macBundleName)
@@ -77,7 +86,10 @@ func writeAppBundle(exe, appDir string) error {
 	return nil
 }
 
-func macInfoPlist() string {
+func macInfoPlist(version string) string {
+	if version == "" {
+		version = "0.1"
+	}
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -95,7 +107,9 @@ func macInfoPlist() string {
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1</string>
+	<string>` + version + `</string>
+	<key>CFBundleVersion</key>
+	<string>` + version + `</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>

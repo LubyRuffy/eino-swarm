@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-
 import { AddHostSheet } from "@/components/add-host-sheet"
 import type { ComposerExtra } from "@/components/composer"
 import { ChatSurface } from "@/components/chat-surface"
@@ -30,6 +29,7 @@ import type {
   RunningView,
   ThreadView,
 } from "@/lib/rpc"
+import { useClientPoll } from "@/lib/client-poll"
 import { mergeClientTools } from "@/lib/local-clients"
 import { readClientTask } from "@/lib/read-client"
 import {
@@ -189,7 +189,9 @@ export function App() {
     takeHostName(resp)
     if (resp.clients) {
       setClientsOn(resp.clients.enabled)
-      setClientTools((prev) => mergeClientTools(prev, resp.clients?.tools ?? [], "replace"))
+      if (!resp.clients.pending && resp.clients.tools) {
+        setClientTools((prev) => mergeClientTools(prev, resp.clients?.tools ?? [], "replace"))
+      }
     }
     if (!append && fp === rosterFp.current) return
     rosterFp.current = fp
@@ -356,7 +358,7 @@ export function App() {
     }, 2000)
     return () => window.clearInterval(id)
   }, [link, view.detail])
-
+  useClientPoll(link, linkRef, setClientsOn, setClientTools)
   useEffect(() => {
     if (!link?.alive()) return
     let gone = false
@@ -535,7 +537,7 @@ export function App() {
   const loadClientMore = (id: string, next?: string) => {
     const target = linkRef.current
     if (!target?.alive() || !next) return
-    void target.rpc({ op: OpClients, group: id, before: Number(next) }).then((resp) => {
+    void target.rpc({ op: OpClients, group: id, before: Number(next) }, { dropOnTimeout: false }).then((resp) => {
       const tools = resp.clients?.tools
       if (tools) setClientTools((prev) => mergeClientTools(prev, tools, "append"))
     })

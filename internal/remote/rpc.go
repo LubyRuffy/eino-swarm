@@ -119,7 +119,7 @@ func handleList(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, 
 	// an old phone never sends Group, so its global cursor is unchanged.
 	if req.Op == OpList && req.Group == "" && req.Cursor == "" {
 		resp.Groups = inboxGroups(eng, cfg, ps, idle)
-		resp.Clients = clientCatalog(eng.Config().Clients, 0)
+		resp.Clients = clientCatalog(eng.Config().Clients, 0, false)
 	}
 	return resp
 }

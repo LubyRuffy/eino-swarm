@@ -406,6 +406,10 @@ end-to-end tests run on and the fastest way to see the UI work.
    `mobile/android/keystore.properties`; `ANDROID_UNSIGNED=1` is a debug-signed
    sideload APK, not a Play bundle). Published sideload APKs also land on
    [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
+   `make release VERSION=x.y.z` on a Mac builds that
+   `zwai.app` zip and the Android APK, then attaches both to one GitHub
+   Release. The installed Mac app shows its version and can install a newer
+   zip from there. See [docs/CLI.md](docs/CLI.md).
 
 Traffic starts on the hub as ciphertext and upgrades to UDP when punching
 works. Conversations never enter the hub database.

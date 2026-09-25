@@ -127,6 +127,7 @@ type Response struct {
 // ignores it.
 type ClientCatalog struct {
 	Enabled bool         `json:"enabled"`
+	Pending bool         `json:"pending,omitempty"`
 	Tools   []ClientTool `json:"tools,omitempty"`
 }
 

@@ -25,7 +25,7 @@ func TestWriteAppBundleInstallsPlistAndExecutable(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := filepath.Join(dir, "zwai.app")
-	if err := writeAppBundle(src, app); err != nil {
+	if err := writeAppBundle(src, app, "1.2.3"); err != nil {
 		t.Fatal(err)
 	}
 	plist, err := os.ReadFile(filepath.Join(app, "Contents", "Info.plist"))
@@ -35,6 +35,7 @@ func TestWriteAppBundleInstallsPlistAndExecutable(t *testing.T) {
 	body := string(plist)
 	for _, need := range []string{
 		macBundleID,
+		"<string>1.2.3</string>",
 		"NSLocalNetworkUsageDescription",
 		"NSAllowsLocalNetworking",
 		"zwai lists models and talks to endpoints on your local network.",
@@ -57,7 +58,7 @@ func TestWriteAppBundleInstallsPlistAndExecutable(t *testing.T) {
 }
 
 func TestMacInfoPlistIsValidEnoughToParse(t *testing.T) {
-	body := macInfoPlist()
+	body := macInfoPlist("")
 	if !strings.HasPrefix(body, `<?xml version="1.0"`) {
 		t.Fatal("plist must be XML")
 	}
@@ -96,7 +97,7 @@ func TestPrepareBundleFailsWhenSourceIsMissing(t *testing.T) {
 }
 
 func TestWriteAppBundleFailsWhenSourceIsMissing(t *testing.T) {
-	err := writeAppBundle(filepath.Join(t.TempDir(), "missing"), filepath.Join(t.TempDir(), "zwai.app"))
+	err := writeAppBundle(filepath.Join(t.TempDir(), "missing"), filepath.Join(t.TempDir(), "zwai.app"), "")
 	if err == nil {
 		t.Fatal("a missing executable must fail")
 	}

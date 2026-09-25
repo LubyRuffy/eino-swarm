@@ -65,12 +65,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 允许行为：用户更改设置；禁止行为：生产代码硬编码用户端点或模型；失败语义：配置或计划错误明确报告；不变量：用户设置优先于环境种子；边界条件：首次运行与重启。
 - 证据：实现 `internal/config`, `internal/engine`, `internal/store`；测试 `internal/config`, `internal/engine`；变更规则：同步 CONFIG、API 和计划测试；来源：`AGENTS.md`。
 
-## C-010 Build artifacts and phone update channel
+## C-010 Build artifacts and update channel
 
-- 状态：active；类型：compatibility / lifecycle；作用范围：build、mobile update；关联功能：`F-240`, `F-430`。
-- 契约内容：`make build` 先更新嵌入的前端；Android sideload 使用 GitHub Release 的 `zwai-*-android.apk`；iOS 更新入口打开 Release 页；手机新版本从 package 版本派生 Android versionCode 和 Xcode marketing/build 设置。
-- 允许行为：不同渠道单独验收；禁止行为：把本地 APK/AAB 构建称为远端发布；失败语义：构建、签名、下载错误可观察；不变量：用户可获取与显示版本一致的产物；边界条件：安装签名和新旧版本比较。
-- 证据：实现 `Makefile`, `mobile/scripts/android-release.ts`, `mobile/scripts/sync-ios-version.ts`, `mobile/src/lib/app-update.ts`；测试 `mobile/scripts/android-release.test.ts`, `mobile/scripts/sync-ios-version.test.ts`, `mobile/src/lib/app-update.test.ts`；变更规则：同步 mobile README、发布门禁和版本测试；来源：`mobile/README.md`。
+- 状态：active；类型：compatibility / lifecycle；作用范围：build、mobile update、macOS desktop update；关联功能：`F-190`, `F-240`, `F-430`。
+- 契约内容：`make build` 先更新嵌入的前端；Android sideload 使用 GitHub Release 的 `zwai-*-android.apk`；iOS 更新入口打开 Release 页；手机新版本从 package 版本派生 Android versionCode 和 Xcode marketing/build 设置。macOS 桌面发布物是 `zwai-<version>-darwin-<arch>.zip`，根目录为 `zwai.app`。`make release` 把该 zip 与 `zwai-<version>-android.apk` 发到同一个 tag；缺任一文件则发布失败。桌面应用只从本仓库最新的非 draft、非 prerelease Release 安装同架构 zip，并只跟随 github.com 与 GitHub 的 release 资源主机。
+- 允许行为：不同渠道单独验收；禁止行为：把本地 APK/AAB 或未上传的 zip 称为远端发布，或从其他仓库安装；失败语义：构建、签名、下载错误可观察；不变量：用户可获取与显示版本一致的产物；边界条件：安装签名、新旧版本按数字比较、未打版本号的构建不提供升级。
+- 证据：实现 `Makefile`, `internal/release`, `internal/desktop/pack`, `internal/update`, `mobile/scripts/android-release.ts`, `mobile/scripts/sync-ios-version.ts`, `mobile/src/lib/app-update.ts`；测试 `internal/release`, `internal/update`, `internal/desktop/pack`, `mobile/scripts/android-release.test.ts`, `mobile/scripts/sync-ios-version.test.ts`, `mobile/src/lib/app-update.test.ts`；变更规则：同步 mobile README、CLI、发布门禁和版本测试；来源：`mobile/README.md`, `docs/CLI.md`。
 
 ## C-011 Quoted conversation payload
 

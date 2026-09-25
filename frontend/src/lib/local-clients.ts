@@ -28,6 +28,7 @@ export type ClientTranscript = {
 
 export type ClientCatalog = {
   enabled: boolean
+  pending?: boolean
   tools: ClientTool[]
 }
 

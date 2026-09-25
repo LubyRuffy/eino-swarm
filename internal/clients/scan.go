@@ -56,8 +56,11 @@ type Group struct {
 }
 
 // Catalog is the sidebar payload. Tools is empty when the switch is off.
+// Pending means a walk is still in flight and Tools must not replace a
+// list that is already on screen.
 type Catalog struct {
 	Enabled bool    `json:"enabled"`
+	Pending bool    `json:"pending,omitempty"`
 	Tools   []Group `json:"tools"`
 }
 

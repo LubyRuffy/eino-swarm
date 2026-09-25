@@ -18,6 +18,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/search"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/terminal"
+	"github.com/LubyRuffy/eino-swarm/internal/update"
 	"github.com/gin-gonic/gin"
 )
 
@@ -50,6 +51,9 @@ type Options struct {
 	// supplies it so the desktop window can leave the webview. A browser tab
 	// on that same process does not call it.
 	OpenURL func(url string) error
+	// Updater checks GitHub Releases and installs a newer macOS app.
+	// Nil means this process does not offer desktop updates.
+	Updater update.Checker
 }
 
 // Server owns the router.
@@ -62,6 +66,7 @@ type Server struct {
 	remote    *remote.Host
 	search    *search.Service
 	presence  *presence
+	updater   update.Checker
 }
 
 // New builds the server and its routes.
@@ -81,6 +86,7 @@ func New(opts Options) (*Server, error) {
 		opts: opts, engine: opts.Engine, log: opts.Logger,
 		terminals: terminal.NewHub(terminal.MaxSessions),
 		presence:  newPresence(),
+		updater:   opts.Updater,
 	}
 	r := gin.New()
 	r.Use(gin.Recovery(), s.accessLog())
@@ -93,6 +99,8 @@ func New(opts Options) (*Server, error) {
 	api.Use(s.rejectForeignOrigin())
 	{
 		api.GET("/meta", s.getMeta)
+		api.GET("/update", s.getUpdate)
+		api.POST("/update", s.postUpdate)
 		api.POST("/presence", s.postPresence)
 		api.GET("/presence/:id", s.holdPresence)
 		api.POST("/open", s.openURL)

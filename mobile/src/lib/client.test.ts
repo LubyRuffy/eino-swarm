@@ -16,7 +16,7 @@ import { generateIdentity, respond } from "./crypto"
 import { bytesToB64url, bytesToHex } from "./bytes"
 import { marshalFrame, TYPE_DATA, TYPE_HANDSHAKE, TYPE_LABEL, TYPE_PUNCH_PING, unmarshalFrame } from "./frame"
 import { hubDeviceFields } from "./device"
-import { OpHello, OpList, PROTOCOL_V } from "./rpc"
+import { OpClients, OpHello, OpList, PROTOCOL_V } from "./rpc"
 
 describe("redeemOffer", () => {
   it("posts the device public key and reads ticket fields", async () => {
@@ -315,5 +315,15 @@ describe("DeviceLink drop", () => {
     await expect(link.rpc({ op: OpList })).rejects.toThrow("rpc timeout")
     expect(onDisconnect).toHaveBeenCalledOnce()
     expect(link.alive()).toBe(false)
+  })
+
+  it("keeps the socket when a side rpc times out", async () => {
+    const { link } = await livePair({ rpcTimeoutMs: 40 })
+    const onDisconnect = vi.fn()
+    link.onDisconnect = onDisconnect
+    await expect(link.rpc({ op: OpClients }, { dropOnTimeout: false })).rejects.toThrow("rpc timeout")
+    expect(onDisconnect).not.toHaveBeenCalled()
+    expect(link.alive()).toBe(true)
+    link.close()
   })
 })

@@ -215,8 +215,51 @@ function withToolLists(s: Settings): Settings {
   }
 }
 
+export interface DesktopUpdateOffer {
+  version: string
+  page_url?: string
+  asset_url?: string
+  asset_name?: string
+}
+
+export interface DesktopUpdate {
+  status: "current" | "available" | "unsupported" | "error"
+  current?: string
+  message?: string
+  offer?: DesktopUpdateOffer
+}
+
+const DISMISS_KEY = "zwai.desktop.update.dismissed"
+
+export function dismissedDesktopVersion(): string {
+  try {
+    return localStorage.getItem(DISMISS_KEY) ?? ""
+  } catch {
+    return ""
+  }
+}
+
+export function dismissDesktopVersion(version: string) {
+  const v = version.trim()
+  if (!v) return
+  try {
+    localStorage.setItem(DISMISS_KEY, v)
+  } catch {
+    // private mode
+  }
+}
+
 export const api = {
   meta: () => request<Meta>("/api/meta"),
+
+  desktopUpdate: (fresh = false) =>
+    request<DesktopUpdate>("/api/update" + (fresh ? "?fresh=1" : "")),
+
+  installDesktopUpdate: (version: string) =>
+    request<{ status: string }>("/api/update", {
+      method: "POST",
+      body: JSON.stringify({ version }),
+    }),
 
   presence: (surface: "desktop" | "web" | "tui") =>
     request<{ id: string }>("/api/presence", {

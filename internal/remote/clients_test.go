@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 )
@@ -25,13 +26,23 @@ func TestPhoneListOmitsClientsUntilTheSwitchIsOn(t *testing.T) {
 	}
 	cfg := e.Config()
 	cfg.Clients.Enabled = true
+	cfg.Clients.ClaudeDir = filepath.Join(root, "no-claude")
+	cfg.Clients.CodexDir = filepath.Join(root, "no-codex")
 	cfg.Clients.CursorDir = root
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	on := Handle(e, config.RemoteConfig{}, Request{ID: "c", Op: OpClients}, "relay", "s")
-	if !on.OK || on.Clients == nil || !on.Clients.Enabled {
-		t.Fatalf("clients op = %+v", on.Clients)
+	deadline := time.Now().Add(2 * time.Second)
+	var on Response
+	for {
+		on = Handle(e, config.RemoteConfig{}, Request{ID: "c", Op: OpClients}, "relay", "s")
+		if on.OK && on.Clients != nil && !on.Clients.Pending && len(on.Clients.Tools) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("clients op = %+v", on.Clients)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 	var found bool
 	for _, tool := range on.Clients.Tools {

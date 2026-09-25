@@ -562,3 +562,30 @@ async function html5Reorder(
     { testId, fromIndex, toIndex, rootTestId },
   )
 }
+
+test("desktop shell shows the build and asks before installing a release", async ({
+  page,
+}) => {
+  await page.route("**/api/update**", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({ json: { status: "restarting" } })
+      return
+    }
+    await route.fulfill({
+      json: {
+        status: "available",
+        offer: { version: "9.9.9", asset_name: "zwai-9.9.9-darwin-arm64.zip" },
+      },
+    })
+  })
+  await page.goto("/?shell=desktop")
+  await expect(page.getByTestId("sidebar-version")).toContainText(/Version /)
+  const notice = page.getByTestId("desktop-update")
+  await expect(notice.getByRole("status")).toHaveText(
+    "Version 9.9.9 is available. Update?",
+  )
+  await notice.getByRole("button", { name: "Update" }).click()
+  await expect(notice.getByRole("status")).toHaveText(
+    "Installing the update. zwai will reopen.",
+  )
+})

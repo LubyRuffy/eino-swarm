@@ -30,12 +30,22 @@ func TestClientsStayHiddenUntilTheSwitchIsOn(t *testing.T) {
 	cfg := h.app.Engine.Config()
 	cfg.Clients.Enabled = true
 	cfg.Clients.ClaudeDir = root
+	cfg.Clients.CodexDir = filepath.Join(root, "no-codex")
+	cfg.Clients.CursorDir = filepath.Join(root, "no-cursor")
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	on := h.json(http.MethodGet, "/api/clients", nil, http.StatusOK)
-	if on["enabled"] != true {
-		t.Fatalf("enabled catalog = %v", on)
+	deadline := time.Now().Add(2 * time.Second)
+	var on map[string]any
+	for {
+		on = h.json(http.MethodGet, "/api/clients", nil, http.StatusOK)
+		if on["enabled"] == true && on["pending"] != true {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("enabled catalog = %v", on)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 	tools, _ := on["tools"].([]any)
 	if len(tools) != 3 {

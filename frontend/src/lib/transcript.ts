@@ -20,6 +20,16 @@ import {
 } from "./transcript-steer"
 import { applyScheduleEvent, sealQuietTurns } from "./transcript-schedule"
 import { findToolBlock, splitToolCall, summarise } from "./transcript-tool-block"
+import {
+  MANAGER_ID,
+  append,
+  block,
+  closeStreaming,
+  replaceComplete,
+  replaceStreaming,
+} from "./transcript-blocks"
+
+export { MANAGER_ID }
 
 export { splitToolCall, summarise }
 
@@ -189,8 +199,6 @@ export interface TranscriptState {
    *  deltas stay dropped until the replacement `user_message` arrives. */
   rewindCut?: { from: number; through: number; live: boolean }
 }
-
-export const MANAGER_ID = "manager"
 
 export function emptyTranscript(): TranscriptState {
   return { agentOrder: [], agents: {}, turns: [], lastSeq: 0, running: false }
@@ -411,7 +419,11 @@ export function reduceEvent(
     case "tool_call_delta": {
       keepWorkerLive(agent)
       closeStreaming(agent, "reasoning")
-      closeStreaming(agent, "answer")
+      // tool_call_delta arrives while the commentary is still streaming.
+      // Closing the answer here seals that paragraph, and the agent_message
+      // flushed when the call is issued can no longer find it, so the same
+      // text is painted again under the tools.
+      if (ev.kind !== "tool_call_delta") closeStreaming(agent, "answer")
       const { name, args } = splitToolCall(ev.text ?? "")
       const writing = ev.kind === "tool_call_delta" ? Number(args) : undefined
       const ask = ev.kind === "tool_call" ? askCardFromEvent(ev, name, args) : undefined
@@ -866,65 +878,6 @@ function addAgentToTurn(state: TranscriptState, turnId: string, agentId: string)
   state.turns = turns
 }
 
-function block(ev: SwarmEvent, kind: BlockKind, text: string): Block {
-  return {
-    id: `${ev.turn_id}:${ev.agent_id || MANAGER_ID}:${kind}:${ev.seq || `d${ev.created_at}`}:${text.length}`,
-    kind,
-    agentId: ev.agent_id || MANAGER_ID,
-    role: ev.role,
-    text,
-    turnId: ev.turn_id,
-    seq: ev.seq,
-    at: ev.created_at,
-    images: ev.images,
-  }
-}
-
-function append(agent: AgentState, b: Block) {
-  agent.blocks = [...agent.blocks, b]
-}
-
-/** Replace the open streaming block of this kind, or open one. */
-function replaceStreaming(
-  agent: AgentState,
-  ev: SwarmEvent,
-  kind: "reasoning" | "answer",
-) {
-  const blocks = agent.blocks.slice()
-  const i = lastOpenIndex(blocks, kind)
-  if (i === -1) {
-    blocks.push({ ...block(ev, kind, ev.text ?? ""), streaming: true, id: openId(ev, kind) })
-  } else {
-    blocks[i] = { ...blocks[i], text: ev.text ?? "", streaming: true }
-  }
-  agent.blocks = blocks
-}
-
-/** Replace the open streaming block with the server's complete text, or add
- *  it if nothing was streamed (a non-streaming model, or a replay). */
-function replaceComplete(
-  agent: AgentState,
-  ev: SwarmEvent,
-  kind: "reasoning" | "answer",
-) {
-  const blocks = agent.blocks.slice()
-  const i = lastOpenIndex(blocks, kind)
-  if (i === -1) {
-    blocks.push({ ...block(ev, kind, ev.text ?? "") })
-  } else {
-    blocks[i] = { ...blocks[i], text: ev.text ?? "", streaming: false, seq: ev.seq }
-  }
-  agent.blocks = blocks
-}
-
-function closeStreaming(agent: AgentState, kind: "reasoning" | "answer") {
-  const i = lastOpenIndex(agent.blocks, kind)
-  if (i === -1) return
-  const blocks = agent.blocks.slice()
-  blocks[i] = { ...blocks[i], streaming: false }
-  agent.blocks = blocks
-}
-
 /** Stable with engine.resumeToolStopped. The wire event is English; a
  *  crashed exec must not keep saying "running…". */
 const resumeToolStopped = "the previous process stopped"
@@ -956,16 +909,6 @@ function closePendingTools(agent: AgentState, reason?: string, keepQuestions?: b
   if (changed) agent.blocks = blocks
 }
 
-function lastOpenIndex(blocks: Block[], kind: BlockKind): number {
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    if (blocks[i].kind === kind && blocks[i].streaming) return i
-    // A block of another kind closes the run: thinking then a tool call then
-    // more thinking is two separate thinking blocks, not one.
-    if (blocks[i].kind === "tool" || blocks[i].kind === "spawn" || blocks[i].kind === "question") return -1
-  }
-  return -1
-}
-
 function settlePendingConfirm(agent: AgentState, continued: boolean, text?: string) {
   const blocks = agent.blocks.slice()
   for (let i = blocks.length - 1; i >= 0; i--) {
@@ -979,10 +922,6 @@ function settlePendingConfirm(agent: AgentState, continued: boolean, text?: stri
     }
   }
   agent.blocks = blocks
-}
-
-function openId(ev: SwarmEvent, kind: string): string {
-  return `${ev.turn_id}:${ev.agent_id || MANAGER_ID}:${kind}:open:${ev.created_at}`
 }
 
 /** The tool a result belongs to, looked up by call id after the reducer has

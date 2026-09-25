@@ -111,6 +111,19 @@ func (p *presence) list() []PresenceClient {
 	return out
 }
 
+func (p *presence) desktopPIDs() []int {
+	if p == nil {
+		return nil
+	}
+	var out []int
+	for _, client := range p.list() {
+		if client.Surface == "desktop" && client.PID > 0 {
+			out = append(out, client.PID)
+		}
+	}
+	return out
+}
+
 func (p *presence) gc() {
 	p.mu.Lock()
 	defer p.mu.Unlock()

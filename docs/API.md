@@ -20,6 +20,45 @@ the URL in `engine.json` (a random loopback port unless `--addr` was set).
 | `429` | too many terminals are already open |
 | `501` | the shell cannot do this (`reveal` / `open` when this process is not a loopback engine or the desktop app) |
 
+## Desktop update
+
+### `GET /api/update`
+
+The Mac desktop window reads this to decide whether to show an upgrade
+prompt. `?fresh=1` skips the six-hour memory cache (Check for updates).
+Other systems, and a build whose version is not `x.y.z`, do not call
+GitHub.
+
+```json
+{
+  "status": "available",
+  "current": "1.2.3",
+  "offer": {
+    "version": "1.2.4",
+    "page_url": "https://github.com/LubyRuffy/eino-swarm/releases/tag/v1.2.4",
+    "asset_url": "https://github.com/LubyRuffy/eino-swarm/releases/download/v1.2.4/zwai-1.2.4-darwin-arm64.zip",
+    "asset_name": "zwai-1.2.4-darwin-arm64.zip"
+  }
+}
+```
+
+`status` is `available`, `current`, `unsupported`, or `error`. `message`
+is set for `error` and `unsupported`. Drafts and prereleases count as
+`current`. The asset must be named `zwai-<version>-darwin-<arch>.zip` for
+this machine's architecture.
+
+### `POST /api/update`
+
+```json
+{ "version": "1.2.4" }
+```
+
+Downloads that asset, replaces the running `zwai.app`, opens the new app,
+and asks the desktop window to quit. `200` is `{ "status": "restarting" }`.
+`409` is `{ "error": "..." }` when there is nothing to install or the
+swap failed. `501` when this process has no updater. `400` when the body
+is not JSON.
+
 ## Meta
 
 ### `GET /api/meta`
@@ -173,9 +212,15 @@ conversation. It does
 not send, steer, or resume. A missing id is 404. The phone uses `client_read` with `task_id`
 and reads `client_view`.
 
-A paired phone gets the same list on the inbox `list` reply as `clients`,
-clipped to 30 tasks per tool. `clients` with `before` and optional `group`
-loads the next page. A `list` that pages one inbox section omits `clients`,
+The disk walk does not run inside the request. A cold read is
+`pending: true` with empty `tools` and must not replace rows already
+painted; the next poll carries the snapshot. A paired phone does not
+wait for that walk on inbox `list`. It asks `clients` on its own. When a
+snapshot is already finished, the first `list` still carries `clients`,
+clipped to 30 tasks per tool, so an older phone paints the groups. A
+`list` sent while the walk is in flight omits `clients`. `clients` with
+`before` and optional `group` loads the next page from the snapshot.
+A `list` that pages one inbox section omits `clients`,
 so a poll of page one can refresh the lights without dropping rows already
 loaded with More.
 
@@ -387,7 +432,7 @@ pages that section. `group` omitted keeps the global idle page for a phone
 that still has one More button. `more` pages that idle
 list. A later `list` is still the first page: the phone patches that page
 and keeps rows already loaded with `more`. A row that left the first page
-is not kept just because it was there last time. When `clients.enabled` is on, the first `list` also carries `clients` (three tool groups, 30 tasks each). `clients` `{before, group}` loads older tasks for one tool. A section `list` omits `clients` so that page does not reset the agent list. Replacing the window with
+is not kept just because it was there last time. When `clients.enabled` is on, the phone polls `clients` beside the inbox. That reply is the last finished snapshot (`pending` while the first walk is still running) and does not hold the link open. A first `list` carries the same `clients` object only after a snapshot exists (three tool groups, 30 tasks each). `clients` `{before, group}` loads older tasks for one tool from that snapshot. A section `list` omits `clients` so that page does not reset the agent list. Replacing the window with
 the first page alone is how an expanded inbox collapsed on the next poll.
 `log` `{thread_id, before}` pages older transcript events (newest page older than
 `before`, size `watch_events`). `run_now` and `cancel_wait` target the soonest

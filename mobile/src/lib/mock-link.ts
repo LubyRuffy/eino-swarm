@@ -515,6 +515,7 @@ export class MockLink {
 
   async rpc(
     req: Omit<RemoteRequest, "v" | "id"> & { id?: string },
+    _opts?: { dropOnTimeout?: boolean },
   ): Promise<RemoteResponse> {
     if (this.closed) throw new Error("offline")
     const id = req.id ?? ""

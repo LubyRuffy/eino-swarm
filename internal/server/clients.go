@@ -22,7 +22,7 @@ func (s *Server) getClients(c *gin.Context) {
 		}
 		before = n
 	}
-	c.JSON(http.StatusOK, clients.List(s.engine.Config().Clients, time.Now(), before))
+	c.JSON(http.StatusOK, clients.View(s.engine.Config().Clients, time.Now(), before))
 }
 
 func (s *Server) getClientTask(c *gin.Context) {

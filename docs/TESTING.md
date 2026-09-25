@@ -122,7 +122,12 @@ the zwai launcher (not Capacitor's default icon), and that Android release
 Gradle takes version/signing from the environment (no password in git).
 `mobile/scripts/android-release.test.ts` is why `make mobile-android-release`
 refuses a store upload without a keystore, skips JAVA_HOME 17, and copies
-the APK into `bin/`. `TestPhoneLauncherSlotsMatchTheDesktopMark`
+the APK into `bin/`. `internal/update` is why a Mac desktop install only
+accepts this repo's `zwai-<version>-darwin-<arch>.zip`, skips drafts, and
+swaps `zwai.app` before reopening. `internal/release` is why `make release` refuses a dirty version, uploads
+the apk and the darwin zip together, and fails when either asset is absent
+after upload. `internal/desktop/pack` refuses a
+non-release version so `make desktop-release` cannot stamp a dirty describe. `TestPhoneLauncherSlotsMatchTheDesktopMark`
 is why those PNGs are `internal/desktop/appicon.png` painted into the iOS/Android
 slots (`go run ./mobile/scripts/genicons.go`).
 `mobile/src/lib/resume.test.ts` is why bind opens a live turn (or the last

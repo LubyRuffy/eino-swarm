@@ -84,6 +84,38 @@ bundle id; a `go run` binary is `a.out` with no Info.plist, so listing models
 on a LAN endpoint fails with `no route to host` while Terminal `curl` works.
 The first launch may prompt to allow local network access.
 
+A released Mac app shows its version at the bottom of the conversation list
+(`Version x.y.z`). On startup it asks
+[GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/latest)
+whether a newer public release has `zwai-<version>-darwin-<arch>.zip`
+(`arm64` or `amd64`, matching this Mac). The zip's root is `zwai.app`.
+**Update** replaces the running app and opens it again. **Not now** hides
+that version. **App menu → Check for updates** always asks, including when
+this build is already current. A `go run` or `make build` binary stamped
+`dev` (or any non `x.y.z` string) does not offer an upgrade. The download
+stays on `github.com/LubyRuffy/eino-swarm` and GitHub's release-asset hosts.
+
+```bash
+# On a Mac. VERSION must be a release triple, not a dirty git describe.
+# Builds the host-arch zwai.app zip and the Android sideload APK, then
+# attaches both to tag vX.Y.Z. gh must already be logged in.
+make release VERSION=1.2.3
+```
+
+`make release` checks the version and `gh` before it builds. It then runs
+`desktop-release` and an APK-only Android build (`ANDROID_ARTIFACT=apk`,
+same signing rules as `make mobile-android-release`). The tag is `vX.Y.Z`.
+A missing Release is created. An existing one gets both files replaced.
+The command exits non-zero unless the Release lists
+`zwai-X.Y.Z-android.apk` and `zwai-X.Y.Z-darwin-<arch>.zip`. It does not
+delete any other Release. AAB stays on `make mobile-android-release`.
+
+`make desktop-release` only builds the zip. It does not upload. Build
+arm64 and amd64 on those machines when both zips should be attached; a
+later `make release` of the same version uploads every matching zip
+already in `bin/` plus the apk. The running app installs only its own
+architecture.
+
 ## `zwai web`
 
 Serves the same app over HTTP and opens your browser.

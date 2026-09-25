@@ -8,7 +8,10 @@ import type { SavedLink } from "./store"
 export type RemoteLink = {
   path: string
   alive(): boolean
-  rpc(req: Omit<RemoteRequest, "v" | "id"> & { id?: string }): Promise<RemoteResponse>
+  rpc(
+    req: Omit<RemoteRequest, "v" | "id"> & { id?: string },
+    opts?: { dropOnTimeout?: boolean },
+  ): Promise<RemoteResponse>
   close(): void
   announceDevice(label?: string): Promise<RemoteResponse | undefined>
   onPush?: (resp: RemoteResponse) => void

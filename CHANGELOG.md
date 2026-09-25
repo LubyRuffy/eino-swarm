@@ -13,6 +13,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **macOS desktop updates from GitHub Releases.** The sidebar shows the build version. A newer `zwai-<version>-darwin-<arch>.zip` on the latest release asks before it replaces `zwai.app` and reopens. `make desktop-release VERSION=X.Y.Z` builds that zip. Check for updates is in the app menu.
+
+- **`make release` publishes the Mac zip and the Android APK together.** One tag gets both files. A missing file or a failed upload does not count as published.
+
 - **The phone walkthrough shows the same read-only client groups.** `?mock=1` lists Claude, Codex, and Cursor under Clients so the inbox can be checked without a paired PC.
 
 - **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group and folds. The first page is at most five tasks from the last 3 days; More loads the next five. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
@@ -20,6 +24,10 @@ co-working app built on it. The library API is unchanged except where noted
 ### Fixed
 
 - **A local agent session keeps the opening request at the top.** It stays pinned while the rest scrolls. Adjacent thinking and tool calls start collapsed on one row, the same work fold as a conversation. A reply stays outside that row.
+
+- **A phone no longer drops the PC while local agent transcripts are scanned.** Inbox `list` does not walk Claude, Codex, or Cursor. That walk fills a snapshot beside the link. The phone reads it with `clients`, and a slow reply does not close the socket. The sidebar poll uses the same snapshot.
+
+- **A reply that is still streaming no longer appears twice around its tool calls.** Argument previews (`tool_call_delta`) no longer seal the commentary, so the message flushed when the calls are issued updates that same bubble instead of painting a second copy under the fold.
 
 - **Opening a local agent task no longer stays on the loading skeletons.** Sidebar polls share one disk walk, so the session read can get a connection. Titles drop the tool wrapper in front of the request.
 
