@@ -15,7 +15,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 - **The phone walkthrough shows the same read-only client groups.** `?mock=1` lists Claude, Codex, and Cursor under Clients so the inbox can be checked without a paired PC.
 
-- **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group. The first page is the last 3 days; More loads older tasks. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
+- **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group and folds. The first page is at most five tasks from the last 3 days; More loads the next five. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
 
 ### Fixed
 
@@ -28,6 +28,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **A thinking model that spends the whole output budget no longer ends the turn as a blank success.** Every chat request sends `swarm.max_completion_tokens` (default 16384). A call that stops for length with no answer and no tool call is an error, so the transcript says the budget ran out.
 
 ### Changed
+
+- **Local agent groups fold, and each page is five tasks.** More continues five at a time past the first page, including tasks older than three days.
 
 - **The ungrouped sidebar section is Conversations, with a new-conversation icon on the header.** It used to read Recents. The icon starts a conversation outside any project, same as the button at the top of the list.
 

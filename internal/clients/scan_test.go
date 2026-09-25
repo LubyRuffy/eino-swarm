@@ -75,6 +75,32 @@ func TestRecentWindowKeepsThreeDaysAndMoreOpensOlder(t *testing.T) {
 	}
 }
 
+func TestRecentPageShowsFiveThenMore(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+	for i := 0; i < 6; i++ {
+		writeClaude(t, root, "r"+strconv.Itoa(i), "row "+strconv.Itoa(i), now.Add(-time.Duration(i)*time.Hour))
+	}
+	cfg := config.ClientsConfig{
+		Enabled: true, ClaudeDir: root,
+		CodexDir: filepath.Join(root, "missing-codex"), CursorDir: filepath.Join(root, "missing-cursor"),
+		RecentDays: 3, RunningStaleSeconds: 90,
+	}
+	cat := List(cfg, now, 0)
+	claude := cat.Tools[0]
+	if len(claude.Tasks) != PageSize || !claude.More {
+		t.Fatalf("first page = %+v", claude)
+	}
+	if claude.Tasks[0].Title != "row 0" {
+		t.Fatalf("newest = %s", claude.Tasks[0].Title)
+	}
+	before, _ := strconv.ParseInt(claude.Next, 10, 64)
+	next := List(cfg, now, before)
+	if len(next.Tools[0].Tasks) != 1 || next.Tools[0].Tasks[0].Title != "row 5" || next.Tools[0].More {
+		t.Fatalf("second page = %+v", next.Tools[0])
+	}
+}
+
 func TestBreathingFollowsEachToolsFinishMarker(t *testing.T) {
 	root := t.TempDir()
 	now := time.Now()

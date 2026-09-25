@@ -1,3 +1,6 @@
+import { useState } from "react"
+import { ChevronRight } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
@@ -12,6 +15,7 @@ export function ClientGroups({
   tools: ClientTool[]
   onMore: (id: string, next?: string) => void
 }) {
+  const [open, setOpen] = useState<Record<string, boolean>>({})
   if (tools.length === 0) return null
   return (
     <section className="flex flex-col gap-2" data-testid="client-groups">
@@ -20,7 +24,24 @@ export function ClientGroups({
       </h2>
       {tools.map((tool) => (
         <div key={tool.id} data-testid={`client-tool-${tool.id}`} className="flex flex-col gap-1">
-          <h3 className="px-1 text-[11px] font-medium text-muted-foreground">{t(clientToolTitle(tool.id))}</h3>
+          <h3 className="px-1 text-[11px] font-medium text-muted-foreground">
+            <button
+              type="button"
+              aria-expanded={open[tool.id] !== false}
+              className="flex w-full items-center gap-1 text-left"
+              onClick={() => setOpen((cur) => ({ ...cur, [tool.id]: cur[tool.id] === false }))}
+            >
+              <ChevronRight
+                className={cn(
+                  "size-3 shrink-0",
+                  open[tool.id] !== false && "rotate-90",
+                )}
+                aria-hidden
+              />
+              {t(clientToolTitle(tool.id))}
+            </button>
+          </h3>
+          {open[tool.id] === false ? null : (
           <ul className="overflow-hidden rounded-2xl border border-border bg-card">
             {tool.tasks.length === 0 ? (
               <li className="px-3 py-2 text-xs text-muted-foreground">{t("home.clientEmpty")}</li>
@@ -60,6 +81,7 @@ export function ClientGroups({
               </li>
             ) : null}
           </ul>
+          )}
         </div>
       ))}
     </section>

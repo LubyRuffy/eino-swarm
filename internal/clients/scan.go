@@ -25,8 +25,9 @@ const (
 	StatusRunning = "running"
 	StatusDone    = "done"
 
-	// OlderPage is how many tasks one More click adds per tool.
-	OlderPage  = 40
+	// PageSize is how many tasks one page shows per tool. The first page
+	// is still only the recent window; More walks the rest five at a time.
+	PageSize   = 5
 	titleRunes = 80
 	edgeBytes  = 64 << 10
 )
@@ -77,36 +78,43 @@ func List(cfg config.ClientsConfig, now time.Time, beforeMs int64) Catalog {
 func page(id string, tasks []Task, windowStart, before time.Time) Group {
 	sortTasks(tasks)
 	g := Group{ID: id, Tasks: []Task{}}
+	var pool []Task
+	var beyond bool
 	if before.IsZero() {
-		var older bool
 		for _, task := range tasks {
 			if task.UpdatedAt.Before(windowStart) {
-				older = true
+				beyond = true
 				continue
 			}
-			g.Tasks = append(g.Tasks, task)
+			pool = append(pool, task)
 		}
-		g.More = older
-		if older {
-			g.Next = unixMilli(windowStart)
+	} else {
+		for _, task := range tasks {
+			if task.UpdatedAt.Before(before) {
+				pool = append(pool, task)
+			}
 		}
-		return g
 	}
-	var older []Task
-	for _, task := range tasks {
-		if !task.UpdatedAt.Before(before) {
-			continue
-		}
-		older = append(older, task)
-	}
-	if len(older) > OlderPage {
+	shown, more, next := takePage(pool)
+	g.Tasks = shown
+	g.More = more
+	g.Next = next
+	if !g.More && beyond {
 		g.More = true
-		g.Tasks = older[:OlderPage]
-		g.Next = unixMilli(g.Tasks[len(g.Tasks)-1].UpdatedAt)
-		return g
+		g.Next = unixMilli(windowStart)
 	}
-	g.Tasks = older
 	return g
+}
+
+func takePage(tasks []Task) (shown []Task, more bool, next string) {
+	if len(tasks) == 0 {
+		return []Task{}, false, ""
+	}
+	if len(tasks) <= PageSize {
+		return tasks, false, ""
+	}
+	shown = tasks[:PageSize]
+	return shown, true, unixMilli(shown[len(shown)-1].UpdatedAt)
 }
 
 func unixMilli(t time.Time) string {

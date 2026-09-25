@@ -86,8 +86,9 @@ filters the roster this phone already holds.
 When that PC has Settings → Clients → **Show local agent tasks** on, the
 inbox also lists Clients, then Claude, Codex, and Cursor. Each row is the
 task title and a light: breathing while it is still running, steady when
-it is finished. The first page is the last three days; More loads older
-tasks. The phone does not scan its own disk and the rows do not open.
+it is finished. Each tool group folds. The first page is at most five
+tasks from the last three days; More loads the next five. The phone does
+not scan its own disk and the rows do not open.
 
 ## A model on the phone
 

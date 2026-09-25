@@ -67,10 +67,13 @@ export function LocalClientsSection() {
       onToggle={() => setOpen((cur) => ({ ...cur, clients: cur.clients === false }))}
     >
       {tools.map((tool) => (
-        <div key={tool.id} data-testid={`client-tool-${tool.id}`} className="mb-1">
-          <div className={cn(chromeTypeClass, "px-[var(--sidebar-row-px)] py-1 text-sidebar-foreground/70")}>
-            {t(toolLabelKey(tool.id))}
-          </div>
+        <SidebarSection
+          key={tool.id}
+          testId={`client-tool-${tool.id}`}
+          label={t(toolLabelKey(tool.id))}
+          open={open[tool.id] !== false}
+          onToggle={() => setOpen((cur) => ({ ...cur, [tool.id]: cur[tool.id] === false }))}
+        >
           {tool.tasks.length === 0 ? (
             <p className={cn(chromeTypeClass, "px-[var(--sidebar-row-px)] pb-1 text-sidebar-foreground/60")}>
               {t("sidebar.clientEmpty")}
@@ -116,7 +119,7 @@ export function LocalClientsSection() {
               {t("sidebar.clientMore")}
             </Button>
           ) : null}
-        </div>
+        </SidebarSection>
       ))}
     </SidebarSection>
   )

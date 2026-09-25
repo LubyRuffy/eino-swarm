@@ -344,7 +344,8 @@ over Settings instead of a red line under Phone.
 
 Read-only list of local agent transcripts. Off by default. Settings → Clients
 is the switch. The sidebar and a paired phone show one group per tool. Tasks
-from the last `recent_days` are the first page; More loads older ones. A row
+from the last `recent_days` are the first page, five per tool. Each tool
+group folds. More loads the next five. A row
 does not open a composer.
 
 | key | default | meaning |

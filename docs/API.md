@@ -162,10 +162,10 @@ provider carries `has_api_key` and `ready` instead.
 Read-only progress for local Claude, Codex, and Cursor transcripts. `enabled`
 is false until Settings turns it on; then `tools` is three groups
 (`claude`, `codex`, `cursor`). Each task has `id`, `title`, `cwd`,
-`updated_at`, and `status` (`running` or `done`). The first page is the
-last `clients.recent_days` (default 3). `more` and `next` mean older tasks
-exist. `GET /api/clients?before=<unix ms>` returns the next older page for
-every tool. Rows are not conversations: nothing here sends, steers, or resumes.
+`updated_at`, and `status` (`running` or `done`). The first page is at most five tasks from the last `clients.recent_days`
+(default 3). `more` and `next` mean another page exists, still inside that
+window or older than it. `GET /api/clients?before=<unix ms>` returns the
+next five per tool. Rows are not conversations: nothing here sends, steers, or resumes.
 
 A paired phone gets the same list on the inbox `list` reply as `clients`,
 clipped to 30 tasks per tool. `clients` with `before` and optional `group`

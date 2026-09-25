@@ -410,8 +410,8 @@ works. Conversations never enter the hub database.
 ## Local agent progress
 
 Settings → Clients → **Show local agent tasks** lists Claude, Codex, and Cursor
-sessions already on this machine. The sidebar groups them under Clients. The
-first page is the last three days; More shows older tasks. A breathing light
+sessions already on this machine. The sidebar groups them under Clients. Each tool group folds. The first
+page is at most five tasks from the last three days; More shows the next five. A breathing light
 means that task is still running. The rows are read-only. A paired phone shows
 the same list. The switch is off until you turn it on.
 
