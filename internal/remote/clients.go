@@ -23,8 +23,8 @@ func handleClientRead(eng *engine.Engine, req Request, path, sessionID string) R
 		Truncated: doc.Truncated, Entries: []ClientEntry{},
 	}
 	entries := doc.Entries
-	if len(entries) > 30 {
-		entries = entries[len(entries)-30:]
+	if trimmed, cut := clients.TrimKeepingRequest(entries, 30); cut {
+		entries = trimmed
 		view.Truncated = true
 	}
 	for _, e := range entries {

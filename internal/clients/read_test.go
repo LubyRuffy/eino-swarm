@@ -77,6 +77,20 @@ func TestReadKeepsTheCommandAndSkipsInjectedContext(t *testing.T) {
 	}
 }
 
+func TestLongSessionStillShowsTheOpeningRequest(t *testing.T) {
+	entries := []Entry{{Role: "user", Text: "the request"}}
+	for i := 0; i < entryCap; i++ {
+		entries = append(entries, Entry{Role: "tool", Text: "tool"})
+	}
+	got, cut := TrimKeepingRequest(entries, entryCap)
+	if !cut || len(got) != entryCap || got[0].Role != "user" || got[0].Text != "the request" {
+		t.Fatalf("trimmed = %+v cut=%v", got[:1], cut)
+	}
+	if got[1].Role != "tool" {
+		t.Fatalf("tail did not follow the request: %+v", got[1])
+	}
+}
+
 func TestReadUsesThePathTheListAlreadyFound(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "elsewhere", "s1.jsonl")

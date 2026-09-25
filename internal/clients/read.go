@@ -60,8 +60,8 @@ func Read(cfg config.ClientsConfig, id string, now time.Time) (Transcript, bool)
 	if entries == nil {
 		entries = []Entry{}
 	}
-	if len(entries) > entryCap {
-		entries = entries[len(entries)-entryCap:]
+	if trimmed, cut := TrimKeepingRequest(entries, entryCap); cut {
+		entries = trimmed
 		truncated = true
 	}
 	title := titleOf(tool, h)
@@ -333,6 +333,42 @@ func toolNames(raw json.RawMessage) []string {
 		}
 	}
 	return names
+}
+
+// TrimKeepingRequest keeps the opening user request when a long session is
+// cut down to its latest lines. The tail alone is tool calls, so the top of
+// the chat had nothing the user typed.
+func TrimKeepingRequest(entries []Entry, limit int) ([]Entry, bool) {
+	if limit < 1 || len(entries) <= limit {
+		return entries, false
+	}
+	first := -1
+	for i, e := range entries {
+		if e.Role == "user" {
+			first = i
+			break
+		}
+	}
+	if first < 0 || first >= len(entries)-limit {
+		return entries[len(entries)-limit:], true
+	}
+	end := first + 1
+	for end < len(entries) && entries[end].Role == "user" {
+		end++
+	}
+	head := entries[first:end]
+	if len(head) >= limit {
+		return append([]Entry{}, head[:limit]...), true
+	}
+	room := limit - len(head)
+	start := len(entries) - room
+	if start < end {
+		start = end
+	}
+	out := make([]Entry, 0, limit)
+	out = append(out, head...)
+	out = append(out, entries[start:]...)
+	return out, true
 }
 
 func clipEntry(s string) string {
