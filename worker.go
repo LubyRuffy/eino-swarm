@@ -118,7 +118,14 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 			o := ev.Output
 			if o != nil && o.MessageOutput != nil &&
 				o.MessageOutput.IsStreaming && o.MessageOutput.MessageStream != nil {
-				answer, calls := acc.drain(o.MessageOutput.MessageStream)
+				answer, calls, drainErr := acc.drain(o.MessageOutput.MessageStream)
+				if drainErr != nil {
+					h.mu.Lock()
+					h.err = drainErr
+					h.finished = time.Now()
+					h.mu.Unlock()
+					return
+				}
 				if len(calls) == 0 && strings.TrimSpace(answer) != "" {
 					final = answer
 				}

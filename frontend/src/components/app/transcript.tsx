@@ -67,6 +67,10 @@ import { useApp } from "@/store/app"
 
 const EMPTY_BLOCKS: Block[] = []
 
+function rewindHidesEdit(cut: TranscriptState["rewindCut"], seq: number): boolean {
+  return Boolean(cut && seq >= cut.from && seq <= cut.through)
+}
+
 /** The middle pane: the manager's conversation, with sub-agent activity folded
  *  in where it happened. */
 export function Transcript({
@@ -243,7 +247,7 @@ export function Transcript({
                     showClock={b.kind === "user" || b.id === clockAnswerId}
                     onSelectAgent={onSelectAgent}
                     onResendUser={onResendUser}
-                    editing={editingSeq === b.seq}
+                    editing={editingSeq === b.seq && !rewindHidesEdit(state.rewindCut, b.seq)}
                     onBeginEdit={beginEdit}
                     onCancelEdit={cancelEdit}
                   />
@@ -872,8 +876,8 @@ function UserMessage({
     const payload =
       next.quotes.length > 0 ? formatQuotedMessage(next.quotes, draft) : draft
     if (!payload.trim() && !(block.images && block.images.length > 0)) return
-    onResend?.(payload, block.seq)
     onCancelEdit?.()
+    onResend?.(payload, block.seq)
   }
 
   return (

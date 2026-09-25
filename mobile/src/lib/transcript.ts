@@ -154,10 +154,24 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
       }
       return next
     }
-    case "tool_call": {
+    case "tool_call":
+    case "tool_call_delta": {
       settleReasoning(next)
       const parsed = splitToolCall(ev.text)
-      if (parsed.name === ASK_TOOL) {
+      const composing = ev.kind === "tool_call_delta"
+      if (!composing && parsed.name === ASK_TOOL) {
+        const i = lastIndex(next, (b) => Boolean(b.callId) && b.callId === ev.tool_call_id)
+        if (i >= 0) {
+          next[i] = {
+            ...next[i],
+            kind: "question",
+            text: "",
+            pending: true,
+            callId: ev.tool_call_id,
+            questions: parseAskToolArgs(parsed.args) ?? [],
+          }
+          return next
+        }
         next.push({
           id: blockId(ev),
           kind: "question",
@@ -168,19 +182,33 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
         })
         return next
       }
-      const notice = scheduleToolNotice(parsed.name, parsed.args)
-      if (notice !== undefined) {
-        if (notice) {
-          next.push({ id: blockId(ev), kind: "notice", text: notice })
+      if (!composing) {
+        const notice = scheduleToolNotice(parsed.name, parsed.args)
+        if (notice !== undefined) {
+          if (notice) {
+            next.push({ id: blockId(ev), kind: "notice", text: notice })
+          }
+          return next
+        }
+      }
+      const i = lastIndex(next, (b) => b.kind === "tool" && Boolean(ev.tool_call_id) && b.callId === ev.tool_call_id)
+      if (i >= 0) {
+        next[i] = {
+          ...next[i],
+          text: composing ? ev.text : parsed.name || ev.text,
+          toolName: parsed.name || next[i].toolName,
+          args: composing ? next[i].args : parsed.args,
+          pending: true,
         }
         return next
       }
+      if (!parsed.name) return next
       next.push({
         id: blockId(ev),
         kind: "tool",
-        text: parsed.name || ev.text,
+        text: composing ? ev.text : parsed.name || ev.text,
         toolName: parsed.name,
-        args: parsed.args,
+        args: composing ? "" : parsed.args,
         callId: ev.tool_call_id,
         pending: true,
       })

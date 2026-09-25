@@ -142,7 +142,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     rememberStored(threadId, ev)
     if (ev.kind === "rewound") {
       const from = Number.parseInt(String(ev.text ?? ""), 10)
-      if (Number.isFinite(from) && from > 0) rememberRewind(threadId, from)
+      if (Number.isFinite(from) && from > 0) rememberRewind(threadId, from, transcript.lastSeq)
     }
     transcript = reduceEvent(transcript, ev)
     if (ev.kind === "user_message" || ev.kind === "resumed") {
@@ -268,14 +268,18 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     Boolean(status.awaiting_answer),
   )
   const followupsDirty = droppedFollowups.length > 0
-  set({
-    transcript,
+  const base = state.transcript
+  set((s) => ({
+    transcript:
+      s.transcript === base
+        ? transcript
+        : events.reduce((acc, ev) => reduceEvent(acc, ev), s.transcript),
     status,
     threads,
     usage,
     ...(followupsDirty ? { followups } : {}),
     ...(schedulesDirty ? { schedules } : {}),
-  })
+  }))
   if (followupsDirty) {
     bumpFollowups()
     const id = threadId

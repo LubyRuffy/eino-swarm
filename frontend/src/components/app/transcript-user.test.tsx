@@ -86,6 +86,8 @@ describe("user message actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Send" }))
     expect(onResendUser).toHaveBeenCalledTimes(1)
     expect(onResendUser).toHaveBeenCalledWith("beta edited", 2)
+    expect(screen.queryByTestId("user-message-editor")).toBeNull()
+    expect(screen.getByText("beta")).toBeInTheDocument()
   })
 
   it("does not offer edit on a pending replacement bubble", () => {
@@ -130,6 +132,30 @@ describe("user message actions", () => {
     )
     expect(screen.getAllByRole("button", { name: "Edit message" })).toHaveLength(1)
     expect(screen.getByText("edited")).toBeInTheDocument()
+  })
+
+  it("hides the editor when that message sits inside a resend cut", () => {
+    const view = render(
+      <Transcript
+        state={twoTurns()}
+        loaded
+        onSelectAgent={() => {}}
+        onResendUser={() => {}}
+      />,
+    )
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit message" })[1])
+    expect(screen.getByTestId("user-message-editor")).toBeInTheDocument()
+    const cut = twoTurns()
+    view.rerender(
+      <Transcript
+        state={{ ...cut, rewindCut: { from: 2, through: 9, live: true } }}
+        loaded
+        onSelectAgent={() => {}}
+        onResendUser={() => {}}
+      />,
+    )
+    expect(screen.queryByTestId("user-message-editor")).toBeNull()
+    expect(screen.getByText("beta")).toBeInTheDocument()
   })
 
   it("cancels an in-place edit without sending", () => {

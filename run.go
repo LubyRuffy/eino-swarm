@@ -198,7 +198,10 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 			continue
 		}
 		if o.MessageOutput.IsStreaming && o.MessageOutput.MessageStream != nil {
-			answer, calls := acc.drain(o.MessageOutput.MessageStream)
+			answer, calls, drainErr := acc.drain(o.MessageOutput.MessageStream)
+			if drainErr != nil {
+				return RunResult{Final: final, Transcript: r.historySnapshot()}, drainErr
+			}
 			if len(calls) == 0 && strings.TrimSpace(answer) != "" {
 				final = answer
 			}

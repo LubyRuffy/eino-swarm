@@ -99,6 +99,10 @@ func TestToolDeltaIsBroadcastNotStored(t *testing.T) {
 		Kind: swarm.NotifyToolCall, AgentID: swarm.DefaultManagerID, Text: "exec({})", ToolCallID: "c1",
 	})
 	acc.onNotify(swarm.Notification{
+		Kind: swarm.NotifyToolCallDelta, AgentID: swarm.DefaultManagerID,
+		Text: "exec(12)", ToolCallID: "c1",
+	})
+	acc.onNotify(swarm.Notification{
 		Kind: swarm.NotifyToolDelta, AgentID: swarm.DefaultManagerID,
 		Text: `{"stdout":"a","stderr":""}`, ToolCallID: "c1",
 	})
@@ -113,8 +117,8 @@ func TestToolDeltaIsBroadcastNotStored(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, ev := range events {
-		if ev.Kind == swarm.NotifyToolDelta.String() {
-			t.Fatalf("tool_delta must not be persisted: %+v", ev)
+		if ev.Kind == swarm.NotifyToolDelta.String() || ev.Kind == swarm.NotifyToolCallDelta.String() {
+			t.Fatalf("streamed tool text must not be persisted: %+v", ev)
 		}
 	}
 }

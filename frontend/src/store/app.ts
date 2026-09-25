@@ -584,7 +584,8 @@ export const useApp = create<AppState>((set, get) => ({
       // Before any await: this bubble stays with the new text, everything
       // below it is gone. Waiting on currentThread first would paint the
       // unedited bubble for a frame, which is the opposite of Codex.
-      rememberRewind(id, from)
+      rememberRewind(id, from, get().transcript.lastSeq)
+      dropQueued()
       bumpFollowups()
       set((s) => ({
         transcript: placePendingEdit(

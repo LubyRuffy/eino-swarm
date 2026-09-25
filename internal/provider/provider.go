@@ -244,9 +244,10 @@ func (p *Pool) ModelBuilder(ctx context.Context, id, modelName, effort string, r
 		return nil, err
 	}
 	effort = config.NormalizeReasoning(effort)
+	limit := p.cfg.Swarm.CompletionTokenLimit()
 	if p.mock {
 		return func(role, agentID string) model.BaseChatModel {
-			return wrap(newMockModel(role), agentID, prov, effort, rec)
+			return wrap(newMockModel(role), agentID, prov, effort, limit, rec)
 		}, nil
 	}
 	if !prov.Ready() {
@@ -258,7 +259,7 @@ func (p *Pool) ModelBuilder(ctx context.Context, id, modelName, effort string, r
 		return nil, err
 	}
 	return func(role, agentID string) model.BaseChatModel {
-		return wrap(shared, agentID, prov, effort, rec)
+		return wrap(shared, agentID, prov, effort, limit, rec)
 	}, nil
 }
 
@@ -284,15 +285,14 @@ func buildOpenAI(ctx context.Context, p config.Provider) (model.BaseChatModel, e
 
 // ---------- telemetry ----------
 
-// wrap returns m instrumented to report every call to rec and to carry the
-// conversation's thinking level. A model with neither a recorder nor an effort
-// is returned untouched, so there is no cost when nobody is watching and no
-// reasoning field is sent to endpoints that never asked for one.
-func wrap(m model.BaseChatModel, agentID string, p config.Provider, effort string, rec Recorder) model.BaseChatModel {
-	if rec == nil && effort == "" {
+// wrap returns m instrumented to report every call to rec, to carry the
+// conversation's thinking level, and to send max_tokens. A model with no
+// recorder, no effort and no output cap is returned untouched.
+func wrap(m model.BaseChatModel, agentID string, p config.Provider, effort string, maxTokens int, rec Recorder) model.BaseChatModel {
+	if rec == nil && effort == "" && maxTokens <= 0 {
 		return m
 	}
-	return &recordingModel{inner: m, agentID: agentID, providerID: p.ID, model: p.Model, reasoning: effort, rec: rec}
+	return &recordingModel{inner: m, agentID: agentID, providerID: p.ID, model: p.Model, reasoning: effort, maxTokens: maxTokens, rec: rec}
 }
 
 // recordingModel times each request and reports its shape. It deliberately
@@ -306,12 +306,16 @@ type recordingModel struct {
 	providerID string
 	model      string
 	reasoning  string
+	maxTokens  int
 	rec        Recorder
 }
 
 // withReasoning prepends the reasoning-effort option when one is set. It goes
 // first so an explicit caller option later in the list still wins.
 func (r *recordingModel) withReasoning(opts []model.Option) []model.Option {
+	if r.maxTokens > 0 {
+		opts = append([]model.Option{model.WithMaxTokens(r.maxTokens)}, opts...)
+	}
 	if r.reasoning == "" {
 		return opts
 	}

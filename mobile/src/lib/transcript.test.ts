@@ -63,6 +63,17 @@ describe("compact transcript", () => {
     expect(phoneAgents(blocks)[0].blocks.find((b) => b.kind === "tool"))
       .toMatchObject({ pending: false, failed: true })
   })
+  it("keeps simultaneous manager and worker tool-call previews separate", () => {
+    let blocks: CompactBlock[] = []
+    for (const row of [
+      ev({ seq: 0, kind: "tool_call_delta", agent_id: "manager", tool_call_id: "m", text: "read(8)" }),
+      ev({ seq: 0, kind: "tool_call_delta", agent_id: "w1", tool_call_id: "w", text: "write(8)" }),
+      ev({ seq: 0, kind: "tool_call_delta", agent_id: "manager", tool_call_id: "m", text: "read(40)" }),
+      ev({ seq: 0, kind: "tool_call_delta", agent_id: "w1", tool_call_id: "w", text: "write(40)" }),
+    ]) blocks = applyEvent(blocks, row)
+    expect(managerBlocks(blocks).find((b) => b.kind === "tool")?.text).toBe("read(40)")
+    expect(phoneAgents(blocks)[0].blocks.find((b) => b.kind === "tool")?.text).toBe("write(40)")
+  })
   it("splits user and assistant and streams deltas into one answer", () => {
     let blocks: CompactBlock[] = []
     blocks = applyEvent(blocks, ev({ seq: 1, kind: "user_message", text: "hello" }))
@@ -133,6 +144,27 @@ describe("compact transcript", () => {
     )
     expect(blocks).toHaveLength(1)
     expect(blocks[0].text).toBe("line")
+  })
+
+  it("shows a tool call while its arguments are still streaming", () => {
+    let blocks: CompactBlock[] = []
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 0, kind: "tool_call_delta", tool_call_id: "c", text: "spawn_agent(8)" }),
+    )
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 0, kind: "tool_call_delta", tool_call_id: "c", text: "spawn_agent(40)" }),
+    )
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].toolName).toBe("spawn_agent")
+    expect(blocks[0].text).toBe("spawn_agent(40)")
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 13, kind: "tool_call", tool_call_id: "c", text: 'spawn_agent({"role":"writer"})' }),
+    )
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].args).toContain("writer")
   })
 
   it("keeps goal and plan notices without dumping empty kinds", () => {

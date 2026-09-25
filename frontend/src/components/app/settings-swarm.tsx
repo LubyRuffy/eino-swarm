@@ -190,6 +190,20 @@ export function SwarmTab({
         </Field>
         <Field
           query={query}
+          label={t("settings.swarm.maxCompletion")}
+          hint={t("settings.swarm.maxCompletionHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.swarm.max_completion_tokens}
+            onChange={(e) =>
+              update({ max_completion_tokens: Number(e.target.value) })
+            }
+          />
+        </Field>
+        <Field
+          query={query}
           label={t("settings.swarm.goalTurns")}
           hint={t("settings.swarm.goalTurnsHint")}
         >

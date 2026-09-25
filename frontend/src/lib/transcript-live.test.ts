@@ -55,6 +55,25 @@ describe("live tool output", () => {
     expect(manager(state).blocks.filter((b) => b.kind === "notice")).toHaveLength(0)
   })
 
+  it("paints one row while a tool call is still being written", () => {
+    const mid = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "tool_call_delta", text: "spawn_agent(8)", tool_call_id: "c1" }),
+      ev({ kind: "tool_call_delta", text: "spawn_agent(40)", tool_call_id: "c1" }),
+    ])
+    const live = manager(mid).blocks.filter((b) => b.kind === "tool")
+    expect(live).toHaveLength(1)
+    expect(live[0].tool).toMatchObject({ name: "spawn_agent", pending: true, writing: 40 })
+    const done = fold(
+      [ev({ kind: "tool_call", text: 'spawn_agent({"role":"writer"})', tool_call_id: "c1" })],
+      mid,
+    )
+    const tools = manager(done).blocks.filter((b) => b.kind === "tool")
+    expect(tools).toHaveLength(1)
+    expect(tools[0].tool?.writing).toBeUndefined()
+    expect(tools[0].tool?.args).toContain("writer")
+  })
+
   it("keeps two live calls from overwriting each other", () => {
     const state = fold([
       ev({ kind: "user_message", text: "hi" }),

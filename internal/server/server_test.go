@@ -831,6 +831,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 	// not silently change the protocol.
 	for _, want := range []string{
 		"agent_message", "spawned", "finished", "tool_call", "tool_result", "tool_delta",
+		"tool_call_delta",
 		"turn", "delta", "reasoning_delta", "done", "error",
 	} {
 		if _, ok := swarm.ParseNotifyKind(want); !ok {

@@ -410,6 +410,9 @@ func TestNormalizeRepairsHandEditedConfig(t *testing.T) {
 	if cfg.Swarm.CompactOutputReserveTokens != DefaultCompactOutputReserveTokens {
 		t.Fatalf("compact output reserve not repaired: %+v", cfg.Swarm)
 	}
+	if cfg.Swarm.MaxCompletionTokens != DefaultMaxCompletionTokens {
+		t.Fatalf("completion cap not repaired: %+v", cfg.Swarm)
+	}
 	if !cfg.Swarm.AutoTitle {
 		t.Fatal("an older config without auto_title must keep naming conversations")
 	}

@@ -19,6 +19,9 @@ import {
   parseSteerRetractSeq,
 } from "./transcript-steer"
 import { applyScheduleEvent, sealQuietTurns } from "./transcript-schedule"
+import { findToolBlock, splitToolCall, summarise } from "./transcript-tool-block"
+
+export { splitToolCall, summarise }
 
 export { parseIterationLimit, parsePulse } from "./transcript-pulse"
 export { splitQueuedSteers } from "./transcript-steer"
@@ -77,6 +80,9 @@ export interface Block {
     failed?: boolean
     /** A call with no result yet is still running. */
     pending: boolean
+    /** Argument runes written so far. Set while the model is still
+     *  composing the call, before it is issued. */
+    writing?: number
   }
   /** ask_user cards. */
   question?: AskCard
@@ -179,6 +185,9 @@ export interface TranscriptState {
   retractedSteers?: number[]
   quietTurns?: string[]
   scheduledFiredTurns?: string[]
+  /** Stored seqs in `[from, through]` belong to a resent message. Live
+   *  deltas stay dropped until the replacement `user_message` arrives. */
+  rewindCut?: { from: number; through: number; live: boolean }
 }
 
 export const MANAGER_ID = "manager"
@@ -203,6 +212,7 @@ export function reduceEvent(
     if (!Number.isFinite(from) || from <= 0) return state
     return rewindTranscript(state, from)
   }
+  if (droppedByRewind(state, ev)) return state
   const next: TranscriptState = {
     agentOrder: state.agentOrder,
     agents: { ...state.agents },
@@ -213,6 +223,7 @@ export function reduceEvent(
     retractedSteers: state.retractedSteers,
     quietTurns: state.quietTurns?.slice(),
     scheduledFiredTurns: state.scheduledFiredTurns?.slice(),
+    rewindCut: state.rewindCut,
   }
   if (applyScheduleEvent(next, ev)) return sealQuietTurns(next, ev)
   if (ev.kind === "steer_preempted") {
@@ -350,6 +361,9 @@ export function reduceEvent(
 
   switch (ev.kind) {
     case "user_message":
+      if (next.rewindCut?.live && ev.seq > next.rewindCut.through) {
+        next.rewindCut = { ...next.rewindCut, live: false }
+      }
       upsertTurn(next, ev.turn_id, { userText: ev.text ?? "", status: "running", startedAt: ev.created_at })
       next.running = true
       next.pulse = undefined
@@ -393,21 +407,49 @@ export function reduceEvent(
       agent.activity = summarise(ev.text ?? "")
       break
 
-    case "tool_call": {
+    case "tool_call":
+    case "tool_call_delta": {
       keepWorkerLive(agent)
       closeStreaming(agent, "reasoning")
       closeStreaming(agent, "answer")
       const { name, args } = splitToolCall(ev.text ?? "")
-      const ask = askCardFromEvent(ev, name, args)
+      const writing = ev.kind === "tool_call_delta" ? Number(args) : undefined
+      const ask = ev.kind === "tool_call" ? askCardFromEvent(ev, name, args) : undefined
+      const existing = ev.tool_call_id ? findToolBlock(agent, ev.tool_call_id) : undefined
+      if (existing?.tool && !ask) {
+        existing.tool = {
+          ...existing.tool,
+          name: name || existing.tool.name,
+          args: ev.kind === "tool_call" ? args : existing.tool.args,
+          pending: true,
+          writing: Number.isFinite(writing) ? writing : undefined,
+        }
+        existing.text = name || existing.text
+        agent.activity = name || agent.activity
+        break
+      }
+      if (existing && ask) {
+        existing.kind = "question"
+        existing.tool = undefined
+        existing.question = ask
+        existing.text = name
+        break
+      }
       if (ask) {
         append(agent, { ...block(ev, "question", name), question: ask })
-      } else {
+      } else if (name) {
         append(agent, {
           ...block(ev, "tool", name),
-          tool: { callId: ev.tool_call_id ?? "", name, args, pending: true },
+          tool: {
+            callId: ev.tool_call_id ?? "",
+            name,
+            args: ev.kind === "tool_call" ? args : "",
+            pending: true,
+            writing: Number.isFinite(writing) ? writing : undefined,
+          },
         })
       }
-      agent.activity = `${name}`
+      if (name) agent.activity = name
       break
     }
 
@@ -619,7 +661,7 @@ export function collapseLiveEvents(events: SwarmEvent[]): SwarmEvent[] {
       if (seen.has(key)) continue
       seen.add(key)
     }
-    if (ev.kind === "tool_delta") {
+    if (ev.kind === "tool_delta" || ev.kind === "tool_call_delta") {
       const key = `${ev.agent_id || MANAGER_ID}:${ev.kind}:${ev.tool_call_id || ""}`
       if (seen.has(key)) continue
       seen.add(key)
@@ -640,15 +682,11 @@ export function reduceEvents(
   return events.reduce((s, ev) => reduceEvent(s, ev), state)
 }
 
-/** Local placeholder so an in-place edit does not blink out between Send
- *  and the replacement user_message. Seq stays 0 so a later rewind still
- *  treats it as not-yet-stored. */
+/** Seq stays 0 so a later rewind still treats this row as not-yet-stored. */
 export const PENDING_EDIT_ID = "pending-edit"
 
-/** Drop the named user message and everything after it. lastSeq stays: the
- *  next stored event is assigned past the high-water mark, so a live
- *  EventSource Last-Event-ID still lands on new rows instead of ghosts.
- *  A pending edit at this position is kept so the bubble itself stays put. */
+/** Drop the named user message and everything after it. lastSeq stays so a
+ *  reconnect does not replay the cut as if it were new. */
 export function rewindTranscript(
   state: TranscriptState,
   fromSeq: number,
@@ -702,7 +740,15 @@ export function rewindTranscript(
     retractedSteers: (state.retractedSteers ?? []).filter((s) => s < fromSeq),
     quietTurns: (state.quietTurns ?? []).filter((id) => keptTurns.has(id)),
     scheduledFiredTurns: (state.scheduledFiredTurns ?? []).filter((id) => keptTurns.has(id)),
+    rewindCut: { from: fromSeq, through: state.lastSeq, live: true },
   }
+}
+
+function droppedByRewind(state: TranscriptState, ev: SwarmEvent): boolean {
+  const cut = state.rewindCut
+  if (!cut || ev.kind === "rewound") return false
+  if (ev.seq > 0 && ev.seq >= cut.from && ev.seq <= cut.through) return true
+  return cut.live && !(ev.seq > 0)
 }
 
 /** Put the edited text back at the cut so Send looks like Codex: this
@@ -725,6 +771,7 @@ export function placePendingEdit(
     retractedSteers: state.retractedSteers,
     quietTurns: state.quietTurns?.slice(),
     scheduledFiredTurns: state.scheduledFiredTurns?.slice(),
+    rewindCut: state.rewindCut,
   }
   const agent = touchAgent(next, MANAGER_ID)
   agent.blocks = agent.blocks.filter((b) => b.id !== PENDING_EDIT_ID)
@@ -936,53 +983,6 @@ function settlePendingConfirm(agent: AgentState, continued: boolean, text?: stri
 
 function openId(ev: SwarmEvent, kind: string): string {
   return `${ev.turn_id}:${ev.agent_id || MANAGER_ID}:${kind}:open:${ev.created_at}`
-}
-
-function findToolBlock(agent: AgentState, callId?: string): Block | undefined {
-  const blocks = agent.blocks
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const b = blocks[i]
-    if (b.kind === "question" && b.question) {
-      if (callId && b.question.callId === callId) {
-        const copy = { ...b, question: { ...b.question } }
-        agent.blocks = blocks.map((x, j) => (j === i ? copy : x))
-        return copy
-      }
-      if (!callId && b.question.pending) {
-        const copy = { ...b, question: { ...b.question } }
-        agent.blocks = blocks.map((x, j) => (j === i ? copy : x))
-        return copy
-      }
-    }
-    if (b.kind !== "tool" || !b.tool) continue
-    if (callId && b.tool.callId === callId) {
-      const copy = { ...b, tool: { ...b.tool } }
-      agent.blocks = blocks.map((x, j) => (j === i ? copy : x))
-      return copy
-    }
-    if (!callId && b.tool.pending) {
-      const copy = { ...b, tool: { ...b.tool } }
-      agent.blocks = blocks.map((x, j) => (j === i ? copy : x))
-      return copy
-    }
-  }
-  return undefined
-}
-
-/** The server sends `name({json})`; the UI shows the verb and hides the
- *  arguments until asked. */
-export function splitToolCall(raw: string): { name: string; args: string } {
-  const open = raw.indexOf("(")
-  if (open === -1) return { name: raw.trim(), args: "" }
-  const name = raw.slice(0, open).trim()
-  let args = raw.slice(open + 1)
-  if (args.endsWith(")")) args = args.slice(0, -1)
-  return { name: name || "tool", args }
-}
-
-export function summarise(text: string, max = 80): string {
-  const line = text.trim().replace(/\s+/g, " ")
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line
 }
 
 /** The tool a result belongs to, looked up by call id after the reducer has

@@ -49,7 +49,8 @@ export const en = {
   "sidebar.pinned": "Pinned",
   "sidebar.scheduled": "Scheduled",
   "sidebar.scheduledUnread": "Scheduled, {n} unread",
-  "sidebar.recents": "Recents",
+  "sidebar.recents": "Conversations",
+  "sidebar.newInRecents": "Start a conversation",
   "sidebar.pin": "Pin",
   "sidebar.unpin": "Unpin",
 
@@ -322,6 +323,7 @@ export const en = {
   "transcript.jumpLatest": "Jump to latest",
   "transcript.thinking": "Thinking",
   "transcript.planningMoves": "Planning next moves",
+  "transcript.writingTool": "Writing {name} arguments · {n}",
   "transcript.workEditing": "Editing {name}",
   "transcript.workReading": "Reading {name}",
   "transcript.workExec": "Exec {name}",
@@ -681,6 +683,9 @@ export const en = {
   "settings.swarm.outputReserve": "Output reserve (tokens)",
   "settings.swarm.outputReserveHint":
     "Tokens kept free under a known window so the next completion still fits. The compact line is the lesser of the percent and window minus this reserve.",
+  "settings.swarm.maxCompletion": "Max completion (tokens)",
+  "settings.swarm.maxCompletionHint":
+    "max_tokens sent on every model request. Without it, a thinking model can spend the endpoint's small default before it answers.",
   "settings.swarm.schedules": "Scheduled waits",
   "settings.swarm.scheduleMin": "Shortest wait (seconds)",
   "settings.swarm.scheduleMinHint":

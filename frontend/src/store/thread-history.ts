@@ -33,12 +33,18 @@ const loadedAgents = new Set<string>()
  *  `historyLoading` and treating the busy sentinel as the end of the log. */
 let olderLoad: Promise<void> | undefined
 
+/** Stored seqs inside a resent cut. A late replay must not put them back. */
+let cutFrom = 0
+let cutThrough = 0
+
 export function resetThreadHistory() {
   threadId = ""
   events = []
   roster = []
   agentLogs = []
   loadedAgents.clear()
+  cutFrom = 0
+  cutThrough = 0
 }
 
 export function historyNewestSeq(): number {
@@ -92,16 +98,20 @@ export function prependOlder(id: string, older: SwarmEvent[]): TranscriptState |
 
 export function rememberStored(id: string, ev: SwarmEvent) {
   if (threadId !== id || (ev.seq ?? 0) <= 0) return
+  if (cutThrough > 0 && ev.seq >= cutFrom && ev.seq <= cutThrough) return
   events.push(ev)
   roster = extraRosterEvents(roster, [ev])
   agentLogs = extraRosterEvents(agentLogs, [ev])
 }
 
-export function rememberRewind(id: string, cut: number) {
+export function rememberRewind(id: string, cut: number, through = 0) {
   if (threadId !== id) return
-  events = events.filter((ev) => ev.seq < cut)
-  roster = roster.filter((ev) => ev.seq < cut)
-  agentLogs = agentLogs.filter((ev) => ev.seq < cut)
+  cutFrom = cut
+  if (through > cutThrough) cutThrough = through
+  const keep = (seq: number) => seq < cut || (cutThrough > 0 && seq > cutThrough)
+  events = events.filter((ev) => keep(ev.seq))
+  roster = roster.filter((ev) => keep(ev.seq))
+  agentLogs = agentLogs.filter((ev) => keep(ev.seq))
 }
 
 export function applyAgentLog(id: string, extra: SwarmEvent[]): TranscriptState | undefined {

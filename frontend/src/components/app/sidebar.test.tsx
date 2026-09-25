@@ -87,10 +87,22 @@ describe("Sidebar chrome", () => {
       />,
     )
     expect(screen.getByRole("button", { name: "Projects" })).toHaveClass("sidebar-section-label")
-    expect(screen.getByRole("button", { name: "Recents" })).toHaveClass("sidebar-section-label")
+    expect(screen.getByRole("button", { name: "Conversations" })).toHaveClass(
+      "sidebar-section-label",
+    )
     expect(screen.queryByText("Today")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "All conversations" })).not.toBeInTheDocument()
     expect(screen.getByTestId("project-list")).not.toHaveClass("px-2")
+  })
+
+  it("starts a loose conversation from the Conversations header", () => {
+    render(<Sidebar threads={[thread("th_1", "Hello")]} {...noop} />)
+    fireEvent.click(screen.getByTestId("recents-new"))
+    expect(noop.onNew).toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Conversations" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    )
   })
 
   it("starts a conversation from a project row without using the list button", () => {
@@ -453,7 +465,7 @@ describe("Sidebar pin and folders", () => {
     expect(screen.getByTestId("row-kind")).toHaveClass("sidebar-kind")
     expect(screen.getByTestId("row-kind")).toBeEmptyDOMElement()
     expect(
-      screen.getByRole("button", { name: "Recents" }).querySelector("[data-testid=section-fold]"),
+      screen.getByRole("button", { name: "Conversations" }).querySelector("[data-testid=section-fold]"),
     ).toHaveClass("opacity-0")
     expect(
       screen.getByRole("button", { name: "Projects" }).querySelector("[data-testid=section-fold]"),
@@ -464,22 +476,22 @@ describe("Sidebar pin and folders", () => {
     const { unmount } = render(
       <Sidebar threads={[thread("th_1", "Hello")]} {...noop} />,
     )
-    const recents = screen.getByRole("button", { name: "Recents" })
+    const recents = screen.getByRole("button", { name: "Conversations" })
     expect(recents).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByText("Hello")).toBeInTheDocument()
     fireEvent.click(recents)
     expect(screen.queryByTestId("thread-row")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Recents" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Conversations" })).toHaveAttribute(
       "aria-expanded",
       "false",
     )
     expect(
-      screen.getByRole("button", { name: "Recents" }).querySelector("[data-testid=section-fold]"),
+      screen.getByRole("button", { name: "Conversations" }).querySelector("[data-testid=section-fold]"),
     ).toHaveClass("opacity-100")
     unmount()
     render(<Sidebar threads={[thread("th_1", "Hello")]} {...noop} />)
     expect(screen.queryByTestId("thread-row")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Recents" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Conversations" })).toHaveAttribute(
       "aria-expanded",
       "false",
     )

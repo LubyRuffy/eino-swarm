@@ -26,6 +26,7 @@ export const KINDS = [
   "tool_call",
   "tool_result",
   "tool_delta",
+  "tool_call_delta",
   "steer",
   "steer_retracted",
   "steer_preempted",
