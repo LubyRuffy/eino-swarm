@@ -376,13 +376,15 @@ func claudeTitle(head []byte) (string, string) {
 	var title, cwd string
 	for _, raw := range linesOf(head) {
 		var row struct {
-			Type    string `json:"type"`
-			CWD     string `json:"cwd"`
-			Message struct {
+			Type          string `json:"type"`
+			CWD           string `json:"cwd"`
+			IsMeta        bool   `json:"isMeta"`
+			TurnCompanion bool   `json:"turnCompanion"`
+			Message       struct {
 				Content json.RawMessage `json:"content"`
 			} `json:"message"`
 		}
-		if json.Unmarshal(raw, &row) != nil {
+		if json.Unmarshal(raw, &row) != nil || row.IsMeta || row.TurnCompanion {
 			continue
 		}
 		if cwd == "" && strings.TrimSpace(row.CWD) != "" {
@@ -487,18 +489,22 @@ func textOf(raw json.RawMessage) string {
 }
 
 var (
-	userQueryTag = regexp.MustCompile(`(?s)<user_query>(.*?)</user_query>`)
-	wrapperTag   = regexp.MustCompile(`(?s)<(?:timestamp|command-message|command-name|local-command-caveat|image_files|manually_attached_skills|recommended_plugins|environment_context)>.*?</(?:timestamp|command-message|command-name|local-command-caveat|image_files|manually_attached_skills|recommended_plugins|environment_context)>`)
+	userQueryTag   = regexp.MustCompile(`(?s)<user_query>(.*?)</user_query>`)
+	commandNameTag = regexp.MustCompile(`(?s)<command-name>(.*?)</command-name>`)
+	wrapperTag     = regexp.MustCompile(`(?s)<(?:timestamp|command-message|command-name|local-command-caveat|image_files|manually_attached_skills|recommended_plugins|environment_context)>.*?</(?:timestamp|command-message|command-name|local-command-caveat|image_files|manually_attached_skills|recommended_plugins|environment_context)>`)
 )
 
-// visibleText drops the tool wrappers that sit in front of a real request.
-// A message that is only those wrappers is empty, so the title uses the next one.
+// visibleText keeps the original request. A slash command lives in
+// command-name; the skill text that follows it is a separate meta row.
+// Other tool wrappers are not the request.
 func visibleText(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return ""
 	}
 	if m := userQueryTag.FindStringSubmatch(s); len(m) == 2 && strings.TrimSpace(m[1]) != "" {
+		s = m[1]
+	} else if m := commandNameTag.FindStringSubmatch(s); len(m) == 2 && strings.TrimSpace(m[1]) != "" {
 		s = m[1]
 	}
 	s = strings.TrimSpace(wrapperTag.ReplaceAllString(s, " "))

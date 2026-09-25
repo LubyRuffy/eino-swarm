@@ -250,12 +250,14 @@ func entriesFrom(tool string, body []byte) []Entry {
 
 func claudeEntries(raw []byte) []Entry {
 	var row struct {
-		Type    string `json:"type"`
-		Message struct {
+		Type          string `json:"type"`
+		IsMeta        bool   `json:"isMeta"`
+		TurnCompanion bool   `json:"turnCompanion"`
+		Message       struct {
 			Content json.RawMessage `json:"content"`
 		} `json:"message"`
 	}
-	if json.Unmarshal(raw, &row) != nil {
+	if json.Unmarshal(raw, &row) != nil || row.IsMeta || row.TurnCompanion {
 		return nil
 	}
 	if row.Type != "user" && row.Type != "assistant" {
@@ -331,7 +333,6 @@ func toolNames(raw json.RawMessage) []string {
 }
 
 func clipEntry(s string) string {
-	s = strings.Join(strings.Fields(s), " ")
 	if utf8.RuneCountInString(s) <= entryRunes {
 		return s
 	}

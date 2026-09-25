@@ -136,7 +136,8 @@ func TestBreathingFollowsEachToolsFinishMarker(t *testing.T) {
 func TestTitleSkipsToolWrappers(t *testing.T) {
 	root := t.TempDir()
 	now := time.Now()
-	claude := `{"type":"user","cwd":"/work/demo","message":{"content":[{"type":"text","text":"<command-message>tool</command-message> <command-name>tool</command-name>"}]}}` + "\n" +
+	claude := `{"type":"user","cwd":"/work/demo","message":{"content":"<command-message>tool</command-message> <command-name>/tool</command-name>"}}` + "\n" +
+		`{"type":"user","isMeta":true,"turnCompanion":true,"message":{"content":[{"type":"text","text":"Base directory for this skill: injected context that is not the request"}]}}` + "\n" +
 		`{"type":"user","message":{"content":[{"type":"text","text":"open session"}]}}` + "\n"
 	writeFileTime(t, filepath.Join(root, "claude", "projects", "work", "s1.jsonl"), claude, now)
 	cursor := `{"role":"user","message":{"content":[{"type":"text","text":"<timestamp>stamp</timestamp> <user_query>open session</user_query>"}]}}` + "\n"
@@ -155,7 +156,7 @@ func TestTitleSkipsToolWrappers(t *testing.T) {
 			titles = append(titles, task.Title)
 		}
 	}
-	if len(titles) != 2 || titles[0] != "open session" || titles[1] != "open session" {
+	if len(titles) != 2 || titles[0] != "/tool" || titles[1] != "open session" {
 		t.Fatalf("titles = %v", titles)
 	}
 }
