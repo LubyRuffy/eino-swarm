@@ -5,6 +5,22 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("worker activity opens in its own phone view without becoming a manager answer", async ({ page }) => {
+  await page.goto("/?mock=1&tick=0&agents=1")
+  await page.getByRole("button", { name: "返回" }).click()
+  await page.getByRole("button", { name: /^打开 Sweep the unused exports$/ }).click()
+  const transcript = page.getByTestId("transcript")
+  await expect(transcript).toContainText("Here is what changed:")
+  await expect(transcript).not.toContainText("worker answer")
+  await page.getByRole("button", { name: "子 Agent (1)" }).click()
+  await expect(page.getByTestId("agent-roster")).toContainText("reader")
+  await page.getByTestId("agent-roster").getByRole("button").click()
+  await expect(transcript).toContainText("worker answer")
+  await expect(transcript).not.toContainText("Here is what changed:")
+  await page.getByRole("button", { name: "返回" }).click()
+  await expect(page.getByTestId("agent-roster")).toBeVisible()
+})
+
 test("interrupting a waiting phone message first inserts it into the live turn", async ({ page }) => {
   await page.goto("/?mock=1&tick=0&queue=1")
   const queue = page.getByTestId("followup-queue")
@@ -241,12 +257,15 @@ test("the composer grows with the text and send stays off while it is empty", as
 test("a page loaded with more is still there after the inbox refreshes", async ({ page }) => {
   await page.goto(WALKTHROUGH)
   await backToInbox(page)
-  await page.getByRole("button", { name: "更多" }).click()
+  const recent = page.getByTestId("inbox-list").locator("section").filter({
+    has: page.getByRole("heading", { name: "最近", exact: true }),
+  })
+  await recent.getByRole("button", { name: "更多" }).click()
   const older = page.getByRole("button", { name: /^打开 Page past the first$/ })
   await expect(older).toBeVisible()
   await page.waitForTimeout(2500)
   await expect(older).toBeVisible()
-  await expect(page.getByRole("button", { name: "更多" })).toHaveCount(0)
+  await expect(recent.getByRole("button", { name: "更多" })).toHaveCount(0)
 })
 
 test("opening a conversation shows loading before the transcript", async ({ page }) => {

@@ -39,10 +39,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-006 Phone remote protocol
 
-- 状态：active；类型：compatibility / security；作用范围：pairlink、phone、PC remote；关联功能：`F-170`, `F-210`, `F-220`, `F-230`。
-- 契约内容：手机通过 pairlink 加密 RPC 与 PC 通信，不直接调用 PC 的 `/api`；相同事件 kind 和 seq 可在手机回放；断线重连不解除绑定。
-- 允许行为：relay/direct 路径切换；禁止行为：把本地 PC API 直接暴露给手机；失败语义：连接错误与 host offline 可区分；不变量：一个 PC 对话跨端一致；边界条件：ticket 过期、掉线和重连。
-- 证据：实现 `internal/remote`, `mobile/src/lib/link.ts`, `mobile/src/app.tsx`；测试 `internal/remote`, `mobile/src/lib/rpc.test.ts`；变更规则：同步 API、手机测试和数据模型；来源：`ARCHITECTURE.md`。
+- 状态：active；类型：compatibility / security；作用范围：pairlink、phone、PC remote；关联功能：`F-170`, `F-210`, `F-220`, `F-222`, `F-230`。
+- 契约内容：手机通过 pairlink 加密 RPC 与 PC 通信，不直接调用 PC 的 `/api`；相同事件 kind 和 seq 可在手机回放；断线重连不解除绑定。子 Agent 的事件按 `agent_id` 与主 Agent 分开回放，`spawned` 启动指令正文不离开 PC；手机只显示协议允许并按 `event_chars` 裁剪的活动。
+- 允许行为：relay/direct 路径切换及手机查看子 Agent 角色、状态和截断记录；禁止行为：把本地 PC API 或子 Agent 启动指令直接暴露给手机，或把子 Agent 回答混作主 Agent 回答；失败语义：连接错误与 host offline 可区分；不变量：一个 PC 对话跨端一致，同一 agent 的流式文本只更新自己的记录；边界条件：ticket 过期、掉线、历史翻页、子 Agent 续办和重连。
+- 证据：实现 `internal/remote/clip.go`, `mobile/src/lib/link.ts`, `mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/thread-screen.tsx`；测试 `internal/remote/watch_test.go` 的 `TestSpawnedInstructionNeverLeavesTheHost`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、手机测试和数据模型；来源：`ARCHITECTURE.md`、GitHub Issue #30 的 A 方案确认。
 
 ## C-007 Phone inbox pagination
 

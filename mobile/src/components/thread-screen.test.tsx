@@ -3,8 +3,48 @@ import { describe, expect, it, vi } from "vitest"
 
 import { setLocale } from "@/lib/i18n"
 import { ThreadScreen } from "./thread-screen"
+import { applyEvent, type CompactBlock } from "@/lib/transcript"
+import type { RemoteEvent } from "@/lib/rpc"
 
 describe("ThreadScreen", () => {
+  it("opens a worker's separate activity without painting it as the manager answer", () => {
+    setLocale("en")
+    let blocks: CompactBlock[] = []
+    const events: Partial<RemoteEvent>[] = [
+      { seq: 1, kind: "spawned", agent_id: "worker-1", role: "reader", text: "" },
+      { seq: 2, kind: "agent_message", agent_id: "manager", text: "manager answer" },
+      { seq: 3, kind: "reasoning", agent_id: "worker-1", text: "worker thought" },
+      { seq: 4, kind: "tool_call", agent_id: "worker-1", tool_call_id: "c1", text: "read({})" },
+      { seq: 5, kind: "agent_message", agent_id: "worker-1", text: "worker answer" },
+      { seq: 6, kind: "finished", agent_id: "worker-1", text: "worker answer" },
+    ]
+    for (const event of events) blocks = applyEvent(blocks, {
+      thread_id: "t1", created_at: "2026-09-25T00:00:00Z", text: "", ...event,
+    } as RemoteEvent)
+    render(<ThreadScreen detail={{ id: "t1", title: "talk" }} blocks={blocks}
+      onBack={vi.fn()} onSend={vi.fn()} onSteer={vi.fn()} onStop={vi.fn()}
+      onAnswer={vi.fn()} onAnswerStructured={vi.fn()} />)
+    expect(screen.getByText("manager answer")).toBeInTheDocument()
+    expect(screen.queryByText("worker answer")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /agents/i }))
+    expect(screen.getByRole("button", { name: /reader.*worker-1.*done/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /reader.*worker-1.*done/i }))
+    expect(screen.getByText("worker answer")).toBeInTheDocument()
+    expect(screen.queryByText("manager answer")).not.toBeInTheDocument()
+    expect(screen.queryByText(/launch instruction/i)).not.toBeInTheDocument()
+  })
+
+  it("shows a failed worker's error in its own activity view", () => {
+    setLocale("en")
+    let blocks = applyEvent([], { thread_id: "t1", seq: 1, kind: "spawned", agent_id: "w1", role: "reader", text: "", created_at: "2026-09-25T00:00:00Z" })
+    blocks = applyEvent(blocks, { thread_id: "t1", seq: 2, kind: "finished", agent_id: "w1", text: "", err: "worker timed out", created_at: "2026-09-25T00:00:01Z" })
+    render(<ThreadScreen detail={{ id: "t1", title: "talk" }} blocks={blocks}
+      onBack={vi.fn()} onSend={vi.fn()} onSteer={vi.fn()} onStop={vi.fn()}
+      onAnswer={vi.fn()} onAnswerStructured={vi.fn()} />)
+    fireEvent.click(screen.getByRole("button", { name: /agents/i }))
+    fireEvent.click(screen.getByRole("button", { name: /reader.*w1.*failed/i }))
+    expect(screen.getByText("worker timed out")).toBeInTheDocument()
+  })
   it("adds selected transcript text to the draft and sends it as a separate quote", () => {
     setLocale("en")
     const onSend = vi.fn()

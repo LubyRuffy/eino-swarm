@@ -8,6 +8,8 @@ import {
   pendingAsk,
   phonePlanningTail,
   phoneWorkTicker,
+  phoneAgents,
+  managerBlocks,
   type CompactBlock,
 } from "./transcript"
 import type { RemoteEvent } from "./rpc"
@@ -22,6 +24,56 @@ function ev(partial: Partial<RemoteEvent> & Pick<RemoteEvent, "kind" | "seq">): 
 }
 
 describe("compact transcript", () => {
+  it("keeps interleaved manager and worker streams in separate histories", () => {
+    let blocks: CompactBlock[] = []
+    for (const row of [
+      ev({ seq: 1, kind: "spawned", agent_id: "w1", role: "researcher", text: "secret launch instruction" }),
+      ev({ seq: 2, kind: "delta", agent_id: "manager", text: "manager starts" }),
+      ev({ seq: 3, kind: "delta", agent_id: "w1", text: "worker starts" }),
+      ev({ seq: 4, kind: "agent_message", agent_id: "manager", text: "manager answer" }),
+      ev({ seq: 5, kind: "agent_message", agent_id: "w1", text: "worker answer" }),
+      ev({ seq: 6, kind: "finished", agent_id: "w1", role: "researcher", text: "worker answer" }),
+    ]) blocks = applyEvent(blocks, row)
+    expect(managerBlocks(blocks).filter((b) => b.kind === "answer").map((b) => b.text))
+      .toEqual(["manager answer"])
+    expect(phoneAgents(blocks)).toMatchObject([{
+      id: "w1", role: "researcher", status: "done",
+      blocks: [{ kind: "spawn" }, { kind: "answer", text: "worker answer" }],
+    }])
+    expect(phoneAgents(blocks)[0].blocks.filter((b) => b.kind === "answer")).toHaveLength(1)
+    expect(blocks.some((b) => b.text === "secret launch instruction")).toBe(false)
+  })
+
+  it("restarts a resumed worker and marks failed finishes without creating another row", () => {
+    let blocks: CompactBlock[] = []
+    for (const row of [
+      ev({ seq: 1, kind: "spawned", agent_id: "w1", role: "reader" }),
+      ev({ seq: 2, kind: "finished", agent_id: "w1", err: "timed out" }),
+      ev({ seq: 3, kind: "spawned", agent_id: "w1", role: "reader" }),
+    ]) blocks = applyEvent(blocks, row)
+    expect(phoneAgents(blocks)).toMatchObject([{ id: "w1", status: "running" }])
+    blocks = applyEvent(blocks, ev({ seq: 4, kind: "finished", agent_id: "w1", err: "failed" }))
+    expect(phoneAgents(blocks)).toMatchObject([{ id: "w1", status: "failed" }])
+  })
+
+  it("closes a worker's pending tool when that worker finishes", () => {
+    let blocks = applyEvent([], ev({ seq: 1, kind: "spawned", agent_id: "w1", role: "reader" }))
+    blocks = applyEvent(blocks, ev({ seq: 2, kind: "tool_call", agent_id: "w1", tool_call_id: "c1", text: "read({})" }))
+    blocks = applyEvent(blocks, ev({ seq: 3, kind: "finished", agent_id: "w1", err: "stopped" }))
+    expect(phoneAgents(blocks)[0].blocks.find((b) => b.kind === "tool"))
+      .toMatchObject({ pending: false, failed: true })
+  })
+  it("keeps simultaneous manager and worker tool-call previews separate", () => {
+    let blocks: CompactBlock[] = []
+    for (const row of [
+      ev({ seq: 0, kind: "tool_call_delta", agent_id: "manager", tool_call_id: "m", text: "read(8)" }),
+      ev({ seq: 0, kind: "tool_call_delta", agent_id: "w1", tool_call_id: "w", text: "write(8)" }),
+      ev({ seq: 0, kind: "tool_call_delta", agent_id: "manager", tool_call_id: "m", text: "read(40)" }),
+      ev({ seq: 0, kind: "tool_call_delta", agent_id: "w1", tool_call_id: "w", text: "write(40)" }),
+    ]) blocks = applyEvent(blocks, row)
+    expect(managerBlocks(blocks).find((b) => b.kind === "tool")?.text).toBe("read(40)")
+    expect(phoneAgents(blocks)[0].blocks.find((b) => b.kind === "tool")?.text).toBe("write(40)")
+  })
   it("splits user and assistant and streams deltas into one answer", () => {
     let blocks: CompactBlock[] = []
     blocks = applyEvent(blocks, ev({ seq: 1, kind: "user_message", text: "hello" }))

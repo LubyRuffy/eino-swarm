@@ -31,6 +31,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 - **Local agent groups fold, and each page is five tasks.** More continues five at a time past the first page, including tasks older than three days.
 
+- `C-006` 手机回放按 `agent_id` 分离主 Agent 与子 Agent；仍只接收 Pairlink 允许且按 `event_chars` 裁剪的事件，子 Agent 启动指令继续留在 PC（Issue #30）。
+
 - **The ungrouped sidebar section is Conversations, with a new-conversation icon on the header.** It used to read Recents. The icon starts a conversation outside any project, same as the button at the top of the list.
 
 - `F-220` 手机等待队列的“中断插入”现在先将队首消息转为当前轮次的插话，再中断 manager 当前步骤；其他等待消息保留在队列中（`C-002`，修复 Issue #31）。
@@ -40,6 +42,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **Conversation width, developer view, and who else is connected moved into the app menu.** That is the `…` control at the bottom-left of the conversation list, beside Settings. The title bar keeps the status badge, the terminal, and the side panel.
 
 ### Added
+
+- `F-222` 手机对话增加子 Agent 列表和独立活动页，按角色／ID 查看状态、思考、工具与回答；主 Agent 对话不再混入子 Agent 回答。沿用 `C-006` 的 Pairlink 指令隐藏及事件裁剪约定（Issue #30）。
 
 - `F-221` The phone can select text in a PC conversation and add it to the
   next message, follow-up, or steer. Quotes stay separate from the typed

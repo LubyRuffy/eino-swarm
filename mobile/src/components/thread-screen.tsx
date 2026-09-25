@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { ArrowDown, ChevronLeft, Loader2, MessageSquarePlus } from "lucide-react"
+import { ArrowDown, ChevronLeft, ChevronRight, Loader2, MessageSquarePlus } from "lucide-react"
 
 import { AskCard } from "@/components/ask-card"
 import { Composer, type ComposerExtra } from "@/components/composer"
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { t } from "@/lib/i18n"
 import { normalizeSelectedText } from "@/lib/quote"
 import type { CompactBlock } from "@/lib/transcript"
-import { pendingAsk } from "@/lib/transcript"
+import { managerBlocks, pendingAsk, phoneAgents } from "@/lib/transcript"
 import type { FollowupView, ModelChoice, ThreadDetail } from "@/lib/rpc"
 import { cn } from "@/lib/cn"
 
@@ -67,7 +67,11 @@ export function ThreadScreen({
   onCancelWait?: () => void
   onResumeGoal?: () => void
 }) {
-  const ask = pendingAsk(blocks)
+  const manager = managerBlocks(blocks)
+  const agents = phoneAgents(blocks)
+  const [agentPage, setAgentPage] = useState("chat")
+  const selectedAgent = agents.find((agent) => agent.id === agentPage)
+  const ask = pendingAsk(manager)
   const opening = !caughtUp && blocks.length === 0
   const asking = Boolean(detail.running?.ask_user || ask?.pending)
   const running = Boolean(detail.running)
@@ -80,6 +84,17 @@ export function ThreadScreen({
   const pinHeight = useRef<number | null>(null)
   const [atTail, setAtTail] = useState(false)
   const [behind, setBehind] = useState(false)
+
+  useEffect(() => {
+    setAgentPage("chat")
+  }, [detail.id])
+
+  const changePage = (page: string) => {
+    setSelectedText("")
+    stick.current = true
+    setBehind(false)
+    setAgentPage(page)
+  }
 
   useEffect(() => {
     if (asking) return
@@ -131,7 +146,7 @@ export function ThreadScreen({
       if (behind) setBehind(false)
     }
     if (!atTail) setAtTail(true)
-  }, [caughtUp, blocks, loadingOlder, hasMore, atTail, behind])
+  }, [caughtUp, blocks, loadingOlder, hasMore, atTail, behind, agentPage])
 
   const toLatest = () => {
     const el = scroller.current
@@ -160,7 +175,7 @@ export function ThreadScreen({
         <Button
           variant="ghost"
           className="size-10 shrink-0 px-0"
-          onClick={onBack}
+          onClick={() => agentPage === "chat" ? onBack() : changePage(selectedAgent ? "agents" : "chat")}
           aria-label={t("thread.back")}
         >
           <ChevronLeft className="size-5" />
@@ -172,7 +187,9 @@ export function ThreadScreen({
               aria-hidden
             />
           ) : null}
-          <h1 className="min-w-0 truncate text-sm font-medium">{detail.title}</h1>
+          <h1 className="min-w-0 truncate text-sm font-medium">
+            {selectedAgent?.role || (agentPage === "agents" ? t("thread.agents") : detail.title)}
+          </h1>
           {waiting ? (
             <span
               data-testid="thread-status"
@@ -182,7 +199,12 @@ export function ThreadScreen({
             </span>
           ) : null}
         </div>
-        {running ? (
+        {agentPage === "chat" && agents.length > 0 ? (
+          <Button variant="ghost" className="h-8 shrink-0 px-2 text-xs" onClick={() => changePage("agents")}>
+            {t("thread.agents")} ({agents.length})
+          </Button>
+        ) : null}
+        {agentPage === "chat" && running ? (
           <Button
             variant="ghost"
             className="h-8 shrink-0 px-2 text-destructive"
@@ -192,19 +214,19 @@ export function ThreadScreen({
           </Button>
         ) : null}
       </header>
-      <GoalBanner
+      {agentPage === "chat" ? <GoalBanner
         detail={detail}
         running={running}
         waiting={waiting}
         onResume={onResumeGoal}
-      />
-      <ScheduleBanner
+      /> : null}
+      {agentPage === "chat" ? <ScheduleBanner
         detail={detail}
         running={running}
         onRunNow={onRunNow}
         onCancel={onCancelWait}
-      />
-      {detail.plan_on ? (
+      /> : null}
+      {agentPage === "chat" && detail.plan_on ? (
         <p className="px-4 text-[11px] text-[hsl(var(--running))]">{t("thread.plan")}</p>
       ) : null}
 
@@ -270,9 +292,26 @@ export function ThreadScreen({
               instead of floating under a screen of blank. */}
           <div className="flex min-h-full min-w-0 w-full flex-col justify-end gap-1.5">
             <div ref={quoteSource} data-quote-source="">
-              <ThreadLog blocks={blocks} running={running} />
+              {agentPage === "agents" ? (
+                <div className="flex flex-col gap-1" data-testid="agent-roster">
+                  {agents.map((agent) => (
+                    <button key={agent.id} type="button" onClick={() => changePage(agent.id)}
+                      className="flex min-w-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-left text-sm">
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate">{agent.role} · {agent.id}</span>
+                        {agent.activity ? <span className="truncate text-xs text-muted-foreground">{agent.activity}</span> : null}
+                      </span>
+                      <span className="shrink-0 text-xs text-muted-foreground">{t(`thread.agent.${agent.status}`)}</span>
+                      <ChevronRight className="size-4 shrink-0" aria-hidden />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <ThreadLog blocks={selectedAgent ? selectedAgent.blocks : manager}
+                  running={selectedAgent ? selectedAgent.status === "running" : running} />
+              )}
             </div>
-            {ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
+            {agentPage === "chat" && ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
               <AskCard
                 questions={ask.questions!}
                 disabled={composerPending}
@@ -281,7 +320,7 @@ export function ThreadScreen({
             ) : null}
           </div>
         </div>
-        {selectedText && !asking ? (
+        {agentPage === "chat" && selectedText && !asking ? (
           <Button
             type="button"
             variant="outline"
@@ -314,7 +353,7 @@ export function ThreadScreen({
       </div>
       )}
 
-      {followups.length > 0 ? (
+      {agentPage === "chat" && followups.length > 0 ? (
         <QueueTray
           items={followups}
           onSteer={onSteerFollowup}
@@ -322,7 +361,7 @@ export function ThreadScreen({
           onInterrupt={running ? onInterrupt : undefined}
         />
       ) : null}
-      <Composer
+      {agentPage === "chat" ? <Composer
         quotes={asking ? [] : quotes}
         onQuotesChange={setQuotes}
         // The box and the button cannot share a name, or a screen reader
@@ -341,7 +380,7 @@ export function ThreadScreen({
         catalogBusy={catalogBusy}
         onTune={onTune}
         onSubmit={asking ? onAnswer : onSend}
-      />
+      /> : null}
     </main>
   )
 }

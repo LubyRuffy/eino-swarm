@@ -16,6 +16,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-210` Pair a phone with a PC
     - `F-220` Read and control PC conversations
     - `F-221` Quote PC conversation text
+    - `F-222` Inspect sub-agents on the phone
     - `F-230` Direct model chat
     - `F-240` Phone updates
   - `F-300` Programmatic access
@@ -70,6 +71,10 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-221 Quote PC conversation text
 
 - 目的：从手机对话选择原文并附在下一条消息；使用者：手机用户；入口：选中对话正文 → Add to chat／加入对话；输入：选区及可选请求；输出：可查看、编辑、移除引用，发送或插入后显示独立的引用块；前置条件：打开 PC 对话，选区在正文中；失败表现：无效选区不显示操作，发送失败恢复草稿；关联契约：`C-011`；实现证据：`mobile/src/components/thread-screen.tsx`, `mobile/src/components/composer.tsx`, `mobile/src/lib/quote.ts`, `mobile/e2e/walkthrough.spec.ts`。
+
+### F-222 Inspect sub-agents on the phone
+
+- 目的：在手机查看 PC 对话中的子 Agent 而不混入主 Agent 回答；使用者：已配对手机用户；入口：对话页 → 子 Agent／Agents → 子 Agent 行；输入：Pairlink 已允许的事件及更早历史页；输出：角色、ID、运行／完成／失败状态、活动摘要和独立的思考、工具、回答记录；前置条件：PC 端有可回放的子 Agent 事件；失败表现：离线时沿用重连提示，未加载到启动事件前角色暂以 ID 显示；关联契约：`C-003`, `C-006`；实现证据：`mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/thread-screen.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`。
 
 ### F-230 Direct model chat
 

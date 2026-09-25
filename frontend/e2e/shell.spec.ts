@@ -222,9 +222,10 @@ test("the Conversations header icon starts a conversation outside a project", as
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   const rows = page.getByTestId("recents-list").getByTestId("thread-row")
   await expect(rows.first()).toBeVisible()
-  const before = await rows.count()
+  const active = page.getByTestId("recents-list").locator('[data-testid="thread-row"][aria-current="true"]')
+  const before = await active.getAttribute("data-id")
   await page.getByTestId("recents-new").click()
-  await expect(rows).toHaveCount(before + 1)
+  await expect(active).not.toHaveAttribute("data-id", before!)
   await expect(page.getByRole("button", { name: "Conversations", exact: true })).toHaveAttribute(
     "aria-expanded",
     "true",

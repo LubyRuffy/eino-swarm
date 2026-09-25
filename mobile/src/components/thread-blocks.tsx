@@ -76,7 +76,7 @@ export function renderBlock(b: CompactBlock) {
   if (b.kind === "spawn") {
     return null
   }
-  if (b.kind === "error") {
+  if (b.kind === "error" || (b.kind === "finish" && b.failed)) {
     return <p className="text-sm text-destructive">{b.text}</p>
   }
   if (b.kind === "notice") {

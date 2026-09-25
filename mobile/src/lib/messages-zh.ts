@@ -89,6 +89,10 @@ export const zh: Record<MessageKey, string> = {
   "home.reconnecting": "重连中",
 
   "thread.back": "返回",
+  "thread.agents": "子 Agent",
+  "thread.agent.running": "运行中",
+  "thread.agent.done": "已完成",
+  "thread.agent.failed": "失败",
   "thread.stop": "停止",
   "thread.send": "发送",
   "thread.followUp": "跟进",
