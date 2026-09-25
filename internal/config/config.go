@@ -32,6 +32,7 @@ type Config struct {
 	UI          UIConfig          `yaml:"ui" json:"ui"`
 	Remote      RemoteConfig      `yaml:"remote" json:"remote"`
 	Search      SearchConfig      `yaml:"search" json:"search"`
+	Clients     ClientsConfig     `yaml:"clients" json:"clients"`
 
 	// dataDir is where this config was loaded from. Not serialized: the file
 	// cannot meaningfully record its own location.
@@ -625,6 +626,7 @@ func Default() *Config {
 			WatchEvents:  DefaultRemoteWatchEvents,
 			KeepAwake:    DefaultRemoteKeepAwake,
 		},
+		Clients: DefaultClients(),
 	}
 }
 
@@ -866,6 +868,7 @@ func (c *Config) normalize() {
 	}
 	c.normalizeRemote()
 	c.normalizeSearch()
+	c.normalizeClients()
 }
 
 func (c *Config) providerIndex(id string) int {
@@ -950,6 +953,7 @@ func (c *Config) Replace(next *Config) error {
 	c.UI = next.UI
 	c.Remote = next.Remote
 	c.Search = next.Search
+	c.Clients = next.Clients
 	return c.Save()
 }
 

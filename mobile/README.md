@@ -89,6 +89,12 @@ header is one row: which PC this is, not the app's own name. Pulling the
 list down past the top reloads the roster; an empty inbox says so. Search
 filters the roster this phone already holds.
 
+When that PC has Settings → Clients → **Show local agent tasks** on, the
+inbox also lists Clients, then Claude, Codex, and Cursor. Each row is the
+task title and a light: breathing while it is still running, steady when
+it is finished. The first page is the last three days; More loads older
+tasks. The phone does not scan its own disk and the rows do not open.
+
 ## A model on the phone
 
 Menu → Models saves an OpenAI-compatible endpoint: base URL, optional key,
@@ -108,7 +114,8 @@ the phone.
 ## Walking the screens without a PC
 
 `?mock=1` boots onto the inbox against a scripted host (`lib/mock-link.ts`):
-projects, a live turn, a parked wait, and idle recents. It answers the same
+projects, a live turn, a parked wait, idle recents, and the read-only
+Clients groups (Claude, Codex, Cursor). It answers the same
 ops with the same shapes over no network and no model, so the inbox and a
 conversation can be driven in a browser and in Playwright — the screens
 behind the scan form used to have no end-to-end coverage at all. Add

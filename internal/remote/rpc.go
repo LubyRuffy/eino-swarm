@@ -30,6 +30,8 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 	switch strings.TrimSpace(req.Op) {
 	case OpList, OpMore:
 		return handleList(eng, cfg, req, path, sessionID)
+	case OpClients:
+		return handleClients(eng, req, path, sessionID)
 	case OpOpen:
 		return handleOpen(eng, cfg, req, path, sessionID)
 	case OpStart:
@@ -115,6 +117,7 @@ func handleList(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, 
 	// an old phone never sends Group, so its global cursor is unchanged.
 	if req.Op == OpList && req.Group == "" && req.Cursor == "" {
 		resp.Groups = inboxGroups(eng, cfg, ps, idle)
+		resp.Clients = clientCatalog(eng.Config().Clients, 0)
 	}
 	return resp
 }

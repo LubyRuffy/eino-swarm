@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  Bot,
   Cpu,
   Library,
   Loader2,
@@ -16,6 +17,7 @@ import { MemorySettings } from "@/components/app/memory-settings"
 import { ModelsTab } from "@/components/app/model-settings"
 import { GeneralTab } from "@/components/app/settings-general"
 import { PersonalityTab } from "@/components/app/settings-personality"
+import { ClientsTab } from "@/components/app/settings-clients"
 import { RemoteTab } from "@/components/app/settings-remote"
 import { SwarmTab } from "@/components/app/settings-swarm"
 import { ToolsTab } from "@/components/app/settings-tools"
@@ -90,6 +92,12 @@ function sections(t: Translate) {
       label: t("settings.nav.remote"),
       icon: Smartphone,
       keys: "phone remote pair qr hub token pairing scan awake sleep model device 手机 扫码 远程 配对 唤醒 休眠 型号",
+    },
+    {
+      id: "clients",
+      label: t("settings.nav.clients"),
+      icon: Bot,
+      keys: "clients claude codex cursor local agent tasks 客户端 本地",
     },
   ] as const
 }
@@ -426,6 +434,13 @@ export function SettingsDialog({
                   ) : null}
                   {page === "remote" ? (
                     <RemoteTab
+                      settings={settings}
+                      onChange={apply}
+                      query={query}
+                    />
+                  ) : null}
+                  {page === "clients" ? (
+                    <ClientsTab
                       settings={settings}
                       onChange={apply}
                       query={query}

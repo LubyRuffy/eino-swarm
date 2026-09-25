@@ -11,7 +11,15 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Added
+
+- **The phone walkthrough shows the same read-only client groups.** `?mock=1` lists Claude, Codex, and Cursor under Clients so the inbox can be checked without a paired PC.
+
+- **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group. The first page is the last 3 days; More loads older tasks. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
+
 ### Fixed
+
+- **More on a local agent list no longer jumps back to the first older page when the list refreshes.** Rows already loaded stay, and the next More click continues from there.
 
 - **编辑重发后，原消息的编辑框不再留在对话里。** 发送先收起编辑框。被截断的那一轮若又从直播流里冒出来，不再画回气泡，编辑态也不会重新打开。
 

@@ -410,6 +410,14 @@ end-to-end tests run on and the fastest way to see the UI work.
 Traffic starts on the hub as ciphertext and upgrades to UDP when punching
 works. Conversations never enter the hub database.
 
+## Local agent progress
+
+Settings → Clients → **Show local agent tasks** lists Claude, Codex, and Cursor
+sessions already on this machine. The sidebar groups them under Clients. The
+first page is the last three days; More shows older tasks. A breathing light
+means that task is still running. The rows are read-only. A paired phone shows
+the same list. The switch is off until you turn it on.
+
 ## Using it
 
 The manager fans out when parallel work would save time or improve quality —

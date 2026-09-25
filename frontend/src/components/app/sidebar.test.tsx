@@ -87,7 +87,7 @@ describe("Sidebar chrome", () => {
       />,
     )
     expect(screen.getByRole("button", { name: "Projects" })).toHaveClass("sidebar-section-label")
-    expect(screen.getByRole("button", { name: "Conversations" })).toHaveClass(
+    expect(screen.getByRole("button", { name: /^Conversations$/ })).toHaveClass(
       "sidebar-section-label",
     )
     expect(screen.queryByText("Today")).not.toBeInTheDocument()

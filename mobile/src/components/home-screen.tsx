@@ -1,6 +1,7 @@
 import { ChevronRight, Loader2, SquarePen } from "lucide-react"
 import { Children, useState, type ReactNode } from "react"
 
+import { ClientGroups } from "@/components/client-groups"
 import { HomeBar } from "@/components/home-bar"
 import { HostChrome } from "@/components/host-chrome"
 import { InboxRow, type RowState } from "@/components/inbox-row"
@@ -14,7 +15,7 @@ import { GROUP_RECENT, INBOX_PREVIEW, type InboxGroupState } from "@/lib/inbox-w
 import { inboxPreview } from "@/lib/inbox-preview"
 import { searchRunning, searchThreads } from "@/lib/inbox-search"
 import { collectLive } from "@/lib/resume"
-import type { ProjectView, RunningView, ThreadView } from "@/lib/rpc"
+import type { ClientTool, ProjectView, RunningView, ThreadView } from "@/lib/rpc"
 import type { SavedLink } from "@/lib/store"
 
 // HomeScreen unmounts when a conversation opens. A fold that resets on
@@ -68,6 +69,9 @@ export function HomeScreen({
   connecting = false,
   error,
   onToggleLocale,
+  clientsOn = false,
+  clientTools = [],
+  onClientMore,
 }: {
   hosts: SavedLink[]
   activeFingerprint: string
@@ -95,6 +99,9 @@ export function HomeScreen({
   connecting?: boolean
   error?: string
   onToggleLocale?: () => void
+  clientsOn?: boolean
+  clientTools?: ClientTool[]
+  onClientMore?: (id: string, next?: string) => void
 }) {
   const [query, setQuery] = useState("")
   const [folded, setFolded] = useState(readFolded)
@@ -216,7 +223,10 @@ export function HomeScreen({
               </div>
             ) : null}
             {recent ? folderSection(recent) : null}
-            {empty && !error ? query ? <NoMatch /> : <EmptyInbox /> : null}
+            {clientsOn ? (
+              <ClientGroups tools={clientTools} onMore={(id, next) => onClientMore?.(id, next)} />
+            ) : null}
+            {empty && !error && !clientsOn ? query ? <NoMatch /> : <EmptyInbox /> : null}
             {more && !sectioned && !query ? (
               <Button
                 variant="outline"

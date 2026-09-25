@@ -151,9 +151,27 @@ provider carries `has_api_key` and `ready` instead.
   "remote": {"enabled": false, "hub_url": "", "thread_limit": 5,
              "summary_chars": 280, "open_turns": 6, "event_chars": 4000,
              "watch_events": 80, "keep_awake": true},
-  "search": {"embedding": false, "embedding_provider": "", "embedding_model": ""}
+  "search": {"embedding": false, "embedding_provider": "", "embedding_model": ""},
+  "clients": {"enabled": false, "claude_dir": "", "codex_dir": "", "cursor_dir": "",
+              "recent_days": 3, "running_stale_seconds": 90}
 }}
 ```
+
+### `GET /api/clients`
+
+Read-only progress for local Claude, Codex, and Cursor transcripts. `enabled`
+is false until Settings turns it on; then `tools` is three groups
+(`claude`, `codex`, `cursor`). Each task has `id`, `title`, `cwd`,
+`updated_at`, and `status` (`running` or `done`). The first page is the
+last `clients.recent_days` (default 3). `more` and `next` mean older tasks
+exist. `GET /api/clients?before=<unix ms>` returns the next older page for
+every tool. Rows are not conversations: nothing here sends, steers, or resumes.
+
+A paired phone gets the same list on the inbox `list` reply as `clients`,
+clipped to 30 tasks per tool. `clients` with `before` and optional `group`
+loads the next page. A `list` that pages one inbox section omits `clients`,
+so a poll of page one can refresh the lights without dropping rows already
+loaded with More.
 
 ### `PUT /api/settings`
 
@@ -349,7 +367,7 @@ The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `hello` / `list` / `more` / `open` / `start` / `send` / `steer` / `stop` /
 `followup_drop` / `followup_steer` / `preempt` /
 `answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
-`resume_goal` / `catalog` / `tune` / `put`. `hello` `{text}` is the phone's one-line model; the host
+`resume_goal` / `catalog` / `tune` / `put` / `clients`. `hello` `{text}` is the phone's one-line model; the host
 keys it by the pairlink fingerprint, not a client-supplied id.
 OK replies carry `host` (this PC's `remote.display_name`) so the phone can
 label the chip; an older host omits it and the phone falls back to a short
@@ -363,7 +381,7 @@ pages that section. `group` omitted keeps the global idle page for a phone
 that still has one More button. `more` pages that idle
 list. A later `list` is still the first page: the phone patches that page
 and keeps rows already loaded with `more`. A row that left the first page
-is not kept just because it was there last time. Replacing the window with
+is not kept just because it was there last time. When `clients.enabled` is on, the first `list` also carries `clients` (three tool groups, 30 tasks each). `clients` `{before, group}` loads older tasks for one tool. A section `list` omits `clients` so that page does not reset the agent list. Replacing the window with
 the first page alone is how an expanded inbox collapsed on the next poll.
 `log` `{thread_id, before}` pages older transcript events (newest page older than
 `before`, size `watch_events`). `run_now` and `cancel_wait` target the soonest

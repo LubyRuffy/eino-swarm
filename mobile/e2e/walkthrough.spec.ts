@@ -257,12 +257,15 @@ test("the composer grows with the text and send stays off while it is empty", as
 test("a page loaded with more is still there after the inbox refreshes", async ({ page }) => {
   await page.goto(WALKTHROUGH)
   await backToInbox(page)
-  await page.getByRole("button", { name: "更多" }).click()
+  const recent = page.getByTestId("inbox-list").locator("section").filter({
+    has: page.getByRole("heading", { name: "最近", exact: true }),
+  })
+  await recent.getByRole("button", { name: "更多" }).click()
   const older = page.getByRole("button", { name: /^打开 Page past the first$/ })
   await expect(older).toBeVisible()
   await page.waitForTimeout(2500)
   await expect(older).toBeVisible()
-  await expect(page.getByRole("button", { name: "更多" })).toHaveCount(0)
+  await expect(recent.getByRole("button", { name: "更多" })).toHaveCount(0)
 })
 
 test("opening a conversation shows loading before the transcript", async ({ page }) => {

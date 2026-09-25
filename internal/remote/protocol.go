@@ -32,6 +32,7 @@ const (
 	OpFollowupDrop  = "followup_drop"
 	OpFollowupSteer = "followup_steer"
 	OpPreempt       = "preempt"
+	OpClients       = "clients"
 )
 
 // GroupRecent is the inbox section for conversations with no project.
@@ -114,6 +115,31 @@ type Response struct {
 	Put             *PutView        `json:"put,omitempty"`
 	Groups          []ThreadGroup   `json:"groups,omitempty"`
 	Followups       *[]FollowupView `json:"followups,omitempty"`
+	Clients         *ClientCatalog  `json:"clients,omitempty"`
+}
+
+// ClientCatalog is the read-only local-agent list. Enabled false means the
+// switch is off and Tools is empty. A phone that does not know the field
+// ignores it.
+type ClientCatalog struct {
+	Enabled bool         `json:"enabled"`
+	Tools   []ClientTool `json:"tools,omitempty"`
+}
+
+// ClientTool is one agent family's page. Next is the before-cursor for More.
+type ClientTool struct {
+	ID    string       `json:"id"`
+	Tasks []ClientTask `json:"tasks"`
+	More  bool         `json:"more"`
+	Next  string       `json:"next,omitempty"`
+}
+
+// ClientTask is one foreign session. Status is "running" or "done".
+type ClientTask struct {
+	ID        string    `json:"id"`
+	Title     string    `json:"title"`
+	Status    string    `json:"status"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ThreadGroup is one inbox section's idle page: a project, or recent.

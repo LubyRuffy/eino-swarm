@@ -102,6 +102,13 @@ search:
     embedding: false
     embedding_provider: ""
     embedding_model: ""
+clients:
+    enabled: false
+    claude_dir: ""
+    codex_dir: ""
+    cursor_dir: ""
+    recent_days: 3
+    running_stale_seconds: 90
 ```
 
 Any key you leave out, set to zero or set to an empty string is repaired with its
@@ -332,6 +339,22 @@ $ZWAI_HOME/remote/identity     0600
 mints `host_token` if the file is missing. `PUT /api/remote/token` can still
 replace it. Empty hub leaves remote offline; **Show pairing QR** then toasts
 over Settings instead of a red line under Phone.
+
+## `clients`
+
+Read-only list of local agent transcripts. Off by default. Settings → Clients
+is the switch. The sidebar and a paired phone show one group per tool. Tasks
+from the last `recent_days` are the first page; More loads older ones. A row
+does not open a composer.
+
+| key | default | meaning |
+|---|---|---|
+| `enabled` | `false` | scan and show the groups. Off returns an empty list and hides the sidebar section. |
+| `claude_dir` | `~/.claude` | Claude Code config directory. Blank is filled with that default. |
+| `codex_dir` | `~/.codex` | Codex home. Blank is filled with that default. |
+| `cursor_dir` | `~/.cursor` | Cursor home. Blank is filled with that default. |
+| `recent_days` | `3` | first page window. Zero or negative is repaired to 3. |
+| `running_stale_seconds` | `90` | a Claude or Cursor file with no finish marker counts as running only while it was written within this many seconds. An open Codex task stays running past it. Zero or negative is repaired to 90. |
 
 ## `search`
 
