@@ -18,7 +18,10 @@ export function ClientChat({ id }: { id: string }) {
 
   useEffect(() => {
     let stop = false
+    let busy = false
     const load = () => {
+      if (busy) return
+      busy = true
       api
         .clientTask(id)
         .then((next) => {
@@ -29,6 +32,9 @@ export function ClientChat({ id }: { id: string }) {
         })
         .catch(() => {
           if (!stop) setFailed(true)
+        })
+        .finally(() => {
+          busy = false
         })
     }
     setDoc(null)

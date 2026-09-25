@@ -9,8 +9,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -30,6 +32,10 @@ const (
 	PageSize   = 5
 	titleRunes = 80
 	edgeBytes  = 64 << 10
+	// scanFresh is how long a finished walk can answer the sidebar poll.
+	// A new walk every poll filled the browser's connection cap, so the
+	// open session never got a turn and the chat stayed on skeletons.
+	scanFresh = 2 * time.Second
 )
 
 // Task is one foreign session row. Status is running or done.
@@ -61,18 +67,41 @@ func List(cfg config.ClientsConfig, now time.Time, beforeMs int64) Catalog {
 	if !cfg.Enabled {
 		return Catalog{Tools: []Group{}}
 	}
-	stale := cfg.RunningStale()
 	windowStart := now.Add(-cfg.RecentWindow())
 	var before time.Time
 	if beforeMs > 0 {
 		before = time.UnixMilli(beforeMs)
 	}
+	claude, codex, cursor := cachedScans(cfg, now)
 	tools := []Group{
-		page(ToolClaude, scanClaude(cfg.ClaudeDir, now, stale), windowStart, before),
-		page(ToolCodex, scanCodex(cfg.CodexDir, now, stale), windowStart, before),
-		page(ToolCursor, scanCursor(cfg.CursorDir, now, stale), windowStart, before),
+		page(ToolClaude, claude, windowStart, before),
+		page(ToolCodex, codex, windowStart, before),
+		page(ToolCursor, cursor, windowStart, before),
 	}
 	return Catalog{Enabled: true, Tools: tools}
+}
+
+var scanMu sync.Mutex
+var scanSnap struct {
+	key                   string
+	at                    time.Time
+	claude, codex, cursor []Task
+}
+
+func cachedScans(cfg config.ClientsConfig, now time.Time) (claude, codex, cursor []Task) {
+	key := cfg.ClaudeDir + "\x00" + cfg.CodexDir + "\x00" + cfg.CursorDir
+	scanMu.Lock()
+	defer scanMu.Unlock()
+	if scanSnap.key == key && !scanSnap.at.IsZero() && now.Sub(scanSnap.at) < scanFresh && !now.Before(scanSnap.at) {
+		return scanSnap.claude, scanSnap.codex, scanSnap.cursor
+	}
+	stale := cfg.RunningStale()
+	scanSnap.key = key
+	scanSnap.at = now
+	scanSnap.claude = scanClaude(cfg.ClaudeDir, now, stale)
+	scanSnap.codex = scanCodex(cfg.CodexDir, now, stale)
+	scanSnap.cursor = scanCursor(cfg.CursorDir, now, stale)
+	return scanSnap.claude, scanSnap.codex, scanSnap.cursor
 }
 
 func page(id string, tasks []Task, windowStart, before time.Time) Group {
@@ -436,7 +465,7 @@ func textOf(raw json.RawMessage) string {
 	if raw[0] == '"' {
 		var s string
 		if json.Unmarshal(raw, &s) == nil {
-			return strings.TrimSpace(s)
+			return visibleText(s)
 		}
 	}
 	var blocks []struct {
@@ -447,11 +476,36 @@ func textOf(raw json.RawMessage) string {
 		return ""
 	}
 	for _, b := range blocks {
-		if strings.TrimSpace(b.Text) != "" && (b.Type == "" || b.Type == "text" || b.Type == "input_text") {
-			return strings.TrimSpace(b.Text)
+		if b.Type != "" && b.Type != "text" && b.Type != "input_text" {
+			continue
+		}
+		if text := visibleText(b.Text); text != "" {
+			return text
 		}
 	}
 	return ""
+}
+
+var (
+	userQueryTag = regexp.MustCompile(`(?s)<user_query>(.*?)</user_query>`)
+	wrapperTag   = regexp.MustCompile(`(?s)<(?:timestamp|command-message|command-name|local-command-caveat|image_files|manually_attached_skills|recommended_plugins|environment_context)>.*?</(?:timestamp|command-message|command-name|local-command-caveat|image_files|manually_attached_skills|recommended_plugins|environment_context)>`)
+)
+
+// visibleText drops the tool wrappers that sit in front of a real request.
+// A message that is only those wrappers is empty, so the title uses the next one.
+func visibleText(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if m := userQueryTag.FindStringSubmatch(s); len(m) == 2 && strings.TrimSpace(m[1]) != "" {
+		s = m[1]
+	}
+	s = strings.TrimSpace(wrapperTag.ReplaceAllString(s, " "))
+	if s == "" || strings.HasPrefix(s, "INSTRUCTIONS") || strings.HasPrefix(s, "# AGENTS.md") {
+		return ""
+	}
+	return s
 }
 
 func baseName(path string) string {

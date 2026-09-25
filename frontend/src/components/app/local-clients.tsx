@@ -26,7 +26,10 @@ export function LocalClientsSection() {
 
   useEffect(() => {
     let stop = false
+    let busy = false
     const tick = () => {
+      if (busy) return
+      busy = true
       api
         .clients()
         .then((cat) => {
@@ -39,6 +42,9 @@ export function LocalClientsSection() {
           })
         })
         .catch(() => undefined)
+        .finally(() => {
+          busy = false
+        })
     }
     tick()
     const id = setInterval(tick, POLL_MS)

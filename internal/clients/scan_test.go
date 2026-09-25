@@ -133,6 +133,33 @@ func TestBreathingFollowsEachToolsFinishMarker(t *testing.T) {
 	}
 }
 
+func TestTitleSkipsToolWrappers(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	claude := `{"type":"user","cwd":"/work/demo","message":{"content":[{"type":"text","text":"<command-message>tool</command-message> <command-name>tool</command-name>"}]}}` + "\n" +
+		`{"type":"user","message":{"content":[{"type":"text","text":"open session"}]}}` + "\n"
+	writeFileTime(t, filepath.Join(root, "claude", "projects", "work", "s1.jsonl"), claude, now)
+	cursor := `{"role":"user","message":{"content":[{"type":"text","text":"<timestamp>stamp</timestamp> <user_query>open session</user_query>"}]}}` + "\n"
+	writeFileTime(t, filepath.Join(root, "cursor", "projects", "p", "agent-transcripts", "u1", "u1.jsonl"), cursor, now)
+	cfg := config.ClientsConfig{
+		Enabled:    true,
+		ClaudeDir:  filepath.Join(root, "claude"),
+		CodexDir:   filepath.Join(root, "no-codex"),
+		CursorDir:  filepath.Join(root, "cursor"),
+		RecentDays: 3, RunningStaleSeconds: 90,
+	}
+	cat := List(cfg, now, 0)
+	var titles []string
+	for _, g := range cat.Tools {
+		for _, task := range g.Tasks {
+			titles = append(titles, task.Title)
+		}
+	}
+	if len(titles) != 2 || titles[0] != "open session" || titles[1] != "open session" {
+		t.Fatalf("titles = %v", titles)
+	}
+}
+
 func writeClaude(t *testing.T, root, id, title string, mtime time.Time) {
 	t.Helper()
 	dir := filepath.Join(root, "projects", "work", id+".jsonl")
