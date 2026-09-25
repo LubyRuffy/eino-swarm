@@ -478,11 +478,12 @@ Work that comes back — one repository, one report, one recurring chore — bel
 in a project. The title bar prefixes the conversation name with the project's
 (`project · title`) so you can see which directory the tools are pointed at.
 The project list follows last use, not creation; drag a row to pin it.
-**New conversation** at the top of the list is Recents. Hover a project for a
-new-conversation control on the row itself — it starts one in that folder.
+**New conversation** at the top of the list lands in **Conversations**.
+The same control sits on the right of that section header. Hover a project
+for a new-conversation control on the row itself — it starts one in that folder.
 Click a folder to collapse its topics — the directory icon is closed
 when collapsed and open when expanded. Click **Pinned**, **Projects**, or
-**Recents** to fold the whole section (the arrow after the name shows
+**Conversations** to fold the whole section (the arrow after the name shows
 on hover while the section is open). Pin a topic from the row menu to keep
 it in **Pinned** at the top.
 **New project** at the top of the conversation list asks for three
@@ -507,7 +508,7 @@ the manager is the task result, plus at most a short durable note if something
 would change later work.
 
 The sidebar lists each project's conversations under its name. A folder
-(and Recents) shows the five conversations active in the last seven days;
+(and Conversations) shows the five conversations active in the last seven days;
 **Show more** reveals the rest, **Show less** folds them again. Click the
 folder to collapse it. The open conversation is marked; the folder is not.
 A conversation that is mid-turn keeps a progress mark in that same column
@@ -516,10 +517,11 @@ parked wait keeps a clock there instead, so it does not look Idle. The
 title bar says **Waiting**, and the wait itself is the composer banner
 (Run now / Cancel wait) — that is not a row in **Pinned**. A
 collapsed folder that still has a live turn or a wait keeps the mark on the
-directory. Click **Pinned**, **Projects**, or **Recents** to fold
+directory. Click **Pinned**, **Projects**, or **Conversations** to fold
 that section. Pin a topic from the row menu to keep it in **Pinned**
-at the top. Conversations that belong to no project sit in **Recents**;
-**New conversation** lands there. Skills are behind **View skills** on the
+at the top. Conversations that belong to no project sit in **Conversations**;
+**New conversation** lands there. The icon on the right of that header
+starts one too. Skills are behind **View skills** on the
 project menu, which opens the **Memory** tab. Notes are editable — **Save notes** appears only after
 the draft differs from what is stored — skills can be read and deleted, and
 **Review now** (the sparkles on the Memory tab) re-reads the last finished turn.

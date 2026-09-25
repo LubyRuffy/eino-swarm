@@ -51,6 +51,7 @@ swarm:
     compact_keep_messages: 6
     auto_compact_tokens: 80000
     compact_output_reserve: 8192
+    max_completion_tokens: 16384
     goal_max_auto_turns: 12
     goal_session_max_iterations: 40
     goal_auto_compact_percent: 80
@@ -188,6 +189,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `goal_session_max_iterations` | `40` | manager ReAct slice while a `/goal` is open. Hitting it extends the same turn (no confirm, no `goal_session`, no auto-continue spent). |
 | `goal_auto_compact_percent` | `80` | how full a **confirmed** context window must be before compression, both in-turn and before the next goal auto-continue. The line is `min(window × percent, window − compact_output_reserve)`. An unknown window uses `auto_compact_tokens` instead. With no billed tokens, fullness falls back to characters vs `context_char_budget`. The rolling session briefing is caught up first (this session's last manager answers, then a bounded incremental refresh) so the fold copies that view; a session briefing that has moved since the last compact also folds even when the meter is still cold. Zero or negative is repaired to the default; above 100 is clamped. |
 | `compact_output_reserve` | `8192` | tokens kept free under a confirmed window so the next completion still fits. The compact line is the lesser of the percent and `window − reserve`. A window smaller than the reserve uses the percent alone. Zero or negative is repaired to the default. |
+| `max_completion_tokens` | `16384` | `max_tokens` sent on every chat request. A thinking model that is left to the endpoint's default can spend that whole default before it emits an answer or a tool call, and the turn used to close as a blank success. Zero or negative is repaired to the default. |
 | `schedule_min_interval_seconds` | `30` | shortest cadence a schedule may use, in seconds. Zero or negative is repaired to the default so a hand-edit cannot arm a sub-second loop. Editable in Settings → Swarm. |
 | `schedule_tick_ms` | `1000` | how often the process looks for due schedules. Zero or negative is repaired to the default so the ticker cannot silently stop. Editable in Settings → Swarm. |
 | `schedule_max_active` | `32` | schedule runs that may execute at once. Overflow waits for the next tick. Zero or negative is repaired to the default so a hand-edit cannot refuse every fire or unbounded fan-out. Editable in Settings → Swarm. PUT `/api/settings` sends the whole `swarm` object; omitting these keys would zero the Go struct before repair. |

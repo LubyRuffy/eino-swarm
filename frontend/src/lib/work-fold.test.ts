@@ -213,6 +213,22 @@ describe("foldTurnItems", () => {
     if (items[1]?.type !== "work") throw new Error("expected work")
     expect(items[1].blocks.map((b) => b.id)).toEqual(["sp"])
   })
+
+  it("keeps a spawn_agent that is still being written", () => {
+    const spawnCall = block({
+      id: "sc",
+      kind: "tool",
+      seq: 2,
+      tool: { callId: "c", name: "spawn_agent", args: "", pending: true, writing: 1200 },
+    })
+    expect(isOmittedBlock(spawnCall)).toBe(false)
+    const items = foldTurnItems([user, spawnCall], "user")
+    expect(items[1]?.type).toBe("work")
+    expect(workTickerFrames([spawnCall], true)[0]).toMatchObject({
+      kind: "writing",
+      detail: "spawn_agent\n1200",
+    })
+  })
 })
 
 describe("workFoldStats", () => {

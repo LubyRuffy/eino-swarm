@@ -94,6 +94,27 @@ describe("compact transcript", () => {
     expect(blocks[0].text).toBe("line")
   })
 
+  it("shows a tool call while its arguments are still streaming", () => {
+    let blocks: CompactBlock[] = []
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 0, kind: "tool_call_delta", tool_call_id: "c", text: "spawn_agent(8)" }),
+    )
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 0, kind: "tool_call_delta", tool_call_id: "c", text: "spawn_agent(40)" }),
+    )
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].toolName).toBe("spawn_agent")
+    expect(blocks[0].text).toBe("spawn_agent(40)")
+    blocks = applyEvent(
+      blocks,
+      ev({ seq: 13, kind: "tool_call", tool_call_id: "c", text: 'spawn_agent({"role":"writer"})' }),
+    )
+    expect(blocks).toHaveLength(1)
+    expect(blocks[0].args).toContain("writer")
+  })
+
   it("keeps goal and plan notices without dumping empty kinds", () => {
     let blocks: CompactBlock[] = []
     blocks = applyEvent(blocks, ev({ seq: 13, kind: "goal", text: "keep going" }))

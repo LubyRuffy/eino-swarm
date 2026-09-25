@@ -63,6 +63,7 @@ const (
 	NotifyDelta                            // streamed answer text, accumulated within the turn
 	NotifyReasoningDelta                   // streamed reasoning, accumulated within the turn
 	NotifyToolDelta                        // streamed tool output, accumulated within the call
+	NotifyToolCallDelta                    // streamed tool-call arguments, before the call is issued
 	NotifyDone                             // manager final answer; run complete
 	NotifyError                            // fatal error; run failed
 )
@@ -77,6 +78,7 @@ var notifyNames = map[NotifyKind]string{
 	NotifyDelta:          "delta",
 	NotifyReasoningDelta: "reasoning_delta",
 	NotifyToolDelta:      "tool_delta",
+	NotifyToolCallDelta:  "tool_call_delta",
 	NotifyDone:           "done",
 	NotifyError:          "error",
 }
@@ -332,20 +334,37 @@ type streamAcc struct {
 	// which is the raw (non-UI) hook workers have always exposed.
 	rawEvents bool
 
-	mu     sync.Mutex
-	turn   int
-	answer strings.Builder
-	reason strings.Builder
+	mu       sync.Mutex
+	turn     int
+	answer   strings.Builder
+	reason   strings.Builder
+	previews map[string]string // last tool_call_delta text per call id
+}
+
+// errOutputBudget is a model call that hit its output cap before any answer
+// or tool call. Recording that as a finished turn leaves a blank success
+// the UI cannot tell from a hang.
+var errOutputBudget = errors.New("the model used its whole output budget before it produced an answer")
+
+func outputStoppedEarly(finish string) bool {
+	switch strings.ToLower(strings.TrimSpace(finish)) {
+	case "length", "max_tokens":
+		return true
+	default:
+		return false
+	}
 }
 
 // drain consumes st to EOF, emitting notifications as chunks arrive, and
 // returns the turn's accumulated answer text plus its merged tool calls. A
 // turn with no tool calls is the agent's answer; a turn with tool calls is an
-// interim step whose text is commentary.
-func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []schema.ToolCall) {
+// interim step whose text is commentary. An empty answer that stopped
+// because the output budget ran out is an error, not a finished turn.
+func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []schema.ToolCall, error) {
 	s.beginTurn()
 
 	var chunks []schema.ToolCall
+	var finish string
 	canceled := false
 	for {
 		chunk, err := st.Recv()
@@ -356,6 +375,9 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 		}
 		if chunk == nil {
 			continue
+		}
+		if chunk.ResponseMeta != nil && chunk.ResponseMeta.FinishReason != "" {
+			finish = chunk.ResponseMeta.FinishReason
 		}
 		if rc := chunk.ReasoningContent; rc != "" {
 			acc, changed := s.addReasoning(rc)
@@ -375,6 +397,9 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 		}
 		if len(chunk.ToolCalls) > 0 {
 			chunks = append(chunks, chunk.ToolCalls...)
+			// The call is not issued until this stream ends. Until then the
+			// UI has nothing to draw and a long argument looks like a hang.
+			s.noteStreamingTools(chunks)
 		}
 	}
 
@@ -383,7 +408,7 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 	if canceled {
 		// Interrupt during generate is not a finished answer. Emitting one
 		// here leaves a complete manager bubble on a turn that will re-enter.
-		return answer, nil
+		return answer, nil, nil
 	}
 	for _, tc := range calls {
 		s.touch(tc.Function.Name + "(" + truncStr(tc.Function.Arguments, 80) + ")")
@@ -391,10 +416,45 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 			Text: tc.Function.Name + "(" + tc.Function.Arguments + ")"})
 		s.raw(&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{tc}})
 	}
+	if len(calls) == 0 && strings.TrimSpace(answer) == "" && outputStoppedEarly(finish) {
+		return "", nil, errOutputBudget
+	}
 	if len(calls) == 0 && strings.TrimSpace(answer) != "" {
 		s.emit(Notification{Kind: NotifyAgentMessage, Text: answer})
 	}
-	return answer, calls
+	return answer, calls, nil
+}
+
+// noteStreamingTools tells the UI a tool call is being written. The name and
+// the argument size go out as soon as they change; the arguments themselves
+// stay in the stream until it ends, because a chapter-sized payload would
+// redraw the transcript on every token.
+func (s *streamAcc) noteStreamingTools(chunks []schema.ToolCall) {
+	for _, tc := range mergeStreamedToolCalls(chunks) {
+		name := tc.Function.Name
+		if tc.ID == "" || name == "" {
+			continue
+		}
+		text := name + "(" + itoa(utf8.RuneCountInString(tc.Function.Arguments)) + ")"
+		if !s.markPreview(tc.ID, text) {
+			continue
+		}
+		s.touch(name)
+		s.emit(Notification{Kind: NotifyToolCallDelta, ToolCallID: tc.ID, Text: text})
+	}
+}
+
+func (s *streamAcc) markPreview(id, text string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.previews == nil {
+		s.previews = map[string]string{}
+	}
+	if s.previews[id] == text {
+		return false
+	}
+	s.previews[id] = text
+	return true
 }
 
 func (s *streamAcc) beginTurn() {
@@ -403,6 +463,7 @@ func (s *streamAcc) beginTurn() {
 	turn := s.turn
 	s.answer.Reset()
 	s.reason.Reset()
+	s.previews = nil
 	s.mu.Unlock()
 	s.emit(Notification{Kind: NotifyTurn, Text: "turn " + itoa(turn)})
 }

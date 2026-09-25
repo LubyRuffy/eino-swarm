@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -154,6 +155,62 @@ func TestStreamDeltasAreCleanPrefixes(t *testing.T) {
 	reasoning := rec.ofKind(NotifyReasoningDelta)
 	if len(reasoning) == 0 || reasoning[len(reasoning)-1].Text != "let me think" {
 		t.Fatalf("reasoning accumulation broken: %+v", reasoning)
+	}
+}
+
+// Tool-call arguments used to stay inside drain until the stream ended. A
+// long compose then had no event at all, so the transcript sat on the
+// previous thought with no error and no stop.
+func TestStreamedToolCallIsVisibleBeforeTheStreamEnds(t *testing.T) {
+	rec := &recorder{}
+	reg := NewRegistry()
+	reg.SetHostNotify(rec.cb())
+	acc := &streamAcc{reg: reg, agentID: DefaultManagerID, role: "manager"}
+	idx := 0
+	sr, sw := schema.Pipe[*schema.Message](4)
+	saw := make(chan string, 1)
+	reg.SetHostNotify(func(n Notification) {
+		rec.cb()(n)
+		if n.Kind == NotifyToolCallDelta {
+			select {
+			case saw <- n.Text:
+			default:
+			}
+		}
+	})
+	go func() {
+		defer sw.Close()
+		sw.Send(&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+			Index:    &idx,
+			ID:       "c1",
+			Function: schema.FunctionCall{Name: "spawn_agent", Arguments: `{"role":`},
+		}}}, nil)
+		<-saw
+		sw.Send(&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+			Index:    &idx,
+			Function: schema.FunctionCall{Arguments: `"writer","task":"draft"}`},
+		}}}, nil)
+	}()
+	_, calls, err := acc.drain(sr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(calls) != 1 || calls[0].ID != "c1" || !strings.Contains(calls[0].Function.Arguments, "writer") {
+		t.Fatalf("merged call: %+v", calls)
+	}
+	deltas := rec.ofKind(NotifyToolCallDelta)
+	if len(deltas) < 2 {
+		t.Fatalf("want a growing preview, got %+v", deltas)
+	}
+	if deltas[0].Text != "spawn_agent(8)" || deltas[0].ToolCallID != "c1" {
+		t.Fatalf("first preview: %+v", deltas[0])
+	}
+	if deltas[len(deltas)-1].Text == deltas[0].Text {
+		t.Fatalf("preview did not grow: %+v", deltas)
+	}
+	final := rec.ofKind(NotifyToolCall)
+	if len(final) != 1 || final[0].ToolCallID != "c1" || !strings.Contains(final[0].Text, "writer") {
+		t.Fatalf("final call: %+v", final)
 	}
 }
 
@@ -565,7 +622,7 @@ func TestNotifyKindRoundTrip(t *testing.T) {
 	kinds := []NotifyKind{
 		NotifyAgentMessage, NotifySpawned, NotifyFinished, NotifyToolCall,
 		NotifyToolResult, NotifyTurn, NotifyDelta, NotifyReasoningDelta,
-		NotifyToolDelta, NotifyDone, NotifyError,
+		NotifyToolDelta, NotifyToolCallDelta, NotifyDone, NotifyError,
 	}
 	for _, k := range kinds {
 		got, ok := ParseNotifyKind(k.String())
@@ -1016,4 +1073,40 @@ func TestHostNotifyKeepsWorkerEventsAfterRunReturns(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("parked worker finished into the void: %+v", rec.all())
+}
+
+// A thinking model can spend the whole output budget and emit no answer.
+// That has to fail the turn. A blank success looks like the run hung.
+func TestLengthStopWithNoAnswerIsAnError(t *testing.T) {
+	sr, sw := schema.Pipe[*schema.Message](2)
+	go func() {
+		defer sw.Close()
+		_ = sw.Send(&schema.Message{Role: schema.Assistant, ReasoningContent: "still planning"}, nil)
+		_ = sw.Send(&schema.Message{
+			Role:         schema.Assistant,
+			ResponseMeta: &schema.ResponseMeta{FinishReason: "length"},
+		}, nil)
+	}()
+	acc := &streamAcc{reg: &Registry{}, agentID: DefaultManagerID, role: DefaultManagerID}
+	answer, calls, err := acc.drain(sr)
+	if !errors.Is(err, errOutputBudget) {
+		t.Fatalf("empty length stop: answer %q calls %d err %v", answer, len(calls), err)
+	}
+}
+
+func TestLengthStopWithAnAnswerIsKept(t *testing.T) {
+	sr, sw := schema.Pipe[*schema.Message](2)
+	go func() {
+		defer sw.Close()
+		_ = sw.Send(&schema.Message{Role: schema.Assistant, Content: "partial"}, nil)
+		_ = sw.Send(&schema.Message{
+			Role:         schema.Assistant,
+			ResponseMeta: &schema.ResponseMeta{FinishReason: "length"},
+		}, nil)
+	}()
+	acc := &streamAcc{reg: &Registry{}, agentID: DefaultManagerID, role: DefaultManagerID}
+	answer, _, err := acc.drain(sr)
+	if err != nil || answer != "partial" {
+		t.Fatalf("a cut-off answer must stay visible: %q %v", answer, err)
+	}
 }

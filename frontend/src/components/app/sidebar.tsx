@@ -229,6 +229,18 @@ export function Sidebar({
             label={t("sidebar.recents")}
             open={sections.recents}
             onToggle={() => toggleSection("recents")}
+            actions={
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                data-testid="recents-new"
+                onClick={onNew}
+                aria-label={t("sidebar.newInRecents")}
+                title={t("sidebar.newInRecents")}
+              >
+                <MessageSquarePlus />
+              </Button>
+            }
           >
             <SidebarThreadGroup
               threads={buckets.recents}

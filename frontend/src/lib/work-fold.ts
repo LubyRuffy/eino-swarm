@@ -17,6 +17,7 @@ export type WorkTickerKind =
   | "reading"
   | "exec"
   | "using"
+  | "writing"
 
 export type WorkTickerFrame = {
   id: string
@@ -37,7 +38,13 @@ export type WorkFoldStats = {
  *  an empty group for a spawn_agent the chat never showed. */
 export function isOmittedBlock(block: Block): boolean {
   if (block.kind === "title" || block.kind === "session_memory") return true
-  return block.kind === "tool" && CHROME_TOOLS.has(block.tool?.name ?? "")
+  // A finished spawn_agent is bookkeeping: the roster row is the signal.
+  // While its arguments are still streaming the call has not started, and
+  // hiding it is what makes a long compose look like a frozen planner.
+  if (block.kind === "tool" && CHROME_TOOLS.has(block.tool?.name ?? "")) {
+    return !block.tool?.pending
+  }
+  return false
 }
 
 export function isFoldableBlock(block: Block): boolean {
@@ -151,6 +158,15 @@ function toolFrame(block: Block): WorkTickerFrame | undefined {
   const pending = Boolean(tool.pending)
   const failed = Boolean(tool.failed)
   const id = `tool:${tool.callId || block.id}`
+  if (tool.writing !== undefined) {
+    return {
+      id,
+      kind: "writing",
+      detail: `${tool.name}\n${tool.writing}`,
+      pending: true,
+      failed: false,
+    }
+  }
   if (tool.name === "read") {
     return {
       id,
@@ -283,6 +299,10 @@ export function formatWorkTicker(
       return t("transcript.workReading", { name: frame.detail })
     case "exec":
       return t("transcript.workExec", { name: frame.detail })
+    case "writing": {
+      const [name, n] = frame.detail.split("\n")
+      return t("transcript.writingTool", { name: name || "", n: n || "0" })
+    }
     default:
       return frame.detail
   }

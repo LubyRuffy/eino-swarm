@@ -224,20 +224,42 @@ func (m *swarmTUI) apply(n swarm.Notification) {
 		blk := a.ensureAnswer()
 		blk.answer = n.Text
 		a.sealAnswer()
+	case swarm.NotifyToolCallDelta:
+		a.closeThinking()
+		a.sealAnswer()
+		name := toolNameOf(n.Text)
+		blk := a.toolBlock(n.ToolCallID)
+		if blk == nil || blk.toolCallID != n.ToolCallID {
+			blk = &block{
+				kind:       blockTool,
+				agentID:    a.id,
+				open:       true,
+				toolName:   name,
+				toolCallID: n.ToolCallID,
+			}
+			a.curTool = blk
+			a.blocks = append(a.blocks, blk)
+		}
+		blk.toolName = name
+		blk.toolArgs = n.Text
+		blk.open = true
 	case swarm.NotifyToolCall:
 		a.closeThinking()
 		a.sealAnswer()
 		name := toolNameOf(n.Text)
-		blk := &block{
-			kind:       blockTool,
-			agentID:    a.id,
-			open:       true, // expand while running
-			toolName:   name,
-			toolArgs:   summariseToolArgs(name, toolArgsOf(n.Text)),
-			toolCallID: n.ToolCallID,
+		blk := a.toolBlock(n.ToolCallID)
+		if blk == nil || blk.toolCallID != n.ToolCallID {
+			blk = &block{
+				kind:       blockTool,
+				agentID:    a.id,
+				toolCallID: n.ToolCallID,
+			}
+			a.blocks = append(a.blocks, blk)
 		}
+		blk.toolName = name
+		blk.toolArgs = summariseToolArgs(name, toolArgsOf(n.Text))
+		blk.open = true
 		a.curTool = blk
-		a.blocks = append(a.blocks, blk)
 		if note := scheduleNotice(name, toolArgsOf(n.Text)); note != "" {
 			m.notice = note
 		}

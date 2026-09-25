@@ -50,7 +50,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "sidebar.pinned": "置顶",
   "sidebar.scheduled": "定时",
   "sidebar.scheduledUnread": "定时，{n} 条未读",
-  "sidebar.recents": "最近",
+  "sidebar.recents": "对话",
+  "sidebar.newInRecents": "新建对话",
   "sidebar.pin": "置顶",
   "sidebar.unpin": "取消置顶",
 
@@ -305,6 +306,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "transcript.jumpLatest": "跳到最新",
   "transcript.thinking": "思考中",
   "transcript.planningMoves": "规划下一步",
+  "transcript.writingTool": "正在写 {name} 的参数 · {n}",
   "transcript.workEditing": "正在编辑 {name}",
   "transcript.workReading": "正在读取 {name}",
   "transcript.workExec": "正在执行 {name}",
@@ -643,6 +645,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.swarm.outputReserve": "输出预留（tokens）",
   "settings.swarm.outputReserveHint":
     "已知窗口下给下一次回答留的 token。压缩线取百分比和「窗口减预留」里更小的那个。",
+  "settings.swarm.maxCompletion": "单次输出上限（tokens）",
+  "settings.swarm.maxCompletionHint":
+    "每次模型请求带上的 max_tokens。思考模型不带这个数时，端点的小默认值会在开口回答之前被想完。",
   "settings.swarm.schedules": "定时等待",
   "settings.swarm.scheduleMin": "最短等待（秒）",
   "settings.swarm.scheduleMinHint":

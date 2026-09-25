@@ -269,6 +269,39 @@ describe("rewind", () => {
     expect(manager(afterUser).blocks.map((b) => b.text)).not.toContain("answer two")
   })
 
+  it("drops a late event from the cut turn so the editor cannot come back", () => {
+    const state = fold([
+      ev({ kind: "user_message", seq: 1, turn_id: "tn_1", text: "first" }),
+      ev({ kind: "user_message", seq: 4, turn_id: "tn_2", text: "second" }),
+      ev({ kind: "reasoning", seq: 5, turn_id: "tn_2", text: "old thought" }),
+    ])
+    const pending = placePendingEdit(rewindTranscript(state, 4), "edited")
+    expect(pending.rewindCut).toEqual({ from: 4, through: state.lastSeq, live: true })
+    const ghost = fold(
+      [
+        ev({ kind: "reasoning", seq: 5, turn_id: "tn_2", text: "old thought" }),
+        ev({ kind: "reasoning_delta", turn_id: "tn_2", text: "still the old turn" }),
+      ],
+      pending,
+    )
+    const ghostText = manager(ghost).blocks.map((b) => b.text)
+    expect(ghostText).not.toContain("old thought")
+    expect(ghostText).not.toContain("still the old turn")
+    expect(ghostText).toContain("edited")
+    const after = fold(
+      [
+        ev({ kind: "user_message", seq: 10, turn_id: "tn_3", text: "edited" }),
+        ev({ kind: "reasoning_delta", turn_id: "tn_3", text: "new thought" }),
+      ],
+      ghost,
+    )
+    expect(manager(after).blocks.map((b) => b.text)).toEqual([
+      "first",
+      "edited",
+      "new thought",
+    ])
+  })
+
   it("drops live deltas whose seq is zero", () => {
     const state = fold([
       ev({ kind: "user_message", seq: 1, text: "first" }),

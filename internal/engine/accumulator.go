@@ -87,6 +87,12 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 		a.flushAnswer(n.AgentID)
 		a.engine.record(a.event(n, n.Kind.String()))
 
+	case swarm.NotifyToolCallDelta:
+		// Arguments are still streaming; the call has not run. Live only,
+		// same as an answer delta — storing each fragment would store the
+		// arguments once per token.
+		a.pushLive(n)
+
 	case swarm.NotifyToolDelta:
 		a.pushLive(n)
 

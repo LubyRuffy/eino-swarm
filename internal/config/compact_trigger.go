@@ -24,6 +24,16 @@ func (s SwarmConfig) CompactTrigger(window int) int {
 	return trigger
 }
 
+// CompletionTokenLimit is how many tokens one chat completion may emit.
+// Zero or negative falls back to the default so a hand-edit cannot
+// omit the field and inherit whatever small cap the endpoint assumes.
+func (s SwarmConfig) CompletionTokenLimit() int {
+	if s.MaxCompletionTokens <= 0 {
+		return DefaultMaxCompletionTokens
+	}
+	return s.MaxCompletionTokens
+}
+
 // CompactOutputReserve is how many tokens stay free under a confirmed window
 // for the model's own completion. Zero or negative falls back to the default.
 func (s SwarmConfig) CompactOutputReserve() int {

@@ -236,6 +236,11 @@ type SwarmConfig struct {
 	// percent and window−reserve. Zero or negative is repaired to the
 	// default. A window smaller than the reserve uses the percent alone.
 	CompactOutputReserveTokens int `yaml:"compact_output_reserve" json:"compact_output_reserve"`
+	// MaxCompletionTokens is max_tokens on every chat request. Omitting it
+	// lets the endpoint pick a small default, and a thinking model can
+	// spend that entire default before it emits an answer or a tool call.
+	// Zero or negative is repaired to the default.
+	MaxCompletionTokens int `yaml:"max_completion_tokens" json:"max_completion_tokens"`
 	// ScheduleMinIntervalSeconds is the shortest cadence a schedule may
 	// use. Zero or negative is repaired to the default so a hand-edit
 	// cannot arm a sub-second loop.
@@ -508,6 +513,9 @@ const (
 	// Room for the completion under a confirmed window. 80% of a 32k window
 	// would still leave the next answer nowhere to land.
 	DefaultCompactOutputReserveTokens = 8_192
+	// Room for a thinking trace and the tool call or answer after it.
+	// A 2k default is what a thinking model burns before it says anything.
+	DefaultMaxCompletionTokens = 16_384
 	// Enough consecutive auto-turns to finish a real objective; not enough
 	// to burn a weekend if the manager never calls complete_goal.
 	DefaultGoalMaxAutoTurns         = 12
@@ -575,6 +583,7 @@ func Default() *Config {
 			GoalSessionMaxIterations:   DefaultGoalSessionMaxIterations,
 			GoalAutoCompactPercent:     DefaultGoalAutoCompactPercent,
 			CompactOutputReserveTokens: DefaultCompactOutputReserveTokens,
+			MaxCompletionTokens:        DefaultMaxCompletionTokens,
 			ScheduleMinIntervalSeconds: DefaultScheduleMinIntervalSeconds,
 			ScheduleTickMS:             DefaultScheduleTickMS,
 			ScheduleMaxActive:          DefaultScheduleMaxActive,
@@ -766,6 +775,9 @@ func (c *Config) normalize() {
 	}
 	if c.Swarm.CompactOutputReserveTokens <= 0 {
 		c.Swarm.CompactOutputReserveTokens = d.Swarm.CompactOutputReserveTokens
+	}
+	if c.Swarm.MaxCompletionTokens <= 0 {
+		c.Swarm.MaxCompletionTokens = d.Swarm.MaxCompletionTokens
 	}
 	if c.Swarm.ScheduleMinIntervalSeconds <= 0 {
 		c.Swarm.ScheduleMinIntervalSeconds = d.Swarm.ScheduleMinIntervalSeconds

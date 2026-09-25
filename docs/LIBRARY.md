@@ -129,6 +129,7 @@ type Notification struct {
 | `NotifyToolCall` | `name(args)` |
 | `NotifyToolResult` | the tool's stdout, **newlines kept**, clipped at 64k runes so a huge `exec` cannot blow up the event log |
 | `NotifyToolDelta` | live tool output **so far**, accumulated within that `ToolCallID`. Broadcast only; not stored. The model still sees one `NotifyToolResult` |
+| `NotifyToolCallDelta` | a tool call still being written. `Text` is `name(N)` (`N` = argument runes so far). Broadcast only. `NotifyToolCall` follows when the stream ends and the call actually runs |
 | `NotifyTurn` | `turn N` |
 | `NotifyDelta` | the streamed answer **so far** |
 | `NotifyReasoningDelta` | the streamed reasoning **so far** |

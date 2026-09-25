@@ -54,6 +54,12 @@ describe("thread history buffer", () => {
     expect(historyNewestSeq()).toBe(2)
     rememberStored("th_1", ev(5, "next", "tn_c"))
     expect(historyNewestSeq()).toBe(5)
+    rememberRewind("th_1", 4, 9)
+    expect(historyNewestSeq()).toBe(2)
+    rememberStored("th_1", ev(6, "ghost", "tn_b"))
+    expect(historyNewestSeq()).toBe(2)
+    rememberStored("th_1", ev(10, "after", "tn_d"))
+    expect(historyNewestSeq()).toBe(10)
   })
 
   it("leaves the manager empty when the live-edge page is only worker tool rows", () => {

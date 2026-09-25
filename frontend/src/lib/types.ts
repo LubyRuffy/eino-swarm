@@ -13,6 +13,7 @@ export type EventKind =
   | "tool_call"
   | "tool_result"
   | "tool_delta"
+  | "tool_call_delta"
   | "steer"
   | "steer_retracted"
   | "steer_preempted"
@@ -384,6 +385,8 @@ export interface SwarmLimits {
   auto_compact_tokens?: number
   /** Tokens kept free under a confirmed window for the completion. */
   compact_output_reserve?: number
+  /** max_tokens sent on every chat request. */
+  max_completion_tokens?: number
   /** Consecutive engine-started turns that may pursue an open /goal. */
   goal_max_auto_turns?: number
   /** Manager tool rounds of one /goal ReAct slice. */

@@ -47,6 +47,16 @@ func TestCompactTriggerRepairsAPercentThatRoundsToZero(t *testing.T) {
 	}
 }
 
+func TestCompletionTokenLimitRepairsZero(t *testing.T) {
+	if (SwarmConfig{}).CompletionTokenLimit() != DefaultMaxCompletionTokens {
+		t.Fatal("a blank cap must not omit max_tokens")
+	}
+	s := SwarmConfig{MaxCompletionTokens: 4096}
+	if s.CompletionTokenLimit() != 4096 {
+		t.Fatalf("cap = %d", s.CompletionTokenLimit())
+	}
+}
+
 func TestCompactOutputReserveRepairsZero(t *testing.T) {
 	if (SwarmConfig{}).CompactOutputReserve() != DefaultCompactOutputReserveTokens {
 		t.Fatal("a blank reserve must not disable the headroom")

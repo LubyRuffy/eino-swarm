@@ -147,11 +147,11 @@ test("an external link opens a new window instead of replacing the app", async (
   await popup.close()
 })
 
-test("Projects and Recents share one left gutter", async ({ page }) => {
+test("Projects and Conversations share one left gutter", async ({ page }) => {
   await page.goto("/")
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   const projects = page.getByText("Projects", { exact: true })
-  const recents = page.getByText("Recents", { exact: true })
+  const recents = page.getByText("Conversations", { exact: true })
   await expect(recents).toBeVisible()
   const projectBox = await projects.boundingBox()
   const recentsBox = await recents.boundingBox()
@@ -186,7 +186,7 @@ test("Projects and Recents share one left gutter", async ({ page }) => {
   expect(Math.abs(recentName!.x - projectName!.x)).toBeLessThan(2)
 })
 
-test("collapsing Recents hides its conversations across reload", async ({
+test("collapsing Conversations hides its rows across reload", async ({
   page,
 }) => {
   await page.goto("/")
@@ -194,27 +194,41 @@ test("collapsing Recents hides its conversations across reload", async ({
   await expect(
     page.getByTestId("recents-list").getByTestId("thread-row").first(),
   ).toBeVisible()
-  const recentsFold = page.getByRole("button", { name: "Recents" }).locator("[data-testid=section-fold]")
+  const recentsHeader = page.getByRole("button", { name: "Conversations", exact: true })
+  const recentsFold = recentsHeader.locator("[data-testid=section-fold]")
   await expect(recentsFold).toHaveCSS("opacity", "0")
-  await page.getByRole("button", { name: "Recents" }).hover()
+  await recentsHeader.hover()
   await expect(recentsFold).toHaveCSS("opacity", "1")
-  await page.getByRole("button", { name: "Recents" }).click()
+  await recentsHeader.click()
   await expect(
     page.getByTestId("recents-list").getByTestId("thread-row"),
   ).toHaveCount(0)
-  await expect(page.getByRole("button", { name: "Recents" })).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  )
+  await expect(recentsHeader).toHaveAttribute("aria-expanded", "false")
   await expect(recentsFold).toHaveCSS("opacity", "1")
   await page.reload()
-  await expect(page.getByRole("button", { name: "Recents" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Conversations", exact: true })).toHaveAttribute(
     "aria-expanded",
     "false",
   )
   await expect(
     page.getByTestId("recents-list").getByTestId("thread-row"),
   ).toHaveCount(0)
+})
+
+test("the Conversations header icon starts a conversation outside a project", async ({
+  page,
+}) => {
+  await page.goto("/")
+  await page.getByRole("button", { name: "New conversation", exact: true }).click()
+  const rows = page.getByTestId("recents-list").getByTestId("thread-row")
+  await expect(rows.first()).toBeVisible()
+  const before = await rows.count()
+  await page.getByTestId("recents-new").click()
+  await expect(rows).toHaveCount(before + 1)
+  await expect(page.getByRole("button", { name: "Conversations", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "true",
+  )
 })
 
 test("the composer sits on the transcript without a dock hairline", async ({

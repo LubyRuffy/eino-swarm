@@ -11,7 +11,17 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Fixed
+
+- **编辑重发后，原消息的编辑框不再留在对话里。** 发送先收起编辑框。被截断的那一轮若又从直播流里冒出来，不再画回气泡，编辑态也不会重新打开。
+
+- **A model still writing a tool call no longer looks frozen.** `tool_call_delta` is broadcast while arguments stream (`name` and the rune count, not the payload). The work fold shows that instead of “Planning next moves”, including a `spawn_agent` that has not started yet. The call itself still waits until the stream ends.
+
+- **A thinking model that spends the whole output budget no longer ends the turn as a blank success.** Every chat request sends `swarm.max_completion_tokens` (default 16384). A call that stops for length with no answer and no tool call is an error, so the transcript says the budget ran out.
+
 ### Changed
+
+- **The ungrouped sidebar section is Conversations, with a new-conversation icon on the header.** It used to read Recents. The icon starts a conversation outside any project, same as the button at the top of the list.
 
 - `F-220` 手机等待队列的“中断插入”现在先将队首消息转为当前轮次的插话，再中断 manager 当前步骤；其他等待消息保留在队列中（`C-002`，修复 Issue #31）。
 
