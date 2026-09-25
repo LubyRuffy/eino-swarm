@@ -22,7 +22,12 @@ export function mergeClientTools(
     const kept = (old?.tasks ?? []).filter(
       (task) => task.older && !tool.tasks.some((next) => next.id === task.id),
     )
-    return { ...tool, tasks: [...tool.tasks, ...kept] }
+    const tasks = [...tool.tasks, ...kept]
+    // A list poll is page one. More already walked past that cursor.
+    if (old?.tasks.some((task) => task.older)) {
+      return { ...tool, tasks, more: old.more, next: old.next }
+    }
+    return { ...tool, tasks }
   })
 }
 

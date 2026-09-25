@@ -17,6 +17,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **More on a local agent list no longer jumps back to the first older page when the list refreshes.** Rows already loaded stay, and the next More click continues from there.
+
 - **编辑重发后，原消息的编辑框不再留在对话里。** 发送先收起编辑框。被截断的那一轮若又从直播流里冒出来，不再画回气泡，编辑态也不会重新打开。
 
 - **A model still writing a tool call no longer looks frozen.** `tool_call_delta` is broadcast while arguments stream (`name` and the rune count, not the payload). The work fold shows that instead of “Planning next moves”, including a `spawn_agent` that has not started yet. The call itself still waits until the stream ends.
