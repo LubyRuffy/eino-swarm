@@ -188,3 +188,7 @@ feature.
 - Track Android, macOS, iOS and server delivery separately. Report a failed
   platform immediately and continue other verified, independent platforms.
   Close the Issue as soon as its required deliveries and acceptance pass.
+- Issues have separate commits, but releases are batched: integrate each
+  completed Issue into main in order, then allocate one version and publish
+  once from the final batch commit. Ten Issues still mean one version/tag;
+  each platform shares that version. Do not upload intermediate snapshots.
