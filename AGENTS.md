@@ -192,3 +192,8 @@ feature.
   completed Issue into main in order, then allocate one version and publish
   once from the final batch commit. Ten Issues still mean one version/tag;
   each platform shares that version. Do not upload intermediate snapshots.
+- Allocate a release version only when the batch contains at least three
+  distinct completed, unreleased Issues. Smaller batches are tested, committed
+  and integrated without version/build-number increments, tags or publication;
+  keep their changes pending for a later qualifying batch. Resuming an already
+  qualified batch's unfinished platform does not require a new version.

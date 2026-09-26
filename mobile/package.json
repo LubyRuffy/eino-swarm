@@ -1,7 +1,7 @@
 {
   "name": "zwai-mobile",
   "private": true,
-  "version": "0.1.20",
+  "version": "0.1.19",
   "type": "module",
   "scripts": {
     "dev": "vite",
