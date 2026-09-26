@@ -1,5 +1,26 @@
 # Testing
 
+## Issue closure and pending release accounting (C-010)
+
+`make docs-check` also runs `tools/test_audit_pending_batch.py`. The regressions
+cover closed fixes still waiting for a platform, fewer than three accepted
+fixes not allocating a version, three closed fixes qualifying together,
+resuming a locked batch without another version, fully delivered fixes not
+counting again, and missing/non-integrated fix evidence failing the audit.
+
+Run a read-only real-ledger reconciliation with:
+
+```bash
+python3 tools/audit_pending_batch.py
+```
+
+Without `--state`, the tool uses `ZWAI_HOME` or the normal `~/.zwai-swarm`
+directory. Its sibling `ios-signing/testflight-releases.json` records outstanding
+iOS delivery. GitHub is queried with pagination for both open and closed Issues;
+closure does not filter the pending ledger or mark a platform as published.
+Fix SHAs must be ancestors of the integration checkout's main candidate. These
+accounting checks do not replace application tests or platform acceptance.
+
 ```bash
 make test        # go test -race -cover -timeout 20m ./...  +  front-end unit tests + mobile unit tests
 make e2e         # Playwright, on the scripted offline provider

@@ -124,6 +124,7 @@ vet:
 .PHONY: docs-check
 docs-check:
 	python3 tools/docs_check.py
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_audit_pending_batch.py'
 
 .PHONY: check
 check: fmt-check vet docs-check test e2e

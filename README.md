@@ -418,6 +418,20 @@ end-to-end tests run on and the fastest way to see the UI work.
 Traffic starts on the hub as ciphertext and upgrades to UDP when punching
 works. Conversations never enter the hub database.
 
+## Issue resolution and release batches
+
+Issue resolution and release are separate: a fix closes its Issue after
+behavior acceptance, tests, documentation and review pass and the complete
+change is integrated and pushed to main. The closing comment records published
+and pending platforms; closed does not imply all platforms have shipped.
+Pending deliveries remain in the release ledger, including closed Issues.
+At least three distinct accepted, unpublished fixes across runs form one new
+release batch. Smaller batches close resolved Issues without version increments
+or publication. Remaining platforms of an allocated batch resume its same
+version/source SHA without reuploading completed platforms. See `C-010` in
+[CONTRACTS](docs/CONTRACTS.md) and the reconciliation command in
+[TESTING](docs/TESTING.md).
+
 ## Local agent progress
 
 Settings → Clients → **Show local agent tasks** lists Claude, Codex, and Cursor

@@ -187,7 +187,13 @@ feature.
   be resolved or reported; a dirty unrelated checkout alone is not a failure.
 - Track Android, macOS, iOS and server delivery separately. Report a failed
   platform immediately and continue other verified, independent platforms.
-  Close the Issue as soon as its required deliveries and acceptance pass.
+  Close the Issue once its behavior acceptance, required tests, documentation
+  and review pass and the complete fix is integrated and pushed to main.
+  Record published and pending platforms accurately in the closing comment.
+  Release thresholds, missing new versions, TestFlight limits/review and
+  isolated publication failures do not keep an accepted fix open. Continue
+  pending delivery in the release ledger after closure; closure never means
+  that an unshipped platform has shipped.
 - Issues have separate commits, but releases are batched: integrate each
   completed Issue into main in order, then allocate one version and publish
   once from the final batch commit. Ten Issues still mean one version/tag;
@@ -197,6 +203,11 @@ feature.
   and integrated without version/build-number increments, tags or publication;
   keep their changes pending for a later qualifying batch. Resuming an already
   qualified batch's unfinished platform does not require a new version.
+- Count pending releases from the delivery ledgers, including closed Issues;
+  never intersect that set with open Issues or erase pending iOS work on closure.
+  `python3 tools/audit_pending_batch.py --state <delivery-state.json>` checks
+  integrated fix SHAs and batch qualification without publishing anything.
+  `make docs-check` includes regressions for this accounting rule.
 
 - Count the distinct, code-accepted and integrated Issues across all pending
   delivery records, not just this run's new code or one platform's missing

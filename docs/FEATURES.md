@@ -116,4 +116,4 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
-- 目的：构建 PC 与手机产物，并用 `make release` 把 Mac zip 与 Android APK 发到同一个 GitHub Release；使用者：维护者；入口：Makefile；输入：源码、版本号与构建环境；输出：二进制、macOS `zwai.app` zip、Android APK/AAB，以及带这两个安装包的 Release；前置条件：Go、Node、对应 SDK、已登录的 gh；失败表现：构建、签名或上传错误，缺任一安装包则发布失败；关联契约：`C-010`；实现证据：`Makefile`, `internal/release`, `internal/desktop/pack`, `mobile/package.json`, `mobile/scripts/android-release.ts`, `mobile/README.md`。
+- 目的：构建 PC 与手机产物，并用 `make release` 把 Mac zip 与 Android APK 发到同一个 GitHub Release；使用者：维护者；入口：Makefile、`python3 tools/audit_pending_batch.py`；输入：源码、版本号、构建环境与交付台账；输出：二进制、macOS `zwai.app` zip、Android APK/AAB，以及带这两个安装包的 Release；对账输出含已关闭但仍待交付的修复与批次资格，Issue 修复结案不取消发布；前置条件：Go、Node、对应 SDK、已登录的 gh，对账需台账和干净主线；失败表现：构建、签名或上传错误，组合入口缺任一安装包则发布失败，对账缺验收或主线 SHA 证据则拒绝；关联契约：`C-010`；实现证据：`AGENTS.md`, `tools/audit_pending_batch.py`, `tools/test_audit_pending_batch.py`, `Makefile`, `internal/release`, `internal/desktop/pack`, `mobile/package.json`, `mobile/scripts/android-release.ts`, `mobile/README.md`。

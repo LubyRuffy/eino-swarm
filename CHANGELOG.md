@@ -23,6 +23,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430` / `C-010`: accepted, reviewed fixes integrated and pushed to main close their Issues independently of release thresholds or platform publication waits. Closed Issues remain in pending delivery accounting; TestFlight recovery and small batches are not lost on closure.
+
 - Release batches count all integrated Issues still missing a required delivery, including pending iOS changes from earlier runs. Partial Android/Mac delivery no longer incorrectly reduces the batch below the three-Issue threshold.
 
 - **A commentary no longer shows up twice around its tool calls.** The coalesce timer could claim the paragraph and then lose the race to the tool call, so the same sentence was broadcast again under the tools. The timer now waits until that paragraph is already on the wire, and a snapshot that only repeats the sealed bubble is not drawn a second time.
