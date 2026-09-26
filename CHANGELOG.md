@@ -25,6 +25,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-220`, `F-221`, `F-230` / `C-017`: phone message and quote editors use 16px text so iOS does not leave the conversation zoomed after typing. The waiting header and actions return to their original safe-area positions after keyboard dismissal (Issue #40).
 
+- `F-220` / `C-016`: 手机明确切换 PC 后停留在所选 PC 的收件箱，不再自动打开其运行中或上次浏览的对话；首次绑定及冷启动的恢复行为保留（Issue #37）。
+
 - `F-223` / `C-015`: Android 系统返回现在先关闭手机 Clients 任务详情并回到列表；只有再次从真正的首页返回才退出，迟到的任务读取结果不会重新打开详情（Issue #36）。
 
 - `F-223` / `C-014`: 手机 Clients 的 More 现在在分页 RPC 期间显示旋转动效和加载文字，阻止重复点击；请求失败会报错并恢复按钮，已显示任务保留（Issue #35）。

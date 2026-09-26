@@ -701,7 +701,7 @@ export function App() {
     linkRef.current?.close()
     linkRef.current = null
     setLink(null)
-    resumedRef.current = false
+    resumedRef.current = true
     loadGen.current += 1
     resetRoster()
     setError(undefined)

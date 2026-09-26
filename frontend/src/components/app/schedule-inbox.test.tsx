@@ -222,7 +222,7 @@ describe("Scheduled inbox", () => {
               reasoning_effort: "",
               archived: false,
               created_at: "2026-09-19T00:00:00.000Z",
-              last_active_at: "2026-09-19T00:00:00.000Z",
+              last_active_at: new Date().toISOString(),
               running: false,
             },
           ]}

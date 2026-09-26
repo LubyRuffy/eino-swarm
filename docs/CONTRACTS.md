@@ -107,6 +107,13 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 允许行为：详情关闭后留在原列表，再次从首页返回退出；禁止行为：详情可见时直接退出、迟到的任务读取结果在返回后重新打开详情；失败语义：返回动作不依赖网络请求成功；不变量：当前最上层优先消费返回；边界条件：异步任务读取中返回、多层覆盖、组件卸载。
 - 证据：实现 `mobile/src/lib/android-back.ts`, `mobile/src/components/client-groups.tsx`, `mobile/src/app.tsx`；测试 `mobile/src/lib/android-back.test.ts`, `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：新增手机覆盖层须同步测试系统返回和首页退出；来源：GitHub Issue #36。
 
+## C-016 Explicit PC selection opens its inbox
+
+- 状态：active；类型：lifecycle；作用范围：手机已绑定 PC 的切换与重连；关联功能：`F-220`。
+- 契约内容：用户明确选择另一个 PC 时，手机显示该 PC 的收件箱，不自动打开其运行中或上次浏览的对话；随后重连也保持这一选择。首次绑定或冷启动仍可自动恢复运行中或上次浏览的对话。
+- 允许行为：用户点收件箱中的对话行后进入详情；禁止行为：把显式切换 PC 当成首次启动并代用户打开对话；失败语义：连接失败仍显示所选 PC 的连接或错误状态；不变量：显式切换后的首次列表只更新收件箱；边界条件：目标 PC 有运行中对话、上次对话或发生重连。
+- 证据：实现 `mobile/src/app.tsx`；测试 `mobile/src/app.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步手机导航测试和使用文档；来源：GitHub Issue #37。
+
 ## C-017 Phone composer focus preserves the viewport
 
 - 状态：active；类型：lifecycle / compatibility；作用范围：手机消息与引用编辑器；关联功能：`F-220`, `F-221`, `F-230`。

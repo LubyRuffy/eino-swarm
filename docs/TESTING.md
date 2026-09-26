@@ -139,6 +139,9 @@ slots (`go run ./mobile/scripts/genicons.go`).
 `mobile/src/lib/resume.test.ts` is why bind opens a live turn (or the last
 thread, including a parked wait) instead of parking on New conversation,
 and why a tap paints a listing stub instead of freezing on the inbox.
+`mobile/src/app.test.tsx` and `mobile/e2e/walkthrough.spec.ts` also assert that
+explicitly selecting a saved PC stays on its inbox rather than applying this
+startup resume rule to that PC's live or last conversation.
 `mobile/src/lib/phone-shell.test.ts` and `mobile/src/app.test.tsx` are why a
 saved ticket paints host chips and a connecting skeleton on the first frame
 instead of the scan form, and why Add a PC is a sheet. A saved model does the
@@ -1519,7 +1522,8 @@ a client at all is verified in the engine and reducer tests.
   a live viewfinder (frame, sweeping beam, chime) on the pairing QR from
   Settings → Phone. Paste is the same URI when the camera is missing. After bind, a live turn (or the last thread this phone opened)
   opens; a later launch with saved tickets shows host chips and a connecting
-  skeleton, not the scan form. Otherwise the inbox is the compact screen on the same conversation
+  skeleton, not the scan form. Selecting another host chip stays on that PC's
+  inbox even when it has a live or last conversation. Otherwise the inbox is the compact screen on the same conversation
   bus (send / follow-up / steer / stop / ask); Settings, Files, PTY and Trace
   stay on the PC. The hub hostname is typed on the PC, never shipped in the binary.
   Simulators: iOS can use a loopback hub; Android needs `adb reverse` onto

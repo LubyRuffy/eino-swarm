@@ -349,8 +349,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    refreshes on its own, so a phone that just bound shows up without leaving
    the page.
 3. On the phone, open the **zwai** iOS or Android app. The Android sideload
-   APK is on [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.12)
-   (`zwai-0.1.12-android.apk`). A newer Android build offers **Update** on the
+   APK is on the [latest GitHub Release](https://github.com/LubyRuffy/eino-swarm/releases/latest)
+   (`zwai-<version>-android.apk`). A newer Android build offers **Update** on the
    phone: it downloads that APK from GitHub Releases and opens the system
    installer. iOS does not offer that package, so the automatic bar stays quiet
    there. **Not now** hides an Android offer from
@@ -371,7 +371,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    A later launch with
    saved tickets shows host chips (the name this PC sent) and a connecting skeleton — not the scan
    form, which would look like the phone was never bound. **Add a PC** is on
-   the menu. Switching a chip opens that PC. In-progress rows show
+   the menu. Switching a chip opens that PC's inbox without automatically
+   opening its live or last conversation; tap a row to enter it. In-progress rows show
    findings or **Waiting**, not `schedule_wake` / `report_schedule` JSON.
    The transcript opens on the
    last turn, already at the live edge; Earlier or pull up loads older rows.
