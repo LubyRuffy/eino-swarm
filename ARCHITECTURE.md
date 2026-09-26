@@ -105,6 +105,11 @@ id; remote replies include pairlink `session_id` and `path`.
 
 ## Phone navigation
 
+The first bind or a cold launch may resume a live or last PC conversation.
+Explicitly selecting a saved PC instead lands on that PC's inbox, including
+after reconnect, so the selected host does not choose a conversation for the
+user. The host chips are shown on the inbox, not on a conversation detail.
+
 Android calls `window.__zwaiAndroidBack`. `mobile/src/lib/android-back.ts`
 dispatches to the newest visible screen handler first. The app's root handler
 returns `false` only from a root screen (inbox, direct-chat list, or unbound

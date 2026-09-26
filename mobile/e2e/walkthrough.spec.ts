@@ -5,6 +5,24 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("switching PCs stays on the selected inbox instead of opening its latest conversation", async ({ page }) => {
+  await page.addInitScript(() => {
+    const link = (fingerprint: string, label: string) => ({
+      hubURL: "http://127.0.0.1:0", ticket: "mock", hostPub: "A".repeat(43),
+      sessionID: "ab".repeat(16), fingerprint, label,
+    })
+    localStorage.setItem("zwai.remote.links", JSON.stringify([
+      link("walkthrough", "Walkthrough PC"), link("another", "Another PC"),
+    ]))
+    localStorage.setItem("zwai.remote.active", "walkthrough")
+  })
+  await page.goto(WALKTHROUGH)
+  await page.getByRole("button", { name: "返回" }).click()
+  await page.getByRole("tab", { name: "Another PC" }).click()
+  await expect(page.getByRole("tablist")).toBeVisible()
+  await expect(page.getByTestId("transcript")).toHaveCount(0)
+})
+
 test("Android Back closes a Clients task before the inbox can exit", async ({ page }) => {
   await page.goto(WALKTHROUGH)
   await page.getByRole("button", { name: "返回" }).click()

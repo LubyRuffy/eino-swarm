@@ -16,7 +16,7 @@ import {
   type RemoteResponse,
 } from "@/lib/rpc"
 import { saveProviders } from "@/lib/direct-provider"
-import { saveLink } from "@/lib/store"
+import { saveActiveFingerprint, saveLastThreadId, saveLink } from "@/lib/store"
 
 vi.mock("@/lib/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/client")>()
@@ -188,6 +188,45 @@ describe("App boot chrome", () => {
     })
     expect(remote).not.toBe(t("err.net.down", { reason: "quota" }))
     expect(screen.getByLabelText("path=relay").className).toContain("bg-[hsl(var(--online))]")
+  })
+})
+
+describe("selecting a PC returns to its inbox", () => {
+  afterEach(() => {
+    cleanup()
+    vi.mocked(openSaved).mockReset()
+  })
+
+  it("does not auto-open the selected PC's live or last conversation", async () => {
+    const ticket = (fingerprint: string, label: string) => ({
+      hubURL: "http://127.0.0.1:9", ticket: "tick", hostPub: "pub", sessionID: "sid", fingerprint, label,
+    })
+    saveLink(ticket("pc-a", "PC A"))
+    saveLink(ticket("pc-b", "PC B"))
+    saveLastThreadId("th-1")
+    saveActiveFingerprint("pc-a")
+    const openB = vi.fn(async () => ({ v: 1, id: "o", ok: true, detail: { id: "th-1", title: "live" } }))
+    const first = hostLink({ threads: [] })
+    const second = hostLink({ running: [{ thread_id: "th-1", title: "live" }], open: openB })
+    const reconnected = hostLink({ running: [{ thread_id: "th-1", title: "live" }], open: openB })
+    let secondAlive = true
+    second.alive = () => secondAlive
+    let bConnects = 0
+    vi.mocked(openSaved).mockImplementation(async (saved) => {
+      if (saved.fingerprint === "pc-a") return first
+      return bConnects++ === 0 ? second : reconnected
+    })
+    render(<App />)
+    fireEvent.click(await screen.findByRole("tab", { name: "PC B" }))
+    await waitFor(() => expect(screen.getByRole("tab", { name: "PC B" })).toHaveAttribute("aria-selected", "true"))
+    expect(screen.getByRole("tablist", { name: t("home.hosts") })).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: t("thread.back") })).not.toBeInTheDocument()
+    expect(openB).not.toHaveBeenCalled()
+    secondAlive = false
+    await act(async () => second.onDisconnect?.(new Error("lost")))
+    await waitFor(() => expect(bConnects).toBe(2))
+    expect(screen.getByRole("tablist", { name: t("home.hosts") })).toBeInTheDocument()
+    expect(openB).not.toHaveBeenCalled()
   })
 })
 
