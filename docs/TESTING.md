@@ -1567,3 +1567,35 @@ or one call eating the wall clock.
 cross-references, evidence paths, and links in the current snapshots. It is
 part of `make check`; semantic correctness still requires review against
 current entry points and tests.
+
+### iOS composer focus regression (C-017)
+
+`mobile/e2e/walkthrough.spec.ts` checks the actual message/quote font size and
+wait controls at 320, 375, and 402 CSS px. JSDOM cannot prove WebKit focus zoom.
+`mobile/e2e/ios-wait-layout.swift` drives the packaged Capacitor app: open a
+parked wait, type, dismiss the keyboard, then check that Back is hittable at
+its original vertical position and Run now remains inside the screen.
+
+Use an isolated iPhone 17 / iOS 26 simulator; set `IOS_LAYOUT_SIMULATOR` to its
+UDID (`xcrun simctl list devices`). The fixture script copies the current
+native app into a new temporary directory and enables the existing offline
+walkthrough there. It does not alter shipping assets, sign, or upload anything.
+The keyboard accessory fallback coordinate is specific to that simulator.
+
+```bash
+cd mobile
+npm run build
+npx cap copy ios
+ios_layout_fixture="$(python3 scripts/ios-layout-fixture.py)"
+xcodebuild -project "$ios_layout_fixture/mobile/ios/App/App.xcodeproj" \
+  -scheme App -configuration Debug \
+  -destination "platform=iOS Simulator,id=$IOS_LAYOUT_SIMULATOR" \
+  -derivedDataPath "$ios_layout_fixture/DerivedData" CODE_SIGNING_ALLOWED=NO \
+  -only-testing:AppUITests/BindFlowTests/testWaitLayoutAfterTyping \
+  -parallel-testing-enabled NO -resultBundlePath "$ios_layout_fixture/layout.xcresult" test
+```
+
+Issue #40 was reproduced on the original 14px message editor after keyboard
+dismissal: Run now ended at x=441 on a 402pt screen, and Back moved to y=-50.
+The repair uses the existing `text-base` token for both message and quote editors;
+manual pinch zoom is left available.

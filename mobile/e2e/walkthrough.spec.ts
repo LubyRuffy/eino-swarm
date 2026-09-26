@@ -5,6 +5,31 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("a waiting phone stays within its viewport when the message field is focused", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(WALKTHROUGH)
+  await page.getByRole("button", { name: "返回" }).click()
+  await page.getByRole("button", { name: /^打开 Watch the nightly export$/ }).first().click()
+  const message = page.getByLabel("消息")
+  // iOS zooms a focused text field below 16px, moving the header beneath the
+  // status bar and clipping the right edge even after the keyboard closes.
+  expect(await message.evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
+  await message.focus()
+  const banner = page.getByTestId("schedule-banner")
+  await expect(banner).toBeVisible()
+  await expect.poll(async () => (await banner.boundingBox())!.x).toBe(0)
+  for (const width of [320, 375, 402]) {
+    await page.setViewportSize({ width, height: 812 })
+    for (const name of ["立即运行", "取消等待"]) {
+      const box = await banner.getByRole("button", { name }).boundingBox()
+      expect(box).not.toBeNull()
+      expect(box!.x).toBeGreaterThanOrEqual(0)
+      expect(box!.x + box!.width).toBeLessThanOrEqual(width)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  }
+})
+
 test("Android Back closes a Clients task before the inbox can exit", async ({ page }) => {
   await page.goto(WALKTHROUGH)
   await page.getByRole("button", { name: "返回" }).click()
@@ -94,6 +119,7 @@ test("selected answer text becomes a removable quote in the next phone message",
   })
   await page.getByRole("button", { name: "加入对话" }).click()
   await expect(page.getByTestId("quote-draft")).toHaveValue("Here is what changed:")
+  expect(await page.getByTestId("quote-draft").evaluate((el) => parseFloat(getComputedStyle(el).fontSize))).toBeGreaterThanOrEqual(16)
   await page.getByTestId("quote-draft").fill("")
   await page.getByTestId("quote-draft").pressSequentially("Here is the corrected source:")
   await page.getByLabel("消息").fill("解释这一句")

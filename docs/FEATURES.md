@@ -72,11 +72,11 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-220 Read and control PC conversations
 
-- 目的：在手机查看同一对话并发送、跟进、插入及翻页；使用者：手机用户；入口：手机收件箱和对话页；输入：消息与操作，包括把队列首条等待消息中断插入当前轮次；输出：PC 上同一对话的事件；前置条件：已绑定且在线；失败表现：重连提示或 RPC 错误；关联契约：`C-002`, `C-003`, `C-006`, `C-015`；实现证据：`mobile/src/app.tsx`, `mobile/src/components/thread-screen.tsx`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/walkthrough.spec.ts`。
+- 目的：在手机查看同一对话并发送、跟进、插入及翻页；使用者：手机用户；入口：手机收件箱和对话页；输入：消息与操作，包括把队列首条等待消息中断插入当前轮次；输出：PC 上同一对话的事件；前置条件：已绑定且在线；失败表现：重连提示或 RPC 错误；关联契约：`C-002`, `C-003`, `C-006`, `C-015`, `C-017`；实现证据：`mobile/src/app.tsx`, `mobile/src/components/thread-screen.tsx`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/walkthrough.spec.ts`。
 
 ### F-221 Quote PC conversation text
 
-- 目的：从手机对话选择原文并附在下一条消息；使用者：手机用户；入口：选中对话正文 → Add to chat／加入对话；输入：选区及可选请求；输出：可查看、编辑、移除引用，发送或插入后显示独立的引用块；前置条件：打开 PC 对话，选区在正文中；失败表现：无效选区不显示操作，发送失败恢复草稿；关联契约：`C-011`；实现证据：`mobile/src/components/thread-screen.tsx`, `mobile/src/components/composer.tsx`, `mobile/src/lib/quote.ts`, `mobile/e2e/walkthrough.spec.ts`。
+- 目的：从手机对话选择原文并附在下一条消息；使用者：手机用户；入口：选中对话正文 → Add to chat／加入对话；输入：选区及可选请求；输出：可查看、编辑、移除引用，发送或插入后显示独立的引用块；前置条件：打开 PC 对话，选区在正文中；失败表现：无效选区不显示操作，发送失败恢复草稿；关联契约：`C-011`, `C-017`；实现证据：`mobile/src/components/thread-screen.tsx`, `mobile/src/components/composer.tsx`, `mobile/src/lib/quote.ts`, `mobile/e2e/walkthrough.spec.ts`。
 
 ### F-222 Inspect sub-agents on the phone
 
@@ -88,7 +88,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-230 Direct model chat
 
-- 目的：手机在没有 PC 时直接连接模型，并在应用内按服务商选择模型；使用者：手机用户；入口：Models、Chat 和输入框模型按钮；输入：兼容端点、所选模型、消息及附件；输出：流式回答；前置条件：端点可访问；失败表现：连接或模型错误；关联契约：`C-006`, `C-009`, `C-013`；实现证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.test.tsx`, `mobile/src/lib/openai-client.ts`。
+- 目的：手机在没有 PC 时直接连接模型，并在应用内按服务商选择模型；使用者：手机用户；入口：Models、Chat 和输入框模型按钮；输入：兼容端点、所选模型、消息及附件；输出：流式回答；前置条件：端点可访问；失败表现：连接或模型错误；关联契约：`C-006`, `C-009`, `C-013`, `C-017`；实现证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.test.tsx`, `mobile/src/lib/openai-client.ts`。
 
 ### F-240 Phone updates
 

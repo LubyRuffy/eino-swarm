@@ -59,6 +59,10 @@ sends (Shift+Enter is a newline, and an IME candidate list is never a
 send), and the round button stays off until there is something to send.
 While a turn is live the box also offers steer, and says a plain send is
 queued after this turn.
+Message and quote editors use 16px text (`C-017`). On iOS, focusing and
+dismissing the keyboard must leave the header in its safe area and the wait
+actions inside the screen; smaller editable text used to leave the WebView
+zoomed and the top/right controls clipped. User pinch zoom remains available.
 The waiting-message tray offers **Insert** on each row. **Interrupt and insert**
 promotes the oldest waiting message into the current turn, then interrupts
 the current manager step so it can read that message sooner; later messages
