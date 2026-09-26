@@ -1,6 +1,7 @@
 /** A `chart` markdown fence is JSON the answer already committed to. The
  *  renderer has to accept the shapes models actually emit — missing x/y,
- *  parallel arrays — without inventing series that were never in the body. */
+ *  parallel arrays, x/y used as captions while the row uses other keys —
+ *  without inventing series that were never in the body. */
 
 export const CHART_TYPES = ["bar", "line", "area", "pie"] as const
 export type ChartType = (typeof CHART_TYPES)[number]
@@ -107,20 +108,14 @@ function normalizeChart(value: Record<string, unknown>): ChartSpec | null {
   const rows = readRows(value)
   if (!rows) return null
 
-  let x = readString(value, "x")
-  let y = readY(value.y)
-  if (!x || y.length === 0) {
-    const inferred = inferAxes(rows, x, y)
-    if (!inferred) return null
-    x = inferred.x
-    y = inferred.y
-  }
-  if (!x || y.length === 0) return null
-  y = unique(y).slice(0, CHART_MAX_SERIES)
+  const bound = bindChartColumns(rows, readString(value, "x"), readY(value.y))
+  if (!bound) return null
+  const x = bound.x
+  let y = unique(bound.y).slice(0, CHART_MAX_SERIES)
   if (type === "pie") y = y.slice(0, 1)
 
   const data: ChartRow[] = []
-  for (const row of rows) {
+  for (const row of bound.rows) {
     if (data.length >= CHART_MAX_ROWS) break
     const cleaned = cleanRow(row, x, y)
     if (cleaned) data.push(cleaned)
@@ -182,6 +177,100 @@ function rowsFromValueMap(raw: unknown): Record<string, unknown>[] | null {
     rows.push({ label: k, value: n })
   }
   return rows.length ? rows : null
+}
+
+/** Declared x/y are field names when those keys exist. A newer model writes
+ *  the axis caption there and stores the point under the literal keys `x`
+ *  and `y`, or under some other pair. Binding keeps the columns that are
+ *  actually on the row and only renames a placeholder key onto that caption. */
+function bindChartColumns(
+  rows: Record<string, unknown>[],
+  declaredX: string,
+  declaredY: string[],
+): { x: string; y: string[]; rows: Record<string, unknown>[] } | null {
+  const candidates: { x: string; y: string[]; rows: Record<string, unknown>[] }[] = []
+  if (declaredX && declaredY.length > 0) {
+    candidates.push({ x: declaredX, y: declaredY, rows })
+  }
+  const yHit = declaredY.filter((key) => columnIsNumeric(rows, key))
+  if (yHit.length > 0) {
+    const partial = inferAxes(rows, "", yHit)
+    if (partial) candidates.push(withCaptions(rows, partial, declaredX, declaredY))
+  }
+  const full = inferAxes(rows, "", [])
+  if (full) candidates.push(withCaptions(rows, full, declaredX, declaredY))
+  for (const candidate of candidates) {
+    if (enoughRows(candidate.rows, candidate.x, candidate.y)) return candidate
+  }
+  return null
+}
+
+function withCaptions(
+  rows: Record<string, unknown>[],
+  inferred: { x: string; y: string[] },
+  captionX: string,
+  captionY: string[],
+): { x: string; y: string[]; rows: Record<string, unknown>[] } {
+  const renames: Record<string, string> = {}
+  if (
+    inferred.x === "x" &&
+    captionX &&
+    captionX !== "x" &&
+    !columnExists(rows, captionX)
+  ) {
+    renames.x = captionX
+  }
+  const yCaption = captionY.length === 1 ? captionY[0] : ""
+  if (
+    inferred.y.length === 1 &&
+    inferred.y[0] === "y" &&
+    yCaption &&
+    yCaption !== "y" &&
+    !columnExists(rows, yCaption)
+  ) {
+    renames.y = yCaption
+  }
+  if (Object.keys(renames).length === 0) return { ...inferred, rows }
+  const x = renames.x ?? inferred.x
+  const y = inferred.y.map((key) => renames[key] ?? key)
+  if (y.includes(x)) return { ...inferred, rows }
+  return { x, y, rows: renameKeys(rows, renames) }
+}
+
+function renameKeys(
+  rows: Record<string, unknown>[],
+  renames: Record<string, string>,
+): Record<string, unknown>[] {
+  return rows.map((row) => {
+    const out: Record<string, unknown> = {}
+    for (const [key, value] of Object.entries(row)) {
+      out[renames[key] ?? key] = value
+    }
+    return out
+  })
+}
+
+function enoughRows(
+  rows: Record<string, unknown>[],
+  x: string,
+  y: string[],
+): boolean {
+  if (!x || y.length === 0) return false
+  let n = 0
+  for (const row of rows) {
+    if (!cleanRow(row, x, y)) continue
+    n++
+    if (n >= CHART_MIN_ROWS) return true
+  }
+  return false
+}
+
+function columnIsNumeric(rows: Record<string, unknown>[], key: string): boolean {
+  return rows.every((row) => asNumber(row[key]) !== null)
+}
+
+function columnExists(rows: Record<string, unknown>[], key: string): boolean {
+  return rows.some((row) => Object.prototype.hasOwnProperty.call(row, key))
 }
 
 function inferAxes(

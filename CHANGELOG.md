@@ -23,6 +23,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A commentary no longer shows up twice around its tool calls.** The coalesce timer could claim the paragraph and then lose the race to the tool call, so the same sentence was broadcast again under the tools. The timer now waits until that paragraph is already on the wire, and a snapshot that only repeats the sealed bubble is not drawn a second time.
+
+- **A long selected passage no longer stretches the composer or the bubble.** The highlight wraps and shows three lines; the rest is an ellipsis. Edit still has the whole string.
+
+- **A chart fence whose `x` and `y` are captions still paints.** A model that puts the axis title in `x`/`y` and stores each point under other keys (including the literal keys `x` and `y`) used to fail the parse, so the fence stayed a code block. The columns on the row are what get plotted. The manager prompt tells it those strings are keys on each data object.
+
 - `F-220`, `F-221`, `F-230` / `C-017`: phone message and quote editors use 16px text so iOS does not leave the conversation zoomed after typing. The waiting header and actions return to their original safe-area positions after keyboard dismissal (Issue #40).
 
 - `F-220` / `C-016`: 手机明确切换 PC 后停留在所选 PC 的收件箱，不再自动打开其运行中或上次浏览的对话；首次绑定及冷启动的恢复行为保留（Issue #37）。

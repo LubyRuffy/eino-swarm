@@ -27,6 +27,7 @@ describe("ComposerQuotes", () => {
     expect(screen.getByTestId("quote-details")).toBeInTheDocument()
     expect(screen.getByTestId("quote-snippet")).toHaveTextContent("Selected text:")
     expect(screen.getByTestId("quote-snippet")).toHaveTextContent("alpha beta")
+    expect(screen.getByTestId("quote-snippet-text")).toHaveClass("line-clamp-3")
     expect(screen.getByRole("button", { name: "Edit selected text 1" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Remove selected text 1" })).toBeInTheDocument()
   })

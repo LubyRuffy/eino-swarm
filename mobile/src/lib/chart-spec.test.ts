@@ -89,6 +89,74 @@ describe("parseChartSpec", () => {
     ])
   })
 
+  it("treats x and y as captions when each row stores the point under those keys", () => {
+    const got = parseChartSpec(
+      JSON.stringify({
+        type: "line",
+        title: "Totals",
+        unit: "n",
+        x: "group",
+        y: "amount",
+        data: [
+          { x: "a", y: 1 },
+          { x: "b", y: 3 },
+        ],
+      }),
+    )
+    expect(got.ok).toBe(true)
+    if (!got.ok) return
+    expect(got.spec.x).toBe("group")
+    expect(got.spec.y).toEqual(["amount"])
+    expect(got.spec.data).toEqual([
+      { group: "a", amount: 1 },
+      { group: "b", amount: 3 },
+    ])
+  })
+
+  it("keeps a series key that already matches and still names the category", () => {
+    const got = parseChartSpec(
+      JSON.stringify({
+        type: "bar",
+        x: "group",
+        y: "n",
+        data: [
+          { x: "a", n: 1 },
+          { x: "b", n: 3 },
+        ],
+      }),
+    )
+    expect(got.ok).toBe(true)
+    if (!got.ok) return
+    expect(got.spec.x).toBe("group")
+    expect(got.spec.y).toEqual(["n"])
+    expect(got.spec.data).toEqual([
+      { group: "a", n: 1 },
+      { group: "b", n: 3 },
+    ])
+  })
+
+  it("uses the columns on the row when the named fields are not there", () => {
+    const got = parseChartSpec(
+      JSON.stringify({
+        type: "bar",
+        x: "missing",
+        y: "also",
+        data: [
+          { k: "a", v: 1 },
+          { k: "b", v: 2 },
+        ],
+      }),
+    )
+    expect(got.ok).toBe(true)
+    if (!got.ok) return
+    expect(got.spec.x).toBe("k")
+    expect(got.spec.y).toEqual(["v"])
+    expect(got.spec.data).toEqual([
+      { k: "a", v: 1 },
+      { k: "b", v: 2 },
+    ])
+  })
+
   it("infers x and y from the first row when they were omitted", () => {
     const got = parseChartSpec(
       JSON.stringify({

@@ -101,6 +101,66 @@ describe("streamed text", () => {
     expect(answerAt).toBeLessThan(firstTool)
   })
 
+  // The coalesce timer can claim the commentary and then lose the race, so
+  // the same snapshot arrives again after the tool row. A second bubble there
+  // is the paragraph the user already read, painted twice.
+  it("drops a commentary snapshot that arrives again after its tool calls", () => {
+    const text = "The service is stopped. I will check the config and bring it up."
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "delta", text }),
+      ev({ kind: "agent_message", text }),
+      ev({ kind: "tool_call", text: 'exec({"command":"status"})', tool_call_id: "c1" }),
+      ev({ kind: "tool_call", text: 'exec({"command":"start"})', tool_call_id: "c2" }),
+      ev({ kind: "delta", text }),
+    ])
+    const blocks = manager(state).blocks
+    expect(blocks.filter((b) => b.kind === "answer")).toHaveLength(1)
+    const answerAt = blocks.findIndex((b) => b.kind === "answer")
+    let lastTool = -1
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      if (blocks[i].kind === "tool") {
+        lastTool = i
+        break
+      }
+    }
+    expect(answerAt).toBeLessThan(lastTool)
+  })
+
+  // tool_call seals the open bubble before the flushed message arrives. The
+  // flush has to land in that bubble, not under the tools.
+  it("folds a sealed commentary into the bubble the tool call already closed", () => {
+    const text = "The service is stopped. I will check the config and bring it up."
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "delta", text: "The service is stopped." }),
+      ev({ kind: "tool_call", text: 'exec({"command":"status"})', tool_call_id: "c1" }),
+      ev({ kind: "agent_message", text }),
+    ])
+    const answers = manager(state).blocks.filter((b) => b.kind === "answer")
+    expect(answers).toHaveLength(1)
+    expect(answers[0].text).toBe(text)
+    const answerAt = manager(state).blocks.findIndex((b) => b.kind === "answer")
+    const toolAt = manager(state).blocks.findIndex((b) => b.kind === "tool")
+    expect(answerAt).toBeLessThan(toolAt)
+  })
+
+  // A second stored message that repeats the sentence is the model saying it
+  // again. The echo guard is for a streamed snapshot, not for that.
+  it("keeps a repeated sentence when a tool sits between two stored messages", () => {
+    const text = "status update"
+    const state = fold([
+      ev({ kind: "user_message", text: "hi" }),
+      ev({ kind: "agent_message", text }),
+      ev({ kind: "tool_call", text: 'exec({"command":"true"})', tool_call_id: "c1" }),
+      ev({ kind: "agent_message", text }),
+    ])
+    expect(manager(state).blocks.filter((b) => b.kind === "answer").map((b) => b.text)).toEqual([
+      text,
+      text,
+    ])
+  })
+
   // The complete text arrives after the deltas; it must land in the same block
   // rather than duplicating the answer under it.
   it("folds the complete message into the streamed block", () => {

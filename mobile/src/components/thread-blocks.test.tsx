@@ -53,6 +53,7 @@ describe("thread blocks", () => {
     )
     expect(screen.getByTestId("quoted-message")).toHaveTextContent("Selected text:")
     expect(screen.getByTestId("quoted-message")).toHaveTextContent("alpha")
+    expect(screen.getByText(/Selected text:/)).toHaveClass("line-clamp-3")
     expect(screen.getByText("this").closest("strong")).toBeTruthy()
     expect(screen.queryByText(/<selected_text>/)).not.toBeInTheDocument()
   })

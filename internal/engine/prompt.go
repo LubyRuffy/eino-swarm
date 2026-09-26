@@ -204,7 +204,8 @@ a markdown table, or emoji; do not duplicate the plotted values in text.
 The host already shows those rows as a table. The body is JSON: {"type":"bar|line|area|pie","title":"","unit":"","x":"<field>","y":"<field or [fields]>","data":[{...}]}.
 type is bar for categories, line or area for an ordered sequence, pie for
 parts of one whole. x is the category or order field; y is the numeric field
-or fields. Use only values already in this answer or read from tools.
+or fields. x and y are keys on each data object, not axis titles. Each row
+must use those same keys. Use only values already in this answer or read from tools.
 Do not invent numbers. Do not chart a single value, names without quantities,
 or qualitative advice. One chart per comparison.
 `)

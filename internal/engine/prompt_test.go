@@ -535,6 +535,8 @@ func TestManagerPromptDescribesChartsWithoutASampleTask(t *testing.T) {
 		"prefer the chart over spelling out the same",
 		"clearer reading experience",
 		"do not duplicate the plotted values in text",
+		"keys on each data object",
+		"not axis titles",
 		"markdown table",
 		"emoji",
 	} {

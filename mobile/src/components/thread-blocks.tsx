@@ -97,7 +97,7 @@ function QuotedPhoneText({ text }: { text: string }) {
       {parsed.quotes.map((q, i) => (
         <p
           key={`${i}-${q.slice(0, 24)}`}
-          className="rounded-lg border border-border bg-muted/50 px-2 py-1 text-xs text-muted-foreground"
+          className="min-w-0 whitespace-pre-wrap break-words rounded-lg border border-border bg-muted/50 px-2 py-1 text-xs text-muted-foreground line-clamp-3"
         >
           {i + 1}. {t("quote.selected")}: {q}
         </p>

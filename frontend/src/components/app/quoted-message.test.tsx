@@ -29,4 +29,23 @@ describe("QuotedMessageBody", () => {
     expect(screen.getByTestId("quote-snippet")).toHaveTextContent("alpha")
     expect(screen.getByText("do this")).toBeInTheDocument()
   })
+
+  // A highlight sized to the raw string stretches the composer and the
+  // bubble. Three wrapped lines is the cap; the rest stays in the DOM
+  // for the model, and the chip shows an ellipsis.
+  it("wraps a long highlight to three lines instead of stretching the row", () => {
+    const passage = "alpha beta ".repeat(40).trim()
+    render(<QuotedMessageBody text={formatQuotedMessage([passage], "do this")} />)
+    const chip = screen.getByTestId("quote-snippet")
+    const text = screen.getByTestId("quote-snippet-text")
+    expect(chip.className).toMatch(/\bmin-w-0\b/)
+    expect(chip.className).toMatch(/\bmax-w-full\b/)
+    expect(chip.className).not.toMatch(/\bw-fit\b/)
+    expect(text).toHaveClass("line-clamp-3")
+    expect(text.className).toMatch(/\bbreak-words\b/)
+    expect(text.className).toMatch(/\bwhitespace-pre-wrap\b/)
+    expect(text.className).not.toMatch(/\btruncate\b/)
+    expect(text).toHaveTextContent(passage)
+    expect(chip.querySelector("button")).toBeNull()
+  })
 })

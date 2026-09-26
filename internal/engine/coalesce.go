@@ -33,27 +33,31 @@ func (a *accumulator) pushLive(n swarm.Notification) {
 	a.mu.Unlock()
 }
 
-// flushKind sends the pending live event of this kind, if any. The timer is
-// stopped so it cannot fire after the complete text has already been recorded.
-func (a *accumulator) flushKind(agentID, kind string) {
-	a.flushKey(liveKey(agentID, kind, ""))
-}
-
 // flushAgentLive sends every pending streamed event for this agent. A tool
 // call or a finished worker must not leave a token sitting in the coalescer
 // that would arrive after the row that says it is done.
 func (a *accumulator) flushAgentLive(agentID string) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	a.flushAgentLiveLocked(agentID)
+}
+
+func (a *accumulator) flushAgentLiveLocked(agentID string) {
+	for _, key := range a.liveKeys(agentID) {
+		a.flushKeyLocked(key)
+	}
+}
+
+func (a *accumulator) liveKeys(agentID string) []string {
 	a.mu.Lock()
+	defer a.mu.Unlock()
 	keys := make([]string, 0, len(a.live))
 	for key := range a.live {
 		if agentID == "" || hasAgentPrefix(key, agentID) {
 			keys = append(keys, key)
 		}
 	}
-	a.mu.Unlock()
-	for _, key := range keys {
-		a.flushKey(key)
-	}
+	return keys
 }
 
 func hasAgentPrefix(key, agentID string) bool {
@@ -64,6 +68,12 @@ func hasAgentPrefix(key, agentID string) bool {
 // the complete text is about to be recorded: emitting the last partial first
 // would paint the same answer twice.
 func (a *accumulator) dropLive(agentID string) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	a.dropLiveLocked(agentID)
+}
+
+func (a *accumulator) dropLiveLocked(agentID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	for key, timer := range a.liveTimer {
@@ -81,18 +91,27 @@ func (a *accumulator) dropLive(agentID string) {
 // flushAllLive sends every held delta. Called at the end of a turn so a
 // cancelled stream still shows the last tokens and no timer fires after done.
 func (a *accumulator) flushAllLive() {
-	a.mu.Lock()
-	keys := make([]string, 0, len(a.live))
-	for key := range a.live {
-		keys = append(keys, key)
-	}
-	a.mu.Unlock()
-	for _, key := range keys {
-		a.flushKey(key)
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	a.flushAllLiveLocked()
+}
+
+func (a *accumulator) flushAllLiveLocked() {
+	for _, key := range a.liveKeys("") {
+		a.flushKeyLocked(key)
 	}
 }
 
 func (a *accumulator) flushKey(key string) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	a.flushKeyLocked(key)
+}
+
+// flushKeyLocked claims one held delta and broadcasts it. Caller holds gate,
+// so a boundary that already decided "this paragraph, then the tool call"
+// cannot be overtaken by the timer between the claim and the send.
+func (a *accumulator) flushKeyLocked(key string) {
 	a.mu.Lock()
 	ev, ok := a.live[key]
 	delete(a.live, key)
@@ -101,12 +120,22 @@ func (a *accumulator) flushKey(key string) {
 	}
 	delete(a.liveTimer, key)
 	a.mu.Unlock()
-	if ok {
-		a.engine.emit(ev)
+	if !ok {
+		return
 	}
+	if a.beforeLiveEmit != nil {
+		a.beforeLiveEmit()
+	}
+	a.engine.emit(ev)
 }
 
 func (a *accumulator) dropKey(key string) {
+	a.gate.Lock()
+	defer a.gate.Unlock()
+	a.dropKeyLocked(key)
+}
+
+func (a *accumulator) dropKeyLocked(key string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if timer := a.liveTimer[key]; timer != nil {

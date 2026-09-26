@@ -158,7 +158,7 @@ responses call is tried again. A different responses 400 is not retried.
 `rosterFingerprint` is why a 2s inbox poll that repeats the same roster
 does not remount the row mid-tap. `mobile/src/components/markdown.test.tsx` renders `$n$` as KaTeX and copies a
 fenced body (including when the Clipboard API refuses), paints `**bold**` and GFM tables, keeps a filesystem path
-from becoming a webview navigation, paints a `chart` fence as a plot with a table of the same rows, holds a truncated chart, and leaves a `json` fence and a finished invalid chart as code. `mobile/src/components/phone-chart.test.tsx` covers line, area, bar, stacked bar, and pie marks. `mobile/src/lib/copy-text.test.ts` is why
+from becoming a webview navigation, paints a `chart` fence as a plot with a table of the same rows, holds a truncated chart, and leaves a `json` fence and a finished invalid chart as code. `mobile/src/lib/chart-spec.test.ts` is the same parser as the desktop, including an `x`/`y` caption whose row uses other keys. `mobile/src/components/phone-chart.test.tsx` covers line, area, bar, stacked bar, and pie marks. `mobile/src/lib/copy-text.test.ts` is why
 that copy plants on the `copy` event instead of trusting WebKit's boolean. `mobile/src/components/thread-blocks.test.tsx`
 is why a user bubble uses that same markdown, not the source markers.
 `mobile/src/components/home-screen.test.tsx` is why a parked wait sits in
@@ -966,8 +966,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   long line still scrolls left-to-right; changing the activity key slides
   the previous line up.
 - **`src/lib/chart-spec.ts`**: a `chart` fence body is JSON for bar / line /
-  area / pie. Parallel `labels`+`values`, a values object, and missing x/y
-  still parse; a single row, an unknown type, and junk do not; a truncated
+  area / pie. Parallel `labels`+`values`, a values object, missing x/y,
+  and x/y written as captions while the row uses other keys (including the
+  literal keys `x` and `y`) still parse; a single row, an unknown type, and
+  junk do not; a truncated
   object is incomplete so a live fence can wait; rows and series are capped.
   Two parses of the same fence compare equal so a live answer does not treat
   a new object as a new chart.

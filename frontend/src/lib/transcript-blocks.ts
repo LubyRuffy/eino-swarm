@@ -30,6 +30,19 @@ export function replaceStreaming(
   const blocks = agent.blocks.slice()
   const i = lastOpenIndex(blocks, kind)
   if (i === -1) {
+    // The coalesce timer can lose the race and deliver this snapshot again
+    // after the tool row. A delta is the text so far, not a second sentence,
+    // so an exact copy of the bubble already on screen is dropped.
+    if (echoesSealed(blocks, ev, kind)) {
+      agent.blocks = blocks
+      return
+    }
+    const draft = unfinishedDraft(blocks, ev, kind)
+    if (draft !== -1) {
+      blocks[draft] = { ...blocks[draft], text: ev.text ?? "", streaming: true }
+      agent.blocks = blocks
+      return
+    }
     blocks.push({ ...block(ev, kind, ev.text ?? ""), streaming: true, id: openId(ev, kind) })
   } else {
     blocks[i] = { ...blocks[i], text: ev.text ?? "", streaming: true }
@@ -47,11 +60,63 @@ export function replaceComplete(
   const blocks = agent.blocks.slice()
   const i = lastOpenIndex(blocks, kind)
   if (i === -1) {
-    blocks.push({ ...block(ev, kind, ev.text ?? "") })
+    // tool_call seals the open bubble before this flush arrives. The draft
+    // still has no stored seq; the flush belongs in it. A later message that
+    // happens to repeat the same words is a new sentence and stays.
+    const draft = unfinishedDraft(blocks, ev, kind)
+    if (draft === -1) {
+      blocks.push({ ...block(ev, kind, ev.text ?? "") })
+    } else {
+      blocks[draft] = {
+        ...blocks[draft],
+        text: ev.text ?? "",
+        streaming: false,
+        seq: ev.seq,
+      }
+    }
   } else {
     blocks[i] = { ...blocks[i], text: ev.text ?? "", streaming: false, seq: ev.seq }
   }
   agent.blocks = blocks
+}
+
+/** Exact copy of a sealed paragraph, with only tool rows after it. */
+function echoesSealed(
+  blocks: Block[],
+  ev: SwarmEvent,
+  kind: "reasoning" | "answer",
+): boolean {
+  const hit = paragraphBeforeTools(blocks, ev, kind)
+  return hit !== -1 && blocks[hit].text === (ev.text ?? "")
+}
+
+/** A streamed paragraph that a tool call closed before the flush arrived.
+ *  It has no stored seq yet, and the incoming text is that paragraph finished. */
+function unfinishedDraft(
+  blocks: Block[],
+  ev: SwarmEvent,
+  kind: "reasoning" | "answer",
+): number {
+  const text = ev.text ?? ""
+  const hit = paragraphBeforeTools(blocks, ev, kind)
+  if (hit === -1) return -1
+  const prev = blocks[hit].text
+  if (blocks[hit].seq !== 0 || !prev || !text.startsWith(prev)) return -1
+  return hit
+}
+
+function paragraphBeforeTools(
+  blocks: Block[],
+  ev: SwarmEvent,
+  kind: "reasoning" | "answer",
+): number {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i]
+    if (b.kind === "tool" || b.kind === "spawn" || b.kind === "question") continue
+    if (b.kind === kind && !b.streaming && b.turnId === ev.turn_id) return i
+    return -1
+  }
+  return -1
 }
 
 export function closeStreaming(agent: AgentState, kind: "reasoning" | "answer") {

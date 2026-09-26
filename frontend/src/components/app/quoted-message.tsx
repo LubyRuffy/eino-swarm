@@ -1,14 +1,14 @@
 import { Pencil, Trash2 } from "lucide-react"
-import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { useT } from "@/lib/use-t"
 import { parseQuotedMessage } from "@/lib/quote"
 
-/** Transcript chip: one truncated line until opened. Composer hover
- *  passes `detail` so the full highlight is the hover panel, not a
- *  second bubble sitting in the box. */
+/** Highlight chip. A long selection used to size the row to the raw
+ *  string (`w-fit` + nowrap), which stretched the composer and the
+ *  bubble. Three wrapped lines is the cap; the rest is an ellipsis.
+ *  Edit still holds the whole passage. */
 export function QuoteSnippet({
   index,
   text,
@@ -23,49 +23,26 @@ export function QuoteSnippet({
   detail?: boolean
 }) {
   const t = useT()
-  const [open, setOpen] = useState(false)
-  const expanded = detail || open
   const n = index + 1
-  const body = (
-    <>
-      <span className="text-muted-foreground">
-        {n}. {t("quote.selected")}:
-      </span>{" "}
-      <span
-        className={
-          expanded
-            ? "whitespace-pre-wrap break-words text-foreground"
-            : "inline-block max-w-full truncate align-bottom text-foreground"
-        }
-      >
-        {text}
-      </span>
-    </>
-  )
   return (
     <div
       data-testid="quote-snippet"
       className={cn(
-        "flex w-fit max-w-full items-start gap-1 border border-border px-2.5 py-1",
+        "flex w-full min-w-0 max-w-full items-start gap-1 rounded-2xl border border-border px-2.5 py-1",
         detail
           ? "bg-popover text-popover-foreground shadow-md"
           : "bg-background",
-        expanded ? "rounded-2xl" : "rounded-full",
       )}
     >
-      {detail ? (
-        <div className="min-w-0 flex-1 text-left text-xs leading-5">{body}</div>
-      ) : (
-        <button
-          type="button"
-          className="min-w-0 flex-1 text-left text-xs leading-5"
-          aria-expanded={open}
-          aria-label={`${n}. ${t("quote.selected")}`}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {body}
-        </button>
-      )}
+      <p
+        data-testid="quote-snippet-text"
+        className="min-w-0 flex-1 whitespace-pre-wrap break-words text-left text-xs leading-5 text-foreground line-clamp-3"
+      >
+        <span className="text-muted-foreground">
+          {n}. {t("quote.selected")}:
+        </span>{" "}
+        {text}
+      </p>
       {onEdit || onRemove ? (
         <div className="flex shrink-0">
           {onEdit ? (
@@ -120,7 +97,7 @@ export function QuotedMessageBody({
   return (
     <div
       data-testid="quoted-message"
-      className={cn("flex flex-col gap-1.5", className)}
+      className={cn("flex min-w-0 max-w-full flex-col gap-1.5", className)}
     >
       {parsed.quotes.map((q, i) => (
         <QuoteSnippet key={`${i}-${q.slice(0, 24)}`} index={i} text={q} />

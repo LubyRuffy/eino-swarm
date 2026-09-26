@@ -66,8 +66,8 @@ function QueuedSteerRow({
 }) {
   const t = useT()
   return (
-    <div className="mb-2 flex justify-end" data-testid="steer">
-      <div className="flex max-w-[85%] items-start gap-2 rounded-2xl rounded-br-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
+    <div className="mb-2 flex w-full min-w-0 justify-end" data-testid="steer">
+      <div className="flex min-w-0 max-w-[85%] items-start gap-2 rounded-2xl rounded-br-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground">
         <Badge variant="outline" className="mt-0.5 shrink-0">
           {t("transcript.steer")}
         </Badge>

@@ -57,7 +57,7 @@ export function ComposerQuotes({
         >
           <ul className="flex flex-col gap-1.5">
             {quotes.map((q, i) => (
-              <li key={q.id}>
+              <li key={q.id} className="min-w-0">
                 {editingId === q.id ? (
                   <QuoteEditor
                     index={i}

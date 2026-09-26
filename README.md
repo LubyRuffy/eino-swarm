@@ -56,8 +56,9 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **Quote a passage into the next message.** Select text in the transcript (or a
   sub-agent's log) and **Add to chat**. It still works while a turn is
   streaming. The snippet lands as a count chip on the composer — hover to
-  read, edit or drop it — and is sent in `<selected_text>` next to whatever
-  you type (`<user_request>`), instead of being dumped into the box.
+  read it (three wrapped lines, then an ellipsis), edit or drop it — and is
+  sent in `<selected_text>` next to whatever you type (`<user_request>`),
+  instead of being dumped into the box.
   On the phone, select text in the PC conversation and tap **Add to chat**.
   The selected text appears above the message box, where it can be edited or removed;
   sending it alone or with a message uses the same tagged format.

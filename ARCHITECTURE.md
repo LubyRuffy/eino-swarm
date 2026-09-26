@@ -378,7 +378,9 @@ worker before closing SQLite.
      50-token-per-second model costs the UI one redraw, not fifty. A tool call,
      a finished worker or the end of the turn flushes whatever is still held
      so the last tokens are not sitting in the coalescer when the row that
-     follows them appears;
+     follows them appears. The timer and that flush share one lock: a timer
+     that has already claimed the commentary cannot broadcast it after the
+     tool row, which is how the same paragraph used to show up twice;
    - completed messages, tool calls, tool results, spawn/finish, steer and
      cleanup notices are **persisted with a gap-free per-conversation `seq`**,
      then broadcast. A manager `agent_message` also appends an assistant row
@@ -595,7 +597,9 @@ payload on the `copy` event, so WKWebView cannot report Copied with an empty
 pasteboard when the Clipboard API refuses). `$...$` / `$$...$$` and `math` / `latex` / `tex` fences render as
 KaTeX (lazy-loaded, same as a `chart` plot). A fenced `chart` block
 whose body is a comparison (bar, line, area, pie JSON) paints as a plot
-with a Table tab for the same rows.
+with a Table tab for the same rows. `x` and `y` are field names when those
+keys are on the rows; a caption in those slots, or a row that uses different
+keys, still binds the columns that are actually present.
 The phone paints the same fence in the webview (plot and table); an unclosed
 or truncated fence is a placeholder, and a finished invalid body stays code. The markdown `pre` renderer is a stable module-level component
 so a closed chart is not remounted (and Recharts does not flash empty) when
@@ -678,7 +682,9 @@ a count chip at rest; hover (or focus) to read, edit or drop, not a dump
 of the quote into the textarea —
 and tagged onto the next send as `<selected_text>` / `<user_request>` so the
 model can tell a highlight from the instruction (`frontend/src/lib/quote.ts`,
-`frontend/src/lib/selection.ts`).
+`frontend/src/lib/selection.ts`). The highlight wraps and stops at three
+lines (the rest is an ellipsis) so a long selection cannot stretch the
+composer or the sent bubble.
 Hovering a user bubble or a finished assistant answer reveals the event
 clock (`formatMessageTime`, ISO on `title` / `datetime`) next to the
 actions, so a transcript row can be matched to a log line. The row sits

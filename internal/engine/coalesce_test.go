@@ -88,6 +88,81 @@ func TestAToolCallFlushesTheHeldDelta(t *testing.T) {
 	}
 }
 
+// The coalesce timer claims the commentary on its own goroutine. If that send
+// lands after the tool call, the transcript paints the same paragraph again
+// under the tools. The claim and the boundary share one lock so the call
+// waits until the paragraph is already on the wire.
+func TestCoalesceTimerCannotEmitTheCommentaryAfterTheToolCall(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("coalesce-race", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := e.Subscribe(th.ID)
+	defer sub.Close()
+
+	acc := newAccumulator(e, th.ID, "turn-1", time.Hour)
+	claimed := make(chan struct{})
+	release := make(chan struct{})
+	acc.beforeLiveEmit = func() {
+		close(claimed)
+		<-release
+	}
+	acc.onNotify(swarm.Notification{
+		Kind: swarm.NotifyDelta, AgentID: swarm.DefaultManagerID, Text: "Checking now",
+	})
+
+	go acc.flushKey(liveKey(swarm.DefaultManagerID, swarm.NotifyDelta.String(), ""))
+	select {
+	case <-claimed:
+	case <-time.After(time.Second):
+		t.Fatal("the timer never claimed the held commentary")
+	}
+
+	finished := make(chan struct{})
+	go func() {
+		acc.onNotify(swarm.Notification{
+			Kind: swarm.NotifyToolCall, AgentID: swarm.DefaultManagerID,
+			Text: "read({})", ToolCallID: "c1",
+		})
+		close(finished)
+	}()
+
+	select {
+	case ev := <-sub.C:
+		t.Fatalf("the tool call broadcast while the commentary was still held: %+v", ev)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("the tool call never finished after the commentary was released")
+	}
+
+	var kinds []string
+	deadline := time.After(time.Second)
+	for len(kinds) < 3 {
+		select {
+		case ev := <-sub.C:
+			kinds = append(kinds, ev.Kind)
+		case <-deadline:
+			t.Fatalf("wire order: %v", kinds)
+		}
+	}
+	want := []string{
+		swarm.NotifyDelta.String(),
+		swarm.NotifyAgentMessage.String(),
+		swarm.NotifyToolCall.String(),
+	}
+	for i, kind := range want {
+		if kinds[i] != kind {
+			t.Fatalf("wire order %v, want %v", kinds, want)
+		}
+	}
+}
+
 // The complete answer is about to be recorded, so emitting the last partial
 // first would paint the same text twice. Drop it instead.
 func TestACompleteAnswerDropsTheHeldDelta(t *testing.T) {

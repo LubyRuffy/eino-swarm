@@ -881,8 +881,8 @@ function UserMessage({
   }
 
   return (
-    <div className="mb-2 mt-6 flex justify-end first:mt-0" data-turn-nav={block.turnId}>
-      <div className="group/msg flex max-w-[85%] flex-col items-end">
+    <div className="mb-2 mt-6 flex w-full min-w-0 justify-end first:mt-0" data-turn-nav={block.turnId}>
+      <div className="group/msg flex min-w-0 max-w-[85%] flex-col items-end">
         {editing ? (
           <div
             data-testid="user-message-editor"
@@ -959,7 +959,7 @@ function UserMessage({
               data-testid="user-message"
               className={cn(
                 contentTypeClass,
-                "rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-secondary-foreground",
+                "min-w-0 max-w-full rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-secondary-foreground",
               )}
             >
               <InputThumbs
