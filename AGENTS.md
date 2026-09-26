@@ -170,3 +170,21 @@ feature.
 - The data directory is `~/.zwai-swarm` (`ZWAI_HOME` overrides). Never write to
   `~/.zwai`; that belongs to another project. Tests always use `t.TempDir()`.
 - `examples/` must keep compiling: it is the library's public surface.
+
+## Serial Issue integration and release
+
+- Finish and push each Issue as its own coherent commits, then integrate its
+  complete branch into local `main`, validate that candidate, and push `main`.
+  Before the next Issue, fetch and synchronize this `main`; create or update
+  the next task worktree from it. Do not keep independent tasks on stale bases.
+- Unrelated edits in another checkout do not block task commits or packaging.
+  Preserve that checkout's files, index and branch. If it cannot safely host
+  `main` integration, use a dedicated clean checkout of the same remote with
+  its own local `main`, and record its path and SHA in the Issue. Never stash,
+  reset, overwrite or include another task's unfinished files.
+- Package only the complete, clean, verified and pushed main commit, with tags
+  and platform versions tied to it. A real merge conflict or failed gate must
+  be resolved or reported; a dirty unrelated checkout alone is not a failure.
+- Track Android, macOS, iOS and server delivery separately. Report a failed
+  platform immediately and continue other verified, independent platforms.
+  Close the Issue as soon as its required deliveries and acceptance pass.
