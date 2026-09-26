@@ -197,3 +197,10 @@ feature.
   and integrated without version/build-number increments, tags or publication;
   keep their changes pending for a later qualifying batch. Resuming an already
   qualified batch's unfinished platform does not require a new version.
+
+- Count the distinct, code-accepted and integrated Issues across all pending
+  delivery records, not just this run's new code or one platform's missing
+  packages. An Issue with Android/Mac already shipped but iOS still pending
+  remains unreleased for this threshold and counts once. Reconcile the Issue
+  list with both delivery and TestFlight ledgers before declaring a batch too
+  small. Fully delivered Issues awaiting closure are closed, not counted.

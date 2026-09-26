@@ -23,6 +23,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- Release batches count all integrated Issues still missing a required delivery, including pending iOS changes from earlier runs. Partial Android/Mac delivery no longer incorrectly reduces the batch below the three-Issue threshold.
+
 - **A commentary no longer shows up twice around its tool calls.** The coalesce timer could claim the paragraph and then lose the race to the tool call, so the same sentence was broadcast again under the tools. The timer now waits until that paragraph is already on the wire, and a snapshot that only repeats the sealed bubble is not drawn a second time.
 
 - **A long selected passage no longer stretches the composer or the bubble.** The highlight wraps and shows three lines; the rest is an ellipsis. Edit still has the whole string.
