@@ -413,8 +413,9 @@ end-to-end tests run on and the fastest way to see the UI work.
    sideload APK, not a Play bundle). Published sideload APKs also land on
    [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
    `make release VERSION=x.y.z` on a Mac builds that
-   `zwai.app` zip and the Android APK, then attaches both to one GitHub
-   Release. The installed Mac app shows its version and can install a newer
+   `zwai.app` zip and the Android APK on one GitHub Release, and archives,
+   signs and uploads iOS to TestFlight through the existing command-line credentials.
+   TestFlight processing/review waits remain pending; see [release setup](docs/RELEASE.md). The installed Mac app shows its version and can install a newer
    zip from there. See [docs/CLI.md](docs/CLI.md).
 
 Traffic starts on the hub as ciphertext and upgrades to UDP when punching

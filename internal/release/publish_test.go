@@ -68,7 +68,7 @@ func TestPublishCreatesAReleaseWithBothFiles(t *testing.T) {
 				return "release not found", errors.New("exit 1")
 			}
 			if strings.HasPrefix(calls[len(calls)-1], "release view") {
-				return `{"tagName":"v1.2.3","assets":[{"name":"zwai-1.2.3-android.apk"},{"name":"zwai-1.2.3-darwin-arm64.zip"}]}`, nil
+				return `{"tagName":"v1.2.3","assets":[{"name":"zwai-1.2.3-android.apk","digest":"sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"},{"name":"zwai-1.2.3-darwin-arm64.zip","digest":"sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"}]}`, nil
 			}
 			return "", nil
 		},
@@ -87,7 +87,7 @@ func TestPublishCreatesAReleaseWithBothFiles(t *testing.T) {
 
 func TestPublishUploadsOntoAnExistingReleaseAndFailsClosed(t *testing.T) {
 	dir := writePair(t, "1.2.3")
-	view := `{"tagName":"v1.2.3","assets":[{"name":"zwai-1.2.3-android.apk"}]}`
+	view := `{"tagName":"v1.2.3","assets":[{"name":"zwai-1.2.3-android.apk","digest":"sha256:2d711642b726b04401627ca9fbac32f5c8530fb1903cc4db02258717921a4881"}]}`
 	err := Publish(Options{
 		Version:  "1.2.3",
 		Dir:      dir,
@@ -123,8 +123,8 @@ func TestPublishStopsWhenTheUploadFails(t *testing.T) {
 			if strings.Contains(line, "release delete") {
 				t.Fatal("delete")
 			}
-			if strings.HasPrefix(line, "release view") && !strings.Contains(line, "assets") {
-				return `{"tagName":"v2.0.0"}`, nil
+			if strings.HasPrefix(line, "release view") {
+				return `{"tagName":"v2.0.0","assets":[]}`, nil
 			}
 			if strings.HasPrefix(line, "release upload") {
 				return "denied", errors.New("exit 1")

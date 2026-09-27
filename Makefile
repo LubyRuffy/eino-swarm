@@ -20,10 +20,12 @@ help:
 	@echo "make e2e        Playwright end-to-end tests on the offline provider"
 	@echo "make mobile-sync  copy the phone web bundle into the iOS/Android apps"
 	@echo "make mobile-ios   open the iOS app in Xcode"
+	@echo "make mobile-ios-release  resume the allocated TestFlight batch"
+	@echo "make release-check  read-only release preflight"
 	@echo "make mobile-android  open the Android app in Android Studio"
 	@echo "make mobile-android-release  Android APK/AAB into bin/"
 	@echo "make desktop-release  macOS zwai.app zip into bin/ (darwin host)"
-	@echo "make release      Mac zip + Android APK onto one GitHub Release (needs gh)"
+	@echo "make release      Mac/APK to GitHub + iOS to TestFlight (shared VERSION)"
 	@echo "make check      formatting, vet, test, e2e"
 	@echo "make docs-check  validate feature and contract references"
 
@@ -88,15 +90,16 @@ mobile-android: mobile-sync
 desktop-release: frontend
 	go run ./internal/desktop/pack -version "$(VERSION)" -o bin
 
-# One tag, both installers. VERSION is major.minor.patch. gh must be logged in.
-# A missing Release is created. An existing one is updated. Other releases stay.
-.PHONY: release
+# One allocated batch/version; platform errors never hide another platform's result.
+.PHONY: release release-check mobile-ios-release
 release:
-	go run ./internal/release/cmd -version "$(VERSION)" -check
-	$(MAKE) desktop-release
-	@test -d mobile/node_modules || (cd mobile && npm install)
-	cd mobile && ANDROID_ARTIFACT=apk VERSION="$(VERSION)" npm run cap:android-release
-	go run ./internal/release/cmd -version "$(VERSION)" -dir bin
+	python3 tools/release.py --version "$(VERSION)"
+
+release-check:
+	python3 tools/release.py --version "$(VERSION)" --check
+
+mobile-ios-release:
+	python3 tools/release.py --version "$(VERSION)" --platform ios
 
 .PHONY: mobile-android-release
 mobile-android-release:
@@ -124,7 +127,7 @@ vet:
 .PHONY: docs-check
 docs-check:
 	python3 tools/docs_check.py
-	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_audit_pending_batch.py'
+	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_*.py'
 
 .PHONY: check
 check: fmt-check vet docs-check test e2e

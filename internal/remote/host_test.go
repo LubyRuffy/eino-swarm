@@ -279,10 +279,16 @@ func TestStatusGoesOfflineWhenHubCloses(t *testing.T) {
 		t.Fatalf("status %+v", h.Status())
 	}
 	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) && h.Status().Online {
+	offline := false
+	for time.Now().Before(deadline) {
+		if !h.Status().Online {
+			offline = true
+			break
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	if h.Status().Online {
+	// Reconnection can win a second read; retain the offline transition observed above.
+	if !offline {
 		t.Fatal("quiet socket should idle-drop without keepalive")
 	}
 	if _, err := h.Offer(ctx); err != nil {

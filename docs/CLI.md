@@ -96,25 +96,30 @@ this build is already current. A `go run` or `make build` binary stamped
 stays on `github.com/LubyRuffy/eino-swarm` and GitHub's release-asset hosts.
 
 ```bash
-# On a Mac. VERSION must be a release triple, not a dirty git describe.
-# Builds the host-arch zwai.app zip and the Android sideload APK, then
-# attaches both to tag vX.Y.Z. gh must already be logged in.
-make release VERSION=1.2.3
+# The qualified batch's version must already be committed and allocated.
+make release VERSION=x.y.z
+make release-check VERSION=x.y.z
+make mobile-ios-release VERSION=x.y.z  # resume only TestFlight, same version/SHA
 ```
 
-`make release` checks the version and `gh` before it builds. It then runs
-`desktop-release` and an APK-only Android build (`ANDROID_ARTIFACT=apk`,
-same signing rules as `make mobile-android-release`). The tag is `vX.Y.Z`.
-A missing Release is created. An existing one gets both files replaced.
-The command exits non-zero unless the Release lists
-`zwai-X.Y.Z-android.apk` and `zwai-X.Y.Z-darwin-<arch>.zip`. It does not
-delete any other Release. AAB stays on `make mobile-android-release`.
+`make release` serially publishes macOS → Android → iOS. macOS zip and
+sideload APK go to the same GitHub tag; iOS goes to the configured TestFlight
+internal/external groups. Each platform has an independent gate: failure or
+waiting on one does not suppress the other platforms. Any unfinished platform
+makes the final command exit non-zero; uploaded/VALID/waiting-review is not
+TestFlight publication. See [release setup and recovery](RELEASE.md).
 
-`make desktop-release` only builds the zip. It does not upload. Build
-arm64 and amd64 on those machines when both zips should be attached; a
-later `make release` of the same version uploads every matching zip
-already in `bin/` plus the apk. The running app installs only its own
-architecture.
+The source must be clean, contain the committed mobile package version and be
+part of successfully fetched/pushed main. A new version requires the existing
+qualified batch ledger (at least three distinct accepted Issues); this command
+does not increment versions or commit unverified changes. A published version
+is frozen at its tag SHA. Missing remote assets are appended; same-name assets
+require identical SHA-256 and are skipped. No published attachment is replaced.
+
+`make desktop-release` and `make mobile-android-release` remain local builders.
+Only the unified release entry uploads. AAB stays on the local Android builder;
+the GitHub channel uses APK. The desktop updater still installs its own host
+architecture. `make mobile-ios` continues to open Xcode for development.
 
 ## `zwai web`
 

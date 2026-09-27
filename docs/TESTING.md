@@ -1639,3 +1639,9 @@ submission test: Send ends at x=434, and Follow-up at x=411, on a 402pt screen; 
 not clear the draft. This is the same focus zoom repaired by Issue #40, not a
 second unreleased fix. Current source requires no additional layout changes;
 the added tests preserve that evidence without changing the frozen v0.1.20 bundle.
+
+## Unified release regression checks
+
+`make docs-check` includes `python3 -m unittest discover -s tools -p "test_*.py"`. `tools/test_release.py` uses temporary source/ledger/IPA fixtures and injected Apple/command adapters to verify independent platform failures, source/version/tag gates, daily availability counting and retained signed candidates, remote reviews absent from local ledgers, import caches not dirtying release source, no duplicate upload, compliance refusal, signature/profile/version validation, archive/export settings and review waits. `internal/release/safety_test.go` verifies immutable attachment digests and independent platform assets; run `go test -race -cover ./internal/release/...`. No test contacts Apple or publishes. Actual `release-check` checks the real source and private configuration without uploading; actual publication remains subject to native acceptance and batch gates.
+
+`TestStatusGoesOfflineWhenHubCloses` retains the observed offline transition: automatic reconnect can win an immediate second status read, so re-reading after leaving the poll would falsely report no idle disconnect. Repeated race runs exercise the transition and subsequent Offer reconnect.

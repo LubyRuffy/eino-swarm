@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-430` / `C-010`: `make release` now includes iOS archive/export/signing, upload and TestFlight group/review recovery; platform failures remain independent. Read-only `release-check` and `mobile-ios-release` expose preflight and iOS-only recovery.
+
 - **macOS desktop updates from GitHub Releases.** The sidebar shows the build version. A newer `zwai-<version>-darwin-<arch>.zip` on the latest release asks before it replaces `zwai.app` and reopens. `make desktop-release VERSION=X.Y.Z` builds that zip. Check for updates is in the app menu.
 
 - **`make release` publishes the Mac zip and the Android APK together.** One tag gets both files. A missing file or a failed upload does not count as published.
@@ -22,6 +24,10 @@ co-working app built on it. The library API is unchanged except where noted
 - **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group and folds. The first page is at most five tasks from the last 3 days; More loads the next five. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
 
 ### Fixed
+
+- `F-430` verification: remote idle-disconnect regression records the observed offline transition instead of falsely failing when automatic reconnect wins a second status read; runtime behavior is unchanged.
+
+- `C-010`: safe release retries skip equal-digest attachments and refuse mismatches instead of overwriting published installers.
 
 - `F-220`, `F-230` / `C-017`: Issue #41 confirms the same iOS focus zoom already repaired for #40. Added Chromium/WebKit submission bounds and native iOS send-after-typing regression coverage; no additional shipping code or release version change.
 

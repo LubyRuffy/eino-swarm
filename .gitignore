@@ -53,6 +53,8 @@ frontend/dist/*
 
 # Capacitor phone shell — keep the native app trees, drop build junk
 mobile/node_modules/
+__pycache__/
+*.pyc
 mobile/dist/
 mobile/.vite/
 mobile/test-results/

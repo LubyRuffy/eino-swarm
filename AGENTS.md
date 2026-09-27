@@ -20,7 +20,9 @@ make mobile-sync                   # rebuild the phone web bundle and copy into 
 make mobile-ios                    # open Xcode
 make mobile-android                # open Android Studio
 make mobile-android-release        # signed (or ANDROID_UNSIGNED=1) APK/AAB into bin/
-make release                       # Mac zip + Android APK onto one GitHub Release
+make release VERSION=x.y.z         # Mac/APK to GitHub + iOS to TestFlight; independent gates
+make release-check VERSION=x.y.z   # read-only source/signing/remote preflight
+make mobile-ios-release VERSION=x.y.z # resume only this TestFlight batch
 go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launcher slots
 ```
 

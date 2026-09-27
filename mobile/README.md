@@ -241,8 +241,8 @@ it shows that it is fetching, says when this build is current, asks before
 an install, and shows the response's own error. The download only follows `github.com/LubyRuffy/eino-swarm`
 and GitHub's release-asset hosts. The Mac desktop app uses that same
 release: `zwai-<version>-darwin-<arch>.zip` (a `zwai.app`), built with
-`make release VERSION=x.y.z` builds that zip and this APK, then attaches
-both to one GitHub Release. See `docs/CLI.md`.
+`make release VERSION=x.y.z` publishes that zip and this APK on one GitHub
+Release and includes TestFlight for iOS. See [release setup](../docs/RELEASE.md).
 
 ## Simulators
 
@@ -285,3 +285,7 @@ Composer width regressions run on Chromium and iPhone WebKit:
 `npx playwright install chromium webkit && npm run e2e`.
 The packaged iOS keyboard-dismissal and submission checks use the disposable
 fixture documented in [TESTING](../docs/TESTING.md).
+
+## iOS TestFlight release
+
+`make release VERSION=x.y.z` includes TestFlight. `make mobile-ios-release VERSION=x.y.z` resumes only that platform. Configure the existing private signing/API client and explicit testing groups through `IOS_RELEASE_CONFIG`; see [docs/RELEASE.md](../docs/RELEASE.md). `make mobile-ios` still only opens Xcode. An authorized current-build export declaration is required; an old build declaration is not inherited.

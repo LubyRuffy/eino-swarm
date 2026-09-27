@@ -1,10 +1,12 @@
 // Package release publishes one GitHub Release that carries both the Mac
 // desktop zip and the Android sideload APK. Either file missing is a
-// failed release, not a partial success.
+// failed release, not a partial success. Platform retries can upload one installer.
 package release
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,8 +25,10 @@ func AndroidAPKName(version string) string {
 
 // Options is one publish. Dir is where the zip and apk already sit.
 type Options struct {
-	Version string
-	Dir     string
+	Version  string
+	Dir      string
+	Platform string // empty requires both installers; android or macos permits independent delivery
+	Target   string // verified source SHA, supplied by the unified release preflight
 	// Run executes a command. Nil uses exec.Command.
 	Run func(name string, args ...string) (string, error)
 	// LookPath finds gh. Nil uses exec.LookPath.
@@ -84,6 +88,9 @@ func Publish(opts Options) error {
 		return err
 	}
 	files, err := Assets(opts.Dir, opts.Version)
+	if opts.Platform != "" {
+		files, err = platformAssets(opts.Dir, opts.Version, opts.Platform)
+	}
 	if err != nil {
 		return err
 	}
@@ -97,12 +104,23 @@ func Publish(opts Options) error {
 		return err
 	}
 	if exists {
-		args := append([]string{"release", "upload", tag, "--clobber"}, files...)
+		pending, err := missingAssets(run, tag, files)
+		if err != nil {
+			return err
+		}
+		if len(pending) == 0 {
+			return nil
+		}
+		args := append([]string{"release", "upload", tag}, pending...)
 		if _, err := run("gh", args...); err != nil {
 			return fmt.Errorf("upload %s: %w", tag, err)
 		}
 	} else {
-		args := append([]string{"release", "create", tag, "--title", tag, "--notes", "zwai " + update.Canonical(opts.Version)}, files...)
+		args := []string{"release", "create", tag, "--title", tag, "--notes", "zwai " + update.Canonical(opts.Version) + "; platform delivery is tracked separately"}
+		if opts.Target != "" {
+			args = append(args, "--target", opts.Target)
+		}
+		args = append(args, files...)
 		if _, err := run("gh", args...); err != nil {
 			return fmt.Errorf("create %s: %w", tag, err)
 		}
@@ -122,32 +140,82 @@ func releaseExists(run func(string, ...string) (string, error), tag string) (boo
 	return false, fmt.Errorf("view %s: %w", tag, err)
 }
 
-func verify(run func(string, ...string) (string, error), tag string, files []string) error {
+func platformAssets(dir, version, platform string) ([]string, error) {
+	if update.Canonical(version) == "" {
+		return nil, fmt.Errorf("invalid version")
+	}
+	if platform == "android" {
+		file := filepath.Join(dir, AndroidAPKName(version))
+		if _, err := os.Stat(file); err != nil {
+			return nil, err
+		}
+		return []string{file}, nil
+	}
+	if platform != "macos" {
+		return nil, fmt.Errorf("unknown platform %q", platform)
+	}
+	var files []string
+	for _, arch := range []string{"arm64", "amd64"} {
+		file := filepath.Join(dir, update.DarwinAssetName(version, arch))
+		if _, err := os.Stat(file); err == nil {
+			files = append(files, file)
+		}
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("macOS zip missing")
+	}
+	return files, nil
+}
+
+// Existing names are immutable: retries must prove content identity before upload.
+func missingAssets(run func(string, ...string) (string, error), tag string, files []string) ([]string, error) {
 	out, err := run("gh", "release", "view", tag, "--json", "assets,tagName")
 	if err != nil {
-		return fmt.Errorf("verify %s: %w", tag, err)
+		return nil, fmt.Errorf("verify %s: %w", tag, err)
 	}
 	var body struct {
 		TagName string `json:"tagName"`
 		Assets  []struct {
-			Name string `json:"name"`
+			Name   string `json:"name"`
+			Digest string `json:"digest"`
 		} `json:"assets"`
 	}
 	if err := json.Unmarshal([]byte(out), &body); err != nil {
-		return fmt.Errorf("verify %s: %w", tag, err)
+		return nil, fmt.Errorf("verify %s: %w", tag, err)
 	}
 	if body.TagName != tag {
-		return fmt.Errorf("verify %s: tag is %q", tag, body.TagName)
+		return nil, fmt.Errorf("verify %s: tag is %q", tag, body.TagName)
 	}
-	have := map[string]bool{}
+	have := map[string]string{}
 	for _, asset := range body.Assets {
-		have[asset.Name] = true
+		have[asset.Name] = asset.Digest
 	}
+	var missing []string
 	for _, file := range files {
-		name := filepath.Base(file)
-		if !have[name] {
-			return fmt.Errorf("verify %s: missing %s", tag, name)
+		digest, exists := have[filepath.Base(file)]
+		if !exists {
+			missing = append(missing, file)
+			continue
 		}
+		contents, err := os.ReadFile(file)
+		if err != nil {
+			return nil, err
+		}
+		sum := sha256.Sum256(contents)
+		if digest != "sha256:"+hex.EncodeToString(sum[:]) {
+			return nil, fmt.Errorf("verify %s: digest mismatch or unavailable for %s; refusing overwrite", tag, filepath.Base(file))
+		}
+	}
+	return missing, nil
+}
+
+func verify(run func(string, ...string) (string, error), tag string, files []string) error {
+	missing, err := missingAssets(run, tag, files)
+	if err != nil {
+		return err
+	}
+	if len(missing) != 0 {
+		return fmt.Errorf("verify %s: missing %s", tag, filepath.Base(missing[0]))
 	}
 	return nil
 }

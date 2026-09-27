@@ -834,3 +834,7 @@ will ignore.
   is how another tab reads your conversations.
 - **The turn id is the debug handle.** Every event and model call carries it, the
   UI shows it, and `zwai trace <id>` reconstructs the run from it.
+
+## Release orchestration
+
+`tools/release.py` connects Make local builders and the GitHub publisher to `tools/release_ios.py`. The iOS adapter uses the existing private App Store Connect client for archive/export/upload, compliance, group association and review. One clean pushed main batch/version is shared; platforms execute serially with independent gates. Private signing configuration and resumable platform state remain under `ZWAI_HOME`, outside Git. See [docs/RELEASE.md](docs/RELEASE.md).

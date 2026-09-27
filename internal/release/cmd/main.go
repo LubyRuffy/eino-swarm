@@ -1,4 +1,4 @@
-// Command release uploads the Mac zip and the Android apk for one version.
+// Command release uploads already-built installers for one verified version.
 package main
 
 import (
@@ -10,18 +10,25 @@ import (
 )
 
 func main() {
-	version := flag.String("version", "", "release version, major.minor.patch")
-	dir := flag.String("dir", "bin", "directory containing the zip and apk")
-	check := flag.Bool("check", false, "validate the version and gh, then exit")
-	flag.Parse()
-	var err error
-	if *check {
-		err = release.Preflight(release.Options{Version: *version})
-	} else {
-		err = release.Publish(release.Options{Version: *version, Dir: *dir})
-	}
-	if err != nil {
+	if err := publish(os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func publish(args []string) error {
+	flags := flag.NewFlagSet("release", flag.ContinueOnError)
+	version := flags.String("version", "", "release version, major.minor.patch")
+	dir := flags.String("dir", "bin", "directory containing the zip and apk")
+	check := flags.Bool("check", false, "validate the version and gh, then exit")
+	platform := flags.String("platform", "", "installer platform: android or macos; empty requires both")
+	target := flags.String("target", "", "verified full main source SHA")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
+	opts := release.Options{Version: *version, Dir: *dir, Platform: *platform, Target: *target}
+	if *check {
+		return release.Preflight(opts)
+	}
+	return release.Publish(opts)
 }
