@@ -71,6 +71,7 @@ test-web: node_modules
 .PHONY: test-mobile
 test-mobile:
 	@test -d mobile/node_modules || (cd mobile && npm install)
+	cd mobile && npm run lint
 	cd mobile && npm test
 
 .PHONY: mobile-sync

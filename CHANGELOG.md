@@ -29,6 +29,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430` / `C-010`: integrated mobile builds keep client-log cursor fields through the entry type alias; `make test-mobile` type-checks before unit tests so transpile-only tests cannot hide an invalid installer source.
+
 - `F-430` / `C-010`: pending-delivery audits include accepted Mac-only fixes outside the current allocated batch and iOS ledger. New-version eligibility counts only unallocated distinct fixes; locked batches and duplicate reports cannot inflate the next batch.
 
 - `F-150` / `C-009`, `C-012`: scheduled checks and Run now continue once in the same turn when the model ends without tool/report evidence. A repeated acknowledgement or silent response now fails visibly instead of becoming findings/quiet; explicit quiet reports and completed tool execution retain their behavior (Issue #43).

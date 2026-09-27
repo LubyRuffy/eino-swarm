@@ -320,7 +320,7 @@ export function ClientGroups({
   )
 }
 
-type ClientLineEntry = { role: string; text: string }
+type ClientLineEntry = ClientEntry
 
 type ClientRow =
   | { type: "entry"; entry: ClientLineEntry; index: number }

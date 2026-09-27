@@ -1,5 +1,9 @@
 # Testing
 
+`make test-mobile` runs the phone TypeScript check before Vitest. A successful
+transpile-only unit suite does not prove the production bundle can compile.
+The mobile production build and UI E2E remain separate required evidence.
+
 ## Issue closure and pending release accounting (C-010)
 
 `make docs-check` also runs `tools/test_audit_pending_batch.py`. The regressions
