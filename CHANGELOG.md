@@ -25,6 +25,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430` / `C-010`: pending-delivery audits include accepted Mac-only fixes outside the current allocated batch and iOS ledger. New-version eligibility counts only unallocated distinct fixes; locked batches and duplicate reports cannot inflate the next batch.
+
+- `F-150` / `C-009`, `C-012`: scheduled checks and Run now continue once in the same turn when the model ends without tool/report evidence. A repeated acknowledgement or silent response now fails visibly instead of becoming findings/quiet; explicit quiet reports and completed tool execution retain their behavior (Issue #43).
+
 - `F-430` verification: remote idle-disconnect regression records the observed offline transition instead of falsely failing when automatic reconnect wins a second status read; runtime behavior is unchanged.
 
 - `C-010`: safe release retries skip equal-digest attachments and refuse mismatches instead of overwriting published installers.

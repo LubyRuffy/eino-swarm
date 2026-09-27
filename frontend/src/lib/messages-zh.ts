@@ -388,6 +388,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "notice.goalPaused": "目标已暂停。点「开始目标」继续。",
   "notice.goalBlocked": "目标已卡住：需要你或外部条件才能继续。",
   "notice.modelRetry": "模型出错，正在重试。",
+  "notice.scheduleContinue": "正在继续执行定时检查。",
   "notice.goalEdited": "目标已更新。",
   "notice.goalResumed": "继续追求目标。",
   "notice.goalSessionTime": "工作会话因时长上限结束。",

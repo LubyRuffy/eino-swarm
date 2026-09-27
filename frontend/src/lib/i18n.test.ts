@@ -95,6 +95,7 @@ describe("localizeNotice", () => {
     expect(localizeNotice("Retrying after a model error.", "zh")).toBe(
       "模型出错，正在重试。",
     )
+    expect(localizeNotice("Continuing the scheduled check.", "zh")).toBe("正在继续执行定时检查。")
     expect(
       localizeNotice(
         "Stopped auto-continuing: the last continuation made no progress. Press Start on the goal to keep going.",

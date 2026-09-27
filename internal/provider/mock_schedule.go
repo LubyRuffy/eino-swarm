@@ -111,6 +111,9 @@ func mockScheduleScript(turn int, msgs []*schema.Message) *schema.Message {
 		return nil
 	}
 	if mockLooksLikeScheduledTurn(msgs) {
+		if msg := mockScheduleAcknowledgement(msgs); msg != nil {
+			return msg
+		}
 		findings := mockScheduleFindingsText
 		if mockEnvOn("ZWAI_MOCK_SCHEDULE_QUIET") {
 			findings = ""

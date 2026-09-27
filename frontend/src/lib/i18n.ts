@@ -29,6 +29,7 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "Standing objective blocked: progress needs you or an external change.":
     "notice.goalBlocked",
   "Retrying after a model error.": "notice.modelRetry",
+  "Continuing the scheduled check.": "notice.scheduleContinue",
   "Standing objective updated.": "notice.goalEdited",
   "Resuming the standing objective.": "notice.goalResumed",
   "Work session ended after the time cap.": "notice.goalSessionTime",

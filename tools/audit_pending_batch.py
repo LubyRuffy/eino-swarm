@@ -25,11 +25,17 @@ rows = {int(n): r for n, r in state["issues"].items()}
 ios_rows = {r["issue"]: r for r in ios["pending_changes"] if r.get("status") not in ("published", "delivered")}
 # A closed Issue can still be in an unpublished batch or awaiting TestFlight.
 candidates = set(state["pending_new_batch"]["issues"]) | set(ios_rows)
+# Accepted desktop/server-only fixes need no iOS pending row. Their code
+# records survive closure and the current allocated batch's recovery.
+candidates |= {n for n, row in rows.items()
+               if row.get("code") == "verified_integrated_and_pushed"}
 accepted = []
 for number in sorted(candidates):
     row = rows.get(number)
     if not row or row.get("code") != "verified_integrated_and_pushed":
         raise SystemExit(f"Issue #{number}: missing accepted code evidence in delivery ledger")
+    if row.get("count_as_new_release_issue") is False:
+        continue
     sha = row.get("fix_sha") or row.get("branch_sha")
     if not sha:
         raise SystemExit(f"Issue #{number}: missing fix SHA")
@@ -39,15 +45,22 @@ for number in sorted(candidates):
         accepted.append(number)
 minimum = state["minimum_distinct_issues"]
 locked = state["pending_new_batch"].get("version_locked", False)
+allocated = {n for n in accepted if rows[n].get("batch_version")}
+if locked:
+    allocated |= set(state["pending_new_batch"]["issues"])
+unallocated = [n for n in accepted if n not in allocated]
 print(json.dumps({
     "issues": accepted,
     "closed_pending_issues": [n for n in accepted if github_states.get(n) == "closed"],
     "distinct_code_accepted_pending_count": len(accepted),
+    "allocated_pending_issues": [n for n in accepted if n in allocated],
+    "unallocated_issues": unallocated,
+    "distinct_unallocated_pending_count": len(unallocated),
     "minimum": minimum,
     "qualified": len(accepted) >= minimum,
     "batch_version": state["pending_new_batch"].get("version"),
     "version_locked": locked,
-    "allocate_new_version": len(accepted) >= minimum and not locked,
+    "allocate_new_version": len(unallocated) >= minimum,
     "main_sha": subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
 }, ensure_ascii=False))

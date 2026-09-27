@@ -280,3 +280,47 @@ test("inbox editor patches title, prompt, and cadence", async ({ page, request }
     inbox.getByTestId("schedule-row").filter({ hasText: "Renamed wait" }),
   ).toBeVisible()
 })
+
+test("Run now handles an unperformed check without false success", async ({ page, request }) => {
+  const fails = process.env.ZWAI_MOCK_SCHEDULE_ACK === "always"
+  const created = await request.post("/api/schedules", { data: {
+    kind: "standalone", title: "Completion evidence", prompt: "Check the current state.", every_s: 3600,
+  } })
+  expect(created.status()).toBe(201)
+  const { schedule } = await created.json()
+  try {
+    await page.goto("/")
+    await openInbox(page)
+    const row = page.getByTestId("schedule-row").filter({ hasText: "Completion evidence" })
+    await row.getByTestId("schedule-row-toggle").click()
+    await page.getByRole("button", { name: "Run now", exact: true }).click()
+    let completed: { id: string; turn_id: string; thread_id: string; status: string; summary: string } | undefined
+    await expect.poll(async () => {
+      const body = await (await request.get(`/api/schedules/${schedule.id}`)).json()
+      completed = body.runs[0]
+      return completed?.status
+    }).toBe(fails ? "error" : "findings")
+    expect(completed?.summary).toBe(fails ? "scheduled check ended without executing a tool or reporting its result" : "something changed")
+    const body = await (await request.get(`/api/schedules/${schedule.id}`)).json()
+    expect(body.runs).toHaveLength(1)
+    await page.getByRole("button", { name: "Open findings", exact: true }).click()
+    const transcript = page.getByTestId("transcript")
+    await expect(transcript).toContainText("Checking the current state.")
+    if (fails) {
+      await expect(transcript).toContainText("scheduled check ended without executing a tool or reporting its result")
+    } else {
+      await transcript.getByRole("button", { name: "1 tool", exact: true }).click()
+      await expect(transcript).toContainText("something changed")
+    }
+    await expect(transcript).toContainText("Continuing the scheduled check.")
+    await expect(transcript).not.toContainText("Retrying after a model error.")
+    await expect(transcript).not.toContainText("The last response ended before")
+    const trace = await (await request.get(`/api/trace/${completed!.turn_id}`)).json()
+    const events = trace.events as Array<{ kind: string; text?: string }>
+    expect(events.filter(ev => ev.kind === "model_retry")).toHaveLength(1)
+    expect(events.some(ev => ev.kind === "schedule_report")).toBe(!fails)
+    expect(events.some(ev => ev.kind === "error")).toBe(fails)
+  } finally {
+    await request.delete(`/api/schedules/${schedule.id}`)
+  }
+})

@@ -48,7 +48,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-150 Goals and scheduled waits
 
-- 目的：持续目标及未来时间继续执行；使用者：PC 用户；入口：`/goal`、Scheduled 页、`schedule_wake`；输入：目标和时间；输出：状态、唤醒、运行结果；前置条件：引擎运行；失败表现：跳过、失败或等待状态；关联契约：`C-002`, `C-003`, `C-009`；实现证据：`internal/engine`, `internal/store`, `frontend/src`。
+- 目的：持续目标及未来时间继续执行；使用者：PC 用户；入口：`/goal`、Scheduled 页、`schedule_wake`；输入：目标和时间；输出：状态、唤醒、运行结果；无工具结果或显式报告的定时检查原轮继续一次，仍无证据显示错误；前置条件：引擎运行；失败表现：跳过、失败或等待状态；关联契约：`C-002`, `C-003`, `C-009`；实现证据：`internal/engine/schedule_completion.go`, `internal/engine/schedule_completion_test.go`, `internal/store`, `frontend/e2e/schedules.spec.ts`。
 
 ### F-160 Trace and diagnostics
 
@@ -116,4 +116,4 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
-- 目的：从一个已验收、已分配版本的完整主线批次发布 macOS、Android 和 iOS；使用者：维护者；入口：`make release`, `make release-check`, `make mobile-ios-release`, `python3 tools/audit_pending_batch.py`；输入：干净源码、统一版本/SHA、签名配置、测试组和当前构建合规声明、交付台账；输出：GitHub 的 macOS zip/APK、TestFlight 构建与组/审核状态、分端恢复记录；前置条件：Go、Node、SDK、gh、私有 iOS CLI/签名资料，新增版本至少三项；失败表现：各端独立报错或等待，未交付时退出非零；关联契约：`C-010`；实现证据：`Makefile`, `tools/release.py`, `tools/release_ios.py`, `tools/test_release.py`, `tools/audit_pending_batch.py`, `internal/release`, `internal/desktop/pack`, `mobile/scripts/android-release.ts`, `docs/RELEASE.md`。
+- 目的：从一个已验收、已分配版本的完整主线批次发布 macOS、Android 和 iOS；使用者：维护者；入口：`make release`, `make release-check`, `make mobile-ios-release`, `python3 tools/audit_pending_batch.py`；输入：干净源码、统一版本/SHA、签名配置、测试组和当前构建合规声明、交付台账；输出：GitHub 的 macOS zip/APK、TestFlight 构建与组/审核状态、分端恢复记录，以及全平台待交付集合中已分配与未分配版本的独立计数；前置条件：Go、Node、SDK、gh、私有 iOS CLI/签名资料，新增版本至少三项未分配修复跨日期和运行累计；失败表现：各端独立报错或等待，未交付时退出非零；关联契约：`C-010`；实现证据：`Makefile`, `tools/release.py`, `tools/release_ios.py`, `tools/test_release.py`, `tools/audit_pending_batch.py`, `tools/test_audit_pending_batch.py`, `internal/release`, `internal/desktop/pack`, `mobile/scripts/android-release.ts`, `docs/RELEASE.md`。

@@ -6,7 +6,11 @@
 cover closed fixes still waiting for a platform, fewer than three accepted
 fixes not allocating a version, three closed fixes qualifying together,
 resuming a locked batch without another version, fully delivered fixes not
-counting again, and missing/non-integrated fix evidence failing the audit.
+counting again, and missing/non-integrated fix evidence failing the audit. Accepted Mac-only
+fixes absent from both the current batch and iOS ledger still count. The
+output separates `allocated_pending_issues` from `unallocated_issues`; only
+three distinct unallocated fixes can request another version. Alias reports
+and unfinished code do not qualify.
 
 Run a read-only real-ledger reconciliation with:
 
@@ -425,9 +429,19 @@ has already been claimed (`status=done` plus a `running` run, matching
 — the armed-row tests do not cover that race.
 `internal/engine/schedule_report_test.go` is why a scheduled check with
 nothing to surface archives (`quiet`, unread cleared, `turn.quiet`; a
-standalone fire leaves Recents) while an omitted report with an answer
-is `findings` and stays in the sidebar, and why a crashed or cancelled
+standalone fire leaves Recents) while an omitted report after actual tool
+execution with an answer is `findings` and stays in the sidebar, and why a crashed or cancelled
 scheduled turn marks the run `error` so `HasRunningRun` cannot stick.
+`internal/engine/schedule_completion_test.go` covers acknowledgement recovery
+in the original turn, two empty/acknowledgement responses failing visibly,
+ordinary chat remaining unchanged, and event-based evidence independent of
+answer length or language. Synthetic model-retry cleanup is not tool work.
+The desktop notice reducer and localization tests distinguish this continuation
+from a genuine model error while preserving older retry envelopes.
+`frontend/e2e/schedules.spec.ts` drives Run now through the real UI and Trace
+with `ZWAI_MOCK_SCHEDULE_ACK=once` (the E2E server default); `always` reproduces
+the visible error path with `ZWAI_MOCK_SCHEDULE_ACK=always npm run e2e -- schedules.spec.ts -g "Run now handles"` (use an isolated E2E port/data dir). These knobs only
+affect the offline provider on scheduled checks.
 `TestCreateScheduleUsesFrozenCapWhenTickerIsLive` is why inbox create
 (and resume/patch, and a standalone claim's default provider) reads the
 same snapshot the ticker froze, not a later `e.cfg.Swarm` write;

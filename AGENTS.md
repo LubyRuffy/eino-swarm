@@ -104,6 +104,11 @@ E2E suite.
 
 ## Backend rules
 
+- Scheduled completion needs a tool result or explicit report in the same turn.
+  Prose alone is not evidence that the check ran. Keep one bounded same-turn
+  continuation and regress both Run now and automatic fires, including quiet
+  reports and model-retry cleanup; never classify completion by answer length.
+
 - One turn per conversation. Concurrency is `ErrBusy` (`409`), and the UI turns a
   second Enter into a follow-up instead of a second turn. ⌘Enter steers the
   live turn.

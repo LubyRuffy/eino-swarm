@@ -85,6 +85,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	used := 0
 	modelRetries := 0
 	overflowRetries := 0
+	scheduleContinued := false
 	var res swarm.RunResult
 	var runErr error
 	restore, planted := rt.takeWorkerRestore()
@@ -128,6 +129,24 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				rt.recordModelRetry(turn, modelRetries)
 				messages = rt.retryManagerRun(turn, res, messages, reg)
 				continue
+			}
+			if runErr == nil && turn.ScheduleContinue {
+				events, err := e.store.ListTurnEvents(turn.ID)
+				if err != nil {
+					return res, fmt.Errorf("read scheduled check evidence: %w", err)
+				}
+				if !scheduledWorkRecorded(events) {
+					if scheduleContinued {
+						return res, errors.New("scheduled check ended without executing a tool or reporting its result")
+					}
+					scheduleContinued = true
+					e.record(store.Event{ThreadID: turn.ThreadID, TurnID: turn.ID,
+						Kind: KindModelRetry, AgentID: swarm.DefaultManagerID,
+						Text: `{"attempt":1,"cap":1,"reason":"scheduled_no_activity"}`})
+					messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
+						schema.UserMessage(scheduleCompletionCue))
+					continue
+				}
 			}
 			return res, runErr
 		}

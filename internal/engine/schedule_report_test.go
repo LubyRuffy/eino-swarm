@@ -123,7 +123,7 @@ func TestOmittedReportWithAnswerIsFindings(t *testing.T) {
 	e.finishScheduledRun(&store.Turn{ScheduleContinue: true}, store.TurnDone, "x", "")
 }
 
-func TestOmittedReportWithNoAnswerIsQuiet(t *testing.T) {
+func TestAutomaticCheckWithoutWorkOrReportIsAnError(t *testing.T) {
 	provider.SetMockScheduleSilent(true)
 	t.Cleanup(func() { provider.SetMockScheduleSilent(false) })
 
@@ -152,13 +152,13 @@ func TestOmittedReportWithNoAnswerIsQuiet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !gotTurn.Quiet {
-		t.Fatal("no answer and no report is quiet")
+	if gotTurn.Quiet || gotTurn.Status != store.TurnError {
+		t.Fatalf("an unperformed automatic check must fail visibly: %+v", gotTurn)
 	}
 	if strings.TrimSpace(gotTurn.Final) != "" {
 		t.Fatalf("silent final=%q", gotTurn.Final)
 	}
-	if run.Status != store.ScheduleRunQuiet || run.Unread || run.Summary != "" {
+	if run.Status != store.ScheduleRunError || !run.Unread || !strings.Contains(run.Summary, "scheduled check") {
 		t.Fatalf("run=%+v", run)
 	}
 }

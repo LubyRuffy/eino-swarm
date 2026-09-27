@@ -16,6 +16,14 @@ inside publication. First allocate/commit one version for a qualified batch of a
 least three distinct accepted Issues, integrate/push complete main, then update the
 existing delivery ledger's batch version/SHA. The source package version must match.
 
+`python3 tools/audit_pending_batch.py` reconciles open and closed Issues against
+all accepted ledger rows, including macOS-only deliveries without iOS pending rows.
+`issues` lists the complete pending set; `allocated_pending_issues` retains frozen
+batch recovery, while `unallocated_issues` and `distinct_unallocated_pending_count`
+determine `allocate_new_version`. Allocation eligibility accumulates across dates
+and runs. A pending platform in an already assigned batch cannot qualify another
+version; three new unallocated fixes can qualify while that old batch is still pending.
+
 ## Private iOS setup
 
 Use the documented existing signing and App Manager CLI; browser login is unnecessary.

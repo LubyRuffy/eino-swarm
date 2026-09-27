@@ -199,6 +199,11 @@ describe("standing objective and compact notices", () => {
     const retried = fold([ev({ kind: "model_retry", text: '{"attempt":1,"cap":2}' })])
     expect(manager(retried).blocks[0].text).toBe("Retrying after a model error.")
     expect(manager(retried).blocks[0].text).not.toMatch(/attempt/)
+    const scheduled = fold([ev({ kind: "model_retry", text: '{"reason":"scheduled_no_activity"}' })])
+    expect(manager(scheduled).blocks[0].text).toBe("Continuing the scheduled check.")
+    for (const text of [undefined, "invalid", '{"reason":"other"}']) {
+      expect(manager(fold([ev({ kind: "model_retry", text })])).blocks[0].text).toBe("Retrying after a model error.")
+    }
     const edited = fold([ev({ kind: "goal_edited", text: "keep going" })])
     expect(manager(edited).blocks[0].text).toBe("Standing objective updated.")
     const resumed = fold([ev({ kind: "goal_resumed", text: "Resuming the standing objective." })])

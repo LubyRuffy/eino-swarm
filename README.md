@@ -104,7 +104,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   and an early cron check consumes the pending slot). The next-check time
   comes from the live schedule row, not the first arm snapshot — a refresh
   used to look like the timer jumped. A scheduled check reports through `report_schedule`;
-  empty findings stay quiet. Quiet standalone runs stay out of Recents;
+  empty findings stay quiet. A check that stops without a tool result or
+  report continues once in the same turn; if it still does no work/report,
+  the run visibly fails rather than treating an opening acknowledgement as
+  findings. This also applies to **Run now**. Quiet standalone runs stay out of Recents;
   findings open from the inbox — **Open findings** on a live wait, with a
   count when several fires are unread, so finished reports stay off the row.
   Workers cannot schedule. Caps live in
@@ -428,7 +431,9 @@ behavior acceptance, tests, documentation and review pass and the complete
 change is integrated and pushed to main. The closing comment records published
 and pending platforms; closed does not imply all platforms have shipped.
 Pending deliveries remain in the release ledger, including closed Issues.
-At least three distinct accepted, unpublished fixes across runs form one new
+The reconciliation command counts pending deliveries on every required platform,
+and separates already allocated batches from fixes awaiting their first version.
+At least three distinct accepted, unallocated fixes across runs and dates form one new
 release batch. Smaller batches close resolved Issues without version increments
 or publication. Remaining platforms of an allocated batch resume its same
 version/source SHA without reuploading completed platforms. See `C-010` in

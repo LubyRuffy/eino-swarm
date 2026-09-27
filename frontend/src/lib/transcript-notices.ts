@@ -68,9 +68,13 @@ export function isGoalSessionWrapSteer(text?: string): boolean {
   return t.startsWith("This work session is ending.")
 }
 
-/** A recoverable ChatModel failure (truncated tool JSON, 429, a dropped
- *  stream). JSON `{attempt,cap}` is for Trace, not this row. */
-export function modelRetryNotice(_text?: string): string {
+/** The reason distinguishes a scheduled continuation from a model failure.
+ *  Attempt/cap metadata stays in Trace. Old envelopes retain their label. */
+export function modelRetryNotice(text?: string): string {
+  try {
+    const body = JSON.parse(text ?? "") as { reason?: string } | null
+    if (body?.reason === "scheduled_no_activity") return "Continuing the scheduled check."
+  } catch { /* Older events need no reason field. */ }
   return "Retrying after a model error."
 }
 

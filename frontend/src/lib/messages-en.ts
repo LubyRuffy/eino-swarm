@@ -411,6 +411,7 @@ export const en = {
   "notice.goalBlocked":
     "Standing objective blocked: progress needs you or an external change.",
   "notice.modelRetry": "Retrying after a model error.",
+  "notice.scheduleContinue": "Continuing the scheduled check.",
   "notice.goalEdited": "Standing objective updated.",
   "notice.goalResumed": "Resuming the standing objective.",
   "notice.goalSessionTime": "Work session ended after the time cap.",

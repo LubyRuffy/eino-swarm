@@ -241,6 +241,13 @@ worker before closing SQLite.
    wait-turn does not imply an immediate auto-continue. Cancelling that
    wake while idle starts the next pursuing turn; a cancel during a live
    turn restores auto-continue when that turn finishes.
+   Before a successful scheduled turn returns from `runManager`, durable
+   tool-result/report events in that turn are checked (`schedule_completion.go`).
+   With no evidence, the transcript is preserved and the same registry/turn
+   continues once with a generic completion cue. A second empty completion
+   returns an error for `finishScheduledRun`; it cannot archive as quiet or
+   turn an acknowledgement into findings. Model-error cleanup results are
+   excluded. Ordinary turns and explicit quiet reports retain their behavior.
 3. The manager's system prompt is generated per turn from the live toolset, the
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home).    It is

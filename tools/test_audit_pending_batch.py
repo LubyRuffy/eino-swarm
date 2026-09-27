@@ -13,7 +13,8 @@ SCRIPT = Path(__file__).with_name("audit_pending_batch.py")
 
 class PendingBatchTests(unittest.TestCase):
     def audit(self, numbers, *, closed=True, delivered=False, locked=False,
-              missing_fix=False, integrated=True):
+              missing_fix=False, integrated=True, extra_numbers=(),
+              extra_accepted=True, alias=False, assigned_numbers=()):
         state = {
             "repository": "owner/project", "integration_checkout": "/clean/main",
             "minimum_distinct_issues": 3,
@@ -27,6 +28,15 @@ class PendingBatchTests(unittest.TestCase):
                 "server": "not_required",
             } for n in numbers},
         }
+        for n in extra_numbers:
+            state["issues"][str(n)] = {
+                "code": "verified_integrated_and_pushed" if extra_accepted else "implementing",
+                "fix_sha": f"fix-{n}", "macos": "pending_batch",
+                "android": "not_required", "ios": "not_required", "server": "not_required",
+                "count_as_new_release_issue": not alias,
+            }
+        for n in assigned_numbers:
+            state["issues"][str(n)]["batch_version"] = "1.0.0"
         ios = {"pending_changes": [{"issue": n, "status": "published" if delivered
                                     else "waiting_for_next_ios_batch"} for n in numbers]}
         actual_read = Path.read_text
@@ -41,7 +51,7 @@ class PendingBatchTests(unittest.TestCase):
         def command(args, **kwargs):
             if args[0] == "gh":
                 rows = [{"number": n, "state": "closed" if closed else "open"}
-                        for n in numbers]
+                        for n in list(numbers) + list(extra_numbers)]
                 if "state=open" in args[-1]:
                     rows = [r for r in rows if r["state"] == "open"]
                 return json.dumps([rows])
@@ -92,6 +102,41 @@ class PendingBatchTests(unittest.TestCase):
     def test_open_fixes_are_still_counted(self):
         self.assertEqual(self.audit([1, 2], closed=False)["issues"], [1, 2])
 
+    def test_mac_only_fix_is_not_lost_behind_a_locked_ios_batch(self):
+        result = self.audit([1, 2, 3, 4, 5, 6], locked=True, extra_numbers=[7])
+        self.assertEqual(result["issues"], [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(result["unallocated_issues"], [7])
+        self.assertFalse(result["allocate_new_version"])
+
+    def test_locked_issues_do_not_count_towards_the_next_version(self):
+        result = self.audit([1, 2, 3], locked=True, extra_numbers=[4, 5])
+        self.assertEqual(result["distinct_unallocated_pending_count"], 2)
+        self.assertFalse(result["allocate_new_version"])
+
+    def test_next_batch_can_qualify_while_old_ios_is_pending(self):
+        result = self.audit([1, 2, 3], locked=True, extra_numbers=[4, 5, 6])
+        self.assertEqual(result["unallocated_issues"], [4, 5, 6])
+        self.assertTrue(result["allocate_new_version"])
+
+    def test_assigned_rows_stay_allocated_when_batch_index_moves(self):
+        result = self.audit([], extra_numbers=[1, 2, 3, 4], assigned_numbers=[1, 2, 3])
+        self.assertEqual(result["allocated_pending_issues"], [1, 2, 3])
+        self.assertEqual(result["unallocated_issues"], [4])
+        self.assertFalse(result["allocate_new_version"])
+
+    def test_three_mac_only_fixes_qualify_without_ios_pending_rows(self):
+        result = self.audit([], extra_numbers=[1, 2, 3])
+        self.assertEqual(result["unallocated_issues"], [1, 2, 3])
+        self.assertTrue(result["allocate_new_version"])
+
+    def test_unaccepted_extra_work_cannot_qualify(self):
+        result = self.audit([], extra_numbers=[1, 2, 3], extra_accepted=False)
+        self.assertEqual(result["issues"], [])
+        self.assertFalse(result["allocate_new_version"])
+
+    def test_alias_reports_do_not_become_new_distinct_fixes(self):
+        result = self.audit([], extra_numbers=[1, 2, 3], alias=True)
+        self.assertEqual(result["issues"], [])
 
 if __name__ == "__main__":
     unittest.main()

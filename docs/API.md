@@ -1460,6 +1460,13 @@ slot (`next_run_at` becomes the occurrence after the one that was pending);
 an interval resets from now. A delay one-shot is marked `done`. The
 composer wait banner hides while that conversation is working.
 
+A model response with no tool result or explicit `report_schedule` continues
+once in that same turn (`model_retry`, reason `scheduled_no_activity`). A
+second such response ends the turn and run as `error`, leaving the run unread;
+opening prose alone cannot become findings. Automatic fires use the same
+rule. Explicit empty findings remain quiet; a real tool result preserves the
+existing omitted-report fallback. No new run is created by this continuation.
+
 ### `POST /api/schedules/runs/:rid/read` → `204`
 
 Clears `unread` on that run. Missing ids are `404`. Already-read is `204`.

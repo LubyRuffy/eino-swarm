@@ -16,7 +16,8 @@ import (
 
 // KindModelRetry is recorded when a pursuing (or any) manager run hits a
 // recoverable ChatModel failure — truncated tool JSON, 429, a dropped
-// stream — and the runtime re-enters the same turn instead of blocking.
+// stream — or a scheduled check ends without work/report evidence. The
+// runtime re-enters the same turn instead of blocking.
 const KindModelRetry = "model_retry"
 
 // modelErrorRetries is how many times a recoverable model error may re-enter

@@ -61,16 +61,17 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-009 Editable configuration and scheduled waits
 
 - 状态：active；类型：compatibility / lifecycle；作用范围：config、provider、engine；关联功能：`F-150`, `F-170`, `F-230`, `F-420`。
-- 契约内容：端点、模型等配置有默认值且可在 Settings 编辑；`OPENAI_*` 只用于首次空字段填充；计划触发或取消需保留状态。
+- 契约内容：端点、模型等配置有默认值且可在 Settings 编辑；`OPENAI_*` 只用于首次空字段填充；计划触发或取消需保留状态。定时触发与立即执行没有任何工具结果或显式 `report_schedule` 时，只在原 turn 继续一次；仍无证据则 turn/run 为 error、unread=true，不把开场话当 findings 或空回答当 quiet。显式空 findings 保持 quiet；真实工具结果后的省略报告兜底保持兼容，模型错误清理生成的虚拟工具结果不算执行证据。判断不得依赖回答长度、标点、语言、任务样本或模型名。重试原因 `scheduled_no_activity` 进入同一 turn 的 Trace。
 - 允许行为：用户更改设置；禁止行为：生产代码硬编码用户端点或模型；失败语义：配置或计划错误明确报告；不变量：用户设置优先于环境种子；边界条件：首次运行与重启。
-- 证据：实现 `internal/config`, `internal/engine`, `internal/store`；测试 `internal/config`, `internal/engine`；变更规则：同步 CONFIG、API 和计划测试；来源：`AGENTS.md`。
+- 续办展示：`scheduled_no_activity` 的桌面提示是继续执行定时检查，不冒称发生了模型错误；旧模型错误提示保持兼容。
+- 证据：实现 `internal/config`, `internal/engine`, `internal/store`, `frontend/src/lib/transcript-notices.ts`；测试 `internal/config`, `internal/engine/schedule_completion_test.go`, `frontend/src/lib/transcript-goal.test.ts`, `frontend/e2e/schedules.spec.ts`；变更规则：同步 CONFIG、API 和计划测试；来源：`AGENTS.md`。
 
 ## C-010 Build artifacts and update channel
 
 - 状态：active；类型：compatibility / lifecycle；作用范围：build、mobile update、macOS desktop update；关联功能：`F-190`, `F-240`, `F-430`。
 - 契约内容：`make build` 先更新嵌入的前端；Android sideload 使用 GitHub Release 的 `zwai-*-android.apk`；iOS 更新入口打开 Release 页；手机新版本从 package 版本派生 Android versionCode 和 Xcode marketing/build 设置。macOS 桌面发布物是 `zwai-<version>-darwin-<arch>.zip`，根目录为 `zwai.app`。`make release` 串行把该 zip 与 `zwai-<version>-android.apk` 发到同一个 tag，并把同版本 iOS 归档签名上传到配置的 TestFlight 内外组；各端门禁独立，最终缺任一必需端则非零。附件同名同 SHA-256 跳过，不允许覆盖；已发布 tag 必须对应冻结完整主线 SHA。TestFlight 只有 VALID、审核 APPROVED、内测 READY_FOR_BETA_TESTING、外测 IN_BETA_TESTING 且全部既定组关联时才完成。上传前查 builds/buildUploads、当前构建声明和北京日成功账本，每日最多一新构建成功；已接受上传、处理或审核等待均保存恢复信息，不重复上传。桌面应用只从本仓库最新的非 draft、非 prerelease Release 安装同架构 zip，并只跟随 github.com 与 GitHub 的 release 资源主机。
 - 允许行为：不同渠道单独验收；禁止行为：把本地 APK/AAB 或未上传的 zip 称为远端发布，或从其他仓库安装；失败语义：构建、签名、下载错误可观察；不变量：用户可获取与显示版本一致的产物；边界条件：安装签名、新旧版本按数字比较、未打版本号的构建不提供升级。
-- 修复结案与发布分开：需求行为、必要测试、文档及 review 通过，完整修复集成并推送 main 后关闭 Issue；少于三项不增版本、不发布，也不延迟修复结案。关闭评论分别记录已发布端和待发布端，交付台账保留未发布记录（包含 closed Issues）。跨运行至少三项未发布修复才分配一个版本；已公开交付的批次锁定版本和源码 SHA，仅恢复其未交付端。Issue 关闭不代表全端发布，发布失败仍须告警。
+- 修复结案与发布分开：需求行为、必要测试、文档及 review 通过，完整修复集成并推送 main 后关闭 Issue；少于三项不增版本、不发布，也不延迟修复结案。关闭评论分别记录已发布端和待发布端，交付台账保留未发布记录（包含 closed Issues）。跨日期和跨运行至少三项未分配版本的待交付修复才分配一个版本；审计合并全部已验收代码记录的实际平台缺口，包括没有 iOS 台账行的 Mac-only 修复，去重且排除重复报告别名。已分配版本的旧批次只计入恢复集合，不借给下一批凑三项；已公开交付的批次锁定版本和源码 SHA，仅恢复其未交付端。Issue 关闭不代表全端发布，发布失败仍须告警。
 - 证据：实现 `AGENTS.md`, `tools/audit_pending_batch.py`, `tools/release.py`, `tools/release_ios.py`, `Makefile`, `internal/release`, `internal/desktop/pack`, `internal/update`, `mobile/scripts/android-release.ts`, `mobile/scripts/sync-ios-version.ts`, `mobile/src/lib/app-update.ts`；测试 `tools/test_audit_pending_batch.py`, `tools/test_release.py`, `internal/release`, `internal/update`, `internal/desktop/pack`, `mobile/scripts/android-release.test.ts`, `mobile/scripts/sync-ios-version.test.ts`, `mobile/src/lib/app-update.test.ts`；变更规则：同步发布规则、mobile README、CLI、发布门禁和版本测试；来源：用户 2026-09-26 修复结案与发布独立约定、`mobile/README.md`, `docs/CLI.md`。
 
 ## C-011 Quoted conversation payload
