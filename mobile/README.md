@@ -61,7 +61,8 @@ While a turn is live the box also offers steer, and says a plain send is
 queued after this turn.
 Message and quote editors use 16px text (`C-017`). On iOS, focusing and
 dismissing the keyboard must leave the header in its safe area and the wait
-actions inside the screen; smaller editable text used to leave the WebView
+actions and Send/Follow-up/Steer inside the screen, including long drafts;
+no horizontal dragging is needed to submit. Smaller editable text used to leave the WebView
 zoomed and the top/right controls clipped. User pinch zoom remains available.
 The waiting-message tray offers **Insert** on each row. **Interrupt and insert**
 promotes the oldest waiting message into the current turn, then interrupts
@@ -279,3 +280,8 @@ not part of `make check`. English accessibility names (`Pairing URI`,
 `Paste and bind`, `New message`, `Start`, `Back`, `Stop` / `Follow-up` /
 `Send`) are the unit-test locale (`en`); Playwright `e2e/scan.spec.ts` uses
 `zh-CN`.
+
+Composer width regressions run on Chromium and iPhone WebKit:
+`npx playwright install chromium webkit && npm run e2e`.
+The packaged iOS keyboard-dismissal and submission checks use the disposable
+fixture documented in [TESTING](../docs/TESTING.md).

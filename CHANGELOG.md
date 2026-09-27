@@ -23,6 +23,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`, `F-230` / `C-017`: Issue #41 confirms the same iOS focus zoom already repaired for #40. Added Chromium/WebKit submission bounds and native iOS send-after-typing regression coverage; no additional shipping code or release version change.
+
 - `F-430` / `C-010`: accepted, reviewed fixes integrated and pushed to main close their Issues independently of release thresholds or platform publication waits. Closed Issues remain in pending delivery accounting; TestFlight recovery and small batches are not lost on closure.
 
 - Release batches count all integrated Issues still missing a required delivery, including pending iOS changes from earlier runs. Partial Android/Mac delivery no longer incorrectly reduces the batch below the three-Issue threshold.

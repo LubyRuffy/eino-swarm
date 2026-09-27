@@ -1595,13 +1595,19 @@ cross-references, evidence paths, and links in the current snapshots. It is
 part of `make check`; semantic correctness still requires review against
 current entry points and tests.
 
-### iOS composer focus regression (C-017)
+### Phone composer bounds and iOS focus regression (C-017)
 
 `mobile/e2e/walkthrough.spec.ts` checks the actual message/quote font size and
-wait controls at 320, 375, and 402 CSS px. JSDOM cannot prove WebKit focus zoom.
+wait controls at 320, 375, and 402 CSS px. `mobile/e2e/composer-layout.spec.ts`
+checks the actual submit/steer bounds and sends long input from PC follow-up,
+New chat, and direct model chat with long model names. It runs on Chromium
+and iPhone WebKit; install both with `cd mobile && npx playwright install chromium webkit`
+before `npm run e2e`. JSDOM cannot prove WebKit focus zoom.
 `mobile/e2e/ios-wait-layout.swift` drives the packaged Capacitor app: open a
 parked wait, type, dismiss the keyboard, then check that Back is hittable at
 its original vertical position and Run now remains inside the screen.
+A second test checks the submission button after typing and actually submits
+the draft without horizontal scrolling.
 
 Use an isolated iPhone 17 / iOS 26 simulator; set `IOS_LAYOUT_SIMULATOR` to its
 UDID (`xcrun simctl list devices`). The fixture script copies the current
@@ -1618,7 +1624,7 @@ xcodebuild -project "$ios_layout_fixture/mobile/ios/App/App.xcodeproj" \
   -scheme App -configuration Debug \
   -destination "platform=iOS Simulator,id=$IOS_LAYOUT_SIMULATOR" \
   -derivedDataPath "$ios_layout_fixture/DerivedData" CODE_SIGNING_ALLOWED=NO \
-  -only-testing:AppUITests/BindFlowTests/testWaitLayoutAfterTyping \
+  -only-testing:AppUITests/BindFlowTests \
   -parallel-testing-enabled NO -resultBundlePath "$ios_layout_fixture/layout.xcresult" test
 ```
 
@@ -1626,3 +1632,10 @@ Issue #40 was reproduced on the original 14px message editor after keyboard
 dismissal: Run now ended at x=441 on a 402pt screen, and Back moved to y=-50.
 The repair uses the existing `text-base` token for both message and quote editors;
 manual pinch zoom is left available.
+
+Issue #41's screenshot uses the older native model select. Replaying the
+archived 0.1.15/build115 web assets in the disposable iOS fixture fails the
+submission test: Send ends at x=434, and Follow-up at x=411, on a 402pt screen; tapping does
+not clear the draft. This is the same focus zoom repaired by Issue #40, not a
+second unreleased fix. Current source requires no additional layout changes;
+the added tests preserve that evidence without changing the frozen v0.1.20 bundle.

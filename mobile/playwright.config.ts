@@ -14,6 +14,14 @@ export default defineConfig({
       args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
     },
   },
+  projects: [
+    { name: "phone" },
+    {
+      name: "iphone-layout",
+      testMatch: "composer-layout.spec.ts",
+      use: { ...devices["iPhone 13"], browserName: "webkit", permissions: [] },
+    },
+  ],
   webServer: {
     command: "npm run build && npm run preview",
     url: "http://127.0.0.1:4174",
