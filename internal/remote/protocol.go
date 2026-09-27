@@ -87,6 +87,7 @@ type Request struct {
 	// FollowupID names one queued message for drop or steer.
 	FollowupID string `json:"followup_id,omitempty"`
 	// TaskID selects one local agent session for a read-only view.
+	// Before on client_read is that view's byte offset, not a log seq.
 	TaskID string `json:"task_id,omitempty"`
 }
 
@@ -139,20 +140,25 @@ type ClientTool struct {
 	Next  string       `json:"next,omitempty"`
 }
 
-// ClientView is the read-only body of one foreign session.
+// ClientView is one page of a foreign session. Older means lines exist
+// before this page; Before is the byte offset for the previous page.
 type ClientView struct {
 	ID        string        `json:"id"`
 	Title     string        `json:"title"`
 	Status    string        `json:"status"`
 	UpdatedAt time.Time     `json:"updated_at"`
 	Entries   []ClientEntry `json:"entries"`
-	Truncated bool          `json:"truncated,omitempty"`
+	Older     bool          `json:"older,omitempty"`
+	Before    int64         `json:"before,omitempty"`
 }
 
-// ClientEntry is one visible line. Role is user, assistant, or tool.
+// ClientEntry is one visible line. Role is user, assistant, thinking, or
+// tool. At and N match the desktop transcript so a tail poll can merge.
 type ClientEntry struct {
 	Role string `json:"role"`
 	Text string `json:"text"`
+	At   int64  `json:"at"`
+	N    int    `json:"n,omitempty"`
 }
 
 // ClientTask is one foreign session. Status is "running" or "done".

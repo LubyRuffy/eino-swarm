@@ -12,6 +12,8 @@ test("local agent tasks stay hidden until the switch is on", async ({ page }) =>
   await dialog.getByLabel("Cursor directory").fill(empty)
   await dialog.getByLabel("Show local agent tasks").click()
   await dialog.getByRole("button", { name: "Back to app" }).click()
+  await expect(page.getByTestId("dest-clients")).toBeVisible()
+  await page.getByTestId("dest-clients").click()
   await expect(page.getByTestId("clients-list")).toBeVisible()
   await expect(page.getByTestId("client-tool-claude")).toBeVisible()
   await expect(page.getByTestId("client-tool-codex")).toBeVisible()

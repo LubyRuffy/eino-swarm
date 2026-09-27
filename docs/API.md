@@ -204,13 +204,20 @@ is false until Settings turns it on; then `tools` is three groups
 `updated_at`, and `status` (`running` or `done`). The first page is at most five tasks from the last `clients.recent_days`
 (default 3). `more` and `next` mean another page exists, still inside that
 window or older than it. `GET /api/clients?before=<unix ms>` returns the
-next five per tool. `GET /api/clients/task?id=` returns that session's title, status, and
-visible lines (`user`, `assistant`, `thinking`, `tool`). The desktop and the phone
-render that payload in the main chat and leave the composer locked. Consecutive
-thinking and tool lines stay behind one collapsed row, the same work fold as a
-conversation. It does
-not send, steer, or resume. A missing id is 404. The phone uses `client_read` with `task_id`
-and reads `client_view`.
+next five per tool. `GET /api/clients/task?id=` returns the live tail of that
+session: title, status, and the latest lines (`user`, `assistant`, `thinking`,
+`tool`), with the opening request on every page. `older` means lines exist
+before this page. `before` is the byte offset of the first line in the page;
+`?before=` returns the previous page. Each entry's `at` (line offset) and `n`
+(index on that line) stay stable as the file grows, so a poll can merge the
+tail without dropping a page already on screen. `before` that is not a
+non-negative integer is 400. The desktop follows that tail and **Earlier**
+loads the previous page. The phone uses `client_read` with `task_id` and
+optional `before`, and reads `client_view` (`older`, `before`, the same
+entry fields). A missing id is 404. `client_read` with a negative `before`
+is `bad_request`. Consecutive thinking and tool lines stay behind one
+collapsed row, the same work fold as a conversation. It does not send,
+steer, or resume.
 
 The disk walk does not run inside the request. A cold read is
 `pending: true` with empty `tools` and must not replace rows already

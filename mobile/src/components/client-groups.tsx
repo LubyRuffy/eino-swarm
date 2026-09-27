@@ -1,21 +1,29 @@
-import { useEffect, useRef, useState } from "react"
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 
 import { Composer } from "@/components/composer"
 import { Button } from "@/components/ui/button"
 import { installAndroidBack } from "@/lib/android-back"
+import { applyClientPage, type ClientLog } from "@/lib/client-log"
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
 import { clientToolTitle } from "@/lib/local-clients"
-import type { ClientTool, ClientView } from "@/lib/rpc"
+import type { ClientEntry, ClientTool, ClientView } from "@/lib/rpc"
+
+/** Same cadence as the desktop client tail. */
+const TAIL_POLL_MS = 2000
 
 type Reading = {
+  id: string
   title: string
   status: string
-  entries: { role: string; text: string }[]
-  truncated: boolean
+  opening: ClientEntry[]
+  body: ClientEntry[]
+  older: boolean
+  before: number
   failed: boolean
   loading: boolean
+  loadingOlder: boolean
 }
 
 /** A row opens the same chat column as a PC thread. The composer is on
@@ -29,11 +37,19 @@ export function ClientGroups({
   tools: ClientTool[]
   loadingMore?: string
   onMore: (id: string, next?: string) => void
-  onRead?: (id: string) => Promise<ClientView | null>
+  onRead?: (id: string, before?: number) => Promise<ClientView | null>
 }) {
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [view, setView] = useState<Reading | null>(null)
+  const [behind, setBehind] = useState(false)
   const readGeneration = useRef(0)
+  const logRef = useRef<ClientLog | null>(null)
+  const paging = useRef(false)
+  const onReadRef = useRef(onRead)
+  const scroller = useRef<HTMLDivElement>(null)
+  const stick = useRef(true)
+  const wantTop = useRef(false)
+  onReadRef.current = onRead
   const viewVisible = Boolean(view) && tools.length > 0
   const closeView = () => {
     readGeneration.current++
@@ -46,6 +62,57 @@ export function ClientGroups({
       return true
     })
   }, [viewVisible])
+  useEffect(() => {
+    const id = view?.id
+    if (!id || view?.loading) return
+    const timer = window.setInterval(() => {
+      if (paging.current) return
+      void onReadRef.current?.(id).then((doc) => {
+        if (!doc) return
+        setView((cur) => {
+          if (!cur || cur.id !== id) return cur
+          const next = applyClientPage(logRef.current, doc, "tail")
+          logRef.current = next
+          return paint(cur, doc, next)
+        })
+      }).catch(() => undefined)
+    }, TAIL_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [view?.id, view?.loading])
+  useLayoutEffect(() => {
+    const el = scroller.current
+    if (!el || !view || view.loading) return
+    if (wantTop.current && !view.loadingOlder) {
+      wantTop.current = false
+      stick.current = false
+      setBehind(true)
+      el.scrollTop = 0
+      return
+    }
+    if (stick.current) {
+      el.scrollTop = el.scrollHeight
+      setBehind(false)
+    }
+  }, [view])
+  const loadOlder = () => {
+    const cur = view
+    if (!cur?.older || !cur.before || paging.current || cur.loadingOlder) return
+    paging.current = true
+    wantTop.current = true
+    setView({ ...cur, loadingOlder: true })
+    void onReadRef.current?.(cur.id, cur.before).then((doc) => {
+      if (!doc) return
+      setView((prev) => {
+        if (!prev || prev.id !== cur.id) return prev
+        const next = applyClientPage(logRef.current, doc, "older")
+        logRef.current = next
+        return paint(prev, doc, next)
+      })
+    }).catch(() => undefined).finally(() => {
+      paging.current = false
+      setView((prev) => (prev && prev.id === cur.id ? { ...prev, loadingOlder: false } : prev))
+    })
+  }
   if (tools.length === 0) return null
   return (
     <section className="flex flex-col gap-2" data-testid="client-groups">
@@ -99,13 +166,20 @@ export function ClientGroups({
                     className="min-w-0 flex-1 truncate text-left text-sm"
                     onClick={() => {
                       const request = ++readGeneration.current
+                      logRef.current = null
+                      stick.current = true
+                      setBehind(false)
                       const shell: Reading = {
+                        id: task.id,
                         title: task.title,
                         status: task.status,
-                        entries: [],
-                        truncated: false,
+                        opening: [],
+                        body: [],
+                        older: false,
+                        before: 0,
                         failed: false,
                         loading: true,
+                        loadingOlder: false,
                       }
                       setView(shell)
                       void onRead?.(task.id).then((doc) => {
@@ -114,14 +188,9 @@ export function ClientGroups({
                           setView({ ...shell, loading: false, failed: true })
                           return
                         }
-                        setView({
-                          title: doc.title || task.title,
-                          status: doc.status || task.status,
-                          entries: doc.entries ?? [],
-                          truncated: Boolean(doc.truncated),
-                          failed: false,
-                          loading: false,
-                        })
+                        const next = applyClientPage(logRef.current, doc, "tail")
+                        logRef.current = next
+                        setView(paint(shell, doc, next))
                       }).catch(() => {
                         if (readGeneration.current === request) setView({ ...shell, loading: false, failed: true })
                       })
@@ -178,24 +247,65 @@ export function ClientGroups({
             />
             <h1 className="min-w-0 flex-1 truncate text-sm font-medium">{view.title}</h1>
           </header>
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          {view.older ? (
+            <div className="flex shrink-0 justify-center border-b border-border">
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-8 text-xs text-muted-foreground"
+                data-testid="client-earlier"
+                disabled={view.loadingOlder}
+                aria-busy={view.loadingOlder || undefined}
+                onClick={loadOlder}
+              >
+                {view.loadingOlder ? t("thread.loading") : t("thread.earlier")}
+              </Button>
+            </div>
+          ) : null}
+          <div className="relative flex min-h-0 flex-1 flex-col">
+          <div
+            ref={scroller}
+            className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4"
+            onScroll={(e) => {
+              const el = e.currentTarget
+              const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+              stick.current = atBottom
+              setBehind(!atBottom)
+            }}
+          >
             {view.loading ? <p className="text-sm text-muted-foreground">{t("thread.loading")}</p> : null}
             {view.failed ? <p className="text-sm text-muted-foreground">{t("home.clientMissing")}</p> : null}
-            {splitOpening(view.entries ?? []).opening.map((entry, i) => (
-              <div key={`open-${i}`} data-testid="client-request" className="sticky top-0 z-10 bg-background pb-2">
+            {view.opening.map((entry, i) => (
+              <div key={`open-${entry.at ?? i}`} data-testid="client-request" className="sticky top-0 z-10 bg-background pb-2">
                 <ClientLine entry={entry} />
               </div>
             ))}
-            {foldClientEntries(splitOpening(view.entries ?? []).rest).map((row) =>
+            {foldClientEntries(view.body).map((row) =>
               row.type === "work" ? (
                 <ClientWorkFold key={`work-${row.index}`} entries={row.entries} />
               ) : (
-                <ClientLine key={`${row.entry.role}-${row.index}`} entry={row.entry} />
+                <ClientLine key={`${row.entry.at ?? row.index}-${row.entry.n ?? 0}`} entry={row.entry} />
               ),
             )}
-            {view.truncated ? (
-              <p className="text-xs text-muted-foreground">{t("home.clientTruncated")}</p>
-            ) : null}
+          </div>
+          {behind ? (
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="jump-to-latest"
+              aria-label={t("thread.toLatest")}
+              className="absolute bottom-3 right-3 rounded-full bg-background shadow-md"
+              onClick={() => {
+                const el = scroller.current
+                if (!el) return
+                stick.current = true
+                setBehind(false)
+                el.scrollTop = el.scrollHeight
+              }}
+            >
+              <ChevronDown />
+            </Button>
+          ) : null}
           </div>
           <Composer
             label={t("thread.message")}
@@ -216,11 +326,18 @@ type ClientRow =
   | { type: "entry"; entry: ClientLineEntry; index: number }
   | { type: "work"; entries: ClientLineEntry[]; index: number }
 
-function splitOpening(entries: ClientLineEntry[]): { opening: ClientLineEntry[]; rest: ClientLineEntry[] } {
-  let end = 0
-  while (end < entries.length && entries[end].role === "user") end++
-  if (end === 0) return { opening: [], rest: entries }
-  return { opening: entries.slice(0, end), rest: entries.slice(end) }
+function paint(cur: Reading, doc: ClientView, log: ClientLog): Reading {
+  return {
+    ...cur,
+    title: doc.title || cur.title,
+    status: doc.status || cur.status,
+    opening: log.opening,
+    body: log.body,
+    older: log.older,
+    before: log.before,
+    failed: false,
+    loading: false,
+  }
 }
 
 function foldClientEntries(entries: ClientLineEntry[]): ClientRow[] {

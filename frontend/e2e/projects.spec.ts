@@ -321,6 +321,7 @@ test("a running conversation keeps its progress after switching away", async ({
   await expect(row.getByLabel("running")).toBeVisible()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(statusBadge(page)).toContainText("Idle")
+  await page.getByTestId("dest-projects").click()
   const left = wrap.locator(`[data-testid="thread-row"][data-id="${id}"]`)
   await expect(left).toBeVisible()
   await expect(left.getByLabel("running")).toBeVisible()

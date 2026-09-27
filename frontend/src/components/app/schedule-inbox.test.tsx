@@ -2,9 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { Sidebar } from "./sidebar"
-import { ScheduleInbox } from "./schedule-inbox"
+import { ScheduleDetail } from "./schedule-inbox"
 import { ScheduleInboxForm } from "./schedule-inbox-form"
-import type { Schedule, ScheduleRun } from "@/lib/types"
+import type { Schedule, ScheduleRun, Thread } from "@/lib/types"
+import { setDeskDest } from "@/lib/desk-nav"
 import { runsInThreadValue } from "@/lib/schedule-dest"
 import { useApp } from "@/store/app"
 import { useProjects } from "@/store/projects"
@@ -102,15 +103,27 @@ const noop = {
   onPin: vi.fn(),
 }
 
-function renderInbox() {
-  return render(
-    <>
-      <Sidebar threads={[]} {...noop} />
-      <div data-testid="composer-stage" className="relative">
-        <ScheduleInbox />
-      </div>
-    </>,
+function InboxFrame({
+  threads = [],
+  activeId,
+}: {
+  threads?: Thread[]
+  activeId?: string
+}) {
+  const open = useApp((s) => s.scheduleInboxOpen)
+  return (
+    <div
+      data-testid={open ? "schedule-page" : undefined}
+      className={open ? "flex min-h-0 overflow-hidden" : undefined}
+    >
+      <Sidebar threads={threads} activeId={activeId} {...noop} />
+      <ScheduleDetail />
+    </div>
   )
+}
+
+function renderInbox(props?: { threads?: Thread[]; activeId?: string }) {
+  return render(<InboxFrame threads={props?.threads} activeId={props?.activeId} />)
 }
 
 async function openPage() {
@@ -209,34 +222,24 @@ describe("Scheduled inbox", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
-  it("deselects the open conversation while Scheduled is the page", async () => {
-    render(
-      <>
-        <Sidebar
-          threads={[
-            {
-              id: "th_1",
-              title: "A chat",
-              project_id: "",
-              provider_id: "default",
-              reasoning_effort: "",
-              archived: false,
-              created_at: "2026-09-19T00:00:00.000Z",
-              last_active_at: new Date().toISOString(),
-              running: false,
-            },
-          ]}
-          activeId="th_1"
-          {...noop}
-        />
-        <div data-testid="composer-stage" className="relative">
-          <ScheduleInbox />
-        </div>
-      </>,
-    )
+  it("replaces the conversation list while Scheduled is the page", async () => {
+    const thread: Thread = {
+      id: "th_1",
+      title: "A chat",
+      project_id: "",
+      provider_id: "default",
+      reasoning_effort: "",
+      archived: false,
+      created_at: "2026-09-19T00:00:00.000Z",
+      last_active_at: new Date().toISOString(),
+      running: false,
+    }
+    setDeskDest("chats")
+    renderInbox({ threads: [thread], activeId: "th_1" })
     expect(screen.getByTestId("thread-row")).toHaveAttribute("aria-current", "true")
     await openPage()
-    expect(screen.getByTestId("thread-row")).not.toHaveAttribute("aria-current")
+    expect(screen.queryByTestId("thread-row")).not.toBeInTheDocument()
+    expect(screen.getByTestId("schedule-list-pane").closest("[data-testid=conversation-list]")).toBeTruthy()
     expect(screen.getByTestId("schedule-inbox")).toHaveAttribute("aria-current", "page")
   })
 
@@ -460,9 +463,10 @@ describe("Scheduled inbox", () => {
     ]
     renderInbox()
     await openPage()
-    expect(screen.getByTestId("schedule-page").className).toMatch(/\binset-0\b/)
+    expect(screen.getByTestId("schedule-page").className).not.toMatch(/\binset-0\b/)
     expect(screen.getByTestId("schedule-page").className).toMatch(/\boverflow-hidden\b/)
     expect(screen.getByTestId("schedule-page").className).not.toMatch(/max-h-\[85vh\]/)
+    expect(screen.getByTestId("schedule-list-pane").closest("[data-testid=conversation-list]")).toBeTruthy()
     expect(screen.getByTestId("schedule-list").className).toMatch(/\boverflow-y-auto\b/)
     expect(screen.getByTestId("schedule-row")).toHaveClass("shrink-0")
     await waitFor(() =>

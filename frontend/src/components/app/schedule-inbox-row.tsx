@@ -75,7 +75,7 @@ export function ScheduleInboxRow({
       data-selected={selected ? "true" : undefined}
       className={cn(
         "min-w-0 shrink-0 border-b border-border last:border-b-0",
-        selected && "bg-accent",
+        selected && "bg-sidebar-accent",
       )}
     >
       <div className="flex min-w-0 items-start gap-3 py-2.5">

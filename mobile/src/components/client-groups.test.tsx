@@ -114,4 +114,51 @@ describe("ClientGroups", () => {
     await waitFor(() => expect(screen.getByText("read")).toBeTruthy())
     expect(screen.getByText("checked the path")).toBeTruthy()
   })
+
+  it("loads an earlier page and keeps the live reply", async () => {
+    const onRead = vi.fn(async (_id: string, before?: number) => {
+      if (before) {
+        return {
+          id: "c1",
+          title: "open session",
+          status: "done",
+          older: false,
+          entries: [
+            { role: "user", text: "the request", at: 0 },
+            { role: "assistant", text: "earlier reply", at: 10 },
+          ],
+        }
+      }
+      return {
+        id: "c1",
+        title: "open session",
+        status: "done",
+        older: true,
+        before: 40,
+        entries: [
+          { role: "user", text: "the request", at: 0 },
+          { role: "assistant", text: "latest reply", at: 40 },
+        ],
+      }
+    })
+    render(
+      <ClientGroups
+        tools={[
+          {
+            id: "cursor",
+            more: false,
+            tasks: [{ id: "c1", title: "open session", status: "done", updated_at: "2026-09-25T00:00:00Z" }],
+          },
+        ]}
+        onMore={() => undefined}
+        onRead={onRead}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "open session" }))
+    expect(await screen.findByText("latest reply")).toBeTruthy()
+    fireEvent.click(screen.getByTestId("client-earlier"))
+    expect(await screen.findByText("earlier reply")).toBeTruthy()
+    expect(screen.getByText("latest reply")).toBeTruthy()
+    expect(onRead).toHaveBeenCalledWith("c1", 40)
+  })
 })

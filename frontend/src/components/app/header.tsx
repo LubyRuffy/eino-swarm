@@ -17,6 +17,7 @@ import {
 } from "@/lib/sidebar-width"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import { useOpenClient } from "@/lib/client-open"
+import { useVisibleDest } from "@/components/app/dest-rail"
 import { desktopShell } from "@/lib/shell"
 import type { Project, Thread, ThreadStatus } from "@/lib/types"
 import { cn, formatDuration } from "@/lib/utils"
@@ -62,15 +63,17 @@ export function Header({
 }) {
   const t = useT()
   const scheduled = useApp((s) => s.scheduleInboxOpen)
+  const pane = useVisibleDest()
   const client = useOpenClient()
+  const browsingClients = pane === "clients" && !client
   // The elapsed clock ticks here, not in App: a once-a-second setState in
   // the shell used to re-parse every markdown block in the conversation.
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
-    if (!status.running || scheduled || client) return
+    if (!status.running || scheduled || client || browsingClients) return
     const id = window.setInterval(() => setNow(Date.now()), 1000)
     return () => window.clearInterval(id)
-  }, [status.running, scheduled, client])
+  }, [status.running, scheduled, client, browsingClients])
   const elapsedMs =
     status.running && status.started_at
       ? Math.max(0, now - new Date(status.started_at).getTime())
@@ -78,6 +81,27 @@ export function Header({
   const listLabel = sidebarOpen
     ? t("header.hideConversations")
     : t("header.showConversations")
+  const listToggle = (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="shrink-0"
+      onClick={onToggleSidebar}
+      aria-label={listLabel}
+      title={`${listLabel} (⌘B)`}
+    >
+      <PanelLeft />
+    </Button>
+  )
+  // The list column hides. The icon rail does not, so the title still
+  // starts where the transcript does. On the desktop the traffic lights
+  // are wider than that rail; the spacer has to clear them or the toggle
+  // sits under the yellow blob.
+  const leadingWidth = sidebarOpen
+    ? `var(${SIDEBAR_WIDTH_VAR}, ${SIDEBAR_WIDTH_DEFAULT}px)`
+    : trafficInset
+      ? "max(var(--dest-rail-width), var(--traffic-light-inset))"
+      : "var(--dest-rail-width)"
   return (
     <header
       data-drag-region
@@ -87,33 +111,19 @@ export function Header({
         data-testid="titlebar-leading"
         className={cn(
           "flex h-full shrink-0 items-center",
-          trafficInset ? "pl-traffic" : "pl-3",
+          sidebarOpen && (trafficInset ? "pl-traffic" : "pl-3"),
         )}
-        style={
-          sidebarOpen
-            ? {
-                width: `var(${SIDEBAR_WIDTH_VAR}, ${SIDEBAR_WIDTH_DEFAULT}px)`,
-              }
-            : undefined
-        }
+        style={{ width: leadingWidth }}
       >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          onClick={onToggleSidebar}
-          aria-label={listLabel}
-          title={`${listLabel} (⌘B)`}
-        >
-          <PanelLeft />
-        </Button>
+        {sidebarOpen ? listToggle : null}
       </div>
+      {sidebarOpen ? null : listToggle}
       <div className="flex min-w-0 flex-1 items-center gap-2 pr-4">
         {/* One line: a stacked project name under the title was two rows in
             a 48px bar. The model name lives on the composer; repeating it here
             ate the same row. */}
         <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          {!scheduled && !client && project ? (
+          {!scheduled && !client && !browsingClients && project ? (
             <>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -144,7 +154,9 @@ export function Header({
               ? client.title
               : scheduled
                 ? t("schedule.inboxTitle")
-                : thread?.title || t("header.newConversation")}
+                : browsingClients
+                  ? t("sidebar.clients")
+                  : thread?.title || t("header.newConversation")}
           </p>
         </div>
 
@@ -163,7 +175,7 @@ export function Header({
             />
             {client.status === "running" ? t("sidebar.clientRunning") : t("sidebar.clientDone")}
           </Badge>
-        ) : scheduled ? null : status.running ? (
+        ) : scheduled || browsingClients ? null : status.running ? (
           <Badge
             variant={status.awaiting_answer ? "ask" : "warning"}
             data-testid="status-badge"
@@ -198,7 +210,7 @@ export function Header({
           </Badge>
         )}
 
-        {!scheduled && !client && status.turn_id ? (
+        {!scheduled && !client && !browsingClients && status.turn_id ? (
           <Tooltip>
             <TooltipTrigger asChild>
               <CopyButton text={status.turn_id} />
@@ -242,7 +254,7 @@ export function Header({
           >
             <SquareTerminal />
           </Button>
-          {scheduled ? null : (
+          {scheduled || client || browsingClients ? null : (
             <Button
               variant="ghost"
               size="icon-sm"

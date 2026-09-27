@@ -10,6 +10,8 @@ import {
   type Appearance,
 } from "@/lib/appearance"
 import { ApiError, api } from "@/lib/api"
+import { closeClient } from "@/lib/client-open"
+import { deskDest, listDestForThread, setDeskDest } from "@/lib/desk-nav"
 import { desktopShell, startPresence } from "@/lib/shell"
 import {
   applyLocale,
@@ -114,7 +116,7 @@ interface AppState extends ScheduleSlice {
   /** Re-lists every endpoint and writes the catalogs. Does not reboot the
    *  conversation — boot() would yank the open thread. */
   refreshCatalogs: () => Promise<void>
-  openThread: (id: string) => Promise<void>
+  openThread: (id: string, opts?: { keepList?: boolean }) => Promise<void>
   /** Fetch an older page of the event log. Sized from the scroller height. */
   loadOlder: (clientHeight?: number) => Promise<void>
   /** Keep paging until this turn's user row is in the transcript. */
@@ -235,7 +237,9 @@ export const useApp = create<AppState>((set, get) => ({
       if (locale) {
         get().setLocale(normalizeLocalePref(locale), { persist: false })
       }
-      if (threads.length > 0) await get().openThread(threads[0].id)
+      // The center restores the last conversation. The rail stays on the
+      // list the reader left — a loose thread must not steal Projects.
+      if (threads.length > 0) await get().openThread(threads[0].id, { keepList: true })
     } catch (e) {
       set({ error: message(e) })
     }
@@ -340,9 +344,15 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  openThread: async (id) => {
+  openThread: async (id, opts) => {
     // Leave Scheduled even when this conversation is already open; Open
-    // findings would otherwise be a no-op and leave the page up.
+    // findings would otherwise be a no-op and leave the page up. A project
+    // topic stays on the project list; a loose one opens Conversations.
+    // Boot passes keepList: restoring the center must not move the rail.
+    const known = get().threads.find((th) => th.id === id)
+    const guess = listDestForThread(known?.project_id)
+    if (!opts?.keepList) setDeskDest(guess)
+    closeClient()
     if (get().scheduleInboxOpen) {
       set({ scheduleInboxOpen: false, error: undefined })
     }
@@ -384,6 +394,11 @@ export const useApp = create<AppState>((set, get) => ({
         api.followups(id),
       ])
       if (get().activeId !== id) return
+      // Correct the guess once the row exists, unless the reader already
+      // moved to another list while this was loading.
+      if (!opts?.keepList && deskDest() === guess) {
+        setDeskDest(listDestForThread(thread.project_id))
+      }
       let since = 0
       let haveTail = false
       let log: ThreadLog = { events: [], has_more: false }

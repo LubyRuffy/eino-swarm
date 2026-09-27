@@ -343,14 +343,14 @@ over Settings instead of a red line under Phone.
 ## `clients`
 
 Read-only list of local agent transcripts. Off by default. Settings → Clients
-is the switch. The sidebar and a paired phone show one group per tool. Tasks
+is the switch. The left navigation and a paired phone show one group per tool. Tasks
 from the last `recent_days` are the first page, five per tool. Each tool
 group folds. More loads the next five. Opening a row reads the session
 and does not send or resume.
 
 | key | default | meaning |
 |---|---|---|
-| `enabled` | `false` | scan and show the groups. Off returns an empty list and hides the sidebar section. |
+| `enabled` | `false` | scan and show the groups. Off returns an empty list and hides the Clients entry in the left navigation. |
 | `claude_dir` | `~/.claude` | Claude Code config directory. Blank is filled with that default. |
 | `codex_dir` | `~/.codex` | Codex home. Blank is filled with that default. |
 | `cursor_dir` | `~/.cursor` | Cursor home. Blank is filled with that default. |

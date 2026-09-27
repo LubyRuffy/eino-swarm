@@ -105,7 +105,7 @@ export function HomeScreen({
   clientTools?: ClientTool[]
   loadingClientMore?: string
   onClientMore?: (id: string, next?: string) => void
-  onClientRead?: (id: string) => Promise<import("@/lib/rpc").ClientView | null>
+  onClientRead?: (id: string, before?: number) => Promise<import("@/lib/rpc").ClientView | null>
 }) {
   const [query, setQuery] = useState("")
   const [folded, setFolded] = useState(readFolded)

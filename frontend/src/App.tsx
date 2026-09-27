@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 
 import { DesktopUpdateBanner } from "@/components/app/desktop-update"
 import {
@@ -11,6 +11,7 @@ import {
   SettingsIdleChrome,
 } from "@/components/app/app-chrome"
 import { ClientChat } from "@/components/app/client-transcript"
+import { ClientsStage } from "@/components/app/local-clients"
 import { Composer } from "@/components/app/composer"
 import { DeleteProjectDialog } from "@/components/app/delete-project-dialog"
 import { EmptyState } from "@/components/app/empty-state"
@@ -18,7 +19,8 @@ import { FindBar, useFindController } from "@/components/app/find-bar"
 import { RightPanel, type PanelTab } from "@/components/app/panel"
 import { ProjectDialog } from "@/components/app/project-dialog"
 import { SelectionMenu } from "@/components/app/selection-menu"
-import { ScheduleInbox } from "@/components/app/schedule-inbox"
+import { ScheduleDetail } from "@/components/app/schedule-inbox"
+import { useVisibleDest } from "@/components/app/dest-rail"
 import { Sidebar } from "@/components/app/sidebar"
 import { ToastStack } from "@/components/app/toast-stack"
 import { TerminalPanel } from "@/components/app/terminal-panel"
@@ -84,6 +86,29 @@ export function App() {
       <ToastStack />
     </TooltipProvider>
   )
+}
+
+/** Subscribes to the inbox on its own. AppShell must not: a click here
+ *  used to re-parse the conversation that stays mounted underneath. */
+function ShellColumns({ children }: { children: ReactNode }) {
+  const scheduled = useApp((s) => s.scheduleInboxOpen)
+  return (
+    <div
+      className="flex min-h-0 min-w-0 flex-1 overflow-hidden"
+      data-testid={scheduled ? "schedule-page" : undefined}
+      aria-labelledby={scheduled ? "schedule-page-title" : undefined}
+    >
+      {children}
+    </div>
+  )
+}
+
+function TaskBody({ chat }: { chat: ReactNode }) {
+  const pane = useVisibleDest()
+  const client = useOpenClient()
+  if (pane === "scheduled") return <ScheduleDetail />
+  if (pane === "clients" && !client) return <ClientsStage />
+  return chat
 }
 
 /** Chrome that must not re-render on every streamed token: sidebar, header,
@@ -316,9 +341,9 @@ function AppShell() {
         onToggleSidebar={toggleSidebar}
         onOpenTerminal={spawnTerminal}
       />
-      <div className="flex min-h-0 min-w-0 flex-1">
-        {sidebarOpen ? (
-          <AppSidebar
+      <ShellColumns>
+        <AppSidebar
+            listOpen={sidebarOpen}
             onNew={() => void startThread()}
             onSearch={() => setPaletteOpen(true)}
             onSettings={openSettings}
@@ -339,12 +364,13 @@ function AppShell() {
               setFocusSkill({ projectId: project.id, name: skill?.name })
             }}
           />
-        ) : null}
 
         <main className="flex min-w-0 flex-1 flex-col">
           <DesktopUpdateBanner />
           <ConfiguredBanner onConfigure={() => openSettings("models")} />
           <ErrorBanner />
+          <TaskBody
+            chat={
           <div
             data-composer-stage=""
             data-testid="composer-stage"
@@ -383,8 +409,9 @@ function AppShell() {
                 onClose={closeFind}
               />
             ) : null}
-            <ScheduleInbox />
           </div>
+            }
+          />
           <TerminalPanel onNew={spawnTerminal} />
         </main>
 
@@ -398,7 +425,7 @@ function AppShell() {
             focusSkill={focusSkill}
           />
         ) : null}
-      </div>
+      </ShellColumns>
 
       <SelectionMenu onAdd={addQuote} />
 
@@ -492,6 +519,7 @@ function AppProjectDialog({
 }
 
 function AppSidebar({
+  listOpen,
   onNew,
   onSearch,
   onSettings,
@@ -503,6 +531,7 @@ function AppSidebar({
   onDeleteProject,
   onOpenSkill,
 }: {
+  listOpen: boolean
   onNew: () => void
   onSearch: () => void
   onSettings: () => void
@@ -539,6 +568,7 @@ function AppSidebar({
   const pinThread = useApp((s) => s.pinThread)
   return (
     <Sidebar
+      listOpen={listOpen}
       threads={threads}
       activeId={activeId}
       runningId={running ? activeId : overlayRunningId}
@@ -786,10 +816,11 @@ function AppPanel({
     conversationProject
   const memoryForProject =
     project && memoryProjectId === project.id ? memory : undefined
+  const pane = useVisibleDest()
   const clientOpen = useOpenClient() != null
-  // Scheduled is a page, not a conversation. A foreign session uses the same
-  // column and is not this thread's agents, files, or trace.
-  if (scheduled || clientOpen) return null
+  // Scheduled and a client list are pages, not this conversation. A foreign
+  // session uses the same column and is not this thread's agents, files, or trace.
+  if (scheduled || clientOpen || pane === "clients" || pane === "scheduled") return null
   return (
     <RightPanel
       tab={tab}

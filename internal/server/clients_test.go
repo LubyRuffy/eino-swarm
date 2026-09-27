@@ -1,9 +1,12 @@
 package server_test
 
 import (
+	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -56,4 +59,62 @@ func TestClientsStayHiddenUntilTheSwitchIsOn(t *testing.T) {
 	if len(tasks) != 1 {
 		t.Fatalf("claude tasks = %v", first)
 	}
+}
+
+func TestClientTaskPagesEarlierLines(t *testing.T) {
+	h := newHarness(t)
+	root := t.TempDir()
+	var body strings.Builder
+	body.WriteString("{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"the request\"}]}}\n")
+	for i := 0; i < 70; i++ {
+		fmt.Fprintf(&body, "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"line-%d\"}]}}\n", i)
+	}
+	body.WriteString("{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"latest reply\"}]}}\n")
+	path := filepath.Join(root, "projects", "work", "paged.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := h.app.Engine.Config()
+	cfg.Clients.Enabled = true
+	cfg.Clients.ClaudeDir = root
+	cfg.Clients.CodexDir = filepath.Join(root, "no-codex")
+	cfg.Clients.CursorDir = filepath.Join(root, "no-cursor")
+	h.json(http.MethodGet, "/api/clients/task?id=claude:paged&before=nope", nil, http.StatusBadRequest)
+	q := url.Values{"id": {"claude:paged"}}
+	tail := h.json(http.MethodGet, "/api/clients/task?"+q.Encode(), nil, http.StatusOK)
+	if tail["older"] != true {
+		t.Fatalf("tail = %v", tail["older"])
+	}
+	entries, _ := tail["entries"].([]any)
+	if len(entries) == 0 || entryText(entries[0]) != "the request" || entryText(entries[len(entries)-1]) != "latest reply" {
+		t.Fatalf("live edge = %v", entries)
+	}
+	before, _ := tail["before"].(float64)
+	if before <= 0 {
+		t.Fatalf("before = %v", tail["before"])
+	}
+	q.Set("before", fmt.Sprintf("%.0f", before))
+	older := h.json(http.MethodGet, "/api/clients/task?"+q.Encode(), nil, http.StatusOK)
+	found := false
+	for _, raw := range older["entries"].([]any) {
+		text := entryText(raw)
+		if text == "latest reply" {
+			t.Fatal("earlier page repeated the live reply")
+		}
+		if text == "line-0" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("earlier page did not include the first reply")
+	}
+}
+
+func entryText(raw any) string {
+	row, _ := raw.(map[string]any)
+	text, _ := row["text"].(string)
+	return text
 }
