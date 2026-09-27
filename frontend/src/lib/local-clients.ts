@@ -16,14 +16,17 @@ export type ClientTool = {
   next?: string
 }
 
-export type ClientEntry = { role: string; text: string }
+export type ClientEntry = { role: string; text: string; at?: number; n?: number }
 
 export type ClientTranscript = {
   id: string
   title: string
   status: "running" | "done" | string
   entries: ClientEntry[]
-  truncated?: boolean
+  /** Lines exist before this page. */
+  older?: boolean
+  /** Byte offset of the first line on this page. Pass it back for the previous page. */
+  before?: number
 }
 
 export type ClientCatalog = {

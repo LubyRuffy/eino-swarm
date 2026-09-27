@@ -81,14 +81,15 @@ uploads, downloads and the live event stream have exactly one implementation.
   a third, then that interval) so a check lands before the work is already
   done; extra checks are expected. A named clock time you asked for is still
   honored.
-  The sidebar **Scheduled** control opens the list in the main column: search
+  The leftmost navigation switches Projects, Conversations, Scheduled, and Clients. Projects is the default list (pinned topics and project folders). Conversations is the list of threads that belong to no project. **Scheduled**
+  opens the wait list in that column, not over the conversation: search
   and **All / Active / Paused / Completed**, defaulting to Active.
-  **Create** opens a right-hand drawer (**New**) for the add-wait form — the task
+  **Create** opens the editor in the task column (**New**) for the add-wait form — the task
   description only (a short inbox name is generated, same namer as conversations),
   then Details (**Runs in**: new conversation each run, or wake an
   existing one; **Project** is the workspace for a minted conversation) and
-  Frequency. **Expand** fills that column so a long instruction is readable.
-  Click a wait to edit it in the same drawer: title, task, and cadence
+  Frequency. **Expand** hides the wait list so a long instruction can use the task column.
+  Click a wait to edit it in that column: title, task, and cadence
   (`PATCH`; changing cadence recomputes the next run from now). Pause, resume,
   cancel, and Run now live there too. Destination (Runs in / Project) stays
   as created. The conversation
@@ -443,12 +444,15 @@ version/source SHA without reuploading completed platforms. See `C-010` in
 ## Local agent progress
 
 Settings → Clients → **Show local agent tasks** lists Claude, Codex, and Cursor
-sessions already on this machine. The sidebar groups them under Clients. Each tool group folds. The first
+sessions already on this machine. The leftmost navigation's Clients list groups them by tool. Each tool group folds. The first
 page is at most five tasks from the last three days; More shows the next five. A breathing light
 means that task is still running. Open a row and the session fills the main
-chat. The opening request stays pinned at the top. Adjacent thinking and tool calls start collapsed, the same row as a
+chat. The opening request stays pinned at the top. The column follows the
+latest lines. **Earlier** loads the page above that, the same way a
+conversation does. Adjacent thinking and tool calls start collapsed, the same row as a
 conversation. The composer stays where it is and cannot be used. A paired phone
-opens the same chat with the same locked composer. The switch is off until
+opens the same chat with the same locked composer, the same **Earlier**
+control, and the same follow of the live tail. The switch is off until
 you turn it on.
 On the phone, Clients → More shows a loading spinner while the next page arrives.
 If that request fails, the existing rows stay visible and More can be retried.
@@ -511,7 +515,7 @@ start of the box opens built-in commands · ⌘Enter steers
 the draft into the current turn · Shift+Enter a newline · `⌘K` command palette
 (titles, bodies, and meaning when embeddings are on) · `⌘N` new
 conversation · `⌘F` find in the open conversation · `⌘B` hide or show the
-conversation list · `⌘\` toggle the right panel · `⌘J` open a terminal in the
+list beside the icon rail (the rail stays) · `⌘\` toggle the right panel · `⌘J` open a terminal in the
 current project (or conversation) directory · `⌘,` settings · `Esc` stop
 the running turn (or close find first, if that bar is open). Drag the border
 of the conversation list or the right panel to resize them. Conversations
@@ -526,14 +530,17 @@ Work that comes back — one repository, one report, one recurring chore — bel
 in a project. The title bar prefixes the conversation name with the project's
 (`project · title`) so you can see which directory the tools are pointed at.
 The project list follows last use, not creation; drag a row to pin it.
-**New conversation** at the top of the list lands in **Conversations**.
-The same control sits on the right of that section header. Hover a project
-for a new-conversation control on the row itself — it starts one in that folder.
+The leftmost rail opens **Projects** (the default) or **Conversations**.
+**New conversation** at the top of either list starts a thread with no project
+and opens **Conversations**, so the new row is on screen. Hover a project
+for a new-conversation control on the row itself — it starts one in that folder
+and stays on **Projects**.
 Click a folder to collapse its topics — the directory icon is closed
-when collapsed and open when expanded. Click **Pinned**, **Projects**, or
-**Conversations** to fold the whole section (the arrow after the name shows
-on hover while the section is open). Pin a topic from the row menu to keep
-it in **Pinned** at the top.
+when collapsed and open when expanded. On **Projects**, click **Pinned** or
+**Projects** to fold that section. On **Conversations**, click **Conversations**
+to fold its rows (the arrow after the name shows on hover while the section is
+open). Pin a topic from the row menu to keep it in **Pinned** at the top of
+**Projects**. Restart leaves the rail where you left it.
 **New project** at the top of the conversation list asks for three
 things:
 

@@ -57,15 +57,23 @@ afterEach(async () => {
   const { resetToasts } = await import("@/store/toasts")
   applyAppearance(defaultAppearance())
   const { act } = await import("@testing-library/react")
+  const { setDeskDest } = await import("@/lib/desk-nav")
+  const { resetScheduleInboxUI } = await import("@/store/schedule-inbox-ui")
+  const { resetClientCatalog } = await import("@/components/app/local-clients")
+  const { closeClient } = await import("@/lib/client-open")
   act(() => {
     resetToasts()
-  })
-  useApp.setState({
-    locale: "en",
-    theme: "system",
-    ...defaultAppearance(),
-    schedules: [],
-    scheduleUnread: 0,
-    scheduleInboxOpen: false,
+    closeClient()
+    setDeskDest("projects")
+    resetScheduleInboxUI()
+    resetClientCatalog()
+    useApp.setState({
+      locale: "en",
+      theme: "system",
+      ...defaultAppearance(),
+      schedules: [],
+      scheduleUnread: 0,
+      scheduleInboxOpen: false,
+    })
   })
 })

@@ -1,12 +1,19 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { Sidebar } from "./sidebar"
+import { setDeskDest } from "@/lib/desk-nav"
 import {
   SIDEBAR_WIDTH_DEFAULT,
   SIDEBAR_WIDTH_VAR,
 } from "@/lib/sidebar-width"
 import type { Thread } from "@/lib/types"
+
+vi.mock("@/lib/api", () => ({
+  api: {
+    clients: async () => ({ enabled: false, pending: false, tools: [] }),
+  },
+}))
 
 const noop = {
   onNew: vi.fn(),
@@ -52,13 +59,15 @@ describe("Sidebar chrome", () => {
     })
   })
 
-  it("always offers the Scheduled inbox section", () => {
+  it("keeps Scheduled on the leftmost rail, not as a fold in the chat list", () => {
     render(<Sidebar threads={[]} {...noop} />)
     const trigger = screen.getByRole("button", { name: /Scheduled/ })
+    expect(screen.getByTestId("dest-rail")).toContainElement(trigger)
     expect(trigger).not.toHaveAttribute("aria-haspopup")
     expect(trigger.querySelector("[data-testid=section-fold]")).toBeNull()
-    expect(trigger).toHaveClass("sidebar-section-label")
+    expect(trigger).not.toHaveClass("sidebar-section-label")
     expect(screen.getByTestId("schedule-inbox")).toBeInTheDocument()
+    expect(screen.queryByTestId("clients-list")).not.toBeInTheDocument()
   })
 
   it("opens a new conversation from the first row", () => {
@@ -79,30 +88,39 @@ describe("Sidebar chrome", () => {
     expect(noop.onSettings).toHaveBeenCalled()
   })
 
-  it("keeps Projects on the same gutter as Recents", () => {
-    render(
+  it("keeps Conversations off the project list", () => {
+    const view = render(
       <Sidebar
         threads={[thread("th_1", "Hello")]}
         {...noop}
       />,
     )
-    expect(screen.getByRole("button", { name: "Projects" })).toHaveClass("sidebar-section-label")
-    expect(screen.getByRole("button", { name: /^Conversations$/ })).toHaveClass(
-      "sidebar-section-label",
-    )
+    const projects = within(screen.getByTestId("project-list")).getByRole("button", {
+      name: "Projects",
+    })
+    expect(projects).toHaveClass("sidebar-section-label")
+    expect(screen.queryByTestId("recents-list")).not.toBeInTheDocument()
+    expect(screen.queryByText("Hello")).not.toBeInTheDocument()
     expect(screen.queryByText("Today")).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "All conversations" })).not.toBeInTheDocument()
     expect(screen.getByTestId("project-list")).not.toHaveClass("px-2")
+    act(() => setDeskDest("chats"))
+    view.rerender(<Sidebar threads={[thread("th_1", "Hello")]} {...noop} />)
+    const conversations = within(screen.getByTestId("recents-list")).getByRole("button", {
+      name: "Conversations",
+    })
+    expect(conversations).toHaveClass("sidebar-section-label")
+    expect(screen.queryByTestId("project-list")).not.toBeInTheDocument()
+    expect(screen.getByText("Hello")).toBeInTheDocument()
   })
 
   it("starts a loose conversation from the Conversations header", () => {
+    setDeskDest("chats")
     render(<Sidebar threads={[thread("th_1", "Hello")]} {...noop} />)
     fireEvent.click(screen.getByTestId("recents-new"))
     expect(noop.onNew).toHaveBeenCalled()
-    expect(screen.getByRole("button", { name: "Conversations" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    )
+    expect(
+      within(screen.getByTestId("recents-list")).getByRole("button", { name: "Conversations" }),
+    ).toHaveAttribute("aria-expanded", "true")
   })
 
   it("starts a conversation from a project row without using the list button", () => {
@@ -126,6 +144,7 @@ describe("Sidebar chrome", () => {
   })
 
   it("asks before deleting a conversation", () => {
+    setDeskDest("chats")
     render(<Sidebar threads={[thread("th_1", "Hello")]} {...noop} />)
     // Radix opens on ArrowDown. A synthetic click opens then dismisses as
     // an outside click, and user-event will not click an opacity-0 trigger.
@@ -185,6 +204,7 @@ function drag(from: HTMLElement, to: HTMLElement) {
 describe("Sidebar order", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    setDeskDest("chats")
   })
 
   it("reports the new Recents order after a drop", () => {
@@ -331,6 +351,7 @@ describe("Sidebar pin and folders", () => {
   })
 
   it("puts Recents running progress in the folder column", () => {
+    setDeskDest("chats")
     render(
       <Sidebar
         threads={[thread("th_1", "Loose", { running: true })]}
@@ -344,6 +365,7 @@ describe("Sidebar pin and folders", () => {
   })
 
   it("marks a parked wait in the folder column so it does not look idle", () => {
+    setDeskDest("chats")
     render(
       <Sidebar
         threads={[thread("th_1", "Loose")]}
@@ -356,6 +378,7 @@ describe("Sidebar pin and folders", () => {
   })
 
   it("keeps a live turn's progress when that conversation is also waiting", () => {
+    setDeskDest("chats")
     render(
       <Sidebar
         threads={[thread("th_1", "Loose", { running: true })]}
@@ -369,6 +392,7 @@ describe("Sidebar pin and folders", () => {
   })
 
   it("marks a blocked ask as your turn instead of the working pulse", () => {
+    setDeskDest("chats")
     render(
       <Sidebar
         threads={[thread("th_1", "Loose", { running: true })]}
@@ -385,6 +409,7 @@ describe("Sidebar pin and folders", () => {
   })
 
   it("keeps an asking conversation in the Recents preview", () => {
+    setDeskDest("chats")
     render(
       <Sidebar
         threads={Array.from({ length: 6 }, (_, i) =>
@@ -401,6 +426,7 @@ describe("Sidebar pin and folders", () => {
   })
 
   it("keeps a waiting conversation in the Recents preview", () => {
+    setDeskDest("chats")
     render(
       <Sidebar
         threads={Array.from({ length: 6 }, (_, i) =>
@@ -447,6 +473,7 @@ describe("Sidebar pin and folders", () => {
   })
 
   it("does not offer pin on a Recents conversation", () => {
+    setDeskDest("chats")
     render(<Sidebar threads={[thread("th_1", "Loose")]} {...noop} />)
     fireEvent.keyDown(screen.getByRole("button", { name: "More" }), {
       key: "ArrowDown",
@@ -457,6 +484,7 @@ describe("Sidebar pin and folders", () => {
   // Recents has no folder glyph, but it still reserves the icon slot so
   // the title lines up with a project name.
   it("does not mark Recents with a project-topic icon", () => {
+    setDeskDest("chats")
     render(<Sidebar threads={[thread("th_1", "Loose")]} activeId="th_1" {...noop} />)
     expect(screen.getByTestId("thread-row")).toHaveAttribute("aria-current", "true")
     expect(screen.getByTestId("thread-row")).toHaveClass("sidebar-row")
@@ -465,36 +493,33 @@ describe("Sidebar pin and folders", () => {
     expect(screen.getByTestId("row-kind")).toHaveClass("sidebar-kind")
     expect(screen.getByTestId("row-kind")).toBeEmptyDOMElement()
     expect(
-      screen.getByRole("button", { name: "Conversations" }).querySelector("[data-testid=section-fold]"),
-    ).toHaveClass("opacity-0")
-    expect(
-      screen.getByRole("button", { name: "Projects" }).querySelector("[data-testid=section-fold]"),
+      within(screen.getByTestId("recents-list"))
+        .getByRole("button", { name: "Conversations" })
+        .querySelector("[data-testid=section-fold]"),
     ).toHaveClass("opacity-0")
   })
 
   it("folds Recents on the section header and remembers it", () => {
+    setDeskDest("chats")
     const { unmount } = render(
       <Sidebar threads={[thread("th_1", "Hello")]} {...noop} />,
     )
-    const recents = screen.getByRole("button", { name: "Conversations" })
+    const recents = within(screen.getByTestId("recents-list")).getByRole("button", {
+      name: "Conversations",
+    })
     expect(recents).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByText("Hello")).toBeInTheDocument()
     fireEvent.click(recents)
     expect(screen.queryByTestId("thread-row")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Conversations" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    )
-    expect(
-      screen.getByRole("button", { name: "Conversations" }).querySelector("[data-testid=section-fold]"),
-    ).toHaveClass("opacity-100")
+    expect(recents).toHaveAttribute("aria-expanded", "false")
+    expect(recents.querySelector("[data-testid=section-fold]")).toHaveClass("opacity-100")
     unmount()
     render(<Sidebar threads={[thread("th_1", "Hello")]} {...noop} />)
+    const again = within(screen.getByTestId("recents-list")).getByRole("button", {
+      name: "Conversations",
+    })
     expect(screen.queryByTestId("thread-row")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Conversations" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    )
+    expect(again).toHaveAttribute("aria-expanded", "false")
   })
 
   it("folds Pinned and Projects the same way", () => {
@@ -527,10 +552,26 @@ describe("Sidebar pin and folders", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pinned" }))
     expect(screen.getByTestId("pinned-list").querySelector('[data-testid="thread-row"]')).toBeNull()
     expect(screen.getByRole("button", { name: "First" })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Projects" }))
+    fireEvent.click(
+      within(screen.getByTestId("project-list")).getByRole("button", { name: "Projects" }),
+    )
     expect(screen.queryByRole("button", { name: "First" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "New project" })).toBeInTheDocument()
-    expect(screen.getByText("Loose")).toBeInTheDocument()
+    expect(screen.queryByText("Loose")).not.toBeInTheDocument()
+  })
+})
+
+describe("Sidebar list column", () => {
+  it("hides the list and keeps the icon rail", () => {
+    render(<Sidebar threads={[]} {...noop} listOpen={false} />)
+    expect(screen.getByTestId("dest-rail")).toBeInTheDocument()
+    expect(screen.getByTestId("dest-projects")).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /^New conversation$/ })).not.toBeInTheDocument()
+    expect(screen.queryByTestId("project-list")).not.toBeInTheDocument()
+    expect(screen.queryByRole("separator", { name: "Resize the conversation list" })).not.toBeInTheDocument()
+    expect(screen.getByTestId("conversation-list").style.width).toBe(
+      "var(--dest-rail-width)",
+    )
   })
 })
 

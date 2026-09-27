@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { Header } from "./header"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { openClient } from "@/lib/client-open"
+import { setDeskDest } from "@/lib/desk-nav"
 import {
   SIDEBAR_WIDTH_DEFAULT,
   SIDEBAR_WIDTH_VAR,
@@ -56,9 +58,23 @@ describe("Header sidebar toggle", () => {
     )
   })
 
-  it("does not reserve the sidebar column once the list is gone", () => {
+  it("reserves the icon rail once the list is gone so the title stays with the transcript", () => {
     renderHeader({ sidebarOpen: false })
-    expect(screen.getByTestId("titlebar-leading").style.width).toBe("")
+    expect(screen.getByTestId("titlebar-leading").style.width).toBe(
+      "var(--dest-rail-width)",
+    )
+    expect(
+      screen.getByRole("button", { name: "Show conversations" }).closest(
+        "[data-testid=titlebar-leading]",
+      ),
+    ).toBeNull()
+  })
+
+  it("clears the traffic lights before the show button when the list is gone", () => {
+    renderHeader({ sidebarOpen: false, trafficInset: true })
+    expect(screen.getByTestId("titlebar-leading").style.width).toBe(
+      "max(var(--dest-rail-width), var(--traffic-light-inset))",
+    )
   })
 
   it("pads for traffic lights on the desktop title bar", () => {
@@ -133,6 +149,14 @@ describe("Header project chip", () => {
     expect(screen.getByTestId("thread-title")).toHaveTextContent("Scheduled")
     expect(screen.queryByTestId("thread-project")).not.toBeInTheDocument()
     expect(screen.queryByTestId("status-badge")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Toggle side panel" })).not.toBeInTheDocument()
+  })
+
+  it("hides the panel toggle while a local client session fills the task column", () => {
+    setDeskDest("clients")
+    openClient({ id: "claude:1", title: "Foreign task", status: "done" })
+    renderHeader()
+    expect(screen.getByTestId("thread-title")).toHaveTextContent("Foreign task")
     expect(screen.queryByRole("button", { name: "Toggle side panel" })).not.toBeInTheDocument()
   })
 })

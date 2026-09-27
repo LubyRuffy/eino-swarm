@@ -36,7 +36,6 @@ export const en = {
   "home.clientEmpty": "No tasks in the last 3 days",
   "home.clientReadOnly": "Read only. This does not send or resume.",
   "home.clientMissing": "Could not read this session.",
-  "home.clientTruncated": "Showing the latest part of a long session.",
   "home.loadingMore": "Loading more",
   "home.unlink": "Unlink",
   "home.project": "Project",

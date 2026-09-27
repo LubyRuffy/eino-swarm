@@ -27,9 +27,9 @@ test("keyboard shortcuts open the palette, a conversation and the panel", async 
   await page.keyboard.press("ControlOrMeta+\\")
   await expect(page.getByRole("tab", { name: "Agents" })).toBeVisible()
 
-  // ⌘B hides the conversation list the way Codex/Cursor hide theirs, and
-  // brings it back. The hide/show control lives in the window title bar, so
-  // hiding the list must not trap the user without a way to restore it.
+  // ⌘B hides the list column the way Codex hides theirs, and brings it
+  // back. The icon rail stays, and the control lives in the title bar so
+  // hiding the list cannot trap the reader.
   const hideList = page.getByRole("banner").getByRole("button", {
     name: "Hide conversations",
   })
@@ -44,6 +44,8 @@ test("keyboard shortcuts open the palette, a conversation and the panel", async 
   await expect(newConversation).toBeVisible()
   await page.keyboard.press("ControlOrMeta+b")
   await expect(newConversation).toBeHidden()
+  await expect(page.getByTestId("dest-rail")).toBeVisible()
+  await expect(page.getByTestId("dest-projects")).toBeVisible()
   await expect(
     page.getByRole("banner").getByRole("button", { name: "Show conversations" }),
   ).toBeVisible()
@@ -147,43 +149,23 @@ test("an external link opens a new window instead of replacing the app", async (
   await popup.close()
 })
 
-test("Projects and Conversations share one left gutter", async ({ page }) => {
+test("Projects and Conversations are separate rail lists", async ({ page }) => {
   await page.goto("/")
+  await expect(page.getByTestId("dest-projects")).toHaveAttribute("aria-current", "page")
+  await expect(page.getByTestId("project-list")).toBeVisible()
+  await expect(page.getByTestId("recents-list")).toHaveCount(0)
+
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
-  const projects = page.getByText("Projects", { exact: true })
-  const recents = page.getByText("Conversations", { exact: true })
-  await expect(recents).toBeVisible()
-  const projectBox = await projects.boundingBox()
-  const recentsBox = await recents.boundingBox()
-  expect(projectBox).not.toBeNull()
-  expect(recentsBox).not.toBeNull()
-  expect(Math.abs(projectBox!.x - recentsBox!.x)).toBeLessThan(2)
-
-  const folderBox = await page.getByTestId("project-list").boundingBox()
-  const threadBox = await page.getByTestId("recents-list").locator("div").first().boundingBox()
-  expect(folderBox).not.toBeNull()
-  expect(threadBox).not.toBeNull()
-  expect(Math.abs(folderBox!.x - threadBox!.x)).toBeLessThan(2)
-
-  await page.getByRole("button", { name: "New project" }).click()
-  const name = `Align ${Date.now()}`
-  await page.getByLabel("Name").fill(name)
-  await page.getByRole("button", { name: "Create project" }).click()
-  // Recents already has rows from earlier specs; the gutter is the same on
-  // every row, so the first is enough. The new folder is the one we named.
-  const recentName = await page
+  const conversations = page
     .getByTestId("recents-list")
-    .getByTestId("row-label")
-    .first()
-    .boundingBox()
-  const projectName = await page
-    .getByTestId("project-row")
-    .filter({ hasText: name })
-    .getByTestId("row-label")
-    .boundingBox()
-  expect(recentName).not.toBeNull()
-  expect(projectName).not.toBeNull()
-  expect(Math.abs(recentName!.x - projectName!.x)).toBeLessThan(2)
+    .getByRole("button", { name: "Conversations", exact: true })
+  await expect(conversations).toBeVisible()
+  await expect(page.getByTestId("dest-chats")).toHaveAttribute("aria-current", "page")
+  await expect(page.getByTestId("project-list")).toHaveCount(0)
+
+  await page.getByTestId("dest-projects").click()
+  await expect(page.getByTestId("project-list")).toBeVisible()
+  await expect(page.getByTestId("recents-list")).toHaveCount(0)
 })
 
 test("collapsing Conversations hides its rows across reload", async ({
@@ -194,7 +176,9 @@ test("collapsing Conversations hides its rows across reload", async ({
   await expect(
     page.getByTestId("recents-list").getByTestId("thread-row").first(),
   ).toBeVisible()
-  const recentsHeader = page.getByRole("button", { name: "Conversations", exact: true })
+  const recentsHeader = page
+    .getByTestId("recents-list")
+    .getByRole("button", { name: "Conversations", exact: true })
   const recentsFold = recentsHeader.locator("[data-testid=section-fold]")
   await expect(recentsFold).toHaveCSS("opacity", "0")
   await recentsHeader.hover()
@@ -206,10 +190,9 @@ test("collapsing Conversations hides its rows across reload", async ({
   await expect(recentsHeader).toHaveAttribute("aria-expanded", "false")
   await expect(recentsFold).toHaveCSS("opacity", "1")
   await page.reload()
-  await expect(page.getByRole("button", { name: "Conversations", exact: true })).toHaveAttribute(
-    "aria-expanded",
-    "false",
-  )
+  await expect(
+    page.getByTestId("recents-list").getByRole("button", { name: "Conversations", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false")
   await expect(
     page.getByTestId("recents-list").getByTestId("thread-row"),
   ).toHaveCount(0)
@@ -226,10 +209,9 @@ test("the Conversations header icon starts a conversation outside a project", as
   const before = await active.getAttribute("data-id")
   await page.getByTestId("recents-new").click()
   await expect(active).not.toHaveAttribute("data-id", before!)
-  await expect(page.getByRole("button", { name: "Conversations", exact: true })).toHaveAttribute(
-    "aria-expanded",
-    "true",
-  )
+  await expect(
+    page.getByTestId("recents-list").getByRole("button", { name: "Conversations", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true")
 })
 
 test("the composer sits on the transcript without a dock hairline", async ({

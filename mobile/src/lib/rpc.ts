@@ -187,14 +187,15 @@ export type RemoteResponse = {
   client_view?: ClientView
 }
 
-export type ClientEntry = { role: string; text: string }
+export type ClientEntry = { role: string; text: string; at?: number; n?: number }
 
 export type ClientView = {
   id: string
   title: string
   status: string
   entries: ClientEntry[]
-  truncated?: boolean
+  older?: boolean
+  before?: number
 }
 
 export type ClientTask = {

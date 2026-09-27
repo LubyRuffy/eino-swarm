@@ -23,11 +23,16 @@ co-working app built on it. The library API is unchanged except where noted
 
 - **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group and folds. The first page is at most five tasks from the last 3 days; More loads the next five. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
 
+### Changed
+
+- **Desktop lists sit in a leftmost rail.** Projects is the default list. Conversations (threads with no project), scheduled waits, and local clients each have their own list. The task column is the open conversation, the wait editor, or a client session. Restart keeps the rail on the last list; restoring the open conversation does not jump to Conversations. An unread count on Scheduled stays on the icon (`99+` past that). `⌘B` hides that list column and leaves the icon rail.
+
 ### Fixed
 
 - `F-430` / `C-010`: pending-delivery audits include accepted Mac-only fixes outside the current allocated batch and iOS ledger. New-version eligibility counts only unallocated distinct fixes; locked batches and duplicate reports cannot inflate the next batch.
 
 - `F-150` / `C-009`, `C-012`: scheduled checks and Run now continue once in the same turn when the model ends without tool/report evidence. A repeated acknowledgement or silent response now fails visibly instead of becoming findings/quiet; explicit quiet reports and completed tool execution retain their behavior (Issue #43).
+- **A long local agent session follows the live tail.** Earlier lines load from **Earlier**, on the desktop and on a paired phone. A tail poll keeps a page the reader already opened. The dead “only the latest part” line is gone.
 
 - `F-430` verification: remote idle-disconnect regression records the observed offline transition instead of falsely failing when automatic reconnect wins a second status read; runtime behavior is unchanged.
 

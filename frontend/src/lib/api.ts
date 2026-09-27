@@ -288,10 +288,13 @@ export const api = {
     const q = before ? `?before=${encodeURIComponent(before)}` : ""
     return request<ClientCatalog>(`/api/clients${q}`)
   },
-  clientTask: (id: string) =>
-    request<import("@/lib/local-clients").ClientTranscript>(
-      `/api/clients/task?id=${encodeURIComponent(id)}`,
-    ),
+  clientTask: (id: string, before?: number) => {
+    const params = new URLSearchParams({ id })
+    if (before && before > 0) params.set("before", String(before))
+    return request<import("@/lib/local-clients").ClientTranscript>(
+      `/api/clients/task?${params.toString()}`,
+    )
+  },
 
   search: (q: string, limit?: number) => {
     const params = new URLSearchParams({ q })

@@ -977,7 +977,7 @@ export function App() {
           clientTools={clientTools}
           loadingClientMore={clientPages.loadingMore}
           onClientMore={(id, next) => void clientPages.loadMore(id, next)}
-          onClientRead={(id) => readClientTask(linkRef.current, id)}
+          onClientRead={(id, before) => readClientTask(linkRef.current, id, before)}
           onUnlink={unlink}
           onToggleLocale={flipLocale}
           showChat={providers.length > 0}

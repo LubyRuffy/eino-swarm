@@ -31,7 +31,16 @@ func (s *Server) getClientTask(c *gin.Context) {
 		badRequest(c, "id is required")
 		return
 	}
-	doc, ok := clients.Read(s.engine.Config().Clients, id, time.Now())
+	var before int64
+	if raw := c.Query("before"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n < 0 {
+			badRequest(c, "before must be a byte offset")
+			return
+		}
+		before = n
+	}
+	doc, ok := clients.ReadPage(s.engine.Config().Clients, id, time.Now(), before, clients.PageLimit)
 	if !ok {
 		s.fail(c, store.ErrNotFound)
 		return

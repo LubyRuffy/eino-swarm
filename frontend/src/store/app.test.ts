@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { deskDest, setDeskDest } from "@/lib/desk-nav"
 import { useApp } from "@/store/app"
 import { useProjects } from "@/store/projects"
 
@@ -644,8 +645,21 @@ describe("projects", () => {
   // what lands work in that directory.
   it("starts a new conversation outside any project so it lands in Recents", async () => {
     await useApp.getState().selectProject("pj_1")
+    setDeskDest("projects")
     await useApp.getState().newThread()
     expect(fake.createdIn.at(-1)).toBeUndefined()
+    expect(deskDest()).toBe("chats")
+  })
+
+  // Restart paints the last conversation in the center. The rail is a
+  // choice, and a loose thread must not replace Projects on every launch.
+  it("restores the open conversation without leaving the project list", async () => {
+    setDeskDest("projects")
+    await useApp.getState().boot()
+    expect(useApp.getState().activeId).toBe("th_old")
+    expect(deskDest()).toBe("projects")
+    await useApp.getState().openThread("th_old")
+    expect(deskDest()).toBe("chats")
   })
 
   it("lets a caller override the selected project", async () => {

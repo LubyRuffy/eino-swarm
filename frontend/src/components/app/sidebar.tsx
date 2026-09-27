@@ -9,8 +9,9 @@ import { ResizeHandle } from "@/components/app/resize-handle"
 import { SidebarSection } from "@/components/app/sidebar-section"
 import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { SidebarThreadRow } from "@/components/app/sidebar-thread-row"
+import { DestRail, useVisibleDest } from "@/components/app/dest-rail"
 import { LocalClientsSection } from "@/components/app/local-clients"
-import { ScheduleInboxTrigger } from "@/components/app/schedule-inbox"
+import { ScheduleListPane } from "@/components/app/schedule-inbox"
 import { useApp } from "@/store/app"
 import {
   isProjectExpanded,
@@ -46,8 +47,48 @@ function SidebarVersion() {
   )
 }
 
-/** Conversations, grouped the way people remember them: pins to watch,
- *  project folders, Recents for everything else. */
+function ListToolbar({
+  onNew,
+  onSearch,
+  newLabel,
+  searchLabel,
+}: {
+  onNew: () => void
+  onSearch: () => void
+  newLabel: string
+  searchLabel: string
+}) {
+  return (
+    <div className="flex items-center gap-1.5 px-[var(--sidebar-list-px)] pb-2 pt-2">
+      <Button
+        variant="secondary"
+        size="sm"
+        className={cn(chromeTypeClass, "min-w-0 flex-1 justify-start gap-2 overflow-hidden")}
+        style={{ height: "var(--sidebar-row-height)" }}
+        onClick={onNew}
+      >
+        <MessageSquarePlus className="shrink-0" />
+        <span className="min-w-0 truncate">{newLabel}</span>
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="shrink-0"
+        style={{
+          width: "var(--sidebar-row-height)",
+          height: "var(--sidebar-row-height)",
+        }}
+        onClick={onSearch}
+        title={searchLabel}
+      >
+        <Search />
+      </Button>
+    </div>
+  )
+}
+
+/** Projects are the list. Conversations with no project, waits, and
+ *  local clients each take the same column when their rail icon is current. */
 export function Sidebar({
   threads,
   activeId,
@@ -73,6 +114,7 @@ export function Sidebar({
   onReorder,
   onReorderProjects,
   onPin,
+  listOpen = true,
 }: {
   threads: Thread[]
   activeId?: string
@@ -98,10 +140,11 @@ export function Sidebar({
   onReorder: (ids: string[]) => void
   onReorderProjects: (ids: string[]) => void
   onPin: (id: string, pinned: boolean) => void
+  listOpen?: boolean
 }) {
   const t = useT()
-  const inboxOpen = useApp((s) => s.scheduleInboxOpen)
-  const currentId = inboxOpen ? undefined : activeId
+  const pane = useVisibleDest()
+  const currentId = pane === "projects" || pane === "chats" ? activeId : undefined
   const buckets = useMemo(() => sidebarBuckets(threads), [threads])
   const [startWidth] = useState(hydrateSidebarWidth)
   const [doomed, setDoomed] = useState<Thread>()
@@ -140,143 +183,146 @@ export function Sidebar({
     // paints over that overlap and the drag dies.
     <aside
       data-testid="conversation-list"
-      className="relative z-10 flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar"
-      style={{ width: `var(${SIDEBAR_WIDTH_VAR}, ${startWidth}px)` }}
+      className="relative z-10 flex h-full shrink-0 border-r border-sidebar-border bg-sidebar"
+      style={{
+        width: listOpen
+          ? `var(${SIDEBAR_WIDTH_VAR}, ${startWidth}px)`
+          : "var(--dest-rail-width)",
+      }}
     >
-      <ResizeHandle
-        width={startWidth}
-        onWidthChange={paintSidebarWidth}
-        onWidthCommit={applySidebarWidth}
-        edge="right"
-        label={t("sidebar.resize")}
-        min={SIDEBAR_WIDTH_MIN}
-        max={SIDEBAR_WIDTH_MAX}
-      />
-      <div className="flex items-center gap-1.5 px-[var(--sidebar-list-px)] pb-2 pt-2">
-        <Button
-          variant="secondary"
-          size="sm"
-          className={cn(
-            chromeTypeClass,
-            "min-w-0 flex-1 justify-start gap-2 overflow-hidden",
-          )}
-          style={{ height: "var(--sidebar-row-height)" }}
-          onClick={onNew}
-        >
-          <MessageSquarePlus className="shrink-0" />
-          <span className="min-w-0 truncate">{t("sidebar.newConversation")}</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0"
-          style={{
-            width: "var(--sidebar-row-height)",
-            height: "var(--sidebar-row-height)",
-          }}
-          onClick={onSearch}
-          title={t("sidebar.search")}
-        >
-          <Search />
-        </Button>
-      </div>
-
-      <div className="thin-scrollbar flex-1 overflow-y-auto px-[var(--sidebar-list-px)] pb-3 pt-1">
-        {buckets.pinned.length > 0 ? (
-          <SidebarSection
-            testId="pinned-list"
-            label={t("sidebar.pinned")}
-            open={sections.pinned}
-            onToggle={() => toggleSection("pinned")}
-          >
-            {buckets.pinned.map((thread) => (
-              <SidebarThreadRow
-                key={thread.id}
-                thread={thread}
-                active={thread.id === currentId}
-                running={thread.running || thread.id === runningId}
-                waiting={waitingIds?.has(thread.id)}
-                asking={Boolean(askingIds?.has(thread.id) || thread.awaiting_answer)}
-                onOpen={onOpen}
-                onRename={onRename}
-                onDelete={askDelete}
-                onPin={onPin}
-              />
-            ))}
-          </SidebarSection>
-        ) : null}
-
-        <ProjectList
-          projects={projects}
-          threadsByProject={buckets.byProject}
-          expanded={openByProject}
-          activeId={currentId}
-          runningId={runningId}
-          waitingIds={waitingIds}
-          askingIds={askingIds}
-          sectionOpen={sections.projects}
-          onToggleSection={() => toggleSection("projects")}
-          onSelect={onSelectProject}
-          onToggle={(id) => {
-            const next = { ...expanded, [id]: !openByProject[id] }
-            setExpanded(next)
-            writeProjectExpanded(next)
-          }}
-          onNew={onNewProject}
-          onNewConversation={onNewInProject}
-          onEdit={onEditProject}
-          onDelete={onDeleteProject}
-          onOpenSkill={onOpenSkill}
-          onReorder={onReorderProjects}
-          onOpenThread={onOpen}
-          onRenameThread={onRename}
-          onDeleteThread={askDelete}
-          onReorderThreads={onReorder}
-          onPinThread={onPin}
+      {listOpen ? (
+        <ResizeHandle
+          width={startWidth}
+          onWidthChange={paintSidebarWidth}
+          onWidthCommit={applySidebarWidth}
+          edge="right"
+          label={t("sidebar.resize")}
+          min={SIDEBAR_WIDTH_MIN}
+          max={SIDEBAR_WIDTH_MAX}
         />
-
-        {buckets.recents.length > 0 ? (
-          <SidebarSection
-            testId="recents-list"
-            label={t("sidebar.recents")}
-            open={sections.recents}
-            onToggle={() => toggleSection("recents")}
-            actions={
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                data-testid="recents-new"
-                onClick={onNew}
-                aria-label={t("sidebar.newInRecents")}
-                title={t("sidebar.newInRecents")}
-              >
-                <MessageSquarePlus />
-              </Button>
-            }
-          >
-            <SidebarThreadGroup
-              threads={buckets.recents}
-              activeId={currentId}
-              runningId={runningId}
-              waitingIds={waitingIds}
-              askingIds={askingIds}
-              onOpen={onOpen}
-              onRename={onRename}
-              onDelete={askDelete}
-              onReorder={onReorder}
+      ) : null}
+      <DestRail edge={listOpen} />
+      {listOpen ? (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {pane === "projects" ? (
+          <>
+            <ListToolbar
+              onNew={onNew}
+              onSearch={onSearch}
+              newLabel={t("sidebar.newConversation")}
+              searchLabel={t("sidebar.search")}
             />
-          </SidebarSection>
-        ) : threads.length === 0 ? (
-          <p className={cn(chromeTypeClass, "px-[var(--sidebar-row-px)] py-6 text-sidebar-foreground/70")}>
-            {t("sidebar.empty")}
-          </p>
+            <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-[var(--sidebar-list-px)] pb-3 pt-1">
+              {buckets.pinned.length > 0 ? (
+                <SidebarSection
+                  testId="pinned-list"
+                  label={t("sidebar.pinned")}
+                  open={sections.pinned}
+                  onToggle={() => toggleSection("pinned")}
+                >
+                  {buckets.pinned.map((thread) => (
+                    <SidebarThreadRow
+                      key={thread.id}
+                      thread={thread}
+                      active={thread.id === currentId}
+                      running={thread.running || thread.id === runningId}
+                      waiting={waitingIds?.has(thread.id)}
+                      asking={Boolean(askingIds?.has(thread.id) || thread.awaiting_answer)}
+                      onOpen={onOpen}
+                      onRename={onRename}
+                      onDelete={askDelete}
+                      onPin={onPin}
+                    />
+                  ))}
+                </SidebarSection>
+              ) : null}
+              <ProjectList
+                projects={projects}
+                threadsByProject={buckets.byProject}
+                expanded={openByProject}
+                activeId={currentId}
+                runningId={runningId}
+                waitingIds={waitingIds}
+                askingIds={askingIds}
+                sectionOpen={sections.projects}
+                onToggleSection={() => toggleSection("projects")}
+                onSelect={onSelectProject}
+                onToggle={(id) => {
+                  const next = { ...expanded, [id]: !openByProject[id] }
+                  setExpanded(next)
+                  writeProjectExpanded(next)
+                }}
+                onNew={onNewProject}
+                onNewConversation={onNewInProject}
+                onEdit={onEditProject}
+                onDelete={onDeleteProject}
+                onOpenSkill={onOpenSkill}
+                onReorder={onReorderProjects}
+                onOpenThread={onOpen}
+                onRenameThread={onRename}
+                onDeleteThread={askDelete}
+                onReorderThreads={onReorder}
+                onPinThread={onPin}
+              />
+            </div>
+          </>
+        ) : null}
+        {pane === "chats" ? (
+          <>
+            <ListToolbar
+              onNew={onNew}
+              onSearch={onSearch}
+              newLabel={t("sidebar.newConversation")}
+              searchLabel={t("sidebar.search")}
+            />
+            <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-[var(--sidebar-list-px)] pb-3 pt-1">
+              {buckets.recents.length > 0 ? (
+                <SidebarSection
+                  testId="recents-list"
+                  label={t("sidebar.recents")}
+                  open={sections.recents}
+                  onToggle={() => toggleSection("recents")}
+                  actions={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      data-testid="recents-new"
+                      onClick={onNew}
+                      aria-label={t("sidebar.newInRecents")}
+                      title={t("sidebar.newInRecents")}
+                    >
+                      <MessageSquarePlus />
+                    </Button>
+                  }
+                >
+                  <SidebarThreadGroup
+                    threads={buckets.recents}
+                    activeId={currentId}
+                    runningId={runningId}
+                    waitingIds={waitingIds}
+                    askingIds={askingIds}
+                    onOpen={onOpen}
+                    onRename={onRename}
+                    onDelete={askDelete}
+                    onReorder={onReorder}
+                  />
+                </SidebarSection>
+              ) : (
+                <p className={cn(chromeTypeClass, "px-[var(--sidebar-row-px)] py-6 text-sidebar-foreground/70")}>
+                  {t("sidebar.empty")}
+                </p>
+              )}
+            </div>
+          </>
+        ) : null}
+        {pane === "scheduled" ? <ScheduleListPane /> : null}
+        {pane === "clients" ? (
+          <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-[var(--sidebar-list-px)] py-2">
+            <LocalClientsSection bare />
+          </div>
         ) : null}
 
-        <LocalClientsSection />
-        <ScheduleInboxTrigger />
-      </div>
-
-      <div className="border-t border-sidebar-border px-[var(--sidebar-list-px)] py-2.5">
+        <div className="mt-auto border-t border-sidebar-border px-[var(--sidebar-list-px)] py-2.5">
         <SidebarVersion />
         <div className="flex items-center gap-1">
         <ChromeMenu onToggleTheme={onToggleTheme} onToggleLocale={onToggleLocale} />
@@ -295,6 +341,8 @@ export function Sidebar({
         </Button>
         </div>
       </div>
+      </div>
+      ) : null}
       <ConfirmDeleteDialog
         open={Boolean(doomed)}
         title={t("thread.deleteTitle", {

@@ -146,7 +146,9 @@ iOS and Android trees ship with camera permission, no compiled hub URL, and
 the zwai launcher (not Capacitor's default icon), and that Android release
 Gradle takes version/signing from the environment (no password in git).
 `mobile/src/app.test.tsx` and `mobile/src/components/client-groups.test.tsx`
-cover Clients More pending, duplicate tap, success, and failure. The mobile
+cover Clients More pending, duplicate tap, success, and failure. A Clients
+task's **Earlier** loads the page above the live tail and a later read keeps
+that page (`client-groups.test.tsx`, `frontend/src/lib/client-log.test.ts`). The mobile
 walkthrough holds a scripted Clients page briefly to verify the spinner.
 `mobile/src/lib/android-back.test.ts`, `mobile/src/app.test.tsx`, and the phone
 walkthrough prove that a Clients task consumes the first Android Back, root
@@ -794,11 +796,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   on the sidebar row and Waiting on the title bar (`waitingThreadIds`,
   `wait-mark.tsx`), run-now painting the open conversation Working,
   a `schedule_skipped` stream event refreshing the list, and a silent
-  schedule GET that must not toast. The inbox is the main column (`schedule-page`,
-  `absolute inset-0`); it defaults to Active; Completed
+  schedule GET that must not toast. The inbox list is the nav column
+  (`schedule-list-pane` inside `conversation-list`); the editor is the task
+  column (`schedule-page` wraps both and is not an `absolute inset-0` overlay).
+  It defaults to Active; Completed
   lists done and cancelled waits. The conversation side panel is hidden
   (`side-panel`). Create opens `schedule-create-drawer` so the form does not
-  sit on the list; Expand fills the column (`data-expanded`, list pane hidden;
+  sit on the list; Expand hides the list (`data-expanded`, list pane `hidden`;
   Escape collapses first). The form is a Task field plus Details (Runs in:
   new conversation each run, or wake a listed chat; Project only for a minted
   conversation) and Frequency (Repeat + delay/every/cron). Click a row for
@@ -1219,13 +1223,15 @@ Several things are tested here, some as pure logic and some in jsdom:
   **`src/components/app/sidebar-slots.tsx`**,
   **`src/components/app/sidebar-thread-row.tsx`**, and
   **`src/components/app/sidebar-thread-group.tsx`**, rendered in jsdom
-  (`sidebar-slots.test.ts` pins chrome-relative density, not rem): the list
+  (`sidebar-slots.test.ts` pins chrome-relative density, not rem): a leftmost
+  rail (`dest-rail`) switches Projects (default), Conversations, Scheduled, and Clients so those lists are
+  not stacked in one scroll or drawn over the task. The project list
   starts with New conversation; there is no title-bar chrome row and no hide
   control — those live on the window title bar. Settings is a
   rounded pill at the bottom that fills `sidebar-accent` on hover, beside an
-  app menu (conversation width, developer view, theme, language, which other shells are open, build version). Projects and Conversations share
-  `sidebar-section-label` (same px gutter as the rows). Wrapping the project
-  section in a second `px-2` is rejected so it cannot sit further in than Conversations. The list starts at
+  app menu (conversation width, developer view, theme, language, which other shells are open, build version). Projects and Conversations are separate rail pages; each section still uses
+  `sidebar-section-label`. Wrapping the project
+  section in a second `px-2` is rejected. The list starts at
   256px, the arrow keys change that width (CSS variable, not a React `width`
   style), a remembered width is restored, and the resize strip sits on the
   right edge (`z-20`) with the aside stacked above the transcript (`z-10`) so
@@ -1512,6 +1518,7 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled page in the main column (Create opens the right drawer, Task only — the inbox name is generated — Repeat → On an interval, Every (seconds) 60, Add wait; Agents/Files/Trace rail hidden; Expand fills the page (`data-expanded`) then Collapse restores the list), click the row to open the editor, Run now, Escape back to the conversation, unread / Open findings landing on the minted conversation whose title matches that generated name, with a `Scheduled check.` chip and no user bubble of the protocol wrapper; REST create then click-to-edit title/prompt/cadence and Save; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
 | `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Keep this computer awake, Bound phones empty copy, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. A binding that appears on a later list read while the QR stays up is painted without leaving Phone. |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR opens a live viewfinder (four corners, a beam whose `scan-beam` animation is running, a fake-camera preview); junk paste errors; a syntactically valid URI uses the same bind path; a saved ticket shows host chips and Connecting, not the scan form; Add a PC is a sheet |
+| `e2e/clients.spec.ts` | a long local agent session opens on the live reply, **Earlier** loads the lines above it, and that reply stays on screen |
 | `e2e/settings.spec.ts` | Settings sheet: tool catalogue on a never-saved config, round-trip through the config file, per-note memory cap, personality, pinning a title-generation model, discovering models into the default dropdown, a failed listing toasting over the open provider, **Back to app** on a short window when Swarm is long, the Add-a-provider outline inside the Models scrollport, semantic search off by default, local agent tasks hidden until Clients is enabled (empty directories, three tool groups, no task rows), Color theme / font / conversation width, directory rows tracking UI size not conversation size, chrome language switching (restored to English) |
 | `e2e/shell.spec.ts` | keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline (pins and the box share one slab; the join sits on that plate), Projects and Conversations sharing one left gutter (conversation titles in the icon column), collapsing Conversations so its rows stay hidden across reload, the Conversations header icon starting a conversation outside a project, an external link opening a new window instead of replacing the app, ⌘K finding a conversation by words in its body, theme switching persisted, the app-menu width control filling the pane in wide mode and restoring the reading column (also persisted), renaming a conversation and deleting it after a confirm, and dragging a Conversations row pinning that order across reload |
 

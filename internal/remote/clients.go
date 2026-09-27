@@ -14,25 +14,23 @@ import (
 const clientWireLimit = 30
 
 func handleClientRead(eng *engine.Engine, req Request, path, sessionID string) Response {
-	doc, ok := clients.Read(eng.Config().Clients, strings.TrimSpace(req.TaskID), time.Now())
+	if req.Before < 0 {
+		return fail(req.ID, path, sessionID, "bad_request", "before must be a byte offset")
+	}
+	doc, ok := clients.ReadPage(eng.Config().Clients, strings.TrimSpace(req.TaskID), time.Now(), req.Before, clients.PhonePageLimit)
 	if !ok {
 		return fail(req.ID, path, sessionID, "not_found", "task not found")
 	}
 	view := &ClientView{
 		ID: doc.ID, Title: doc.Title, Status: doc.Status, UpdatedAt: doc.UpdatedAt,
-		Truncated: doc.Truncated, Entries: []ClientEntry{},
+		Older: doc.Older, Before: doc.Before, Entries: []ClientEntry{},
 	}
-	entries := doc.Entries
-	if trimmed, cut := clients.TrimKeepingRequest(entries, 30); cut {
-		entries = trimmed
-		view.Truncated = true
-	}
-	for _, e := range entries {
+	for _, e := range doc.Entries {
 		text := e.Text
 		if len([]rune(text)) > 180 {
 			text = string([]rune(text)[:179]) + "…"
 		}
-		view.Entries = append(view.Entries, ClientEntry{Role: e.Role, Text: text})
+		view.Entries = append(view.Entries, ClientEntry{Role: e.Role, Text: text, At: e.At, N: e.N})
 	}
 	resp := okBase(req.ID, path, sessionID)
 	resp.ClientView = view

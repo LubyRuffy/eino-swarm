@@ -2,7 +2,6 @@ package clients
 
 import (
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,33 +13,55 @@ import (
 )
 
 const (
-	entryCap   = 60
-	entryRunes = 400
-	readBytes  = 256 << 10
+	PageLimit      = 60
+	PhonePageLimit = 30
+	entryRunes     = 400
+	readBytes      = 256 << 10
+	maxPageWindow  = 8 << 20
 )
 
 // Entry is one visible line of a foreign session. Role is user, assistant,
 // thinking, or tool. This is a reading, not a turn the engine can steer.
+// At is the byte offset of the source line; N is the index of this entry
+// inside that line. Both stay put when the file grows, so a later tail
+// poll can merge without dropping a page the reader already loaded.
 type Entry struct {
 	Role string `json:"role"`
 	Text string `json:"text"`
+	At   int64  `json:"at"`
+	N    int    `json:"n,omitempty"`
 }
 
-// Transcript is the read-only body of one local agent task.
+// Transcript is one page of a local agent task. Older means lines exist
+// before this page; Before is the byte offset to pass to ReadPage for them.
 type Transcript struct {
 	ID        string    `json:"id"`
 	Title     string    `json:"title"`
 	Status    string    `json:"status"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Entries   []Entry   `json:"entries"`
-	Truncated bool      `json:"truncated,omitempty"`
+	Older     bool      `json:"older,omitempty"`
+	Before    int64     `json:"before,omitempty"`
 }
 
-// Read loads one session by the id List assigned. The switch must be on.
+// Read loads the live tail of one session. The switch must be on.
 // A missing id or a path outside the configured root is not found.
 func Read(cfg config.ClientsConfig, id string, now time.Time) (Transcript, bool) {
+	return ReadPage(cfg, id, now, 0, PageLimit)
+}
+
+// ReadPage loads one page. before 0 is the live tail; a positive before is
+// the byte offset of the first line already on screen, and the page is the
+// lines that end before it. The opening request is on every page.
+func ReadPage(cfg config.ClientsConfig, id string, now time.Time, before int64, limit int) (Transcript, bool) {
 	if !cfg.Enabled {
 		return Transcript{}, false
+	}
+	if limit < 1 {
+		limit = PageLimit
+	}
+	if before < 0 {
+		before = 0
 	}
 	tool, rest, ok := splitTaskID(id)
 	if !ok {
@@ -54,15 +75,18 @@ func Read(cfg config.ClientsConfig, id string, now time.Time) (Transcript, bool)
 	if !ok {
 		return Transcript{}, false
 	}
-	body, clipped := readSession(path)
-	entries := entriesFrom(tool, body)
-	truncated := clipped
+	f, err := os.Open(path)
+	if err != nil {
+		return Transcript{}, false
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || st.IsDir() {
+		return Transcript{}, false
+	}
+	entries, older, cursor := pageEntries(f, st.Size(), tool, before, limit)
 	if entries == nil {
 		entries = []Entry{}
-	}
-	if trimmed, cut := TrimKeepingRequest(entries, entryCap); cut {
-		entries = trimmed
-		truncated = true
 	}
 	title := titleOf(tool, h)
 	if title == "" {
@@ -74,7 +98,8 @@ func Read(cfg config.ClientsConfig, id string, now time.Time) (Transcript, bool)
 		Status:    statusOf(tool, h, now, cfg.RunningStale()),
 		UpdatedAt: h.mtime,
 		Entries:   entries,
-		Truncated: truncated,
+		Older:     older,
+		Before:    cursor,
 	}, true
 }
 
@@ -179,37 +204,6 @@ func walkCodex(root, id string) (string, bool) {
 		return nil
 	})
 	return found, found != ""
-}
-
-func readSession(path string) ([]byte, bool) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, false
-	}
-	defer f.Close()
-	st, err := f.Stat()
-	if err != nil || st.IsDir() {
-		return nil, false
-	}
-	if st.Size() <= readBytes*2 {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			return nil, false
-		}
-		return b, false
-	}
-	head := make([]byte, readBytes)
-	if _, err := f.Read(head); err != nil {
-		return nil, false
-	}
-	if _, err := f.Seek(-readBytes, io.SeekEnd); err != nil {
-		return nil, false
-	}
-	tail := make([]byte, readBytes)
-	if _, err := f.Read(tail); err != nil {
-		return nil, false
-	}
-	return append(append(dropPartial(head, true), '\n'), dropPartial(tail, false)...), true
 }
 
 func titleOf(tool string, h hit) string {
@@ -372,42 +366,6 @@ func thinkingFromSummary(raw json.RawMessage) []Entry {
 		}
 	}
 	return out
-}
-
-// TrimKeepingRequest keeps the opening user request when a long session is
-// cut down to its latest lines. The tail alone is tool calls, so the top of
-// the chat had nothing the user typed.
-func TrimKeepingRequest(entries []Entry, limit int) ([]Entry, bool) {
-	if limit < 1 || len(entries) <= limit {
-		return entries, false
-	}
-	first := -1
-	for i, e := range entries {
-		if e.Role == "user" {
-			first = i
-			break
-		}
-	}
-	if first < 0 || first >= len(entries)-limit {
-		return entries[len(entries)-limit:], true
-	}
-	end := first + 1
-	for end < len(entries) && entries[end].Role == "user" {
-		end++
-	}
-	head := entries[first:end]
-	if len(head) >= limit {
-		return append([]Entry{}, head[:limit]...), true
-	}
-	room := limit - len(head)
-	start := len(entries) - room
-	if start < end {
-		start = end
-	}
-	out := make([]Entry, 0, limit)
-	out = append(out, head...)
-	out = append(out, entries[start:]...)
-	return out, true
 }
 
 func clipEntry(s string) string {
