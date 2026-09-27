@@ -51,27 +51,28 @@ deterministic and fast enough to run on every change.
 | Phone E2E | scan screen opens a live viewfinder (frame, sweeping beam, fake-camera preview) and paste of the same `pairlink:v1` URI; a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a menu sheet; New chat and a project row open the start screen, and on a 320px-wide viewport the project row and the message box stay inside it; sub-agent list opens a separate activity log without painting worker answers as manager answers; Check for updates shows fetching, then current, an install question, or the stubbed feed error | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, New chat, Start | see `mobile/README.md` (not in `make check`) |
 
-Current Go coverage, from `go test -race -cover -timeout 20m ./...`:
+Observed Go coverage on the 2026-09-27 integrated candidate, from
+`go test -race -cover -timeout 20m ./...` (background paths can vary between runs):
 
 | package | coverage |
 |---|---|
 | `frontend` | 92.9% |
-| `internal/memory` | 97.0% |
-| `internal/provider` | 92.1% |
+| `internal/memory` | 96.9% |
+| `internal/provider` | 91.2% |
 | `.` (swarm library) | 95.0% |
 | `internal/tools` | 98.3% |
 | `internal/store` | 90.7% |
 | `internal/search` | 90.6% |
-| `internal/engine` | 90.5% |
-| `internal/config` | 91.9% |
+| `internal/engine` | 90.1% |
+| `internal/config` | 88.7% |
 | `internal/terminal` | 97.8% |
-| `internal/server` | 90.6% |
+| `internal/server` | 89.9% |
 | `internal/slash` | 92.9% |
-| `internal/lease` | 92.2% |
-| `internal/tui` | 87.7% |
-| `internal/app` | 88.7% |
-| `cmd/zwai` | 84.7% |
-| `internal/remote` | 94.1% |
+| `internal/lease` | 92.9% |
+| `internal/tui` | 87.8% |
+| `internal/app` | 88.8% |
+| `cmd/zwai` | 85.9% |
+| `internal/remote` | 92.7% |
 | `internal/wakeup` | 95.7% |
 
 `internal/wakeup` is the phone-host sleep assertion. `TestSetDoesNotBounceTheAssertion`
