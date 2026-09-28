@@ -459,6 +459,8 @@ conversation. The composer stays where it is and cannot be used. A paired phone
 opens the same chat with the same locked composer, the same **Earlier**
 control, and the same follow of the live tail. The switch is off until
 you turn it on.
+On iOS, the phone's read-only client detail keeps its title and Back button
+above the task log when the inbox is pulled down; Back returns to the inbox.
 On the phone, Clients → More shows a loading spinner while the next page arrives.
 If that request fails, the existing rows stay visible and More can be retried.
 In a Clients task, Android Back returns to the list; Back from the root inbox

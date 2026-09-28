@@ -103,7 +103,8 @@ tasks from the last three days; More loads the next five. The phone does
 not scan its own disk. Opening a row fills the chat. The opening request stays pinned at the top.
 The column follows the latest lines, and **Earlier** loads the page above that.
 Adjacent thinking and tool calls start collapsed, the same row as a conversation. The composer stays
-on screen and cannot send.
+on screen and cannot send. On iOS the task title and Back button remain visible
+when the inbox is pulled down; Back returns to the task list.
 
 ## A model on the phone
 

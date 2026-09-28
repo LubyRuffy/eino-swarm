@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 import { ChevronDown, ChevronLeft, ChevronRight, Loader2 } from "lucide-react"
 
 import { Composer } from "@/components/composer"
@@ -225,8 +226,18 @@ export function ClientGroups({
           )}
         </div>
       ))}
-      {view ? (
-        <section className="fixed inset-0 z-40 flex flex-col bg-background" data-testid="client-transcript">
+      {/* Pull-to-refresh transforms its scroller; a fixed child there would
+          move with it and lose the title/Back button above the viewport. */}
+      {view ? createPortal(
+        <section
+          className="fixed inset-0 z-40 flex flex-col bg-background"
+          style={{ padding: "env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)" }}
+          data-testid="client-transcript"
+          onTouchStart={(event) => event.stopPropagation()}
+          onTouchMove={(event) => event.stopPropagation()}
+          onTouchEnd={(event) => event.stopPropagation()}
+          onTouchCancel={(event) => event.stopPropagation()}
+        >
           <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-2">
             <Button
               type="button"
@@ -314,7 +325,8 @@ export function ClientGroups({
             disabled
             onSubmit={() => undefined}
           />
-        </section>
+        </section>,
+        document.body,
       ) : null}
     </section>
   )

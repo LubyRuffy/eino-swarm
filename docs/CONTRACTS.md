@@ -122,3 +122,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 契约内容：消息和引用的可编辑文字至少为 16 CSS px，避免 iOS 聚焦小字输入框后留下自动放大；关闭键盘后，会话顶部仍在原有安全区域，等待操作及发送／跟进／插入按钮不得超出屏幕右边缘；长输入和长模型名不要求用户横向拖动才能提交。
 - 允许行为：用户主动缩放；禁止行为：用禁止用户缩放代替修复，或在键盘关闭后留下自动缩放和顶部偏移；失败语义：布局恢复不依赖网络；不变量：聚焦输入框不改变关闭键盘后的导航、等待操作和提交可达性；边界条件：窄屏、长输入、长模型名、引用编辑、等待中的会话、PC／新建／直连对话。
 - 证据：实现 `mobile/src/components/composer.tsx`；测试 `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`, `mobile/e2e/ios-wait-layout.swift`, `mobile/scripts/ios-layout-fixture.py`；变更规则：修改编辑器字号须重验 Web 布局和 iOS 键盘关闭后的真实页面；来源：GitHub Issues #40、#41（同一聚焦放大根因）。
+
+## C-018 Phone client detail stays in the viewport
+
+- 状态：active；类型：lifecycle / compatibility；作用范围：手机 Clients 任务详情；关联功能：`F-223`。
+- 契约内容：任务详情覆盖手机视口；下拉收件箱、滚动任务记录或切换安全区域时，详情标题和返回按钮仍在可见视口内，返回按钮回到 Clients 列表。详情内的触摸不得触发底层收件箱下拉刷新。
+- 允许行为：底层收件箱继续管理自身下拉刷新；禁止行为：让详情随收件箱的 transform 移动，或露出底层收件箱的导航控件；失败语义：详情读取失败时保留可用的返回入口和错误提示；不变量：详情层的位置不取决于收件箱滚动容器的位置；边界条件：iOS 安全区域、下拉刷新、长任务记录与 Android 系统返回。
+- 证据：实现 `mobile/src/components/client-groups.tsx`, `mobile/src/components/pull-to-refresh.tsx`；测试 `mobile/src/components/client-groups.test.tsx`, `mobile/e2e/composer-layout.spec.ts`, `mobile/e2e/ios-wait-layout.swift`；变更规则：修改手机全屏详情或收件箱变换时同步验证 WebKit 和原生 iOS 的标题及返回；来源：GitHub Issue #45。

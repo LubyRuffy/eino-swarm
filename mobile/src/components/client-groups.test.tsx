@@ -62,6 +62,21 @@ describe("ClientGroups", () => {
     expect(screen.getByLabelText("Message")).toBeDisabled()
   })
 
+  it("keeps task-detail touches out of the inbox pull gesture", () => {
+    const onInboxTouch = vi.fn()
+    render(
+      <div onTouchStart={onInboxTouch}>
+        <ClientGroups
+          tools={[{ id: "codex", more: false, tasks: [{ id: "c1", title: "open session", status: "done", updated_at: "2026-09-25T00:00:00Z" }] }]}
+          onMore={() => undefined}
+        />
+      </div>,
+    )
+    fireEvent.click(screen.getByRole("button", { name: "open session" }))
+    fireEvent.touchStart(screen.getByTestId("client-transcript"))
+    expect(onInboxTouch).not.toHaveBeenCalled()
+  })
+
   it("folds a tool group and hides its tasks", () => {
     render(
       <ClientGroups

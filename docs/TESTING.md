@@ -1647,6 +1647,14 @@ parked wait, type, dismiss the keyboard, then check that Back is hittable at
 its original vertical position and Run now remains inside the screen.
 A second test checks the submission button after typing and actually submits
 the draft without horizontal scrolling.
+The Clients task-detail test opens a read-only session, drags down while its
+underlying inbox is present, checks that the title/Back layer remains fixed
+and hittable, then returns to the task list. The matching Chromium/WebKit
+regression in `mobile/e2e/composer-layout.spec.ts` first failed with the detail
+64 CSS px above the viewport when the inbox scroller was transformed; it now
+checks full viewport bounds and Back navigation. This covers `C-018` and Issue
+#45 without changing the user's installed app. A component test also verifies
+that a touch inside the portaled detail does not bubble into inbox refresh.
 
 Use an isolated iPhone 17 / iOS 26 simulator; set `IOS_LAYOUT_SIMULATOR` to its
 UDID (`xcrun simctl list devices`). The fixture script copies the current
