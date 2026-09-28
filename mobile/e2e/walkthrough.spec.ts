@@ -147,6 +147,66 @@ test("selected answer text becomes a removable quote in the next phone message",
   await expect(page.getByTestId("quote-drafts")).toHaveCount(0)
 })
 
+test("Add to chat stays beside a phone selection below the native text menu", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(WALKTHROUGH)
+  await page.getByLabel("消息").fill("show result")
+  await page.getByRole("button", { name: "跟进" }).click()
+  const source = page.getByTestId("transcript").getByText("Here is what changed:")
+  await source.scrollIntoViewIfNeeded()
+  await source.evaluate((element) => {
+    element.scrollIntoView({ block: "center" })
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    document.dispatchEvent(new Event("selectionchange"))
+  })
+
+  const selection = await page.evaluate(() => {
+    const range = window.getSelection()?.getRangeAt(0)
+    const rect = range?.getBoundingClientRect()
+    return rect ? { bottom: rect.bottom, center: rect.left + rect.width / 2 } : null
+  })
+  expect(selection).not.toBeNull()
+  const action = await page.getByRole("button", { name: "加入对话" }).boundingBox()
+  expect(action).not.toBeNull()
+  // The native Copy/Select toolbar owns the space above the highlight.
+  expect(action!.y - selection!.bottom).toBeGreaterThanOrEqual(56)
+  expect(action!.y - selection!.bottom).toBeLessThanOrEqual(80)
+  expect(Math.abs(action!.x + action!.width / 2 - selection!.center)).toBeLessThanOrEqual(96)
+  expect(action!.x).toBeGreaterThanOrEqual(8)
+  expect(action!.x + action!.width).toBeLessThanOrEqual(367)
+})
+
+test("Add to chat gets its own row below a bottom transcript selection", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto(WALKTHROUGH)
+  await page.getByRole("button", { name: "返回" }).click()
+  await page.getByRole("button", { name: /^打开 Sweep the unused exports$/ }).click()
+  await page.locator(".screen-push").evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)))
+  const source = page.getByTestId("transcript").getByText("Run npm test to see it green.")
+  await source.evaluate((element) => {
+    element.scrollIntoView({ block: "end" })
+    const range = document.createRange()
+    range.selectNodeContents(element)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    document.dispatchEvent(new Event("selectionchange"))
+  })
+  const selection = await page.evaluate(() => {
+    const rects = window.getSelection()?.getRangeAt(0).getClientRects()
+    const rect = rects?.item(rects.length - 1)
+    return rect ? { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom } : null
+  })
+  const action = await page.getByRole("button", { name: "加入对话" }).boundingBox()
+  expect(selection).not.toBeNull()
+  expect(action).not.toBeNull()
+  expect(action!.y - selection!.bottom).toBeGreaterThanOrEqual(6)
+  expect(action!.y - selection!.bottom).toBeLessThanOrEqual(56)
+  expect(action!.x + action!.width).toBeLessThanOrEqual(367)
+})
+
 async function backToInbox(page: Page) {
   await page.getByRole("button", { name: "返回" }).click()
   await expect(page.getByRole("tablist", { name: "电脑" })).toBeVisible()

@@ -76,7 +76,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-221 Quote PC conversation text
 
-- 目的：从手机对话选择原文并附在下一条消息；使用者：手机用户；入口：选中对话正文 → Add to chat／加入对话；输入：选区及可选请求；输出：可查看、编辑、移除引用，发送或插入后显示独立的引用块；前置条件：打开 PC 对话，选区在正文中；失败表现：无效选区不显示操作，发送失败恢复草稿；关联契约：`C-011`, `C-017`；实现证据：`mobile/src/components/thread-screen.tsx`, `mobile/src/components/composer.tsx`, `mobile/src/lib/quote.ts`, `mobile/e2e/walkthrough.spec.ts`。
+- 目的：从手机对话选择原文并附在下一条消息；使用者：手机用户；入口：选中对话正文 → 选区附近的 Add to chat／加入对话，系统复制／全选菜单仍可用；输入：选区及可选请求；输出：可查看、编辑、移除引用，发送或插入后显示独立的引用块；前置条件：打开 PC 对话，选区在正文中；失败表现：无效选区不显示操作，发送失败恢复草稿；关联契约：`C-011`, `C-017`；实现证据：`mobile/src/components/thread-screen.tsx`, `mobile/src/components/composer.tsx`, `mobile/src/lib/quote.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`。
 
 ### F-222 Inspect sub-agents on the phone
 

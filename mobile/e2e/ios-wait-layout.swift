@@ -4,6 +4,30 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testQuoteActionBesideNativeSelectionMenu() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"]
+    XCTAssertTrue(back.waitForExistence(timeout: 12))
+    back.tap()
+    let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'")).firstMatch
+    XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    thread.tap()
+    let answer = app.staticTexts["Here is what changed:"].firstMatch
+    XCTAssertTrue(answer.waitForExistence(timeout: 8))
+    answer.press(forDuration: 1.2)
+    let action = app.buttons["Add to chat"]
+    XCTAssertTrue(action.waitForExistence(timeout: 5), "the selected answer must expose Add to chat")
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "selected-answer-native-menu"
+    shot.lifetime = .keepAlways
+    add(shot)
+    XCTAssertTrue(action.isHittable, "the native selection menu must not cover Add to chat")
+    action.tap()
+    XCTAssertTrue(app.textViews["Edit quote 1"].firstMatch.waitForExistence(timeout: 5),
+                  "tapping Add to chat must create a quote")
+  }
+
   func testComposerSubmissionAfterTyping() throws {
     let app = XCUIApplication()
     app.launch()

@@ -215,6 +215,18 @@ this action promotes the selected waiting message before preempting the current
 manager step, leaves later messages queued, and tolerates a steer already read
 before the second RPC; `mobile/e2e/walkthrough.spec.ts` exercises the button
 through the phone screen against a scripted PC.
+The same walkthrough selects answer text and checks that Add to chat stays near
+the highlight: below the native menu's reserved space when there is room, or
+in its own row below a selection at the transcript bottom. On the old fixed-corner layout
+the gap was 300.5 CSS px on a 375px phone; the position regression failed
+before the fix. Android's isolated debug package was long-pressed in the real
+WebView: Copy/Share/Select all and Add to chat were visible without overlap
+for both a top and bottom selection, and tapping Add to chat created the quote
+draft in both cases. The disposable iPhone 17
+simulator fixture likewise showed the native Copy menu with a hittable Add to
+chat button; tapping created the quote draft. WebKit's phone layout test also
+checks the quote action and draft. Browser E2E alone cannot render either
+operating system's selection toolbar.
 `TestLogPageStillSealsAfterTheHostNameIsStamped` is why an earlier page
 still fits after the display name and the seal, instead of vanishing and
 dropping the link.
