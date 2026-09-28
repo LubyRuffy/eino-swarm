@@ -57,7 +57,6 @@ export const zh: { [K in keyof typeof en]: string } = {
   "sidebar.delete": "删除",
   "sidebar.pinned": "置顶",
   "sidebar.scheduled": "定时",
-  "sidebar.scheduledUnread": "定时，{n} 条未读",
   "sidebar.recents": "对话",
   "sidebar.clients": "客户端",
   "sidebar.clientClaude": "Claude",

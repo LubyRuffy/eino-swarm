@@ -4,6 +4,7 @@ import { expect, test, type Page } from "@playwright/test"
  *  conversation.spec.ts so that file stays under 1000 lines. */
 async function freshConversation(page: Page) {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(page.getByTestId("composer-input")).toBeVisible()
 }

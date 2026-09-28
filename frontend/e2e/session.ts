@@ -4,6 +4,7 @@ import { expect, type Page } from "@playwright/test"
  *  state that breaks the next. */
 export async function freshConversation(page: Page) {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(composer(page)).toBeVisible()
 }

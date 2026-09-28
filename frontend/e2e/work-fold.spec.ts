@@ -5,6 +5,7 @@ import { liveWorkFold } from "./composer-plate"
 /** User-view folding lives here so conversation.spec.ts stays under 1000. */
 async function freshConversation(page: Page) {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(page.getByTestId("composer-input")).toBeVisible()
 }

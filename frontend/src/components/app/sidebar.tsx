@@ -53,27 +53,29 @@ function ListToolbar({
   newLabel,
   searchLabel,
 }: {
-  onNew: () => void
+  onNew?: () => void
   onSearch: () => void
-  newLabel: string
+  newLabel?: string
   searchLabel: string
 }) {
   return (
     <div className="flex items-center gap-1.5 px-[var(--sidebar-list-px)] pb-2 pt-2">
-      <Button
-        variant="secondary"
-        size="sm"
-        className={cn(chromeTypeClass, "min-w-0 flex-1 justify-start gap-2 overflow-hidden")}
-        style={{ height: "var(--sidebar-row-height)" }}
-        onClick={onNew}
-      >
-        <MessageSquarePlus className="shrink-0" />
-        <span className="min-w-0 truncate">{newLabel}</span>
-      </Button>
+      {onNew ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          className={cn(chromeTypeClass, "min-w-0 flex-1 justify-start gap-2 overflow-hidden")}
+          style={{ height: "var(--sidebar-row-height)" }}
+          onClick={onNew}
+        >
+          <MessageSquarePlus className="shrink-0" />
+          <span className="min-w-0 truncate">{newLabel}</span>
+        </Button>
+      ) : null}
       <Button
         variant="ghost"
         size="icon-sm"
-        className="shrink-0"
+        className={cn("shrink-0", !onNew && "ml-auto")}
         style={{
           width: "var(--sidebar-row-height)",
           height: "var(--sidebar-row-height)",
@@ -207,9 +209,7 @@ export function Sidebar({
         {pane === "projects" ? (
           <>
             <ListToolbar
-              onNew={onNew}
               onSearch={onSearch}
-              newLabel={t("sidebar.newConversation")}
               searchLabel={t("sidebar.search")}
             />
             <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto px-[var(--sidebar-list-px)] pb-3 pt-1">

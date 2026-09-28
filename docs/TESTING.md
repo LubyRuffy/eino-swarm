@@ -1231,13 +1231,13 @@ Several things are tested here, some as pure logic and some in jsdom:
   (`sidebar-slots.test.ts` pins chrome-relative density, not rem): a leftmost
   rail (`dest-rail`) switches Projects (default), Conversations, Scheduled, and Clients so those lists are
   not stacked in one scroll or drawn over the task. The project list
-  starts with New conversation; there is no title-bar chrome row and no hide
+  does not offer New conversation (that button is on Conversations) and does not show an unread count on the rail; there is no title-bar chrome row and no hide
   control — those live on the window title bar. Settings is a
   rounded pill at the bottom that fills `sidebar-accent` on hover, beside an
   app menu (conversation width, developer view, theme, language, which other shells are open, build version). Projects and Conversations are separate rail pages; each section still uses
   `sidebar-section-label`. Wrapping the project
   section in a second `px-2` is rejected. The list starts at
-  256px, the arrow keys change that width (CSS variable, not a React `width`
+  360px, the arrow keys change that width (CSS variable, not a React `width`
   style), a remembered width is restored, and the resize strip sits on the
   right edge (`z-20`) with the aside stacked above the transcript (`z-10`) so
   the 4px overlap is not painted over by the main column. Dropping one Conversations

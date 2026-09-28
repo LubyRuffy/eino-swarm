@@ -531,8 +531,8 @@ in a project. The title bar prefixes the conversation name with the project's
 (`project · title`) so you can see which directory the tools are pointed at.
 The project list follows last use, not creation; drag a row to pin it.
 The leftmost rail opens **Projects** (the default) or **Conversations**.
-**New conversation** at the top of either list starts a thread with no project
-and opens **Conversations**, so the new row is on screen. Hover a project
+**New conversation** is on **Conversations**, not on the project list. It
+starts a thread with no project. Hover a project
 for a new-conversation control on the row itself — it starts one in that folder
 and stays on **Projects**.
 Click a folder to collapse its topics — the directory icon is closed

@@ -191,6 +191,7 @@ test("Tidy skills asks the model when the catalog has a skill", async ({
 
 test("a conversation outside a project has no memory to show", async ({ page }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(page.getByTestId("thread-project")).toBeHidden()
   await expect(page.getByRole("tab", { name: "Memory" })).toBeHidden()
@@ -319,6 +320,7 @@ test("a running conversation keeps its progress after switching away", async ({
   await composer(page).press("Enter")
   await expect(statusBadge(page)).toContainText("Working")
   await expect(row.getByLabel("running")).toBeVisible()
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(statusBadge(page)).toContainText("Idle")
   await page.getByTestId("dest-projects").click()

@@ -66,11 +66,15 @@ describe("destination rail", () => {
     await waitFor(() => expect(screen.getByTestId("pane")).toHaveTextContent("projects"))
   })
 
-  it("keeps a large unread count on the icon instead of covering the next one", () => {
+  it("does not paint an unread count on the rail", () => {
     useApp.setState({ scheduleUnread: 726 })
     render(<DestRail />)
-    const badge = screen.getByTestId("schedule-unread")
-    expect(badge).toHaveTextContent("99+")
-    expect(screen.getByTestId("schedule-inbox")).toContainElement(badge)
+    expect(screen.queryByTestId("schedule-unread")).not.toBeInTheDocument()
+    expect(screen.getByTestId("schedule-inbox")).toHaveAttribute("aria-label", "Scheduled")
+    const rail = screen.getByTestId("dest-rail")
+    expect(rail.style.paddingLeft).toBe(
+      "calc(var(--sidebar-list-px) + var(--sidebar-row-px))",
+    )
+    expect(rail.style.paddingRight).toBe("var(--sidebar-list-px)")
   })
 })

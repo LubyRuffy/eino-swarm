@@ -56,7 +56,6 @@ export const en = {
   "sidebar.delete": "Delete",
   "sidebar.pinned": "Pinned",
   "sidebar.scheduled": "Scheduled",
-  "sidebar.scheduledUnread": "Scheduled, {n} unread",
   "sidebar.recents": "Conversations",
   "sidebar.clients": "Clients",
   "sidebar.clientClaude": "Claude",

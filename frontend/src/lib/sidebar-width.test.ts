@@ -36,6 +36,8 @@ describe("sidebar width", () => {
     expect(clampSidebarWidth(9999)).toBe(SIDEBAR_WIDTH_MAX)
     localStorage.setItem("zwai.sidebar.width", "80")
     expect(readSidebarWidth()).toBe(SIDEBAR_WIDTH_MIN)
+    localStorage.setItem("zwai.sidebar.width", "256")
+    expect(readSidebarWidth()).toBe(SIDEBAR_WIDTH_MIN)
     localStorage.setItem("zwai.sidebar.width", "800")
     expect(readSidebarWidth()).toBe(SIDEBAR_WIDTH_MAX)
   })
@@ -49,18 +51,18 @@ describe("sidebar width", () => {
   })
 
   it("remembers a drag and paints it", () => {
-    expect(applySidebarWidth(300.4)).toBe(300)
-    expect(localStorage.getItem("zwai.sidebar.width")).toBe("300")
+    expect(applySidebarWidth(340.4)).toBe(340)
+    expect(localStorage.getItem("zwai.sidebar.width")).toBe("340")
     expect(document.documentElement.style.getPropertyValue(SIDEBAR_WIDTH_VAR)).toBe(
-      "300px",
+      "340px",
     )
-    expect(readSidebarWidth()).toBe(300)
+    expect(readSidebarWidth()).toBe(340)
   })
 
   it("paints a live drag without writing storage", () => {
-    paintSidebarWidth(300.4)
+    paintSidebarWidth(340.4)
     expect(document.documentElement.style.getPropertyValue(SIDEBAR_WIDTH_VAR)).toBe(
-      "300px",
+      "340px",
     )
     expect(localStorage.getItem("zwai.sidebar.width")).toBeNull()
   })

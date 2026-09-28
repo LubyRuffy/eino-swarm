@@ -47,16 +47,14 @@ describe("Sidebar chrome", () => {
   })
 
   // The window title bar owns the traffic lights and the hide toggle.
-  // New conversation is the first row of the list, so it never sits under
-  // the yellow blob.
-  it("starts with New conversation, not a title-bar chrome row", () => {
+  // Projects is the home list. A loose new conversation lives on
+  // Conversations, so it never sits under the yellow blob on this page.
+  it("does not offer a loose new conversation on the project list", () => {
     render(<Sidebar threads={[]} {...noop} />)
     expect(screen.queryByTestId("sidebar-chrome")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Hide conversations" })).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /^New conversation$/ })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /^New conversation$/ })).toHaveStyle({
-      height: "var(--sidebar-row-height)",
-    })
+    expect(screen.queryByRole("button", { name: /^New conversation$/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Search conversations (⌘K)" })).toBeInTheDocument()
   })
 
   it("keeps Scheduled on the leftmost rail, not as a fold in the chat list", () => {
@@ -70,9 +68,12 @@ describe("Sidebar chrome", () => {
     expect(screen.queryByTestId("clients-list")).not.toBeInTheDocument()
   })
 
-  it("opens a new conversation from the first row", () => {
+  it("opens a new conversation from the Conversations list", () => {
     render(<Sidebar threads={[]} {...noop} />)
-    fireEvent.click(screen.getByRole("button", { name: /^New conversation$/ }))
+    act(() => setDeskDest("chats"))
+    const button = screen.getByRole("button", { name: /^New conversation$/ })
+    expect(button).toHaveStyle({ height: "var(--sidebar-row-height)" })
+    fireEvent.click(button)
     expect(noop.onNew).toHaveBeenCalled()
   })
 

@@ -120,9 +120,9 @@
     --sidebar-section-gap: calc(var(--chrome-font-size) * 0.77);
     --sidebar-section-label-height: calc(var(--chrome-font-size) * 1.7);
     --sidebar-list-px: calc(var(--chrome-font-size) * 0.77);
-    /* Icon rail. Wider than one row so an unread count sits on the icon
-       corner instead of covering the next destination. */
-    --dest-rail-width: calc(var(--sidebar-row-height) + var(--sidebar-list-px) * 2);
+    /* Icon rail. Extra inset on the left so the icons are not on the
+       window edge. Unread counts stay on the wait rows, not this rail. */
+    --dest-rail-width: calc(var(--sidebar-row-height) + var(--sidebar-list-px) * 2 + var(--sidebar-row-px));
     --sidebar-kind: calc(var(--chrome-font-size) * 1.23);
 
     /* Pairing QR plate. A camera needs a white field even in dark chrome. */

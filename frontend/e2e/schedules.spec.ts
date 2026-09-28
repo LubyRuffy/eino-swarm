@@ -4,6 +4,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
  *  state that breaks the next. */
 async function freshConversation(page: Page) {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(page.getByTestId("composer-input")).toBeVisible()
 }
@@ -98,11 +99,8 @@ test("standalone wait from the inbox runs now and opens findings", async ({
   await waitUntilUnread(request)
 
   await openInbox(page)
-  const unread = page.getByTestId("schedule-unread")
+  await expect(page.getByTestId("schedule-unread")).toHaveCount(0)
   const findings = page.getByRole("button", { name: "Open findings" })
-  if (await unread.isVisible().catch(() => false)) {
-    await expect(unread).not.toHaveText("0")
-  }
   await expect(findings).toBeVisible()
   await findings.click()
 

@@ -58,6 +58,7 @@ test("the command palette finds a conversation by words in its body", async ({
   page,
 }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   const box = page.getByTestId("composer-input")
   await box.fill("unique-body needle for the palette")
@@ -92,6 +93,7 @@ test("the terminal button opens a shell in the conversation workspace", async ({
   page,
 }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await page.getByRole("banner").getByRole("button", { name: "Open terminal" }).click()
   const panel = page.getByTestId("terminal-panel")
@@ -130,7 +132,8 @@ test("an external link opens a new window instead of replacing the app", async (
   await page.goto("/")
   await expect(
     page.getByRole("button", { name: "New conversation", exact: true }),
-  ).toBeVisible()
+  ).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "New project", exact: true })).toBeVisible()
   const appURL = page.url()
   await page.evaluate(() => {
     const a = document.createElement("a")
@@ -142,9 +145,7 @@ test("an external link opens a new window instead of replacing the app", async (
   await page.getByRole("link", { name: "leave-app" }).click()
   const popup = await popupPromise
   await expect(page).toHaveURL(appURL)
-  await expect(
-    page.getByRole("button", { name: "New conversation", exact: true }),
-  ).toBeVisible()
+  await expect(page.getByRole("button", { name: "New project", exact: true })).toBeVisible()
   expect(popup).not.toBe(page)
   await popup.close()
 })
@@ -154,7 +155,11 @@ test("Projects and Conversations are separate rail lists", async ({ page }) => {
   await expect(page.getByTestId("dest-projects")).toHaveAttribute("aria-current", "page")
   await expect(page.getByTestId("project-list")).toBeVisible()
   await expect(page.getByTestId("recents-list")).toHaveCount(0)
+  await expect(
+    page.getByRole("button", { name: "New conversation", exact: true }),
+  ).toHaveCount(0)
 
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   const conversations = page
     .getByTestId("recents-list")
@@ -172,6 +177,7 @@ test("collapsing Conversations hides its rows across reload", async ({
   page,
 }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(
     page.getByTestId("recents-list").getByTestId("thread-row").first(),
@@ -202,6 +208,7 @@ test("the Conversations header icon starts a conversation outside a project", as
   page,
 }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   const rows = page.getByTestId("recents-list").getByTestId("thread-row")
   await expect(rows.first()).toBeVisible()
@@ -218,6 +225,7 @@ test("the composer sits on the transcript without a dock hairline", async ({
   page,
 }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   const fade = page.getByTestId("composer-fade")
   const input = page.getByTestId("composer-input")
@@ -285,6 +293,7 @@ test("dragging the conversation list border resizes it without selecting text", 
 
 test("dragging the panel border does not select text", async ({ page }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   const handle = page.getByRole("separator", { name: "Resize the side panel" })
   const box = await handle.boundingBox()
@@ -302,6 +311,7 @@ test("dragging the panel border does not select text", async ({ page }) => {
 
 test("escape stops a running turn", async ({ page }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await page.getByTestId("composer-input").fill("Something that takes a while")
   await page.getByTestId("composer-input").press("Enter")
@@ -321,6 +331,7 @@ test("⌘F searches the conversation and Escape closes find before stopping a tu
   page,
 }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   const input = page.getByTestId("composer-input")
   await input.fill("Unique phrase for find")
@@ -428,6 +439,7 @@ test("renames and deletes a conversation from the sidebar", async ({
   page,
 }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await page.getByTestId("composer-input").fill("Name this one")
   await page.getByTestId("composer-input").press("Enter")
@@ -470,8 +482,10 @@ test("dragging a conversation pins that order across reload", async ({
   page,
 }) => {
   await page.goto("/")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await renameRecentsRow(page, 0, "Alpha")
+  await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await renameRecentsRow(page, 0, "Beta")
   const recents = page.getByTestId("recents-list").getByTestId("thread-row")

@@ -192,10 +192,10 @@ beforeEach(() => {
 })
 
 describe("Scheduled inbox", () => {
-  it("shows an unread badge on the sidebar section", () => {
+  it("does not paint an unread count on the rail icon", () => {
     render(<Sidebar threads={[]} {...noop} />)
     expect(screen.getByTestId("schedule-inbox")).toBeInTheDocument()
-    expect(screen.getByTestId("schedule-unread")).toHaveTextContent("3")
+    expect(screen.queryByTestId("schedule-unread")).not.toBeInTheDocument()
   })
 
   it("is a page control, not a collapsed fold", () => {
@@ -207,12 +207,11 @@ describe("Scheduled inbox", () => {
     expect(screen.getByTestId("schedule-inbox").querySelector("[data-testid=section-fold]")).toBeNull()
   })
 
-  it("names the trigger with unread so the badge is not only visual", () => {
+  it("keeps the Scheduled name free of an unread count", () => {
     useApp.setState({ scheduleUnread: 2 })
     render(<Sidebar threads={[]} {...noop} />)
     const trigger = screen.getByRole("button", { name: /Scheduled/ })
-    expect(trigger).not.toHaveAttribute("aria-haspopup")
-    expect(trigger).toHaveAccessibleName(/Scheduled, 2 unread/)
+    expect(trigger).toHaveAccessibleName("Scheduled")
   })
 
   it("marks the sidebar row as the current page while Scheduled is open", async () => {

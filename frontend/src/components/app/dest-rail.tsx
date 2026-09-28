@@ -84,40 +84,30 @@ function RailButton({
   )
 }
 
-function UnreadCount({ n }: { n: number }) {
-  if (n <= 0) return null
-  return (
-    <span
-      data-testid="schedule-unread"
-      aria-hidden="true"
-      className="pointer-events-none absolute right-0 top-0 z-10 flex h-4 min-w-4 translate-x-1/4 -translate-y-1/4 items-center justify-center rounded-full bg-primary px-0.5 text-xs font-medium leading-none text-primary-foreground"
-    >
-      {n > 99 ? "99+" : n}
-    </span>
-  )
-}
-
 /** Leftmost destination rail. Projects, conversations, waits, and local
  *  clients are lists, not sections inside the open task. The rail stays
  *  when the list column is hidden; `edge` is the hairline against that
- *  column, and the aside draws the outer one when the column is gone. */
+ *  column, and the aside draws the outer one when the column is gone.
+ *  Unread waits stay on the list rows. A count on the icon covered the
+ *  next destination. */
 export function DestRail({ edge = true }: { edge?: boolean }) {
   const t = useT()
   const pane = useVisibleDest()
-  const unread = useApp((s) => s.scheduleUnread)
   const catalog = useClientCatalog()
-  const scheduledName =
-    unread > 0 ? t("sidebar.scheduledUnread", { n: unread }) : t("sidebar.scheduled")
 
   return (
     <nav
       data-testid="dest-rail"
       aria-label={t("nav.destinations")}
       className={cn(
-        "flex shrink-0 flex-col items-center gap-2 px-1.5 py-2",
+        "flex shrink-0 flex-col items-center gap-2 py-2",
         edge && "border-r border-sidebar-border",
       )}
-      style={{ width: "var(--dest-rail-width)" }}
+      style={{
+        width: "var(--dest-rail-width)",
+        paddingLeft: "calc(var(--sidebar-list-px) + var(--sidebar-row-px))",
+        paddingRight: "var(--sidebar-list-px)",
+      }}
     >
       <RailButton
         current={pane === "projects"}
@@ -137,12 +127,11 @@ export function DestRail({ edge = true }: { edge?: boolean }) {
       </RailButton>
       <RailButton
         current={pane === "scheduled"}
-        label={scheduledName}
+        label={t("sidebar.scheduled")}
         testId="schedule-inbox"
         onClick={() => pickDest("scheduled")}
       >
         <CalendarClock />
-        <UnreadCount n={unread} />
       </RailButton>
       {catalog.enabled ? (
         <RailButton

@@ -152,7 +152,7 @@ export function ScheduleListPane() {
       ) : (
         <ul
           data-testid="schedule-list"
-          className="thin-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden"
+          className="thin-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-[var(--sidebar-list-px)]"
         >
           {listed.map((row) => (
             <ScheduleInboxRow
