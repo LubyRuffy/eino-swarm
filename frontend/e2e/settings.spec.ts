@@ -377,9 +377,7 @@ test("switches the chrome language and restores English", async ({
     await page.getByRole("menuitem", { name: "Switch language" }).click()
     await page.getByRole("button", { name: "应用菜单" }).click()
     await expect(page.getByRole("menuitem", { name: "切换语言" })).toBeVisible()
-    await expect(
-      page.getByRole("button", { name: "新对话", exact: true }),
-    ).toBeVisible()
+    await expect(page.getByTestId("dest-chats")).toHaveAttribute("aria-label", "对话")
     await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN")
   } finally {
     await request.put("/api/settings", { data: { ui: { locale: "system" } } })
