@@ -25,7 +25,7 @@ help:
 	@echo "make mobile-android  open the Android app in Android Studio"
 	@echo "make mobile-android-release  Android APK/AAB into bin/"
 	@echo "make desktop-release  macOS zwai.app zip into bin/ (darwin host)"
-	@echo "make release      Mac/APK to GitHub + iOS to TestFlight (shared VERSION)"
+	@echo "make release      publish only affected, pending Mac/Android/iOS platforms"
 	@echo "make check      formatting, vet, test, e2e"
 	@echo "make docs-check  validate feature and contract references"
 
@@ -91,7 +91,7 @@ mobile-android: mobile-sync
 desktop-release: frontend
 	go run ./internal/desktop/pack -version "$(VERSION)" -o bin
 
-# One allocated batch/version; platform errors never hide another platform's result.
+# One allocated batch/version; only required platforms run, with independent gates.
 .PHONY: release release-check mobile-ios-release
 release:
 	python3 tools/release.py --version "$(VERSION)"

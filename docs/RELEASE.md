@@ -1,6 +1,7 @@
 # Unified release (F-430 / C-010)
 
-`make release VERSION=x.y.z` publishes the allocated main batch in order:
+`make release VERSION=x.y.z` publishes only the allocated batch's outstanding
+required platforms in order:
 
 | Platform | Build/sign | Destination | Completion |
 |---|---|---|---|
@@ -12,17 +13,31 @@ Installer upload does not replace the native installation/window/device acceptan
 required for each candidate. Run project checks and native acceptance before release.
 Platform errors are printed immediately; independent platforms continue. The command
 exits non-zero if a required platform fails or is waiting. No version is incremented
-inside publication. First allocate/commit one version for a qualified batch of at
-least three distinct accepted Issues, integrate/push complete main, then update the
-existing delivery ledger's batch version/SHA. The source package version must match.
+inside publication. Allocate/commit one version after more than three main
+commits since the last published source SHA **or** after the oldest unallocated,
+accepted and integrated change has waited more than 24 hours. Then validate and
+push the complete main and record its version/SHA in the delivery ledger.
+Only mobile batches require `mobile/package.json` to match the new version.
+Desktop-only releases leave the mobile version/build number unchanged.
 
 `python3 tools/audit_pending_batch.py` reconciles open and closed Issues against
 all accepted ledger rows, including macOS-only deliveries without iOS pending rows.
 `issues` lists the complete pending set; `allocated_pending_issues` retains frozen
-batch recovery, while `unallocated_issues` and `distinct_unallocated_pending_count`
-determine `allocate_new_version`. Allocation eligibility accumulates across dates
-and runs. A pending platform in an already assigned batch cannot qualify another
-version; three new unallocated fixes can qualify while that old batch is still pending.
+batch recovery. `unallocated_issues`, `pending_commit_count`,
+`oldest_pending_at`, `pending_age_hours`, and `platforms_to_release` explain
+`allocate_new_version`. Once a version is assigned but no platform has been
+published, the audit reports `resume_allocated_version` instead of allocating
+another number; the candidate must still contain the complete unallocated set.
+The ledger records `last_published_source_sha` and each
+accepted change's `integrated_at` or `accepted_at` in an offset-aware ISO 8601
+form. The audit counts first-parent main commits after that SHA (so a merge
+operation is one mainline submission) and checks the oldest pending
+timestamp against 24 elapsed hours; it does not reset at midnight or per run.
+The first verified public platform updates `last_published_source_sha` automatically.
+An already allocated, public batch is excluded from the next trigger even if
+one of its platforms is still pending. The platform list is the union of
+unallocated Issues' actual required delivery statuses; desktop selects macOS,
+mobile selects Android and iOS. Server deployment is tracked separately.
 
 ## Private iOS setup
 
@@ -81,7 +96,9 @@ make mobile-ios-release VERSION=x.y.z  # only iOS, same candidate
 `VERSION` is a release triple, not a dirty `git describe`; pass it explicitly.
 `ZWAI_HOME` defaults to `~/.zwai-swarm`. `DELIVERY_STATE` optionally selects the
 existing `issue-automation/delivery-state.json`. Source must be clean and in freshly
-fetched `origin/main`; GitHub repository must match `go.mod`. A tag already published
+fetched `origin/main`; GitHub repository must match `go.mod`. The default entry
+reads required, still-unpublished platforms from the allocated batch; a
+single-platform recovery can use `--platform macos|android|ios`. A tag already published
 must resolve to exactly this SHA. To resume a frozen historical source with the
 new orchestration code, run the script from current main:
 

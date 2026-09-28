@@ -193,6 +193,7 @@ class IOSRelease:
         if batch.get('source_sha') == self.source_sha and batch.get('version') == self.version:
             batch['ios'] = 'published'
             batch['version_locked'] = True
+            delivery['last_published_source_sha'] = self.source_sha
             issues = set(map(str, batch['issues']))
             issues.update(str(n) for n, alias in delivery.get('delivery_aliases', {}).items()
                           if alias.get('source_sha') == self.source_sha)
@@ -275,7 +276,7 @@ class IOSRelease:
             else:
                 self.declaration()  # refuse expensive archive until this build's classification exists
                 ipa = self.build_ipa()
-            if source_preflight(self.root, self.version) != self.source_sha:
+            if source_preflight(self.root, self.version, ('ios',)) != self.source_sha:
                 raise ValueError('Source changed during iOS archive; refusing upload')
             self.api = self.module.Client()
             value = self.verify_ipa(ipa)

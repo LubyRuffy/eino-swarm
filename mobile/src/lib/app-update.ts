@@ -8,6 +8,7 @@ import { t } from "./i18n"
 // the user types on the PC. A feed configured on the desktop was the long way.
 export const RELEASES_LATEST_URL =
   "https://api.github.com/repos/LubyRuffy/eino-swarm/releases/latest"
+const RELEASES_LIST_URL = "https://api.github.com/repos/LubyRuffy/eino-swarm/releases"
 
 export const RELEASE_REPO = "LubyRuffy/eino-swarm"
 
@@ -136,17 +137,17 @@ function sanitizeOffer(offer: UpdateOffer | null | undefined): UpdateOffer | nul
   if (!offer || typeof offer.version !== "string" || !parseVersion(offer.version)) return null
   const pageURL = allowedReleasePage(offer.pageURL ?? "")
   const apkURL = allowedDownloadURL(offer.apkURL ?? "")
-  if (!pageURL && !apkURL) return null
+  if (!apkURL) return null
   return { version: parseVersion(offer.version)!.join("."), pageURL, apkURL }
 }
 
-function pickApk(assets: unknown): string {
+function pickApk(assets: unknown, version: string): string {
   if (!Array.isArray(assets)) return ""
   for (const item of assets) {
     if (!item || typeof item !== "object") continue
     const row = item as { name?: unknown; browser_download_url?: unknown }
     const name = typeof row.name === "string" ? row.name : ""
-    if (!/^zwai-.+-android\.apk$/.test(name)) continue
+    if (name !== `zwai-${version}-android.apk`) continue
     const url = typeof row.browser_download_url === "string" ? allowedDownloadURL(row.browser_download_url) : ""
     if (url) return url
   }
@@ -169,11 +170,30 @@ export function offerFromRelease(platform: string, current: string, body: unknow
   const parsed = parseVersion(tag)
   if (!parsed) return null
   const pageURL = typeof row.html_url === "string" ? allowedReleasePage(row.html_url) : ""
-  const apkURL = platform === "android" ? pickApk(row.assets) : ""
+  const apkURL = platform === "android" ? pickApk(row.assets, parsed.join(".")) : ""
   // iOS cannot install the Android package. Opening the release page is not an install.
   if (platform === "ios") return null
+  if (platform === "android" && !apkURL) return null
   if (!pageURL && !apkURL) return null
   return { version: parsed.join("."), pageURL, apkURL }
+}
+
+async function newestAndroidInstaller(current: string, fetcher: typeof fetch): Promise<UpdateOffer | null> {
+  let best: UpdateOffer | null = null
+  for (let page = 1; page <= 10; page++) {
+    const res = await fetcher(`${RELEASES_LIST_URL}?per_page=100&page=${page}`, {
+      headers: { Accept: "application/vnd.github+json" },
+    })
+    if (!res.ok) throw new Error(responseErrorText(res.status, res.statusText, await res.text()))
+    const rows: unknown = await res.json()
+    if (!Array.isArray(rows)) throw new Error(t("update.badResponse"))
+    for (const row of rows) {
+      const candidate = offerFromRelease("android", current, row)
+      if (candidate && (!best || isNewer(candidate.version, best.version))) best = candidate
+    }
+    if (rows.length < 100) return best
+  }
+  throw new Error(t("update.badResponse"))
 }
 
 function visibleOffer(offer: UpdateOffer | null, dismissed: string, current: string): UpdateOffer | null {
@@ -272,7 +292,12 @@ export async function checkForAppUpdate(opts: {
       headers: { Accept: "application/vnd.github+json" },
     })
     if (!res.ok) return visibleOffer(cache?.offer ?? null, dismissed, current)
-    const offer = offerFromRelease(platform, current, await res.json())
+    const body: unknown = await res.json()
+    let offer = offerFromRelease(platform, current, body)
+    if (!offer && platform === "android" && body && typeof body === "object" &&
+        isNewer(String((body as { tag_name?: unknown }).tag_name ?? ""), current)) {
+      offer = await newestAndroidInstaller(current, fetcher)
+    }
     store.setItem(CACHE_KEY, JSON.stringify({ at: now, current, offer }))
     return visibleOffer(offer, dismissed, current)
   } catch {
@@ -370,7 +395,16 @@ export async function checkAppVersionNow(opts: {
   } catch {
     return { status: "error", message: t("update.badResponse") }
   }
-  const result = classifyLatestRelease(platform, current, body)
+  let result = classifyLatestRelease(platform, current, body)
+  if (platform === "android" && result.status === "error" && body && typeof body === "object" &&
+      isNewer(String((body as { tag_name?: unknown }).tag_name ?? ""), current)) {
+    try {
+      const offer = await newestAndroidInstaller(current, fetcher)
+      result = offer ? { status: "available", offer } : { status: "current" }
+    } catch (err) {
+      return { status: "error", message: errorText(err) }
+    }
+  }
   if (result.status !== "error" && parseVersion(current)) {
     const offer = result.status === "available" ? result.offer : null
     store.setItem(CACHE_KEY, JSON.stringify({ at: now, current, offer }))

@@ -103,6 +103,45 @@ func TestCheckOffersTheMatchingMacZip(t *testing.T) {
 	}
 }
 
+func TestCheckFindsTheNewestMacPackageWhenTheLatestReleaseOnlyHasAndroid(t *testing.T) {
+	var urls []string
+	svc := &Service{Current: "1.2.3", OS: "darwin", Arch: "arm64"}
+	svc.Fetch = func(_ context.Context, rawURL string) (*http.Response, error) {
+		urls = append(urls, rawURL)
+		if strings.Contains(rawURL, "/releases/latest") {
+			return jsonResponse(`{"tag_name":"v1.4.0","html_url":"https://github.com/LubyRuffy/eino-swarm/releases/tag/v1.4.0","assets":[{"name":"zwai-1.4.0-android.apk","browser_download_url":"https://github.com/LubyRuffy/eino-swarm/releases/download/v1.4.0/zwai-1.4.0-android.apk"}]}`), nil
+		}
+		return jsonResponse("[" + releaseJSON("1.4.0", false, true) + "," + releaseJSON("1.3.0", false, false) + "]"), nil
+	}
+	got := svc.Check(context.Background(), true)
+	if got.Status != "available" || got.Offer == nil || got.Offer.Version != "1.3.0" {
+		t.Fatalf("Mac release hidden by Android-only latest: %+v", got)
+	}
+	if len(urls) != 2 || !strings.Contains(urls[1], "/releases?") {
+		t.Fatalf("expected platform release listing, got %v", urls)
+	}
+}
+
+func TestCheckReportsAnUnreadablePlatformReleaseList(t *testing.T) {
+	for _, feed := range []struct {
+		body   string
+		status int
+	}{{"{", 200}, {`{"message":"rate limited"}`, 403}} {
+		svc := &Service{Current: "1.2.3", OS: "darwin", Arch: "arm64"}
+		svc.Fetch = func(_ context.Context, rawURL string) (*http.Response, error) {
+			if strings.Contains(rawURL, "/releases?") {
+				res := jsonResponse(feed.body)
+				res.StatusCode = feed.status
+				return res, nil
+			}
+			return jsonResponse(`{"tag_name":"v1.4.0","assets":[]}`), nil
+		}
+		if got := svc.Check(context.Background(), true); got.Status != "error" {
+			t.Fatalf("bad platform feed must not be cached as current: %+v", got)
+		}
+	}
+}
+
 func TestCheckSkipsOtherSystemsAndUntaggedBuilds(t *testing.T) {
 	linux := &Service{Current: "1.2.3", OS: "linux", Arch: "amd64"}
 	if got := linux.Check(context.Background(), true); got.Status != "unsupported" {
@@ -261,10 +300,13 @@ func TestHostArchAndFeedErrors(t *testing.T) {
 	_ = hostOS()
 
 	svc := &Service{Current: "1.2.3", OS: "darwin", Arch: "amd64"}
-	svc.Fetch = func(context.Context, string) (*http.Response, error) {
+	svc.Fetch = func(_ context.Context, rawURL string) (*http.Response, error) {
+		if strings.Contains(rawURL, "/releases?") {
+			return jsonResponse("[" + releaseJSON("2.0.0", false, false) + "]"), nil
+		}
 		return jsonResponse(releaseJSON("2.0.0", false, false)), nil
 	}
-	if got := svc.Check(context.Background(), true); got.Status != "error" || !strings.Contains(got.Message, "no macOS") {
+	if got := svc.Check(context.Background(), true); got.Status != "current" {
 		t.Fatalf("wrong arch: %+v", got)
 	}
 	svc.Arch = "arm64"

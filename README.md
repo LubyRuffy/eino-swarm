@@ -359,7 +359,7 @@ end-to-end tests run on and the fastest way to see the UI work.
    refreshes on its own, so a phone that just bound shows up without leaving
    the page.
 3. On the phone, open the **zwai** iOS or Android app. The Android sideload
-   APK is on the [latest GitHub Release](https://github.com/LubyRuffy/eino-swarm/releases/latest)
+   APK is on the newest [GitHub Release containing an Android APK](https://github.com/LubyRuffy/eino-swarm/releases)
    (`zwai-<version>-android.apk`). A newer Android build offers **Update** on the
    phone: it downloads that APK from GitHub Releases and opens the system
    installer. iOS does not offer that package, so the automatic bar stays quiet
@@ -421,9 +421,10 @@ end-to-end tests run on and the fastest way to see the UI work.
    `mobile/android/keystore.properties`; `ANDROID_UNSIGNED=1` is a debug-signed
    sideload APK, not a Play bundle). Published sideload APKs also land on
    [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
-   `make release VERSION=x.y.z` on a Mac builds that
-   `zwai.app` zip and the Android APK on one GitHub Release, and archives,
-   signs and uploads iOS to TestFlight through the existing command-line credentials.
+   `make release VERSION=x.y.z` on a Mac builds and publishes only the
+   batch's affected platforms: a desktop change gets the `zwai.app` zip;
+   a mobile change gets Android APK and iOS TestFlight through the existing
+   command-line credentials. Mixed changes share one GitHub version.
    TestFlight processing/review waits remain pending; see [release setup](docs/RELEASE.md). The installed Mac app shows its version and can install a newer
    zip from there. See [docs/CLI.md](docs/CLI.md).
 
@@ -439,9 +440,11 @@ and pending platforms; closed does not imply all platforms have shipped.
 Pending deliveries remain in the release ledger, including closed Issues.
 The reconciliation command counts pending deliveries on every required platform,
 and separates already allocated batches from fixes awaiting their first version.
-At least three distinct accepted, unallocated fixes across runs and dates form one new
-release batch. Smaller batches close resolved Issues without version increments
-or publication. Remaining platforms of an allocated batch resume its same
+More than three main commits since the previous published source SHA, or an
+oldest accepted pending change waiting over 24 hours, triggers one new release
+batch. The trigger persists across runs and dates; before it fires, fixes stay
+integrated without a new version. Only affected desktop/mobile platforms are
+published. Remaining platforms of an allocated batch resume its same
 version/source SHA without reuploading completed platforms. See `C-010` in
 [CONTRACTS](docs/CONTRACTS.md) and the reconciliation command in
 [TESTING](docs/TESTING.md).

@@ -25,6 +25,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430` / `C-010`: an unallocated accepted batch now qualifies after more than three main commits since the last public source SHA or over 24 hours since its oldest accepted change. Release execution selects only still-required desktop/mobile platforms. A Mac-only version leaves mobile build metadata unchanged.
+
 - **Scheduled matches a list, not a filter grid.** The title sits beside a search icon, **New task** is its own row, and **Upcoming** filters Active, Paused, and Completed from a menu. A row shows the next time, then the cadence, then the task.
 
 - **The desktop list column is wider, and the icon rail sits in from the window edge.** A wait row was truncating beside the rail because the old 256px column now includes that rail. The floor is 320px and the default is 360px. A saved narrower width opens at the floor.
@@ -32,6 +34,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **Desktop lists sit in a leftmost rail.** Projects is the default list. Conversations (threads with no project), scheduled waits, and local clients each have their own list. The task column is the open conversation, the wait editor, or a client session. Restart keeps the rail on the last list; restoring the open conversation does not jump to Conversations. The rail does not show an unread count. **New conversation** is on Conversations, not on the project list. `⌘B` hides that list column and leaves the icon rail.
 
 ### Fixed
+
+- `F-190`, `F-240` / `C-010`: Mac and Android update checks search older Releases for the newest safe installer for their own platform when the latest Release has only another platform's package. Android no longer offers a page-only release as an install.
 
 - `F-430` / `C-010`: mixed Mac and phone release batches preserve each Issue's platform scope in delivery records; an installer or TestFlight completion no longer marks an unrelated platform as shipped for that Issue. First verified public delivery locks the shared version and source SHA across the batch.
 

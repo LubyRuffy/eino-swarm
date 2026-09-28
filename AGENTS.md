@@ -20,7 +20,7 @@ make mobile-sync                   # rebuild the phone web bundle and copy into 
 make mobile-ios                    # open Xcode
 make mobile-android                # open Android Studio
 make mobile-android-release        # signed (or ANDROID_UNSIGNED=1) APK/AAB into bin/
-make release VERSION=x.y.z         # Mac/APK to GitHub + iOS to TestFlight; independent gates
+make release VERSION=x.y.z         # only pending required Mac/Android/iOS platforms; independent gates
 make release-check VERSION=x.y.z   # read-only source/signing/remote preflight
 make mobile-ios-release VERSION=x.y.z # resume only this TestFlight batch
 go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launcher slots
@@ -205,20 +205,27 @@ feature.
   completed Issue into main in order, then allocate one version and publish
   once from the final batch commit. Ten Issues still mean one version/tag;
   each platform shares that version. Do not upload intermediate snapshots.
-- Allocate a release version only when the batch contains at least three
-  distinct completed, unreleased Issues. Smaller batches are tested, committed
-  and integrated without version/build-number increments, tags or publication;
-  keep their changes pending for a later qualifying batch. Resuming an already
-  qualified batch's unfinished platform does not require a new version.
+- For unallocated accepted changes, allocate one new version when more than
+  three first-parent commits have landed on main since the last published source SHA, or
+  the oldest pending accepted change has waited more than 24 hours. Before
+  either trigger, keep the changes pending without a new version/tag. Count
+  across runs and calendar days. An already public version/SHA is frozen;
+  resume only its unfinished platforms without another version.
+- Publish only platforms whose behavior changed in that batch: desktop needs
+  the Mac installer; mobile needs Android and iOS. A desktop-only version does
+  not change the mobile package/build number or upload phone installers.
+  Platform-specific gates remain independent. A Release may contain only one
+  installer type, so each updater must find the newest Release containing its
+  own safe asset rather than assuming `/releases/latest` has every platform.
 - Count pending releases from the delivery ledgers, including closed Issues;
   never intersect that set with open Issues or erase pending iOS work on closure.
   `python3 tools/audit_pending_batch.py --state <delivery-state.json>` checks
   integrated fix SHAs and batch qualification without publishing anything.
   `make docs-check` includes regressions for this accounting rule.
 
-- Count the distinct, code-accepted and integrated Issues across all pending
-  delivery records, not just this run's new code or one platform's missing
-  packages. An Issue with Android/Mac already shipped but iOS still pending
-  remains unreleased for this threshold and counts once. Reconcile the Issue
-  list with both delivery and TestFlight ledgers before declaring a batch too
-  small. Fully delivered Issues awaiting closure are closed, not counted.
+- Reconcile closed and open Issues with both delivery and TestFlight ledgers.
+  Keep partially delivered, version-locked Issues for recovery, but exclude
+  their changes from the next version's commit/time trigger. An unallocated
+  Issue with a missing platform stays pending after closure. The audit requires
+  the previous public source SHA and an acceptance timestamp (or verified Git
+  commit time) to make the 24-hour rule repeatable.

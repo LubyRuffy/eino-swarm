@@ -59,7 +59,7 @@ def run(args, *, cwd=ROOT, env=None):
     return (result.stdout or result.stderr).strip()
 
 
-def source_preflight(root, version):
+def source_preflight(root, version, platforms=('macos', 'android', 'ios')):
     version_code(version)
     if run(['git', 'status', '--porcelain'], cwd=root):
         raise ValueError('Release source checkout must be clean')
@@ -67,7 +67,7 @@ def source_preflight(root, version):
     sha = run(['git', 'rev-parse', 'HEAD'], cwd=root)
     run(['git', 'merge-base', '--is-ancestor', sha, 'origin/main'], cwd=root)
     package = read_json(root / 'mobile/package.json')
-    if package['version'] != version:
+    if any(p in platforms for p in ('android', 'ios')) and package['version'] != version:
         raise ValueError('VERSION must match the committed mobile/package.json')
     repo = run(['gh', 'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'], cwd=root)
     module = re.search(r'^module github.com/(\S+)', (root / 'go.mod').read_text(), re.M)
@@ -84,11 +84,13 @@ def source_preflight(root, version):
         batch = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
         pending = batch.get('pending_new_batch', {})
         if (pending.get('version') != version or pending.get('source_sha') != sha
-                or len(set(pending.get('issues', []))) < 3 or not pending.get('qualified_for_new_release')):
-            raise ValueError('New publication requires a verified, allocated batch of at least three distinct Issues')
+                or not pending.get('issues') or not pending.get('qualified_for_new_release')):
+            raise ValueError('New publication requires a verified, allocated batch')
         report = json.loads(run([sys.executable, str(ROOT / 'tools/audit_pending_batch.py'), '--state',
             str(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')))], cwd=root))
-        if not report.get('allocate_new_version') or report.get('main_sha') != sha or not set(pending['issues']) <= set(report.get('issues', [])):
+        if (not report.get('resume_allocated_version') or report.get('main_sha') != sha
+                or set(pending['issues']) != set(report.get('unallocated_issues', []))
+                or not set(platforms) <= set(report.get('platforms_to_release', []))):
             raise ValueError('Live batch audit does not qualify this exact main/source batch')
         releases = [r for page in json.loads(run(['gh', 'api', '--paginate', '--slurp', f'repos/{repo}/releases'], cwd=root)) for r in page]
         if any(tuple(map(int, r['tag_name'].lstrip('v').split('.'))) >= tuple(map(int, version.split('.')))
@@ -128,7 +130,7 @@ def github_platform(root, version, source_sha, platform, state):
         run(['make', target, f'VERSION={version}'], cwd=root, env=env)
         if run(['git', 'status', '--porcelain'], cwd=root):
             raise ValueError('Build changed tracked source; refusing upload')
-    if source_preflight(root, version) != source_sha:
+    if source_preflight(root, version, (platform,)) != source_sha:
         raise ValueError('Source changed during platform build')
     run(['go', 'run', './internal/release/cmd', '-version', version, '-dir', str(root / 'bin'),
          '-platform', platform, '-target', source_sha], cwd=ROOT)
@@ -143,6 +145,7 @@ def record_installer(version, source_sha, platform, result):
         return
     batch[platform] = 'published'
     batch['version_locked'] = True
+    delivery['last_published_source_sha'] = source_sha
     for number in batch['issues']:
         row = delivery['issues'][str(number)]
         row['version'] = row['batch_version'] = version
@@ -162,23 +165,56 @@ def release_notes(root, version, state):
     body = json.loads(run(['gh', 'release', 'view', 'v' + version, '--json', 'body'], cwd=root))['body']
     start, end = '<!-- zwai-platform-delivery -->', '<!-- /zwai-platform-delivery -->'
     body = re.sub(re.escape(start) + r'.*?' + re.escape(end), '', body, flags=re.S).rstrip()
-    rows = [f"- {p}: {state.get(p, {}).get('status', 'pending')}" for p in ('macos', 'android', 'ios')]
+    required = batch_platforms(version, pending_only=False)
+    rows = [f"- {p}: {state.get(p, {}).get('status', 'pending') if required is None or p in required else 'not_required'}"
+            for p in ('macos', 'android', 'ios')]
     notes = root / 'bin' / 'release-notes.md'
     notes.parent.mkdir(parents=True, exist_ok=True)
     notes.write_text(body + '\n\n' + start + '\n' + '\n'.join(rows) + '\n' + end + '\n')
     run(['gh', 'release', 'edit', 'v' + version, '--notes-file', str(notes)], cwd=root)
 
 
+def batch_platforms(version, pending_only):
+    delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
+    batch = delivery.get('pending_new_batch', {})
+    if batch.get('version') != version or not batch.get('issues'):
+        return None
+    excluded = DELIVERED if pending_only else NOT_REQUIRED
+    return [platform for platform in ('macos', 'android', 'ios') if any(
+        delivery.get('issues', {}).get(str(number), {}).get(platform) not in excluded
+        for number in batch['issues'])]
+
+
+def selected_platforms(version, selected):
+    if selected != 'all':
+        return [selected]
+    pending = batch_platforms(version, pending_only=True)
+    return ['macos', 'android', 'ios'] if pending is None else pending
+
+
+def platform_acceptance_gate(version, platform):
+    delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
+    batch = delivery.get('pending_new_batch', {})
+    if batch.get('version') != version:
+        return
+    for number in batch.get('issues', []):
+        status = delivery.get('issues', {}).get(str(number), {}).get(platform, '')
+        if isinstance(status, str) and status.startswith('pending_native_'):
+            raise ValueError(f'Issue #{number} {platform} native acceptance is still pending')
+
+
 def execute(root, version, selected, state_path, check=False):
-    source_sha = source_preflight(root, version)
+    platforms = selected_platforms(version, selected)
+    source_sha = source_preflight(root, version, tuple(platforms))
     state = read_json(state_path, {'version': version, 'source_sha': source_sha})
     if state['version'] != version or state['source_sha'] != source_sha:
         raise ValueError('Release state belongs to another version/source SHA')
     from release_ios import IOSRelease
-    platforms = ['macos', 'android', 'ios'] if selected == 'all' else [selected]
     failures = []
     for platform in platforms:
         try:
+            if not check:
+                platform_acceptance_gate(version, platform)
             if platform == 'ios':
                 ios = IOSRelease(root, version, source_sha, state)
                 result = ios.publish(check=check)

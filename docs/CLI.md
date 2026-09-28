@@ -87,7 +87,9 @@ The first launch may prompt to allow local network access.
 A released Mac app shows its version at the bottom of the conversation list
 (`Version x.y.z`). On startup it asks
 [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases/latest)
-whether a newer public release has `zwai-<version>-darwin-<arch>.zip`
+whether a newer public release has `zwai-<version>-darwin-<arch>.zip`; when
+the newest Release only has a phone package, it checks earlier Releases for
+the newest matching Mac installer
 (`arm64` or `amd64`, matching this Mac). The zip's root is `zwai.app`.
 **Update** replaces the running app and opens it again. **Not now** hides
 that version. **App menu → Check for updates** always asks, including when
@@ -102,16 +104,19 @@ make release-check VERSION=x.y.z
 make mobile-ios-release VERSION=x.y.z  # resume only TestFlight, same version/SHA
 ```
 
-`make release` serially publishes macOS → Android → iOS. macOS zip and
-sideload APK go to the same GitHub tag; iOS goes to the configured TestFlight
+`make release` serially publishes only the batch's still-required platforms
+in macOS → Android → iOS order. If both desktop and mobile changed, macOS zip
+and sideload APK go to the same GitHub tag; iOS goes to the configured TestFlight
 internal/external groups. Each platform has an independent gate: failure or
 waiting on one does not suppress the other platforms. Any unfinished platform
 makes the final command exit non-zero; uploaded/VALID/waiting-review is not
 TestFlight publication. See [release setup and recovery](RELEASE.md).
 
-The source must be clean, contain the committed mobile package version and be
-part of successfully fetched/pushed main. A new version requires the existing
-qualified batch ledger (at least three distinct accepted Issues); this command
+The source must be clean and part of successfully fetched/pushed main. A mobile
+publication must also contain the committed mobile package version; a Mac-only
+version leaves that package untouched. A new version requires a qualified batch
+(more than three main commits since the last published SHA, or an accepted
+pending change older than 24 hours); this command
 does not increment versions or commit unverified changes. A published version
 is frozen at its tag SHA. Missing remote assets are appended; same-name assets
 require identical SHA-256 and are skipped. No published attachment is replaced.

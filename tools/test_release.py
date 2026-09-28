@@ -25,6 +25,36 @@ import release
 import release_ios
 
 class DriverTests(unittest.TestCase):
+    def test_all_only_runs_platforms_still_required_by_this_batch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'receipt.json'
+            ledger = Path(directory) / 'delivery.json'
+            release.write_json(ledger, {'pending_new_batch': {'version': '1.2.3', 'issues': [46]},
+                'issues': {'46': {'macos': 'pending_next_qualified_batch',
+                                  'android': 'not_required_by_behavior_change',
+                                  'ios': 'not_required_by_behavior_change'}}})
+            with patch.dict(os.environ, {'DELIVERY_STATE': str(ledger)}), \
+                 patch.object(release, 'source_preflight', return_value='sha'), \
+                 patch.object(release, 'github_platform', return_value={'status': 'published'}) as publish, \
+                 patch.object(release, 'release_notes'):
+                self.assertEqual(release.execute(Path(directory), '1.2.3', 'all', path), 0)
+                self.assertEqual(publish.call_count, 1)
+                self.assertEqual(publish.call_args.args[3], 'macos')
+
+    def test_native_acceptance_wait_blocks_mac_without_blocking_android(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'receipt.json'
+            ledger = Path(directory) / 'delivery.json'
+            release.write_json(ledger, {'pending_new_batch': {'version': '1.2.3', 'issues': [1, 2]},
+                'issues': {'1': {'macos': 'pending_native_window_acceptance', 'android': 'not_required', 'ios': 'not_required'},
+                           '2': {'macos': 'not_required', 'android': 'pending', 'ios': 'not_required'}}})
+            with patch.dict(os.environ, {'DELIVERY_STATE': str(ledger)}), \
+                 patch.object(release, 'source_preflight', return_value='sha'), \
+                 patch.object(release, 'github_platform', return_value={'status': 'published'}) as publish, \
+                 patch.object(release, 'release_notes'):
+                self.assertEqual(release.execute(Path(directory), '1.2.3', 'all', path), 1)
+                self.assertEqual([call.args[3] for call in publish.call_args_list], ['android'])
+
     def test_python_import_cache_does_not_dirty_the_release_source(self):
         result = subprocess.run(['git', 'check-ignore', '--no-index', '-q',
             'tools/__pycache__/release.cpython-314.pyc'], cwd=release.ROOT)
@@ -77,6 +107,7 @@ class DriverTests(unittest.TestCase):
                 self.assertEqual(release.source_preflight(root, '1.2.3'), 'sha')
                 with self.assertRaisesRegex(ValueError, 'package'):
                     release.source_preflight(root, '1.2.4')
+                self.assertEqual(release.source_preflight(root, '1.2.4', ('macos',)), 'sha')
             def dirty(args, **kwargs):
                 return ' M tracked' if args[1:3] == ['status', '--porcelain'] else command(args, **kwargs)
             with patch.object(release, 'run', side_effect=dirty), self.assertRaisesRegex(ValueError, 'clean'):
@@ -256,6 +287,7 @@ class IosTests(unittest.TestCase):
         saved = release.read_json(path)
         rows = saved['issues']
         self.assertTrue(saved['pending_new_batch']['version_locked'])
+        self.assertEqual(saved['last_published_source_sha'], 'sha')
         self.assertTrue(all(row['batch_version'] == '0.1.20' for row in rows.values()))
         self.assertEqual(rows['43']['ios'], 'not_required_by_behavior_change')
         self.assertEqual(rows['44']['ios'], 'published')
@@ -355,6 +387,7 @@ class MoreGateTests(unittest.TestCase):
             saved = release.read_json(state)
             rows = saved['issues']
             self.assertTrue(saved['pending_new_batch']['version_locked'])
+            self.assertEqual(saved['last_published_source_sha'], 'sha')
             self.assertTrue(all(row['batch_version'] == '0.1.21' and row['release_source_sha'] == 'sha'
                                 for row in rows.values()))
             self.assertEqual(rows['43']['macos'], 'published')
@@ -373,22 +406,27 @@ class MoreGateTests(unittest.TestCase):
             (root/'go.mod').write_text('module github.com/example/app\n')
             statepath = root/'delivery.json'
             release.write_json(statepath, {'pending_new_batch': {'version': '1.2.3', 'source_sha': 'sha',
-                'issues': [1,2,3], 'qualified_for_new_release': True}})
+                'issues': [1], 'qualified_for_new_release': True}})
             remote = [[{'tag_name': 'v1.2.2'}]]
-            report = {'allocate_new_version': True, 'main_sha': 'sha', 'issues': [1,2,3]}
+            report = {'resume_allocated_version': True, 'main_sha': 'sha', 'unallocated_issues': [1],
+                      'platforms_to_release': ['android', 'ios']}
             def command(args, **kwargs):
                 if args[0] == sys.executable: return json.dumps(report)
                 if args[0] == 'gh':
                     return 'example/app' if args[1] == 'repo' else json.dumps(remote)
                 return 'sha' if args[1] == 'rev-parse' else ''
             with patch.dict(os.environ, {'DELIVERY_STATE':str(statepath)}), patch.object(release,'run',side_effect=command):
-                self.assertEqual(release.source_preflight(root,'1.2.3'),'sha')
+                self.assertEqual(release.source_preflight(root,'1.2.3',('android','ios')),'sha')
                 remote[0][0]['tag_name'] = 'v1.2.3'
-                with self.assertRaisesRegex(ValueError,'strictly greater'): release.source_preflight(root,'1.2.3')
-                report['allocate_new_version'] = False
-                with self.assertRaisesRegex(ValueError,'Live batch audit'): release.source_preflight(root,'1.2.3')
+                with self.assertRaisesRegex(ValueError,'strictly greater'): release.source_preflight(root,'1.2.3',('android','ios'))
+                remote[0][0]['tag_name'] = 'v1.2.2'
+                report['unallocated_issues'] = [1, 2]
+                with self.assertRaisesRegex(ValueError,'Live batch audit'): release.source_preflight(root,'1.2.3',('android','ios'))
+                report['unallocated_issues'] = [1]
+                report['resume_allocated_version'] = False
+                with self.assertRaisesRegex(ValueError,'Live batch audit'): release.source_preflight(root,'1.2.3',('android','ios'))
                 release.write_json(statepath, {})
-                with self.assertRaisesRegex(ValueError,'three distinct'): release.source_preflight(root,'1.2.3')
+                with self.assertRaisesRegex(ValueError,'allocated batch'): release.source_preflight(root,'1.2.3',('android','ios'))
 
     def test_installer_remote_retry_never_builds_and_rejects_mismatch(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -445,6 +483,21 @@ class MoreGateTests(unittest.TestCase):
 
 
 class ReleaseNotesTests(unittest.TestCase):
+    def test_desktop_only_notes_do_not_claim_mobile_is_pending(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ledger = root / 'delivery.json'
+            release.write_json(ledger, {'pending_new_batch': {'version': '1.2.3', 'issues': [46]},
+                'issues': {'46': {'macos': 'published', 'android': 'not_required_by_behavior_change',
+                                  'ios': 'not_required_by_behavior_change'}}})
+            with patch.dict(os.environ, {'DELIVERY_STATE': str(ledger)}), \
+                 patch.object(release, 'run', side_effect=[json.dumps({'body': 'Desktop release'}), '']):
+                release.release_notes(root, '1.2.3', {'macos': {'status': 'published'}})
+            notes = (root / 'bin/release-notes.md').read_text()
+            self.assertIn('macos: published', notes)
+            self.assertIn('android: not_required', notes)
+            self.assertIn('ios: not_required', notes)
+
     def test_partial_delivery_notes_preserve_existing_description(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)

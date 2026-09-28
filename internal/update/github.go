@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -91,7 +92,7 @@ func (s *Service) now() time.Time {
 	return time.Now()
 }
 
-// Check reads the latest public release. A fresh check ignores the
+// Check reads the newest public release containing this Mac package. A fresh check ignores the
 // six-hour memory cache the automatic banner uses.
 func (s *Service) Check(ctx context.Context, fresh bool) Result {
 	current := Canonical(s.Current)
@@ -111,8 +112,39 @@ func (s *Service) Check(ctx context.Context, fresh bool) Result {
 		return Result{Status: "error", Current: current, Message: err.Error()}
 	}
 	result := classify(current, s.arch(), body)
+	if result.Status == "error" && result.Message == "this release has no macOS build" {
+		result = s.checkMacReleases(ctx, current)
+	}
 	s.store(current, result)
 	return result
+}
+
+func (s *Service) checkMacReleases(ctx context.Context, current string) Result {
+	best := Result{Status: "current", Current: current}
+	for page := 1; page <= 10; page++ {
+		body, err := s.getJSON(ctx, fmt.Sprintf("https://api.github.com/repos/%s/releases?per_page=100&page=%d", ReleaseRepo, page))
+		if err != nil {
+			return Result{Status: "error", Current: current, Message: err.Error()}
+		}
+		var releases []releaseDoc
+		if err := json.Unmarshal(body, &releases); err != nil {
+			return Result{Status: "error", Current: current, Message: "the version response could not be read"}
+		}
+		for _, row := range releases {
+			version := Canonical(row.TagName)
+			if row.Draft || row.Prerelease || version == "" || !Newer(version, current) {
+				continue
+			}
+			offer := pickAsset(version, s.arch(), row)
+			if offer != nil && (best.Offer == nil || Newer(version, best.Offer.Version)) {
+				best = Result{Status: "available", Current: current, Offer: offer}
+			}
+		}
+		if len(releases) < 100 {
+			return best
+		}
+	}
+	return Result{Status: "error", Current: current, Message: "the release list exceeded the update search limit"}
 }
 
 func (s *Service) freshCache(current string) (Result, bool) {

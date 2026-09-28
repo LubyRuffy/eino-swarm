@@ -88,7 +88,7 @@ describe("app update", () => {
         },
       ],
     })
-    expect(offerFromRelease("android", "1.0.0", foreign)?.apkURL).toBe("")
+    expect(offerFromRelease("android", "1.0.0", foreign)).toBeNull()
     expect(allowedDownloadURL("http://github.com/" + RELEASE_REPO + "/a.apk")).toBe("")
     expect(allowedDownloadURL("https://user:pw@github.com/" + RELEASE_REPO + "/a.apk")).toBe("")
     expect(allowedReleasePage("https://example.com/" + RELEASE_REPO + "/releases/tag/v2.4.0")).toBe("")
@@ -96,7 +96,23 @@ describe("app update", () => {
     const notes = release({
       assets: [{ name: "notes.txt", browser_download_url: apk }],
     })
-    expect(offerFromRelease("android", "1.0.0", notes)?.apkURL).toBe("")
+    expect(offerFromRelease("android", "1.0.0", notes)).toBeNull()
+  })
+
+  it("finds the newest Android installer when the latest release only contains a Mac package", async () => {
+    const mac = release({ tag_name: "v2.5.0", assets: [{
+      name: "zwai-2.5.0-darwin-arm64.zip", browser_download_url: apk,
+    }] })
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => new Response(JSON.stringify(
+      String(input).includes("/releases/latest") ? mac : [mac, release()],
+    ), { status: 200 }))
+    const store = memoryStore()
+    const offer = await checkForAppUpdate({ platform: "android", version: "2.3.0", fetcher, store })
+    expect(offer).toEqual({ version: "2.4.0", pageURL: page, apkURL: apk })
+    expect(fetcher).toHaveBeenCalledTimes(2)
+    expect(await checkAppVersionNow({ platform: "android", version: "2.3.0", fetcher, store })).toEqual({
+      status: "available", offer: { version: "2.4.0", pageURL: page, apkURL: apk },
+    })
   })
 
   it("does not offer an Android release as an install on iOS", async () => {
@@ -163,6 +179,8 @@ describe("app update", () => {
     const later = release({
       tag_name: "v2.5.0",
       html_url: "https://github.com/" + RELEASE_REPO + "/releases/tag/v2.5.0",
+      assets: [{ name: "zwai-2.5.0-android.apk", browser_download_url:
+        "https://github.com/" + RELEASE_REPO + "/releases/download/v2.5.0/zwai-2.5.0-android.apk" }],
     })
     fetcher.mockResolvedValueOnce(new Response(JSON.stringify(later), { status: 200 }))
     const offer = await checkForAppUpdate({
@@ -207,8 +225,7 @@ describe("app update", () => {
       fetcher,
       store,
     })
-    expect(offer?.apkURL).toBe("")
-    expect(offer?.pageURL).toBe(page)
+    expect(offer).toBeNull()
 
     const fresh = memoryStore()
     fresh.setItem(

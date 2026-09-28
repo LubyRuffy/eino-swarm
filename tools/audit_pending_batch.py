@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
@@ -22,6 +23,8 @@ raw = subprocess.check_output([
 github_states = {r["number"]: r["state"] for page in json.loads(raw)
                  for r in page if "pull_request" not in r}
 rows = {int(n): r for n, r in state["issues"].items()}
+delivered = {"published", "published_remote_verified", "delivered",
+             "not_required", "not_required_by_behavior_change", "published_previous_release"}
 ios_rows = {r["issue"]: r for r in ios["pending_changes"] if r.get("status") not in ("published", "delivered")}
 # A closed Issue can still be in an unpublished batch or awaiting TestFlight.
 candidates = set(state["pending_new_batch"]["issues"]) | set(ios_rows)
@@ -40,15 +43,44 @@ for number in sorted(candidates):
     if not sha:
         raise SystemExit(f"Issue #{number}: missing fix SHA")
     subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], cwd=repo, check=True)
-    pending = any(row.get(p) not in ("published", "delivered", "not_required", "not_required_by_behavior_change", "published_previous_release") for p in ("android", "macos", "ios", "server"))
+    pending = any(row.get(p) not in delivered for p in ("android", "macos", "ios", "server"))
     if pending:
         accepted.append(number)
-minimum = state["minimum_distinct_issues"]
 locked = state["pending_new_batch"].get("version_locked", False)
-allocated = {n for n in accepted if rows[n].get("batch_version")}
+current_batch = set(state["pending_new_batch"]["issues"])
+allocated = {n for n in accepted if rows[n].get("batch_version") and (locked or n not in current_batch)}
 if locked:
-    allocated |= set(state["pending_new_batch"]["issues"])
+    allocated |= current_batch
 unallocated = [n for n in accepted if n not in allocated]
+platforms = [p for p in ("macos", "android", "ios") if any(
+    rows[n].get(p) not in delivered
+    for n in unallocated)]
+commit_count = 0
+oldest = None
+if unallocated:
+    baseline = state.get("last_published_source_sha")
+    if not baseline and locked:
+        baseline = state["pending_new_batch"].get("source_sha")
+    if not baseline:
+        raise SystemExit("Missing last published source SHA for the new batch audit")
+    subprocess.run(["git", "merge-base", "--is-ancestor", baseline, "HEAD"], cwd=repo, check=True)
+    commit_count = int(subprocess.check_output(
+        ["git", "rev-list", "--first-parent", "--count", f"{baseline}..HEAD"],
+        cwd=repo, text=True).strip())
+    for number in unallocated:
+        row = rows[number]
+        stamp = row.get("integrated_at") or row.get("accepted_at") or row.get("closed_at")
+        if not stamp:
+            stamp = subprocess.check_output(
+                ["git", "show", "-s", "--format=%cI", row.get("main_sha") or row["fix_sha"]],
+                cwd=repo, text=True).strip()
+        moment = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+        if moment.tzinfo is None:
+            raise SystemExit(f"Issue #{number}: acceptance time lacks timezone")
+        oldest = moment if oldest is None or moment < oldest else oldest
+age_hours = (datetime.now(timezone.utc) - oldest.astimezone(timezone.utc)).total_seconds() / 3600 if oldest else 0
+qualified = bool(platforms) and (commit_count > 3 or age_hours > 24)
+preallocated = bool(state["pending_new_batch"].get("version")) and not locked
 print(json.dumps({
     "issues": accepted,
     "closed_pending_issues": [n for n in accepted if github_states.get(n) == "closed"],
@@ -56,11 +88,17 @@ print(json.dumps({
     "allocated_pending_issues": [n for n in accepted if n in allocated],
     "unallocated_issues": unallocated,
     "distinct_unallocated_pending_count": len(unallocated),
-    "minimum": minimum,
-    "qualified": len(accepted) >= minimum,
+    "commit_threshold_exclusive": 3,
+    "max_wait_hours_exclusive": 24,
+    "pending_commit_count": commit_count,
+    "oldest_pending_at": oldest.isoformat() if oldest else None,
+    "pending_age_hours": round(age_hours, 3),
+    "platforms_to_release": platforms,
+    "qualified": qualified,
     "batch_version": state["pending_new_batch"].get("version"),
     "version_locked": locked,
-    "allocate_new_version": len(unallocated) >= minimum,
+    "allocate_new_version": qualified and not preallocated,
+    "resume_allocated_version": qualified and preallocated,
     "main_sha": subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=repo, text=True).strip(),
 }, ensure_ascii=False))

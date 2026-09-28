@@ -80,3 +80,35 @@ test("the menu check shows progress, then latest, an update, or the feed error",
   await expect(page.getByRole("status")).toHaveText("已经是最新版本")
   await expect(page.getByRole("button", { name: "更新" })).toHaveCount(0)
 })
+
+test("the Android menu skips a newer desktop-only Release", async ({ page }) => {
+  await page.addInitScript((version) => {
+    Object.assign(window, {
+      CapacitorCustomPlatform: { name: "android" },
+      Capacitor: {
+        PluginHeaders: [{ name: "App", methods: [{ name: "getInfo", rtype: "promise" }] }],
+        nativePromise: async (plugin: string, method: string) => {
+          if (plugin === "App" && method === "getInfo") return { version }
+          throw new Error("unsupported test bridge call")
+        },
+      },
+    })
+  }, shell.version)
+  const androidVersion = bump(shell.version)
+  const macVersion = bump(androidVersion)
+  const macOnly = { ...release(macVersion), assets: [{ name: `zwai-${macVersion}-darwin-arm64.zip` }] }
+  await page.route(RELEASES_LATEST_URL, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(macOnly) })
+  })
+  await page.route("https://api.github.com/repos/LubyRuffy/eino-swarm/releases?*", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify([macOnly, release(androidVersion)]) })
+  })
+  await page.goto("/?mock=1&tick=0")
+  await page.getByRole("button", { name: "返回" }).click()
+  await page.getByRole("button", { name: "菜单" }).click()
+  await page.getByRole("menuitem", { name: "检查新版本" }).click()
+  const dialog = page.getByRole("dialog", { name: "检查新版本" })
+  await expect(dialog.getByRole("status")).toHaveText(`有新版本 ${androidVersion}，是否升级？`)
+  await expect(dialog.getByRole("button", { name: "更新" })).toBeVisible()
+})

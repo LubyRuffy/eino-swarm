@@ -231,6 +231,9 @@ the app itself only asks for the camera. Nothing compiles a hub hostname.
 
 The installed app checks [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases)
 itself (`https://api.github.com/repos/LubyRuffy/eino-swarm/releases/latest`).
+If the newest Release has no matching Android APK, it searches the release
+list for the newest version with an installable APK; a desktop-only version
+does not offer a phone update.
 It does not ask the PC. The browser walkthrough (`?mock=1`) does not check,
 so a desk session never phones GitHub. A newer `zwai-*-android.apk` on
 Android is downloaded and handed to the system installer. While the bytes
@@ -244,8 +247,10 @@ it shows that it is fetching, says when this build is current, asks before
 an install, and shows the response's own error. The download only follows `github.com/LubyRuffy/eino-swarm`
 and GitHub's release-asset hosts. The Mac desktop app uses that same
 release: `zwai-<version>-darwin-<arch>.zip` (a `zwai.app`), built with
-`make release VERSION=x.y.z` publishes that zip and this APK on one GitHub
-Release and includes TestFlight for iOS. See [release setup](../docs/RELEASE.md).
+`make release VERSION=x.y.z` publishes only the affected platforms in the
+qualified batch. A desktop-only batch uploads only the Mac zip; a mobile
+batch publishes Android and iOS under one version. See
+[release setup](../docs/RELEASE.md).
 
 ## Simulators
 

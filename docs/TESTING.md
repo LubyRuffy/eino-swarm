@@ -7,13 +7,15 @@ The mobile production build and UI E2E remain separate required evidence.
 ## Issue closure and pending release accounting (C-010)
 
 `make docs-check` also runs `tools/test_audit_pending_batch.py`. The regressions
-cover closed fixes still waiting for a platform, fewer than three accepted
-fixes not allocating a version, three closed fixes qualifying together,
+cover closed fixes still waiting for a platform, three new commits before
+24 hours not allocating a version, a fourth commit or more than 24 hours
+qualifying even one accepted fix,
 resuming a locked batch without another version, fully delivered fixes not
 counting again, and missing/non-integrated fix evidence failing the audit. Accepted Mac-only
 fixes absent from both the current batch and iOS ledger still count. The
 output separates `allocated_pending_issues` from `unallocated_issues`; only
-three distinct unallocated fixes can request another version. Alias reports
+newly unallocated changes contribute to the next version's commit count and
+oldest waiting timestamp. Alias reports
 and unfinished code do not qualify.
 
 Run a read-only real-ledger reconciliation with:
@@ -161,9 +163,10 @@ receives the next, and a delayed read cannot reopen a closed task.
 `mobile/scripts/android-release.test.ts` is why `make mobile-android-release`
 refuses a store upload without a keystore, skips JAVA_HOME 17, and copies
 the APK into `bin/`. `internal/update` is why a Mac desktop install only
-accepts this repo's `zwai-<version>-darwin-<arch>.zip`, skips drafts, and
+accepts this repo's `zwai-<version>-darwin-<arch>.zip`, skips drafts, searches
+past a phone-only latest Release for the newest Mac package, and
 swaps `zwai.app` before reopening. `internal/release` is why `make release` refuses a dirty version, uploads
-the apk and the darwin zip together, and fails when either asset is absent
+only the required platform assets, and fails when a required asset is absent
 after upload. `internal/desktop/pack` refuses a
 non-release version so `make desktop-release` cannot stamp a dirty describe. `TestPhoneLauncherSlotsMatchTheDesktopMark`
 is why those PNGs are `internal/desktop/appicon.png` painted into the iOS/Android
@@ -236,7 +239,8 @@ A long tool path must not stretch the column (`min-w-0` / `break-words`).
 `mobile/src/components/thread-blocks.test.tsx` keeps that roster off the user bubble and the expanded tool body.
 
 `mobile/src/lib/app-update.test.ts` is why the phone asks GitHub Releases
-itself, ignores a draft, a prerelease, the version already installed, and
+itself, searches past a desktop-only latest Release for the newest Android
+APK, ignores a draft, a prerelease, the version already installed, and
 any artefact that is not this repo's `zwai-*-android.apk` on a GitHub host.
 A menu check always requests: a fresh cache and Not now do not answer it,
 and a failed response is that response's error rather than silence. The

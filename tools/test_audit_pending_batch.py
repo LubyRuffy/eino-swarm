@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import runpy
 import unittest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 
@@ -14,18 +15,21 @@ SCRIPT = Path(__file__).with_name("audit_pending_batch.py")
 class PendingBatchTests(unittest.TestCase):
     def audit(self, numbers, *, closed=True, delivered=False, locked=False,
               missing_fix=False, integrated=True, extra_numbers=(),
-              extra_accepted=True, alias=False, assigned_numbers=()):
+              extra_accepted=True, alias=False, assigned_numbers=(),
+              commits=0, age_hours=1, platform="ios", preallocated=False):
+        accepted_at = (datetime.now(timezone.utc) - timedelta(hours=age_hours)).isoformat()
         state = {
             "repository": "owner/project", "integration_checkout": "/clean/main",
-            "minimum_distinct_issues": 3,
+            "last_published_source_sha": "base-sha",
             "pending_new_batch": {"issues": numbers, "version_locked": locked,
-                                  "version": "1.0.0" if locked else None},
+                                  "version": "1.0.0" if locked or preallocated else None},
             "issues": {str(n): {
                 "code": "verified_integrated_and_pushed",
                 "fix_sha": None if missing_fix else f"fix-{n}",
                 "android": "published", "macos": "not_required",
                 "ios": "published" if delivered else "waiting_next_day",
                 "server": "not_required",
+                "accepted_at": accepted_at,
             } for n in numbers},
         }
         for n in extra_numbers:
@@ -34,6 +38,7 @@ class PendingBatchTests(unittest.TestCase):
                 "fix_sha": f"fix-{n}", "macos": "pending_batch",
                 "android": "not_required", "ios": "not_required", "server": "not_required",
                 "count_as_new_release_issue": not alias,
+                "accepted_at": accepted_at,
             }
         for n in assigned_numbers:
             state["issues"][str(n)]["batch_version"] = "1.0.0"
@@ -55,6 +60,8 @@ class PendingBatchTests(unittest.TestCase):
                 if "state=open" in args[-1]:
                     rows = [r for r in rows if r["state"] == "open"]
                 return json.dumps([rows])
+            if args[:3] == ["git", "rev-list", "--first-parent"]:
+                return str(commits) + "\n"
             self.assertEqual(args, ["git", "rev-parse", "HEAD"])
             return "main-sha\n"
 
@@ -77,13 +84,29 @@ class PendingBatchTests(unittest.TestCase):
         self.assertEqual(result["closed_pending_issues"], [1])
         self.assertFalse(result["allocate_new_version"])
 
-    def test_three_closed_unreleased_fixes_qualify_together(self):
-        result = self.audit([1, 2, 3])
-        self.assertEqual(result["distinct_code_accepted_pending_count"], 3)
+    def test_four_commits_qualify_even_with_one_pending_issue(self):
+        result = self.audit([1], commits=4)
+        self.assertEqual(result["pending_commit_count"], 4)
         self.assertTrue(result["allocate_new_version"])
 
+    def test_allocated_candidate_without_public_platform_still_passes_first_publish_gate(self):
+        result = self.audit([1], assigned_numbers=[1], commits=4, preallocated=True)
+        self.assertEqual(result["unallocated_issues"], [1])
+        self.assertFalse(result["allocate_new_version"])
+        self.assertTrue(result["resume_allocated_version"])
+
+    def test_three_commits_under_a_day_do_not_qualify(self):
+        result = self.audit([1, 2, 3], commits=3)
+        self.assertEqual(result["distinct_code_accepted_pending_count"], 3)
+        self.assertFalse(result["allocate_new_version"])
+
+    def test_oldest_pending_change_qualifies_after_a_day(self):
+        result = self.audit([1], commits=1, age_hours=25)
+        self.assertTrue(result["allocate_new_version"])
+        self.assertIn("ios", result["platforms_to_release"])
+
     def test_locked_batch_recovers_without_another_version(self):
-        result = self.audit([1, 2, 3], locked=True)
+        result = self.audit([1, 2, 3], locked=True, commits=5, age_hours=25)
         self.assertEqual(result["issues"], [1, 2, 3])
         self.assertEqual(result["batch_version"], "1.0.0")
         self.assertFalse(result["allocate_new_version"])
@@ -114,7 +137,7 @@ class PendingBatchTests(unittest.TestCase):
         self.assertFalse(result["allocate_new_version"])
 
     def test_next_batch_can_qualify_while_old_ios_is_pending(self):
-        result = self.audit([1, 2, 3], locked=True, extra_numbers=[4, 5, 6])
+        result = self.audit([1, 2, 3], locked=True, extra_numbers=[4, 5, 6], commits=4)
         self.assertEqual(result["unallocated_issues"], [4, 5, 6])
         self.assertTrue(result["allocate_new_version"])
 
@@ -125,7 +148,7 @@ class PendingBatchTests(unittest.TestCase):
         self.assertFalse(result["allocate_new_version"])
 
     def test_three_mac_only_fixes_qualify_without_ios_pending_rows(self):
-        result = self.audit([], extra_numbers=[1, 2, 3])
+        result = self.audit([], extra_numbers=[1, 2, 3], commits=4)
         self.assertEqual(result["unallocated_issues"], [1, 2, 3])
         self.assertTrue(result["allocate_new_version"])
 
