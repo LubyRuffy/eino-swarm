@@ -9,7 +9,7 @@ import zipfile
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from release import source_preflight, home, read_json, run, sha256, version_code, write_json
+from release import NOT_REQUIRED, delivery_complete, source_preflight, home, read_json, run, sha256, version_code, write_json
 
 
 def load_client(path):
@@ -192,16 +192,21 @@ class IOSRelease:
         batch = delivery.get('pending_new_batch', {})
         if batch.get('source_sha') == self.source_sha and batch.get('version') == self.version:
             batch['ios'] = 'published'
-            batch['publication'] = 'platform_delivery_verified' if all(batch.get(p) in ('published', 'published_remote_verified', 'not_required') for p in ('android', 'macos')) else 'ios_published_other_platforms_pending'
+            batch['version_locked'] = True
             issues = set(map(str, batch['issues']))
             issues.update(str(n) for n, alias in delivery.get('delivery_aliases', {}).items()
                           if alias.get('source_sha') == self.source_sha)
             for number in issues:
                 row = delivery.get('issues', {}).get(number)
                 if row:
-                    row['ios'] = 'published'
-                    row['delivery_complete'] = all(row.get(p) in ('published', 'delivered', 'not_required',
-                        'not_required_by_behavior_change', 'published_previous_release') for p in ('android', 'macos', 'server'))
+                    row['version'] = row['batch_version'] = self.version
+                    row['release_source_sha'] = self.source_sha
+                    if row.get('ios') not in NOT_REQUIRED:
+                        row['ios'] = 'published'
+                    row['delivery_complete'] = delivery_complete(row)
+            batch['publication'] = ('platform_delivery_verified' if all(
+                delivery['issues'][str(number)]['delivery_complete'] for number in batch['issues'])
+                else 'platform_delivery_in_progress')
             write_json(path, delivery)
 
     def publish(self, check=False):

@@ -33,6 +33,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430` / `C-010`: mixed Mac and phone release batches preserve each Issue's platform scope in delivery records; an installer or TestFlight completion no longer marks an unrelated platform as shipped for that Issue. First verified public delivery locks the shared version and source SHA across the batch.
+
 - `F-223` / `C-018`: phone Clients task detail now stays over the viewport during inbox pull-to-refresh, keeping its title and Back button visible on iOS (Issue #45).
 
 - `F-221` / `C-011`: phone Add to chat now appears near selected conversation text instead of staying at the transcript's bottom corner; the system Copy/Select menu remains available (Issue #44).

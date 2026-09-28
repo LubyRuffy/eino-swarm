@@ -13,6 +13,12 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 ROOT = Path(__file__).resolve().parents[1]
+NOT_REQUIRED = {'not_required', 'not_required_by_behavior_change'}
+DELIVERED = {'published', 'published_remote_verified', 'published_previous_release', 'delivered'} | NOT_REQUIRED
+
+
+def delivery_complete(row):
+    return all(row.get(platform) in DELIVERED for platform in ('android', 'macos', 'ios', 'server'))
 
 
 def read_json(path, default=None):
@@ -136,10 +142,17 @@ def record_installer(version, source_sha, platform, result):
     if batch.get('source_sha') != source_sha or batch.get('version') != version:
         return
     batch[platform] = 'published'
+    batch['version_locked'] = True
     for number in batch['issues']:
         row = delivery['issues'][str(number)]
-        row[platform] = 'published'
-        row[f'{platform}_delivery'] = dict(result, source_sha=source_sha, version=version)
+        row['version'] = row['batch_version'] = version
+        row['release_source_sha'] = source_sha
+        if row.get(platform) not in NOT_REQUIRED:
+            row[platform] = 'published'
+            row[f'{platform}_delivery'] = dict(result, source_sha=source_sha, version=version)
+        row['delivery_complete'] = delivery_complete(row)
+    batch['publication'] = ('platform_delivery_verified' if all(delivery['issues'][str(number)]['delivery_complete']
+        for number in batch['issues']) else 'platform_delivery_in_progress')
     write_json(path, delivery)
 
 

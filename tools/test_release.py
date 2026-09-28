@@ -240,6 +240,27 @@ class IosTests(unittest.TestCase):
         self.assertTrue(release.read_json(path)['issues']['2']['delivery_complete'])
         self.assertEqual(release.read_json(ios.ledger_path)['pending_changes'][0]['status'], 'published')
 
+    def test_ios_completion_keeps_mac_only_issue_out_of_ios_delivery(self):
+        ios = self.ios()
+        release.write_json(ios.ledger_path, {'pending_changes': [
+            {'issue': 44, 'batch_source_sha': 'sha', 'batch_version': '0.1.20'}]})
+        delivery = {'pending_new_batch': {'version': '0.1.20', 'source_sha': 'sha', 'issues': [43, 44]},
+            'issues': {
+                '43': {'macos': 'published', 'android': 'not_required_by_behavior_change',
+                       'ios': 'not_required_by_behavior_change', 'server': 'not_required'},
+                '44': {'macos': 'not_required_by_behavior_change', 'android': 'published',
+                       'ios': 'pending_next_qualified_batch', 'server': 'not_required'}}}
+        path = self.root / 'issue-automation/delivery-state.json'
+        release.write_json(path, delivery)
+        ios.complete_delivery()
+        saved = release.read_json(path)
+        rows = saved['issues']
+        self.assertTrue(saved['pending_new_batch']['version_locked'])
+        self.assertTrue(all(row['batch_version'] == '0.1.20' for row in rows.values()))
+        self.assertEqual(rows['43']['ios'], 'not_required_by_behavior_change')
+        self.assertEqual(rows['44']['ios'], 'published')
+        self.assertTrue(rows['44']['delivery_complete'])
+
     def test_review_wait_is_not_publication(self):
         self.receipt()
         result = self.ios().publish()
@@ -316,6 +337,35 @@ class IosTests(unittest.TestCase):
         self.assertEqual(len([c for c in self.run.call_args_list if 'altool' in c.args[0]]), 1)
 
 class MoreGateTests(unittest.TestCase):
+    def test_mixed_platform_batch_preserves_per_issue_delivery_scope(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = root / 'delivery.json'
+            release.write_json(state, {'pending_new_batch': {'version': '0.1.21', 'source_sha': 'sha',
+                'issues': [43, 44, 45]}, 'issues': {
+                '43': {'macos': 'pending_next_qualified_batch', 'android': 'not_required_by_behavior_change',
+                       'ios': 'not_required_by_behavior_change', 'server': 'not_required'},
+                '44': {'macos': 'not_required_by_behavior_change', 'android': 'pending_next_qualified_batch',
+                       'ios': 'pending_next_qualified_batch', 'server': 'not_required'},
+                '45': {'macos': 'not_required_by_behavior_change', 'android': 'pending_next_qualified_batch',
+                       'ios': 'pending_next_qualified_batch', 'server': 'not_required'}}})
+            with patch.dict(os.environ, {'DELIVERY_STATE': str(state)}):
+                release.record_installer('0.1.21', 'sha', 'macos', {'status': 'published'})
+                release.record_installer('0.1.21', 'sha', 'android', {'status': 'published'})
+            saved = release.read_json(state)
+            rows = saved['issues']
+            self.assertTrue(saved['pending_new_batch']['version_locked'])
+            self.assertTrue(all(row['batch_version'] == '0.1.21' and row['release_source_sha'] == 'sha'
+                                for row in rows.values()))
+            self.assertEqual(rows['43']['macos'], 'published')
+            self.assertEqual(rows['43']['android'], 'not_required_by_behavior_change')
+            self.assertTrue(rows['43']['delivery_complete'])
+            for number in ('44', '45'):
+                self.assertEqual(rows[number]['macos'], 'not_required_by_behavior_change')
+                self.assertEqual(rows[number]['android'], 'published')
+                self.assertEqual(rows[number]['ios'], 'pending_next_qualified_batch')
+                self.assertFalse(rows[number]['delivery_complete'])
+
     def test_qualified_batch_requires_live_audit_and_new_numeric_version(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); (root/'mobile').mkdir()

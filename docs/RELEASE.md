@@ -101,6 +101,12 @@ existing assets with equal digests are skipped; mismatched or missing digests re
 investigation. No `--clobber`, tag replacement or new version on retry. The Release body retains
 its existing description and appends a managed block with each platform status. Remote tags
 and numeric versions are checked before first publication.
+For a mixed-platform batch, a successful platform updates only the Issue rows that
+require that platform. Other rows keep their `not_required_by_behavior_change`
+status; each row becomes delivery-complete when all of its required platforms
+are published. The first verified public platform locks the version and source
+SHA onto all batch rows, so a partial delivery cannot qualify another version.
+The batch-level platform state still records the shared Release.
 
 iOS first checks app `builds`, app `buildUploads`, group `builds` and the existing
 `ios-signing/testflight-releases.json`. API `builds/{id}/betaGroups` is not used.
