@@ -64,7 +64,7 @@ test("standalone wait from the inbox runs now and opens findings", async ({
 
 	await openInbox(page)
   const inbox = page.getByTestId("schedule-page")
-  await inbox.getByRole("button", { name: "Create" }).click()
+  await inbox.getByRole("button", { name: "New task" }).click()
   await expect(page.getByTestId("schedule-create-drawer")).toBeVisible()
   await inbox.getByLabel("Task").fill("Continue the wait.")
   await inbox.getByLabel("Repeat").click()
@@ -225,7 +225,7 @@ test("create drawer expand fills the scheduled page", async ({ page }) => {
   await freshConversation(page)
   await openInbox(page)
   const inbox = page.getByTestId("schedule-page")
-  await inbox.getByRole("button", { name: "Create" }).click()
+  await inbox.getByRole("button", { name: "New task" }).click()
   const drawer = page.getByTestId("schedule-create-drawer")
   await expect(page.getByTestId("schedule-list-pane")).toBeVisible()
   await drawer.getByRole("button", { name: "Expand" }).click()

@@ -1,7 +1,15 @@
-import { useEffect, useRef } from "react"
-import { Maximize2, Minimize2, Search, X } from "lucide-react"
+import { useEffect, useRef, useState } from "react"
+import { Maximize2, Minimize2, MoreHorizontal, Plus, Search, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
 import { chromeTypeClass } from "@/lib/chrome-type"
@@ -23,7 +31,6 @@ import { ScheduleInboxForm } from "./schedule-inbox-form"
 import { ScheduleInboxRow } from "./schedule-inbox-row"
 
 const FILTERS = [
-  ["all", "schedule.filterAll"],
   ["active", "schedule.filterActive"],
   ["paused", "schedule.filterPaused"],
   ["completed", "schedule.filterCompleted"],
@@ -46,6 +53,18 @@ export function ScheduleListPane() {
   const setFilter = useScheduleInboxUI((s) => s.setFilter)
   const openCreate = useScheduleInboxUI((s) => s.openCreate)
   const openEdit = useScheduleInboxUI((s) => s.openEdit)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const showSearch = searchOpen || query.trim().length > 0
+  useEffect(() => {
+    if (!searchOpen) return
+    document.getElementById("schedule-search")?.focus()
+  }, [searchOpen])
+  const section =
+    filter === "paused"
+      ? t("schedule.filterPaused")
+      : filter === "completed"
+        ? t("schedule.filterCompleted")
+        : t("schedule.sectionUpcoming")
 
   const creating = drawer?.mode === "create"
   const selected =
@@ -80,7 +99,7 @@ export function ScheduleListPane() {
       data-testid="schedule-list-pane"
       className={hidden ? "hidden" : "flex min-h-0 min-w-0 flex-1 flex-col"}
     >
-      <div className="flex shrink-0 items-center justify-between gap-1 px-[var(--sidebar-row-px)] pb-1 pt-2">
+      <div className="flex shrink-0 items-center justify-between gap-1 px-[var(--sidebar-list-px)] pb-1 pt-2">
         <h1
           id="schedule-page-title"
           className={cn(chromeTypeClass, "min-w-0 flex-1 truncate font-medium text-sidebar-foreground")}
@@ -89,61 +108,100 @@ export function ScheduleListPane() {
         </h1>
         <Button
           type="button"
-          size="sm"
-          data-testid="schedule-create"
-          aria-expanded={creating}
-          className="shrink-0"
-          onClick={() => openCreate()}
+          variant="ghost"
+          size="icon-sm"
+          data-testid="schedule-search-toggle"
+          aria-expanded={showSearch}
+          aria-label={t("schedule.search")}
+          onClick={() => {
+            if (showSearch && !query.trim()) {
+              setSearchOpen(false)
+              return
+            }
+            setSearchOpen(true)
+          }}
         >
-          {t("schedule.createOpen")}
+          <Search />
         </Button>
       </div>
-      <p className={cn(chromeTypeClass, "shrink-0 px-[var(--sidebar-row-px)] pb-2 text-sidebar-foreground/60")}>
-        {t("schedule.inboxHint")}
-      </p>
+      {showSearch ? (
+        <div className="relative mx-[var(--sidebar-list-px)] mb-1 shrink-0">
+          <Input
+            id="schedule-search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Escape") return
+              e.preventDefault()
+              e.stopPropagation()
+              setQuery("")
+              setSearchOpen(false)
+            }}
+            aria-label={t("schedule.search")}
+            placeholder={t("schedule.searchPlaceholder")}
+            className="h-8"
+          />
+        </div>
+      ) : null}
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        data-testid="schedule-create"
+        aria-expanded={creating}
+        className={cn(chromeTypeClass, "mx-[var(--sidebar-list-px)] mb-1 shrink-0 justify-start gap-2 px-2")}
+        style={{ height: "var(--sidebar-row-height)" }}
+        onClick={() => openCreate()}
+      >
+        <Plus />
+        {t("schedule.createOpen")}
+      </Button>
       {error ? (
         <div
           role="alert"
           aria-label={t("schedule.error")}
-          className="mx-[var(--sidebar-row-px)] mb-2 shrink-0 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-sm text-destructive"
+          className="mx-[var(--sidebar-list-px)] mb-2 shrink-0 rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-sm text-destructive"
         >
           {error}
         </div>
       ) : null}
-      <div className="relative mx-[var(--sidebar-row-px)] mb-2 shrink-0">
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          id="schedule-search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          aria-label={t("schedule.search")}
-          placeholder={t("schedule.searchPlaceholder")}
-          className="pl-8"
-        />
-      </div>
-      <div
-        role="tablist"
-        aria-label={t("schedule.filter")}
-        className="mx-[var(--sidebar-row-px)] mb-2 grid shrink-0 grid-cols-2 gap-1"
-      >
-        {FILTERS.map(([id, key]) => (
-          <Button
-            key={id}
-            type="button"
-            role="tab"
-            size="sm"
-            variant={filter === id ? "secondary" : "ghost"}
-            aria-selected={filter === id}
-            data-testid={`schedule-filter-${id}`}
-            className="w-full rounded-full"
-            onClick={() => setFilter(id as InboxFilter)}
-          >
-            {t(key)}
-          </Button>
-        ))}
+      <div className="flex shrink-0 items-center justify-between gap-1 px-[var(--sidebar-list-px)] pb-1 pt-2">
+        <p
+          data-testid="schedule-section"
+          className={cn(chromeTypeClass, "min-w-0 truncate font-medium text-sidebar-foreground")}
+        >
+          {section}
+        </p>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              data-testid="schedule-filter-menu"
+              aria-label={t("schedule.filterBy")}
+            >
+              <MoreHorizontal />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>{t("schedule.filterBy")}</DropdownMenuLabel>
+            <DropdownMenuRadioGroup
+              value={filter === "all" ? "active" : filter}
+              onValueChange={(value) => setFilter(value as InboxFilter)}
+            >
+              {FILTERS.map(([id, key]) => (
+                <DropdownMenuRadioItem
+                  key={id}
+                  value={id}
+                  data-testid={`schedule-filter-${id}`}
+                >
+                  {t(key)}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       {listed.length === 0 ? (
         <p className={cn(chromeTypeClass, "min-h-0 flex-1 px-[var(--sidebar-row-px)] text-sidebar-foreground/60")}>

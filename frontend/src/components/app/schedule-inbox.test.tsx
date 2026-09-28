@@ -131,6 +131,13 @@ async function openPage() {
   await waitFor(() => expect(screen.getByTestId("schedule-page")).toBeInTheDocument())
 }
 
+function chooseFilter(name: string) {
+  // Radix opens on ArrowDown. A synthetic click opens the menu and then
+  // treats the same event as an outside click.
+  fireEvent.keyDown(screen.getByRole("button", { name: "Filter by" }), { key: "ArrowDown" })
+  fireEvent.click(screen.getByRole("menuitemradio", { name }))
+}
+
 function wait(partial: Partial<Schedule> = {}): Schedule {
   return {
     id: "sch_1",
@@ -266,10 +273,7 @@ describe("Scheduled inbox", () => {
       expect(screen.getByRole("button", { name: "Resume" })).toBeInTheDocument(),
     )
     expect(screen.getByTestId("schedule-row")).toBeInTheDocument()
-    expect(screen.getByRole("tab", { name: "Active" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    )
+    expect(screen.getByTestId("schedule-section")).toHaveTextContent("Upcoming")
     fireEvent.click(screen.getByRole("button", { name: "Run now" }))
     await waitFor(() => expect(fake.ran).toEqual(["sch_1"]))
   })
@@ -279,7 +283,7 @@ describe("Scheduled inbox", () => {
     await openPage()
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument()
     expect(screen.queryByTestId("schedule-create-drawer")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    fireEvent.click(screen.getByRole("button", { name: "New task" }))
     const drawer = screen.getByTestId("schedule-create-drawer")
     expect(drawer).toHaveTextContent("New")
     expect(drawer).toHaveTextContent("New conversation each run")
@@ -363,7 +367,7 @@ describe("Scheduled inbox", () => {
     useApp.setState({ schedules: fake.rows })
     renderInbox()
     await openPage()
-    fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
+    await chooseFilter("Completed")
     fireEvent.click(screen.getByTestId("schedule-row-toggle"))
     const drawer = screen.getByTestId("schedule-edit-drawer")
     expect(drawer).toHaveTextContent("old")
@@ -377,7 +381,7 @@ describe("Scheduled inbox", () => {
   it("submits a standalone wait from the create form", async () => {
     renderInbox()
     await openPage()
-    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    fireEvent.click(screen.getByRole("button", { name: "New task" }))
     fireEvent.change(screen.getByLabelText("Task"), {
       target: { value: "Continue the wait." },
     })
@@ -547,13 +551,17 @@ describe("Scheduled inbox", () => {
     const rows = screen.getAllByTestId("schedule-row")
     expect(rows).toHaveLength(1)
     expect(rows[0].textContent).toMatch(/Continue the wait/)
+    expect(screen.getByTestId("schedule-section")).toHaveTextContent("Upcoming")
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument()
     expect(screen.queryByText("old")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
+    await chooseFilter("Completed")
+    expect(screen.getByTestId("schedule-section")).toHaveTextContent("Completed")
     const revealed = screen.getAllByTestId("schedule-row")
     expect(revealed).toHaveLength(1)
     expect(revealed[0].textContent).toMatch(/old/)
-    fireEvent.click(screen.getByRole("tab", { name: "All" }))
-    expect(screen.getAllByTestId("schedule-row")).toHaveLength(2)
+    await chooseFilter("Active")
+    expect(screen.getAllByTestId("schedule-row")).toHaveLength(1)
+    expect(screen.getByTestId("schedule-row").textContent).toMatch(/Continue the wait/)
   })
 
   it("keeps an ended wait with unread findings on Completed, not Active", async () => {
@@ -583,7 +591,7 @@ describe("Scheduled inbox", () => {
     await openPage()
     expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
     expect(screen.getByText("No waits in this view.")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
+    await chooseFilter("Completed")
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/old/)
     expect(screen.getByRole("button", { name: "Open findings" })).toBeInTheDocument()
     expect(screen.queryByTestId("schedule-findings")).not.toBeInTheDocument()
@@ -604,7 +612,7 @@ describe("Scheduled inbox", () => {
     await openPage()
     expect(screen.getByText("No waits in this view.")).toBeInTheDocument()
     expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("tab", { name: "Completed" }))
+    await chooseFilter("Completed")
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/old/)
   })
 
@@ -618,10 +626,12 @@ describe("Scheduled inbox", () => {
     renderInbox()
     await openPage()
     await waitFor(() => expect(screen.getAllByTestId("schedule-row")).toHaveLength(2))
-    fireEvent.change(screen.getByLabelText("Search waits"), { target: { value: "alpha" } })
+    expect(screen.queryByRole("textbox", { name: "Search waits" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Search waits" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "Search waits" }), { target: { value: "alpha" } })
     expect(screen.getAllByTestId("schedule-row")).toHaveLength(1)
     expect(screen.getByTestId("schedule-row").textContent).toMatch(/alpha wait/)
-    fireEvent.change(screen.getByLabelText("Search waits"), { target: { value: "zzzz" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "Search waits" }), { target: { value: "zzzz" } })
     expect(screen.getByText("No matching waits.")).toBeInTheDocument()
     expect(screen.queryByTestId("schedule-row")).not.toBeInTheDocument()
   })
@@ -629,7 +639,7 @@ describe("Scheduled inbox", () => {
   it("closes the create drawer on Escape before leaving the page", async () => {
     renderInbox()
     await openPage()
-    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    fireEvent.click(screen.getByRole("button", { name: "New task" }))
     expect(screen.getByTestId("schedule-create-drawer")).toBeInTheDocument()
     fireEvent.keyDown(window, { key: "Escape" })
     expect(screen.getByTestId("schedule-page")).toBeInTheDocument()
@@ -641,7 +651,7 @@ describe("Scheduled inbox", () => {
   it("expands the create drawer over the list so a long task is readable", async () => {
     renderInbox()
     await openPage()
-    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    fireEvent.click(screen.getByRole("button", { name: "New task" }))
     const drawer = screen.getByTestId("schedule-create-drawer")
     expect(drawer).not.toHaveAttribute("data-expanded")
     expect(screen.getByTestId("schedule-list-pane")).not.toHaveClass("hidden")
@@ -662,7 +672,7 @@ describe("Scheduled inbox", () => {
     expect(drawer).not.toHaveAttribute("data-expanded")
     fireEvent.click(screen.getByRole("button", { name: "Expand" }))
     fireEvent.click(screen.getByRole("button", { name: "Close" }))
-    fireEvent.click(screen.getByRole("button", { name: "Create" }))
+    fireEvent.click(screen.getByRole("button", { name: "New task" }))
     expect(screen.getByTestId("schedule-create-drawer")).not.toHaveAttribute(
       "data-expanded",
     )

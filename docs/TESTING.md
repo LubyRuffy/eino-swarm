@@ -782,8 +782,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   `done` keeps the wait notice, and an ordinary empty `done` stays
   visible. `compact-notice.test.tsx` clicks that icon.   `schedule-notice.test.tsx` clicks Run now and Cancel wait on an armed wait when `detail` is a `sch_` id (including a padded id matching the store row) and does not treat a
   cancelled notice as a briefing.   `schedule-view.test.ts` is why the inbox
-  filters All / Active / Paused / Completed (`inboxFilteredSchedules`; Active
-  is the default tab) and search matches title or prompt, empty titles fall back to `prompt`, an armed
+  matches All / Active / Paused / Completed (`inboxFilteredSchedules`; Active
+  is the default, shown as Upcoming; the menu does not offer All) and search matches title or prompt, empty titles fall back to `prompt`, an armed
   chip paints the store before GET, a replayed arm chip cannot rewind a
   later `next_run_at`, a fire marks that conversation's live
   wake done, and a stale empty GET cannot wipe the
@@ -793,8 +793,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   that PATCHes title / prompt / cadence without resending an unchanged interval,
   pause/run-now in that drawer, a finished wait read-only, and
   `schedule-banner.test.tsx` / `app-schedule.test.ts` cover the sidebar
-  page control (`aria-current="page"` while open, unread in the accessible name),
-  pause/run-now/create labels, unread badge, busy run-now `skipped_busy` as a
+  page control (`aria-current="page"` while open, the name stays Scheduled),
+  pause/run-now/New task labels, no unread count on the rail icon, busy run-now `skipped_busy` as a
   labelled alert on the scheduled page, the composer wake banner's labeled
   Run now / Cancel wait (`schedule-wait-actions.test.tsx`), the banner hiding
   while the conversation is working, a parked wait painting a breathing clock
@@ -804,16 +804,17 @@ Several things are tested here, some as pure logic and some in jsdom:
   schedule GET that must not toast. The inbox list is the nav column
   (`schedule-list-pane` inside `conversation-list`); the editor is the task
   column (`schedule-page` wraps both and is not an `absolute inset-0` overlay).
-  It defaults to Active; Completed
+  It defaults to Upcoming (the Active filter). The status menu is
+  Active / Paused / Completed, not a tab grid; Completed
   lists done and cancelled waits. The conversation side panel is hidden
-  (`side-panel`). Create opens `schedule-create-drawer` so the form does not
+  (`side-panel`). New task opens `schedule-create-drawer` so the form does not
   sit on the list; Expand hides the list (`data-expanded`, list pane `hidden`;
   Escape collapses first). The form is a Task field plus Details (Runs in:
   new conversation each run, or wake a listed chat; Project only for a minted
   conversation) and Frequency (Repeat + delay/every/cron). Click a row for
   `schedule-edit-drawer` (title in the header, Task + locked destination +
-  cadence; Save is dirty-only). Pause keeps a selected wait on the Active
-  tab while the editor is open. Escape then closes the drawer, then the page. Several unread fires on one wait collapse
+  cadence; Save is dirty-only). Pause keeps a selected wait under Upcoming
+  while the editor is open. Escape then closes the drawer, then the page. Several unread fires on one wait collapse
   to one Open findings control (a count when there is more than one) so
   finished reports stay off the row (`unreadFindings` newest-first; opening
   a conversation marks every unread fire on that thread; wait rows are
@@ -1520,7 +1521,7 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/projects.spec.ts` | a project created from the sidebar, a conversation started from the project row that says so with the project name prefixing the title on one line, the review named in the transcript without opening a tab, **View skills** on the project menu opening the Memory tab with that skill expanded and in view (body inside its card, not over Files), the notes in the panel without a reload, the review in the same Full log as the turn, a second conversation starting with the first one's memory, a hand-edited note surviving a reload (Save notes absent until the draft changes), a deleted project taking its conversations with it after a confirm, the Memory tab not leaving a blank Agents pane above the notes or clipping Skills off the window or painting inactive Files beside Memory, Review now saying when there is nothing to review, Tidy skills saying when the catalog is empty (counts, no fake model review) and asking the model when a skill is already there (scan/review, then a reviewed report with a non-zero scanned count), hovering a project row revealing a new-conversation control that starts one in that project rather than Conversations (the folder is not pressed; the open topic is `aria-current`; the folder glyph is open when expanded and closed when collapsed; a running conversation's progress sits in that same icon column; topic names sit under the project name; there is no drag-grip glyph), pinning a project topic to the top across reload, dragging a project pinning that order across reload, a sixth topic in the folder sitting behind **Show more** until it is opened, and a running conversation keeping its sidebar progress after switching to a new conversation (an explicit folder collapse keeps a clipped breathe-dot on the glyph, not a smear) |
 | `e2e/markdown.spec.ts` | the scripted answer paints a tagged `go` fence (Copy code + syntax colour), `$n$` as KaTeX, a GFM table that stays inside the conversation column (not under the side panel), and a heading rendered as a heading while the turn is still Working |
 | `e2e/goal-resume.spec.ts` | `/goal` on the mock provider reaches Done, then **Start** on the banner reopens pursuit (Working) |
-| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled page in the main column (Create opens the right drawer, Task only — the inbox name is generated — Repeat → On an interval, Every (seconds) 60, Add wait; Agents/Files/Trace rail hidden; Expand fills the page (`data-expanded`) then Collapse restores the list), click the row to open the editor, Run now, Escape back to the conversation, unread / Open findings landing on the minted conversation whose title matches that generated name, with a `Scheduled check.` chip and no user bubble of the protocol wrapper; REST create then click-to-edit title/prompt/cadence and Save; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
+| `e2e/schedules.spec.ts` | a standalone wait created from the Scheduled page in the main column (New task opens the right drawer, Task only — the inbox name is generated — Repeat → On an interval, Every (seconds) 60, Add wait; Agents/Files/Trace rail hidden; Expand fills the page (`data-expanded`) then Collapse restores the list), click the row to open the editor, Run now, Escape back to the conversation, unread / Open findings landing on the minted conversation whose title matches that generated name, with a `Scheduled check.` chip and no user bubble of the protocol wrapper; REST create then click-to-edit title/prompt/cadence and Save; a REST `kind=thread` wake on the open conversation showing the composer banner with Run now and Cancel wait, a breathing wait clock on the sidebar row and **Waiting** on the title bar, Cancel wait removing the chip and returning Idle, Run now starting Working, hiding the wait banner, a `Scheduled check.` chip, then Waiting again with the clock once the check finishes. Mock provider, no `ZWAI_MOCK_SCHEDULE_WAKE` |
 | `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Keep this computer awake, Bound phones empty copy, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. A binding that appears on a later list read while the QR stays up is painted without leaving Phone. |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR opens a live viewfinder (four corners, a beam whose `scan-beam` animation is running, a fake-camera preview); junk paste errors; a syntactically valid URI uses the same bind path; a saved ticket shows host chips and Connecting, not the scan form; Add a PC is a sheet |
 | `e2e/clients.spec.ts` | a long local agent session opens on the live reply, **Earlier** loads the lines above it, and that reply stays on screen |

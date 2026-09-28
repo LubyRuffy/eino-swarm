@@ -36,19 +36,24 @@ function tr(key: MessageKey, vars?: Vars) {
 describe("scheduleMetaLine", () => {
   const now = Date.parse("2026-09-21T05:00:00.000Z")
 
-  it("joins cadence and next check the way the list row paints them", () => {
-    expect(scheduleMetaLine(wait(), tr, now)).toMatch(/^Every 1 minute · /)
-    expect(scheduleMetaLine(wait({ every_s: 45 }), tr, now)).toMatch(/^Every 45 seconds · /)
+  it("puts the clock ahead of the cadence the way the list row paints them", () => {
+    expect(scheduleMetaLine(wait(), tr, now)).toMatch(/^Today .+ · Every 1 minute$/)
+    expect(scheduleMetaLine(wait({ every_s: 45 }), tr, now)).toMatch(/^Today .+ · Every 45 seconds$/)
+    const tomorrow = new Date(now)
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    expect(
+      scheduleMetaLine(wait({ next_run_at: tomorrow.toISOString() }), tr, now),
+    ).toMatch(/^Tomorrow .+ · Every 1 minute$/)
     expect(
       scheduleMetaLine(
         wait({ every_s: 0, delay_s: 120, next_run_at: "2026-09-21T04:00:00.000Z" }),
         tr,
         now,
       ),
-    ).toBe("In 2 minutes · Next run now")
+    ).toBe("Next run now · In 2 minutes")
     expect(
       scheduleMetaLine(wait({ every_s: 0, delay_s: 0, cron: "0 * * * *" }), tr, now),
-    ).toMatch(/^0 \* \* \* \* · /)
+    ).toMatch(/^Today .+ · 0 \* \* \* \*$/)
     expect(scheduleMetaLine(wait({ next_run_at: "" }), tr, now)).toBe("Every 1 minute")
     expect(JSON.stringify(scheduleMetaLine(wait(), tr, now))).not.toMatch(/CI|deploy|GitHub/)
   })

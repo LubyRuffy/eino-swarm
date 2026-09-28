@@ -5,7 +5,6 @@ import { useT } from "@/lib/use-t"
 import type { Schedule, ScheduleRun } from "@/lib/types"
 import {
   cadenceAmount,
-  inboxStatusTab,
   isScheduleDue,
   scheduleCadenceSpec,
   scheduleHeadline,
@@ -13,10 +12,23 @@ import {
   type CadenceUnit,
 } from "@/lib/schedule-view"
 
-export function formatWhen(iso: string): string {
+function dayKey(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+
+/** Compact clock for a list row: today, tomorrow, or a short date. */
+export function formatScheduleWhen(iso: string, t: TFn, nowMs = Date.now()): string {
   const at = new Date(iso)
   if (Number.isNaN(at.getTime())) return iso
-  return at.toLocaleString()
+  const time = at.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+  const day = dayKey(at.getTime())
+  if (day === dayKey(nowMs)) return t("schedule.metaToday", { time })
+  const next = new Date(nowMs)
+  next.setDate(next.getDate() + 1)
+  if (day === dayKey(next.getTime())) return t("schedule.metaTomorrow", { time })
+  const date = at.toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  return t("schedule.metaOn", { date, time })
 }
 
 type TFn = (key: MessageKey, vars?: Vars) => string
@@ -31,24 +43,25 @@ function unitWord(n: number, unit: CadenceUnit, t: TFn): string {
 
 export function scheduleMetaLine(row: Schedule, t: TFn, nowMs?: number): string {
   const spec = scheduleCadenceSpec(row)
-  const parts: string[] = []
-  if (spec.kind === "cron") parts.push(spec.expr)
+  let cadence = ""
+  if (spec.kind === "cron") cadence = spec.expr
   else if (spec.kind === "every" || spec.kind === "delay") {
     const amt = cadenceAmount(spec.seconds)
     const unit = unitWord(amt.n, amt.unit, t)
-    parts.push(
+    cadence =
       spec.kind === "every"
         ? t("schedule.metaEvery", { n: amt.n, unit })
-        : t("schedule.metaDelay", { n: amt.n, unit }),
-    )
+        : t("schedule.metaDelay", { n: amt.n, unit })
   }
+  const parts: string[] = []
   if (row.next_run_at) {
     parts.push(
       isScheduleDue(row.next_run_at, nowMs)
         ? t("schedule.nextRunNow")
-        : t("schedule.nextCheck", { time: formatWhen(row.next_run_at) }),
+        : formatScheduleWhen(row.next_run_at, t, nowMs),
     )
   }
+  if (cadence) parts.push(cadence)
   return parts.join(" · ")
 }
 
@@ -68,40 +81,35 @@ export function ScheduleInboxRow({
   const t = useT()
   const headline = scheduleHeadline(row) || row.id
   const findings = unreadFindings(runs)
-  const tab = inboxStatusTab(row.status)
+  const prompt = (row.prompt ?? "").trim()
+  const blurb = (row.title ?? "").trim() && prompt && prompt !== (row.title ?? "").trim() ? prompt : ""
   return (
     <li
       data-testid="schedule-row"
       data-selected={selected ? "true" : undefined}
-      className={cn(
-        "min-w-0 shrink-0 border-b border-border last:border-b-0",
-        selected && "bg-sidebar-accent",
-      )}
+      className={cn("min-w-0 shrink-0 rounded-md", selected && "bg-sidebar-accent")}
     >
-      <div className="flex min-w-0 items-start gap-3 py-2.5">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "mt-1.5 size-2.5 shrink-0 rounded-full",
-            tab === "active" && "bg-done",
-            tab === "paused" && "bg-running",
-            tab === "completed" && "bg-muted-foreground/30",
-          )}
-        />
-        <div className="min-w-0 flex-1">
-          <button
-            type="button"
-            data-testid="schedule-row-toggle"
-            aria-current={selected ? "true" : undefined}
-            className="block w-full min-w-0 text-left"
-            onClick={onSelect}
-          >
-            <p className="truncate text-sm font-medium">{headline}</p>
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {scheduleMetaLine(row, t)}
+      <div className="min-w-0 px-2 py-2">
+        <button
+          type="button"
+          data-testid="schedule-row-toggle"
+          aria-current={selected ? "true" : undefined}
+          className="block w-full min-w-0 text-left"
+          onClick={onSelect}
+        >
+          <p className="truncate text-sm font-medium text-sidebar-foreground">{headline}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {scheduleMetaLine(row, t)}
+          </p>
+          {blurb ? (
+            <p
+              data-testid="schedule-row-blurb"
+              className="mt-1 line-clamp-2 text-xs leading-snug text-muted-foreground"
+            >
+              {blurb}
             </p>
-          </button>
-        </div>
+          ) : null}
+        </button>
         <FindingsControl findings={findings} onOpen={onOpenFindings} />
       </div>
     </li>
@@ -127,7 +135,7 @@ function FindingsControl({
       type="button"
       variant="ghost"
       size="sm"
-      className="shrink-0"
+      className="mt-1 h-auto px-0 text-xs text-muted-foreground"
       onClick={() => onOpen(latest)}
     >
       {label}

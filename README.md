@@ -82,9 +82,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   done; extra checks are expected. A named clock time you asked for is still
   honored.
   The leftmost navigation switches Projects, Conversations, Scheduled, and Clients. Projects is the default list (pinned topics and project folders). Conversations is the list of threads that belong to no project. **Scheduled**
-  opens the wait list in that column, not over the conversation: search
-  and **All / Active / Paused / Completed**, defaulting to Active.
-  **Create** opens the editor in the task column (**New**) for the add-wait form — the task
+  opens the wait list in that column, not over the conversation. The title
+  sits beside a search icon (the field opens on click). **New task** is the
+  next row. **Upcoming** is the active list; the menu on that row filters
+  **Active / Paused / Completed**.
+  **New task** opens the editor in the task column (**New**) for the add-wait form — the task
   description only (a short inbox name is generated, same namer as conversations),
   then Details (**Runs in**: new conversation each run, or wake an
   existing one; **Project** is the workspace for a minted conversation) and
@@ -93,8 +95,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   (`PATCH`; changing cadence recomputes the next run from now). Pause, resume,
   cancel, and Run now live there too. Destination (Runs in / Project) stays
   as created. The conversation
-  Agents/Files/Trace rail stays hidden on this page, like Settings. Rows stay
-  title plus cadence and next check; click one for the editor.
+  Agents/Files/Trace rail stays hidden on this page, like Settings. A row is
+  the title, then the next time and cadence, then the task when it is not
+  already the title. Click one for the editor.
   An active wake on the open conversation
   shows a banner with the next check and the wait's title or prompt, **Run now**, and **Cancel wait** (not
   an icon-only dismiss — that sat under the goal banner's X). Run now and
