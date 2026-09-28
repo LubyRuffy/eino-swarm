@@ -79,6 +79,8 @@ export function ThreadScreen({
   const scroller = useRef<HTMLDivElement>(null)
   const quoteSource = useRef<HTMLDivElement>(null)
   const [selectedText, setSelectedText] = useState("")
+  const [quoteActionPosition, setQuoteActionPosition] = useState<{ top: number; left: number } | null>(null)
+  const [quoteActionDocked, setQuoteActionDocked] = useState(false)
   const [quotes, setQuotes] = useState<string[]>([])
   const stick = useRef(true)
   const pinHeight = useRef<number | null>(null)
@@ -91,6 +93,8 @@ export function ThreadScreen({
 
   const changePage = (page: string) => {
     setSelectedText("")
+    setQuoteActionPosition(null)
+    setQuoteActionDocked(false)
     stick.current = true
     setBehind(false)
     setAgentPage(page)
@@ -110,14 +114,44 @@ export function ThreadScreen({
       if (!source?.contains(range.startContainer) || !source.contains(range.endContainer) ||
         !inMessage(range.startContainer) || !inMessage(range.endContainer)) {
         setSelectedText("")
+        setQuoteActionDocked(false)
         return
       }
       setSelectedText(normalizeSelectedText(selection.toString()))
+      const viewport = scroller.current?.getBoundingClientRect()
+      const fragments = typeof range.getClientRects === "function" ? range.getClientRects() : null
+      const last = fragments?.item(fragments.length - 1)
+      const rect = last ?? (typeof range.getBoundingClientRect === "function" ? range.getBoundingClientRect() : null)
+      if (viewport && rect && viewport.width > 0 && viewport.height > 0) {
+        const below = rect.bottom - viewport.top + 64
+        if (below + 36 > viewport.height - 8) {
+          // A native menu can span the full width above a bottom selection.
+          // Give the quote action its own row instead of guessing its width.
+          setQuoteActionDocked(true)
+          setQuoteActionPosition(null)
+        } else {
+          setQuoteActionDocked(false)
+          const inset = Math.min(72, viewport.width / 2)
+          setQuoteActionPosition({
+            top: below,
+            left: Math.max(inset, Math.min(rect.left + rect.width / 2 - viewport.left, viewport.width - inset)),
+          })
+        }
+      }
       stick.current = false
     }
     document.addEventListener("selectionchange", read)
     return () => document.removeEventListener("selectionchange", read)
   }, [asking])
+
+  useLayoutEffect(() => {
+    if (!quoteActionDocked) return
+    const selection = window.getSelection()
+    const viewport = scroller.current
+    if (!selection?.rangeCount || !viewport) return
+    const overflow = selection.getRangeAt(0).getBoundingClientRect().bottom - viewport.getBoundingClientRect().bottom + 8
+    if (overflow > 0) viewport.scrollTop += overflow
+  }, [quoteActionDocked, selectedText])
 
   const loadOlder = () => {
     if (!onOlder || loadingOlder || !hasMore || !caughtUp) return
@@ -324,10 +358,17 @@ export function ThreadScreen({
           <Button
             type="button"
             variant="outline"
-            className="absolute bottom-3 right-3 z-10 h-9 gap-1.5 rounded-full border border-border px-3 shadow-md"
+            className={cn(
+              "z-10 h-9 gap-1.5 rounded-full border border-border px-3 shadow-md",
+              quoteActionDocked ? "mb-2 mr-3 shrink-0 self-end" : "absolute",
+              !quoteActionDocked && (quoteActionPosition ? "-translate-x-1/2" : "bottom-3 right-3"),
+            )}
+            style={!quoteActionDocked ? quoteActionPosition ?? undefined : undefined}
             onClick={() => {
               setQuotes((current) => [...current, selectedText])
               setSelectedText("")
+              setQuoteActionPosition(null)
+              setQuoteActionDocked(false)
               window.getSelection()?.removeAllRanges()
             }}
           >

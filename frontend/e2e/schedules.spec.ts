@@ -307,7 +307,7 @@ test("Run now handles an unperformed check without false success", async ({ page
     if (fails) {
       await expect(transcript).toContainText("scheduled check ended without executing a tool or reporting its result")
     } else {
-      await transcript.getByRole("button", { name: "1 tool", exact: true }).click()
+      await transcript.getByRole("button", { name: "1 tool", exact: true }).last().click()
       await expect(transcript).toContainText("something changed")
     }
     await expect(transcript).toContainText("Continuing the scheduled check.")

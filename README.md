@@ -59,7 +59,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   read it (three wrapped lines, then an ellipsis), edit or drop it — and is
   sent in `<selected_text>` next to whatever you type (`<user_request>`),
   instead of being dumped into the box.
-  On the phone, select text in the PC conversation and tap **Add to chat**.
+  On the phone, select text in the PC conversation and tap **Add to chat** near
+  the selection, below the system's text menu when there is room. Copy and
+  Select all remain available in that menu.
   The selected text appears above the message box, where it can be edited or removed;
   sending it alone or with a message uses the same tagged format.
 - **Interactive questions (`ask_user`).** When a preference would waste work

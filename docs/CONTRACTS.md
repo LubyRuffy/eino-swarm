@@ -77,9 +77,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-011 Quoted conversation payload
 
 - 状态：active；类型：data / compatibility；作用范围：desktop、phone、message wire；关联功能：`F-180`, `F-221`。
-- 契约内容：只选对话正文可加入草稿；引用可查看、编辑和移除；每段原文单独以 `<selected_text>` 包裹，输入的请求以 `<user_request>` 包裹；引用可单独发送，发送失败恢复引用和正文；显示用户消息时不把标签当正文。
+- 契约内容：只选对话正文可加入草稿；手机上的加入操作跟随有效选区并留在会话视口内，不替换或遮挡系统复制／全选菜单；引用可查看、编辑和移除；每段原文单独以 `<selected_text>` 包裹，输入的请求以 `<user_request>` 包裹；引用可单独发送，发送失败恢复引用和正文；显示用户消息时不把标签当正文。
 - 允许行为：多段引用、空正文发送；禁止行为：把输入框或 UI 文本当作引用，或让正文被误解为引用；失败语义：无效选区不提供操作；不变量：PC/手机同一 wire 格式；边界条件：空白选区、换行和文本中有关闭标签。
-- 证据：实现 `frontend/src/lib/quote.ts`, `mobile/src/lib/quote.ts`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/composer.tsx`；测试 `frontend/src/lib/quote.test.ts`, `mobile/src/lib/quote.test.ts`, `mobile/src/components/thread-screen.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步双端解析、发送测试和用户说明；来源：`README.md`、GitHub Issue #29。
+- 证据：实现 `frontend/src/lib/quote.ts`, `mobile/src/lib/quote.ts`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/composer.tsx`；测试 `frontend/src/lib/quote.test.ts`, `mobile/src/lib/quote.test.ts`, `mobile/src/components/thread-screen.test.tsx`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`, `mobile/e2e/ios-wait-layout.swift`；变更规则：同步双端解析、发送测试和用户说明；来源：`README.md`、GitHub Issues #29、#44。
 
 ## C-012 One-ID troubleshooting
 
