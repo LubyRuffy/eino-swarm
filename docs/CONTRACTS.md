@@ -25,10 +25,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-004 Workspace is an anchor; HTTP paths are untrusted
 
-- 状态：active；类型：security；作用范围：tools、server、files；关联功能：`F-140`。
-- 契约内容：agent 工作区是定位锚点，不限制 agent 文件权限；HTTP 提供的路径不得穿越允许的文件入口。
-- 允许行为：agent 在其被授权环境中访问路径；禁止行为：把 HTTP 路径穿越交给文件工具；失败语义：拒绝不安全 HTTP 路径；不变量：两种信任边界不混同；边界条件：符号链接和相对路径。
-- 证据：实现 `internal/tools`, `internal/server`；测试 `internal/server`；变更规则：同步 API 和安全测试；来源：`AGENTS.md`。
+- 状态：active；类型：security；作用范围：tools、server、files；关联功能：`F-140`, `F-224`。
+- 契约内容：agent 工作区是定位锚点，不限制 agent 文件权限；HTTP 和手机远程文件入口提供的路径不得穿越允许的工作区。
+- 允许行为：agent 在其被授权环境中访问路径；禁止行为：把外部文件路径穿越交给文件工具；失败语义：拒绝不安全 HTTP／远程文件路径；不变量：两种信任边界不混同；边界条件：符号链接和相对路径。
+- 证据：实现 `internal/tools`, `internal/server`, `internal/remote/files.go`；测试 `internal/server`, `internal/remote/files_test.go`；变更规则：同步 API 和安全测试；来源：`AGENTS.md`、GitHub Issue #48。
 
 ## C-005 Loopback and same-origin HTTP
 
@@ -39,7 +39,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-006 Phone remote protocol
 
-- 状态：active；类型：compatibility / security；作用范围：pairlink、phone、PC remote；关联功能：`F-170`, `F-210`, `F-220`, `F-222`, `F-230`。
+- 状态：active；类型：compatibility / security；作用范围：pairlink、phone、PC remote；关联功能：`F-170`, `F-210`, `F-220`, `F-222`, `F-224`, `F-230`。
 - 契约内容：手机通过 pairlink 加密 RPC 与 PC 通信，不直接调用 PC 的 `/api`；相同事件 kind 和 seq 可在手机回放；断线重连不解除绑定。子 Agent 的事件按 `agent_id` 与主 Agent 分开回放，`spawned` 启动指令正文不离开 PC；手机只显示协议允许并按 `event_chars` 裁剪的活动。
 - 允许行为：relay/direct 路径切换及手机查看子 Agent 角色、状态和截断记录；手机页头计数仅包含运行中的子 Agent，列表按进行中／已结束分组，完成和失败记录仍可查看；禁止行为：把本地 PC API 或子 Agent 启动指令直接暴露给手机，或把子 Agent 回答混作主 Agent 回答；失败语义：连接错误与 host offline 可区分；不变量：一个 PC 对话跨端一致，同一 agent 的流式文本只更新自己的记录；边界条件：ticket 过期、掉线、历史翻页、子 Agent 续办和重连。
 - 证据：实现 `internal/remote/clip.go`, `mobile/src/lib/link.ts`, `mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/thread-screen.tsx`；测试 `internal/remote/watch_test.go` 的 `TestSpawnedInstructionNeverLeavesTheHost`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、手机测试和数据模型；来源：`ARCHITECTURE.md`、GitHub Issue #30 的 A 方案确认、GitHub Issue #47 的混合状态截图。
@@ -105,10 +105,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-015 Android Back follows visible phone layers
 
-- 状态：active；类型：lifecycle；作用范围：Android 手机壳、手机页面及覆盖层；关联功能：`F-220`, `F-223`。
-- 契约内容：系统返回先关闭当前可见的最上层详情或弹层；只有手机首页（收件箱、直接聊天列表或未绑定扫码页）返回时才允许 Android Activity 退出。Clients 任务详情与普通会话遵守相同层级。
+- 状态：active；类型：lifecycle；作用范围：Android 手机壳、手机页面及覆盖层；关联功能：`F-220`, `F-223`, `F-224`。
+- 契约内容：系统返回先关闭当前可见的最上层详情或弹层；只有手机首页（收件箱、直接聊天列表或未绑定扫码页）返回时才允许 Android Activity 退出。Clients 任务详情、文件预览→文件列表→对话及普通会话遵守相同层级。
 - 允许行为：详情关闭后留在原列表，再次从首页返回退出；禁止行为：详情可见时直接退出、迟到的任务读取结果在返回后重新打开详情；失败语义：返回动作不依赖网络请求成功；不变量：当前最上层优先消费返回；边界条件：异步任务读取中返回、多层覆盖、组件卸载。
-- 证据：实现 `mobile/src/lib/android-back.ts`, `mobile/src/components/client-groups.tsx`, `mobile/src/app.tsx`；测试 `mobile/src/lib/android-back.test.ts`, `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：新增手机覆盖层须同步测试系统返回和首页退出；来源：GitHub Issue #36。
+- 证据：实现 `mobile/src/lib/android-back.ts`, `mobile/src/components/client-groups.tsx`, `mobile/src/components/file-browser.tsx`, `mobile/src/app.tsx`；测试 `mobile/src/lib/android-back.test.ts`, `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/src/components/file-browser.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：新增手机覆盖层须同步测试系统返回和首页退出；来源：GitHub Issue #36、#48。
 
 ## C-016 Explicit PC selection opens its inbox
 
@@ -138,3 +138,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 允许行为：无实质收益时自行完成；禁止行为：仅显式要求才委派、为满足调用比例强制创建 worker、持续目标提示词重新引入单 worker 等待禁令；失败语义：worker 失败或超时需如实说明，不能视为成功；不变量：遵守用户显式限制与并发上限，分离写入路径，manager 核验并整合结果；边界条件：并发上限为一、先自行执行后发现委派机会、用户限制委派。
 - 验证边界：该契约约束实际生成的模型指令，不保证任一真实模型的调用次数；离线 provider 的固定调用脚本只能验证委派链路，不能证明真实模型的调用比例提升。
 - 证据：实现 `internal/engine/prompt.go`, `internal/engine/iterations.go`, `internal/tui/plan.go`；测试 `internal/engine/prompt_test.go`, `cmd/zwai/tui_prompt_test.go`, `internal/engine/engine_test.go`, `frontend/e2e/conversation.spec.ts`；变更规则：同步共享提示词、持续目标提示词、入口测试与使用说明；来源：用户 2026-09-28 对运行时主动使用 subagents 的要求。
+
+## C-020 Phone workspace file reads
+
+- 状态：active；类型：security / compatibility；作用范围：PC remote 文件 RPC、手机预览；关联功能：`F-224`。
+- 契约内容：`files` 只列出指定对话与 PC 文件面板相同的工作区树，分帧分页；`file_chunk` 只读取该对话工作区内的普通文件，按字节偏移返回不超过 36 KiB 的 base64 分块及文件大小、MIME 和下一偏移。PC 必须拒绝路径穿越和通过符号链接逃出工作区。手机组装文件不超过 32 MiB，文本／图片／PDF 预览不超过 8 MiB；HTML 和 SVG 只作为源码文本显示。
+- 允许行为：浏览目录、读取已上传或 agent 生成的文件、下载其他可读取文件；禁止行为：从手机直接调用 PC loopback API、在应用同源执行 agent 产出的 HTML/SVG、把超限文件截断后冒充完整内容；失败语义：缺失或不安全路径返回 RPC 错误，手机显示读取错误或过大提示；旧 PC 返回 `unknown_op` 时提示更新 PC；不变量：列表和内容均绑定同一对话 ID，单帧不超过 Pairlink 密文上限；边界条件：目录、空文件、分页、大文件、并发文件变化和符号链接。
+- 证据：实现 `internal/remote/files.go`, `mobile/src/lib/remote-files.ts`, `mobile/src/components/file-browser.tsx`；测试 `internal/remote/files_test.go`, `mobile/src/lib/remote-files.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/ios-wait-layout.swift`；变更规则：同步 RPC 文档、手机原生／浏览器走测和安全边界测试；来源：GitHub Issue #48。

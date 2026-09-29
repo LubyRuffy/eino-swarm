@@ -4,6 +4,30 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testPhoneOutputPreview() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 12))
+    back.tap()
+    let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'")).firstMatch
+    XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    thread.tap()
+    let outputs = app.buttons["Outputs"]
+    XCTAssertTrue(outputs.waitForExistence(timeout: 8))
+    outputs.tap()
+    let file = app.buttons["report.md"]
+    XCTAssertTrue(file.waitForExistence(timeout: 8))
+    file.tap()
+    XCTAssertTrue(app.staticTexts["Verified output"].waitForExistence(timeout: 8))
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "phone-output-preview"
+    shot.lifetime = .keepAlways
+    add(shot)
+    app.buttons["Back to list"].tap()
+    XCTAssertTrue(file.waitForExistence(timeout: 5))
+  }
+
   func testClientTaskHeaderStaysVisibleAfterPull() throws {
     let app = XCUIApplication()
     app.launch()

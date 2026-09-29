@@ -53,6 +53,15 @@ deterministic and fast enough to run on every change.
 | Phone E2E | scan screen opens a live viewfinder (frame, sweeping beam, fake-camera preview) and paste of the same `pairlink:v1` URI; a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a menu sheet; New chat and a project row open the start screen, and on a 320px-wide viewport the project row and the message box stay inside it; sub-agent header counts running workers only, finished history stays grouped and opens a separate activity log without painting worker answers as manager answers; Check for updates shows fetching, then current, an install question, or the stubbed feed error | `cd mobile && npm run e2e` |
 | Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, New chat, Start | see `mobile/README.md` (not in `make check`) |
 
+Phone output verification (`F-224`, `C-020`): `go test -race ./internal/remote`
+checks bounded listing and content frames, traversal and symlink escape;
+`cd mobile && npm test -- --run src/lib/remote-files.test.ts` checks
+pagination, chunk assembly and safe HTML/SVG classification;
+`cd mobile && npx playwright test e2e/walkthrough.spec.ts -g 'a phone lists PC outputs'`
+opens the offline PC conversation and previews its output. The disposable
+native fixture `mobile/e2e/ios-wait-layout.swift` also opens the same file
+in a packaged iOS simulator app; the fixture does not alter a release build.
+
 Observed Go coverage on the 2026-09-27 integrated candidate, from
 `go test -race -cover -timeout 20m ./...` (background paths can vary between runs):
 
@@ -1629,7 +1638,8 @@ a client at all is verified in the engine and reducer tests.
   opens; a later launch with saved tickets shows host chips and a connecting
   skeleton, not the scan form. Selecting another host chip stays on that PC's
   inbox even when it has a live or last conversation. Otherwise the inbox is the compact screen on the same conversation
-  bus (send / follow-up / steer / stop / ask); Settings, Files, PTY and Trace
+  bus (send / follow-up / steer / stop / ask); the paired conversation's file
+  tree and previews use read-only Pairlink RPC, while Settings, PTY and Trace
   stay on the PC. The hub hostname is typed on the PC, never shipped in the binary.
   Simulators: iOS can use a loopback hub; Android needs `adb reverse` onto
   that same hub port. `mobile/ios/App/AppUITests/BindFlowTests.swift` pastes

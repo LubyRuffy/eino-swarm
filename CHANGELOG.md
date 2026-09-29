@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-224` / `C-020`: a paired phone now lists a PC conversation's output tree over bounded encrypted RPC and previews text, images and PDFs. HTML/SVG are displayed as source; workspace traversal and escaped symlinks are rejected (Issue #48).
+
 - **Skills copy between projects as their own files.** Memory can copy one skill, or every skill, into another project. Editing either side leaves the other alone. The copy records where it came from. **Update** pulls a later change from that project when the copy was not edited; if both sides changed, it asks before replacing the local text. An unmodified copy keeps tracking the original project, so the next copy does not start following a project that never changed the steps. Nothing is written back on its own.
 
 - **Queued messages and unread steering edit in the composer.** Click a waiting follow-up, or the pencil on an unread steer, and that text lands in the composer (highlights become chips). The row or bubble leaves first. Enter while the turn is still running queues it at the back, the same path as a new follow-up. A steer the manager already read is not pulled in. An image-only steer has nothing to queue, so it stays delete-only. `PATCH` of a follow-up or unread steer remains for clients that rewrite in place.
@@ -28,6 +30,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group and folds. The first page is at most five tasks from the last 3 days; More loads the next five. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
 
 ### Changed
+
+- `C-004`: workspace traversal rejection now also covers the paired phone's read-only file RPC, including escaped symlinks (Issue #48).
 
 - `F-222` / `C-006`: the phone sub-agent header now counts only running workers. The roster separates running work from completed and failed history while keeping each worker's log available (Issue #47).
 

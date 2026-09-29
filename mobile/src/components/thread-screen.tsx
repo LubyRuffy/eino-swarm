@@ -1,8 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { ArrowDown, ChevronLeft, ChevronRight, Loader2, MessageSquarePlus } from "lucide-react"
+import { ArrowDown, ChevronLeft, ChevronRight, FileText, Loader2, MessageSquarePlus } from "lucide-react"
 
 import { AskCard } from "@/components/ask-card"
 import { Composer, type ComposerExtra } from "@/components/composer"
+import { FileBrowser } from "@/components/file-browser"
 import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
 import { ThreadLog } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
@@ -13,9 +14,11 @@ import type { CompactBlock } from "@/lib/transcript"
 import { managerBlocks, pendingAsk, phoneAgents } from "@/lib/transcript"
 import type { FollowupView, ModelChoice, ThreadDetail } from "@/lib/rpc"
 import { cn } from "@/lib/cn"
+import type { RemoteLink } from "@/lib/link"
 
 export function ThreadScreen({
   detail,
+  fileLink,
   blocks,
   hasMore,
   loadingOlder,
@@ -41,6 +44,7 @@ export function ThreadScreen({
   onResumeGoal,
 }: {
   detail: ThreadDetail
+  fileLink?: RemoteLink
   blocks: CompactBlock[]
   hasMore?: boolean
   loadingOlder?: boolean
@@ -210,6 +214,10 @@ export function ThreadScreen({
     }
   }
 
+  if (agentPage === "files" && fileLink) {
+    return <FileBrowser link={fileLink} threadId={detail.id} onClose={() => changePage("chat")} />
+  }
+
   return (
     <main className="mx-auto flex h-full min-w-0 w-full max-w-lg flex-col overflow-hidden bg-background">
       <header className="flex h-12 shrink-0 items-center gap-1 border-b border-border px-1">
@@ -240,6 +248,11 @@ export function ThreadScreen({
             </span>
           ) : null}
         </div>
+        {agentPage === "chat" && fileLink ? (
+          <Button variant="ghost" className="h-8 shrink-0 px-2 text-xs" onClick={() => changePage("files")}>
+            <FileText className="mr-1 size-4" />{t("thread.files")}
+          </Button>
+        ) : null}
         {agentPage === "chat" && agents.length > 0 ? (
           <Button variant="ghost" className="h-8 shrink-0 px-2 text-xs" onClick={() => changePage("agents")}>
             {t("thread.agents")} ({activeAgents.length})

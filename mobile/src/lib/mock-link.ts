@@ -3,6 +3,8 @@ import {
   OpCancelWait,
   OpCatalog,
   OpEvent,
+  OpFiles,
+  OpFileChunk,
   OpFollowupSteer,
   OpHello,
   OpClientRead,
@@ -552,6 +554,23 @@ export class MockLink {
         })
       case OpMore:
         return this.ok({ id, threads: [this.host.older()], more: false, next: "" })
+      case OpFiles:
+        if (!thread()) return this.missing(id)
+        return this.ok({ id, files: [
+          { path: "outputs", name: "outputs", size: 0, dir: true, modified: "", uploaded: false },
+          { path: "outputs/report.md", name: "report.md", size: 15, dir: false, modified: "", uploaded: false },
+        ], more: false })
+      case OpFileChunk: {
+        if (!thread()) return this.missing(id)
+        if (req.file_path !== "outputs/report.md") return this.missing(id)
+        const bytes = new TextEncoder().encode("Verified output")
+        const offset = req.before ?? 0
+        const data = Array.from(bytes.slice(offset)).map((byte) => String.fromCharCode(byte)).join("")
+        return this.ok({ id, file_chunk: {
+          path: "outputs/report.md", name: "report.md", size: bytes.length, mime: "text/markdown",
+          offset, next_offset: bytes.length, data: btoa(data), more: false,
+        } })
+      }
       case OpCatalog:
         return this.ok({
           id,

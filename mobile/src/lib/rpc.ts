@@ -26,6 +26,8 @@ export const OpFollowupSteer = "followup_steer"
 export const OpPreempt = "preempt"
 export const OpClients = "clients"
 export const OpClientRead = "client_read"
+export const OpFiles = "files"
+export const OpFileChunk = "file_chunk"
 export const GROUP_RECENT = "recent"
 
 export type RemoteRequest = {
@@ -53,6 +55,7 @@ export type RemoteRequest = {
   group?: string
   followup_id?: string
   task_id?: string
+  file_path?: string
 }
 
 export type FollowupView = {
@@ -185,6 +188,28 @@ export type RemoteResponse = {
   followups?: FollowupView[]
   clients?: ClientCatalog
   client_view?: ClientView
+  files?: WorkspaceFile[]
+  file_chunk?: FileChunk
+}
+
+export type WorkspaceFile = {
+  path: string
+  name: string
+  size: number
+  dir: boolean
+  modified: string
+  uploaded: boolean
+}
+
+export type FileChunk = {
+  path: string
+  name: string
+  size: number
+  mime: string
+  offset: number
+  next_offset: number
+  data: string
+  more: boolean
 }
 
 export type ClientEntry = { role: string; text: string; at?: number; n?: number }

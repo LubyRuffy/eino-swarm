@@ -427,7 +427,8 @@ The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `hello` / `list` / `more` / `open` / `start` / `send` / `steer` / `stop` /
 `followup_drop` / `followup_steer` / `preempt` /
 `answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
-`resume_goal` / `catalog` / `tune` / `put` / `clients`. `hello` `{text}` is the phone's one-line model; the host
+`resume_goal` / `catalog` / `tune` / `put` / `clients` / `files` /
+`file_chunk`. `hello` `{text}` is the phone's one-line model; the host
 keys it by the pairlink fingerprint, not a client-supplied id.
 OK replies carry `host` (this PC's `remote.display_name`) so the phone can
 label the chip; an older host omits it and the phone falls back to a short
@@ -515,8 +516,17 @@ bytes land in the workspace. The PC decides what the turn is: text with no
 attachments while a turn runs is a follow-up; attachments while a turn
 runs steer; an idle conversation starts a turn. The phone uploads, then
 calls `send` or `steer`; it does not reimplement that policy.
-The file browser, Settings, PTY and Trace stay on the PC. The phone
-composer can still attach a file or an image.
+`files` `{thread_id, cursor?}` returns the same bounded workspace tree as the
+PC (`files[]` with relative `path`, `name`, `size`, `dir`, `modified`,
+`uploaded`), paged by `more`/`next` before the sealed frame cap.
+`file_chunk` `{thread_id, file_path, before?}` returns base64 `data`, MIME,
+file `size`, `offset`, `next_offset`, and `more` in slices no larger than
+36 KiB. An older PC that returns `unknown_op` shows an update-PC message in
+the phone file browser. The PC checks the thread and opens only a regular file beneath its
+workspace root, including symlink resolution; traversal and escaped symlinks
+fail. The phone limits assembled reads to 32 MiB, inline previews to 8 MiB,
+and renders HTML/SVG as text. Settings, PTY and Trace stay on the PC. The
+phone composer can still attach a file or an image.
 
 ## Projects
 

@@ -819,6 +819,7 @@ export function App() {
           <ThreadScreen
             key={locale + detail.id}
             detail={detail}
+            fileLink={link}
             blocks={view.blocks}
             followups={view.followups}
             onSteerFollowup={(id) => void queueFollowup(OpFollowupSteer, detail.id, id)}

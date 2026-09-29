@@ -5,6 +5,20 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("a phone lists PC outputs and previews a file without leaving the conversation", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 700 })
+  await page.goto(WALKTHROUGH)
+  await page.getByRole("button", { name: "产出物" }).click()
+  await expect(page.getByTestId("phone-file-browser")).toContainText("report.md")
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320)
+  await page.getByRole("button", { name: "report.md" }).click()
+  await expect(page.getByTestId("phone-file-preview")).toContainText("Verified output")
+  await page.getByRole("button", { name: "返回列表" }).click()
+  await expect(page.getByTestId("phone-file-browser")).toBeVisible()
+  await page.evaluate(() => (window as Window & { __zwaiAndroidBack?: () => boolean }).__zwaiAndroidBack?.())
+  await expect(page.getByRole("button", { name: "产出物" })).toBeVisible()
+})
+
 test("a waiting phone stays within its viewport when the message field is focused", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto(WALKTHROUGH)

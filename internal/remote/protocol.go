@@ -34,6 +34,8 @@ const (
 	OpPreempt       = "preempt"
 	OpClients       = "clients"
 	OpClientRead    = "client_read"
+	OpFiles         = "files"
+	OpFileChunk     = "file_chunk"
 )
 
 // GroupRecent is the inbox section for conversations with no project.
@@ -89,6 +91,8 @@ type Request struct {
 	// TaskID selects one local agent session for a read-only view.
 	// Before on client_read is that view's byte offset, not a log seq.
 	TaskID string `json:"task_id,omitempty"`
+	// FilePath is workspace-relative; Before is the byte offset for file_chunk.
+	FilePath string `json:"file_path,omitempty"`
 }
 
 // Response is what the PC replies. Path and SessionID are pairlink
@@ -121,6 +125,30 @@ type Response struct {
 	Followups       *[]FollowupView `json:"followups,omitempty"`
 	Clients         *ClientCatalog  `json:"clients,omitempty"`
 	ClientView      *ClientView     `json:"client_view,omitempty"`
+	Files           []FileView      `json:"files,omitempty"`
+	FileChunk       *FileChunkView  `json:"file_chunk,omitempty"`
+}
+
+// FileView is one PC workspace entry, including upload provenance.
+type FileView struct {
+	Path     string    `json:"path"`
+	Name     string    `json:"name"`
+	Size     int64     `json:"size"`
+	Dir      bool      `json:"dir"`
+	Modified time.Time `json:"modified"`
+	Uploaded bool      `json:"uploaded"`
+}
+
+// FileChunkView carries one bounded slice of a workspace file over pairlink.
+type FileChunkView struct {
+	Path       string `json:"path"`
+	Name       string `json:"name"`
+	Size       int64  `json:"size"`
+	MIME       string `json:"mime"`
+	Offset     int64  `json:"offset"`
+	NextOffset int64  `json:"next_offset"`
+	Data       string `json:"data"`
+	More       bool   `json:"more"`
 }
 
 // ClientCatalog is the read-only local-agent list. Enabled false means the

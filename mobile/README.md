@@ -51,7 +51,11 @@ wait is the banner (next check, **Run now**, **Cancel wait**).
 vanishes on complete. The objective is one truncated line (the full text
 stays on the PC); a novel cannot cover Run now or the composer. Send,
 follow-up, steer, stop, ask, `/goal` and `/plan` land on the PC engine; the
-other window sees them live. Settings, Files, PTY and Trace stay on the PC.
+other window sees them live. **Outputs** in a paired conversation lists that
+PC conversation's workspace, including uploads and generated files. Open a
+file to preview text, a common image, or PDF; HTML and SVG appear as source
+text. The read is limited to 32 MiB, with previews limited to 8 MiB. Other
+files show a download action. Settings, PTY and Trace stay on the PC.
 
 A conversation sits on the composer rather than under a screen of blank:
 a short thread is bottom-aligned, and scrolling away from the tail raises
