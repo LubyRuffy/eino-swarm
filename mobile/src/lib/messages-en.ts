@@ -82,6 +82,8 @@ export const en = {
 
   "thread.back": "Back",
   "thread.agents": "Agents",
+  "thread.agent.activeGroup": "Active ({n})",
+  "thread.agent.finishedGroup": "Finished ({n})",
   "thread.agent.running": "running",
   "thread.agent.done": "done",
   "thread.agent.failed": "failed",

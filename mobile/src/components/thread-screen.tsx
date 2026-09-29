@@ -70,6 +70,12 @@ export function ThreadScreen({
 }) {
   const manager = managerBlocks(blocks)
   const agents = phoneAgents(blocks)
+  const activeAgents = agents.filter((agent) => agent.status === "running")
+  const finishedAgents = agents.filter((agent) => agent.status !== "running")
+  const agentGroups = [
+    { id: "active", label: t("thread.agent.activeGroup", { n: activeAgents.length }), agents: activeAgents },
+    { id: "finished", label: t("thread.agent.finishedGroup", { n: finishedAgents.length }), agents: finishedAgents },
+  ]
   const [agentPage, setAgentPage] = useState("chat")
   const selectedAgent = agents.find((agent) => agent.id === agentPage)
   const ask = pendingAsk(manager)
@@ -236,7 +242,7 @@ export function ThreadScreen({
         </div>
         {agentPage === "chat" && agents.length > 0 ? (
           <Button variant="ghost" className="h-8 shrink-0 px-2 text-xs" onClick={() => changePage("agents")}>
-            {t("thread.agents")} ({agents.length})
+            {t("thread.agents")} ({activeAgents.length})
           </Button>
         ) : null}
         {agentPage === "chat" && running ? (
@@ -325,20 +331,26 @@ export function ThreadScreen({
         >
           {/* Bottom-aligned: a short conversation sits above the composer
               instead of floating under a screen of blank. */}
-          <div className="flex min-h-full min-w-0 w-full flex-col justify-end gap-1.5">
+          <div className={cn("flex min-h-full min-w-0 w-full flex-col gap-1.5",
+            agentPage === "agents" ? "justify-start" : "justify-end")}>
             <div ref={quoteSource} data-quote-source="">
               {agentPage === "agents" ? (
                 <div className="flex flex-col gap-1" data-testid="agent-roster">
-                  {agents.map((agent) => (
-                    <button key={agent.id} type="button" onClick={() => changePage(agent.id)}
-                      className="flex min-w-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-left text-sm">
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate">{agentRosterText(agent.role, agent.id)}</span>
-                        {agent.activity ? <span className="truncate text-xs text-muted-foreground">{agent.activity}</span> : null}
-                      </span>
-                      <span className="shrink-0 text-xs text-muted-foreground">{t(`thread.agent.${agent.status}`)}</span>
-                      <ChevronRight className="size-4 shrink-0" aria-hidden />
-                    </button>
+                  {agentGroups.filter((group) => group.agents.length > 0).map((group) => (
+                    <section key={group.id} className="flex flex-col gap-1">
+                      <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground">{group.label}</h2>
+                      {group.agents.map((agent) => (
+                        <button key={agent.id} type="button" onClick={() => changePage(agent.id)}
+                          className="flex min-w-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-left text-sm">
+                          <span className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate">{agentRosterText(agent.role, agent.id)}</span>
+                            {agent.activity ? <span className="truncate text-xs text-muted-foreground">{agent.activity}</span> : null}
+                          </span>
+                          <span className="shrink-0 text-xs text-muted-foreground">{t(`thread.agent.${agent.status}`)}</span>
+                          <ChevronRight className="size-4 shrink-0" aria-hidden />
+                        </button>
+                      ))}
+                    </section>
                   ))}
                 </div>
               ) : (

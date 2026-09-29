@@ -36,8 +36,10 @@ answer stays on screen and splits that row. The live tail is **Thinking**
 / **Planning next moves** / **Editing** / **Reading** / **Exec**; open
 the row for the pieces. A `progress` pulse is not a chat
 row. `wait_agents` is a status count, not the `elapsed_ms` roster.
-A conversation with sub-agents offers **Agents / 子 Agent** in its header. The
-list shows each role, ID, status, and latest permitted activity; open a row
+A conversation with sub-agents offers **Agents / 子 Agent** in its header. Its
+number counts running workers only; the list separates running workers from
+finished and failed history. Each row shows role, ID, status, and latest
+permitted activity; open a row
 for that agent's separate thought, tool, and answer log. **Earlier** loads
 older events into the same list and log. Worker answers do not appear as
 manager answers. Pairlink strips worker launch instructions and clips event

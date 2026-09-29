@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { setLocale } from "@/lib/i18n"
@@ -7,6 +7,47 @@ import { applyEvent, type CompactBlock } from "@/lib/transcript"
 import type { RemoteEvent } from "@/lib/rpc"
 
 describe("ThreadScreen", () => {
+  it("counts only running workers and separates finished history", () => {
+    setLocale("en")
+    let blocks: CompactBlock[] = []
+    const events: Partial<RemoteEvent>[] = [
+      { seq: 1, kind: "spawned", agent_id: "done-1", role: "completed" },
+      { seq: 2, kind: "finished", agent_id: "done-1" },
+      { seq: 3, kind: "spawned", agent_id: "live-1", role: "active" },
+      { seq: 4, kind: "spawned", agent_id: "failed-1", role: "failed" },
+      { seq: 5, kind: "finished", agent_id: "failed-1", err: "timed out" },
+    ]
+    for (const event of events) blocks = applyEvent(blocks, {
+      thread_id: "t1", created_at: "2026-09-29T00:00:00Z", text: "", ...event,
+    } as RemoteEvent)
+    const handlers = {
+      onBack: vi.fn(), onSend: vi.fn(), onSteer: vi.fn(), onStop: vi.fn(),
+      onAnswer: vi.fn(), onAnswerStructured: vi.fn(),
+    }
+    const view = render(<ThreadScreen detail={{ id: "t1", title: "talk" }} blocks={blocks} {...handlers} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "Agents (1)" }))
+    const roster = screen.getByTestId("agent-roster")
+    expect(roster).toHaveTextContent("Active (1)")
+    expect(roster).toHaveTextContent("Finished (2)")
+    const active = screen.getByRole("heading", { name: "Active (1)" }).closest("section")!
+    const finished = screen.getByRole("heading", { name: "Finished (2)" }).closest("section")!
+    expect(within(active).getAllByRole("button")).toHaveLength(1)
+    expect(within(active).getByRole("button", { name: /active live-1 running/i })).toBeInTheDocument()
+    expect(within(finished).getAllByRole("button")).toHaveLength(2)
+    expect(within(finished).getByRole("button", { name: /failed #1.*failed/i })).toBeInTheDocument()
+
+    blocks = applyEvent(blocks, {
+      thread_id: "t1", seq: 6, kind: "finished", agent_id: "live-1", text: "",
+      created_at: "2026-09-29T00:00:01Z",
+    })
+    view.rerender(<ThreadScreen detail={{ id: "t1", title: "talk" }} blocks={blocks} {...handlers} />)
+    expect(screen.queryByRole("heading", { name: /Active/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Finished (3)" })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Back" }))
+    expect(screen.getByRole("button", { name: "Agents (0)" })).toBeInTheDocument()
+  })
+
   it("opens a worker's separate activity without painting it as the manager answer", () => {
     setLocale("en")
     let blocks: CompactBlock[] = []

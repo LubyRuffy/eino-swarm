@@ -389,7 +389,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    findings or **Waiting**, not `schedule_wake` / `report_schedule` JSON.
    The transcript opens on the
    last turn, already at the live edge; Earlier or pull up loads older rows.
-   **Agents / 子 Agent** shows each worker's status and opens its separate
+   **Agents / 子 Agent** counts running workers and separates them from finished
+   or failed history; each row shows status and opens its separate
    activity log. The phone shows only Pairlink-permitted, clipped events,
    not the worker's launch instruction. A tap paints the chrome immediately;
    until that conversation arrives the body

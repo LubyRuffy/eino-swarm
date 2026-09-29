@@ -92,6 +92,8 @@ export const zh: Record<MessageKey, string> = {
 
   "thread.back": "返回",
   "thread.agents": "子 Agent",
+  "thread.agent.activeGroup": "进行中 ({n})",
+  "thread.agent.finishedGroup": "已结束 ({n})",
   "thread.agent.running": "运行中",
   "thread.agent.done": "已完成",
   "thread.agent.failed": "失败",

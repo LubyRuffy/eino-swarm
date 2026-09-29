@@ -29,6 +29,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-222` / `C-006`: the phone sub-agent header now counts only running workers. The roster separates running work from completed and failed history while keeping each worker's log available (Issue #47).
+
 - `F-430` / `C-010`: the qualified #46 batch advances mobile package and iOS
   build metadata to 0.1.22/122. The Mac, Android, and iOS deliveries share
   one verified main source commit; each platform still has its own release gate.
