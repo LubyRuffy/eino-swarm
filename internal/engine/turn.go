@@ -497,6 +497,7 @@ func (e *Engine) Interrupt(threadID string) error {
 const (
 	KindSteer                  = "steer"
 	KindSteerRetracted         = "steer_retracted"
+	KindSteerRevised           = "steer_revised"
 	KindSteerPreempted         = "steer_preempted"
 	KindCleanup                = "cleanup"
 	KindReasoning              = "reasoning"

@@ -7,9 +7,13 @@ import { useTurnJump } from "./use-turn-jump"
 function Harness({
   ids,
   loadUntilTurn,
+  startId,
+  target = "tn_early",
 }: {
   ids: string[]
   loadUntilTurn: (id: string, clientHeight?: number) => Promise<boolean>
+  startId?: string
+  target?: string
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const jumpTo = useTurnJump({
@@ -17,6 +21,7 @@ function Harness({
     growthKey: ids.join(","),
     unpin: () => undefined,
     loadUntilTurn,
+    startId,
   })
   return (
     <div data-testid="scroller" ref={scrollerRef}>
@@ -25,11 +30,20 @@ function Harness({
           {id}
         </div>
       ))}
-      <button type="button" onClick={() => jumpTo("tn_early")}>
+      <button type="button" onClick={() => jumpTo(target)}>
         jump
       </button>
     </div>
   )
+}
+
+function placeRows(root: HTMLElement, tops: Record<string, number>) {
+  root.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+  for (const node of root.querySelectorAll("[data-turn-nav]")) {
+    const id = node.getAttribute("data-turn-nav") ?? ""
+    const top = tops[id] ?? 0
+    ;(node as HTMLElement).getBoundingClientRect = () => ({ top }) as DOMRect
+  }
 }
 
 function watchScrollTop(el: HTMLElement) {
@@ -122,6 +136,68 @@ describe("useTurnJump", () => {
       <Harness ids={["tn_older", "tn_early", "tn_late"]} loadUntilTurn={loadUntilTurn} />,
     )
     expect(calls.length).toBe(1)
+  })
+
+  it("opens the top of the log for the earliest turn", () => {
+    // Pinning that bubble left the prefix above the pane. The thumb sat
+    // off zero, so the top looked like it had failed to load.
+    const loadUntilTurn = vi.fn(async () => false)
+    render(
+      <Harness
+        ids={["tn_early", "tn_late"]}
+        loadUntilTurn={loadUntilTurn}
+        startId="tn_early"
+      />,
+    )
+    const root = screen.getByTestId("scroller")
+    placeRows(root, { tn_early: 480, tn_late: 900 })
+    const calls = watchScrollTop(root)
+    root.scrollTop = 200
+    calls.length = 0
+    fireEvent.click(screen.getByRole("button", { name: "jump" }))
+    expect(loadUntilTurn).not.toHaveBeenCalled()
+    expect(calls).toEqual([0])
+  })
+
+  it("still pins a later turn under the top of the pane", () => {
+    const loadUntilTurn = vi.fn(async () => false)
+    render(
+      <Harness
+        ids={["tn_early", "tn_late"]}
+        loadUntilTurn={loadUntilTurn}
+        startId="tn_early"
+        target="tn_late"
+      />,
+    )
+    const root = screen.getByTestId("scroller")
+    placeRows(root, { tn_early: 40, tn_late: 640 })
+    const calls = watchScrollTop(root)
+    fireEvent.click(screen.getByRole("button", { name: "jump" }))
+    expect(calls.at(-1)).toBe(640)
+  })
+
+  it("keeps the earliest jump at the top after older history prepends", () => {
+    const loadUntilTurn = vi.fn(async () => false)
+    const view = render(
+      <Harness
+        ids={["tn_early", "tn_late"]}
+        loadUntilTurn={loadUntilTurn}
+        startId="tn_early"
+      />,
+    )
+    const root = screen.getByTestId("scroller")
+    placeRows(root, { tn_early: 480 })
+    const calls = watchScrollTop(root)
+    fireEvent.click(screen.getByRole("button", { name: "jump" }))
+    calls.length = 0
+    view.rerender(
+      <Harness
+        ids={["tn_older", "tn_early", "tn_late"]}
+        loadUntilTurn={loadUntilTurn}
+        startId="tn_early"
+      />,
+    )
+    expect(calls).toEqual([0])
   })
 
   it("stops following a jump once the reader wheels", () => {

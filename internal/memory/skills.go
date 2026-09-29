@@ -17,6 +17,13 @@ type SkillInfo struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	// Origin is set when this file was copied from another project. It is not
+	// part of the procedure: skill_view does not return it, and the prompt
+	// index does not list it.
+	Origin *SkillOrigin `json:"origin,omitempty"`
+	// ContentDigest identifies the description and body. Compared with
+	// Origin.Digest to tell a clean copy from a local edit. Not on the wire.
+	ContentDigest string `json:"-"`
 }
 
 // Skill is one procedure in full.
@@ -78,6 +85,10 @@ func (s *Store) readSkill(name string) (Skill, error) {
 		// opened.
 		skill.Name = name
 	}
+	if origin := originFromFront(front); origin != nil {
+		skill.Origin = origin
+	}
+	skill.ContentDigest = SkillDigest(skill.Description, skill.Body)
 	if info, statErr := os.Stat(s.skillPath(name)); statErr == nil {
 		skill.UpdatedAt = info.ModTime().UTC()
 	}
@@ -91,22 +102,28 @@ func (s *Store) WriteSkill(name, description, body string) (Skill, error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.writeSkillLocked(name, description, body, nil)
+	return s.writeSkillLocked(name, description, body, nil, nil)
 }
 
-func (s *Store) writeSkillLocked(name, description, body string, except map[string]struct{}) (Skill, error) {
-	description = strings.Join(strings.Fields(description), " ")
+func (s *Store) writeSkillLocked(name, description, body string, except map[string]struct{}, origin *SkillOrigin) (Skill, error) {
+	description, body = normalizeSkill(description, body)
 	if description == "" {
 		return Skill{}, fmt.Errorf("memory: a skill needs a one-line description saying when it applies")
 	}
-	body = strings.TrimSpace(strings.ReplaceAll(body, "\r\n", "\n"))
 	if body == "" {
 		return Skill{}, fmt.Errorf("memory: a skill needs steps in its body, not only a description")
 	}
 	if err := s.rejectDuplicateSkill(name, description, body, except); err != nil {
 		return Skill{}, err
 	}
-	if err := writeAtomic(s.skillPath(name), renderSkill(name, description, body)); err != nil {
+	// A rewrite keeps the copy link. Dropping it would make a later edit look
+	// like a skill that was never copied, and the update button would vanish.
+	if origin == nil {
+		if prev, err := s.readSkill(name); err == nil {
+			origin = prev.Origin
+		}
+	}
+	if err := writeAtomic(s.skillPath(name), renderSkill(name, description, body, origin)); err != nil {
 		return Skill{}, err
 	}
 	return s.readSkill(name)
@@ -137,7 +154,7 @@ func (s *Store) PatchSkill(name, oldText, newText string) (Skill, error) {
 	if body == "" {
 		return Skill{}, fmt.Errorf("memory: that patch would empty the skill; delete it instead")
 	}
-	if err := writeAtomic(s.skillPath(name), renderSkill(name, skill.Description, body)); err != nil {
+	if err := writeAtomic(s.skillPath(name), renderSkill(name, skill.Description, body, skill.Origin)); err != nil {
 		return Skill{}, err
 	}
 	return s.readSkill(name)
@@ -268,11 +285,16 @@ func SafeSkillName(s string) string {
 
 // renderSkill writes the agentskills.io shape: YAML front matter with the name
 // and the description, then the procedure.
-func renderSkill(name, description, body string) string {
+func renderSkill(name, description, body string, origin *SkillOrigin) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "name: %s\n", name)
 	fmt.Fprintf(&b, "description: %s\n", yamlOneLine(description))
+	if origin != nil && origin.ProjectID != "" && origin.Name != "" && origin.Digest != "" {
+		fmt.Fprintf(&b, "origin_project: %s\n", yamlOneLine(origin.ProjectID))
+		fmt.Fprintf(&b, "origin_name: %s\n", yamlOneLine(origin.Name))
+		fmt.Fprintf(&b, "origin_digest: %s\n", yamlOneLine(origin.Digest))
+	}
 	b.WriteString("---\n\n")
 	b.WriteString(body)
 	b.WriteString("\n")

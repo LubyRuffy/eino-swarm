@@ -177,6 +177,25 @@ describe("Agents tab chrome", () => {
     expect(screen.getByRole("button", { name: /reviewer-1/ })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /reviewer-2/ })).toBeInTheDocument()
   })
+
+  it("shows a job name when the role is a path", () => {
+    render(
+      <RightPanel
+        tab="agents"
+        transcript={transcript([
+          agent({
+            id: "helper/a/a/a-1/a/a-15",
+            role: "helper/a/a/a-1/a/a",
+            status: "failed",
+          }),
+        ])}
+        {...noop}
+      />,
+    )
+    const row = screen.getByRole("button", { name: /helper/ })
+    expect(row).toHaveTextContent("#15")
+    expect(row.textContent).not.toContain("helper/a")
+  })
 })
 
 describe("Agent log follow", () => {

@@ -17,6 +17,7 @@ const fake = vi.hoisted(() => ({
   enqueueIdle: false,
   steerWait: undefined as Promise<void> | undefined,
   followupsWait: undefined as Promise<void> | undefined,
+  deleteStatus: undefined as number | undefined,
   onEvent: undefined as ((ev: Record<string, unknown>) => void) | undefined,
 }))
 
@@ -75,6 +76,7 @@ vi.mock("@/lib/api", () => {
         return item
       },
       deleteFollowup: async (_id: string, fid: string) => {
+        if (fake.deleteStatus) throw new ApiError("still queued", fake.deleteStatus)
         fake.queuedItems = fake.queuedItems.filter((f) => f.id !== fid)
       },
       steerFollowup: async (id: string, fid: string) => {
@@ -113,6 +115,7 @@ beforeEach(() => {
   fake.enqueueIdle = false
   fake.steerWait = undefined
   fake.followupsWait = undefined
+  fake.deleteStatus = undefined
   fake.onEvent = undefined
   useApp.setState({
     threads: [],
@@ -209,6 +212,26 @@ describe("follow-up tray", () => {
     expect(useApp.getState().followups).toEqual([])
   })
 
+  it("reports whether a queued row left so the composer can take it", async () => {
+    const item = {
+      id: "fu_1",
+      thread_id: "th_old",
+      seq: 1,
+      text: "after this",
+      created_at: "",
+    }
+    useApp.setState({ activeId: "th_old", followups: [item] })
+    await expect(useApp.getState().deleteFollowup("fu_1")).resolves.toBe(true)
+    expect(useApp.getState().followups).toEqual([])
+
+    useApp.setState({ activeId: "th_old", followups: [item], error: undefined })
+    fake.queuedItems = [item]
+    fake.deleteStatus = 500
+    await expect(useApp.getState().deleteFollowup("fu_1")).resolves.toBe(false)
+    expect(useApp.getState().followups).toEqual([item])
+    expect(useApp.getState().error).toBeTruthy()
+  })
+
   it("removes a follow-up from the tray after steering it", async () => {
     const item = {
       id: "fu_1",
@@ -252,6 +275,7 @@ describe("follow-up tray", () => {
 
   it("drops a queued copy when that text becomes the live turn", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const item = {
       id: "fu_1",
       thread_id: "th_old",

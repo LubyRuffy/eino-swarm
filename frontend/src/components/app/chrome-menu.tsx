@@ -9,9 +9,9 @@ import { desktopShell, uniqueSurfaces } from "@/lib/shell"
 import { useT } from "@/lib/use-t"
 import { useApp } from "@/store/app"
 
-/** 应用菜单 (App menu): the … beside Settings, bottom-left of the
- *  conversation list. Width, developer view and who else is connected
- *  live here; the title bar keeps status, terminal and the side panel. */
+/** 应用菜单 (App menu): the … at the bottom of the icon rail, above
+ *  Settings. Width, developer view and who else is connected live here;
+ *  the title bar keeps status, terminal and the side panel. */
 export function ChromeMenu({
   onToggleTheme,
   onToggleLocale,

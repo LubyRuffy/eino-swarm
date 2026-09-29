@@ -7,7 +7,7 @@ import {
   splitQueuedSteers,
   type TranscriptState,
 } from "./transcript"
-import { parseSteerRetractSeq } from "./transcript-steer"
+import { parseSteerRetractSeq, parseSteerRevision } from "./transcript-steer"
 import type { SwarmEvent } from "./types"
 
 let seq = 0
@@ -35,6 +35,16 @@ function fold(events: SwarmEvent[], from?: TranscriptState) {
 function manager(state: TranscriptState) {
   return state.agents[MANAGER_ID]
 }
+
+describe("parseSteerRevision", () => {
+  it("requires a seq and a text field", () => {
+    expect(parseSteerRevision(`{"seq":4,"text":"next"}`)).toEqual({ seq: 4, text: "next" })
+    expect(parseSteerRevision(`{"seq":4,"text":""}`)).toEqual({ seq: 4, text: "" })
+    expect(parseSteerRevision(`{"seq":4}`)).toBeUndefined()
+    expect(parseSteerRevision("nope")).toBeUndefined()
+    expect(parseSteerRevision("")).toBeUndefined()
+  })
+})
 
 describe("parseSteerRetractSeq", () => {
   it("reads JSON seq and ignores junk", () => {
@@ -72,6 +82,48 @@ describe("retracted steering", () => {
     const state = fold([ev({ kind: "steer", text: "late page", seq: 9 })], retracted)
     expect(manager(state).blocks.some((b) => b.kind === "steer")).toBe(false)
     expect(state.retractedSteers).toEqual([9])
+  })
+
+  it("replaces an unread caption and keeps a later revision", () => {
+    seq = 0
+    const state = fold([
+      ev({ kind: "user_message", text: "look into this", seq: 1 }),
+      ev({ kind: "steer", text: "same words", seq: 3 }),
+      ev({ kind: "steer", text: "same words", seq: 4 }),
+      ev({ kind: "steer_revised", text: `{"seq":3,"text":"first edited"}`, seq: 5 }),
+      ev({ kind: "steer_revised", text: `{"seq":3,"text":"first final"}`, seq: 6 }),
+    ])
+    const texts = manager(state)
+      .blocks.filter((b) => b.kind === "steer")
+      .map((b) => ({ seq: b.seq, text: b.text }))
+    expect(texts).toEqual([
+      { seq: 3, text: "first final" },
+      { seq: 4, text: "same words" },
+    ])
+    const late = fold(
+      [ev({ kind: "steer", text: "original", seq: 8 })],
+      fold([ev({ kind: "steer_revised", text: `{"seq":8,"text":"from the earlier page"}`, seq: 9 })]),
+    )
+    expect(manager(late).blocks.filter((b) => b.kind === "steer").map((b) => b.text)).toEqual([
+      "from the earlier page",
+    ])
+  })
+
+  it("a rewind drops revisions from the cut onward", () => {
+    seq = 0
+    const state = fold([
+      ev({ kind: "user_message", text: "keep", seq: 1 }),
+      ev({ kind: "steer", text: "early", seq: 2 }),
+      ev({ kind: "steer_revised", text: `{"seq":2,"text":"early edited"}`, seq: 3 }),
+      ev({ kind: "user_message", text: "cut", seq: 4 }),
+      ev({ kind: "steer", text: "late", seq: 5 }),
+      ev({ kind: "steer_revised", text: `{"seq":5,"text":"late edited"}`, seq: 6 }),
+    ])
+    const after = fold([ev({ kind: "rewound", seq: 0, text: "4" })], state)
+    expect(after.steerRevisions).toEqual({ 2: "early edited" })
+    expect(manager(after).blocks.filter((b) => b.kind === "steer").map((b) => b.text)).toEqual([
+      "early edited",
+    ])
   })
 
   it("does not paint steer_preempted as a notice", () => {

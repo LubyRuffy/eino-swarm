@@ -202,11 +202,24 @@ func (r *Registry) lockRole(role string) *sync.Mutex {
 // with the same role is a bug: the identity is the id, not a fresh spawn.
 func (r *Registry) Resume(ctx context.Context, fromID, task string,
 	modelOpt ModelBuilder, extraTools ...tool.BaseTool) (*Handle, error) {
+	return r.resumeHandle(ctx, fromID, task, modelOpt, false, extraTools...)
+}
+
+// resumeAdmitted is the manager-tool path. Past MaxConcurrent it returns
+// atCapacityError and leaves the finished worker stopped. Registry.Resume
+// still queues.
+func (r *Registry) resumeAdmitted(ctx context.Context, fromID, task string,
+	modelOpt ModelBuilder, extraTools ...tool.BaseTool) (*Handle, error) {
+	return r.resumeHandle(ctx, fromID, task, modelOpt, true, extraTools...)
+}
+
+func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
+	modelOpt ModelBuilder, admit bool, extraTools ...tool.BaseTool) (*Handle, error) {
 	past, err := r.recall(fromID)
 	if err != nil {
 		return nil, err
 	}
-	h, err := r.claimForResume(past)
+	h, err := r.claimForResume(past, admit)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +234,7 @@ func (r *Registry) Resume(ctx context.Context, fromID, task string,
 	return h, nil
 }
 
-func (r *Registry) claimForResume(past *agentPast) (*Handle, error) {
+func (r *Registry) claimForResume(past *agentPast, admit bool) (*Handle, error) {
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
@@ -244,8 +257,14 @@ func (r *Registry) claimForResume(past *agentPast) (*Handle, error) {
 		if _, _, finished := cur.Result(); !finished {
 			return nil, fmt.Errorf("resume_agent: agent %q is still running; use send_message", past.ID)
 		}
+		if admit && r.liveCountLocked() >= r.capLocked() {
+			return nil, &atCapacityError{n: r.capLocked()}
+		}
 		cur.resetForResume(past.ID)
 		return cur, nil
+	}
+	if admit && r.liveCountLocked() >= r.capLocked() {
+		return nil, &atCapacityError{n: r.capLocked()}
 	}
 	fresh := &Handle{
 		ID: past.ID, Role: past.Role, done: make(chan struct{}),
@@ -290,8 +309,11 @@ func (r *Registry) resume(ctx context.Context, args string) (string, error) {
 	tools := make([]tool.BaseTool, 0, len(r.SubAgentTools)+1)
 	tools = append(tools, r.SubAgentTools...)
 	tools = append(tools, r.SendTool())
-	h, err := r.Resume(ctx, a.AgentID, a.Task, r.ModelBuilder, tools...)
+	h, err := r.resumeAdmitted(ctx, a.AgentID, a.Task, r.ModelBuilder, tools...)
 	if err != nil {
+		if out, rerr, ok := refuseAdmit(err); ok {
+			return out, rerr
+		}
 		return ctlRefuse(err.Error())
 	}
 	return marshal(map[string]string{"agent_id": h.ID, "resumed_from": a.AgentID}), nil

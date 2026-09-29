@@ -417,6 +417,7 @@ describe("send", () => {
 
   it("waits for a conversation that is still being created", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     expect(useApp.getState().activeId).toBe("th_old")
 
     // The click and the Enter happen before the POST comes back. Sending to
@@ -485,6 +486,7 @@ describe("send", () => {
 
   it("answers a live question instead of queuing a follow-up", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     useApp.setState({ activeId: "th_old", status: { running: true }, followups: [] })
     fake.onEvent?.({
       kind: "tool_call",
@@ -624,6 +626,7 @@ describe("send", () => {
 describe("upload", () => {
   it("waits for a conversation that is still being created", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.createDelayMs = 20
     const opening = useApp.getState().newThread()
     await useApp.getState().upload([new File(["x"], "brief.txt")])
@@ -651,14 +654,16 @@ describe("projects", () => {
     expect(deskDest()).toBe("chats")
   })
 
-  // Restart paints the last conversation in the center. The rail is a
-  // choice, and a loose thread must not replace Projects on every launch.
-  it("restores the open conversation without leaving the project list", async () => {
+  // Launch is the home page. The rail stays where the reader left it;
+  // only picking a row moves it.
+  it("opens on the home page without selecting a conversation", async () => {
     setDeskDest("projects")
     await useApp.getState().boot()
-    expect(useApp.getState().activeId).toBe("th_old")
+    expect(useApp.getState().threads.length).toBeGreaterThan(0)
+    expect(useApp.getState().activeId).toBeUndefined()
     expect(deskDest()).toBe("projects")
     await useApp.getState().openThread("th_old")
+    expect(useApp.getState().activeId).toBe("th_old")
     expect(deskDest()).toBe("chats")
   })
 
@@ -670,6 +675,7 @@ describe("projects", () => {
 
   it("pins a conversation so the sidebar can track it", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().pinThread("th_old", true)
     expect(useApp.getState().threads.find((th) => th.id === "th_old")?.pinned).toBe(
       true,
@@ -688,6 +694,7 @@ describe("projects", () => {
 
   it("asks for a review of the open conversation", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().reviewNow()
     expect(fake.reviewed).toEqual(["th_old"])
     expect(useApp.getState().error).toBeUndefined()
@@ -699,6 +706,7 @@ describe("projects", () => {
   // an answer on the panel they clicked, not a banner that looks like a crash.
   it("says so on the panel when there is nothing to review", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.reviewCode = "idle"
     await useApp.getState().reviewNow()
     expect(useApp.getState().error).toBeUndefined()
@@ -708,6 +716,7 @@ describe("projects", () => {
 
   it("reports a review that failed for any other reason", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.reviewCode = "busy"
     await useApp.getState().reviewNow()
     expect(useApp.getState().error).toBe("nothing to review")
@@ -724,6 +733,7 @@ describe("projects", () => {
 describe("extendTurn", () => {
   it("answers the tool-round cap on the open conversation", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().extendTurn(true)
     expect(fake.continues).toEqual([{ id: "th_old", proceed: true }])
   })
@@ -758,6 +768,7 @@ describe("a generated conversation title", () => {
 
   it("renames the open conversation from the title event", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     expect(useApp.getState().threads[0]?.title).toBe("New conversation")
     fake.onEvent?.(titleEvent())
     expect(useApp.getState().threads[0]?.title).toBe("Weekly status")
@@ -765,6 +776,7 @@ describe("a generated conversation title", () => {
 
   it("keeps that name when a done refresh still has the placeholder", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.(titleEvent())
     await useApp.getState().refreshThreads()
     expect(useApp.getState().threads[0]?.title).toBe("Weekly status")
@@ -773,6 +785,7 @@ describe("a generated conversation title", () => {
 
   it("does not rename from a namer that failed", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.(titleEvent({ err: "endpoint down" }))
     expect(useApp.getState().threads[0]?.title).toBe("New conversation")
   })
@@ -819,6 +832,7 @@ describe("token usage", () => {
 
   it("updates the meter from a live usage event", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "usage",
       seq: 0,
@@ -845,6 +859,7 @@ describe("token usage", () => {
       thread: { prompt_tokens: 90, completion_tokens: 10, total_tokens: 100, calls: 1 },
     }
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     expect(useApp.getState().usage?.context_tokens).toBe(90)
   })
 })

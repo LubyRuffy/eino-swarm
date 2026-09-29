@@ -308,7 +308,7 @@ func (s *Store) foldOneFamilyLocked(fam []Skill) (FoldMerge, Change, error) {
 		except[n] = struct{}{}
 	}
 	except[keep] = struct{}{}
-	skill, err := s.writeSkillLocked(keep, desc, body, except)
+	skill, err := s.writeSkillLocked(keep, desc, body, except, nil)
 	if err != nil {
 		return FoldMerge{}, Change{}, err
 	}
@@ -392,7 +392,7 @@ func (s *Store) MergeSkills(keep string, sources []string, description, body str
 	for _, name := range from {
 		except[name] = struct{}{}
 	}
-	skill, err := s.writeSkillLocked(keep, desc, body, except)
+	skill, err := s.writeSkillLocked(keep, desc, body, except, nil)
 	if err != nil {
 		return Skill{}, nil, err
 	}

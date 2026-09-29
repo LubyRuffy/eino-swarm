@@ -348,10 +348,18 @@ test("switches color palette and remembers it", async ({ page, request }) => {
 
     const root = page.locator("html")
     await expect(root).toHaveAttribute("data-palette", "fofa")
-    const primary = await root.evaluate((el) =>
-      getComputedStyle(el).getPropertyValue("--primary").trim(),
-    )
-    expect(primary.startsWith("180")).toBe(true)
+    const tokens = await root.evaluate((el) => {
+      const s = getComputedStyle(el)
+      return {
+        primary: s.getPropertyValue("--primary").trim(),
+        background: s.getPropertyValue("--background").trim(),
+        sidebar: s.getPropertyValue("--sidebar").trim(),
+        brandFrom: s.getPropertyValue("--brand-from").trim(),
+      }
+    })
+    expect(tokens.primary.startsWith("180")).toBe(true)
+    expect(tokens.brandFrom.startsWith("213")).toBe(true)
+    expect(tokens.sidebar).toBe(tokens.background)
 
     const saved = await (await request.get("/api/settings")).json()
     expect(saved.settings.ui.palette).toBe("fofa")

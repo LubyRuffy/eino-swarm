@@ -160,7 +160,6 @@ export const en = {
   "queue.clear": "Clear queue",
   "queue.steer": "Steer",
   "queue.steerNamed": "Steer: {text}",
-  "queue.edit": "Edit queued message",
   "queue.editNamed": "Edit queued message: {text}",
   "queue.removeNamed": "Remove queued message: {text}",
 
@@ -338,6 +337,7 @@ export const en = {
   "transcript.interruptSteerNamed":
     "Abort the current tool and inject queued steering",
   "transcript.deleteSteerNamed": "Remove this unread steering",
+  "transcript.editSteer": "Edit this unread steering",
   "transcript.jumpLatest": "Jump to latest",
   "transcript.earlier": "Earlier",
   "transcript.thinking": "Thinking",
@@ -550,7 +550,7 @@ export const en = {
   "settings.general.themeDark": "Dark",
   "settings.general.palette": "Color theme",
   "settings.general.paletteHint":
-    "ZWAI is the current chrome. FOFA is the intelligence-console palette.",
+    "ZWAI is the current chrome. FOFA is the official console palette.",
   "settings.general.paletteZWAI": "ZWAI",
   "settings.general.paletteFOFA": "FOFA",
   "settings.general.language": "Language",
@@ -681,7 +681,7 @@ export const en = {
   "settings.swarm.subagents": "Sub-agents",
   "settings.swarm.maxConcurrent": "Sub-agents at once",
   "settings.swarm.maxConcurrentHint":
-    "Takes effect immediately, including workers already queued. More means faster fan-out and more tokens in parallel.",
+    "Takes effect immediately. New spawns and resumes past this number are refused. Workers already queued still start when a slot opens. More means faster fan-out and more tokens in parallel.",
   "settings.swarm.agentTimeout": "Sub-agent timeout (seconds)",
   "settings.swarm.agentTimeoutHint":
     "How long one sub-agent may keep working before it is stopped.",
@@ -861,6 +861,33 @@ export const en = {
   "file.deleteTitle": "Delete {name}?",
   "file.deleteDesc": "This file is removed from the workspace.",
   "file.deleteConfirm": "Delete file",
+  "skill.copyNamed": "Copy skill {name}",
+  "skill.copyAll": "Copy all skills",
+  "skill.copyTitle": "Copy {name}",
+  "skill.copyAllTitle": "Copy all skills",
+  "skill.copyDesc":
+    "The destination gets its own copy. Edits there stay there, and edits here are not written back. If this skill later changes and that copy was not edited, it can pull the update. Copy from the project that should stay the shared procedure — an edited copy is what the next project receives.",
+  "skill.copyTo": "Destination project",
+  "skill.copyPick": "Choose a project",
+  "skill.copyAs": "Name in the destination",
+  "skill.copyAsHint": "Leave this blank to keep the same name.",
+  "skill.copyConfirm": "Copy skill",
+  "skill.copyAllConfirm": "Copy skills",
+  "skill.copyNone": "Create another project first.",
+  "skill.copyWorking": "Copying…",
+  "skill.copied": "Copied {n} to {project}.",
+  "skill.copySkipped": "{name}: {error}",
+  "skill.copyFailed": "Nothing was copied.",
+  "skill.originFrom": "Copied from {project}",
+  "skill.originLocal": "Edited in this project. The source has not changed.",
+  "skill.originDiverged": "This copy and the source have both changed.",
+  "skill.originMissing": "The source skill is gone.",
+  "skill.update": "Update",
+  "skill.updateFrom": "Update {name} from its source",
+  "skill.pullConfirmTitle": "Replace local edits?",
+  "skill.pullConfirmDesc":
+    "Updating replaces this copy with the source. The source is not changed.",
+  "skill.pullConfirm": "Replace with source",
   "skill.deleteTitle": "Delete {name}?",
   "skill.deleteDesc":
     "Later conversations in this project will not start with this procedure.",

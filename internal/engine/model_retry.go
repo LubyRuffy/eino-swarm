@@ -16,8 +16,9 @@ import (
 
 // KindModelRetry is recorded when a pursuing (or any) manager run hits a
 // recoverable ChatModel failure — truncated tool JSON, 429, a dropped
-// stream — or a scheduled check ends without work/report evidence. The
-// runtime re-enters the same turn instead of blocking.
+// stream, a mid-stream TCP read timeout — or a scheduled check ends
+// without work/report evidence. The runtime re-enters the same turn
+// instead of blocking.
 const KindModelRetry = "model_retry"
 
 // modelErrorRetries is how many times a recoverable model error may re-enter
@@ -67,6 +68,11 @@ func isRetryableModelError(err error) bool {
 		strings.Contains(s, "invalid character"),
 		strings.Contains(s, "unexpected eof"),
 		strings.Contains(s, "connection reset"),
+		// A live socket that dies mid-body. macOS says "operation timed out";
+		// Go's own deadline says "i/o timeout". Continuing the turn works;
+		// failing it on the first hit does not.
+		strings.Contains(s, "operation timed out"),
+		strings.Contains(s, "i/o timeout"),
 		strings.Contains(s, "status code: 429"),
 		strings.Contains(s, "status code: 500"),
 		strings.Contains(s, "status code: 502"),

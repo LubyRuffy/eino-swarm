@@ -244,6 +244,10 @@ type Registry struct {
 	// the sibling call that is blocked on the same mutex).
 	roleMu map[string]*sync.Mutex
 
+	// pendingRoles are job names a path-shaped spawn has claimed but not
+	// registered yet. Without this, two such calls both see the stem free.
+	pendingRoles map[string]int
+
 	// internal hooks: invoked by Spawn on registration and by the agent
 	// goroutine on completion; Run wires these into Notifications.
 	spawnHook  func(role, agentID, instruction string)
@@ -521,19 +525,40 @@ func (r *Registry) ManagerMiddleware() adk.ChatModelAgentMiddleware {
 // stop them.
 func (r *Registry) Spawn(ctx context.Context, role, task string,
 	modelOpt ModelBuilder, extraTools ...tool.BaseTool) (*Handle, error) {
-	return r.spawnAgent(ctx, role, task, modelOpt, "", extraTools...)
+	return r.spawnAgent(ctx, role, task, modelOpt, "", false, extraTools...)
+}
+
+// spawnAdmitted is the manager-tool path. Past MaxConcurrent it returns
+// atCapacityError and starts nothing. Registry.Spawn keeps queueing so a
+// programmatic host can still park work behind the gate.
+func (r *Registry) spawnAdmitted(ctx context.Context, role, task string,
+	modelOpt ModelBuilder, extraTools ...tool.BaseTool) (*Handle, error) {
+	return r.spawnAgent(ctx, role, task, modelOpt, "", true, extraTools...)
+}
+
+func (r *Registry) spawnForkedAdmitted(ctx context.Context, role, task string,
+	modelOpt ModelBuilder, msgs []adk.Message, extraTools ...tool.BaseTool) (*Handle, error) {
+	seed := formatContext("context inherited from manager", msgs)
+	return r.spawnAgent(ctx, role, task, modelOpt, seed, true, extraTools...)
 }
 
 // spawnAgent is Spawn with an inbox seed applied before the worker goroutine
 // starts. fork_context uses it so the first model call cannot beat the
-// context it is supposed to inherit.
+// context it is supposed to inherit. admit refuses instead of queueing when
+// the live roster is already at MaxConcurrent; the check and the insert share
+// the registry lock so parallel tool calls cannot all slip through.
 func (r *Registry) spawnAgent(ctx context.Context, role, task string,
-	modelOpt ModelBuilder, seed string, extraTools ...tool.BaseTool) (*Handle, error) {
+	modelOpt ModelBuilder, seed string, admit bool, extraTools ...tool.BaseTool) (*Handle, error) {
 
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
 		return nil, fmt.Errorf("swarm: registry closed")
+	}
+	if admit && r.liveCountLocked() >= r.capLocked() {
+		n := r.capLocked()
+		r.mu.Unlock()
+		return nil, &atCapacityError{n: n}
 	}
 	r.seq++
 	id := fmt.Sprintf("%s-%d", role, r.seq)
@@ -599,7 +624,7 @@ func (r *Registry) turnsLimit() int {
 func (r *Registry) SpawnForked(ctx context.Context, role, task string,
 	modelOpt ModelBuilder, msgs []adk.Message, extraTools ...tool.BaseTool) (*Handle, error) {
 	seed := formatContext("context inherited from manager", msgs)
-	return r.spawnAgent(ctx, role, task, modelOpt, seed, extraTools...)
+	return r.spawnAgent(ctx, role, task, modelOpt, seed, false, extraTools...)
 }
 
 // Stats returns (running, finished) counts; finished handles are pruned from

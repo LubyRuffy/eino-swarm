@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -86,6 +87,53 @@ func (r *Registry) RetractManagerSteer(seq int64) bool {
 		return true
 	}
 	return false
+}
+
+// RewriteManagerSteer replaces the caption of one unread steer in place.
+// The slot and any image parts stay, so a drain cannot observe a gap where
+// the old text is gone and the new text has not arrived yet. False when the
+// registry is closed, the caption is empty, or that seq is no longer queued.
+func (r *Registry) RewriteManagerSteer(seq int64, caption string) bool {
+	caption = strings.TrimSpace(caption)
+	if seq <= 0 || caption == "" {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return false
+	}
+	for _, m := range r.mgrInbox {
+		if SteerSeq(m) != seq {
+			continue
+		}
+		rewriteSteerCaption(m, caption)
+		return true
+	}
+	return false
+}
+
+func rewriteSteerCaption(msg *schema.Message, caption string) {
+	if msg == nil {
+		return
+	}
+	if len(msg.UserInputMultiContent) == 0 {
+		msg.Content = caption
+		return
+	}
+	// Vision steers keep the caption in a text part only. Setting Content
+	// as well is what OpenAI-compatible clients refuse to marshal.
+	msg.Content = ""
+	for i := range msg.UserInputMultiContent {
+		if msg.UserInputMultiContent[i].Type == schema.ChatMessagePartTypeText {
+			msg.UserInputMultiContent[i].Text = caption
+			return
+		}
+	}
+	msg.UserInputMultiContent = append([]schema.MessageInputPart{{
+		Type: schema.ChatMessagePartTypeText,
+		Text: caption,
+	}}, msg.UserInputMultiContent...)
 }
 
 // SetSteerSeq tags a queued steering message so RetractManagerSteer can

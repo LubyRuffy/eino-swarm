@@ -1,10 +1,8 @@
 import {
   AlertTriangle,
   Brain,
-  Check,
   ChevronDown,
   ChevronRight,
-  Copy,
   Loader2,
   Pencil,
   Users,
@@ -38,6 +36,7 @@ import {
 import { QueuedSteers } from "@/components/app/queued-steers"
 import { QuotedMessageBody, QuoteSnippet } from "@/components/app/quoted-message"
 import { TurnNav } from "@/components/app/turn-nav"
+import { CopyButton } from "@/components/app/copy-button"
 import { InputThumbs } from "@/components/app/input-thumbs"
 import {
   thoughtExpanded,
@@ -57,8 +56,8 @@ import { useTurnJump } from "@/lib/use-turn-jump"
 import { cn, formatDuration, formatMessageTime } from "@/lib/utils"
 import { contentTypeClass } from "@/lib/chrome-type"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
-import { copyText } from "@/lib/copy-text"
 import { displayQuotedText, formatQuotedMessage, parseQuotedMessage } from "@/lib/quote"
+import { agentRosterLabel, agentRosterText } from "@/lib/agent-label"
 import { useT } from "@/lib/use-t"
 import { Textarea } from "@/components/ui/textarea"
 import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript"
@@ -81,6 +80,7 @@ export function Transcript({
   findQuery = "",
   findIndex = 0,
   onFindCount,
+  onEditQueuedSteer,
 }: {
   state: TranscriptState
   loaded: boolean
@@ -88,6 +88,8 @@ export function Transcript({
   /** Edit-and-resend from this user_message seq: the bubble below is cleared
    *  and the turn starts again at that position. */
   onResendUser?: (text: string, seq: number) => void
+  /** Pull one unread steer into the composer. The caller retracts it. */
+  onEditQueuedSteer?: (text: string, seq: number) => void
   /** Live find query. Empty means the bar is closed or idle. */
   findQuery?: string
   findIndex?: number
@@ -161,6 +163,7 @@ export function Transcript({
     threadId,
     unpin,
     loadUntilTurn,
+    startId: navItems[0]?.id,
   })
 
   const paintFind = useCallback(
@@ -232,9 +235,14 @@ export function Transcript({
             const clockAnswerId = responseClockBlockId(turnBlocks)
             const turn = turnById.get(turnId)
             const live = i === groups.length - 1 && Boolean(state.running) && turn?.status === "running"
+            // A memory note can carry an earlier turn id after the next turn
+            // has started, so one id is two slices. Keying only on the id
+            // leaves the previous slice's DOM at the top once older history
+            // is prepended, and the user's message is no longer first.
+            const head = turnBlocks[0]
             return (
               <GoalSessionTurn
-                key={turnId}
+                key={head ? `${turnId}:${head.seq || head.id}` : turnId}
                 blocks={turnBlocks}
                 turn={turn}
                 live={live}
@@ -262,6 +270,7 @@ export function Transcript({
             threadId={threadId}
             onPreempt={() => void preempt()}
             onRetract={(seq) => void retractSteer(seq)}
+            onEdit={onEditQueuedSteer}
           />
           <div ref={endRef} className="h-4" />
         </div>
@@ -639,39 +648,45 @@ export function WaitProgress({
         />
       </div>
       <div className="mt-1.5 flex flex-col gap-0.5">
-        {watched.map((a) => (
-          <button
-            key={a.id}
-            type="button"
-            onClick={() => onSelect(a.id)}
-            className="flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-accent/60"
-          >
-            <StatusDot status={a.status} />
-            <span className="shrink-0 font-medium">{a.role}</span>
-            <MarqueeText
-              text={
-                a.status === "running"
-                  ? a.activity || t("transcript.workingEllipsis")
-                  : a.status === "done"
-                    ? t("status.done")
-                    : a.status === "failed"
-                      ? t("status.failed")
-                      : a.status === "cancelled"
-                        ? t("status.cancelled")
-                        : t("status.running")
-              }
-              active={a.status === "running"}
-              className="text-muted-foreground"
-            />
-            {/* The age is the honest part of a silent row: it says the work is
-                still being done, and how long it has been going. */}
-            {ages.has(a.id) ? (
-              <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
-                {formatDuration(ages.get(a.id) ?? 0)}
-              </span>
-            ) : null}
-          </button>
-        ))}
+        {watched.map((a) => {
+          const label = agentRosterLabel(a.role, a.id)
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => onSelect(a.id)}
+              className="flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-[13px] transition-colors hover:bg-accent/60"
+            >
+              <StatusDot status={a.status} />
+              <span className="shrink-0 font-medium">{label.name}</span>
+              {label.tag ? (
+                <span className="shrink-0 text-muted-foreground">{label.tag}</span>
+              ) : null}
+              <MarqueeText
+                text={
+                  a.status === "running"
+                    ? a.activity || t("transcript.workingEllipsis")
+                    : a.status === "done"
+                      ? t("status.done")
+                      : a.status === "failed"
+                        ? t("status.failed")
+                        : a.status === "cancelled"
+                          ? t("status.cancelled")
+                          : t("status.running")
+                }
+                active={a.status === "running"}
+                className="text-muted-foreground"
+              />
+              {/* The age is the honest part of a silent row: it says the work is
+                  still being done, and how long it has been going. */}
+              {ages.has(a.id) ? (
+                <span className="ml-auto shrink-0 tabular-nums text-muted-foreground">
+                  {formatDuration(ages.get(a.id) ?? 0)}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -713,7 +728,9 @@ function SpawnRow({
     >
       <Users className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="text-[13px]">
-        {t("transcript.started", { role: block.spawn?.role ?? "" })}
+        {t("transcript.started", {
+          role: agentRosterText(block.spawn?.role ?? "", id),
+        })}
       </span>
       <StatusDot status={live?.status ?? "running"} />
       <MarqueeText
@@ -800,45 +817,6 @@ export function StatusDot({ status }: { status: AgentState["status"] }) {
         status === "running" && "animate-breathe",
       )}
     />
-  )
-}
-
-export function CopyButton({
-  text,
-  className,
-  label,
-  size = "icon-sm",
-  "aria-label": ariaLabel,
-}: {
-  text: string
-  className?: string
-  label?: string
-  size?: "icon-sm" | "icon-xs" | "icon-2xs"
-  "aria-label"?: string
-}) {
-  const t = useT()
-  const [copied, setCopied] = useState(false)
-  const name = ariaLabel ?? label ?? t("transcript.copy")
-  const glyph = size === "icon-2xs" ? "size-3" : "size-3.5"
-  return (
-    <Button
-      type="button"
-      variant="ghost"
-      size={label ? "sm" : size}
-      className={className}
-      onClick={() => {
-        void copyText(text).then((ok) => {
-          if (!ok) return
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1200)
-        })
-      }}
-      title={copied ? t("transcript.copied") : name}
-      aria-label={name}
-    >
-      {copied ? <Check className={glyph} /> : <Copy className={glyph} />}
-      {label ? <span>{copied ? t("transcript.copied") : label}</span> : null}
-    </Button>
   )
 }
 

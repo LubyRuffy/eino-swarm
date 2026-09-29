@@ -6,6 +6,7 @@ import { useProjects } from "@/store/projects"
 const fake = vi.hoisted(() => ({
   preempts: [] as string[],
   retracts: [] as Array<{ id: string; seq: number }>,
+  revises: [] as Array<{ id: string; seq: number; text: string }>,
   preemptCode: undefined as string | undefined,
   retractStatus: undefined as number | undefined,
 }))
@@ -59,6 +60,13 @@ vi.mock("@/lib/api", () => {
         }
         fake.retracts.push({ id, seq })
       },
+      reviseSteer: async (id: string, seq: number, text: string) => {
+        if (fake.retractStatus) {
+          throw new ApiError("gone", fake.retractStatus)
+        }
+        fake.revises.push({ id, seq, text })
+        return { revised: true }
+      },
     },
   }
 })
@@ -76,6 +84,7 @@ vi.mock("@/lib/stream", () => ({
 beforeEach(() => {
   fake.preempts.length = 0
   fake.retracts.length = 0
+  fake.revises.length = 0
   fake.preemptCode = undefined
   fake.retractStatus = undefined
   useApp.setState({
@@ -105,6 +114,7 @@ beforeEach(() => {
 describe("interrupt inject", () => {
   it("preempts the open conversation so unread steering can land now", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().preempt()
     expect(fake.preempts).toEqual(["th_old"])
     expect(useApp.getState().error).toBeUndefined()
@@ -112,12 +122,40 @@ describe("interrupt inject", () => {
 
   it("retracts one unread bubble by event seq", async () => {
     await useApp.getState().boot()
-    await useApp.getState().retractSteer(12)
+    await useApp.getState().openThread("th_old")
+    await expect(useApp.getState().retractSteer(12)).resolves.toBe(true)
     expect(fake.retracts).toEqual([{ id: "th_old", seq: 12 }])
+  })
+
+  it("refuses to hand a steer the manager already read to the composer", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    fake.retractStatus = 404
+    await expect(useApp.getState().retractSteer(12)).resolves.toBe(false)
+    expect(useApp.getState().error).toBeUndefined()
+    expect(fake.retracts).toEqual([])
+  })
+
+  it("surfaces an edit that missed a steer the manager already read", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    fake.retractStatus = 404
+    await useApp.getState().reviseSteer(12, "narrower")
+    expect(useApp.getState().error).toBeTruthy()
+    expect(fake.revises).toEqual([])
+  })
+
+  it("resubmits an edited unread steer on the open conversation", async () => {
+    await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
+    await useApp.getState().reviseSteer(12, "narrower")
+    expect(fake.revises).toEqual([{ id: "th_old", seq: 12, text: "narrower" }])
+    expect(useApp.getState().error).toBeUndefined()
   })
 
   it("swallows a race where the inbox already drained", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.preemptCode = "no_steer"
     await useApp.getState().preempt()
     expect(useApp.getState().error).toBeUndefined()

@@ -53,7 +53,7 @@ func (s *Server) projectSkills(projectID string) []memory.SkillInfo {
 	if err != nil || list == nil {
 		return []memory.SkillInfo{}
 	}
-	return list
+	return s.annotateOrigins(list)
 }
 
 func (s *Server) listProjects(c *gin.Context) {
@@ -179,6 +179,7 @@ func (s *Server) memoryViewOf(p *store.Project) (memoryView, error) {
 		// The panel iterates this, so it must never arrive as JSON null.
 		skills = []memory.SkillInfo{}
 	}
+	skills = s.annotateOrigins(skills)
 	families, err := mem.SkillFamilyNames()
 	if err != nil {
 		families = nil
@@ -242,6 +243,8 @@ func (s *Server) getSkill(c *gin.Context) {
 		s.failSkill(c, err)
 		return
 	}
+	annotated := s.annotateOrigins([]memory.SkillInfo{skill.SkillInfo})
+	skill.SkillInfo = annotated[0]
 	c.JSON(http.StatusOK, gin.H{"skill": skill})
 }
 
@@ -361,7 +364,16 @@ func tidyPayload(view memoryView, report memory.FoldReport) gin.H {
 // in the path, so a name nobody wrote is a missing resource rather than a bad
 // request — and a name that could never be one is the opposite.
 func (s *Server) failSkill(c *gin.Context, err error) {
+	var pull *memory.SkillPullError
 	switch {
+	case errors.As(err, &pull):
+		status := http.StatusConflict
+		if pull.Reason == "unlinked" {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": pull.Error(), "code": pull.Reason})
+	case errors.Is(err, memory.ErrSkillExists):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "exists"})
 	case errors.Is(err, memory.ErrNoMatch):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, memory.ErrBadName):

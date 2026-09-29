@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
-import { CopyButton } from "@/components/app/transcript"
+import { CopyButton } from "@/components/app/copy-button"
 import { Badge } from "@/components/ui/badge"
 import { Disclosure } from "@/components/ui/collapsible"
 import type { TranscriptState } from "@/lib/transcript"

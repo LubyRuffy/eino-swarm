@@ -544,6 +544,27 @@ describe("Transcript turn nav", () => {
     expect(screen.getByTestId("work-fold").closest("[data-turn-nav]")).toBeNull()
   })
 
+  it("opens the top of the log from the first tick", () => {
+    // Pinning that bubble left the prefix above the pane, so the scrollbar
+    // sat off zero after a jump to the first send.
+    render(<Transcript state={twoTurns()} loaded onSelectAgent={() => {}} />)
+    const root = screen.getByTestId("transcript")
+    const row = screen.getByText("alpha").closest("[data-turn-nav]")
+    expect(row).toBeInstanceOf(HTMLElement)
+    root.getBoundingClientRect = () => ({ top: 0 }) as DOMRect
+    ;(row as HTMLElement).getBoundingClientRect = () => ({ top: 360 }) as DOMRect
+    let top = 120
+    Object.defineProperty(root, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (value: number) => {
+        top = Number(value)
+      },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "alpha" }))
+    expect(top).toBe(0)
+  })
+
   it("hides the rail on a single turn", () => {
     const state = twoTurns()
     state.agents.manager = {

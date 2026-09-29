@@ -195,8 +195,8 @@ export function AppSettings({
   )
   const setAppearance = useApp((s) => s.setAppearance)
   const refreshAfterSettings = useCallback(() => {
-    // boot() would reopen threads[0] and yank the conversation that is
-    // sitting under this sheet. Meta + models is what Settings changed.
+    // boot() reloads the thread list and reapplies chrome. Settings only
+    // changed meta and models.
     void Promise.all([api.meta(), api.models()]).then(([meta, listed]) => {
       useApp.setState({ meta, models: listed.models })
     })

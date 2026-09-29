@@ -36,7 +36,7 @@ export function chromeListDensity(chromePx: number): ChromeListDensity {
     folderGap: px(size * 0.46),
     sectionGap: px(size * 0.77),
     sectionLabelHeight: px(size * 1.7),
-    listPx: px(size * 0.77),
+    listPx: px(size * 1.23),
     kind: px(size * 1.23),
   }
 }

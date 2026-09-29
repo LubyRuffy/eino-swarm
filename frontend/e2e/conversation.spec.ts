@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
 import { liveWorkFold, showDeveloperLog, userMessageGap } from "./composer-plate"
-import { composer, filterFiles, freshConversation, openFiles, send, statusBadge, waitForIdle } from "./session"
+import { composer, filterFiles, freshConversation, openFiles, reloadOpenConversation, send, statusBadge, waitForIdle } from "./session"
 
 test.afterEach(async ({ request }) => {
   await request.put("/api/settings", { data: { ui: { transcript_mode: "user" } } })
@@ -150,8 +150,8 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(files.getByRole("treeitem", { name: "researcher.md" })).toBeVisible()
   await expect(files.getByRole("treeitem", { name: "reviewer.md" })).toBeVisible()
 
-  // a reload replays the whole turn from the event log
-  await page.reload()
+  // a reload returns home; opening the row replays the turn from the event log
+  await reloadOpenConversation(page)
   await expect(page.getByTestId("transcript").getByText("Two sub-agents ran in parallel")).toBeVisible()
   await expect(page.getByTestId("transcript").getByTestId("transcript-chart")).toBeVisible()
   await expect(statusBadge(page)).toContainText("Idle")
@@ -370,6 +370,27 @@ test("retracts unread steering so the manager never sees it", async ({ page }) =
   await expect(statusBadge(page)).toContainText("Working")
 })
 
+test("editing an unread steer pulls it into the composer and queues the send", async ({ page }) => {
+  await freshConversation(page)
+  await showDeveloperLog(page)
+  await send(page, "Look at this from two angles and merge the findings")
+  const nudge = "prefer the shorter path"
+  await composer(page).fill(nudge)
+  await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
+  await composer(page).press("ControlOrMeta+Enter")
+  const queued = page.getByTestId("queued-steers")
+  await expect(queued).toContainText(nudge, { timeout: 30_000 })
+  await queued.getByRole("button", { name: "Edit this unread steering" }).click()
+  const box = composer(page)
+  await expect(box).toHaveValue(nudge)
+  await expect(page.getByTestId("queued-steers")).toHaveCount(0)
+  const edited = "prefer the longer path"
+  await box.fill(edited)
+  await box.press("Enter")
+  await expect(page.getByTestId("followup-queue")).toContainText(edited)
+  await expect(page.getByTestId("queued-steers")).toHaveCount(0)
+})
+
 test("interrupts the current tool so unread steering lands now", async ({ page }) => {
   await freshConversation(page)
   await showDeveloperLog(page)
@@ -431,7 +452,7 @@ test("Steer on a queued row injects and empties the tray", async ({ page }) => {
   await expect(page.getByTestId("steer")).toContainText(later)
 })
 
-test("editing a queued follow-up moves it to the back", async ({ page }) => {
+test("editing a queued follow-up pulls it into the composer and queues it at the back", async ({ page }) => {
   await freshConversation(page)
   await send(page, "Look at this from two angles and merge the findings")
   const first = "queued first"
@@ -444,10 +465,12 @@ test("editing a queued follow-up moves it to the back", async ({ page }) => {
   await expect(tray).toContainText(first)
   await expect(tray).toContainText(second)
   await tray.getByRole("button", { name: `Edit queued message: ${first}` }).click()
-  const edit = tray.getByTestId("followup-edit")
-  await edit.fill("queued first edited")
-  await edit.press("Enter")
-  await expect(tray.getByTestId("followup-edit")).toHaveCount(0)
+  const box = composer(page)
+  await expect(box).toHaveValue(first)
+  await expect(tray).not.toContainText(first)
+  await expect(tray).toContainText(second)
+  await box.fill("queued first edited")
+  await box.press("Enter")
   const rows = tray.locator("li")
   await expect(rows.nth(0)).toContainText(second)
   await expect(rows.nth(1)).toContainText("queued first edited")
@@ -533,7 +556,7 @@ test("pastes an image as vision input, not a workspace file", async ({ page }) =
   const files = await filterFiles(page, "clip.png")
   await expect(files.getByText("clip.png")).toBeHidden()
 
-  await page.reload()
+  await reloadOpenConversation(page)
   await expect(
     page.getByTestId("user-message").getByTestId("input-images").locator("img"),
   ).toBeVisible()
@@ -595,8 +618,8 @@ test("switches the thinking level and keeps it after a reload", async ({ page })
   await page.getByRole("option", { name: "High thinking" }).click()
   await expect(level).toContainText("High")
 
-  // the choice is stored on the conversation, so a reload brings it back
-  await page.reload()
+  // the choice is stored on the conversation; reload goes home, then the row brings it back
+  await reloadOpenConversation(page)
   await expect(page.getByLabel("Thinking level")).toContainText("High")
 })
 
@@ -638,7 +661,7 @@ test("switches the model in the composer and keeps it after a reload", async ({
     await expect(dialog.getByRole("button", { name: "Add a provider" })).toBeVisible()
     await expect(dialog.getByRole("textbox", { name: "Provider" })).toHaveCount(0)
     await dialog.getByRole("button", { name: "Back to app" }).click()
-    await page.reload()
+    await reloadOpenConversation(page)
     await expect(page.getByLabel("Model")).toContainText("beta")
   } finally {
     await request.put("/api/settings", {
@@ -955,40 +978,4 @@ test("Stop closes in-flight tools instead of leaving them spinning", async ({ pa
   await waitForIdle(page)
   await expect(page.getByText("interrupted")).toBeVisible()
   await expect(page.locator(".animate-spin")).toHaveCount(0)
-})
-
-test("plan command drafts then implements", async ({ page }) => {
-  await freshConversation(page)
-  await composer(page).fill("/plan inspect then change")
-  await composer(page).press("Enter")
-  await expect(page.getByTestId("plan-banner")).toContainText("Planning")
-  await expect(statusBadge(page)).toContainText("Working")
-  const ask = page.getByTestId("ask-card")
-  await expect(ask).toBeVisible({ timeout: 30_000 })
-  await expect(ask).toContainText("Your answer needed")
-  await expect(ask.getByTestId("ask-mark")).toBeVisible()
-  await expect(ask).not.toHaveClass(/animate-ask-ring/)
-  await expect(ask.locator("[data-testid=ask-mark] .animate-ping")).toHaveCount(0)
-  await expect(statusBadge(page)).toContainText("Your turn")
-  await expect(
-    statusBadge(page).locator("[data-testid=ask-mark] .animate-ping"),
-  ).toHaveCount(1)
-  expect(await ask.evaluate((el) => {
-    const col = el.closest(".content-column")
-    if (!(col instanceof HTMLElement)) return false
-    const cw = col.getBoundingClientRect().width
-    return cw > 512 && Math.abs(el.getBoundingClientRect().width - cw) < 2
-  })).toBe(true)
-  await page.getByTestId("ask-option-safer").click()
-  await page.getByTestId("ask-submit").click()
-  await waitForIdle(page)
-  await expect(page.getByTestId("plan-text")).toContainText("# Plan")
-  await expect(page.getByTestId("transcript")).toContainText("Plan updated.")
-  await page.getByTestId("plan-implement").click()
-  await expect(statusBadge(page)).toContainText("Working")
-  await waitForIdle(page)
-  await expect(page.getByTestId("plan-banner")).toHaveCount(0)
-  await expect(page.getByTestId("transcript")).toContainText(
-    "The human accepted the plan. Execute it.",
-  )
 })

@@ -41,6 +41,7 @@ func TestEndpointsFailCleanlyWithoutADatabase(t *testing.T) {
 		{http.MethodPost, "/api/threads/" + id + "/steer", map[string]any{"text": "go"}},
 		{http.MethodPost, "/api/threads/" + id + "/preempt", nil},
 		{http.MethodDelete, "/api/threads/" + id + "/steers/1", nil},
+		{http.MethodPatch, "/api/threads/" + id + "/steers/1", map[string]any{"text": "go"}},
 		{http.MethodGet, "/api/threads/" + id + "/followups", nil},
 		{http.MethodPost, "/api/threads/" + id + "/followups", map[string]any{"text": "go"}},
 		{http.MethodPatch, "/api/threads/" + id + "/followups/fu_x", map[string]any{"text": "go"}},
@@ -100,6 +101,7 @@ func TestMalformedBodiesAreRejected(t *testing.T) {
 	// a PATCH that changes nothing is not an error, it is a no-op
 	h.json(http.MethodPatch, "/api/threads/"+id, map[string]any{}, http.StatusOK)
 	h.json(http.MethodPatch, "/api/threads/"+id+"/followups/fu_x", "\"nope\"", http.StatusBadRequest)
+	h.json(http.MethodPatch, "/api/threads/"+id+"/steers/1", "\"nope\"", http.StatusBadRequest)
 }
 
 // Deleting is idempotent: two clicks on the same delete button, or a retry

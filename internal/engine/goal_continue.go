@@ -99,8 +99,9 @@ func (rt *runtime) continueGoal(status string) {
 }
 
 // shouldPursueAfterTurn is whether an open /goal should start the next turn
-// after this one ends. Truncated tool JSON / 429 / a dropped stream already
-// retried in-turn; pinning the banner is how a huge tool payload used to
+// after this one ends. Truncated tool JSON / 429 / a dropped stream / a
+// mid-stream TCP read timeout already retried in-turn; pinning the banner
+// is how a huge tool payload used to
 // kill a standing objective. A real refusal still blocks. A conversation
 // without a standing objective does not auto-start from a failed turn.
 func shouldPursueAfterTurn(status string, runErr error, pursuing bool) bool {

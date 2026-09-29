@@ -15,7 +15,7 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
 
-import { CopyButton } from "@/components/app/transcript"
+import { CopyButton } from "@/components/app/copy-button"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"

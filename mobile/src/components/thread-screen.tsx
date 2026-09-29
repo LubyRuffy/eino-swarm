@@ -6,6 +6,7 @@ import { Composer, type ComposerExtra } from "@/components/composer"
 import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
 import { ThreadLog } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
+import { agentRosterText } from "@/lib/agent-label"
 import { t } from "@/lib/i18n"
 import { normalizeSelectedText } from "@/lib/quote"
 import type { CompactBlock } from "@/lib/transcript"
@@ -332,7 +333,7 @@ export function ThreadScreen({
                     <button key={agent.id} type="button" onClick={() => changePage(agent.id)}
                       className="flex min-w-0 items-center gap-2 rounded-lg border border-border px-3 py-2 text-left text-sm">
                       <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate">{agent.role} · {agent.id}</span>
+                        <span className="truncate">{agentRosterText(agent.role, agent.id)}</span>
                         {agent.activity ? <span className="truncate text-xs text-muted-foreground">{agent.activity}</span> : null}
                       </span>
                       <span className="shrink-0 text-xs text-muted-foreground">{t(`thread.agent.${agent.status}`)}</span>

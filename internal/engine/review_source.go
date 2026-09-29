@@ -46,10 +46,14 @@ func renderReviewFromEvents(events []store.Event, sessionMemory, final string) s
 		write("session briefing", clip(mem, compactSummaryMaxRunes))
 	}
 	retracted := retractedSteerSeqs(events)
+	revised := revisedSteerText(events)
 	for _, ev := range events {
 		if ev.Kind == KindSteer {
 			if _, ok := retracted[ev.Seq]; ok {
 				continue
+			}
+			if text, ok := revised[ev.Seq]; ok {
+				ev.Text = text
 			}
 		}
 		role, text, ok := reviewEventLine(ev)
@@ -70,7 +74,7 @@ func reviewEventLine(ev store.Event) (role, text string, ok bool) {
 			return "", "", false
 		}
 		return "human", text, true
-	case KindSteerRetracted, KindSteerPreempted:
+	case KindSteerRetracted, KindSteerPreempted, KindSteerRevised:
 		return "", "", false
 	case swarm.NotifyAgentMessage.String():
 		if text == "" {

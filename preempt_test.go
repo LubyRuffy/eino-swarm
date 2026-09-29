@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -115,6 +116,57 @@ func TestTakePreemptClearsAPendingEpochCancel(t *testing.T) {
 	}
 }
 
+func TestRewritePendingSteerKeepsItsSlotAndImages(t *testing.T) {
+	reg := NewRegistry()
+	b64 := "aaaa"
+	first := &schema.Message{
+		Role: schema.User,
+		UserInputMultiContent: []schema.MessageInputPart{
+			{Type: schema.ChatMessagePartTypeText, Text: "[steer] look"},
+			{Type: schema.ChatMessagePartTypeImageURL, Image: &schema.MessageInputImage{
+				MessagePartCommon: schema.MessagePartCommon{Base64Data: &b64, MIMEType: "image/png"},
+			}},
+		},
+	}
+	SetSteerSeq(first, 4)
+	second := schema.UserMessage("[steer] later")
+	SetSteerSeq(second, 5)
+	if !reg.SteerManagerMessage(first) || !reg.SteerManagerMessage(second) {
+		t.Fatal("inbox refused")
+	}
+	if reg.RewriteManagerSteer(4, "  ") || reg.RewriteManagerSteer(0, "[steer] x") || reg.RewriteManagerSteer(9, "[steer] x") {
+		t.Fatal("empty, untagged, or unknown seq must not rewrite")
+	}
+	if !reg.RewriteManagerSteer(4, "  [steer] edited  ") {
+		t.Fatal("rewrite missed the queued steer")
+	}
+	got := reg.TakePendingSteerMessages()
+	if len(got) != 2 {
+		t.Fatalf("rewrite changed the queue length: %d", len(got))
+	}
+	if SteerSeq(got[0]) != 4 || SteerSeq(got[1]) != 5 {
+		t.Fatalf("rewrite moved the slots: %d %d", SteerSeq(got[0]), SteerSeq(got[1]))
+	}
+	if got[0].Content != "" {
+		t.Fatal("a vision steer must not also set Content")
+	}
+	if len(got[0].UserInputMultiContent) != 2 || got[0].UserInputMultiContent[0].Text != "[steer] edited" {
+		t.Fatalf("caption = %+v", got[0].UserInputMultiContent)
+	}
+	if got[0].UserInputMultiContent[1].Image == nil || got[0].UserInputMultiContent[1].Image.Base64Data == nil || *got[0].UserInputMultiContent[1].Image.Base64Data != b64 {
+		t.Fatal("rewrite dropped the pasted image")
+	}
+	if got[1].Content != "[steer] later" {
+		t.Fatalf("the other steer changed: %q", got[1].Content)
+	}
+	reg.Close()
+	plain := schema.UserMessage("[steer] closed")
+	SetSteerSeq(plain, 1)
+	if reg.RewriteManagerSteer(1, "[steer] nope") {
+		t.Fatal("a closed registry must refuse a rewrite")
+	}
+}
+
 func TestRetractPendingSteerDropsItFromTheInbox(t *testing.T) {
 	reg := NewRegistry()
 	msg := schema.UserMessage("[steer] never mind")
@@ -161,11 +213,20 @@ func TestPreemptDoesNotCancelWorkers(t *testing.T) {
 		return &hangModel{started: started, release: release}
 	}
 	done := make(chan error, 1)
+	// SteerManager is true as soon as the registry is open, which is during
+	// the generate that emits wait_agents. Preempting that generate cancels
+	// the ChatModel node. The wait itself is what must be cut.
+	waiting := make(chan struct{})
+	var waitOnce sync.Once
 	go func() {
 		_, err := reg.RunWith(context.Background(), RunConfig{
 			Instruction: "coordinate",
 			Task:        "go",
-		}, nil)
+		}, func(n Notification) {
+			if n.Kind == NotifyToolCall && strings.Contains(n.Text, "wait_agents") {
+				waitOnce.Do(func() { close(waiting) })
+			}
+		})
 		done <- err
 	}()
 	select {
@@ -173,12 +234,13 @@ func TestPreemptDoesNotCancelWorkers(t *testing.T) {
 	case <-time.After(8 * time.Second):
 		t.Fatal("the worker never started")
 	}
-	deadline := time.Now().Add(3 * time.Second)
-	for !reg.SteerManager("stop waiting") {
-		if time.Now().After(deadline) {
-			t.Fatal("could not queue steering while wait_agents was in flight")
-		}
-		time.Sleep(5 * time.Millisecond)
+	select {
+	case <-waiting:
+	case <-time.After(8 * time.Second):
+		t.Fatal("wait_agents never started")
+	}
+	if !reg.SteerManager("stop waiting") {
+		t.Fatal("could not queue steering while wait_agents was in flight")
 	}
 	if !reg.Preempt() {
 		t.Fatal("Preempt refused while wait_agents should be in flight")

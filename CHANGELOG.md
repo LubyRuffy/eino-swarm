@@ -13,6 +13,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **Skills copy between projects as their own files.** Memory can copy one skill, or every skill, into another project. Editing either side leaves the other alone. The copy records where it came from. **Update** pulls a later change from that project when the copy was not edited; if both sides changed, it asks before replacing the local text. An unmodified copy keeps tracking the original project, so the next copy does not start following a project that never changed the steps. Nothing is written back on its own.
+
+- **Queued messages and unread steering edit in the composer.** Click a waiting follow-up, or the pencil on an unread steer, and that text lands in the composer (highlights become chips). The row or bubble leaves first. Enter while the turn is still running queues it at the back, the same path as a new follow-up. A steer the manager already read is not pulled in. An image-only steer has nothing to queue, so it stays delete-only. `PATCH` of a follow-up or unread steer remains for clients that rewrite in place.
+
 - `F-430` / `C-010`: `make release` now includes iOS archive/export/signing, upload and TestFlight group/review recovery; platform failures remain independent. Read-only `release-check` and `mobile-ios-release` expose preflight and iOS-only recovery.
 
 - **macOS desktop updates from GitHub Releases.** The sidebar shows the build version. A newer `zwai-<version>-darwin-<arch>.zip` on the latest release asks before it replaces `zwai.app` and reopens. `make desktop-release VERSION=X.Y.Z` builds that zip. Check for updates is in the app menu.
@@ -25,6 +29,20 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- **`spawn_agent` and `resume_agent` refuse past `max_concurrent`.** A larger batch no longer starts every worker and parks the extras on the gate, where they look busy and never call the model. The tool returns an error result; the manager waits, then resumes a finished id or spawns the next piece. `Registry.Spawn` / `Resume` still queue, and raising the cap still wakes those programmatic waiters. The manager prompt and those two tool descriptions state the configured number as a hard limit. A one-shot `schedule_wake` is consumed when it fires; the manager prompt now says `report_schedule` does not arm the next wait, and prose that a wait is planned does not create one.
+
+- **Launch opens the home page.** The center no longer selects a conversation on startup or reload. The list is still there; a row opens only when it is clicked. The rail stays on the last list.
+
+- `F-130` / `C-019`: the runtime manager reassesses delegation throughout a
+  task and uses sub-agents when either time or quality benefits. A single
+  worker may provide independent review even when the manager must wait;
+  ordinary turns and `/goal` no longer restrict that case to large/noisy jobs.
+  User constraints, concurrency limits, and manager verification still apply.
+
+- **Settings and the app menu sit at the bottom of the icon rail.** The rail is narrower. The build version stays at the bottom of the list column.
+
+- **The icon rail and the list share one gutter.** Rail icons are centered, and list titles sit further off the divider.
+
 - `F-430` / `C-010`: an unallocated accepted batch now qualifies after more than three main commits since the last public source SHA or over 24 hours since its oldest accepted change. Release execution selects only still-required desktop/mobile platforms. A Mac-only version leaves mobile build metadata unchanged.
 
 - **Scheduled matches a list, not a filter grid.** The title sits beside a search icon, **New task** is its own row, and **Upcoming** filters Active, Paused, and Completed from a menu. A row shows the next time, then the cadence, then the task.
@@ -34,6 +52,17 @@ co-working app built on it. The library API is unchanged except where noted
 - **Desktop lists sit in a leftmost rail.** Projects is the default list. Conversations (threads with no project), scheduled waits, and local clients each have their own list. The task column is the open conversation, the wait editor, or a client session. Restart keeps the rail on the last list; restoring the open conversation does not jump to Conversations. The rail does not show an unread count. **New conversation** is on Conversations, not on the project list. `⌘B` hides that list column and leaves the icon rail.
 
 ### Fixed
+
+- **FOFA chrome matches the official console.** The named palette now uses
+  DESIGN 7.2 / fofa.info tokens: page and list share the navy (or cool gray)
+  void, cyan is the signal, blue is the second brand stop, and the composer
+  rim is the cyan→blue search box — not a generic cyan fill on a darker strip.
+
+- **Agent names are job names.** A role filled with slashes is stored as that job word (`-2`, `-3` when the word is already taken). The Agents list shows the job and `#n`, not the path twice. A memory note that arrives after the next turn has started reuses the earlier turn id. Those two slices shared one React key, so once older history loaded the top of the thread was a later thought, and the user's message sat further down — sometimes twice.
+
+- **Jumping to the first message opens the top of the transcript.** That tick used to pin the bubble to the viewport, so anything above it — top padding, or a history page the sentinel had just loaded — stayed scrolled out and the scrollbar sat off the top.
+
+- **A mid-stream TCP read timeout retries in the same turn.** `read: operation timed out` and `i/o timeout` (the socket died while a chunk was in flight) used to end the turn on the first hit. They now take the same two in-turn `model_retry` attempts as a dropped stream. A context deadline still fails immediately.
 
 - `F-190`, `F-240` / `C-010`: Mac and Android update checks search older Releases for the newest safe installer for their own platform when the latest Release has only another platform's package. Android no longer offers a page-only release as an install.
 

@@ -58,6 +58,22 @@ func TestReviewSourceSkipsCompactAndLiveNoise(t *testing.T) {
 	}
 }
 
+func TestReviewSourceUsesTheRevisedSteer(t *testing.T) {
+	out := renderReviewFromEvents([]store.Event{
+		{Kind: KindSteer, Seq: 3, Text: "old nudge"},
+		{Kind: KindSteer, Seq: 4, Text: "untouched"},
+		{Kind: KindSteerRevised, Seq: 5, Text: `{"seq":3,"text":"replaced caption"}`},
+		{Kind: KindSteerRevised, Seq: 6, Text: `{"seq":3,"text":"final caption"}`},
+		{Kind: KindSteerRevised, Seq: 7, Text: `{"seq":8}`},
+	}, "", "")
+	if strings.Contains(out, "old nudge") || strings.Contains(out, "replaced caption") {
+		t.Fatalf("review kept a caption the model will not see:\n%s", out)
+	}
+	if !strings.Contains(out, "final caption") || !strings.Contains(out, "untouched") {
+		t.Fatalf("review missed the live captions:\n%s", out)
+	}
+}
+
 func TestReviewSourcePutsThisTurnAheadOfALongBriefingBudget(t *testing.T) {
 	briefing := strings.Repeat("b", reviewMaxChars)
 	out := renderReviewFromEvents([]store.Event{
@@ -131,6 +147,7 @@ func TestReviewEventLineReadsTheLogNotTheNoise(t *testing.T) {
 		{store.Event{Kind: KindSteer, Text: goalSessionWrapSteer()}, "", "", false},
 		{store.Event{Kind: KindSteerRetracted, Text: `{"seq":3}`}, "", "", false},
 		{store.Event{Kind: KindSteerPreempted}, "", "", false},
+		{store.Event{Kind: KindSteerRevised, Text: `{"seq":3,"text":"later"}`}, "", "", false},
 		{store.Event{Kind: KindGoalContinued, Text: "again"}, "human", "again", true},
 		{store.Event{Kind: swarm.NotifyAgentMessage.String()}, "", "", false},
 		{store.Event{Kind: swarm.NotifyAgentMessage.String(), Text: "answer"}, "assistant", "answer", true},

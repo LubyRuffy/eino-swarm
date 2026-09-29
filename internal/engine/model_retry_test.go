@@ -29,6 +29,8 @@ func TestIsRetryableModelErrorMatchesTransientProviderFailures(t *testing.T) {
 		"error, status code: 529, status: 529, message: overloaded",
 		"failed to receive stream chunk: unexpected EOF",
 		"read: connection reset by peer",
+		"failed to receive stream chunk: read tcp 192.0.2.1:1->192.0.2.2:443: read: operation timed out",
+		"read: i/o timeout",
 	} {
 		if !isRetryableModelError(errors.New(msg)) {
 			t.Fatalf("must retry: %s", msg)
@@ -42,6 +44,7 @@ func TestIsRetryableModelErrorLeavesARealRefusalAlone(t *testing.T) {
 		"error, status code: 401, status: 401 Unauthorized, message: invalid api key",
 		"error, status code: 403, status: 403 Forbidden, message: no access",
 		"error, status code: 400, status: 400 Bad Request, message: maximum context length exceeded",
+		"context deadline exceeded (Client.Timeout exceeded while awaiting headers)",
 	} {
 		if isRetryableModelError(errors.New(msg)) {
 			t.Fatalf("must not retry: %s", msg)

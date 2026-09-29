@@ -44,6 +44,17 @@ describe("compact transcript", () => {
     expect(blocks.some((b) => b.text === "secret launch instruction")).toBe(false)
   })
 
+  it("replaces an unread steer caption without adding a second bubble", () => {
+    let blocks = applyEvent([], ev({ seq: 3, kind: "steer", text: "old nudge" }))
+    blocks = applyEvent(blocks, ev({ seq: 4, kind: "steer", text: "other" }))
+    blocks = applyEvent(blocks, ev({ seq: 5, kind: "steer_revised", text: `{"seq":3,"text":"new nudge"}` }))
+    blocks = applyEvent(blocks, ev({ seq: 6, kind: "steer_revised", text: "nope" }))
+    expect(blocks.filter((b) => b.kind === "steer").map((b) => b.text)).toEqual([
+      "new nudge",
+      "other",
+    ])
+  })
+
   it("restarts a resumed worker and marks failed finishes without creating another row", () => {
     let blocks: CompactBlock[] = []
     for (const row of [

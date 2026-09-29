@@ -13,6 +13,7 @@ import {
   isHumanNavTurn,
   resolveTurnNavItems,
   scrollTurnIntoView,
+  scrollTurnToStart,
   turnNavItems,
   turnNavItemsFromTurns,
   turnNavSelector,
@@ -211,6 +212,23 @@ describe("activeNavId", () => {
 
   it("is empty when there is nothing to jump to", () => {
     expect(activeNavId([], 0, 300)).toBeUndefined()
+  })
+})
+
+describe("scrollTurnToStart", () => {
+  it("opens the top of the log instead of pinning the first send", () => {
+    // Pinning the earliest bubble left its prefix above the viewport, so
+    // the thumb sat off zero and the top looked unloaded.
+    const root = document.createElement("div")
+    const row = document.createElement("div")
+    row.setAttribute("data-turn-nav", "tn_a")
+    root.appendChild(row)
+    root.scrollTop = 240
+
+    expect(scrollTurnToStart(root, "tn_a")).toBe(true)
+    expect(root.scrollTop).toBe(0)
+    expect(scrollTurnToStart(root, "tn_missing")).toBe(false)
+    expect(root.scrollTop).toBe(0)
   })
 })
 

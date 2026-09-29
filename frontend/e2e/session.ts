@@ -9,6 +9,32 @@ export async function freshConversation(page: Page) {
   await expect(composer(page)).toBeVisible()
 }
 
+/** Reload lands on the home page with nothing selected. Tests that still
+ *  need the conversation click back into the row that was open. */
+export async function reloadOpenConversation(page: Page) {
+  const title = (await page.getByTestId("thread-title").innerText()).trim()
+  const project = page.getByTestId("thread-project")
+  const projectName = (await project.count()) > 0 ? (await project.innerText()).trim() : ""
+  const id = await page
+    .locator('[data-testid="thread-row"][aria-current="true"]')
+    .getAttribute("data-id")
+  if (!id) throw new Error("reloadOpenConversation: no conversation selected")
+  await page.reload()
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible()
+  await expect(page.locator('[data-testid="thread-row"][aria-current="true"]')).toHaveCount(0)
+  if (projectName) {
+    await page.getByRole("button", { name: projectName, exact: true }).click()
+  }
+  const row = page.locator(`[data-testid="thread-row"][data-id="${id}"]`)
+  if ((await row.count()) === 0) {
+    const more = page.getByRole("button", { name: "Show more" })
+    if ((await more.count()) > 0) await more.first().click()
+  }
+  await expect(row).toBeVisible()
+  await row.getByTestId("row-label").click()
+  await expect(page.getByTestId("thread-title")).toHaveText(title)
+}
+
 export const composer = (page: Page) => page.getByTestId("composer-input")
 export const statusBadge = (page: Page) => page.getByTestId("status-badge")
 

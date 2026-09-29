@@ -68,6 +68,24 @@ func TestManagerPromptAppendsProjectExtraLast(t *testing.T) {
 	}
 }
 
+func TestManagerPromptUsesTheConfiguredConcurrencyCap(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Swarm.MaxConcurrent = 5
+	prompt := ManagerPrompt(&tools.Set{WorkspaceDir: "/tmp/ws"}, cfg, "")
+	for _, need := range []string{
+		"The concurrency cap is 5.",
+		"Never start more than 5 sub-agents",
+		"refuse past 5",
+	} {
+		if !strings.Contains(prompt, need) {
+			t.Fatalf("missing %q:\n%s", need, prompt)
+		}
+	}
+	if strings.Contains(prompt, "The concurrency cap is 6.") || strings.Contains(prompt, "Never start more than 6") {
+		t.Fatal("the prompt advertised the default cap instead of the configured one")
+	}
+}
+
 func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Swarm.MaxConcurrent = 6
@@ -75,11 +93,24 @@ func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
 	for _, need := range []string{
 		"save time or improve quality",
 		"do not wait for the human to ask",
-		"Spawning one worker and then waiting",
-		"two or more workers overlap",
+		"Reassess delegation as the task develops",
+		"A single worker can improve quality",
+		"independent review or a second approach",
+		"even when you must wait for its result",
+		"Respect the human's explicit constraints",
+		"not a fixed quota",
+		"Review their evidence, resolve conflicting findings",
 		"Distinct role per parallel worker",
-		"You can have 6 sub-agents running at once",
-		"Use that budget when the work has that many independent parts",
+		"short job name",
+		"Do not put a slash",
+		"The concurrency cap is 6.",
+		"That number is a hard limit from settings",
+		"not something to infer from how many pieces the task has",
+		"Never start more than 6 sub-agents",
+		"do not queue the extra worker",
+		"A one-shot delay is consumed when it fires",
+		"report_schedule does not arm",
+		"Writing that a wait is planned does not create one",
 		"Two writers on the same path conflict",
 		"schedule_wake",
 		"do not wait for the human to remind",
@@ -93,6 +124,10 @@ func TestManagerPromptPrefersProactiveDelegation(t *testing.T) {
 		"you answer directly when a request is small",
 		"Delegate when a request has parts that do not depend on each other",
 		"Proactive multi-agent work is the default",
+		"A single worker is only for",
+		"Spawning one worker and then waiting for it is slower",
+		"Use that budget when the work has that many independent parts",
+		"You can have 6 sub-agents running at once",
 	} {
 		if strings.Contains(prompt, old) {
 			t.Fatalf("conservative policy came back: %q", old)
@@ -122,10 +157,13 @@ func TestManagerPromptDoesNotTreatLeftoverWorkersAsSomethingToClose(t *testing.T
 func TestOpenGoalPrefersProactiveDelegation(t *testing.T) {
 	open := goalSection("keep going", false, false, "")
 	if !strings.Contains(open, "Prefer sub-agents whenever they would save time or improve quality") {
-		t.Fatalf("an open goal must keep the ultra spawn prior:\n%s", open)
+		t.Fatalf("an open goal must preserve delegation for time or quality benefits:\n%s", open)
 	}
-	if !strings.Contains(open, "Spawning one worker and then waiting is not a win") {
-		t.Fatal("an open goal must not treat a one-worker wait as a swarm")
+	if !strings.Contains(open, "A single worker can improve quality") {
+		t.Fatal("an open goal must allow one worker when independent judgment helps")
+	}
+	if strings.Contains(open, "Spawning one worker and then waiting is not a win") {
+		t.Fatal("an open goal must not override quality-driven delegation with a blanket wait penalty")
 	}
 	if !strings.Contains(open, "A pending wake is the next turn") {
 		t.Fatal("an open goal must not imply every ended wait-turn auto-continues immediately")
@@ -712,8 +750,8 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 	if !strings.Contains(prompt, "do not wait for the human to ask") {
 		t.Fatal("delegation is proactive; the human should not have to request a swarm")
 	}
-	if !strings.Contains(prompt, "Spawning one worker and then waiting") {
-		t.Fatal("a one-worker wait must be called out as slower, not as a swarm win")
+	if !strings.Contains(prompt, "Keep work local when delegation adds no useful benefit") {
+		t.Fatal("delegation must have a time or quality benefit, not merely add a hop")
 	}
 	if strings.Contains(prompt, "Proactive multi-agent work is the default") {
 		t.Fatal("unconditional spawn-first came back")
@@ -739,7 +777,7 @@ func TestManagerPromptIsGenericAndGrounded(t *testing.T) {
 	if !strings.Contains(prompt, "report_schedule") {
 		t.Fatal("a scheduled turn must be told to report_schedule")
 	}
-	for _, leak := range []string{"deploy", "pull request", "cron job"} {
+	for _, leak := range []string{"deploy", "pull request", "cron job", "毛泽东", "十章"} {
 		if strings.Contains(strings.ToLower(prompt), leak) {
 			t.Fatalf("the prompt hardcodes example-specific text %q", leak)
 		}

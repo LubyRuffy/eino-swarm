@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
-import { Bot, CalendarClock, FolderKanban, MessageSquare } from "lucide-react"
+import { Bot, CalendarClock, FolderKanban, MessageSquare, Settings } from "lucide-react"
 
+import { ChromeMenu } from "@/components/app/chrome-menu"
 import { Button } from "@/components/ui/button"
 import { closeClient } from "@/lib/client-open"
 import {
@@ -90,7 +91,17 @@ function RailButton({
  *  column, and the aside draws the outer one when the column is gone.
  *  Unread waits stay on the list rows. A count on the icon covered the
  *  next destination. */
-export function DestRail({ edge = true }: { edge?: boolean }) {
+export function DestRail({
+  edge = true,
+  onSettings,
+  onToggleTheme,
+  onToggleLocale,
+}: {
+  edge?: boolean
+  onSettings: () => void
+  onToggleTheme: () => void
+  onToggleLocale: () => void
+}) {
   const t = useT()
   const pane = useVisibleDest()
   const catalog = useClientCatalog()
@@ -100,13 +111,12 @@ export function DestRail({ edge = true }: { edge?: boolean }) {
       data-testid="dest-rail"
       aria-label={t("nav.destinations")}
       className={cn(
-        "flex shrink-0 flex-col items-center gap-2 py-2",
+        "flex h-full shrink-0 flex-col items-center gap-1 py-2",
         edge && "border-r border-sidebar-border",
       )}
       style={{
         width: "var(--dest-rail-width)",
-        paddingLeft: "calc(var(--sidebar-list-px) + var(--sidebar-row-px))",
-        paddingRight: "var(--sidebar-list-px)",
+        paddingInline: "var(--dest-rail-pad)",
       }}
     >
       <RailButton
@@ -143,6 +153,16 @@ export function DestRail({ edge = true }: { edge?: boolean }) {
           <Bot />
         </RailButton>
       ) : null}
+      <div className="mt-auto flex flex-col items-center gap-1 pb-1">
+        <ChromeMenu onToggleTheme={onToggleTheme} onToggleLocale={onToggleLocale} />
+        <RailButton
+          current={false}
+          label={t("sidebar.settings")}
+          onClick={onSettings}
+        >
+          <Settings />
+        </RailButton>
+      </div>
     </nav>
   )
 }

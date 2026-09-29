@@ -85,6 +85,16 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
     case "steer":
       next.push({ id: blockId(ev), kind: "steer", text: ev.text })
       return next
+    case "steer_revised": {
+      const rev = parseSteerRevision(ev.text)
+      if (!rev) return next
+      const i = lastIndex(
+        next,
+        (b) => b.kind === "steer" && b.id.startsWith(`${rev.seq}:`),
+      )
+      if (i >= 0) next[i] = { ...next[i], text: rev.text }
+      return next
+    }
     case "reasoning_delta": {
       const i = lastIndex(next, (b) => b.kind === "reasoning" && Boolean(b.streaming))
       if (i >= 0) {
@@ -350,6 +360,19 @@ export function phoneAgents(blocks: CompactBlock[]): PhoneAgent[] {
 
 function blockId(ev: RemoteEvent): string {
   return `${ev.seq}:${ev.kind}:${ev.tool_call_id ?? ""}`
+}
+
+function parseSteerRevision(text: string): { seq: number; text: string } | undefined {
+  const raw = text.trim()
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw) as { seq?: unknown; text?: unknown }
+    const seq = Number(parsed.seq)
+    if (!Number.isInteger(seq) || seq <= 0 || typeof parsed.text !== "string") return
+    return { seq, text: parsed.text }
+  } catch {
+    return
+  }
 }
 
 function lastIndex(

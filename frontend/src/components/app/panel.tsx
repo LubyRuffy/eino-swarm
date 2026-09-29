@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranscriptFollow } from "@/lib/follow-scroll"
 import { MANAGER_ID, type AgentState, type TranscriptState } from "@/lib/transcript"
 import type { FileEntry, Meta, Turn, UsageSnapshot } from "@/lib/types"
+import { agentRosterLabel } from "@/lib/agent-label"
 import { useT } from "@/lib/use-t"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import { useApp } from "@/store/app"
@@ -192,8 +193,7 @@ function AgentsTab({
           </Button>
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <StatusDot status={agent.status} />
-            <span className="truncate text-sm font-medium">{agent.role}</span>
-            <span className="truncate text-xs text-muted-foreground">{agent.id}</span>
+            <AgentName agent={agent} prominent />
           </div>
           {agent.instruction ? (
             <AgentPromptButton instruction={agent.instruction} />
@@ -311,14 +311,40 @@ function AgentRow({
       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
     >
       <StatusDot status={agent.status} />
-      <span className="shrink-0 text-sm">{agent.role}</span>
-      <span className="shrink-0 truncate text-xs text-muted-foreground">{agent.id}</span>
+      <AgentName agent={agent} />
       <MarqueeText
         text={agent.activity}
         active={agent.status === "running"}
         className="text-xs text-muted-foreground"
       />
     </button>
+  )
+}
+
+function AgentName({
+  agent,
+  prominent,
+}: {
+  agent: { role: string; id: string }
+  prominent?: boolean
+}) {
+  const { name, tag } = agentRosterLabel(agent.role, agent.id)
+  return (
+    <>
+      <span
+        className={
+          prominent
+            ? "min-w-0 truncate text-sm font-medium"
+            : "min-w-0 truncate text-sm"
+        }
+        title={agent.id}
+      >
+        {name}
+      </span>
+      {tag ? (
+        <span className="shrink-0 text-xs text-muted-foreground">{tag}</span>
+      ) : null}
+    </>
   )
 }
 

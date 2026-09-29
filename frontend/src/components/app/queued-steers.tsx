@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react"
+import { Pencil, Trash2 } from "lucide-react"
 
 import { InputThumbs } from "@/components/app/input-thumbs"
 import { QuotedMessageBody } from "@/components/app/quoted-message"
@@ -9,17 +9,22 @@ import { useT } from "@/lib/use-t"
 
 /** Unread steering sits under the working line until the manager's next
  *  model round. Interrupt aborts the current manager tool so every bubble
- *  here lands now; Delete retracts one bubble so the model never sees it. */
+ *  here lands now. The pencil pulls one caption into the composer and the
+ *  caller retracts that bubble; Enter then queues it. Delete retracts one
+ *  bubble so the model never sees it. An image-only steer has no words to
+ *  queue, so it stays delete-only. */
 export function QueuedSteers({
   blocks,
   threadId,
   onPreempt,
   onRetract,
+  onEdit,
 }: {
   blocks: Block[]
   threadId?: string
   onPreempt: () => void
   onRetract: (seq: number) => void
+  onEdit?: (text: string, seq: number) => void
 }) {
   const t = useT()
   if (blocks.length === 0) return null
@@ -49,6 +54,11 @@ export function QueuedSteers({
           block={block}
           threadId={threadId}
           onRetract={block.seq > 0 ? () => onRetract(block.seq) : undefined}
+          onEdit={
+            onEdit && block.seq > 0 && block.text.trim()
+              ? () => onEdit(block.text, block.seq)
+              : undefined
+          }
         />
       ))}
     </div>
@@ -59,10 +69,12 @@ function QueuedSteerRow({
   block,
   threadId,
   onRetract,
+  onEdit,
 }: {
   block: Block
   threadId?: string
   onRetract?: () => void
+  onEdit?: () => void
 }) {
   const t = useT()
   return (
@@ -79,6 +91,18 @@ function QueuedSteerRow({
           />
           {block.text ? <QuotedMessageBody text={block.text} /> : null}
         </div>
+        {onEdit ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            data-testid="queued-steer-edit"
+            aria-label={t("transcript.editSteer")}
+            onClick={onEdit}
+          >
+            <Pencil />
+          </Button>
+        ) : null}
         {onRetract ? (
           <Button
             type="button"

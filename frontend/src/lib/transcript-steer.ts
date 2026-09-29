@@ -22,6 +22,61 @@ export function isRetractedSteer(state: TranscriptState, seq: number): boolean {
   return seq > 0 && Boolean(state.retractedSteers?.includes(seq))
 }
 
+/** `steer_revised` payload. `text` is required so a bare `{seq}` cannot
+ *  wipe a caption. An empty string is a real clear (image-only steer). */
+export function parseSteerRevision(text?: string): { seq: number; text: string } | undefined {
+  const raw = (text ?? "").trim()
+  if (!raw) return
+  try {
+    const parsed = JSON.parse(raw) as { seq?: unknown; text?: unknown }
+    const seq = Number(parsed.seq)
+    if (!Number.isInteger(seq) || seq <= 0 || typeof parsed.text !== "string") return
+    return { seq, text: parsed.text }
+  } catch {
+    return
+  }
+}
+
+/** Remember the latest caption and paint it onto a bubble that is already
+ *  on screen. A revision that arrives before its steer (history paging)
+ *  still applies when that steer is folded. */
+export function rememberSteerRevision(state: TranscriptState, seq: number, text: string): void {
+  if (seq <= 0) return
+  state.steerRevisions = { ...(state.steerRevisions ?? {}), [seq]: text }
+  const agent = state.agents[MANAGER_ID]
+  if (!agent) return
+  let changed = false
+  const blocks = agent.blocks.map((b) => {
+    if (b.kind !== "steer" || b.seq !== seq || b.text === text) return b
+    changed = true
+    return { ...b, text }
+  })
+  if (changed) state.agents[MANAGER_ID] = { ...agent, blocks }
+}
+
+export function revisedSteerText(state: TranscriptState, seq: number, text: string): string {
+  const revised = state.steerRevisions?.[seq]
+  return revised !== undefined ? revised : text
+}
+
+/** Drop revisions at or after a rewind cut. Earlier bubbles stay edited. */
+export function steerRevisionsBefore(
+  revisions: Record<number, string> | undefined,
+  fromSeq: number,
+): Record<number, string> | undefined {
+  if (!revisions) return
+  const next: Record<number, string> = {}
+  let kept = false
+  for (const [key, text] of Object.entries(revisions)) {
+    const seq = Number(key)
+    if (seq > 0 && seq < fromSeq) {
+      next[seq] = text
+      kept = true
+    }
+  }
+  return kept ? next : undefined
+}
+
 /** Remember the seq so a later-loaded `steer` (history paging) stays hidden,
  *  and drop the bubble if it is already on the manager. */
 export function dropRetractedSteer(state: TranscriptState, seq: number): void {

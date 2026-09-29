@@ -77,13 +77,11 @@ describe("Sidebar chrome", () => {
     expect(noop.onNew).toHaveBeenCalled()
   })
 
-  it("paints Settings as a full-width hover pill, not a tiny ghost chip", () => {
+  it("keeps Settings and the app menu at the bottom of the icon rail", () => {
     render(<Sidebar threads={[]} {...noop} />)
-    const button = screen.getByRole("button", { name: "Settings" })
-    expect(button.className).toMatch(/\bflex-1\b/)
-    expect(screen.getByRole("button", { name: "App menu" })).toBeInTheDocument()
-    expect(button.className).toMatch(/\brounded-full\b/)
-    expect(button.className).toMatch(/hover:bg-sidebar-accent/)
+    const rail = screen.getByTestId("dest-rail")
+    const button = within(rail).getByRole("button", { name: "Settings" })
+    expect(within(rail).getByRole("button", { name: "App menu" })).toBeInTheDocument()
     expect(button).toHaveStyle({ height: "var(--sidebar-row-height)" })
     fireEvent.click(button)
     expect(noop.onSettings).toHaveBeenCalled()
@@ -569,6 +567,8 @@ describe("Sidebar list column", () => {
     expect(screen.getByTestId("dest-projects")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /^New conversation$/ })).not.toBeInTheDocument()
     expect(screen.queryByTestId("project-list")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Settings" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "App menu" })).toBeInTheDocument()
     expect(screen.queryByRole("separator", { name: "Resize the conversation list" })).not.toBeInTheDocument()
     expect(screen.getByTestId("conversation-list").style.width).toBe(
       "var(--dest-rail-width)",

@@ -16,6 +16,7 @@ export type EventKind =
   | "tool_call_delta"
   | "steer"
   | "steer_retracted"
+  | "steer_revised"
   | "steer_preempted"
   | "cleanup"
   | "progress"
@@ -106,10 +107,38 @@ export interface MemoryEntries {
   rev: string
 }
 
+export interface SkillOrigin {
+  project_id: string
+  name: string
+  digest: string
+  /** current, update, local, diverged, or missing. Filled by the server. */
+  status?: "current" | "update" | "local" | "diverged" | "missing"
+  project_name?: string
+}
+
 export interface SkillInfo {
   name: string
   description: string
   updated_at: string
+  /** Set when this skill was copied from another project. */
+  origin?: SkillOrigin
+}
+
+export interface SkillCopyHit {
+  from: string
+  name: string
+  project_id: string
+}
+
+export interface SkillCopySkip {
+  name: string
+  error: string
+  code?: string
+}
+
+export interface SkillCopyResult {
+  copied: SkillCopyHit[]
+  skipped: SkillCopySkip[]
 }
 
 export interface Skill extends SkillInfo {

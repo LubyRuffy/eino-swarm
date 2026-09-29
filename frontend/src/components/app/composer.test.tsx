@@ -18,7 +18,7 @@ function savedFile(name: string): Attachment {
   }
 }
 
-function renderComposer(props: Partial<Parameters<typeof Composer>[0]> = {}) {
+function composerElement(props: Partial<Parameters<typeof Composer>[0]> = {}) {
   const models: ModelInfo[] = [
     {
       id: "default\tmock",
@@ -30,7 +30,7 @@ function renderComposer(props: Partial<Parameters<typeof Composer>[0]> = {}) {
       default: true,
     },
   ]
-  return render(
+  return (
     <TooltipProvider>
       <Composer
         running={false}
@@ -47,8 +47,12 @@ function renderComposer(props: Partial<Parameters<typeof Composer>[0]> = {}) {
         focusSignal={0}
         {...props}
       />
-    </TooltipProvider>,
+    </TooltipProvider>
   )
+}
+
+function renderComposer(props: Partial<Parameters<typeof Composer>[0]> = {}) {
+  return render(composerElement(props))
 }
 
 describe("Composer locked", () => {
@@ -346,6 +350,7 @@ describe("Composer chrome", () => {
     expect(input.className).toContain("--ui-font-size")
     expect(input.className).not.toMatch(/\btext-sm\b/)
     expect(input.className).toMatch(/\boverflow-y-hidden\b/)
+    expect(input.closest("[data-composer-box]")).toBeTruthy()
   })
 })
 
@@ -375,6 +380,23 @@ describe("Composer pasted images", () => {
       },
     })
   }
+
+  it("drops a paste and a file when a queued edit is pulled into the box", () => {
+    stubObjectURLs()
+    const view = renderComposer()
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "half typed" } })
+    pasteInto(input, png)
+    fireEvent.change(screen.getByTestId("file-input"), {
+      target: { files: [new File(["x"], "note.txt", { type: "text/plain" })] },
+    })
+    expect(screen.getByTestId("composer-images")).toBeInTheDocument()
+    expect(screen.getByTestId("composer-attachments")).toBeInTheDocument()
+    view.rerender(composerElement({ prefill: "pulled back", prefillToken: 1 }))
+    expect(screen.getByTestId("composer-input")).toHaveValue("pulled back")
+    expect(screen.queryByTestId("composer-images")).toBeNull()
+    expect(screen.queryByTestId("composer-attachments")).toBeNull()
+  })
 
   it("shows a thumbnail that can be dropped before send", async () => {
     stubObjectURLs()

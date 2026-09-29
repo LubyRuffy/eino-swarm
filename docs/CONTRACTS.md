@@ -12,7 +12,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-002 One turn per conversation
 
 - 状态：active；类型：consistency；作用范围：engine、server、desktop、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-310`。
-- 契约内容：同一对话同时只有一个活动 turn；第二条普通消息进入 follow-up，steer 指向活动 turn；手机在等待队列上执行“中断插入”时，先将队首消息转为本轮 steer，再请求中断当前 manager 步骤，其他消息继续排队；并发 API 冲突返回可识别的状态。
+- 契约内容：同一对话同时只有一个活动 turn；第二条普通消息进入 follow-up，steer 指向活动 turn；排队消息和尚未被 manager 读取的 steer 可以拉进输入框后重新排队，已读 steer 不能改；手机在等待队列上执行“中断插入”时，先将队首消息转为本轮 steer，再请求中断当前 manager 步骤，其他消息继续排队；并发 API 冲突返回可识别的状态。
 - 允许行为：排队和插入；禁止行为：在同一对话并行启动两个 turn；失败语义：`ErrBusy`/`ErrIdle` 对应 409 与 code；不变量：turn 状态可恢复；边界条件：中断和等待。
 - 证据：实现 `internal/engine`, `internal/server`, `mobile/src/app.tsx`, `mobile/src/lib/phone-turn.ts`；测试 `internal/engine`, `frontend/src/store/app-steer.test.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、手机 RPC 和竞态测试；来源：`AGENTS.md`、GitHub Issue #31。
 
@@ -130,3 +130,11 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 契约内容：任务详情覆盖手机视口；下拉收件箱、滚动任务记录或切换安全区域时，详情标题和返回按钮仍在可见视口内，返回按钮回到 Clients 列表。详情内的触摸不得触发底层收件箱下拉刷新。
 - 允许行为：底层收件箱继续管理自身下拉刷新；禁止行为：让详情随收件箱的 transform 移动，或露出底层收件箱的导航控件；失败语义：详情读取失败时保留可用的返回入口和错误提示；不变量：详情层的位置不取决于收件箱滚动容器的位置；边界条件：iOS 安全区域、下拉刷新、长任务记录与 Android 系统返回。
 - 证据：实现 `mobile/src/components/client-groups.tsx`, `mobile/src/components/pull-to-refresh.tsx`；测试 `mobile/src/components/client-groups.test.tsx`, `mobile/e2e/composer-layout.spec.ts`, `mobile/e2e/ios-wait-layout.swift`；变更规则：修改手机全屏详情或收件箱变换时同步验证 WebKit 和原生 iOS 的标题及返回；来源：GitHub Issue #45。
+
+## C-019 Proactive delegation for time or quality
+
+- 状态：active；类型：compatibility；作用范围：engine 普通对话和持续目标、共享 manager 提示词的终端入口；关联功能：`F-130`。
+- 契约内容：运行时提示词必须要求 manager 在能节省时间或提高质量时主动使用 subagents，并随任务进展重新评估，无需等待用户提出；时间与质量是独立理由。只有一个 worker、需要等待或任务较小不得成为拒绝有质量收益的独立审查／第二思路的绝对条件。
+- 允许行为：无实质收益时自行完成；禁止行为：仅显式要求才委派、为满足调用比例强制创建 worker、持续目标提示词重新引入单 worker 等待禁令；失败语义：worker 失败或超时需如实说明，不能视为成功；不变量：遵守用户显式限制与并发上限，分离写入路径，manager 核验并整合结果；边界条件：并发上限为一、先自行执行后发现委派机会、用户限制委派。
+- 验证边界：该契约约束实际生成的模型指令，不保证任一真实模型的调用次数；离线 provider 的固定调用脚本只能验证委派链路，不能证明真实模型的调用比例提升。
+- 证据：实现 `internal/engine/prompt.go`, `internal/engine/iterations.go`, `internal/tui/plan.go`；测试 `internal/engine/prompt_test.go`, `cmd/zwai/tui_prompt_test.go`, `internal/engine/engine_test.go`, `frontend/e2e/conversation.spec.ts`；变更规则：同步共享提示词、持续目标提示词、入口测试与使用说明；来源：用户 2026-09-28 对运行时主动使用 subagents 的要求。

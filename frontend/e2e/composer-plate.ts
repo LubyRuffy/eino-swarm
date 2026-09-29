@@ -15,7 +15,7 @@ export function userMessageGap(transcript: Locator, text: string) {
 }
 
 /** User view folds spawn / wait_agents. Specs that assert on that chrome
- *  open the app menu (bottom-left …) and flip developer view; the product
+ *  open the app menu (… at the bottom of the icon rail) and flip developer view; the product
  *  default stays compact. The click writes config.yaml, so a second call
  *  is a no-op when already on. */
 export async function showDeveloperLog(page: Page) {

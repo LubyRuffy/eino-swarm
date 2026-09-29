@@ -130,6 +130,18 @@ export function prefersInstantScroll(win: Window = window): boolean {
   return Boolean(win.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches)
 }
 
+/** The earliest send is the top of the log. Pinning that bubble used to
+ *  leave the prefix above it — top padding, or a page the sentinel had
+ *  just prepended — scrolled out of the pane. The thumb then sat off zero
+ *  and the prefix looked like it had failed to load. Returns false when
+ *  the row is not mounted yet. */
+export function scrollTurnToStart(root: HTMLElement, id: string): boolean {
+  const el = root.querySelector(turnNavSelector(id))
+  if (!(el instanceof HTMLElement)) return false
+  root.scrollTop = 0
+  return true
+}
+
 /** Pin the send to the top of THIS scroller. Returns false when it is not
  *  in the pane — a stale id after a conversation switch, not a throw.
  *  Native scrollIntoView also yanks the window and honours scroll-margin,

@@ -309,6 +309,26 @@ func (s *Store) DeleteMessageByEventSeq(threadID string, eventSeq int64) error {
 	return nil
 }
 
+// ReviseSteerMessage replaces the replay caption of one unread steer.
+// Images on the row stay. The search index is rebuilt so ⌘K stops offering
+// the caption the model will no longer see. seq 0 is refused: a legacy
+// untagged row cannot be told apart from a different steer with the same words.
+func (s *Store) ReviseSteerMessage(threadID string, eventSeq int64, caption string) error {
+	if eventSeq <= 0 {
+		return fmt.Errorf("store: a steer revision needs the event seq")
+	}
+	res := s.db.Model(&Message{}).
+		Where("thread_id = ? AND event_seq = ? AND role = ?", threadID, eventSeq, "user").
+		Update("content", caption)
+	if res.Error != nil {
+		return fmt.Errorf("store: revise steer message: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return s.IndexThread(threadID)
+}
+
 // DeleteSteerMessage drops the replay row for a retracted steer. Newer
 // rows are tagged with event_seq; pre-upgrade rows have event_seq 0 and
 // match on the [steer] caption instead.

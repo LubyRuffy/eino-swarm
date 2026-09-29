@@ -25,11 +25,9 @@ import (
 // here: the prompt describes capabilities and conventions, the user's message
 // supplies the task.
 //
-// Delegation is Codex Ultra, not explicit-request-only: spawn when it would
-// save time or improve quality, without waiting to be asked. A one-worker
-// wait is not a win — that is an extra hop. Solo is the path for a greeting
-// or a single small step. Parallel workers need distinct roles (one worker
-// per role).
+// Time savings and independent judgment are separate reasons to delegate.
+// A single worker can provide the latter even when the manager must wait;
+// a blanket penalty for waiting would suppress useful independent reviews.
 //
 // extra carries what this conversation adds on top of the generic manager
 // prompt: personal preferences, a compact briefing, a project's
@@ -46,15 +44,22 @@ do the work yourself.
 
 ## Delegating
 
-A swarm saves time when two or more workers overlap, or when you keep working
-while they run. It raises quality when a large or noisy job leaves this
-conversation, when independent approaches run at once, or when a check runs
-beside the work. Adding a hop does not.
+Assess delegation before substantial work. Reassess delegation as the task develops:
+new information, uncertainty, or a result ready for review may make a worker
+useful even if you began alone. When delegation would save time or improve quality,
+use spawn_agent proactively; do not merely suggest it or ask the human to enable it.
+Respect the human's explicit constraints on delegation and the task's scope.
 
-Spawning one worker and then waiting for it is slower than doing that step
-yourself. Do not do that for a greeting, a single lookup, or a request with
-no independent parts. A single worker is only for isolating a large or noisy
-job from this thread, not for handing off a one-step task.
+Time savings and quality gains are independent reasons to delegate. Parallel
+investigation, separate deliverables, and work you can do while workers run
+can save time. A single worker can improve quality through
+independent review or a second approach, even when you must wait for its result.
+Isolating a large or noisy job can also preserve useful context.
+
+Keep work local when delegation adds no useful benefit: a greeting, a trivial
+lookup, or merely relaying the same work adds overhead. Do not require a large
+task, multiple workers, or simultaneous manager work before delegating for quality.
+Choose the worker count for the useful subtasks, not a fixed quota.
 
 You can start sub-agents that work in parallel, each with its own context:
 
@@ -80,9 +85,11 @@ You can start sub-agents that work in parallel, each with its own context:
   the next step. Do not invent ids.
 - wait_agents(agent_ids, timeout_s) waits for the next sub-agent to finish and
   reports every listed agent's status. It returns as soon as one finishes, not
-  once they all do: spawn everything first, then wait in a loop. Each time it
-  returns, tell the human in one line what just finished and what is still
-  running before you wait again — a silent wait looks frozen from the outside.
+  once they all do: start a batch up to the concurrency cap, then wait in a
+  loop. When one finishes, resume that agent_id with the next piece or spawn
+  a new role before you wait again. Each time it returns, tell the human in
+  one line what just finished and what is still running before you wait again
+  — a silent wait looks frozen from the outside.
 - close_agent(agent_id) cancels a still-running worker you spawned and no
   longer need. Finished leftover workers are already stopped; leave those
   ids for resume_agent. Do not close a leftover roster as cleanup. Closing a
@@ -92,22 +99,31 @@ You can start sub-agents that work in parallel, each with its own context:
 When you spawn:
 
 - Distinct role per parallel worker. Two agents at once need two role names;
-  reusing a role continues that same agent.
-- Each task is complete on its own. Tell them where to write in the shared
+  reusing a role continues that same agent. A role is a short job name:
+  letters, digits, and single hyphens. Do not put a slash, a space, or a
+  previous agent_id in it.
+- Each task is complete on its own. State the objective, relevant context,
+  constraints, expected output and evidence. Tell them where to write in the shared
   workspace and read it back; do not ask them to paste a large result into
   their reply.
-- Start every independent part first, up to the concurrency cap, then wait
-  in a loop. Do not wait for one before starting another that could have
-  run with it.
-- After they finish, lead with the result. Do not repeat the work they
-  already did. If one failed or timed out, say so and continue with what
-  you have, or resume that id.
+- The concurrency cap below is a hard ceiling. Do not guess a larger number from how many pieces the task has.
+  Do not launch a larger batch up front. Do not wait for one before starting another that still fits under that cap.
+  Continue useful work yourself while they run; wait when the next step
+  depends on their results.
+- Review their evidence, resolve conflicting findings, and verify the combined
+  result before reporting completion. You own the final answer. Avoid duplicating
+  their whole task, but do not skip verification. If one failed or timed out,
+  say so and continue with what you have, or resume that id.
 - Two writers on the same path conflict. Split by output path, or keep one
   writer and fan out the reads.
 
 `)
 
-	fmt.Fprintf(&b, "You can have %d sub-agents running at once. Use that budget when the work has that many independent parts.\n\n", cfg.Swarm.MaxConcurrent)
+	n := cfg.Swarm.MaxConcurrent
+	if n <= 0 {
+		n = config.DefaultMaxConcurrent
+	}
+	fmt.Fprintf(&b, "The concurrency cap is %d. That number is a hard limit from settings, not a suggestion, and not something to infer from how many pieces the task has. Never start more than %d sub-agents. spawn_agent and resume_agent refuse past %d and do not queue the extra worker. When more pieces remain, wait for one to finish, then resume that agent_id or spawn the next piece.\n\n", n, n, n)
 
 	b.WriteString(HostEnvironmentPrompt())
 	b.WriteString("\n")
@@ -166,6 +182,9 @@ can finish now. Do not use a wake instead of ask_user.
 schedule_wake does not take an id. It arms or replaces the open wait on this
 conversation. Do not invent an id. To stop a wait, call cancel_schedule with
 an id copied from the Scheduled list. Do not invent that id either.
+A one-shot delay is consumed when it fires. report_schedule does not arm the next wait.
+If the work is still open, call schedule_wake again before the turn ends, on a scheduled turn and on a human turn.
+Writing that a wait is planned does not create one.
 
 A parallel exec may keep working in one call and sleep in another before
 printing progress. That sleep, and schedule_wake, use the same clock: when
@@ -317,7 +336,7 @@ func goalSection(goal string, complete, blocked bool, reason string) string {
 		}
 		return body + goal + "\n"
 	}
-	return "## Goal\n\nThe human set a standing objective for this conversation. Keep pursuing it across turns until you call complete_goal or block_goal, or they change or clear it. Later messages steer; they do not replace this objective unless they say so. Do not ask whether to continue. Do not wait for a free-form chat line. To ask a material question, call ask_user; that pauses this turn. Do not use complete_goal or block_goal to ask.\n\nA turn ends when you stop calling tools and write a progress report. That does not shrink the objective. A pending wake is the next turn; the runtime does not auto-continue while one is armed. Without a wake, the runtime starts the next turn. End a turn when a deliverable slice is done, when you are polling a live process or job that is still running, or when the next useful action needs a fresh turn. Do not keep calling tools only to hold the turn open. A verified wait polls a handle that is confirmed live now; an observation timeout is not terminal — re-poll or inspect state, do not restart because observation expired.\n\nDo not call complete_goal until current evidence proves the objective is satisfied. Do not call complete_goal to end a turn, to wait, or to record that a slice finished. If you called complete_goal in error in this turn, call reopen_goal immediately. Do not keep retrying a path that cannot work. Prefer sub-agents whenever they would save time or improve quality. Spawning one worker and then waiting is not a win unless it isolates a large or noisy job.\n\ncomplete_goal(summary?) records that the objective is done. The runtime then stops starting new turns for it.\n\nreopen_goal(reason?) records that complete_goal was a mistake. The standing objective stays open and the runtime keeps starting turns.\n\nblock_goal(reason?) records that the same genuine blocker has already repeated for at least three consecutive turns, counting the original turn and automatic continuations, and meaningful progress needs the human or an external change. The runtime then stops starting new turns until they resume. Do not call this because the work is hard, slow, or uncertain. After a resume, treat the blocked audit as fresh.\n\n" + goal + "\n"
+	return "## Goal\n\nThe human set a standing objective for this conversation. Keep pursuing it across turns until you call complete_goal or block_goal, or they change or clear it. Later messages steer; they do not replace this objective unless they say so. Do not ask whether to continue. Do not wait for a free-form chat line. To ask a material question, call ask_user; that pauses this turn. Do not use complete_goal or block_goal to ask.\n\nA turn ends when you stop calling tools and write a progress report. That does not shrink the objective. A pending wake is the next turn; the runtime does not auto-continue while one is armed. Without a wake, the runtime starts the next turn. End a turn when a deliverable slice is done, when you are polling a live process or job that is still running, or when the next useful action needs a fresh turn. Do not keep calling tools only to hold the turn open. A verified wait polls a handle that is confirmed live now; an observation timeout is not terminal — re-poll or inspect state, do not restart because observation expired.\n\nDo not call complete_goal until current evidence proves the objective is satisfied. Do not call complete_goal to end a turn, to wait, or to record that a slice finished. If you called complete_goal in error in this turn, call reopen_goal immediately. Do not keep retrying a path that cannot work. Prefer sub-agents whenever they would save time or improve quality. Reassess delegation as the task develops. A single worker can improve quality through independent review or a second approach even when you must wait for it. Follow the delegation policy above; do not require the human to ask or a minimum worker count.\n\ncomplete_goal(summary?) records that the objective is done. The runtime then stops starting new turns for it.\n\nreopen_goal(reason?) records that complete_goal was a mistake. The standing objective stays open and the runtime keeps starting turns.\n\nblock_goal(reason?) records that the same genuine blocker has already repeated for at least three consecutive turns, counting the original turn and automatic continuations, and meaningful progress needs the human or an external change. The runtime then stops starting new turns until they resume. Do not call this because the work is hard, slow, or uncertain. After a resume, treat the blocked audit as fresh.\n\n" + goal + "\n"
 }
 
 // GoalPrompt is the standing-objective section for hosts that are not the

@@ -145,9 +145,10 @@ interface AppState extends ScheduleSlice {
   compactThread: () => Promise<void>
   interrupt: () => Promise<void>
   preempt: () => Promise<void>
-  retractSteer: (seq: number) => Promise<void>
+  retractSteer: (seq: number) => Promise<boolean>
+  reviseSteer: (seq: number, text: string) => Promise<void>
   steerFollowup: (id: string) => Promise<void>
-  deleteFollowup: (id: string) => Promise<void>
+  deleteFollowup: (id: string) => Promise<boolean>
   requeueFollowup: (id: string, text: string) => Promise<void>
   clearFollowups: () => Promise<void>
   refreshFollowups: () => Promise<void>
@@ -237,9 +238,8 @@ export const useApp = create<AppState>((set, get) => ({
       if (locale) {
         get().setLocale(normalizeLocalePref(locale), { persist: false })
       }
-      // The center restores the last conversation. The rail stays on the
-      // list the reader left — a loose thread must not steal Projects.
-      if (threads.length > 0) await get().openThread(threads[0].id, { keepList: true })
+      // Home page on launch. Nothing is selected: sidebar order is not
+      // a remembered conversation.
     } catch (e) {
       set({ error: message(e) })
     }
@@ -348,7 +348,7 @@ export const useApp = create<AppState>((set, get) => ({
     // Leave Scheduled even when this conversation is already open; Open
     // findings would otherwise be a no-op and leave the page up. A project
     // topic stays on the project list; a loose one opens Conversations.
-    // Boot passes keepList: restoring the center must not move the rail.
+    // keepList leaves the rail where the reader already put it.
     const known = get().threads.find((th) => th.id === id)
     const guess = listDestForThread(known?.project_id)
     if (!opts?.keepList) setDeskDest(guess)
@@ -801,16 +801,19 @@ export const useApp = create<AppState>((set, get) => ({
 
   deleteFollowup: async (fid) => {
     const id = get().activeId
-    if (!id) return
+    if (!id) return false
     try {
       await api.deleteFollowup(id, fid)
       bumpFollowups()
       set((s) => ({ followups: s.followups.filter((f) => f.id !== fid) }))
+      return true
     } catch (e) {
       void get().refreshFollowups()
-      if (!(e instanceof ApiError && e.status === 404)) {
-        set({ error: message(e) })
-      }
+      // 404: the row already left. Anything else is still in the tray, so
+      // a composer handoff must not copy it as well.
+      if (e instanceof ApiError && e.status === 404) return true
+      set({ error: message(e) })
+      return false
     }
   },
 

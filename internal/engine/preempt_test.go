@@ -11,6 +11,174 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
+func TestReviseUnreadSteerReplacesWhatTheModelWillRead(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := holdTurn(t, e, th.ID)
+	defer release()
+
+	if err := e.Steer(th.ID, "same words"); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Steer(th.ID, "same words"); err != nil {
+		t.Fatal(err)
+	}
+	first, second := steerSeqs(t, e, th.ID, "same words")
+	if err := e.ReviseUnreadSteer(th.ID, first, "same words"); err != nil {
+		t.Fatal(err)
+	}
+	events, err := e.Replay(th.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range events {
+		if ev.Kind == KindSteerRevised {
+			t.Fatal("an unchanged caption must not write another timeline row")
+		}
+	}
+	if err := e.ReviseUnreadSteer(th.ID, first, "  first edited  "); err != nil {
+		t.Fatalf("ReviseUnreadSteer: %v", err)
+	}
+
+	rt := e.runtimeFor(th.ID)
+	rt.mu.Lock()
+	reg := rt.reg
+	rt.mu.Unlock()
+	pending := reg.TakePendingSteerMessages()
+	if len(pending) != 2 {
+		t.Fatalf("inbox len=%d", len(pending))
+	}
+	if userMessageText(pending[0]) != "[steer] first edited" || swarm.SteerSeq(pending[0]) != first {
+		t.Fatalf("first slot = %q seq %d", userMessageText(pending[0]), swarm.SteerSeq(pending[0]))
+	}
+	if userMessageText(pending[1]) != "[steer] same words" || swarm.SteerSeq(pending[1]) != second {
+		t.Fatalf("second slot = %q seq %d", userMessageText(pending[1]), swarm.SteerSeq(pending[1]))
+	}
+
+	rows, err := e.Store().ListMessages(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sawEdited, sawOther bool
+	for _, row := range rows {
+		switch row.EventSeq {
+		case first:
+			sawEdited = row.Content == "[steer] first edited"
+		case second:
+			sawOther = row.Content == "[steer] same words"
+		}
+	}
+	if !sawEdited || !sawOther {
+		t.Fatalf("replay rows did not keep the unedited steer: %+v", rows)
+	}
+
+	events, err = e.Replay(th.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var revised, originalKept bool
+	for _, ev := range events {
+		if ev.Kind == KindSteer && ev.Seq == first && ev.Text == "same words" {
+			originalKept = true
+		}
+		if ev.Kind == KindSteerRevised {
+			seq, text, ok := parseSteerRevision(ev.Text)
+			if ok && seq == first && text == "first edited" {
+				revised = true
+			}
+		}
+	}
+	if !revised || !originalKept {
+		t.Fatal("the log must keep the original steer and record the revision")
+	}
+	if err := e.ReviseUnreadSteer(th.ID, first, "too late"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("consumed steer: %v", err)
+	}
+}
+
+func TestReviseUnreadSteerKeepsPastedImages(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	release := holdTurn(t, e, th.ID)
+	defer release()
+	if err := e.SteerInput(th.ID, UserInput{
+		Text:   "look here",
+		Images: []ImageInput{{Name: "clip.png", MIME: "image/png", Data: tinyPNG}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	seq := steerSeq(t, e, th.ID, "look here")
+	if err := e.ReviseUnreadSteer(th.ID, seq, "look closer"); err != nil {
+		t.Fatal(err)
+	}
+	rt := e.runtimeFor(th.ID)
+	rt.mu.Lock()
+	reg := rt.reg
+	rt.mu.Unlock()
+	pending := reg.TakePendingSteerMessages()
+	if len(pending) != 1 {
+		t.Fatalf("inbox len=%d", len(pending))
+	}
+	if userMessageText(pending[0]) != "[steer] look closer" {
+		t.Fatalf("caption = %q", userMessageText(pending[0]))
+	}
+	if len(imagesFromMessage(pending[0])) != 1 {
+		t.Fatal("revise dropped the pasted image the model was going to see")
+	}
+	rows, err := e.Store().ListMessages(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.EventSeq != seq {
+			continue
+		}
+		if row.Content != "[steer] look closer" || len(row.Images) != 1 {
+			t.Fatalf("stored steer = %+v", row)
+		}
+		return
+	}
+	t.Fatal("stored steer row missing")
+}
+
+func TestReviseUnreadSteerRefusesIdleEmptyAndGone(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.ReviseUnreadSteer(th.ID, 1, "later"); !errors.Is(err, ErrIdle) {
+		t.Fatalf("idle revise: %v", err)
+	}
+	release := holdTurn(t, e, th.ID)
+	defer release()
+	if err := e.ReviseUnreadSteer(th.ID, 0, "x"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("bad seq: %v", err)
+	}
+	if err := e.Steer(th.ID, "keep going"); err != nil {
+		t.Fatal(err)
+	}
+	seq := steerSeq(t, e, th.ID, "keep going")
+	if err := e.ReviseUnreadSteer(th.ID, seq, "   "); err == nil {
+		t.Fatal("an empty steer has nothing to inject")
+	}
+	if err := e.ReviseUnreadSteer(th.ID, 1<<20, "nope"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("unknown seq: %v", err)
+	}
+	if err := e.RetractSteer(th.ID, seq); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.ReviseUnreadSteer(th.ID, seq, "after retract"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("retracted steer: %v", err)
+	}
+}
+
 func TestPreemptIdleReportsIdle(t *testing.T) {
 	e := newTestEngine(t)
 	th, err := e.CreateThread("", "", "")
@@ -138,6 +306,24 @@ func holdTurn(t *testing.T, e *Engine, threadID string) func() {
 		rt.release(cancel, idle, turn.ID)
 		reg.Close()
 	}
+}
+
+func steerSeqs(t *testing.T, e *Engine, threadID, text string) (int64, int64) {
+	t.Helper()
+	events, err := e.Replay(threadID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seqs []int64
+	for _, ev := range events {
+		if ev.Kind == KindSteer && ev.Text == text {
+			seqs = append(seqs, ev.Seq)
+		}
+	}
+	if len(seqs) < 2 {
+		t.Fatalf("want two steers %q, got %v", text, seqs)
+	}
+	return seqs[0], seqs[1]
 }
 
 func steerSeq(t *testing.T, e *Engine, threadID, text string) int64 {

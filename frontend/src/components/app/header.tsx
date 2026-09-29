@@ -1,7 +1,7 @@
 import { PanelLeft, PanelRight, SquareTerminal, WifiOff } from "lucide-react"
 import { useEffect, useState } from "react"
 
-import { CopyButton } from "@/components/app/transcript"
+import { CopyButton } from "@/components/app/copy-button"
 import { AskMark } from "@/components/app/ask-mark"
 import { WaitMark } from "@/components/app/wait-mark"
 import { Badge } from "@/components/ui/badge"

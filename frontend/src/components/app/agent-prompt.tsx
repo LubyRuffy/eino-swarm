@@ -1,7 +1,7 @@
 import { ScrollText } from "lucide-react"
 import { useState } from "react"
 
-import { CopyButton } from "@/components/app/transcript"
+import { CopyButton } from "@/components/app/copy-button"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,

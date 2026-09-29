@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -113,8 +114,75 @@ func (e *Engine) RetractSteer(threadID string, seq int64) error {
 	return nil
 }
 
+// ReviseUnreadSteer replaces the caption of one steer the manager has not
+// read yet. The inbox slot stays put, so a model boundary cannot drain the
+// old words in the gap before the new ones arrive. A steer the model already
+// consumed is not found. The original steer event stays on the log; a
+// steer_revised row names the seq and the caption the bubble should show.
+func (e *Engine) ReviseUnreadSteer(threadID string, seq int64, text string) error {
+	text = strings.TrimSpace(text)
+	if seq <= 0 {
+		return store.ErrNotFound
+	}
+	if _, err := e.store.GetThread(threadID); err != nil {
+		return err
+	}
+	e.mu.Lock()
+	rt := e.runtimes[threadID]
+	e.mu.Unlock()
+	if rt == nil {
+		return ErrIdle
+	}
+	rt.mu.Lock()
+	reg, running, turnID := rt.reg, rt.running, rt.turnID
+	rt.mu.Unlock()
+	if !running || reg == nil {
+		return ErrIdle
+	}
+	ev, err := e.unreadSteerEvent(threadID, turnID, seq)
+	if err != nil {
+		return err
+	}
+	if text == "" && len(ev.Images) == 0 {
+		return fmt.Errorf("engine: an empty steer has nothing to inject")
+	}
+	if text == strings.TrimSpace(ev.Text) {
+		return nil
+	}
+	caption := steerModelCaption(text)
+	if !reg.RewriteManagerSteer(seq, caption) {
+		return store.ErrNotFound
+	}
+	if err := e.store.ReviseSteerMessage(threadID, seq, caption); err != nil {
+		if !reg.RewriteManagerSteer(seq, steerModelCaption(ev.Text)) {
+			e.log.Warn("could not restore a steer caption after a failed revise",
+				"thread", threadID, "seq", seq, "err", err)
+		}
+		return err
+	}
+	body, err := json.Marshal(steerRevisionPayload{Seq: seq, Text: text})
+	if err != nil {
+		return err
+	}
+	e.record(store.Event{
+		ThreadID: threadID, TurnID: turnID,
+		Kind: KindSteerRevised, AgentID: swarm.DefaultManagerID,
+		Text: string(body),
+	})
+	return nil
+}
+
+func steerModelCaption(text string) string {
+	return strings.TrimSpace("[steer] " + strings.TrimSpace(text))
+}
+
 type steerRetractPayload struct {
 	Seq int64 `json:"seq"`
+}
+
+type steerRevisionPayload struct {
+	Seq  int64  `json:"seq"`
+	Text string `json:"text"`
 }
 
 func parseSteerRetractSeq(text string) int64 {
@@ -145,6 +213,32 @@ func (e *Engine) unreadSteerEvent(threadID, turnID string, seq int64) (store.Eve
 		return ev, nil
 	}
 	return store.Event{}, ErrNotFound
+}
+
+func parseSteerRevision(text string) (int64, string, bool) {
+	var p struct {
+		Seq  int64   `json:"seq"`
+		Text *string `json:"text"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(text)), &p); err != nil || p.Seq <= 0 || p.Text == nil {
+		return 0, "", false
+	}
+	return p.Seq, *p.Text, true
+}
+
+func revisedSteerText(events []store.Event) map[int64]string {
+	out := map[int64]string{}
+	for _, ev := range events {
+		if ev.Kind != KindSteerRevised {
+			continue
+		}
+		seq, text, ok := parseSteerRevision(ev.Text)
+		if !ok {
+			continue
+		}
+		out[seq] = text
+	}
+	return out
 }
 
 func retractedSteerSeqs(events []store.Event) map[int64]struct{} {

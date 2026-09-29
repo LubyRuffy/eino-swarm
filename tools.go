@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -26,8 +27,9 @@ const sendMessageDesc = "queue a steering message. agent_id is the id spawn_agen
 //	close_agent(agent_id)                   — cancel a still-running agent; leftover finished ids return already_finished
 //	resume_agent(agent_id, task)             — continue a finished worker in place under the same agent_id
 func (r *Registry) Tools() []tool.BaseTool {
+	n := r.advertisedCap()
 	return []tool.BaseTool{
-		&ctlTool{name: "spawn_agent", desc: "start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error} so you can retry; it does not fail the turn.", fn: r.spawn},
+		&ctlTool{name: "spawn_agent", desc: fmt.Sprintf("start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error} so you can retry; it does not fail the turn. The concurrency cap is %d. Do not start a larger batch. If %d sub-agents are already running, returns {error} and does not start or queue another worker: wait for one to finish, then resume that id or spawn the next piece.", n, n), fn: r.spawn},
 		&ctlTool{name: "send_message", desc: sendMessageDesc, fn: r.send},
 		&ctlTool{name: "wait_agents", desc: "wait until the next listed agent reaches a final status, or the timeout hits; " +
 			"returns every listed agent's status (running/done/failed), the finished ones' results, " +
@@ -36,7 +38,7 @@ func (r *Registry) Tools() []tool.BaseTool {
 			"It returns as soon as one finishes, not once they all do, so call it again to collect the rest " +
 			"and tell the human what came back between calls.", fn: r.wait},
 		&ctlTool{name: "close_agent", desc: "cancel a still-running agent. A leftover finished id is already stopped: the result is already_finished, not cancelled. Do not close leftover ids as cleanup. An unknown agent_id returns {error}; it does not fail the turn.", fn: r.close},
-		&ctlTool{name: "resume_agent", desc: "continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead. A missing agent_id or task, or a still-running target, returns {error}; it does not fail the turn.", fn: r.resume},
+		&ctlTool{name: "resume_agent", desc: fmt.Sprintf("continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead. A missing agent_id or task, or a still-running target, returns {error}; it does not fail the turn. The concurrency cap is %d. If %d sub-agents are already running, returns {error} and does not queue this worker.", n, n), fn: r.resume},
 	}
 }
 
@@ -90,7 +92,7 @@ func (t *ctlTool) Info(ctx context.Context) (*schema.ToolInfo, error) {
 	switch t.name {
 	case "spawn_agent":
 		params = map[string]*schema.ParameterInfo{
-			"role":         {Type: schema.String, Required: true, Desc: "sub-agent role name. One worker per role: a later spawn with this role continues or steers that agent"},
+			"role":         {Type: schema.String, Required: true, Desc: "short job name: letters, digits, and hyphens. No slashes, spaces, or a previous agent_id. One worker per role: a later spawn with this role continues or steers that agent. A second simultaneous worker of the same job needs its own short name"},
 			"task":         {Type: schema.String, Required: true, Desc: "task for the sub-agent"},
 			"fork_context": {Type: schema.Boolean, Desc: "on the first worker for this role, inherit this manager conversation so far. Ignored when a worker with this role already exists"},
 		}
@@ -134,6 +136,19 @@ func ctlRefuse(msg string) (string, error) {
 	return marshal(map[string]string{"error": msg}), nil
 }
 
+// refuseAdmit turns a full concurrency cap into a tool result the model can
+// act on. A Go error here would be a NodeRunError and kill the turn.
+func refuseAdmit(err error) (string, error, bool) {
+	var full *atCapacityError
+	if !errors.As(err, &full) {
+		return "", nil, false
+	}
+	out, callErr := ctlRefuse(fmt.Sprintf(
+		"concurrency cap is %d and that many sub-agents are already running. This one was not started. Wait for one to finish, then resume that agent_id with the next piece or spawn a new role.",
+		full.n))
+	return out, callErr, true
+}
+
 func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	var a struct {
 		Role        string `json:"role"`
@@ -146,6 +161,12 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	a.Role = strings.TrimSpace(a.Role)
 	if a.Role == "" {
 		return ctlRefuse("spawn_agent: role is required")
+	}
+	// A path is not a second worker. Rewrite it before the one-role lock,
+	// or two calls with different paths collapse onto one resumed id.
+	if dirtySpawnRole(a.Role) {
+		a.Role = r.claimReadableRole(spawnStem(a.Role))
+		defer r.releaseRoleClaim(a.Role)
 	}
 	a.Task = strings.TrimSpace(a.Task)
 	if a.Task == "" {
@@ -167,8 +188,11 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		}
 	}
 	if id := r.reusableFinishedID(a.Role); id != "" {
-		h, err := r.Resume(ctx, id, a.Task, r.ModelBuilder, tools...)
+		h, err := r.resumeAdmitted(ctx, id, a.Task, r.ModelBuilder, tools...)
 		if err != nil {
+			if out, rerr, ok := refuseAdmit(err); ok {
+				return out, rerr
+			}
 			return ctlRefuse(err.Error())
 		}
 		return marshal(map[string]string{"agent_id": h.ID, "resumed_from": id}), nil
@@ -176,11 +200,14 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	var h *Handle
 	var err error
 	if a.ForkContext {
-		h, err = r.SpawnForked(ctx, a.Role, a.Task, r.ModelBuilder, r.historySnapshot(), tools...)
+		h, err = r.spawnForkedAdmitted(ctx, a.Role, a.Task, r.ModelBuilder, r.historySnapshot(), tools...)
 	} else {
-		h, err = r.Spawn(ctx, a.Role, a.Task, r.ModelBuilder, tools...)
+		h, err = r.spawnAdmitted(ctx, a.Role, a.Task, r.ModelBuilder, tools...)
 	}
 	if err != nil {
+		if out, rerr, ok := refuseAdmit(err); ok {
+			return out, rerr
+		}
 		return ctlRefuse(err.Error())
 	}
 	if a.ForkContext {

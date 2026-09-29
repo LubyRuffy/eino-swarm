@@ -435,6 +435,65 @@ func TestSearchThreadsClampsTheLimit(t *testing.T) {
 	}
 }
 
+func TestReviseSteerMessageReplacesTheSearchHit(t *testing.T) {
+	s := open(t)
+	th := &Thread{Title: "gamma", ProviderID: "p"}
+	if err := s.CreateThread(th); err != nil {
+		t.Fatal(err)
+	}
+	turn := &Turn{ThreadID: th.ID, Status: TurnRunning}
+	if err := s.CreateTurn(turn); err != nil {
+		t.Fatal(err)
+	}
+	oldNeedle := "steer-before-edit"
+	newNeedle := "steer-after-edit"
+	if err := s.AppendMessages(th.ID, turn.ID, []Message{
+		{Role: "user", Content: "[steer] " + oldNeedle, EventSeq: 7},
+		{Role: "user", Content: "[steer] leave-this", EventSeq: 8},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.ReviseSteerMessage(th.ID, 0, "[steer] nope"); err == nil {
+		t.Fatal("seq 0 cannot name one steer")
+	}
+	if err := s.ReviseSteerMessage(th.ID, 99, "[steer] missing"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing row: %v", err)
+	}
+	if err := s.ReviseSteerMessage(th.ID, 7, "[steer] "+newNeedle); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := s.ListMessages(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		switch row.EventSeq {
+		case 7:
+			if row.Content != "[steer] "+newNeedle {
+				t.Fatalf("revised content = %q", row.Content)
+			}
+		case 8:
+			if row.Content != "[steer] leave-this" {
+				t.Fatalf("the other steer changed: %q", row.Content)
+			}
+		}
+	}
+	got, err := s.SearchThreads(oldNeedle, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("old caption still searchable: %+v", got)
+	}
+	got, err = s.SearchThreads(newNeedle, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].ThreadID != th.ID {
+		t.Fatalf("new caption not searchable: %+v", got)
+	}
+}
+
 func TestDeleteSteerMessageDropsTheTextFromSearch(t *testing.T) {
 	s := open(t)
 	th := &Thread{Title: "gamma", ProviderID: "p"}

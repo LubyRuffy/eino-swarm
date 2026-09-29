@@ -99,7 +99,7 @@ export function Composer({
   followups,
   onSteerFollowup,
   onDeleteFollowup,
-  onRequeueFollowup,
+  onEditFollowup,
   onClearFollowups,
   usage,
   goal,
@@ -155,7 +155,8 @@ export function Composer({
   followups?: Followup[]
   onSteerFollowup?: (id: string) => void
   onDeleteFollowup?: (id: string) => void
-  onRequeueFollowup?: (id: string, text: string) => void
+  /** Pull this waiting row into the box. The caller removes it from the tray. */
+  onEditFollowup?: (item: Followup) => void
   onClearFollowups?: () => void
   usage?: UsageSnapshot | null
   goal?: string
@@ -233,6 +234,13 @@ export function Composer({
   useEffect(() => {
     if (!prefillToken) return
     setText(prefill ?? "")
+    // A pulled-in queue edit has to submit as a follow-up. Images and files
+    // cannot wait in that queue; leaving them attached would inject this turn.
+    setPending([])
+    setPasted((prev) => {
+      revokePasteImages(prev)
+      return []
+    })
   }, [prefillToken, prefill])
 
   // Grow with the text, but stop before the composer eats the conversation.
@@ -482,7 +490,7 @@ export function Composer({
             items={followups ?? []}
             onSteer={(id) => onSteerFollowup?.(id)}
             onDelete={(id) => onDeleteFollowup?.(id)}
-            onRequeue={(id, next) => onRequeueFollowup?.(id, next)}
+            onEdit={(item) => onEditFollowup?.(item)}
             onClear={() => onClearFollowups?.()}
           />
           {compressing ? (
@@ -507,6 +515,7 @@ export function Composer({
               />
             ) : null}
           <div
+            data-composer-box=""
             className={
               "relative rounded-3xl border border-border bg-card shadow-lg transition-colors focus-within:border-ring" +
               (armed || adding ? " min-h-36" : "")

@@ -1,14 +1,15 @@
-import { ChevronRight, Layers, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react"
+import { ChevronRight, Copy, Layers, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { MemoMarkdown } from "@/components/app/markdown"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
+import { SkillCopyDialog, SkillPullDialog } from "@/components/app/skill-copy-dialog"
 import { SkillTidyCard } from "@/components/app/skill-tidy-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
-import type { Project, ProjectMemory, Skill, SkillTidyReport, TidyLive } from "@/lib/types"
+import type { Project, ProjectMemory, Skill, SkillOrigin, SkillTidyReport, TidyLive } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
 export interface MemoryPanelProps {
@@ -77,6 +78,12 @@ export function MemoryPanel({
   const [error, setError] = useState<string>()
   const [conflict, setConflict] = useState(false)
   const [doomedSkill, setDoomedSkill] = useState<string>()
+  const [copyTarget, setCopyTarget] = useState<{ names?: string[] }>()
+  const [copyNotice, setCopyNotice] = useState<string>()
+
+  useEffect(() => {
+    setCopyNotice(undefined)
+  }, [project?.id])
   const text = memory?.memory.text ?? ""
   const seen = useRef(text)
 
@@ -246,8 +253,24 @@ export function MemoryPanel({
           >
             {tidying ? <Loader2 className="animate-spin" /> : <Layers />}
           </Button>
+          {memory && memory.skills.length > 1 ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setCopyTarget({})}
+              aria-label={t("skill.copyAll")}
+              title={t("skill.copyAll")}
+            >
+              <Copy />
+            </Button>
+          ) : null}
         </div>
         <p className="text-xs text-muted-foreground">{t("memory.skillsHint")}</p>
+        {copyNotice ? (
+          <p data-testid="skill-copy-notice" className="text-xs text-muted-foreground">
+            {copyNotice}
+          </p>
+        ) : null}
         <SkillTidyCard
           tidying={Boolean(tidying)}
           skillCount={memory?.skills.length ?? 0}
@@ -268,8 +291,11 @@ export function MemoryPanel({
                   projectId={project.id}
                   name={skill.name}
                   description={skill.description}
+                  origin={skill.origin}
                   startOpen={skill.name === focusSkill}
                   onDelete={() => setDoomedSkill(skill.name)}
+                  onCopy={() => setCopyTarget({ names: [skill.name] })}
+                  onRefresh={onRefresh}
                 />
               ))}
             </div>
@@ -302,6 +328,15 @@ export function MemoryPanel({
           if (doomedSkill) onDeleteSkill(doomedSkill)
         }}
       />
+      <SkillCopyDialog
+        open={copyTarget !== undefined}
+        sourceId={project.id}
+        names={copyTarget?.names}
+        onOpenChange={(open) => {
+          if (!open) setCopyTarget(undefined)
+        }}
+        onCopied={setCopyNotice}
+      />
     </div>
   )
 }
@@ -313,23 +348,48 @@ function isConflict(e: unknown): boolean {
 /** One skill, expanded on demand. The body is fetched when it is opened
  *  rather than with the list, for the same reason the prompt does not inline
  *  it: most of them are not what anyone came to read. */
+function originLabel(
+  origin: SkillOrigin,
+  t: (key: "skill.originFrom" | "skill.originLocal" | "skill.originDiverged" | "skill.originMissing", vars?: { project: string }) => string,
+) {
+  const project = origin.project_name || origin.project_id
+  switch (origin.status) {
+    case "local":
+      return t("skill.originLocal")
+    case "diverged":
+      return t("skill.originDiverged")
+    case "missing":
+      return t("skill.originMissing")
+    default:
+      return t("skill.originFrom", { project })
+  }
+}
+
 function SkillRow({
   projectId,
   name,
   description,
+  origin,
   startOpen,
   onDelete,
+  onCopy,
+  onRefresh,
 }: {
   projectId: string
   name: string
   description: string
+  origin?: SkillOrigin
   startOpen?: boolean
   onDelete: () => void
+  onCopy: () => void
+  onRefresh: () => void
 }) {
   const t = useT()
   const [open, setOpen] = useState(Boolean(startOpen))
   const [skill, setSkill] = useState<Skill>()
   const [error, setError] = useState<string>()
+  const [replacing, setReplacing] = useState(false)
+  const canPull = origin?.status === "update" || origin?.status === "diverged"
 
   useEffect(() => {
     // The sidebar sent the user here. Opening without fetching would show
@@ -350,6 +410,17 @@ function SkillRow({
       cancelled = true
     }
   }, [startOpen, projectId, name])
+
+  const pull = async (force: boolean) => {
+    try {
+      const got = await api.pullSkill(projectId, name, force)
+      setSkill(got)
+      setError(undefined)
+      onRefresh()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
 
   const toggle = async () => {
     const next = !open
@@ -387,6 +458,15 @@ function SkillRow({
         <Button
           variant="ghost"
           size="icon-sm"
+          onClick={onCopy}
+          aria-label={t("skill.copyNamed", { name })}
+          title={t("skill.copyNamed", { name })}
+        >
+          <Copy />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={onDelete}
           aria-label={t("memory.deleteSkill", { name })}
           title={t("memory.delete")}
@@ -394,6 +474,34 @@ function SkillRow({
           <Trash2 />
         </Button>
       </div>
+      {origin ? (
+        <div className="flex items-center gap-2 px-2 pb-1.5">
+          <p data-testid="skill-origin" className="min-w-0 flex-1 text-xs text-muted-foreground">
+            {originLabel(origin, t)}
+          </p>
+          {canPull ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (origin.status === "diverged") {
+                  setReplacing(true)
+                  return
+                }
+                void pull(false)
+              }}
+              aria-label={t("skill.updateFrom", { name })}
+            >
+              {t("skill.update")}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      <SkillPullDialog
+        open={replacing}
+        onOpenChange={setReplacing}
+        onConfirm={() => void pull(true)}
+      />
       {open ? (
         <div
           data-testid="skill-body"

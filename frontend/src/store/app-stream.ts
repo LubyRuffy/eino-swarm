@@ -96,7 +96,7 @@ export function queueEvent(
       ev.kind === "schedule_cancelled" ||
       ev.kind === "rewound" ||
       ev.kind === "tool_call" || ev.kind === "tool_result" ||
-      ev.kind === "steer" || ev.kind === "steer_retracted" || ev.kind === "steer_preempted") {
+      ev.kind === "steer" || ev.kind === "steer_retracted" || ev.kind === "steer_revised" || ev.kind === "steer_preempted") {
     flushQueued(set, get)
     return
   }

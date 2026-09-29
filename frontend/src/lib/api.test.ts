@@ -287,6 +287,17 @@ describe("threads", () => {
     await expect(api.retractSteer("th_1", 12)).resolves.toBeUndefined()
   })
 
+  it("revises one unread steer in place", async () => {
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe("/api/threads/th_1/steers/12")
+      expect(init?.method).toBe("PATCH")
+      expect(JSON.parse(String(init?.body))).toEqual({ text: "narrower" })
+      return respond({ revised: true })
+    })
+    vi.stubGlobal("fetch", fetch)
+    await expect(api.reviseSteer("th_1", 12, "narrower")).resolves.toEqual({ revised: true })
+  })
+
   it("pins a dragged project order", async () => {
     const fetch = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("/api/projects/reorder")
@@ -475,6 +486,47 @@ describe("search", () => {
     expect(fetch).toHaveBeenCalledWith(
       "/api/search?q=alpha&limit=5",
       expect.anything(),
+    )
+  })
+})
+
+describe("skill copy", () => {
+  it("posts the destination and reads the copy report", async () => {
+    const fetch = vi.fn(async () =>
+      respond({
+        copied: [{ from: "release-check", name: "release-check", project_id: "pj_2" }],
+        skipped: [],
+      }),
+    )
+    vi.stubGlobal("fetch", fetch)
+    const report = await api.copySkills("pj_1", {
+      to_project: "pj_2",
+      names: ["release-check"],
+    })
+    expect(report.copied).toHaveLength(1)
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/projects/pj_1/skills/copy",
+      expect.objectContaining({ method: "POST" }),
+    )
+  })
+
+  it("pulls with force when local edits would otherwise be kept", async () => {
+    const fetch = vi.fn(async () =>
+      respond({
+        skill: {
+          name: "release-check",
+          description: "when",
+          body: "1. next",
+          updated_at: "",
+        },
+      }),
+    )
+    vi.stubGlobal("fetch", fetch)
+    const skill = await api.pullSkill("pj_2", "release-check", true)
+    expect(skill.body).toBe("1. next")
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/projects/pj_2/skills/release-check/pull",
+      expect.objectContaining({ method: "POST", body: JSON.stringify({ force: true }) }),
     )
   })
 })

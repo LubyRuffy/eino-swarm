@@ -137,6 +137,7 @@ beforeEach(() => {
 describe("plan and ask store", () => {
   it("enters plan mode and starts the task when idle", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().setPlan("inspect then change")
     expect(fake.patches).toEqual([{ id: "th_old", plan_mode: true }])
     expect(fake.steers).toEqual([{ id: "th_old", text: "inspect then change" }])
@@ -146,6 +147,7 @@ describe("plan and ask store", () => {
   it("saves an edited plan body", async () => {
     fake.planMode = true
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().savePlan("# Plan\n\nDo the work.\n")
     expect(fake.patches[0]).toMatchObject({
       id: "th_old",
@@ -156,6 +158,7 @@ describe("plan and ask store", () => {
   it("leaves planning without starting a turn", async () => {
     fake.planMode = true
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().leavePlan()
     expect(fake.patches).toEqual([{ id: "th_old", plan_mode: false }])
     expect(fake.steers).toEqual([])
@@ -165,6 +168,7 @@ describe("plan and ask store", () => {
     fake.planMode = true
     fake.planMarkdown = "# Plan"
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().implementPlan()
     expect(fake.implements).toEqual(["th_old"])
     expect(useApp.getState().threads[0]?.plan_mode).toBe(false)
@@ -174,6 +178,7 @@ describe("plan and ask store", () => {
 
   it("posts structured answers for the waiting card", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().answerAsk("tc_1", {
       approach: { answers: ["Prefer the safer path"] },
     })
@@ -188,6 +193,7 @@ describe("plan and ask store", () => {
 
   it("treats composer text as Other while a question is waiting", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     useApp.setState({ status: { running: true, awaiting_answer: true } })
     await useApp.getState().send("do it the other way")
     expect(fake.answers).toEqual([{ id: "th_old", text: "do it the other way" }])
@@ -196,6 +202,7 @@ describe("plan and ask store", () => {
 
   it("updates the banner from plan events", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const at = new Date().toISOString()
     fake.onEvent?.({
       kind: "plan",

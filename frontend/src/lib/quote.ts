@@ -34,6 +34,17 @@ export function appendQuote(quotes: Quote[], text: string, id?: string): Quote[]
   return [...quotes, { id: id ?? quoteId(quotes.length), text: normalized }]
 }
 
+/** A queued follow-up or unread steer, split the way the composer edits it.
+ *  Chips hold the highlights; the box holds the request. Sending tags them
+ *  again, so the wire format does not leak into the draft. */
+export function composerDraftFromStored(text: string): { quotes: Quote[]; body: string } {
+  const parsed = parseQuotedMessage(text ?? "")
+  return {
+    quotes: parsed.quotes.reduce<Quote[]>((acc, snippet) => appendQuote(acc, snippet), []),
+    body: parsed.body,
+  }
+}
+
 export function editQuote(quotes: Quote[], id: string, text: string): Quote[] {
   const normalized = normalizeSelectedText(text)
   if (!normalized) return quotes.filter((q) => q.id !== id)

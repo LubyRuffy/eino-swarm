@@ -27,7 +27,8 @@ func TestTUIManagerMatchesTheApp(t *testing.T) {
 	}
 	for _, need := range []string{
 		"save time or improve quality",
-		"Spawning one worker and then waiting",
+		"Reassess delegation as the task develops",
+		"A single worker can improve quality",
 		"web_search",
 		"## Environment",
 	} {

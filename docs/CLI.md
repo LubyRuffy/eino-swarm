@@ -59,8 +59,7 @@ that has not fired, do not count as that call. A second window of the same
 build still attaches.
 
 A second `zwai desktop` on the same data directory opens another window on
-the same engine. Both can type. The app menu (the `…` at the bottom-left of
-the conversation list) names the connected shells when more than one is attached.
+the same engine. Both can type. The app menu (the `…` at the bottom of the icon rail) names the connected shells when more than one is attached.
 
 A checkout with no `frontend/dist/index.html` (or with TypeScript newer than
 the last build) runs `npm install` then `npm run build` before the window

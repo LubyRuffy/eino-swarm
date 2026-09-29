@@ -119,10 +119,12 @@
     --sidebar-folder-gap: calc(var(--chrome-font-size) * 0.46);
     --sidebar-section-gap: calc(var(--chrome-font-size) * 0.77);
     --sidebar-section-label-height: calc(var(--chrome-font-size) * 1.7);
-    --sidebar-list-px: calc(var(--chrome-font-size) * 0.77);
-    /* Icon rail. Extra inset on the left so the icons are not on the
-       window edge. Unread counts stay on the wait rows, not this rail. */
-    --dest-rail-width: calc(var(--sidebar-row-height) + var(--sidebar-list-px) * 2 + var(--sidebar-row-px));
+    /* List gutter. Wider than a row's own padding so titles do not sit
+       on the rail divider the way a 10px gutter did. */
+    --sidebar-list-px: calc(var(--chrome-font-size) * 1.23);
+    /* Icon rail. A short pad keeps the column narrow; equal on both sides. */
+    --dest-rail-pad: calc(var(--chrome-font-size) * 0.38);
+    --dest-rail-width: calc(var(--sidebar-row-height) + var(--dest-rail-pad) * 2);
     --sidebar-kind: calc(var(--chrome-font-size) * 1.23);
 
     /* Pairing QR plate. A camera needs a white field even in dark chrome. */
@@ -194,8 +196,9 @@
     --qr-plate: 0 0% 100%;
   }
 
-  /* FOFA intelligence-console palette. Tokens map the design roles onto
-     the same shadcn names so components stay token-only. */
+  /* FOFA palette. Values are the DESIGN.html 7.2 tokens (and fofa.info's
+     live --color-* sheet, which matches those hexes). shadcn names stay;
+     --brand-from / --brand-to are the official cyan↔blue gradient. */
   html[data-palette="fofa"] {
     --background: 210 20% 98%;
     --foreground: 234 30% 18%;
@@ -213,12 +216,15 @@
     --accent-foreground: 234 30% 18%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 98%;
-    --border: 224 14% 86%;
-    --input: 224 14% 86%;
+    --border: 224 15% 86%;
+    --input: 224 15% 86%;
     --ring: 180 95% 37%;
-    --radius: 0.5rem;
+    --radius: 0.375rem;
+    --brand-from: 213 99% 57%;
+    --brand-to: 180 96% 48%;
+    --brand-mark: 180 95% 37%;
 
-    --sidebar: 0 0% 100%;
+    --sidebar: 210 20% 98%;
     --sidebar-foreground: 202 12% 41%;
     --sidebar-accent: 204 20% 95%;
     --sidebar-border: 223 18% 92%;
@@ -234,16 +240,16 @@
     --find-active-foreground: 222 77% 7%;
 
     --chart-1: 180 95% 37%;
-    --chart-2: 214 99% 57%;
-    --chart-3: 181 93% 27%;
+    --chart-2: 213 99% 57%;
+    --chart-3: 180 93% 27%;
     --chart-4: 221 43% 40%;
     --chart-5: 32 95% 44%;
 
-    --file-folder: 214 99% 45%;
+    --file-folder: 213 99% 45%;
     --file-code: 180 95% 32%;
     --file-doc: 221 43% 40%;
     --file-config: 32 95% 44%;
-    --file-image: 181 93% 27%;
+    --file-image: 180 93% 27%;
 
     --syntax-keyword: 214 90% 42%;
     --syntax-command: 180 95% 32%;
@@ -252,7 +258,7 @@
     --syntax-operator: 32 95% 40%;
     --syntax-flag: 214 50% 38%;
     --syntax-variable: 180 80% 30%;
-    --syntax-prompt: 214 99% 45%;
+    --syntax-prompt: 213 99% 45%;
 
     --diff-add: 142 76% 32%;
     --diff-add-bg: 142 40% 94%;
@@ -265,27 +271,30 @@
     --foreground: 0 0% 100%;
     --card: 222 50% 10%;
     --card-foreground: 0 0% 100%;
-    --popover: 223 38% 15%;
+    --popover: 222 50% 10%;
     --popover-foreground: 0 0% 100%;
     --primary: 180 96% 48%;
     --primary-foreground: 222 77% 7%;
-    --secondary: 221 43% 14%;
+    --secondary: 221 42% 14%;
     --secondary-foreground: 0 0% 100%;
-    --muted: 221 43% 14%;
-    --muted-foreground: 210 32% 74%;
+    --muted: 221 42% 14%;
+    --muted-foreground: 210 31% 74%;
     --accent: 221 33% 20%;
     --accent-foreground: 0 0% 100%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 220 15% 18%;
-    --input: 221 33% 20%;
+    --border: 220 18% 23%;
+    --input: 221 42% 14%;
     --ring: 180 96% 48%;
-    --radius: 0.5rem;
+    --radius: 0.375rem;
+    --brand-from: 213 99% 57%;
+    --brand-to: 180 96% 48%;
+    --brand-mark: 214 100% 63%;
 
-    --sidebar: 219 77% 5%;
-    --sidebar-foreground: 210 32% 74%;
-    --sidebar-accent: 221 33% 20%;
-    --sidebar-border: 220 15% 16%;
+    --sidebar: 222 77% 7%;
+    --sidebar-foreground: 210 31% 74%;
+    --sidebar-accent: 221 42% 14%;
+    --sidebar-border: 220 18% 23%;
 
     --running: 38 92% 50%;
     --done: 142 71% 45%;
@@ -298,16 +307,16 @@
     --find-active-foreground: 222 77% 7%;
 
     --chart-1: 180 96% 48%;
-    --chart-2: 214 99% 57%;
-    --chart-3: 210 32% 74%;
-    --chart-4: 181 93% 40%;
+    --chart-2: 214 100% 63%;
+    --chart-3: 210 31% 74%;
+    --chart-4: 180 93% 40%;
     --chart-5: 38 92% 50%;
 
-    --file-folder: 214 99% 57%;
+    --file-folder: 214 100% 63%;
     --file-code: 180 96% 48%;
-    --file-doc: 210 32% 74%;
+    --file-doc: 210 31% 74%;
     --file-config: 38 92% 50%;
-    --file-image: 181 93% 40%;
+    --file-image: 180 93% 40%;
 
     --syntax-keyword: 214 90% 72%;
     --syntax-command: 180 96% 48%;
@@ -316,7 +325,7 @@
     --syntax-operator: 38 92% 50%;
     --syntax-flag: 214 50% 70%;
     --syntax-variable: 180 70% 62%;
-    --syntax-prompt: 214 99% 70%;
+    --syntax-prompt: 213 99% 70%;
 
     --diff-add: 142 71% 45%;
     --diff-add-bg: 142 40% 10%;
@@ -426,15 +435,15 @@
     --swatch-accent: 0 0% 92%;
   }
   [data-swatch="fofa-light"] {
-    --swatch-chrome: 204 20% 95%;
+    --swatch-chrome: 210 20% 98%;
     --swatch-page: 0 0% 100%;
-    --swatch-bar: 224 14% 86%;
+    --swatch-bar: 224 15% 86%;
     --swatch-accent: 180 95% 37%;
   }
   [data-swatch="fofa-dark"] {
-    --swatch-chrome: 219 77% 5%;
+    --swatch-chrome: 222 77% 7%;
     --swatch-page: 222 50% 10%;
-    --swatch-bar: 220 15% 22%;
+    --swatch-bar: 220 18% 23%;
     --swatch-accent: 180 96% 48%;
   }
 
@@ -664,4 +673,20 @@
   .animate-swap-out {
     animation: none !important;
   }
+}
+
+/* Official FOFA search rim: cyan→blue gradient, 15px, no drop shadow.
+   Utilities on the composer card would otherwise keep the ZWAI hairline. */
+html[data-palette="fofa"] [data-composer-box] {
+  border-color: transparent;
+  border-radius: 15px;
+  box-shadow: none;
+  background-color: hsl(var(--card));
+  background-image: linear-gradient(hsl(var(--card)), hsl(var(--card))),
+    linear-gradient(96deg, hsl(var(--brand-to)) 0%, hsl(var(--brand-from)) 99%);
+  background-origin: border-box;
+  background-clip: padding-box, border-box;
+}
+html[data-palette="fofa"] [data-composer-box]:focus-within {
+  border-color: transparent;
 }

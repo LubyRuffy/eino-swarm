@@ -17,6 +17,7 @@ var PushKinds = []string{
 	"tool_call_delta",
 	"steer",
 	"steer_retracted",
+	"steer_revised",
 	"steer_preempted",
 	"cleanup",
 	"progress",

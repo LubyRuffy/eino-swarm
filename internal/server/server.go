@@ -122,8 +122,10 @@ func New(opts Options) (*Server, error) {
 		api.GET("/projects/:id/memory", s.getMemory)
 		api.PUT("/projects/:id/memory", s.putMemory)
 		api.POST("/projects/:id/memory/tidy-skills", s.tidySkills)
+		api.POST("/projects/:id/skills/copy", s.copySkills)
 		api.GET("/projects/:id/skills/:name", s.getSkill)
 		api.DELETE("/projects/:id/skills/:name", s.deleteSkill)
+		api.POST("/projects/:id/skills/:name/pull", s.pullSkill)
 
 		api.GET("/threads", s.listThreads)
 		api.POST("/threads", s.createThread)
@@ -139,6 +141,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/threads/:id/steer", s.steer)
 		api.POST("/threads/:id/preempt", s.preempt)
 		api.DELETE("/threads/:id/steers/:seq", s.retractSteer)
+		api.PATCH("/threads/:id/steers/:seq", s.reviseSteer)
 		api.GET("/threads/:id/followups", s.listFollowups)
 		api.POST("/threads/:id/followups", s.enqueueFollowup)
 		api.DELETE("/threads/:id/followups/:fid", s.deleteFollowup)

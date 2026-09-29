@@ -1,6 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, type RefObject } from "react"
 
-import { scrollTurnIntoView } from "./turn-nav"
+import { scrollTurnIntoView, scrollTurnToStart } from "./turn-nav"
 
 /** Jump the transcript to a user turn. The rail lists turns the tail page
  *  has not fetched yet; scrolling in the fetch callback used to miss
@@ -16,21 +16,27 @@ export function useTurnJump({
   threadId,
   unpin,
   loadUntilTurn,
+  startId,
 }: {
   scrollerRef: RefObject<HTMLElement | null>
   growthKey: string
   threadId?: string
   unpin: () => void
   loadUntilTurn: (turnId: string, clientHeight?: number) => Promise<boolean>
+  /** Earliest human turn. That jump opens the top of the log instead of
+   *  pinning the bubble over whatever sits above it. */
+  startId?: string
 }) {
   const pending = useRef<string | null>(null)
 
   const tryScroll = useCallback(
     (id: string) => {
       const root = scrollerRef.current
-      return Boolean(root && scrollTurnIntoView(root, id, true))
+      if (!root) return false
+      if (startId && id === startId) return scrollTurnToStart(root, id)
+      return scrollTurnIntoView(root, id, true)
     },
-    [scrollerRef],
+    [scrollerRef, startId],
   )
 
   useLayoutEffect(() => {
@@ -55,7 +61,8 @@ export function useTurnJump({
     if (!view) return
     // A prepend that started because the jump parked near the top skips
     // scroll compensation. Measuring in this layout can still see the
-    // pre-prepend box. Pin again after paint.
+    // pre-prepend box. Apply again after paint: a later turn re-pins, the
+    // earliest turn stays at scrollTop 0 so that prefix stays on screen.
     const raf = view.requestAnimationFrame(() => {
       if (pending.current !== id) return
       tryScroll(id)

@@ -133,6 +133,7 @@ beforeEach(() => {
 describe("goal and compact", () => {
   it("patches the standing objective onto the open conversation", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().setGoal("keep going")
     expect(fake.goals).toEqual([{ id: "th_old", goal: "keep going" }])
     expect(useApp.getState().threads[0]?.goal).toBe("keep going")
@@ -142,6 +143,7 @@ describe("goal and compact", () => {
 
   it("does not start a second turn when a standing objective is set during a run", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     useApp.setState({ status: { running: true, started_at: new Date().toISOString() } })
     await useApp.getState().setGoal("keep going")
     expect(fake.goals).toEqual([{ id: "th_old", goal: "keep going" }])
@@ -150,6 +152,7 @@ describe("goal and compact", () => {
 
   it("does not start a turn when the standing objective is cleared", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().setGoal("")
     expect(fake.goals).toEqual([{ id: "th_old", goal: "" }])
     expect(fake.steers).toEqual([])
@@ -158,6 +161,7 @@ describe("goal and compact", () => {
 
   it("edits the standing objective in place", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().editGoal("keep going, tighter")
     expect(fake.goals).toEqual([
       { id: "th_old", goal: "keep going, tighter", goal_edit: true },
@@ -166,6 +170,7 @@ describe("goal and compact", () => {
 
   it("resumes a standing objective on the open conversation", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().resumeGoal()
     expect(fake.goals).toEqual([{ id: "th_old", goal_resume: true }])
     expect(useApp.getState().status.running).toBe(true)
@@ -179,6 +184,7 @@ describe("goal and compact", () => {
 
   it("folds replay on the open conversation", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().compactThread()
     expect(fake.compacts).toEqual(["th_old"])
     expect(useApp.getState().threads[0]?.compacted).toBe(true)
@@ -191,6 +197,7 @@ describe("goal and compact", () => {
 
   it("ignores a live compressing pulse when marking the conversation compacted", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const at = new Date().toISOString()
     fake.onEvent?.({
       kind: "compacted",
@@ -223,6 +230,7 @@ describe("goal and compact", () => {
 
   it("clears compressing when the turn ends even if compact never finished", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "compacted",
       seq: 0,
@@ -248,6 +256,7 @@ describe("goal and compact", () => {
 
   it("updates the banner from a goal event", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "goal",
       seq: 50,
@@ -263,6 +272,7 @@ describe("goal and compact", () => {
 
   it("marks the objective complete from the stream", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "goal",
       seq: 50,
@@ -286,6 +296,7 @@ describe("goal and compact", () => {
 
   it("reopens a completed objective from a resume event", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "goal_complete",
       seq: 51,
@@ -308,6 +319,7 @@ describe("goal and compact", () => {
 
   it("marks the objective blocked from the stream", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "goal",
       seq: 50,
@@ -332,6 +344,7 @@ describe("goal and compact", () => {
 
   it("idles the composer when a pursuing turn crashes", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const at = "2026-01-01T00:00:00.000Z"
     fake.onEvent?.({ kind: "goal_continued", seq: 11, thread_id: "th_old", turn_id: "tn_2", agent_id: "manager", created_at: at })
     expect(useApp.getState().status.running).toBe(true)
@@ -360,6 +373,7 @@ describe("goal and compact", () => {
 
   it("keeps pursuing after a recoverable model error auto-continues", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const at = "2026-01-01T00:00:00.000Z"
     fake.onEvent?.({
       kind: "goal",
@@ -393,6 +407,7 @@ describe("goal and compact", () => {
 
   it("keeps status flags when the objective is edited", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "goal",
       seq: 50,
@@ -427,6 +442,7 @@ describe("goal and compact", () => {
   it("keeps counting working time after the standing objective auto-continues", async () => {
     // done wiped started_at; goal_continued used to leave the header frozen at 1s.
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const at = "2026-01-01T00:00:00.000Z"
     fake.onEvent?.({ kind: "done", seq: 10, thread_id: "th_old", turn_id: "tn_1", agent_id: "manager", created_at: at })
     fake.onEvent?.({ kind: "goal_continued", seq: 11, thread_id: "th_old", turn_id: "tn_2", agent_id: "manager", created_at: at })
@@ -435,6 +451,7 @@ describe("goal and compact", () => {
 
   it("starts the working clock when a standing objective is resumed", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const at = "2026-01-01T02:00:00.000Z"
     fake.onEvent?.({ kind: "goal_resumed", seq: 12, thread_id: "th_old", turn_id: "tn_3", agent_id: "manager", created_at: at })
     expect(useApp.getState().status).toMatchObject({ running: true, turn_id: "tn_3", started_at: at })
@@ -442,6 +459,7 @@ describe("goal and compact", () => {
 
   it("starts the working clock when a scheduled check fires", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const at = "2026-01-01T00:00:00.000Z"
     fake.onEvent?.({ kind: "done", seq: 10, thread_id: "th_old", turn_id: "tn_1", agent_id: "manager", created_at: at })
     fake.onEvent?.({
@@ -458,6 +476,7 @@ describe("goal and compact", () => {
 
   it("holds auto-continue after a no-progress continuation", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "goal",
       seq: 50,

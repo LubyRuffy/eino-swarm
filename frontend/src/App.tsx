@@ -31,7 +31,7 @@ import { closeClient, useOpenClient } from "@/lib/client-open"
 import { toggleContentWidth, toggleTranscriptMode } from "@/lib/appearance"
 import { attachExternalLinkHandler } from "@/lib/external-links"
 import { findShortcut } from "@/lib/find"
-import { appendQuote, type Quote } from "@/lib/quote"
+import { appendQuote, composerDraftFromStored, type Quote } from "@/lib/quote"
 import { liveWorkers } from "@/lib/transcript"
 import { terminalShortcut, terminalTarget } from "@/lib/terminal"
 import { isWelcomePane, visibleManagerBlockCount } from "@/lib/welcome"
@@ -255,6 +255,41 @@ function AppShell() {
     [focusComposer],
   )
 
+  // The row or unread bubble is already gone. Enter then uses the normal
+  // queue path, so this is a new follow-up at the back, not an in-place edit.
+  const pullIntoComposer = useCallback(
+    (raw: string) => {
+      const draft = composerDraftFromStored(raw)
+      setQuotes(draft.quotes)
+      setPrefill(draft.body)
+      setPrefillToken((n) => n + 1)
+      focusComposer()
+    },
+    [focusComposer],
+  )
+
+  const editQueuedFollowup = useCallback(
+    (id: string, text: string) => {
+      void (async () => {
+        const removed = await useApp.getState().deleteFollowup(id)
+        if (!removed) return
+        pullIntoComposer(text)
+      })()
+    },
+    [pullIntoComposer],
+  )
+
+  const editUnreadSteer = useCallback(
+    (text: string, seq: number) => {
+      void (async () => {
+        const removed = await useApp.getState().retractSteer(seq)
+        if (!removed) return
+        pullIntoComposer(text)
+      })()
+    },
+    [pullIntoComposer],
+  )
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const dialogOpen =
@@ -383,6 +418,7 @@ function AppShell() {
                 <TranscriptPane
                   onSelectAgent={openAgent}
                   onPickIdea={pickIdea}
+                  onEditQueuedSteer={editUnreadSteer}
                   findQuery={findOpen ? findQuery : ""}
                   findIndex={findIndex}
                   onFindCount={setFindTotal}
@@ -396,6 +432,7 @@ function AppShell() {
               focusSignal={focusSignal}
               quotes={quotes}
               onQuotesChange={setQuotes}
+              onEditFollowup={editQueuedFollowup}
               onEditProviders={() => openSettings("models")}
             />
             {findOpen ? (
@@ -603,12 +640,14 @@ function AppSidebar({
 function TranscriptPane({
   onSelectAgent,
   onPickIdea,
+  onEditQueuedSteer,
   findQuery,
   findIndex,
   onFindCount,
 }: {
   onSelectAgent: (id: string) => void
   onPickIdea: (text: string) => void
+  onEditQueuedSteer: (text: string, seq: number) => void
   findQuery: string
   findIndex: number
   onFindCount: (total: number) => void
@@ -646,6 +685,7 @@ function TranscriptPane({
       loaded={loaded}
       onSelectAgent={onSelectAgent}
       onResendUser={resendUser}
+      onEditQueuedSteer={onEditQueuedSteer}
       findQuery={findQuery}
       findIndex={findIndex}
       onFindCount={onFindCount}
@@ -659,6 +699,7 @@ function AppComposer({
   focusSignal,
   quotes,
   onQuotesChange,
+  onEditFollowup,
   onEditProviders,
   locked,
 }: {
@@ -667,6 +708,7 @@ function AppComposer({
   focusSignal: number
   quotes: Quote[]
   onQuotesChange: (quotes: Quote[]) => void
+  onEditFollowup: (id: string, text: string) => void
   onEditProviders: () => void
   locked?: boolean
 }) {
@@ -683,7 +725,6 @@ function AppComposer({
   const followups = useApp((s) => s.followups)
   const steerFollowup = useApp((s) => s.steerFollowup)
   const deleteFollowup = useApp((s) => s.deleteFollowup)
-  const requeueFollowup = useApp((s) => s.requeueFollowup)
   const clearFollowups = useApp((s) => s.clearFollowups)
   const upload = useApp((s) => s.upload)
   const refreshThreads = useApp((s) => s.refreshThreads)
@@ -735,7 +776,7 @@ function AppComposer({
       followups={followups}
       onSteerFollowup={(id) => void steerFollowup(id)}
       onDeleteFollowup={(id) => void deleteFollowup(id)}
-      onRequeueFollowup={(id, text) => void requeueFollowup(id, text)}
+      onEditFollowup={(item) => onEditFollowup(item.id, item.text)}
       onClearFollowups={() => void clearFollowups()}
       goal={thread?.goal}
       goalComplete={thread?.goal_complete}

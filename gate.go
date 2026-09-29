@@ -1,6 +1,9 @@
 package swarm
 
-import "sync"
+import (
+	"fmt"
+	"sync"
+)
 
 // defaultMaxConcurrent is what a library caller gets when they leave
 // MaxConcurrent unset. The app config default is separate (6) and is
@@ -57,4 +60,42 @@ func (g *slotGate) resize(n int) {
 	g.cap = n
 	g.cond.Broadcast()
 	g.mu.Unlock()
+}
+
+// atCapacityError is what spawn_agent and resume_agent return when another
+// live worker would pass MaxConcurrent. The handle is not created, so the
+// roster does not grow a row that only sits on the gate. Registry.Spawn and
+// Registry.Resume still queue: a host that spawns in code can park work, and
+// raising the cap still wakes those waiters.
+type atCapacityError struct{ n int }
+
+func (e *atCapacityError) Error() string {
+	return fmt.Sprintf("swarm: concurrency cap %d reached", e.n)
+}
+
+func (r *Registry) capLocked() int {
+	return r.advertisedCap()
+}
+
+// advertisedCap is the number the manager is told and the tools enforce.
+// A non-positive setting is the library default, same as the gate.
+func (r *Registry) advertisedCap() int {
+	n := r.MaxConcurrent
+	if n <= 0 {
+		n = defaultMaxConcurrent
+	}
+	return n
+}
+
+// liveCountLocked is workers whose current life has not finished, including
+// any still blocked on the gate. Caller holds r.mu. A finished handle still
+// in the map does not count: resuming it is what frees a slot for the next piece.
+func (r *Registry) liveCountLocked() int {
+	n := 0
+	for _, h := range r.agents {
+		if _, _, done := h.Result(); !done {
+			n++
+		}
+	}
+	return n
 }

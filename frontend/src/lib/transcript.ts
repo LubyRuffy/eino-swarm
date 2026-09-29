@@ -17,6 +17,10 @@ import {
   dropRetractedSteer,
   isRetractedSteer,
   parseSteerRetractSeq,
+  parseSteerRevision,
+  rememberSteerRevision,
+  revisedSteerText,
+  steerRevisionsBefore,
 } from "./transcript-steer"
 import { applyScheduleEvent, sealQuietTurns } from "./transcript-schedule"
 import { findToolBlock, splitToolCall, summarise } from "./transcript-tool-block"
@@ -193,6 +197,8 @@ export interface TranscriptState {
   /** Retracted steer seqs, quiet scheduled turns, and fired scheduled turns.
    *  Arrays are cloned on each reduce so later events cannot mutate history. */
   retractedSteers?: number[]
+  /** Latest caption for an unread steer, keyed by that steer's event seq. */
+  steerRevisions?: Record<number, string>
   quietTurns?: string[]
   scheduledFiredTurns?: string[]
   /** Stored seqs in `[from, through]` belong to a resent message. Live
@@ -229,6 +235,7 @@ export function reduceEvent(
     running: state.running,
     pulse: state.pulse,
     retractedSteers: state.retractedSteers,
+    steerRevisions: state.steerRevisions,
     quietTurns: state.quietTurns?.slice(),
     scheduledFiredTurns: state.scheduledFiredTurns?.slice(),
     rewindCut: state.rewindCut,
@@ -239,6 +246,11 @@ export function reduceEvent(
   }
   if (ev.kind === "steer_retracted") {
     dropRetractedSteer(next, parseSteerRetractSeq(ev.text))
+    return next
+  }
+  if (ev.kind === "steer_revised") {
+    const rev = parseSteerRevision(ev.text)
+    if (rev) rememberSteerRevision(next, rev.seq, rev.text)
     return next
   }
   // The memory review runs after the turn, on its own. It is not a member of
@@ -381,7 +393,7 @@ export function reduceEvent(
 
     case "steer":
       if (!isGoalSessionWrapSteer(ev.text) && !isRetractedSteer(next, ev.seq)) {
-        append(agent, block(ev, "steer", ev.text ?? ""))
+        append(agent, block(ev, "steer", revisedSteerText(next, ev.seq, ev.text ?? "")))
       }
       break
 
@@ -750,6 +762,7 @@ export function rewindTranscript(
     running: pending,
     pulse: undefined,
     retractedSteers: (state.retractedSteers ?? []).filter((s) => s < fromSeq),
+    steerRevisions: steerRevisionsBefore(state.steerRevisions, fromSeq),
     quietTurns: (state.quietTurns ?? []).filter((id) => keptTurns.has(id)),
     scheduledFiredTurns: (state.scheduledFiredTurns ?? []).filter((id) => keptTurns.has(id)),
     rewindCut: { from: fromSeq, through: state.lastSeq, live: true },
@@ -781,6 +794,7 @@ export function placePendingEdit(
     running: true,
     pulse: undefined,
     retractedSteers: state.retractedSteers,
+    steerRevisions: state.steerRevisions,
     quietTurns: state.quietTurns?.slice(),
     scheduledFiredTurns: state.scheduledFiredTurns?.slice(),
     rewindCut: state.rewindCut,

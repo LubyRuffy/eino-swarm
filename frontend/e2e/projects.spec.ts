@@ -1,5 +1,7 @@
 import { expect, test, type Page } from "@playwright/test"
 
+import { reloadOpenConversation } from "./session"
+
 /** The whole point of a project: two conversations, one directory, one
  *  instruction, and what the first one learned available to the second. */
 
@@ -111,7 +113,7 @@ test("a project carries what one conversation learned into the next", async ({
   await expect(page.getByRole("button", { name: "Save notes", exact: true })).toHaveCount(0)
   await notes(page).fill("A note the user wrote by hand")
   await page.getByRole("button", { name: "Save notes", exact: true }).click()
-  await page.reload()
+  await reloadOpenConversation(page)
   await openMemory(page)
   await expect(notes(page)).toHaveValue("A note the user wrote by hand")
 

@@ -31,7 +31,8 @@ const KindGoalCapped = "goal_capped"
 
 // KindGoalBlocked is recorded when the manager calls block_goal, or when
 // a pursuing turn fails for a reason that is not a recoverable model error.
-// Truncated tool JSON / 429 / a dropped stream auto-continue instead.
+// Truncated tool JSON / 429 / a dropped stream / a mid-stream TCP read
+// timeout auto-continue instead.
 // Auto-continue stops until the human resumes.
 const KindGoalBlocked = "goal_blocked"
 

@@ -22,7 +22,7 @@ describe("QueueTray", () => {
         onSteer={vi.fn()}
         onDelete={vi.fn()}
         onClear={vi.fn()}
-        onRequeue={vi.fn()}
+        onEdit={vi.fn()}
       />,
     )
     expect(container).toBeEmptyDOMElement()
@@ -38,7 +38,7 @@ describe("QueueTray", () => {
         onSteer={onSteer}
         onDelete={onDelete}
         onClear={onClear}
-        onRequeue={vi.fn()}
+        onEdit={vi.fn()}
       />,
     )
     expect(screen.getByTestId("followup-queue")).toHaveTextContent("2 Queued")
@@ -58,36 +58,22 @@ describe("QueueTray", () => {
     expect(onClear).toHaveBeenCalled()
   })
 
-  it("saves an edit to the back of the queue and Escape leaves it", () => {
-    const onRequeue = vi.fn()
+  it("pulls a row into the composer instead of editing it in the tray", () => {
+    const onEdit = vi.fn()
+    const first = item("fu_1", "after this", 1)
     render(
       <QueueTray
-        items={[item("fu_1", "after this", 1), item("fu_2", "then that", 2)]}
+        items={[first, item("fu_2", "then that", 2)]}
         onSteer={vi.fn()}
         onDelete={vi.fn()}
         onClear={vi.fn()}
-        onRequeue={onRequeue}
+        onEdit={onEdit}
       />,
     )
     fireEvent.click(
       screen.getByRole("button", { name: "Edit queued message: after this" }),
     )
-    const edit = screen.getByTestId("followup-edit")
-    fireEvent.change(edit, { target: { value: "   " } })
-    fireEvent.keyDown(edit, { key: "Enter" })
-    expect(onRequeue).not.toHaveBeenCalled()
-    fireEvent.change(edit, { target: { value: "after this, edited" } })
-    fireEvent.keyDown(edit, { key: "Enter" })
-    expect(onRequeue).toHaveBeenCalledWith("fu_1", "after this, edited")
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Edit queued message: then that" }),
-    )
-    const again = screen.getByTestId("followup-edit")
-    fireEvent.change(again, { target: { value: "should not save" } })
-    fireEvent.keyDown(again, { key: "Escape" })
-    expect(onRequeue).toHaveBeenCalledTimes(1)
-    expect(screen.queryByTestId("followup-edit")).toBeNull()
-    expect(screen.getByText("then that")).toBeTruthy()
+    expect(onEdit).toHaveBeenCalledWith(first)
+    expect(screen.queryByRole("textbox")).toBeNull()
   })
 })

@@ -19,6 +19,16 @@ func TestPreemptSteerThroughTheAPI(t *testing.T) {
 	if idleDel["code"] != "idle" {
 		t.Fatalf("idle retract: %v", idleDel)
 	}
+	h.json(http.MethodPatch, "/api/threads/"+id+"/steers/0",
+		map[string]any{"text": "later"}, http.StatusBadRequest)
+	h.json(http.MethodPatch, "/api/threads/"+id+"/steers/nope",
+		map[string]any{"text": "later"}, http.StatusBadRequest)
+	idleRev := h.json(http.MethodPatch, "/api/threads/"+id+"/steers/1",
+		map[string]any{"text": "later"}, http.StatusConflict)
+	if idleRev["code"] != "idle" {
+		t.Fatalf("idle revise: %v", idleRev)
+	}
+	h.json(http.MethodPatch, "/api/threads/"+id+"/steers/1", "\"nope\"", http.StatusBadRequest)
 }
 
 func TestMutatingAPIRefusesAForeignOrigin(t *testing.T) {

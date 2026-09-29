@@ -160,6 +160,7 @@ describe("opening a long conversation", () => {
       }
     }
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const blocks = useApp.getState().transcript.agents.manager?.blocks ?? []
     expect(blocks.some((b) => b.kind === "user" && b.text === "look into the mapping")).toBe(
       true,
@@ -207,6 +208,7 @@ describe("opening a long conversation", () => {
       },
     ]
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     await useApp.getState().selectAgent("worker-1")
     expect(useApp.getState().transcript.agents["worker-1"]?.blocks).toHaveLength(1)
     expect(useApp.getState().historyHasMore).toBe(true)
@@ -254,6 +256,7 @@ describe("opening a long conversation", () => {
       },
     ]
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     expect(useApp.getState().transcript.agents["worker-1"]?.blocks ?? []).toHaveLength(0)
     await useApp.getState().selectAgent("worker-1")
     expect(useApp.getState().transcript.agents["worker-1"]?.blocks).toHaveLength(1)
@@ -278,6 +281,7 @@ describe("openThread", () => {
     ]
     fake.logHasMore = true
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     expect(useApp.getState().loaded).toBe(true)
     expect(useApp.getState().historyHasMore).toBe(true)
     expect(useApp.getState().transcript.agents.manager?.blocks[0]?.text).toBe("latest")
@@ -286,6 +290,7 @@ describe("openThread", () => {
 
   it("puts a minted findings conversation into Recents so the title bar can change", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     expect(useApp.getState().threads.map((t) => t.id)).toEqual(["th_old"])
     fake.threadTitles.th_minted = "periodic check"
     await useApp.getState().openThread("th_minted")
@@ -310,6 +315,7 @@ describe("openThread", () => {
     ]
     fake.logHasMore = true
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.logEvents = [
       {
         thread_id: "th_old",
@@ -343,6 +349,7 @@ describe("openThread", () => {
     ]
     fake.logHasMore = true
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.logHandler = () => ({ events: [], has_more: true })
     await useApp.getState().loadOlder(400)
     expect(useApp.getState().historyHasMore).toBe(false)
@@ -386,6 +393,7 @@ describe("openThread", () => {
       }
     }
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const blocks = useApp.getState().transcript.agents.manager?.blocks ?? []
     expect(blocks.some((b) => b.kind === "user" && b.text === "look into the mapping")).toBe(
       true,
@@ -433,6 +441,7 @@ describe("openThread", () => {
       },
     ]
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     expect(useApp.getState().transcript.agents["worker-1"]?.status).toBe("done")
     expect(useApp.getState().transcript.agentOrder).toContain("worker-1")
     expect(useApp.getState().historyHasMore).toBe(true)
@@ -484,6 +493,7 @@ describe("loadUntilTurn", () => {
       }
     }
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     expect(
       useApp.getState().transcript.agents.manager?.blocks.some((b) => b.turnId === "tn_a"),
     ).toBe(false)
@@ -554,6 +564,7 @@ describe("loadUntilTurn", () => {
       }
     }
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const sentinel = useApp.getState().loadOlder(400)
     const jump = useApp.getState().loadUntilTurn("tn_a", 400)
     resume()

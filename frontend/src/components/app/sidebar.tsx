@@ -1,8 +1,7 @@
-import { MessageSquarePlus, Search, Settings } from "lucide-react"
+import { MessageSquarePlus, Search } from "lucide-react"
 import { useMemo, useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { ChromeMenu } from "@/components/app/chrome-menu"
 import { ProjectList } from "@/components/app/project-list"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import { ResizeHandle } from "@/components/app/resize-handle"
@@ -203,7 +202,12 @@ export function Sidebar({
           max={SIDEBAR_WIDTH_MAX}
         />
       ) : null}
-      <DestRail edge={listOpen} />
+      <DestRail
+        edge={listOpen}
+        onSettings={onSettings}
+        onToggleTheme={onToggleTheme}
+        onToggleLocale={onToggleLocale}
+      />
       {listOpen ? (
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {pane === "projects" ? (
@@ -322,25 +326,9 @@ export function Sidebar({
           </div>
         ) : null}
 
-        <div className="mt-auto border-t border-sidebar-border px-[var(--sidebar-list-px)] py-2.5">
-        <SidebarVersion />
-        <div className="flex items-center gap-1">
-        <ChromeMenu onToggleTheme={onToggleTheme} onToggleLocale={onToggleLocale} />
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            chromeTypeClass,
-            "min-w-0 flex-1 justify-between rounded-full px-3 text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
-          )}
-          style={{ height: "var(--sidebar-row-height)" }}
-          onClick={onSettings}
-        >
-          <span>{t("sidebar.settings")}</span>
-          <Settings />
-        </Button>
+        <div className="mt-auto px-[var(--sidebar-list-px)] pb-2">
+          <SidebarVersion />
         </div>
-      </div>
       </div>
       ) : null}
       <ConfirmDeleteDialog

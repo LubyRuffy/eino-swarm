@@ -21,7 +21,9 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 - **Jump inside a long conversation.** Once you have sent two messages, a short
   tick cluster sits in the middle of the transcript's left edge. Hover it for a
-  two-line list of your own turns; click one to pin that send at the top of the pane. A long
+  two-line list of your own turns; click one to pin that send at the top of the pane.
+  The first tick opens the top of the log, so anything above that first send stays
+  on screen. A long
   conversation packs the ticks into a minimap instead of stacking a second
   scrollbar on the rail. Auto-follow unpins so a
   live stream does not yank you back to the bottom. Opening another conversation
@@ -148,8 +150,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   obstacle it cannot pass, it calls
   `block_goal` and stops instead of retrying forever — a crashed turn that
   is not a recoverable model error does the same, and the banner shows the
-  public error. Truncated tool JSON / a `429` / a dropped stream retry
-  in-turn, then auto-continue. **Start** resumes after a block, a cap, a hold, a stop, or a completed
+  public error. Truncated tool JSON / a `429` / a dropped stream / a
+  mid-stream TCP read timeout retry in-turn, then auto-continue. **Start** resumes after a block, a cap, a hold, a stop, or a completed
   objective that finished too early. It does not
   appear while the objective is still pursuing between auto-continue
   sessions. The
@@ -183,8 +185,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   thinking text (or **Thinking**), **Planning next moves** between model
   turns (under a closed answer, not on the fold above it), **Editing** /
   **Reading** / **Exec** while a tool is in flight.
-  Settings → General, the app menu (`…` at the bottom-left of the
-  conversation list), or ⌘K switches to developer view.
+  Settings → General, the app menu (`…` at the bottom of the icon rail),
+  or ⌘K switches to developer view.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
   (finished ones are not re-parsed on every token; fenced code is highlighted
@@ -197,11 +199,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   follow-up for after this one finishes (refresh-safe; a post-turn session
   briefing or memory review does not hold that start), except the live turn's
   own words — those are already in flight. Click a waiting row to
-  edit it; submitting that edit sends it to the back of the queue. **Steer** on
+  pull it into the composer; the row leaves, and Enter queues that draft at the back. **Steer** on
   that row, or ⌘Enter, injects into the current turn at the next model boundary
   — it does not kill an in-flight tool, and it drops a queued copy of the same
   text. Unread steering sits under the working line: **Interrupt** aborts the current manager tool so those nudges land now
-  (workers stay up); **Delete** retracts one bubble so the model never sees it.
+  (workers stay up); the pencil pulls one bubble into the composer and retracts it, so Enter queues it instead; **Delete** retracts one bubble so the model never sees it.
   Stop is what cancels the whole turn. If the manager
   hits its tool-round limit, the transcript asks whether to add another slice
   rather than dying with a graph error.
@@ -300,10 +302,11 @@ model is configured. Open **Settings** (⌘,) — a full-page sheet that starts 
 left rail (on the desktop window, **Back to app** sits below the traffic
 lights). Each page is a list of compact rows (name and hint left, control
 right). Edits write themselves; **Back to app** flushes the last keystroke.
-Chrome language is **Settings → General**, the app menu at the bottom-left of
-the conversation list, or ⌘K → Switch language. Agents still answer in the language you are using.
+Chrome language is **Settings → General**, the app menu at the bottom of
+the icon rail, or ⌘K → Switch language. Agents still answer in the language you are using.
 Theme is **Settings → General**: System / Light / Dark cards, then **Color theme**
-ZWAI (default chrome) or FOFA (intelligence-console palette, both light and dark).
+ZWAI (default chrome) or FOFA (FOFA console tokens: cyan signal on navy / cool
+gray, cyan→blue composer rim).
 That same menu flips light / dark, conversation width (standard reading column
 vs wide), and developer view, and it shows the build version plus which other
 shells are open. Font and size are **Settings → General**. Size scales the conversation; chrome
@@ -471,9 +474,18 @@ exits the app.
 
 ## Using it
 
-The manager fans out when parallel work would save time or improve quality —
-you do not have to ask it to. Spawning one worker and waiting is not that:
-it is an extra hop. A request with independent parts is the clearest win:
+The manager is instructed to use sub-agents whenever they would save time or
+improve quality, and to reassess that choice as the task develops. You do not
+have to request delegation. One worker can provide an independent review or
+second approach even when the manager must wait for it. Work without a useful
+delegation benefit stays on the manager; there is no target worker count.
+Your explicit constraints and the configured concurrency cap still apply.
+Past that cap, `spawn_agent` and `resume_agent` refuse and start nothing.
+The manager waits for one to finish, then resumes that worker or starts
+the next piece. It does not launch the whole batch and leave the rest hanging.
+The manager checks the workers' evidence and combines their results before
+reporting completion. The same policy applies to ordinary turns and `/goal`.
+A request with independent parts is one way to benefit:
 
 > Go through the three files I just uploaded, pull out every deadline, and leave me
 > a single summary.md with one table.
@@ -485,7 +497,7 @@ What you get:
    stays on that agent — new description, same `agent_id` — whether it is still
    running or already finished. `resume_agent` targets a specific leftover
    sibling. Open one in the Agents tab to read the system prompt it was given;
-   the log opens at the latest line, not the first tool call. The tab lists
+   the roster shows the job name and `#n`, not a slash-heavy role. The log opens at the latest line, not the first tool call. The tab lists
    every worker this conversation started, not only the ones whose tools are
    still in the live-edge viewport.
 2. **A workspace.** Every conversation has its own directory
@@ -504,7 +516,8 @@ What you get:
 3. **Steering.** Type while it works. The nudge sits under the working line
    until the manager's next model call — it is queued, not inserted into the
    current tool. **Interrupt** on that pin injects it now by aborting the
-   current manager tool; **Delete** retracts one unread bubble. Steering that
+   current manager tool; the pencil pulls one unread bubble into the composer
+   and retracts it, so Enter queues that draft; **Delete** retracts one unread bubble. Steering that
    arrives after the last model call becomes a follow-up turn.
 4. **Quote the conversation.** Select a passage and **Add to chat** when you want
    the next message to point at it — including while a turn is still streaming.
@@ -550,7 +563,7 @@ when collapsed and open when expanded. On **Projects**, click **Pinned** or
 **Projects** to fold that section. On **Conversations**, click **Conversations**
 to fold its rows (the arrow after the name shows on hover while the section is
 open). Pin a topic from the row menu to keep it in **Pinned** at the top of
-**Projects**. Restart leaves the rail where you left it.
+**Projects**. Launch and reload show the home page and select no conversation. Restart leaves the rail where you left it.
 **New project** at the top of the conversation list asks for three
 things:
 
@@ -588,8 +601,16 @@ at the top. Conversations that belong to no project sit in **Conversations**;
 **New conversation** lands there. The icon on the right of that header
 starts one too. Skills are behind **View skills** on the
 project menu, which opens the **Memory** tab. Notes are editable — **Save notes** appears only after
-the draft differs from what is stored — skills can be read and deleted, and
-**Review now** (the sparkles on the Memory tab) re-reads the last finished turn.
+the draft differs from what is stored — skills can be read, copied, and deleted.
+**Copy** on a skill (or **Copy all skills** when there are several) writes a
+separate copy into another project. Editing either side leaves the other
+alone. The copy remembers where it came from. **Update** pulls a later change
+from that project when this copy was not edited; if both sides changed, it
+asks before replacing the local steps. Nothing is written back. Keep one
+project for the shared procedures and copy from that one. A copy that was
+edited is what the next project receives, so do not copy a business project's
+version when you wanted the shared procedure. An unmodified copy still tracks
+the original project. **Review now** (the sparkles on the Memory tab) re-reads the last finished turn.
 The panel says when it is reading, and what it decided — including when it kept
 nothing. A write that landed is also named in the transcript itself
 (`Memory updated: …`), so you do not have to have the tab open to notice. If you were mid-edit when a review wrote, the panel says so

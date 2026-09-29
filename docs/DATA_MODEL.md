@@ -175,7 +175,10 @@ killed process does not leave the call looking live. A dangling
 stopped exec, so the manager can wait again on the live workers. Follow-ups in
 `followups` stay queued until that leftover turn finishes cleanly. Unread
 `[steer]` rows stay on the leftover turn unless they were retracted
-(`steer_retracted` plus `DeleteMessageByEventSeq`). A user **Stop** is
+(`steer_retracted` plus `DeleteMessageByEventSeq`). An edit before the
+manager reads one rewrites that message's `content` and appends
+`steer_revised` (`{"seq","text"}`); the original `steer` event stays.
+A user **Stop** is
 `cancelled` and is not resumed. Two running leftovers on one conversation
 keep the later one; a leftover `schedule_continue` that resume cannot
 restart (no request, missing provider, gone conversation) or that is
@@ -379,7 +382,15 @@ temporary file and a rename, so a crash mid-write leaves the old version rather
 than half of the new one. `PLAN.md` is the `/plan` draft for that conversation:
 app data, never a file in the user's workspace. `SKILL.md` follows the
 [agentskills.io](https://agentskills.io) layout: YAML frontmatter with `name`
-and `description`, then the procedure as markdown. Agent writes to `MEMORY.md`
+and `description`, then the procedure as markdown. A copy from another
+project also stores `origin_project`, `origin_name`, and `origin_digest`
+(the project, the skill name there, and the digest of the text at copy
+time). Those three are not part of the procedure. The copy is its own file:
+editing it does not change the source, and a later edit of the source does
+not change the copy until `POST /api/projects/:id/skills/:name/pull`. A
+rewrite or patch keeps the link. An unmodified copy keeps tracking the
+original project, so copying that copy does not start following a project
+that never changed the text. Agent writes to `MEMORY.md`
 are also capped per paragraph (`memory.entry_max`); a create that collides with
 an existing skill (same subject, shared name stem, or a copied procedure) is
 refused; a note that restates a skill's summary or steps is refused. After a

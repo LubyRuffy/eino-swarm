@@ -23,7 +23,7 @@ function Probe() {
   const pane = useVisibleDest()
   return (
     <div>
-      <DestRail />
+      <DestRail onSettings={vi.fn()} onToggleTheme={vi.fn()} onToggleLocale={vi.fn()} />
       <div data-testid="pane">{pane}</div>
       {pane === "scheduled" ? <ScheduleListPane /> : null}
       {pane === "clients" ? <LocalClientsSection bare /> : null}
@@ -68,13 +68,10 @@ describe("destination rail", () => {
 
   it("does not paint an unread count on the rail", () => {
     useApp.setState({ scheduleUnread: 726 })
-    render(<DestRail />)
+    render(<DestRail onSettings={vi.fn()} onToggleTheme={vi.fn()} onToggleLocale={vi.fn()} />)
     expect(screen.queryByTestId("schedule-unread")).not.toBeInTheDocument()
     expect(screen.getByTestId("schedule-inbox")).toHaveAttribute("aria-label", "Scheduled")
     const rail = screen.getByTestId("dest-rail")
-    expect(rail.style.paddingLeft).toBe(
-      "calc(var(--sidebar-list-px) + var(--sidebar-row-px))",
-    )
-    expect(rail.style.paddingRight).toBe("var(--sidebar-list-px)")
+    expect(rail.style.paddingInline).toBe("var(--dest-rail-pad)")
   })
 })

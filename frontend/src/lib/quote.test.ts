@@ -8,6 +8,7 @@ import {
   appendQuote,
   displayQuotedText,
   editQuote,
+  composerDraftFromStored,
   formatQuotedMessage,
   parseQuotedMessage,
   plainUserText,
@@ -111,6 +112,19 @@ describe("formatQuotedMessage", () => {
     const wrapped = formatQuotedMessage(["x"], "y")
     expect(wrapped).not.toMatch(/notes\.md|deadline|summary\.md|table/i)
     expect(wrapped).not.toMatch(/Selected text:/)
+  })
+})
+
+describe("composerDraftFromStored", () => {
+  it("keeps a plain message as the draft", () => {
+    expect(composerDraftFromStored("do this")).toEqual({ quotes: [], body: "do this" })
+  })
+
+  it("turns stored highlights into chips and leaves the request in the box", () => {
+    const draft = composerDraftFromStored(formatQuotedMessage(["alpha beta"], "do this"))
+    expect(draft.quotes.map((q) => q.text)).toEqual(["alpha beta"])
+    expect(draft.quotes[0]?.id).toBeTruthy()
+    expect(draft.body).toBe("do this")
   })
 })
 

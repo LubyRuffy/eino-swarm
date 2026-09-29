@@ -31,6 +31,10 @@ describe("writeChromeListDensity", () => {
     expect(wrote["--sidebar-row-height"]).toBe("28px")
     expect(wrote["--sidebar-kind"]).toBe("16px")
     expect(wrote["--sidebar-section-gap"]).toBe("10px")
+    expect(wrote["--sidebar-list-px"]).toBe("16px")
+    expect(Number.parseInt(wrote["--sidebar-list-px"], 10)).toBeGreaterThan(
+      Number.parseInt(wrote["--sidebar-row-px"], 10),
+    )
     expect(JSON.stringify(wrote)).not.toMatch(/rem/)
   })
 })

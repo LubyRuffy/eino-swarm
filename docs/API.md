@@ -16,7 +16,7 @@ the URL in `engine.json` (a random loopback port unless `--addr` was set).
 |---|---|
 | `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory |
 | `404` | no such conversation / turn / file / project / skill / unread steer / schedule / schedule run |
-| `409` | `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable |
+| `409` | `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable; `code: "exists"` copying a skill onto a name the destination already has; `code: "local"` or `"diverged"` pulling a skill would replace local edits |
 | `429` | too many terminals are already open |
 | `501` | the shell cannot do this (`reveal` / `open` when this process is not a loopback engine or the desktop app) |
 
@@ -100,7 +100,7 @@ What the UI reads once at startup to decide what to render.
 `desktop` described a process that was itself the window; shells now attach
 to one engine. `clients` lists shells holding a presence connection
 (`desktop`, `web`, `tui`). A reserve that never connects is absent. The
-app menu (the `…` at the bottom-left of the conversation list) names them when two or more are connected. `configured` is false until a default provider has
+app menu (the `…` at the bottom of the icon rail) names them when two or more are connected. `configured` is false until a default provider has
 a base URL and a model name — the UI shows a setup banner until then. `mock` is
 true when running on the scripted offline provider. `reasoning_levels` is the
 ordered set of explicit thinking levels the composer offers; the empty default
@@ -236,8 +236,10 @@ loaded with More.
 Every top-level section is optional; omitted sections keep their current value.
 The file is rewritten atomically and the model pool is invalidated, so the next
 turn uses the new endpoint without a restart. `swarm.max_concurrent` is also
-pushed onto every live or parked registry in this process, so workers already
-queued under the old cap start as soon as a slot opens; lowering it does not
+pushed onto every live or parked registry in this process. `spawn_agent` and
+`resume_agent` refuse past the new cap instead of parking another worker.
+Workers already queued by a programmatic spawn start as soon as a slot opens;
+lowering it does not
 kill in-flight workers. A language-only write is
 `{"ui":{"locale":"zh"}}` and must not wipe swarm, models, the typeface, or the
 conversation column. Unknown locale values become `system`; unknown `font` /
@@ -591,7 +593,9 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
 is stored stays readable, and nothing is carried into a prompt. `entries` are
 the notes as the prompt sees them, split on blank lines. `skills` carries names
 and one-line descriptions only — the body is fetched per skill, exactly as an
-agent fetches it with `skill_view`. That index is the project's memory, not a
+agent fetches it with `skill_view`. A copied skill also carries `origin`
+(`status` included) so the panel can offer **Update** without opening the
+body. That index is the project's memory, not a
 `SKILL.md` already in the workspace. `needs_tidy` is true when a same-subject
 family is still on disk. Opening this endpoint does not fold them.
 
@@ -649,11 +653,53 @@ refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
 
 ```json
 {"skill": {"name": "weekly-rollup", "description": "…",
-           "body": "## Steps\n1. …", "updated_at": "…"}}
+           "body": "## Steps\n1. …", "updated_at": "…",
+           "origin": {"project_id": "pj_ab12…", "name": "weekly-rollup",
+                      "digest": "…", "status": "current", "project_name": "Library"}}}
 ```
 
-`404` for a skill nobody wrote, `400` for a name that could never be one
-(anything outside `[a-z0-9-]`).
+`origin` is present when this file was copied from another project. `status`
+is `current` (same text as the copy), `update` (the source changed and this
+copy did not), `local` (this copy changed and the source did not), `diverged`
+(both changed), or `missing` (that project or skill is gone). The body is the
+procedure only — the copy link is not part of it. `404` for a skill nobody
+wrote, `400` for a name that could never be one (anything outside `[a-z0-9-]`).
+
+### `POST /api/projects/:id/skills/copy`
+
+```json
+{"to_project": "pj_cd34…", "names": ["weekly-rollup"], "as": "weekly-rollup"}
+```
+
+Writes an independent copy into `to_project`. Omit `names` to copy every
+skill. `as` renames the one skill in `names`. The destination file records
+`origin_project` / `origin_name` / `origin_digest`. An unmodified copy keeps
+the upstream it already tracked, so copying a clean snapshot does not start
+following the project you copied through. A copy that was edited tracks the
+project the bytes were just taken from. The source file is not changed.
+
+```json
+{"copied": [{"from": "weekly-rollup", "name": "weekly-rollup", "project_id": "pj_cd34…"}],
+ "skipped": []}
+```
+
+One named skill fails the request: `404` unknown skill, `409` `exists` when
+the destination already has that name, `400` for a bad name, the same project,
+or a procedure the destination already covers under another name. A batch
+(`names` omitted, or more than one name) returns `200` and lists the rest
+under `skipped` (`code` `exists`, `duplicate`, `not_found`, `bad_name`).
+
+### `POST /api/projects/:id/skills/:name/pull`
+
+```json
+{"force": false}
+```
+
+Replaces this skill with the current text of `origin`. The upstream file is
+not written. `200` returns the skill. `409` `local` when only this copy
+changed, `409` `diverged` when both sides changed. `force: true` replaces the
+local text anyway. `400` `unlinked` when this skill was not copied. `404`
+when the upstream project or skill is gone.
 
 ### `DELETE /api/projects/:id/skills/:name` → `204`
 
@@ -946,6 +992,23 @@ running. `404` when that seq is not an unread steer on this turn (already
 consumed, already retracted, or never existed). Duplicate captions are
 disambiguated by seq, not by text.
 
+### `PATCH /api/threads/:id/steers/:seq` → `200`
+
+Body `{"text": "…"}`. Replaces the caption of that unread `steer` in place.
+The desktop app does not call this for the pencil: it retracts the steer and
+loads the caption into the composer, then Enter queues a follow-up.
+The inbox slot does not move, so the manager cannot read the old words in a
+gap before the new ones arrive. Images already on the steer stay. The original
+`steer` row stays on the log; a `steer_revised` row follows with `text`
+`{"seq":N,"text":"…"}`. An unchanged caption is a no-op and writes no row.
+Empty text is `400` unless that steer already carries images. `400` when
+`seq` is not a positive integer. `409 idle` when nothing is running. `404`
+when that seq is not an unread steer on this turn.
+
+```json
+{"revised": true}
+```
+
 ### Follow-ups
 
 A follow-up is a message typed while a turn was already running. It waits for
@@ -987,7 +1050,9 @@ Drops one waiting message. `404` if it was already flushed or never existed.
 Body `{"text": "…"}`. Saves an edited waiting message and moves it to the back
 of the FIFO (new `seq`, same id). Empty text is `400`. `404` if it was already
 flushed. The conversation does not have to be running: leftover rows after Stop
-are still editable.
+are still editable. The desktop tray does not call this: clicking a row
+deletes it and loads the text into the composer, and Enter enqueues a new
+follow-up.
 
 ```json
 {"followup": {"id": "fu_ab12…", "thread_id": "th_ab12…", "seq": 3, "text": "…",
@@ -1141,11 +1206,12 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `tool_result` | the result, paired by `tool_call_id`. Newlines are kept so the UI can render a file body; clipped at 64k runes |
 | `tool_delta` | live tool output while a call still runs; `text` is the accumulated payload so far (for `exec`, `{stdout,stderr}` JSON), paired by `tool_call_id`. `seq` is 0, not stored. The model still receives one `tool_result` when the call finishes |
 | `tool_call_delta` | the model is still writing a tool call. `text` is `name(N)` where `N` is the argument size in runes so far, paired by `tool_call_id`. `seq` is 0, not stored. The call has not run; `tool_call` arrives when the stream ends and replaces this row |
-| `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished |
+| `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. A slash-shaped role is stored as the job word (`-2`, `-3` when that word is taken), not the path. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished |
 | `finished` | a sub-agent finished; `err` set when it failed |
 | `turn` | an agent started a model turn (`turn N`) |
 | `steer` | human guidance was accepted. `images` as on `user_message` when the steer carried a paste. The `/goal` session wrap-up cue is **not** this event — it is delivered to the in-flight manager only. Retracting unread steering does not delete this row |
 | `steer_retracted` | the human dropped one unread `steer` before the manager read it. `text` is JSON `{seq}` naming that steer. The chat hides the bubble; the Trace log still has both rows |
+| `steer_revised` | the human edited one unread `steer` before the manager read it. `text` is JSON `{seq,text}`. The chat shows `text` on that bubble; the original `steer` row stays. A later revision for the same seq wins. The model reads the revised caption, not the original |
 | `steer_preempted` | Interrupt aborted the current manager tool or generate so unread steering can land on this turn. No payload. Workers were not cancelled |
 | `cleanup` | sub-agents were stopped at the end of the turn |
 | `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated. In-flight `tool_call` rows that never got a result are closed first (`tool_result` with `err`: `the previous process stopped`) so a killed `exec` does not keep spinning — except an unfinished `ask_user`, which is re-armed so the human can still answer. Leftover sub-agents are started again under the same `agent_id` (a second `spawned` for that id is the roster coming back, not a twin). Unread `steer` rows stay on the turn. A leftover `max_iterations` confirm is no longer pending |
@@ -1154,7 +1220,7 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `memory_review` | the post-turn review of a project's memory finished (see below) |
 | `max_iterations` | the manager hit `swarm.manager_max_iterations`; `text` is `{"limit":N,"extend_by":N}` and the turn is still running |
 | `max_iterations_continued` | the human extended the turn; `text` names how many extra rounds |
-| `model_retry` | the manager hit a recoverable ChatModel failure (truncated tool JSON, `429`, a dropped stream) and re-entered this turn; `text` is JSON `{attempt,cap}`. The transcript notice is generic. Invalid tool arguments are dropped from the next model request so a `400 Unterminated string` cannot repeat |
+| `model_retry` | the manager hit a recoverable ChatModel failure (truncated tool JSON, `429`, a dropped stream, a mid-stream TCP read timeout) and re-entered this turn; `text` is JSON `{attempt,cap}`. The transcript notice is generic. Invalid tool arguments are dropped from the next model request so a `400 Unterminated string` cannot repeat |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done`, and does not wait for this event |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |

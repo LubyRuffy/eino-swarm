@@ -181,6 +181,7 @@ describe("schedule store", () => {
 
   it("loads waits on boot and when the thread list refreshes", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     expect(fake.listed).toBeGreaterThanOrEqual(1)
     const afterBoot = fake.listed
     await useApp.getState().refreshThreads()
@@ -260,6 +261,7 @@ describe("schedule store", () => {
 
   it("leaves Scheduled when opening a conversation", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     useApp.getState().openScheduleInbox()
     expect(useApp.getState().scheduleInboxOpen).toBe(true)
     const id = useApp.getState().activeId
@@ -271,6 +273,7 @@ describe("schedule store", () => {
 
   it("refreshes waits when a due tick is skipped busy", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const afterBoot = fake.listed
     fake.onEvent?.({
       kind: "schedule_skipped",
@@ -293,6 +296,7 @@ describe("schedule store", () => {
 
   it("refreshes waits when the live stream arms, fires, reports, or cancels one", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     const afterBoot = fake.listed
     fake.onEvent?.({
       kind: "schedule",
@@ -321,6 +325,7 @@ describe("schedule store", () => {
 
   it("does not let a stale empty GET wipe an armed wait", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.rows = []
     fake.onEvent?.({
       kind: "schedule",
@@ -339,6 +344,7 @@ describe("schedule store", () => {
 
   it("keeps Waiting after done when a thread wake was armed this turn", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "schedule",
       seq: 11,
@@ -363,6 +369,7 @@ describe("schedule store", () => {
 
   it("drops Waiting when that wait fires so a one-shot does not look parked", async () => {
     await useApp.getState().boot()
+    await useApp.getState().openThread("th_old")
     fake.onEvent?.({
       kind: "schedule",
       seq: 11,

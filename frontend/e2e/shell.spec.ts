@@ -4,6 +4,19 @@ import { tmpdir } from "node:os"
 import { basename, join } from "node:path"
 
 import { readComposerPlate } from "./composer-plate"
+import { freshConversation, send, waitForIdle } from "./session"
+
+test("launch with an existing conversation stays on the home page", async ({
+  page,
+}) => {
+  await freshConversation(page)
+  await send(page, "This turn must not stay selected after launch")
+  await waitForIdle(page)
+  await page.reload()
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible()
+  await expect(page.locator('[data-testid="thread-row"][aria-current="true"]')).toHaveCount(0)
+  await expect(page.getByTestId("transcript")).toHaveCount(0)
+})
 
 test("keyboard shortcuts open the palette, a conversation and the panel", async ({
   page,

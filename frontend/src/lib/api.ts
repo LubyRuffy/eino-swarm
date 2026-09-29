@@ -13,6 +13,7 @@ import type {
   Settings,
   SearchResult,
   Skill,
+  SkillCopyResult,
   SkillTidyReport,
   SwarmEvent,
   Thread,
@@ -359,6 +360,22 @@ export const api = {
       `/api/projects/${projectId}/skills/${encodeURIComponent(name)}`,
       { method: "DELETE" },
     ),
+  copySkills: (
+    projectId: string,
+    body: { to_project: string; names?: string[]; as?: string },
+  ) =>
+    request<SkillCopyResult>(`/api/projects/${projectId}/skills/copy`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then((r) => ({
+      copied: r.copied ?? [],
+      skipped: r.skipped ?? [],
+    })),
+  pullSkill: (projectId: string, name: string, force = false) =>
+    request<{ skill: Skill }>(
+      `/api/projects/${projectId}/skills/${encodeURIComponent(name)}/pull`,
+      { method: "POST", body: JSON.stringify({ force }) },
+    ).then((r) => r.skill),
   tidySkills: (
     projectId: string,
     onEvent?: (ev: TidyStreamEvent) => void,
@@ -471,6 +488,12 @@ export const api = {
   /** Drops one unread steer by the timeline seq. The model never sees it. */
   retractSteer: (id: string, seq: number) =>
     request<void>(`/api/threads/${id}/steers/${seq}`, { method: "DELETE" }),
+  /** Replaces the caption of one unread steer. The slot stays put. */
+  reviseSteer: (id: string, seq: number, text: string) =>
+    request<{ revised: boolean }>(`/api/threads/${id}/steers/${seq}`, {
+      method: "PATCH",
+      body: JSON.stringify({ text }),
+    }),
   interrupt: (id: string) =>
     request<{ interrupted: boolean }>(`/api/threads/${id}/interrupt`, {
       method: "POST",

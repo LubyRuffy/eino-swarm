@@ -4,7 +4,8 @@ import { ApiError, api } from "@/lib/api"
 
 export type SteerInjectSlice = {
   preempt: () => Promise<void>
-  retractSteer: (seq: number) => Promise<void>
+  retractSteer: (seq: number) => Promise<boolean>
+  reviseSteer: (seq: number, text: string) => Promise<void>
 }
 
 type Host = { activeId?: string }
@@ -33,11 +34,27 @@ export function steerInjectActions(
     },
     retractSteer: async (seq) => {
       const id = get().activeId
-      if (!id || !(seq > 0)) return
+      if (!id || !(seq > 0)) return false
       try {
         await api.retractSteer(id, seq)
+        return true
       } catch (e) {
+        // False means the bubble is still the model's to read, or it is
+        // already gone. The composer must not also take that caption.
         if (!ignore(e, ["idle"])) set({ error: fail(e) })
+        return false
+      }
+    },
+    reviseSteer: async (seq, text) => {
+      const id = get().activeId
+      if (!id || !(seq > 0)) return
+      try {
+        await api.reviseSteer(id, seq, text)
+      } catch (e) {
+        // Idle is the race with the turn ending. A 404 is not that race:
+        // the manager already read the bubble, and the edit did not land.
+        if (e instanceof ApiError && e.code === "idle") return
+        set({ error: fail(e) })
       }
     },
   }

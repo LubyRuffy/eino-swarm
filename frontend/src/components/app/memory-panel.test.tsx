@@ -5,7 +5,12 @@ import { MemoryPanel } from "./memory-panel"
 import type { Project, ProjectMemory } from "@/lib/types"
 
 vi.mock("@/lib/api", () => ({
-  api: { skill: vi.fn() },
+  api: {
+    skill: vi.fn(),
+    projects: vi.fn(),
+    copySkills: vi.fn(),
+    pullSkill: vi.fn(),
+  },
 }))
 
 const { api } = await import("@/lib/api")
@@ -50,7 +55,11 @@ function renderPanel(props: Partial<Parameters<typeof MemoryPanel>[0]> = {}) {
 }
 
 describe("Memory panel", () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(api.projects).mockResolvedValue([])
+    vi.mocked(api.copySkills).mockResolvedValue({ copied: [], skipped: [] })
+  })
 
   it("shows the notes, what they cost, and the skills", () => {
     renderPanel()
@@ -407,5 +416,119 @@ describe("Memory panel", () => {
   it("warns that stored memory is not being used when the project has it off", () => {
     renderPanel({ memory: { ...memory, enabled: false } })
     expect(screen.getByText(/switched off for this project/)).toBeInTheDocument()
+  })
+
+  it("copies one skill into the other project", async () => {
+    const other: Project = { ...project, id: "pj_2", name: "Other" }
+    vi.mocked(api.projects).mockResolvedValue([project, other])
+    vi.mocked(api.copySkills).mockResolvedValue({
+      copied: [{ from: "a-procedure", name: "a-procedure", project_id: "pj_2" }],
+      skipped: [],
+    })
+    renderPanel()
+    fireEvent.click(screen.getByRole("button", { name: "Copy skill a-procedure" }))
+    expect(await screen.findByRole("heading", { name: "Copy a-procedure" })).toBeInTheDocument()
+    expect(await screen.findByText("Other")).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Name in the destination"), {
+      target: { value: "a-procedure-local" },
+    })
+    const confirm = screen.getByRole("button", { name: "Copy skill" })
+    await waitFor(() => expect(confirm).toBeEnabled())
+    fireEvent.click(confirm)
+    await waitFor(() =>
+      expect(api.copySkills).toHaveBeenCalledWith("pj_1", {
+        to_project: "pj_2",
+        names: ["a-procedure"],
+        as: "a-procedure-local",
+      }),
+    )
+    expect(await screen.findByTestId("skill-copy-notice")).toHaveTextContent("Copied 1 to Other.")
+  })
+
+  it("copies every skill when more than one is recorded", async () => {
+    vi.mocked(api.projects).mockResolvedValue([{ ...project, id: "pj_2", name: "Other" }])
+    vi.mocked(api.copySkills).mockResolvedValue({
+      copied: [
+        { from: "a-procedure", name: "a-procedure", project_id: "pj_2" },
+        { from: "another-procedure", name: "another-procedure", project_id: "pj_2" },
+      ],
+      skipped: [],
+    })
+    renderPanel({
+      memory: {
+        ...memory,
+        skills: [
+          { name: "a-procedure", description: "how to do the thing", updated_at: "" },
+          { name: "another-procedure", description: "a later one", updated_at: "" },
+        ],
+      },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Copy all skills" }))
+    expect(await screen.findByText("Other")).toBeInTheDocument()
+    const confirm = screen.getByRole("button", { name: "Copy skills" })
+    await waitFor(() => expect(confirm).toBeEnabled())
+    fireEvent.click(confirm)
+    await waitFor(() =>
+      expect(api.copySkills).toHaveBeenCalledWith("pj_1", { to_project: "pj_2" }),
+    )
+  })
+
+  it("says to create a project when there is nowhere to copy", async () => {
+    renderPanel()
+    fireEvent.click(screen.getByRole("button", { name: "Copy skill a-procedure" }))
+    expect(await screen.findByText("Create another project first.")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Copy skill" })).toBeDisabled()
+  })
+
+  it("pulls an upstream change and asks before replacing local edits", async () => {
+    const origin = {
+      project_id: "pj_2",
+      name: "a-procedure",
+      digest: "abc",
+      project_name: "Other",
+    }
+    vi.mocked(api.pullSkill).mockResolvedValue({
+      name: "a-procedure",
+      description: "how to do the thing",
+      updated_at: "",
+      body: "new steps",
+      origin: { ...origin, status: "current" },
+    })
+    const { onRefresh } = renderPanel({
+      memory: {
+        ...memory,
+        skills: [
+          {
+            name: "a-procedure",
+            description: "how to do the thing",
+            updated_at: "",
+            origin: { ...origin, status: "update" },
+          },
+        ],
+      },
+    })
+    expect(screen.getByTestId("skill-origin")).toHaveTextContent("Copied from Other")
+    fireEvent.click(screen.getByRole("button", { name: "Update a-procedure from its source" }))
+    await waitFor(() => expect(api.pullSkill).toHaveBeenCalledWith("pj_1", "a-procedure", false))
+    expect(onRefresh).toHaveBeenCalled()
+
+    renderPanel({
+      memory: {
+        ...memory,
+        skills: [
+          {
+            name: "a-procedure",
+            description: "how to do the thing",
+            updated_at: "",
+            origin: { ...origin, status: "diverged" },
+          },
+        ],
+      },
+    })
+    fireEvent.click(screen.getAllByRole("button", { name: "Update a-procedure from its source" })[1])
+    expect(screen.getByRole("heading", { name: "Replace local edits?" })).toBeInTheDocument()
+    expect(api.pullSkill).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole("button", { name: "Replace with source" }))
+    await waitFor(() => expect(api.pullSkill).toHaveBeenCalledWith("pj_1", "a-procedure", true))
   })
 })
