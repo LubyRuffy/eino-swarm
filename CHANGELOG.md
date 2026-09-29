@@ -29,6 +29,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430` / `C-010`: the qualified #46 batch advances mobile package and iOS
+  build metadata to 0.1.22/122. The Mac, Android, and iOS deliveries share
+  one verified main source commit; each platform still has its own release gate.
+
 - **`spawn_agent` and `resume_agent` refuse past `max_concurrent`.** A larger batch no longer starts every worker and parks the extras on the gate, where they look busy and never call the model. The tool returns an error result; the manager waits, then resumes a finished id or spawns the next piece. `Registry.Spawn` / `Resume` still queue, and raising the cap still wakes those programmatic waiters. The manager prompt and those two tool descriptions state the configured number as a hard limit. A one-shot `schedule_wake` is consumed when it fires; the manager prompt now says `report_schedule` does not arm the next wait, and prose that a wait is planned does not create one.
 
 - **Launch opens the home page.** The center no longer selects a conversation on startup or reload. The list is still there; a row opens only when it is clicked. The rail stays on the last list.
