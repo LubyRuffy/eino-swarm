@@ -33,6 +33,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430` / `C-010`: the qualified complete-main batch advances mobile package and iOS build metadata to 0.1.23/123. Its release includes the accepted phone changes from Issues #47/#48 and the verified desktop changes on main; each required platform retains an independent delivery gate.
+
 - `C-004`: workspace traversal rejection now also covers the paired phone's read-only file RPC, including escaped symlinks (Issue #48).
 
 - `F-222` / `C-006`: the phone sub-agent header now counts only running workers. The roster separates running work from completed and failed history while keeping each worker's log available (Issue #47).
