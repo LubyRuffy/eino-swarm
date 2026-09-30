@@ -65,6 +65,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-420` 共享技能库的运行时数据目录不再误写成仓库内实现证据，恢复文档结构检查；桌面 E2E 从当前回合的审阅事件定位复制目标，已有技能或其他并发审阅不再让断言失败。
+
 - **Pasting into an empty composer lands once.** The box hid its scrollbar with `overflow: hidden`, and WKWebView then ignored paste until something was already typed. A paste of the draft that was just sent was also thrown away as an IME echo. The scrollbar stays hidden without `overflow: hidden`, and a real paste is not that echo. Recovering a dropped insert waits until the browser has had its turn, so a paste the browser already accepted is not written twice.
 
 - **An output-budget failure on the desktop links to the setting.** When a turn ends because the model spent `max_completion_tokens` without an answer, the transcript keeps that error and adds a hint plus a link. The link opens Settings → Swarm and focuses Max completion tokens. The phone does not edit that cap, so it still shows the error text alone.
