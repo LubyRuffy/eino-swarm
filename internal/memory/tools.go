@@ -225,7 +225,7 @@ type skillViewTool struct{ store *Store }
 func (t *skillViewTool) Info(context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: ToolSkillView,
-		Desc: "Read one recorded project skill in full. The system prompt lists only each " +
+		Desc: "Read one recorded skill in full. The system prompt lists only each " +
 			"skill's name and summary; open a listed name before starting work that procedure " +
 			"already covers. Names not in that index cannot be opened here — a procedure in " +
 			"the workspace is a file.",

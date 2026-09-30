@@ -75,6 +75,13 @@ func TestProjectPathsStayUnderTheDataDirectory(t *testing.T) {
 	if cfg.ProjectWorkspaceDir("pj_1") == cfg.ProjectMemoryDir("pj_1") {
 		t.Fatal("the working directory and the memory store must not be the same directory")
 	}
+	lib := cfg.LibraryDir()
+	if !strings.HasPrefix(lib, cfg.DataDir()+string(filepath.Separator)) {
+		t.Fatalf("library dir %q escaped %q", lib, cfg.DataDir())
+	}
+	if strings.HasPrefix(lib, cfg.ProjectsDir()+string(filepath.Separator)) {
+		t.Fatal("the shared library must not sit inside a project")
+	}
 }
 
 // The two switches are the user's call. A hand-edited `false` that normalize

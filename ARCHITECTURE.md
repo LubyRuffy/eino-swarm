@@ -468,11 +468,18 @@ worker before closing SQLite.
    `schedule_continue` that cannot restart, or that is dropped as superseded,
    still closes the bound schedule run (`error`) so `HasRunningRun` cannot
    stick a wait that will never fire again.
-8. **Review** (project conversations with memory on, `memory.auto_review`): a
+8. **Review** (project conversations with memory on, and conversations in no
+   project, when `memory.enabled` and `memory.auto_review`): a
    goroutine hands the finished turn's **event log** (plus the rolling session
    briefing, clipped so it cannot spend the whole budget) to a single reviewer
    agent — one `adk.ChatModelAgent` with the memory tools, not a swarm — which
-   stores what is worth carrying forward. It does not read the compacted ADK
+   stores what is worth carrying forward. A conversation in no project has no
+   note store: the reviewer gets `skill_view` and `skill_manage` only, and the
+   files land in the shared library (`library/skills/` under the data
+   directory). The next conversation in no project lists those skills and
+   can open one with `skill_view`. It cannot write the library during the
+   turn; the review does. A person can still copy a skill into a project.
+   It does not read the compacted ADK
    transcript: that view is for the next Generate. If the manager already
    wrote with `memory` or `skill_manage` this turn, auto-review stays out of
    the way; **Review now** still runs. Its model calls are recorded under the
@@ -500,7 +507,9 @@ worker before closing SQLite.
    project's latest finished turn when there is one. Opening the tab does
    not rewrite files. Reviews of one
    project are serialized: two turns finishing together would each read the same
-   bounded notes, both decide there is room, and one would lose its entry. Only
+   bounded notes, both decide there is room, and one would lose its entry.
+   Conversations outside a project share one lock on the library. The library
+   tidy is `POST /api/library/tidy-skills`. Only
    a turn that finished cleanly is reviewed, and `Shutdown` waits for the ones
    in flight before exiting.
 9. **Title** (untitled conversations and untitled waits, `swarm.auto_title`): a goroutine asks the
@@ -802,10 +811,13 @@ $ZWAI_HOME (default ~/.zwai-swarm)
 ├── remote/                Host Token + X25519 identity (0600); not in yaml
 ├── workspaces/<thread>/   one per standalone conversation; uploads/ inside
 ├── plans/<thread>/PLAN.md `/plan` draft; not in the workspace
+├── library/               shared skills from conversations in no project
+│   └── skills/<name>/SKILL.md
 └── projects/<project>/
     ├── workspace/         only when the project has no workdir of its own
     └── memory/            MEMORY.md + skills/<name>/SKILL.md
-                           (a copy adds origin_project / origin_name / origin_digest)
+                           (a copy adds origin_project / origin_name / origin_digest;
+                            origin_project `library` is the shared library, not a project row)
 ```
 
 The workspace is where relative tool paths resolve and what the Files panel

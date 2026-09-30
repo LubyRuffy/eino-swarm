@@ -38,12 +38,31 @@ func (e *Engine) FoldProjectSkillsWatch(projectID string, watch func(TidyEvent))
 	return e.foldProjectSkills(projectID, watch)
 }
 
+// FoldLibrarySkills curates the shared skill library the same way a project's
+// tidy curates its catalog. The gate is the library, not a project row.
+func (e *Engine) FoldLibrarySkills() (memory.FoldReport, error) {
+	return e.FoldLibrarySkillsWatch(nil)
+}
+
+// FoldLibrarySkillsWatch is FoldLibrarySkills with a live beat for the panel.
+func (e *Engine) FoldLibrarySkillsWatch(watch func(TidyEvent)) (memory.FoldReport, error) {
+	return e.foldCatalog(memory.LibraryID, e.LibraryMemory(), e.libraryReviewAnchor, watch,
+		memory.LibraryTidyPrompt(), "curates the shared skill library")
+}
+
 func (e *Engine) foldProjectSkills(projectID string, watch func(TidyEvent)) (memory.FoldReport, error) {
 	var zero memory.FoldReport
 	if _, err := e.store.GetProject(projectID); err != nil {
 		return zero, err
 	}
-	gate := e.reviews.begin(projectID)
+	return e.foldCatalog(projectID, e.ProjectMemory(projectID), func() (string, string, string, string, string) {
+		return e.tidyReviewAnchor(projectID)
+	}, watch, memory.CatalogTidyPrompt(), "curates this project's recorded skills")
+}
+
+func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (string, string, string, string, string), watch func(TidyEvent), instruction, description string) (memory.FoldReport, error) {
+	var zero memory.FoldReport
+	gate := e.reviews.begin(gateKey)
 	if gate == nil {
 		return zero, ErrIdle
 	}
@@ -51,7 +70,6 @@ func (e *Engine) foldProjectSkills(projectID string, watch func(TidyEvent)) (mem
 	gate <- struct{}{}
 	defer func() { <-gate }()
 
-	mem := e.ProjectMemory(projectID)
 	before, err := mem.ListSkills()
 	if err != nil {
 		return zero, err
@@ -76,7 +94,7 @@ func (e *Engine) foldProjectSkills(projectID string, watch func(TidyEvent)) (mem
 		return zero, err
 	}
 
-	threadID, turnID, providerID, model, effort := e.tidyReviewAnchor(projectID)
+	threadID, turnID, providerID, model, effort := anchor()
 	var mu sync.Mutex
 	outcome := reviewOutcome{Notes: map[string]int{}}
 	reviewed := false
@@ -89,7 +107,7 @@ func (e *Engine) foldProjectSkills(projectID string, watch func(TidyEvent)) (mem
 				watch(TidyEvent{Phase: "change", Action: c.Action, Name: c.Name})
 			}
 		}
-		userMsg, msgErr := catalogTidyUserMessage(mem)
+		userMsg, msgErr := catalogTidyUserMessage(mem, gateKey == memory.LibraryID)
 		if msgErr != nil {
 			return zero, msgErr
 		}
@@ -99,8 +117,8 @@ func (e *Engine) foldProjectSkills(projectID string, watch func(TidyEvent)) (mem
 			providerID:  providerID,
 			model:       model,
 			effort:      effort,
-			description: "curates this project's recorded skills",
-			instruction: memory.CatalogTidyPrompt(),
+			description: description,
+			instruction: instruction,
 			userMsg:     userMsg,
 			maxIter:     e.cfg.Memory.TidyIterations(),
 			tools:       memory.CatalogTools(mem, onChange),
@@ -149,6 +167,7 @@ func (e *Engine) foldProjectSkills(projectID string, watch func(TidyEvent)) (mem
 			Note:    note,
 			Err:     report.Err,
 			Notify:  config.MemoryNotifyOff,
+			Library: gateKey == memory.LibraryID,
 		}
 		if recorded.Note == "" && recorded.Changed {
 			recorded.Note = "Folded overlapping skills."
@@ -176,7 +195,7 @@ func skillChanges(changes []memory.Change) []memory.Change {
 	return out
 }
 
-func catalogTidyUserMessage(mem *memory.Store) (string, error) {
+func catalogTidyUserMessage(mem *memory.Store, library bool) (string, error) {
 	skills, err := mem.ListSkills()
 	if err != nil {
 		return "", err
@@ -185,7 +204,11 @@ func catalogTidyUserMessage(mem *memory.Store) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return memory.CatalogTidyMessage(memory.ReviewCatalog(skills, families)), nil
+	catalog := memory.ReviewCatalog(skills, families)
+	if library {
+		catalog = memory.LibraryCatalog(skills, families)
+	}
+	return memory.CatalogTidyMessage(catalog), nil
 }
 
 // tidyReviewAnchor is where catalog-tidy model calls are attributed. The
@@ -199,7 +222,26 @@ func (e *Engine) tidyReviewAnchor(projectID string) (threadID, turnID, providerI
 	if err != nil {
 		return "", "", e.cfg.Models.Default, "", ""
 	}
+	return e.pickReviewAnchor(threads)
+}
 
+// libraryReviewAnchor hangs a library tidy on the newest finished turn that
+// belongs to no project, so zwai trace still reaches the model calls.
+func (e *Engine) libraryReviewAnchor() (threadID, turnID, providerID, model, effort string) {
+	threads, err := e.store.ListThreads(true, "")
+	if err != nil {
+		return "", "", e.cfg.Models.Default, "", ""
+	}
+	loose := make([]store.Thread, 0, len(threads))
+	for _, th := range threads {
+		if strings.TrimSpace(th.ProjectID) == "" {
+			loose = append(loose, th)
+		}
+	}
+	return e.pickReviewAnchor(loose)
+}
+
+func (e *Engine) pickReviewAnchor(threads []store.Thread) (threadID, turnID, providerID, model, effort string) {
 	var best *store.Turn
 	var bestThread store.Thread
 	var fallback *store.Thread

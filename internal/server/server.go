@@ -127,6 +127,12 @@ func New(opts Options) (*Server, error) {
 		api.DELETE("/projects/:id/skills/:name", s.deleteSkill)
 		api.POST("/projects/:id/skills/:name/pull", s.pullSkill)
 
+		api.GET("/library", s.getLibrary)
+		api.POST("/library/skills/copy", s.copyLibrarySkills)
+		api.POST("/library/tidy-skills", s.tidyLibrary)
+		api.GET("/library/skills/:name", s.getLibrarySkill)
+		api.DELETE("/library/skills/:name", s.deleteLibrarySkill)
+
 		api.GET("/threads", s.listThreads)
 		api.POST("/threads", s.createThread)
 		api.PUT("/threads/reorder", s.reorderThreads)

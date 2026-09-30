@@ -180,7 +180,8 @@ func TestReviewIsSkippedForTurnsThatDidNotFinish(t *testing.T) {
 // exactly as before: no review, no event, no extra model call.
 func TestReviewOnlyRunsWhereMemoryIsOn(t *testing.T) {
 	cases := map[string]func(t *testing.T, e *Engine) string{
-		"no project": func(t *testing.T, e *Engine) string {
+		"memory off, no project": func(t *testing.T, e *Engine) string {
+			e.Config().Memory.Enabled = false
 			th, err := e.CreateThread("t", "", "")
 			if err != nil {
 				t.Fatal(err)
@@ -420,13 +421,13 @@ func TestReviewNowReplaysTheLastFinishedTurn(t *testing.T) {
 		t.Fatalf("%d review events under the turn, want 2", reviews)
 	}
 
-	// Refusals: no project, and a conversation that is not there.
+	// A conversation with no finished turn has nothing to review, project or not.
 	loose, err := e.CreateThread("loose", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.ReviewTurn(loose.ID); !errors.Is(err, ErrIdle) {
-		t.Fatalf("ReviewTurn on a conversation in no project err=%v", err)
+		t.Fatalf("ReviewTurn before any turn err=%v", err)
 	}
 	if _, err := e.ReviewTurn("th_missing"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("ReviewTurn on an unknown conversation err=%v", err)

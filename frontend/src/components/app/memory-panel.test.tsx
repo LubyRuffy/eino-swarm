@@ -9,6 +9,8 @@ vi.mock("@/lib/api", () => ({
     skill: vi.fn(),
     projects: vi.fn(),
     copySkills: vi.fn(),
+    copyLibrarySkills: vi.fn(),
+    librarySkill: vi.fn(),
     pullSkill: vi.fn(),
   },
 }))
@@ -59,6 +61,7 @@ describe("Memory panel", () => {
     vi.clearAllMocks()
     vi.mocked(api.projects).mockResolvedValue([])
     vi.mocked(api.copySkills).mockResolvedValue({ copied: [], skipped: [] })
+    vi.mocked(api.copyLibrarySkills).mockResolvedValue({ copied: [], skipped: [] })
   })
 
   it("shows the notes, what they cost, and the skills", () => {
@@ -413,6 +416,39 @@ describe("Memory panel", () => {
     expect(screen.queryByLabelText("Project notes")).not.toBeInTheDocument()
   })
 
+  it("shows the shared library, not project notes, for a conversation outside a project", async () => {
+    const other: Project = { ...project, id: "pj_2", name: "Other" }
+    vi.mocked(api.projects).mockResolvedValue([other])
+    vi.mocked(api.librarySkill).mockResolvedValue({
+      name: "a-procedure",
+      description: "how to do the thing",
+      body: "1. Do the thing.",
+      updated_at: "",
+    })
+    vi.mocked(api.copyLibrarySkills).mockResolvedValue({
+      copied: [{ from: "a-procedure", name: "a-procedure", project_id: "pj_2" }],
+      skipped: [],
+    })
+    renderPanel({
+      project: undefined,
+      library: true,
+      memory: { ...memory, dir: "/data/library" },
+    })
+    expect(screen.getByText("Shared skills")).toBeInTheDocument()
+    expect(screen.queryByLabelText("Project notes")).not.toBeInTheDocument()
+    expect(screen.getByText(/Copy one into a project/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Copy skill a-procedure" }))
+    const confirm = await screen.findByRole("button", { name: "Copy skill" })
+    await waitFor(() => expect(confirm).toBeEnabled())
+    fireEvent.click(confirm)
+    await waitFor(() =>
+      expect(api.copyLibrarySkills).toHaveBeenCalledWith({
+        to_project: "pj_2",
+        names: ["a-procedure"],
+      }),
+    )
+  })
+
   it("warns that stored memory is not being used when the project has it off", () => {
     renderPanel({ memory: { ...memory, enabled: false } })
     expect(screen.getByText(/switched off for this project/)).toBeInTheDocument()
@@ -478,6 +514,40 @@ describe("Memory panel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Copy skill a-procedure" }))
     expect(await screen.findByText("Create another project first.")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Copy skill" })).toBeDisabled()
+  })
+
+  it("keeps the copy's own status when the source is the shared library", () => {
+    renderPanel({
+      memory: {
+        ...memory,
+        skills: [
+          {
+            name: "from-library",
+            description: "how to do the thing",
+            updated_at: "",
+            origin: { project_id: "library", name: "from-library", digest: "abc", status: "local" },
+          },
+          {
+            name: "gone-library",
+            description: "how to do the thing",
+            updated_at: "",
+            origin: { project_id: "library", name: "gone-library", digest: "abc", status: "missing" },
+          },
+          {
+            name: "library-current",
+            description: "how to do the thing",
+            updated_at: "",
+            origin: { project_id: "library", name: "library-current", digest: "abc", status: "current" },
+          },
+        ],
+      },
+    })
+    const origins = screen.getAllByTestId("skill-origin").map((node) => node.textContent)
+    expect(origins).toEqual([
+      "Edited in this project. The source has not changed.",
+      "The source skill is gone.",
+      "From the shared skill library",
+    ])
   })
 
   it("pulls an upstream change and asks before replacing local edits", async () => {

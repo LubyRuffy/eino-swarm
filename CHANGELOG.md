@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- Conversations that belong to no project record reusable procedures in the shared skill library (`library/skills/` under the data directory) after a finished turn. The next conversation outside a project lists that index and can open a skill; it does not write the library during the turn. The Memory tab lists the files, can tidy them, and can copy one into a project. Update on that copy pulls a later library change. A copy that was edited, or whose source is gone, says so. Clicking a project folder does not replace this list.
+
 - `F-224` / `C-020`: a paired phone now lists a PC conversation's output tree over bounded encrypted RPC and previews text, images and PDFs. HTML/SVG are displayed as source; workspace traversal and escaped symlinks are rejected (Issue #48).
 
 - **Skills copy between projects as their own files.** Memory can copy one skill, or every skill, into another project. Editing either side leaves the other alone. The copy records where it came from. **Update** pulls a later change from that project when the copy was not edited; if both sides changed, it asks before replacing the local text. An unmodified copy keeps tracking the original project, so the next copy does not start following a project that never changed the steps. Nothing is written back on its own.

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
+import { LIBRARY_ID } from "@/lib/library"
 import type { Project, ProjectMemory, Skill, SkillOrigin, SkillTidyReport, TidyLive } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
@@ -43,6 +44,9 @@ export interface MemoryPanelProps {
   /** Skill name the sidebar asked to open. The body is fetched the same way
    *  a click would: it is not in the list payload. */
   focusSkill?: string
+  /** The shared library for a conversation that belongs to no project.
+   *  Notes stay out; the skills here are copied into a project later. */
+  library?: boolean
 }
 
 /** What a project has learned: the notes every turn carries, and the
@@ -70,6 +74,7 @@ export function MemoryPanel({
   onReveal,
   onSeen,
   focusSkill,
+  library,
 }: MemoryPanelProps) {
   const t = useT()
   const [draft, setDraft] = useState("")
@@ -106,7 +111,7 @@ export function MemoryPanel({
     seen.current = text
   }, [text, dirty])
 
-  if (!project) {
+  if (!project && !library) {
     return (
       <p className="p-4 text-sm text-muted-foreground">
         {t("memory.noProject")}
@@ -143,7 +148,7 @@ export function MemoryPanel({
     <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 p-3">
       <div className="flex shrink-0 items-center gap-2">
         <p className="min-w-0 flex-1 truncate text-sm font-medium">
-          {project.name}
+          {library ? t("memory.libraryTitle") : project?.name}
         </p>
         <Button
           variant="ghost"
@@ -175,10 +180,11 @@ export function MemoryPanel({
 
       {memory && !memory.enabled ? (
         <p className="rounded-md border border-border p-2 text-xs text-muted-foreground">
-          {t("memory.off")}
+          {library ? t("memory.libraryOff") : t("memory.off")}
         </p>
       ) : null}
 
+      {library ? null : (
       <section className="grid shrink-0 gap-2">
         <div className="flex items-center gap-2">
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -236,6 +242,7 @@ export function MemoryPanel({
           </div>
         ) : null}
       </section>
+      )}
 
       <section className="flex min-h-0 flex-1 flex-col gap-2">
         <div className="flex shrink-0 items-center gap-2">
@@ -265,7 +272,9 @@ export function MemoryPanel({
             </Button>
           ) : null}
         </div>
-        <p className="text-xs text-muted-foreground">{t("memory.skillsHint")}</p>
+        <p className="text-xs text-muted-foreground">
+          {library ? t("memory.libraryHint") : t("memory.skillsHint")}
+        </p>
         {copyNotice ? (
           <p data-testid="skill-copy-notice" className="text-xs text-muted-foreground">
             {copyNotice}
@@ -288,7 +297,7 @@ export function MemoryPanel({
               {memory.skills.map((skill) => (
                 <SkillRow
                   key={skill.name}
-                  projectId={project.id}
+                  projectId={project?.id ?? LIBRARY_ID}
                   name={skill.name}
                   description={skill.description}
                   origin={skill.origin}
@@ -308,7 +317,7 @@ export function MemoryPanel({
       </section>
 
       <p className="shrink-0 break-all text-xs text-muted-foreground">
-        {memory?.dir ?? project.memory_dir}
+        {memory?.dir ?? project?.memory_dir}
         {onReveal ? (
           <Button variant="link" size="sm" onClick={onReveal}>
             {t("memory.showInFinder")}
@@ -330,7 +339,8 @@ export function MemoryPanel({
       />
       <SkillCopyDialog
         open={copyTarget !== undefined}
-        sourceId={project.id}
+        sourceId={project?.id ?? LIBRARY_ID}
+        fromLibrary={Boolean(library)}
         names={copyTarget?.names}
         onOpenChange={(open) => {
           if (!open) setCopyTarget(undefined)
@@ -350,9 +360,10 @@ function isConflict(e: unknown): boolean {
  *  it: most of them are not what anyone came to read. */
 function originLabel(
   origin: SkillOrigin,
-  t: (key: "skill.originFrom" | "skill.originLocal" | "skill.originDiverged" | "skill.originMissing", vars?: { project: string }) => string,
+  t: (key: "skill.originFrom" | "skill.originLibrary" | "skill.originLocal" | "skill.originDiverged" | "skill.originMissing", vars?: { project: string }) => string,
 ) {
-  const project = origin.project_name || origin.project_id
+  // current and update both name the source. local, diverged and missing
+  // describe the copy, and that still has to show when the source is the library.
   switch (origin.status) {
     case "local":
       return t("skill.originLocal")
@@ -361,7 +372,8 @@ function originLabel(
     case "missing":
       return t("skill.originMissing")
     default:
-      return t("skill.originFrom", { project })
+      if (origin.project_id === LIBRARY_ID) return t("skill.originLibrary")
+      return t("skill.originFrom", { project: origin.project_name || origin.project_id })
   }
 }
 
@@ -390,6 +402,8 @@ function SkillRow({
   const [error, setError] = useState<string>()
   const [replacing, setReplacing] = useState(false)
   const canPull = origin?.status === "update" || origin?.status === "diverged"
+  const load = () =>
+    projectId === LIBRARY_ID ? api.librarySkill(name) : api.skill(projectId, name)
 
   useEffect(() => {
     // The sidebar sent the user here. Opening without fetching would show
@@ -398,7 +412,7 @@ function SkillRow({
     if (!startOpen) return
     let cancelled = false
     setOpen(true)
-    void api.skill(projectId, name).then(
+    void load().then(
       (got) => {
         if (!cancelled) setSkill(got)
       },
@@ -427,7 +441,7 @@ function SkillRow({
     setOpen(next)
     if (!next || skill) return
     try {
-      setSkill(await api.skill(projectId, name))
+      setSkill(await load())
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }

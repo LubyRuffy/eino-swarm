@@ -131,6 +131,10 @@ func formatNotesList(snap Snapshot) string {
 }
 
 func formatSkillsIndex(skills []SkillInfo, indexMax int) string {
+	return formatSkillBullets(skills, indexMax, "Procedures recorded in this project. Only the summaries are here:\n\n")
+}
+
+func formatSkillBullets(skills []SkillInfo, indexMax int, intro string) string {
 	var b strings.Builder
 	if len(skills) == 0 {
 		b.WriteString("No skills recorded yet. " + ToolSkillView +
@@ -141,7 +145,7 @@ func formatSkillsIndex(skills []SkillInfo, indexMax int) string {
 	if indexMax > 0 && len(shown) > indexMax {
 		shown = shown[:indexMax]
 	}
-	b.WriteString("Procedures recorded in this project. Only the summaries are here:\n\n")
+	b.WriteString(intro)
 	for _, s := range shown {
 		fmt.Fprintf(&b, "- %s — %s\n", s.Name, s.Description)
 	}

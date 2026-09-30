@@ -277,6 +277,11 @@ export const en = {
 
   "memory.noProject":
     "This conversation is not in a project, so it has nothing to remember between conversations.",
+  "memory.libraryTitle": "Shared skills",
+  "memory.libraryHint":
+    "Recorded from conversations that are not in a project. Later conversations outside a project start with this index and can open a skill. Copy one into a project when that agent should follow it.",
+  "memory.libraryOff":
+    "Memory is switched off. Skills already here stay and are not carried into later conversations. New conversations will not add to them.",
   "memory.reviewNow": "Review this conversation now",
   "memory.reload": "Reload memory",
   "memory.reviewing": "Reading the last finished turn…",
@@ -441,6 +446,8 @@ export const en = {
   "notice.reviewDone": "Review finished.",
   "notice.reviewFailed": "Memory review failed: {err}",
   "notice.memoryUpdated": "Memory updated.",
+  "notice.libraryUpdated": "Saved to the skill library.",
+  "notice.libraryDetail": "Saved to the skill library: {detail}.",
   "notice.scheduleArmed": "A wait is armed.",
   "notice.scheduleCancelled": "A wait was cancelled.",
   "notice.scheduleFired": "Scheduled check.",
@@ -753,10 +760,10 @@ export const en = {
   "settings.memory.when": "When it runs",
   "settings.memory.enabled": "Remember anything at all",
   "settings.memory.enabledHint":
-    "Off means no project carries notes or skills, whatever its own switch says.",
+    "Off means no project carries notes or skills, and a conversation outside a project does not add to the shared skill library. What is already stored stays.",
   "settings.memory.autoReview": "Review a conversation when it finishes",
   "settings.memory.autoReviewHint":
-    "A finished turn is read back so durable facts and reusable procedures are kept. Off means memory only changes when an agent or you write to it.",
+    "A finished turn is read back so durable facts and reusable procedures are kept. A conversation outside a project keeps procedures in the shared skill library. Off means memory only changes when an agent or you write to it.",
   "settings.memory.after": "After a review",
   "settings.memory.afterHint":
     "The review still runs and still writes. This only governs the line that appears after the answer.",
@@ -882,6 +889,7 @@ export const en = {
   "skill.copySkipped": "{name}: {error}",
   "skill.copyFailed": "Nothing was copied.",
   "skill.originFrom": "Copied from {project}",
+  "skill.originLibrary": "From the shared skill library",
   "skill.originLocal": "Edited in this project. The source has not changed.",
   "skill.originDiverged": "This copy and the source have both changed.",
   "skill.originMissing": "The source skill is gone.",

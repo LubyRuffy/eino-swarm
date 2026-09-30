@@ -181,6 +181,34 @@ func (e *Engine) ProjectMemory(projectID string) *memory.Store {
 	return s
 }
 
+// LibraryMemory is the shared skill library for conversations that belong to
+// no project. It is one store, cached like a project's, because two reviews
+// writing the same directory need one mutex.
+func (e *Engine) LibraryMemory() *memory.Store {
+	e.memory.mu.Lock()
+	defer e.memory.mu.Unlock()
+	if s, ok := e.memory.stores[memory.LibraryID]; ok {
+		return s
+	}
+	s := memory.NewLimited(e.cfg.LibraryDir(), e.cfg.Memory.Limit(), e.cfg.Memory.EntryLimit())
+	e.memory.stores[memory.LibraryID] = s
+	return s
+}
+
+// libraryContextForThread is the post-turn review target for a conversation
+// in no project. The live turn uses libraryLiveContext, which carries the
+// same store into the prompt as a read-only index.
+func (e *Engine) libraryContextForThread(threadID string) *projectContext {
+	if !e.cfg.Memory.Enabled {
+		return nil
+	}
+	th, err := e.store.GetThread(threadID)
+	if err != nil || strings.TrimSpace(th.ProjectID) != "" {
+		return nil
+	}
+	return &projectContext{memory: e.LibraryMemory(), library: true}
+}
+
 func (e *Engine) forgetProjectMemory(projectID string) {
 	e.memory.mu.Lock()
 	delete(e.memory.stores, projectID)
@@ -211,10 +239,27 @@ type projectContext struct {
 	// contract. Empty when memory is off.
 	workerText string
 	changes    func(memory.Change)
+	// library is the shared skill store for a conversation in no project.
+	// The live turn lists those skills and can open one. It does not write
+	// them; the post-turn review does. A project still gets its own catalog.
+	library bool
 }
 
-// promptSections is what this project adds to the manager's prompt. A nil
-// context adds nothing, which is what a conversation in no project gets.
+// reviewKey is the lock a review holds. One project at a time, and every
+// conversation outside a project shares the library so two of them cannot
+// each decide the catalog has room.
+func (pc *projectContext) reviewKey() string {
+	if pc != nil && pc.project != nil {
+		if id := strings.TrimSpace(pc.project.ID); id != "" {
+			return id
+		}
+	}
+	return memory.LibraryID
+}
+
+// promptSections is what this context adds to the manager's prompt. A nil
+// context adds nothing: memory switched off, including a conversation in no
+// project while that switch is off.
 func (pc *projectContext) promptSections() string {
 	if pc == nil {
 		return ""
@@ -271,11 +316,12 @@ func (pc *projectContext) memoryLive() bool {
 	return pc != nil && pc.memory != nil
 }
 
-// projectContextFor assembles a turn's project contribution, or nil when the
-// conversation belongs to no project.
+// projectContextFor assembles a turn's project contribution. A conversation
+// in no project gets the shared skill library: the index in the prompt and
+// skill_view, with no notes and no write tools.
 func (e *Engine) projectContextFor(th *store.Thread) (*projectContext, error) {
 	if strings.TrimSpace(th.ProjectID) == "" {
-		return nil, nil
+		return e.libraryLiveContext(), nil
 	}
 	p, err := e.store.GetProject(th.ProjectID)
 	if err != nil {
@@ -311,6 +357,30 @@ func (e *Engine) projectContextFor(th *store.Thread) (*projectContext, error) {
 	}
 	pc.sections = memory.PromptSections(p.SystemPrompt, snap, skills, e.cfg.Memory.IndexMax(), pc.memory != nil)
 	return pc, nil
+}
+
+// libraryLiveContext is the prompt and the read-only skill tool for a
+// conversation in no project. Memory off means the library stays on disk
+// and out of the prompt, the same rule as a project.
+func (e *Engine) libraryLiveContext() *projectContext {
+	if !e.cfg.Memory.Enabled {
+		return nil
+	}
+	mem := e.LibraryMemory()
+	skills, err := mem.ListSkills()
+	if err != nil {
+		e.log.Warn("could not list the shared skill library", "err", err)
+		skills = nil
+	}
+	view := memory.ViewTools(mem)
+	return &projectContext{
+		memory:     mem,
+		library:    true,
+		tools:      view,
+		viewTools:  view,
+		sections:   memory.LibraryPromptSections(skills, e.cfg.Memory.IndexMax()),
+		workerText: memory.LibraryWorkerPromptSections(skills, e.cfg.Memory.IndexMax()),
+	}
 }
 
 // prepareProjectDirs creates what a project needs before a turn runs in it.

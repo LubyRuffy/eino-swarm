@@ -191,12 +191,14 @@ test("Tidy skills asks the model when the catalog has a skill", async ({
   await expect(page.getByTestId("tidy-stats")).toContainText(/[1-9]\d* scanned/)
 })
 
-test("a conversation outside a project has no memory to show", async ({ page }) => {
+test("a conversation outside a project shows the shared skill library", async ({ page }) => {
   await page.goto("/")
   await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(page.getByTestId("thread-project")).toBeHidden()
-  await expect(page.getByRole("tab", { name: "Memory" })).toBeHidden()
+  await page.getByRole("tab", { name: "Memory" }).click()
+  await expect(page.getByText("Shared skills")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "Notes" })).toBeHidden()
 })
 
 test("hovering a project starts a conversation in it, not in Recents", async ({

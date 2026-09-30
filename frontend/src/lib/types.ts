@@ -202,6 +202,8 @@ export interface ReviewOutcome {
   err?: string
   /** How chatty this review is in the transcript: off | on | verbose. */
   notify?: MemoryNotify
+  /** True when the write landed in the shared skill library. */
+  library?: boolean
 }
 
 export interface MemoryChange {

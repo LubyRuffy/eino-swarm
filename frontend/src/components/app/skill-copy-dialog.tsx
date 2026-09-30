@@ -28,6 +28,7 @@ export function SkillCopyDialog({
   open,
   sourceId,
   names,
+  fromLibrary,
   onOpenChange,
   onCopied,
 }: {
@@ -35,6 +36,8 @@ export function SkillCopyDialog({
   sourceId: string
   /** Absent means every skill in the source project. */
   names?: string[]
+  /** The shared library is not a project. Copy goes through its own endpoint. */
+  fromLibrary?: boolean
   onOpenChange: (open: boolean) => void
   onCopied: (message: string) => void
 }) {
@@ -86,11 +89,17 @@ export function SkillCopyDialog({
     setBusy(true)
     setError(undefined)
     try {
-      const result = await api.copySkills(sourceId, {
-        to_project: to,
-        ...(names && names.length > 0 ? { names } : {}),
-        ...(single && asName.trim() ? { as: asName.trim() } : {}),
-      })
+      const result = fromLibrary
+        ? await api.copyLibrarySkills({
+            to_project: to,
+            ...(names && names.length > 0 ? { names } : {}),
+            ...(single && asName.trim() ? { as: asName.trim() } : {}),
+          })
+        : await api.copySkills(sourceId, {
+            to_project: to,
+            ...(names && names.length > 0 ? { names } : {}),
+            ...(single && asName.trim() ? { as: asName.trim() } : {}),
+          })
       if (result.copied.length === 0) {
         setError(
           result.skipped

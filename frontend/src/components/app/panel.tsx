@@ -52,9 +52,8 @@ export function RightPanel({
   turns: Turn[]
   meta?: Meta
   threadId?: string
-  /** Absent when there is no project to show memory for: the open
-   *  conversation is not in one, and the sidebar has not asked to open a
-   *  project's skill either. */
+  /** Absent when nothing is open. A conversation in no project shows the
+   *  shared skill library instead of a project's notes. */
   memory?: MemoryPanelProps
   onUpload: (files: File[]) => Promise<unknown>
   onDeleteFile: (path: string) => void

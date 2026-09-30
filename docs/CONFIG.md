@@ -253,11 +253,15 @@ See the "Full access" note in the [README](../README.md).
 
 What a project remembers between conversations, and what that costs. Memory is
 per project — these keys are the budget every project with it switched on
-shares. Nothing here applies to a conversation outside a project.
+shares. A conversation outside a project does not grow notes. With `enabled`
+on, its prompt lists the shared skill library (`library/skills/` under the
+data directory) and `skill_view` opens one. With `auto_review` on, a finished
+turn there can record another procedure in that library. Copying a file into
+a project is how that project's own agent follows it.
 
 | key | default | meaning |
 |---|---|---|
-| `enabled` | `true` | the master switch. Off means no project carries notes or skills and no review runs, whatever a project's own switch says. What is already stored stays readable in the Memory panel. |
+| `enabled` | `true` | the master switch. Off means no project carries notes or skills, no review runs, and a conversation outside a project does not add to the shared skill library, whatever a project's own switch says. What is already stored stays readable in the Memory panel. |
 | `auto_review` | `true` | read a turn's event log when it finishes and keep what is worth carrying forward. Off leaves note extraction to the agents' own tools and the "Review now" button. Only a turn that finished cleanly is reviewed: nobody who pressed stop asked for a half-finished approach to become a skill. Auto-review is skipped when the manager already wrote with `memory` or `skill_manage` this turn; "Review now" still runs. Leftover skill families (same subject, several names) are still folded into one skill after a finished turn, including when auto-review is off or skipped — that fold is catalog hygiene, not extraction. The Memory panel's **Tidy skills** control still folds leftover stems, then asks the reviewer to curate the live catalog by content (a model call, not a filename scan). A catalog tidy uses at least 24 tool rounds (`DefaultTidyMaxIterations`), or `review_max_iterations` when that is higher, so a large index can actually be merged. |
 | `char_limit` | `2200` | how long the notes may get. They ride in the system prompt of **every** turn in the project, so this is a per-turn cost, not a disk one. A write that would grow past this is refused — including replacing a note with a longer one. The tool result says by how many characters (`over_by`) and lists what is stored, so the agent shortens or drops a note rather than retrying the same text. Small on purpose. |
 | `entry_max` | `360` | how long **one** note may get on an agent write (`memory` add/replace). A runbook that would eat a quarter of the budget belongs in a skill, where only the summary rides in the prompt. A note that restates a recorded skill — the summary or the steps — is refused the same way. The Memory panel's editor still uses `char_limit` only: a person who pastes a longer note is spending that budget on purpose. Zero or negative is repaired to the default; a value above `char_limit` is clamped. |

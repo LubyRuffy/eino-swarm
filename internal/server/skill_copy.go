@@ -35,6 +35,10 @@ func (s *Server) copySkills(c *gin.Context) {
 	if !ok {
 		return
 	}
+	s.copyCatalog(c, src.ID, s.engine.ProjectMemory(src.ID))
+}
+
+func (s *Server) copyCatalog(c *gin.Context, srcID string, src *memory.Store) {
 	var req copySkillsRequest
 	if err := c.ShouldBindJSON(&req); err != nil && err.Error() != "EOF" {
 		badRequest(c, "could not read the request body: %v", err)
@@ -45,7 +49,7 @@ func (s *Server) copySkills(c *gin.Context) {
 		badRequest(c, "choose a project to copy into")
 		return
 	}
-	if to == src.ID {
+	if to == srcID {
 		badRequest(c, "choose a different project")
 		return
 	}
@@ -54,12 +58,16 @@ func (s *Server) copySkills(c *gin.Context) {
 		s.fail(c, err)
 		return
 	}
-	names, explicit, err := skillNamesToCopy(s.engine.ProjectMemory(src.ID), req.Names)
+	names, explicit, err := skillNamesToCopy(src, req.Names)
 	if err != nil {
 		s.fail(c, err)
 		return
 	}
 	if len(names) == 0 {
+		if srcID == memory.LibraryID {
+			badRequest(c, "the shared library has no skills to copy")
+			return
+		}
 		badRequest(c, "this project has no skills to copy")
 		return
 	}
@@ -84,7 +92,7 @@ func (s *Server) copySkills(c *gin.Context) {
 		if as != "" {
 			target = as
 		}
-		hit, err := s.copyOneSkill(src.ID, dest.ID, dst, name, target)
+		hit, err := s.copyOneSkill(srcID, dest.ID, src, dst, name, target)
 		if err != nil {
 			if single {
 				s.failSkill(c, err)
@@ -126,19 +134,19 @@ func skillNamesToCopy(mem *memory.Store, asked []string) ([]string, bool, error)
 	return names, true, nil
 }
 
-func (s *Server) copyOneSkill(srcID, destID string, dst *memory.Store, name, target string) (skillCopyHit, error) {
+func (s *Server) copyOneSkill(srcID, destID string, src, dst *memory.Store, name, target string) (skillCopyHit, error) {
 	if err := memory.ValidSkillName(name); err != nil {
 		return skillCopyHit{}, err
 	}
-	skill, err := s.engine.ProjectMemory(srcID).ReadSkill(name)
+	skill, err := src.ReadSkill(name)
 	if err != nil {
 		return skillCopyHit{}, err
 	}
 	origin := memory.OriginOfCopy(srcID, skill)
 	if !s.originStillThere(origin) || origin.ProjectID == destID {
-		// The bytes being copied live in this project. Pointing at a missing
-		// upstream, or at the destination itself, would make the next update
-		// read the wrong file.
+		// The bytes being copied live here. Pointing at a missing upstream,
+		// or at the destination itself, would make the next update read the
+		// wrong file.
 		origin = memory.SkillOrigin{ProjectID: srcID, Name: skill.Name, Digest: skill.ContentDigest}
 	}
 	if _, err := dst.ImportSkill(target, skill.Description, skill.Body, origin); err != nil {
@@ -148,11 +156,24 @@ func (s *Server) copyOneSkill(srcID, destID string, dst *memory.Store, name, tar
 }
 
 func (s *Server) originStillThere(origin memory.SkillOrigin) bool {
-	if _, err := s.engine.GetProject(origin.ProjectID); err != nil {
+	mem, err := s.memoryStore(origin.ProjectID)
+	if err != nil {
 		return false
 	}
-	_, err := s.engine.ProjectMemory(origin.ProjectID).ReadSkill(origin.Name)
+	_, err = mem.ReadSkill(origin.Name)
 	return err == nil
+}
+
+// memoryStore is a project's memory, or the shared library when the origin
+// id is the library. A missing project is still a missing project.
+func (s *Server) memoryStore(projectID string) (*memory.Store, error) {
+	if projectID == memory.LibraryID {
+		return s.engine.LibraryMemory(), nil
+	}
+	if _, err := s.engine.GetProject(projectID); err != nil {
+		return nil, err
+	}
+	return s.engine.ProjectMemory(projectID), nil
 }
 
 func skillCopySkipFrom(name string, err error) skillCopySkip {
@@ -199,11 +220,12 @@ func (s *Server) pullSkill(c *gin.Context) {
 		s.failSkill(c, &memory.SkillPullError{Reason: "unlinked"})
 		return
 	}
-	if _, err := s.engine.GetProject(current.Origin.ProjectID); err != nil {
+	upstream, err := s.memoryStore(current.Origin.ProjectID)
+	if err != nil {
 		s.fail(c, err)
 		return
 	}
-	source, err := s.engine.ProjectMemory(current.Origin.ProjectID).ReadSkill(current.Origin.Name)
+	source, err := upstream.ReadSkill(current.Origin.Name)
 	if err != nil {
 		s.failSkill(c, err)
 		return
@@ -240,8 +262,10 @@ func (s *Server) annotateOrigins(skills []memory.SkillInfo) []memory.SkillInfo {
 		}
 		cp := *origin
 		if _, ok := alive[cp.ProjectID]; !ok {
-			p, err := s.engine.GetProject(cp.ProjectID)
-			if err != nil {
+			if cp.ProjectID == memory.LibraryID {
+				alive[cp.ProjectID] = true
+				projects[cp.ProjectID] = ""
+			} else if p, err := s.engine.GetProject(cp.ProjectID); err != nil {
 				alive[cp.ProjectID] = false
 				projects[cp.ProjectID] = ""
 			} else {
@@ -256,7 +280,11 @@ func (s *Server) annotateOrigins(skills []memory.SkillInfo) []memory.SkillInfo {
 			key := cacheKey{cp.ProjectID, cp.Name}
 			hit, ok := bodies[key]
 			if !ok {
-				skill, err := s.engine.ProjectMemory(cp.ProjectID).ReadSkill(cp.Name)
+				mem, err := s.memoryStore(cp.ProjectID)
+				var skill memory.Skill
+				if err == nil {
+					skill, err = mem.ReadSkill(cp.Name)
+				}
 				hit = cached{skill: skill, found: err == nil}
 				bodies[key] = hit
 			}

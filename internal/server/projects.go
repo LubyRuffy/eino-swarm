@@ -297,6 +297,18 @@ func wantsEventStream(c *gin.Context) bool {
 // A client that disconnects does not abort the fold: a half-written catalog
 // is worse than a panel that stopped listening.
 func (s *Server) tidySkillsStream(c *gin.Context, p *store.Project) {
+	s.streamCatalogTidy(c,
+		func(watch func(engine.TidyEvent)) (memory.FoldReport, error) {
+			return s.engine.FoldProjectSkillsWatch(p.ID, watch)
+		},
+		func() (memoryView, error) { return s.memoryViewOf(p) },
+	)
+}
+
+// streamCatalogTidy writes a tidy as it happens. A client that disconnects
+// does not abort the fold: a half-written catalog is worse than a panel
+// that stopped listening.
+func (s *Server) streamCatalogTidy(c *gin.Context, fold func(func(engine.TidyEvent)) (memory.FoldReport, error), view func() (memoryView, error)) {
 	w := c.Writer
 	h := w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -312,7 +324,7 @@ func (s *Server) tidySkillsStream(c *gin.Context, p *store.Project) {
 	var foldErr error
 	go func() {
 		defer close(events)
-		report, foldErr = s.engine.FoldProjectSkillsWatch(p.ID, func(ev engine.TidyEvent) {
+		report, foldErr = fold(func(ev engine.TidyEvent) {
 			select {
 			case events <- ev:
 			case <-ctx.Done():
@@ -325,7 +337,7 @@ func (s *Server) tidySkillsStream(c *gin.Context, p *store.Project) {
 			return
 		case ev, open := <-events:
 			if !open {
-				s.finishTidyStream(c, p, report, foldErr)
+				s.finishTidyStream(c, view, report, foldErr)
 				return
 			}
 			writeSSE(c, "tidy", ev, 0)
@@ -334,19 +346,19 @@ func (s *Server) tidySkillsStream(c *gin.Context, p *store.Project) {
 	}
 }
 
-func (s *Server) finishTidyStream(c *gin.Context, p *store.Project, report memory.FoldReport, foldErr error) {
+func (s *Server) finishTidyStream(c *gin.Context, view func() (memoryView, error), report memory.FoldReport, foldErr error) {
 	if foldErr != nil {
 		writeSSE(c, "error", gin.H{"error": foldErr.Error()}, 0)
 		c.Writer.Flush()
 		return
 	}
-	view, err := s.memoryViewOf(p)
+	got, err := view()
 	if err != nil {
 		writeSSE(c, "error", gin.H{"error": err.Error()}, 0)
 		c.Writer.Flush()
 		return
 	}
-	writeSSE(c, "done", tidyPayload(view, report), 0)
+	writeSSE(c, "done", tidyPayload(got, report), 0)
 	c.Writer.Flush()
 }
 

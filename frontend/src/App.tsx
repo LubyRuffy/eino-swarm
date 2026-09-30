@@ -31,6 +31,7 @@ import { closeClient, useOpenClient } from "@/lib/client-open"
 import { toggleContentWidth, toggleTranscriptMode } from "@/lib/appearance"
 import { attachExternalLinkHandler } from "@/lib/external-links"
 import { findShortcut } from "@/lib/find"
+import { LIBRARY_ID } from "@/lib/library"
 import { appendQuote, composerDraftFromStored, type Quote } from "@/lib/quote"
 import { liveWorkers } from "@/lib/transcript"
 import { terminalShortcut, terminalTarget } from "@/lib/terminal"
@@ -855,8 +856,18 @@ function AppPanel({
   const project =
     (focusSkill ? projectOf(projects, focusSkill.projectId) : undefined) ??
     conversationProject
-  const memoryForProject =
-    project && memoryProjectId === project.id ? memory : undefined
+  // No project means the shared library: procedures from conversations that
+  // belong to none, kept so they can be copied into an agent later.
+  const memoryTarget = project?.id ?? (activeId ? LIBRARY_ID : undefined)
+  const memoryForTarget =
+    memoryTarget && memoryProjectId === memoryTarget ? memory : undefined
+  // A project-row click loads that project's catalog. This panel follows the
+  // open conversation, or the shared library when there is no project, so a
+  // mismatched read would blank the list until something opened the thread again.
+  useEffect(() => {
+    if (!memoryTarget || memoryProjectId === memoryTarget) return
+    void loadMemory(memoryTarget)
+  }, [memoryTarget, memoryProjectId, loadMemory])
   const pane = useVisibleDest()
   const clientOpen = useOpenClient() != null
   // Scheduled and a client list are pages, not this conversation. A foreign
@@ -878,14 +889,15 @@ function AppPanel({
       meta={meta}
       threadId={activeId}
       memory={
-        project
+        memoryTarget
           ? {
               project,
-              memory: memoryForProject,
-              loading: memoryLoading || memoryProjectId !== project.id,
+              library: !project,
+              memory: memoryForTarget,
+              loading: memoryLoading || memoryProjectId !== memoryTarget,
               onSave: saveMemory,
               onDeleteSkill: (name) => void removeSkill(name),
-              onRefresh: () => void loadMemory(project.id),
+              onRefresh: () => void loadMemory(memoryTarget),
               onReview: () => void reviewNow(),
               onTidySkills: () => void tidySkills(),
               reviewing,

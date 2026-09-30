@@ -2,6 +2,7 @@ import { create } from "zustand"
 
 import { applyPinnedOrder } from "@/lib/reorder"
 import { api, ApiError, type ProjectPatch } from "@/lib/api"
+import { LIBRARY_ID } from "@/lib/library"
 import { reviewPanelHint } from "@/lib/transcript"
 import type { MemoryEntries, Project, ProjectMemory, ReviewOutcome, SkillTidyReport, TidyLive } from "@/lib/types"
 import { normalizeTidyReport } from "@/lib/skill-tidy"
@@ -181,7 +182,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       ...(switched ? viewOf(slotOf(get().tidySlots, id)) : {}),
     })
     try {
-      const memory = await api.memory(id)
+      const memory = id === LIBRARY_ID ? await api.library() : await api.memory(id)
       // The panel may have moved on while this was in flight; showing one
       // project's notes under another's name is worse than showing none.
       if (get().memoryProjectId !== id) return
@@ -198,9 +199,14 @@ export const useProjects = create<ProjectsState>((set, get) => ({
         memoryLoading: false,
         // Skills stay behind the Memory tab. A review that just wrote one
         // would otherwise leave the panel looking empty until reload.
-        projects: s.projects.map((p) =>
-          p.id === id ? { ...p, skills: memory.skills } : p,
-        ),
+        // The library is not a project row.
+        ...(id === LIBRARY_ID
+          ? {}
+          : {
+              projects: s.projects.map((p) =>
+                p.id === id ? { ...p, skills: memory.skills } : p,
+              ),
+            }),
       }))
     } catch (e) {
       if (get().memoryProjectId !== id) return
@@ -210,7 +216,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
 
   saveMemory: async (text, rev) => {
     const id = get().memoryProjectId
-    if (!id) return
+    if (!id || id === LIBRARY_ID) return
     const known = rev ?? get().memory?.memory.rev
     try {
       const memory = await api.saveMemory(id, text, known)
@@ -236,7 +242,8 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     const id = get().memoryProjectId
     if (!id) return
     try {
-      await api.deleteSkill(id, name)
+      if (id === LIBRARY_ID) await api.deleteLibrarySkill(name)
+      else await api.deleteSkill(id, name)
       await get().loadMemory(id)
     } catch (e) {
       set({ error: message(e) })
@@ -250,7 +257,7 @@ export const useProjects = create<ProjectsState>((set, get) => ({
       applySlot(s, id, { tidying: true, report: undefined, error: undefined, live: { text: "", changes: [] } }),
     )
     try {
-      const result = await api.tidySkills(id, (ev) => {
+      const onEvent = (ev: { phase?: string; text?: string; action?: string; name?: string }) => {
         set((s) => {
           const prev = slotOf(s.tidySlots, id).live ?? { text: "", changes: [] }
           if (ev.phase === "text" && typeof ev.text === "string") {
@@ -266,7 +273,9 @@ export const useProjects = create<ProjectsState>((set, get) => ({
           }
           return s
         })
-      })
+      }
+      const result =
+        id === LIBRARY_ID ? await api.tidyLibrary(onEvent) : await api.tidySkills(id, onEvent)
       const report = normalizeTidyReport(result.report, result.memory.skills.length)
       set((s) => ({
         ...applySlot(s, id, { tidying: false, report, error: undefined }),

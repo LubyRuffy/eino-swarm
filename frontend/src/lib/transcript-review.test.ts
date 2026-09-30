@@ -87,6 +87,18 @@ describe("the memory review", () => {
     expect(notices[0].text).toBe('Memory updated: skill "a-procedure" merged.')
   })
 
+  it("names the shared library when the conversation had no project", () => {
+    const state = fold([
+      review({
+        changed: true,
+        library: true,
+        skills: [{ name: "a-procedure", action: "create" }],
+      }),
+    ])
+    const notices = manager(state).blocks.filter((b) => b.kind === "notice")
+    expect(notices[0].text).toBe('Saved to the skill library: skill "a-procedure" recorded.')
+  })
+
   it("previews what was written when the review asked to be verbose", () => {
     const state = fold([
       review({

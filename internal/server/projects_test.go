@@ -388,10 +388,10 @@ func TestReviewNowAcceptsOrExplainsItself(t *testing.T) {
 		t.Fatalf("review now=%v", accepted)
 	}
 
-	// A conversation in no project has no memory to curate.
+	// A conversation with no finished turn has nothing to review, project or not.
 	loose := h.newThread()
 	if got := h.json(http.MethodPost, "/api/threads/"+loose+"/review", nil, http.StatusConflict); got["code"] != "idle" {
-		t.Fatalf("review of a conversation in no project=%v", got)
+		t.Fatalf("review before any turn=%v", got)
 	}
 	h.json(http.MethodPost, "/api/threads/th_missing/review", nil, http.StatusNotFound)
 }

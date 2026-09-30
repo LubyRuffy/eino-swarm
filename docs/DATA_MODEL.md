@@ -70,7 +70,7 @@ in this database: notes and skills are files, so a person can read and fix them
 | `id` | text, PK | `th_` + 8 random bytes hex. **Also the workspace directory name**, so it must stay free of separators and shell metacharacters. |
 | `title` | text | placeholder from the first message, then a generated name from that opening line when the user did not supply one |
 | `title_auto` | bool | true while the engine still owns the title. A user rename or a landed generated name clears it so a later namer cannot overwrite the sidebar |
-| `project_id` | text, indexed | the project this conversation belongs to; empty for a standalone one. It decides where the tools work, what the prompt carries, and whether a review runs |
+| `project_id` | text, indexed | the project this conversation belongs to; empty for a standalone one. It decides where the tools work and what the prompt carries. Empty lists the shared skill library (`library/skills/`) in the prompt and reviews new procedures into that library |
 | `provider_id` | text | which configured provider this conversation uses |
 | `model` | text | the name this conversation sends; empty follows the provider's default so a Settings change applies until someone picks in the composer |
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
@@ -356,6 +356,10 @@ $ZWAI_HOME (default ~/.zwai-swarm)/
 ├── plans/
 │   └── th_ab12…/
 │       └── PLAN.md            `/plan` draft; not in the workspace
+├── library/                   procedures from conversations in no project
+│   └── skills/
+│       └── <skill-name>/
+│           └── SKILL.md       same layout; MEMORY.md is unused
 └── projects/
     └── pj_cd34…/
         ├── workspace/         only when the project has no workdir of its own
@@ -385,7 +389,8 @@ app data, never a file in the user's workspace. `SKILL.md` follows the
 and `description`, then the procedure as markdown. A copy from another
 project also stores `origin_project`, `origin_name`, and `origin_digest`
 (the project, the skill name there, and the digest of the text at copy
-time). Those three are not part of the procedure. The copy is its own file:
+time). `origin_project` may be `library`: that file came from the shared
+skill library, which is a directory, not a `projects` row. Those three are not part of the procedure. The copy is its own file:
 editing it does not change the source, and a later edit of the source does
 not change the copy until `POST /api/projects/:id/skills/:name/pull`. A
 rewrite or patch keeps the link. An unmodified copy keeps tracking the

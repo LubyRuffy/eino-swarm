@@ -122,6 +122,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：保留本机设置、项目说明和技能；使用者：PC 用户；入口：Settings、Memory、技能管理；输入：配置及项目文件；输出：后续运行可用的上下文；前置条件：本机数据目录；失败表现：保存或解析错误；关联契约：`C-009`；实现证据：`internal/config`, `internal/memory`, `docs/CONFIG.md`。
 - 技能可以复制到另一个项目，得到的是独立文件。来源以后的修改要在副本上点更新才会过来；副本改过则不会被静默覆盖，也不会写回来源。没改过的副本仍跟踪最初的项目。入口：Memory 里每个技能的复制，以及多于一个技能时的复制全部。实现证据：`internal/memory/skill_copy.go`, `internal/server/skill_copy.go`, `frontend/src/components/app/skill-copy-dialog.tsx`, `frontend/e2e/skill-copy.spec.ts`。
+- 不在项目里的会话没有笔记。回合正常结束后，可复用流程写入数据目录下的共享技能库（`library/skills/`）。之后的纯对话会带上这份索引，并用 `skill_view` 打开；当场不能改库。Memory 页可以整理目录，也可以把技能复制进某个项目；副本的更新从技能库拉取。副本改过、两边都改过、或来源已删，文案按这个状态说，不把来源是技能库当成唯一信息。点项目文件夹不会把这份列表换成那个项目的笔记。总开关 `memory.enabled` 关掉后，提示词里不再带上，也不再写入。实现证据：`internal/engine/library_test.go`, `internal/memory/library.go`, `internal/server/library.go`, `frontend/e2e/library-skills.spec.ts`。
 
 ### F-430 Build and release paths
 

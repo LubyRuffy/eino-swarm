@@ -266,6 +266,10 @@ export const zh: { [K in keyof typeof en]: string } = {
   "terminal.untitled": "终端 {n}",
 
   "memory.noProject": "这次会话不在项目里，所以没有跨会话可记住的东西。",
+  "memory.libraryTitle": "共享技能",
+  "memory.libraryHint":
+    "来自不在项目里的会话。之后的纯对话会带上这份索引，需要时再打开。要某个项目里的代理照着做，再复制进去。",
+  "memory.libraryOff": "记忆关着。这里已有的技能还在，但后面的会话不会带上，也不会再往里写。",
   "memory.reviewNow": "立刻复盘这次会话",
   "memory.reload": "重新加载记忆",
   "memory.reviewing": "正在读上一轮已完成的回合…",
@@ -414,6 +418,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "notice.reviewDone": "复盘结束。",
   "notice.reviewFailed": "记忆复盘失败：{err}",
   "notice.memoryUpdated": "记忆已更新。",
+  "notice.libraryUpdated": "已写入共享技能库。",
+  "notice.libraryDetail": "已写入共享技能库：{detail}。",
   "notice.scheduleArmed": "已设置等待。",
   "notice.scheduleCancelled": "等待已取消。",
   "notice.scheduleFired": "定时检查。",
@@ -711,10 +717,10 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.memory.when": "何时运行",
   "settings.memory.enabled": "到底记不记",
   "settings.memory.enabledHint":
-    "关掉后任何项目都不带笔记和技能，不管项目自己的开关。",
+    "关掉后任何项目都不带笔记和技能，纯对话也不会再往共享技能库里写。已经记下的还在。",
   "settings.memory.autoReview": "会话结束时复盘",
   "settings.memory.autoReviewHint":
-    "读回已完成的回合，留下值得带走的事实和可复用流程。关掉后记忆只在代理或你写入时变化。",
+    "读回已完成的回合，留下值得带走的事实和可复用流程。不在项目里的会话把流程写进共享技能库。关掉后记忆只在代理或你写入时变化。",
   "settings.memory.after": "复盘之后",
   "settings.memory.afterHint":
     "复盘照样跑、照样写。这里只管答案后面那一行。",
@@ -832,6 +838,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "skill.copySkipped": "{name}：{error}",
   "skill.copyFailed": "没有复制过去。",
   "skill.originFrom": "复制自 {project}",
+  "skill.originLibrary": "来自共享技能库",
   "skill.originLocal": "这个项目里改过。来源没有变。",
   "skill.originDiverged": "这份和来源都改过了。",
   "skill.originMissing": "来源技能已经不在了。",

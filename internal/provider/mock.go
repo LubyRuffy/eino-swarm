@@ -370,6 +370,9 @@ func reviewerScript(turn int, msgs []*schema.Message) *schema.Message {
 	if isCatalogTidy(msgs) {
 		return catalogTidyScript(turn, msgs)
 	}
+	if isLibraryReview(msgs) {
+		return libraryReviewScript(turn, msgs)
+	}
 	task := oneLine(firstUserText(msgs))
 	tag := conversationTag(task)
 	clip := clipRunes(task, 96)
@@ -412,6 +415,47 @@ func isCatalogTidy(msgs []*schema.Message) bool {
 		}
 	}
 	return false
+}
+
+// isLibraryReview matches the mark memory.LibraryReviewMark puts on a
+// conversation that belongs to no project. The phrase is duplicated here
+// so the scripted provider does not import the memory package.
+func isLibraryReview(msgs []*schema.Message) bool {
+	for _, m := range msgs {
+		if m == nil {
+			continue
+		}
+		if strings.Contains(plainUserText(m), "Shared skill library:") {
+			return true
+		}
+	}
+	return false
+}
+
+// libraryReviewScript records one procedure and no note. The live turn has
+// no note store, and calling memory here would be a tool the reviewer was
+// not given.
+func libraryReviewScript(turn int, msgs []*schema.Message) *schema.Message {
+	task := oneLine(firstUserText(msgs))
+	tag := conversationTag(task)
+	switch turn {
+	case 1:
+		skill, _ := json.Marshal(map[string]any{
+			"action":      "create",
+			"name":        "recorded-" + tag,
+			"description": "After conversation " + tag,
+			"content":     "For " + tag + ":\n1. Inspect the workspace.\n2. Collect results.\n3. Report first.\n",
+		})
+		return &schema.Message{
+			Role:             schema.Assistant,
+			ReasoningContent: "Worth keeping: the shape of the work, as a procedure.\n",
+			ToolCalls: []schema.ToolCall{
+				call("mock-skill-1", "skill_manage", string(skill)),
+			},
+		}
+	default:
+		return schema.AssistantMessage("Stored one skill from this conversation.", nil)
+	}
 }
 
 // catalogTidyScript curates the index it was handed. When the catalog lists

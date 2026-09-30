@@ -47,12 +47,14 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "Review finished — nothing new to keep.": "notice.reviewQuiet",
   "Review finished.": "notice.reviewDone",
   "Memory updated.": "notice.memoryUpdated",
+  "Saved to the skill library.": "notice.libraryUpdated",
   "A wait is armed.": "notice.scheduleArmed",
   "A wait was cancelled.": "notice.scheduleCancelled",
   "Scheduled check.": "notice.scheduleFired",
 }
 
 const REVIEW_FAIL_PREFIX = "Memory review failed: "
+const LIBRARY_PREFIX = "Saved to the skill library: "
 const AUTO_COMPACT_RE =
   /^Context compressed \((\d+) → (\d+) tokens\)\. The transcript is unchanged\.$/
 
@@ -130,6 +132,11 @@ export function localizeNotice(text: string, locale: Locale): string {
   if (text.startsWith(REVIEW_FAIL_PREFIX)) {
     return t(locale, "notice.reviewFailed", {
       err: text.slice(REVIEW_FAIL_PREFIX.length),
+    })
+  }
+  if (text.startsWith(LIBRARY_PREFIX)) {
+    return t(locale, "notice.libraryDetail", {
+      detail: text.slice(LIBRARY_PREFIX.length).replace(/\.$/, ""),
     })
   }
   const auto = AUTO_COMPACT_RE.exec(text)

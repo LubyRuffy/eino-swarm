@@ -386,6 +386,9 @@ func TestEventStreamReplaysThenGoesLive(t *testing.T) {
 	// timeline; a title event landing between the live close and the
 	// resume would look like a duplicate.
 	h.app.Config.Swarm.AutoTitle = false
+	// A conversation in no project records a skill after done. This test is
+	// about the turn's own timeline; that later event is not a replay.
+	h.app.Config.Memory.AutoReview = false
 	id := h.newThread()
 
 	h.json(http.MethodPost, "/api/threads/"+id+"/turns",
@@ -431,6 +434,9 @@ func TestEventStreamReplaysThenGoesLive(t *testing.T) {
 func TestEventStreamHonoursLastEventID(t *testing.T) {
 	h := newHarness(t)
 	h.app.Config.Swarm.AutoTitle = false
+	// Same as the replay test: the shared-library review lands after done,
+	// and a reconnect that starts before it looks like Last-Event-ID was ignored.
+	h.app.Config.Memory.AutoReview = false
 	id := h.newThread()
 	h.json(http.MethodPost, "/api/threads/"+id+"/turns",
 		map[string]any{"text": "produce a result"}, http.StatusAccepted)

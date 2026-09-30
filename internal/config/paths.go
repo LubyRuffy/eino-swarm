@@ -18,6 +18,10 @@ const (
 	// the user did not name one, and the memory store.
 	projectWorkspaceName = "workspace"
 	projectMemoryName    = "memory"
+	// Conversations that belong to no project still record procedures.
+	// They live here, not under a project, so a later copy is an explicit
+	// choice rather than every chat inheriting them.
+	libraryDirName = "library"
 )
 
 // WorkspacesDir is the parent of every conversation's own workspace.
@@ -70,4 +74,13 @@ func (c *Config) ProjectWorkspaceDir(projectID string) string {
 // every `git status`.
 func (c *Config) ProjectMemoryDir(projectID string) string {
 	return filepath.Join(c.ProjectDir(projectID), projectMemoryName)
+}
+
+// LibraryDir is the shared skill library: MEMORY.md is unused, skills live
+// in the usual skills/ tree. A conversation in no project writes procedures
+// here after a finished turn. The next conversation in no project lists them
+// and can open one with skill_view. A person copies one into a project when
+// that agent should follow it.
+func (c *Config) LibraryDir() string {
+	return filepath.Join(c.dataDir, libraryDirName)
 }

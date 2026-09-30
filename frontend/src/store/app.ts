@@ -12,6 +12,7 @@ import {
 import { ApiError, api } from "@/lib/api"
 import { closeClient } from "@/lib/client-open"
 import { deskDest, listDestForThread, setDeskDest } from "@/lib/desk-nav"
+import { LIBRARY_ID } from "@/lib/library"
 import { desktopShell, startPresence } from "@/lib/shell"
 import {
   applyLocale,
@@ -455,9 +456,7 @@ export const useApp = create<AppState>((set, get) => ({
       // a Recents chat must drop the previous project's highlight or the
       // folder would still look selected.
       useProjects.getState().select(thread.project_id || undefined)
-      if (thread.project_id) {
-        void useProjects.getState().loadMemory(thread.project_id)
-      }
+      void useProjects.getState().loadMemory(thread.project_id || LIBRARY_ID)
       void get().refreshSchedules()
       unsubscribe = subscribeEvents(
         id,

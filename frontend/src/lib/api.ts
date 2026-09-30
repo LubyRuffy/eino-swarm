@@ -77,7 +77,14 @@ async function streamTidy(
   projectId: string,
   onEvent?: (ev: TidyStreamEvent) => void,
 ): Promise<TidySkillsResult> {
-  const res = await fetch(`/api/projects/${projectId}/memory/tidy-skills`, {
+  return streamTidyAt(`/api/projects/${projectId}/memory/tidy-skills`, onEvent)
+}
+
+async function streamTidyAt(
+  url: string,
+  onEvent?: (ev: TidyStreamEvent) => void,
+): Promise<TidySkillsResult> {
+  const res = await fetch(url, {
     method: "POST",
     headers: { Accept: "text/event-stream" },
   })
@@ -380,6 +387,24 @@ export const api = {
     projectId: string,
     onEvent?: (ev: TidyStreamEvent) => void,
   ) => streamTidy(projectId, onEvent),
+  library: () =>
+    request<{ memory: ProjectMemory }>("/api/library").then((r) => r.memory),
+  librarySkill: (name: string) =>
+    request<{ skill: Skill }>(`/api/library/skills/${encodeURIComponent(name)}`).then(
+      (r) => r.skill,
+    ),
+  deleteLibrarySkill: (name: string) =>
+    request<void>(`/api/library/skills/${encodeURIComponent(name)}`, { method: "DELETE" }),
+  copyLibrarySkills: (body: { to_project: string; names?: string[]; as?: string }) =>
+    request<SkillCopyResult>("/api/library/skills/copy", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }).then((r) => ({
+      copied: r.copied ?? [],
+      skipped: r.skipped ?? [],
+    })),
+  tidyLibrary: (onEvent?: (ev: TidyStreamEvent) => void) =>
+    streamTidyAt("/api/library/tidy-skills", onEvent),
 
   threads: (archived = false, projectId?: string) => {
     const params = new URLSearchParams()

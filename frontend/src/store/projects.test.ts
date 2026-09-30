@@ -83,6 +83,10 @@ vi.mock("@/lib/api", () => ({
       if (fake.fail) throw new Error("cannot read memory")
       return snap
     },
+    library: async () => memory("library"),
+    deleteLibrarySkill: async (name: string) => {
+      fake.deleted.push(`library/${name}`)
+    },
     saveMemory: async (id: string, text: string, rev?: string) => {
       fake.saved.push(`${id}:${text}:${rev ?? ""}`)
       if (fake.conflict) {
@@ -95,51 +99,54 @@ vi.mock("@/lib/api", () => ({
     deleteSkill: async (id: string, name: string) => {
       fake.deleted.push(`${id}/${name}`)
     },
-    tidySkills: async (id: string) => {
-      if (fake.blockTidy.has(id)) {
-        await new Promise<void>((resolve) => {
-          fake.releaseTidy[id] = resolve
-        })
-      }
-      const delay = fake.tidyDelays[id] ?? 0
-      if (delay > 0) await new Promise((r) => setTimeout(r, delay))
-      fake.tidied.push(id)
-      if (fake.fail) throw new Error("cannot tidy skills")
-      const before = (fake.skills[id] ?? []).length
-      const skills = fake.foldedSkills[id] ?? fake.skills[id] ?? []
-      // The server has written the catalog by the time the POST returns.
-      // A later GET must see that, or switching back looks like the tidy
-      // never happened. Count `before` first: this assignment is the write.
-      fake.skills[id] = skills
-      const report = fake.tidyFolded
-        ? {
-            scanned: before,
-            before,
-            after: skills.length,
-            families: 1,
-            unchanged: 0,
-            created: ["weekly-rollup"],
-            deleted: ["weekly-rollup-notes", "weekly-rollup-send"],
-            merged: [
-              {
-                keep: "weekly-rollup",
-                dropped: ["weekly-rollup-notes", "weekly-rollup-send"],
-                created: true,
-              },
-            ],
-          }
-        : emptyTidyReport(before)
-      return {
-        memory: { ...memory(id), skills, needs_tidy: false },
-        report,
-        changes: fake.tidyFolded
-          ? [{ target: "skill_manage", action: "merge", name: "weekly-rollup" }]
-          : [],
-        folded: fake.tidyFolded,
-      }
-    },
+    tidySkills: (id: string) => tidyCatalog(id),
+    tidyLibrary: () => tidyCatalog("library"),
   },
 }))
+
+async function tidyCatalog(id: string) {
+  if (fake.blockTidy.has(id)) {
+    await new Promise<void>((resolve) => {
+      fake.releaseTidy[id] = resolve
+    })
+  }
+  const delay = fake.tidyDelays[id] ?? 0
+  if (delay > 0) await new Promise((r) => setTimeout(r, delay))
+  fake.tidied.push(id)
+  if (fake.fail) throw new Error("cannot tidy skills")
+  const before = (fake.skills[id] ?? []).length
+  const skills = fake.foldedSkills[id] ?? fake.skills[id] ?? []
+  // The server has written the catalog by the time the POST returns.
+  // A later GET must see that, or switching back looks like the tidy
+  // never happened. Count `before` first: this assignment is the write.
+  fake.skills[id] = skills
+  const report = fake.tidyFolded
+    ? {
+        scanned: before,
+        before,
+        after: skills.length,
+        families: 1,
+        unchanged: 0,
+        created: ["weekly-rollup"],
+        deleted: ["weekly-rollup-notes", "weekly-rollup-send"],
+        merged: [
+          {
+            keep: "weekly-rollup",
+            dropped: ["weekly-rollup-notes", "weekly-rollup-send"],
+            created: true,
+          },
+        ],
+      }
+    : emptyTidyReport(before)
+  return {
+    memory: { ...memory(id), skills, needs_tidy: false },
+    report,
+    changes: fake.tidyFolded
+      ? [{ target: "skill_manage", action: "merge", name: "weekly-rollup" }]
+      : [],
+    folded: fake.tidyFolded,
+  }
+}
 
 function project(name: string): Project {
   return {
@@ -305,6 +312,35 @@ describe("the memory panel's data", () => {
     await useProjects.getState().loadMemory("pj_a")
     expect(useProjects.getState().memoryLoading).toBe(false)
     expect(useProjects.getState().error).toBe("cannot read memory")
+  })
+
+  it("reads the shared library without a project row", async () => {
+    await useProjects.getState().loadMemory("library")
+    expect(useProjects.getState().memoryProjectId).toBe("library")
+    expect(useProjects.getState().memory?.memory.text).toBe("library")
+    expect(useProjects.getState().projects).toEqual([])
+  })
+
+  it("deletes a library skill without touching a project route", async () => {
+    await useProjects.getState().loadMemory("library")
+    await useProjects.getState().removeSkill("a-procedure")
+    expect(fake.deleted).toEqual(["library/a-procedure"])
+  })
+
+  it("does not save notes into the shared library", async () => {
+    await useProjects.getState().loadMemory("library")
+    await useProjects.getState().saveMemory("a note")
+    expect(fake.saved).toEqual([])
+  })
+
+  it("tidies the shared library without writing a project row", async () => {
+    fake.projects = [project("a")]
+    await useProjects.getState().refresh()
+    await useProjects.getState().loadMemory("library")
+    await useProjects.getState().tidySkills()
+    expect(fake.tidied).toEqual(["library"])
+    expect(useProjects.getState().memoryProjectId).toBe("library")
+    expect(useProjects.getState().projects[0].skills).toBeUndefined()
   })
 
   it("clears the panel when no project is open", async () => {

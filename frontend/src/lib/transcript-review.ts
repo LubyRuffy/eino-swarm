@@ -19,6 +19,7 @@ export function parseReview(ev: SwarmEvent): ReviewOutcome | undefined {
     note: typeof body.note === "string" ? body.note : undefined,
     err: typeof body.err === "string" && body.err ? body.err : ev.err || undefined,
     notify: notifyOf(body.notify),
+    library: body.library === true,
   }
 }
 
@@ -63,8 +64,13 @@ export function reviewNotice(outcome?: ReviewOutcome): string | undefined {
     if (!s?.name) continue
     parts.push(`skill "${s.name}" ${SKILL_VERBS[s.action] ?? s.action}`)
   }
-  const head =
-    parts.length > 0 ? `Memory updated: ${parts.join(", ")}.` : "Memory updated."
+  const head = outcome.library
+    ? parts.length > 0
+      ? `Saved to the skill library: ${parts.join(", ")}.`
+      : "Saved to the skill library."
+    : parts.length > 0
+      ? `Memory updated: ${parts.join(", ")}.`
+      : "Memory updated."
   if (outcome.notify !== "verbose") return head
   const preview = (outcome.changes ?? [])
     .map(changePreview)

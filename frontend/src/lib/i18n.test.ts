@@ -127,6 +127,10 @@ describe("localizeNotice", () => {
     expect(localizeNotice("A wait is armed.", "zh")).toBe("已设置等待。")
     expect(localizeNotice("A wait was cancelled.", "zh")).toBe("等待已取消。")
     expect(localizeNotice("Scheduled check.", "zh")).toBe("定时检查。")
+    expect(localizeNotice("Saved to the skill library.", "zh")).toBe("已写入共享技能库。")
+    expect(
+      localizeNotice('Saved to the skill library: skill "a-procedure" recorded.', "zh"),
+    ).toBe('已写入共享技能库：skill "a-procedure" recorded。')
   })
 
   it("keeps schedule chrome generic", () => {

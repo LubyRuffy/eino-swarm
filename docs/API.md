@@ -713,6 +713,35 @@ when the upstream project or skill is gone.
 
 ### `DELETE /api/projects/:id/skills/:name` → `204`
 
+## Shared skill library
+
+Procedures recorded from conversations that belong to no project. Not a
+project: there is no notes file that rides in a prompt, and these routes do
+not take a project id. The directory is `library/` under the data directory.
+`origin_project` on a copy is the literal `library`.
+
+### `GET /api/library`
+
+Same `memory` object as `GET /api/projects/:id/memory`. `memory.text` stays
+empty. `enabled` follows the global `memory.enabled` switch.
+
+### `GET /api/library/skills/:name`
+
+Same `skill` object as a project skill.
+
+### `DELETE /api/library/skills/:name` → `204`
+
+### `POST /api/library/skills/copy`
+
+Same body and result as `POST /api/projects/:id/skills/copy`. The source is
+the library. `to_project` is the destination project.
+
+### `POST /api/library/tidy-skills`
+
+Same tidy as `POST /api/projects/:id/memory/tidy-skills`, including
+`Accept: text/event-stream`. The reviewer curates the library catalog.
+`409 idle` after shutdown.
+
 ## Conversations
 
 ### `GET /api/threads?archived=1&project=<id>`
@@ -1136,8 +1165,9 @@ a turn is skipped when the manager already wrote with `memory` or
 runs the reviewer. Answers with the turn being reviewed
 (`{"turn": {…}}`), not the outcome: the review is a background job and its
 result arrives on the event stream as `memory_review`, the same way a turn's
-answer does. `409 idle` when the conversation is in no project, has memory off,
-or has no finished turn to read.
+answer does. A conversation in no project reviews into the shared skill
+library (skills only). `409 idle` when memory is off globally, the
+conversation's project has memory off, or there is no finished turn to read.
 
 ## Event stream
 
@@ -1330,9 +1360,15 @@ still reaches everything that happened, including the reviewer's model calls
   ],
   "note": "Kept what this project treats as done.",
   "notify": "on",
+  "library": false,
   "err": ""
 }
 ```
+
+`library` is true when the writes landed in the shared skill library
+(`library/skills/`) because the conversation belongs to no project. The
+transcript then says the skill library was updated. Omit or false means a
+project's own memory.
 
 The event is stored even when `changed` is false: a review that left no trace
 could not be told apart from one that never ran. A `skill_manage` create that

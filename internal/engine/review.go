@@ -100,7 +100,15 @@ func (p *reviewPool) stop(wait time.Duration) bool {
 func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string,
 	pc *projectContext, final string,
 ) {
-	if status != store.TurnDone || !pc.memoryLive() {
+	if status != store.TurnDone {
+		return
+	}
+	// A conversation in no project has no project memory. Its procedures
+	// still land, in the shared library, so they can be copied later.
+	if !pc.memoryLive() {
+		pc = e.libraryContextForThread(threadID)
+	}
+	if !pc.memoryLive() {
 		return
 	}
 	events, err := e.store.ListTurnEvents(turn.ID)
@@ -113,7 +121,7 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 	if !skipLLM && strings.TrimSpace(transcript) == "" {
 		skipLLM = true
 	}
-	gate := e.reviews.begin(pc.project.ID)
+	gate := e.reviews.begin(pc.reviewKey())
 	if gate == nil {
 		return
 	}
@@ -148,6 +156,9 @@ func (e *Engine) ReviewTurn(threadID string) (*store.Turn, error) {
 	if err != nil {
 		return nil, err
 	}
+	if !pc.memoryLive() && strings.TrimSpace(th.ProjectID) == "" {
+		pc = e.libraryContextForThread(th.ID)
+	}
 	if !pc.memoryLive() {
 		return nil, ErrIdle
 	}
@@ -176,7 +187,7 @@ func (e *Engine) ReviewTurn(threadID string) (*store.Turn, error) {
 	if strings.TrimSpace(transcript) == "" {
 		return nil, ErrIdle
 	}
-	gate := e.reviews.begin(pc.project.ID)
+	gate := e.reviews.begin(pc.reviewKey())
 	if gate == nil {
 		return nil, ErrIdle
 	}
@@ -200,6 +211,10 @@ type reviewOutcome struct {
 	Changed bool            `json:"changed"`
 	Notes   map[string]int  `json:"notes,omitempty"`
 	Skills  []memory.Change `json:"skills,omitempty"`
+	// Library is true when the writes landed in the shared skill library
+	// rather than a project's memory. Stamped here so a replay does not
+	// have to guess from the conversation's project.
+	Library bool `json:"library,omitempty"`
 	// Changes is every write that landed, with a preview of the text, so the
 	// transcript can say what was stored rather than only that something was.
 	Changes []memory.Change `json:"changes,omitempty"`
@@ -251,17 +266,25 @@ func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext
 		defer mu.Unlock()
 		collectReviewChange(&outcome, c)
 	}
+	instruction := memory.ReviewPrompt()
+	description := "curates this project's memory after a conversation"
+	tools := memory.Tools(pc.memory, onChange)
+	if pc.library {
+		instruction = memory.LibraryReviewPrompt()
+		description = "records reusable procedures from a conversation that belongs to no project"
+		tools = memory.CatalogTools(pc.memory, onChange)
+	}
 	e.driveReviewer(reviewRun{
 		threadID:    threadID,
 		turnID:      turn.ID,
 		providerID:  turn.ProviderID,
 		model:       turn.Model,
 		effort:      turn.ReasoningEffort,
-		description: "curates this project's memory after a conversation",
-		instruction: memory.ReviewPrompt(),
+		description: description,
+		instruction: instruction,
 		userMsg:     e.reviewUserMessage(pc, transcript),
 		maxIter:     e.cfg.Memory.ReviewIterations(),
-		tools:       memory.Tools(pc.memory, onChange),
+		tools:       tools,
 	}, &mu, &outcome)
 	mu.Lock()
 	if len(outcome.Notes) == 0 {
@@ -350,11 +373,17 @@ func (e *Engine) reviewUserMessage(pc *projectContext, transcript string) string
 	}
 	skills, err := pc.memory.ListSkills()
 	if err != nil {
+		if pc.library {
+			return memory.LibraryReviewMessage(transcript, "")
+		}
 		return transcript
 	}
 	families, err := pc.memory.SkillFamilyNames()
 	if err != nil {
 		families = nil
+	}
+	if pc.library {
+		return memory.LibraryReviewMessage(transcript, memory.LibraryCatalog(skills, families))
 	}
 	return memory.AttachReviewCatalog(transcript, memory.ReviewCatalog(skills, families))
 }
@@ -363,6 +392,9 @@ func (e *Engine) reviewUserMessage(pc *projectContext, transcript string) string
 // fold runs even when the model never started: catalog hygiene is not a
 // function of whether this turn had something new to extract.
 func (e *Engine) finishReview(threadID string, turn *store.Turn, pc *projectContext, outcome reviewOutcome) {
+	if pc != nil && pc.library {
+		outcome.Library = true
+	}
 	e.applySkillFold(pc, &outcome)
 	if len(outcome.Notes) == 0 {
 		outcome.Notes = nil
@@ -372,6 +404,9 @@ func (e *Engine) finishReview(threadID string, turn *store.Turn, pc *projectCont
 
 func (e *Engine) foldSkillsAfterTurn(threadID string, turn *store.Turn, pc *projectContext) {
 	outcome := reviewOutcome{}
+	if pc != nil && pc.library {
+		outcome.Library = true
+	}
 	e.applySkillFold(pc, &outcome)
 	if !outcome.Changed && outcome.Err == "" {
 		return

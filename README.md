@@ -591,6 +591,15 @@ snapshot and can open a skill; they cannot write the store. Their report back to
 the manager is the task result, plus at most a short durable note if something
 would change later work.
 
+A conversation that belongs to no project does not grow those notes. A finished
+turn can still record a procedure, and that file goes in the shared skill
+library (`library/skills/` under the data directory, next to `projects/`). The
+next conversation outside a project starts with that index and opens a skill
+when it needs one. Open **Memory** on that conversation to read the files,
+then **Copy** one into a project when that agent should follow it. **Update** on
+the copy pulls a later change from the library the same way it pulls from
+another project.
+
 The sidebar lists each project's conversations under its name. A folder
 (and Conversations) shows the five conversations active in the last seven days;
 **Show more** reveals the rest, **Show less** folds them again. Click the
@@ -683,6 +692,7 @@ is still running. A newer binary waits for that turn, prints a check every
 ├── zwai.db               conversations, transcripts, event timeline, model calls
 ├── remote/               Host Token and device identity; not in yaml
 ├── workspaces/<thread>/  one directory per standalone conversation, `uploads/` inside it
+├── library/skills/       procedures recorded from conversations in no project
 └── projects/<project>/   a managed working directory, and the project's memory
 ```
 

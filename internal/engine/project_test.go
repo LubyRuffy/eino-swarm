@@ -423,9 +423,9 @@ func TestProjectMemoryIsReadableByWorkersAndWritableByTheManager(t *testing.T) {
 	}
 }
 
-// A conversation in no project contributes nothing, which is what keeps every
-// existing conversation working exactly as before.
-func TestAConversationInNoProjectAddsNothingToThePrompt(t *testing.T) {
+// A conversation in no project carries the shared skill index and can open
+// one. It does not grow notes, and the live turn cannot write the library.
+func TestAConversationInNoProjectCarriesTheSharedSkillIndex(t *testing.T) {
 	e := newTestEngine(t)
 	th, err := e.CreateThread("t", "", "")
 	if err != nil {
@@ -435,18 +435,31 @@ func TestAConversationInNoProjectAddsNothingToThePrompt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("projectContextFor: %v", err)
 	}
-	if pc != nil || pc.promptSections() != "" || pc.memoryLive() {
-		t.Fatalf("pc=%+v", pc)
+	if !pc.memoryLive() || !strings.Contains(pc.promptSections(), "No skills recorded yet") {
+		t.Fatalf("sections:\n%s", pc.promptSections())
+	}
+	for _, banned := range []string{memory.ToolMemory, memory.ToolSkillManage, "## Memory", "this project"} {
+		if strings.Contains(pc.promptSections(), banned) || strings.Contains(pc.workerPreambleTail(), banned) {
+			t.Fatalf("library prompt mentions %q:\nmanager:\n%s\nworker:\n%s", banned, pc.promptSections(), pc.workerPreambleTail())
+		}
 	}
 	toolset := buildTestToolset(t, e, th.ID)
-	if len(pc.managerTools(toolset)) != len(toolset.Tools) {
-		t.Fatal("a conversation in no project must get exactly the workspace toolset")
+	manager := toolNames(t, pc.managerTools(toolset))
+	workers := toolNames(t, pc.workerTools(toolset))
+	if !manager[memory.ToolSkillView] || manager[memory.ToolMemory] || manager[memory.ToolSkillManage] {
+		t.Fatalf("manager tools=%v", manager)
 	}
-	if len(pc.workerTools(toolset)) != len(toolset.Tools) {
-		t.Fatal("a conversation in no project must not hand workers skill_view")
+	if !workers[memory.ToolSkillView] || workers[memory.ToolMemory] || workers[memory.ToolSkillManage] {
+		t.Fatalf("worker tools=%v", workers)
 	}
-	if pc.workerPreambleTail() != "" {
-		t.Fatalf("no-project workers got a memory snapshot: %q", pc.workerPreambleTail())
+	if len(pc.managerTools(toolset)) != len(toolset.Tools)+1 {
+		t.Fatal("the live turn should add skill_view and nothing else")
+	}
+
+	e.Config().Memory.Enabled = false
+	off, err := e.projectContextFor(th)
+	if err != nil || off != nil || off.promptSections() != "" {
+		t.Fatalf("memory off still injected the library: %+v", off)
 	}
 }
 
