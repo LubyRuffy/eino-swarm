@@ -73,6 +73,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 允许行为：不同渠道单独验收；禁止行为：把本地 APK/AAB 或未上传的 zip 称为远端发布，或从其他仓库安装；失败语义：构建、签名、下载错误可观察；不变量：用户可获取与显示版本一致的产物；边界条件：安装签名、新旧版本按数字比较、未打版本号的构建不提供升级。
 - 修复结案与发布分开：需求行为、必要测试、文档及 review 通过，完整修复集成并推送 main 后关闭 Issue；提交数与等待时长未触发新版本也不延迟结案。关闭评论分别记录已发布端和待发布端，交付台账保留未发布记录（包含 closed Issues）。审计合并全部已验收代码记录的实际平台缺口，包括没有 iOS 台账行的 Mac-only 修复，去重且排除重复报告别名。已分配版本的旧批次只计入恢复集合，不借给下一版的提交数与等待时长；已公开交付的批次锁定版本和源码 SHA，仅恢复其未交付端。Issue 关闭不代表全端发布，发布失败仍须告警。
 - 混合平台批次的公共 Release 状态按平台记录；每个 Issue 的台账只把实际必需的平台标为已发布，无关平台保留 `not_required_by_behavior_change`，并按该 Issue 的全部必需端独立计算交付完成。首个经远端验证的平台公开后立即将统一版本和源码 SHA 锁定到全部批次行，部分交付不得再次取得新版本资格。
+- 批次平台范围是各 Issue 必需端与完整主线中其他经验证的桌面／移动行为变化的并集。额外变化必须记录从上一公开 SHA 到当前完整主线之间的提交 SHA 与平台门禁，不得改写无关 Issue 的平台状态。新批次分配时，仍缺平台的旧公开批次保留在历史索引；冻结版本恢复完成须更新旧 Issue 和旧批次，不得回退更新版本的公开源码基线。
 - 证据：实现 `AGENTS.md`, `tools/audit_pending_batch.py`, `tools/release.py`, `tools/release_ios.py`, `Makefile`, `internal/release`, `internal/desktop/pack`, `internal/update`, `mobile/scripts/android-release.ts`, `mobile/scripts/sync-ios-version.ts`, `mobile/src/lib/app-update.ts`；测试 `tools/test_audit_pending_batch.py`, `tools/test_release.py`, `internal/release`, `internal/update`, `internal/desktop/pack`, `mobile/scripts/android-release.test.ts`, `mobile/scripts/sync-ios-version.test.ts`, `mobile/src/lib/app-update.test.ts`；变更规则：同步发布规则、mobile README、CLI、发布门禁和版本测试；来源：用户 2026-09-26 修复结案与发布独立约定、`mobile/README.md`, `docs/CLI.md`。
 
 ## C-011 Quoted conversation payload

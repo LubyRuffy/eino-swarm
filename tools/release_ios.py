@@ -9,7 +9,7 @@ import zipfile
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from release import NOT_REQUIRED, delivery_complete, source_preflight, home, read_json, run, sha256, version_code, write_json
+from release import NOT_REQUIRED, batch_delivery_complete, delivery_batch, delivery_complete, source_preflight, home, read_json, run, sha256, version_code, write_json
 
 
 def load_client(path):
@@ -189,11 +189,14 @@ class IOSRelease:
         write_json(self.ledger_path, self.ledger)
         path = Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json'))
         delivery = read_json(path, {})
-        batch = delivery.get('pending_new_batch', {})
-        if batch.get('source_sha') == self.source_sha and batch.get('version') == self.version:
+        batch, current = delivery_batch(delivery, self.version, self.source_sha)
+        if batch:
             batch['ios'] = 'published'
             batch['version_locked'] = True
-            delivery['last_published_source_sha'] = self.source_sha
+            if 'ios' in batch.get('additional_platforms', {}):
+                batch['additional_platforms']['ios']['status'] = 'published'
+            if current:
+                delivery['last_published_source_sha'] = self.source_sha
             issues = set(map(str, batch['issues']))
             issues.update(str(n) for n, alias in delivery.get('delivery_aliases', {}).items()
                           if alias.get('source_sha') == self.source_sha)
@@ -205,9 +208,8 @@ class IOSRelease:
                     if row.get('ios') not in NOT_REQUIRED:
                         row['ios'] = 'published'
                     row['delivery_complete'] = delivery_complete(row)
-            batch['publication'] = ('platform_delivery_verified' if all(
-                delivery['issues'][str(number)]['delivery_complete'] for number in batch['issues'])
-                else 'platform_delivery_in_progress')
+            batch['publication'] = ('platform_delivery_verified' if batch_delivery_complete(delivery, batch)
+                                    else 'platform_delivery_in_progress')
             write_json(path, delivery)
 
     def publish(self, check=False):

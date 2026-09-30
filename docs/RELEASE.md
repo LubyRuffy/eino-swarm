@@ -36,8 +36,17 @@ timestamp against 24 elapsed hours; it does not reset at midnight or per run.
 The first verified public platform updates `last_published_source_sha` automatically.
 An already allocated, public batch is excluded from the next trigger even if
 one of its platforms is still pending. The platform list is the union of
-unallocated Issues' actual required delivery statuses; desktop selects macOS,
-mobile selects Android and iOS. Server deployment is tracked separately.
+unallocated Issues' actual required delivery statuses and verified extra
+behavior changes on the complete main. Record such a change in
+`next_unallocated_batch.additional_platforms` with a required platform,
+`source_shas` between the previous public SHA and current main, and its native
+acceptance/release status. The batch needs that installer without changing an
+unrelated Issue row's `not_required_by_behavior_change` status. Desktop selects
+macOS, mobile selects Android and iOS. Server deployment is tracked separately.
+Before assigning a newer batch, move a still-pending public batch into
+`completed_batches[version].batch` with its frozen source and platform statuses.
+The release entry can resume that old version from its frozen checkout; its
+completion updates the old Issue rows and never rewinds the newest public SHA.
 
 ## Private iOS setup
 
@@ -124,6 +133,9 @@ status; each row becomes delivery-complete when all of its required platforms
 are published. The first verified public platform locks the version and source
 SHA onto all batch rows, so a partial delivery cannot qualify another version.
 The batch-level platform state still records the shared Release.
+An extra platform with `pending_native_*` status blocks only that platform
+until native acceptance is recorded. Its success is tracked at batch level;
+the batch is not fully delivered while it remains pending.
 
 iOS first checks app `builds`, app `buildUploads`, group `builds` and the existing
 `ios-signing/testflight-releases.json`. API `builds/{id}/betaGroups` is not used.

@@ -52,11 +52,9 @@ allocated = {n for n in accepted if rows[n].get("batch_version") and (locked or 
 if locked:
     allocated |= current_batch
 unallocated = [n for n in accepted if n not in allocated]
-platforms = [p for p in ("macos", "android", "ios") if any(
-    rows[n].get(p) not in delivered
-    for n in unallocated)]
 commit_count = 0
 oldest = None
+additional = {}
 if unallocated:
     baseline = state.get("last_published_source_sha")
     if not baseline and locked:
@@ -64,6 +62,19 @@ if unallocated:
     if not baseline:
         raise SystemExit("Missing last published source SHA for the new batch audit")
     subprocess.run(["git", "merge-base", "--is-ancestor", baseline, "HEAD"], cwd=repo, check=True)
+    next_batch = state.get("next_unallocated_batch", {})
+    if next_batch.get("additional_platforms"):
+        if set(next_batch.get("issues", [])) != set(unallocated):
+            raise SystemExit("Extra platform scope does not match the unallocated batch")
+        for platform, entry in next_batch["additional_platforms"].items():
+            shas = entry.get("source_shas", [])
+            if platform not in ("macos", "android", "ios") or not shas:
+                raise SystemExit(f"Invalid extra platform scope: {platform}")
+            for sha in shas:
+                subprocess.run(["git", "merge-base", "--is-ancestor", baseline, sha], cwd=repo, check=True)
+                subprocess.run(["git", "merge-base", "--is-ancestor", sha, "HEAD"], cwd=repo, check=True)
+            if entry.get("status") not in delivered:
+                additional[platform] = entry
     commit_count = int(subprocess.check_output(
         ["git", "rev-list", "--first-parent", "--count", f"{baseline}..HEAD"],
         cwd=repo, text=True).strip())
@@ -79,6 +90,8 @@ if unallocated:
             raise SystemExit(f"Issue #{number}: acceptance time lacks timezone")
         oldest = moment if oldest is None or moment < oldest else oldest
 age_hours = (datetime.now(timezone.utc) - oldest.astimezone(timezone.utc)).total_seconds() / 3600 if oldest else 0
+platforms = [p for p in ("macos", "android", "ios") if p in additional or any(
+    rows[n].get(p) not in delivered for n in unallocated)]
 qualified = bool(platforms) and (commit_count > 3 or age_hours > 24)
 preallocated = bool(state["pending_new_batch"].get("version")) and not locked
 print(json.dumps({
@@ -94,6 +107,7 @@ print(json.dumps({
     "oldest_pending_at": oldest.isoformat() if oldest else None,
     "pending_age_hours": round(age_hours, 3),
     "platforms_to_release": platforms,
+    "additional_platforms": additional,
     "qualified": qualified,
     "batch_version": state["pending_new_batch"].get("version"),
     "version_locked": locked,

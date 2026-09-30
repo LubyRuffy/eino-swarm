@@ -21,6 +21,22 @@ def delivery_complete(row):
     return all(row.get(platform) in DELIVERED for platform in ('android', 'macos', 'ios', 'server'))
 
 
+def delivery_batch(delivery, version, source_sha=None):
+    current = delivery.get('pending_new_batch', {})
+    if current.get('version') == version and (source_sha is None or current.get('source_sha') == source_sha):
+        return current, True
+    previous = delivery.get('completed_batches', {}).get(version, {}).get('batch', {})
+    if previous.get('version') == version and (source_sha is None or previous.get('source_sha') == source_sha):
+        return previous, False
+    return None, False
+
+
+def batch_delivery_complete(delivery, batch):
+    return (all(delivery['issues'][str(number)]['delivery_complete'] for number in batch['issues'])
+            and all(extra.get('status') in DELIVERED
+                    for extra in batch.get('additional_platforms', {}).values()))
+
+
 def read_json(path, default=None):
     return json.loads(Path(path).read_text()) if Path(path).exists() else default
 
@@ -140,12 +156,15 @@ def github_platform(root, version, source_sha, platform, state):
 def record_installer(version, source_sha, platform, result):
     path = Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json'))
     delivery = read_json(path, {})
-    batch = delivery.get('pending_new_batch', {})
-    if batch.get('source_sha') != source_sha or batch.get('version') != version:
+    batch, current = delivery_batch(delivery, version, source_sha)
+    if not batch:
         return
     batch[platform] = 'published'
     batch['version_locked'] = True
-    delivery['last_published_source_sha'] = source_sha
+    if platform in batch.get('additional_platforms', {}):
+        batch['additional_platforms'][platform]['status'] = 'published'
+    if current:
+        delivery['last_published_source_sha'] = source_sha
     for number in batch['issues']:
         row = delivery['issues'][str(number)]
         row['version'] = row['batch_version'] = version
@@ -154,8 +173,8 @@ def record_installer(version, source_sha, platform, result):
             row[platform] = 'published'
             row[f'{platform}_delivery'] = dict(result, source_sha=source_sha, version=version)
         row['delivery_complete'] = delivery_complete(row)
-    batch['publication'] = ('platform_delivery_verified' if all(delivery['issues'][str(number)]['delivery_complete']
-        for number in batch['issues']) else 'platform_delivery_in_progress')
+    batch['publication'] = ('platform_delivery_verified' if batch_delivery_complete(delivery, batch)
+                            else 'platform_delivery_in_progress')
     write_json(path, delivery)
 
 
@@ -176,13 +195,14 @@ def release_notes(root, version, state):
 
 def batch_platforms(version, pending_only):
     delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
-    batch = delivery.get('pending_new_batch', {})
-    if batch.get('version') != version or not batch.get('issues'):
+    batch, _ = delivery_batch(delivery, version)
+    if not batch or not batch.get('issues'):
         return None
     excluded = DELIVERED if pending_only else NOT_REQUIRED
-    return [platform for platform in ('macos', 'android', 'ios') if any(
-        delivery.get('issues', {}).get(str(number), {}).get(platform) not in excluded
-        for number in batch['issues'])]
+    return [platform for platform in ('macos', 'android', 'ios') if (
+        any(delivery.get('issues', {}).get(str(number), {}).get(platform) not in excluded
+            for number in batch['issues'])
+        or batch.get('additional_platforms', {}).get(platform, {}).get('status', 'not_required') not in excluded)]
 
 
 def selected_platforms(version, selected):
@@ -194,9 +214,12 @@ def selected_platforms(version, selected):
 
 def platform_acceptance_gate(version, platform):
     delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
-    batch = delivery.get('pending_new_batch', {})
-    if batch.get('version') != version:
+    batch, _ = delivery_batch(delivery, version)
+    if not batch:
         return
+    extra = batch.get('additional_platforms', {}).get(platform, {})
+    if extra.get('status', '').startswith('pending_native_'):
+        raise ValueError(f'{platform} native acceptance is still pending for this batch')
     for number in batch.get('issues', []):
         status = delivery.get('issues', {}).get(str(number), {}).get(platform, '')
         if isinstance(status, str) and status.startswith('pending_native_'):

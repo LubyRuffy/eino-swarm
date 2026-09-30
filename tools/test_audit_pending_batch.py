@@ -16,13 +16,16 @@ class PendingBatchTests(unittest.TestCase):
     def audit(self, numbers, *, closed=True, delivered=False, locked=False,
               missing_fix=False, integrated=True, extra_numbers=(),
               extra_accepted=True, alias=False, assigned_numbers=(),
-              commits=0, age_hours=1, platform="ios", preallocated=False):
+              commits=0, age_hours=1, platform="ios", preallocated=False,
+              additional_platforms=None, extra_platform="macos", extra_integrated=True):
         accepted_at = (datetime.now(timezone.utc) - timedelta(hours=age_hours)).isoformat()
         state = {
             "repository": "owner/project", "integration_checkout": "/clean/main",
             "last_published_source_sha": "base-sha",
             "pending_new_batch": {"issues": numbers, "version_locked": locked,
                                   "version": "1.0.0" if locked or preallocated else None},
+            "next_unallocated_batch": {"issues": list(numbers) + list(extra_numbers),
+                "additional_platforms": additional_platforms or {}},
             "issues": {str(n): {
                 "code": "verified_integrated_and_pushed",
                 "fix_sha": None if missing_fix else f"fix-{n}",
@@ -35,8 +38,11 @@ class PendingBatchTests(unittest.TestCase):
         for n in extra_numbers:
             state["issues"][str(n)] = {
                 "code": "verified_integrated_and_pushed" if extra_accepted else "implementing",
-                "fix_sha": f"fix-{n}", "macos": "pending_batch",
-                "android": "not_required", "ios": "not_required", "server": "not_required",
+                "fix_sha": f"fix-{n}",
+                "macos": "pending_batch" if extra_platform == "macos" else "not_required",
+                "android": "pending_batch" if extra_platform == "mobile" else "not_required",
+                "ios": "pending_batch" if extra_platform == "mobile" else "not_required",
+                "server": "not_required",
                 "count_as_new_release_issue": not alias,
                 "accepted_at": accepted_at,
             }
@@ -67,6 +73,8 @@ class PendingBatchTests(unittest.TestCase):
 
         def ancestry(args, **kwargs):
             self.assertEqual(args[:3], ["git", "merge-base", "--is-ancestor"])
+            if not extra_integrated and "desktop-sha" in args:
+                raise SystemExit("desktop commit is not integrated")
             if not integrated:
                 raise SystemExit("fix is not integrated")
 
@@ -140,6 +148,20 @@ class PendingBatchTests(unittest.TestCase):
         result = self.audit([1, 2, 3], locked=True, extra_numbers=[4, 5, 6], commits=4)
         self.assertEqual(result["unallocated_issues"], [4, 5, 6])
         self.assertTrue(result["allocate_new_version"])
+
+    def test_complete_main_desktop_change_is_included_without_mislabeling_phone_issues(self):
+        result = self.audit([], extra_numbers=[47, 48], commits=4, extra_platform="mobile",
+            additional_platforms={"macos": {"source_shas": ["desktop-sha"],
+                                           "status": "pending_native_window_acceptance"}})
+        self.assertEqual(result["unallocated_issues"], [47, 48])
+        self.assertEqual(result["platforms_to_release"], ["macos", "android", "ios"])
+        self.assertTrue(result["allocate_new_version"])
+
+    def test_extra_platform_commit_must_be_in_complete_main(self):
+        with self.assertRaisesRegex(SystemExit, "desktop commit is not integrated"):
+            self.audit([], extra_numbers=[47], commits=4, extra_platform="mobile",
+                additional_platforms={"macos": {"source_shas": ["desktop-sha"], "status": "pending"}},
+                extra_integrated=False)
 
     def test_assigned_rows_stay_allocated_when_batch_index_moves(self):
         result = self.audit([], extra_numbers=[1, 2, 3, 4], assigned_numbers=[1, 2, 3])

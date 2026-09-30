@@ -369,6 +369,68 @@ class IosTests(unittest.TestCase):
         self.assertEqual(len([c for c in self.run.call_args_list if 'altool' in c.args[0]]), 1)
 
 class MoreGateTests(unittest.TestCase):
+    def test_batch_extra_platform_publishes_without_marking_phone_issues_as_mac(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / 'delivery.json'
+            release.write_json(state, {'pending_new_batch': {
+                'version': '0.1.23', 'source_sha': 'new', 'issues': [47],
+                'additional_platforms': {'macos': {'source_shas': ['desktop'], 'status': 'pending_release'}}},
+                'issues': {'47': {'macos': 'not_required_by_behavior_change',
+                                  'android': 'published', 'ios': 'pending', 'server': 'not_required'}}})
+            with patch.dict(os.environ, {'DELIVERY_STATE': str(state)}):
+                self.assertEqual(release.batch_platforms('0.1.23', pending_only=True), ['macos', 'ios'])
+                release.record_installer('0.1.23', 'new', 'macos', {'status': 'published'})
+                self.assertEqual(release.batch_platforms('0.1.23', pending_only=True), ['ios'])
+            saved = release.read_json(state)
+            self.assertEqual(saved['issues']['47']['macos'], 'not_required_by_behavior_change')
+            self.assertEqual(saved['pending_new_batch']['additional_platforms']['macos']['status'], 'published')
+
+    def test_old_ios_completion_survives_allocating_a_newer_public_batch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = root / 'issue-automation/delivery-state.json'
+            old = {'version': '0.1.20', 'source_sha': 'sha', 'issues': [46],
+                   'ios': 'waiting_current_build_compliance', 'version_locked': True}
+            release.write_json(state, {'pending_new_batch': {'version': '0.1.23',
+                'source_sha': 'new', 'issues': [47], 'version_locked': True},
+                'completed_batches': {'0.1.20': {'batch': old}},
+                'last_published_source_sha': 'new',
+                'issues': {'46': {'macos': 'published', 'android': 'published',
+                                  'ios': 'waiting_current_build_compliance', 'server': 'not_required'},
+                           '47': {'macos': 'not_required', 'android': 'published',
+                                  'ios': 'waiting_beta_review', 'server': 'not_required'}}})
+            ledger = root / 'ios-signing/testflight-releases.json'
+            release.write_json(ledger, {'pending_changes': [{'issue': 46, 'batch_version': '0.1.20',
+                'batch_source_sha': 'sha', 'status': 'waiting'}]})
+            config = root / 'config.json'
+            release.write_json(config, {'signing_dir': str(root), 'testflight_cli': 'private.py',
+                'group_ids': ['internal', 'external'], 'compliance': {'source_sha': 'sha',
+                'build_number': '120', 'confirmed_by': 'reviewer', 'uses_non_exempt': False}})
+            with patch.dict(os.environ, {'ZWAI_HOME': str(root), 'IOS_RELEASE_CONFIG': str(config),
+                                      'DELIVERY_STATE': str(state)}), \
+                 patch.object(release_ios, 'load_client', return_value=SimpleNamespace(Client=lambda: None)):
+                self.assertEqual(release.batch_platforms('0.1.20', pending_only=True), ['ios'])
+                ios = release_ios.IOSRelease(root, '0.1.20', 'sha', {'version': '0.1.20', 'source_sha': 'sha'})
+                ios.complete_delivery()
+                saved = release.read_json(state)
+                self.assertEqual(release.batch_platforms('0.1.20', pending_only=True), [])
+            self.assertEqual(saved['issues']['46']['ios'], 'published')
+            self.assertTrue(saved['issues']['46']['delivery_complete'])
+            self.assertEqual(saved['completed_batches']['0.1.20']['batch']['ios'], 'published')
+            self.assertEqual(saved['pending_new_batch']['version'], '0.1.23')
+            self.assertEqual(saved['last_published_source_sha'], 'new')
+
+    def test_batch_extra_mac_needs_native_acceptance_before_upload(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / 'delivery.json'
+            release.write_json(state, {'pending_new_batch': {'version': '0.1.23', 'issues': [47],
+                'additional_platforms': {'macos': {'source_shas': ['desktop'],
+                    'status': 'pending_native_window_acceptance'}}},
+                'issues': {'47': {'macos': 'not_required', 'android': 'pending', 'ios': 'not_required'}}})
+            with patch.dict(os.environ, {'DELIVERY_STATE': str(state)}), \
+                 self.assertRaisesRegex(ValueError, 'native acceptance'):
+                release.platform_acceptance_gate('0.1.23', 'macos')
+
     def test_mixed_platform_batch_preserves_per_issue_delivery_scope(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

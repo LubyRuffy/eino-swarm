@@ -229,3 +229,9 @@ feature.
   Issue with a missing platform stays pending after closure. The audit requires
   the previous public source SHA and an acceptance timestamp (or verified Git
   commit time) to make the 24-hour rule repeatable.
+- Before replacing the current batch with a newer version, retain any older
+  public batch with pending platforms in `completed_batches`. Its frozen source
+  must remain resumable without rolling back the newest public source SHA.
+  Record verified desktop/mobile changes on the complete main even when those
+  commits have no Issue row; batch-level platform scope must not change an
+  unrelated Issue's required-platform fields.
