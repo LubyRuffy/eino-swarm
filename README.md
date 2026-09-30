@@ -73,7 +73,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   row, then Submit. Other opens a box instead of sitting empty under
   every card. The same ReAct turn continues after the answer. Workers cannot
   ask. While a card is waiting, Enter in the composer is Other, not a
-  follow-up.
+  follow-up. On a paired phone, a rejected submission shows the PC error and
+  retains the selected option or Other text for retry.
 - **Scheduled waits.** The manager can arm a wake on this conversation
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   `schedule_wake` does not take an id. It arms or replaces the open wait;

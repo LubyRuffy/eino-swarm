@@ -174,6 +174,9 @@ export const zh: Record<MessageKey, string> = {
 
   "ask.title": "需要你选一下",
   "ask.submit": "提交",
+  "ask.submitting": "提交中…",
+  "ask.submitted": "已提交，等待继续",
+  "ask.failed": "提交失败，请重试",
   "ask.other": "其他",
 
   "err.net.down":

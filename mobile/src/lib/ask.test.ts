@@ -27,4 +27,24 @@ describe("ask", () => {
     })
     expect(structuredAnswers(qs, {}, {})).toBeNull()
   })
+
+  it("uses the host's normalized question id when Other is submitted", () => {
+    const qs = parseAskToolArgs(JSON.stringify({ questions: [{
+      id: "test-window", prompt: "When?", options: [
+        { id: "now", label: "Now" }, { id: "later", label: "Later" },
+      ],
+    }] }))!
+    expect(qs[0].id).toBe("test_window")
+    expect(structuredAnswers(qs, { test_window: "other" }, { test_window: "After review" }))
+      .toEqual({ test_window: { answers: ["After review"] } })
+  })
+
+  it("drops punctuation that the host does not treat as whitespace", () => {
+    const qs = parseAskToolArgs(JSON.stringify({ questions: [{
+      id: "test\uFEFF-window", prompt: "When?", options: [
+        { id: "now", label: "Now" }, { id: "later", label: "Later" },
+      ],
+    }] }))!
+    expect(qs[0].id).toBe("test_window")
+  })
 })

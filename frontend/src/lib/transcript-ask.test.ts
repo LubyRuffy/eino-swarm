@@ -25,6 +25,24 @@ describe("parseAskToolArgs", () => {
     expect(qs?.[0]?.options.map((o) => o.id)).toEqual(["safer", "faster", ASK_OTHER_ID])
   })
 
+  it("matches the host's normalized question id for a hyphenated model id", () => {
+    const qs = parseAskToolArgs(JSON.stringify({ questions: [{
+      id: "test-window", prompt: "When?", options: [
+        { id: "now", label: "Now" }, { id: "later", label: "Later" },
+      ],
+    }] }))
+    expect(qs?.[0]?.id).toBe("test_window")
+  })
+
+  it("drops a non-space separator as the host does", () => {
+    const qs = parseAskToolArgs(JSON.stringify({ questions: [{
+      id: "test\uFEFF-window", prompt: "When?", options: [
+        { id: "now", label: "Now" }, { id: "later", label: "Later" },
+      ],
+    }] }))
+    expect(qs?.[0]?.id).toBe("test_window")
+  })
+
   it("rejects junk so a malformed tool_call does not paint a card", () => {
     expect(parseAskToolArgs("")).toBeNull()
     expect(parseAskToolArgs("{}")).toBeNull()

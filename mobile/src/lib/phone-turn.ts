@@ -2,7 +2,7 @@ import type { ComposerExtra } from "@/components/composer"
 
 import { LinkFault, linkError, remoteError } from "./client"
 import type { RemoteLink } from "./link"
-import { OpFollowupSteer, OpPreempt, OpSend } from "./rpc"
+import { OpAnswer, OpFollowupSteer, OpPreempt, OpSend, type RemoteRequest } from "./rpc"
 import type { PhoneView } from "./session"
 import { markRunning } from "./session"
 import { sendComposed } from "./turn-send"
@@ -14,6 +14,35 @@ type TurnDeps = {
   fail: (err: unknown) => void
   setError: (message: string) => void
   setPending: (pending: boolean) => void
+}
+
+export async function answerPhoneQuestion(
+  deps: Pick<TurnDeps, "link" | "setError" | "setPending">,
+  threadId: string,
+  answer: Pick<RemoteRequest, "text" | "call_id" | "answers">,
+) {
+  const target = deps.link()
+  if (!target?.alive()) {
+    const message = linkError(new LinkFault("offline", "network"))
+    if (answer.answers === undefined) deps.setError(message)
+    throw new Error(message)
+  }
+  deps.setPending(true)
+  let response
+  try {
+    response = await target.rpc({ op: OpAnswer, thread_id: threadId, ...answer })
+  } catch (error) {
+    const message = linkError(error)
+    if (answer.answers === undefined) deps.setError(message)
+    throw new Error(message)
+  } finally {
+    deps.setPending(false)
+  }
+  if (!response.ok) {
+    const message = remoteError(response.error || response.code || "")
+    if (answer.answers === undefined) deps.setError(message)
+    throw new Error(message)
+  }
 }
 
 export async function sendPhoneQueue(

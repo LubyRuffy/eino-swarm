@@ -63,11 +63,11 @@ export function ThreadScreen({
   catalogBusy?: boolean
   onTune?: (next: { providerId: string; model: string; reasoning: string }) => void
   onStop: () => void
-  onAnswer: (text: string) => void
+  onAnswer: (text: string) => void | Promise<void>
   onAnswerStructured: (
     callId: string,
     answers: Record<string, { answers: string[] }>,
-  ) => void
+  ) => void | Promise<void>
   onRunNow?: () => void
   onCancelWait?: () => void
   onResumeGoal?: () => void
@@ -373,6 +373,7 @@ export function ThreadScreen({
             </div>
             {agentPage === "chat" && ask?.pending && (ask.questions?.length ?? 0) > 0 ? (
               <AskCard
+                key={ask.callId}
                 questions={ask.questions!}
                 disabled={composerPending}
                 onSubmit={(answers) => onAnswerStructured(ask.callId || "", answers)}

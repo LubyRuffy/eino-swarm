@@ -48,6 +48,29 @@ func TestNormalizeAskQuestionsInjectsOther(t *testing.T) {
 	}
 }
 
+func TestAskAnswerUsesNormalizedModelQuestionID(t *testing.T) {
+	questions, err := NormalizeAskQuestions([]AskQuestion{{
+		ID: "test-window", Prompt: "When?", Options: []AskOption{
+			{ID: "now", Label: "Now"}, {ID: "later", Label: "Later"},
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if questions[0].ID != "test_window" {
+		t.Fatalf("normalized id=%q", questions[0].ID)
+	}
+	if got := askIdent("test\uFEFF-window"); got != "test_window" {
+		t.Fatalf("punctuation-normalized id=%q", got)
+	}
+	if _, err := resolveAskAnswers(questions, AskAnswers{"test-window": {Answers: []string{"Now"}}}); err == nil {
+		t.Fatal("raw model id must not be accepted as an answer key")
+	}
+	if _, err := resolveAskAnswers(questions, AskAnswers{"test_window": {Answers: []string{"Now"}}}); err != nil {
+		t.Fatalf("normalized answer: %v", err)
+	}
+}
+
 func TestNormalizeAskQuestionsRejectsAModelOther(t *testing.T) {
 	_, err := NormalizeAskQuestions([]AskQuestion{{
 		ID:     "approach",

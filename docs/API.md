@@ -1129,6 +1129,8 @@ Steering while paused also continues. `409 idle` when the turn is not waiting.
 
 Body `{call_id, answers}` or `{text}`. Answers an in-flight `ask_user` on this
 turn. `answers` is `{ "<question_id>": { "answers": ["label or free text"] } }`.
+Question IDs are the host-normalized IDs (`test-window` becomes `test_window`),
+not necessarily the spelling in the model's raw `ask_user` tool call.
 `text` is Other for every unanswered question (composer Enter while waiting).
 `409 idle` when nothing is waiting; `409 ask_mismatch` when `call_id` is not
 the open questionnaire. The same ReAct turn continues after the tool result.

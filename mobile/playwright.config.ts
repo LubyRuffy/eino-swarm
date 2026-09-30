@@ -18,7 +18,7 @@ export default defineConfig({
     { name: "phone" },
     {
       name: "iphone-layout",
-      testMatch: "composer-layout.spec.ts",
+      testMatch: ["composer-layout.spec.ts", "ask-answer.spec.ts"],
       use: { ...devices["iPhone 13"], browserName: "webkit", permissions: [] },
     },
   ],

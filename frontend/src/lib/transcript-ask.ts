@@ -51,7 +51,7 @@ function parseQuestion(raw: unknown): AskQuestion | null {
     prompt?: unknown
     options?: unknown
   }
-  const id = typeof row.id === "string" ? row.id.trim() : ""
+  const id = typeof row.id === "string" ? hostAskIdent(row.id) : ""
   const prompt = typeof row.prompt === "string" ? row.prompt.trim() : ""
   if (!id || !prompt || !Array.isArray(row.options)) return null
   const options: AskOption[] = []
@@ -75,6 +75,14 @@ function parseQuestion(raw: unknown): AskQuestion | null {
     prompt,
     options,
   }
+}
+
+// The host normalizes model-provided ids before validating answer keys.
+function hostAskIdent(raw: string): string {
+  return raw.trim().toLowerCase()
+    .replace(/[-\p{White_Space}]/gu, "_")
+    .replace(/[^\p{L}\p{N}_]/gu, "")
+    .replace(/^_+|_+$/g, "")
 }
 
 export function parseAskResult(text: string): Record<string, string> {

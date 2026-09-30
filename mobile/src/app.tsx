@@ -33,7 +33,6 @@ import { useClientPages, useClientPoll } from "@/lib/client-poll"
 import { mergeClientTools } from "@/lib/local-clients"
 import { readClientTask } from "@/lib/read-client"
 import {
-  OpAnswer,
   OpCancelWait,
   OpCatalog,
   OpList,
@@ -75,7 +74,7 @@ import {
   saveLink,
 } from "@/lib/store"
 import { openPhoneThread } from "@/lib/open-thread"
-import { interruptPhoneFollowup, sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
+import { answerPhoneQuestion, interruptPhoneFollowup, sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
 import { sendComposed } from "@/lib/turn-send"
 
 export function App() {
@@ -846,25 +845,9 @@ export function App() {
                 fail(e)
               }
             }}
-            onAnswer={async (text) => {
-              try {
-                await link.rpc({ op: OpAnswer, thread_id: detail.id, text })
-              } catch (e) {
-                fail(e)
-              }
-            }}
-            onAnswerStructured={async (callId, answers) => {
-              try {
-                await link.rpc({
-                  op: OpAnswer,
-                  thread_id: detail.id,
-                  call_id: callId,
-                  answers,
-                })
-              } catch (e) {
-                fail(e)
-              }
-            }}
+            onAnswer={(text) => answerPhoneQuestion(turnDeps, detail.id, { text })}
+            onAnswerStructured={(callId, answers) =>
+              answerPhoneQuestion(turnDeps, detail.id, { call_id: callId, answers })}
             onRunNow={async () => {
               try {
                 await link.rpc({ op: OpRunNow, thread_id: detail.id })

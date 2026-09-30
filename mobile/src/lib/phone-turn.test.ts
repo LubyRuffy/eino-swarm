@@ -1,9 +1,44 @@
 import { describe, expect, it, vi } from "vitest"
 
 import type { RemoteLink } from "./link"
-import { interruptPhoneFollowup } from "./phone-turn"
-import { OpFollowupSteer, OpPreempt, type RemoteRequest, type RemoteResponse } from "./rpc"
+import { answerPhoneQuestion, interruptPhoneFollowup } from "./phone-turn"
+import { OpAnswer, OpFollowupSteer, OpPreempt, type RemoteRequest, type RemoteResponse } from "./rpc"
 import { emptyView } from "./session"
+
+describe("answerPhoneQuestion", () => {
+  it("shows a rejected structured answer instead of silently leaving the question waiting", async () => {
+    const rpc = vi.fn(async (): Promise<RemoteResponse> => ({
+      v: 1, id: "a", ok: false, code: "bad_request", error: 'ask_user: missing an answer for "test_window"',
+    }))
+    const setError = vi.fn()
+    const setPending = vi.fn()
+    await expect(answerPhoneQuestion({
+      link: () => ({ alive: () => true, rpc }) as unknown as RemoteLink,
+      setError,
+      setPending,
+    }, "thread", { call_id: "call", answers: { test_window: { answers: ["After review"] } } }))
+      .rejects.toThrow("test_window")
+    expect(rpc).toHaveBeenCalledWith({
+      op: OpAnswer, thread_id: "thread", call_id: "call",
+      answers: { test_window: { answers: ["After review"] } },
+    })
+    expect(setError).not.toHaveBeenCalled()
+    expect(setPending.mock.calls.map(([pending]) => pending)).toEqual([true, false])
+  })
+
+  it("reports a rejected composer answer because it has no question-card alert", async () => {
+    const rpc = vi.fn(async (): Promise<RemoteResponse> => ({
+      v: 1, id: "a", ok: false, error: "answer no longer awaited",
+    }))
+    const setError = vi.fn()
+    await expect(answerPhoneQuestion({
+      link: () => ({ alive: () => true, rpc }) as unknown as RemoteLink,
+      setError,
+      setPending: vi.fn(),
+    }, "thread", { text: "After review" })).rejects.toThrow("answer no longer awaited")
+    expect(setError).toHaveBeenCalledWith(expect.stringContaining("answer no longer awaited"))
+  })
+})
 
 describe("interruptPhoneFollowup", () => {
   it("moves the chosen waiting message into this turn before preempting and keeps the rest queued", async () => {

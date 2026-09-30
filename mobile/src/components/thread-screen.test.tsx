@@ -206,7 +206,7 @@ describe("ThreadScreen", () => {
     expect(transcript.closest("main")).toHaveClass("min-w-0")
   })
 
-  it("shows a standing goal and the ask card", () => {
+  it("shows a standing goal and the ask card", async () => {
     const onAnswerStructured = vi.fn()
     render(
       <ThreadScreen
@@ -251,6 +251,7 @@ describe("ThreadScreen", () => {
     fireEvent.click(screen.getByRole("button", { name: "A" }))
     fireEvent.click(screen.getByTestId("ask-submit"))
     expect(onAnswerStructured).toHaveBeenCalledWith("c1", { q1: { answers: ["A"] } })
+    expect(await screen.findByRole("status")).toHaveTextContent("Submitted")
   })
 
   it("paints pursuing and a parked wait so a silent composer is not a freeze", () => {

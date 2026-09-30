@@ -1047,6 +1047,15 @@ Several things are tested here, some as pure logic and some in jsdom:
 - **`src/lib/transcript-ask.ts`** and **`src/components/app/ask-card.tsx`**: an
   `ask_user` tool_call becomes a question block; the host injects Other; a
   result settles the card; a numbered choice plus Submit POSTs answers. The
+  parser uses the host's normalized question ID (`test-window` → `test_window`);
+  `internal/engine/ask_test.go` verifies that the PC rejects the raw key and
+  accepts the normalized key;
+  `src/lib/transcript-ask.test.ts` guards that wire compatibility. The paired
+  phone's `src/lib/ask.test.ts`, `src/lib/phone-turn.test.ts` and
+  `src/components/ask-card.test.tsx` guard the same ID plus explicit RPC
+  rejection, retained Other draft and retry. `mobile/e2e/ask-answer.spec.ts`
+  drives the visible rejection and retry against the scripted PC.
+  The desktop
   card is `w-full` in the conversation column (no `max-w-*` dialog cap).
   A pending card says **Your answer needed**, carries a still `ask-mark`
   and `border-ask` (no ring or ping on the dialog); a settled card drops

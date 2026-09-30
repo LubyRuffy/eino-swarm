@@ -199,11 +199,21 @@ export class MockHost {
   private timers = new Set<number>()
   private seq = 0
   private calls = 0
+  private askFailures = new URLSearchParams(location.search).get("askfail") === "1" ? 1 : 0
 
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
     if (live) {
-      this.seed(live, scriptedTurn(live.title).slice(0, 4), true)
+      if (new URLSearchParams(location.search).get("ask") === "1") {
+        live.askUser = true
+        this.seed(live, [{
+          kind: "tool_call",
+          callID: "ask-fixture",
+          text: `ask_user({"questions":[{"id":"test-window","prompt":"When should this run?","options":[{"id":"now","label":"Now"},{"id":"later","label":"Later"}]}]})`,
+        }], true)
+      } else {
+        this.seed(live, scriptedTurn(live.title).slice(0, 4), true)
+      }
       if (new URLSearchParams(location.search).get("queue") === "1") {
         live.followups = [
           { id: "first", seq: 1, text: "first waiting message" },
@@ -416,6 +426,22 @@ export class MockHost {
     if (last) th.summary = last.text.split("\n")[0]
   }
 
+  answer(th: MockThread, req: Pick<RemoteRequest, "answers">): string | null {
+    if (!th.askUser) return null
+    const answers = req.answers as Record<string, { answers?: string[] }> | undefined
+    if (!answers?.test_window?.answers?.[0]) return 'ask_user: missing an answer for "test_window"'
+    if (this.askFailures > 0) {
+      this.askFailures -= 1
+      return "PC rejected the answer"
+    }
+    th.askUser = false
+    this.push(th, { kind: "tool_result", callID: "ask-fixture", text: JSON.stringify({ answers }) })
+    this.push(th, { kind: "agent_message", text: "The answer was received." })
+    this.settle(th)
+    this.push(th, { kind: "done" })
+    return null
+  }
+
   cancelWait(th: MockThread) {
     th.waiting = false
     th.summary = "The wait was cancelled"
@@ -622,6 +648,10 @@ export class MockLink {
       case OpResumeGoal: {
         const th = thread()
         if (!th) return this.missing(id)
+        if (req.op === OpAnswer && th.askUser) {
+          const error = this.host.answer(th, req)
+          return error ? { v: PROTOCOL_V, id, ok: false, error } : this.ok({ id })
+        }
         this.host.run(th, req.text ?? th.title)
         return this.ok({ id })
       }

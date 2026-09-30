@@ -174,6 +174,9 @@ export const en = {
 
   "ask.title": "A question for you",
   "ask.submit": "Submit",
+  "ask.submitting": "Submitting…",
+  "ask.submitted": "Submitted, waiting to continue",
+  "ask.failed": "Could not submit. Try again.",
   "ask.other": "Other",
 
   "err.net.down":

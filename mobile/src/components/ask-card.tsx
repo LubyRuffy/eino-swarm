@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
 
 import { ASK_OTHER_ID, type AskQuestion } from "@/lib/ask"
 import { t } from "@/lib/i18n"
@@ -13,10 +13,14 @@ export function AskCard({
 }: {
   questions: AskQuestion[]
   disabled?: boolean
-  onSubmit: (answers: Record<string, { answers: string[] }>) => void
+  onSubmit: (answers: Record<string, { answers: string[] }>) => void | Promise<void>
 }) {
   const [picks, setPicks] = useState<Record<string, string>>({})
   const [other, setOther] = useState<Record<string, string>>({})
+  const [error, setError] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const inFlight = useRef(false)
 
   const resolve = () => {
     const out: Record<string, { answers: string[] }> = {}
@@ -43,10 +47,23 @@ export function AskCard({
       <p className="text-sm text-muted-foreground">{t("ask.title")}</p>
       <form
         className="mt-3 flex flex-col gap-4"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault()
+          if (disabled || inFlight.current || submitted) return
           const all = resolve()
-          if (all) onSubmit(all)
+          if (!all) return
+          inFlight.current = true
+          setSubmitting(true)
+          setError("")
+          try {
+            await onSubmit(all)
+            setSubmitted(true)
+          } catch (cause) {
+            setError(cause instanceof Error ? cause.message : t("ask.failed"))
+          } finally {
+            inFlight.current = false
+            setSubmitting(false)
+          }
         }}
       >
         {questions.map((q) => (
@@ -60,7 +77,7 @@ export function AskCard({
                 <button
                   key={o.id}
                   type="button"
-                  disabled={disabled}
+                  disabled={disabled || submitting || submitted}
                   className={cn(
                     "rounded-md border border-border px-3 py-2 text-left text-sm",
                     picks[q.id] === o.id && "bg-accent",
@@ -74,6 +91,7 @@ export function AskCard({
             {picks[q.id] === ASK_OTHER_ID ? (
               <Textarea
                 aria-label={t("ask.other")}
+                disabled={disabled || submitting || submitted}
                 value={other[q.id] ?? ""}
                 onChange={(e) =>
                   setOther((prev) => ({ ...prev, [q.id]: e.target.value }))
@@ -82,8 +100,10 @@ export function AskCard({
             ) : null}
           </fieldset>
         ))}
-        <Button type="submit" disabled={disabled || !ready} data-testid="ask-submit">
-          {t("ask.submit")}
+        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        {submitted ? <p role="status" className="text-sm text-muted-foreground">{t("ask.submitted")}</p> : null}
+        <Button type="submit" disabled={disabled || !ready || submitting || submitted} data-testid="ask-submit">
+          {submitting ? t("ask.submitting") : t("ask.submit")}
         </Button>
       </form>
     </div>

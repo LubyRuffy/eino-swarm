@@ -57,6 +57,11 @@ file to preview text, a common image, or PDF; HTML and SVG appear as source
 text. The read is limited to 32 MiB, with previews limited to 8 MiB. Other
 files show a download action. Settings, PTY and Trace stay on the PC.
 
+When a PC turn asks a question, pick an option or type Other and tap Submit.
+The phone uses the PC's normalized question ID in the answer; a rejected RPC
+shows its error and keeps the draft so Submit can be retried. An accepted
+answer shows Submitted until the PC resumes the turn.
+
 A conversation sits on the composer rather than under a screen of blank:
 a short thread is bottom-aligned, and scrolling away from the tail raises
 **Jump to latest**. Answering inside a conversation is one rounded box

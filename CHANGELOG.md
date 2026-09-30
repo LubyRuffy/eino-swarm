@@ -67,6 +67,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220` / `C-006`: paired-phone `ask_user` answers now use the PC's normalized question ID. A rejected Submit shows the PC error, keeps the selected option or Other text for retry, and an accepted answer cannot be sent twice from the same card (Issue #51). The desktop question parser also uses the same ID rule.
+
 - **A restart does not keep waiting on sub-agents the previous process stopped.** Those workers are already finished (`context canceled` on the model stream). Startup pulls a future thread wake due immediately, names the exact ids on the next turn, and refuses `schedule_wake` and `report_schedule` `next_in_s` until those ids are resumed or a newer spawn has started. A shortened id that `wait_agents` reports as unknown is not treated as still writing.
 
 - **A memory review streams, so a thinking model is not killed at 30s.** The post-turn review called the model as a one-shot completion. That call holds response headers until the JSON body exists, and the 30s first-byte cap then failed the review after a turn that itself had streamed for minutes (`the model sent no first byte within 30s`). The reviewer now streams, including when a graph node still asks for Generate. Silence after the first byte is still the provider idle budget. The transcript line is the assembled answer; a tool-call frame is not it.
