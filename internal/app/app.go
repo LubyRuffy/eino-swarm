@@ -104,6 +104,14 @@ func New(opts Options) (*App, error) {
 	} else if n > 0 {
 		logger.Info("resumed turns left over from a previous run", "count", n)
 	}
+	// A future wake is not evidence those sub-agents survived the quit.
+	// Pull it due before the scheduler's first tick, or the tick waits
+	// out a timer that is polling corpses.
+	if n, err := eng.PullInterruptedWorkerWakes(); err != nil {
+		logger.Warn("could not pull waits sitting on sub-agents the previous process stopped", "err", err)
+	} else if n > 0 {
+		logger.Info("pulled waits sitting on sub-agents the previous process stopped", "count", n)
+	}
 	eng.StartScheduler()
 
 	assets := opts.Assets

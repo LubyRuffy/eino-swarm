@@ -24,7 +24,14 @@ export function applyScheduleEvent(state: TranscriptState, ev: SwarmEvent): bool
       const row = block(ev, "notice", "A wait is armed.")
       const id = scheduleIdFromArmed(ev.text)
       if (id) row.detail = id
-      append(touchAgent(state, MANAGER_ID), row)
+      const agent = touchAgent(state, MANAGER_ID)
+      // schedule_wake and report_schedule next_in_s both record this.
+      // A reload otherwise paints two live cards for one wait. A cancel
+      // since the last chip is a different fact.
+      if (id && !needsArmedChip(agent, ev.turn_id, id)) {
+        return true
+      }
+      append(agent, row)
       return true
     }
     case "schedule_fired": {
@@ -91,6 +98,19 @@ function isQuietReport(text?: string): boolean {
   } catch {
     return true
   }
+}
+
+/** False when this turn already shows this wait and has not cancelled it. */
+function needsArmedChip(agent: AgentState, turnId: string | undefined, id: string): boolean {
+  if (!turnId) return true
+  const want = id.trim()
+  for (let i = agent.blocks.length - 1; i >= 0; i--) {
+    const block = agent.blocks[i]
+    if (block.turnId !== turnId || block.detail?.trim() !== want) continue
+    if (block.text === "A wait was cancelled.") return true
+    if (block.text === "A wait is armed.") return false
+  }
+  return true
 }
 
 function scheduleIdFromArmed(text?: string): string {

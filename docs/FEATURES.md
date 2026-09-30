@@ -51,7 +51,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-150 Goals and scheduled waits
 
-- 目的：持续目标及未来时间继续执行；使用者：PC 用户；入口：`/goal`、Scheduled 页、`schedule_wake`；输入：目标和时间；输出：状态、唤醒、运行结果；无工具结果或显式报告的定时检查原轮继续一次，仍无证据显示错误；前置条件：引擎运行；失败表现：跳过、失败或等待状态；关联契约：`C-002`, `C-003`, `C-009`；实现证据：`internal/engine/schedule_completion.go`, `internal/engine/schedule_completion_test.go`, `internal/store`, `frontend/e2e/schedules.spec.ts`。
+- 目的：持续目标及未来时间继续执行；使用者：PC 用户；入口：`/goal`、Scheduled 页、`schedule_wake`；输入：目标和时间；输出：状态、唤醒、运行结果；无工具结果或显式报告的定时检查原轮继续一次，仍无证据显示错误；进程重启后，若最近一次派出的 sub-agent 已因进程停止而失败，且会话停在未来的 thread wake 上，启动把这次唤醒提前到现在，并在 resume 这些 id 或新 spawn 之前拒绝 `schedule_wake` 和 `report_schedule` 的 `next_in_s`；前置条件：引擎运行；失败表现：跳过、失败或等待状态；关联契约：`C-002`, `C-003`, `C-009`；实现证据：`internal/engine/schedule_completion.go`, `internal/engine/schedule_completion_test.go`, `internal/engine/resume_interrupted.go`, `internal/store`, `frontend/e2e/schedules.spec.ts`。
 
 ### F-160 Trace and diagnostics
 
@@ -60,7 +60,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-170 Settings and providers
 
 - 目的：配置模型、外观、工具和远程连接；使用者：PC 用户；入口：Settings；输入：配置字段；输出：持久化设置和可用模型；前置条件：本机数据目录；失败表现：校验或连接错误；关联契约：`C-006`, `C-009`；实现证据：`internal/config`, `internal/provider`, `frontend/src`。
-- 输出额度用尽：桌面端这条错误下面有提示，链到设置 → 集群的「单次输出上限」，并聚焦该输入。手机不能改这项，只显示错误原文。实现证据：`frontend/src/components/app/transcript-error.tsx`, `frontend/src/lib/output-budget.ts`。
+- 输出额度用尽：桌面端这条错误下面有提示，链到设置 → 集群的「单次输出上限」，并聚焦该输入。关掉设置后，同一条错误上出现重试，按原来的请求再跑一轮。手机不能改这项，只显示错误原文。实现证据：`frontend/src/components/app/transcript-error.tsx`, `frontend/src/lib/output-budget.ts`。
 
 ### F-180 PC text quoting
 

@@ -202,6 +202,10 @@ turn.
 On a scheduled turn: do the check, then report_schedule. Empty findings
 archives the run. Cancel when the wait is over. If still open, keep the short
 interval or recadence shorter — do not stretch.
+A sub-agent the previous process stopped is not running and is not writing.
+resume_agent that exact id or spawn a replacement before schedule_wake or
+report_schedule next_in_s. A shorter id is a different agent.
+wait_agents unknown is not evidence it is still working.
 
 `)
 

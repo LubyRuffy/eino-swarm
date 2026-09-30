@@ -152,8 +152,21 @@ func firstRunAt(spec scheduleSpec, now time.Time) (time.Time, error) {
 }
 
 func (e *Engine) recordScheduleArmed(row *store.Schedule) {
+	if row == nil {
+		return
+	}
 	threadID := row.OriginThreadID
 	if threadID == "" {
+		return
+	}
+	// One check that both replaces the wait and recadences it must not
+	// leave two identical chips. The live card reads the row, so the
+	// second write is already on the first chip. A cancel in between is
+	// a different fact and still gets a new chip.
+	e.armChipMu.Lock()
+	defer e.armChipMu.Unlock()
+	turnID := e.lastTurnID(threadID)
+	if e.sameTurnAlreadyArmed(threadID, turnID, row.ID) {
 		return
 	}
 	// Prompt and thread_id ride the chip payload so the inbox/banner can
@@ -173,10 +186,47 @@ func (e *Engine) recordScheduleArmed(row *store.Schedule) {
 		Status: row.Status, NextRunAt: row.NextRunAt,
 	})
 	e.record(store.Event{
-		ThreadID: threadID, TurnID: e.lastTurnID(threadID),
+		ThreadID: threadID, TurnID: turnID,
 		Kind: KindSchedule, AgentID: swarm.DefaultManagerID,
 		Text: string(text),
 	})
+}
+
+// sameTurnAlreadyArmed is true when this turn already showed this wait
+// and has not cancelled it since. A read error records the chip: hiding
+// the only notice is worse than a duplicate.
+func (e *Engine) sameTurnAlreadyArmed(threadID, turnID, scheduleID string) bool {
+	if e == nil || e.store == nil || threadID == "" || turnID == "" || scheduleID == "" {
+		return false
+	}
+	evs, err := e.store.ListEventsByTurn(threadID, turnID)
+	if err != nil {
+		return false
+	}
+	for i := len(evs) - 1; i >= 0; i-- {
+		ev := evs[i]
+		switch ev.Kind {
+		case KindScheduleCancelled:
+			if strings.TrimSpace(ev.Text) == scheduleID {
+				return false
+			}
+		case KindSchedule:
+			if scheduleEventID(ev.Text) == scheduleID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func scheduleEventID(text string) string {
+	var body struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal([]byte(text), &body); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(body.ID)
 }
 
 // CancelSchedule marks a row cancelled and records a chip on the origin

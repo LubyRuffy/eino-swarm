@@ -238,3 +238,70 @@ func TestRearmScheduleIntervalSurfacesADoneMismatch(t *testing.T) {
 		t.Fatal("cancelled row is not done")
 	}
 }
+
+// schedule_wake and report_schedule next_in_s both arm the open wait.
+// One scheduled check that calls both used to leave two identical chips,
+// and a reload painted both as the current wait.
+func TestWakeAndRecadenceInOneTurnRecordOneChip(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	sch := mustCreateWake(t, e, th.ID)
+	before := countThreadKind(t, e, th.ID, KindSchedule)
+	runID := mustRunningRun(t, e, sch.ID, th.ID)
+	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true, ScheduleRunID: runID})
+	wake, err := ScheduleWakeTool(func(args string) (string, error) {
+		return e.scheduleWakeJSON(th.ID, turn.ID, args)
+	}).(tool.InvokableTool).InvokableRun(context.Background(),
+		`{"delay_s":60,"prompt":"`+scheduleToolWaitPrompt+`"}`)
+	if err != nil || !strings.Contains(wake, `"ok":true`) {
+		t.Fatalf("wake: %s %v", wake, err)
+	}
+	out, err := ReportScheduleTool(func(args string) (string, error) {
+		return e.reportScheduleJSON(th.ID, turn.ID, args)
+	}).(tool.InvokableTool).InvokableRun(context.Background(),
+		`{"findings":"note","next_in_s":60}`)
+	if err != nil || !strings.Contains(out, `"ok":true`) {
+		t.Fatalf("recadence: %s %v", out, err)
+	}
+	if n := countThreadKind(t, e, th.ID, KindSchedule); n != before+1 {
+		t.Fatalf("armed chips=%d, want %d; one check must not paint the wait twice", n, before+1)
+	}
+	row, err := e.Store().GetSchedule(sch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Status != store.ScheduleActive || row.EveryS != 60 {
+		t.Fatalf("the wait must still be armed: %+v", row)
+	}
+}
+
+// A cancel in the same turn is a real change. The next arm has to show.
+func TestArmAfterCancelInTheSameTurnStillRecordsAChip(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	turn := mustStoredTurn(t, e, th.ID, store.Turn{})
+	sch := mustCreateWake(t, e, th.ID)
+	if err := e.CancelSchedule(sch.ID); err != nil {
+		t.Fatal(err)
+	}
+	before := countThreadKind(t, e, th.ID, KindSchedule)
+	wake, err := ScheduleWakeTool(func(args string) (string, error) {
+		return e.scheduleWakeJSON(th.ID, turn.ID, args)
+	}).(tool.InvokableTool).InvokableRun(context.Background(),
+		`{"every_s":60,"prompt":"`+scheduleToolWaitPrompt+`"}`)
+	if err != nil || !strings.Contains(wake, `"ok":true`) {
+		t.Fatalf("wake: %s %v", wake, err)
+	}
+	if n := countThreadKind(t, e, th.ID, KindSchedule); n != before+1 {
+		t.Fatalf("armed chips=%d, want %d after a cancel", n, before+1)
+	}
+	// The same id, not a newly minted wait. Cancel is the latest fact,
+	// so the next chip has to land.
+	again := countThreadKind(t, e, th.ID, KindSchedule)
+	e.recordScheduleCancelled(sch)
+	e.recordScheduleArmed(sch)
+	if n := countThreadKind(t, e, th.ID, KindSchedule); n != again+1 {
+		t.Fatalf("armed chips=%d, want %d after cancelling the same id", n, again+1)
+	}
+	e.recordScheduleArmed(nil)
+}

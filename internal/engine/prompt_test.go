@@ -211,6 +211,9 @@ func TestManagerPromptWaitingCopyStaysGeneric(t *testing.T) {
 		"Do not sleep the full remaining time",
 		"does not take an id",
 		"Do not invent an id",
+		"previous process stopped",
+		"exact id",
+		"wait_agents unknown",
 	} {
 		if !strings.Contains(prompt, need) {
 			t.Fatalf("missing %q:\n%s", need, prompt)

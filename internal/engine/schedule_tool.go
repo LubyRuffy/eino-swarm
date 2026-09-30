@@ -208,6 +208,11 @@ func (e *Engine) scheduleInputFromArgs(a scheduleToolArgs) (ScheduleInput, error
 }
 
 func (e *Engine) scheduleWakeJSON(threadID, _, args string) (string, error) {
+	if msg, err := e.interruptedWakeRefusal(threadID); err != nil {
+		return scheduleToolFailure("%s", err.Error()), nil
+	} else if msg != "" {
+		return scheduleToolFailure("%s", msg), nil
+	}
 	a, err := parseScheduleToolArgs(args)
 	if err != nil {
 		return scheduleToolFailure("%s", err.Error()), nil
@@ -425,6 +430,11 @@ func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, erro
 				return scheduleToolFailure("%s", err.Error()), nil
 			}
 		} else if a.NextInS != 0 {
+			if msg, err := e.interruptedWakeRefusal(threadID); err != nil {
+				return scheduleToolFailure("%s", err.Error()), nil
+			} else if msg != "" {
+				return scheduleToolFailure("%s", msg), nil
+			}
 			if err := e.rearmScheduleInterval(sch, a.NextInS); err != nil {
 				return scheduleToolFailure("%s", err.Error()), nil
 			}

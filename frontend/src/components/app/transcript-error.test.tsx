@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { defaultAppearance } from "@/lib/appearance"
 import { OUTPUT_BUDGET_ERROR } from "@/lib/output-budget"
+import { emptyTranscript } from "@/lib/transcript"
 import type { Settings } from "@/lib/types"
-import { useSettingsSheet } from "@/store/settings-sheet"
+import { useApp } from "@/store/app"
+import { closeSettings, useSettingsSheet } from "@/store/settings-sheet"
 
 import { SettingsDialog } from "./settings-dialog"
 import { ToastStack } from "./toast-stack"
@@ -52,25 +54,37 @@ const settings: Settings = {
   log: { level: "info" },
 }
 
-function Harness({ text }: { text: string }) {
+function Harness({
+  text,
+  turnId,
+  retry,
+  onResend,
+}: {
+  text: string
+  turnId?: string
+  retry?: { text: string; seq: number }
+  onResend?: (text: string, seq: number) => void
+}) {
   const open = useSettingsSheet((s) => s.open)
   const section = useSettingsSheet((s) => s.section)
   const focus = useSettingsSheet((s) => s.focus)
   return (
     <>
       <ToastStack />
-      <TranscriptError text={text} />
+      <TranscriptError
+        text={text}
+        turnId={turnId}
+        retry={retry}
+        onResend={onResend}
+      />
       <SettingsDialog
         open={open}
         theme="system"
         locale="en"
         appearance={defaultAppearance()}
         onOpenChange={(next) => {
-          useSettingsSheet.setState(
-            next
-              ? { open: true }
-              : { open: false, section: "general", focus: "" },
-          )
+          if (next) useSettingsSheet.setState({ open: true })
+          else closeSettings()
         }}
         onThemeChange={() => undefined}
         onLocaleChange={() => undefined}
@@ -85,7 +99,17 @@ function Harness({ text }: { text: string }) {
 
 describe("output budget error", () => {
   beforeEach(() => {
-    useSettingsSheet.setState({ open: false, section: "general", focus: "" })
+    useSettingsSheet.setState({
+      open: false,
+      section: "general",
+      focus: "",
+      budgetReturn: null,
+    })
+    useApp.setState({
+      activeId: "th1",
+      status: { running: false },
+      transcript: emptyTranscript(),
+    })
     vi.mocked(api.settings).mockResolvedValue(settings)
     vi.mocked(api.tools).mockResolvedValue({ catalog: [], enabled: [] })
   })
@@ -131,6 +155,28 @@ describe("output budget error", () => {
     expect(workers).toHaveValue(2)
     expect(workers).toHaveFocus()
     expect(cap).not.toHaveFocus()
+  })
+
+  it("retries the same request after Settings closes", async () => {
+    const user = userEvent.setup()
+    const onResend = vi.fn()
+    render(
+      <Harness
+        text={OUTPUT_BUDGET_ERROR}
+        turnId="turn-1"
+        retry={{ text: "run it again", seq: 4 }}
+        onResend={onResend}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument()
+    await user.click(
+      screen.getByRole("button", { name: "Max completion tokens" }),
+    )
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "Back to app" }))
+    const retry = await screen.findByRole("button", { name: "Retry" })
+    await user.click(retry)
+    expect(onResend).toHaveBeenCalledWith("run it again", 4)
   })
 
   it("leaves an ordinary failure as the server text", () => {

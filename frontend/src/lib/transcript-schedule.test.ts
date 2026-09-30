@@ -63,6 +63,41 @@ describe("scheduled-task transcript notices", () => {
     expect(JSON.stringify(state)).not.toMatch(/CI|deploy|GitHub/)
   })
 
+  it("keeps one armed chip when the same wait is armed twice in one turn", () => {
+    const payload = JSON.stringify({ id: "sch_ab12", kind: "thread" })
+    const state = fold([
+      ev({ kind: "schedule", turn_id: "tn_1", text: payload }),
+      ev({ kind: "schedule", turn_id: "tn_1", text: payload }),
+    ])
+    const armed = manager(state).blocks.filter((b) => b.text === "A wait is armed.")
+    expect(armed).toHaveLength(1)
+    expect(armed[0]?.detail).toBe("sch_ab12")
+  })
+
+  it("arms the same wait again on a later turn", () => {
+    const payload = JSON.stringify({ id: "sch_ab12", kind: "thread" })
+    const state = fold([
+      ev({ kind: "schedule", turn_id: "tn_1", text: payload }),
+      ev({ kind: "schedule", turn_id: "tn_2", text: payload }),
+    ])
+    expect(manager(state).blocks.filter((b) => b.text === "A wait is armed.")).toHaveLength(2)
+  })
+
+  it("shows a new armed chip after a cancel in the same turn", () => {
+    const payload = JSON.stringify({ id: "sch_ab12", kind: "thread" })
+    const state = fold([
+      ev({ kind: "schedule", turn_id: "tn_1", text: payload }),
+      ev({ kind: "schedule_cancelled", turn_id: "tn_1", text: "sch_ab12" }),
+      ev({ kind: "schedule", turn_id: "tn_1", text: payload }),
+    ])
+    const texts = manager(state).blocks.map((b) => b.text)
+    expect(texts).toEqual([
+      "A wait is armed.",
+      "A wait was cancelled.",
+      "A wait is armed.",
+    ])
+  })
+
   it("marks the conversation working when a wait fires, without a user bubble", () => {
     const started = "2026-01-01T00:00:00.000Z"
     const handled = emptyTranscript()

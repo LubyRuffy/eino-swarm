@@ -229,6 +229,10 @@ worker before closing SQLite.
    `report_schedule` fails unless `ScheduleContinue`; empty findings are
    quiet. `next_in_s` rearms an already-active interval, or a delay that
    claim marked `done`, under the same cap transaction as create/resume.
+   `schedule_wake` and that recadence in the same turn record one `schedule`
+   chip; a cancel in between still records the next arm. The transcript
+   drops a second armed chip for that id in the turn, so a reload of an
+   older log does not paint two live cards.
    Cancelled and paused rows stay dead. Omitting `id` on `schedule_wake`
    fails the tool if listing wakes fails, instead of minting a second row.
    Workers get JSON deny stubs (`workers cannot schedule`).
@@ -458,7 +462,15 @@ worker before closing SQLite.
    start: leftover workers are restored and planted from the **conversation**
    event log (not the empty new turn), and spawn ids are re-pinned because
    later turns drop previous tool results. `cleanup` marks killed leftovers as
-   stopped so they are not restarted as if they were still live. Follow-ups
+   stopped so they are not restarted as if they were still live. A sub-agent
+   that already `finished` because the process stopped (the model stream died
+   with `context canceled` / `context deadline`) is not still writing. When
+   that dispatch is the latest one and the conversation is idle on a future
+   thread wake, startup pulls the wake due before the scheduler's first tick.
+   The next turn is told those exact ids. `schedule_wake`, and
+   `report_schedule` `next_in_s`, refuse until `resume_agent` on those ids or
+   a newer spawn has started. A shorter id is a different agent;
+   `wait_agents` `unknown` is not a reason to keep the timer. Follow-ups
    waiting in `followups` stay queued and run after the leftover turn finishes
    cleanly. Unread `[steer]` messages stay in the leftover turn (a dangling
    `wait_agents` is completed; any other unfinished tool call is dropped; the
@@ -473,7 +485,12 @@ worker before closing SQLite.
    goroutine hands the finished turn's **event log** (plus the rolling session
    briefing, clipped so it cannot spend the whole budget) to a single reviewer
    agent — one `adk.ChatModelAgent` with the memory tools, not a swarm — which
-   stores what is worth carrying forward. A conversation in no project has no
+   stores what is worth carrying forward. The reviewer always streams, and
+   `Generate` on that model drains the stream (same split as compact): a
+   one-shot completion holds response headers until the JSON body exists,
+   and the 30s first-byte cap then fails the review after a turn that
+   itself streamed for minutes. Silence after the first byte is the
+   provider idle budget. A conversation in no project has no
    note store: the reviewer gets `skill_view` and `skill_manage` only, and the
    files land in the shared library (`library/skills/` under the data
    directory). The next conversation in no project lists those skills and

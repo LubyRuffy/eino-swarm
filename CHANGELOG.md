@@ -67,13 +67,19 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **A restart does not keep waiting on sub-agents the previous process stopped.** Those workers are already finished (`context canceled` on the model stream). Startup pulls a future thread wake due immediately, names the exact ids on the next turn, and refuses `schedule_wake` and `report_schedule` `next_in_s` until those ids are resumed or a newer spawn has started. A shortened id that `wait_agents` reports as unknown is not treated as still writing.
+
+- **A memory review streams, so a thinking model is not killed at 30s.** The post-turn review called the model as a one-shot completion. That call holds response headers until the JSON body exists, and the 30s first-byte cap then failed the review after a turn that itself had streamed for minutes (`the model sent no first byte within 30s`). The reviewer now streams, including when a graph node still asks for Generate. Silence after the first byte is still the provider idle budget. The transcript line is the assembled answer; a tool-call frame is not it.
+
+- **One scheduled check no longer paints two identical wait cards.** `schedule_wake` and `report_schedule` `next_in_s` both arm the open wait. Calling both in one turn stored two `schedule` events, and a reload drew both as the current wait. The second chip in that turn is not stored, and a replay of an older pair keeps one card. A cancel in the same turn still shows the next arm.
+
 - `F-430` / `C-010`: overlapping public batches retain unfinished TestFlight delivery when a newer version is allocated; completing the old build updates its Issue without rolling back the new public baseline. Verified desktop changes on the complete main also enter batch platform scope even without an Issue row, while unrelated phone Issues keep their own platform statuses (Issue #50).
 
 - `F-420` 共享技能库的运行时数据目录不再误写成仓库内实现证据，恢复文档结构检查；桌面 E2E 从当前回合的审阅事件定位复制目标，已有技能或其他并发审阅不再让断言失败。
 
 - **Pasting into an empty composer lands once.** The box hid its scrollbar with `overflow: hidden`, and WKWebView then ignored paste until something was already typed. A paste of the draft that was just sent was also thrown away as an IME echo. The scrollbar stays hidden without `overflow: hidden`, and a real paste is not that echo. Recovering a dropped insert waits until the browser has had its turn, so a paste the browser already accepted is not written twice.
 
-- **An output-budget failure on the desktop links to the setting.** When a turn ends because the model spent `max_completion_tokens` without an answer, the transcript keeps that error and adds a hint plus a link. The link opens Settings → Swarm and focuses Max completion tokens. The phone does not edit that cap, so it still shows the error text alone.
+- **An output-budget failure on the desktop links to the setting.** When a turn ends because the model spent `max_completion_tokens` without an answer, the transcript keeps that error and adds a hint plus a link. The link opens Settings → Swarm and focuses Max completion tokens. Closing that sheet reveals **Retry**, which resends the same request so the new cap is what the next run uses. The phone does not edit that cap, so it still shows the error text alone.
 
 - **FOFA chrome matches the official console.** The named palette now uses
   DESIGN 7.2 / fofa.info tokens: page and list share the navy (or cool gray)

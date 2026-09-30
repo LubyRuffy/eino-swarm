@@ -10,6 +10,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/compose"
 	"github.com/cloudwego/eino/schema"
@@ -319,7 +320,7 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 		Name:        ReviewAgentID,
 		Description: run.description,
 		Instruction: run.instruction,
-		Model:       builder(ReviewAgentID, ReviewAgentID),
+		Model:       &reviewStreamModel{inner: builder(ReviewAgentID, ReviewAgentID)},
 		ToolsConfig: adk.ToolsConfig{
 			ToolsNodeConfig: compose.ToolsNodeConfig{Tools: run.tools},
 		},
@@ -332,11 +333,12 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 		return
 	}
 
-	// Streaming is only for a caller that paints the sentence as it arrives.
-	// The post-turn review wants one finished line and already ignores
-	// streamed halves; turning it on there would change which event is
-	// the conclusion.
-	runnerCfg := adk.RunnerConfig{Agent: agent, EnableStreaming: run.onText != nil}
+	// Always stream. A one-shot completion holds response headers until the
+	// JSON body exists, and the 30s first-byte cap then fails the review
+	// after a turn that itself streamed for minutes. The finished line is
+	// the assembled stream; a tool-call frame is not the conclusion.
+	// onText only paints when a panel is waiting.
+	runnerCfg := adk.RunnerConfig{Agent: agent, EnableStreaming: true}
 	iter := adk.NewRunner(ctx, runnerCfg).
 		Run(ctx, []adk.Message{schema.UserMessage(run.userMsg)})
 	final := ""
@@ -452,6 +454,23 @@ func (e *Engine) recordReview(threadID, turnID string, outcome reviewOutcome) {
 		Kind: KindMemoryReview, AgentID: ReviewAgentID,
 		Text: string(raw), Err: outcome.Err,
 	})
+}
+
+// reviewStreamModel makes the reviewer's HTTP call a stream even when a
+// graph node still asks for Generate. Headers then arrive with the first
+// token, and silence after that is the provider idle budget — the same
+// split compact already uses. A non-streaming body would sit until the
+// model finished thinking, which is longer than the first-byte cap.
+type reviewStreamModel struct {
+	inner model.BaseChatModel
+}
+
+func (m *reviewStreamModel) Generate(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	return compactStream(ctx, m.inner, in, opts...)
+}
+
+func (m *reviewStreamModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	return m.inner.Stream(ctx, in, opts...)
 }
 
 // reviewAssistantText is the assistant prose of one event. A stream is

@@ -55,6 +55,10 @@ type Engine struct {
 	// recordMu keeps a stored event's sequence number and its delivery in the
 	// same order. See record.
 	recordMu sync.Mutex
+	// armChipMu serializes the "already armed this turn" check with the
+	// chip write. schedule_wake and report_schedule next_in_s both arm,
+	// and they run as parallel tool calls.
+	armChipMu sync.Mutex
 	// droppedTurns are turn ids removed by a rewind. Late title/review
 	// events for those ids must not land after the cut. Guarded by recordMu.
 	droppedTurns map[string]struct{}

@@ -450,7 +450,9 @@ garbage arguments come back as JSON `ok:false`, and workers get a deny stub.
 stable, Info text stays generic, a remaining-time estimate is biased to
 about a third, and `report_schedule` must not stretch the interval.
 `internal/engine/schedule_rearm_test.go` is why that recadence refuses
-cancelled and paused rows and respects `schedule_max_active`.
+cancelled and paused rows, respects `schedule_max_active`, and why
+`schedule_wake` plus `next_in_s` in one turn record one armed chip
+(a cancel in that turn still records the next one).
 `internal/store/schedule_activate_test.go` is why `done` → `active` shares
 the cap transaction with create/resume.
 `internal/engine/schedule_goal_test.go` is why a pending thread wake
@@ -553,7 +555,10 @@ turn id as `memory_review`, `FoldProjectSkills` still folds stems then asks
 the reviewer to curate the live catalog (and refuses after shutdown), a
 tidy report names what was created, deleted, patched, and left unchanged, and
 catalog-tidy model calls hang on the project's latest finished turn rather
-than the first sidebar conversation that happens to have one.
+than the first sidebar conversation that happens to have one. The reviewer's
+model call streams (`TestReviewGenerateStreamsSoTheFirstByteIsNotTheWholeBody`):
+a one-shot body would hold headers until it finished, and the 30s first-byte
+cap would fail the review.
 `internal/engine/library_test.go` and `internal/server/library_test.go` are
 why a conversation in no project records one skill in the shared library,
 lists that skill in the next such conversation's prompt, leaves the library
@@ -684,6 +689,12 @@ ids instead of dropping it and pinning every finished leftover as
 new naked swarm, and `wait_agents` returned on the first already-done id).
 `TestOrphanedWorkersTreatsCleanupAsFinished` is why a
 killed leftover is planted as stopped instead of restarted.
+`TestStartupPullsAWakeWhenTheLatestDispatchWasStopped` is why a restart does
+not leave a future wake polling sub-agents the previous process already
+stopped; `TestScheduleWakeRefusesUntilAReplacementDispatchStarts` and
+`TestReportScheduleRefusesToRearmWhileThoseSubAgentsStayStopped` are why
+that wait cannot be re-armed until those exact ids are resumed or a newer
+spawn has started.
 `TestCloseAlreadyFinishedIsNotCancelled` is why `close_agent` on a planted
 finished worker returns `already_finished` instead of `cancelled: true`
 (that lie made a long `/goal` walk the leftover roster).
@@ -1605,7 +1616,7 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Keep this computer awake, Bound phones empty copy, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. A binding that appears on a later list read while the QR stays up is painted without leaving Phone. |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR opens a live viewfinder (four corners, a beam whose `scan-beam` animation is running, a fake-camera preview); junk paste errors; a syntactically valid URI uses the same bind path; a saved ticket shows host chips and Connecting, not the scan form; Add a PC is a sheet |
 | `e2e/clients.spec.ts` | a long local agent session opens on the live reply, **Earlier** loads the lines above it, and that reply stays on screen |
-| `e2e/output-budget.spec.ts` | an output-budget error in the transcript links to Settings → Swarm and focuses Max completion tokens |
+| `e2e/output-budget.spec.ts` | an output-budget error in the transcript links to Settings → Swarm, focuses Max completion tokens, and shows Retry only after that sheet closes |
 | `e2e/composer-paste.spec.ts` | a trusted paste into an empty composer lands once, and a second paste appends instead of doubling each insert |
 | `e2e/settings.spec.ts` | Settings sheet: tool catalogue on a never-saved config, round-trip through the config file, per-note memory cap, personality, pinning a title-generation model, discovering models into the default dropdown, a failed listing toasting over the open provider, **Back to app** on a short window when Swarm is long, the Add-a-provider outline inside the Models scrollport, semantic search off by default, local agent tasks hidden until Clients is enabled (empty directories, three tool groups, no task rows), Color theme / font / conversation width, directory rows tracking UI size not conversation size, chrome language switching (restored to English) |
 | `e2e/shell.spec.ts` | launch with an existing conversation stays on the home page (no row selected, no transcript), keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline (pins and the box share one slab; the join sits on that plate), Projects and Conversations sharing one left gutter (conversation titles in the icon column), collapsing Conversations so its rows stay hidden across reload, the Conversations header icon starting a conversation outside a project, an external link opening a new window instead of replacing the app, ⌘K finding a conversation by words in its body, theme switching persisted, the app-menu width control filling the pane in wide mode and restoring the reading column (also persisted), renaming a conversation and deleting it after a confirm, and dragging a Conversations row pinning that order across reload |

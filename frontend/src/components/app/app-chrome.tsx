@@ -11,7 +11,7 @@ import { useT } from "@/lib/use-t"
 import { useApp } from "@/store/app"
 import { activeWake } from "@/store/app-schedule"
 import { projectOf, useProjects } from "@/store/projects"
-import { useSettingsSheet } from "@/store/settings-sheet"
+import { closeSettings, useSettingsSheet } from "@/store/settings-sheet"
 import { useTerminal } from "@/store/terminal"
 
 /** Settings is a full-page sheet. Keeping `open` off AppShell's state is
@@ -172,11 +172,8 @@ export function AppSettings({
   const section = useSettingsSheet((s) => s.section)
   const focus = useSettingsSheet((s) => s.focus)
   const onOpenChange = useCallback((next: boolean) => {
-    useSettingsSheet.setState(
-      next
-        ? { open: true }
-        : { open: false, section: "general", focus: "" },
-    )
+    if (next) useSettingsSheet.setState({ open: true })
+    else closeSettings()
   }, [])
   const meta = useApp((s) => s.meta)
   const theme = useApp((s) => s.theme)

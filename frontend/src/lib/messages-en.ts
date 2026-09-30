@@ -367,6 +367,7 @@ export const en = {
   "transcript.outputBudgetHint":
     "You can raise the per-request output limit in Settings.",
   "transcript.outputBudgetSettings": "Max completion tokens",
+  "transcript.outputBudgetRetry": "Retry",
   "transcript.workingFor": "Working for {duration}",
   "transcript.workingAgents":
     "Working for {duration} · {n} sub-agent{s} running",

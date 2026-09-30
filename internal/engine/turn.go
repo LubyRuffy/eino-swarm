@@ -414,6 +414,9 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	messages := history
 	messages = rt.attachLeftoverWorkers(reused, reused || in.ContinueGoal, liveWorkers(reg.Progress()), messages)
 	messages = append(messages, BuildUserMessage(text, modelImages))
+	// After the request, so a schedule prompt that still says the workers
+	// are writing does not outrank the roster of ids the process stopped.
+	messages = e.appendInterruptedWorkerCue(threadID, messages)
 	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), refs, false)
 	return turn, nil
 }
@@ -808,14 +811,8 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 		if row.Role == string(schema.User) && haveUsers[strings.TrimSpace(row.Content)] {
 			continue
 		}
-		if row.Role == string(schema.User) && row.Content == resumeCue {
-			continue // injected for the model on resume, not a human message
-		}
-		if row.Role == string(schema.User) && row.Content == resumeWorkersCue {
-			continue
-		}
-		if row.Role == string(schema.User) && row.Content == parkedWorkersCue {
-			continue
+		if row.Role == string(schema.User) && isEngineOnlyUser(row.Content) {
+			continue // injected for the model, not a human message
 		}
 		if row.Role == string(schema.Assistant) {
 			key := strings.TrimSpace(row.Content)

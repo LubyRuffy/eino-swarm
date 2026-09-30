@@ -319,7 +319,7 @@ func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
 	if len(running) > 0 && !hasUserContent(msgs, resumeWorkersCue) {
 		msgs = append(msgs, schema.UserMessage(resumeWorkersCue))
 	}
-	return msgs, nil
+	return e.appendInterruptedWorkerCue(turn.ThreadID, msgs), nil
 }
 
 func hasUserContent(msgs []adk.Message, text string) bool {
@@ -356,7 +356,7 @@ func (e *Engine) thisTurnMessages(turn *store.Turn) ([]adk.Message, error) {
 			}
 			continue
 		}
-		if r.Role == string(schema.User) && (r.Content == resumeCue || r.Content == resumeWorkersCue || r.Content == parkedWorkersCue) {
+		if r.Role == string(schema.User) && isEngineOnlyUser(r.Content) {
 			continue
 		}
 		msg := e.storedToSchema(r)

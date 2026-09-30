@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/memory"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/adk"
+	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 )
 
@@ -902,4 +904,51 @@ func TestFoldProjectSkillsReportsAnUnreadableStore(t *testing.T) {
 	if _, err := e.FoldProjectSkills(p.ID); err == nil {
 		t.Fatal("an unreadable skills directory must fail the tidy, not look like a tidy catalog")
 	}
+}
+
+// A one-shot completion holds response headers until the JSON body exists.
+// The 30s first-byte cap then fails every thinking review, after a turn
+// that itself streamed for minutes.
+func TestReviewGenerateStreamsSoTheFirstByteIsNotTheWholeBody(t *testing.T) {
+	inner := &streamCallCounter{inner: &chunkStreamModel{parts: []string{"Stored ", "one note."}}}
+	out, err := (&reviewStreamModel{inner: inner}).Generate(context.Background(), []*schema.Message{
+		schema.UserMessage("x"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inner.generates != 0 || inner.streams != 1 {
+		t.Fatalf("Generate=%d Stream=%d", inner.generates, inner.streams)
+	}
+	if out == nil || out.Content != "Stored one note." {
+		t.Fatalf("assembled=%v", out)
+	}
+
+	calls := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+		ID: "c1", Function: schema.FunctionCall{Name: "memory", Arguments: `{"action":"add"}`},
+	}}}
+	got, err := (&reviewStreamModel{inner: &headerWaitModel{msg: calls}}).Generate(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil || len(got.ToolCalls) != 1 || got.ToolCalls[0].Function.Name != "memory" {
+		t.Fatalf("a streamed tool call must still reach the reviewer: %+v", got)
+	}
+}
+
+// headerWaitModel is an endpoint that never answers Generate. The review
+// used to call that path, so the first-byte cap fired before any token.
+type headerWaitModel struct{ msg *schema.Message }
+
+func (m *headerWaitModel) Generate(context.Context, []*schema.Message, ...model.Option) (*schema.Message, error) {
+	return nil, errors.New("timeout awaiting response headers")
+}
+
+func (m *headerWaitModel) Stream(context.Context, []*schema.Message, ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	sr, sw := schema.Pipe[*schema.Message](1)
+	go func() {
+		defer sw.Close()
+		_ = sw.Send(m.msg, nil)
+	}()
+	return sr, nil
 }

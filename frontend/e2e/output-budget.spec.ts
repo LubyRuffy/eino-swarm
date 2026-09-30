@@ -24,16 +24,28 @@ test("an output-budget error opens the completion cap", async ({ page }) => {
         (max: number, ev: { seq?: number }) => Math.max(max, ev.seq ?? 0),
         0,
       )
-      events.push({
-        thread_id: id,
-        turn_id: "turn-budget",
-        seq: seq + 1,
-        kind: "error",
-        agent_id: "manager",
-        err: OUTPUT_BUDGET_ERROR,
-        text: "",
-        created_at: new Date().toISOString(),
-      })
+      const at = new Date().toISOString()
+      events.push(
+        {
+          thread_id: id,
+          turn_id: "turn-budget",
+          seq: seq + 1,
+          kind: "user_message",
+          agent_id: "manager",
+          text: "Run the check again",
+          created_at: at,
+        },
+        {
+          thread_id: id,
+          turn_id: "turn-budget",
+          seq: seq + 2,
+          kind: "error",
+          agent_id: "manager",
+          err: OUTPUT_BUDGET_ERROR,
+          text: "",
+          created_at: at,
+        },
+      )
       body.events = events
     }
     await route.fulfill({
@@ -57,4 +69,12 @@ test("an output-budget error opens the completion cap", async ({ page }) => {
     "aria-selected",
     "true",
   )
+  await expect(transcript.getByRole("button", { name: "Retry" })).toHaveCount(0)
+
+  await dialog.getByRole("button", { name: "Back to app" }).click()
+  await expect(dialog).toBeHidden()
+  // The forged user_message is not a stored row, so the click is not sent.
+  // Closing the sheet is what reveals the button.
+  await expect(transcript.getByTestId("output-budget-retry")).toBeVisible()
+  await expect(transcript.getByRole("button", { name: "Retry" })).toBeEnabled()
 })

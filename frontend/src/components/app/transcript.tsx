@@ -58,6 +58,7 @@ import { contentTypeClass } from "@/lib/chrome-type"
 import { afterImeSettles, enterSendsMessage } from "@/lib/ime"
 import { displayQuotedText, formatQuotedMessage, parseQuotedMessage } from "@/lib/quote"
 import { agentRosterLabel, agentRosterText } from "@/lib/agent-label"
+import { budgetRetryMessages } from "@/lib/output-budget"
 import { useT } from "@/lib/use-t"
 import { Textarea } from "@/components/ui/textarea"
 import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript"
@@ -111,6 +112,7 @@ export function Transcript({
     [blocks, state.running],
   )
   const groups = useMemo(() => groupByTurn(body), [body])
+  const budgetRetries = useMemo(() => budgetRetryMessages(body), [body])
   const turnById = useMemo(
     () => new Map(state.turns.map((row) => [row.id, row])),
     [state.turns],
@@ -255,6 +257,7 @@ export function Transcript({
                     showClock={b.kind === "user" || b.id === clockAnswerId}
                     onSelectAgent={onSelectAgent}
                     onResendUser={onResendUser}
+                    retry={b.kind === "error" ? budgetRetries.get(b.turnId) : undefined}
                     editing={editingSeq === b.seq && !rewindHidesEdit(state.rewindCut, b.seq)}
                     onBeginEdit={beginEdit}
                     onCancelEdit={cancelEdit}
@@ -299,6 +302,7 @@ const BlockView = memo(function BlockView({
   showClock,
   onSelectAgent,
   onResendUser,
+  retry,
   editing,
   onBeginEdit,
   onCancelEdit,
@@ -309,6 +313,7 @@ const BlockView = memo(function BlockView({
   showClock?: boolean
   onSelectAgent: (id: string) => void
   onResendUser?: (text: string, seq: number) => void
+  retry?: { text: string; seq: number }
   editing?: boolean
   onBeginEdit?: (seq: number) => void
   onCancelEdit?: () => void
@@ -377,7 +382,14 @@ const BlockView = memo(function BlockView({
       return <SpawnRow block={block} onSelect={onSelectAgent} />
 
     case "error":
-      return <TranscriptError text={block.text} />
+      return (
+        <TranscriptError
+          text={block.text}
+          turnId={block.turnId}
+          retry={retry}
+          onResend={onResendUser}
+        />
+      )
 
     case "confirm":
       return <IterationLimitCard block={block} />
