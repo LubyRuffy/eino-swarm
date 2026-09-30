@@ -1,5 +1,6 @@
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
+import { MAX_COMPLETION_SETTINGS_KEY } from "@/lib/output-budget"
 import type { Settings } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
@@ -190,6 +191,7 @@ export function SwarmTab({
         </Field>
         <Field
           query={query}
+          anchor={MAX_COMPLETION_SETTINGS_KEY}
           label={t("settings.swarm.maxCompletion")}
           hint={t("settings.swarm.maxCompletionHint")}
         >

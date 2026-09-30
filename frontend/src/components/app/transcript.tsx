@@ -1,5 +1,4 @@
 import {
-  AlertTriangle,
   Brain,
   ChevronDown,
   ChevronRight,
@@ -37,6 +36,7 @@ import { QueuedSteers } from "@/components/app/queued-steers"
 import { QuotedMessageBody, QuoteSnippet } from "@/components/app/quoted-message"
 import { TurnNav } from "@/components/app/turn-nav"
 import { CopyButton } from "@/components/app/copy-button"
+import { TranscriptError } from "@/components/app/transcript-error"
 import { InputThumbs } from "@/components/app/input-thumbs"
 import {
   thoughtExpanded,
@@ -377,12 +377,7 @@ const BlockView = memo(function BlockView({
       return <SpawnRow block={block} onSelect={onSelectAgent} />
 
     case "error":
-      return (
-        <div className="my-2 flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <p className="stream-text">{block.text}</p>
-        </div>
-      )
+      return <TranscriptError text={block.text} />
 
     case "confirm":
       return <IterationLimitCard block={block} />

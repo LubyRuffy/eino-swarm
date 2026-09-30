@@ -27,6 +27,40 @@ export function isPasteImage(file: File): boolean {
   return /\.(png|jpe?g|gif|webp)$/i.test(file.name)
 }
 
+/** Plain text on a paste. Missing or hostile clipboard data is empty, not a throw. */
+export function plainTextFromClipboard(data: DataTransfer | null | undefined): string {
+  if (!data || typeof data.getData !== "function") return ""
+  try {
+    return data.getData("text/plain") ?? ""
+  } catch {
+    return ""
+  }
+}
+
+/** WKWebView fires `paste` and then leaves an empty `overflow: hidden`
+ *  textarea unchanged. `valueAfter` is the field once the event has
+ *  returned. A change means the browser inserted; null means leave it. */
+export function recoverDroppedPaste(
+  valueBefore: string,
+  selectionStart: number,
+  selectionEnd: number,
+  valueAfter: string,
+  incoming: string,
+): { text: string; caret: number } | null {
+  if (!incoming || valueAfter !== valueBefore) return null
+  const start = clampIndex(selectionStart, 0, valueBefore.length)
+  const end = clampIndex(selectionEnd, start, valueBefore.length)
+  return {
+    text: valueBefore.slice(0, start) + incoming + valueBefore.slice(end),
+    caret: start + incoming.length,
+  }
+}
+
+function clampIndex(n: number, min: number, max: number): number {
+  if (Number.isNaN(n)) return min
+  return Math.min(Math.max(n, min), max)
+}
+
 /** Pull image files out of a paste. Text stays with the browser; we only
  *  steal the pixels. */
 export function filesFromClipboard(data: DataTransfer | null | undefined): File[] {

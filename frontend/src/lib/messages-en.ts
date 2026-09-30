@@ -359,6 +359,9 @@ export const en = {
   "transcript.limitContinued":
     "Continuing for another {extendBy} tool rounds.",
   "transcript.limitStopped": "Stopped after {limit} tool rounds.",
+  "transcript.outputBudgetHint":
+    "You can raise the per-request output limit in Settings.",
+  "transcript.outputBudgetSettings": "Max completion tokens",
   "transcript.workingFor": "Working for {duration}",
   "transcript.workingAgents":
     "Working for {duration} · {n} sub-agent{s} running",

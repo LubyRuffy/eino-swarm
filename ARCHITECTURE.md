@@ -738,7 +738,12 @@ so the last lines sit under the box (`frontend/src/lib/composer-chrome.ts`).
 `--composer-pad` on the conversation stage is the box's height, so follow and
 a jump still leave the last message readable. The box does not measure itself
 while a CJK IME is composing (`resizeComposerArea`): `height: auto` on every
-preedit key jumped the candidate window. A `usage` pulse updates only the
+preedit key jumped the candidate window. Overflow stays `auto`; the thumb is
+hidden while the draft fits. `overflow: hidden` on an empty box made WKWebView
+drop paste until the field already had text. A paste of the draft just sent is
+not the IME echo that clears the box. A paste the browser left unchanged is
+inserted on the next task; doing it in the paste microtask wrote the text
+and then the browser wrote it again. A `usage` pulse updates only the
 ring (`ComposerContextMeter`), not the textarea — rewriting a controlled
 field mid-composition is what made typing feel stuck during a live turn.
 Finished `/goal` sessions stay folded and **unmounted** until opened

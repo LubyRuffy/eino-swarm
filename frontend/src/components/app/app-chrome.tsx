@@ -170,8 +170,13 @@ export function AppSettings({
 }) {
   const open = useSettingsSheet((s) => s.open)
   const section = useSettingsSheet((s) => s.section)
+  const focus = useSettingsSheet((s) => s.focus)
   const onOpenChange = useCallback((next: boolean) => {
-    useSettingsSheet.setState(next ? { open: true } : { open: false, section: "general" })
+    useSettingsSheet.setState(
+      next
+        ? { open: true }
+        : { open: false, section: "general", focus: "" },
+    )
   }, [])
   const meta = useApp((s) => s.meta)
   const theme = useApp((s) => s.theme)
@@ -215,6 +220,7 @@ export function AppSettings({
       onSaved={refreshAfterSettings}
       trafficInset={trafficInset}
       initialSection={section}
+      focusKey={focus}
     />
   )
 }

@@ -49,18 +49,24 @@ export function clearComposerPad(from: HTMLElement | null): void {
 
 /** Grow the box with the draft. Skip while an IME is composing: `height:auto`
  *  forces a layout and the candidate window jumps on every preedit key.
- *  Overflow stays hidden until the cap — an empty box with padding or a
- *  wrapping placeholder must not paint a scrollbar. */
+ *
+ *  Returns whether the draft passed the cap, or null when it did not measure.
+ *  Overflow stays `auto`. `overflow: hidden` on an empty box makes WKWebView
+ *  drop paste until the field already has text. The caller hides the thumb
+ *  while the draft fits, so padding and a wrapping placeholder still do not
+ *  paint a scrollbar. */
 export const COMPOSER_AREA_MAX_PX = 200
 
 export function resizeComposerArea(
   el: HTMLTextAreaElement | null,
   opts?: { composing?: boolean; maxPx?: number },
-): void {
-  if (!el || opts?.composing) return
+): boolean | null {
+  if (!el || opts?.composing) return null
   const maxPx = opts?.maxPx ?? COMPOSER_AREA_MAX_PX
   el.style.height = "auto"
   const needed = el.scrollHeight
+  const capped = needed > maxPx
   el.style.height = `${Math.min(needed, maxPx)}px`
-  el.style.overflowY = needed > maxPx ? "auto" : "hidden"
+  el.style.overflowY = "auto"
+  return capped
 }

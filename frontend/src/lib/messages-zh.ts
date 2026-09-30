@@ -341,6 +341,8 @@ export const zh: { [K in keyof typeof en]: string } = {
     "已到主管工具回合上限（{limit}）。再继续 {extendBy} 轮？",
   "transcript.limitContinued": "再继续 {extendBy} 轮工具回合。",
   "transcript.limitStopped": "在 {limit} 轮工具回合后停下。",
+  "transcript.outputBudgetHint": "可以在设置里调高单次输出上限。",
+  "transcript.outputBudgetSettings": "单次输出上限",
   "transcript.workingFor": "已工作 {duration}",
   "transcript.workingAgents": "已工作 {duration} · {n} 个子代理在跑",
   "transcript.workedFor": "工作了",

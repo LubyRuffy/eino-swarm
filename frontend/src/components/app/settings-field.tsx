@@ -85,6 +85,7 @@ export function SettingsRow({
   search,
   htmlFor,
   controlClassName,
+  anchor,
   children,
 }: {
   label: string
@@ -94,11 +95,20 @@ export function SettingsRow({
   search?: Array<string | undefined | null>
   htmlFor?: string
   controlClassName?: string
+  /** Stable key a caller can scroll to after opening this page. */
+  anchor?: string
   children?: ReactNode
 }) {
   if (!settingsMatch(query, label, hint, ...(search ?? []))) return null
   return (
-    <div className={settingsRowClass} data-settings-row="">
+    <div
+      className={cn(
+        settingsRowClass,
+        anchor && "rounded-md focus-within:ring-2 focus-within:ring-ring",
+      )}
+      data-settings-row=""
+      data-settings-key={anchor || undefined}
+    >
       <SettingsCopy label={label} hint={hint} badge={badge} htmlFor={htmlFor} />
       {children ? (
         <div
@@ -122,6 +132,7 @@ export function Field({
   query = "",
   wide,
   controlClassName,
+  anchor,
   children,
 }: {
   label: string
@@ -130,6 +141,7 @@ export function Field({
   /** URL / token fields. Numbers stay a short box either way. */
   wide?: boolean
   controlClassName?: string
+  anchor?: string
   children: React.ReactElement<{ id?: string }>
 }) {
   const id = useId()
@@ -139,6 +151,7 @@ export function Field({
       hint={hint}
       query={query}
       htmlFor={id}
+      anchor={anchor}
       controlClassName={cn(fieldControlClass(wide), controlClassName)}
     >
       {cloneElement(children, { id })}

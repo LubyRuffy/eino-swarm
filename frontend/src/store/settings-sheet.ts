@@ -8,8 +8,14 @@ import type { SettingsSectionId } from "@/components/app/settings-dialog"
 export const useSettingsSheet = create<{
   open: boolean
   section: SettingsSectionId
-}>(() => ({ open: false, section: "general" }))
+  /** data-settings-key to scroll into view once the page is painted.
+   *  Empty means land on the section and leave focus alone. */
+  focus: string
+}>(() => ({ open: false, section: "general", focus: "" }))
 
-export function openSettings(section: SettingsSectionId = "general") {
-  useSettingsSheet.setState({ open: true, section })
+export function openSettings(
+  section: SettingsSectionId = "general",
+  focus = "",
+) {
+  useSettingsSheet.setState({ open: true, section, focus })
 }

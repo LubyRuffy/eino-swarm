@@ -58,6 +58,8 @@ import {
   addPasteImages,
   dropPasteImage,
   filesFromClipboard,
+  plainTextFromClipboard,
+  recoverDroppedPaste,
   revokePasteImages,
   toSendImages,
   type PasteImage,
@@ -195,6 +197,7 @@ export function Composer({
   const [armed, setArmed] = useState(false)
   const [adding, setAdding] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
+  const [draftOverflows, setDraftOverflows] = useState(false)
   const areaRef = useRef<HTMLTextAreaElement>(null)
   const pinCaret = useRef<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -208,9 +211,21 @@ export function Composer({
   pastedRef.current = pasted
   // CJK IMEs write the committed string back after we clear the box.
   // Swallow that echo so a leftover Enter cannot queue the live turn.
+  // A paste is the user putting text back; it is not that echo.
   const echoRef = useRef("")
+  const pastedOverEcho = useRef(false)
+  // Recovery waits until after this task. A microtask runs before the
+  // browser inserts, so it used to write the paste and then the browser
+  // wrote it again.
+  const pasteRecover = useRef<number | null>(null)
 
   useEffect(() => () => cancelImeSettle.current?.(), [])
+  useEffect(
+    () => () => {
+      if (pasteRecover.current != null) window.clearTimeout(pasteRecover.current)
+    },
+    [],
+  )
   useEffect(() => () => revokePasteImages(pastedRef.current), [])
 
   // The box sits on the transcript. Without this pad the last line hides
@@ -247,7 +262,9 @@ export function Composer({
   // IME preedit fires onChange; measuring with height:auto there jumps the
   // candidate window and feels like a stuck key.
   useEffect(() => {
-    resizeComposerArea(areaRef.current, { composing: composingRef.current })
+    const capped = resizeComposerArea(areaRef.current, { composing: composingRef.current })
+    if (capped == null) return
+    setDraftOverflows(capped)
   }, [text])
 
   // Menu click blurs the textarea. Pin the caret after `/goal ` lands so
@@ -559,11 +576,14 @@ export function Composer({
             }
             className={cn(
               contentTypeClass,
-              "max-h-[200px] min-h-[44px] overflow-y-hidden rounded-none border-0 bg-transparent px-4 py-3 shadow-none focus-visible:ring-0",
+              "max-h-[200px] min-h-[44px] overflow-y-auto rounded-none border-0 bg-transparent px-4 py-3 shadow-none focus-visible:ring-0",
+              draftOverflows ? "thin-scrollbar" : "composer-scroll-fit",
             )}
             onChange={(e) => {
               const next = normalizeSlashPrefix(e.target.value)
-              if (echoRef.current && next.trim() === echoRef.current) {
+              const pasted = pastedOverEcho.current
+              pastedOverEcho.current = false
+              if (!pasted && echoRef.current && next.trim() === echoRef.current) {
                 setText("")
                 return
               }
@@ -572,9 +592,32 @@ export function Composer({
             }}
             onPaste={(e) => {
               const files = filesFromClipboard(e.clipboardData)
-              if (files.length === 0) return
-              e.preventDefault()
-              setPasted((prev) => addPasteImages(prev, files).next)
+              if (files.length > 0) {
+                e.preventDefault()
+                setPasted((prev) => addPasteImages(prev, files).next)
+                return
+              }
+              const incoming = plainTextFromClipboard(e.clipboardData)
+              if (!incoming) return
+              pastedOverEcho.current = true
+              const el = e.currentTarget
+              const before = el.value
+              const start = el.selectionStart ?? before.length
+              const end = el.selectionEnd ?? before.length
+              if (pasteRecover.current != null) window.clearTimeout(pasteRecover.current)
+              pasteRecover.current = window.setTimeout(() => {
+                pasteRecover.current = null
+                // onChange already accepted a paste the browser inserted.
+                // Recovering after that writes the same text a second time.
+                if (!pastedOverEcho.current) return
+                pastedOverEcho.current = false
+                const recovered = recoverDroppedPaste(before, start, end, el.value, incoming)
+                if (!recovered) return
+                echoRef.current = ""
+                const next = normalizeSlashPrefix(recovered.text)
+                pinCaret.current = next.length === recovered.text.length ? recovered.caret : next.length
+                setText(next)
+              }, 0)
             }}
             onCompositionStart={() => {
               cancelImeSettle.current?.()
@@ -585,7 +628,8 @@ export function Composer({
               cancelImeSettle.current = afterImeSettles(() => {
                 composingRef.current = false
                 cancelImeSettle.current = null
-                resizeComposerArea(areaRef.current)
+                const capped = resizeComposerArea(areaRef.current)
+                if (capped != null) setDraftOverflows(capped)
               })
             }}
             onKeyDown={(e) => {

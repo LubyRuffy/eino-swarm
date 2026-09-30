@@ -9,6 +9,8 @@ import {
   filesFromClipboard,
   isPasteImage,
   pasteImageFromFile,
+  plainTextFromClipboard,
+  recoverDroppedPaste,
   revokePasteImages,
   toSendImages,
 } from "./paste-image"
@@ -25,6 +27,52 @@ describe("isPasteImage", () => {
     expect(isPasteImage(file("shot.PNG", ""))).toBe(true)
     expect(isPasteImage(file("notes.md", "text/plain"))).toBe(false)
     expect(isPasteImage(file("x.bin", "application/octet-stream"))).toBe(false)
+  })
+})
+
+describe("plainTextFromClipboard", () => {
+  it("reads text/plain and treats a missing clipboard as empty", () => {
+    const data = {
+      getData: (type: string) => (type === "text/plain" ? "alpha" : ""),
+    } as unknown as DataTransfer
+    expect(plainTextFromClipboard(data)).toBe("alpha")
+    expect(plainTextFromClipboard(null)).toBe("")
+    expect(plainTextFromClipboard(undefined)).toBe("")
+  })
+
+  it("is empty when the clipboard throws", () => {
+    const data = {
+      getData: () => {
+        throw new Error("denied")
+      },
+    } as unknown as DataTransfer
+    expect(plainTextFromClipboard(data)).toBe("")
+  })
+})
+
+describe("recoverDroppedPaste", () => {
+  // The paste event fired and the textarea did not change. That is WKWebView
+  // dropping the insert on an empty box, not an empty clipboard.
+  it("inserts when the browser left the field unchanged", () => {
+    expect(recoverDroppedPaste("", 0, 0, "", "alpha")).toEqual({
+      text: "alpha",
+      caret: 5,
+    })
+  })
+
+  it("inserts into a selection the browser did not replace", () => {
+    expect(recoverDroppedPaste("abcd", 1, 3, "abcd", "X")).toEqual({
+      text: "aXd",
+      caret: 2,
+    })
+  })
+
+  it("does nothing when the browser already inserted", () => {
+    expect(recoverDroppedPaste("", 0, 0, "alpha", "alpha")).toBeNull()
+  })
+
+  it("does nothing for an empty payload", () => {
+    expect(recoverDroppedPaste("", 0, 0, "", "")).toBeNull()
   })
 })
 

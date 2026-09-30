@@ -63,6 +63,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- **Pasting into an empty composer lands once.** The box hid its scrollbar with `overflow: hidden`, and WKWebView then ignored paste until something was already typed. A paste of the draft that was just sent was also thrown away as an IME echo. The scrollbar stays hidden without `overflow: hidden`, and a real paste is not that echo. Recovering a dropped insert waits until the browser has had its turn, so a paste the browser already accepted is not written twice.
+
+- **An output-budget failure on the desktop links to the setting.** When a turn ends because the model spent `max_completion_tokens` without an answer, the transcript keeps that error and adds a hint plus a link. The link opens Settings → Swarm and focuses Max completion tokens. The phone does not edit that cap, so it still shows the error text alone.
+
 - **FOFA chrome matches the official console.** The named palette now uses
   DESIGN 7.2 / fofa.info tokens: page and list share the navy (or cool gray)
   void, cyan is the signal, blue is the second brand stop, and the composer

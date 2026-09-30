@@ -633,6 +633,15 @@
     background: transparent;
   }
 
+  /* Same empty composer, without overflow:hidden. That value is what made
+     WKWebView ignore paste until the box already had text. */
+  .composer-scroll-fit {
+    scrollbar-width: none;
+  }
+  .composer-scroll-fit::-webkit-scrollbar {
+    display: none;
+  }
+
   /* Directory rows. Height is the token, not Tailwind h-7, so a 13px
      root cannot fold 28px into 23px. */
   .sidebar-row {

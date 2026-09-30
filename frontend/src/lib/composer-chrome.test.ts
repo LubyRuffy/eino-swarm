@@ -98,16 +98,19 @@ describe("resizeComposerArea", () => {
   it("caps the grown height so the composer cannot eat the conversation", () => {
     const el = document.createElement("textarea")
     Object.defineProperty(el, "scrollHeight", { value: 480, configurable: true })
-    resizeComposerArea(el, { maxPx: 200 })
+    expect(resizeComposerArea(el, { maxPx: 200 })).toBe(true)
     expect(el.style.height).toBe("200px")
     expect(el.style.overflowY).toBe("auto")
   })
 
-  it("hides the scrollbar while the draft still fits", () => {
+  // overflow:hidden on an empty box is what made WKWebView drop paste until
+  // the field already had text. The thumb is hidden by the caller, not by
+  // clipping the editing host.
+  it("leaves overflow auto while the draft fits so an empty box can take a paste", () => {
     const el = document.createElement("textarea")
     Object.defineProperty(el, "scrollHeight", { value: 48, configurable: true })
-    resizeComposerArea(el, { maxPx: 200 })
+    expect(resizeComposerArea(el, { maxPx: 200 })).toBe(false)
     expect(el.style.height).toBe("48px")
-    expect(el.style.overflowY).toBe("hidden")
+    expect(el.style.overflowY).toBe("auto")
   })
 })

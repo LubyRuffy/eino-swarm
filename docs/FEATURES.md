@@ -60,6 +60,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-170 Settings and providers
 
 - 目的：配置模型、外观、工具和远程连接；使用者：PC 用户；入口：Settings；输入：配置字段；输出：持久化设置和可用模型；前置条件：本机数据目录；失败表现：校验或连接错误；关联契约：`C-006`, `C-009`；实现证据：`internal/config`, `internal/provider`, `frontend/src`。
+- 输出额度用尽：桌面端这条错误下面有提示，链到设置 → 集群的「单次输出上限」，并聚焦该输入。手机不能改这项，只显示错误原文。实现证据：`frontend/src/components/app/transcript-error.tsx`, `frontend/src/lib/output-budget.ts`。
 
 ### F-180 PC text quoting
 

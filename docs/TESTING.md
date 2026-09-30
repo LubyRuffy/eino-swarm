@@ -1218,8 +1218,14 @@ Several things are tested here, some as pure logic and some in jsdom:
   is not under a % opaque hang. Fade overhang is px on the same stage so
   content font-size cannot grow a rem wash. `resizeComposerArea` skips the
   `height: auto` measure while `composing` is set, so an IME candidate
-  window is not laid out on every preedit key. Overflow is `hidden` until
-  `scrollHeight` exceeds the cap, then `auto`.
+  window is not laid out on every preedit key. Overflow stays `auto`
+  (`resizeComposerArea` returns whether the draft passed the cap). While it
+  fits, the box uses `composer-scroll-fit` so the thumb stays hidden;
+  `overflow: hidden` on an empty box is what made WKWebView drop paste until
+  the field already had text. A paste of the draft just sent is not the IME
+  echo that clears the box. A paste event that leaves the value unchanged is
+  inserted on the next task (`recoverDroppedPaste`), not in the paste
+  microtask — that ran before the browser inserted and wrote the text twice.
 - **`src/lib/tool-view.ts`**: a built-in tool's JSON args collapse to the
   command / query / path the user needs to see, `execCommand` keeps newlines
   so an expanded row can show a heredoc, `exec` payloads become stdout
@@ -1589,6 +1595,8 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/remote.spec.ts` | Settings → Phone: Hub URL, no Host Token field, Event text on the phone, Events on the phone, Keep this computer awake, Bound phones empty copy, Show pairing QR, no QR pixels while the hub is unset; the failure toasts over the sheet in viewport (× dismisses it). A stubbed binding paints the reported model and last-connected, not a bare fingerprint. A binding that appears on a later list read while the QR stays up is painted without leaving Phone. |
 | `mobile/e2e/scan.spec.ts` | Capacitor shell Scan QR opens a live viewfinder (four corners, a beam whose `scan-beam` animation is running, a fake-camera preview); junk paste errors; a syntactically valid URI uses the same bind path; a saved ticket shows host chips and Connecting, not the scan form; Add a PC is a sheet |
 | `e2e/clients.spec.ts` | a long local agent session opens on the live reply, **Earlier** loads the lines above it, and that reply stays on screen |
+| `e2e/output-budget.spec.ts` | an output-budget error in the transcript links to Settings → Swarm and focuses Max completion tokens |
+| `e2e/composer-paste.spec.ts` | a trusted paste into an empty composer lands once, and a second paste appends instead of doubling each insert |
 | `e2e/settings.spec.ts` | Settings sheet: tool catalogue on a never-saved config, round-trip through the config file, per-note memory cap, personality, pinning a title-generation model, discovering models into the default dropdown, a failed listing toasting over the open provider, **Back to app** on a short window when Swarm is long, the Add-a-provider outline inside the Models scrollport, semantic search off by default, local agent tasks hidden until Clients is enabled (empty directories, three tool groups, no task rows), Color theme / font / conversation width, directory rows tracking UI size not conversation size, chrome language switching (restored to English) |
 | `e2e/shell.spec.ts` | launch with an existing conversation stays on the home page (no row selected, no transcript), keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline (pins and the box share one slab; the join sits on that plate), Projects and Conversations sharing one left gutter (conversation titles in the icon column), collapsing Conversations so its rows stay hidden across reload, the Conversations header icon starting a conversation outside a project, an external link opening a new window instead of replacing the app, ⌘K finding a conversation by words in its body, theme switching persisted, the app-menu width control filling the pane in wide mode and restoring the reading column (also persisted), renaming a conversation and deleting it after a confirm, and dragging a Conversations row pinning that order across reload |
 

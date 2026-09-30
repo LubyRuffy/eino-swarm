@@ -73,7 +73,7 @@ function sections(t: Translate) {
       id: "swarm",
       label: t("settings.nav.swarm"),
       icon: Workflow,
-      keys: "sub-agent timeout rounds manager pulse coalesce compact context budget goal title concurrent stream 集群",
+      keys: "sub-agent timeout rounds manager pulse coalesce compact context budget goal title concurrent stream max completion tokens output 集群 输出 上限",
     },
     {
       id: "tools",
@@ -145,6 +145,7 @@ export function SettingsDialog({
   appearance,
   onAppearanceChange,
   initialSection = SETTINGS_HOME_SECTION,
+  focusKey = "",
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -160,6 +161,8 @@ export function SettingsDialog({
   appearance: Appearance
   onAppearanceChange: (patch: Partial<Appearance>) => void
   initialSection?: SettingsSectionId
+  /** data-settings-key to scroll into view. Empty leaves focus alone. */
+  focusKey?: string
 }) {
   const t = useT()
   const tRef = useRef(t)
@@ -169,6 +172,10 @@ export function SettingsDialog({
   const [catalog, setCatalog] = useState<ToolDescriptor[]>([])
   const [query, setQuery] = useState("")
   const [section, setSection] = useState<SettingsSectionId>(initialSection)
+  const formRef = useRef<HTMLFormElement>(null)
+  // One landing per open. Settings writes and the search box both re-render
+  // this sheet; focusing again would yank the caret back to the deep link.
+  const landedFocus = useRef("")
 
   const onSavedRef = useRef(onSaved)
   onSavedRef.current = onSaved
@@ -247,6 +254,22 @@ export function SettingsDialog({
     SETTINGS_HOME_SECTION
 
   useEffect(() => {
+    if (!open) {
+      landedFocus.current = ""
+      return
+    }
+    if (!focusKey || !settings || landedFocus.current === focusKey) return
+    const row = formRef.current?.querySelector(
+      `[data-settings-key="${CSS.escape(focusKey)}"]`,
+    )
+    if (!(row instanceof HTMLElement)) return
+    row.scrollIntoView({ block: "center" })
+    const input = row.querySelector("input")
+    if (input instanceof HTMLElement) input.focus({ preventScroll: true })
+    landedFocus.current = focusKey
+  }, [open, focusKey, settings, page])
+
+  useEffect(() => {
     if (!query.trim()) return
     const ids = nav
       .filter((s) => settingsMatch(query, s.label, s.keys))
@@ -276,6 +299,7 @@ export function SettingsDialog({
             warning about a stray password input. Enter must not close the
             sheet — there is no Save; edits already write themselves. */}
         <form
+          ref={formRef}
           className="flex min-h-0 flex-1 overflow-hidden"
           onSubmit={(e) => e.preventDefault()}
         >

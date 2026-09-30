@@ -1075,6 +1075,15 @@ func TestHostNotifyKeepsWorkerEventsAfterRunReturns(t *testing.T) {
 	t.Fatalf("parked worker finished into the void: %+v", rec.all())
 }
 
+// The desktop transcript matches this sentence and links to Settings.
+// Rewording it drops the link on every conversation that already stored it.
+func TestOutputBudgetSentenceStaysTheSettingsLink(t *testing.T) {
+	const want = "the model used its whole output budget before it produced an answer"
+	if errOutputBudget.Error() != want {
+		t.Fatalf("settings link matches this sentence, got %q", errOutputBudget.Error())
+	}
+}
+
 // A thinking model can spend the whole output budget and emit no answer.
 // That has to fail the turn. A blank success looks like the run hung.
 func TestLengthStopWithNoAnswerIsAnError(t *testing.T) {

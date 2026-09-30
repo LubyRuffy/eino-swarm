@@ -344,6 +344,9 @@ type streamAcc struct {
 // errOutputBudget is a model call that hit its output cap before any answer
 // or tool call. Recording that as a finished turn leaves a blank success
 // the UI cannot tell from a hang.
+//
+// The desktop transcript matches this sentence exactly and links to
+// Settings → Swarm. Change frontend/src/lib/output-budget.ts with it.
 var errOutputBudget = errors.New("the model used its whole output budget before it produced an answer")
 
 func outputStoppedEarly(finish string) bool {

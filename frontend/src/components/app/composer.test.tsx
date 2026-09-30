@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { Composer } from "./composer"
@@ -95,6 +95,14 @@ describe("Composer thinking level", () => {
   })
 })
 
+function textClipboard(text: string): DataTransfer {
+  return {
+    getData: (type: string) => (type === "text/plain" ? text : ""),
+    items: [],
+    files: [],
+  } as unknown as DataTransfer
+}
+
 function frame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()))
 }
@@ -182,6 +190,47 @@ describe("Composer Enter vs IME", () => {
     expect(input).toHaveValue("")
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
     expect(onSend).toHaveBeenCalledTimes(1)
+  })
+
+  // The echo guard used to treat a deliberate paste of that draft as the
+  // IME writing it back, so the empty box ate the paste until a keystroke
+  // cleared the guard.
+  it("keeps a paste of the draft that was just sent", () => {
+    const onSend = vi.fn()
+    renderComposer({ onSend, running: true })
+    const input = screen.getByTestId("composer-input")
+    fireEvent.change(input, { target: { value: "draft" } })
+    fireEvent.keyDown(input, { key: "Enter", metaKey: true, keyCode: 13 })
+    expect(input).toHaveValue("")
+    fireEvent.paste(input, { clipboardData: textClipboard("draft") })
+    fireEvent.change(input, { target: { value: "draft" } })
+    expect(input).toHaveValue("draft")
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 })
+    expect(onSend).toHaveBeenCalledTimes(2)
+    expect(onSend).toHaveBeenLastCalledWith("draft", undefined, { steer: false })
+  })
+
+  // A microtask runs before the browser inserts, so recovering there wrote
+  // the paste and then the browser wrote it again. The empty value has to
+  // survive that checkpoint; the fallback insert happens on the next task.
+  it("inserts a paste the browser dropped on an empty box", async () => {
+    renderComposer()
+    const input = screen.getByTestId("composer-input")
+    fireEvent.paste(input, { clipboardData: textClipboard("alpha") })
+    await Promise.resolve()
+    expect(input).toHaveValue("")
+    await waitFor(() => expect(input).toHaveValue("alpha"))
+  })
+
+  it("does not insert again when the browser already accepted the paste", async () => {
+    renderComposer()
+    const input = screen.getByTestId("composer-input")
+    fireEvent.paste(input, { clipboardData: textClipboard("alpha") })
+    fireEvent.change(input, { target: { value: "alpha" } })
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(input).toHaveValue("alpha")
   })
 
   it("sends a different draft after the previous one", () => {
@@ -349,7 +398,9 @@ describe("Composer chrome", () => {
     expect(input.className).not.toMatch(/\bbg-background\b/)
     expect(input.className).toContain("--ui-font-size")
     expect(input.className).not.toMatch(/\btext-sm\b/)
-    expect(input.className).toMatch(/\boverflow-y-hidden\b/)
+    expect(input.className).toMatch(/\boverflow-y-auto\b/)
+    expect(input.className).toMatch(/\bcomposer-scroll-fit\b/)
+    expect(input.className).not.toMatch(/\boverflow-y-hidden\b/)
     expect(input.closest("[data-composer-box]")).toBeTruthy()
   })
 })
