@@ -33,10 +33,10 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 		timeout = DefaultAgentTimeout
 	}
 
-	// Workers outlive one manager ReAct loop. A /goal session yield cancels
-	// the manager's context; tying the worker to that context would kill
-	// in-flight work the next session still needs. Handle.Cancel / Cleanup /
-	// Close still stop them.
+	// Workers outlive one manager ReAct loop. A /goal or scheduled-wake
+	// handoff cancels the manager's context; tying the worker to that context
+	// would kill in-flight work the next turn still needs. Handle.Cancel /
+	// Cleanup / Close still stop them.
 	runCtx, cancel := context.WithCancel(context.Background())
 	watchCtx, watchCancel := context.WithTimeout(runCtx, timeout)
 	h.mu.Lock()

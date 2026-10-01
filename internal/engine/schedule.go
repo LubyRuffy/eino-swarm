@@ -243,7 +243,7 @@ func (e *Engine) CancelSchedule(id string) error {
 		return nil
 	}
 	e.recordScheduleCancelled(row)
-	e.continueGoalAfterWakeCancel(row)
+	e.continueGoalAfterWakeStop(row)
 	return nil
 }
 
@@ -295,7 +295,13 @@ func (e *Engine) PatchSchedule(id, status string) (*store.Schedule, error) {
 	if err := e.store.UpdateSchedule(id, map[string]any{"status": status}); err != nil {
 		return nil, err
 	}
-	return e.store.GetSchedule(id)
+	got, err := e.store.GetSchedule(id)
+	if err == nil {
+		// Pausing the last wake removes the next owner of parked workers.
+		// Apply the same idle handoff as cancel_schedule.
+		e.continueGoalAfterWakeStop(got)
+	}
+	return got, err
 }
 
 // GetSchedule loads one wait. Missing ids are ErrNotFound.

@@ -29,7 +29,8 @@ func (rt *runtime) continueGoal(status string) {
 		return
 	}
 	if rt.engine.hasFutureWake(rt.threadID) {
-		rt.reapParked()
+		// The next wake owns any workers parked by this turn. Reaping them
+		// here made every scheduled check cancel its own in-flight work.
 		return
 	}
 	th, err := rt.engine.store.GetThread(rt.threadID)
@@ -131,10 +132,10 @@ func (e *Engine) hasFutureWake(threadID string) bool {
 	return ok
 }
 
-// continueGoalAfterWakeCancel starts the next pursuing turn when the human
-// cancelled the wait that had been parking it. A live turn already has a
-// continueGoal at finish; stealing here would 409 and burn the budget.
-func (e *Engine) continueGoalAfterWakeCancel(row *store.Schedule) {
+// continueGoalAfterWakeStop starts the next pursuing turn when the human
+// cancels or pauses the wait that had been parking it. A live turn already
+// has a continueGoal at finish; stealing here would 409 and burn the budget.
+func (e *Engine) continueGoalAfterWakeStop(row *store.Schedule) {
 	if row == nil || row.Kind != store.ScheduleThread {
 		return
 	}

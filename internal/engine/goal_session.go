@@ -51,7 +51,14 @@ func (rt *runtime) shouldPark(status string) bool {
 		return false
 	}
 	th, err := rt.engine.store.GetThread(rt.threadID)
-	return err == nil && pursuingGoal(th)
+	if err == nil && pursuingGoal(th) {
+		return true
+	}
+	// A scheduled check can hand off unfinished workers to its next armed
+	// wake even without a standing /goal. A claimed one-shot is not enough:
+	// its current fire ends with this turn and has no next owner.
+	wake, err := rt.engine.store.ActiveThreadWake(rt.threadID)
+	return err == nil && wake != nil
 }
 
 func (rt *runtime) parkRegistry(reg *swarm.Registry) {

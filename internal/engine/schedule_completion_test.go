@@ -3,7 +3,9 @@ package engine
 import (
 	"strings"
 	"testing"
+	"time"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
@@ -86,6 +88,75 @@ func TestScheduledAcknowledgementContinuesTheSameTurn(t *testing.T) {
 	turns, _ := e.Store().ListTurns(th.ID)
 	if len(turns) != 1 {
 		t.Fatalf("turns=%d, want one", len(turns))
+	}
+}
+
+func TestScheduledChecksReuseTheWorkerRegistryAcrossWakes(t *testing.T) {
+	provider.SetMockScheduleSpawn(true)
+	t.Cleanup(func() { provider.SetMockScheduleSpawn(false) })
+	t.Setenv("ZWAI_MOCK_SCHEDULE_REPORT_WITHOUT_WAIT", "1")
+	t.Setenv("ZWAI_MOCK_WORKER_DELAY_MS", "2000")
+	e := newTestEngine(t)
+	clk := newScheduleClock()
+	e.now = clk.Now
+	th, _ := e.CreateThread("", "", "")
+	sch := armDueWake(t, e, clk, th.ID, 60)
+
+	first, err := e.RunScheduleNow(sch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForTurn(t, e, first.ID); got.Status != store.TurnDone {
+		t.Fatalf("first check: %+v", got)
+	}
+	waitSettled(t, e, th.ID)
+	rt := e.runtimeFor(th.ID)
+	rt.mu.Lock()
+	parked := rt.parked
+	rt.mu.Unlock()
+	if parked == nil || hasKind(t, e, th.ID, KindCleanup) || e.Status(th.ID).Workers == 0 {
+		t.Fatal("the manager's report must not cancel the running sub-agents")
+	}
+
+	second, err := e.RunScheduleNow(sch.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := waitForTurn(t, e, second.ID); got.Status != store.TurnDone {
+		t.Fatalf("second check: %+v", got)
+	}
+	waitSettled(t, e, th.ID)
+	rt.mu.Lock()
+	reused := rt.parked
+	rt.mu.Unlock()
+	if reused != parked {
+		t.Fatal("the next scheduled check must continue the same registry")
+	}
+	deadline := time.Now().Add(6 * time.Second)
+	for time.Now().Before(deadline) {
+		if e.Status(th.ID).Workers == 0 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if e.Status(th.ID).Workers != 0 {
+		t.Fatal("mock workers never finished")
+	}
+	events, err := e.Replay(th.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	finished := 0
+	for _, ev := range events {
+		if ev.Kind == swarm.NotifyFinished.String() {
+			finished++
+			if ev.Err != "" {
+				t.Fatalf("worker failed after the scheduled handoff: %s", ev.Err)
+			}
+		}
+	}
+	if finished < 2 {
+		t.Fatalf("finished workers=%d, want the original pair", finished)
 	}
 }
 

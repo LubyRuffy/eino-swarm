@@ -250,6 +250,11 @@ worker before closing SQLite.
    wait-turn does not imply an immediate auto-continue. Cancelling that
    wake while idle starts the next pursuing turn; a cancel during a live
    turn restores auto-continue when that turn finishes.
+   A successful turn with an armed next wake parks its worker registry, even
+   without `/goal`, so the next scheduled turn reuses the same worker ids and
+   in-flight model calls. The current claimed one-shot alone does not count
+   as a next wake. Cancelling or pausing the last wake while idle cleans up
+   parked workers; error and interrupt still clean up at turn end.
    Before a successful scheduled turn returns from `runManager`, durable
    tool-result/report events in that turn are checked (`schedule_completion.go`).
    With no evidence, the transcript is preserved and the same registry/turn

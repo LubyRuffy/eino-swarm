@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
@@ -52,6 +53,13 @@ func TestPendingWakeSuppressesGoalAutoContinue(t *testing.T) {
 	if got.GoalAutoTurns != 0 {
 		t.Fatalf("a pending wake must not spend the auto-continue budget, got %d", got.GoalAutoTurns)
 	}
+	rt := e.runtimeFor(th.ID)
+	rt.mu.Lock()
+	parked := rt.parked
+	rt.mu.Unlock()
+	if parked == nil {
+		t.Fatal("the pending wake must retain the goal turn's worker registry")
+	}
 }
 
 func TestCancelWakeRestoresGoalAutoContinue(t *testing.T) {
@@ -96,6 +104,30 @@ func TestCancelWakeRestoresGoalAutoContinue(t *testing.T) {
 	}
 }
 
+func TestPauseWakeRestoresGoalAutoContinue(t *testing.T) {
+	provider.SetCompleteOpenGoal(false)
+	t.Cleanup(func() { provider.SetCompleteOpenGoal(true) })
+
+	e := newTestEngine(t)
+	e.Config().Swarm.GoalMaxAutoTurns = 1
+	th, _ := e.CreateThread("", "", "")
+	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
+		t.Fatal(err)
+	}
+	sch := mustCreateWake(t, e, th.ID)
+	first, err := e.StartTurn(th.ID, "start the work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForTurn(t, e, first.ID)
+	waitSettled(t, e, th.ID)
+	if _, err := e.PatchSchedule(sch.ID, store.SchedulePaused); err != nil {
+		t.Fatal(err)
+	}
+	waitKind(t, e, th.ID, KindGoalContinued)
+	waitSettled(t, e, th.ID)
+}
+
 func TestCancelWakeWithoutStandingObjectiveStaysIdle(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
@@ -123,17 +155,55 @@ func TestCancelWakeWithoutStandingObjectiveStaysIdle(t *testing.T) {
 	}
 }
 
-func TestContinueGoalAfterWakeCancelNoopsWhenNotAnIdleThreadWake(t *testing.T) {
+func TestCancelLastWakeStopsParkedWorkers(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	sch := mustCreateWake(t, e, th.ID)
+	rt := e.runtimeFor(th.ID)
+	reg := swarm.NewRegistry()
+	t.Cleanup(reg.Close)
+	rt.parkRegistry(reg)
+	if err := e.CancelSchedule(sch.ID); err != nil {
+		t.Fatal(err)
+	}
+	rt.mu.Lock()
+	parked := rt.parked
+	rt.mu.Unlock()
+	if parked != nil {
+		t.Fatal("cancelled last wake left workers running with no next turn")
+	}
+}
+
+func TestPauseLastWakeStopsParkedWorkers(t *testing.T) {
+	e := newTestEngine(t)
+	th, _ := e.CreateThread("", "", "")
+	sch := mustCreateWake(t, e, th.ID)
+	rt := e.runtimeFor(th.ID)
+	reg := swarm.NewRegistry()
+	t.Cleanup(reg.Close)
+	rt.parkRegistry(reg)
+	if _, err := e.PatchSchedule(sch.ID, store.SchedulePaused); err != nil {
+		t.Fatal(err)
+	}
+	rt.mu.Lock()
+	parked := rt.parked
+	rt.mu.Unlock()
+	if parked != nil {
+		t.Fatal("paused last wake left workers running with no next turn")
+	}
+}
+
+func TestContinueGoalAfterWakeStopNoopsWhenNotAnIdleThreadWake(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
 		t.Fatal(err)
 	}
-	e.continueGoalAfterWakeCancel(nil)
-	e.continueGoalAfterWakeCancel(&store.Schedule{
+	e.continueGoalAfterWakeStop(nil)
+	e.continueGoalAfterWakeStop(&store.Schedule{
 		Kind: store.ScheduleStandalone, ThreadID: th.ID,
 	})
-	e.continueGoalAfterWakeCancel(&store.Schedule{Kind: store.ScheduleThread})
+	e.continueGoalAfterWakeStop(&store.Schedule{Kind: store.ScheduleThread})
 	if hasKind(t, e, th.ID, KindGoalContinued) {
 		t.Fatal("a non-thread or empty-target cancel must not start a pursuing turn")
 	}
@@ -142,7 +212,7 @@ func TestContinueGoalAfterWakeCancelNoopsWhenNotAnIdleThreadWake(t *testing.T) {
 	rt.mu.Lock()
 	rt.running = true
 	rt.mu.Unlock()
-	e.continueGoalAfterWakeCancel(&store.Schedule{
+	e.continueGoalAfterWakeStop(&store.Schedule{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
 	})
 	rt.mu.Lock()

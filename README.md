@@ -77,6 +77,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   retains the selected option or Other text for retry.
 - **Scheduled waits.** The manager can arm a wake on this conversation
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
+  A successful check with another wake scheduled keeps its unfinished
+  sub-agents running for that next check; pausing or cancelling the last
+  wake stops workers that have no continuing goal.
   `schedule_wake` does not take an id. It arms or replaces the open wait;
   the host assigns the id. Cancel copies an id from the open-wait list.
   When progress is gated on time or a condition not worth polling now, it is

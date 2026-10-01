@@ -280,12 +280,32 @@ func TestParkedWorkersStayVisibleBetweenGoalSessions(t *testing.T) {
 	waitSettled(t, e, th.ID)
 }
 
-func TestShouldParkOnlyOnADonePursuingTurn(t *testing.T) {
+func TestScheduledWakeKeepsWorkersAcrossADoneTurn(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	rt := e.runtimeFor(th.ID)
 	if rt.shouldPark(store.TurnDone) {
-		t.Fatal("no standing objective to park")
+		t.Fatal("no continuing objective or armed wake to park")
+	}
+	wake, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedManager,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rt.shouldPark(store.TurnDone) {
+		t.Fatal("the next scheduled turn must inherit in-flight workers")
+	}
+	if rt.shouldPark(store.TurnCancelled) || rt.shouldPark(store.TurnError) {
+		t.Fatal("interrupt and crash must still stop in-flight workers")
+	}
+	if err := e.CancelSchedule(wake.ID); err != nil {
+		t.Fatal(err)
+	}
+	if rt.shouldPark(store.TurnDone) {
+		t.Fatal("a canceled wake cannot keep workers alive")
 	}
 	if err := e.SetThreadGoal(th.ID, "keep the standing objective"); err != nil {
 		t.Fatal(err)

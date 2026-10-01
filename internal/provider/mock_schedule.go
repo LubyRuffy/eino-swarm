@@ -108,6 +108,10 @@ func mockScheduleScript(turn int, msgs []*schema.Message) *schema.Message {
 		return mockScheduleReportMessage(turn, msgs, mockScheduleFindingsText)
 	}
 	if mockScheduleSpawnOptIn() {
+		if mockEnvOn("ZWAI_MOCK_SCHEDULE_REPORT_WITHOUT_WAIT") &&
+			mockLooksLikeScheduledTurn(msgs) && len(spawnedIDs(msgs)) > 0 {
+			return mockScheduleReportMessage(turn, msgs, mockScheduleFindingsText)
+		}
 		return nil
 	}
 	if mockLooksLikeScheduledTurn(msgs) {

@@ -802,7 +802,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   notice (the `{attempt,cap}` JSON stays in Trace). An interrupt, a `cleanup`, a
   worker `finished`, or a manager `error` closes tools left pending so they
   stop spinning. A clean manager `done` does not: leftover workers are parked
-  for the next `/goal` session, and `goal_continued` must not paint them done
+  for the next `/goal` session or armed thread wake. `TestScheduledChecksReuseTheWorkerRegistryAcrossWakes`
+  keeps real mock workers running across two scheduled turns and checks their final errors;
+  `TestCancelLastWakeStopsParkedWorkers` and `TestPauseLastWakeStopsParkedWorkers`
+  cover the terminal wait boundary. `goal_continued` must not paint them done
   or `wait_agents` sits next to a Done roster while the worker is still in
   `exec`. `cleanup` is the kill signal.
   `collapseLiveEvents` keeps only the latest snapshot per agent and kind from

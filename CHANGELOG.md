@@ -67,6 +67,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150` / `C-009`: scheduled checks with an armed next wake now retain in-flight sub-agents across turns. Ending the manager's check no longer cancels them early with `context canceled`; cancelling or pausing the last wake still stops orphaned workers (Issue #52).
+
 - `F-220` / `C-006`: paired-phone `ask_user` answers now use the PC's normalized question ID. A rejected Submit shows the PC error, keeps the selected option or Other text for retry, and an accepted answer cannot be sent twice from the same card (Issue #51). The desktop question parser also uses the same ID rule.
 
 - **A restart does not keep waiting on sub-agents the previous process stopped.** Those workers are already finished (`context canceled` on the model stream). Startup pulls a future thread wake due immediately, names the exact ids on the next turn, and refuses `schedule_wake` and `report_schedule` `next_in_s` until those ids are resumed or a newer spawn has started. A shortened id that `wait_agents` reports as unknown is not treated as still writing.

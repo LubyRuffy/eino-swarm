@@ -51,8 +51,8 @@ type runtime struct {
 	// leftover workers from a crashed process, consumed by the first RunWith.
 	restore []swarm.RestoredWorker
 	planted []swarm.FinishedWorker
-	// parked is a swarm left running across /goal sessions so in-flight
-	// sub-agents are not killed when the manager's turn ends.
+	// parked is a swarm left running across /goal sessions or scheduled
+	// wakes so in-flight sub-agents survive the manager's turn boundary.
 	parked *swarm.Registry
 }
 
@@ -589,8 +589,8 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	if rt.shouldPark(status) {
 		rt.parkRegistry(reg)
 	} else {
-		// A turn owns its sub-agents unless a /goal session is handing them
-		// to the next turn. A quit is not the end of the turn — do not
+		// A turn owns its sub-agents unless a goal or scheduled wake is
+		// handing them to the next turn. A quit is not the end of the turn — do not
 		// record cleanup, or the next start cannot tell those workers were
 		// still live.
 		killed := reg.Cleanup()
