@@ -120,10 +120,18 @@ class IOSRelease:
         value = (info or {}).get('ITSAppUsesNonExemptEncryption')
         if isinstance(value, bool):
             return value
-        statement = self.config.get('compliance', {})
-        if (statement.get('source_sha') == self.source_sha and str(statement.get('build_number')) == self.number
-                and statement.get('confirmed_by') and isinstance(statement.get('uses_non_exempt'), bool)):
-            return statement['uses_non_exempt']
+        statements = [self.config.get('compliance', {})]
+        statements.extend(self.ledger.get('compliance_confirmations', []))
+        confirmed = [statement['uses_non_exempt'] for statement in statements
+                     if statement.get('source_sha') == self.source_sha
+                     and str(statement.get('build_number')) == self.number
+                     and statement.get('version', self.version) == self.version
+                     and statement.get('confirmed_by')
+                     and isinstance(statement.get('uses_non_exempt'), bool)]
+        if len(set(confirmed)) > 1:
+            raise ValueError('Conflicting current-build export-compliance declarations')
+        if confirmed:
+            return confirmed[0]
         raise ValueError('Current IPA lacks an authorized export-compliance declaration; no upload attempted')
 
     def build_ipa(self):

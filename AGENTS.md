@@ -222,6 +222,11 @@ feature.
   `python3 tools/audit_pending_batch.py --state <delivery-state.json>` checks
   integrated fix SHAs and batch qualification without publishing anything.
   `make docs-check` includes regressions for this accounting rule.
+- A user's iOS export-compliance answer for an exact source SHA and build number
+  is a durable confirmation. Record it in the private TestFlight ledger and
+  consult that record on every recovery run; do not ask again because the
+  active signing config moved to another build. Never reuse the answer for a
+  different source/build, and stop if two exact confirmations disagree.
 
 - Reconcile closed and open Issues with both delivery and TestFlight ledgers.
   Keep partially delivered, version-locked Issues for recovery, but exclude

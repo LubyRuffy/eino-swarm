@@ -90,7 +90,14 @@ Before a new archive, record the authorized **current build** classification:
 The value shown is schema illustration, not this app's classification. Never copy
 an old build's declaration. An existing signed IPA's boolean
 `ITSAppUsesNonExemptEncryption` can supply the statement; otherwise source/build
-must match the authorized record. If non-exempt encryption needs additional Apple
+must match the authorized record. A confirmation can also be retained in
+`~/.zwai-swarm/ios-signing/testflight-releases.json` under
+`compliance_confirmations` with `version`, `source_sha`, `build_number`,
+`confirmed_by`, and boolean `uses_non_exempt`. The release adapter reads that
+exact source/build record even if the active signing config later targets a
+different build; conflicting exact records stop the release. Record a confirmed
+answer once and reuse its receipt on recovery, without asking the user again.
+If non-exempt encryption needs additional Apple
 documents, prepare them before completing TestFlight. See
 [Apple export compliance](https://developer.apple.com/help/app-store-connect/test-a-beta-version/provide-export-compliance-information-for-beta-builds)
 and [beta review API](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-betaappreviewsubmissions).

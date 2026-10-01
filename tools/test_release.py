@@ -211,6 +211,32 @@ class IosTests(unittest.TestCase):
             self.ios().declaration()
         self.assertTrue(self.ios().declaration({'ITSAppUsesNonExemptEncryption': True}))
 
+    def test_retained_current_build_confirmation_survives_config_switch(self):
+        self.config['compliance']['source_sha'] = 'newer-build'; self.save_config()
+        release.write_json(self.root / 'ios-signing/testflight-releases.json', {
+            'compliance_confirmations': [{'version': '0.1.20', 'build_number': '120',
+                'source_sha': 'sha', 'confirmed_by': 'authorized reviewer', 'uses_non_exempt': False}]})
+        self.assertIs(self.ios().declaration(), False)
+
+    def test_retained_confirmation_for_another_source_cannot_classify_build(self):
+        self.config.pop('compliance'); self.save_config()
+        release.write_json(self.root / 'ios-signing/testflight-releases.json', {
+            'compliance_confirmations': [{'version': '0.1.20', 'build_number': '120',
+                'source_sha': 'other', 'confirmed_by': 'authorized reviewer', 'uses_non_exempt': False},
+                {'version': '0.1.20', 'build_number': '121', 'source_sha': 'sha',
+                 'confirmed_by': 'authorized reviewer', 'uses_non_exempt': False},
+                {'version': '0.1.21', 'build_number': '120', 'source_sha': 'sha',
+                 'confirmed_by': 'authorized reviewer', 'uses_non_exempt': False}]})
+        with self.assertRaisesRegex(ValueError, 'declaration'):
+            self.ios().declaration()
+
+    def test_conflicting_current_build_confirmations_refuse_release(self):
+        release.write_json(self.root / 'ios-signing/testflight-releases.json', {
+            'compliance_confirmations': [{'version': '0.1.20', 'build_number': '120',
+                'source_sha': 'sha', 'confirmed_by': 'authorized reviewer', 'uses_non_exempt': True}]})
+        with self.assertRaisesRegex(ValueError, 'Conflicting'):
+            self.ios().declaration()
+
     def test_accepted_upload_never_reuploads(self):
         self.apple.uploads = [{'id': 'accepted', 'attributes': {'cfBundleVersion': '120', 'state': {'state': 'COMPLETE'}}}]
         ios = self.ios()
