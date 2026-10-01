@@ -24,13 +24,14 @@ func GoalContinueText() string {
 // the objective), a completed, blocked, capped, or idle-held goal, a
 // continuation that made no counted tool progress, and a pending thread
 // wake do nothing. The wake is the next turn; spinning here would race it.
+// The parked registry stays for that wake. Reaping it cancels in-flight
+// workers, and the next fire reads the bare context-canceled finish as a
+// process death, resumes the same ids, and is reaped again.
 func (rt *runtime) continueGoal(status string) {
 	if status != store.TurnDone {
 		return
 	}
 	if rt.engine.hasFutureWake(rt.threadID) {
-		// The next wake owns any workers parked by this turn. Reaping them
-		// here made every scheduled check cancel its own in-flight work.
 		return
 	}
 	th, err := rt.engine.store.GetThread(rt.threadID)

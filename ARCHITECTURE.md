@@ -302,7 +302,10 @@ worker before closing SQLite.
    is resume, not a gap between auto-continue sessions. A `/goal` turn ends
    when the manager stops calling tools (a final assistant message with no
    further tools). The runtime then starts the next turn, unless a pending
-   wake is armed — that wake is the next turn. Token pressure
+   wake is armed — that wake is the next turn. In-flight sub-agents stay on
+   the parked registry for that fire; yielding does not cancel them, or the
+   next check reads the cancel as a process death and resumes the same ids
+   only to have them killed again. Token pressure
    compact in place; it is not a turn boundary.
    A continuation that finishes with no counted tool activity records
    `goal_idle` and stops auto-continue until a human message or resume.
@@ -508,6 +511,10 @@ worker before closing SQLite.
    same turn id as `memory-reviewer`, and one `memory_review` event says what
    changed. The log it reads is clipped per message and in total, so a turn
    that read a large file cannot make the review cost more than the work. The
+   reviewer reads the index. It does not open every skill, and it does not
+   walk same-stem families: those are folded after it finishes. Hitting
+   `memory.review_max_iterations` keeps whatever was written and leaves
+   `err` empty — the cap is the budget, not a failed review. The
    tools refuse a second skill on the same subject (including a shared name
    stem), a note longer than
    `memory.entry_max`, and a note that restates a recorded skill — the
@@ -691,7 +698,11 @@ above that text, and not while the answer is still streaming), and **Editing** /
 marked running in the store — keep the collapsed thought / tool count.
 Developer view is the previous every-row log. `ask_user`, iteration-limit, errors and notices stay outside
 the fold. Find still opens a matching collapsed row. The Agents tab is
-already an inspection surface and is not folded.
+already an inspection surface and is not folded. Its roster keeps running
+workers above finished ones. Inside each group the order is last update,
+newest first, until the reader picks created time or the name on the row
+and flips direction (`frontend/src/lib/agent-roster-sort.ts`). A resume
+keeps the original start time; the newest block is the last update.
 Two or more **human** user turns grow a compact tick cluster in the middle of the left
 edge of the transcript (`frontend/src/lib/turn-nav.ts`): the rail is split by
 `user_message`, so a `/goal` auto-continue or a wait fire is the same

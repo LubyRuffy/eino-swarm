@@ -30,6 +30,9 @@ func publicTurnError(err error) string {
 	if isHeaderWaitTimeout(err) {
 		return fmt.Sprintf("the model sent no first byte within %s", config.DefaultFirstByteTimeout)
 	}
+	if isMaxIterations(err) {
+		return "stopped at the tool-round cap"
+	}
 	return stripGraphDump(err.Error())
 }
 
@@ -52,6 +55,12 @@ func isInvalidToolJSON(err error) bool {
 func stripGraphDump(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.TrimPrefix(s, "[NodeRunError] ")
+	s = strings.TrimPrefix(s, "[GraphRunError] ")
+	// eino prints a dashed rule, then "node path:". Cutting only at the
+	// path leaves the rule in the transcript.
+	if i := strings.Index(s, "\n--------"); i >= 0 {
+		s = strings.TrimSpace(s[:i])
+	}
 	if i := strings.Index(s, "\nnode path:"); i >= 0 {
 		s = strings.TrimSpace(s[:i])
 	}

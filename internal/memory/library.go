@@ -35,13 +35,16 @@ in the shared skill library with %s. That library is not a project. A person
 may later copy a skill from it into one project's own catalog. Do not write
 notes; this review has no note store.
 
-One subject is one skill. Before creating, call %s on every index entry whose
-name or summary might already cover the subject. A create that collides is
+One subject is one skill. The index already lists each name and summary.
+Call %s only when a summary might be the same subject, and only enough to
+decide — do not open the catalog one by one. A create that collides is
 refused and names the existing skill — patch that one, or delete it first.
 Do not add a second skill whose name is the first plus a suffix, and do not
-add a chapter-skill that shares a name stem with one already recorded. If
-the catalog lists a family of names that share a subject, merge them with %s
-(name is the skill to keep, sources are the others).
+add a chapter-skill that shares a name stem with one already recorded.
+Names that share a stem are folded into one skill after you finish, so do
+not merge the whole catalog. If this conversation just added a chapter
+beside an existing stem, merge that one group with %s (name is the skill
+to keep, sources are the others).
 
 Finish with one short line naming what you stored, or that you stored nothing.`,
 		ToolSkillManage, ToolSkillView, ToolSkillManage)

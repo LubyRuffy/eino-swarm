@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **The Agents list can be sorted.** It opens with the most recently active worker first. Created time, last update, and the name on the row each run newest-first or oldest-first (A to Z or Z to A for names). Running workers stay under Active; finished and failed stay under Done.
+
 - Conversations that belong to no project record reusable procedures in the shared skill library (`library/skills/` under the data directory) after a finished turn. The next conversation outside a project lists that index and can open a skill; it does not write the library during the turn. The Memory tab lists the files, can tidy them, and can copy one into a project. Update on that copy pulls a later library change. A copy that was edited, or whose source is gone, says so. Clicking a project folder does not replace this list.
 
 - `F-224` / `C-020`: a paired phone now lists a PC conversation's output tree over bounded encrypted RPC and previews text, images and PDFs. HTML/SVG are displayed as source; workspace traversal and escaped symlinks are rejected (Issue #48).
@@ -72,6 +74,10 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150` / `C-009`: scheduled checks with an armed next wake now retain in-flight sub-agents across turns. Ending the manager's check no longer cancels them early with `context canceled`; cancelling or pausing the last wake still stops orphaned workers (Issue #52).
 
 - `F-220` / `C-006`: paired-phone `ask_user` answers now use the PC's normalized question ID. A rejected Submit shows the PC error, keeps the selected option or Other text for retry, and an accepted answer cannot be sent twice from the same card (Issue #51). The desktop question parser also uses the same ID rule.
+
+- **Hitting the review tool-round cap is not a failed review.** The post-turn reviewer was told to open every skill that might overlap and to merge every same-stem family. That spends `review_max_iterations` (default 8) on a catalog walk, then eino reports `run node[ChatModel] pre processor fail: exceeds max iterations` and the transcript shows a failed review, dashed graph rule included. The reviewer now uses the index, opens a skill only to decide, and leaves stem families to the fold that already runs after it. A review that still hits the cap keeps what it wrote, leaves `err` empty, and records `Stopped at the review tool-round cap.` when it never reached a closing line.
+
+- **The Agents list shows the id `resume_agent` takes.** A worker `worker-4` was labeled `worker #4`. That badge is not the id, so the row did not match the `resume_agent` argument. The row is the id.
 
 - **A restart does not keep waiting on sub-agents the previous process stopped.** Those workers are already finished (`context canceled` on the model stream). Startup pulls a future thread wake due immediately, names the exact ids on the next turn, and refuses `schedule_wake` and `report_schedule` `next_in_s` until those ids are resumed or a newer spawn has started. A shortened id that `wait_agents` reports as unknown is not treated as still writing.
 

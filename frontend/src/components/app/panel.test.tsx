@@ -178,7 +178,7 @@ describe("Agents tab chrome", () => {
     expect(screen.getByRole("button", { name: /reviewer-2/ })).toBeInTheDocument()
   })
 
-  it("shows a job name when the role is a path", () => {
+  it("shows the agent id resume_agent takes, not a hash", () => {
     render(
       <RightPanel
         tab="agents"
@@ -188,13 +188,81 @@ describe("Agents tab chrome", () => {
             role: "helper/a/a/a-1/a/a",
             status: "failed",
           }),
+          agent({ id: "worker-4", role: "worker", status: "failed" }),
         ])}
         {...noop}
       />,
     )
-    const row = screen.getByRole("button", { name: /helper/ })
-    expect(row).toHaveTextContent("#15")
-    expect(row.textContent).not.toContain("helper/a")
+    const path = screen.getByRole("button", { name: /helper\/a\/a\/a-1\/a\/a-15/ })
+    expect(path.textContent).not.toMatch(/#15/)
+    const seq = screen.getByRole("button", { name: /worker-4/ })
+    expect(seq.textContent).not.toMatch(/#4/)
+  })
+})
+
+describe("Agent roster sort", () => {
+  function rosterIds() {
+    return [...document.querySelectorAll("[data-agent-id]")].map((el) =>
+      el.getAttribute("data-agent-id"),
+    )
+  }
+
+  const early = "2020-01-01T00:00:00.000Z"
+  const late = "2020-01-03T00:00:00.000Z"
+
+  function roster() {
+    return transcript([
+      agent({
+        id: "runner",
+        role: "runner",
+        status: "running",
+        startedAt: early,
+        endedAt: undefined,
+      }),
+      agent({
+        id: "older",
+        role: "older",
+        status: "done",
+        startedAt: early,
+        endedAt: early,
+      }),
+      agent({
+        id: "newer",
+        role: "newer",
+        status: "failed",
+        startedAt: late,
+        endedAt: late,
+      }),
+    ])
+  }
+
+  it("opens newest activity first and keeps running workers in their own group", () => {
+    render(<RightPanel tab="agents" transcript={roster()} {...noop} />)
+    expect(screen.getByRole("combobox", { name: "Sort by" })).toHaveTextContent("Last update")
+    expect(screen.getByRole("button", { name: "Newest first" })).toBeInTheDocument()
+    expect(rosterIds()).toEqual(["runner", "newer", "older"])
+  })
+
+  it("keeps the direction when the field changes and after opening a worker", () => {
+    const view = render(<RightPanel tab="agents" transcript={roster()} {...noop} />)
+    fireEvent.click(screen.getByRole("button", { name: "Newest first" }))
+    expect(screen.getByRole("button", { name: "Oldest first" })).toBeInTheDocument()
+    expect(rosterIds()).toEqual(["runner", "older", "newer"])
+    // One menu open: jsdom spends seconds on the select portal.
+    fireEvent.click(screen.getByRole("combobox", { name: "Sort by" }))
+    fireEvent.click(screen.getByRole("option", { name: "Name" }))
+    expect(screen.getByRole("combobox", { name: "Sort by" })).toHaveTextContent("Name")
+    expect(screen.getByRole("button", { name: "A to Z" })).toBeInTheDocument()
+    expect(rosterIds()).toEqual(["runner", "newer", "older"])
+    fireEvent.click(screen.getByRole("button", { name: "A to Z" }))
+    expect(rosterIds()).toEqual(["runner", "older", "newer"])
+    view.rerender(
+      <RightPanel tab="agents" transcript={roster()} selectedAgent="runner" {...noop} />,
+    )
+    expect(screen.queryByRole("combobox", { name: "Sort by" })).not.toBeInTheDocument()
+    view.rerender(<RightPanel tab="agents" transcript={roster()} {...noop} />)
+    expect(screen.getByRole("button", { name: "Z to A" })).toBeInTheDocument()
+    expect(rosterIds()).toEqual(["runner", "older", "newer"])
   })
 })
 

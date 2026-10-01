@@ -26,10 +26,10 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
 
   // the manager delegates, and both workers show up in the roster
   const roster = page.getByRole("tabpanel").filter({
-    has: page.getByText("researcher", { exact: true }),
+    has: page.getByText("researcher-1", { exact: true }),
   })
-  await expect(roster.getByText("researcher", { exact: true })).toBeVisible()
-  await expect(roster.getByText("reviewer", { exact: true })).toBeVisible()
+  await expect(roster.getByText("researcher-1", { exact: true })).toBeVisible()
+  await expect(roster.getByText("reviewer-2", { exact: true })).toBeVisible()
 
   // the transcript shows the delegation and then an answer
   const transcript = page.getByTestId("transcript")
@@ -90,7 +90,7 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
 
   // Opening a worker must not put its chrome inside the scroller: a sticky
   // bar there covers the back button the moment the transcript is dragged.
-  await roster.getByText("researcher", { exact: true }).click()
+  await roster.getByText("researcher-1", { exact: true }).click()
   await expect(page.getByTestId("agent-chrome")).toBeVisible()
   await expect(page.getByRole("button", { name: "Back to agents" })).toBeVisible()
   const agentLog = page.getByTestId("agent-scroller")
@@ -124,7 +124,7 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await page.getByRole("button", { name: "Close" }).click()
   await expect(prompt).toBeHidden()
   await page.getByRole("button", { name: "Back to agents" }).click()
-  await expect(roster.getByText("reviewer", { exact: true })).toBeVisible()
+  await expect(roster.getByText("reviewer-2", { exact: true })).toBeVisible()
 
   // The progress pulse is a live-only signal: it must leave nothing behind when
   // the turn ends, and its payload must never surface as a transcript row —

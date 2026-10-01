@@ -1,6 +1,6 @@
-/** A role is a job name. The id is that name plus a sequence.
- *  One worker per role makes a model invent a path so the next spawn is
- *  not a resume. The roster shows the job, not the path. */
+/** The roster label is the agent id resume_agent takes. A #n badge is
+ *  not that id. When the id is that job plus a separator (`-`, `_`, `/`),
+ *  the whole id is the label. A different token stays beside the job. */
 
 const JOB = /^[\p{L}\p{N}]+(?:[-_][\p{L}\p{N}]+)*$/u
 
@@ -11,7 +11,17 @@ export function agentRosterLabel(
   const rawRole = role.trim()
   const rawID = id.trim()
   const name = jobName(rawRole || rawID)
-  return { name, tag: rosterTag(rawRole, rawID, name) }
+  if (!rawID || rawID === name) return { name: name || rawID, tag: "" }
+  // worker-4 continues the job. workers-1 does not: the next character
+  // is still a letter, so the job stays and the id sits beside it.
+  if (idContinuesJob(rawID, name)) return { name: rawID, tag: "" }
+  return { name, tag: rawID }
+}
+
+function idContinuesJob(id: string, job: string): boolean {
+  if (!job || !id.startsWith(job) || id.length === job.length) return false
+  const next = id[job.length]
+  return next === "-" || next === "_" || next === "/" || next === "\\"
 }
 
 function jobName(role: string): string {
@@ -23,16 +33,6 @@ function jobName(role: string): string {
   if (!name) return role.trim()
   if ([...name].length > 32) name = [...name].slice(0, 32).join("")
   return name
-}
-
-function rosterTag(role: string, id: string, name: string): string {
-  if (!id || id === name) return ""
-  if (role && id.startsWith(`${role}-`)) {
-    const rest = id.slice(role.length + 1)
-    if (/^\d+$/.test(rest)) return `#${rest}`
-  }
-  if (id !== role) return id
-  return ""
 }
 
 export function agentRosterText(role: string, id: string): string {

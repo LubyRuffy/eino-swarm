@@ -35,7 +35,7 @@ describe("ThreadScreen", () => {
     expect(within(active).getAllByRole("button")).toHaveLength(1)
     expect(within(active).getByRole("button", { name: /active live-1 running/i })).toBeInTheDocument()
     expect(within(finished).getAllByRole("button")).toHaveLength(2)
-    expect(within(finished).getByRole("button", { name: /failed #1.*failed/i })).toBeInTheDocument()
+    expect(within(finished).getByRole("button", { name: /failed-1.*failed/i })).toBeInTheDocument()
 
     blocks = applyEvent(blocks, {
       thread_id: "t1", seq: 6, kind: "finished", agent_id: "live-1", text: "",

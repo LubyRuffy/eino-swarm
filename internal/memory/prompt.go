@@ -192,14 +192,16 @@ project, and write it yourself:
   drop a stale one, or record a procedure as a skill.
 - %s — a procedure worth following again: several steps that worked, a
   recovery from a failure, a workaround for something that behaved
-  unexpectedly. One subject is one skill. Before creating, call %s on every
-  index entry whose name or summary might already cover the subject. A create
+  unexpectedly. One subject is one skill. The index already lists each name
+  and summary. Call %s only when a summary might be the same subject, and
+  only enough to decide — do not open the catalog one by one. A create
   that collides is refused and names the existing skill — patch that one, or
   delete it first. Do not add a second skill whose name is the first plus a
   suffix, and do not add a chapter-skill that shares a name stem with one
-  already recorded. If the catalog lists a family of names that share a
-  subject, merge them with %s (name is the skill to keep, sources are the
-  others) so a later conversation is not handed competing procedures.
+  already recorded. Names that share a stem are folded into one skill after
+  you finish, so do not merge the whole catalog. If this conversation just
+  added a chapter beside an existing stem, merge that one group with %s
+  (name is the skill to keep, sources are the others).
 
 Finish with one short line naming what you stored, or that you stored nothing.`,
 		ToolMemory, ToolSkillManage, ToolSkillView, ToolSkillManage)
@@ -259,7 +261,7 @@ func ReviewCatalog(skills []SkillInfo, families [][]string) string {
 		}
 	}
 	if len(families) > 0 {
-		b.WriteString("\nThese recorded skills share a subject and must become one skill. Merge each group so a later conversation is not handed competing procedures:\n")
+		b.WriteString("\nThese recorded skills share a name stem and become one skill after this review. Do not open them one by one, and do not create another skill in the same family:\n")
 		for _, fam := range families {
 			fmt.Fprintf(&b, "- %s\n", strings.Join(fam, ", "))
 		}

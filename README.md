@@ -146,7 +146,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   then continues, unless an active thread wake is waiting on this
   conversation — that wait is the next turn until it fires or you cancel it. Context pressure compact in place. Hitting the manager
   tool-round slice keeps the same turn going. In-flight sub-agents survive
-  a pursuing turn that ends while they are still running. A continuation
+  a pursuing turn that ends while they are still running, including when a
+  thread wake is the next turn instead of an immediate auto-continue. A continuation
   that makes no tool progress stops auto-continue until you send a message
   or hit **Start**. Hitting the auto-continue budget (or a stop) pauses
   the same way — the banner says this is not an error, and **Start**
@@ -507,7 +508,7 @@ What you get:
    stays on that agent — new description, same `agent_id` — whether it is still
    running or already finished. `resume_agent` targets a specific leftover
    sibling. Open one in the Agents tab to read the system prompt it was given;
-   the roster shows the job name and `#n`, not a slash-heavy role. The log opens at the latest line, not the first tool call. The tab lists
+   the roster shows that `agent_id`, the same string `resume_agent` takes, not a `#n` badge. The log opens at the latest line, not the first tool call. The tab lists
    every worker this conversation started, not only the ones whose tools are
    still in the live-edge viewport.
 2. **A workspace.** Every conversation has its own directory

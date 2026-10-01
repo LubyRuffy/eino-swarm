@@ -211,10 +211,13 @@ func TestReviewPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 			t.Fatalf("the reviewer must be told about %q:\n%s", want, p)
 		}
 	}
-	for _, want := range []string{"not continuing", "nothing worth storing", "write nothing", "do not retry", "collides", "remaining count", "one or two", "merge", "stem"} {
+	for _, want := range []string{"not continuing", "nothing worth storing", "write nothing", "do not retry", "collides", "remaining count", "one or two", "merge", "stem", "one by one"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("the reviewer must be allowed to store nothing (%q missing):\n%s", want, p)
 		}
+	}
+	if strings.Contains(p, "every index entry") {
+		t.Fatal("opening every skill is what spends the tool-round cap")
 	}
 }
 
@@ -236,8 +239,8 @@ func TestReviewCatalogListsSkillsAndFamiliesWithoutInventingAConversation(t *tes
 	if !strings.Contains(out, "weekly-rollup-notes, weekly-rollup-send") {
 		t.Fatalf("family missing:\n%s", out)
 	}
-	if !strings.Contains(out, "must become one skill") {
-		t.Fatalf("the catalog must say the family has to be folded:\n%s", out)
+	if !strings.Contains(out, "become one skill after this review") || !strings.Contains(out, "one by one") {
+		t.Fatalf("the catalog must say the family is folded after the review, without a walk:\n%s", out)
 	}
 	joined := AttachReviewCatalog("Conversation to review:\n\nhuman: hi\n", out)
 	if !strings.HasPrefix(joined, "Conversation to review:") || !strings.Contains(joined, "Skills already recorded") {

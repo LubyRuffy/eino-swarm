@@ -60,6 +60,19 @@ func TestPublicTurnErrorRewritesInvalidToolJSON(t *testing.T) {
 	}
 }
 
+func TestPublicTurnErrorRewritesTheIterationCap(t *testing.T) {
+	err := fmt.Errorf("[NodeRunError] run node[ChatModel] pre processor fail: exceeds max iterations\n------------------------\nnode path: [ChatModel]")
+	got := publicTurnError(err)
+	for _, leak := range []string{"NodeRunError", "ChatModel", "node path", "----", "pre processor"} {
+		if strings.Contains(got, leak) {
+			t.Fatalf("the graph dump leaked: %s", got)
+		}
+	}
+	if !strings.Contains(got, "tool-round cap") {
+		t.Fatalf("got %q", got)
+	}
+}
+
 func TestPublicTurnErrorStripsAGraphDump(t *testing.T) {
 	err := fmt.Errorf("[NodeRunError] the endpoint refused the connection\nnode path: [node_1, ChatModel]")
 	got := publicTurnError(err)

@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronDown } from "lucide-react"
+import { ArrowDownNarrowWide, ArrowLeft, ArrowUpNarrowWide, ChevronDown } from "lucide-react"
 import { useRef, useState } from "react"
 
 import { AgentPromptButton } from "@/components/app/agent-prompt"
@@ -11,13 +11,27 @@ import { StatusDot } from "@/components/app/transcript"
 import { MarqueeText } from "@/components/app/marquee"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useTranscriptFollow } from "@/lib/follow-scroll"
 import { MANAGER_ID, type AgentState, type TranscriptState } from "@/lib/transcript"
 import type { FileEntry, Meta, Turn, UsageSnapshot } from "@/lib/types"
 import { agentRosterLabel } from "@/lib/agent-label"
-import { useT } from "@/lib/use-t"
+import {
+  defaultAgentRosterSort,
+  isAgentSortKey,
+  sortAgentIds,
+  type AgentRosterSort,
+} from "@/lib/agent-roster-sort"
+import { useT, type Translate } from "@/lib/use-t"
 import { chromeTypeClass } from "@/lib/chrome-type"
+import { cn } from "@/lib/utils"
 import { useApp } from "@/store/app"
 
 export type PanelTab = "agents" | "files" | "trace" | "memory"
@@ -63,6 +77,7 @@ export function RightPanel({
 }) {
   const t = useT()
   const [width, setWidth] = useState(352)
+  const [rosterSort, setRosterSort] = useState<AgentRosterSort>(defaultAgentRosterSort)
   return (
     <aside
       data-testid="side-panel"
@@ -120,6 +135,8 @@ export function RightPanel({
               transcript={transcript}
               selected={selectedAgent}
               onSelect={onSelectAgent}
+              sort={rosterSort}
+              onSortChange={setRosterSort}
             />
           </TabsContent>
 
@@ -164,10 +181,14 @@ function AgentsTab({
   transcript,
   selected,
   onSelect,
+  sort,
+  onSortChange,
 }: {
   transcript: TranscriptState
   selected?: string
   onSelect: (id?: string) => void
+  sort: AgentRosterSort
+  onSortChange: (sort: AgentRosterSort) => void
 }) {
   const t = useT()
   const workers = transcript.agentOrder.filter((id) => id !== MANAGER_ID)
@@ -211,27 +232,92 @@ function AgentsTab({
     )
   }
 
-  const active = workers.filter((id) => transcript.agents[id].status === "running")
-  const finished = workers.filter((id) => transcript.agents[id].status !== "running")
+  // One order for both groups. Running stays under Active; finished and
+  // failed stay under Done. The clock is this worker's own events, so a
+  // resume does not look newly created.
+  const active = sortAgentIds(
+    workers.filter((id) => transcript.agents[id].status === "running"),
+    transcript.agents,
+    sort,
+    t.locale,
+  )
+  const finished = sortAgentIds(
+    workers.filter((id) => transcript.agents[id].status !== "running"),
+    transcript.agents,
+    sort,
+    t.locale,
+  )
 
   return (
-    <div className="thin-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
-      {active.length > 0 ? (
-        <Section title={t("panel.active", { n: active.length })}>
-          {active.map((id) => (
-            <AgentRow key={id} agent={transcript.agents[id]} onSelect={onSelect} />
-          ))}
-        </Section>
-      ) : null}
-      {finished.length > 0 ? (
-        <Section title={t("panel.done", { n: finished.length })}>
-          {finished.map((id) => (
-            <AgentRow key={id} agent={transcript.agents[id]} onSelect={onSelect} />
-          ))}
-        </Section>
-      ) : null}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <RosterSort sort={sort} onChange={onSortChange} />
+      <div data-testid="agent-roster" className="thin-scrollbar min-h-0 flex-1 overflow-y-auto p-2">
+        {active.length > 0 ? (
+          <Section title={t("panel.active", { n: active.length })}>
+            {active.map((id) => (
+              <AgentRow key={id} agent={transcript.agents[id]} onSelect={onSelect} />
+            ))}
+          </Section>
+        ) : null}
+        {finished.length > 0 ? (
+          <Section title={t("panel.done", { n: finished.length })}>
+            {finished.map((id) => (
+              <AgentRow key={id} agent={transcript.agents[id]} onSelect={onSelect} />
+            ))}
+          </Section>
+        ) : null}
+      </div>
     </div>
   )
+}
+
+function RosterSort({
+  sort,
+  onChange,
+}: {
+  sort: AgentRosterSort
+  onChange: (sort: AgentRosterSort) => void
+}) {
+  const t = useT()
+  const dirLabel = sortDirLabel(sort, t)
+  return (
+    <div className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-1.5">
+      <Select
+        value={sort.key}
+        onValueChange={(key) => {
+          if (isAgentSortKey(key)) onChange({ ...sort, key })
+        }}
+      >
+        <SelectTrigger
+          aria-label={t("panel.sortBy")}
+          className={cn(chromeTypeClass, "h-7 w-auto max-w-[12rem] shadow-none")}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="created">{t("panel.sortCreated")}</SelectItem>
+          <SelectItem value="updated">{t("panel.sortUpdated")}</SelectItem>
+          <SelectItem value="name">{t("panel.sortName")}</SelectItem>
+        </SelectContent>
+      </Select>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className={cn(chromeTypeClass, "h-7 gap-1 px-2 shadow-none")}
+        aria-label={dirLabel}
+        onClick={() => onChange({ ...sort, dir: sort.dir === "asc" ? "desc" : "asc" })}
+      >
+        {sort.dir === "desc" ? <ArrowDownNarrowWide /> : <ArrowUpNarrowWide />}
+        {dirLabel}
+      </Button>
+    </div>
+  )
+}
+
+function sortDirLabel(sort: AgentRosterSort, t: Translate): string {
+  if (sort.key === "name") return sort.dir === "asc" ? t("panel.sortAz") : t("panel.sortZa")
+  return sort.dir === "desc" ? t("panel.sortNewest") : t("panel.sortOldest")
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -306,6 +392,7 @@ function AgentRow({
   return (
     <button
       type="button"
+      data-agent-id={agent.id}
       onClick={() => onSelect(agent.id)}
       className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60"
     >

@@ -453,8 +453,14 @@ func TestAReviewThatHitsItsIterationCapStillReportsWhatItWrote(t *testing.T) {
 		t.Fatalf("turn status=%q", got.Status)
 	}
 	outcome := decodeReview(t, waitForReview(t, e, turn.ID))
+	if outcome.Err != "" {
+		t.Fatalf("the tool-round cap is the budget, not a failed review: %s", outcome.Err)
+	}
 	if !outcome.Changed {
 		t.Fatalf("the writes it did make must be reported: %+v", outcome)
+	}
+	if outcome.Note != reviewCapNote {
+		t.Fatalf("trace still needs the cap when the closing line never arrived: %q", outcome.Note)
 	}
 	snap, _ := e.ProjectMemory(p.ID).Read()
 	if len(snap.Entries) != 1 {
@@ -813,7 +819,7 @@ func TestReviewUserMessageAttachesTheLiveCatalog(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := e.reviewUserMessage(pc, "Conversation to review:\n\nhuman: hi\n")
-	if !strings.Contains(got, "weekly-rollup-notes") || !strings.Contains(got, "must become one skill") {
+	if !strings.Contains(got, "weekly-rollup-notes") || !strings.Contains(got, "become one skill after this review") {
 		t.Fatalf("catalog missing from the review message:\n%s", got)
 	}
 	if e.reviewUserMessage(pc, "Conversation to review:\n") == "" {

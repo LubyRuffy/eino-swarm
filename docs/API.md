@@ -836,7 +836,8 @@ client would happily turn into a two-thousand-year elapsed time).
 The turn is still `running` in both of those cases.
 `waiting` is true while a thread wake still owns the next turn: the conversation
 is not running, and `/goal` will not auto-continue until that wait fires, is
-cancelled, or is run now. Omitted when there is no parked wait. The listing
+cancelled, or is run now. In-flight sub-agents from the pursuing turn stay on
+the parked registry, so `workers` still counts them. Omitted when there is no parked wait. The listing
 row carries the same `waiting` flag so the sidebar can paint a clock without
 opening the conversation.
 
@@ -1373,7 +1374,10 @@ transcript then says the skill library was updated. Omit or false means a
 project's own memory.
 
 The event is stored even when `changed` is false: a review that left no trace
-could not be told apart from one that never ran. A `skill_manage` create that
+could not be told apart from one that never ran. Hitting `review_max_iterations`
+is that budget, not a failed review: `err` stays empty, writes that landed stay
+in `changes`, and `note` is `Stopped at the review tool-round cap.` when the
+closing line never arrived. The transcript does not call that a failure. A `skill_manage` create that
 collides (same subject, shared name stem, or a copied procedure), or a `memory`
 write that exceeds `entry_max` or restates a skill (summary or steps), is a
 tool refusal — it does not appear in `changes`. After the reviewer finishes —

@@ -27,6 +27,11 @@ const KindMemoryReview = "memory_review"
 // so a trace shows the reviewer's cost separately from the turn's.
 const ReviewAgentID = "memory-reviewer"
 
+// reviewCapNote is the trace line when the reviewer spent its tool-round
+// budget before a closing sentence. The cap is that budget. It is not a
+// failed review, and the transcript must not show the graph error.
+const reviewCapNote = "Stopped at the review tool-round cap."
+
 // How much of a conversation the reviewer is shown. A turn can contain a whole
 // file or a whole web page in a tool result, and replaying all of it would
 // make the review cost more than the turn it is reviewing.
@@ -342,6 +347,7 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 	iter := adk.NewRunner(ctx, runnerCfg).
 		Run(ctx, []adk.Message{schema.UserMessage(run.userMsg)})
 	final := ""
+	capped := false
 	for {
 		ev, ok := iter.Next()
 		if !ok {
@@ -351,6 +357,10 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 			continue
 		}
 		if ev.Err != nil {
+			if isMaxIterations(ev.Err) {
+				capped = true
+				break
+			}
 			mu.Lock()
 			outcome.Err = publicTurnError(ev.Err)
 			mu.Unlock()
@@ -363,6 +373,9 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 
 	mu.Lock()
 	outcome.Note = oneLine(final)
+	if capped && outcome.Note == "" {
+		outcome.Note = reviewCapNote
+	}
 	mu.Unlock()
 }
 

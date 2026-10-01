@@ -1,13 +1,98 @@
 package engine
 
 import (
+	"context"
+	"sync"
 	"testing"
 	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/cloudwego/eino/components/model"
+	"github.com/cloudwego/eino/schema"
 )
+
+// holdModel blocks inside the model call until the worker context is
+// cancelled. A handle that never started would not show that reap ran.
+type holdModel struct {
+	once    sync.Once
+	entered chan struct{}
+}
+
+func (m *holdModel) mark() {
+	m.once.Do(func() { close(m.entered) })
+}
+
+func (m *holdModel) Generate(ctx context.Context, _ []*schema.Message, _ ...model.Option) (*schema.Message, error) {
+	m.mark()
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (m *holdModel) Stream(ctx context.Context, _ []*schema.Message, _ ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	m.mark()
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestPendingWakeLeavesParkedWorkersRunning(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.SetThreadGoal(th.ID, "keep going"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.CreateSchedule(ScheduleInput{
+		Kind: store.ScheduleThread, ThreadID: th.ID,
+		Prompt: scheduleWaitPrompt, EveryS: 60,
+		CreatedBy: store.ScheduleCreatedManager,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	entered := make(chan struct{})
+	reg := swarm.NewRegistry()
+	t.Cleanup(reg.Close)
+	reg.ModelBuilder = func(role, agentID string) model.BaseChatModel {
+		return &holdModel{entered: entered}
+	}
+	h, err := reg.Spawn(context.Background(), "worker", "continue the open piece", reg.ModelBuilder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the parked worker never reached its model call")
+	}
+
+	rt := e.runtimeFor(th.ID)
+	rt.parkRegistry(reg)
+	rt.continueGoal(store.TurnDone)
+
+	select {
+	case <-h.Done():
+		t.Fatal("a pending wake must not cancel workers the next fire still has to collect")
+	case <-time.After(200 * time.Millisecond):
+	}
+	running, finished := reg.Stats()
+	if running != 1 || finished != 0 {
+		t.Fatalf("parked registry running=%d finished=%d", running, finished)
+	}
+	turns, err := e.Store().ListTurns(th.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(turns) != 0 {
+		t.Fatalf("a pending wake must still suppress auto-continue, got %d turns", len(turns))
+	}
+	if rt.takeParkedRegistry() != reg {
+		t.Fatal("the wake must still be able to take the parked registry")
+	}
+}
 
 func TestPendingWakeSuppressesGoalAutoContinue(t *testing.T) {
 	provider.SetCompleteOpenGoal(false)

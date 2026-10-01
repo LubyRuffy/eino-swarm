@@ -456,7 +456,10 @@ cancelled and paused rows, respects `schedule_max_active`, and why
 `internal/store/schedule_activate_test.go` is why `done` → `active` shares
 the cap transaction with create/resume.
 `internal/engine/schedule_goal_test.go` is why a pending thread wake
-pauses `/goal` auto-continue, why cancelling it while idle starts the next
+pauses `/goal` auto-continue without cancelling in-flight sub-agents
+(`TestPendingWakeLeavesParkedWorkersRunning`: reaping them left a bare
+`context canceled`, the next fire resumed those ids, and the following
+wake killed them again), why cancelling it while idle starts the next
 pursuing turn immediately (`goal_continued`), why a cancel without a
 standing objective stays idle, and why paused, cancelled, and
 standalone origin-only rows do not suppress. A still-due delay that
@@ -558,7 +561,10 @@ catalog-tidy model calls hang on the project's latest finished turn rather
 than the first sidebar conversation that happens to have one. The reviewer's
 model call streams (`TestReviewGenerateStreamsSoTheFirstByteIsNotTheWholeBody`):
 a one-shot body would hold headers until it finished, and the 30s first-byte
-cap would fail the review.
+cap would fail the review. Hitting `review_max_iterations` keeps the writes
+and does not fail the review
+(`TestAReviewThatHitsItsIterationCapStillReportsWhatItWrote`). The reviewer
+prompt does not tell it to open every skill.
 `internal/engine/library_test.go` and `internal/server/library_test.go` are
 why a conversation in no project records one skill in the shared library,
 lists that skill in the next such conversation's prompt, leaves the library
@@ -1488,9 +1494,12 @@ Several things are tested here, some as pure logic and some in jsdom:
   lands at the latest line, re-pins when switching workers, follows tokens
   at the live edge, and a wheel-up leaves the viewport put until Jump to
   latest. A prompt control opens the worker's recorded instruction and is
-  absent when the event only stored the role name. The roster shows the job
-  name and `#n`. A path-shaped role is not printed; two workers that share a
-  role still show an id that is not that role plus a number. The resize strip sits above that chrome (`z-20`) and the arrow
+  absent when the event only stored the role name. The roster shows the
+  `agent_id` `resume_agent` takes, not a `#n` badge. Two workers that share a
+  role still show an id that is not that role plus a number. The list opens
+  newest-activity first. Created, last update, and the name on the row each
+  reverse; a worker with no timestamp stays last; running and finished stay
+  in their sections (`src/lib/agent-roster-sort.ts`). The resize strip sits above that chrome (`z-20`) and the arrow
   keys still change the width. A pointer drag on the strip must not start a
   text selection. The Files pane is a flex column (`overflow-hidden`) so the
   filter stays put while the tree scrolls. Inactive Files/Agents panes are
@@ -1616,6 +1625,7 @@ long enough for Steer; unit tests leave it unset.
 
 | spec | covers |
 |---|---|
+| `e2e/agent-roster.spec.ts` | Agents opens on last update, newest first; Name flips between Z to A and A to Z and the rows follow the label; Created flips between oldest and newest |
 | `e2e/work-fold.spec.ts` | user-mode work folded behind one live ticker (`work-fold` with the spinner, not every finished fold); click expands the thought box and click again collapses it |
 | `e2e/conversation.spec.ts` | a full swarm turn, user-mode work folded behind one live ticker (`work-fold` + `swap-line` + `MarqueeText` shimmer or left-to-right scroll), a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title from the opening message (not the raw request, not a transcript row), a chart in the scripted answer with Chart/Table tabs (reload returns to the home page with nothing selected; reopening the row replays the chart), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge (developer view, so spawn rows exist to overflow), switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, the corner button swapping from Stop to Send once that draft is typed and the click queueing without leaving Working, **Steer** on that queued row injecting and emptying the tray, pulling a queued row into the composer and Enter queueing that edit at the back of the FIFO, a pencil on unread steering doing the same, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, hovering a user request or the last finished answer fading in the reserved event clock without a layout jump, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` (`e2e/plan.spec.ts`) showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
 | `e2e/quotes.spec.ts` | quoting selected transcript text into the next send as an editable composer annotation (count chip at rest, hover for the snippet, not `<selected_text>` tags in the bubble), and Add to chat still landing while a turn is streaming (user-mode work fold, not the inner thought box) |

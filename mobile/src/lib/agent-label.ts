@@ -1,5 +1,6 @@
 /** Same rule as frontend/src/lib/agent-label.ts. The phone bundle does not
- *  import the desktop sources. */
+ *  import the desktop sources. The label is the agent id resume_agent
+ *  takes. A #n badge is a different token. */
 
 const JOB = /^[\p{L}\p{N}]+(?:[-_][\p{L}\p{N}]+)*$/u
 
@@ -10,7 +11,15 @@ export function agentRosterLabel(
   const rawRole = role.trim()
   const rawID = id.trim()
   const name = jobName(rawRole || rawID)
-  return { name, tag: rosterTag(rawRole, rawID, name) }
+  if (!rawID || rawID === name) return { name: name || rawID, tag: "" }
+  if (idContinuesJob(rawID, name)) return { name: rawID, tag: "" }
+  return { name, tag: rawID }
+}
+
+function idContinuesJob(id: string, job: string): boolean {
+  if (!job || !id.startsWith(job) || id.length === job.length) return false
+  const next = id[job.length]
+  return next === "-" || next === "_" || next === "/" || next === "\\"
 }
 
 function jobName(role: string): string {
@@ -22,16 +31,6 @@ function jobName(role: string): string {
   if (!name) return role.trim()
   if ([...name].length > 32) name = [...name].slice(0, 32).join("")
   return name
-}
-
-function rosterTag(role: string, id: string, name: string): string {
-  if (!id || id === name) return ""
-  if (role && id.startsWith(`${role}-`)) {
-    const rest = id.slice(role.length + 1)
-    if (/^\d+$/.test(rest)) return `#${rest}`
-  }
-  if (id !== role) return id
-  return ""
 }
 
 export function agentRosterText(role: string, id: string): string {
