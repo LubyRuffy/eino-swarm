@@ -112,3 +112,29 @@ test("the Android menu skips a newer desktop-only Release", async ({ page }) => 
   await expect(dialog.getByRole("status")).toHaveText(`有新版本 ${androidVersion}，是否升级？`)
   await expect(dialog.getByRole("button", { name: "更新" })).toBeVisible()
 })
+
+test("the iOS menu has no GitHub installer check", async ({ page }) => {
+  await page.addInitScript((version) => {
+    Object.assign(window, {
+      CapacitorCustomPlatform: { name: "ios" },
+      Capacitor: {
+        PluginHeaders: [{ name: "App", methods: [{ name: "getInfo", rtype: "promise" }] }],
+        nativePromise: async (plugin: string, method: string) => {
+          if (plugin === "App" && method === "getInfo") return { version }
+          throw new Error("unsupported test bridge call")
+        },
+      },
+    })
+  }, shell.version)
+  let checks = 0
+  await page.route(RELEASES_LATEST_URL, async (route) => {
+    checks += 1
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(release(bump(shell.version))) })
+  })
+  await page.goto("/?mock=1&tick=0")
+  await page.getByRole("button", { name: "返回" }).click()
+  await page.getByRole("button", { name: "菜单" }).click()
+  await expect(page.getByRole("menuitem", { name: "检查新版本" })).toHaveCount(0)
+  await expect(page.getByTestId("app-version")).toContainText(shell.version)
+  expect(checks).toBe(0)
+})

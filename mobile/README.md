@@ -251,9 +251,10 @@ Android is downloaded and handed to the system installer. While the bytes
 are moving, the banner shows the percent when the response has a length,
 otherwise how much has arrived. The sheet still
 needs a tap, and the first time Android may ask to allow installs from this
-app. iOS has no package on that feed, so Update opens the release page.
-**Not now** hides that version until a later one is published. A failed
-automatic check stays quiet. **Menu → Check for updates** always requests:
+app. iOS beta builds are installed and updated through TestFlight; the GitHub
+update check and installer are not shown there. **Not now** hides the Android
+offer until a later one is published. A failed automatic check stays quiet.
+On Android and in the browser walkthrough, **Menu → Check for updates** requests:
 it shows that it is fetching, says when this build is current, asks before
 an install, and shows the response's own error. The download only follows `github.com/LubyRuffy/eino-swarm`
 and GitHub's release-asset hosts. The Mac desktop app uses that same

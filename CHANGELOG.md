@@ -35,6 +35,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-240` / `C-010`: iOS no longer shows the GitHub “Check for updates” menu, which could only report that the Android installer was unusable. iOS beta updates remain in TestFlight (Issue #53).
+
 - `F-430` / `C-010`: the qualified complete-main batch advances mobile package and iOS build metadata to 0.1.24/124. It carries the accepted Mac and phone fix from Issue #51, the Mac scheduled-worker fix from Issue #52, and verified changes already on main; each required platform retains an independent delivery gate.
 
 - `F-430` / `C-010`: the qualified complete-main batch advances mobile package and iOS build metadata to 0.1.23/123. Its release includes the accepted phone changes from Issues #47/#48 and the verified desktop changes on main; each required platform retains an independent delivery gate.

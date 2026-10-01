@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core"
 import { Menu, MessageSquare, Monitor, SquarePen } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
@@ -44,6 +45,7 @@ export function HostChrome({
   const [versionCheck, setVersionCheck] = useState(false)
   const rail = useRef<HTMLDivElement>(null)
   const pathKind = reconnecting ? "reconnecting" : connected ? path : "offline"
+  const canCheckUpdates = Capacitor.getPlatform() !== "ios"
 
   // Enough PCs and the row scrolls. A header that leaves the one you are
   // actually on past its edge names no PC at all.
@@ -103,14 +105,16 @@ export function HostChrome({
             >
               {t("home.unlink")}
             </MenuRow>
-            <MenuRow
-              onClick={() => {
-                setMenu(false)
-                setVersionCheck(true)
-              }}
-            >
-              {t("update.check")}
-            </MenuRow>
+            {canCheckUpdates ? (
+              <MenuRow
+                onClick={() => {
+                  setMenu(false)
+                  setVersionCheck(true)
+                }}
+              >
+                {t("update.check")}
+              </MenuRow>
+            ) : null}
             {onToggleLocale ? (
               <MenuRow
                 onClick={() => {

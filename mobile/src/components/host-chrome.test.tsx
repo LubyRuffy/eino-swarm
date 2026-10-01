@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { Capacitor } from "@capacitor/core"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { HostChrome } from "./host-chrome"
 import { setLocale, t } from "@/lib/i18n"
@@ -17,6 +18,26 @@ function host(fp: string, label: string): SavedLink {
 }
 
 describe("HostChrome", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("does not offer the Android release check on iOS", () => {
+    vi.spyOn(Capacitor, "getPlatform").mockReturnValue("ios")
+    render(
+      <HostChrome
+        hosts={[host("a", "desk-one")]}
+        activeFingerprint="a"
+        path="relay"
+        onSelect={vi.fn()}
+        onAdd={vi.fn()}
+        onNewChat={vi.fn()}
+        onUnlink={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole("button", { name: t("home.menu") }))
+    expect(screen.queryByRole("menuitem", { name: t("update.check") })).not.toBeInTheDocument()
+    expect(screen.getByTestId("app-version")).toBeInTheDocument()
+  })
+
   it("paints a tab per bound PC and keeps the tabs on the page, not a scan form", () => {
     setLocale("en")
     const onSelect = vi.fn()

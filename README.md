@@ -370,12 +370,12 @@ end-to-end tests run on and the fastest way to see the UI work.
    APK is on the newest [GitHub Release containing an Android APK](https://github.com/LubyRuffy/eino-swarm/releases)
    (`zwai-<version>-android.apk`). A newer Android build offers **Update** on the
    phone: it downloads that APK from GitHub Releases and opens the system
-   installer. iOS does not offer that package, so the automatic bar stays quiet
-   there. **Not now** hides an Android offer from
-   the automatic bar. **Menu → Check for updates** asks immediately and shows
-   that it is fetching. The current build says so. A newer Android build asks
-   before installing. On iOS that check says the GitHub installer is Android.
-   A failed request shows the response's own error.
+   installer. iOS beta builds are installed and updated through TestFlight;
+   the app does not show the GitHub update check there. **Not now** hides an
+   Android offer from the automatic bar. On Android and in the browser
+   walkthrough, **Menu → Check for updates** asks immediately and shows that
+   it is fetching. The current build says so. A newer Android build asks
+   before installing. A failed request shows the response's own error.
    Building from this repo is `mobile/ios` /
    `mobile/android`. The home-screen icon is the same ZWAI mark as the Dock.
    **Scan QR** opens a live viewfinder: a frame, a beam that sweeps up and
