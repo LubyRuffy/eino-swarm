@@ -4,6 +4,34 @@ import XCTest
 /// POST /api/remote/offer on the simulator pasteboard first:
 /// `xcrun simctl pbcopy booted < offer.txt`
 final class BindFlowTests: XCTestCase {
+  func testNativeIOSMenuHidesAndroidUpdateCheck() throws {
+    let app = XCUIApplication()
+    app.launch()
+
+    let menu = app.buttons["Menu"]
+    if !menu.waitForExistence(timeout: 3) {
+      let connect = app.buttons["Connect a model"]
+      XCTAssertTrue(connect.waitForExistence(timeout: 12), "fresh iOS install did not reach the scan screen")
+      connect.tap()
+
+      let baseURL = app.textFields["Base URL"]
+      XCTAssertTrue(baseURL.waitForExistence(timeout: 5), "model form did not open")
+      baseURL.tap()
+      baseURL.typeText("http://127.0.0.1:1/v1")
+      XCTAssertEqual(baseURL.value as? String, "http://127.0.0.1:1/v1")
+      app.toolbars.buttons["Done"].tap()
+      app.webViews.buttons["Save"].tap()
+    }
+    XCTAssertTrue(menu.waitForExistence(timeout: 8), "local chat did not open")
+    menu.tap()
+    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Version '")).firstMatch.waitForExistence(timeout: 5), "menu did not open")
+    XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Check for updates'")).firstMatch.exists, "iOS menu offered the Android installer")
+    let menuScreenshot = XCTAttachment(screenshot: app.screenshot())
+    menuScreenshot.name = "iOS menu without Android update check"
+    menuScreenshot.lifetime = .keepAlways
+    add(menuScreenshot)
+  }
+
   func testPasteBindListsTheSeedConversation() throws {
     let app = XCUIApplication()
     app.launch()

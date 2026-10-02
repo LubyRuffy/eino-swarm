@@ -75,6 +75,10 @@ E2E suite.
 - Name tests after what would break for the user
   (`TestSlowSubscriberDoesNotBlockTheRun`), and comment *why the behaviour
   matters* so a later reader can tell a regression from an obsolete expectation.
+- A simulator build or app launch does not accept a changed native UI flow.
+  Run its packaged-app XCTest and inspect the reached screen; iOS menu changes
+  use `BindFlowTests/testNativeIOSMenuHidesAndroidUpdateCheck`. XCTest can drive
+  the simulator while the host desktop session is locked.
 - Never test against a network or a real model. Use the scripted offline
   provider, and keep its script generic.
 - Every feature must be reachable through the one-id troubleshooting path: a turn

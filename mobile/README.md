@@ -301,6 +301,22 @@ not part of `make check`. English accessibility names (`Pairing URI`,
 `Send`) are the unit-test locale (`en`); Playwright `e2e/scan.spec.ts` uses
 `zh-CN`.
 
+The iOS update-menu regression uses the same packaged app and needs no hub:
+
+```bash
+cd ios/App
+xcodebuild test -project App.xcodeproj -scheme App \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:AppUITests/BindFlowTests/testNativeIOSMenuHidesAndroidUpdateCheck \
+  CODE_SIGNING_ALLOWED=NO
+```
+
+On a fresh simulator it saves a loopback model endpoint without contacting it;
+on a reused simulator it opens the existing local chat. It opens the native
+app's Menu, confirms the version is shown, and checks that the Android-only
+update action is absent. The test runs with XCTest even when the host desktop
+session is locked.
+
 Composer width regressions run on Chromium and iPhone WebKit:
 `npx playwright install chromium webkit && npm run e2e`.
 The packaged iOS keyboard-dismissal and submission checks use the disposable

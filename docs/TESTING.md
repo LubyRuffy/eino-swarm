@@ -51,7 +51,7 @@ deterministic and fast enough to run on every change.
 | End-to-end | a real browser against a real server: conversation, streaming, sub-agents, files, settings (including the per-note memory cap), theme, chrome language, font and conversation width, directory rows tracking UI size, scheduled inbox / wake banner, Phone settings QR control (pairing failure toasts over the sheet; Bound phones paints a reported model) | `cd frontend && npm run e2e` |
 | Phone unit tests | Capacitor iOS/Android apps exist with camera permission and no compiled hub URL; offer URI parse, Noise session, scan/paste screen, live viewfinder (frame, sweeping beam, chime on a pairlink QR), saved-ticket host chips + connecting skeleton (not the scan form), multiple tickets, computer name from `hello`/`list` `host` (not the hub hostname), slim list, resume picker (live turn / last thread / parked wait), compact transcript / watch session (goal flags + waiting), ticket-socket keepalive and reconnect banner, goal/wait banners, device model line from platform+UA (`hello`), launcher is the zwai mark not Capacitor's default; Android system back pops Add a PC, then the new-conversation screen, then a conversation, and finishes only from the inbox or the unbound scan screen; inbox search filters the roster already on the phone; a project row starts a conversation in that project; Android release Gradle reads version/signing from env (no password in git); `android-release` refuses a store upload without a keystore, skips JDK 17, copies the APK to `bin/` | `cd mobile && npm test` |
 | Phone E2E | scan screen opens a live viewfinder (frame, sweeping beam, fake-camera preview) and paste of the same `pairlink:v1` URI; a saved ticket shows host chips and Connecting, not Scan QR; Add a PC is a menu sheet; New chat and a project row open the start screen, and on a 320px-wide viewport the project row and the message box stay inside it; sub-agent header counts running workers only, finished history stays grouped and opens a separate activity log without painting worker answers as manager answers; Check for updates shows fetching, then current, an install question, or the stubbed feed error | `cd mobile && npm run e2e` |
-| Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, New chat, Start | see `mobile/README.md` (not in `make check`) |
+| Phone simulators | packaged iOS/Android apps bind via paste of that URI, list the seed thread, New chat, Start; native iOS Menu shows the version without Android's update action | see `mobile/README.md` (not in `make check`) |
 
 Phone output verification (`F-224`, `C-020`): `go test -race ./internal/remote`
 checks bounded listing and content frames, traversal and symlink escape;
@@ -1695,7 +1695,12 @@ a client at all is verified in the engine and reducer tests.
   Simulators: iOS can use a loopback hub; Android needs `adb reverse` onto
   that same hub port. `mobile/ios/App/AppUITests/BindFlowTests.swift` pastes
   the offer from `simctl pbcopy`, taps Back if a thread already opened, asserts
-  `path=` plus the seed conversation, and Starts a thread. Android is the debug
+  `path=` plus the seed conversation, and Starts a thread. Its separate native
+  menu test opens local chat through a saved or dummy loopback model, taps Menu,
+  and verifies that iOS shows a version without Android's Check for updates.
+  The command is in `mobile/README.md`; this closes the native acceptance gap
+  that browser E2E and a successful simulator launch alone cannot cover.
+  Android is the debug
   APK plus `adb reverse`, or `make mobile-android-release` for the release
   APK/AAB in `bin/`. Neither is in `make check`.
 
