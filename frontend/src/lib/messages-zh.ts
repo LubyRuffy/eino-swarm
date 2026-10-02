@@ -593,7 +593,10 @@ export const zh: { [K in keyof typeof en]: string } = {
     "每个提供商是一个接口。发现它提供的模型，选一个默认，然后在输入框里按会话切换。",
   "settings.models.providers": "提供商",
   "settings.models.providersDesc":
-    "每个接口一行。打开后可改 URL、密钥和默认模型。",
+    "每个接口一行。开关决定它出不出现在输入框的模型列表里。打开后可改 URL、密钥和默认模型。",
+  "settings.models.listed": "在输入框里显示 {name}",
+  "settings.models.listedHint":
+    "关掉后，这个接口不会出现在输入框的模型列表里。已经在用它的会话继续用。最后一个不能关。",
   "settings.models.add": "添加提供商",
   "settings.models.provider": "提供商",
   "settings.models.providerPlaceholder": "给这个提供商起名",

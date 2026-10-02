@@ -119,6 +119,28 @@ func TestListReportsAConfiguredWindowAndTheMockFallback(t *testing.T) {
 	}
 }
 
+func TestListOmitsAProviderThatWasSwitchedOff(t *testing.T) {
+	cfg := configFor(t, true)
+	off := false
+	cfg.Models.Providers = append(cfg.Models.Providers, config.Provider{
+		ID: "debug", Label: "Debug", BaseURL: "http://debug.invalid/v1",
+		Model: "probe", Catalog: []string{"probe", "spare"}, Enabled: &off,
+	})
+	list := New(cfg).List()
+	if len(list) != 1 || list[0].Model == "probe" {
+		t.Fatalf("a switched-off endpoint must leave the composer: %+v", list)
+	}
+	if _, err := New(cfg).Resolve("debug"); err != nil {
+		t.Fatal("a hidden endpoint must still resolve for a conversation already on it")
+	}
+	mock := NewMock(cfg).List()
+	for _, row := range mock {
+		if row.ProviderID == "debug" {
+			t.Fatalf("offline listing must hide it too: %+v", mock)
+		}
+	}
+}
+
 func TestListGroupsByProviderNameNotTheDefaultModel(t *testing.T) {
 	cfg := configFor(t, true)
 	cfg.Models.Providers[0].Label = ""

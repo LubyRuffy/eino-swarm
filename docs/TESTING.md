@@ -112,6 +112,8 @@ that idle list. `TestRunningRosterCarriesTheProjectSoTheFolderStillListsIt`
 is why a live row still names its project: the phone lists it under that
 folder without putting it back on the idle page. `TestCatalogListsReadyModelsAndHidesEndpointSecrets` is why
 the phone's model list has a second provider and no endpoint secret.
+`TestCatalogOmitsAProviderThatWasSwitchedOff` is why that list also drops
+an endpoint the desktop switched off.
 `TestPngBytesNamedAsTextStayAFile` is why a png named like a text file is
 still a file, and `TestABadSelectionDoesNotLeaveAnEmptyConversation` is
 why a refused model does not leave an empty thread.
@@ -1248,6 +1250,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   window fields — typing one must not write the provider fallback.
   Removing a provider asks first. A failed listing toasts over the sheet
   (× dismisses it) instead of a red line under the Models heading.
+  The switch on a row takes that endpoint out of the composer; the last
+  one cannot be switched off. The model button keeps a conversation's
+  name when that provider has left the list.
 - **`src/lib/composer-chrome.ts`**: the composer writes `--composer-pad` onto the
   conversation stage from its own height; a zero height (jsdom) leaves the CSS
   fallback so a unit test cannot collapse the transcript into the box.
@@ -1640,7 +1645,7 @@ long enough for Steer; unit tests leave it unset.
 | `e2e/clients.spec.ts` | a long local agent session opens on the live reply, **Earlier** loads the lines above it, and that reply stays on screen |
 | `e2e/output-budget.spec.ts` | an output-budget error in the transcript links to Settings → Swarm, focuses Max completion tokens, and shows Retry only after that sheet closes |
 | `e2e/composer-paste.spec.ts` | a trusted paste into an empty composer lands once, and a second paste appends instead of doubling each insert |
-| `e2e/settings.spec.ts` | Settings sheet: tool catalogue on a never-saved config, round-trip through the config file, per-note memory cap, personality, pinning a title-generation model, discovering models into the default dropdown, a failed listing toasting over the open provider, **Back to app** on a short window when Swarm is long, the Add-a-provider outline inside the Models scrollport, semantic search off by default, local agent tasks hidden until Clients is enabled (empty directories, three tool groups, no task rows), Color theme / font / conversation width, directory rows tracking UI size not conversation size, chrome language switching (restored to English) |
+| `e2e/settings.spec.ts` | Settings sheet: tool catalogue on a never-saved config, round-trip through the config file, per-note memory cap, personality, pinning a title-generation model, discovering models into the default dropdown, a failed listing toasting over the open provider, switching a provider off so it leaves the composer list while the open conversation keeps that name (switching it back lists it again), **Back to app** on a short window when Swarm is long, the Add-a-provider outline inside the Models scrollport, semantic search off by default, local agent tasks hidden until Clients is enabled (empty directories, three tool groups, no task rows), Color theme / font / conversation width, directory rows tracking UI size not conversation size, chrome language switching (restored to English) |
 | `e2e/shell.spec.ts` | launch with an existing conversation stays on the home page (no row selected, no transcript), keyboard shortcuts (including hiding the conversation list, `⌘F` find in the conversation, and `⌘J` / the title-bar terminal opening a PTY in the conversation workspace — and in a project's working directory when the conversation belongs to one), dragging the conversation list and the side panel without selecting transcript text (the list width is remembered across reload and the title-bar leading cluster tracks it), the composer sitting on the transcript with a fade instead of a dock hairline (pins and the box share one slab; the join sits on that plate), Projects and Conversations sharing one left gutter (conversation titles in the icon column), collapsing Conversations so its rows stay hidden across reload, the Conversations header icon starting a conversation outside a project, an external link opening a new window instead of replacing the app, ⌘K finding a conversation by words in its body, theme switching persisted, the app-menu width control filling the pane in wide mode and restoring the reading column (also persisted), renaming a conversation and deleting it after a confirm, and dragging a Conversations row pinning that order across reload |
 
 E2E tests run against `frontend/dist`. Playwright starts

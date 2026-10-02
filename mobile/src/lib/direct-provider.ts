@@ -16,6 +16,8 @@ export type DirectProvider = {
   model: string
   catalog: string[]
   timeoutSeconds: number
+  /** False hides this endpoint from the composer. Missing on an old row means on. */
+  enabled?: boolean
 }
 
 export function mintID(prefix: string): string {
@@ -35,6 +37,7 @@ export function blankProvider(): DirectProvider {
     model: "",
     catalog: [],
     timeoutSeconds: defaultTimeoutSeconds,
+    enabled: true,
   }
 }
 
@@ -63,6 +66,7 @@ export function saveProviders(rows: DirectProvider[]): DirectProvider[] {
 export function providerChoices(rows: DirectProvider[]): ModelChoice[] {
   const out: ModelChoice[] = []
   for (const row of rows) {
+    if (row.enabled === false) continue
     const names = unique([row.model, ...row.catalog])
     const label = row.label.trim() || row.id
     for (const name of names) {
@@ -95,6 +99,7 @@ function asProvider(value: unknown): DirectProvider | null {
     model: typeof row.model === "string" ? row.model : "",
     catalog: Array.isArray(row.catalog) ? row.catalog.filter((name) => typeof name === "string") : [],
     timeoutSeconds: typeof row.timeoutSeconds === "number" ? row.timeoutSeconds : defaultTimeoutSeconds,
+    enabled: row.enabled !== false,
   })
 }
 
@@ -111,6 +116,7 @@ function normalizeProvider(row: DirectProvider): DirectProvider {
     model: row.model.trim(),
     catalog: unique(row.catalog),
     timeoutSeconds: timeout >= 10 ? timeout : defaultTimeoutSeconds,
+    enabled: row.enabled !== false,
   }
 }
 

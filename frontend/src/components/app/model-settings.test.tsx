@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { ModelsTab } from "./model-settings"
@@ -110,6 +111,61 @@ describe("ModelsTab", () => {
     expect(screen.queryByLabelText("Provider")).toBeNull()
     expect(screen.queryByLabelText("Base URL")).toBeNull()
     expect(screen.queryByLabelText("Default model")).toBeNull()
+  })
+
+  it("takes a provider out of the composer without removing the row", async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const two: Settings = {
+      ...base,
+      models: {
+        default: "default",
+        providers: [
+          base.models.providers[0],
+          {
+            ...base.models.providers[0],
+            id: "other",
+            label: "Other",
+            model: "beta",
+          },
+        ],
+      },
+    }
+    const { rerender } = render(<ModelsTab settings={two} onChange={onChange} />)
+    expect(screen.getByRole("switch", { name: "Show Endpoint in the composer" })).toBeEnabled()
+    await user.click(screen.getByRole("switch", { name: "Show Other in the composer" }))
+    const next = onChange.mock.calls[0][0] as Settings
+    expect(next.models.providers[1].enabled).toBe(false)
+    expect(next.models.providers[0].id).toBe("default")
+    rerender(<ModelsTab settings={next} onChange={onChange} />)
+    expect(screen.getByRole("switch", { name: "Show Other in the composer" })).not.toBeChecked()
+    expect(screen.getByRole("switch", { name: "Show Endpoint in the composer" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Other details" })).toBeTruthy()
+  })
+
+  it("moves the default onto an endpoint that stays in the composer", async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    const two: Settings = {
+      ...base,
+      models: {
+        default: "default",
+        providers: [
+          base.models.providers[0],
+          {
+            ...base.models.providers[0],
+            id: "other",
+            label: "Other",
+            model: "beta",
+          },
+        ],
+      },
+    }
+    render(<ModelsTab settings={two} onChange={onChange} />)
+    await user.click(screen.getByRole("switch", { name: "Show Endpoint in the composer" }))
+    const next = onChange.mock.calls[0][0] as Settings
+    expect(next.models.providers[0].enabled).toBe(false)
+    expect(next.models.default).toBe("other")
   })
 
   it("opens one row to edit URL, key, and default", () => {

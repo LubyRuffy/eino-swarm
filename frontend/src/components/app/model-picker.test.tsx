@@ -62,6 +62,21 @@ describe("ModelPicker", () => {
     expect(onChange).toHaveBeenCalledWith("a", "beta")
   })
 
+  it("keeps the conversation's model on the button when that provider left the list", () => {
+    render(
+      <ModelPicker
+        models={models.filter((row) => row.provider_id === "a")}
+        providerId="b"
+        model="gamma"
+        onChange={vi.fn()}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("gamma")
+    fireEvent.click(screen.getByLabelText("Model"))
+    expect(screen.queryByRole("option", { name: /gamma/ })).toBeNull()
+    expect(screen.getByRole("option", { name: /alpha/ })).toBeTruthy()
+  })
+
   it("stays a switcher when only one model is ready so refresh and edit remain reachable", () => {
     render(
       <ModelPicker

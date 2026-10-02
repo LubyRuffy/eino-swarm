@@ -140,6 +140,9 @@ func TestSettingsViewHidesKeysAndReportsReadiness(t *testing.T) {
 	if a.Catalog == nil || b.Catalog == nil {
 		t.Fatal("catalog must be a list, not null")
 	}
+	if !a.Enabled || !b.Enabled {
+		t.Fatal("a provider with no switch must still be offered")
+	}
 	if view.Search.Embedding || view.Search.EmbeddingModel != "" {
 		t.Fatalf("search embeddings must ship off with no model: %+v", view.Search)
 	}

@@ -233,7 +233,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   queued workers start under the new cap; lowering it does not kill anyone
   already running.
 - **Per-conversation model and thinking level.** Settings → Models lists
-  providers as rows (open one for URL, key, default). Discovering a catalog
+  providers as rows (open one for URL, key, default). The switch on a row
+  shows that endpoint in the composer; off hides it from the model list
+  without dropping a conversation that already uses it. Hiding the default
+  moves new conversations to an endpoint that is still listed. The last
+  endpoint stays on. Discovering a catalog
   that fails toasts over the sheet (× to close) instead of a red line at
   the top of that page. The same toast is how Phone pairing, a failed
   Settings save, and a failed project save report — never a red line under
@@ -413,7 +417,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    An image is shown to the model; other files go into the
    workspace. **Menu → Models** (on the scan screen, **Connect a model**) saves
    an OpenAI-compatible endpoint on the phone: base URL, optional API key,
-   **Chat completions** or **Responses**, Discover, and a timeout. After one
+   **Chat completions** or **Responses**, Discover, a timeout, and a switch
+   that hides it from that composer's model list. After one
    is saved, a **Chat** tab appears on the top row. That chat uses the same
   composer. An image is vision; a text file is sent as text. A responses
   front that rejects the image part is asked once more as chat completions,

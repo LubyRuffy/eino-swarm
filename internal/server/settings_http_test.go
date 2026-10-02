@@ -163,6 +163,78 @@ func TestSettingsNeverReturnsTheAPIKey(t *testing.T) {
 	}
 }
 
+func TestSwitchingAProviderOffHidesItFromTheComposer(t *testing.T) {
+	h := newHarness(t)
+	off := h.json(http.MethodPut, "/api/settings", map[string]any{
+		"models": map[string]any{
+			"default": "default",
+			"providers": []map[string]any{
+				{"id": "default", "label": "Main", "base_url": "http://endpoint.invalid/v1", "model": "m", "timeout_seconds": 60},
+				{"id": "debug", "label": "Debug", "base_url": "http://debug.invalid/v1", "model": "probe", "catalog": []string{"probe"}, "enabled": false},
+			},
+		},
+	}, http.StatusOK)
+	providers := off["settings"].(map[string]any)["models"].(map[string]any)["providers"].([]any)
+	debug := providers[1].(map[string]any)
+	if debug["enabled"] != false {
+		t.Fatalf("settings must say the endpoint is off: %+v", debug)
+	}
+	if providers[0].(map[string]any)["enabled"] != true {
+		t.Fatalf("the other endpoint stays on: %+v", providers[0])
+	}
+
+	listed := h.json(http.MethodGet, "/api/models", nil, http.StatusOK)
+	for _, row := range listed["models"].([]any) {
+		if row.(map[string]any)["provider_id"] == "debug" {
+			t.Fatalf("composer listed a hidden endpoint: %+v", listed["models"])
+		}
+	}
+
+	// A save that does not mention the switch must not turn it back on.
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"models": map[string]any{
+			"default": "default",
+			"providers": []map[string]any{
+				{"id": "default", "label": "Main", "base_url": "http://endpoint.invalid/v1", "model": "m", "timeout_seconds": 60},
+				{"id": "debug", "label": "Debug", "base_url": "http://debug.invalid/v1", "model": "probe"},
+			},
+		},
+	}, http.StatusOK)
+	prov, ok := h.app.Config.Provider("debug")
+	if !ok || prov.Listed() {
+		t.Fatalf("omitting the switch turned it back on: %+v", prov)
+	}
+
+	id := h.newThread()
+	h.json(http.MethodPatch, "/api/threads/"+id, map[string]any{
+		"provider_id": "debug", "model": "probe",
+	}, http.StatusOK)
+	th, err := h.app.Store.GetThread(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if th.ProviderID != "debug" || th.Model != "probe" {
+		t.Fatalf("a conversation already on a hidden endpoint must keep it: %+v", th)
+	}
+
+	h.json(http.MethodPut, "/api/settings", map[string]any{
+		"models": map[string]any{
+			"default": "default",
+			"providers": []map[string]any{
+				{"id": "default", "label": "Main", "base_url": "http://endpoint.invalid/v1", "model": "m", "enabled": false},
+			},
+		},
+	}, http.StatusOK)
+	kept, ok := h.app.Config.DefaultProvider()
+	if !ok || !kept.Listed() {
+		t.Fatal("the last endpoint must stay in the composer")
+	}
+	back := h.json(http.MethodGet, "/api/models", nil, http.StatusOK)
+	if len(back["models"].([]any)) == 0 {
+		t.Fatal("the composer lost its last endpoint")
+	}
+}
+
 func TestSettingsPersistAndValidate(t *testing.T) {
 	h := newHarness(t)
 	h.json(http.MethodPut, "/api/settings", map[string]any{

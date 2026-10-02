@@ -1,5 +1,68 @@
 import { expect, test } from "@playwright/test"
 
+import { freshConversation } from "./session"
+
+test("a switched-off provider leaves the composer model list", async ({
+  page,
+  request,
+}) => {
+  const { settings } = await (await request.get("/api/settings")).json()
+  const provider = settings.models.providers[0]
+  await request.put("/api/settings", {
+    data: {
+      models: {
+        default: settings.models.default,
+        providers: [
+          provider,
+          {
+            id: "debug",
+            label: "Debug bench",
+            base_url: "http://127.0.0.1:9/v1",
+            model: "probe",
+            catalog: ["probe"],
+            timeout_seconds: 300,
+            enabled: true,
+          },
+        ],
+      },
+    },
+  })
+  try {
+    await freshConversation(page)
+    const picker = page.getByLabel("Model")
+    await picker.click()
+    await page.getByRole("option", { name: /probe/ }).click()
+    await expect(picker).toContainText("probe")
+
+    await page.getByRole("button", { name: "Settings" }).click()
+    const dialog = page.getByRole("dialog")
+    await dialog.getByRole("tab", { name: "Models" }).click()
+    await dialog
+      .getByRole("switch", { name: "Show Debug bench in the composer" })
+      .click()
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+
+    await expect(picker).toContainText("probe")
+    await picker.click()
+    await expect(page.getByRole("option", { name: /probe/ })).toHaveCount(0)
+    await page.keyboard.press("Escape")
+
+    await page.getByRole("button", { name: "Settings" }).click()
+    const again = page.getByRole("dialog")
+    await again.getByRole("tab", { name: "Models" }).click()
+    await again
+      .getByRole("switch", { name: "Show Debug bench in the composer" })
+      .click()
+    await again.getByRole("button", { name: "Back to app" }).click()
+    await expect(again).toBeHidden()
+    await picker.click()
+    await expect(page.getByRole("option", { name: /probe/ })).toBeVisible()
+  } finally {
+    await request.put("/api/settings", { data: { models: settings.models } })
+  }
+})
+
 test("local agent tasks stay hidden until the switch is on", async ({ page }) => {
   await page.goto("/")
   await expect(page.getByTestId("clients-list")).toHaveCount(0)

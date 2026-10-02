@@ -627,7 +627,10 @@ export const en = {
     "Each provider is one endpoint. Discover the models it serves, pick a default, and switch per conversation in the composer.",
   "settings.models.providers": "Providers",
   "settings.models.providersDesc":
-    "Each endpoint is a row. Open one to edit the URL, key, and default model.",
+    "Each endpoint is a row. The switch puts it in the composer. Open one to edit the URL, key, and default model.",
+  "settings.models.listed": "Show {name} in the composer",
+  "settings.models.listedHint":
+    "Off hides this endpoint from the model list. A conversation already using it stays on it. The last one stays on.",
   "settings.models.add": "Add a provider",
   "settings.models.provider": "Provider",
   "settings.models.providerPlaceholder": "Name this provider",

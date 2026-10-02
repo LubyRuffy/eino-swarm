@@ -443,6 +443,8 @@ export interface ProviderSettings {
   model_context?: Record<string, number>
   has_api_key: boolean
   ready: boolean
+  /** False hides this endpoint from the composer. Missing means on. */
+  enabled?: boolean
   /** Only ever sent, never received: the server does not hand keys back. */
   api_key?: string
 }

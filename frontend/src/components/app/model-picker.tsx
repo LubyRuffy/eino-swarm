@@ -39,13 +39,19 @@ export function ModelPicker({
   const menuRef = useRef<HTMLDivElement>(null)
   const ready = models.filter((m) => m.ready && m.model)
   const groups = groupModels(ready)
-  const selected =
-    ready.find((m) => m.provider_id === providerId && m.model === model) ??
-    ready.find((m) => m.provider_id === providerId && m.default) ??
-    ready.find((m) => m.provider_id === providerId) ??
-    ready.find((m) => m.default) ??
-    ready[0]
-  const label = selected?.label || selected?.model || t("model.fallback")
+  // An empty id is "not chosen yet" and may fall through to the default row.
+  // A known id that the list no longer contains was switched off: keep the
+  // conversation's name on the button instead of pretending another model
+  // is selected.
+  const stillListed = !providerId || ready.some((m) => m.provider_id === providerId)
+  const selected = stillListed
+    ? ready.find((m) => m.provider_id === providerId && m.model === model) ??
+      ready.find((m) => m.provider_id === providerId && m.default) ??
+      ready.find((m) => m.provider_id === providerId) ??
+      ready.find((m) => m.default) ??
+      ready[0]
+    : undefined
+  const label = selected?.label || selected?.model || model?.trim() || t("model.fallback")
 
   useLayoutEffect(() => {
     if (!open || !wrapRef.current) return

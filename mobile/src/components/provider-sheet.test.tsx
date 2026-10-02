@@ -61,6 +61,19 @@ describe("ProviderSheet", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(t("chat.badUrl"))
   })
 
+  it("saves an endpoint switched off so the composer can skip it", () => {
+    setLocale("en")
+    const onChange = vi.fn()
+    render(<ProviderSheet providers={[]} onChange={onChange} onClose={vi.fn()} discover={vi.fn()} />)
+    fireEvent.change(screen.getByLabelText(t("chat.baseUrl")), {
+      target: { value: "https://endpoint.invalid/v1" },
+    })
+    fireEvent.click(screen.getByRole("checkbox", { name: t("chat.listed") }))
+    fireEvent.click(screen.getByRole("button", { name: t("chat.save") }))
+    const saved = onChange.mock.calls[0][0] as DirectProvider[]
+    expect(saved[0].enabled).toBe(false)
+  })
+
   it("fills the model list from discover", async () => {
     setLocale("en")
     const discover = vi.fn(async () => ["alpha", "beta"])

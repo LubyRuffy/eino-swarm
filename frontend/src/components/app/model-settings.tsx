@@ -3,6 +3,7 @@ import { useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Switch } from "@/components/ui/switch"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -57,7 +58,16 @@ export function ModelsTab({
     const providers = settings.models.providers.map((p, i) =>
       i === index ? { ...p, ...patch } : p,
     )
-    onChange({ ...settings, models: { ...settings.models, providers } })
+    let nextDefault = settings.models.default
+    const turnedOff = patch.enabled === false && providers[index]?.id === nextDefault
+    if (turnedOff) {
+      const fallback = providers.find((row) => row.enabled !== false)
+      if (fallback) nextDefault = fallback.id
+    }
+    onChange({
+      ...settings,
+      models: { ...settings.models, default: nextDefault, providers },
+    })
   }
 
   const discover = async (index: number) => {
@@ -138,6 +148,7 @@ export function ModelsTab({
             query={query}
             isDefault={settings.models.default === p.id}
             canRemove={settings.models.providers.length > 1}
+            lockOn={p.enabled !== false && listedCount(settings) < 2}
             open={open.has(p.id) || providerFieldsMatch(query, p, t)}
             busy={busy === p.id}
             onToggle={() => toggle(p.id)}
@@ -180,6 +191,7 @@ export function ModelsTab({
                     model_context: {},
                     has_api_key: false,
                     ready: false,
+                    enabled: true,
                   },
                 ],
               },
@@ -214,6 +226,7 @@ function ProviderRow({
   query,
   isDefault,
   canRemove,
+  lockOn,
   open,
   busy,
   onToggle,
@@ -226,6 +239,8 @@ function ProviderRow({
   query: string
   isDefault: boolean
   canRemove: boolean
+  /** The composer needs one endpoint. This row is that one. */
+  lockOn: boolean
   open: boolean
   busy: boolean
   onToggle: () => void
@@ -264,7 +279,13 @@ function ProviderRow({
             )}
           />
           <span className="min-w-0 flex-1">
-            <span className={cn("block truncate", settingsLabelClass)}>
+            <span
+              className={cn(
+                "block truncate",
+                settingsLabelClass,
+                p.enabled === false && "text-muted-foreground",
+              )}
+            >
               {heading}
             </span>
             <span className={cn("block truncate", settingsHintClass)}>
@@ -273,6 +294,13 @@ function ProviderRow({
           </span>
         </button>
         <div className="flex shrink-0 items-center gap-1 pt-0.5">
+          <Switch
+            checked={p.enabled !== false}
+            disabled={lockOn}
+            aria-label={t("settings.models.listed", { name: heading })}
+            title={t("settings.models.listedHint")}
+            onCheckedChange={(enabled) => onUpdate({ enabled })}
+          />
           {isDefault ? (
             <Badge variant="success">{t("settings.models.default")}</Badge>
           ) : (
@@ -428,8 +456,14 @@ function providerVisible(query: string, p: ProviderConfig, t: Translate): boolea
     t("settings.models.windowFallback"),
     t("settings.models.timeout"),
     t("settings.models.timeoutHint"),
+    t("settings.models.listed", { name: providerHeading(p) }),
+    t("settings.models.listedHint"),
     ...(p.catalog ?? []),
   )
+}
+
+function listedCount(settings: Settings): number {
+  return settings.models.providers.filter((row) => row.enabled !== false).length
 }
 
 function providerFieldsMatch(query: string, p: ProviderConfig, t: Translate): boolean {

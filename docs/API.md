@@ -162,7 +162,7 @@ provider carries `has_api_key` and `ready` instead.
     {"id": "default", "label": "", "base_url": "https://endpoint/v1",
      "model": "some-model", "catalog": ["some-model", "other-model"],
      "timeout_seconds": 300, "context_window": 0, "model_context": {},
-     "has_api_key": true, "ready": true}
+     "has_api_key": true, "ready": true, "enabled": true}
   ]},
   "swarm": {"max_concurrent": 6, "agent_timeout_seconds": 600,
             "max_turns": 200, "manager_max_iterations": 200,
@@ -269,13 +269,24 @@ the last discovered model list: omit it to keep what is stored, send `[]` to
 clear it. `context_window` and `model_context` are the same: omit them to keep
 the stored windows, send `0` / `{}` to clear. A window is never invented from
 the model name. The Settings UI edits `model_context` per catalog name; `context_window`
-is only the fallback for a name that still has none.
+is only the fallback for a name that still has none. `enabled` is three-valued
+the same way as a key you are not replacing:
+
+| `enabled` | effect |
+|---|---|
+| absent | keep the stored switch. A new id stays on. |
+| `true` | show the endpoint in the composer. The yaml omits the key. |
+| `false` | hide it from `GET /api/models` and the paired phone catalog. |
+
+A PUT that hides the current `default` moves `default` to the first endpoint still on. A PUT that would hide every endpoint leaves the default one on.
 
 ### `GET /api/models`
 
-Every selectable model across every endpoint. One provider that listed three
-names is three rows; the composer groups them by `provider_id` (`provider_label`
-is the provider's name, never its default model).
+Every selectable model across every endpoint that is still switched on.
+One provider that listed three names is three rows; the composer groups them
+by `provider_id` (`provider_label` is the provider's name, never its default
+model). An endpoint with `enabled: false` is absent here. `PATCH` of a
+conversation can still select it, and a turn already on it keeps running.
 
 ```json
 {"models": [{

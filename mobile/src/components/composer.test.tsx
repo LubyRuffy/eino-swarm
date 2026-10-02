@@ -155,6 +155,33 @@ describe("Composer", () => {
     )
   })
 
+  it("keeps a chat on a provider the catalog no longer lists", () => {
+    setLocale("en")
+    const onSubmit = vi.fn()
+    render(
+      <Composer
+        label="Message"
+        sendLabel="Send"
+        providerId="hidden"
+        model="probe"
+        models={[{ provider_id: "a", provider_label: "Alpha", model: "one", default: true }]}
+        onSubmit={onSubmit}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("probe")
+    fireEvent.click(screen.getByRole("button", { name: "Model" }))
+    expect(screen.queryByRole("radio", { name: "probe" })).not.toBeInTheDocument()
+    expect(screen.getByRole("radio", { name: "one" })).toBeInTheDocument()
+    fireEvent.keyDown(window, { key: "Escape" })
+    expect(screen.queryByRole("dialog", { name: "Model" })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hi" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(onSubmit).toHaveBeenCalledWith(
+      "hi",
+      expect.objectContaining({ providerId: "hidden", model: "probe" }),
+    )
+  })
+
   it("closes the model list on Android Back before leaving the chat", () => {
     setLocale("en")
     const previous = vi.fn(() => true)

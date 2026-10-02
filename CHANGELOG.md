@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **A provider can be switched off.** Settings → Models has a switch on each endpoint. Off hides it from the composer model list and from a paired phone's catalog. A conversation already on it keeps that model. Hiding the default moves new conversations to an endpoint that is still listed. The last endpoint stays on. The phone's own direct-chat list has the same switch.
+
 - **The Agents list can be sorted.** It opens with the most recently active worker first. Created time, last update, and the name on the row each run newest-first or oldest-first (A to Z or Z to A for names). Running workers stay under Active; finished and failed stay under Done.
 
 - Conversations that belong to no project record reusable procedures in the shared skill library (`library/skills/` under the data directory) after a finished turn. The next conversation outside a project lists that index and can open a skill; it does not write the library during the turn. The Memory tab lists the files, can tidy them, and can copy one into a project. Update on that copy pulls a later library change. A copy that was edited, or whose source is gone, says so. Clicking a project folder does not replace this list.

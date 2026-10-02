@@ -327,6 +327,10 @@ export function Composer({
 
 function chosen(models: ModelChoice[], providerId: string, model: string) {
   const ready = models.filter((row) => row.model)
+  // A known provider that left the catalog was switched off. Keep the
+  // conversation on it instead of silently sending the next endpoint.
+  const stillListed = !providerId || ready.some((row) => row.provider_id === providerId)
+  if (!stillListed) return { providerId, model }
   const hit =
     ready.find((row) => row.provider_id === providerId && row.model === model) ??
     ready.find((row) => row.provider_id === providerId && row.default) ??

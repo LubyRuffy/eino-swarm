@@ -95,6 +95,7 @@ type providerView struct {
 	ModelContext   map[string]int `json:"model_context"`
 	HasAPIKey      bool           `json:"has_api_key"`
 	Ready          bool           `json:"ready"`
+	Enabled        bool           `json:"enabled"`
 }
 
 func toSettingsView(cfg *config.Config) settingsView {
@@ -130,9 +131,20 @@ func toSettingsView(cfg *config.Config) settingsView {
 			ModelContext:   windows,
 			HasAPIKey:      p.APIKey != "",
 			Ready:          p.Ready(),
+			Enabled:        p.Listed(),
 		})
 	}
 	return v
+}
+
+// listedFlag stores "on" as nil so the yaml file stays quiet, and "off"
+// as an explicit false. A later save that omits the field then keeps off.
+func listedFlag(on bool) *bool {
+	if on {
+		return nil
+	}
+	off := false
+	return &off
 }
 
 func (s *Server) getSettings(c *gin.Context) {
@@ -156,6 +168,9 @@ type putSettingsRequest struct {
 			ContextWindow  *int            `json:"context_window"`
 			ModelContext   *map[string]int `json:"model_context"`
 			APIKey         *string         `json:"api_key"`
+			// Absent keeps the stored switch. A new id with no field stays
+			// on. False is the only value that hides the endpoint.
+			Enabled *bool `json:"enabled"`
 		} `json:"providers"`
 	} `json:"models"`
 	Swarm       *config.SwarmConfig       `json:"swarm"`
@@ -234,6 +249,10 @@ func (s *Server) putSettings(c *gin.Context) {
 			if p.ModelContext != nil {
 				modelCtx = *p.ModelContext
 			}
+			enabled := prev.Enabled
+			if p.Enabled != nil {
+				enabled = listedFlag(*p.Enabled)
+			}
 			providers = append(providers, config.Provider{
 				ID:             p.ID,
 				Label:          p.Label,
@@ -244,6 +263,7 @@ func (s *Server) putSettings(c *gin.Context) {
 				TimeoutSeconds: p.TimeoutSeconds,
 				ContextWindow:  window,
 				ModelContext:   modelCtx,
+				Enabled:        enabled,
 			})
 		}
 		if len(providers) == 0 {

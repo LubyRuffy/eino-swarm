@@ -47,6 +47,19 @@ describe("direct providers", () => {
     expect(loadProviders()).toEqual([])
   })
 
+  it("hides an endpoint that was switched off and keeps an older row on", () => {
+    const choices = providerChoices([
+      row({ id: "on", model: "one", catalog: [] }),
+      row({ id: "off", model: "probe", catalog: ["probe"], enabled: false }),
+    ])
+    expect(choices.map((choice) => choice.model)).toEqual(["one"])
+    saveProviders([row()])
+    const stored = JSON.parse(localStorage.getItem("zwai.phone.providers") ?? "[]") as Array<Record<string, unknown>>
+    delete stored[0].enabled
+    localStorage.setItem("zwai.phone.providers", JSON.stringify(stored))
+    expect(loadProviders()[0].enabled).toBe(true)
+  })
+
   it("rejects a timeout under ten seconds back to the default", () => {
     saveProviders([row({ timeoutSeconds: 1 })])
     expect(loadProviders()[0].timeoutSeconds).toBe(300)

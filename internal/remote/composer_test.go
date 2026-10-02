@@ -57,6 +57,23 @@ func TestCatalogListsReadyModelsAndHidesEndpointSecrets(t *testing.T) {
 	}
 }
 
+func TestCatalogOmitsAProviderThatWasSwitchedOff(t *testing.T) {
+	e := testEngine(t)
+	off := false
+	e.Config().Models.Providers = append(e.Config().Models.Providers, config.Provider{
+		ID: "debug", Label: "Debug", Model: "probe", BaseURL: "http://127.0.0.1:9", Enabled: &off,
+	})
+	resp := Handle(e, config.RemoteConfig{}, Request{ID: "c", Op: OpCatalog}, "relay", "s")
+	if !resp.OK {
+		t.Fatalf("%+v", resp)
+	}
+	for _, m := range resp.Models {
+		if m.ProviderID == "debug" {
+			t.Fatalf("phone catalog listed a hidden endpoint: %+v", resp.Models)
+		}
+	}
+}
+
 func TestCatalogRefusesAFrameThatWouldNotFit(t *testing.T) {
 	e := testEngine(t)
 	prev := maxCatalogFrame

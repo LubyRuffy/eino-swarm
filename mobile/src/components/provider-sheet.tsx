@@ -8,6 +8,7 @@ import {
   type DirectProvider,
   saveProviders,
 } from "@/lib/direct-provider"
+import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
 import { discoverModels } from "@/lib/openai-client"
 import { httpBaseURL, ModelCallError, normalizeApiStyle, redact } from "@/lib/openai-wire"
@@ -208,6 +209,15 @@ export function ProviderSheet({
                 )}
               </div>
             </Field>
+            <Field label={t("chat.listed")} hint={t("chat.listedHint")}>
+              <input
+                type="checkbox"
+                aria-label={t("chat.listed")}
+                className="size-4"
+                checked={editing.enabled !== false}
+                onChange={(e) => setEditing({ ...editing, enabled: e.target.checked })}
+              />
+            </Field>
             <Field label={t("chat.timeout")}>
               <Input
                 aria-label={t("chat.timeout")}
@@ -245,21 +255,41 @@ export function ProviderSheet({
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-5 pb-5">
             <ul className="flex flex-col gap-2">
               {providers.map((row) => (
-                <li key={row.id}>
+                <li key={row.id} className="flex items-center gap-2 rounded-xl bg-muted px-3 py-2">
                   <button
                     type="button"
-                    className="flex w-full flex-col rounded-xl bg-muted px-3 py-2 text-left"
+                    className="flex min-w-0 flex-1 flex-col text-left"
                     onClick={() => {
                       setError("")
                       setConfirming(false)
                       setEditing(row)
                     }}
                   >
-                    <span className="truncate text-sm font-medium">{row.label || row.id}</span>
+                    <span
+                      className={cn(
+                        "truncate text-sm font-medium",
+                        row.enabled === false && "text-muted-foreground",
+                      )}
+                    >
+                      {row.label || row.id}
+                    </span>
                     <span className="truncate text-xs text-muted-foreground">
                       {(row.model || row.baseURL) + " · " + (row.api === "responses" ? t("chat.apiResponses") : t("chat.apiChat"))}
                     </span>
                   </button>
+                  <input
+                    type="checkbox"
+                    aria-label={t("chat.listedName", { name: row.label || row.id })}
+                    className="size-4 shrink-0"
+                    checked={row.enabled !== false}
+                    onChange={(e) => {
+                      commit(
+                        providers.map((item) =>
+                          item.id === row.id ? { ...item, enabled: e.target.checked } : item,
+                        ),
+                      )
+                    }}
+                  />
                 </li>
               ))}
             </ul>

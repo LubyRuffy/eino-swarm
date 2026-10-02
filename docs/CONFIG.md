@@ -35,6 +35,7 @@ models:
           timeout_seconds: 300
           context_window: 0
           model_context: {}
+          # enabled omitted means on. enabled: false hides it from the composer.
 swarm:
     max_concurrent: 6
     agent_timeout_seconds: 600
@@ -140,6 +141,7 @@ the new row.
 | `base_url` | the endpoint, including any `/v1`. |
 | `api_key` | may be empty: local endpoints frequently need none. Never returned by the API — the settings dialog sees only a "set / not set" flag. |
 | `model` | the default model name new conversations start on. Switch per conversation in the composer. |
+| `enabled` | whether this endpoint appears in the composer model list (and the paired phone's catalog, and a phone's own direct-chat list). Omitted or `true` means on, so an older file stays visible; a save of `true` omits the key. `false` hides it. A conversation already on that endpoint keeps using it. If the hidden one was `models.default`, default moves to the first endpoint still listed. Turning every provider off is repaired on load: the default stays on, because a new conversation needs somewhere to start. |
 | `catalog` | names this endpoint listed the last time you clicked **Discover models**. The composer offers every name here; you do not add a provider row per model. Empty until you discover (or type a default). |
 | `timeout_seconds` | how long a stream may stay silent after it has started. Default `300`. A thinking model that is still producing tokens is not killed. The wait for the first byte is separate and shorter (`30s`); that failure is tried once more on a new connection. Compact (`/compact` and auto-compact) and the memory review (post-turn and catalog tidy) use this same idle clock — there is no separate swarm compact timeout. The review streams, so the 30s cap is the first byte of that stream, not the finished JSON body. |
 | `context_window` | fallback token limit for **names that have no row of their own**. `0` means unknown: the composer ring then shows a count (not a fake 0%) and a saturating arc scaled by `swarm.context_char_budget`. Never invented from a model name. Do not put one model's limit here — that would pin every other name on the endpoint to the same number. |

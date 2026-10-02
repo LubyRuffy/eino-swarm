@@ -169,9 +169,14 @@ const MockContextWindow = 128000
 
 // List describes every selectable model for the composer. One provider with
 // a catalog of three names is three rows, grouped by provider_id in the UI.
+// An endpoint switched off in Settings is omitted. Lookup still resolves it,
+// so a conversation that already picked it keeps running.
 func (p *Pool) List() []Info {
 	out := make([]Info, 0, len(p.cfg.Models.Providers))
 	for _, prov := range p.cfg.Models.Providers {
+		if !prov.Listed() {
+			continue
+		}
 		if resolved, err := p.Resolve(prov.ID); err == nil {
 			prov = resolved
 		}
