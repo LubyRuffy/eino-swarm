@@ -400,8 +400,10 @@ end-to-end tests run on and the fastest way to see the UI work.
    last turn, already at the live edge; Earlier or pull up loads older rows.
    **Agents / 子 Agent** counts running workers and separates them from finished
    or failed history; each row shows status and opens its separate
-   activity log. The phone shows only Pairlink-permitted, clipped events,
-   not the worker's launch instruction. A tap paints the chrome immediately;
+   activity log. Back returns through the Agents list, then the conversation;
+   Android's system Back follows the same order. The phone shows only
+   Pairlink-permitted, clipped events, not the worker's launch instruction.
+   A tap paints the chrome immediately;
    **Outputs / 产出物** opens this conversation's PC workspace tree. Folders
    fold, search narrows the list, and a tap previews text, images or PDFs on
    the phone. HTML and SVG show their source text, not an executable page.

@@ -107,10 +107,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-015 Android Back follows visible phone layers
 
-- 状态：active；类型：lifecycle；作用范围：Android 手机壳、手机页面及覆盖层；关联功能：`F-220`, `F-223`, `F-224`。
-- 契约内容：系统返回先关闭当前可见的最上层详情或弹层；只有手机首页（收件箱、直接聊天列表或未绑定扫码页）返回时才允许 Android Activity 退出。Clients 任务详情、文件预览→文件列表→对话及普通会话遵守相同层级。
+- 状态：active；类型：lifecycle；作用范围：Android 手机壳、手机页面及覆盖层；关联功能：`F-220`, `F-222`, `F-223`, `F-224`。
+- 契约内容：系统返回先关闭当前可见的最上层详情或弹层；只有手机首页（收件箱、直接聊天列表或未绑定扫码页）返回时才允许 Android Activity 退出。子 Agent 详情→子 Agent 列表→对话→收件箱、Clients 任务详情、文件预览→文件列表→对话均遵守该层级。子 Agent 导航取决于已打开的页面，即使刷新历史时暂时找不到该 Agent，也不跳过列表。
 - 允许行为：详情关闭后留在原列表，再次从首页返回退出；禁止行为：详情可见时直接退出、迟到的任务读取结果在返回后重新打开详情；失败语义：返回动作不依赖网络请求成功；不变量：当前最上层优先消费返回；边界条件：异步任务读取中返回、多层覆盖、组件卸载。
-- 证据：实现 `mobile/src/lib/android-back.ts`, `mobile/src/components/client-groups.tsx`, `mobile/src/components/file-browser.tsx`, `mobile/src/app.tsx`；测试 `mobile/src/lib/android-back.test.ts`, `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/src/components/file-browser.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：新增手机覆盖层须同步测试系统返回和首页退出；来源：GitHub Issue #36、#48。
+- 证据：实现 `mobile/src/lib/android-back.ts`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/client-groups.tsx`, `mobile/src/components/file-browser.tsx`, `mobile/src/app.tsx`；测试 `mobile/src/lib/android-back.test.ts`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/src/components/file-browser.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：新增手机覆盖层须同步测试系统返回和首页退出；来源：GitHub Issue #36、#48、#54。
 
 ## C-016 Explicit PC selection opens its inbox
 

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react"
+import { act, fireEvent, render, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { setLocale } from "@/lib/i18n"
@@ -73,6 +73,42 @@ describe("ThreadScreen", () => {
     expect(screen.getByText("worker answer")).toBeInTheDocument()
     expect(screen.queryByText("manager answer")).not.toBeInTheDocument()
     expect(screen.queryByText(/launch instruction/i)).not.toBeInTheDocument()
+  })
+
+  it("returns through the worker roster before leaving the conversation", () => {
+    setLocale("en")
+    const onBack = vi.fn()
+    const blocks = applyEvent([], {
+      thread_id: "t1", seq: 1, kind: "spawned", agent_id: "worker-1", role: "reader", text: "",
+      created_at: "2026-09-25T00:00:00Z",
+    })
+    const handlers = {
+      onBack, onSend: vi.fn(), onSteer: vi.fn(), onStop: vi.fn(),
+      onAnswer: vi.fn(), onAnswerStructured: vi.fn(),
+    }
+    const view = render(<ThreadScreen detail={{ id: "t1", title: "talk" }} blocks={blocks} {...handlers} />)
+    fireEvent.click(screen.getByRole("button", { name: "Agents (1)" }))
+    fireEvent.click(screen.getByRole("button", { name: /reader worker-1 running/i }))
+    let handled = false
+    act(() => { handled = window.__zwaiAndroidBack?.() ?? false })
+    expect(handled).toBe(true)
+    expect(screen.getByTestId("agent-roster")).toBeVisible()
+    expect(onBack).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole("button", { name: /reader worker-1 running/i }))
+    // A refreshed history page may temporarily omit the selected worker.
+    // Navigation still follows the page the user opened, not the visible rows.
+    view.rerender(<ThreadScreen detail={{ id: "t1", title: "talk" }} blocks={[]} {...handlers} />)
+    fireEvent.click(screen.getByRole("button", { name: "Back" }))
+    expect(screen.getByTestId("agent-roster")).toBeVisible()
+    expect(onBack).not.toHaveBeenCalled()
+
+    act(() => { handled = window.__zwaiAndroidBack?.() ?? false })
+    expect(handled).toBe(true)
+    expect(screen.getByRole("heading", { name: "talk" })).toBeVisible()
+    expect(onBack).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Back" }))
+    expect(onBack).toHaveBeenCalledOnce()
   })
 
   it("shows a failed worker's error in its own activity view", () => {

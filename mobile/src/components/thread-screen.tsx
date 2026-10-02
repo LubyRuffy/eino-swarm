@@ -8,6 +8,7 @@ import { GoalBanner, ScheduleBanner } from "@/components/status-banners"
 import { ThreadLog } from "@/components/thread-blocks"
 import { Button } from "@/components/ui/button"
 import { agentRosterText } from "@/lib/agent-label"
+import { installAndroidBack } from "@/lib/android-back"
 import { t } from "@/lib/i18n"
 import { normalizeSelectedText } from "@/lib/quote"
 import type { CompactBlock } from "@/lib/transcript"
@@ -110,6 +111,12 @@ export function ThreadScreen({
     setBehind(false)
     setAgentPage(page)
   }
+
+  useEffect(() => installAndroidBack(() => {
+    if (agentPage === "chat" || agentPage === "files") return false
+    changePage(agentPage === "agents" ? "chat" : "agents")
+    return true
+  }), [agentPage])
 
   useEffect(() => {
     if (asking) return
@@ -224,7 +231,7 @@ export function ThreadScreen({
         <Button
           variant="ghost"
           className="size-10 shrink-0 px-0"
-          onClick={() => agentPage === "chat" ? onBack() : changePage(selectedAgent ? "agents" : "chat")}
+          onClick={() => agentPage === "chat" ? onBack() : changePage(agentPage === "agents" ? "chat" : "agents")}
           aria-label={t("thread.back")}
         >
           <ChevronLeft className="size-5" />

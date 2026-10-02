@@ -123,6 +123,13 @@ test("worker activity opens in its own phone view without becoming a manager ans
   await expect(transcript).not.toContainText("Here is what changed:")
   await page.getByRole("button", { name: "返回" }).click()
   await expect(page.getByTestId("agent-roster")).toBeVisible()
+  await page.getByTestId("agent-roster").getByRole("button").click()
+  expect(await page.evaluate(() => (window as Window & { __zwaiAndroidBack?: () => boolean }).__zwaiAndroidBack?.())).toBe(true)
+  await expect(page.getByTestId("agent-roster")).toBeVisible()
+  expect(await page.evaluate(() => (window as Window & { __zwaiAndroidBack?: () => boolean }).__zwaiAndroidBack?.())).toBe(true)
+  await expect(page.getByRole("button", { name: "子 Agent (0)" })).toBeVisible()
+  expect(await page.evaluate(() => (window as Window & { __zwaiAndroidBack?: () => boolean }).__zwaiAndroidBack?.())).toBe(true)
+  await expect(page.getByRole("button", { name: /^打开 Sweep the unused exports$/ })).toBeVisible()
 })
 
 test("interrupting a waiting phone message first inserts it into the live turn", async ({ page }) => {

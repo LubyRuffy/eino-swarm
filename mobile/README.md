@@ -44,6 +44,8 @@ for that agent's separate thought, tool, and answer log. **Earlier** loads
 older events into the same list and log. Worker answers do not appear as
 manager answers. Pairlink strips worker launch instructions and clips event
 bodies; the phone does not offer the desktop-only full instruction view.
+The header Back button and Android system Back return from a worker log to
+the Agents list, then to the conversation, before leaving for the inbox.
 The `schedule` event is still **A wait is armed.** in the transcript; the live
 wait is the banner (next check, **Run now**, **Cancel wait**).
 `schedule_report` stays on the `report_schedule` chip. A standing

@@ -171,6 +171,10 @@ walkthrough holds a scripted Clients page briefly to verify the spinner.
 `mobile/src/lib/android-back.test.ts`, `mobile/src/app.test.tsx`, and the phone
 walkthrough prove that a Clients task consumes the first Android Back, root
 receives the next, and a delayed read cannot reopen a closed task.
+`mobile/src/components/thread-screen.test.tsx` and the phone walkthrough also
+verify that Android system Back and the header button return from a sub-agent
+log through its list and conversation, including a history refresh that omits
+the selected agent before Back.
 `mobile/scripts/android-release.test.ts` is why `make mobile-android-release`
 refuses a store upload without a keystore, skips JAVA_HOME 17, and copies
 the APK into `bin/`. `internal/update` is why a Mac desktop install only

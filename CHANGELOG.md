@@ -75,6 +75,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-222` / `C-015`: the phone's Android system Back now returns from a sub-agent log to the sub-agent list, then to the conversation before leaving it. The header Back follows the same path even when a refreshed history page temporarily omits the selected agent (Issue #54).
+
 - `F-430` / `C-010`: iOS release recovery retains an authorized export-compliance answer for the exact source/build in the private TestFlight ledger, so switching the active signing configuration does not trigger another confirmation request. Conflicting exact-build records stop publication.
 
 - `F-150` / `C-009`: scheduled checks with an armed next wake now retain in-flight sub-agents across turns. Ending the manager's check no longer cancels them early with `context canceled`; cancelling or pausing the last wake still stops orphaned workers (Issue #52).
