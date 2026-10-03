@@ -79,6 +79,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150` / `C-009`: automatic compaction now reserves the configured maximum completion tokens as well as the fixed output headroom, so a large output cap cannot make an otherwise under-80%-full prompt exceed the model window. A remaining context rejection gives recovery advice; a recurring scheduled check pauses after that terminal error instead of repeating it (Issue #55).
+
 - `F-240` / `C-010`: the packaged iOS menu acceptance scrolls the model form before Save, so the longer provider settings form remains testable on small iPhone screens.
 
 - `F-222` / `C-015`: the phone's Android system Back now returns from a sub-agent log to the sub-agent list, then to the conversation before leaving it. The header Back follows the same path even when a refreshed history page temporarily omits the selected agent (Issue #54).

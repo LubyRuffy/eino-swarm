@@ -73,6 +73,19 @@ func TestPublicTurnErrorRewritesTheIterationCap(t *testing.T) {
 	}
 }
 
+func TestPublicTurnErrorExplainsContextOverflow(t *testing.T) {
+	err := fmt.Errorf("[NodeRunError] error, status code: 400: maximum context length is 262144 tokens; requested 64000 output tokens and prompt contains 198145 input tokens\nnode path: [node_1, ChatModel]")
+	got := publicTurnError(err)
+	if !strings.Contains(got, "Settings") || !strings.Contains(got, "completion") || !strings.Contains(got, "compact") {
+		t.Fatalf("missing actionable recovery advice: %q", got)
+	}
+	for _, leak := range []string{"NodeRunError", "node path", "198145", "status code: 400"} {
+		if strings.Contains(got, leak) {
+			t.Fatalf("raw provider error leaked: %q", got)
+		}
+	}
+}
+
 func TestPublicTurnErrorStripsAGraphDump(t *testing.T) {
 	err := fmt.Errorf("[NodeRunError] the endpoint refused the connection\nnode path: [node_1, ChatModel]")
 	got := publicTurnError(err)

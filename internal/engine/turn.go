@@ -586,6 +586,9 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// Read the outcome before releasing, because releasing cancels the
 	// interrupt context and would make every turn look interrupted.
 	status, errText := rt.turnOutcome(ctx, runErr)
+	if status == store.TurnError && e.pauseScheduledContextOverflow(turn, runErr) {
+		errText += "; this recurring check is paused to avoid repeating the same error. Resume it after changing the settings or conversation"
+	}
 	if rt.shouldPark(status) {
 		rt.parkRegistry(reg)
 	} else {

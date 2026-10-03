@@ -165,6 +165,38 @@ func TestAutoCompactClearsOldReplayableResultsBeforeFolding(t *testing.T) {
 	}
 }
 
+func TestAutoCompactReservesTheActualOutputCapBeforeModelCall(t *testing.T) {
+	e := newTestEngine(t)
+	e.Config().Swarm.MaxCompletionTokens = 64_000
+	pinContextWindow(e, 262_144)
+	th, _ := e.CreateThread("", "", "")
+	asst := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
+		{ID: "c1", Function: schema.FunctionCall{Name: read.ToolName}},
+		{ID: "c2", Function: schema.FunctionCall{Name: read.ToolName}},
+		{ID: "c3", Function: schema.FunctionCall{Name: read.ToolName}},
+		{ID: "c4", Function: schema.FunctionCall{Name: read.ToolName}},
+	}}
+	asst.ResponseMeta = &schema.ResponseMeta{Usage: &schema.TokenUsage{PromptTokens: 198_145}}
+	state := &adk.ChatModelAgentState{Messages: []*schema.Message{
+		schema.UserMessage("continue"), asst,
+		{Role: schema.Tool, ToolCallID: "c1", Content: "old result"},
+		{Role: schema.Tool, ToolCallID: "c2", Content: "recent result"},
+		{Role: schema.Tool, ToolCallID: "c3", Content: "recent result"},
+		{Role: schema.Tool, ToolCallID: "c4", Content: "recent result"},
+	}}
+	mw := e.newAutoCompact(th.ID, "tn", th)
+	_, next, err := mw.BeforeModelRewriteState(context.Background(), state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == state || next.Messages[2].Content != microcompactPlaceholder {
+		t.Fatalf("a 198145-token prompt with a 64000-token output cap must compact before Generate: %+v", next.Messages)
+	}
+	if state.Messages[2].Content != "old result" {
+		t.Fatal("the stored transcript must remain intact")
+	}
+}
+
 func TestRosterPinComesFromTurnEventsNotFoldedMessages(t *testing.T) {
 	e := newTestEngine(t)
 	e.Config().Swarm.AutoCompactTokens = 10

@@ -3,15 +3,19 @@ package config
 // CompactTrigger is how many prompt tokens may sit on the next manager call
 // before older replay is folded. A confirmed window uses
 // goal_auto_compact_percent of that window, and stays at least
-// compact_output_reserve tokens under the ceiling so the next completion
-// still fits. An unknown window (0) uses the fixed auto_compact_tokens
-// budget: a context-length rejection is what later writes the real ceiling.
+// the larger of compact_output_reserve and max_completion_tokens under the
+// ceiling so the next completion still fits. An unknown window (0) uses the
+// fixed auto_compact_tokens budget: a context-length rejection later writes
+// the real ceiling.
 func (s SwarmConfig) CompactTrigger(window int) int {
 	if window <= 0 {
 		return s.AutoCompactLimit()
 	}
 	trigger := int(int64(window) * int64(s.GoalCompactPercent()) / 100)
 	reserve := s.CompactOutputReserve()
+	if cap := s.CompletionTokenLimit(); cap > reserve {
+		reserve = cap
+	}
 	if reserve > 0 && window > reserve {
 		headroom := window - reserve
 		if trigger <= 0 || headroom < trigger {

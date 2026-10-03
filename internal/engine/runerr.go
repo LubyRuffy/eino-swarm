@@ -24,6 +24,9 @@ func publicTurnError(err error) string {
 	if errors.As(err, &idle) {
 		return fmt.Sprintf("the model sent no data for %s; raise the provider request timeout in Settings, or lower thinking", idle.Idle)
 	}
+	if isContextOverflow(err) {
+		return "the conversation and requested output exceed this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry"
+	}
 	if isInvalidToolJSON(err) {
 		return publicInvalidToolJSON
 	}

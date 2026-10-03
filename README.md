@@ -79,7 +79,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   A successful check with another wake scheduled keeps its unfinished
   sub-agents running for that next check; pausing or cancelling the last
-  wake stops workers that have no continuing goal.
+  wake stops workers that have no continuing goal. If a recurring check still
+  exceeds the model context window, its failed run shows how to reduce the
+  output budget or request, and that check pauses instead of repeating the
+  same error. Resume it after changing the setting or conversation.
   `schedule_wake` does not take an id. It arms or replaces the open wait;
   the host assigns the id. Cancel copies an id from the open-wait list.
   When progress is gated on time or a condition not worth polling now, it is
@@ -167,8 +170,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   be re-read are cleared first. The briefing prefers a rolling session
   summary extracted from the event log, so a long `/goal` does not teach
   the project's memory from a compacted view. The same fold also runs
-  on its own once a manager call would exceed **Settings → Swarm → Auto-compact
-  at (tokens)** (default 80 000). Pin a cheaper summarizer
+  on its own before a manager call would exceed the model window after its
+  configured maximum output is included. With no known window it uses
+  **Settings → Swarm → Auto-compact at (tokens)** (default 80 000).
+  Pin a cheaper summarizer
   under Settings → Models the same way as the conversation namer.
 - **Swarm, visible.** Sub-agents appear as they spawn, with live status and their
   own transcript. Built on [eino](https://github.com/cloudwego/eino) ADK and the

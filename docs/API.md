@@ -913,7 +913,8 @@ Responds like `GET`.
 The same fold also runs **during a turn**, before a manager model call, when
 billed or estimated prompt tokens exceed the compact trigger. A confirmed
 context window triggers at `goal_auto_compact_percent` of that window (default
-80), and at least `compact_output_reserve` tokens (default 8192) under the
+80), and at least the larger of `compact_output_reserve` (default 8192) and
+`max_completion_tokens` (default 16384) under the
 ceiling. An unknown window (`0`) uses `swarm.auto_compact_tokens` (default
 80000). A context-length rejection lowers that model's stored window to the
 stated maximum, or to the rejected prompt size when the error has no number,
@@ -1575,6 +1576,10 @@ When cadence changes, send exactly one of `delay_s`,
 from now). The Scheduled inbox editor uses this (it omits cadence when the
 interval did not change, so `next_run_at` stays put). Cancel is `DELETE`, not a status patch. Responds
 `{"schedule": {…}}`.
+If a recurring fire ends with a context-window rejection after compaction,
+the fire remains an unread `error` run and the schedule becomes `paused`.
+The turn/run error advises lowering the completion-token cap or shortening
+the request. PATCH it back to `active` after correcting the cause.
 
 ### `DELETE /api/schedules/:id` → `204`
 

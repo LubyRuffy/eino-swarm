@@ -329,7 +329,8 @@ worker before closing SQLite.
    folds when context is at or above the compact trigger, or when the session
    briefing has moved since the last compact. A confirmed window uses
    `swarm.goal_auto_compact_percent` of that window, kept
-   `swarm.compact_output_reserve` tokens under the ceiling. An unknown
+   the larger of `swarm.compact_output_reserve` and
+   `swarm.max_completion_tokens` under the ceiling. An unknown
    window uses `swarm.auto_compact_tokens`. A context-length rejection
    stores a lower per-model window and retries the turn once. A
    human message or `PATCH` `goal_resume`

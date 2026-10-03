@@ -391,7 +391,14 @@ in `BeforeModelRewriteState` before the call: older
 replayable tool results are cleared first, then older messages become that
 briefing (preferring the rolling session memory), the recent tail stays, and
 the human transcript is untouched. The briefing is streamed; silence uses the
-provider idle timeout. Tests live in `internal/engine/compact_test.go`
+provider idle timeout. `internal/config/compact_trigger_test.go` verifies that a confirmed 262144-token window
+with 198145 input tokens and a 64000-token output cap must compact before the
+request, even though input alone is under 80% of the window;
+`internal/engine/autocompact_test.go` verifies that the model middleware
+actually clears older replay at that boundary. A terminal context
+overflow produces recovery advice (`internal/engine/runerr_test.go`) and pauses
+only its failing recurring schedule (`internal/engine/schedule_context_overflow_test.go`).
+Additional tests live in `internal/engine/compact_test.go`
 (streamed briefing, no compact deadline, session-memory preference, a
 transcript dump not persisted),
 `internal/engine/compact_briefing_test.go` (refuse `Tool:`/`Human:`/`Assistant:`

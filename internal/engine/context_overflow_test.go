@@ -136,8 +136,8 @@ func TestCompactThresholdFollowsTheLiveWindow(t *testing.T) {
 	if !e.learnContextCeiling(th.ProviderID, th.Model, errors.New("maximum context length is 32000 tokens"), 40000) {
 		t.Fatal("learn")
 	}
-	// 80% of 32k is 25600; reserve leaves 32000-8192=23808.
-	if got := e.compactThreshold(th.ID); got != 32_000-8_192 {
-		t.Fatalf("after learn trigger = %d, want %d", got, 32_000-8_192)
+	// The default completion cap needs more room than the fixed reserve.
+	if got := e.compactThreshold(th.ID); got != 32_000-16_384 {
+		t.Fatalf("after learn trigger = %d, want %d", got, 32_000-16_384)
 	}
 }

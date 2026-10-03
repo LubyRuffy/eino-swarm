@@ -431,6 +431,24 @@ func (e *Engine) finishScheduledRun(turn *store.Turn, status, final, errText str
 	}
 }
 
+// A fixed-size context rejection will recur on every fire until the model
+// budget or conversation changes. Pause only that recurring schedule, leaving
+// its failed run visible and resumable by the user.
+func (e *Engine) pauseScheduledContextOverflow(turn *store.Turn, runErr error) bool {
+	if turn == nil || !turn.ScheduleContinue || !isContextOverflow(runErr) {
+		return false
+	}
+	sch := e.scheduleForTurn(turn)
+	if sch == nil || sch.Status != store.ScheduleActive || (sch.EveryS <= 0 && sch.Cron == "") {
+		return false
+	}
+	if _, err := e.PatchSchedule(sch.ID, store.SchedulePaused); err != nil {
+		e.log.Warn("could not pause a recurring schedule after context overflow", "schedule", sch.ID, "err", err)
+		return false
+	}
+	return true
+}
+
 func (e *Engine) scheduledRunOutcome(turnID, final string) (quiet bool, summary string) {
 	events, err := e.store.ListTurnEvents(turnID)
 	if err == nil {

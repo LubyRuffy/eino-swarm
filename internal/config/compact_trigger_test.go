@@ -30,9 +30,9 @@ func TestCompactTriggerUsesPercentOfAConfirmedWindow(t *testing.T) {
 
 func TestCompactTriggerKeepsOutputHeadroomOnASmallWindow(t *testing.T) {
 	s := SwarmConfig{AutoCompactTokens: 80_000, GoalAutoCompactPercent: 80, CompactOutputReserveTokens: 8_192}
-	// 80% of 32k is 25600, but 8192 tokens must remain for the completion.
-	if got := s.CompactTrigger(32_000); got != 32_000-8_192 {
-		t.Fatalf("32k window trigger = %d, want %d", got, 32_000-8_192)
+	// The default 16384-token completion cap needs more room than the 8192 reserve.
+	if got := s.CompactTrigger(32_000); got != 32_000-DefaultMaxCompletionTokens {
+		t.Fatalf("32k window trigger = %d, want %d", got, 32_000-DefaultMaxCompletionTokens)
 	}
 	// The reserve is larger than this window, so the percent is the only lever.
 	if got := s.CompactTrigger(4_000); got != 3_200 {
@@ -44,6 +44,17 @@ func TestCompactTriggerRepairsAPercentThatRoundsToZero(t *testing.T) {
 	s := SwarmConfig{AutoCompactTokens: 80_000, GoalAutoCompactPercent: 1, CompactOutputReserveTokens: 8_192}
 	if got := s.CompactTrigger(1); got != 1 {
 		t.Fatalf("1%% of 1 token = %d, want 1 so compression still runs", got)
+	}
+}
+
+func TestCompactTriggerReservesTheConfiguredCompletionBudget(t *testing.T) {
+	s := SwarmConfig{GoalAutoCompactPercent: 80, CompactOutputReserveTokens: 8_192, MaxCompletionTokens: 64_000}
+	const window = 262_144
+	if got := s.CompactTrigger(window); got != window-64_000 {
+		t.Fatalf("trigger = %d, want %d so 198145 input tokens compact before a 64000-token completion", got, window-64_000)
+	}
+	if got := s.CompactTrigger(window); 198_145 <= got {
+		t.Fatalf("reported failing prompt would not compact: trigger = %d", got)
 	}
 }
 
