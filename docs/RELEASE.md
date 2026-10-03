@@ -7,7 +7,7 @@ required platforms in order:
 |---|---|---|---|
 | macOS | `make desktop-release` | GitHub `vX.Y.Z`, host architecture zip | remote SHA-256 matches |
 | Android | APK-only `make mobile-android-release` | same GitHub Release | remote SHA-256 matches |
-| iOS | Capacitor sync, `xcodebuild archive/exportArchive`, distribution signature/profile, `xcrun altool` | existing App Store Connect app | all configured groups attached, VALID, APPROVED, internal READY_FOR_BETA_TESTING and external IN_BETA_TESTING |
+| iOS | Capacitor sync, `xcodebuild archive/exportArchive`, distribution signature/profile, `xcrun altool` | existing App Store Connect app | all configured groups attached, VALID, internal READY_FOR_BETA_TESTING and external IN_BETA_TESTING; any review submission must be APPROVED |
 
 Installer upload does not replace the native installation/window/device acceptance
 required for each candidate. Run project checks and native acceptance before release.
@@ -19,6 +19,38 @@ accepted and integrated change has waited more than 24 hours. Then validate and
 push the complete main and record its version/SHA in the delivery ledger.
 Only mobile batches require `mobile/package.json` to match the new version.
 Desktop-only releases leave the mobile version/build number unchanged.
+
+### TestFlight version and build number
+
+The batch/tag/package version identifies the complete source release. TestFlight's
+`MARKETING_VERSION` is independent: a new candidate defaults to the marketing version
+of this app's highest-numbered successfully published build in the private ledger.
+Legacy ledger rows use their `version` field. With no published history, the first
+candidate uses the batch version. Routine updates therefore stay on the same
+TestFlight version and change only `CURRENT_PROJECT_VERSION`, still derived from
+the mobile package version by `tools/release.py:version_code`. All remote builds and
+uploads must have lower build numbers before a new upload is attempted.
+
+Set optional `marketing_version` to a numeric `x.y.z` in `IOS_RELEASE_CONFIG` only
+when deliberately starting a new TestFlight version. It applies to new candidates;
+existing release state, signed IPA and source receipts retain their original version.
+Candidate state and upload/publication receipts store `marketing_version` and
+`build_number` separately from the batch `version` and `source_sha`. Removing the
+override after successful publication continues that version from its ledger receipt.
+Local `npm run version:sync-ios` still derives development Xcode settings from the
+package; the release archive overrides the marketing version without rewriting source.
+
+For example, after `0.1.23 (123)` has been delivered, batch `0.1.24` uploads
+`0.1.23 (124)` unless that candidate already has a frozen receipt or an explicit
+new-version override. The GitHub tag and Android version remain `0.1.24`.
+
+Apple requires review of the first external build of a version; later builds
+may not need a full review, so reusing a version does **not** guarantee no review.
+See [Apple's TestFlight App Review definition](https://developer.apple.com/help/glossary/testflight-app-review/).
+After group attachment the adapter reads Apple's external build state and only calls
+`submit_review` for `READY_FOR_BETA_SUBMISSION`. An `IN_BETA_TESTING` build needs no
+new submission; a missing review resource is accepted only with that actual testing
+state and all required groups. A review that exists must still be `APPROVED`.
 
 `python3 tools/audit_pending_batch.py` reconciles open and closed Issues against
 all accepted ledger rows, including macOS-only deliveries without iOS pending rows.

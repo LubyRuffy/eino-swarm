@@ -208,7 +208,12 @@ feature.
 - Issues have separate commits, but releases are batched: integrate each
   completed Issue into main in order, then allocate one version and publish
   once from the final batch commit. Ten Issues still mean one version/tag;
-  each platform shares that version. Do not upload intermediate snapshots.
+  each platform shares that source batch identity. TestFlight routine archives
+  retain their last successfully published marketing version and advance only
+  the package-derived build number; `IOS_RELEASE_CONFIG.marketing_version` may
+  deliberately start a new version for new candidates. Existing IPA/source/state
+  receipts freeze the original iOS version on recovery. Same-version builds may
+  still need Apple review. Do not upload intermediate snapshots.
 - For unallocated accepted changes, allocate one new version when more than
   three first-parent commits have landed on main since the last published source SHA, or
   the oldest pending accepted change has waited more than 24 hours. Before

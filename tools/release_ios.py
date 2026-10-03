@@ -3,6 +3,7 @@ import importlib.util
 import os
 from pathlib import Path
 import plistlib
+import re
 import tempfile
 import time
 import zipfile
@@ -41,7 +42,7 @@ def available(detail, review, groups, expected):
     attrs = (detail or {}).get('attributes', {})
     return (attrs.get('internalBuildState') == 'READY_FOR_BETA_TESTING'
             and attrs.get('externalBuildState') == 'IN_BETA_TESTING'
-            and (review or {}).get('attributes', {}).get('betaReviewState') == 'APPROVED'
+            and (review is None or review.get('attributes', {}).get('betaReviewState') == 'APPROVED')
             and set(expected) <= set(groups))
 
 
@@ -68,6 +69,31 @@ class IOSRelease:
                 raise ValueError('Conflicting retained IPA receipts')
             ipa, digest = identities.pop()
             self.state['ios'] = {'ipa': ipa, 'ipa_sha256': digest, 'source_sha': source_sha, 'status': 'signed'}
+        self.marketing_version = self.select_marketing_version()
+        self.state.setdefault('ios', {}).update(marketing_version=self.marketing_version, build_number=self.number)
+
+    def select_marketing_version(self):
+        existing = self.state.get('ios', {})
+        rows = [r for r in self.ledger.get('releases', []) if r.get('app_id') == self.module.APP_ID]
+        known = next((r for r in rows if str(r.get('build_number')) == self.number
+                      and r.get('source_sha') == self.source_sha), {})
+        if 'marketing_version' in existing:
+            value = existing['marketing_version']
+        elif existing.get('ipa'):
+            value = ipa_info(existing['ipa']).get('CFBundleShortVersionString')
+        elif existing.get('source_sha') or known:
+            # Old receipts predate separate train metadata; never reclassify an uploaded build.
+            value = known.get('marketing_version', self.version)
+        elif 'marketing_version' in self.config:
+            value = self.config['marketing_version']
+        else:
+            published = [r for r in rows if r.get('successfully_published')
+                         and str(r.get('build_number', '')).isdigit()]
+            last = max(published, key=lambda r: int(r['build_number']), default={})
+            value = last.get('marketing_version', last.get('version', self.version))
+        if not isinstance(value, str) or not re.fullmatch(r'\d+\.\d+\.\d+', value):
+            raise ValueError('TestFlight marketing version must be a numeric release triple')
+        return value
 
     def snapshot(self):
         self.api = self.module.Client()
@@ -102,7 +128,10 @@ class IOSRelease:
                 releases.append(row)
             if not row.get('successfully_published'):
                 if build['attributes']['version'] == self.number:
-                    row.update(version=self.version, source_sha=self.source_sha)
+                    row.update(version=self.version, marketing_version=self.marketing_version, source_sha=self.source_sha)
+                elif not row.get('marketing_version') and not row.get('version'):
+                    row['marketing_version'] = self.api.request(
+                        'GET', f'builds/{build_id}/preReleaseVersion')['data']['attributes']['version']
                 row.update(successfully_published=True, success_beijing_date=self.day,
                            first_observed_available_at=datetime.now(ZoneInfo('Asia/Shanghai')).isoformat())
                 write_json(self.ledger_path, self.ledger)
@@ -147,7 +176,7 @@ class IOSRelease:
         run(['make', 'mobile-sync'], cwd=self.root)
         args = ['xcodebuild', '-project', 'mobile/ios/App/App.xcodeproj', '-scheme', 'App',
                 '-configuration', 'Release', '-destination', 'generic/platform=iOS',
-                '-archivePath', str(archive), 'archive', f'MARKETING_VERSION={self.version}',
+                '-archivePath', str(archive), 'archive', f'MARKETING_VERSION={self.marketing_version}',
                 f'CURRENT_PROJECT_VERSION={self.number}', 'CODE_SIGN_STYLE=Manual',
                 f'DEVELOPMENT_TEAM={settings["teamID"]}',
                 f'PROVISIONING_PROFILE_SPECIFIER={profile}',
@@ -164,7 +193,7 @@ class IOSRelease:
 
     def verify_ipa(self, ipa):
         info = ipa_info(ipa)
-        if info.get('CFBundleShortVersionString') != self.version or str(info.get('CFBundleVersion')) != self.number:
+        if info.get('CFBundleShortVersionString') != self.marketing_version or str(info.get('CFBundleVersion')) != self.number:
             raise ValueError('IPA version/build does not match this batch')
         app = self.api.request('GET', f'apps/{self.module.APP_ID}')['data']
         if info.get('CFBundleIdentifier') != app['attributes']['bundleId']:
@@ -190,7 +219,8 @@ class IOSRelease:
     def complete_delivery(self):
         for row in self.ledger.get('pending_changes', []):
             if row.get('batch_source_sha') == self.source_sha and row.get('batch_version') == self.version:
-                row.update(status='published', delivered_version=self.version, delivered_build_number=self.number)
+                row.update(status='published', delivered_version=self.version,
+                           delivered_marketing_version=self.marketing_version, delivered_build_number=self.number)
         for row in self.ledger.get('delivery_aliases', {}).values():
             if row.get('source_sha') == self.source_sha:
                 row['status'] = 'published'
@@ -224,6 +254,7 @@ class IOSRelease:
         deadline = time.monotonic() + self.config.get('processing_timeout_seconds', 600)
         while True:
             result = self.publish_once(check)
+            result.update(marketing_version=self.marketing_version, build_number=self.number)
             if not check:
                 self.state['ios'] = result
                 write_json(home() / 'releases' / f'{self.version}.json', self.state)
@@ -244,7 +275,7 @@ class IOSRelease:
             if existing.get('source_sha', known.get('source_sha')) != self.source_sha:
                 raise ValueError('Remote build has no matching source receipt; verify provenance before recovery')
             marketing = self.api.request('GET', f'builds/{build["id"]}/preReleaseVersion')['data']['attributes']['version']
-            if marketing != self.version:
+            if marketing != self.marketing_version:
                 raise ValueError('Remote build marketing version mismatch')
         if build and self.observe(build, not check):
             return {**existing, 'status': 'published', 'source_sha': self.source_sha, 'build_id': build['id'], 'group_ids': self.config['group_ids']}
@@ -291,7 +322,8 @@ class IOSRelease:
             self.api = self.module.Client()
             value = self.verify_ipa(ipa)
             existing = {'status': 'signed', 'ipa': str(ipa), 'ipa_sha256': sha256(ipa),
-                        'source_sha': self.source_sha, 'uses_non_exempt': value}
+                        'source_sha': self.source_sha, 'uses_non_exempt': value,
+                        'marketing_version': self.marketing_version, 'build_number': self.number}
             self.state['ios'] = existing
             # Durable checkpoint before upload: the outer driver will persist on failure too.
             write_json(home() / 'releases' / f'{self.version}.json', self.state)
@@ -308,7 +340,8 @@ class IOSRelease:
                  '--apiIssuer', upload_credentials['APP_STORE_CONNECT_ISSUER_ID']],
                 env=dict(os.environ, API_PRIVATE_KEYS_DIR=str(self.signing)))
             self.ledger.setdefault('releases', []).append({'app_id': self.module.APP_ID,
-                'build_number': self.number, 'version': self.version, 'source_sha': self.source_sha,
+                'build_number': self.number, 'version': self.version,
+                'marketing_version': self.marketing_version, 'source_sha': self.source_sha,
                 'ipa_path': str(ipa), 'ipa_sha256': existing['ipa_sha256'], 'state': 'uploaded_waiting_processing'})
             write_json(self.ledger_path, self.ledger)
             self.snapshot()
@@ -324,7 +357,10 @@ class IOSRelease:
         self.module.set_compliance(self.api, build['id'], str(value).lower(), True)
         for group in self.config['group_ids']:
             self.module.add_group(self.api, build['id'], group)
-        self.module.submit_review(self.api, build['id'])
         build = self.snapshot()
+        detail = self.api.request('GET', f'builds/{build["id"]}/buildBetaDetail').get('data')
+        if (detail or {}).get('attributes', {}).get('externalBuildState') == 'READY_FOR_BETA_SUBMISSION':
+            self.module.submit_review(self.api, build['id'])
+            build = self.snapshot()
         return {**existing, 'status': 'published' if self.observe(build) else 'waiting_beta_review',
                 'build_id': build['id'], 'group_ids': self.config['group_ids']}

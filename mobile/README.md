@@ -206,9 +206,12 @@ no AAB (`adb install` works; Play will not).
 
 For a new mobile release, `npm version patch --no-git-tag-version` updates
 `package.json` and its lockfile; then `npm run version:sync-ios` derives every
-Xcode marketing/build setting from that package version. Verify the candidate
+development Xcode marketing/build setting from that package version. The TestFlight
+release archive keeps the last successfully published marketing version and advances
+only the build number; optional `IOS_RELEASE_CONFIG.marketing_version` starts a new
+version for a new candidate. Verify the candidate
 against the latest Android Release and TestFlight build before tagging. This
-keeps the two phone platform versions together without editing each Xcode
+keeps the two platforms tied to one source batch without editing each Xcode
 configuration by hand.
 
 ```bash
@@ -326,4 +329,4 @@ fixture documented in [TESTING](../docs/TESTING.md).
 
 ## iOS TestFlight release
 
-`make release VERSION=x.y.z` includes TestFlight. `make mobile-ios-release VERSION=x.y.z` resumes only that platform. Configure the existing private signing/API client and explicit testing groups through `IOS_RELEASE_CONFIG`; see [docs/RELEASE.md](../docs/RELEASE.md). `make mobile-ios` still only opens Xcode. An authorized current-build export declaration is required; an old build declaration is not inherited.
+`make release VERSION=x.y.z` includes TestFlight. `make mobile-ios-release VERSION=x.y.z` resumes only that platform. Routine releases retain the last successful TestFlight marketing version and increase the build number; the batch version remains the source/tag identity. Existing candidate receipts freeze both iOS version fields on retry. Apple may still review later builds of the same version. Configure the existing private signing/API client and explicit testing groups through `IOS_RELEASE_CONFIG`; see [docs/RELEASE.md](../docs/RELEASE.md). `make mobile-ios` still only opens Xcode. An authorized current-build export declaration is required; an old build declaration is not inherited.

@@ -446,7 +446,9 @@ end-to-end tests run on and the fastest way to see the UI work.
    batch's affected platforms: a desktop change gets the `zwai.app` zip;
    a mobile change gets Android APK and iOS TestFlight through the existing
    command-line credentials. Mixed changes share one GitHub version.
-   TestFlight processing/review waits remain pending; see [release setup](docs/RELEASE.md). The installed Mac app shows its version and can install a newer
+   TestFlight updates reuse the last published iOS marketing version and increase
+   the build number; Apple may still require review. Processing/review waits remain
+   pending; see [release setup](docs/RELEASE.md). The installed Mac app shows its version and can install a newer
    zip from there. See [docs/CLI.md](docs/CLI.md).
 
 Traffic starts on the hub as ciphertext and upgrades to UDP when punching

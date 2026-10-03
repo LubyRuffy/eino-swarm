@@ -1,6 +1,7 @@
 # Data model
 
-Everything except the settings and the phone-pairing key files lives in one SQLite file:
+Conversation data lives in one SQLite file; settings, phone-pairing keys and
+private release receipts are separate files:
 
 ```
 $ZWAI_HOME (default ~/.zwai-swarm)/zwai.db
@@ -489,3 +490,24 @@ sqlite3 ~/.zwai-swarm/zwai.db \
 
 Prefer `zwai trace <turn-id>` — it joins the three tables you actually want and
 formats the timeline. Reach for SQL when you need to look across conversations.
+
+## Private TestFlight receipts (F-430 / C-010)
+
+`$ZWAI_HOME/releases/<batch-version>.json` stores the frozen batch `version` and
+`source_sha`; its `ios` object additionally records `marketing_version` and
+`build_number`. The upload/publication rows in
+`$ZWAI_HOME/ios-signing/testflight-releases.json` likewise keep iOS marketing
+version separate from source batch version. Pending change rows receive
+`delivered_marketing_version` alongside `delivered_version` (the source batch)
+and `delivered_build_number` when testing availability is verified.
+
+Legacy recovery state without `marketing_version` reads the retained IPA's
+version first, then the matching source receipt's version (the batch version
+for old receipts). A new candidate uses this app's highest-build successful
+publication; old publication rows use `version` when no separate marketing
+field exists. Observed public builds without a local version receipt obtain
+their marketing version from Apple's `preReleaseVersion`. No SQLite migration
+is required. Exact-build export-compliance records still use source SHA and
+build number, with an optional source batch `version`; an iOS marketing-version
+change does not authorize reusing another build's declaration. See
+[release version and recovery rules](RELEASE.md#testflight-version-and-build-number).

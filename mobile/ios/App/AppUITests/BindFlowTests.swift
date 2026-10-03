@@ -20,6 +20,8 @@ final class BindFlowTests: XCTestCase {
       baseURL.typeText("http://127.0.0.1:1/v1")
       XCTAssertEqual(baseURL.value as? String, "http://127.0.0.1:1/v1")
       app.toolbars.buttons["Done"].tap()
+      // The provider visibility fields can put Save below a small phone viewport.
+      app.webViews.firstMatch.swipeUp()
       app.webViews.buttons["Save"].tap()
     }
     XCTAssertTrue(menu.waitForExistence(timeout: 8), "local chat did not open")

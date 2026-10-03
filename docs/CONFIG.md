@@ -399,3 +399,16 @@ touches nothing in `~/.zwai-swarm`. It is how the end-to-end tests run.
 Plan files are derived from the data directory, not a config key:
 `$ZWAI_HOME/plans/<thread_id>/PLAN.md`. They are app artefacts, not workspace
 files, and they are not editable in Settings.
+
+## Private TestFlight release configuration (F-430 / C-010)
+
+`IOS_RELEASE_CONFIG` selects the private release JSON; the default is
+`$ZWAI_HOME/ios-signing/release-config.json`. Optional `marketing_version` is
+a numeric `x.y.z` used only for a new TestFlight candidate. When omitted, the
+release adapter reuses this app's highest-numbered successfully published
+marketing version from its private ledger, or the batch version for the first
+publication. Existing candidate state, IPA and source receipts retain their
+original marketing version even after this configuration changes. Build numbers
+remain package-derived and must increase beyond all remote builds/uploads.
+This signing configuration is managed outside the application Settings; see
+[release setup and recovery](RELEASE.md#testflight-version-and-build-number).

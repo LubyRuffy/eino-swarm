@@ -109,7 +109,12 @@ and sideload APK go to the same GitHub tag; iOS goes to the configured TestFligh
 internal/external groups. Each platform has an independent gate: failure or
 waiting on one does not suppress the other platforms. Any unfinished platform
 makes the final command exit non-zero; uploaded/VALID/waiting-review is not
-TestFlight publication. See [release setup and recovery](RELEASE.md).
+TestFlight publication. Routine iOS archives reuse the last published TestFlight
+marketing version and advance only the package-derived build number. `VERSION`
+identifies the source batch; optional `IOS_RELEASE_CONFIG.marketing_version` starts
+a new TestFlight version for new candidates. Existing receipts freeze the iOS
+version on recovery. Same-version builds may still require Apple review.
+See [release setup and recovery](RELEASE.md).
 
 The source must be clean and part of successfully fetched/pushed main. A mobile
 publication must also contain the committed mobile package version; a Mac-only

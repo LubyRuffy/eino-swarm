@@ -37,6 +37,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430` / `C-010`: routine TestFlight releases keep the last successfully published marketing version and advance only the package-derived build number. Optional private `marketing_version` starts a new version; candidate/IPA receipts preserve the original version on recovery. Group attachment rechecks actual external availability before requesting review. Same-version builds may still require Apple review.
+
 - `F-430` / `C-010`: the qualified complete-main batch advances mobile package and iOS build metadata to 0.1.25/125. It includes the accepted iOS menu fix from Issue #53, the Android/iOS sub-agent Back fix from Issue #54, and the provider visibility controls already on main. Each required platform keeps its own native acceptance and delivery gate.
 
 - `F-240` / `C-010`: iOS no longer shows the GitHub “Check for updates” menu, which could only report that the Android installer was unusable. iOS beta updates remain in TestFlight; a packaged-app XCTest checks the native menu path (Issue #53).
@@ -76,6 +78,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **Desktop lists sit in a leftmost rail.** Projects is the default list. Conversations (threads with no project), scheduled waits, and local clients each have their own list. The task column is the open conversation, the wait editor, or a client session. Restart keeps the rail on the last list; restoring the open conversation does not jump to Conversations. The rail does not show an unread count. **New conversation** is on Conversations, not on the project list. `⌘B` hides that list column and leaves the icon rail.
 
 ### Fixed
+
+- `F-240` / `C-010`: the packaged iOS menu acceptance scrolls the model form before Save, so the longer provider settings form remains testable on small iPhone screens.
 
 - `F-222` / `C-015`: the phone's Android system Back now returns from a sub-agent log to the sub-agent list, then to the conversation before leaving it. The header Back follows the same path even when a refreshed history page temporarily omits the selected agent (Issue #54).
 
