@@ -331,7 +331,9 @@ worker before closing SQLite.
    `swarm.goal_auto_compact_percent` of that window, kept
    the larger of `swarm.compact_output_reserve` and
    `swarm.max_completion_tokens` under the ceiling. An unknown
-   window uses `swarm.auto_compact_tokens`. A context-length rejection
+   window uses `swarm.auto_compact_tokens`. Unbilled replay, including tool
+   results, estimates ASCII and non-ASCII text plus message framing before that check;
+   event-log session memory uses the same estimate. A context-length rejection
    stores a lower per-model window and retries the turn once. A
    human message or `PATCH` `goal_resume`
    clears a block or cap and starts again. An in-place edit (`PATCH` `goal_edit`)

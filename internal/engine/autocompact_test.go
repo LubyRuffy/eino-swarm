@@ -34,8 +34,48 @@ func TestPromptTokenCountEstimatesWhenUsageIsMissing(t *testing.T) {
 	got := promptTokenCount([]*schema.Message{
 		schema.UserMessage(strings.Repeat("x", 40)),
 	})
-	if got != 10 {
-		t.Fatalf("40 runes / 4 = 10, got %d", got)
+	if got != 14 {
+		t.Fatalf("40 ASCII runes plus message framing = 14, got %d", got)
+	}
+}
+
+func TestPromptTokenCountReservesUnbilledMessageFrames(t *testing.T) {
+	// The live replay had 1848 messages: its text estimate was 194733, but
+	// the provider counted at least 198145 input tokens. Message framing alone
+	// crossed the 198144-token safe boundary with a 64000-token output cap.
+	msgs := make([]*schema.Message, 1_848)
+	for i := range msgs {
+		msgs[i] = schema.UserMessage("")
+	}
+	if got := promptTokenCount(msgs); got <= 198_145-194_733 {
+		t.Fatalf("unbilled message framing must cover the observed provider gap, got %d", got)
+	}
+}
+
+func TestPromptTokenCountDoesNotTreatCJKAsFourCharactersPerToken(t *testing.T) {
+	// A replayed conversation has no billed usage. Counting CJK like ASCII
+	// postpones compaction until the provider rejects a request that cannot fit.
+	got := promptTokenCount([]*schema.Message{
+		schema.UserMessage(strings.Repeat("汉", 100)),
+	})
+	if got < 100 {
+		t.Fatalf("100 CJK characters must reserve at least 100 tokens, got %d", got)
+	}
+	// The observed provider rejected 198145 input tokens with a 64000-token
+	// output cap in a 262144-token window: one token beyond the safe boundary.
+	if got := promptTokenCount([]*schema.Message{
+		schema.UserMessage(strings.Repeat("汉", 198_145)),
+	}); got <= 262_144-64_000 {
+		t.Fatalf("unbilled CJK replay must cross the observed safe boundary, got %d", got)
+	}
+}
+
+func TestPromptTokenCountReservesEmojiAndToolArguments(t *testing.T) {
+	msg := schema.AssistantMessage("abcd汉😀", []schema.ToolCall{{
+		Function: schema.FunctionCall{Name: "read", Arguments: "汉"},
+	}})
+	if got := promptTokenCount([]*schema.Message{msg}); got < 9 {
+		t.Fatalf("mixed text and tool arguments must reserve multilingual tokens, got %d", got)
 	}
 }
 
@@ -194,6 +234,69 @@ func TestAutoCompactReservesTheActualOutputCapBeforeModelCall(t *testing.T) {
 	}
 	if state.Messages[2].Content != "old result" {
 		t.Fatal("the stored transcript must remain intact")
+	}
+}
+
+func TestAutoCompactTriggersForUnbilledMultilingualReplay(t *testing.T) {
+	e := newTestEngine(t)
+	e.Config().Swarm.MaxCompletionTokens = 64_000
+	pinContextWindow(e, 262_144)
+	th, _ := e.CreateThread("", "", "")
+	asst := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
+		{ID: "c1", Function: schema.FunctionCall{Name: read.ToolName}},
+		{ID: "c2", Function: schema.FunctionCall{Name: read.ToolName}},
+		{ID: "c3", Function: schema.FunctionCall{Name: read.ToolName}},
+		{ID: "c4", Function: schema.FunctionCall{Name: read.ToolName}},
+	}}
+	state := &adk.ChatModelAgentState{Messages: []*schema.Message{
+		schema.UserMessage("continue"), asst,
+		{Role: schema.Tool, ToolCallID: "c1", Content: strings.Repeat("abcd汉", 100_000)},
+		{Role: schema.Tool, ToolCallID: "c2", Content: "recent result"},
+		{Role: schema.Tool, ToolCallID: "c3", Content: "recent result"},
+		{Role: schema.Tool, ToolCallID: "c4", Content: "recent result"},
+	}}
+	mw := e.newAutoCompact(th.ID, "tn", th)
+	_, next, err := mw.BeforeModelRewriteState(context.Background(), state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == state || next.Messages[2].Content != microcompactPlaceholder {
+		t.Fatal("a replayed multilingual prompt must compact before the request exceeds its output headroom")
+	}
+}
+
+func TestAutoCompactReservesFramesInLongUnbilledReplay(t *testing.T) {
+	e := newTestEngine(t)
+	e.Config().Swarm.MaxCompletionTokens = 64_000
+	pinContextWindow(e, 262_144)
+	th, _ := e.CreateThread("", "", "")
+	asst := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{
+		{ID: "c1", Function: schema.FunctionCall{Name: read.ToolName}},
+		{ID: "c2", Function: schema.FunctionCall{Name: read.ToolName}},
+		{ID: "c3", Function: schema.FunctionCall{Name: read.ToolName}},
+		{ID: "c4", Function: schema.FunctionCall{Name: read.ToolName}},
+	}}
+	msgs := []*schema.Message{
+		schema.UserMessage("continue"), asst,
+		{Role: schema.Tool, ToolCallID: "c1", Content: strings.Repeat("abcd汉", 97_000)},
+		{Role: schema.Tool, ToolCallID: "c2", Content: "recent result"},
+		{Role: schema.Tool, ToolCallID: "c3", Content: "recent result"},
+		{Role: schema.Tool, ToolCallID: "c4", Content: "recent result"},
+	}
+	for len(msgs) < 1_848 {
+		msgs = append(msgs, schema.UserMessage(""))
+	}
+	state := &adk.ChatModelAgentState{Messages: msgs}
+	mw := e.newAutoCompact(th.ID, "tn", th)
+	_, next, err := mw.BeforeModelRewriteState(context.Background(), state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next == state || next.Messages[2].Content != microcompactPlaceholder {
+		t.Fatal("message framing must trigger compression before a long replay reaches the model")
+	}
+	if got, limit := promptTokenCount(next.Messages), e.compactThreshold(th.ID); got > limit {
+		t.Fatalf("compacted replay still exceeds the safe input boundary: %d > %d", got, limit)
 	}
 }
 

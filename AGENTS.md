@@ -79,6 +79,11 @@ E2E suite.
   Run its packaged-app XCTest and inspect the reached screen; iOS menu changes
   use `BindFlowTests/testNativeIOSMenuHidesAndroidUpdateCheck`. XCTest can drive
   the simulator while the host desktop session is locked.
+- A context-budget fix must test replayed messages without billed usage, with
+  mixed ASCII/CJK tool results, message framing, and the configured output cap. A synthetic
+  billed-token boundary alone cannot prove a long scheduled conversation will
+  compact before the provider rejects it. Recheck the actual scheduled turn
+  and desktop error path before closing a context-overflow Issue.
 - Never test against a network or a real model. Use the scripted offline
   provider, and keep its script generic.
 - Every feature must be reachable through the one-id troubleshooting path: a turn

@@ -433,12 +433,29 @@ func estimateMessageTokens(m *schema.Message) int {
 	if m == nil {
 		return 0
 	}
-	n := (utf8.RuneCountInString(m.Content) + 3) / 4
-	n += (utf8.RuneCountInString(m.ReasoningContent) + 3) / 4
+	// Role and message framing are billed even for empty messages. The live
+	// 1848-message replay crossed the provider limit despite its text alone
+	// appearing to fit.
+	n := 4 + estimateTextTokens(m.Content) + estimateTextTokens(m.ReasoningContent)
 	for _, tc := range m.ToolCalls {
-		n += (utf8.RuneCountInString(tc.Function.Name) + utf8.RuneCountInString(tc.Function.Arguments) + 3) / 4
+		n += estimateTextTokens(tc.Function.Name) + estimateTextTokens(tc.Function.Arguments)
 	}
 	return n
+}
+
+func estimateTextTokens(s string) int {
+	ascii, nonASCII := 0, 0
+	for _, r := range s {
+		if r < utf8.RuneSelf {
+			ascii++
+		} else {
+			nonASCII++
+		}
+	}
+	// ASCII prose is roughly four bytes per token, while CJK and emoji can
+	// consume one or more tokens per rune. A single rune/4 fallback hid a
+	// real context overflow when a replayed conversation had no billed usage.
+	return (ascii+3)/4 + max(nonASCII, (len(s)-ascii+2)/3)
 }
 
 func compactMessageText(m *schema.Message) string {

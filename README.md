@@ -82,7 +82,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   wake stops workers that have no continuing goal. If a recurring check still
   exceeds the model context window, its failed run shows how to reduce the
   output budget or request, and that check pauses instead of repeating the
-  same error. Resume it after changing the setting or conversation.
+  same error. Replayed Chinese and other non-ASCII messages without billed
+  usage count toward compaction before the next model call. Resume a paused
+  check after changing the setting or conversation.
   `schedule_wake` does not take an id. It arms or replaces the open wait;
   the host assigns the id. Cancel copies an id from the open-wait list.
   When progress is gated on time or a condition not worth polling now, it is

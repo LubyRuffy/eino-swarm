@@ -34,6 +34,15 @@ func TestShouldRefreshSessionMemoryWaitsForANaturalBreak(t *testing.T) {
 	}
 }
 
+func TestSessionMemorySizeCountsMultilingualEventsConservatively(t *testing.T) {
+	// The briefing refresh uses the same unbilled history as auto-compact.
+	// Underestimating CJK here leaves an oversized replay for the next turn.
+	events := []store.Event{{Text: strings.Repeat("汉", 100)}}
+	if got := estimateEventTokens(events); got < 100 {
+		t.Fatalf("100 CJK characters must reserve at least 100 tokens, got %d", got)
+	}
+}
+
 func TestSkipSessionMemoryRefreshRespectsAFailedWatermark(t *testing.T) {
 	if skipSessionMemoryRefresh(true, sessionMemoryInitTokens, 0, 0, true) {
 		t.Fatal("the first force must still run")

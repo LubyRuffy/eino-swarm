@@ -398,6 +398,12 @@ request, even though input alone is under 80% of the window;
 actually clears older replay at that boundary. A terminal context
 overflow produces recovery advice (`internal/engine/runerr_test.go`) and pauses
 only its failing recurring schedule (`internal/engine/schedule_context_overflow_test.go`).
+The same middleware test covers mixed ASCII/CJK replay with no billed usage;
+an estimator regression reserves framing for the 1848-message live replay,
+and `internal/engine/session_memory_test.go` checks the event-log estimate.
+For a live regression, restart the desktop from the fixed build, run the
+affected scheduled check once, inspect its Trace and the reached desktop
+screen, and confirm compaction precedes any provider context rejection.
 Additional tests live in `internal/engine/compact_test.go`
 (streamed briefing, no compact deadline, session-memory preference, a
 transcript dump not persisted),

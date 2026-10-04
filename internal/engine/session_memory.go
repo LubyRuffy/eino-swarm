@@ -199,7 +199,7 @@ func skipSessionMemoryRefresh(force bool, tokens, lastTokens, toolsSince int, na
 func estimateEventTokens(events []store.Event) int {
 	n := 0
 	for _, ev := range events {
-		n += (utf8.RuneCountInString(ev.Text) + 3) / 4
+		n += estimateTextTokens(ev.Text)
 	}
 	return n
 }
