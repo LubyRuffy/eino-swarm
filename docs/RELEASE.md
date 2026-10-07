@@ -11,6 +11,11 @@ required platforms in order:
 
 Installer upload does not replace the native installation/window/device acceptance
 required for each candidate. Run project checks and native acceptance before release.
+If the allocated batch records a passed macOS native-window receipt for the exact
+version, source SHA, asset name and SHA-256, keep that accepted ZIP in `bin/`.
+The release entry verifies and uploads that file without rebuilding it; a missing
+or changed ZIP stops macOS publication. An allocated batch marked
+`ready_for_publication` also requires this exact receipt.
 Platform errors are printed immediately; independent platforms continue. The command
 exits non-zero if a required platform fails or is waiting. No version is incremented
 inside publication. Allocate/commit one version after more than three main
@@ -148,9 +153,11 @@ fetched `origin/main`; GitHub repository must match `go.mod`. The default entry
 reads required, still-unpublished platforms from the allocated batch; a
 single-platform recovery can use `--platform macos|android|ios`. A tag already published
 must resolve to exactly this SHA. To resume a frozen historical source with the
-new orchestration code, run the script from current main:
+new orchestration code, run the script from current main with the accepted installer
+in the frozen checkout's `bin/`. The public tag must point at the frozen source SHA:
 
 ```bash
+python3 tools/release.py --version x.y.z --platform macos --source-dir /absolute/isolated/frozen-checkout
 python3 tools/release.py --version x.y.z --platform ios --source-dir /absolute/isolated/frozen-checkout
 ```
 
