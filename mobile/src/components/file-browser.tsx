@@ -44,7 +44,10 @@ export function FileBrowser({ link, threadId, onClose }: {
     setLoading(true)
     setError("")
     void listWorkspaceFiles(link, threadId).then((rows) => {
-      if (active) setFiles(rows.sort((a, b) => a.path.localeCompare(b.path)))
+      if (active) {
+        setFiles(rows.sort((a, b) => a.path.localeCompare(b.path)))
+        setCollapsed(new Set(rows.filter((entry) => entry.dir).map((entry) => entry.path)))
+      }
     }).catch((cause: unknown) => {
       if (active) setError(fileFailure(cause))
     }).finally(() => {

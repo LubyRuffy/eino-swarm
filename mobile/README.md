@@ -54,7 +54,9 @@ vanishes on complete. The objective is one truncated line (the full text
 stays on the PC); a novel cannot cover Run now or the composer. Send,
 follow-up, steer, stop, ask, `/goal` and `/plan` land on the PC engine; the
 other window sees them live. **Outputs** in a paired conversation lists that
-PC conversation's workspace, including uploads and generated files. Open a
+PC conversation's workspace, including uploads and generated files. It opens
+with the first-level files and folders visible and every folder collapsed;
+tap a folder to reveal its next level, or search across collapsed paths. Open a
 file to preview text, a common image, or PDF; HTML and SVG appear as source
 text. The read is limited to 32 MiB, with previews limited to 8 MiB. Other
 files show a download action. Settings, PTY and Trace stay on the PC.

@@ -58,7 +58,11 @@ checks bounded listing and content frames, traversal and symlink escape;
 `cd mobile && npm test -- --run src/lib/remote-files.test.ts` checks
 pagination, chunk assembly and safe HTML/SVG classification;
 `cd mobile && npx playwright test e2e/walkthrough.spec.ts -g 'a phone lists PC outputs'`
-opens the offline PC conversation and previews its output. The disposable
+opens the offline PC conversation, checks that Outputs starts at the first
+workspace level, opens one folder on tap and then previews its file.
+`mobile/src/components/file-browser.test.tsx`
+also covers nested folders staying collapsed, search through collapsed paths
+and refresh returning to the default fold. The disposable
 native fixture `mobile/e2e/ios-wait-layout.swift` also opens the same file
 in a packaged iOS simulator app; the fixture does not alter a release build.
 
