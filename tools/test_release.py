@@ -559,6 +559,48 @@ class MoreGateTests(unittest.TestCase):
                 dirty=True
                 with self.assertRaisesRegex(ValueError,'changed tracked'): release.github_platform(root,'1.2.3','sha','macos',{})
 
+    def test_accepted_mac_package_is_uploaded_without_rebuilding_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'bin').mkdir()
+            artifact = root / 'bin/zwai-1.2.3-darwin-arm64.zip'
+            artifact.write_bytes(b'accepted package')
+            digest = release.sha256(artifact)
+            ledger = root / 'delivery.json'
+            release.write_json(ledger, {'pending_new_batch': {
+                'version': '1.2.3', 'source_sha': 'sha', 'issues': [1],
+                'macos': 'ready_for_publication',
+                'release_native_validation': {'status': 'passed', 'source_sha': 'sha',
+                    'version': '1.2.3', 'asset_name': artifact.name, 'asset_sha256': digest}},
+                'issues': {'1': {'macos': 'ready_for_publication'}}})
+            calls = []
+
+            def command(args, **kwargs):
+                calls.append(args)
+                if args[0] == 'uname': return 'arm64'
+                if args[:2] == ['gh', 'api']: return '[]'
+                if args[0] == 'make': artifact.write_bytes(b'rebuilt package')
+                return ''
+
+            with patch.dict(os.environ, {'DELIVERY_STATE': str(ledger)}), \
+                 patch.object(release, 'run', side_effect=command), \
+                 patch.object(release, 'source_preflight', return_value='sha'):
+                result = release.github_platform(root, '1.2.3', 'sha', 'macos', {})
+                self.assertEqual(result['digests'][artifact.name], digest)
+                self.assertFalse(any(call[0] == 'make' for call in calls))
+                artifact.write_bytes(b'different package')
+                with self.assertRaisesRegex(ValueError, 'accepted'):
+                    release.github_platform(root, '1.2.3', 'sha', 'macos', {})
+                artifact.unlink()
+                with self.assertRaisesRegex(ValueError, 'accepted'):
+                    release.github_platform(root, '1.2.3', 'sha', 'macos', {})
+                artifact.write_bytes(b'accepted package')
+                data = release.read_json(ledger)
+                del data['pending_new_batch']['release_native_validation']
+                release.write_json(ledger, data)
+                with self.assertRaisesRegex(ValueError, 'accepted'):
+                    release.github_platform(root, '1.2.3', 'sha', 'macos', {})
+
     def test_cli_preflight_and_lock_refuse_overlap(self):
         with tempfile.TemporaryDirectory() as directory,patch.dict(os.environ,{'ZWAI_HOME':directory}),\
              patch.object(release,'execute',return_value=0) as action,patch.object(sys,'argv',['release','--version','1.2.3','--check']):

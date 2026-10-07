@@ -141,11 +141,21 @@ def github_platform(root, version, source_sha, platform, state):
             if digest != 'sha256:' + sha256(p):
                 raise ValueError('Retained installer differs from published asset; refusing rebuild/overwrite')
     else:
-        target = 'desktop-release' if platform == 'macos' else 'mobile-android-release'
-        env = dict(os.environ, ANDROID_ARTIFACT='apk')
-        run(['make', target, f'VERSION={version}'], cwd=root, env=env)
-        if run(['git', 'status', '--porcelain'], cwd=root):
-            raise ValueError('Build changed tracked source; refusing upload')
+        delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
+        batch, _ = delivery_batch(delivery, version, source_sha)
+        native = (batch or {}).get('release_native_validation', {}) if platform == 'macos' else {}
+        if platform == 'macos' and (native or (batch or {}).get('macos') == 'ready_for_publication'):
+            asset = files[0]
+            if (native.get('status') != 'passed' or native.get('version') != version
+                    or native.get('source_sha') != source_sha or native.get('asset_name') != asset.name
+                    or not asset.is_file() or sha256(asset) != native.get('asset_sha256')):
+                raise ValueError('The accepted macOS package is missing or differs from native-window evidence')
+        else:
+            target = 'desktop-release' if platform == 'macos' else 'mobile-android-release'
+            env = dict(os.environ, ANDROID_ARTIFACT='apk')
+            run(['make', target, f'VERSION={version}'], cwd=root, env=env)
+            if run(['git', 'status', '--porcelain'], cwd=root):
+                raise ValueError('Build changed tracked source; refusing upload')
     if source_preflight(root, version, (platform,)) != source_sha:
         raise ValueError('Source changed during platform build')
     run(['go', 'run', './internal/release/cmd', '-version', version, '-dir', str(root / 'bin'),
