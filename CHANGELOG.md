@@ -79,6 +79,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-224` / `C-020`: 手机上的产出物文件树默认只显示第一层；逐层展开目录，搜索仍可找到折叠目录内的文件，刷新回到默认折叠（Issue #56）。
+
 - `F-430` / `C-010`: Mac 发布恢复复用已通过原生窗口验收的精确 ZIP；文件缺失或哈希变化时停止上传，避免重新打包产生未经验收的安装包。
 
 - `F-150` / `C-009`: unbilled replayed Chinese and other non-ASCII text now contributes its own token estimate to automatic compaction and session-memory refresh. The prompt estimate also reserves per-message framing, which made the live 1848-message replay exceed the provider limit even after estimating its text. Long scheduled conversations compact before the model call instead of repeating Issue #55's context-window 400.
