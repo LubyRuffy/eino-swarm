@@ -108,6 +108,13 @@ def source_preflight(root, version, platforms=('macos', 'android', 'ios')):
                 or set(pending['issues']) != set(report.get('unallocated_issues', []))
                 or not set(platforms) <= set(report.get('platforms_to_release', []))):
             raise ValueError('Live batch audit does not qualify this exact main/source batch')
+        if batch.get('active_issue') is not None:
+            raise ValueError('Issue integration is still in progress; finalize the workset before publication')
+        workset = pending.get('finalized_workset', {})
+        if (workset.get('source_sha') != sha
+                or set(workset.get('issues', [])) != set(report['unallocated_issues'])
+                or set(workset.get('platforms_to_release', [])) != set(report['platforms_to_release'])):
+            raise ValueError('New publication requires a finalized workset for this source and all required platforms')
         releases = [r for page in json.loads(run(['gh', 'api', '--paginate', '--slurp', f'repos/{repo}/releases'], cwd=root)) for r in page]
         if any(tuple(map(int, r['tag_name'].lstrip('v').split('.'))) >= tuple(map(int, version.split('.')))
                for r in releases if re.fullmatch(r'v?\d+\.\d+\.\d+', r['tag_name'])):

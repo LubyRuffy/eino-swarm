@@ -25,6 +25,27 @@ push the complete main and record its version/SHA in the delivery ledger.
 Only mobile batches require `mobile/package.json` to match the new version.
 Desktop-only releases leave the mobile version/build number unchanged.
 
+### Finalize one processing batch before publication
+
+At the start of a run, identify the Issues and worktrees this automation will
+process. Integrate and push each actionable accepted fix in order, then audit
+the final complete main. Defer an Issue only for a recorded real blocker or
+requirements ambiguity; other-owned and unrelated open Issues do not hold a
+qualified batch indefinitely. The desktop and phone changes processed in this
+batch share one source version, tag and SHA even if their fixes came from
+different worktrees. Evaluate the existing `>3` first-parent commits or `>24h`
+acceptance wait rule only after this workset is settled.
+
+Before the first new-platform upload, record
+`pending_new_batch.finalized_workset` in the private delivery ledger with
+`source_sha`, `issues` and `platforms_to_release` from the fresh
+`tools/audit_pending_batch.py` report. `tools/release.py` refuses new
+publication while `active_issue` is set or if that receipt differs from the
+live audit. A platform-specific failure after version allocation leaves the
+other verified platforms runnable against the same frozen source. An already
+public tag/SHA stays immutable; a later-integrated fix belongs to the next
+qualified batch, never to the old tag.
+
 ### TestFlight version and build number
 
 The batch/tag/package version identifies the complete source release. TestFlight's

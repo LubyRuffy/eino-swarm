@@ -37,6 +37,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430` / `C-010`: publication now requires a finalized processing workset matching the complete main SHA, all accepted Issues and affected platforms. An active Issue blocks a new tag, preventing desktop and phone fixes handled in one batch across worktrees from being split into intermediate releases.
+
 - `F-430` / `C-010`: routine TestFlight releases keep the last successfully published marketing version and advance only the package-derived build number. Optional private `marketing_version` starts a new version; candidate/IPA receipts preserve the original version on recovery. Group attachment rechecks actual external availability before requesting review. Same-version builds may still require Apple review.
 
 - `F-430` / `C-010`: the qualified complete-main batch advances mobile package and iOS build metadata to 0.1.25/125. It includes the accepted iOS menu fix from Issue #53, the Android/iOS sub-agent Back fix from Issue #54, and the provider visibility controls already on main. Each required platform keeps its own native acceptance and delivery gate.

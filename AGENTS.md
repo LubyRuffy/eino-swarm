@@ -219,6 +219,17 @@ feature.
   deliberately start a new version for new candidates. Existing IPA/source/state
   receipts freeze the original iOS version on recovery. Same-version builds may
   still need Apple review. Do not upload intermediate snapshots.
+- Before allocating a new version, enumerate this run's owned Issue/worktree
+  workset. Finish each actionable fix, review and integrate it into pushed main
+  serially. Explicitly defer genuinely blocked or ambiguous work; do not wait
+  for unrelated or other-owned open Issues. Only then re-audit the final main
+  and allocate one version. Before publication, record
+  `pending_new_batch.finalized_workset` with that source SHA, the full
+  accepted Issue set and required platforms. An
+  active Issue or mismatched/missing workset receipt blocks new publication.
+  Different worktrees cannot split one run's desktop and phone changes into
+  separate versions. The receipt is a release gate, not permission to change
+  the existing commit-count/time threshold or an already public version/SHA.
 - For unallocated accepted changes, allocate one new version when more than
   three first-parent commits have landed on main since the last published source SHA, or
   the oldest pending accepted change has waited more than 24 hours. Before
