@@ -146,9 +146,17 @@ class IOSRelease:
                    for r in self.ledger.get('releases', []) if r.get('app_id') == self.module.APP_ID)
 
     def declaration(self, info=None):
-        value = (info or {}).get('ITSAppUsesNonExemptEncryption')
-        if isinstance(value, bool):
-            return value
+        key = 'ITSAppUsesNonExemptEncryption'
+        path = self.root / 'mobile/ios/App/App/Info.plist'
+        source = plistlib.loads(path.read_bytes()) if path.exists() else {}
+        if key in source and not isinstance(source[key], bool):
+            raise ValueError('Source export-compliance declaration must be boolean')
+        value = source.get(key) if info is None else info.get(key)
+        if info is not None:
+            if key in info and not isinstance(value, bool):
+                raise ValueError('IPA export-compliance declaration must be boolean')
+            if key in source and value is not source[key]:
+                raise ValueError('IPA export-compliance declaration differs from source')
         statements = [self.config.get('compliance', {})]
         statements.extend(self.ledger.get('compliance_confirmations', []))
         confirmed = [statement['uses_non_exempt'] for statement in statements
@@ -157,6 +165,8 @@ class IOSRelease:
                      and statement.get('version', self.version) == self.version
                      and statement.get('confirmed_by')
                      and isinstance(statement.get('uses_non_exempt'), bool)]
+        if isinstance(value, bool):
+            confirmed.append(value)
         if len(set(confirmed)) > 1:
             raise ValueError('Conflicting current-build export-compliance declarations')
         if confirmed:
