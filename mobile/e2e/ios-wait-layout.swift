@@ -4,6 +4,24 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testHiddenHistoryShowsEarlierAnswer() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let explanation = app.staticTexts["No visible messages in this turn yet. Open earlier history."]
+    guard explanation.waitForExistence(timeout: 8) else {
+      throw XCTSkip("requires IOS_LAYOUT_QUERY=/?mock=1&tick=0&history=hidden")
+    }
+    let earlier = app.buttons["Earlier"]
+    XCTAssertTrue(earlier.isHittable)
+    earlier.tap()
+    XCTAssertTrue(app.staticTexts["Earlier answer"].waitForExistence(timeout: 8))
+    XCTAssertFalse(explanation.exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "hidden-history-earlier-answer"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
   func testPhoneOutputPreview() throws {
     let app = XCUIApplication()
     app.launch()

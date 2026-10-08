@@ -7,6 +7,26 @@ import { applyEvent, type CompactBlock } from "@/lib/transcript"
 import type { RemoteEvent } from "@/lib/rpc"
 
 describe("ThreadScreen", () => {
+  it("explains a live turn with only hidden background events and offers older history", () => {
+    setLocale("en")
+    const onOlder = vi.fn()
+    let blocks = applyEvent([], {
+      thread_id: "t1", seq: 2, kind: "tool_call", agent_id: "manager",
+      tool_call_id: "spawn-1", text: "spawn_agent({})", created_at: "2026-10-08T00:00:00Z",
+    })
+    blocks = applyEvent(blocks, {
+      thread_id: "t1", seq: 3, kind: "tool_result", agent_id: "manager",
+      tool_call_id: "spawn-1", text: "started", created_at: "2026-10-08T00:00:01Z",
+    })
+    render(<ThreadScreen detail={{ id: "t1", title: "talk", running: { thread_id: "t1", title: "talk" } }}
+      blocks={blocks} hasMore caughtUp onOlder={onOlder}
+      onBack={vi.fn()} onSend={vi.fn()} onSteer={vi.fn()} onStop={vi.fn()}
+      onAnswer={vi.fn()} onAnswerStructured={vi.fn()} />)
+    expect(screen.getByText("No visible messages in this turn yet. Open earlier history.")).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Earlier" }))
+    expect(onOlder).toHaveBeenCalledOnce()
+  })
+
   it("counts only running workers and separates finished history", () => {
     setLocale("en")
     let blocks: CompactBlock[] = []

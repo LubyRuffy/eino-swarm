@@ -12,7 +12,7 @@ import { installAndroidBack } from "@/lib/android-back"
 import { t } from "@/lib/i18n"
 import { normalizeSelectedText } from "@/lib/quote"
 import type { CompactBlock } from "@/lib/transcript"
-import { managerBlocks, pendingAsk, phoneAgents } from "@/lib/transcript"
+import { foldPhoneItems, managerBlocks, pendingAsk, phoneAgents } from "@/lib/transcript"
 import type { FollowupView, ModelChoice, ThreadDetail } from "@/lib/rpc"
 import { cn } from "@/lib/cn"
 import type { RemoteLink } from "@/lib/link"
@@ -354,6 +354,11 @@ export function ThreadScreen({
           <div className={cn("flex min-h-full min-w-0 w-full flex-col gap-1.5",
             agentPage === "agents" ? "justify-start" : "justify-end")}>
             <div ref={quoteSource} data-quote-source="">
+              {agentPage === "chat" && caughtUp && hasMore && foldPhoneItems(manager).length === 0 ? (
+                <p role="status" className="px-3 py-4 text-center text-sm text-muted-foreground">
+                  {t("thread.hiddenHistory")}
+                </p>
+              ) : null}
               {agentPage === "agents" ? (
                 <div className="flex flex-col gap-1" data-testid="agent-roster">
                   {agentGroups.filter((group) => group.agents.length > 0).map((group) => (

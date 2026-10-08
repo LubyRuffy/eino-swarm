@@ -204,7 +204,13 @@ export class MockHost {
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
     if (live) {
-      if (new URLSearchParams(location.search).get("ask") === "1") {
+      if (new URLSearchParams(location.search).get("history") === "hidden") {
+        this.seed(live, [
+          { kind: "agent_message", agentID: "manager", text: "Earlier answer" },
+          { kind: "tool_call", agentID: "manager", callID: "hidden-spawn", text: "spawn_agent({})" },
+          { kind: "tool_result", agentID: "manager", callID: "hidden-spawn", text: "started" },
+        ], true)
+      } else if (new URLSearchParams(location.search).get("ask") === "1") {
         live.askUser = true
         this.seed(live, [{
           kind: "tool_call",
@@ -377,8 +383,9 @@ export class MockHost {
   }
 
   snapshot(th: MockThread) {
+    const hiddenHistory = new URLSearchParams(location.search).get("history") === "hidden" && th.id === "t-live"
     return {
-      events: th.events,
+      events: hiddenHistory ? th.events.slice(-2) : th.events,
       seq: th.events[th.events.length - 1]?.seq ?? 0,
       status: { running: th.running, waiting: th.waiting, followups: th.followups },
     }
@@ -636,10 +643,15 @@ export class MockLink {
         this.stopWatching()
         this.watcher = { threadID: th.id, deliver: (r) => this.onPush?.(r) }
         this.host.watch(this.watcher)
-        return this.ok({ id, op: OpReady, thread_id: th.id, more: false, ...this.host.snapshot(th) })
+        return this.ok({ id, op: OpReady, thread_id: th.id,
+          more: new URLSearchParams(location.search).get("history") === "hidden" && th.id === "t-live",
+          ...this.host.snapshot(th) })
       }
-      case OpLog:
-        return this.ok({ id, events: [], more: false })
+      case OpLog: {
+        const th = thread()
+        const hiddenHistory = new URLSearchParams(location.search).get("history") === "hidden" && th?.id === "t-live"
+        return this.ok({ id, thread_id: th?.id, events: hiddenHistory ? th.events.slice(0, 1) : [], more: false })
+      }
       case OpStart:
         return this.ok({ id, threads: [this.host.view(this.host.begin(req.text ?? ""))] })
       case OpSend:

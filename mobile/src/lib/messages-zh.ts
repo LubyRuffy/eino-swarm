@@ -121,6 +121,7 @@ export const zh: Record<MessageKey, string> = {
   "thread.running": "运行中",
   "thread.waiting": "等待中",
   "thread.earlier": "更早",
+  "thread.hiddenHistory": "这一轮暂无可显示消息，点击“更早”查看历史。",
   "thread.loading": "加载中",
   "thread.tool": "工具",
   "thread.thought": "思考",

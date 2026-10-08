@@ -76,13 +76,13 @@ func handleLog(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, s
 	}
 	var page []store.Event
 	hasMore := true
-	for i := 0; i < 32 && hasMore; i++ {
+	for hasMore {
 		var err error
 		page, hasMore, err = eng.Store().ListTailEvents(tid, before, limit)
 		if err != nil {
 			return fail(req.ID, path, sessionID, "", fmtErr(err))
 		}
-		if len(page) == 0 || hasPushable(page) {
+		if len(page) == 0 || hasPhoneContent(page) {
 			break
 		}
 		before = page[0].Seq
@@ -90,11 +90,27 @@ func handleLog(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, s
 	return packLogEvents(req.ID, path, sessionID, tid, page, hasMore, cfg)
 }
 
-func hasPushable(events []store.Event) bool {
+// A tool result without its call cannot paint a row. The phone also hides
+// subagent-management calls, which can span thousands of stored events.
+// Keep scanning locally so one Earlier tap reaches actual conversation text.
+func hasPhoneContent(events []store.Event) bool {
 	for _, ev := range events {
-		if shouldPush(ev.Kind) {
-			return true
+		if !shouldPush(ev.Kind) || ev.Kind == "tool_result" {
+			continue
 		}
+		if ev.Kind == "max_iterations" || ev.Kind == "max_iterations_continued" || ev.Kind == "model_retry" || ev.Kind == "compacted" {
+			body := strings.TrimSpace(ev.Text)
+			if strings.HasPrefix(body, "{") || strings.HasPrefix(body, "[") {
+				continue
+			}
+		}
+		if ev.Kind == "tool_call" {
+			name, _, _ := strings.Cut(strings.TrimSpace(ev.Text), "(")
+			if name == "spawn_agent" || name == "close_agent" {
+				continue
+			}
+		}
+		return true
 	}
 	return false
 }
