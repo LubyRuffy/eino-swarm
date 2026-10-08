@@ -6,9 +6,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import plistlib
 import re
 import subprocess
 import sys
+import zipfile
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -55,6 +57,35 @@ def write_json(path, value):
 def sha256(path):
     with Path(path).open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def validate_macos_zip(path):
+    """Finder needs both the app icon resource and its plist reference."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            info = plistlib.loads(archive.read('zwai.app/Contents/Info.plist'))
+            if info.get('CFBundleIconFile') != 'AppIcon.icns':
+                raise ValueError('macOS installer does not select its Finder icon')
+            icon = archive.read('zwai.app/Contents/Resources/AppIcon.icns')
+            if len(icon) < 8 or icon[:4] != b'icns' or int.from_bytes(icon[4:8], 'big') != len(icon):
+                raise ValueError('macOS installer has an invalid Finder icon')
+            offset, large_png = 8, False
+            while offset < len(icon):
+                if offset + 8 > len(icon):
+                    raise ValueError('macOS installer has an invalid Finder icon')
+                size = int.from_bytes(icon[offset + 4:offset + 8], 'big')
+                if size < 8 or offset + size > len(icon):
+                    raise ValueError('macOS installer has an invalid Finder icon')
+                if icon[offset:offset + 4] == b'ic10':
+                    image = icon[offset + 8:offset + size]
+                    large_png = (image[:8] == b'\x89PNG\r\n\x1a\n' and image[12:16] == b'IHDR'
+                                 and int.from_bytes(image[16:20], 'big') == 1024
+                                 and int.from_bytes(image[20:24], 'big') == 1024)
+                offset += size
+            if not large_png:
+                raise ValueError('macOS installer has no 1024px Finder icon')
+    except (KeyError, zipfile.BadZipFile, plistlib.InvalidFileException) as error:
+        raise ValueError('macOS installer is missing a valid Finder icon or Info.plist') from error
 
 
 def version_code(version):
@@ -163,6 +194,8 @@ def github_platform(root, version, source_sha, platform, state):
             run(['make', target, f'VERSION={version}'], cwd=root, env=env)
             if run(['git', 'status', '--porcelain'], cwd=root):
                 raise ValueError('Build changed tracked source; refusing upload')
+        if platform == 'macos':
+            validate_macos_zip(files[0])
     if source_preflight(root, version, (platform,)) != source_sha:
         raise ValueError('Source changed during platform build')
     run(['go', 'run', './internal/release/cmd', '-version', version, '-dir', str(root / 'bin'),

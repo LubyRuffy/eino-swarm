@@ -24,6 +24,38 @@ sys.path.insert(0, str(Path(__file__).parent))
 import release
 import release_ios
 
+
+def write_mac_installer(path):
+    icon = (Path(__file__).resolve().parents[1] / 'internal/desktop/AppIcon.icns').read_bytes()
+    with zipfile.ZipFile(path, 'w') as archive:
+        archive.writestr('zwai.app/Contents/Info.plist',
+                         plistlib.dumps({'CFBundleIconFile': 'AppIcon.icns'}))
+        archive.writestr('zwai.app/Contents/Resources/AppIcon.icns', icon)
+
+
+class MacInstallerIconTests(unittest.TestCase):
+    def test_release_accepts_only_zip_with_finder_icon_resource_and_plist_reference(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'zwai.zip'
+            icon = (Path(__file__).resolve().parents[1] / 'internal/desktop/AppIcon.icns').read_bytes()
+            for selected, resource, valid in [
+                (True, icon, True),
+                (False, icon, False),
+                (True, None, False),
+                (True, b'not-icon', False),
+            ]:
+                with zipfile.ZipFile(path, 'w') as archive:
+                    archive.writestr('zwai.app/Contents/Info.plist', plistlib.dumps(
+                        {'CFBundleIconFile': 'AppIcon.icns' if selected else 'missing.icns'}))
+                    if resource is not None:
+                        archive.writestr('zwai.app/Contents/Resources/AppIcon.icns', resource)
+                if valid:
+                    release.validate_macos_zip(path)
+                else:
+                    with self.assertRaisesRegex(ValueError, 'Finder icon'):
+                        release.validate_macos_zip(path)
+
+
 class DriverTests(unittest.TestCase):
     def test_all_only_runs_platforms_still_required_by_this_batch(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -566,7 +598,7 @@ class MoreGateTests(unittest.TestCase):
                 calls.append(args)
                 if args[0]=='uname': return 'arm64'
                 if args[:2]==['gh','api']: return '[]'
-                if args[0]=='make': artifact.write_bytes(b'zip')
+                if args[0]=='make': write_mac_installer(artifact)
                 if args[0]=='git': return 'dirty' if dirty else ''
                 return ''
             delivery=root/'delivery.json'
@@ -584,7 +616,7 @@ class MoreGateTests(unittest.TestCase):
             root = Path(directory)
             (root / 'bin').mkdir()
             artifact = root / 'bin/zwai-1.2.3-darwin-arm64.zip'
-            artifact.write_bytes(b'accepted package')
+            write_mac_installer(artifact)
             digest = release.sha256(artifact)
             ledger = root / 'delivery.json'
             release.write_json(ledger, {'pending_new_batch': {
@@ -614,7 +646,7 @@ class MoreGateTests(unittest.TestCase):
                 artifact.unlink()
                 with self.assertRaisesRegex(ValueError, 'accepted'):
                     release.github_platform(root, '1.2.3', 'sha', 'macos', {})
-                artifact.write_bytes(b'accepted package')
+                write_mac_installer(artifact)
                 data = release.read_json(ledger)
                 del data['pending_new_batch']['release_native_validation']
                 release.write_json(ledger, data)

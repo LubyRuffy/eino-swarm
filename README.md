@@ -454,7 +454,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    sideload APK, not a Play bundle). Published sideload APKs also land on
    [GitHub Releases](https://github.com/LubyRuffy/eino-swarm/releases).
    `make release VERSION=x.y.z` on a Mac builds and publishes only the
-   batch's affected platforms: a desktop change gets the `zwai.app` zip;
+   batch's affected platforms: a desktop change gets the `zwai.app` zip,
+   whose extracted app shows the ZWAI mark in Finder as well as the Dock;
    a mobile change gets Android APK and iOS TestFlight through the existing
    command-line credentials. Mixed changes share one GitHub version.
    TestFlight updates reuse the last published iOS marketing version and increase

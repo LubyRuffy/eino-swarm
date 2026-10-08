@@ -196,7 +196,14 @@ past a phone-only latest Release for the newest Mac package, and
 swaps `zwai.app` before reopening. `internal/release` is why `make release` refuses a dirty version, uploads
 only the required platform assets, and fails when a required asset is absent
 after upload. `internal/desktop/pack` refuses a
-non-release version so `make desktop-release` cannot stamp a dirty describe. `TestPhoneLauncherSlotsMatchTheDesktopMark`
+non-release version so `make desktop-release` cannot stamp a dirty describe.
+`TestMacReleaseZipContainsFinderIcon` checks the installable ZIP's icon
+resource and plist reference; `TestFinderIconMatchesTheRuntimeDockMark` asks
+macOS to decode the ICNS and compares it with the runtime mark, so changing
+the source PNG without regenerating the Finder asset fails. `MacInstallerIconTests` makes the release driver
+reject a new Mac ZIP lacking either before upload. Native acceptance must still
+inspect the extracted `.app` in Finder and launch that same package because the
+runtime Dock icon is independent. `TestPhoneLauncherSlotsMatchTheDesktopMark`
 is why those PNGs are `internal/desktop/appicon.png` painted into the iOS/Android
 slots (`go run ./mobile/scripts/genicons.go`).
 `mobile/src/lib/resume.test.ts` is why bind opens a live turn (or the last
