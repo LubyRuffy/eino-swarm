@@ -141,6 +141,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 状态：active；类型：compatibility；作用范围：engine 普通对话和持续目标、共享 manager 提示词的终端入口；关联功能：`F-130`。
 - 契约内容：运行时提示词必须要求 manager 在能节省时间或提高质量时主动使用 subagents，并随任务进展重新评估，无需等待用户提出；时间与质量是独立理由。只有一个 worker、需要等待或任务较小不得成为拒绝有质量收益的独立审查／第二思路的绝对条件。
 - 允许行为：无实质收益时自行完成；禁止行为：仅显式要求才委派、为满足调用比例强制创建 worker、持续目标提示词重新引入单 worker 等待禁令；失败语义：worker 失败或超时需如实说明，不能视为成功；不变量：遵守用户显式限制与并发上限，分离写入路径，manager 核验并整合结果；边界条件：并发上限为一、先自行执行后发现委派机会、用户限制委派。
+- 无效调用边界：manager 的同一模型回复中，role/task 缺失、空白或参数不可读的 spawn 调用按同类错误合并，只执行保留代表的拒绝反馈，回执含 `rejected_calls`。保留代表原始 ID 和参数，保证模型历史、通知和 trace 的调用／回执配对；所有有效调用和其他工具均保留。流式参数拼完后判断，取消或流错误不执行未完成批次。拒绝调用未创建、续办、引导或取消任何 worker；不保证真实模型永不产生无效参数，正常修正不受固定调用配额限制。实现／测试：`spawn_batch.go`, `spawn_batch_test.go`, `swarm.go`, `tools.go`；来源：GitHub Issue #64。
 - 验证边界：该契约约束实际生成的模型指令，不保证任一真实模型的调用次数；离线 provider 的固定调用脚本只能验证委派链路，不能证明真实模型的调用比例提升。
 - 证据：实现 `internal/engine/prompt.go`, `internal/engine/iterations.go`, `internal/tui/plan.go`；测试 `internal/engine/prompt_test.go`, `cmd/zwai/tui_prompt_test.go`, `internal/engine/engine_test.go`, `frontend/e2e/conversation.spec.ts`；变更规则：同步共享提示词、持续目标提示词、入口测试与使用说明；来源：用户 2026-09-28 对运行时主动使用 subagents 的要求。
 

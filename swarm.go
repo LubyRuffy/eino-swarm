@@ -396,7 +396,8 @@ func steerCaption(m *schema.Message) string {
 // as a transcript) and drains queued manager steering messages.
 type historyRecorder struct {
 	adk.BaseChatModelAgentMiddleware
-	reg *Registry
+	reg           *Registry
+	spawnFeedback spawnBatchFeedback
 }
 
 func (m *historyRecorder) BeforeModelRewriteState(ctx context.Context,
@@ -433,7 +434,11 @@ func (m *historyRecorder) WrapInvokableToolCall(ctx context.Context,
 		ctx, id := m.reg.bindEpoch(ctx)
 		defer m.reg.dropEpoch(id)
 		ctx = m.reg.bindToolOutput(ctx, DefaultManagerID, "manager", tc)
-		out, err := endpoint(ctx, argumentsInJSON, opts...)
+		out, refused := m.spawnFeedback.take(tc.CallID)
+		var err error
+		if !refused {
+			out, err = endpoint(ctx, argumentsInJSON, opts...)
+		}
 		out, err = m.reg.preemptToolResult(parent, ctx, out, err)
 		m.reg.appendHistoryToolResult(tc, out, err)
 		return out, err
@@ -486,7 +491,7 @@ func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
 }
 
 func (m *historyRecorder) WrapModel(ctx context.Context, inner model.BaseModel[*schema.Message], _ *adk.ModelContext) (model.BaseModel[*schema.Message], error) {
-	return &epochModel{inner: inner, reg: m.reg}, nil
+	return &spawnBatchModel{inner: &epochModel{inner: inner, reg: m.reg}, feedback: &m.spawnFeedback, reg: m.reg}, nil
 }
 
 func (r *Registry) appendHistoryToolResult(tc *adk.ToolContext, content string, runErr error) {

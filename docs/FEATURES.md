@@ -48,6 +48,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 排队与未读引导：工作中的 Enter 进入队列。点开一条排队消息，或点未读引导上的铅笔，原文进输入框（引用变成卡片），原来的那条先拿掉。再按 Enter，和新建一条排队一样，排到队尾。已读引导不会被拉进输入框。只有图片的未读引导没有可排队的文字，只能删除。
 - 主动委派：共享运行时提示词要求 manager 在能提效或提高质量时主动调用 subagents，执行中重新评估；单个 worker 也可承担独立审查或第二种思路，不要求用户显式提出。普通对话与持续目标遵循相同策略；无收益时自行处理，遵守用户限制与并发上限，由 manager 核验和整合结果。关联契约：`C-019`；实现证据：`internal/engine/prompt.go`, `internal/engine/prompt_test.go`, `cmd/zwai/tui_prompt_test.go`。
 
+- 无效委派恢复：同一模型回复内缺少 role/task 或参数不可读的 spawn 调用按错误类别合并为一条拒绝回执，保留数量和原始代表 ID；有效调用仍正常执行，manager 可补全参数在原轮次继续。拒绝不等于创建或取消 worker。关联契约：`C-019`；实现／测试证据：`spawn_batch.go`, `spawn_batch_test.go`, `tools.go`, `internal/engine/prompt.go`。
+
 ### F-140 Files and attachments
 
 - 目的：让对话使用工作区文件和附件；使用者：PC 用户；入口：文件面板、上传及下载 API；输入：文件或图片；输出：文件、预览或模型视觉输入；前置条件：工作区和权限可用；失败表现：上传或工具错误；关联契约：`C-004`, `C-005`；实现证据：`internal/server`, `internal/tools`, `frontend/src/components/app`。
