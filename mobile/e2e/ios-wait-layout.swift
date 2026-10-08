@@ -56,16 +56,28 @@ final class BindFlowTests: XCTestCase {
     let outputs = app.buttons["Outputs"]
     XCTAssertTrue(outputs.waitForExistence(timeout: 8))
     outputs.tap()
+    let folder = app.buttons["outputs"]
+    XCTAssertTrue(folder.waitForExistence(timeout: 8))
+    XCTAssertFalse(app.buttons["report.md"].exists)
+    folder.tap()
     let file = app.buttons["report.md"]
     XCTAssertTrue(file.waitForExistence(timeout: 8))
     file.tap()
     XCTAssertTrue(app.staticTexts["Verified output"].waitForExistence(timeout: 8))
+    XCTAssertTrue(app.staticTexts["A finding"].exists)
+    XCTAssertFalse(app.staticTexts["# Verified output"].exists)
     let shot = XCTAttachment(screenshot: app.screenshot())
     shot.name = "phone-output-preview"
     shot.lifetime = .keepAlways
     add(shot)
     app.buttons["Back to list"].tap()
     XCTAssertTrue(file.waitForExistence(timeout: 5))
+    app.buttons["sample.go"].tap()
+    XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'hello'")).firstMatch.waitForExistence(timeout: 8))
+    let codeShot = XCTAttachment(screenshot: app.screenshot())
+    codeShot.name = "phone-output-code-highlight"
+    codeShot.lifetime = .keepAlways
+    add(codeShot)
   }
 
   func testClientTaskHeaderStaysVisibleAfterPull() throws {

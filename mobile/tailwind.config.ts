@@ -5,6 +5,15 @@ export default {
   theme: {
     extend: {
       colors: {
+        syntax: {
+          keyword: "hsl(var(--syntax-keyword))",
+          command: "hsl(var(--syntax-command))",
+          string: "hsl(var(--syntax-string))",
+          comment: "hsl(var(--syntax-comment))",
+          operator: "hsl(var(--syntax-operator))",
+          flag: "hsl(var(--syntax-flag))",
+          variable: "hsl(var(--syntax-variable))",
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

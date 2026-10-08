@@ -46,6 +46,10 @@ import {
 
 const MOCK_FLAG = "mock"
 const MOCK_HOST = "Walkthrough PC"
+const OUTPUT_FILES: Record<string, { text: string; mime: string }> = {
+  "outputs/report.md": { text: "# Verified output\n\n> A finding\n\n- First result\n", mime: "text/markdown" },
+  "outputs/sample.go": { text: 'package main\n\nconst value = "hello"\n', mime: "text/plain" },
+}
 /** Playwright drives the script; a human wants to watch it arrive. */
 const DEFAULT_TICK_MS = 420
 
@@ -600,16 +604,17 @@ export class MockLink {
         if (!thread()) return this.missing(id)
         return this.ok({ id, files: [
           { path: "outputs", name: "outputs", size: 0, dir: true, modified: "", uploaded: false },
-          { path: "outputs/report.md", name: "report.md", size: 15, dir: false, modified: "", uploaded: false },
+          ...Object.entries(OUTPUT_FILES).map(([path, file]) => ({ path, name: path.split("/").at(-1)!, size: new TextEncoder().encode(file.text).length, dir: false, modified: "", uploaded: false })),
         ], more: false })
       case OpFileChunk: {
         if (!thread()) return this.missing(id)
-        if (req.file_path !== "outputs/report.md") return this.missing(id)
-        const bytes = new TextEncoder().encode("Verified output")
+        const file = OUTPUT_FILES[req.file_path ?? ""]
+        if (!file) return this.missing(id)
+        const bytes = new TextEncoder().encode(file.text)
         const offset = req.before ?? 0
         const data = Array.from(bytes.slice(offset)).map((byte) => String.fromCharCode(byte)).join("")
         return this.ok({ id, file_chunk: {
-          path: "outputs/report.md", name: "report.md", size: bytes.length, mime: "text/markdown",
+          path: req.file_path!, name: req.file_path!.split("/").at(-1)!, size: bytes.length, mime: file.mime,
           offset, next_offset: bytes.length, data: btoa(data), more: false,
         } })
       }

@@ -84,6 +84,6 @@ export function previewKind(name: string, mime: string, size: number): PreviewKi
   if (["image/png", "image/jpeg", "image/gif", "image/webp"].includes(kind)) return "image"
   if (kind === "application/pdf") return "pdf"
   if (kind.startsWith("text/") || ["application/json", "application/xml", "application/javascript"].includes(kind) ||
-    /\.(md|markdown|csv|json|ya?ml|xml|svg|go|py|tsx?|jsx?|css|html?)$/i.test(name)) return "text"
+    /\.(md|markdown|mdx|csv|json|ya?ml|xml|svg|go|py|tsx?|jsx?|css|html?)$/i.test(name)) return "text"
   return "download"
 }
