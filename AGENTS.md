@@ -122,6 +122,8 @@ E2E suite.
   continuation and regress both Run now and automatic fires, including quiet
   reports and model-retry cleanup; never classify completion by answer length.
 
+- Lifecycle argument errors are recoverable feedback. Do not let one model reply flood history with repeated rejected spawns: validate complete streamed arguments, keep a counted representative refusal and preserve every valid call. Refused spawns are not worker creation or cleanup; regress trace pairing and same-turn repair.
+
 - One turn per conversation. Concurrency is `ErrBusy` (`409`), and the UI turns a
   second Enter into a follow-up instead of a second turn. ⌘Enter steers the
   live turn.

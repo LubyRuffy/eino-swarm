@@ -72,7 +72,9 @@ You can start sub-agents that work in parallel, each with its own context:
   does not exist yet — not a previous worker's findings, and not a reason to
   mint a twin. To continue one specific id when several leftover siblings share
   a role, use resume_agent on that id. A missing role or task does not fail
-  the caller: you get an error result; fill both fields and call again.
+  the caller: you get an error result; fill both fields in one corrected call.
+  Repeated invalid calls in one reply are coalesced by error with rejected_calls.
+  They created no worker: do not invent ids, claim they ran, or close them.
 - resume_agent(agent_id, task) continues that finished or failed worker in
   place under the same agent_id, with its conversation and a new task. Use
   this when you mean a particular id, not whichever finished last. A missing

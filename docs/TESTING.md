@@ -651,6 +651,7 @@ model call sees the handoff text: the miss notifies the host
 `TestSpawnAgentRequiresATask` are why a `spawn_agent` that omits `task`
 returns `{"error"}` so the manager retries, instead of a `NodeRunError` that
 blocks a pursuing `/goal`.
+`TestInvalidSpawnBatchIsBoundedAndCanBeRepaired` verifies that a reply with many task-less spawns produces bounded counted refusals, no workers from refused calls, and a corrected spawn in the same run. `spawn_batch_test.go` also checks fragmented arguments, original-message immutability, valid/other calls, generated and streamed output, and cancellation/error propagation. This accepts host recovery, not a promise that any real model never emits invalid calls.
 `TestPathShapedRolesBecomeDistinctJobNames` is why a slash-shaped role is
 stored as the job word, and a second path of the same job is `-2` rather
 than one resumed id or the path itself.

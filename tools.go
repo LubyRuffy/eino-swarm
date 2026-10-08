@@ -29,7 +29,7 @@ const sendMessageDesc = "queue a steering message. agent_id is the id spawn_agen
 func (r *Registry) Tools() []tool.BaseTool {
 	n := r.advertisedCap()
 	return []tool.BaseTool{
-		&ctlTool{name: "spawn_agent", desc: fmt.Sprintf("start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error} so you can retry; it does not fail the turn. The concurrency cap is %d. Do not start a larger batch. If %d sub-agents are already running, returns {error} and does not start or queue another worker: wait for one to finish, then resume that id or spawn the next piece.", n, n), fn: r.spawn},
+		&ctlTool{name: "spawn_agent", desc: fmt.Sprintf("start a sub-agent in the background; returns its agent_id immediately. A second call with the same role does not mint a twin: if that worker is still running, the new task is queued for its next turn; if it already finished, it continues in place under the same agent_id. fork_context only applies when this role has no worker yet — it copies this manager conversation so far into the new worker, not a previous worker's. A missing role or task returns {error}; it does not fail the turn. Supply both in one corrected call. In manager runs, same-error invalid calls in one reply are coalesced with rejected_calls; they did not create workers. The concurrency cap is %d. Do not start a larger batch. If %d sub-agents are already running, returns {error} and does not start or queue another worker: wait for one to finish, then resume that id or spawn the next piece.", n, n), fn: r.spawn},
 		&ctlTool{name: "send_message", desc: sendMessageDesc, fn: r.send},
 		&ctlTool{name: "wait_agents", desc: "wait until the next listed agent reaches a final status, or the timeout hits; " +
 			"returns every listed agent's status (running/done/failed), the finished ones' results, " +
@@ -150,27 +150,15 @@ func refuseAdmit(err error) (string, error, bool) {
 }
 
 func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
-	var a struct {
-		Role        string `json:"role"`
-		Task        string `json:"task"`
-		ForkContext bool   `json:"fork_context"`
-	}
-	if err := json.Unmarshal([]byte(args), &a); err != nil {
-		return ctlRefuse("spawn_agent: could not read the arguments")
-	}
-	a.Role = strings.TrimSpace(a.Role)
-	if a.Role == "" {
-		return ctlRefuse("spawn_agent: role is required")
+	a, problem := readSpawnArgs(args)
+	if problem != "" {
+		return ctlRefuse(problem)
 	}
 	// A path is not a second worker. Rewrite it before the one-role lock,
 	// or two calls with different paths collapse onto one resumed id.
 	if dirtySpawnRole(a.Role) {
 		a.Role = r.claimReadableRole(spawnStem(a.Role))
 		defer r.releaseRoleClaim(a.Role)
-	}
-	a.Task = strings.TrimSpace(a.Task)
-	if a.Task == "" {
-		return ctlRefuse("spawn_agent: task is required")
 	}
 	tools := make([]tool.BaseTool, 0, len(r.SubAgentTools)+1)
 	tools = append(tools, r.SubAgentTools...)

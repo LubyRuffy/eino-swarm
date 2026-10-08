@@ -11,6 +11,10 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Fixed
+
+- `F-130`, `C-019`: repeated invalid spawn calls from one model reply now produce counted refusals instead of flooding tool history; valid and corrected calls continue, and refused calls never claim worker creation (Issue #64).
+
 ### Added
 
 - `F-224`, `C-020`: phone output previews render Markdown by suffix and highlight known source languages; unknown/large text remains complete plain text, with inert HTML/SVG and unchanged downloads (Issue #63).

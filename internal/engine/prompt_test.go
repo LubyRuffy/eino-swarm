@@ -14,6 +14,15 @@ import (
 	"github.com/cloudwego/eino/components/model"
 )
 
+func TestManagerPromptRejectsInvalidSpawnCleanupClaims(t *testing.T) {
+	prompt := ManagerPrompt(&tools.Set{}, config.Default(), "")
+	for _, text := range []string{"one corrected call", "rejected_calls", "They created no worker", "do not invent ids"} {
+		if !strings.Contains(prompt, text) {
+			t.Fatalf("missing spawn recovery guidance %q", text)
+		}
+	}
+}
+
 func TestManagerPromptIncludesTheLiveHost(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
