@@ -191,12 +191,12 @@ describe("Transcript exec rows", () => {
       },
     ])
     render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
-    expect(document.querySelector(".animate-spin")).toBeNull()
-    expect(screen.queryByText("running…")).not.toBeInTheDocument()
     const row = screen.getByRole("button", { name: /exec/ })
+    expect(row.querySelector(".animate-spin")).toBeNull()
+    expect(screen.getByTestId("heartbeat").querySelector(".animate-spin")).not.toBeNull()
+    expect(screen.queryByText("running…")).not.toBeInTheDocument()
     expect(row).toHaveAttribute("aria-invalid", "true")
     fireEvent.click(row)
     expect(screen.getByText("the previous process stopped")).toBeInTheDocument()
   })
 })
-

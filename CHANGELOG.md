@@ -85,6 +85,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130` / `C-003`: the desktop response area now spins immediately after a turn starts, even if a local model has not emitted a token or the first five-second progress pulse (Issue #61).
+
 - `F-190` / `C-010`: Mac `zwai.app` 安装 ZIP 现在随包携带并声明 ZWAI Finder 图标；发布前拒绝缺失图标资源的 ZIP，避免运行时 Dock 有图标而解压后仍显示通用图标（Issue #60）。
 
 - `F-224` / `C-020`: 手机上的产出物文件树默认只显示第一层；逐层展开目录，搜索仍可找到折叠目录内的文件，刷新回到默认折叠（Issue #56）。

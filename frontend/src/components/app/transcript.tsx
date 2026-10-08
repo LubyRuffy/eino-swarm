@@ -775,7 +775,18 @@ export function Heartbeat({
     return () => window.clearInterval(id)
   }, [pulse?.at, running])
 
-  if (!running || !pulse) return null
+  if (!running) return null
+  const label = !pulse
+    ? t("transcript.workingEllipsis")
+    : workers > 0
+      ? t("transcript.workingAgents", {
+          duration: formatDuration(pulse.elapsedMs + drift),
+          n: workers,
+          s: workers === 1 ? "" : "s",
+        })
+      : t("transcript.workingFor", {
+          duration: formatDuration(pulse.elapsedMs + drift),
+        })
   return (
     <p
       data-testid="heartbeat"
@@ -783,21 +794,7 @@ export function Heartbeat({
       className="mt-2 flex items-center gap-2 px-2 text-xs text-muted-foreground"
     >
       <Loader2 className="size-3 shrink-0 animate-spin" />
-      <MarqueeText
-        active
-        className="text-xs"
-        text={
-          workers > 0
-            ? t("transcript.workingAgents", {
-                duration: formatDuration(pulse.elapsedMs + drift),
-                n: workers,
-                s: workers === 1 ? "" : "s",
-              })
-            : t("transcript.workingFor", {
-                duration: formatDuration(pulse.elapsedMs + drift),
-              })
-        }
-      />
+      <MarqueeText active className="text-xs" text={label} />
     </p>
   )
 }

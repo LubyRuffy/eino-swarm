@@ -7,6 +7,16 @@ test.afterEach(async ({ request }) => {
   await request.put("/api/settings", { data: { ui: { transcript_mode: "user" } } })
 })
 
+test("shows response activity as soon as a turn starts", async ({ page }) => {
+  await freshConversation(page)
+  await send(page, "Look at this from two angles and merge the findings")
+  const response = page.getByTestId("transcript").getByTestId("heartbeat")
+  await expect(response).toBeVisible()
+  await expect(response.locator(".animate-spin")).toBeVisible()
+  await waitForIdle(page)
+  await expect(response).toBeHidden()
+})
+
 test("runs a swarm turn end to end and keeps it after a reload", async ({ page }) => {
   await freshConversation(page)
   await send(page, "Look at this from two angles and merge the findings")

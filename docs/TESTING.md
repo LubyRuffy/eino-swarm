@@ -1174,7 +1174,8 @@ Several things are tested here, some as pure logic and some in jsdom:
   running swarm from looking frozen — and clicking a row opens that agent. The
   heartbeat line is tested separately: it reports the turn's age and the number
   of sub-agents still working, keeps ticking on fake timers between pulses, and
-  renders nothing before the first pulse or after the turn ends. The id parser
+  shows an animated pending line before the first pulse and renders nothing
+  after the turn ends. The id parser
   behind the roll-up is also unit tested for half-streamed and malformed
   arguments. A streaming answer (manager transcript and a worker's panel) is a
   heading, not raw hashes. A live thought is a 10-line scrolling box that
@@ -1695,7 +1696,8 @@ webServer timeout. If you invoke `npx playwright test` directly, a stale
 The progress pulse has no positive E2E assertion on purpose: even with the
 worker pause, a scripted turn usually finishes near the 5-second default
 interval, so a test that waited for a pulse would pass or fail on timing. The
-suite asserts instead that a finished turn leaves no pulse behind — the
+suite checks that a submitted turn immediately has a spinning response line and
+that a finished turn leaves no pulse behind — the
 regression that actually bites is an unhandled event kind landing in the
 timeline as a raw row, or the heartbeat outliving the answer. That pulses reach
 a client at all is verified in the engine and reducer tests.
