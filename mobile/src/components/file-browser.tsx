@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
+import { TextFilePreview } from "@/components/text-file-preview"
 import { ChevronDown, ChevronLeft, ChevronRight, FileText, Folder, Loader2, RefreshCw } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -127,7 +128,7 @@ export function FileBrowser({ link, threadId, onClose }: {
           <p className="mb-3 break-all text-xs text-muted-foreground">{selected.path}</p>
           {fileLoading ? <p className="flex items-center gap-2 text-sm"><Loader2 className="size-4 animate-spin" />{t("files.loading")}</p> : null}
           {fileError ? <p role="alert" className="text-sm text-destructive">{fileError}</p> : null}
-          {file?.kind === "text" ? <pre className="min-w-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 text-sm">{file.text}</pre> : null}
+          {file?.kind === "text" ? <TextFilePreview path={selected.path} text={file.text} /> : null}
           {file?.kind === "image" ? <img src={file.url} alt={selected.name} className="max-h-full max-w-full self-center object-contain" /> : null}
           {file?.kind === "pdf" ? <iframe src={file.url} title={selected.name} sandbox="allow-scripts" className="min-h-0 w-full flex-1 border-0" /> : null}
           {file?.kind === "download" ? <p className="text-sm text-muted-foreground">{t("files.unavailable")}</p> : null}

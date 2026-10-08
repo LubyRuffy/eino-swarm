@@ -10,13 +10,13 @@ const content = "<script>bad()</script>"
 
 function link(unknownOp = false, files: WorkspaceFile[] = [
   { path: "outputs", name: "outputs", size: 0, dir: true, modified: "", uploaded: false }, entry,
-]) {
+], text = content, mime = "text/html") {
   const rpc = vi.fn(async (request: { op: string }) => {
     if (unknownOp) return { v: 1, id: "", ok: false, code: "unknown_op", error: "unknown op" }
     if (request.op === "files") return { v: 1, id: "", ok: true, files }
     return { v: 1, id: "", ok: true, file_chunk: {
-      path: entry.path, name: entry.name, size: content.length, mime: "text/html",
-      offset: 0, next_offset: content.length, data: btoa(content), more: false,
+      path: files.at(-1)!.path, name: files.at(-1)!.name, size: text.length, mime,
+      offset: 0, next_offset: text.length, data: btoa(text), more: false,
     } }
   })
   return { path: "relay", alive: () => true, close: vi.fn(), announceDevice: vi.fn(), rpc } as unknown as RemoteLink
@@ -28,6 +28,34 @@ describe("phone file browser", () => {
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() })
   })
   afterEach(() => vi.restoreAllMocks())
+
+  it("renders a Markdown output as a document selected by suffix, not MIME", async () => {
+    const text = '# Summary\n\n> A finding\n\n- First\n\n<script>bad()</script>\n\n[unsafe](javascript:bad())'
+    const file = { ...entry, path: "summary.MD", name: "summary.MD", size: text.length }
+    render(<FileBrowser link={link(false, [file], text, "text/plain")} threadId="t1" onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name: file.name }))
+    expect(await screen.findByRole("heading", { name: "Summary", level: 1 })).toBeInTheDocument()
+    expect(screen.getByText("A finding").closest("blockquote")).not.toBeNull()
+    expect(screen.getByText("First").closest("li")).not.toBeNull()
+    expect(document.querySelector("script")).toBeNull()
+    expect(document.querySelector('a[href^="javascript:"]')).toBeNull()
+    expect(screen.getByRole("link", { name: "Download" })).toHaveAttribute("download", file.name)
+  })
+
+  it.each([
+    ["sample.go", 'package main\nconst value = "hello"\n', true],
+    ["sample.json", '{"value": true}\n', true],
+    ["sample.unknown", '# Plain text\n<script>bad()</script>\n', false],
+  ])("keeps %s intact and highlights only a known language", async (name, text, highlighted) => {
+    const file = { ...entry, path: name, name, size: text.length }
+    render(<FileBrowser link={link(false, [file], text, "text/plain")} threadId="t1" onClose={vi.fn()} />)
+    fireEvent.click(await screen.findByRole("button", { name }))
+    const preview = await screen.findByTestId("phone-file-preview")
+    await waitFor(() => expect(preview.querySelector("pre")?.textContent).toBe(text))
+    expect(Boolean(preview.querySelector(".text-syntax-keyword"))).toBe(highlighted)
+    expect(document.querySelector("script")).toBeNull()
+    expect(URL.createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: "application/octet-stream" }))
+  })
 
   it("shows only the first workspace level until each folder is opened", async () => {
     const row = (path: string, dir = false): WorkspaceFile => ({
@@ -60,7 +88,7 @@ describe("phone file browser", () => {
     render(<FileBrowser link={link()} threadId="t1" onClose={close} />)
     fireEvent.click(await screen.findByRole("button", { name: "outputs" }))
     fireEvent.click(await screen.findByRole("button", { name: "report.html" }))
-    expect(await screen.findByText(content)).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId("phone-file-preview").querySelector("pre")?.textContent).toBe(content))
     expect(document.querySelector("script")).toBeNull()
     expect(URL.createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: "application/octet-stream" }))
     act(() => { expect(window.__zwaiAndroidBack?.()).toBe(true) })

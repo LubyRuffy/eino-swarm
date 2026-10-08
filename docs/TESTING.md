@@ -1870,3 +1870,7 @@ The packaged `testNativeIOSMenuHidesAndroidUpdateCheck` scrolls the provider for
 before tapping Save: provider visibility fields may move Save below a small
 iPhone viewport. Native acceptance must reach the menu after configuring the
 endpoint, rather than tapping an offscreen control.
+
+## Phone output rendering (Issue #63)
+
+`mobile/src/components/file-browser.test.tsx` exercises the real read/preview path; `text-file-preview.test.tsx` checks suffix selection, unknown/large/empty text, exact source preservation and inert HTML/SVG/MDX. `mobile/e2e/walkthrough.spec.ts` checks Markdown structure and syntax colors in light/dark; the packaged `mobile/e2e/ios-wait-layout.swift` `testPhoneOutputPreview` reaches both documents through Outputs. Reuse `scripts/ios-layout-fixture.py` and select only that XCTest. Android uses a disposable offline package and isolated emulator, inspecting the same reached screens; a browser pass or native launch alone does not accept the changed flow.

@@ -4,6 +4,13 @@
 
 @layer base {
   :root {
+    --syntax-keyword: 252 45% 46%;
+    --syntax-command: 211 72% 38%;
+    --syntax-string: 152 48% 32%;
+    --syntax-comment: 240 4% 50%;
+    --syntax-operator: 28 70% 40%;
+    --syntax-flag: 211 40% 40%;
+    --syntax-variable: 38 80% 38%;
     --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
       "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
@@ -38,6 +45,13 @@
   }
 
   .dark {
+    --syntax-keyword: 252 55% 78%;
+    --syntax-command: 211 75% 72%;
+    --syntax-string: 152 45% 62%;
+    --syntax-comment: 240 5% 55%;
+    --syntax-operator: 32 70% 62%;
+    --syntax-flag: 211 50% 70%;
+    --syntax-variable: 40 75% 62%;
     --background: 240 8% 7%;
     --foreground: 0 0% 96%;
     --card: 240 7% 10%;
@@ -95,6 +109,21 @@
 
   .md-body > :first-child {
     @apply mt-0;
+  }
+  .md-body :is(h1, h2, h3, h4, h5, h6) {
+    @apply mb-2 mt-4 font-semibold leading-snug;
+  }
+  .md-body h1 {
+    @apply text-xl;
+  }
+  .md-body h2 {
+    @apply text-lg;
+  }
+  .md-body h3 {
+    @apply text-base;
+  }
+  .md-body blockquote {
+    @apply my-2 border-l-2 border-border pl-3 text-muted-foreground;
   }
   .md-body p {
     @apply my-1.5 break-words leading-snug;

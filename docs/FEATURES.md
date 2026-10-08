@@ -96,8 +96,10 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-224 Browse and preview PC conversation files on the phone
 
-- 目的：在已配对手机上查看 PC 对话的工作区产物；使用者：手机用户；入口：PC 对话页 → Outputs／产出物；输入：工作区列表、文件选择与搜索；输出：可折叠文件树、文本／常见图片／PDF 预览及其他文件的下载入口；前置条件：PC 在线且该对话存在；失败表现：RPC 错误、文件过大或不支持的预览明确显示；关联契约：`C-004`, `C-006`, `C-015`, `C-020`；实现证据：`internal/remote/files.go`, `internal/remote/files_test.go`, `mobile/src/components/file-browser.tsx`, `mobile/src/lib/remote-files.ts`, `mobile/src/lib/remote-files.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/ios-wait-layout.swift`。
+- 目的：在已配对手机上查看 PC 对话的工作区产物；使用者：手机用户；入口：PC 对话页 → Outputs／产出物；输入：工作区列表、文件选择与搜索；输出：可折叠文件树、按后缀渲染的 Markdown／源码高亮／纯文本／常见图片／PDF 预览及其他文件的下载入口；前置条件：PC 在线且该对话存在；失败表现：RPC 错误、文件过大或不支持的预览明确显示；关联契约：`C-004`, `C-006`, `C-015`, `C-020`；实现证据：`internal/remote/files.go`, `internal/remote/files_test.go`, `mobile/src/components/file-browser.tsx`, `mobile/src/lib/remote-files.ts`, `mobile/src/lib/remote-files.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/ios-wait-layout.swift`。
 - 手机产出物初次加载与刷新后只显示第一层文件和目录；每层目录手动展开，搜索可直接找到折叠层级内的文件。证据：`mobile/src/components/file-browser.tsx`, `mobile/src/components/file-browser.test.tsx`, `mobile/e2e/walkthrough.spec.ts`。
+
+- 手机文本产出物按后缀选择 Markdown 文档或现有源码语言高亮；未知文本与超过 256 Ki 字符的文本完整显示为纯文本。HTML/SVG、MDX 组件不执行，原文件下载保持不变。证据：`mobile/src/components/text-file-preview.tsx`, `mobile/src/components/text-file-preview.test.tsx`, `mobile/src/components/file-browser.test.tsx`。
 
 ### F-230 Direct model chat
 

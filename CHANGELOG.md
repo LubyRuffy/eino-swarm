@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-224`, `C-020`: phone output previews render Markdown by suffix and highlight known source languages; unknown/large text remains complete plain text, with inert HTML/SVG and unchanged downloads (Issue #63).
+
 - **A provider can be switched off.** Settings → Models has a switch on each endpoint. Off hides it from the composer model list and from a paired phone's catalog. A conversation already on it keeps that model. Hiding the default moves new conversations to an endpoint that is still listed. The last endpoint stays on. The phone's own direct-chat list has the same switch.
 
 - **The Agents list can be sorted.** It opens with the most recently active worker first. Created time, last update, and the name on the row each run newest-first or oldest-first (A to Z or Z to A for names). Running workers stay under Active; finished and failed stay under Done.
