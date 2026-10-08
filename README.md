@@ -180,11 +180,11 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **Swarm, visible.** Sub-agents appear as they spawn, with live status and their
   own transcript. Built on [eino](https://github.com/cloudwego/eino) ADK and the
   swarm library in this repository.
-- **It says what it is doing, even when it is quiet.** A turn reports in every
-  few seconds while it works, so a swarm thinking hard inside a slow tool call
-  shows a ticking "Working for 1m 12s · 2 sub-agents running" instead of looking
-  frozen. While it is running, that line — and the live tool / sub-agent rows —
-  sweep, and scroll if the text does not fit.
+- **It says what it is doing, even when it is quiet.** The response area shows
+  a spinning "working…" as soon as the turn starts, including while a local
+  model loads. Server progress then updates it every few seconds with a ticking
+  "Working for 1m 12s · 2 sub-agents running". While it is running, that line
+  and the live tool / sub-agent rows sweep and scroll if the text does not fit.
 - **Thinking stays a 10-line window in developer view.** While the model is reasoning, the block
   caps at ten lines and follows new tokens; earlier lines stay reachable by
   scrolling, with a fade at the top so it is obvious they are there. The

@@ -19,9 +19,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-003 Stored events and streamed order
 
 - 状态：active；类型：data / consistency；作用范围：engine、store、SSE、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-310`, `F-330`, `F-410`。
-- 契约内容：完成事件按同一锁分配 seq、保存、广播；流式 delta 包含截至当前的完整文本，不逐 token 持久化；慢订阅者通过数据库追赶，事件 kind 是回放格式的一部分。桌面与手机的轮次分界仅由真实 `done` / `error` 的 `created_at` 标记，不以最后一条回答或设备当前时间推断；隐藏定时输入也不能抹去已完成轮次的时间边界。
+- 契约内容：完成事件按同一锁分配 seq、保存、广播；流式 delta 包含截至当前的完整文本，不逐 token 持久化；慢订阅者通过数据库追赶，事件 kind 是回放格式的一部分。桌面运行态在首个进度脉冲前显示动态等待，不伪造服务端耗时；脉冲到达后显示服务端计时，轮次结束即移除。桌面与手机的轮次分界仅由真实 `done` / `error` 的 `created_at` 标记，不以最后一条回答或设备当前时间推断；隐藏定时输入也不能抹去已完成轮次的时间边界。
 - 允许行为：delta 丢失后下一帧恢复；禁止行为：丢弃已存储事件或随意重命名 kind；失败语义：落后订阅者转追赶；不变量：存储顺序与流顺序一致；边界条件：重连和回放。
-- 证据：实现 `internal/engine`, `internal/store`, `internal/remote`, `frontend/src/components/app/transcript-session.tsx`, `mobile/src/lib/transcript.ts`, `mobile/src/components/thread-blocks.tsx`；测试 `internal/engine`, `internal/remote`, `frontend/src/components/app/transcript-session.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/components/thread-blocks.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、数据模型和 wire 测试；来源：`AGENTS.md`、GitHub Issue #59。
+- 证据：实现 `internal/engine`, `internal/store`, `internal/remote`, `frontend/src/components/app/transcript.tsx`, `frontend/src/components/app/transcript-session.tsx`, `mobile/src/lib/transcript.ts`, `mobile/src/components/thread-blocks.tsx`；测试 `internal/engine`, `internal/remote`, `frontend/src/components/app/transcript.test.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/components/thread-blocks.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、数据模型和 wire 测试；来源：`AGENTS.md`、GitHub Issues #59、#61。
 
 ## C-004 Workspace is an anchor; HTTP paths are untrusted
 

@@ -165,9 +165,17 @@ describe("Heartbeat", () => {
     expect(container).toBeEmptyDOMElement()
   })
 
-  // Before the first pulse arrives there is nothing honest to show.
-  it("shows nothing until a pulse has arrived", () => {
-    const { container } = render(<Heartbeat running workers={0} />)
+  // A local model can take seconds to load before the first server pulse.
+  // The submitted turn must look alive in the response area immediately.
+  it("spins while running before the first pulse arrives", () => {
+    render(<Heartbeat running workers={0} />)
+    expect(screen.getByTestId("heartbeat")).toBeVisible()
+    expect(screen.getByText("working…")).toBeInTheDocument()
+    expect(screen.getByTestId("heartbeat").querySelector(".animate-spin")).not.toBeNull()
+  })
+
+  it("does not show a pending spinner for an idle turn", () => {
+    const { container } = render(<Heartbeat running={false} workers={0} />)
     expect(container).toBeEmptyDOMElement()
   })
 })
@@ -590,8 +598,9 @@ describe("live thinking", () => {
         onSelectAgent={() => {}}
       />,
     )
-    expect(screen.getByTestId("marquee")).toHaveTextContent("Thinking")
-    expect(screen.getByTestId("marquee")).toHaveAttribute("data-marquee", "shimmer")
+    const thinking = screen.getByTestId("thought-toggle").querySelector('[data-testid="marquee"]')
+    expect(thinking).toHaveTextContent("Thinking")
+    expect(thinking).toHaveAttribute("data-marquee", "shimmer")
   })
 
   it("drops the sweep once the thought is finished", () => {
