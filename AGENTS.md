@@ -251,11 +251,16 @@ feature.
   `python3 tools/audit_pending_batch.py --state <delivery-state.json>` checks
   integrated fix SHAs and batch qualification without publishing anything.
   `make docs-check` includes regressions for this accounting rule.
-- A user's iOS export-compliance answer for an exact source SHA and build number
-  is a durable confirmation. Record it in the private TestFlight ledger and
-  consult that record on every recovery run; do not ask again because the
-  active signing config moved to another build. Never reuse the answer for a
-  different source/build, and stop if two exact confirmations disagree.
+- Retain an authorized application-wide iOS export-compliance declaration in
+  `mobile/ios/App/App/Info.plist`. The user confirmed the existing `false`
+  classification for unchanged encryption usage on 2026-10-08; routine version
+  changes must not prompt again. Review changes to encryption use, implementation
+  and dependencies before retaining or changing that declaration. The release
+  preflight reads the source boolean and verifies the signed IPA retains it.
+  Old frozen sources without the field still use an exact source SHA/build
+  confirmation in the private TestFlight ledger. Read that receipt on recovery;
+  do not ask again after a signing-config switch or copy a per-build answer to
+  another source/build. Conflicting source, IPA or exact records stop publication.
 
 - Reconcile closed and open Issues with both delivery and TestFlight ledgers.
   Keep partially delivered, version-locked Issues for recovery, but exclude

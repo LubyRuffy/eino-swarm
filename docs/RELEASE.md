@@ -136,7 +136,18 @@ with a filename in the same directory). API private keys are used from that dire
 not copied into Git or a VM. Keychain fields are optional if the correct distribution
 identity is already usable. Command argv/output never appears in publishing errors.
 
-Before a new archive, record the authorized **current build** classification:
+The authorized application declaration is retained as the boolean
+`ITSAppUsesNonExemptEncryption` in `mobile/ios/App/App/Info.plist`. The user
+confirmed the existing `false` classification for unchanged encryption usage
+on 2026-10-08 (Issue #62). Preflight and the pre-archive gate read this source
+field, and the signed IPA must retain the same boolean. Routine version/build
+increments do not require another question. Review relevant encryption use,
+implementation and dependency changes before retaining or changing the field;
+the script does not infer a classification from an old Apple build.
+[Apple documents the Info.plist declaration](https://developer.apple.com/help/app-store-connect/test-a-beta-version/provide-export-compliance-information-for-beta-builds)
+as the way to avoid repeated submission questions when documentation is not required.
+
+For frozen sources without that field, record the authorized **current build** classification:
 
 ```json
 {
@@ -149,15 +160,15 @@ Before a new archive, record the authorized **current build** classification:
 }
 ```
 
-The value shown is schema illustration, not this app's classification. Never copy
-an old build's declaration. An existing signed IPA's boolean
+The value shown is schema illustration. Never copy an old per-build answer to
+another source/build. An existing signed IPA's boolean
 `ITSAppUsesNonExemptEncryption` can supply the statement; otherwise source/build
-must match the authorized record. A confirmation can also be retained in
+must match the authorized record when the source field is absent. A confirmation can also be retained in
 `~/.zwai-swarm/ios-signing/testflight-releases.json` under
 `compliance_confirmations` with `version`, `source_sha`, `build_number`,
 `confirmed_by`, and boolean `uses_non_exempt`. The release adapter reads that
 exact source/build record even if the active signing config later targets a
-different build; conflicting exact records stop the release. Record a confirmed
+different build; conflicts between source, IPA or exact records stop the release. Record a confirmed
 answer once and reuse its receipt on recovery, without asking the user again.
 If non-exempt encryption needs additional Apple
 documents, prepare them before completing TestFlight. See

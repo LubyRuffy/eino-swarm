@@ -37,6 +37,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430` / `C-010`: the authorized iOS export-compliance declaration now lives in the app's Info.plist and is read before archive/preflight. Routine build increments no longer require repeated questions; the signed IPA and exact receipts must agree. Frozen sources without the field retain their per-build confirmation recovery (Issue #62).
+
 - `F-130` / `F-220` / `C-003`: completed PC and paired-phone turns now show a visible divider and local date/time from the stored completion event, including repeated scheduled runs and failed turns (Issue #59).
 
 - `F-220` / `C-006`: paired phones explain when a live turn has only hidden background work; Earlier now skips continuous hidden subagent calls and results to reach the nearest visible conversation message (Issue #58).
