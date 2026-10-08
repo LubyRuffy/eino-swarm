@@ -142,6 +142,11 @@ live edge of the last turn and pulling up loads earlier events. `TestWatchEmptyL
 is why an empty live turn still carries a log cursor, and
 `TestLogZeroBeforePagesOlderThanLastTurn` is why `log` with `before` 0
 pages older than that window.
+`TestLogFindsEarlierAnswerPastHiddenSubagentBookkeeping` covers a long run of
+phone-hidden subagent calls and results: one `log` RPC must reach the prior
+answer instead of returning another empty-looking page. The phone screen unit
+test and `walkthrough.spec.ts` exercise the empty-state explanation and the
+Earlier button through the rendered page.
 `TestPhoneListAndOpenSurfaceGoalAndParkedWait` is why a parked `/goal` wait
 is on the phone roster (`waiting`) even when it is not on the recent page,
 and why `open` carries the objective flags plus the wake snapshot.
@@ -1800,6 +1805,11 @@ UDID (`xcrun simctl list devices`). The fixture script copies the current
 native app into a new temporary directory and enables the existing offline
 walkthrough there. It does not alter shipping assets, sign, or upload anything.
 The keyboard accessory fallback coordinate is specific to that simulator.
+For the hidden-history regression, set `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=hidden'`
+when creating the disposable fixture and select only
+`AppUITests/BindFlowTests/testHiddenHistoryShowsEarlierAnswer`. That XCTest
+checks the packaged app's empty-state explanation, Earlier tap and recovered
+answer; the default fixture leaves this one test skipped.
 
 ```bash
 cd mobile

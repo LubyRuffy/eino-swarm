@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Copy the current native app into a disposable offline layout test fixture."""
 from pathlib import Path
+import json
+import os
 import shutil
 import tempfile
 
@@ -11,9 +13,10 @@ fixture = Path(tempfile.mkdtemp(prefix="zwai-ios-layout-"))
 shutil.copytree(mobile / "ios", fixture / "mobile/ios")
 (fixture / "mobile/node_modules").symlink_to(mobile / "node_modules", target_is_directory=True)
 index = fixture / "mobile/ios/App/App/public/index.html"
+query = os.environ.get("IOS_LAYOUT_QUERY", "/?mock=1&tick=0")
 index.write_text(index.read_text().replace(
     "<head>",
-    '<head><script>history.replaceState(null,"","/?mock=1&tick=0");'
+    '<head><script>history.replaceState(null,"",' + json.dumps(query) + ');'
     'localStorage.setItem("zwai.phone.locale","en");</script>',
     1,
 ))

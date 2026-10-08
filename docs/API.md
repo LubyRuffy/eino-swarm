@@ -505,6 +505,10 @@ pulls up (or taps Earlier) and calls `log`. `log` with `before` omitted or
 the wire (`omitempty`); the phone treats a missing `more` as false. `log`
 returns `events` plus `seq` (oldest seq of that store page) so an empty
 filtered page can still advance the cursor instead of killing paging. A later
+`log` request skips consecutive pages made only of hidden subagent-management
+calls and orphaned tool results on the PC before replying, so one Earlier tap
+reaches the nearest visible conversation history. It preserves original event
+sequence numbers and the normal page size once visible content is found. A later
 `since` or `lagged` replays the gap from the database, not dropped. `spawned`
 bodies are stripped; `tool_delta` is one line; other text is capped by
 `event_chars` (default 4000). A frame over 64KiB is dropped rather than

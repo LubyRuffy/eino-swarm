@@ -5,6 +5,16 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("phone reaches earlier conversation text past hidden background events", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto("/?mock=1&tick=0&history=hidden")
+  const transcript = page.getByTestId("transcript")
+  await expect(transcript).toContainText("这一轮暂无可显示消息")
+  await page.getByRole("button", { name: "更早" }).click()
+  await expect(transcript).toContainText("Earlier answer")
+  await expect(transcript).not.toContainText("这一轮暂无可显示消息")
+})
+
 test("a phone lists PC outputs and previews a file without leaving the conversation", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 })
   await page.goto(WALKTHROUGH)

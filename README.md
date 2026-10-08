@@ -405,6 +405,9 @@ end-to-end tests run on and the fastest way to see the UI work.
    findings or **Waiting**, not `schedule_wake` / `report_schedule` JSON.
    The transcript opens on the
    last turn, already at the live edge; Earlier or pull up loads older rows.
+   If the current turn contains only hidden background coordination, the phone
+   explains the empty view; one Earlier request skips that activity and reaches
+   the nearest visible conversation history.
    **Agents / 子 Agent** counts running workers and separates them from finished
    or failed history; each row shows status and opens its separate
    activity log. Back returns through the Agents list, then the conversation;

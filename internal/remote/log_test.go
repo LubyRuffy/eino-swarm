@@ -161,6 +161,46 @@ func TestLogSkipsAPageThePhoneWouldNotRender(t *testing.T) {
 	}
 }
 
+func TestLogFindsEarlierAnswerPastHiddenSubagentBookkeeping(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("long hidden run", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Store().AppendEvent(&store.Event{
+		ThreadID: th.ID, Kind: "agent_message", AgentID: "manager", Text: "last visible answer",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A scheduled turn can emit thousands of subagent calls without a new
+	// manager message. The phone omits these calls and their orphaned results.
+	for i := 0; i < 70; i++ {
+		for _, ev := range []store.Event{
+			{ThreadID: th.ID, Kind: "tool_call", AgentID: "manager", ToolCallID: "spawn", Text: "spawn_agent({})"},
+			{ThreadID: th.ID, Kind: "tool_result", AgentID: "manager", ToolCallID: "spawn", Text: "started"},
+		} {
+			if err := e.Store().AppendEvent(&ev); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if i == 35 {
+			// The actual long-running turn also stores packed cap notices
+			// between runs of hidden subagent events.
+			if err := e.Store().AppendEvent(&store.Event{
+				ThreadID: th.ID, Kind: "max_iterations", Text: `{"limit":400}`,
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	resp := Handle(e, config.RemoteConfig{WatchEvents: 2}, Request{
+		ID: "l", Op: OpLog, ThreadID: th.ID, Before: 143,
+	}, "relay", "s")
+	if !resp.OK || len(resp.Events) == 0 || resp.Events[0].Text != "last visible answer" || resp.More {
+		t.Fatalf("earlier page did not reach visible history: events=%d more=%v seq=%d", len(resp.Events), resp.More, resp.Seq)
+	}
+}
+
 func TestLogRejectsUnknownThreadAndMissingThread(t *testing.T) {
 	e := testEngine(t)
 	missing := Handle(e, config.RemoteConfig{}, Request{ID: "1", Op: OpLog, ThreadID: "nope", Before: 2}, "relay", "s")

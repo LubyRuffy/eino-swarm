@@ -111,6 +111,7 @@ export const en = {
   "thread.running": "running",
   "thread.waiting": "Waiting",
   "thread.earlier": "Earlier",
+  "thread.hiddenHistory": "No visible messages in this turn yet. Open earlier history.",
   "thread.loading": "Loading",
   "thread.tool": "tool",
   "thread.thought": "Thought",
