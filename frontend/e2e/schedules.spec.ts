@@ -114,6 +114,7 @@ test("standalone wait from the inbox runs now and opens findings", async ({
     "This turn is a scheduled check.",
   )
   await expect(page.getByTestId("user-message")).toHaveCount(0)
+  await expect(page.getByTestId("turn-boundary").locator("time")).toHaveAttribute("datetime", /\d{4}-\d{2}-\d{2}T/)
 })
 
 test("a thread wake from REST shows a banner that cancel removes", async ({

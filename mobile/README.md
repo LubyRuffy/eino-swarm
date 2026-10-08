@@ -48,6 +48,8 @@ The header Back button and Android system Back return from a worker log to
 the Agents list, then to the conversation, before leaving for the inbox.
 The `schedule` event is still **A wait is armed.** in the transcript; the live
 wait is the banner (next check, **Run now**, **Cancel wait**).
+Each finished PC turn leaves a divider stamped with its host completion time,
+including scheduled checks whose automatic input is hidden on the phone.
 `schedule_report` stays on the `report_schedule` chip. A standing
 `/goal` is Pursuing / Done / Blocked / Paused, not a muted strip that
 vanishes on complete. The objective is one truncated line (the full text

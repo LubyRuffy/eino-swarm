@@ -78,6 +78,16 @@ export function formatTime(iso: string): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
 }
 
+/** The turn divider needs a date as well as a clock for scheduled runs on different days. */
+export function formatTurnTime(iso: string): string {
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return ""
+  return date.toLocaleString(undefined, {
+    year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  })
+}
+
 /** Calendar time on a transcript row. Seconds belong on the turn footer,
  *  not on every message. */
 export function formatMessageTime(iso: string): string {

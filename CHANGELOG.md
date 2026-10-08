@@ -37,6 +37,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130` / `F-220` / `C-003`: completed PC and paired-phone turns now show a visible divider and local date/time from the stored completion event, including repeated scheduled runs and failed turns (Issue #59).
+
 - `F-220` / `C-006`: paired phones explain when a live turn has only hidden background work; Earlier now skips continuous hidden subagent calls and results to reach the nearest visible conversation message (Issue #58).
 
 - `F-430` / `C-010`: publication now requires a finalized processing workset matching the complete main SHA, all accepted Issues and affected platforms. An active Issue blocks a new tag, preventing desktop and phone fixes handled in one batch across worktrees from being split into intermediate releases.

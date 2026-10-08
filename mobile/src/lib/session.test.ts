@@ -44,6 +44,22 @@ function ready(partial?: Partial<RemoteResponse>): RemoteResponse {
 }
 
 describe("phone watch session", () => {
+  it("keeps both completion times when an earlier scheduled turn is paged in", () => {
+    let view = applyPush(openView(detail()), ready({ seq: 6, more: true, events: [
+      ev({ seq: 5, kind: "agent_message", turn_id: "second", text: "newer result" }),
+      ev({ seq: 6, kind: "done", turn_id: "second", created_at: "2026-10-08T02:03:04Z" }),
+    ] }))
+    view = prependOlder(view, [
+      ev({ seq: 1, kind: "user_message", turn_id: "first", text: "This turn is a scheduled check." }),
+      ev({ seq: 2, kind: "agent_message", turn_id: "first", text: "older result" }),
+      ev({ seq: 3, kind: "done", turn_id: "first", created_at: "2026-10-08T01:01:02Z" }),
+    ], false)
+    expect(managerBlocks(view.blocks).map((b) => [b.kind, b.text])).toEqual([
+      ["answer", "older result"], ["turn_end", "2026-10-08T01:01:02Z"],
+      ["answer", "newer result"], ["turn_end", "2026-10-08T02:03:04Z"],
+    ])
+  })
+
   it("rebuilds worker identity and separate log after older pages load", () => {
     let view = applyPush(openView(detail()), ready({
       seq: 5, more: true,
