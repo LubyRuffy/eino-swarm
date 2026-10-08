@@ -4,6 +4,28 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testScheduledTurnBoundariesShowCompletionDates() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 12))
+    back.tap()
+    let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'")).firstMatch
+    XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    thread.tap()
+    let first = app.staticTexts["First completed run"]
+    XCTAssertTrue(first.waitForExistence(timeout: 8), "scheduled history did not reach the packaged app")
+    let second = app.staticTexts["Second completed run"]
+    XCTAssertTrue(second.waitForExistence(timeout: 8))
+    let dates = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '2026'"))
+    XCTAssertGreaterThanOrEqual(dates.count, 2, "both completed turns need a visible date")
+    XCTAssertLessThan(first.frame.minY, second.frame.minY)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "scheduled-turn-boundaries"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
   func testHiddenHistoryShowsEarlierAnswer() throws {
     let app = XCUIApplication()
     app.launch()

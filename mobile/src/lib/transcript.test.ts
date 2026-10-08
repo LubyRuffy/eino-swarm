@@ -24,6 +24,25 @@ function ev(partial: Partial<RemoteEvent> & Pick<RemoteEvent, "kind" | "seq">): 
 }
 
 describe("compact transcript", () => {
+  it("keeps a completion marker between scheduled turns whose prompts are hidden", () => {
+    let blocks: CompactBlock[] = []
+    for (const row of [
+      ev({ seq: 1, kind: "turn", turn_id: "first" }),
+      ev({ seq: 2, kind: "user_message", turn_id: "first", text: "This turn is a scheduled check." }),
+      ev({ seq: 3, kind: "agent_message", turn_id: "first", text: "first findings" }),
+      ev({ seq: 4, kind: "done", turn_id: "first", created_at: "2026-10-08T01:01:02Z" }),
+      ev({ seq: 5, kind: "turn", turn_id: "second" }),
+      ev({ seq: 6, kind: "user_message", turn_id: "second", text: "This turn is a scheduled check." }),
+      ev({ seq: 7, kind: "agent_message", turn_id: "second", text: "second findings" }),
+      ev({ seq: 8, kind: "done", turn_id: "second", created_at: "2026-10-08T02:03:04Z" }),
+    ]) blocks = applyEvent(blocks, row)
+    expect(managerBlocks(blocks).map((b) => b.kind)).toEqual(["answer", "turn_end", "answer", "turn_end"])
+    expect(blocks.filter((b) => b.kind === "turn_end").map((b) => b.text)).toEqual([
+      "2026-10-08T01:01:02Z", "2026-10-08T02:03:04Z",
+    ])
+    expect(foldPhoneItems(blocks).map((item) => item.type)).toEqual(["block", "block", "block", "block"])
+  })
+
   it("keeps interleaved manager and worker streams in separate histories", () => {
     let blocks: CompactBlock[] = []
     for (const row of [
@@ -136,6 +155,7 @@ describe("compact transcript", () => {
     expect(blocks[1].kind).toBe("spawn")
     expect(blocks[1].text).toBe("researcher")
     expect(blocks[2].kind).toBe("error")
+    expect(blocks[3]).toMatchObject({ kind: "turn_end", text: "2026-01-01T00:00:00Z" })
   })
 
   it("does not leak unknown kinds into the transcript", () => {
@@ -411,6 +431,16 @@ describe("foldPhoneItems", () => {
     ])
     expect(phonePlanningTail(closed, true)).toBe(true)
     expect(phonePlanningTail(closed, false)).toBe(false)
+    expect(
+      phonePlanningTail(
+        foldPhoneItems([
+          row({ id: "old-work", kind: "reasoning", text: "first pass" }),
+          row({ id: "old-answer", kind: "answer", text: "landed" }),
+          row({ id: "old-end", kind: "turn_end", text: "2026-10-08T01:01:02Z" }),
+        ]),
+        true,
+      ),
+    ).toBe(false)
     expect(
       phonePlanningTail(
         foldPhoneItems([

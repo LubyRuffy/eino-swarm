@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react"
 import { useEffect, useState, type ReactNode } from "react"
 import { Disclosure } from "@/components/ui/collapsible"
 import { TurnBlockList } from "@/components/app/work-fold"
-import { cn, formatDuration, formatTime } from "@/lib/utils"
+import { cn, formatDuration, formatTurnTime } from "@/lib/utils"
 import { isArmedWaitNotice, isGoalHoldNotice } from "@/lib/transcript-notices"
 import { useT } from "@/lib/use-t"
 import type { Block, TurnState } from "@/lib/transcript"
@@ -124,6 +124,7 @@ export function GoalSessionTurn({
         revealIds={revealIds}
         renderBlock={renderBlock}
       />
+      <TurnFooter turn={turn} />
     </div>
   )
 }
@@ -191,19 +192,20 @@ export function responseClockBlockId(blocks: Block[]): string | undefined {
 
 function TurnFooter({ turn }: { turn?: TurnState }) {
   const t = useT()
-  if (!turn || turn.status === "running" || !turn.endedAt || !turn.startedAt) return null
-  const ms = new Date(turn.endedAt).getTime() - new Date(turn.startedAt).getTime()
+  if (!turn || turn.status === "running" || !turn.endedAt) return null
+  const ms = turn.startedAt ? new Date(turn.endedAt).getTime() - new Date(turn.startedAt).getTime() : NaN
   return (
     <p
       data-find-ignore=""
-      className="mt-2 flex items-center gap-2 px-2 text-xs text-muted-foreground"
+      data-testid="turn-boundary"
+      className="mt-3 flex items-center gap-2 border-t border-border px-2 pt-2 text-xs text-muted-foreground"
     >
-      <span>
-        {turn.status === "done" ? t("transcript.workedFor") : t("transcript.stoppedAfter")}{" "}
-        {formatDuration(ms)}
-      </span>
-      <span className="opacity-50">·</span>
-      <span>{formatTime(turn.endedAt)}</span>
+      {Number.isFinite(ms) && ms >= 0 ? (
+        <span>
+          {turn.status === "done" ? t("transcript.workedFor") : t("transcript.stoppedAfter")} {formatDuration(ms)}
+        </span>
+      ) : null}
+      <time dateTime={turn.endedAt} className="ml-auto tabular-nums">{formatTurnTime(turn.endedAt)}</time>
     </p>
   )
 }

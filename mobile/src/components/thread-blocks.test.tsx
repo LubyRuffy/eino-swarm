@@ -6,6 +6,21 @@ import { setLocale } from "@/lib/i18n"
 import { renderBlock, ThreadLog } from "./thread-blocks"
 
 describe("thread blocks", () => {
+  it("separates completed runs with the host completion time, including a failed run", () => {
+    render(<ThreadLog blocks={[
+      { id: "a1", kind: "answer", text: "first findings" },
+      { id: "d1", kind: "turn_end", text: "2026-10-08T01:01:02Z" },
+      { id: "e2", kind: "error", text: "second run failed" },
+      { id: "d2", kind: "turn_end", text: "2026-10-08T02:03:04Z" },
+    ]} />)
+    const separators = screen.getAllByTestId("turn-boundary")
+    expect(separators).toHaveLength(2)
+    expect(separators[0].querySelector("time")).toHaveAttribute("dateTime", "2026-10-08T01:01:02Z")
+    expect(separators[1].querySelector("time")).toHaveAttribute("dateTime", "2026-10-08T02:03:04Z")
+    expect(separators[0].compareDocumentPosition(screen.getByText("second run failed")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(separators[0]).toHaveClass("border-border")
+  })
+
   it("renders markdown in a user bubble instead of the source markers", () => {
     render(
       <>
@@ -301,5 +316,17 @@ describe("thread blocks", () => {
     const tail = screen.getByTestId("planning-tail")
     expect(tail).toHaveTextContent("Planning next moves")
     expect(screen.getByText("landed").compareDocumentPosition(tail) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it("does not animate the prior turn while a new turn has not shown work", () => {
+    setLocale("en")
+    render(<ThreadLog running blocks={[
+      { id: "r-old", kind: "reasoning", text: "first pass" },
+      { id: "a-old", kind: "answer", text: "landed" },
+      { id: "d-old", kind: "turn_end", text: "2026-10-08T01:01:02Z" },
+    ]} />)
+    expect(screen.getByTestId("work-fold")).toHaveTextContent("Thought")
+    expect(screen.getByTestId("work-fold")).not.toHaveTextContent("Planning next moves")
+    expect(screen.queryByTestId("planning-tail")).not.toBeInTheDocument()
   })
 })

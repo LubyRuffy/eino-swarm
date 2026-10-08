@@ -1718,6 +1718,12 @@ a client at all is verified in the engine and reducer tests.
   prompt or the toolset.
 - **A UI change**: look at it, in both light and dark, before and while a turn
   runs. The panel, the transcript and the composer all change shape mid-turn.
+- **Turn boundaries**: `frontend/src/components/app/transcript-session.test.tsx`
+  and `frontend/e2e/schedules.spec.ts` check finished desktop sessions;
+  `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`,
+  `mobile/src/components/thread-blocks.test.tsx`, and
+  `mobile/e2e/walkthrough.spec.ts` check host completion timestamps across
+  hidden scheduled input and history paging (Issue #59).
 - **The phone apps**: `make mobile-ios` / `make mobile-android`. Scan QR opens
   a live viewfinder (frame, sweeping beam, chime) on the pairing QR from
   Settings → Phone. Paste is the same URI when the camera is missing. After bind, a live turn (or the last thread this phone opened)
@@ -1810,6 +1816,13 @@ when creating the disposable fixture and select only
 `AppUITests/BindFlowTests/testHiddenHistoryShowsEarlierAnswer`. That XCTest
 checks the packaged app's empty-state explanation, Earlier tap and recovered
 answer; the default fixture leaves this one test skipped.
+For Issue #59, use `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=turns'` and select
+`AppUITests/BindFlowTests/testScheduledTurnBoundariesShowCompletionDates`.
+It opens the seeded conversation inside the packaged app and checks both dated
+results. The same fixture was installed in an isolated Android emulator as a
+debug APK; its screen showed both dated dividers. These are native behavior
+checks, not signed publication. On desktop, two turns against the offline mock
+provider showed separate completion times in the native Wails window.
 
 ```bash
 cd mobile

@@ -2,7 +2,7 @@ import { useState } from "react"
 import { ChevronRight, Loader2 } from "lucide-react"
 
 import { PhoneMarkdown } from "@/components/markdown"
-import { t } from "@/lib/i18n"
+import { getLocale, t } from "@/lib/i18n"
 import { parseQuotedMessage } from "@/lib/quote"
 import {
   foldPhoneItems,
@@ -23,6 +23,17 @@ import {
 import { cn } from "@/lib/cn"
 
 export function renderBlock(b: CompactBlock) {
+  if (b.kind === "turn_end") {
+    const at = new Date(b.text)
+    const valid = Number.isFinite(at.getTime())
+    return (
+      <div data-testid="turn-boundary" className="mt-3 flex items-center justify-end border-t border-border pt-2 text-[11px] text-muted-foreground">
+        {valid ? <time dateTime={b.text} className="tabular-nums">{at.toLocaleString(getLocale() === "zh" ? "zh-CN" : "en-US", {
+          year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit",
+        })}</time> : null}
+      </div>
+    )
+  }
   if (b.kind === "user") {
     const text = dropPackedJson(b.text)
     if (!text && !b.hasImages) return null
@@ -207,6 +218,10 @@ export function ThreadLog({
   const items = foldPhoneItems(blocks)
   let lastWork = -1
   items.forEach((item, i) => {
+    if (item.type === "block" && item.block.kind === "turn_end") {
+      lastWork = -1
+      return
+    }
     if (item.type === "work") lastWork = i
   })
   const laterAnswer =

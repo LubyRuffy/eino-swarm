@@ -42,6 +42,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-130 Agent runs, tools, and live control
 
 - 目的：运行 manager/sub-agent、查看工具并发送跟进或插入；使用者：PC 用户；入口：对话输入框和 Agent 面板；输入：消息、工具结果、排队消息的修改、未读 steer 的修改；输出：实时事件和最终回答；前置条件：配置可用 provider；失败表现：运行错误和 Trace；关联契约：`C-002`, `C-003`, `C-012`；实现证据：`internal/engine`, `internal/tools`, `frontend/src/components/app`。
+- 每个已结束轮次在桌面/Web 对话中都有横线及本地日期时间，持续目标折叠的轮次也保留该分界；进行中不提前标结束。实现证据：`frontend/src/components/app/transcript-session.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `frontend/e2e/schedules.spec.ts`。
 - 代理名单：行上是 `resume_agent` 使用的 `agent_id`，不是 `#n`。进行中与已完成各自成组。组内默认按最后更新从新到旧；可改为创建时间或行上的名称，并在从新到旧 / 从旧到新（名称则是 A 到 Z / Z 到 A）之间切换。没有时间的行留在底部。实现证据：`frontend/src/lib/agent-label.ts`, `frontend/src/lib/agent-roster-sort.ts`, `frontend/src/components/app/panel.tsx`。
 - 排队与未读引导：工作中的 Enter 进入队列。点开一条排队消息，或点未读引导上的铅笔，原文进输入框（引用变成卡片），原来的那条先拿掉。再按 Enter，和新建一条排队一样，排到队尾。已读引导不会被拉进输入框。只有图片的未读引导没有可排队的文字，只能删除。
 - 主动委派：共享运行时提示词要求 manager 在能提效或提高质量时主动调用 subagents，执行中重新评估；单个 worker 也可承担独立审查或第二种思路，不要求用户显式提出。普通对话与持续目标遵循相同策略；无收益时自行处理，遵守用户限制与并发上限，由 manager 核验和整合结果。关联契约：`C-019`；实现证据：`internal/engine/prompt.go`, `internal/engine/prompt_test.go`, `cmd/zwai/tui_prompt_test.go`。
@@ -78,6 +79,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-220 Read and control PC conversations
 
 - 目的：在手机查看同一对话并发送、跟进、回答问题、插入及翻页；使用者：手机用户；入口：手机收件箱和对话页；输入：消息与操作，包括切换已绑定 PC、对 PC 的提问选择选项或填写 Other、把队列首条等待消息中断插入当前轮次；输出：切换 PC 后停留在该 PC 收件箱，进入对话后看到 PC 上同一对话的事件，提问回答经 PC 确认后继续，窄屏长输入仍可直接提交；当前轮次只有被隐藏的后台协调记录时说明空白原因，「更早」一次跨过连续隐藏记录到达可显示历史；前置条件：已绑定且在线；失败表现：重连提示或 RPC 错误，提问提交被拒绝时显示原因并保留草稿重试；关联契约：`C-002`, `C-003`, `C-006`, `C-015`, `C-016`, `C-017`；实现证据：`internal/remote/log.go`, `internal/remote/log_test.go`, `mobile/src/app.tsx`, `mobile/src/app.test.tsx`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/components/ask-card.tsx`, `mobile/src/lib/ask.ts`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/ask-answer.spec.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`。
+- 手机在每个已结束轮次后显示完成事件的本地日期时间和分界线；定时输入隐藏、失败轮次及历史翻页不丢掉边界。实现证据：`mobile/src/lib/transcript.ts`, `mobile/src/components/thread-blocks.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/components/thread-blocks.test.tsx`, `mobile/e2e/walkthrough.spec.ts`。
 
 ### F-221 Quote PC conversation text
 

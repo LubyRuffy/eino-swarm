@@ -20,6 +20,7 @@ export type BlockKind =
   | "spawn"
   | "finish"
   | "error"
+  | "turn_end"
 
 export type CompactBlock = {
   id: string
@@ -261,9 +262,11 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
       return next
     case "error":
       next.push({ id: blockId(ev), kind: "error", text: ev.err || ev.text })
+      next.push({ id: `${blockId(ev)}:end`, kind: "turn_end", text: ev.created_at })
       return next
     case "done":
       return next.map((b) => (b.streaming ? { ...b, streaming: false } : b))
+        .concat({ id: blockId(ev), kind: "turn_end", text: ev.created_at })
     case "goal":
     case "goal_complete":
     case "goal_capped":
@@ -452,7 +455,8 @@ function isAlwaysVisible(block: CompactBlock): boolean {
     block.kind === "answer" ||
     block.kind === "question" ||
     block.kind === "error" ||
-    block.kind === "notice"
+    block.kind === "notice" ||
+    block.kind === "turn_end"
   )
 }
 
@@ -495,6 +499,11 @@ export function phonePlanningTail(items: PhoneItem[], running: boolean): boolean
   let blocks: CompactBlock[] | undefined
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
+    if (item.type === "block" && item.block.kind === "turn_end") {
+      last = -1
+      blocks = undefined
+      continue
+    }
     if (item.type !== "work") continue
     last = i
     blocks = item.blocks

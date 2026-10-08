@@ -407,7 +407,8 @@ end-to-end tests run on and the fastest way to see the UI work.
    last turn, already at the live edge; Earlier or pull up loads older rows.
    If the current turn contains only hidden background coordination, the phone
    explains the empty view; one Earlier request skips that activity and reaches
-   the nearest visible conversation history.
+   the nearest visible conversation history. A completed turn has a dated
+   divider on both the PC and the phone, so repeated scheduled results stay distinct.
    **Agents / 子 Agent** counts running workers and separates them from finished
    or failed history; each row shows status and opens its separate
    activity log. Back returns through the Agents list, then the conversation;

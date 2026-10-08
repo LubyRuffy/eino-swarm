@@ -497,7 +497,11 @@ waiting on a later push. `status` is the same live header as desktop:
 `running` / `turn_id` / `awaiting_answer` / `waiting`, plus `wake` while a
 thread wait is parked. Goal, schedule, `turn`, `done` and `error` event
 frames carry that `status` too so a parked `/goal` does not look idle after
-`done`. Catch-up is not a slideshow of `event` frames —
+`done`.
+The phone renders each stored `done` or `error` as a turn divider using that
+event's `created_at`; it does not infer completion from the last answer or
+the phone's clock. Scheduled input may be hidden while its divider remains.
+Catch-up is not a slideshow of `event` frames —
 painting those oldest-first is how the phone showed the start of the turn
 and then yanked down. `more` means older events still exist; the phone
 pulls up (or taps Earlier) and calls `log`. `log` with `before` omitted or

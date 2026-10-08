@@ -56,6 +56,18 @@ function sessionState(opts?: { answer?: string; user?: string }): TranscriptStat
 }
 
 describe("responseClockBlockId", () => {
+  it("shows a visible completion divider with a timestamp for ordinary and goal sessions", () => {
+    const ordinary = sessionState({ answer: "ordinary result" })
+    ordinary.turns[0].session = false
+    const { rerender } = render(<Transcript state={ordinary} loaded onSelectAgent={() => {}} />)
+    expect(screen.getAllByTestId("turn-boundary")).toHaveLength(1)
+    expect(screen.getByTestId("turn-boundary").querySelector("time")).toHaveAttribute("dateTime", ordinary.turns[0].endedAt)
+    expect(screen.getByTestId("turn-boundary")).toHaveClass("border-border")
+    rerender(<Transcript state={sessionState({ answer: "scheduled result" })} loaded onSelectAgent={() => {}} />)
+    expect(screen.getAllByTestId("turn-boundary")).toHaveLength(1)
+    expect(screen.getByTestId("turn-boundary").querySelector("time")).toHaveAttribute("dateTime", "2026-01-01T00:00:09.000Z")
+  })
+
   it("stamps the last finished answer, not every answer in the turn", () => {
     expect(
       responseClockBlockId([

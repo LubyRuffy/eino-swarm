@@ -5,6 +5,21 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("scheduled results stay separated by their completion timestamps on the phone", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.goto("/?mock=1&tick=0&history=turns")
+  await page.getByRole("button", { name: "返回" }).click()
+  await page.getByRole("button", { name: /^打开 Sweep the unused exports$/ }).click()
+  const transcript = page.getByTestId("transcript")
+  const boundaries = transcript.getByTestId("turn-boundary")
+  await expect(boundaries).toHaveCount(2)
+  await expect(transcript).not.toContainText("This turn is a scheduled check.")
+  expect(await boundaries.locator("time").evaluateAll((times) => times.map((time) => time.getAttribute("datetime"))))
+    .toEqual(["2026-10-08T01:01:02Z", "2026-10-08T02:03:04Z"])
+  await expect(transcript).toContainText("First completed run")
+  await expect(transcript).toContainText("Second completed run")
+})
+
 test("phone reaches earlier conversation text past hidden background events", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 })
   await page.goto("/?mock=1&tick=0&history=hidden")
