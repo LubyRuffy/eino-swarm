@@ -17,6 +17,10 @@ output separates `allocated_pending_issues` from `unallocated_issues`; only
 newly unallocated changes contribute to the next version's commit count and
 oldest waiting timestamp. Alias reports
 and unfinished code do not qualify.
+`tools/test_release.py` also checks that a new public batch cannot start while
+an Issue remains active or without a finalized workset matching the audited
+source, full Issue set and affected platforms. Public-tag recovery keeps its
+previously frozen source and does not require a new workset receipt.
 
 Run a read-only real-ledger reconciliation with:
 

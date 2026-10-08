@@ -494,9 +494,9 @@ class MoreGateTests(unittest.TestCase):
             (root/'go.mod').write_text('module github.com/example/app\n')
             statepath = root/'delivery.json'
             release.write_json(statepath, {'pending_new_batch': {'version': '1.2.3', 'source_sha': 'sha',
-                'issues': [1], 'qualified_for_new_release': True}})
+                'issues': [1, 2], 'qualified_for_new_release': True}})
             remote = [[{'tag_name': 'v1.2.2'}]]
-            report = {'resume_allocated_version': True, 'main_sha': 'sha', 'unallocated_issues': [1],
+            report = {'resume_allocated_version': True, 'main_sha': 'sha', 'unallocated_issues': [1, 2],
                       'platforms_to_release': ['android', 'ios']}
             def command(args, **kwargs):
                 if args[0] == sys.executable: return json.dumps(report)
@@ -504,15 +504,35 @@ class MoreGateTests(unittest.TestCase):
                     return 'example/app' if args[1] == 'repo' else json.dumps(remote)
                 return 'sha' if args[1] == 'rev-parse' else ''
             with patch.dict(os.environ, {'DELIVERY_STATE':str(statepath)}), patch.object(release,'run',side_effect=command):
+                with self.assertRaisesRegex(ValueError, 'finalized workset'):
+                    release.source_preflight(root,'1.2.3',('android','ios'))
+                state = release.read_json(statepath)
+                state['pending_new_batch']['finalized_workset'] = {
+                    'source_sha': 'sha', 'issues': [1], 'platforms_to_release': ['android', 'ios']}
+                release.write_json(statepath, state)
+                with self.assertRaisesRegex(ValueError, 'finalized workset'):
+                    release.source_preflight(root,'1.2.3',('android','ios'))
+                state['pending_new_batch']['finalized_workset']['issues'] = [1, 2]
+                state['active_issue'] = 3
+                release.write_json(statepath, state)
+                with self.assertRaisesRegex(ValueError, 'in progress'):
+                    release.source_preflight(root,'1.2.3',('android','ios'))
+                state['active_issue'] = None
+                release.write_json(statepath, state)
                 self.assertEqual(release.source_preflight(root,'1.2.3',('android','ios')),'sha')
                 remote[0][0]['tag_name'] = 'v1.2.3'
                 with self.assertRaisesRegex(ValueError,'strictly greater'): release.source_preflight(root,'1.2.3',('android','ios'))
                 remote[0][0]['tag_name'] = 'v1.2.2'
-                report['unallocated_issues'] = [1, 2]
+                report['unallocated_issues'] = [1, 3]
                 with self.assertRaisesRegex(ValueError,'Live batch audit'): release.source_preflight(root,'1.2.3',('android','ios'))
-                report['unallocated_issues'] = [1]
+                report['unallocated_issues'] = [1, 2]
                 report['resume_allocated_version'] = False
                 with self.assertRaisesRegex(ValueError,'Live batch audit'): release.source_preflight(root,'1.2.3',('android','ios'))
+                report['resume_allocated_version'] = True
+                state['pending_new_batch']['finalized_workset']['platforms_to_release'] = ['android']
+                release.write_json(statepath, state)
+                with self.assertRaisesRegex(ValueError, 'finalized workset'):
+                    release.source_preflight(root,'1.2.3',('android','ios'))
                 release.write_json(statepath, {})
                 with self.assertRaisesRegex(ValueError,'allocated batch'): release.source_preflight(root,'1.2.3',('android','ios'))
 
