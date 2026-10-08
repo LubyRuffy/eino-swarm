@@ -79,6 +79,10 @@ E2E suite.
   Run its packaged-app XCTest and inspect the reached screen; iOS menu changes
   use `BindFlowTests/testNativeIOSMenuHidesAndroidUpdateCheck`. XCTest can drive
   the simulator while the host desktop session is locked.
+- A Mac Dock icon does not prove the extracted installer has a Finder icon.
+  When changing desktop packaging, check the ZIP's `Info.plist` icon reference
+  and `Contents/Resources/AppIcon.icns`, then inspect the extracted `.app` in
+  Finder and launch that same package. A running process alone is insufficient.
 - A context-budget fix must test replayed messages without billed usage, with
   mixed ASCII/CJK tool results, message framing, and the configured output cap. A synthetic
   billed-token boundary alone cannot prove a long scheduled conversation will

@@ -5,12 +5,16 @@ required platforms in order:
 
 | Platform | Build/sign | Destination | Completion |
 |---|---|---|---|
-| macOS | `make desktop-release` | GitHub `vX.Y.Z`, host architecture zip | remote SHA-256 matches |
+| macOS | `make desktop-release` | GitHub `vX.Y.Z`, host architecture zip | ZIP 有 Finder 图标资源与 plist 引用，远端 SHA-256 匹配 |
 | Android | APK-only `make mobile-android-release` | same GitHub Release | remote SHA-256 matches |
 | iOS | Capacitor sync, `xcodebuild archive/exportArchive`, distribution signature/profile, `xcrun altool` | existing App Store Connect app | all configured groups attached, VALID, internal READY_FOR_BETA_TESTING and external IN_BETA_TESTING; any review submission must be APPROVED |
 
 Installer upload does not replace the native installation/window/device acceptance
 required for each candidate. Run project checks and native acceptance before release.
+For Mac, inspect the extracted `zwai.app` in Finder: the visible mark comes
+from `Contents/Resources/AppIcon.icns` selected by `CFBundleIconFile` in
+`Info.plist`. The Dock icon supplied to Wails is a separate runtime path.
+`tools/release.py` rejects a new ZIP without those installer resources before upload.
 If the allocated batch records a passed macOS native-window receipt for the exact
 version, source SHA, asset name and SHA-256, keep that accepted ZIP in `bin/`.
 The release entry verifies and uploads that file without rebuilding it; a missing

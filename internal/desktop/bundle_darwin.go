@@ -3,6 +3,7 @@
 package desktop
 
 import (
+	_ "embed"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +17,9 @@ const (
 	macBundleID   = "app.zwai.desktop"
 	macBundleName = "zwai"
 )
+
+//go:embed AppIcon.icns
+var macAppIcon []byte
 
 // ReexecIfUnbundled copies this process into a stable .app and replaces
 // the image with that copy. `go run` leaves a naked executable (Info.plist
@@ -73,6 +77,13 @@ func writeAppBundle(exe, appDir, version string) error {
 	if err := os.WriteFile(filepath.Join(appDir, "Contents", "Info.plist"), []byte(macInfoPlist(version)), 0o644); err != nil {
 		return err
 	}
+	resourcesDir := filepath.Join(appDir, "Contents", "Resources")
+	if err := os.MkdirAll(resourcesDir, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(resourcesDir, "AppIcon.icns"), macAppIcon, 0o644); err != nil {
+		return err
+	}
 	dest := filepath.Join(macOSDir, macBundleName)
 	if err := copyFile(exe, dest); err != nil {
 		return err
@@ -104,6 +115,8 @@ func macInfoPlist(version string) string {
 	<string>6.0</string>
 	<key>CFBundleName</key>
 	<string>` + macBundleName + `</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon.icns</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
