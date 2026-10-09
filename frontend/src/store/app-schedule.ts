@@ -104,7 +104,7 @@ export function scheduleActions(
             scheduleUnread: got.unread ?? 0,
             status: {
               ...s.status,
-              waiting: Boolean(s.status.waiting || activeWake(schedules, s.activeId)),
+              waiting: Boolean(activeWake(schedules, s.activeId)),
             },
           }
         })

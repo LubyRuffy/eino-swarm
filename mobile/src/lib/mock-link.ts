@@ -243,6 +243,9 @@ export class MockHost {
           { kind: "done", at: "2026-10-08T02:03:04Z" },
         ], false)
       } else this.seed(done, scriptedTurn(done.title), false)
+      if (new URLSearchParams(location.search).get("history") === "timeout") {
+        this.seed(done, [{ kind: "error", agentID: "manager", err: "swarm: worker worker-1 stopped after 3 consecutive watchdog timeouts; automatic recovery is exhausted. This recurring check is paused." }], false)
+      }
       if (new URLSearchParams(location.search).get("history") === "peers") {
         this.seed(done, [{ kind: "task_message", sourceThreadID: "peer-task", sourceTurnID: "peer-turn", text: "Peer coordination request." }], false)
       }

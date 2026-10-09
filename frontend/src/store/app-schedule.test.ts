@@ -171,6 +171,29 @@ beforeEach(() => {
 })
 
 describe("schedule store", () => {
+  it("clears Waiting when the server pauses the conversation's only wake", async () => {
+    useApp.setState({
+      activeId: "th_old",
+      status: { running: false, waiting: true },
+      schedules: [wait()],
+    })
+    fake.rows = [wait({ status: "paused" })]
+    await useApp.getState().refreshSchedules()
+    expect(useApp.getState().status.waiting).toBe(false)
+    expect(useApp.getState().schedules[0].status).toBe("paused")
+  })
+
+  it("keeps Waiting when another wake for the same conversation remains active", async () => {
+    useApp.setState({
+      activeId: "th_old",
+      status: { running: false, waiting: true },
+      schedules: [wait(), wait({ id: "sch_2" })],
+    })
+    fake.rows = [wait({ status: "paused" }), wait({ id: "sch_2" })]
+    await useApp.getState().refreshSchedules()
+    expect(useApp.getState().status.waiting).toBe(true)
+  })
+
   it("refreshes the inbox list and unread count", async () => {
     await useApp.getState().refreshSchedules()
     expect(useApp.getState().schedules).toEqual([

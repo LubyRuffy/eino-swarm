@@ -62,16 +62,17 @@ type Handle struct {
 	mu    sync.Mutex
 	inbox []string
 	// leftover steering that never hit a model call; wait_agents surfaces it
-	undelivered []string
-	history     []adk.Message // cloned each model call; resume_agent's seed
-	resumedFrom string
-	gen         int // bumps on resume so Result/Done cannot see the previous life
-	cancel      context.CancelFunc
-	result      string
-	err         error
-	spawned     time.Time
-	finished    time.Time
-	activity    string // latest streamed reasoning/answer tail (for progress)
+	undelivered     []string
+	history         []adk.Message // cloned each model call; resume_agent's seed
+	resumedFrom     string
+	gen             int // bumps on resume so Result/Done cannot see the previous life
+	cancel          context.CancelFunc
+	result          string
+	err             error
+	spawned         time.Time
+	finished        time.Time
+	activity        string // latest streamed reasoning/answer tail (for progress)
+	timeoutFailures int    // consecutive watchdog stops, retained across resume
 }
 
 // Activity returns the agent's most recent streamed text tail (thinking or

@@ -161,7 +161,7 @@ uploads, downloads and the live event stream have exactly one implementation.
   `block_goal` and stops instead of retrying forever — a crashed turn that
   is not a recoverable model error does the same, and the banner shows the
   public error. Truncated tool JSON / a `429` / a dropped stream / a
-  mid-stream TCP read timeout retry in-turn, then auto-continue. **Start** resumes after a block, a cap, a hold, a stop, or a completed
+  mid-stream TCP read timeout retry in-turn, then auto-continue. Three consecutive worker lifetime watchdog failures stop automatic resume: the turn errors, its goal blocks and its recurring check pauses. Inspect the worker trace, model and task before an explicit new message or **Start** retries. Provider idle timeouts are separate. **Start** resumes after a block, a cap, a hold, a stop, or a completed
   objective that finished too early. It does not
   appear while the objective is still pursuing between auto-continue
   sessions. The

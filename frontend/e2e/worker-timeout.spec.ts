@@ -1,0 +1,30 @@
+import { expect, test } from "@playwright/test"
+import { freshConversation, reloadOpenConversation } from "./session"
+
+test("three watchdog failures stop the same worker and pause its scheduled check", async ({ page, request }) => {
+  test.skip(process.env.ZWAI_MOCK_WORKER_TIMEOUT !== "1", "requires the opt-in real-watchdog offline script")
+  expect((await request.put("/api/settings", { data: { swarm: { agent_timeout_seconds: 1 } } })).ok()).toBe(true)
+  await freshConversation(page)
+  const id = await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")
+  const created = await request.post("/api/schedules", { data: { kind: "thread", thread_id: id, prompt: "Perform the assigned check", every_s: 60 } })
+  expect(created.ok()).toBe(true)
+  const { schedule } = await created.json()
+  const response = await request.post(`/api/schedules/${schedule.id}/run`)
+  expect(response.ok()).toBe(true)
+  const { turn } = await response.json()
+  await expect(page.getByTestId("transcript")).toContainText("3 consecutive watchdog timeouts", { timeout: 30_000 })
+  await expect(page.getByTestId("transcript")).toContainText("paused to avoid repeating the worker timeout loop")
+  await expect(page.getByTestId("status-badge")).toContainText("Idle")
+  const trace = await (await request.get(`/api/trace/${turn.id}`)).json()
+  type Event = { kind: string; agent_id: string; err: string }
+  const starts = trace.events.filter((ev: Event) => ev.kind === "spawned")
+  expect(starts).toHaveLength(3)
+  expect(new Set(starts.map((ev: Event) => ev.agent_id)).size).toBe(1)
+  expect(trace.events.filter((ev: Event) => ev.kind === "finished")).toHaveLength(3)
+  expect(trace.events.some((ev: Event) => ev.kind === "model_retry")).toBe(false)
+  const listed = await (await request.get("/api/schedules")).json()
+  expect(listed.schedules.find((s: { id: string }) => s.id === schedule.id).status).toBe("paused")
+  await reloadOpenConversation(page)
+  await expect(page.getByTestId("transcript")).toContainText("3 consecutive watchdog timeouts")
+  await page.screenshot({ path: "test-results/worker-timeout-paused.png" })
+})

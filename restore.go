@@ -15,21 +15,23 @@ import (
 // process died. Restore starts it under the same id so wait_agents and the
 // roster keep working.
 type RestoredWorker struct {
-	ID          string
-	Role        string
-	Instruction string // stored system prompt; empty means workerInstruction(Task)
-	Task        string
-	Seed        string // conversation so far, injected before the first model call
+	ID              string
+	Role            string
+	Instruction     string // stored system prompt; empty means workerInstruction(Task)
+	Task            string
+	Seed            string // conversation so far, injected before the first model call
+	TimeoutFailures int    // consecutive watchdog stops before the process died
 }
 
 // FinishedWorker is a sub-agent that already completed in the previous
 // process. PlantFinished puts it back so wait_agents does not report unknown.
 type FinishedWorker struct {
-	ID      string
-	Role    string
-	Result  string
-	Err     error
-	History []adk.Message
+	ID              string
+	Role            string
+	Result          string
+	Err             error
+	History         []adk.Message
+	TimeoutFailures int
 }
 
 // Restore starts a worker under a known agent_id. Unlike Spawn it does not
@@ -55,7 +57,7 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	if modelOpt == nil {
 		modelOpt = r.ModelBuilder
 	}
-	h, err := r.claimForRestore(id, role)
+	h, err := r.claimForRestore(id, role, w.TimeoutFailures)
 	if err != nil {
 		return nil, err
 	}
@@ -69,23 +71,40 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	return h, nil
 }
 
-func (r *Registry) claimForRestore(id, role string) (*Handle, error) {
+func (r *Registry) claimForRestore(id, role string, failures int) (*Handle, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
 		return nil, fmt.Errorf("restore: registry closed")
 	}
+	if p := r.past[id]; p != nil && p.TimeoutFailures > failures {
+		failures = p.TimeoutFailures
+	}
 	if cur, ok := r.agents[id]; ok {
 		if _, _, finished := cur.Result(); !finished {
 			return nil, fmt.Errorf("restore: agent %q is still running; use send_message", id)
 		}
+		cur.mu.Lock()
+		if cur.timeoutFailures > failures {
+			failures = cur.timeoutFailures
+		}
+		cur.mu.Unlock()
+		if err := timeoutRecoveryError(id, failures); err != nil {
+			return nil, err
+		}
 		cur.resetForResume(id)
+		cur.mu.Lock()
+		cur.timeoutFailures = failures
+		cur.mu.Unlock()
 		r.noteIDLocked(id)
 		return cur, nil
 	}
+	if err := timeoutRecoveryError(id, failures); err != nil {
+		return nil, err
+	}
 	h := &Handle{
 		ID: id, Role: role, done: make(chan struct{}),
-		spawned: time.Now(), resumedFrom: id, gen: 1,
+		spawned: time.Now(), resumedFrom: id, gen: 1, timeoutFailures: failures,
 	}
 	r.agents[id] = h
 	r.noteIDLocked(id)
@@ -106,7 +125,7 @@ func (r *Registry) PlantFinished(w FinishedWorker) error {
 	h := &Handle{
 		ID: id, Role: role, done: make(chan struct{}),
 		spawned: time.Now(), finished: time.Now(),
-		result: w.Result, err: w.Err, history: cloneMessages(w.History),
+		result: w.Result, err: w.Err, history: cloneMessages(w.History), timeoutFailures: w.TimeoutFailures,
 	}
 	close(h.done)
 

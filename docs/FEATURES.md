@@ -51,6 +51,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 无效委派恢复：同一模型回复内缺少 role/task 或参数不可读的 spawn 调用按错误类别合并为一条拒绝回执，保留数量和原始代表 ID；有效调用仍正常执行，manager 可补全参数在原轮次继续。拒绝不等于创建或取消 worker。关联契约：`C-019`；实现／测试证据：`spawn_batch.go`, `spawn_batch_test.go`, `tools.go`, `internal/engine/prompt.go`。
 
+- 有界 worker 超时恢复：同一 worker 连续三次 watchdog 失败后停止 manager 的 resume／同角色 spawn，持续目标停止自动推进，失败周期计划暂停；成功或显式人类重试恢复预算。错误、worker ID 和次数保留在 Trace 与手机/桌面对话；普通 provider 超时和取消不计入。关联契约：`C-019`、`C-009`；实现／测试：`worker_timeout.go`、`internal/engine/worker_timeout.go`、`internal/engine/worker_timeout_test.go`、`frontend/e2e/worker-timeout.spec.ts`。
+
 ### F-135 Independent task coordination
 
 - 目的：让不同 PC 对话的管理 Agent 发现活跃任务、协商共享资源的处理顺序；使用者：PC 用户和配对手机用户；入口：manager 工具 `list_tasks`、`send_task_message`、`read_task_messages`，对话内的协作消息通知；输入：真实 conversation ID、消息和可选收件游标；输出：活跃任务的工作目录/请求/状态、持久化发送回执、来源可追溯的消息和明确回复；前置条件：同一 host 的未归档对话；失败表现：未知/归档目标、非法参数或数据库错误返回工具错误，不伪造送达；关联契约：`C-021`、`C-012`；实现证据：`internal/engine/task_coordination.go`、`internal/engine/task_coordination_flow_test.go`、`internal/store/event_kind.go`、`frontend/e2e/task-coordination.spec.ts`、`mobile/src/lib/task-message.test.ts`。

@@ -1289,7 +1289,7 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
 | `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}`. `reopen_goal` in the same turn records `goal_resumed`, resets the auto-continue budget, and pursuit continues |
 | `goal_blocked` | the manager called `block_goal`, or a pursuing turn failed for a reason that is not a recoverable model error. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |
-| `goal_resumed` | the human started pursuit again after a block, a cap, an idle open goal, or a completed objective that finished too early — or the manager called `reopen_goal` after a mistaken `complete_goal`. Same Working-clock rule as `goal_continued` |
+| `goal_resumed` | `role: "human"` marks an explicit goal Start and resets worker watchdog recovery; manager `reopen_goal` does not reset it. The human started pursuit again after a block, a cap, an idle open goal, or a completed objective that finished too early — or the manager called `reopen_goal` after a mistaken `complete_goal`. Same Working-clock rule as `goal_continued` |
 | `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
 | `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`). A later human message or resume resets the budget |
 | `goal_idle` | an engine-started continuation finished with no counted tool activity (`text` is the notice). Auto-continue stops until a human message or resume; the objective stays open |
@@ -1678,3 +1678,14 @@ its source, and phone text retains the existing `event_chars` clipping. The
 sender's tool-result receipt links to the recipient event by inbox sequence and
 source IDs. A message received during an active turn is also in that turn's
 Trace; an idle recipient retains it on the conversation timeline until read.
+
+### Worker watchdog recovery
+
+`finished.err` records worker lifetime timeout, worker ID and consecutive count.
+After three consecutive watchdog failures, resume or same-role spawn returns
+`WorkerTimeoutLimitError`; the existing `error` event and Trace retain the cause.
+A goal blocks and only the recurring schedule bound to this turn pauses; its run
+remains `error`. Provider idle failures and cancellation do not count. Explicit
+human messages or goal Start reset recovery; automatic fires and `reopen_goal`
+do not. Event kinds and phone RPC shapes stay stable. See `C-019` and
+`worker_timeout_test.go`.

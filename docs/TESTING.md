@@ -1884,3 +1884,22 @@ endpoint, rather than tapping an offscreen control.
 - A send receipt proves storage only. Native packaged-window / paired-phone inspection remains required before recording UI acceptance; browser E2E is not native acceptance.
 - `TestStandaloneManagerDoesNotAdvertiseHostInboxTools` keeps unmounted host tools out of the standalone manager prompt. `TestExistingConversationMigrationCreatesAWorkingInboxCursor` checks upgrade from the old schema. `TestRewindThenRestartDoesNotHideNewPeerMessages` proves the durable inbox remains readable after explicit history rewriting and restart; reading alone must not change conversation activity.
 - Phone native provenance uses `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=peers'` with the disposable iOS fixture and `AppUITests/BindFlowTests/testIndependentTaskMessageHasPeerProvenance`. It checks the visible source notice and absence of Stop in the idle conversation. The matching phone E2E uses the same fixture; Android packages it into an isolated debug app and inspects the reached screen. These are behavior checks, separate from signing/upload and the desktop native window gate. The opt-in offline manager scenario is in `internal/provider/mock_task_coordination.go`; the existing manager control flow lives in `internal/provider/mock_manager.go` to keep production files below 1000 lines.
+
+## Bounded worker watchdog recovery
+
+Issue #65 first reproduced a fourth start after three real short watchdog
+expirations, before and after `Stats` pruned the handle. `worker_timeout_test.go`
+drives real manager resume/same-role spawn, streaming expiry, cancellation,
+provider deadlines, concurrent resumes, archive/restore, success reset and human
+retry. `internal/engine/worker_timeout_test.go` checks Run now, automatic fires,
+real offline worker expiry, goal blocking, exact-plan pause, failed pause writes
+and persisted legacy receipts across restart. `frontend/e2e/worker-timeout.spec.ts`
+uses `ZWAI_MOCK_WORKER_TIMEOUT=1` and a one-second watchdog to observe three actual
+starts of one ID, terminal error, no model retry, schedule pause, reload and Trace.
+Default demo scripts are unchanged. Phone `history=timeout` checks existing error
+rendering and absence of Stop; packaged iOS uses
+`BindFlowTests/testWorkerTimeoutShowsPausedErrorInsteadOfRunning`, with the same
+isolated fixture inspected on Android. Native desktop window acceptance and
+public installer delivery remain separate gates; browser/launch is not proof.
+
+The timeout desktop path also verifies that the authoritative paused schedule clears Waiting. `frontend/src/store/app-schedule.test.ts` retains the armed-wake/stale-GET guard and another active wake while rejecting a paused-only wait.

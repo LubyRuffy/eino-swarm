@@ -263,11 +263,11 @@ func (e *Engine) ResumeThreadGoal(id string) (*store.Turn, error) {
 	}
 	e.record(store.Event{
 		ThreadID: id, TurnID: e.lastTurnID(id),
-		Kind: KindGoalResumed, AgentID: swarm.DefaultManagerID,
+		Kind: KindGoalResumed, AgentID: swarm.DefaultManagerID, Role: "human",
 		Text: goalResumedNotice,
 	})
 	turn, startErr := e.StartTurnInput(id, UserInput{
-		Text: GoalContinueText(), ContinueGoal: true,
+		Text: GoalContinueText(), ContinueGoal: true, retryWorkers: true,
 	})
 	if startErr != nil {
 		e.revertGoalResume(id, prev)

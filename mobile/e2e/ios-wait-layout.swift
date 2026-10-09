@@ -4,6 +4,24 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testWorkerTimeoutShowsPausedErrorInsteadOfRunning() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 12))
+    back.tap()
+    let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'")).firstMatch
+    XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    thread.tap()
+    let error = app.staticTexts.matching(NSPredicate(format: "label CONTAINS '3 consecutive watchdog timeouts'")).firstMatch
+    XCTAssertTrue(error.waitForExistence(timeout: 8), "requires history=timeout; the terminal failure must be visible")
+    XCTAssertFalse(app.buttons["Stop"].exists)
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "worker-timeout-paused"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
   func testIndependentTaskMessageHasPeerProvenance() throws {
     let app = XCUIApplication()
     app.launch()

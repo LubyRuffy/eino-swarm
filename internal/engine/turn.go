@@ -413,6 +413,10 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 
 	messages := history
 	messages = rt.attachLeftoverWorkers(reused, reused || in.ContinueGoal, liveWorkers(reg.Progress()), messages)
+	if in.retryWorkers || (!in.ContinueGoal && !in.ContinueSchedule && !in.ImplementPlan) {
+		reg.ResetWorkerTimeouts()
+		rt.resetRestoredWorkerTimeouts()
+	}
 	messages = append(messages, BuildUserMessage(text, modelImages))
 	// After the request, so a schedule prompt that still says the workers
 	// are writing does not outrank the roster of ids the process stopped.
@@ -588,6 +592,9 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	status, errText := rt.turnOutcome(ctx, runErr)
 	if status == store.TurnError && e.pauseScheduledContextOverflow(turn, runErr) {
 		errText += "; this recurring check is paused to avoid repeating the same error. Resume it after changing the settings or conversation"
+	}
+	if status == store.TurnError && e.pauseScheduledWorkerTimeout(turn, runErr) {
+		errText += "; this recurring check is paused to avoid repeating the worker timeout loop. Inspect the worker trace, model and task before resuming it"
 	}
 	if rt.shouldPark(status) {
 		rt.parkRegistry(reg)

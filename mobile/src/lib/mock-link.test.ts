@@ -23,6 +23,17 @@ function host() {
 }
 
 describe("the walkthrough host", () => {
+  it("keeps a watchdog-limit failure visible while the phone is idle", async () => {
+    const prior = location.href
+    history.replaceState(null, "", "/?mock=1&tick=0&history=timeout")
+    const h = host()
+    try {
+      const watch = await new MockLink(h).rpc({ op: OpWatch, thread_id: "t-recent" })
+      expect(watch.status?.running).toBe(false)
+      expect(watch.events?.find((ev) => ev.kind === "error")?.err).toContain("3 consecutive watchdog timeouts")
+    } finally { h.stop(); history.replaceState(null, "", prior) }
+  })
+
   it("carries peer provenance through an idle phone history", async () => {
     const prior = location.href
     history.replaceState(null, "", "/?mock=1&tick=0&history=peers")

@@ -5,6 +5,17 @@ import { expect, test, type Page } from "@playwright/test"
  *  screens over a real link. */
 const WALKTHROUGH = "/?mock=1&tick=0"
 
+test("phone shows the worker timeout limit without keeping a failed task running", async ({ page }) => {
+  await page.goto("/?mock=1&tick=0&history=timeout")
+  await page.getByRole("button", { name: "返回" }).click()
+  await page.getByRole("button", { name: /^打开 Sweep the unused exports$/ }).click()
+  await expect(page.getByTestId("transcript")).toContainText("3 consecutive watchdog timeouts")
+  await expect(page.getByTestId("transcript")).toContainText("recurring check is paused")
+  await expect(page.getByRole("button", { name: "停止" })).toHaveCount(0)
+  await page.screenshot({ path: "test-results/worker-timeout-paused.png" })
+})
+
+
 test("an idle phone conversation shows peer provenance without starting another turn", async ({ page }) => {
   await page.goto("/?mock=1&tick=0&history=peers")
   await page.getByRole("button", { name: "返回" }).click()

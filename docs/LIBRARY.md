@@ -239,6 +239,16 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 - `resume_agent` continues a finished worker's conversation on the **same** id.
   `fork_context` is the manager's conversation, not a previous worker's findings.
   A still-running worker is steered with `send_message`, not resumed.
+- Three consecutive worker watchdog failures exhaust that worker's recovery.
+  `Resume`, same-role `spawn_agent` and `Restore` then return
+  `WorkerTimeoutLimitError` without another start. This is a terminal resource
+  gate, unlike invalid-argument/capacity refusals. `WorkerTimeoutError` carries
+  worker ID, count and cause; provider deadlines and cancellation do not count.
+  Success resets the count; archive pruning retains it. Hosts persist
+  `RestoredWorker.TimeoutFailures` / `FinishedWorker.TimeoutFailures` on restart
+  and call `ResetWorkerTimeouts` only for an explicit human retry. Reset does not
+  cancel live workers or change their deadline. Engine event replay reconstructs
+  legacy watchdog receipts by their exact worker-specific prefix.
 - `Restore` / `RunConfig.RestoreWorkers` restarts a worker that was still
   running when the previous process died, under the same id. `PlantFinished`
   puts an already-completed worker back so `wait_agents` does not report

@@ -105,6 +105,9 @@ func (m *mockModel) Generate(ctx context.Context, in []*schema.Message, _ ...mod
 	if err := m.scriptedFailure(); err != nil {
 		return nil, err
 	}
+	if err := waitMockWorkerTimeout(ctx, m.role); err != nil {
+		return nil, err
+	}
 	out := m.script(m.nextTurn(), in)
 	attachMockUsage(in, out)
 	return out, nil
@@ -115,6 +118,9 @@ func (m *mockModel) Stream(ctx context.Context, in []*schema.Message, _ ...model
 		return nil, err
 	}
 	if err := m.scriptedFailure(); err != nil {
+		return nil, err
+	}
+	if err := waitMockWorkerTimeout(ctx, m.role); err != nil {
 		return nil, err
 	}
 	out := m.script(m.nextTurn(), in)

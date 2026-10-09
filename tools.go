@@ -38,7 +38,7 @@ func (r *Registry) Tools() []tool.BaseTool {
 			"It returns as soon as one finishes, not once they all do, so call it again to collect the rest " +
 			"and tell the human what came back between calls.", fn: r.wait},
 		&ctlTool{name: "close_agent", desc: "cancel a still-running agent. A leftover finished id is already stopped: the result is already_finished, not cancelled. Do not close leftover ids as cleanup. An unknown agent_id returns {error}; it does not fail the turn.", fn: r.close},
-		&ctlTool{name: "resume_agent", desc: fmt.Sprintf("continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead. A missing agent_id or task, or a still-running target, returns {error}; it does not fail the turn. The concurrency cap is %d. If %d sub-agents are already running, returns {error} and does not queue this worker.", n, n), fn: r.resume},
+		&ctlTool{name: "resume_agent", desc: fmt.Sprintf("continue a finished or failed worker in place under the same agent_id, seeded with that worker's conversation. After three consecutive worker-watchdog timeouts, recovery stops the manager and requires an explicit human retry; changing role does not repair a stalled task. Returns the same agent_id. Do not spawn a replacement with the same role. Do not use this on a running agent — send_message instead. A missing agent_id or task, or a still-running target, returns {error}; it does not fail the turn. The concurrency cap is %d. If %d sub-agents are already running, returns {error} and does not queue this worker.", n, n), fn: r.resume},
 	}
 }
 
@@ -178,6 +178,10 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 	if id := r.reusableFinishedID(a.Role); id != "" {
 		h, err := r.resumeAdmitted(ctx, id, a.Task, r.ModelBuilder, tools...)
 		if err != nil {
+			var exhausted *WorkerTimeoutLimitError
+			if errors.As(err, &exhausted) {
+				return "", err
+			}
 			if out, rerr, ok := refuseAdmit(err); ok {
 				return out, rerr
 			}

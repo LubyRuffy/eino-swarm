@@ -126,6 +126,7 @@ type workerSlot struct {
 	running, spawned, inflight     bool
 	seed                           strings.Builder
 	nseed                          int
+	timeoutFailures                int
 	history                        []adk.Message
 }
 
@@ -142,6 +143,11 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 		return s
 	}
 	for _, ev := range events {
+		if ev.Kind == KindUser || (ev.Kind == KindGoalResumed && ev.Role == "human") {
+			for _, s := range byID {
+				s.timeoutFailures = 0
+			}
+		}
 		if ev.Kind == KindCleanup {
 			// Cleanup does not emit finished per worker. Without this a
 			// later turn would Restore killed agents as still running.
@@ -152,6 +158,10 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 				}
 				s.running = false
 				s.err = cleanedUpWorkerErr
+				// A refused legacy Restore has no new cancellation to reset its budget.
+				if s.timeoutFailures < swarm.MaxConsecutiveWorkerTimeouts {
+					s.timeoutFailures = 0
+				}
 				s.inflight = false
 			}
 			continue
@@ -175,6 +185,13 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 			s.running = false
 			s.result = ev.Text
 			s.err = ev.Err
+			// Existing persisted watchdog receipts have this exact per-worker prefix.
+			// Network/idle deadlines and user cancellations never count as watchdogs.
+			if strings.HasPrefix(ev.Err, "swarm: agent "+ev.AgentID+" exceeded timeout ") {
+				s.timeoutFailures++
+			} else {
+				s.timeoutFailures = 0
+			}
 			s.inflight = false
 			if s.role == "" {
 				s.role = strings.TrimSpace(ev.Role)
@@ -203,7 +220,7 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 		}
 		if s.running {
 			w := swarm.RestoredWorker{
-				ID: id, Role: s.role, Instruction: s.instruction, Task: resumeCue,
+				ID: id, Role: s.role, Instruction: s.instruction, Task: resumeCue, TimeoutFailures: s.timeoutFailures,
 			}
 			if s.nseed > 0 {
 				w.Seed = "conversation so far:\n" + s.seed.String()
@@ -222,7 +239,7 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 			ferr = errors.New(s.err)
 		}
 		finished = append(finished, swarm.FinishedWorker{
-			ID: id, Role: s.role, Result: s.result, Err: ferr, History: s.history,
+			ID: id, Role: s.role, Result: s.result, Err: ferr, History: s.history, TimeoutFailures: s.timeoutFailures,
 		})
 	}
 	return running, finished

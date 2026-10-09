@@ -3,6 +3,7 @@ package swarm
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -23,9 +24,10 @@ const (
 // agentPast is a finished worker's conversation, kept after Stats has
 // forgotten the live handle so resume_agent still has something to continue.
 type agentPast struct {
-	ID      string
-	Role    string
-	History []adk.Message
+	ID              string
+	Role            string
+	History         []adk.Message
+	TimeoutFailures int
 }
 
 func (r *Registry) historyCap() int {
@@ -75,7 +77,7 @@ func (h *Handle) ensureResultLocked() {
 func (h *Handle) snapshotPast() agentPast {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return agentPast{ID: h.ID, Role: h.Role, History: cloneMessages(h.history)}
+	return agentPast{ID: h.ID, Role: h.Role, History: cloneMessages(h.history), TimeoutFailures: h.timeoutFailures}
 }
 
 func (r *Registry) remember(h *Handle) {
@@ -260,15 +262,24 @@ func (r *Registry) claimForResume(past *agentPast, admit bool) (*Handle, error) 
 		if admit && r.liveCountLocked() >= r.capLocked() {
 			return nil, &atCapacityError{n: r.capLocked()}
 		}
+		cur.mu.Lock()
+		budgetErr := timeoutRecoveryError(cur.ID, cur.timeoutFailures)
+		cur.mu.Unlock()
+		if budgetErr != nil {
+			return nil, budgetErr
+		}
 		cur.resetForResume(past.ID)
 		return cur, nil
 	}
 	if admit && r.liveCountLocked() >= r.capLocked() {
 		return nil, &atCapacityError{n: r.capLocked()}
 	}
+	if err := timeoutRecoveryError(past.ID, past.TimeoutFailures); err != nil {
+		return nil, err
+	}
 	fresh := &Handle{
 		ID: past.ID, Role: past.Role, done: make(chan struct{}),
-		spawned: time.Now(), resumedFrom: past.ID, gen: 1,
+		spawned: time.Now(), resumedFrom: past.ID, gen: 1, timeoutFailures: past.TimeoutFailures,
 	}
 	r.agents[past.ID] = fresh
 	return fresh, nil
@@ -311,6 +322,10 @@ func (r *Registry) resume(ctx context.Context, args string) (string, error) {
 	tools = append(tools, r.SendTool())
 	h, err := r.resumeAdmitted(ctx, a.AgentID, a.Task, r.ModelBuilder, tools...)
 	if err != nil {
+		var exhausted *WorkerTimeoutLimitError
+		if errors.As(err, &exhausted) {
+			return "", err
+		}
 		if out, rerr, ok := refuseAdmit(err); ok {
 			return out, rerr
 		}
@@ -366,7 +381,7 @@ func clonePast(p *agentPast) *agentPast {
 	if p == nil {
 		return nil
 	}
-	return &agentPast{ID: p.ID, Role: p.Role, History: cloneMessages(p.History)}
+	return &agentPast{ID: p.ID, Role: p.Role, History: cloneMessages(p.History), TimeoutFailures: p.TimeoutFailures}
 }
 
 func trimHistory(msgs []adk.Message, limit int) []adk.Message {

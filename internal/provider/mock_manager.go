@@ -10,6 +10,9 @@ import (
 // workers in one message (one of them inheriting the conversation), wait for
 // them, then answer in markdown quoting what came back.
 func managerScript(turn int, msgs []*schema.Message) *schema.Message {
+	if msg := mockWorkerTimeout(msgs); msg != nil {
+		return msg
+	}
 	if msg := mockTaskCoordination(msgs); msg != nil {
 		return msg
 	}

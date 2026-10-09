@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
@@ -82,10 +81,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 			Handlers:      []adk.ChatModelAgentMiddleware{inj},
 		})
 		if err != nil {
-			h.mu.Lock()
-			h.err = fmt.Errorf("swarm: spawn %s: %w", id, err)
-			h.finished = time.Now()
-			h.mu.Unlock()
+			h.completeWorker("", fmt.Errorf("swarm: spawn %s: %w", id, err), timeout, watchCtx.Err(), runCtx.Err())
 			return
 		}
 		runner := adk.NewRunner(watchCtx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
@@ -101,16 +97,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 				continue
 			}
 			if ev.Err != nil {
-				h.mu.Lock()
-				h.err = ev.Err
-				switch {
-				case watchCtx.Err() != nil && runCtx.Err() == nil:
-					h.err = fmt.Errorf("swarm: agent %s exceeded timeout %v: %w", id, timeout, ev.Err)
-				case runCtx.Err() != nil && ctx.Err() == nil:
-					h.err = fmt.Errorf("swarm: agent %s cancelled: %w", id, ev.Err)
-				}
-				h.finished = time.Now()
-				h.mu.Unlock()
+				h.completeWorker("", ev.Err, timeout, watchCtx.Err(), runCtx.Err())
 				return
 			}
 			// Single reader of the worker stream: activity for wait_agents,
@@ -120,10 +107,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 				o.MessageOutput.IsStreaming && o.MessageOutput.MessageStream != nil {
 				answer, calls, drainErr := acc.drain(o.MessageOutput.MessageStream)
 				if drainErr != nil {
-					h.mu.Lock()
-					h.err = drainErr
-					h.finished = time.Now()
-					h.mu.Unlock()
+					h.completeWorker("", drainErr, timeout, watchCtx.Err(), runCtx.Err())
 					return
 				}
 				if len(calls) == 0 && strings.TrimSpace(answer) != "" {
@@ -141,9 +125,6 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 				final = o.MessageOutput.Message.Content
 			}
 		}
-		h.mu.Lock()
-		h.result = final
-		h.finished = time.Now()
-		h.mu.Unlock()
+		h.completeWorker(final, nil, timeout, watchCtx.Err(), runCtx.Err())
 	}()
 }

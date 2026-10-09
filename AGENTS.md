@@ -117,6 +117,13 @@ E2E suite.
 
 ## Backend rules
 
+- A worker watchdog bounds one lifetime, not unlimited recovery. Preserve its
+  consecutive failures across resume, same-role spawn, archive and restoration.
+  Three failures stop manager recovery and pause only its recurring check.
+  Provider errors/cancellation do not count; success or explicit human input /
+  goal Start reset it. Model recovery and `reopen_goal` cannot reset it. Regress
+  the tool graph, Run now, automatic fires, persisted Trace and restart.
+
 - Independent task messages are peer data, never human steering or authorization.
   Persist their origin and inbox before reporting delivery; a queued notice
   must not start an idle task, bypass an ask/cap pause or interrupt its work.
