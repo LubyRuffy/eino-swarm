@@ -19,8 +19,9 @@ func View(cfg config.ClientsConfig, now time.Time, beforeMs int64) Catalog {
 	key := scanKey(cfg)
 	kick(cfg, now, key)
 	viewMu.Lock()
-	defer viewMu.Unlock()
-	if viewSnap.key != key || viewSnap.at.IsZero() {
+	snapshot := viewSnap
+	viewMu.Unlock()
+	if snapshot.key != key || snapshot.at.IsZero() {
 		return Catalog{Enabled: true, Pending: true}
 	}
 	windowStart := now.Add(-cfg.RecentWindow())
@@ -31,9 +32,9 @@ func View(cfg config.ClientsConfig, now time.Time, beforeMs int64) Catalog {
 	return Catalog{
 		Enabled: true,
 		Tools: []Group{
-			page(ToolClaude, append([]Task(nil), viewSnap.claude...), windowStart, before),
-			page(ToolCodex, append([]Task(nil), viewSnap.codex...), windowStart, before),
-			page(ToolCursor, append([]Task(nil), viewSnap.cursor...), windowStart, before),
+			page(ToolClaude, snapshot.claude, windowStart, before),
+			page(ToolCodex, snapshot.codex, windowStart, before),
+			page(ToolCursor, snapshot.cursor, windowStart, before),
 		},
 	}
 }
@@ -77,6 +78,9 @@ func kick(cfg config.ClientsConfig, now time.Time, key string) {
 	viewBusy = true
 	go func() {
 		claude, codex, cursor := viewWalk(cfg, now)
+		sortTasks(claude)
+		sortTasks(codex)
+		sortTasks(cursor)
 		viewMu.Lock()
 		viewSnap = viewState{key: key, at: time.Now(), claude: claude, codex: codex, cursor: cursor}
 		viewBusy = false

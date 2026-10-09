@@ -219,6 +219,13 @@ is `bad_request`. Consecutive thinking and tool lines stay behind one
 collapsed row, the same work fold as a conversation. It does not send,
 steer, or resume.
 
+Finished catalog snapshots are immutable and sorted newest first once per
+refresh, preserving file order for equal timestamps. Paging copies only the
+visible rows. Background refreshes reuse parsed metadata when file identity,
+size, modification time and mode are unchanged; deleted files and a changed
+root drop those cached rows. Running status still follows each tool's finish
+markers and configured stale interval. Session detail reads remain live.
+
 The disk walk does not run inside the request. A cold read is
 `pending: true` with empty `tools` and must not replace rows already
 painted; the next poll carries the snapshot. A paired phone does not

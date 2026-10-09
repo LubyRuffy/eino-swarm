@@ -1903,3 +1903,23 @@ isolated fixture inspected on Android. Native desktop window acceptance and
 public installer delivery remain separate gates; browser/launch is not proof.
 
 The timeout desktop path also verifies that the authoritative paused schedule clears Waiting. `frontend/src/store/app-schedule.test.ts` retains the armed-wake/stale-GET guard and another active wake while rejecting a paused-only wait.
+
+## Clients idle CPU and immutable snapshots (`F-223`, `C-014`)
+
+`go test -race ./internal/clients ./internal/remote ./internal/server` covers
+unchanged transcript read counts, changed/empty/deleted/replaced files, root
+changes, status aging and Codex finish markers, concurrent readers and returned
+row isolation. The Issue #66 targeted race run measured 92.7% package coverage
+and 95.5–100% for the changed production functions. A 100,000-row chronological sort has a loose ten-second guard
+against the former quadratic algorithm. `frontend/e2e/clients.spec.ts` reads a
+600-session archive through the real HTTP/UI path, pages it, modifies one file
+and deletes it without stale rows remaining.
+
+`go test ./internal/clients -run '^$' -bench 'Benchmark(IdleTranscriptRefresh|CachedClientView|ChronologicalCatalogSort)$' -benchmem`
+compares isolated long-transcript refreshes and cached page reads. It uses
+temporary files and no model. The Issue #66 baseline on Apple M3 Max was
+1.43 s and 1.32 GB allocated per unchanged 1,000-file refresh; the parsed-row
+cache measured about 3 ms and 1.46 MB. Chronological 7,749-row sorting fell
+from about 152 ms to 1.4 ms. These are development measurements, not a promise
+for every filesystem or model-running CPU load. Inspect a real native Mac
+window separately before recording native acceptance.

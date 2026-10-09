@@ -1,6 +1,7 @@
 package clients
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -66,4 +67,42 @@ func TestViewReturnsWhileTheWalkIsStillRunning(t *testing.T) {
 		return
 	}
 	t.Fatal("the finished walk never became readable")
+}
+
+func TestViewPublishesSortedImmutablePagesFromRealWalk(t *testing.T) {
+	root := t.TempDir()
+	now := time.Now()
+	for i := 0; i < 6; i++ {
+		writeClaude(t, root, string(rune('a'+i)), "row", now.Add(-time.Duration(6-i)*time.Second))
+	}
+	cfg := claudeCfg(root)
+	deadline := time.Now().Add(3 * time.Second)
+	var got Catalog
+	for time.Now().Before(deadline) {
+		got = View(cfg, time.Now(), 0)
+		if !got.Pending {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if got.Pending || len(got.Tools) != 3 || len(got.Tools[0].Tasks) != 5 || got.Tools[0].Tasks[0].ID != "claude:f" {
+		t.Fatalf("snapshot=%+v", got)
+	}
+	next, err := strconv.ParseInt(got.Tools[0].Next, 10, 64)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got.Tools[0].Tasks[0].ID = "caller modified row"
+	again := View(cfg, time.Now(), 0)
+	if again.Tools[0].Tasks[0].ID != "claude:f" {
+		t.Fatal("caller changed immutable snapshot")
+	}
+	older := View(cfg, time.Now(), next)
+	if len(older.Tools[0].Tasks) != 1 || older.Tools[0].Tasks[0].ID != "claude:a" {
+		t.Fatalf("older=%+v", older)
+	}
+	cfg.Enabled = false
+	if off := View(cfg, time.Now(), 0); off.Enabled || len(off.Tools) != 0 {
+		t.Fatal("disabled catalog returned rows")
+	}
 }

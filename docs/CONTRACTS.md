@@ -103,10 +103,11 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-014 Phone client pagination feedback
 
-- 状态：active；类型：lifecycle；作用范围：phone Clients 分页；关联功能：`F-223`。
+- 状态：active；类型：lifecycle；作用范围：主机 Clients 快照和 phone Clients 分页；关联功能：`F-223`。
 - 契约内容：点击 Clients 的 More 后立即显示加载动效和文字，等待 RPC 时禁用重复点击；成功时追加较旧任务，失败时保留现有列表、显示错误并恢复按钮。
+- 快照边界：后台刷新按文件身份／大小／修改时间／模式判断是否重新解析；仅保留当前配置根中最新扫描的解析行，不缓存原始记录。发布前按更新时间稳定排序，分页不得修改快照或全量重排；返回行由调用方独立持有。新增、删除和变化的文件在下一次完成刷新反映，详情始终读取实时记录。
 - 允许行为：不同工具分组独立显示任务；禁止行为：无反馈的重复分页、失败后永久禁用或静默丢弃异常；失败语义：已有任务继续可见，错误显示在手机页面；不变量：一个分页请求在途时不重复发起；边界条件：慢响应、RPC 拒绝、切换 PC。
-- 证据：实现 `mobile/src/lib/client-poll.ts`, `mobile/src/components/client-groups.tsx`；测试 `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步手机 UI 测试和使用文档；来源：GitHub Issue #35。
+- 证据：实现 `mobile/src/lib/client-poll.ts`, `mobile/src/components/client-groups.tsx`；测试 `mobile/src/app.test.tsx`, `mobile/src/components/client-groups.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；补充证据：`internal/clients/catalog_cache.go`、`internal/clients/catalog_cache_test.go`、`internal/clients/catalog_performance_test.go`、`internal/clients/view_test.go`；变更规则：同步主机缓存／并发／性能、手机 UI 测试和使用文档；来源：GitHub Issues #35、#66。
 
 ## C-015 Android Back follows visible phone layers
 

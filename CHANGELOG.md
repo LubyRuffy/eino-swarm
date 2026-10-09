@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-223`, `C-014`: idle local-agent catalog refreshes reuse parsed rows from unchanged transcripts and sort each immutable snapshot once. Desktop and paired-phone polls copy only their visible page; changed/deleted sessions and live detail reads retain their behavior (Issue #66).
+
 - `F-130`, `F-150`, `C-019`, `C-009`: repeated resumes after one worker's lifetime watchdog now stop after three consecutive failures. The manager errors, its goal blocks and only its recurring check pauses, with Trace and durable restart accounting; provider errors/cancellation and explicit human recovery retain their semantics (Issue #65).
 
 - `F-130`, `C-021`: late system/peer notices are excluded from human follow-up turns; only user messages can become late human steering.

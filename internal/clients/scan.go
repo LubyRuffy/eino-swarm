@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -84,6 +85,8 @@ func List(cfg config.ClientsConfig, now time.Time, beforeMs int64) Catalog {
 	return Catalog{Enabled: true, Tools: tools}
 }
 
+var catalogRead = readHit
+
 var scanMu sync.Mutex
 var scanSnap struct {
 	key                   string
@@ -104,34 +107,23 @@ func cachedScans(cfg config.ClientsConfig, now time.Time) (claude, codex, cursor
 	scanSnap.claude = scanClaude(cfg.ClaudeDir, now, stale)
 	scanSnap.codex = scanCodex(cfg.CodexDir, now, stale)
 	scanSnap.cursor = scanCursor(cfg.CursorDir, now, stale)
+	sortTasks(scanSnap.claude)
+	sortTasks(scanSnap.codex)
+	sortTasks(scanSnap.cursor)
 	return scanSnap.claude, scanSnap.codex, scanSnap.cursor
 }
 
+// page reads a sorted, immutable snapshot and copies only the visible rows.
 func page(id string, tasks []Task, windowStart, before time.Time) Group {
-	sortTasks(tasks)
-	g := Group{ID: id, Tasks: []Task{}}
-	var pool []Task
-	var beyond bool
+	start, end := 0, len(tasks)
 	if before.IsZero() {
-		for _, task := range tasks {
-			if task.UpdatedAt.Before(windowStart) {
-				beyond = true
-				continue
-			}
-			pool = append(pool, task)
-		}
+		end = sort.Search(len(tasks), func(i int) bool { return tasks[i].UpdatedAt.Before(windowStart) })
 	} else {
-		for _, task := range tasks {
-			if task.UpdatedAt.Before(before) {
-				pool = append(pool, task)
-			}
-		}
+		start = sort.Search(len(tasks), func(i int) bool { return tasks[i].UpdatedAt.Before(before) })
 	}
-	shown, more, next := takePage(pool)
-	g.Tasks = shown
-	g.More = more
-	g.Next = next
-	if !g.More && beyond {
+	shown, more, next := takePage(tasks[start:end])
+	g := Group{ID: id, Tasks: append([]Task{}, shown...), More: more, Next: next}
+	if !g.More && before.IsZero() && end < len(tasks) {
 		g.More = true
 		g.Next = unixMilli(windowStart)
 	}
@@ -154,13 +146,7 @@ func unixMilli(t time.Time) string {
 }
 
 func sortTasks(tasks []Task) {
-	for i := 1; i < len(tasks); i++ {
-		j := i
-		for j > 0 && tasks[j].UpdatedAt.After(tasks[j-1].UpdatedAt) {
-			tasks[j], tasks[j-1] = tasks[j-1], tasks[j]
-			j--
-		}
-	}
+	sort.SliceStable(tasks, func(i, j int) bool { return tasks[i].UpdatedAt.After(tasks[j].UpdatedAt) })
 }
 
 type hit struct {
@@ -172,6 +158,8 @@ type hit struct {
 
 func scanClaude(root string, now time.Time, stale time.Duration) []Task {
 	var out []Task
+	scan := beginSessionScan(ToolClaude, root)
+	defer scan.finish()
 	projects := filepath.Join(root, "projects")
 	entries, err := os.ReadDir(projects)
 	if err != nil {
@@ -190,23 +178,11 @@ func scanClaude(root string, now time.Time, stale time.Duration) []Task {
 			if f.IsDir() || !strings.HasSuffix(f.Name(), ".jsonl") {
 				continue
 			}
-			h, ok := readHit(filepath.Join(dir, f.Name()))
-			if !ok || !hasTranscript(ToolClaude, h) {
+			task, ok := scan.read(filepath.Join(dir, f.Name()), now, stale)
+			if !ok {
 				continue
 			}
-			title, cwd := claudeTitle(h.head)
-			if title == "" {
-				title = strings.TrimSuffix(f.Name(), ".jsonl")
-			}
-			id := ToolClaude + ":" + strings.TrimSuffix(f.Name(), ".jsonl")
-			rememberSession(id, h.path)
-			out = append(out, Task{
-				ID:        id,
-				Title:     title,
-				CWD:       cwd,
-				UpdatedAt: h.mtime,
-				Status:    freshStatus(h.mtime, now, stale, claudeOpen(h.tail)),
-			})
+			out = append(out, task)
 		}
 	}
 	return out
@@ -214,6 +190,8 @@ func scanClaude(root string, now time.Time, stale time.Duration) []Task {
 
 func scanCodex(root string, now time.Time, stale time.Duration) []Task {
 	var out []Task
+	scan := beginSessionScan(ToolCodex, root)
+	defer scan.finish()
 	sessions := filepath.Join(root, "sessions")
 	_ = filepath.WalkDir(sessions, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
@@ -223,26 +201,11 @@ func scanCodex(root string, now time.Time, stale time.Duration) []Task {
 		if !strings.HasPrefix(name, "rollout-") || !strings.HasSuffix(name, ".jsonl") {
 			return nil
 		}
-		h, ok := readHit(path)
-		if !ok || !hasTranscript(ToolCodex, h) {
+		task, ok := scan.read(path, now, stale)
+		if !ok {
 			return nil
 		}
-		title, cwd, id := codexMeta(h.head)
-		if id == "" {
-			id = strings.TrimSuffix(name, ".jsonl")
-		}
-		if title == "" {
-			title = id
-		}
-		taskID := ToolCodex + ":" + id
-		rememberSession(taskID, h.path)
-		out = append(out, Task{
-			ID:        taskID,
-			Title:     title,
-			CWD:       cwd,
-			UpdatedAt: h.mtime,
-			Status:    codexStatus(h.tail, h.mtime, now, stale),
-		})
+		out = append(out, task)
 		return nil
 	})
 	return out
@@ -250,6 +213,8 @@ func scanCodex(root string, now time.Time, stale time.Duration) []Task {
 
 func scanCursor(root string, now time.Time, stale time.Duration) []Task {
 	var out []Task
+	scan := beginSessionScan(ToolCursor, root)
+	defer scan.finish()
 	projects := filepath.Join(root, "projects")
 	entries, err := os.ReadDir(projects)
 	if err != nil {
@@ -269,22 +234,11 @@ func scanCursor(root string, now time.Time, stale time.Duration) []Task {
 				continue
 			}
 			path := filepath.Join(transcripts, id.Name(), id.Name()+".jsonl")
-			h, ok := readHit(path)
-			if !ok || !hasTranscript(ToolCursor, h) {
+			task, ok := scan.read(path, now, stale)
+			if !ok {
 				continue
 			}
-			title := cursorTitle(h.head)
-			if title == "" {
-				title = id.Name()
-			}
-			taskID := ToolCursor + ":" + id.Name()
-			rememberSession(taskID, h.path)
-			out = append(out, Task{
-				ID:        taskID,
-				Title:     title,
-				UpdatedAt: h.mtime,
-				Status:    cursorStatus(h.tail, h.mtime, now, stale),
-			})
+			out = append(out, task)
 		}
 	}
 	return out

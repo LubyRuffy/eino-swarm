@@ -496,7 +496,10 @@ conversation does. Adjacent thinking and tool calls start collapsed, the same ro
 conversation. The composer stays where it is and cannot be used. A paired phone
 opens the same chat with the same locked composer, the same **Earlier**
 control, and the same follow of the live tail. The switch is off until
-you turn it on.
+you turn it on. The background refresh reuses parsed rows for unchanged files,
+checks file metadata for changes, and publishes one sorted snapshot. Idle polls
+copy only the visible page; they do not reread every transcript or sort the
+whole archive. Changed and deleted sessions appear on the next finished refresh.
 On iOS, the phone's read-only client detail keeps its title and Back button
 above the task log when the inbox is pulled down; Back returns to the inbox.
 On the phone, Clients → More shows a loading spinner while the next page arrives.
