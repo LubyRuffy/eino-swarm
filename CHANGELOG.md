@@ -53,6 +53,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430` / `C-010`: the qualified complete-main batch advances mobile package and development iOS build metadata to 0.1.29/129 for Issues #57, #65 and #66. Mac, Android and TestFlight retain one source batch; native acceptance and publication remain independent gates. Routine TestFlight archives retain marketing version 0.1.23, and a used Beijing daily quota leaves iOS pending until the next day.
+
 - `F-430` / `C-010`: the authorized iOS export-compliance declaration now lives in the app's Info.plist and is read before archive/preflight. Routine build increments no longer require repeated questions; the signed IPA and exact receipts must agree. Frozen sources without the field retain their per-build confirmation recovery (Issue #62).
 
 - `F-130` / `F-220` / `C-003`: completed PC and paired-phone turns now show a visible divider and local date/time from the stored completion event, including repeated scheduled runs and failed turns (Issue #59).
