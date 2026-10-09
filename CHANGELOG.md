@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-010`: native Mac acceptance recovery now has a pure offline observation audit. A locked host no longer hides a ready guest or an available authorized guest-login step; only an evidenced unlock failure is a blocker, and acceptance remains bound to the exact package and real window/behavior evidence. This changes development recovery guidance, not app behavior (Issue #68).
+
 - `F-223`, `C-014`: idle local-agent catalog refreshes reuse parsed rows from unchanged transcripts and sort each immutable snapshot once. Desktop and paired-phone polls copy only their visible page; changed/deleted sessions and live detail reads retain their behavior (Issue #66).
 
 - `F-130`, `F-150`, `C-019`, `C-009`: repeated resumes after one worker's lifetime watchdog now stop after three consecutive failures. The manager errors, its goal blocks and only its recurring check pauses, with Trace and durable restart accounting; provider errors/cancellation and explicit human recovery retain their semantics (Issue #65).

@@ -29,6 +29,50 @@ push the complete main and record its version/SHA in the delivery ledger.
 Only mobile batches require `mobile/package.json` to match the new version.
 Desktop-only releases leave the mobile version/build number unchanged.
 
+### Recover native Mac acceptance in a locked session
+
+When native acceptance is pending, inspect the existing UTM guest session.
+A host lock says nothing about that guest's readiness. If the guest is locked,
+use its existing authorized account from the UTM skill/private materials through
+the available computer-use interface, then inspect the retained package in an
+isolated `ZWAI_HOME`. Do not change login/security settings or print credentials.
+Record a real failed login before calling guest unlock blocked; a locked screen,
+SSH connection or started process alone does not prove failure or acceptance.
+
+Audit a credential-free private observation before choosing the next action:
+
+```bash
+python3 tools/audit_macos_acceptance.py --observation /absolute/private/observation.json
+```
+
+| Observation field | Meaning |
+|---|---|
+| `candidate` | Object with `version` (numeric `x.y.z`), full lowercase `source_sha`, ZIP basename `asset_name` and lowercase SHA-256 `asset_sha256` from the frozen candidate |
+| `guest.target`, `guest.state` | Existing guest identity; state is `locked`, `ready` or `unknown` |
+| `guest.existing_credentials_available` | Boolean availability of an already authorized account; never the account or secret itself |
+| `guest.unlock` (optional) | Object with that guest's `target`, `result` (`not_attempted`, `succeeded`, `failed`) and `evidence` list of private observation references |
+| `native_window` (optional) | Object with `guest_target`, the same four-field `candidate`, boolean `observed` and `behavior_verified`, and an `evidence` list of real window/behavior receipt references |
+| `host_locked` (optional) | Boolean observation only; may be omitted and does not affect the decision |
+| `guest.ssh_ok`, `guest.process_started` (optional) | Boolean transport/process observations only; never native acceptance |
+
+The tool only reads JSON and reports `status`, `next_action`, `reason`, the
+candidate/guest identity and evidence references. It does not operate UI, SSH,
+credentials or releases, and does not independently inspect referenced evidence.
+Unknown fields and invalid input are rejected without echoing input values.
+Exit 0 means a valid decision, including `pending`/`blocked`; exit 2 means invalid
+or unreadable input. Read the status, not the exit code, to decide acceptance.
+
+`locked` with an available authorized account and no attempt yields
+`unlock_guest`; successful evidenced unlock or a ready guest yields
+`inspect_native_window`. Missing attempt evidence requires observation, and only
+an evidenced unlock failure for the target guest yields `blocked`. `passed`
+requires observed and verified native behavior, nonempty real evidence references,
+the same guest, and all four candidate identity fields exactly matching. A later
+lock does not invalidate an already accepted exact package. Continue publication
+using the same accepted ZIP and existing batch/version under the rules above.
+This development audit tool does not itself change app behavior or require a new
+installer release.
+
 ### Finalize one processing batch before publication
 
 At the start of a run, identify the Issues and worktrees this automation will

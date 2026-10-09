@@ -22,6 +22,7 @@ make mobile-android                # open Android Studio
 make mobile-android-release        # signed (or ANDROID_UNSIGNED=1) APK/AAB into bin/
 make release VERSION=x.y.z         # only pending required Mac/Android/iOS platforms; independent gates
 make release-check VERSION=x.y.z   # read-only source/signing/remote preflight
+python3 tools/audit_macos_acceptance.py --observation <private.json> # offline native recovery decision
 make mobile-ios-release VERSION=x.y.z # resume only this TestFlight batch
 go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launcher slots
 ```
@@ -83,6 +84,14 @@ E2E suite.
   When changing desktop packaging, check the ZIP's `Info.plist` icon reference
   and `Contents/Resources/AppIcon.icns`, then inspect the extracted `.app` in
   Finder and launch that same package. A running process alone is insufficient.
+- For native Mac acceptance, a locked host does not block a ready UTM guest.
+  A locked guest with an existing authorized account from the UTM skill/private
+  materials needs an actual login attempt before declaring a blocker. Record
+  the target and result without credentials; only a failed guest unlock with
+  evidence is an unlock blocker. `tools/audit_macos_acceptance.py` only decides
+  the next action from observations, never logs in. A passed observation needs
+  real behavior/window evidence bound to the same version, source SHA, ZIP name
+  and SHA-256. SSH/process success and the audit's exit code are not acceptance.
 - A context-budget fix must test replayed messages without billed usage, with
   mixed ASCII/CJK tool results, message framing, and the configured output cap. A synthetic
   billed-token boundary alone cannot prove a long scheduled conversation will

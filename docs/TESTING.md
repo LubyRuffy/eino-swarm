@@ -1923,3 +1923,26 @@ cache measured about 3 ms and 1.46 MB. Chronological 7,749-row sorting fell
 from about 152 ms to 1.4 ms. These are development measurements, not a promise
 for every filesystem or model-running CPU load. Inspect a real native Mac
 window separately before recording native acceptance.
+
+## Native Mac acceptance recovery (`F-430`, `C-010`)
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.test_audit_macos_acceptance -v
+make docs-check
+```
+
+The offline tests first observed the missing recovery CLI fail, then verify that
+a ready guest remains actionable with the host locked, unlocked or unobserved.
+A locked guest with an existing authorized account yields a login action;
+successful evidenced unlock leads to window inspection. Only an actual failed
+target-guest unlock with evidence yields a blocker. Missing evidence, unknown
+session state, SSH/process success and mismatched candidate/window receipts stay
+unaccepted. Passed observations require real window/behavior references and exact
+version/source SHA/ZIP/hash/guest identity. Invalid JSON, unsupported credential
+fields and non-boolean flags are rejected without printing private input values.
+`make docs-check` discovers this regression with the existing Python tests.
+
+These tests exercise a pure JSON decision function and CLI with temporary files;
+they do not operate UTM, SSH, UI, login or an app. The caller must inspect the
+actual window and behavior before writing the private observation. The audit
+does not create that evidence, and its successful exit is not native acceptance.
