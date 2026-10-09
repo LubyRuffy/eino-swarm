@@ -55,17 +55,19 @@ func eventView(ev store.Event, cfg config.RemoteConfig) EventView {
 		text = truncate(ev.Text, eventChars(cfg))
 	}
 	return EventView{
-		ThreadID:   ev.ThreadID,
-		TurnID:     ev.TurnID,
-		Seq:        ev.Seq,
-		Kind:       ev.Kind,
-		AgentID:    ev.AgentID,
-		Role:       ev.Role,
-		Text:       text,
-		ToolCallID: ev.ToolCallID,
-		Err:        ev.Err,
-		HasImages:  len(ev.Images) > 0,
-		CreatedAt:  ev.CreatedAt,
+		SourceThreadID: ev.SourceThreadID,
+		SourceTurnID:   ev.SourceTurnID,
+		ThreadID:       ev.ThreadID,
+		TurnID:         ev.TurnID,
+		Seq:            ev.Seq,
+		Kind:           ev.Kind,
+		AgentID:        ev.AgentID,
+		Role:           ev.Role,
+		Text:           text,
+		ToolCallID:     ev.ToolCallID,
+		Err:            ev.Err,
+		HasImages:      len(ev.Images) > 0,
+		CreatedAt:      ev.CreatedAt,
 	}
 }
 

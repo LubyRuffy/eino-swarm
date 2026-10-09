@@ -767,3 +767,14 @@ Rules for changing this code — coverage bars, prompt hygiene, documentation
 duties — are in [AGENTS.md](AGENTS.md). Read it before opening a pull request.
 
 Invalid delegation calls do not create workers. Within one manager reply, repeated spawn argument errors are reported once per error with their rejected count; the manager can supply both role and task and continue. See [the lifecycle tools](docs/LIBRARY.md).
+
+### Coordination between conversations
+
+Managers can discover other active tasks on this PC with `list_tasks`, compare
+actual workspaces, and negotiate through `send_task_message` and
+`read_task_messages`. Messages show their source in desktop and paired-phone
+conversations and remain in the event log when a recipient stops or restarts.
+Reading uses a saved cursor by default; explicit cursors recover earlier pages.
+The capability is advisory: wait for a peer's explicit agreement before relying
+on file division or execution order. It does not lock resources, wake idle tasks,
+interrupt work, answer a human pause or grant new permissions (`F-135`, `C-021`).

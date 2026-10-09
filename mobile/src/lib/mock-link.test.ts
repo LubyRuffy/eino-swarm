@@ -23,6 +23,23 @@ function host() {
 }
 
 describe("the walkthrough host", () => {
+  it("carries peer provenance through an idle phone history", async () => {
+    const prior = location.href
+    history.replaceState(null, "", "/?mock=1&tick=0&history=peers")
+    const h = host()
+    try {
+      const link = new MockLink(h)
+      const watch = await link.rpc({ op: OpWatch, thread_id: "t-recent" })
+      expect(watch.status?.running).toBe(false)
+      expect(watch.events?.find((ev) => ev.kind === "task_message")).toMatchObject({
+        source_thread_id: "peer-task", source_turn_id: "peer-turn", text: "Peer coordination request.",
+      })
+    } finally {
+      h.stop()
+      history.replaceState(null, "", prior)
+    }
+  })
+
   it("only stands in when the URL asks for it", () => {
     expect(wantsMock("?mock=1")).toBe(true)
     expect(wantsMock("")).toBe(false)

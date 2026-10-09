@@ -90,6 +90,7 @@ in this database: notes and skills are files, so a person can read and fix them
 | `session_memory` | text | rolling briefing of this conversation, updated from the event log at token/tool breakpoints (newest events that fit a rune cap). Compact copies it; the post-turn reviewer reads it. Empty until the first accepted refresh. Post-turn refresh is background work and does not block the next follow-up |
 | `session_memory_through_seq` | int64 | last **event** seq included in that briefing. Advanced only on an accepted refresh. A rewind that deletes that event clears the three session-memory columns |
 | `session_memory_tokens` | int | estimated event-log tokens at the last refresh attempt (accepted or failed), so the next gate knows how far the window has grown and a failed refresh cannot resend the same payload |
+| `task_message_through_seq` (not null, default 0 for existing conversations) | int64 | monotonic default peer-inbox read cursor; not acknowledgement; explicit `after_seq` may reread older events |
 | `archived` | bool | hidden from the sidebar's default list |
 | `pinned` | bool | tracked in the sidebar Pinned section |
 | `pinned_at` | time | when it was pinned; nil when it is not. Newest pin sits at the top |
@@ -201,6 +202,7 @@ stream still walks forward.
 | `turn_id` | groups a turn's events for the trace view and the turn footers |
 | `seq` | per-conversation, assigned upward even after a rewind, `(thread_id, seq)` indexed. The SSE `id`, and what `?since=`/`Last-Event-ID` resume from. Editing a `user_message` deletes that row and everything after it, so this column can have a gap; the next event is still larger than the previous high-water mark |
 | `kind` | see the [event table in the API docs](API.md#event-stream) |
+| `source_thread_id`, `source_turn_id` | optional runtime-bound origin of a `task_message`; old events omit these columns |
 | `agent_id` | `manager` or a sub-agent |
 | `role` | for `spawned`, the sub-agent's role |
 | `text` | the payload. For `spawned` this is the worker's system prompt (host snapshot plus the task). Older rows stored the role name here; `role` is the reliable role field. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary |

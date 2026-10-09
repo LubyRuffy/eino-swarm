@@ -854,6 +854,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		{engine.KindSteerRetracted, "steer_retracted"},
 		{engine.KindSteerRevised, "steer_revised"},
 		{engine.KindSteerPreempted, "steer_preempted"},
+		{engine.KindTaskMessage, "task_message"},
 		{engine.KindCleanup, "cleanup"},
 		{engine.KindProgress, "progress"},
 		{engine.KindMemoryReview, "memory_review"},

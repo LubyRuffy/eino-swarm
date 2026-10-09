@@ -117,6 +117,12 @@ E2E suite.
 
 ## Backend rules
 
+- Independent task messages are peer data, never human steering or authorization.
+  Persist their origin and inbox before reporting delivery; a queued notice
+  must not start an idle task, bypass an ask/cap pause or interrupt its work.
+  Late-steer continuation accepts only User-role messages. Regress late
+  completion/cancellation, restart read cursors and storage failure.
+
 - Scheduled completion needs a tool result or explicit report in the same turn.
   Prose alone is not evidence that the check ran. Keep one bounded same-turn
   continuation and regress both Run now and automatic fires, including quiet

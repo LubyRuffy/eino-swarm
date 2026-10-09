@@ -1,0 +1,33 @@
+import { expect, test } from "@playwright/test"
+
+test("independent conversations show peer provenance after live delivery and reload", async ({ page, request }) => {
+  test.skip(process.env.ZWAI_MOCK_TASK_COORDINATION !== "1", "run with the opt-in offline coordination script")
+  const { project } = await (await request.post("/api/projects", { data: { name: "Peer coordination" } })).json()
+  const create = () => request.post("/api/threads", { data: { title: "Coordination task", project_id: project.id } }).then((r) => r.json()).then((r) => r.thread)
+  const a = await create()
+  const b = await create()
+  await page.goto("/")
+  // First open the receiver so the same named SSE event used by the native
+  // shell must deliver the notice, rather than only reading a saved fixture.
+  await page.getByRole("button", { name: "Peer coordination", exact: true }).click()
+  await page.locator(`[data-testid="thread-row"][data-id="${b.id}"]`).getByTestId("row-label").click()
+  const replies = await Promise.all([a,b].map((th) => request.post(`/api/threads/${th.id}/turns`, { data: { text: "coordinate this work" } })))
+  for (const r of replies) expect(r.ok()).toBe(true)
+  const firstTurn = await replies[0].json()
+  await expect(page.getByTestId("transcript")).toContainText(`Peer task ${a.id}:`, { timeout: 30_000 })
+  await expect(page.getByTestId("transcript")).toContainText("explicit agreement is still required", { timeout: 30_000 })
+  await expect.poll(async () => (await (await request.get(`/api/threads/${b.id}`)).json()).status.running).toBe(false)
+  await expect.poll(async () => (await (await request.get(`/api/threads/${a.id}`)).json()).status.running).toBe(false)
+  const trace = await (await request.get(`/api/trace/${firstTurn.turn.id}`)).json()
+  expect(trace.events.some((ev: { kind: string; text: string }) => ev.kind === "tool_call" && ev.text.startsWith("send_task_message("))).toBe(true)
+  expect(trace.events.some((ev: { kind: string; text: string }) => ev.kind === "tool_result" && ev.text.includes('"acknowledged":false'))).toBe(true)
+  await page.reload()
+  await expect(page.getByRole("heading", { name: "What should we work on?" })).toBeVisible()
+  const projectRow = page.getByRole("button", { name: "Peer coordination", exact: true })
+  await expect(projectRow).toBeVisible()
+  const receiverRow = page.locator(`[data-testid="thread-row"][data-id="${b.id}"]`)
+  if (!(await receiverRow.isVisible())) await projectRow.click()
+  await receiverRow.getByTestId("row-label").click()
+  await expect(page.getByTestId("transcript")).toContainText(`Peer task ${a.id}:`)
+  await expect(page.getByTestId("status-badge")).toContainText("Idle")
+})

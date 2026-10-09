@@ -1,4 +1,5 @@
 export const en = {
+  "notice.peerTask": "Peer task {id}: {text}",
   "scan.title": "Scan to bind this PC",
   "scan.hint":
     "Open zwai Settings → Phone and hold the pairing QR in the frame. Paste is the same URI when there is no camera.",

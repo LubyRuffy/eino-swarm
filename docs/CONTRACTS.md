@@ -153,3 +153,14 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 后缀（大小写不敏感）决定文本呈现：`.md`、`.markdown`、`.mdx` 使用安全 Markdown 渲染（MDX 不求值），已知源码后缀复用桌面词法高亮，其余文本保持原样；超过 256 Ki 字符回退完整纯文本，单行超过 4096 字符跳过源码高亮，不截断内容。下载仍为原文件字节，HTML/SVG 始终是转义源码。证据：`mobile/src/components/text-file-preview.tsx`, `mobile/src/components/text-file-preview.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；来源：GitHub Issue #63。
 - 允许行为：浏览目录、读取已上传或 agent 生成的文件、下载其他可读取文件；禁止行为：从手机直接调用 PC loopback API、在应用同源执行 agent 产出的 HTML/SVG、把超限文件截断后冒充完整内容；失败语义：缺失或不安全路径返回 RPC 错误，手机显示读取错误或过大提示；旧 PC 返回 `unknown_op` 时提示更新 PC；不变量：列表和内容均绑定同一对话 ID，单帧不超过 Pairlink 密文上限；边界条件：目录、空文件、分页、大文件、并发文件变化和符号链接。
 - 证据：实现 `internal/remote/files.go`, `mobile/src/lib/remote-files.ts`, `mobile/src/components/file-browser.tsx`；测试 `internal/remote/files_test.go`, `mobile/src/lib/remote-files.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/ios-wait-layout.swift`；变更规则：同步 RPC 文档、手机原生／浏览器走测和安全边界测试；来源：GitHub Issue #48。
+
+## C-021 Independent task messages retain provenance
+
+- 状态：active；类型：lifecycle / consistency / security；作用范围：host manager、事件数据库、桌面和配对手机；关联功能：`F-135`、`F-160`。
+- 契约内容：`list_tasks` 返回同 host 其他未归档的运行中、留有 worker 或有计划等待的对话，以及实际 workspace、当前请求和状态；结果只是快照。发送者 conversation/turn 身份由运行时绑定，模型参数不能冒充来源。仅未归档的不同对话可互发消息。
+- 发送必须先持久化 `task_message`，再广播和排入 manager 的下次模型边界通知；失败不返回成功回执。`stored`/`notice_queued` 不表示已阅读、已确认或已达成协议。接收方结束、取消、暂停或重启后仍可读取事件收件箱；空闲对话不自动开始新轮次，暂停不被解除。
+- `read_task_messages` 默认使用数据库中已保存的读取游标；显式 `after_seq: 0` 可重读。分页 `limit` 为 1–100，默认 20；返回 `messages`、`next_seq`、`more`。成功读页只向前推进默认游标，不改变会话最近活动时间；读取不是协作确认，明确回复才是协议证据。用户重写历史时，同一事务将落入已删除历史的游标收回到剩余 timeline 尾部，重启后新消息仍可读。
+- 允许行为：按资源分工、协商等待和以现有 `schedule_wake` 有界等候；禁止行为：把发现当作强制锁，把 peer 消息当作用户权限，自动打断/唤醒对方，或忙循环轮询。
+- 失败语义：非法参数、未知或归档目标、数据库失败返回工具错误；不变量：一条消息保留 `source_thread_id`、`source_turn_id` 和收件 timeline `seq`，不会成为 `user_message`/`steer` 或一个假 worker；边界条件：未读通知晚于结束时保留持久化消息，但不发起人类跟进。用户显式重写/删除对话历史仍遵循 `C-008` 的数据生命周期。
+- 证据：实现 `internal/engine/task_coordination.go`、`internal/engine/goal_session.go`、`internal/store/event_kind.go`、`internal/remote/clip.go`；测试 `internal/engine/task_coordination_test.go`、`internal/engine/task_coordination_flow_test.go`、`internal/store/event_kind_test.go`、`internal/remote/task_message_test.go`、`frontend/src/lib/task-message.test.ts`、`mobile/src/lib/task-message.test.ts`。
+- 变更规则：同步 API、DATA_MODEL、TESTING、桌面/手机事件回放与 CHANGELOG；来源：GitHub Issue #57 的通信协商选择，评论 6071858524。

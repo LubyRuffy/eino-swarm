@@ -1,6 +1,7 @@
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
+  "notice.peerTask": "Peer task {id}: {text}",
   "header.idle": "Idle",
   "header.working": "Working",
   "header.waiting": "Waiting",

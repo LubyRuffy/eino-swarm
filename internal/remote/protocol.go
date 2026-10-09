@@ -250,17 +250,19 @@ type WakeView struct {
 // EventView is one conversation event on pairlink. Same kind/seq as the
 // desktop SSE payload; text may be clipped so a frame stays under MaxPushPayload.
 type EventView struct {
-	ThreadID   string    `json:"thread_id"`
-	TurnID     string    `json:"turn_id,omitempty"`
-	Seq        int64     `json:"seq"`
-	Kind       string    `json:"kind"`
-	AgentID    string    `json:"agent_id,omitempty"`
-	Role       string    `json:"role,omitempty"`
-	Text       string    `json:"text"`
-	ToolCallID string    `json:"tool_call_id,omitempty"`
-	Err        string    `json:"err,omitempty"`
-	HasImages  bool      `json:"has_images,omitempty"`
-	CreatedAt  time.Time `json:"created_at"`
+	SourceThreadID string    `json:"source_thread_id,omitempty"`
+	SourceTurnID   string    `json:"source_turn_id,omitempty"`
+	ThreadID       string    `json:"thread_id"`
+	TurnID         string    `json:"turn_id,omitempty"`
+	Seq            int64     `json:"seq"`
+	Kind           string    `json:"kind"`
+	AgentID        string    `json:"agent_id,omitempty"`
+	Role           string    `json:"role,omitempty"`
+	Text           string    `json:"text"`
+	ToolCallID     string    `json:"tool_call_id,omitempty"`
+	Err            string    `json:"err,omitempty"`
+	HasImages      bool      `json:"has_images,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type ProjectView struct {

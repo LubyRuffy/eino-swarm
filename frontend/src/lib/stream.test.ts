@@ -55,6 +55,7 @@ const wireKinds: EventKind[] = [
   "tool_delta",
   "tool_call_delta",
   "steer",
+  "task_message",
   "steer_retracted",
   "steer_revised",
   "steer_preempted",

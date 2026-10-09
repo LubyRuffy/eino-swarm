@@ -2,6 +2,7 @@ import type { en } from "./messages-en"
 
 /** Chinese UI chrome. Every key in messages-en.ts must have a string here. */
 export const zh: { [K in keyof typeof en]: string } = {
+  "notice.peerTask": "协作任务 {id}：{text}",
   "header.idle": "空闲",
   "header.working": "工作中",
   "header.waiting": "等待中",

@@ -14,6 +14,15 @@ import (
 	"github.com/cloudwego/eino/components/model"
 )
 
+func TestStandaloneManagerDoesNotAdvertiseHostInboxTools(t *testing.T) {
+	prompt := ManagerPrompt(&tools.Set{}, config.Default(), "")
+	for _, name := range []string{"list_tasks", "send_task_message", "read_task_messages"} {
+		if strings.Contains(prompt, name) {
+			t.Fatalf("standalone manager has no host inbox tool %s", name)
+		}
+	}
+}
+
 func TestManagerPromptRejectsInvalidSpawnCleanupClaims(t *testing.T) {
 	prompt := ManagerPrompt(&tools.Set{}, config.Default(), "")
 	for _, text := range []string{"one corrected call", "rejected_calls", "They created no worker", "do not invent ids"} {

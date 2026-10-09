@@ -266,6 +266,12 @@ export function reduceEvent(
     }
     return next
   }
+  if (ev.kind === "task_message") {
+    const manager = touchAgent(next, MANAGER_ID)
+    const notice = block(ev, "notice", `Peer task ${ev.source_thread_id ?? ""}: ${ev.text ?? ""}`)
+    if (!manager.blocks.some((b) => b.id === notice.id)) append(manager, notice)
+    return next
+  }
   // A generated title is metadata for the sidebar, not a chat row. It still
   // lives on the manager as a quiet block so the Trace tab's Full log can show it
   // without inventing a "title-namer" worker in the roster.

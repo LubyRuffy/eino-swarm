@@ -91,7 +91,7 @@ type MockThread = {
   followups?: FollowupView[]
 }
 
-type Step = { kind: string; text?: string; callID?: string; err?: string; agentID?: string; role?: string; at?: string }
+type Step = { kind: string; text?: string; callID?: string; err?: string; agentID?: string; role?: string; at?: string; sourceThreadID?: string; sourceTurnID?: string }
 
 const projects: ProjectView[] = [
   { id: "p-platform", name: "Platform" },
@@ -243,6 +243,9 @@ export class MockHost {
           { kind: "done", at: "2026-10-08T02:03:04Z" },
         ], false)
       } else this.seed(done, scriptedTurn(done.title), false)
+      if (new URLSearchParams(location.search).get("history") === "peers") {
+        this.seed(done, [{ kind: "task_message", sourceThreadID: "peer-task", sourceTurnID: "peer-turn", text: "Peer coordination request." }], false)
+      }
       if (new URLSearchParams(location.search).get("agents") === "1") {
         this.seed(done, [
           { kind: "spawned", agentID: "worker-1", role: "reader" },
@@ -511,6 +514,8 @@ export class MockHost {
       seq: streamed ? 0 : this.seq,
       kind: step.kind,
       agent_id: step.agentID,
+      source_thread_id: step.sourceThreadID,
+      source_turn_id: step.sourceTurnID,
       role: step.role,
       text: step.text ?? "",
       tool_call_id: callID,

@@ -4,6 +4,24 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testIndependentTaskMessageHasPeerProvenance() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 12))
+    back.tap()
+    let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'")).firstMatch
+    XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    thread.tap()
+    let message = app.staticTexts["Peer task peer-task: Peer coordination request."]
+    XCTAssertTrue(message.waitForExistence(timeout: 8), "requires history=peers; the source must be visible in the packaged app")
+    XCTAssertFalse(app.buttons["Stop"].exists, "an inbox message must not start an idle task")
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = "peer-task-source"
+    shot.lifetime = .keepAlways
+    add(shot)
+  }
+
   func testScheduledTurnBoundariesShowCompletionDates() throws {
     let app = XCUIApplication()
     app.launch()

@@ -74,6 +74,11 @@ function settleWorkerBlock(block: CompactBlock, failed: boolean): CompactBlock {
 function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
   const next = blocks.slice()
   switch (ev.kind) {
+    case "task_message":
+      if (!next.some((b) => b.id === blockId(ev))) {
+        next.push({ id: blockId(ev), kind: "notice", text: t("notice.peerTask", { id: ev.source_thread_id ?? "", text: ev.text }) })
+      }
+      return next
     case "user_message":
       if (ev.text.startsWith("This turn is a scheduled check.")) return next
       next.push({

@@ -840,6 +840,26 @@ Live status text (heartbeat, pending tools, wait roll-up, sub-agent activity) is
 rendered by `MarqueeText`: a sweep while the work is in progress, a scroll if
 the line overflows, truncation once it is idle.
 
+## Independent conversation coordination
+
+The host manager mounts `list_tasks`, `send_task_message` and `read_task_messages`
+from `internal/engine/task_coordination.go`; workers keep the existing swarm-only
+`send_message`. Discovery joins non-archived conversations with live runtime and
+scheduled-wait state and resolves each real workspace. A message is an event in
+the recipient timeline with source conversation/turn metadata; the sender's tool
+receipt links that sequence to its own Trace. Persistence and broadcast share the
+same sequencing lock as normal events. Only after a successful store write does
+an active registry queue a system notice to read the inbox at its next boundary.
+The notice contains no peer body. Bodies are untrusted data returned by the inbox
+tool, not human steering, permissions or resource locks. Reading advances the
+thread's durable cursor monotonically without changing conversation activity;
+explicit cursors allow recovery/rereading. A history rewrite also retracts a
+cursor into removed events in the same transaction, preserving reads after restart.
+Idle recipients are not woken, human waits are not answered, and late system
+notices never become new human turns. Desktop and phone show a source-labelled
+notice, preserving clipped phone text and the original host event. `C-021`
+defines the receipt, acknowledgement and lifecycle boundaries.
+
 ## Data layout
 
 ```

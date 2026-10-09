@@ -41,6 +41,12 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 		if err := tx.Where("thread_id = ? AND seq >= ?", threadID, fromSeq).Delete(&Event{}).Error; err != nil {
 			return err
 		}
+		// After restart, event numbering starts above the remaining timeline.
+		// A cursor into removed history would hide new inbox messages.
+		if err := tx.Model(&Thread{}).Where("id = ? AND task_message_through_seq >= ?", threadID, fromSeq).
+			UpdateColumn("task_message_through_seq", gorm.Expr("COALESCE((SELECT MAX(seq) FROM events WHERE thread_id = ?), 0)", threadID)).Error; err != nil {
+			return err
+		}
 		if len(ids) > 0 {
 			if err := tx.Where("thread_id = ? AND turn_id IN ?", threadID, ids).Delete(&Message{}).Error; err != nil {
 				return err

@@ -1653,3 +1653,28 @@ files out from under a live `desktop` / `web` process. From a checkout,
 `desktop` and `web` rebuild that bundle when the sources changed
 (`frontend.Load`); a shipped binary serves the `go:embed` snapshot. Without
 `index.html` the API still works and `GET /` is a 404.
+
+## Host manager task coordination
+
+`F-135` / `C-021` adds manager tools, not an unauthenticated HTTP endpoint:
+
+| tool | arguments | result |
+|---|---|---|
+| `list_tasks` | `{}` | `self_thread_id`, other active `tasks` with `thread_id`, `workspace`, `request`, `goal`, `status` |
+| `send_task_message` | `{thread_id, text}` | `ok`, recipient `thread_id`, durable inbox `seq`, `stored`, `notice_queued`, `acknowledged: false` |
+| `read_task_messages` | optional `after_seq`, optional `limit` (1–100, default 20) | `messages` with source IDs/body/time/seq, `next_seq`, `more` |
+
+Omitting `after_seq` uses the saved read cursor; `0` rereads. Read pages advance
+that default cursor only forward. A peer reply, not a send/read receipt, confirms
+an agreement. Invalid JSON/fields, missing or archived recipients and storage
+errors return an `ok: false` tool result. Sending neither starts an idle task nor
+resumes or interrupts an active one. Model-supplied sender fields do not control
+identity. Peer content grants no human authorization.
+
+The named SSE / phone event `task_message` carries normal event fields plus
+optional `source_thread_id` and `source_turn_id`. `text` is plain peer text, not
+JSON. The host stores it before delivery, desktop and phone render a notice with
+its source, and phone text retains the existing `event_chars` clipping. The
+sender's tool-result receipt links to the recipient event by inbox sequence and
+source IDs. A message received during an active turn is also in that turn's
+Trace; an idle recipient retains it on the conversation timeline until read.

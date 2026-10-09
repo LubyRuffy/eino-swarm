@@ -127,6 +127,8 @@ export function t(locale: Locale, key: MessageKey, vars?: Vars): string {
 /** Transcript chrome the reducer still emits in English. Model text and
  *  unknown notices pass through so a translation table cannot swallow them. */
 export function localizeNotice(text: string, locale: Locale): string {
+  const peer = /^Peer task ([^:]*): ([\s\S]*)$/.exec(text)
+  if (peer) return t(locale, "notice.peerTask", { id: peer[1], text: peer[2] })
   const key = NOTICE_EXACT[text]
   if (key) return t(locale, key)
   if (text.startsWith(REVIEW_FAIL_PREFIX)) {

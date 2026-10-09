@@ -96,6 +96,9 @@ func (rt *runtime) reapParked() bool {
 // human message would reset the auto-continue budget forever.
 func keepHumanSteers(leftover []*schema.Message) (texts []string, images []ImageInput) {
 	for _, m := range leftover {
+		if m == nil || m.Role != schema.User {
+			continue
+		}
 		t := strings.TrimSpace(strings.TrimPrefix(userMessageText(m), "[steer] "))
 		if t == "" || isGoalSessionWrapSteer(t) {
 			continue

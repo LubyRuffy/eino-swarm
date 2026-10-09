@@ -15,6 +15,7 @@ export type EventKind =
   | "tool_delta"
   | "tool_call_delta"
   | "steer"
+  | "task_message"
   | "steer_retracted"
   | "steer_revised"
   | "steer_preempted"
@@ -52,6 +53,8 @@ export type EventKind =
   | "schedule_cancelled"
 
 export interface SwarmEvent {
+  source_thread_id?: string
+  source_turn_id?: string
   thread_id: string
   turn_id: string
   /** Gap-free per conversation. 0 means a streamed delta, which is not stored

@@ -13,9 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `C-021`: late system/peer notices are excluded from human follow-up turns; only user messages can become late human steering.
+
 - `F-130`, `C-019`: repeated invalid spawn calls from one model reply now produce counted refusals instead of flooding tool history; valid and corrected calls continue, and refused calls never claim worker creation (Issue #64).
 
 ### Added
+
+- `F-135`, `C-021`: independent conversation managers can discover active tasks and exchange durable peer messages, with runtime-bound provenance, persistent read cursors and explicit acknowledgement. Idle or paused recipients are not started or resumed (Issue #57).
 
 - `F-224`, `C-020`: phone output previews render Markdown by suffix and highlight known source languages; unknown/large text remains complete plain text, with inert HTML/SVG and unchanged downloads (Issue #63).
 

@@ -1,6 +1,7 @@
 import type { MessageKey } from "./messages-en"
 
 export const zh: Record<MessageKey, string> = {
+  "notice.peerTask": "协作任务 {id}：{text}",
   "scan.title": "扫码绑定这台 PC",
   "scan.hint":
     "打开 zwai 设置 → 手机，把配对二维码放进取景框。没有摄像头时粘贴同一条 URI。",
