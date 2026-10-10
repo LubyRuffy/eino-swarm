@@ -96,8 +96,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-320`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
+- 模型接口失败的公共 turn/error 展示保留可判断的 HTTP 状态码及接口拒绝/响应解码原因。JSON 解码错误本身不证明工具参数无效；SDK/Eino 类型错误经包装仍按接口错误处理。公共文本不包含原始响应正文、图执行路径或认证值，原因最多 512 字符；原始调用与重试仍在同一 turn 的 Trace 内可查，上下文溢出及超时提示保留现有恢复建议。
 - 允许行为：敏感值脱敏；禁止行为：丢掉诊断所需事件或输出令牌/完整 Cookie；失败语义：不存在的 id 报不存在；不变量：同 id 贯穿运行；边界条件：部分失败和重启恢复。
-- 证据：实现 `internal/engine`, `internal/server`, `internal/store`；测试 `internal/engine`, `internal/server`；变更规则：同步 CLI、API 和 Trace 测试；来源：`AGENTS.md`。
+- 证据：实现 `internal/engine/runerr.go`, `internal/engine`, `internal/server`, `internal/store`；测试 `internal/engine/runerr_api_test.go`, `internal/engine/api_error_integration_test.go`, `internal/server`；变更规则：同步 CLI、API 和 Trace 测试；来源：`AGENTS.md`、GitHub Issue #71。
 
 ## C-013 Phone model picker
 

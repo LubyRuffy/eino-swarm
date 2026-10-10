@@ -2012,3 +2012,12 @@ above, then select `com.lubyruffy.zwai.AgentRosterTest` through
 AndroidJUnitRunner. Both tests inspect the reached roster and worker detail,
 then return to the original manager transcript. Retain screenshots and the
 accessibility tree alongside the test result and packaged asset hashes.
+## Model API failure evidence (#71)
+
+`go test -race ./internal/engine -run 'TestPublic|TestEmptyGatewayResponse|TestAPIAuthenticationFailure'` covers wrapped SDK/Eino errors, HTTP 502 empty-body decode failure, 400/401/403/429/5xx causes, bounded credential-masked public text and preserved context/first-byte advice. The integration test uses a local `httptest` HTTP server through the real SDK and engine: 502 yields three HTTP/model calls and two retries on the same failed turn; 401/403 yield one call and no retry. Stored turn/error text, original LLM errors, retry events and no-goal turn count are asserted independently. No network or real model is used.
+
+`cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e -- api-error.spec.ts` runs the desktop Web path against a local empty-502 HTTP endpoint through the real SDK. The flag selects this single test and starts the app without `--mock`; the regular offline-provider suite skips it. Check Chat, the same-turn Trace and Full log, return/reload persistence, three HTTP calls and two retries, and the retained screenshots/Trace JSON.
+
+Phone `mobile/e2e/api-error.spec.ts` uses `history=api-error` to regress existing error-text passthrough on Chromium and iPhone WebKit, including return/reopen and reload. Native packaged XCTest entry is `AppUITests/BindFlowTests/testModelAPIErrorShowsHTTPStatusAndDecodeCause`, with `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=api-error'`; Android entry is `com.lubyruffy.zwai.APIErrorTest`. Check the reached screen and exact production-bundle hashes; fixture/replay tests supplement the real engine HTTP test, not replace it. A system ANR before the page is reached is an environment failure, never behavior acceptance.
+
+Mac native verification runs the current packaged candidate against a local empty-502 HTTP model in a separate data directory, without `--mock`: verify terminal error, Idle state, same-turn Trace status and Full log, three LLM calls and two retry events, and save window/Trace evidence.

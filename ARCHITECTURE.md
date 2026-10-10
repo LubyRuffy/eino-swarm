@@ -560,6 +560,15 @@ worker before closing SQLite.
 
 ## Why the event stream is built this way
 
+`internal/engine/runerr.go` formats the public turn/error text shared by desktop
+and phone. Wrapped SDK/Eino API failures retain the HTTP status and concrete API
+rejection or response-decoder cause, with credentials masked and the cause
+bounded to 512 runes. Raw response bodies and graph paths stay out of that text.
+A JSON decoding failure alone cannot identify invalid tool arguments. Idle,
+first-byte and context overflow errors keep their existing recovery guidance;
+the original model-call records and bounded retry events remain tied to the same
+turn for API, CLI and desktop Trace diagnosis.
+
 The UI must survive a refresh, a reconnect and a slow client without losing an
 event or showing a duplicate:
 

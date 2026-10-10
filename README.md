@@ -292,6 +292,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   `zwai trace <id>` replays the whole run: timeline, tool calls, model calls
   with billed tokens. The Trace tab shows the same turn's status and cost; open
   **Full log** for the on-screen timeline.
+  Model API errors retain their HTTP status and concrete rejection or response
+  decoding cause in desktop and phone chat. An empty 502 response does not imply
+  invalid tool arguments. The public error omits raw bodies and graph paths;
+  inspect the original call and retry records through the same turn's Trace.
 
 ## Quick start
 

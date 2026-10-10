@@ -1633,6 +1633,14 @@ Clears `unread` on that run. Missing ids are `404`. Already-read is `204`.
 
 One request, one turn, everything about it — the same data `zwai trace` prints.
 
+For a failed model request, `turn.error` and the stored `error.err` keep the
+HTTP status and concrete API rejection/response-decoder reason. Public text
+excludes raw response bodies and graph paths, masks credentials, and limits
+the cause to 512 runes. A JSON decode error does not imply invalid tool arguments.
+`llm_calls[].err` retains the original recorded model failure; `model_retry`
+events show bounded retries on this same turn. Existing timeout/context recovery
+advice is preserved. No payload schema or event kind changes.
+
 ```json
 {"turn": {"id": "tn_cd34…", "status": "done", "duration_ms": 12480, "…": "…"},
  "events": [{"seq": 1, "kind": "user_message", "…": "…"}],
