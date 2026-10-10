@@ -1981,3 +1981,34 @@ adb -s "$android_test_device" shell am instrument -w \
 
 Inspect the retained before/after screenshots as well as the test result. This
 checks a local packaged-app behavior; it does not sign or publish a release.
+
+### Live phone transcript identities and worker navigation
+
+`mobile/src/components/agent-page.test.tsx` reproduces the live sequence-zero
+answer → stored answer → tool boundary path repeatedly, then loads earlier
+history through `prependOlder` and switches to the worker roster. It asserts
+against the entire transcript, so detached manager nodes above the roster
+cannot pass a check limited to the roster itself. `transcript.test.ts` checks
+unique identities for manager/worker answers and thoughts, stable updates and
+completion, consecutive replies without tools, and retained identities after
+history rebuild. `session.test.ts` covers simultaneous live text during paging
+and stored catch-up on reconnect.
+
+The native and browser fixtures use generic streamed paragraphs, real
+sequence-zero deltas, stored completion events, tool boundaries and an earlier
+page; a static history fixture alone cannot reproduce this reconciliation bug.
+Run `cd mobile && npm test` and `npm run e2e`. Native runs use the packaged app's
+XCTest/AndroidJUnitRunner, load Earlier before entering Agents, inspect the
+whole screen for manager text/work folds, and verify worker → roster → manager
+return paths with screenshots.
+
+Use `IOS_LAYOUT_QUERY='/?mock=1&tick=150&history=streamed-agents'` with the
+disposable iOS fixture above and select only
+`AppUITests/BindFlowTests/testAgentPagesExcludeStreamedManagerHistoryAfterEarlier`.
+The native fixture spaces updates across frames. Start in its live thread and wait for `Agents (3)` before paging;
+opening a completed static snapshot would miss the live identity regression.
+For Android, inject the same query into the disposable native copy described
+above, then select `com.lubyruffy.zwai.AgentRosterTest` through
+AndroidJUnitRunner. Both tests inspect the reached roster and worker detail,
+then return to the original manager transcript. Retain screenshots and the
+accessibility tree alongside the test result and packaged asset hashes.

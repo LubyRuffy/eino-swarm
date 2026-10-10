@@ -59,11 +59,22 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
   const reduced = applyEventForAgent(own, ev)
   const next = blocks.slice()
   for (let i = 0; i < reduced.length; i++) {
-    const block = worker ? { ...reduced[i], agentId: worker, id: positions[i] === undefined ? `${worker}:${reduced[i].id}` : reduced[i].id } : reduced[i]
-    if (positions[i] === undefined) next.push(block)
-    else next[positions[i]] = block
+    const added = positions[i] === undefined
+    let block = worker ? { ...reduced[i], agentId: worker, id: added ? `${worker}:${reduced[i].id}` : reduced[i].id } : reduced[i]
+    if (added) {
+      // Unstored deltas all have sequence zero. Their rendered identities
+      // must outlive the stream without colliding with a later model call.
+      if (ev.seq <= 0) block = { ...block, id: liveBlockId(next, block.id) }
+      next.push(block)
+    } else next[positions[i]] = block
   }
   return next
+}
+
+function liveBlockId(blocks: CompactBlock[], id: string): string {
+  let ordinal = blocks.length
+  while (blocks.some((block) => block.id === `${id}:live:${ordinal}`)) ordinal++
+  return `${id}:live:${ordinal}`
 }
 
 function settleWorkerBlock(block: CompactBlock, failed: boolean): CompactBlock {
