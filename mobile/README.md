@@ -338,3 +338,7 @@ fixture documented in [TESTING](../docs/TESTING.md).
 ## iOS TestFlight release
 
 `make release VERSION=x.y.z` includes TestFlight. `make mobile-ios-release VERSION=x.y.z` resumes only that platform. Routine releases retain the last successful TestFlight marketing version and increase the build number; the batch version remains the source/tag identity. Existing candidate receipts freeze both iOS version fields on retry. Apple may still review later builds of the same version. Configure the existing private signing/API client and explicit testing groups through `IOS_RELEASE_CONFIG`; see [docs/RELEASE.md](../docs/RELEASE.md). `make mobile-ios` still only opens Xcode. The authorized export declaration is retained in the app's Info.plist and verified against the signed IPA; unchanged encryption use does not require repeated questions for a new build. Reassess relevant encryption changes. Frozen sources without the field require their exact private source/build confirmation.
+
+## Model API errors
+
+Chat shows the host turn's HTTP status and concrete API rejection or response-decoding cause. An empty HTTP 502 response does not mean a tool had invalid JSON arguments. Public errors omit raw response bodies and graph paths, mask authentication values and bound the cause to 512 runes. Phone has no Trace page; use the same turn ID on the PC (`zwai trace <id>` or the desktop Trace tab) for original model calls and retries.

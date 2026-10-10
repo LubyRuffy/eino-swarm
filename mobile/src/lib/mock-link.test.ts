@@ -23,6 +23,29 @@ function host() {
 }
 
 describe("the walkthrough host", () => {
+  it("replays a terminal model API failure as an error instead of a tool result", async () => {
+    const prior = location.href
+    history.replaceState(null, "", "/?mock=1&tick=0&history=api-error")
+    const h = host()
+    try {
+      const link = new MockLink(h)
+      const watch = await link.rpc({ op: OpWatch, thread_id: "t-recent" })
+      const error = watch.events?.find((ev) => ev.kind === "error")
+      expect(watch.status?.running).toBe(false)
+      expect(error).toMatchObject({
+        thread_id: "t-recent", agent_id: "manager", text: "",
+        err: "model API request failed: HTTP 502 Bad Gateway: unexpected end of JSON input",
+      })
+      expect(error?.seq).toBeGreaterThan(0)
+      expect(watch.events?.at(-1)?.kind).toBe("done")
+      expect(watch.events?.some((ev) => ev.kind === "tool_call" || ev.kind === "tool_result")).toBe(false)
+      link.close()
+      const replay = await new MockLink(h).rpc({ op: OpWatch, thread_id: "t-recent" })
+      expect(replay.events?.find((ev) => ev.kind === "error")).toEqual(error)
+      expect(replay.status?.running).toBe(false)
+    } finally { h.stop(); history.replaceState(null, "", prior) }
+  })
+
   it("keeps a watchdog-limit failure visible while the phone is idle", async () => {
     const prior = location.href
     history.replaceState(null, "", "/?mock=1&tick=0&history=timeout")

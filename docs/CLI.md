@@ -259,6 +259,12 @@ The same data is available over HTTP at `GET /api/trace/:turn`. The UI Trace
 tab shows that turn's status, error and billed tokens; **Full log** is the
 on-screen timeline, folded by default so a long run is not a sidebar syslog.
 
+Model API failures show their HTTP status and concrete rejection or response
+decode cause in the public error. Check the same turn's model-call errors and
+`model_retry` events for the original failure and retries; an empty HTTP 502
+response is not evidence of invalid tool-call arguments. The public line omits
+raw response bodies and graph paths, masks credentials, and bounds the cause.
+
 ## `zwai config`
 
 | subcommand | does |

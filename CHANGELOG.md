@@ -13,6 +13,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `F-160`, `C-012`: model API failures preserve their HTTP status and concrete rejection or response-decoding cause in desktop and phone errors. An empty HTTP 502 response is no longer misreported as invalid tool-call JSON. Public causes exclude raw response bodies, graph paths and authentication values; original calls and bounded retries remain in the same turn's Trace.
 - `F-220`, `F-230`, `C-002`: the phone composer shows a clickable square Stop for an empty live PC turn and while a direct reply streams. Typed follow-ups, steering, question answers and received partial replies are preserved (Issue #69).
 - `F-430`, `C-010`: native Mac acceptance recovery now has a pure offline observation audit. A locked host no longer hides a ready guest or an available authorized guest-login step; only an evidenced unlock failure is a blocker, and acceptance remains bound to the exact package and real window/behavior evidence. This changes development recovery guidance, not app behavior (Issue #68).
 

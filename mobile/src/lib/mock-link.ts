@@ -233,7 +233,12 @@ export class MockHost {
     }
     const done = this.find("t-recent")
     if (done) {
-      if (new URLSearchParams(location.search).get("history") === "turns") {
+      if (new URLSearchParams(location.search).get("history") === "api-error") {
+        this.seed(done, [
+          { kind: "error", agentID: "manager", err: "model API request failed: HTTP 502 Bad Gateway: unexpected end of JSON input" },
+          { kind: "done" },
+        ], false)
+      } else if (new URLSearchParams(location.search).get("history") === "turns") {
         this.seed(done, [
           { kind: "user_message", text: "This turn is a scheduled check." },
           { kind: "agent_message", text: "First completed run" },

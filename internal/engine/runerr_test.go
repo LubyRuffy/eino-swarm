@@ -47,16 +47,16 @@ func TestPublicTurnErrorLeavesAnUnrelatedFailure(t *testing.T) {
 	}
 }
 
-func TestPublicTurnErrorRewritesInvalidToolJSON(t *testing.T) {
+func TestPublicTurnErrorKeepsProviderJSONDetailsWithoutGuessingToolCause(t *testing.T) {
 	err := fmt.Errorf("[NodeRunError] error, status code: 400, status: 400 Bad Request, message: Unterminated string starting at: line 1 column 54 (char 53)\nnode path: [node_1, ChatModel]")
 	got := publicTurnError(err)
-	for _, leak := range []string{"NodeRunError", "ChatModel", "node_1", "node path", "column 54"} {
+	for _, leak := range []string{"NodeRunError", "ChatModel", "node_1", "node path", "a tool call"} {
 		if strings.Contains(got, leak) {
 			t.Fatalf("the graph dump leaked: %s", got)
 		}
 	}
-	if !strings.Contains(strings.ToLower(got), "json") {
-		t.Fatalf("must say the tool call was invalid JSON: %s", got)
+	if !strings.Contains(got, "400") || !strings.Contains(got, "column 54") {
+		t.Fatalf("must preserve the actual provider rejection: %s", got)
 	}
 }
 

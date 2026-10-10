@@ -1,14 +1,16 @@
 import { defineConfig, devices } from "@playwright/test"
 
 // The suite drives the real binary against the scripted offline provider, in a
-// throwaway data directory: no network, no keys, and the same HTTP and SSE code
-// path the desktop shell uses.
+// throwaway data directory. The opt-in API-error spec uses a keyless loopback
+// endpoint through the real SDK; the default suite stays on the offline script.
 const port = Number(process.env.ZWAI_E2E_PORT ?? 8799)
 const dataDir = process.env.ZWAI_E2E_DATA_DIR ?? ".e2e-data"
 const scheduledAck = process.env.ZWAI_MOCK_SCHEDULE_ACK === "always" ? "always" : "once"
+const modelAPIError = process.env.ZWAI_E2E_MODEL_API_ERROR === "1"
 
 export default defineConfig({
   testDir: "./e2e",
+  testMatch: modelAPIError ? "api-error.spec.ts" : undefined,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,
@@ -27,7 +29,8 @@ export default defineConfig({
     // web server first, so a setup hook would delete the directory the server
     // had already opened.
     // Workers pause so wait_agents stays pending long enough to Steer.
-    command: `rm -rf ${dataDir} && ZWAI_MOCK_WORKER_DELAY_MS=1500 ZWAI_MOCK_SCHEDULE_ACK=${scheduledAck} go run ../cmd/zwai web --addr 127.0.0.1:${port} --no-open --mock --data-dir ${dataDir}`,
+    command: `rm -rf ${dataDir} && ZWAI_MOCK_WORKER_DELAY_MS=1500 ZWAI_MOCK_SCHEDULE_ACK=${scheduledAck} go run ../cmd/zwai web --addr 127.0.0.1:${port} --no-open ${modelAPIError ? "" : "--mock"} --data-dir ${dataDir}`,
+    env: modelAPIError ? { OPENAI_BASE_URL: "", OPENAI_API_KEY: "", OPENAI_MODEL: "" } : undefined,
     url: `http://127.0.0.1:${port}/api/meta`,
     // Never reuse: a server left over from a previous run holds an open handle
     // to the database this run just deleted.

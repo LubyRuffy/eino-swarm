@@ -4,6 +4,40 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testModelAPIErrorShowsHTTPStatusAndDecodeCause() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 12))
+    back.tap()
+    let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'")).firstMatch
+    XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    let expected = "model API request failed: HTTP 502 Bad Gateway: unexpected end of JSON input"
+    for phase in ["first-open", "reopened"] {
+      thread.tap()
+      let error = app.staticTexts[expected]
+      XCTAssertTrue(error.waitForExistence(timeout: 8), "requires history=api-error; retain the actual HTTP status and decode cause")
+      XCTAssertEqual(error.label, expected)
+      for forbidden in ["a tool call", "NodeRunError", "node path:"] {
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[cd] %@", forbidden)).firstMatch.exists)
+      }
+      XCTAssertFalse(app.buttons["Stop"].exists, "a failed completed turn must be idle")
+      let send = app.buttons["Send"]
+      XCTAssertTrue(send.waitForExistence(timeout: 5))
+      XCTAssertFalse(send.isEnabled, "the idle empty draft must not send")
+      let screenshot = XCTAttachment(screenshot: app.screenshot())
+      screenshot.name = "model-api-error-" + phase
+      screenshot.lifetime = .keepAlways
+      add(screenshot)
+      let nodes = XCTAttachment(string: app.debugDescription)
+      nodes.name = "model-api-error-accessibility-" + phase
+      nodes.lifetime = .keepAlways
+      add(nodes)
+      back.tap()
+      XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    }
+  }
+
   func testWorkerTimeoutShowsPausedErrorInsteadOfRunning() throws {
     let app = XCUIApplication()
     app.launch()
