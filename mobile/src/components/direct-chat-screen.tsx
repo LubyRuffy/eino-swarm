@@ -280,6 +280,8 @@ export function DirectChatScreen({
         sendLabel={t("thread.send")}
         disabled={models.length === 0}
         pending={pending}
+        stopLabel={t("thread.stop")}
+        onStop={pending ? stop : undefined}
         hint={notice || undefined}
         models={models}
         reasoningLevels={models.length ? thinking : []}

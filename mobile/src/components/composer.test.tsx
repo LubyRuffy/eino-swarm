@@ -100,6 +100,30 @@ describe("Composer", () => {
     expect(box.style.height).toBe("132px")
   })
 
+  it("sends attachment-only and quote-only follow-ups instead of discarding them with Stop", () => {
+    setLocale("en")
+    const onSubmit = vi.fn()
+    const onStop = vi.fn()
+    const view = render(<Composer label="Message" sendLabel="Follow-up" stopLabel="Stop" onStop={onStop} onSubmit={onSubmit} />)
+    fireEvent.change(screen.getByTestId("file-input"), { target: { files: [new File(["content"], "draft.txt")] } })
+    fireEvent.click(screen.getByRole("button", { name: "Follow-up" }))
+    expect(onSubmit).toHaveBeenCalledWith("", expect.objectContaining({ files: [expect.objectContaining({ name: "draft.txt" })] }))
+    view.rerender(<Composer label="Message" sendLabel="Follow-up" stopLabel="Stop" onStop={onStop} onSubmit={onSubmit} quotes={["quoted text"]} />)
+    expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Follow-up" }))
+    expect(onSubmit).toHaveBeenLastCalledWith(expect.stringContaining("quoted text"))
+    expect(onStop).not.toHaveBeenCalled()
+  })
+
+  it("keeps Stop available during a pending request even when Send cannot accept the draft", () => {
+    const onStop = vi.fn()
+    const onSubmit = vi.fn()
+    render(<Composer label="Message" sendLabel="Send" stopLabel="Stop" onStop={onStop} onSubmit={onSubmit} pending disabled />)
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }))
+    expect(onStop).toHaveBeenCalledOnce()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
   it("renders the hint and whatever sits above the box", () => {
     setLocale("en")
     render(

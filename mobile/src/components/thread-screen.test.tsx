@@ -240,7 +240,7 @@ describe("ThreadScreen", () => {
         onAnswerStructured={vi.fn()}
       />,
     )
-    fireEvent.click(screen.getByRole("button", { name: "Stop" }))
+    fireEvent.click(within(screen.getByRole("banner")).getByRole("button", { name: "Stop" }))
     expect(onStop).toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText("Message"), {
       target: { value: "keep going" },
@@ -636,7 +636,7 @@ describe("ThreadScreen", () => {
     }
     const view = render(<ThreadScreen detail={detail} blocks={[]} {...handlers} />)
     expect(screen.queryByRole("button", { name: "Interrupt" })).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument()
+    expect(within(screen.getByRole("banner")).getByRole("button", { name: "Stop" })).toBeInTheDocument()
     view.rerender(
       <ThreadScreen
         detail={detail}

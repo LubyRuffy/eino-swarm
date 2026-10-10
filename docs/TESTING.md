@@ -1946,3 +1946,38 @@ These tests exercise a pure JSON decision function and CLI with temporary files;
 they do not operate UTM, SSH, UI, login or an app. The caller must inspect the
 actual window and behavior before writing the private observation. The audit
 does not create that evidence, and its successful exit is not native acceptance.
+
+### Phone live-turn Stop action (Issue #69, C-002)
+
+`mobile/src/components/thread-stop.test.tsx` checks that the composer itself can stop an empty live turn, whitespace still offers Stop, a typed follow-up and steer keep their send behavior, and asking/parked waits never become Stop. `composer.test.tsx` covers attachment-only and quote-only drafts and pending-request cancellation. The direct chat test holds a live stream, cancels it through the composer, and verifies the abort signal, retained partial text, no error, and restored Send.
+
+`mobile/e2e/composer-layout.spec.ts` runs the same primary-action path on Chromium and iPhone WebKit, verifies the square icon, sends drafts through the existing layout flow, and stops the offline live turn. `mobile/e2e/ios-wait-layout.swift` adds `testComposerStopsLiveTurn`; the existing disposable packaged-app fixture checks the bottom native Stop is hittable, stops the turn and restores Send. `testComposerSubmissionAfterTyping` checks the typed follow-up separately. Use the fixture and isolated simulator commands above; app launch alone is insufficient.
+
+Android uses the same existing offline walkthrough in a disposable packaged
+app. `mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/ComposerStopTest.java`
+runs through AndroidJUnitRunner without added dependencies: launch the actual
+Activity, find the bottom accessible Stop, perform its native accessibility
+click, require disabled Send and no remaining Stop, and save screenshots plus
+accessibility nodes under the target app's external files `composer-stop`.
+Do not use the stock `ExampleInstrumentedTest` as this acceptance evidence.
+
+Build and copy Android assets with `cd mobile && npm run build && npx cap copy android`.
+Copy that native tree to a temporary `mobile/android`, with its sibling
+`mobile/node_modules` linked to the same checkout's dependencies; exclude
+`.gradle` and `build`. In this disposable copy only, inject the same
+`/?mock=1&tick=0` and English locale initialization used by `ios-layout-fixture.py`
+into `app/src/main/assets/public/index.html`. Shipping assets are unchanged.
+On an isolated emulator, with JDK 21 and the existing Android SDK configured:
+
+```bash
+cd "$android_fixture/mobile/android"
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest
+adb -s "$android_test_device" install -r app/build/outputs/apk/debug/app-debug.apk
+adb -s "$android_test_device" install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb -s "$android_test_device" shell am instrument -w \
+  -e class com.lubyruffy.zwai.ComposerStopTest \
+  com.lubyruffy.zwai.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Inspect the retained before/after screenshots as well as the test result. This
+checks a local packaged-app behavior; it does not sign or publish a release.

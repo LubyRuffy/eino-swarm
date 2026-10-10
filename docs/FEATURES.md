@@ -91,6 +91,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：在手机查看同一对话并发送、跟进、回答问题、插入及翻页；使用者：手机用户；入口：手机收件箱和对话页；输入：消息与操作，包括切换已绑定 PC、对 PC 的提问选择选项或填写 Other、把队列首条等待消息中断插入当前轮次；输出：切换 PC 后停留在该 PC 收件箱，进入对话后看到 PC 上同一对话的事件，提问回答经 PC 确认后继续，窄屏长输入仍可直接提交；当前轮次只有被隐藏的后台协调记录时说明空白原因，「更早」一次跨过连续隐藏记录到达可显示历史；前置条件：已绑定且在线；失败表现：重连提示或 RPC 错误，提问提交被拒绝时显示原因并保留草稿重试；关联契约：`C-002`, `C-003`, `C-006`, `C-015`, `C-016`, `C-017`；实现证据：`internal/remote/log.go`, `internal/remote/log_test.go`, `mobile/src/app.tsx`, `mobile/src/app.test.tsx`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/components/ask-card.tsx`, `mobile/src/lib/ask.ts`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/ask-answer.spec.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`。
 - 手机在每个已结束轮次后显示完成事件的本地日期时间和分界线；定时输入隐藏、失败轮次及历史翻页不丢掉边界。实现证据：`mobile/src/lib/transcript.ts`, `mobile/src/components/thread-blocks.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/components/thread-blocks.test.tsx`, `mobile/e2e/walkthrough.spec.ts`。
+- 手机空输入框在真实运行时提供停止图标；输入文字、附件或引用后仍可跟进／插入，提问时回答、定时等待时发送。停止沿用 PC 的 interrupt 操作，不发送空消息。证据：`mobile/src/components/thread-stop.test.tsx`, `mobile/e2e/composer-layout.spec.ts`。
 
 ### F-221 Quote PC conversation text
 
@@ -115,7 +116,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-230 Direct model chat
 
-- 目的：手机在没有 PC 时直接连接模型，并在应用内按服务商选择模型；使用者：手机用户；入口：Models、Chat 和输入框模型按钮；输入：兼容端点、所选模型、消息及附件，Models 里可把某个接口从输入框列表里关掉；输出：流式回答，长模型名和长输入不挤出发送按钮，关掉的接口不出现在列表里，已经选中它的对话继续用；前置条件：端点可访问；失败表现：连接或模型错误；关联契约：`C-006`, `C-009`, `C-013`, `C-017`；实现证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.test.tsx`, `mobile/e2e/composer-layout.spec.ts`, `mobile/src/lib/openai-client.ts`。
+- 目的：手机在没有 PC 时直接连接模型，并在应用内按服务商选择模型；使用者：手机用户；入口：Models、Chat 和输入框模型按钮；输入：兼容端点、所选模型、消息及附件，Models 里可把某个接口从输入框列表里关掉；输出：流式回答，长模型名和长输入不挤出发送按钮，关掉的接口不出现在列表里，已经选中它的对话继续用；前置条件：端点可访问；失败表现：连接或模型错误；关联契约：`C-002`, `C-006`, `C-009`, `C-013`, `C-017`；实现证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.test.tsx`, `mobile/e2e/composer-layout.spec.ts`, `mobile/src/lib/openai-client.ts`。
+- 直连流式回复期间输入框主按钮显示可点击停止图标，取消后保留已收到的回复并恢复发送。证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/direct-chat-screen.test.tsx`。
 
 ### F-240 Phone updates
 

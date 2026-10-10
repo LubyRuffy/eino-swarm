@@ -65,6 +65,8 @@ MDX components never execute. Unknown text stays plain; text over 256 Ki
 characters stays complete but skips document parsing and syntax colors. The read is limited to 32 MiB, with previews limited to 8 MiB. Other
 files show a download action. Settings, PTY and Trace stay on the PC.
 
+While a PC turn runs, the empty composer shows a square Stop button. Typing a message or adding an attachment or quote switches it to Follow-up; Steer stays available for that draft. The header Stop remains available while drafting. A parked wait has no live turn to stop. In direct model chat, the square Stop cancels the stream, keeps the text received so far, and restores Send.
+
 When a PC turn asks a question, pick an option or type Other and tap Submit.
 The phone uses the PC's normalized question ID in the answer; a rejected RPC
 shows its error and keeps the draft so Submit can be retried. An accepted

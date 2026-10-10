@@ -11,10 +11,11 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-002 One turn per conversation
 
-- 状态：active；类型：consistency；作用范围：engine、server、desktop、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-310`。
+- 状态：active；类型：consistency；作用范围：engine、server、desktop、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-230`, `F-310`。
 - 契约内容：同一对话同时只有一个活动 turn；第二条普通消息进入 follow-up，steer 指向活动 turn；排队消息和尚未被 manager 读取的 steer 可以拉进输入框后重新排队，已读 steer 不能改；手机在等待队列上执行“中断插入”时，先将队首消息转为本轮 steer，再请求中断当前 manager 步骤，其他消息继续排队；并发 API 冲突返回可识别的状态。
+- 手机主按钮：真实运行且无可发送草稿（包括附件或引用）时显示可点击停止图标，连接既有停止请求；有内容仍可点击跟进／插入，提问时保持回答，定时等待不显示停止。直连流式回复期间停止按钮可中止请求并保留已收到的文本；停止不发送空消息。
 - 允许行为：排队和插入；禁止行为：在同一对话并行启动两个 turn；失败语义：`ErrBusy`/`ErrIdle` 对应 409 与 code；不变量：turn 状态可恢复；边界条件：中断和等待。
-- 证据：实现 `internal/engine`, `internal/server`, `mobile/src/app.tsx`, `mobile/src/lib/phone-turn.ts`；测试 `internal/engine`, `frontend/src/store/app-steer.test.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、手机 RPC 和竞态测试；来源：`AGENTS.md`、GitHub Issue #31。
+- 证据：实现 `internal/engine`, `internal/server`, `mobile/src/app.tsx`, `mobile/src/lib/phone-turn.ts`, `mobile/src/components/composer.tsx`, `mobile/src/components/direct-chat-screen.tsx`；测试 `internal/engine`, `frontend/src/store/app-steer.test.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/src/components/thread-stop.test.tsx`, `mobile/src/components/direct-chat-screen.test.tsx`, `mobile/e2e/composer-layout.spec.ts`；变更规则：同步 API、手机 RPC 和竞态测试；来源：`AGENTS.md`、GitHub Issues #31、#69。
 
 ## C-003 Stored events and streamed order
 

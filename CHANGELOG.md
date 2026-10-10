@@ -13,6 +13,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`, `F-230`, `C-002`: the phone composer shows a clickable square Stop for an empty live PC turn and while a direct reply streams. Typed follow-ups, steering, question answers and received partial replies are preserved (Issue #69).
 - `F-430`, `C-010`: native Mac acceptance recovery now has a pure offline observation audit. A locked host no longer hides a ready guest or an available authorized guest-login step; only an evidenced unlock failure is a blocker, and acceptance remains bound to the exact package and real window/behavior evidence. This changes development recovery guidance, not app behavior (Issue #68).
 
 - `F-223`, `C-014`: idle local-agent catalog refreshes reuse parsed rows from unchanged transcripts and sort each immutable snapshot once. Desktop and paired-phone polls copy only their visible page; changed/deleted sessions and live detail reads retain their behavior (Issue #66).

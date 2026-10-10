@@ -473,13 +473,13 @@ test("tapping a parked wait opens a wait, not a turn you can stop", async ({ pag
   await expect(page.getByRole("button", { name: "立即运行" })).toBeVisible()
 })
 
-test("the composer grows with the text and send stays off while it is empty", async ({
+test("the composer grows with the text and an empty live draft offers Stop", async ({
   page,
 }) => {
   await page.goto(WALKTHROUGH)
   const box = page.getByLabel("消息")
   const send = page.getByRole("button", { name: /跟进|发送/ })
-  await expect(send).toBeDisabled()
+  await expect(page.locator("form").getByRole("button", { name: "停止" })).toBeEnabled()
 
   const oneLine = await box.evaluate((el) => el.clientHeight)
   await box.fill("one\ntwo\nthree\nfour")
@@ -487,7 +487,8 @@ test("the composer grows with the text and send stays off while it is empty", as
   expect(await box.evaluate((el) => el.clientHeight)).toBeGreaterThan(oneLine)
 
   await box.fill("   ")
-  await expect(send).toBeDisabled()
+  await expect(send).toHaveCount(0)
+  await expect(page.locator("form").getByRole("button", { name: "停止" })).toBeEnabled()
 })
 
 test("a page loaded with more is still there after the inbox refreshes", async ({ page }) => {

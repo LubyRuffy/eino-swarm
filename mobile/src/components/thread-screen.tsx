@@ -451,6 +451,8 @@ export function ThreadScreen({
         hint={running && !asking ? t("thread.sendHint") : undefined}
         steerLabel={running && !asking ? t("thread.steer") : undefined}
         onSteer={running && !asking ? onSteer : undefined}
+        stopLabel={t("thread.stop")}
+        onStop={running && !asking ? onStop : undefined}
         pending={composerPending}
         models={models}
         reasoningLevels={reasoningLevels}

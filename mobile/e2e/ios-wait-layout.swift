@@ -168,6 +168,44 @@ final class BindFlowTests: XCTestCase {
                   "tapping Add to chat must create a quote")
   }
 
+  func testComposerStopsLiveTurn() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 10))
+    back.tap()
+    let live = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Trim the layout pass'")).firstMatch
+    XCTAssertTrue(live.waitForExistence(timeout: 5))
+    live.tap()
+    let message = app.textViews["Message"]
+    XCTAssertTrue(message.waitForExistence(timeout: 10))
+    let stops = app.buttons.matching(NSPredicate(format: "label == 'Stop'"))
+    XCTAssertTrue(stops.firstMatch.waitForExistence(timeout: 5))
+    let controls = stops.allElementsBoundByIndex
+    XCTAssertEqual(controls.count, 2, "the header Stop alone does not accept the composer control")
+    let stop = try XCTUnwrap(controls.max { $0.frame.midY < $1.frame.midY })
+    XCTAssertGreaterThan(stop.frame.minY, app.frame.midY, "Stop must be the bottom composer control")
+    XCTAssertEqual(stop.frame.width, stop.frame.height, accuracy: 1, "the primary control must remain an icon button")
+    XCTAssertTrue(stop.isEnabled)
+    XCTAssertTrue(stop.isHittable)
+    let before = XCTAttachment(screenshot: app.screenshot())
+    before.name = "composer-stop-square-before"
+    before.lifetime = .keepAlways
+    add(before)
+    stop.tap()
+    XCTAssertTrue(stops.firstMatch.waitForNonExistence(timeout: 8), "stopping must clear both running controls")
+    let send = app.buttons["Send"]
+    XCTAssertTrue(send.waitForExistence(timeout: 5), "the idle composer must return to Send")
+    XCTAssertFalse(send.isEnabled, "stopping an empty draft must not send a message")
+    XCTAssertTrue(message.exists)
+    let value = try XCTUnwrap(message.value as? String)
+    XCTAssertTrue(["", "Message"].contains(value))
+    let after = XCTAttachment(screenshot: app.screenshot())
+    after.name = "composer-stop-idle-send-after"
+    after.lifetime = .keepAlways
+    add(after)
+  }
+
   func testComposerSubmissionAfterTyping() throws {
     let app = XCUIApplication()
     app.launch()
@@ -179,10 +217,10 @@ final class BindFlowTests: XCTestCase {
     live.tap()
     let message = app.textViews["Message"]
     XCTAssertTrue(message.waitForExistence(timeout: 10))
-    let submit = app.buttons["Follow-up"]
-    XCTAssertTrue(submit.waitForExistence(timeout: 5))
     message.tap()
     message.typeText("long input " + String(repeating: "words ", count: 15))
+    let submit = app.buttons["Follow-up"]
+    XCTAssertTrue(submit.waitForExistence(timeout: 5))
     let done = app.toolbars.buttons.allElementsBoundByIndex.last
     if let done, done.exists {
       done.tap()

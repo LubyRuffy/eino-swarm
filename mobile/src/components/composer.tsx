@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
-import { ArrowUp, Loader2, Paperclip, X, Zap } from "lucide-react"
+import { ArrowUp, Loader2, Paperclip, Square, X, Zap } from "lucide-react"
 
 import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
@@ -35,6 +35,8 @@ export function Composer({
   onQuotesChange,
   steerLabel,
   onSteer,
+  stopLabel,
+  onStop,
   onSubmit,
   models = noModels,
   reasoningLevels = noLevels,
@@ -55,6 +57,8 @@ export function Composer({
   onQuotesChange?: (quotes: string[]) => void
   steerLabel?: string
   onSteer?: Send
+  stopLabel?: string
+  onStop?: () => void | Promise<void>
   onSubmit: Send
   models?: ModelChoice[]
   reasoningLevels?: string[]
@@ -74,9 +78,9 @@ export function Composer({
   const fileRef = useRef<HTMLInputElement>(null)
   const images = attached.filter((file) => isVisionFile(file))
   const files = attached.filter((file) => !isVisionFile(file))
-  const ready =
-    (text.trim().length > 0 || attached.length > 0 || quotes.some((quote) => quote.trim().length > 0)) &&
-    !disabled && !pending
+  const hasDraft = text.trim().length > 0 || attached.length > 0 || quotes.some((quote) => quote.trim().length > 0)
+  const ready = hasDraft && !disabled && !pending
+  const showStop = Boolean(onStop && stopLabel && (pending || !hasDraft))
   const showTools = models.length > 0 || reasoningLevels.length > 0 || catalogBusy
 
   // The conversation's selection arrives after catalog. A local edit is not
@@ -235,17 +239,20 @@ export function Composer({
           )}
         />
         <button
-          type="submit"
-          aria-label={sendLabel}
-          title={sendLabel}
-          disabled={!ready}
+          type={showStop ? "button" : "submit"}
+          aria-label={showStop ? stopLabel : sendLabel}
+          title={showStop ? stopLabel : sendLabel}
+          disabled={!showStop && !ready}
+          onClick={showStop ? () => void onStop?.() : undefined}
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-full",
             "bg-primary text-primary-foreground transition-opacity",
             "disabled:opacity-30",
           )}
         >
-          {pending ? (
+          {showStop ? (
+            <Square className="size-4" fill="currentColor" aria-hidden />
+          ) : pending ? (
             <Loader2 className="size-4 motion-safe:animate-spin motion-reduce:animate-none" aria-hidden />
           ) : (
             <ArrowUp className="size-4" aria-hidden />

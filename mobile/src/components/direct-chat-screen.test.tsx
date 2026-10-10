@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 import { streamCompletion } from "@/lib/openai-client"
@@ -39,6 +39,31 @@ function harness(complete: typeof streamCompletion = async (input) => {
 }
 
 describe("DirectChatScreen", () => {
+  it("aborts a streaming reply from the composer and retains received text without an error", async () => {
+    setLocale("en")
+    let signal: AbortSignal | undefined
+    harness(async (input) => {
+      signal = input.signal
+      input.onDelta({ text: "received text", reasoning: "" })
+      await new Promise<void>((_resolve, reject) => {
+        input.signal?.addEventListener("abort", () => reject(new ModelCallError("abort", "abort")), { once: true })
+      })
+    })
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "start" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    await screen.findByText("received text")
+    const form = within(screen.getByLabelText("Message").closest("form")!)
+    const stop = form.getByRole("button", { name: "Stop" })
+    expect(stop).toBeEnabled()
+    fireEvent.click(stop)
+    await waitFor(() => expect(screen.getByLabelText("Message")).toBeEnabled())
+    expect(signal?.aborted).toBe(true)
+    expect(screen.getByText("received text")).toBeVisible()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(form.getByRole("button", { name: "Send" })).toBeDisabled()
+    expect(form.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument()
+  })
+
   it("offers the saved models and thinking levels, then shows the reply", async () => {
     setLocale("en")
     const complete = vi.fn(async (input: { onDelta: (piece: StreamPiece) => void }) => {
@@ -110,7 +135,7 @@ describe("DirectChatScreen", () => {
     harness(complete)
     fireEvent.change(screen.getByLabelText(t("thread.message")), { target: { value: "ping" } })
     fireEvent.click(screen.getByRole("button", { name: t("thread.send") }))
-    await waitFor(() => expect(screen.getByRole("button", { name: t("thread.stop") })).toBeInTheDocument())
+    await waitFor(() => expect(within(screen.getByRole("banner")).getByRole("button", { name: t("thread.stop") })).toBeInTheDocument())
     fireEvent.click(screen.getByRole("button", { name: t("thread.back") }))
     await waitFor(() => expect(screen.getByLabelText(t("thread.message"))).toBeEnabled())
     expect(screen.queryByRole("button", { name: t("thread.stop") })).not.toBeInTheDocument()
