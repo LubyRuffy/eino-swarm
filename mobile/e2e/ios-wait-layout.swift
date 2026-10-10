@@ -38,6 +38,68 @@ final class BindFlowTests: XCTestCase {
     }
   }
 
+  func testAgentPagesExcludeStreamedManagerHistoryAfterEarlier() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 12))
+    let agents = app.buttons["Agents (3)"]
+    XCTAssertTrue(agents.waitForExistence(timeout: 20), "requires the live three-worker agents fixture")
+    let manager = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Manager update'"))
+    XCTAssertTrue(manager.firstMatch.exists, "the manager must render the live seq-zero updates first")
+    XCTAssertGreaterThan(app.buttons.matching(identifier: "1 tool").count, 0, "the manager conversation must contain a real Work fold before switching pages")
+    let earlier = app.buttons["Earlier"]
+    XCTAssertTrue(earlier.isHittable)
+    earlier.tap()
+    XCTAssertTrue(earlier.waitForNonExistence(timeout: 8), "Earlier must complete the real older-history path")
+    XCTAssertTrue(app.staticTexts["Older manager answer"].exists)
+    recordAgentPage(app, name: "agents-manager-after-earlier")
+    agents.tap()
+    let group = app.staticTexts["Active (3)"]
+    XCTAssertTrue(group.waitForExistence(timeout: 8))
+    let rows = app.buttons.matching(NSPredicate(format: "label CONTAINS 'worker-'"))
+    XCTAssertEqual(rows.count, 3)
+    recordAgentPage(app, name: "agents-roster-after-earlier")
+    assertNoManagerHistory(app)
+    let reader = app.buttons.matching(NSPredicate(format: "label CONTAINS 'worker-1'")).firstMatch
+    XCTAssertTrue(reader.isHittable)
+    reader.tap()
+    XCTAssertTrue(app.staticTexts["Worker evidence"].waitForExistence(timeout: 8))
+    recordAgentPage(app, name: "agents-reader-detail")
+    XCTAssertFalse(manager.firstMatch.exists, "worker detail must exclude manager paragraphs")
+    back.tap()
+    XCTAssertTrue(group.waitForExistence(timeout: 8))
+    recordAgentPage(app, name: "agents-roster-after-worker-return")
+    assertNoManagerHistory(app)
+    back.tap()
+    XCTAssertTrue(agents.waitForExistence(timeout: 8))
+    XCTAssertTrue(manager.firstMatch.exists, "returning to the manager must restore its conversation")
+    for index in 0..<3 {
+      XCTAssertTrue(app.staticTexts["Manager update \(index)"].exists)
+    }
+    XCTAssertTrue(app.staticTexts["Older manager answer"].exists)
+    XCTAssertFalse(app.staticTexts["Worker evidence"].exists)
+    recordAgentPage(app, name: "agents-manager-after-return")
+  }
+
+  private func assertNoManagerHistory(_ app: XCUIApplication) {
+    let body = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'manager'"))
+    XCTAssertEqual(body.count, 0, "the entire Agents page must exclude manager output, including offscreen accessibility nodes")
+    let folds = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Thought' OR label MATCHES '[0-9]+ tools?'"))
+    XCTAssertEqual(folds.count, 0, "the Agents roster must not retain the manager's Work fold")
+  }
+
+  private func recordAgentPage(_ app: XCUIApplication, name: String) {
+    let shot = XCTAttachment(screenshot: app.screenshot())
+    shot.name = name
+    shot.lifetime = .keepAlways
+    add(shot)
+    let tree = XCTAttachment(string: app.debugDescription)
+    tree.name = name + "-accessibility"
+    tree.lifetime = .keepAlways
+    add(tree)
+  }
+
   func testWorkerTimeoutShowsPausedErrorInsteadOfRunning() throws {
     let app = XCUIApplication()
     app.launch()

@@ -1,0 +1,35 @@
+import { expect, test } from "@playwright/test"
+
+test("live manager paragraphs leave the roster after paging and worker navigation", async ({ page }, info) => {
+  await page.addInitScript(() => localStorage.setItem("zwai.phone.locale", "en"))
+  await page.goto("/?mock=1&tick=0&history=streamed-agents")
+  const transcript = page.getByTestId("transcript")
+  await expect(transcript).toContainText("Manager update 2")
+  await expect(page.getByRole("button", { name: "Agents (3)", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "Earlier", exact: true }).click()
+  await expect(transcript).toContainText("Older manager answer")
+  await page.getByRole("button", { name: "Agents (3)", exact: true }).click()
+
+  const roster = page.getByTestId("agent-roster")
+  const checkRoster = async () => {
+    await expect(roster).toBeVisible()
+    await expect(roster.getByRole("button")).toHaveCount(3)
+    await expect(transcript).not.toContainText("Manager update")
+    await expect(transcript).not.toContainText("Older manager answer")
+    await expect(transcript.getByTestId("work-fold")).toHaveCount(0)
+  }
+  await page.screenshot({ path: info.outputPath("streamed-roster.png") })
+  await checkRoster()
+  await roster.getByRole("button", { name: /worker-1/ }).click()
+  await expect(transcript).toContainText("Worker evidence")
+  await expect(transcript).not.toContainText("Manager update")
+  await page.screenshot({ path: info.outputPath("worker-evidence.png") })
+  await page.getByRole("button", { name: "Back", exact: true }).click()
+  await checkRoster()
+  await page.getByRole("button", { name: "Back", exact: true }).click()
+  await expect(roster).toHaveCount(0)
+  for (let i = 0; i < 3; i++) await expect(transcript).toContainText(`Manager update ${i}`)
+  await expect(transcript).toContainText("Older manager answer")
+  await expect(transcript).not.toContainText("Worker evidence")
+  await page.screenshot({ path: info.outputPath("manager-history-restored.png") })
+})

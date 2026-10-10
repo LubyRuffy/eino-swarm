@@ -86,11 +86,26 @@ describe("phone watch session", () => {
     }))
     view = applyPush(view, push(ev({ seq: 0, kind: "delta", agent_id: "manager", text: "manager live" })))
     view = applyPush(view, push(ev({ seq: 0, kind: "delta", agent_id: "w1", text: "worker live" })))
+    const liveIds = view.blocks.filter((block) => block.streaming).map((block) => block.id)
     view = prependOlder(view, [ev({ seq: 1, kind: "user_message", text: "request" })], false)
     expect(managerBlocks(view.blocks).find((b) => b.kind === "answer"))
       .toMatchObject({ text: "manager live", streaming: true })
     expect(phoneAgents(view.blocks)[0].blocks.find((b) => b.kind === "answer"))
       .toMatchObject({ text: "worker live", streaming: true })
+    expect(view.blocks.filter((block) => block.streaming).map((block) => block.id)).toEqual(liveIds)
+    view = applyPush(view, push(ev({ seq: 0, kind: "delta", agent_id: "manager", text: "manager live, continued" })))
+    view = applyPush(view, push(ev({ seq: 0, kind: "delta", agent_id: "w1", text: "worker live, continued" })))
+    expect(view.blocks.filter((block) => block.streaming).map((block) => block.id)).toEqual(liveIds)
+    expect(new Set(view.blocks.map((block) => block.id)).size).toBe(view.blocks.length)
+    view = applyPush(view, ready({ seq: 4, events: [
+      ev({ seq: 3, kind: "agent_message", agent_id: "manager", text: "manager live, continued" }),
+      ev({ seq: 4, kind: "agent_message", agent_id: "w1", text: "worker live, continued" }),
+    ] }))
+    expect(managerBlocks(view.blocks).filter((block) => block.kind === "answer").map((block) => block.text))
+      .toEqual(["manager live, continued"])
+    expect(phoneAgents(view.blocks)[0].blocks.filter((block) => block.kind === "answer").map((block) => block.text))
+      .toEqual(["worker live, continued"])
+    expect(new Set(view.blocks.map((block) => block.id)).size).toBe(view.blocks.length)
   })
   it("does not paint catch-up until ready, then folds it in one shot", () => {
     let view = openView(detail())

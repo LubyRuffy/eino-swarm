@@ -46,6 +46,8 @@ manager answers. Pairlink strips worker launch instructions and clips event
 bodies; the phone does not offer the desktop-only full instruction view.
 The header Back button and Android system Back return from a worker log to
 the Agents list, then to the conversation, before leaving for the inbox.
+Loading Earlier history after several streamed replies keeps the Agents list free
+of manager paragraphs and work folds; those remain in the manager conversation.
 The `schedule` event is still **A wait is armed.** in the transcript; the live
 wait is the banner (next check, **Run now**, **Cancel wait**).
 Each finished PC turn leaves a divider stamped with its host completion time,

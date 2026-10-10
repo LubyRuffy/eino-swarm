@@ -4,6 +4,7 @@ import { MockHost, MockLink, mockTickMs, resetMockHost, wantsMock } from "./mock
 import {
   OpEvent,
   OpList,
+  OpLog,
   OpClients,
   OpOpen,
   OpReady,
@@ -44,6 +45,43 @@ describe("the walkthrough host", () => {
       expect(replay.events?.find((ev) => ev.kind === "error")).toEqual(error)
       expect(replay.status?.running).toBe(false)
     } finally { h.stop(); history.replaceState(null, "", prior) }
+  })
+
+  it("streams separate live manager blocks before older history and the worker roster", async () => {
+    const prior = location.href
+    history.replaceState(null, "", "/?mock=1&tick=0&history=streamed-agents")
+    vi.useFakeTimers()
+    const h = host()
+    try {
+      const link = new MockLink(h)
+      const frames: RemoteResponse[] = []
+      link.onPush = (frame) => frames.push(frame)
+      const ready = await link.rpc({ op: OpWatch, thread_id: "t-live" })
+      expect(ready.more).toBe(true)
+      expect(ready.events?.map((event) => event.kind)).toEqual(["user_message"])
+      expect(frames).toHaveLength(0)
+      await vi.runAllTimersAsync()
+      const manager = frames.map((frame) => frame.event!).filter((event) => event.agent_id === "manager")
+      expect(manager.filter((event) => event.kind === "delta").map((event) => event.seq)).toEqual([0, 0, 0])
+      expect(manager.filter((event) => event.kind === "agent_message").map((event) => event.text))
+        .toEqual(["Manager update 0", "Manager update 1", "Manager update 2"])
+      expect(manager.filter((event) => event.kind === "agent_message").every((event) => event.seq > ready.seq!)).toBe(true)
+      expect(manager.filter((event) => event.kind === "tool_call")).toHaveLength(3)
+      expect(frames.filter((frame) => frame.event?.kind === "spawned")).toHaveLength(3)
+      expect(frames.some((frame) => frame.event?.text === "Worker evidence")).toBe(true)
+      const older = await link.rpc({ op: OpLog, thread_id: "t-live", before: ready.seq })
+      expect(older.events?.map((event) => event.text)).toEqual(["Older manager answer"])
+      expect(older.events![0].seq).toBeLessThan(ready.events![0].seq)
+      expect(older.more).toBe(false)
+      const count = frames.length
+      const replay = await link.rpc({ op: OpWatch, thread_id: "t-live" })
+      await vi.runAllTimersAsync()
+      expect(frames).toHaveLength(count)
+      expect(replay.events?.every((event) => event.seq > 0)).toBe(true)
+    } finally {
+      h.stop()
+      history.replaceState(null, "", prior)
+    }
   })
 
   it("keeps a watchdog-limit failure visible while the phone is idle", async () => {

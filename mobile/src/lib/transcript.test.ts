@@ -24,6 +24,54 @@ function ev(partial: Partial<RemoteEvent> & Pick<RemoteEvent, "kind" | "seq">): 
 }
 
 describe("compact transcript", () => {
+  it("starts a distinct live answer after a completed nonmatching answer without tools", () => {
+    let blocks: CompactBlock[] = []
+    for (const text of ["First result", "Second result", "Third result"]) {
+      blocks = applyEvent(blocks, ev({ seq: 0, kind: "delta", text }))
+      const id = blocks.at(-1)!.id
+      blocks = applyEvent(blocks, ev({ seq: blocks.length, kind: "agent_message", text }))
+      expect(blocks.at(-1)!.id).toBe(id)
+    }
+    expect(blocks.map((block) => block.text)).toEqual(["First result", "Second result", "Third result"])
+    expect(new Set(blocks.map((block) => block.id)).size).toBe(3)
+  })
+
+  it("does not reuse a retained live identity after history is compacted", () => {
+    let blocks = applyEvent([], ev({ seq: 0, kind: "delta", text: "Retained result" }))
+    blocks = applyEvent(blocks, ev({ seq: 1, kind: "agent_message", text: "Retained result" }))
+    blocks = applyEvent(blocks, ev({ seq: 0, kind: "delta", text: "New result" }))
+    const retained = blocks.at(-1)!
+    blocks = applyEvent([retained], ev({ seq: 2, kind: "agent_message", text: "New result" }))
+    blocks = applyEvent(blocks, ev({ seq: 0, kind: "delta", text: "Another result" }))
+    expect(blocks.map((block) => block.text)).toEqual(["New result", "Another result"])
+    expect(blocks[0].id).toBe(retained.id)
+    expect(blocks[1].id).not.toBe(retained.id)
+  })
+
+  it.each(["manager", "worker-1"])("keeps %s live block identities unique across model calls", (agent) => {
+    let blocks: CompactBlock[] = []
+    for (let n = 0; n < 3; n++) {
+      const push = (event: Partial<RemoteEvent> & Pick<RemoteEvent, "kind" | "seq">) => {
+        blocks = applyEvent(blocks, ev({ agent_id: agent, ...event }))
+        expect(new Set(blocks.map((block) => block.id)).size).toBe(blocks.length)
+      }
+      push({ seq: 0, kind: "reasoning_delta", text: `Inspecting step ${n}` })
+      const thoughtId = blocks.at(-1)!.id
+      push({ seq: 0, kind: "reasoning_delta", text: `Inspecting step ${n}, continued` })
+      expect(blocks.at(-1)!.id).toBe(thoughtId)
+      push({ seq: 1 + n * 4, kind: "reasoning", text: `Thought ${n}` })
+      push({ seq: 0, kind: "delta", text: `Answer ${n}` })
+      const answerId = blocks.at(-1)!.id
+      push({ seq: 0, kind: "delta", text: `Answer ${n}, continued` })
+      expect(blocks.at(-1)!.id).toBe(answerId)
+      push({ seq: 2 + n * 4, kind: "agent_message", text: `Answer ${n}, continued` })
+      push({ seq: 3 + n * 4, kind: "tool_call", text: "read_file({})", tool_call_id: `c-${n}` })
+      push({ seq: 4 + n * 4, kind: "tool_result", text: "Read completed", tool_call_id: `c-${n}` })
+    }
+    expect(blocks.filter((block) => block.kind === "answer")).toHaveLength(3)
+    expect(blocks.filter((block) => block.kind === "reasoning")).toHaveLength(3)
+  })
+
   it("keeps a completion marker between scheduled turns whose prompts are hidden", () => {
     let blocks: CompactBlock[] = []
     for (const row of [

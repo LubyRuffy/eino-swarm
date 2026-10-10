@@ -203,12 +203,18 @@ export class MockHost {
   private timers = new Set<number>()
   private seq = 0
   private calls = 0
+  private streamedAgentsStarted = false
   private askFailures = new URLSearchParams(location.search).get("askfail") === "1" ? 1 : 0
 
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
     if (live) {
-      if (new URLSearchParams(location.search).get("history") === "hidden") {
+      if (new URLSearchParams(location.search).get("history") === "streamed-agents") {
+        this.seed(live, [
+          { kind: "agent_message", agentID: "manager", text: "Older manager answer" },
+          { kind: "user_message", agentID: "manager", text: "Check the current workspace" },
+        ], true)
+      } else if (new URLSearchParams(location.search).get("history") === "hidden") {
         this.seed(live, [
           { kind: "agent_message", agentID: "manager", text: "Earlier answer" },
           { kind: "tool_call", agentID: "manager", callID: "hidden-spawn", text: "spawn_agent({})" },
@@ -275,6 +281,25 @@ export class MockHost {
 
   watch(w: Watcher) {
     this.watchers.add(w)
+    if (w.threadID === "t-live" && new URLSearchParams(location.search).get("history") === "streamed-agents"
+      && !this.streamedAgentsStarted) {
+      this.streamedAgentsStarted = true
+      const th = this.find(w.threadID)!
+      const steps: Step[] = []
+      for (let i = 0; i < 3; i++) {
+        steps.push(
+          { kind: "delta", agentID: "manager", text: `Manager update ${i}` },
+          { kind: "agent_message", agentID: "manager", text: `Manager update ${i}` },
+          { kind: "tool_call", agentID: "manager", text: "read_file({})", callID: `roster-read-${i}` },
+          { kind: "tool_result", agentID: "manager", text: "Read completed", callID: `roster-read-${i}` },
+        )
+      }
+      for (let i = 1; i <= 3; i++) steps.push({ kind: "spawned", agentID: `worker-${i}`, role: "worker" })
+      steps.push({ kind: "agent_message", agentID: "worker-1", text: "Worker evidence" })
+      // Separate browser frames are essential: a seeded replay cannot expose
+      // React retaining paragraphs when multiple live deltas reuse one key.
+      steps.forEach((step, i) => this.later(() => this.push(th, step), (i + 1) * Math.max(16, this.tickMs)))
+    }
   }
 
   unwatch(w: Watcher) {
@@ -408,8 +433,9 @@ export class MockHost {
 
   snapshot(th: MockThread) {
     const hiddenHistory = new URLSearchParams(location.search).get("history") === "hidden" && th.id === "t-live"
+    const streamedAgents = new URLSearchParams(location.search).get("history") === "streamed-agents" && th.id === "t-live"
     return {
-      events: hiddenHistory ? th.events.slice(-2) : th.events,
+      events: hiddenHistory ? th.events.slice(-2) : streamedAgents ? th.events.slice(1).filter((event) => event.seq > 0) : th.events,
       seq: th.events[th.events.length - 1]?.seq ?? 0,
       status: { running: th.running, waiting: th.waiting, followups: th.followups },
     }
@@ -671,12 +697,12 @@ export class MockLink {
         this.watcher = { threadID: th.id, deliver: (r) => this.onPush?.(r) }
         this.host.watch(this.watcher)
         return this.ok({ id, op: OpReady, thread_id: th.id,
-          more: new URLSearchParams(location.search).get("history") === "hidden" && th.id === "t-live",
+          more: ["hidden", "streamed-agents"].includes(new URLSearchParams(location.search).get("history") ?? "") && th.id === "t-live",
           ...this.host.snapshot(th) })
       }
       case OpLog: {
         const th = thread()
-        const hiddenHistory = new URLSearchParams(location.search).get("history") === "hidden" && th?.id === "t-live"
+        const hiddenHistory = ["hidden", "streamed-agents"].includes(new URLSearchParams(location.search).get("history") ?? "") && th?.id === "t-live"
         return this.ok({ id, thread_id: th?.id, events: hiddenHistory ? th.events.slice(0, 1) : [], more: false })
       }
       case OpStart:
