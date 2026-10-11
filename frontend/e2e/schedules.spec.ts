@@ -238,6 +238,54 @@ test("create drawer expand fills the scheduled page", async ({ page }) => {
   await expect(page.getByTestId("schedule-list-pane")).toBeVisible()
 })
 
+test("inbox editor can move a wait onto an existing conversation", async ({ page, request }) => {
+  const createdThread = await request.post("/api/threads", {
+    data: { title: "Kept chat" },
+  })
+  expect(createdThread.ok()).toBeTruthy()
+  const threadID = ((await createdThread.json()) as { thread: { id: string } }).thread.id
+
+  await page.goto("/")
+  const created = await request.post("/api/schedules", {
+    data: {
+      kind: "standalone",
+      title: "Retarget wait",
+      prompt: "Continue the wait.",
+      every_s: 3600,
+    },
+  })
+  expect(created.status()).toBe(201)
+  const before = ((await created.json()) as { schedule: { id: string; next_run_at: string } }).schedule
+
+  await openInbox(page)
+  const inbox = page.getByTestId("schedule-page")
+  await inbox
+    .getByTestId("schedule-row")
+    .filter({ hasText: "Retarget wait" })
+    .getByTestId("schedule-row-toggle")
+    .click()
+  await inbox.getByLabel("Runs in").click()
+  await page.getByLabel("Search chats").fill("Kept")
+  await page.getByRole("option", { name: "Kept chat" }).click()
+  await expect(inbox.getByRole("button", { name: "Runs in" })).toHaveText("Kept chat")
+  await expect(page.getByRole("combobox", { name: "Project", exact: true })).toHaveCount(0)
+  await inbox.getByRole("button", { name: "Save" }).click()
+  await expect
+    .poll(async () => {
+      const body = (await (await request.get(`/api/schedules/${before.id}`)).json()) as {
+        schedule?: { kind?: string; thread_id?: string; next_run_at?: string; every_s?: number }
+      }
+      const row = body.schedule
+      return (
+        row?.kind === "thread" &&
+        row.thread_id === threadID &&
+        row.next_run_at === before.next_run_at &&
+        row.every_s === 3600
+      )
+    })
+    .toBeTruthy()
+})
+
 test("inbox editor patches title, prompt, and cadence", async ({ page, request }) => {
   await freshConversation(page)
   const created = await request.post("/api/schedules", {
@@ -308,7 +356,10 @@ test("Run now handles an unperformed check without false success", async ({ page
     if (fails) {
       await expect(transcript).toContainText("scheduled check ended without executing a tool or reporting its result")
     } else {
-      await transcript.getByRole("button", { name: "1 tool", exact: true }).last().click()
+      const report = transcript.getByRole("button", { name: /^report_schedule/ }).last()
+      await expect(report).toHaveAttribute("aria-expanded", "false")
+      await report.click()
+      await expect(report).toHaveAttribute("aria-expanded", "true")
       await expect(transcript).toContainText("something changed")
     }
     await expect(transcript).toContainText("Continuing the scheduled check.")
@@ -322,4 +373,27 @@ test("Run now handles an unperformed check without false success", async ({ page
   } finally {
     await request.delete(`/api/schedules/${schedule.id}`)
   }
+})
+
+test("conversation rail opens the wait bound to this chat", async ({ page, request }) => {
+  await freshConversation(page)
+  const threadId = await page
+    .locator('[data-testid="thread-row"][aria-current="true"]')
+    .getAttribute("data-id")
+  expect(threadId).toBeTruthy()
+  const created = await request.post("/api/schedules", {
+    data: {
+      kind: "thread",
+      thread_id: threadId,
+      title: "Bound check",
+      prompt: "Continue the wait.",
+      every_s: 3600,
+    },
+  })
+  expect(created.status()).toBe(201)
+  const rail = page.getByTestId("conversation-schedules")
+  await expect(rail).toBeVisible({ timeout: 15_000 })
+  await rail.getByRole("button", { name: /Bound check/ }).click()
+  await expect(page.getByTestId("schedule-edit-drawer")).toBeVisible()
+  await expect(page.getByLabel("Title")).toHaveValue("Bound check")
 })

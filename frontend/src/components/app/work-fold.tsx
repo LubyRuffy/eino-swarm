@@ -41,10 +41,22 @@ export function TurnBlockList({
   const planningTail = planningTailAfterAnswer(items, running)
   return (
     <>
-      {items.map((item, i) =>
-        item.type === "block" ? (
-          <div key={item.block.id}>{renderBlock(item.block)}</div>
-        ) : (
+      {items.map((item, i) => {
+        if (item.type === "block") {
+          return <div key={item.block.id}>{renderBlock(item.block)}</div>
+        }
+        const single = item.blocks.length === 1 ? item.blocks[0] : undefined
+        // Pending registry calls have no own row; keep their activity ticker.
+        if (
+          single &&
+          (single.kind === "reasoning" ||
+            (single.kind === "tool" &&
+              single.tool?.name !== "spawn_agent" &&
+              single.tool?.name !== "close_agent"))
+        ) {
+          return <div key={single.id} data-testid="single-work">{renderBlock(single)}</div>
+        }
+        return (
           <WorkFold
             key={item.blocks[0]?.id ?? "work"}
             blocks={item.blocks}
@@ -52,8 +64,8 @@ export function TurnBlockList({
             running={i === liveAt}
             renderBlock={renderBlock}
           />
-        ),
-      )}
+        )
+      })}
       {planningTail ? <PlanningTail /> : null}
     </>
   )

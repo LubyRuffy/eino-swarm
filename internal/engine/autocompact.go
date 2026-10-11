@@ -35,6 +35,11 @@ type autoCompact struct {
 	modelName  string
 	threshold  int
 	keep       int
+	// force is a one-shot. A context-length rejection proved the endpoint
+	// counted more than the local estimate, so the next call folds even
+	// under the line. It is consumed on that call. Leaving it set made
+	// every later tool round in the same turn fold again.
+	force bool
 
 	mu        sync.Mutex
 	model     model.BaseChatModel
@@ -42,8 +47,10 @@ type autoCompact struct {
 	lastAfter int
 }
 
-func (e *Engine) autoCompactHandlers(threadID, turnID string, th *store.Thread) []adk.ChatModelAgentMiddleware {
-	return []adk.ChatModelAgentMiddleware{e.newAutoCompact(threadID, turnID, th)}
+func (e *Engine) autoCompactHandlers(threadID, turnID string, th *store.Thread, force bool) []adk.ChatModelAgentMiddleware {
+	ac := e.newAutoCompact(threadID, turnID, th)
+	ac.force = force
+	return []adk.ChatModelAgentMiddleware{ac}
 }
 
 func (e *Engine) newAutoCompact(threadID, turnID string, th *store.Thread) *autoCompact {
@@ -78,7 +85,11 @@ func (m *autoCompact) BeforeModelRewriteState(ctx context.Context,
 			tokens = promptTokenCount(state.Messages)
 		}
 	}
-	if tokens <= threshold {
+	forced := m.force
+	if forced {
+		m.force = false
+	}
+	if !forced && tokens <= threshold {
 		return ctx, state, nil
 	}
 	m.mu.Lock()

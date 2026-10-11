@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -172,10 +173,47 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 	case errors.Is(err, lease.ErrMockMismatch), errors.Is(err, lease.ErrUnreachable):
 		return "", err
 	}
+	// The lock is taken before engine.json exists. A second shell that
+	// only looked at Discover would start another process, lose, and
+	// report the frontend build as a crash.
+	if url, held, err := attachIfStarting(dir, mock); held {
+		return url, err
+	}
 	if testing.Testing() {
 		return startInProcessEngine(dir, addr, mock)
 	}
 	return spawnEngine(dir, addr, mock)
+}
+
+// engineBootWait is how long a shell waits for an engine that already
+// holds the lock to publish its URL. The holder may still be rebuilding
+// the UI. Tests shrink it; a real frontend build fits in the default.
+var engineBootWait = 15 * time.Second
+
+// attachIfStarting waits when another process already holds the lock but
+// has not published a URL yet. The bool is true when this shell must not
+// start its own engine: either it attached, or the holder never listened.
+func attachIfStarting(dir string, mock bool) (string, bool, error) {
+	if !lease.Busy(dir) {
+		return "", false, nil
+	}
+	deadline := time.Now().Add(engineBootWait)
+	for {
+		rec, err := lease.Discover(dir, mock)
+		if err == nil {
+			return rec.URL, true, nil
+		}
+		if errors.Is(err, lease.ErrMockMismatch) || errors.Is(err, lease.ErrUnreachable) {
+			return "", true, err
+		}
+		if !lease.Busy(dir) {
+			return "", false, nil
+		}
+		if !time.Now().Before(deadline) {
+			return "", true, errors.New("engine holds the data directory but is not listening")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // quietPoll is how often a newer shell asks whether the live engine is
@@ -381,7 +419,7 @@ func spawnEngine(dir, addr string, mock bool) (string, error) {
 	}
 	cmd := exec.Command(exe, args...)
 	detach(cmd)
-	logPath := dir + "/engine.log"
+	logPath := filepath.Join(dir, "engine.log")
 	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return "", err
@@ -398,26 +436,35 @@ func spawnEngine(dir, addr string, mock bool) (string, error) {
 		_ = cmd.Wait()
 		close(exited)
 	}()
-	deadline := time.Now().Add(15 * time.Second)
+	// Our child can die because another engine already holds the lock and
+	// is still building the UI. That exit is not a failed start; the URL
+	// shows up when that process publishes.
+	deadline := time.Now().Add(engineBootWait)
+	childExited := false
 	for time.Now().Before(deadline) {
-		select {
-		case <-exited:
-			tail, _ := os.ReadFile(logPath)
-			if len(tail) > 2000 {
-				tail = tail[len(tail)-2000:]
+		if !childExited {
+			select {
+			case <-exited:
+				childExited = true
+			default:
 			}
-			return "", fmt.Errorf("engine exited before it was listening: %s", tail)
-		default:
 		}
 		rec, err := lease.Discover(dir, mock)
 		if err == nil {
 			return rec.URL, nil
 		}
+		if childExited && !lease.Busy(dir) {
+			return "", fmt.Errorf("engine exited before it was listening: %s", engineLogTail(logPath))
+		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	tail, _ := os.ReadFile(logPath)
+	return "", fmt.Errorf("engine did not come up: %s", engineLogTail(logPath))
+}
+
+func engineLogTail(path string) string {
+	tail, _ := os.ReadFile(path)
 	if len(tail) > 2000 {
 		tail = tail[len(tail)-2000:]
 	}
-	return "", fmt.Errorf("engine did not come up: %s", tail)
+	return string(tail)
 }

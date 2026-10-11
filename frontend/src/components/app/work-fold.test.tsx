@@ -185,7 +185,15 @@ describe("WorkFold live ticker", () => {
 })
 
 describe("TurnBlockList live ticker", () => {
-  it("only tickers the latest work group in a live turn", () => {
+  it.each(["spawn_agent", "close_agent"])("keeps the activity ticker for a pending hidden %s", (name) => {
+    render(<TurnBlockList running mode="user" renderBlock={paint} blocks={[
+      block({ kind: "tool", tool: { callId: "registry", name, args: "{}", pending: true, writing: 12 } }),
+    ]} />)
+    expect(screen.getByTestId("work-fold")).toHaveTextContent(name)
+    expect(screen.getByTestId("swap-line")).toBeInTheDocument()
+  })
+
+  it("keeps earlier groups idle when the live tail is a single tool", () => {
     render(
       <TurnBlockList
         running
@@ -230,11 +238,10 @@ describe("TurnBlockList live ticker", () => {
       />,
     )
     const folds = screen.getAllByTestId("work-fold")
-    expect(folds).toHaveLength(2)
+    expect(folds).toHaveLength(1)
     expect(folds[0]).not.toHaveTextContent("Planning next moves")
     expect(folds[0]).toHaveTextContent("Thought · 1 tool")
-    expect(folds[1]).toHaveTextContent("wait_agents")
-    expect(folds[1].querySelector("[data-testid=swap-line]")).toBeTruthy()
+    expect(screen.getByTestId("row-k2")).toBeInTheDocument()
   })
 
   it("keeps a mid-turn answer visible and splits the fold around it", () => {
@@ -273,10 +280,10 @@ describe("TurnBlockList live ticker", () => {
     )
     expect(screen.getByTestId("row-a1")).toBeInTheDocument()
     expect(screen.getByTestId("row-a2")).toBeInTheDocument()
-    expect(screen.getAllByTestId("work-fold")).toHaveLength(2)
+    expect(screen.getAllByTestId("work-fold")).toHaveLength(1)
     expect(screen.queryByTestId("row-r1")).toBeNull()
     expect(screen.queryByTestId("row-k1")).toBeNull()
-    expect(screen.queryByTestId("row-k2")).toBeNull()
+    expect(screen.getByTestId("row-k2")).toBeInTheDocument()
   })
 
   it("puts Planning under a finished answer instead of on the fold above it", () => {
@@ -324,7 +331,8 @@ describe("TurnBlockList live ticker", () => {
         ]}
       />,
     )
-    expect(screen.getByTestId("work-fold")).toHaveTextContent("Thought")
+    expect(screen.queryByTestId("work-fold")).toBeNull()
+    expect(screen.getByTestId("row-r1")).toBeInTheDocument()
     expect(screen.queryByText("Planning next moves")).toBeNull()
     expect(screen.queryByTestId("planning-tail")).toBeNull()
   })

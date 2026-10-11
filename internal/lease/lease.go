@@ -156,6 +156,24 @@ type Hold struct {
 	dir string
 }
 
+// Busy reports whether another process holds this data directory.
+// The holder must not call it: flock belongs to the process, so a second
+// lock in the same process succeeds and the directory looks free.
+// A free lock is taken and dropped immediately; two shells can both see
+// free and both try to start. The one that loses has to wait for publish.
+func Busy(dataDir string) bool {
+	f, err := os.OpenFile(filepath.Join(dataDir, lockName), os.O_RDWR, 0)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	if err := lockExclusive(f); err != nil {
+		return errors.Is(err, ErrHeld)
+	}
+	_ = unlock(f)
+	return false
+}
+
 // Acquire takes the exclusive lock. The caller publishes the URL only after
 // it is actually listening.
 func Acquire(dataDir string) (*Hold, error) {

@@ -68,12 +68,30 @@ export function isGoalSessionWrapSteer(text?: string): boolean {
   return t.startsWith("This work session is ending.")
 }
 
-/** The reason distinguishes a scheduled continuation from a model failure.
+/** The reason distinguishes a scheduled continuation, a model-service
+ *  failure, and a tool call the model itself wrote as invalid JSON.
  *  Attempt/cap metadata stays in Trace. Old envelopes retain their label. */
 export function modelRetryNotice(text?: string): string {
   try {
     const body = JSON.parse(text ?? "") as { reason?: string } | null
-    if (body?.reason === "scheduled_no_activity") return "Continuing the scheduled check."
+    switch (body?.reason) {
+      case "scheduled_no_activity":
+        return "Continuing the scheduled check."
+      case "context_overflow":
+        return "The prompt exceeds the model window. Compressing and trying once."
+      case "invalid_tool_json":
+        return "The model returned a tool call that was not valid JSON. Retrying."
+      case "rate_limited":
+        return "The model service is rate limiting requests. Retrying."
+      case "model_unavailable":
+        return "The model service is unavailable. Retrying."
+      case "model_transport":
+        return "The connection to the model service dropped. Retrying."
+      case "model_idle":
+        return "The model service stopped sending data. Retrying."
+      default:
+        break
+    }
   } catch { /* Older events need no reason field. */ }
   return "Retrying after a model error."
 }

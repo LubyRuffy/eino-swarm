@@ -95,6 +95,53 @@ describe("localizeNotice", () => {
     expect(localizeNotice("Retrying after a model error.", "zh")).toBe(
       "模型出错，正在重试。",
     )
+    expect(
+      localizeNotice("The model returned a tool call that was not valid JSON. Retrying.", "zh"),
+    ).toBe("模型返回的工具调用不是合法 JSON，正在重试。")
+    expect(localizeNotice("The model service is unavailable. Retrying.", "zh")).toBe(
+      "模型服务不可用，正在重试。",
+    )
+    expect(localizeNotice("The model service is rate limiting requests. Retrying.", "zh")).toBe(
+      "模型服务正在限流，正在重试。",
+    )
+    expect(localizeNotice("The connection to the model service dropped. Retrying.", "zh")).toBe(
+      "与模型服务的连接中断，正在重试。",
+    )
+    expect(localizeNotice("The model service stopped sending data. Retrying.", "zh")).toBe(
+      "模型服务停止发送数据，正在重试。",
+    )
+    expect(localizeNotice("the model returned a tool call that was not valid JSON", "zh")).toBe(
+      "模型返回的工具调用不是合法 JSON。",
+    )
+    expect(
+      localizeNotice("the model request failed because a tool call was not valid JSON", "zh"),
+    ).toBe("模型返回的工具调用不是合法 JSON。")
+    expect(localizeNotice("the model service is rate limiting requests", "zh")).toBe(
+      "模型服务正在限流。",
+    )
+    expect(localizeNotice("the model service is unavailable", "zh")).toBe("模型服务不可用。")
+    expect(localizeNotice("the connection to the model service dropped", "zh")).toBe(
+      "与模型服务的连接中断。",
+    )
+    expect(
+      localizeNotice("The prompt exceeds the model window. Compressing and trying once.", "zh"),
+    ).toBe("上下文超过模型窗口。先压缩，再试一次。")
+    expect(
+      localizeNotice(
+        "the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry",
+        "zh",
+      ),
+    ).toBe(
+      "上下文超限：输入加上请求的输出超过了模型窗口。自动压缩腾不出足够空间。请到设置 → Swarm 降低最大补全 token，或缩短请求后再试。",
+    )
+    expect(
+      localizeNotice(
+        "the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry. The scheduled check is paused",
+        "zh",
+      ),
+    ).toBe(
+      "上下文超限：输入加上请求的输出超过了模型窗口。自动压缩腾不出足够空间。请到设置 → Swarm 降低最大补全 token，或缩短请求后再试。定时检查已暂停，恢复之前不会再自动跑。",
+    )
     expect(localizeNotice("Continuing the scheduled check.", "zh")).toBe("正在继续执行定时检查。")
     expect(
       localizeNotice(

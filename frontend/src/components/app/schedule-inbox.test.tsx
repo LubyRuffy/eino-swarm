@@ -263,7 +263,7 @@ describe("Scheduled inbox", () => {
     expect(screen.getByLabelText("Title")).toHaveValue("Periodic check")
     expect(screen.getByLabelText("Task")).toHaveValue("Continue the wait.")
     expect(screen.getByLabelText("Every (seconds)")).toHaveValue(60)
-    expect(screen.getByLabelText("Runs in")).toBeDisabled()
+    expect(screen.getByLabelText("Runs in")).not.toBeDisabled()
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Pause" }))
     await waitFor(() =>
@@ -322,6 +322,53 @@ describe("Scheduled inbox", () => {
     )
   })
 
+  it("saves a different conversation without resending cadence", async () => {
+    useApp.setState({
+      threads: [
+        {
+          id: "th_kept",
+          title: "Kept chat",
+          project_id: "",
+          provider_id: "default",
+          reasoning_effort: "",
+          archived: false,
+          created_at: "2026-09-19T00:00:00.000Z",
+          last_active_at: "2026-09-19T00:00:00.000Z",
+          running: false,
+        },
+        {
+          id: "th_old",
+          title: "Old chat",
+          project_id: "",
+          provider_id: "default",
+          reasoning_effort: "",
+          archived: true,
+          created_at: "2026-09-19T00:00:00.000Z",
+          last_active_at: "2026-09-19T00:00:00.000Z",
+          running: false,
+        },
+      ],
+    })
+    renderInbox()
+    await openPage()
+    fireEvent.click(screen.getByTestId("schedule-row-toggle"))
+    fireEvent.click(screen.getByLabelText("Runs in"))
+    expect(screen.getByLabelText("Search chats")).toBeInTheDocument()
+    expect(screen.queryByRole("option", { name: /Old chat/ })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Search chats"), { target: { value: "Kept" } })
+    fireEvent.click(screen.getByRole("option", { name: /Kept chat/ }))
+    expect(screen.queryByLabelText("Project")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() =>
+      expect(fake.patched).toEqual([
+        {
+          id: "sch_1",
+          patch: { kind: "thread", thread_id: "th_kept", project_id: "" },
+        },
+      ]),
+    )
+  })
+
   it("keeps cadence off the PATCH when only the title changed", async () => {
     renderInbox()
     await openPage()
@@ -373,6 +420,7 @@ describe("Scheduled inbox", () => {
     expect(drawer).toHaveTextContent("old")
     expect(screen.getByLabelText("Task")).toHaveValue("Continue the wait.")
     expect(screen.getByLabelText("Task")).toHaveAttribute("readOnly")
+    expect(screen.getByLabelText("Runs in")).toBeDisabled()
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Run now" })).not.toBeInTheDocument()
     expect(screen.queryByLabelText("Title")).not.toBeInTheDocument()

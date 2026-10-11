@@ -4,6 +4,7 @@ import type { Project, Thread } from "@/lib/types"
 import {
   RUNS_IN_NEW,
   applyRunsIn,
+  destinationPatch,
   livePickerThreads,
   pickerThreadLabel,
   pinnedPickerThreads,
@@ -62,6 +63,23 @@ describe("runs-in destination", () => {
     expect(runsInFromSchedule({ kind: "thread", thread_id: "th_1" })).toBe(
       runsInThreadValue("th_1"),
     )
+    expect(destinationPatch({ kind: "thread", thread_id: "th_1", project_id: "pj_1" }, runsInThreadValue("th_1"), "none")).toBeUndefined()
+    expect(destinationPatch({ kind: "thread", thread_id: "th_1" }, runsInThreadValue("th_2"), "pj_1")).toEqual({
+      kind: "thread",
+      thread_id: "th_2",
+      project_id: "",
+    })
+    expect(destinationPatch({ kind: "standalone", thread_id: "", project_id: "" }, RUNS_IN_NEW, "none")).toBeUndefined()
+    expect(destinationPatch({ kind: "standalone", project_id: "pj_1" }, RUNS_IN_NEW, "pj_2")).toEqual({
+      kind: "standalone",
+      thread_id: "",
+      project_id: "pj_2",
+    })
+    expect(destinationPatch({ kind: "thread", thread_id: "th_1", project_id: "pj_1" }, RUNS_IN_NEW, "none")).toEqual({
+      kind: "standalone",
+      thread_id: "",
+      project_id: "",
+    })
     expect(runsInFromSchedule({ kind: "standalone", thread_id: "th_ignore" })).toBe(
       RUNS_IN_NEW,
     )

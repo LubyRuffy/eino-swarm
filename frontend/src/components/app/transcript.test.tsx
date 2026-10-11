@@ -293,7 +293,7 @@ describe("queued steering", () => {
       />,
     )
     expect(screen.queryByText("close_agent")).not.toBeInTheDocument()
-    fireEvent.click(screen.getByTestId("work-fold"))
+    fireEvent.click(screen.getByRole("button", { name: /read/ }))
     expect(screen.queryByText("close_agent")).not.toBeInTheDocument()
     expect(screen.getByText("read")).toBeInTheDocument()
   })
@@ -549,7 +549,7 @@ describe("Transcript turn nav", () => {
       "data-turn-nav",
       "tn_a",
     )
-    expect(screen.getByTestId("work-fold").closest("[data-turn-nav]")).toBeNull()
+    expect(screen.getByTestId("thought-toggle").closest("[data-turn-nav]")).toBeNull()
   })
 
   it("opens the top of the log from the first tick", () => {

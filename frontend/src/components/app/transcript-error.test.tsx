@@ -109,6 +109,7 @@ describe("output budget error", () => {
       activeId: "th1",
       status: { running: false },
       transcript: emptyTranscript(),
+      locale: "en",
     })
     vi.mocked(api.settings).mockResolvedValue(settings)
     vi.mocked(api.tools).mockResolvedValue({ catalog: [], enabled: [] })
@@ -177,6 +178,33 @@ describe("output budget error", () => {
     const retry = await screen.findByRole("button", { name: "Retry" })
     await user.click(retry)
     expect(onResend).toHaveBeenCalledWith("run it again", 4)
+  })
+
+  it("names a context-window rejection in the current language", () => {
+    useApp.getState().setLocale("zh", { persist: false })
+    render(
+      <Harness text="the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry. The scheduled check is paused" />,
+    )
+    expect(
+      screen.getByText(
+        "上下文超限：输入加上请求的输出超过了模型窗口。自动压缩腾不出足够空间。请到设置 → Swarm 降低最大补全 token，或缩短请求后再试。定时检查已暂停，恢复之前不会再自动跑。",
+      ),
+    ).toBeVisible()
+    expect(
+      screen.queryByRole("button", { name: "Max completion tokens" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("names a bad tool payload separately from a model-service failure", () => {
+    useApp.getState().setLocale("zh", { persist: false })
+    const { unmount } = render(
+      <Harness text="the model returned a tool call that was not valid JSON" />,
+    )
+    expect(screen.getByText("模型返回的工具调用不是合法 JSON。")).toBeVisible()
+    unmount()
+    render(<Harness text="the model service is unavailable" />)
+    expect(screen.getByText("模型服务不可用。")).toBeVisible()
+    expect(screen.queryByText("模型返回的工具调用不是合法 JSON。")).not.toBeInTheDocument()
   })
 
   it("leaves an ordinary failure as the server text", () => {

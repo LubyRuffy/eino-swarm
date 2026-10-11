@@ -2,6 +2,7 @@ import { ArrowDownNarrowWide, ArrowLeft, ArrowUpNarrowWide, ChevronDown } from "
 import { useRef, useState } from "react"
 
 import { AgentPromptButton } from "@/components/app/agent-prompt"
+import { ConversationSchedules } from "@/components/app/conversation-schedules"
 import { FilesTab } from "@/components/app/files-tab"
 import { MemoryPanel, type MemoryPanelProps } from "@/components/app/memory-panel"
 import { ResizeHandle } from "@/components/app/resize-handle"
@@ -92,10 +93,11 @@ export function RightPanel({
         min={260}
         max={640}
       />
+      <ConversationSchedules key={threadId ?? ""} threadId={threadId} />
       <Tabs
         value={tab}
         onValueChange={(v) => onTabChange(v as PanelTab)}
-        className="flex h-full flex-col"
+        className="flex min-h-0 flex-1 flex-col"
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
           <TabsList>

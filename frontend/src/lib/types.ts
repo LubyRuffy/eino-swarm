@@ -672,6 +672,8 @@ export interface ScheduleRun {
   schedule_id: string
   thread_id: string
   turn_id: string
+  /** Kind at claim time. Empty on fires claimed before it was stored. */
+  kind?: string
   status: ScheduleRunStatus | string
   summary: string
   unread: boolean
@@ -703,4 +705,7 @@ export interface SchedulePatch {
   delay_s?: number
   every_s?: number
   cron?: string
+  kind?: string
+  thread_id?: string
+  project_id?: string
 }

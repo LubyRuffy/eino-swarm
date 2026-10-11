@@ -144,6 +144,24 @@ export const en = {
   "notice.scheduleArmed": "A wait is armed.",
   "notice.scheduleCancelled": "A wait was cancelled.",
   "notice.scheduleFired": "Scheduled check.",
+  "notice.contextOverflowRetry":
+    "The prompt exceeds the model window. Compressing and trying once.",
+  "notice.contextOverflow":
+    "Context window exceeded: the prompt plus the requested output does not fit. Automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry.",
+  "notice.contextOverflowPaused":
+    "Context window exceeded: the prompt plus the requested output does not fit. Automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry. The scheduled check is paused and will not run again until you resume it.",
+  "notice.modelRetryToolJSON":
+    "The model returned a tool call that was not valid JSON. Retrying.",
+  "notice.modelRetryRateLimited":
+    "The model service is rate limiting requests. Retrying.",
+  "notice.modelRetryUnavailable": "The model service is unavailable. Retrying.",
+  "notice.modelRetryTransport":
+    "The connection to the model service dropped. Retrying.",
+  "notice.modelRetryIdle": "The model service stopped sending data. Retrying.",
+  "notice.invalidToolJSON": "the model returned a tool call that was not valid JSON",
+  "notice.modelServiceRateLimited": "the model service is rate limiting requests",
+  "notice.modelServiceUnavailable": "the model service is unavailable",
+  "notice.modelServiceTransport": "the connection to the model service dropped",
 
   "goal.pursuing": "Pursuing",
   "goal.done": "Done",

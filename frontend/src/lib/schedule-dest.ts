@@ -1,4 +1,4 @@
-import type { Project, ScheduleCreate, Thread } from "@/lib/types"
+import type { Project, ScheduleCreate, SchedulePatch, Thread } from "@/lib/types"
 
 /** Destination for a human-created wait. Not a third kind: standalone
  *  mints a conversation per fire; thread wakes one that already exists. */
@@ -20,6 +20,25 @@ export function runsInFromSchedule(row: { kind?: string; thread_id?: string }): 
   const id = (row.thread_id ?? "").trim()
   if ((row.kind ?? "").trim() === "thread" && id) return runsInThreadValue(id)
   return RUNS_IN_NEW
+}
+
+/** Inbox PATCH for a destination edit. Unchanged runs-in and project
+ *  return undefined so a title save does not recompute the next fire. */
+export function destinationPatch(
+  row: { kind?: string; thread_id?: string; project_id?: string },
+  runsIn: string,
+  projectId: string,
+): Pick<SchedulePatch, "kind" | "thread_id" | "project_id"> | undefined {
+  const current = runsInFromSchedule(row)
+  const threadId = runsInThreadId(runsIn)
+  if (threadId) {
+    if (current === runsIn) return undefined
+    return { kind: "thread", thread_id: threadId, project_id: "" }
+  }
+  const currentProject = (row.project_id ?? "").trim()
+  const nextProject = projectId !== "none" && projectId.trim() ? projectId.trim() : ""
+  if (current === RUNS_IN_NEW && currentProject === nextProject) return undefined
+  return { kind: "standalone", thread_id: "", project_id: nextProject }
 }
 
 export function applyRunsIn(

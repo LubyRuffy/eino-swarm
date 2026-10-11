@@ -104,14 +104,20 @@ uploads, downloads and the live event stream have exactly one implementation.
   then Details (**Runs in**: new conversation each run, or wake an
   existing one; **Project** is the workspace for a minted conversation) and
   Frequency. **Expand** hides the wait list so a long instruction can use the task column.
-  Click a wait to edit it in that column: title, task, and cadence
-  (`PATCH`; changing cadence recomputes the next run from now). Pause, resume,
-  cancel, and Run now live there too. Destination (Runs in / Project) stays
-  as created. The conversation
+  Click a wait to edit it in that column: title, task, cadence, and where
+  the next run lands (`PATCH`; changing cadence recomputes the next run from
+  now; changing Runs in or Project does not). **Runs in** searches live
+  conversations, or starts a new one each fire. **Project** is only for that
+  new conversation. Pause, resume,
+  cancel, and Run now live there too. A finished wait keeps the destination
+  it was given. A run already in progress stays on the conversation it
+  started on. The conversation
   Agents/Files/Trace rail stays hidden on this page, like Settings. A row is
   the title, then the next time and cadence, then the task when it is not
   already the title. Click one for the editor.
-  An active wake on the open conversation
+  An open conversation's right rail lists every wait aimed at that chat and
+  any job whose run created it (a cancelled job stays if it minted the chat).
+  Click a row to open that task. An active wake on the open conversation
   shows a banner with the next check and the wait's title or prompt, **Run now**, and **Cancel wait** (not
   an icon-only dismiss — that sat under the goal banner's X). Run now and
   Cancel wait also sit on the armed-wait notice, which shows the same
@@ -161,7 +167,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   `block_goal` and stops instead of retrying forever — a crashed turn that
   is not a recoverable model error does the same, and the banner shows the
   public error. Truncated tool JSON / a `429` / a dropped stream / a
-  mid-stream TCP read timeout retry in-turn, then auto-continue. Three consecutive worker lifetime watchdog failures stop automatic resume: the turn errors, its goal blocks and its recurring check pauses. Inspect the worker trace, model and task before an explicit new message or **Start** retries. Provider idle timeouts are separate. **Start** resumes after a block, a cap, a hold, a stop, or a completed
+  mid-stream TCP read timeout retry in-turn, and the transcript names the model service for a rate limit, an outage, or a dropped connection. A concrete API rejection stays as that status and cause. Three consecutive worker lifetime watchdog failures stop automatic resume: the turn errors, its goal blocks and its recurring check pauses. Inspect the worker trace, model and task before an explicit new message or **Start** retries. Provider idle timeouts are separate. A
+  context-window rejection is named in the transcript and compacted once;
+  if the next call still does not fit, the turn stops. A repeating
+  scheduled check is paused so it cannot send the same prompt again.
+  **Start** resumes after a block, a cap, a hold, a stop, or a completed
   objective that finished too early. It does not
   appear while the objective is still pursuing between auto-continue
   sessions. The
@@ -190,8 +200,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   scrolling, with a fade at the top so it is obvious they are there. The
   **Thinking** label sweeps like the other live status lines. Click the row to
   hide it while it is still running. After it finishes it collapses to **Thought**.
-  **User view** (the default) folds adjacent thoughts and tool calls into
-  one live ticker. Answers stay on screen and split the fold. The current
+  **User view** (the default) shows a lone thought or tool call with its own
+  disclosure: one click opens its content, with no outer group. A live lone
+  thought starts open. Multiple adjacent work rows fold into one live ticker.
+  Answers stay on screen and split the fold. The current
   activity swaps in vertically, and
   the line itself still scrolls left-to-right when it does not fit:
   thinking text (or **Thinking**), **Planning next moves** between model

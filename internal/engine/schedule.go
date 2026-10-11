@@ -267,6 +267,13 @@ func (e *Engine) ListSchedules() ([]store.Schedule, error) {
 	return e.store.ListSchedules()
 }
 
+// ListSchedulesForThread returns waits aimed at a conversation and waits
+// that minted it. The conversation rail reads this; the inbox still lists
+// every row.
+func (e *Engine) ListSchedulesForThread(threadID string) (store.ConversationSchedules, error) {
+	return e.store.SchedulesForThread(threadID)
+}
+
 // PatchSchedule pauses or resumes one wait. Cancel is CancelSchedule.
 func (e *Engine) PatchSchedule(id, status string) (*store.Schedule, error) {
 	status = strings.TrimSpace(status)
@@ -326,22 +333,37 @@ func (e *Engine) CountUnreadRuns() (int, error) {
 
 // ScheduleFields is an HTTP PATCH. Status is pause/resume; cadence is
 // exactly one of DelayS, EveryS, or Cron when any of those is set.
+// Kind set means a destination edit: thread_id and project_id travel
+// with it. Omit Kind to leave where the next fire lands alone.
 type ScheduleFields struct {
-	Status *string
-	Title  *string
-	Prompt *string
-	DelayS *int
-	EveryS *int
-	Cron   *string
+	Status    *string
+	Title     *string
+	Prompt    *string
+	DelayS    *int
+	EveryS    *int
+	Cron      *string
+	Kind      *string
+	ThreadID  *string
+	ProjectID *string
 }
 
 // PatchScheduleFields applies an inbox edit. Pause/resume still goes
 // through PatchSchedule so the active cap stays one code path.
 func (e *Engine) PatchScheduleFields(id string, p ScheduleFields) (*store.Schedule, error) {
-	if _, err := e.store.GetSchedule(id); err != nil {
+	row, err := e.store.GetSchedule(id)
+	if err != nil {
 		return nil, err
 	}
 	fields := map[string]any{}
+	if p.Kind != nil {
+		dest, err := e.destinationFields(row, p)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range dest {
+			fields[k] = v
+		}
+	}
 	if p.Title != nil {
 		fields["title"] = strings.TrimSpace(*p.Title)
 		fields["title_auto"] = false
@@ -388,6 +410,48 @@ func (e *Engine) PatchScheduleFields(id string, p ScheduleFields) (*store.Schedu
 	return e.store.GetSchedule(id)
 }
 
+// noteContextOverflow pauses a repeating schedule after a window rejection
+// and returns the transcript line. A one-shot has no next tick to stop.
+// Anything that is not the context-window sentence is returned unchanged.
+func (e *Engine) noteContextOverflow(turn *store.Turn, errText string) string {
+	if e == nil || turn == nil || errText != publicContextOverflow {
+		return errText
+	}
+	if !e.pauseRepeatingSchedule(turn) {
+		return errText
+	}
+	return publicContextOverflowPaused
+}
+
+// pauseRepeatingSchedule stops the wait that started this turn when it
+// will fire again. A delay one-shot is left alone: that fire is the last.
+func (e *Engine) pauseRepeatingSchedule(turn *store.Turn) bool {
+	if turn == nil || !turn.ScheduleContinue {
+		return false
+	}
+	runID := strings.TrimSpace(turn.ScheduleRunID)
+	if runID == "" {
+		return false
+	}
+	run, err := e.store.GetRun(runID)
+	if err != nil {
+		return false
+	}
+	row, err := e.store.GetSchedule(run.ScheduleID)
+	if err != nil || row == nil || row.Status != store.ScheduleActive {
+		return false
+	}
+	if row.EveryS <= 0 && strings.TrimSpace(row.Cron) == "" {
+		return false
+	}
+	if _, err := e.PatchSchedule(row.ID, store.SchedulePaused); err != nil {
+		e.log.Warn("could not pause a schedule after a context-window rejection",
+			"schedule", row.ID, "err", err)
+		return false
+	}
+	return true
+}
+
 // finishScheduledRun closes the claimed fire after FinishTurn. It does not
 // take fireMu: the ticker only claims, and this turn is already done racing
 // StartTurn. A run that is no longer `running` is a no-op so a second call
@@ -419,7 +483,7 @@ func (e *Engine) finishScheduledRun(turn *store.Turn, status, final, errText str
 		if err := e.store.UpdateTurn(turn.ID, map[string]any{"quiet": true}); err != nil {
 			e.log.Warn("could not stamp a quiet scheduled turn", "turn", turn.ID, "err", err)
 		}
-		if sch := e.scheduleForTurn(turn); sch != nil && sch.Kind == store.ScheduleStandalone {
+		if scheduleRunMintsConversation(run, e.scheduleForTurn(turn)) {
 			if err := e.SetThreadArchived(turn.ThreadID, true); err != nil {
 				e.log.Warn("could not archive a quiet standalone fire", "thread", turn.ThreadID, "err", err)
 			}

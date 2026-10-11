@@ -1,6 +1,7 @@
 import { AlertTriangle } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { localizeNotice } from "@/lib/i18n"
 import {
   isOutputBudgetError,
   MAX_COMPLETION_SETTINGS_KEY,
@@ -13,7 +14,8 @@ import { openSettings, useSettingsSheet } from "@/store/settings-sheet"
 /** A failed turn. The output-budget sentence is the one a desktop client
  *  can fix in Settings, so that row grows a hint and a link. The retry
  *  stays hidden until that sheet closes: the new cap is what the next
- *  run should use. Other errors stay the server text. */
+ *  run should use. Known sentences are translated. Anything else stays
+ *  the server text. */
 export function TranscriptError({
   text,
   turnId,
@@ -42,7 +44,7 @@ export function TranscriptError({
     >
       <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       <div className="min-w-0">
-        <p className="stream-text">{text}</p>
+        <p className="stream-text">{localizeNotice(text, t.locale)}</p>
         {budget ? (
           <div className="mt-1">
             <p>

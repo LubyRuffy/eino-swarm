@@ -18,7 +18,9 @@ import (
 // recoverable ChatModel failure — truncated tool JSON, 429, a dropped
 // stream, a mid-stream TCP read timeout — or a scheduled check ends
 // without work/report evidence. The runtime re-enters the same turn
-// instead of blocking.
+// instead of blocking. text is JSON {attempt,cap,reason?}. reason tells
+// the transcript whether the model service failed or the model returned
+// a tool call that was not valid JSON. Older rows omit it.
 const KindModelRetry = "model_retry"
 
 // modelErrorRetries is how many times a recoverable model error may re-enter
@@ -27,6 +29,22 @@ const KindModelRetry = "model_retry"
 const modelErrorRetries = 2
 
 const modelRetryNoticeText = "Retrying after a model error."
+
+// modelRetryReasonContextOverflow is the model_retry reason when the
+// endpoint rejected the call for window accounting. One compact follows.
+// A second rejection ends the turn; it is not another generic retry.
+const modelRetryReasonContextOverflow = "context_overflow"
+
+// These reasons are the wire contract for a recoverable model failure.
+// The transcript maps each one to its own sentence. Renaming one leaves
+// stored rows on the generic retry line.
+const (
+	modelRetryReasonInvalidToolJSON = "invalid_tool_json"
+	modelRetryReasonRateLimited     = "rate_limited"
+	modelRetryReasonUnavailable     = "model_unavailable"
+	modelRetryReasonTransport       = "model_transport"
+	modelRetryReasonIdle            = "model_idle"
+)
 
 // modelRetryCue is what the model reads after a dropped generate. The failed
 // tool call is stripped from the next request: sending truncated arguments
@@ -48,10 +66,6 @@ func isRetryableModelError(err error) bool {
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return false
 	}
-	var idle provider.IdleTimeoutError
-	if errors.As(err, &idle) {
-		return true
-	}
 	s := strings.ToLower(err.Error())
 	if strings.Contains(s, "context canceled") {
 		return false
@@ -62,30 +76,46 @@ func isRetryableModelError(err error) bool {
 	if strings.Contains(s, "invalid api key") || strings.Contains(s, "incorrect api key") {
 		return false
 	}
+	return modelFailureClass(err) != ""
+}
+
+// modelFailureClass splits a recoverable ChatModel failure into the side
+// the person can act on. A tool call that is not valid JSON is the model's
+// own output. Rate limits, 5xx, a dropped socket, and silence after the
+// first byte are the model service. Empty means this error is not that retry.
+func modelFailureClass(err error) string {
+	if err == nil {
+		return ""
+	}
+	var idle provider.IdleTimeoutError
+	if errors.As(err, &idle) {
+		return modelRetryReasonIdle
+	}
+	s := strings.ToLower(err.Error())
 	switch {
-	case strings.Contains(s, "unterminated string"),
-		strings.Contains(s, "unexpected end of json"),
-		strings.Contains(s, "invalid character"),
-		strings.Contains(s, "unexpected eof"),
-		strings.Contains(s, "connection reset"),
-		// A live socket that dies mid-body. macOS says "operation timed out";
-		// Go's own deadline says "i/o timeout". Continuing the turn works;
-		// failing it on the first hit does not.
-		strings.Contains(s, "operation timed out"),
-		strings.Contains(s, "i/o timeout"),
-		strings.Contains(s, "status code: 429"),
-		strings.Contains(s, "status code: 500"),
+	case strings.Contains(s, "status code: 429"):
+		return modelRetryReasonRateLimited
+	case strings.Contains(s, "status code: 500"),
 		strings.Contains(s, "status code: 502"),
 		strings.Contains(s, "status code: 503"),
 		strings.Contains(s, "status code: 504"),
 		strings.Contains(s, "status code: 529"):
-		return true
+		return modelRetryReasonUnavailable
 	}
-	if strings.Contains(s, "status code: 400") &&
-		(strings.Contains(s, "json") || strings.Contains(s, "parse") || strings.Contains(s, "syntax")) {
-		return true
+	if isInvalidToolJSON(err) || strings.Contains(s, "invalid character") {
+		return modelRetryReasonInvalidToolJSON
 	}
-	return false
+	// A live socket that dies mid-body. macOS says "operation timed out";
+	// Go's own deadline says "i/o timeout". "unexpected end of json" is a
+	// tool payload and is classified above.
+	switch {
+	case strings.Contains(s, "unexpected eof"),
+		strings.Contains(s, "connection reset"),
+		strings.Contains(s, "operation timed out"),
+		strings.Contains(s, "i/o timeout"):
+		return modelRetryReasonTransport
+	}
+	return ""
 }
 
 func appendModelRetryCue(msgs []adk.Message) []adk.Message {
@@ -187,10 +217,17 @@ func (rt *runtime) retryManagerRun(turn *store.Turn, res swarm.RunResult, fallba
 	return msgs
 }
 
-func (rt *runtime) recordModelRetry(turn *store.Turn, attempt int) {
+func modelRetryEventText(attempt int, reason string) string {
+	if reason == "" {
+		return fmt.Sprintf(`{"attempt":%d,"cap":%d}`, attempt, modelErrorRetries)
+	}
+	return fmt.Sprintf(`{"attempt":%d,"cap":%d,"reason":%q}`, attempt, modelErrorRetries, reason)
+}
+
+func (rt *runtime) recordModelRetry(turn *store.Turn, attempt int, reason string) {
 	rt.engine.record(store.Event{
 		ThreadID: rt.threadID, TurnID: turn.ID,
 		Kind: KindModelRetry, AgentID: swarm.DefaultManagerID,
-		Text: fmt.Sprintf(`{"attempt":%d,"cap":%d}`, attempt, modelErrorRetries),
+		Text: modelRetryEventText(attempt, reason),
 	})
 }

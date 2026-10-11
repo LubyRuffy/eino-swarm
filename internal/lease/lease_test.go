@@ -75,6 +75,53 @@ func TestSecondProcessDoesNotTakeTheLock(t *testing.T) {
 	}
 }
 
+func TestBusyFollowsTheOtherProcess(t *testing.T) {
+	if Busy(t.TempDir()) {
+		t.Fatal("an empty directory is not an engine")
+	}
+	dir := t.TempDir()
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(), "ZWAI_LEASE_HOLD=1", "ZWAI_LEASE_DIR="+dir)
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd.Stderr = cmd.Stdout
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	}()
+	read := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 64)
+		n, _ := out.Read(buf)
+		read <- string(buf[:n])
+	}()
+	select {
+	case got := <-read:
+		if !strings.Contains(got, "held") {
+			t.Fatalf("helper never held the lock: %q", got)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("helper never held the lock")
+	}
+	if !Busy(dir) {
+		t.Fatal("a live holder must look busy")
+	}
+	_ = cmd.Process.Kill()
+	_, _ = cmd.Process.Wait()
+	deadline := time.Now().Add(2 * time.Second)
+	for Busy(dir) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if Busy(dir) {
+		t.Fatal("a dead holder must release the lock")
+	}
+}
+
 func TestReleaseLetsTheNextProcessTakeTheLock(t *testing.T) {
 	dir := t.TempDir()
 	h, err := Acquire(dir)

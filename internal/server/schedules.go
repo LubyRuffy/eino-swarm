@@ -27,12 +27,31 @@ type createScheduleRequest struct {
 }
 
 type patchScheduleRequest struct {
-	Status *string `json:"status"`
-	Title  *string `json:"title"`
-	Prompt *string `json:"prompt"`
-	DelayS *int    `json:"delay_s"`
-	EveryS *int    `json:"every_s"`
-	Cron   *string `json:"cron"`
+	Status    *string `json:"status"`
+	Title     *string `json:"title"`
+	Prompt    *string `json:"prompt"`
+	DelayS    *int    `json:"delay_s"`
+	EveryS    *int    `json:"every_s"`
+	Cron      *string `json:"cron"`
+	Kind      *string `json:"kind"`
+	ThreadID  *string `json:"thread_id"`
+	ProjectID *string `json:"project_id"`
+}
+
+func (s *Server) listThreadSchedules(c *gin.Context) {
+	th, ok := s.thread(c)
+	if !ok {
+		return
+	}
+	got, err := s.engine.ListSchedulesForThread(th.ID)
+	if err != nil {
+		s.fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"schedules":  got.Schedules,
+		"created_by": got.CreatedBy,
+	})
 }
 
 func (s *Server) listSchedules(c *gin.Context) {
@@ -114,12 +133,15 @@ func (s *Server) patchSchedule(c *gin.Context) {
 		return
 	}
 	row, err := s.engine.PatchScheduleFields(c.Param("id"), engine.ScheduleFields{
-		Status: req.Status,
-		Title:  req.Title,
-		Prompt: req.Prompt,
-		DelayS: req.DelayS,
-		EveryS: req.EveryS,
-		Cron:   req.Cron,
+		Status:    req.Status,
+		Title:     req.Title,
+		Prompt:    req.Prompt,
+		DelayS:    req.DelayS,
+		EveryS:    req.EveryS,
+		Cron:      req.Cron,
+		Kind:      req.Kind,
+		ThreadID:  req.ThreadID,
+		ProjectID: req.ProjectID,
 	})
 	if err != nil {
 		s.fail(c, err)

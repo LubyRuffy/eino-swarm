@@ -2,9 +2,11 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
@@ -35,6 +37,66 @@ func TestIsRetryableModelErrorMatchesTransientProviderFailures(t *testing.T) {
 		if !isRetryableModelError(errors.New(msg)) {
 			t.Fatalf("must retry: %s", msg)
 		}
+	}
+}
+
+func TestModelFailureClassSeparatesABadToolCallFromTheModelService(t *testing.T) {
+	cases := []struct {
+		msg  string
+		want string
+	}{
+		{"status code: 400, message: Unterminated string starting at: line 1 column 54", modelRetryReasonInvalidToolJSON},
+		{"unexpected end of json input", modelRetryReasonInvalidToolJSON},
+		{"invalid character 'x' looking for beginning of value", modelRetryReasonInvalidToolJSON},
+		{"error, status code: 400, message: json parse error", modelRetryReasonInvalidToolJSON},
+		{"error, status code: 429, status: 429 Too Many Requests", modelRetryReasonRateLimited},
+		{"error, status code: 500, status: 500 Internal Server Error", modelRetryReasonUnavailable},
+		{"error, status code: 502, status: 502 Bad Gateway", modelRetryReasonUnavailable},
+		{"error, status code: 503, status: 503 Service Unavailable", modelRetryReasonUnavailable},
+		{"error, status code: 504, status: 504 Gateway Timeout", modelRetryReasonUnavailable},
+		{"error, status code: 529, message: overloaded", modelRetryReasonUnavailable},
+		{"failed to receive stream chunk: unexpected EOF", modelRetryReasonTransport},
+		{"read: connection reset by peer", modelRetryReasonTransport},
+		{"read: operation timed out", modelRetryReasonTransport},
+		{"read: i/o timeout", modelRetryReasonTransport},
+		{"chat model refused the request", ""},
+		{"error, status code: 401, message: invalid api key", ""},
+		{"error, status code: 400, message: maximum context length exceeded", ""},
+	}
+	for _, tc := range cases {
+		err := errors.New(tc.msg)
+		if got := modelFailureClass(err); got != tc.want {
+			t.Fatalf("%q: got %q want %q", tc.msg, got, tc.want)
+		}
+		if (tc.want != "") != isRetryableModelError(err) {
+			t.Fatalf("%q: class %q disagrees with retryable", tc.msg, tc.want)
+		}
+	}
+	idle := provider.IdleTimeoutError{Idle: time.Minute}
+	if modelFailureClass(idle) != modelRetryReasonIdle || !isRetryableModelError(idle) {
+		t.Fatal("silence after the first byte is the model service, and it still retries")
+	}
+	if modelFailureClass(nil) != "" {
+		t.Fatal("nil has no class")
+	}
+}
+
+func TestModelRetryEventTextCarriesTheFailureClass(t *testing.T) {
+	raw := modelRetryEventText(1, modelRetryReasonInvalidToolJSON)
+	var body struct {
+		Attempt int    `json:"attempt"`
+		Cap     int    `json:"cap"`
+		Reason  string `json:"reason"`
+	}
+	if err := json.Unmarshal([]byte(raw), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Attempt != 1 || body.Cap != modelErrorRetries || body.Reason != modelRetryReasonInvalidToolJSON {
+		t.Fatalf("%+v", body)
+	}
+	plain := modelRetryEventText(2, "")
+	if strings.Contains(plain, "reason") {
+		t.Fatalf("an unclassified retry must stay the old envelope: %s", plain)
 	}
 }
 
@@ -234,6 +296,19 @@ func TestARetryableModelErrorRetriesInsteadOfBlockingTheGoal(t *testing.T) {
 	}
 	if !hasKind(t, e, th.ID, KindModelRetry) {
 		t.Fatal("the retry must be in the trace")
+	}
+	events, err := e.Replay(th.ID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := false
+	for _, ev := range events {
+		if ev.Kind == KindModelRetry && strings.Contains(ev.Text, `"reason":"invalid_tool_json"`) {
+			named = true
+		}
+	}
+	if !named {
+		t.Fatal("the retry row must say the model returned invalid tool JSON")
 	}
 }
 

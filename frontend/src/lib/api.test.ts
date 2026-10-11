@@ -312,6 +312,20 @@ describe("threads", () => {
 })
 
 describe("schedules", () => {
+  it("loads the waits tied to one conversation", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      expect(url).toBe("/api/threads/th_home/schedules")
+      return respond({
+        schedules: [{ id: "sch_1", kind: "thread", status: "active" }],
+        created_by: ["sch_1"],
+      })
+    })
+    vi.stubGlobal("fetch", fetch)
+    const got = await api.threadSchedules("th_home")
+    expect(got.created_by).toEqual(["sch_1"])
+    expect(got.schedules[0]?.id).toBe("sch_1")
+  })
+
   it("lists waits with status and kind on the query string", async () => {
     const fetch = vi.fn(async (url: string) => {
       expect(url).toBe("/api/schedules?status=active&kind=thread")

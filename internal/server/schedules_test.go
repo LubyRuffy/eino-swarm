@@ -347,3 +347,114 @@ func TestScheduleCreateRejectsGarbage(t *testing.T) {
 		t.Fatalf("status=%d body=%s", resp.StatusCode, body)
 	}
 }
+
+func TestPatchScheduleDestination(t *testing.T) {
+	h := newHarness(t)
+	origin := h.newThread()
+	target := h.newThread()
+	archived := h.newThread()
+	if err := h.app.Engine.SetThreadArchived(archived, true); err != nil {
+		t.Fatal(err)
+	}
+	created := h.json(http.MethodPost, "/api/schedules", map[string]any{
+		"kind": "standalone", "origin_thread_id": origin,
+		"prompt": scheduleWaitPrompt, "every_s": 60,
+	}, http.StatusCreated)
+	id := created["schedule"].(map[string]any)["id"].(string)
+	before := h.json(http.MethodGet, "/api/schedules/"+id, nil, http.StatusOK)["schedule"].(map[string]any)
+	next := before["next_run_at"]
+
+	moved := h.json(http.MethodPatch, "/api/schedules/"+id, map[string]any{
+		"kind": "thread", "thread_id": target,
+	}, http.StatusOK)
+	got := moved["schedule"].(map[string]any)
+	if got["kind"] != "thread" || got["thread_id"] != target || got["project_id"] != "" {
+		t.Fatalf("moved=%v", got)
+	}
+	if got["origin_thread_id"] != origin || got["next_run_at"] != next {
+		t.Fatalf("origin or next run changed: %v", got)
+	}
+
+	h.json(http.MethodPatch, "/api/schedules/"+id, map[string]any{
+		"kind": "thread", "thread_id": archived,
+	}, http.StatusBadRequest)
+	h.json(http.MethodPatch, "/api/schedules/"+id, map[string]any{
+		"kind": "thread", "thread_id": "th_missing",
+	}, http.StatusBadRequest)
+	again := h.json(http.MethodGet, "/api/schedules/"+id, nil, http.StatusOK)
+	kept := again["schedule"].(map[string]any)
+	if kept["thread_id"] != target || kept["next_run_at"] != next {
+		t.Fatalf("rejected destination still wrote: %v", kept)
+	}
+}
+
+func TestThreadSchedulesListTheBindingAndTheMint(t *testing.T) {
+	h := newHarness(t)
+	home := h.newThread()
+	other := h.newThread()
+	minted := h.newThread()
+	bound := h.json(http.MethodPost, "/api/schedules", map[string]any{
+		"kind": "thread", "thread_id": home, "title": "Bound here",
+		"prompt": scheduleWaitPrompt, "every_s": 3600,
+	}, http.StatusCreated)
+	boundID := bound["schedule"].(map[string]any)["id"].(string)
+	h.json(http.MethodPost, "/api/schedules", map[string]any{
+		"kind": "thread", "thread_id": other, "title": "Elsewhere",
+		"prompt": scheduleWaitPrompt, "every_s": 3600,
+	}, http.StatusCreated)
+	mint := &store.Schedule{
+		Kind: store.ScheduleStandalone, Title: "Minted it", Prompt: scheduleWaitPrompt,
+		EveryS: 3600, NextRunAt: time.Now().UTC().Add(time.Hour),
+	}
+	if err := h.app.Store.CreateSchedule(mint); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.app.Store.CreateRun(&store.ScheduleRun{
+		ScheduleID: mint.ID, ThreadID: minted, Kind: store.ScheduleStandalone,
+		Status: store.ScheduleRunFindings,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	homeBody := h.json(http.MethodGet, "/api/threads/"+home+"/schedules", nil, http.StatusOK)
+	if got := scheduleIDs(t, homeBody); len(got) != 1 || got[0] != boundID {
+		t.Fatalf("home=%v", got)
+	}
+	if ids := stringIDs(t, homeBody["created_by"]); len(ids) != 0 {
+		t.Fatalf("home created_by=%v", ids)
+	}
+	mintBody := h.json(http.MethodGet, "/api/threads/"+minted+"/schedules", nil, http.StatusOK)
+	if got := scheduleIDs(t, mintBody); len(got) != 1 || got[0] != mint.ID {
+		t.Fatalf("minted=%v", got)
+	}
+	if ids := stringIDs(t, mintBody["created_by"]); len(ids) != 1 || ids[0] != mint.ID {
+		t.Fatalf("created_by=%v", ids)
+	}
+	h.json(http.MethodGet, "/api/threads/th_missing/schedules", nil, http.StatusNotFound)
+}
+
+func scheduleIDs(t *testing.T, body map[string]any) []string {
+	t.Helper()
+	raw, ok := body["schedules"].([]any)
+	if !ok {
+		t.Fatalf("schedules: %T", body["schedules"])
+	}
+	out := make([]string, 0, len(raw))
+	for _, item := range raw {
+		out = append(out, item.(map[string]any)["id"].(string))
+	}
+	return out
+}
+
+func stringIDs(t *testing.T, raw any) []string {
+	t.Helper()
+	items, ok := raw.([]any)
+	if !ok {
+		t.Fatalf("ids: %T", raw)
+	}
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		out = append(out, item.(string))
+	}
+	return out
+}

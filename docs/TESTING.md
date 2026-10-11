@@ -1,5 +1,23 @@
 # Testing
 
+## Single PC work disclosures (F-130 / C-021)
+
+`frontend/src/components/app/transcript-fold.test.tsx` verifies that one finished
+thought or tool result opens with one click, a lone live thought can fold,
+failed tools retain their error state, Find reveals a lone thought, and work
+still aggregates when another row arrives. `work-fold.test.tsx` keeps pending
+hidden registry activity visible. `frontend/e2e/work-fold.spec.ts` walks the
+single-thought and single-exec controls through replayed log events and the
+multi-row fold through replayed events. The offline-provider conversation
+suite also verifies the live chrome on directly rendered work rows.
+`frontend/e2e/schedules.spec.ts` opens the lone `report_schedule` row directly
+when checking completion evidence, without expecting a one-tool aggregate.
+
+```bash
+cd frontend && npm test -- src/components/app/transcript-fold.test.tsx src/components/app/work-fold.test.tsx
+cd frontend && npm run e2e -- e2e/work-fold.spec.ts
+```
+
 `make test-mobile` runs the phone TypeScript check before Vitest. A successful
 transpile-only unit suite does not prove the production bundle can compile.
 The mobile production build and UI E2E remain separate required evidence.
@@ -763,7 +781,9 @@ so a later concat cannot revive the same error.
 generic sentinel) and an idle composer instead of auto-continuing into the
 same failure; `TestARetryableModelErrorRetriesInsteadOfBlockingTheGoal` is
 why truncated tool JSON / a `429` / a dropped stream / a mid-stream TCP read timeout re-enters the same
-turn (`model_retry`) instead; `TestARetryableModelErrorContinuesTheGoalAfterRetriesAreExhausted`
+turn (`model_retry`) instead; `TestModelFailureClassSeparatesABadToolCallFromTheModelService` is
+why that row's `reason` says the model returned invalid tool JSON or the model service failed
+(rate limit, unavailable, dropped connection, idle); `TestARetryableModelErrorContinuesTheGoalAfterRetriesAreExhausted`
 is why exhausting those retries still auto-continues (or `goal_idle`) instead of pinning the banner;
 `TestARetryableModelErrorWithoutAGoalDoesNotAutoStart` is why that auto-continue is `/goal` only;
 `TestFailedTurnBlockReasonPrefersThePublicError` is the
@@ -844,8 +864,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   `usage` pulse is ignored by the reducer (the composer meter owns it) and
   `collapseLiveEvents` keeps only the latest usage snapshot in a burst, a
   `max_iterations` event becomes a confirm card (and `max_iterations_continued`
-  resolves it) rather than an unknown notice. A `model_retry` is a generic
-  notice (the `{attempt,cap}` JSON stays in Trace). An interrupt, a `cleanup`, a
+  resolves it) rather than an unknown notice. A `model_retry` notice follows
+  `reason` (invalid tool JSON, rate limit, unavailable model service, dropped
+  connection, idle). The `{attempt,cap}` JSON stays in Trace. An envelope
+  with no known reason stays the generic retry line. An interrupt, a `cleanup`, a
   worker `finished`, or a manager `error` closes tools left pending so they
   stop spinning. A clean manager `done` does not: leftover workers are parked
   for the next `/goal` session or armed thread wake. `TestScheduledChecksReuseTheWorkerRegistryAcrossWakes`
@@ -907,7 +929,7 @@ Several things are tested here, some as pure logic and some in jsdom:
   open conversation's live wait.   `schedule-inbox.test.tsx` /
   `schedule-dest.test.ts` cover Runs in (standalone vs a thread wake), a
   Create drawer with a Task field and no Title, click-to-edit (`schedule-edit-drawer`)
-  that PATCHes title / prompt / cadence without resending an unchanged interval,
+  that PATCHes title / prompt / cadence / destination without resending an unchanged interval,
   pause/run-now in that drawer, a finished wait read-only, and
   `schedule-banner.test.tsx` / `app-schedule.test.ts` cover the sidebar
   page control (`aria-current="page"` while open, the name stays Scheduled),
@@ -929,8 +951,11 @@ Several things are tested here, some as pure logic and some in jsdom:
   Escape collapses first). The form is a Task field plus Details (Runs in:
   new conversation each run, or wake a listed chat; Project only for a minted
   conversation) and Frequency (Repeat + delay/every/cron). Click a row for
-  `schedule-edit-drawer` (title in the header, Task + locked destination +
-  cadence; Save is dirty-only). Pause keeps a selected wait under Upcoming
+  `schedule-edit-drawer` (title in the header, Task + searchable Runs in +
+  cadence; Save is dirty-only, including a destination-only change). A finished
+  wait locks Runs in. The open conversation's side panel lists waits aimed at
+  that chat and jobs that minted it (`conversation-schedules`,
+  `GET /api/threads/:id/schedules`); a row opens that task's editor. Pause keeps a selected wait under Upcoming
   while the editor is open. Escape then closes the drawer, then the page. Several unread fires on one wait collapse
   to one Open findings control (a count when there is more than one) so
   finished reports stay off the row (`unreadFindings` newest-first; opening

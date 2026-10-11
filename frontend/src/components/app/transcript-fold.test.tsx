@@ -121,7 +121,7 @@ describe("user transcript mode", () => {
     expect(screen.getByText("here is the result")).toBeInTheDocument()
   })
 
-  it("tickers the latest thinking line while the turn is live", () => {
+  it("shows a single live thought directly and lets one click fold it", () => {
     render(
       <Transcript
         state={reasoningState("first pass\nthen a closer look", true)}
@@ -129,9 +129,58 @@ describe("user transcript mode", () => {
         onSelectAgent={() => {}}
       />,
     )
-    expect(screen.getByTestId("work-fold")).toBeInTheDocument()
-    expect(screen.getByTestId("swap-line")).toHaveTextContent("then a closer look")
+    expect(screen.queryByTestId("work-fold")).toBeNull()
+    expect(screen.getByTestId("thought-scroll")).toHaveTextContent("then a closer look")
+    fireEvent.click(screen.getByTestId("thought-toggle"))
     expect(screen.queryByTestId("thought-scroll")).toBeNull()
+  })
+
+  it("opens a single finished thought with one click", () => {
+    render(<Transcript state={reasoningState("a finished thought", false)} loaded onSelectAgent={() => {}} />)
+    expect(screen.queryByTestId("work-fold")).toBeNull()
+    expect(screen.queryByTestId("thought-scroll")).toBeNull()
+    fireEvent.click(screen.getByTestId("thought-toggle"))
+    expect(screen.getByTestId("thought-scroll")).toHaveTextContent("a finished thought")
+  })
+
+  it.each([false, true])("opens a single tool result with one click (failed=%s)", (failed) => {
+    const state = mixedWorkState()
+    const tool = state.agents.manager.blocks[1]!
+    tool.tool = { ...tool.tool!, result: "a tool result", failed }
+    state.agents.manager.blocks = [tool, state.agents.manager.blocks[2]!]
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(screen.queryByTestId("work-fold")).toBeNull()
+    expect(screen.queryByText("a tool result")).toBeNull()
+    const toggle = screen.getByRole("button", { name: /read/ })
+    expect(toggle).toHaveAttribute("aria-expanded", "false")
+    if (failed) expect(toggle).toHaveAttribute("aria-invalid", "true")
+    fireEvent.click(toggle)
+    expect(screen.getByText("a tool result")).toBeInTheDocument()
+    expect(screen.getByText("here is the result")).toBeInTheDocument()
+  })
+
+  it.each(["reasoning", "tool"] as const)("keeps multiple %s rows grouped", (kind) => {
+    const state = mixedWorkState()
+    const first = state.agents.manager.blocks.find((b) => b.kind === kind)!
+    state.agents.manager.blocks = [first, { ...first, id: "second", seq: 3 }]
+    render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByTestId("work-fold")).toHaveAttribute("aria-expanded", "false")
+  })
+
+  it("groups a lone thought once a tool arrives", () => {
+    const view = render(<Transcript state={reasoningState("a finished thought", false)} loaded onSelectAgent={() => {}} />)
+    expect(screen.queryByTestId("work-fold")).toBeNull()
+    view.rerender(<Transcript state={mixedWorkState()} loaded onSelectAgent={() => {}} />)
+    expect(screen.getByTestId("work-fold")).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(screen.getByTestId("work-fold"))
+    expect(screen.getByTestId("thought-toggle")).toBeInTheDocument()
+    expect(screen.getByText("read")).toBeInTheDocument()
+  })
+
+  it("reveals a lone thought directly when Find matches its content", () => {
+    render(<Transcript state={reasoningState("searchable thought", false)} loaded findQuery="searchable" onSelectAgent={() => {}} />)
+    expect(screen.queryByTestId("work-fold")).toBeNull()
+    expect(screen.getByTestId("thought-scroll")).toHaveTextContent("searchable thought")
   })
 
   it("expands into the existing thought and tool rows", () => {
@@ -181,9 +230,9 @@ describe("user transcript mode", () => {
     ]
     render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
     expect(screen.getByText("still working the layout")).toBeInTheDocument()
-    expect(screen.getAllByTestId("work-fold")).toHaveLength(2)
+    expect(screen.getAllByTestId("work-fold")).toHaveLength(1)
     expect(screen.queryByText("read")).toBeNull()
-    expect(screen.queryByText("grep")).toBeNull()
+    expect(screen.getByText("grep")).toBeInTheDocument()
     expect(screen.getByText("here is the result")).toBeInTheDocument()
   })
 

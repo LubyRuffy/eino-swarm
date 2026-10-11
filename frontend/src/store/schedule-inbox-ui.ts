@@ -3,6 +3,7 @@ import { create } from "zustand"
 import { runsInFromSchedule, RUNS_IN_NEW } from "@/lib/schedule-dest"
 import {
   cadenceFormFields,
+  inboxStatusTab,
   type InboxFilter,
   type ScheduleCadenceKind,
 } from "@/lib/schedule-view"
@@ -57,6 +58,7 @@ type InboxUI = {
   setRuns: (runs: ScheduleRun[]) => void
   openCreate: () => void
   openEdit: (row: Schedule) => void
+  showEdit: (row: Schedule) => void
   closeDrawer: () => void
 }
 
@@ -93,6 +95,16 @@ export const useScheduleInboxUI = create<InboxUI>((set) => ({
         expanded: false,
         form: inboxFormFromRow(row),
       }
+    }),
+  // The conversation rail opens a task. Unlike the list toggle, a second
+  // click on the same row must not close the editor it just asked for.
+  showEdit: (row) =>
+    set({
+      drawer: { mode: "edit", id: row.id },
+      expanded: false,
+      filter: inboxStatusTab(row.status),
+      query: "",
+      form: inboxFormFromRow(row),
     }),
   closeDrawer: () => set({ drawer: null, expanded: false }),
 }))

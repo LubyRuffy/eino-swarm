@@ -29,6 +29,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- **An open conversation lists the waits that use it.** The right side shows tasks aimed at that chat and any task whose run created it. Click a row to open that task.
+
 - `F-135`, `C-021`: independent conversation managers can discover active tasks and exchange durable peer messages, with runtime-bound provenance, persistent read cursors and explicit acknowledgement. Idle or paused recipients are not started or resumed (Issue #57).
 
 - `F-224`, `C-020`: phone output previews render Markdown by suffix and highlight known source languages; unknown/large text remains complete plain text, with inert HTML/SVG and unchanged downloads (Issue #63).
@@ -57,6 +59,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130` / `C-021`: PC user view renders a lone thought or visible tool call with its own disclosure, so one click opens its content. Multiple adjacent work rows retain the aggregate fold; a lone live thought keeps its usual open behavior.
+
+- **A live wait can change where the next run lands.** The Scheduled editor's Runs in list searches conversations, or starts a new one each fire. Project applies only to that new conversation. Saving does not move the run already in progress, past findings, or the next-run time. A finished wait stays as it was.
+
 - `F-430` / `C-010`: the qualified complete-main batch advances mobile package and development iOS build metadata to 0.1.29/129 for Issues #57, #65 and #66. Mac, Android and TestFlight retain one source batch; native acceptance and publication remain independent gates. Routine TestFlight archives retain marketing version 0.1.23, and a used Beijing daily quota leaves iOS pending until the next day.
 
 - `F-430` / `C-010`: the authorized iOS export-compliance declaration now lives in the app's Info.plist and is read before archive/preflight. Routine build increments no longer require repeated questions; the signed IPA and exact receipts must agree. Frozen sources without the field retain their per-build confirmation recovery (Issue #62).
@@ -70,7 +76,6 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-430` / `C-010`: routine TestFlight releases keep the last successfully published marketing version and advance only the package-derived build number. Optional private `marketing_version` starts a new version; candidate/IPA receipts preserve the original version on recovery. Group attachment rechecks actual external availability before requesting review. Same-version builds may still require Apple review.
 
 - `F-430` / `C-010`: the qualified complete-main batch advances mobile package and iOS build metadata to 0.1.25/125. It includes the accepted iOS menu fix from Issue #53, the Android/iOS sub-agent Back fix from Issue #54, and the provider visibility controls already on main. Each required platform keeps its own native acceptance and delivery gate.
-
 - `F-240` / `C-010`: iOS no longer shows the GitHub “Check for updates” menu, which could only report that the Android installer was unusable. iOS beta updates remain in TestFlight; a packaged-app XCTest checks the native menu path (Issue #53).
 
 - `F-430` / `C-010`: the qualified complete-main batch advances mobile package and iOS build metadata to 0.1.24/124. It carries the accepted Mac and phone fix from Issue #51, the Mac scheduled-worker fix from Issue #52, and verified changes already on main; each required platform retains an independent delivery gate.
@@ -108,6 +113,16 @@ co-working app built on it. The library API is unchanged except where noted
 - **Desktop lists sit in a leftmost rail.** Projects is the default list. Conversations (threads with no project), scheduled waits, and local clients each have their own list. The task column is the open conversation, the wait editor, or a client session. Restart keeps the rail on the last list; restoring the open conversation does not jump to Conversations. The rail does not show an unread count. **New conversation** is on Conversations, not on the project list. `⌘B` hides that list column and leaves the icon rail.
 
 ### Fixed
+
+- **A second desktop started during engine startup attaches.** The first process holds the lock while it rebuilds the UI and has not written `engine.json` yet. The second spawn used to exit on that lock, and the shell reported the frontend build as a crash. It now waits for the running engine to publish and opens on that URL.
+
+- **A model failure says which side broke.** The retry line names a bad tool payload, a rate limit, an unavailable endpoint, a dropped connection, or silence after the first byte. A concrete API rejection stays on the turn with its HTTP status and cause, so a 400 is not relabeled as a tool-call problem. Older rows without a reason stay on the generic retry line.
+
+- **A prompt under the compact percent can still be rejected for context length.** Compression left only `compact_output_reserve` free, while every request sends `max_completion_tokens` as `max_tokens`. The endpoint counts both. The compact line is now `min(window × percent, window − max(reserve, max_completion_tokens))`. A context-length rejection folds once and retries even when the stored window does not shrink, so the same oversized prompt is not sent again.
+
+- **A context-window rejection is named, and a repeating check stops.** The transcript says the prompt plus the requested output does not fit, and that automatic compact could not free enough space, instead of another generic model retry. It points at Max completion tokens in Settings. One compression follows. If the next call still does not fit, the turn ends with that sentence. A repeating schedule is paused so the next tick cannot send the same prompt. A one-shot is left as it is.
+
+- **That one compression was repeating for the rest of the turn.** The overflow retry left the force flag set on every later model call, so a prompt of about 20k tokens — far under the window — was folded again after each tool round. The flag is now used once.
 
 - `F-130` / `C-003`: the desktop response area now spins immediately after a turn starts, even if a local model has not emitted a token or the first five-second progress pulse (Issue #61).
 

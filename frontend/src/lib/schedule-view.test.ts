@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest"
 
+import { RUNS_IN_NEW, runsInThreadValue } from "@/lib/schedule-dest"
 import type { Schedule, ScheduleRun } from "@/lib/types"
 import {
   applyArmedSchedule,
   applyCancelledSchedule,
   applyFiredThreadWake,
   cadenceAmount,
+  conversationSchedules,
   inboxFilterMatch,
   inboxFilteredSchedules,
   inboxScheduleOrder,
@@ -286,8 +288,20 @@ describe("schedule-view", () => {
         prompt: "Continue the wait.",
         cadence: "every",
         cadenceValue: "60",
+        runsIn: runsInThreadValue("th_1"),
+        projectId: "none",
       }),
     ).toBeUndefined()
+    expect(
+      schedulePatchDiff(row, {
+        title: "wake",
+        prompt: "Continue the wait.",
+        cadence: "every",
+        cadenceValue: "60",
+        runsIn: RUNS_IN_NEW,
+        projectId: "pj_1",
+      }),
+    ).toEqual({ kind: "standalone", thread_id: "", project_id: "pj_1" })
     expect(
       schedulePatchDiff(row, {
         title: "Mine",
@@ -347,6 +361,70 @@ function run(partial: Partial<ScheduleRun> = {}): ScheduleRun {
     ...partial,
   }
 }
+
+describe("conversationSchedules", () => {
+  it("lists a wake aimed here and a job that minted the chat", () => {
+    const home = "th_home"
+    const bound = wait({
+      id: "sch_bound",
+      kind: "thread",
+      thread_id: home,
+      status: "active",
+      title: "aimed here",
+      next_run_at: "2026-10-07T02:00:00.000Z",
+    })
+    const paused = wait({
+      id: "sch_paused",
+      kind: "thread",
+      thread_id: home,
+      status: "paused",
+      title: "paused here",
+      next_run_at: "2026-10-07T04:00:00.000Z",
+    })
+    const finished = wait({
+      id: "sch_done",
+      kind: "thread",
+      thread_id: home,
+      status: "done",
+      title: "finished here",
+      next_run_at: "2026-10-07T03:00:00.000Z",
+    })
+    const cancelled = wait({
+      id: "sch_cancel",
+      kind: "thread",
+      thread_id: home,
+      status: "cancelled",
+      title: "cancelled here",
+    })
+    const elsewhere = wait({
+      id: "sch_else",
+      kind: "thread",
+      thread_id: "th_other",
+      status: "active",
+      title: "aimed elsewhere",
+    })
+    const minted = wait({
+      id: "sch_mint",
+      kind: "standalone",
+      thread_id: "",
+      status: "cancelled",
+      title: "minted it",
+      next_run_at: "2026-10-07T05:00:00.000Z",
+    })
+    const rows = [elsewhere, cancelled, finished, minted, paused, bound]
+    expect(conversationSchedules(rows, home, ["sch_mint"]).map((row) => row.id)).toEqual([
+      "sch_bound",
+      "sch_paused",
+      "sch_done",
+      "sch_mint",
+    ])
+    expect(conversationSchedules(rows, "  ", ["sch_mint"])).toEqual([])
+    expect(conversationSchedules(rows, "th_other", []).map((row) => row.id)).toEqual(["sch_else"])
+    expect(JSON.stringify(conversationSchedules(rows, home, ["sch_mint"]))).not.toMatch(
+      /CI|deploy|GitHub/,
+    )
+  })
+})
 
 describe("unreadFindings", () => {
   it("keeps unread findings and errors that still have a conversation", () => {

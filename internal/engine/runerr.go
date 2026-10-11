@@ -13,6 +13,22 @@ import (
 	openai "github.com/meguminnnnnnnnn/go-openai"
 )
 
+const publicRateLimited = "the model service is rate limiting requests"
+
+const publicModelUnavailable = "the model service is unavailable"
+
+const publicModelTransport = "the connection to the model service dropped"
+
+// publicContextOverflow is the transcript line when the endpoint rejects
+// the call because input plus the requested output does not fit the window.
+// The provider paragraph stays in Trace. This sentence is stable when a
+// vendor rewords the 400, and it still says how to make the next call fit.
+const publicContextOverflow = "the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry"
+
+// publicContextOverflowPaused is the same rejection on a repeating schedule.
+// The check is paused so the next tick cannot send the same prompt again.
+const publicContextOverflowPaused = publicContextOverflow + ". The scheduled check is paused"
+
 // publicTurnError is what the transcript and the turn row show. eino wraps
 // a silent stream in NodeRunError and a graph path; that dump is for a
 // trace, not a person.
@@ -25,13 +41,24 @@ func publicTurnError(err error) string {
 		return fmt.Sprintf("the model sent no data for %s; raise the provider request timeout in Settings, or lower thinking", idle.Idle)
 	}
 	if isContextOverflow(err) {
-		return "the conversation and requested output exceed this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry"
+		return publicContextOverflow
 	}
 	if isHeaderWaitTimeout(err) {
 		return fmt.Sprintf("the model sent no first byte within %s", config.DefaultFirstByteTimeout)
 	}
+	// A typed API error keeps its HTTP status and decode cause. A 502 with
+	// an empty body is not a broken tool call. String-only failures below
+	// have no such cause, so the transcript names the service side.
 	if reason, ok := publicModelAPIError(err); ok {
 		return reason
+	}
+	switch modelFailureClass(err) {
+	case modelRetryReasonRateLimited:
+		return publicRateLimited
+	case modelRetryReasonUnavailable:
+		return publicModelUnavailable
+	case modelRetryReasonTransport:
+		return publicModelTransport
 	}
 	if isMaxIterations(err) {
 		return "stopped at the tool-round cap"
@@ -41,6 +68,20 @@ func publicTurnError(err error) string {
 
 func isHeaderWaitTimeout(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "timeout awaiting response headers")
+}
+
+// isInvalidToolJSON classifies a retry. The transcript still shows the
+// provider's own text; guessing "invalid tool JSON" hid the HTTP status.
+func isInvalidToolJSON(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	if strings.Contains(s, "unterminated string") || strings.Contains(s, "unexpected end of json") {
+		return true
+	}
+	return strings.Contains(s, "status code: 400") &&
+		(strings.Contains(s, "json") || strings.Contains(s, "parse") || strings.Contains(s, "syntax"))
 }
 
 // The SDK's RequestError.Error includes the raw response body. Its decoder

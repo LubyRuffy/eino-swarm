@@ -149,6 +149,134 @@ func TestFoldWithBriefingUsesTheSessionBriefing(t *testing.T) {
 	}
 }
 
+func TestForcedCompactFoldsWhenTheLocalCountIsUnderTheLine(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.store.UpdateThread(th.ID, map[string]any{
+		"session_memory": "rolling-session-briefing",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// A confirmed window whose percent line is far above this prompt.
+	// Without force, compression must not run. A context-length rejection
+	// sets force because the endpoint already counted more than we did.
+	pinContextWindow(e, 100_000)
+	m := e.newAutoCompact(th.ID, "tn", th)
+	m.keep = 1
+	state := &adk.ChatModelAgentState{Messages: []*schema.Message{
+		schema.SystemMessage("sys"),
+		schema.UserMessage("old request"),
+		schema.AssistantMessage("old answer", nil),
+		schema.UserMessage("still live"),
+	}}
+	_, same, err := m.BeforeModelRewriteState(context.Background(), state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compactLines(same.Messages) != compactLines(state.Messages) {
+		t.Fatal("an under-line prompt must not fold")
+	}
+	m.force = true
+	_, next, err := m.BeforeModelRewriteState(context.Background(), state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := compactLines(next.Messages)
+	if !strings.Contains(joined, "rolling-session-briefing") || strings.Contains(joined, "old answer") {
+		t.Fatalf("forced fold did not replace older replay:\n%s", joined)
+	}
+	if !strings.Contains(joined, "still live") {
+		t.Fatalf("the kept tail vanished:\n%s", joined)
+	}
+}
+
+func compactEventCount(t *testing.T, e *Engine, threadID string) int {
+	t.Helper()
+	events, err := e.Replay(threadID, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for _, ev := range events {
+		if ev.Kind == KindCompacted && ev.Err == "" && ev.Seq > 0 {
+			n++
+		}
+	}
+	return n
+}
+
+func TestOverflowRetryFoldsOnceThenLeavesTheNextToolRound(t *testing.T) {
+	// One middleware object lives for the whole RunWith, and this hook runs
+	// before every Generate. force is the overflow retry, not a property of
+	// the rest of the turn. A stuck flag folded again whenever tool results
+	// pushed the local count above the post-fold size, still far under the
+	// window line. That is the loop this test locks.
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.store.UpdateThread(th.ID, map[string]any{
+		"session_memory": "rolling-session-briefing",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	pinContextWindow(e, 100_000)
+	m := e.newAutoCompact(th.ID, "tn", th)
+	m.keep = 1
+	m.force = true
+	state := &adk.ChatModelAgentState{Messages: []*schema.Message{
+		schema.SystemMessage("sys"),
+		schema.UserMessage("old request"),
+		schema.AssistantMessage("old answer", nil),
+		schema.UserMessage("still live"),
+	}}
+	_, folded, err := m.BeforeModelRewriteState(context.Background(), state, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.force {
+		t.Fatal("force must be consumed by the overflow retry")
+	}
+	if !strings.Contains(compactLines(folded.Messages), "rolling-session-briefing") {
+		t.Fatal("the overflow retry must still fold once")
+	}
+	marker := "tool-round-still-here"
+	grown := &adk.ChatModelAgentState{Messages: append(append([]*schema.Message{}, folded.Messages...),
+		schema.AssistantMessage(marker, nil),
+		schema.AssistantMessage(strings.Repeat("x", 8000), nil),
+		schema.AssistantMessage("latest turn", nil),
+	)}
+	tokens := promptTokenCount(grown.Messages)
+	line := e.compactThreshold(th.ID)
+	if tokens <= m.lastAfter || tokens > line {
+		t.Fatalf("fixture must sit above the post-fold count and under the line: tokens=%d lastAfter=%d line=%d", tokens, m.lastAfter, line)
+	}
+	if len(grown.Messages) < m.lastN+autoCompactMinGrowth {
+		t.Fatalf("fixture must clear the growth guard: len=%d lastN=%d", len(grown.Messages), m.lastN)
+	}
+	if _, older, _ := splitCompactable(grown.Messages, m.keep); len(older) == 0 {
+		t.Fatal("fixture must still have an older slice, or a stuck force flag would not fold")
+	}
+	before := compactEventCount(t, e, th.ID)
+	_, again, err := m.BeforeModelRewriteState(context.Background(), grown, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compactLines(again.Messages) != compactLines(grown.Messages) {
+		t.Fatal("the next tool round was folded while still under the window line")
+	}
+	if !strings.Contains(compactLines(again.Messages), marker) {
+		t.Fatal("the tool round vanished from the next prompt")
+	}
+	if got := compactEventCount(t, e, th.ID); got != before {
+		t.Fatalf("compacted events %d -> %d; the turn folded again", before, got)
+	}
+}
+
 func TestFoldWithBriefingRejectsATranscriptDump(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")

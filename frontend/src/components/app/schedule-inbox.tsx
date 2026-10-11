@@ -261,10 +261,14 @@ export function ScheduleDetail() {
       prompt: form.prompt,
       cadence: form.cadence,
       cadenceValue: form.cadenceValue,
+      runsIn: form.runsIn,
+      projectId: form.projectId,
     })
 
   useEffect(() => {
-    if (open && !wasOpen.current) reset()
+    // A conversation-rail click sets the editor before this page mounts.
+    // Resetting a drawer that is already open would drop that task.
+    if (open && !wasOpen.current && !useScheduleInboxUI.getState().drawer) reset()
     wasOpen.current = open
   }, [open, reset])
 
@@ -444,7 +448,6 @@ export function ScheduleDetail() {
           cadenceValue={form.cadenceValue}
           projectId={form.projectId}
           runsIn={form.runsIn}
-          destinationLocked={editing}
           readOnly={editing && !liveEdit}
           canSubmit={editing ? Boolean(dirty) : undefined}
           submitLabel={editing ? t("schedule.save") : undefined}

@@ -1,3 +1,4 @@
+import { destinationPatch } from "@/lib/schedule-dest"
 import type { Schedule, ScheduleCreate, SchedulePatch, ScheduleRun } from "@/lib/types"
 
 export function scheduleHeadline(row: Pick<Schedule, "title" | "prompt">): string {
@@ -58,6 +59,26 @@ export function inboxSearchMatch(
   const title = (row.title ?? "").toLowerCase()
   const prompt = (row.prompt ?? "").toLowerCase()
   return title.includes(needle) || prompt.includes(needle)
+}
+
+/** Waits the open conversation lists: a wake aimed here, or a job that
+ *  minted this conversation. Cancelled wakes stay off unless they minted
+ *  the chat — that link is the only way to open the job that created it. */
+export function conversationSchedules(
+  rows: Schedule[],
+  threadId: string,
+  createdBy: readonly string[],
+): Schedule[] {
+  const id = threadId.trim()
+  if (!id) return []
+  const created = new Set(createdBy.map((item) => item.trim()).filter(Boolean))
+  return inboxScheduleOrder(
+    rows.filter((row) => {
+      if (created.has(row.id)) return true
+      if ((row.status ?? "").trim() === "cancelled") return false
+      return row.kind === "thread" && (row.thread_id ?? "").trim() === id
+    }),
+  )
 }
 
 /** Live waits first so a just-armed row is not buried under done fires. */
@@ -134,12 +155,17 @@ function sameCadence(a: CadenceSpec, b: CadenceSpec): boolean {
 /** Fields the inbox should PATCH. Cadence is omitted when it did not
  *  change — sending it would recompute next_run_at from now. */
 export function schedulePatchDiff(
-  row: Pick<Schedule, "title" | "prompt" | "delay_s" | "every_s" | "cron">,
+  row: Pick<
+    Schedule,
+    "title" | "prompt" | "delay_s" | "every_s" | "cron" | "kind" | "thread_id" | "project_id"
+  >,
   draft: {
     title?: string
     prompt?: string
     cadence: ScheduleCadenceKind
     cadenceValue: string
+    runsIn?: string
+    projectId?: string
   },
 ): SchedulePatch | undefined {
   const patch: SchedulePatch = {}
@@ -148,6 +174,10 @@ export function schedulePatchDiff(
   }
   if (draft.prompt !== undefined && draft.prompt.trim() !== (row.prompt ?? "").trim()) {
     patch.prompt = draft.prompt.trim()
+  }
+  if (draft.runsIn !== undefined) {
+    const dest = destinationPatch(row, draft.runsIn, draft.projectId ?? "none")
+    if (dest) Object.assign(patch, dest)
   }
   const drafted = cadenceCreateFields(draft.cadence, draft.cadenceValue)
   const next = scheduleCadenceSpec({

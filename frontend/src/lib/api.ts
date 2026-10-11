@@ -597,6 +597,11 @@ export const api = {
       `/api/trace/${turnId}`,
     ),
 
+  threadSchedules: (id: string) =>
+    request<{ schedules: Schedule[]; created_by: string[] }>(
+      `/api/threads/${id}/schedules`,
+    ),
+
   schedules: (opts?: { status?: string; kind?: string }) => {
     const params = new URLSearchParams()
     if (opts?.status) params.set("status", opts.status)

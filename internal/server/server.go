@@ -137,6 +137,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/threads", s.createThread)
 		api.PUT("/threads/reorder", s.reorderThreads)
 		api.GET("/threads/:id", s.getThread)
+		api.GET("/threads/:id/schedules", s.listThreadSchedules)
 		api.PATCH("/threads/:id", s.patchThread)
 		api.DELETE("/threads/:id", s.deleteThread)
 

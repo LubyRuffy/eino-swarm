@@ -169,6 +169,7 @@ func (e *Engine) claimScheduledFire(row store.Schedule, spec scheduleSpec, now t
 		ScheduleID: row.ID,
 		ThreadID:   threadID,
 		Status:     store.ScheduleRunRunning,
+		Kind:       claimedScheduleKind(row, standalone),
 	}
 	if err := e.store.CreateRun(run); err != nil {
 		e.log.Warn("could not claim a schedule fire", "schedule", row.ID, "err", err)
@@ -201,6 +202,7 @@ func (e *Engine) skipBusy(row store.Schedule, spec scheduleSpec, now time.Time, 
 		ScheduleID: row.ID,
 		ThreadID:   threadID,
 		Status:     store.ScheduleRunSkippedBusy,
+		Kind:       claimedScheduleKind(row, false),
 	}
 	if err := e.store.CreateRun(run); err != nil {
 		e.log.Warn("could not record a skipped schedule tick", "schedule", row.ID, "err", err)

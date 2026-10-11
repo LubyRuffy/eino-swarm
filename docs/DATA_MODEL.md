@@ -311,10 +311,10 @@ engine enforces that exactly one is set.
 | column | notes |
 |---|---|
 | `id` | `sch_` + 8 random bytes hex. Filesystem-safe, same family as thread ids |
-| `kind` | `thread` or `standalone` |
-| `origin_thread_id` | conversation that created it. Standalone fires do **not** reuse it |
-| `thread_id` | wakes only: the conversation to wake. Empty on standalone rows |
-| `project_id` | standalone workspace; empty means that fire gets its own directory |
+| `kind` | `thread` or `standalone`. An inbox PATCH on an active or paused row may change it; `origin_thread_id` stays |
+| `origin_thread_id` | conversation that created it. Standalone fires do **not** reuse it. A destination edit does not rewrite it |
+| `thread_id` | wakes only: the conversation to wake. Empty on standalone rows. Later fires use the value after a destination edit |
+| `project_id` | standalone workspace; empty means that fire gets its own directory. Cleared when the row becomes a thread wake |
 | `provider_id`, `model`, `reasoning_effort` | standalone; wakes use the target conversation's model |
 | `title`, `prompt` | display name + durable per-run instruction (user text). `title` may start as a truncated prompt |
 | `title_auto` | true while the engine still owns the inbox label. A PATCH/tool title or a landed generated name clears it so a later namer cannot overwrite the list |
@@ -327,6 +327,12 @@ engine enforces that exactly one is set.
 
 Deleting a conversation **cancels** wakes whose `thread_id` is that
 conversation. Standalone rows that only have `origin_thread_id` stay `active`.
+
+`GET /api/threads/:id/schedules` does not add a column. It lists non-cancelled
+`kind=thread` rows whose `thread_id` is that conversation, plus any schedule
+with a `schedule_runs` row on that conversation whose run `kind` is
+`standalone` (or empty while the schedule is still `standalone`). That second
+set is what minted the conversation. `origin_thread_id` is not that link.
 Deleting a project cancels those same targeted wakes **and** standalone rows
 pinned to that `project_id`.
 
@@ -336,8 +342,9 @@ pinned to that `project_id`.
 |---|---|
 | `id` | `srun_` + hex |
 | `schedule_id` | which schedule fired |
-| `thread_id` | the conversation that ran: the wake target, or the conversation minted for a standalone fire |
+| `thread_id` | the conversation that ran: the wake target, or the conversation minted for a standalone fire. A later destination edit does not move it |
 | `turn_id` | the turn that ran, when one started. Empty on a skip |
+| `kind` | `thread` or `standalone` at claim time. Quiet archive uses this, not the schedule row after a destination edit. Empty on fires claimed before the column: those still follow the schedule row |
 | `status` | `skipped_busy`, `running`, `findings`, `quiet`, `error` |
 | `summary` | short findings text from a fire. The inbox does not paint it on live rows; **Open findings** opens the conversation. Empty on quiet |
 | `unread` | true for `findings` and `error`. Quiet runs are not unread |

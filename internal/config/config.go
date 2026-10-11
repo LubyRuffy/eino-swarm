@@ -112,10 +112,11 @@ type SwarmConfig struct {
 	// AutoCompactTokens.
 	GoalAutoCompactPercent int `yaml:"goal_auto_compact_percent" json:"goal_auto_compact_percent"`
 	// CompactOutputReserveTokens is how many tokens of a confirmed window
-	// stay free for the completion. The trigger reserves this or the
-	// configured max completion tokens, whichever is larger. Zero or negative
-	// is repaired to the default. A window smaller than the reserve uses the
-	// percent alone.
+	// stay free for the completion. The trigger is the lesser of the
+	// percent and window−max(reserve, max_completion_tokens). The
+	// completion cap counts because the request sends it as max_tokens.
+	// Zero or negative is repaired to the default. A window smaller than
+	// that headroom uses the percent alone.
 	CompactOutputReserveTokens int `yaml:"compact_output_reserve" json:"compact_output_reserve"`
 	// MaxCompletionTokens is max_tokens on every chat request. Omitting it
 	// lets the endpoint pick a small default, and a thinking model can

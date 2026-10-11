@@ -427,9 +427,9 @@ describe("goal session fold", () => {
     }
     render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
     const folds = screen.getAllByTestId("work-fold")
-    expect(folds.length).toBeGreaterThanOrEqual(2)
+    expect(folds).toHaveLength(1)
     expect(folds[0]).not.toHaveTextContent("Planning next moves")
     expect(folds[0]).toHaveTextContent("Thought · 1 tool")
-    expect(folds.at(-1)).toHaveTextContent("wait_agents")
+    expect(screen.getByText("Collecting sub-agent results")).toBeInTheDocument()
   })
 })

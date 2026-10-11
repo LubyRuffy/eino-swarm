@@ -147,6 +147,20 @@ export const zh: Record<MessageKey, string> = {
   "notice.scheduleArmed": "已设置等待。",
   "notice.scheduleCancelled": "等待已取消。",
   "notice.scheduleFired": "定时检查。",
+  "notice.contextOverflowRetry": "上下文超过模型窗口。先压缩，再试一次。",
+  "notice.contextOverflow":
+    "上下文超限：输入加上请求的输出超过了模型窗口。自动压缩腾不出足够空间。请到设置 → Swarm 降低最大补全 token，或缩短请求后再试。",
+  "notice.contextOverflowPaused":
+    "上下文超限：输入加上请求的输出超过了模型窗口。自动压缩腾不出足够空间。请到设置 → Swarm 降低最大补全 token，或缩短请求后再试。定时检查已暂停，恢复之前不会再自动跑。",
+  "notice.modelRetryToolJSON": "模型返回的工具调用不是合法 JSON，正在重试。",
+  "notice.modelRetryRateLimited": "模型服务正在限流，正在重试。",
+  "notice.modelRetryUnavailable": "模型服务不可用，正在重试。",
+  "notice.modelRetryTransport": "与模型服务的连接中断，正在重试。",
+  "notice.modelRetryIdle": "模型服务停止发送数据，正在重试。",
+  "notice.invalidToolJSON": "模型返回的工具调用不是合法 JSON。",
+  "notice.modelServiceRateLimited": "模型服务正在限流。",
+  "notice.modelServiceUnavailable": "模型服务不可用。",
+  "notice.modelServiceTransport": "与模型服务的连接中断。",
 
   "goal.pursuing": "进行中",
   "goal.done": "已完成",

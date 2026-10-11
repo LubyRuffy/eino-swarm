@@ -199,8 +199,39 @@ describe("standing objective and compact notices", () => {
     const retried = fold([ev({ kind: "model_retry", text: '{"attempt":1,"cap":2}' })])
     expect(manager(retried).blocks[0].text).toBe("Retrying after a model error.")
     expect(manager(retried).blocks[0].text).not.toMatch(/attempt/)
+    const badJSON = fold([
+      ev({ kind: "model_retry", text: '{"attempt":1,"cap":2,"reason":"invalid_tool_json"}' }),
+    ])
+    expect(manager(badJSON).blocks[0].text).toBe(
+      "The model returned a tool call that was not valid JSON. Retrying.",
+    )
+    expect(manager(badJSON).blocks[0].text).not.toMatch(/attempt|reason/)
+    const rate = fold([
+      ev({ kind: "model_retry", text: '{"attempt":1,"cap":2,"reason":"rate_limited"}' }),
+    ])
+    expect(manager(rate).blocks[0].text).toBe(
+      "The model service is rate limiting requests. Retrying.",
+    )
+    const down = fold([
+      ev({ kind: "model_retry", text: '{"attempt":1,"cap":2,"reason":"model_unavailable"}' }),
+    ])
+    expect(manager(down).blocks[0].text).toBe("The model service is unavailable. Retrying.")
+    const dropped = fold([
+      ev({ kind: "model_retry", text: '{"attempt":1,"cap":2,"reason":"model_transport"}' }),
+    ])
+    expect(manager(dropped).blocks[0].text).toBe(
+      "The connection to the model service dropped. Retrying.",
+    )
+    const stalled = fold([
+      ev({ kind: "model_retry", text: '{"attempt":1,"cap":2,"reason":"model_idle"}' }),
+    ])
+    expect(manager(stalled).blocks[0].text).toBe("The model service stopped sending data. Retrying.")
     const scheduled = fold([ev({ kind: "model_retry", text: '{"reason":"scheduled_no_activity"}' })])
     expect(manager(scheduled).blocks[0].text).toBe("Continuing the scheduled check.")
+    const overflow = fold([ev({ kind: "model_retry", text: '{"attempt":1,"cap":1,"reason":"context_overflow"}' })])
+    expect(manager(overflow).blocks[0].text).toBe(
+      "The prompt exceeds the model window. Compressing and trying once.",
+    )
     for (const text of [undefined, "invalid", '{"reason":"other"}']) {
       expect(manager(fold([ev({ kind: "model_retry", text })])).blocks[0].text).toBe("Retrying after a model error.")
     }

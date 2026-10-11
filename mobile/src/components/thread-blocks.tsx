@@ -88,7 +88,7 @@ export function renderBlock(b: CompactBlock) {
     return null
   }
   if (b.kind === "error" || (b.kind === "finish" && b.failed)) {
-    return <p className="text-sm text-destructive">{b.text}</p>
+    return <p className="text-sm text-destructive">{localizeNotice(b.text)}</p>
   }
   if (b.kind === "notice") {
     const text = localizeNotice(b.text)
@@ -201,6 +201,31 @@ function localizeNotice(text: string): string {
       return t("notice.scheduleCancelled")
     case "Scheduled check.":
       return t("notice.scheduleFired")
+    case "The prompt exceeds the model window. Compressing and trying once.":
+      return t("notice.contextOverflowRetry")
+    case "The model returned a tool call that was not valid JSON. Retrying.":
+      return t("notice.modelRetryToolJSON")
+    case "The model service is rate limiting requests. Retrying.":
+      return t("notice.modelRetryRateLimited")
+    case "The model service is unavailable. Retrying.":
+      return t("notice.modelRetryUnavailable")
+    case "The connection to the model service dropped. Retrying.":
+      return t("notice.modelRetryTransport")
+    case "The model service stopped sending data. Retrying.":
+      return t("notice.modelRetryIdle")
+    case "the model request failed because a tool call was not valid JSON":
+    case "the model returned a tool call that was not valid JSON":
+      return t("notice.invalidToolJSON")
+    case "the model service is rate limiting requests":
+      return t("notice.modelServiceRateLimited")
+    case "the model service is unavailable":
+      return t("notice.modelServiceUnavailable")
+    case "the connection to the model service dropped":
+      return t("notice.modelServiceTransport")
+    case "the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry":
+      return t("notice.contextOverflow")
+    case "the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry. The scheduled check is paused":
+      return t("notice.contextOverflowPaused")
     default:
       return looksPacked(text) ? "" : text
   }

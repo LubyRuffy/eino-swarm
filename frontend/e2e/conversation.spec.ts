@@ -21,10 +21,8 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await freshConversation(page)
   await send(page, "Look at this from two angles and merge the findings")
 
-  // User view: thinking and tools share one live line. The 10-line thought
-  // box is behind a click, not a wall that pushes the answer off screen.
+  // Single work rows keep their own live chrome; multiple rows share a ticker.
   await expect(liveWorkFold(page)).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByTestId("swap-line")).toBeVisible()
 
   // live status must look alive: a sweep on the running line, or a
   // left-to-right marquee when the line does not fit. Frozen ellipsis is the
@@ -32,7 +30,7 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
   await expect(
     page.locator('[data-marquee="shimmer"], [data-marquee="on"]').first(),
   ).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByTestId("swap-line").locator("[data-marquee]")).toBeVisible()
+  await expect(liveWorkFold(page).locator("[data-marquee]").first()).toBeVisible()
 
   // the manager delegates, and both workers show up in the roster
   const roster = page.getByRole("tabpanel").filter({

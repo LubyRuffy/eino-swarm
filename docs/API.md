@@ -928,12 +928,15 @@ Responds like `GET`.
 The same fold also runs **during a turn**, before a manager model call, when
 billed or estimated prompt tokens exceed the compact trigger. A confirmed
 context window triggers at `goal_auto_compact_percent` of that window (default
-80), and at least the larger of `compact_output_reserve` (default 8192) and
-`max_completion_tokens` (default 16384) under the
-ceiling. An unknown window (`0`) uses `swarm.auto_compact_tokens` (default
+80), and at least `max(compact_output_reserve, max_completion_tokens)` (defaults 8192 and 16384) under the
+ceiling. The completion cap counts: the request sends it as
+`max_tokens`, and the endpoint rejects `input + max_tokens` over the window.
+An unknown window (`0`) uses `swarm.auto_compact_tokens` (default
 80000). A context-length rejection lowers that model's stored window to the
 stated maximum, or to the rejected prompt size when the error has no number,
-and never raises it; the turn retries once against the new line. Older
+and never raises it. The turn still folds once and retries even when the
+stored window does not shrink — the local token estimate can sit under the
+line while the endpoint already counted the prompt as too long. Older
 replayable tool results are cleared first; if that is not
 enough, the session briefing is caught up and copied in, and only then is
 eino's summarizer used. That path is not this endpoint: the UI hears a live
@@ -1290,7 +1293,7 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `memory_review` | the post-turn review of a project's memory finished (see below) |
 | `max_iterations` | the manager hit `swarm.manager_max_iterations`; `text` is `{"limit":N,"extend_by":N}` and the turn is still running |
 | `max_iterations_continued` | the human extended the turn; `text` names how many extra rounds |
-| `model_retry` | the manager hit a recoverable ChatModel failure (truncated tool JSON, `429`, a dropped stream, a mid-stream TCP read timeout) and re-entered this turn; `text` is JSON `{attempt,cap}`. The transcript notice is generic. Invalid tool arguments are dropped from the next model request so a `400 Unterminated string` cannot repeat |
+| `model_retry` | the manager hit a recoverable ChatModel failure and re-entered this turn. `text` is JSON `{attempt,cap,reason?}`. `reason` selects the transcript notice: `invalid_tool_json` (the model returned a tool call that was not valid JSON), `rate_limited`, `model_unavailable` (HTTP 500/502/503/504/529), `model_transport` (dropped stream, connection reset, mid-stream read timeout), `model_idle` (silence after the first byte). Older rows omit `reason` and keep the generic retry line. `reason: "context_overflow"` is separate: the endpoint rejected the call because the prompt plus the requested output does not fit the window. That notice names the window, the turn compacts once, and a second rejection ends the turn with `the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry`. A repeating schedule that ends that way is paused. When the in-turn retries are exhausted, the turn error is the same class: `the model returned a tool call that was not valid JSON`, `the model service is rate limiting requests`, `the model service is unavailable`, or `the connection to the model service dropped`. An exhausted idle timeout keeps the sentence that names how long the model sent no data. Invalid tool arguments are dropped from the next model request so a `400 Unterminated string` cannot repeat. `reason: "scheduled_no_activity"` is the scheduled-check continuation, not a model failure |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done`, and does not wait for this event |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
@@ -1562,6 +1565,27 @@ not the filtered subset.
 conversation per fire). `status` is `active`, `paused`, `done`, or
 `cancelled`.
 
+### `GET /api/threads/:id/schedules`
+
+Waits the open conversation lists. `schedules` is the union, live rows
+first (`active` and `paused`, then `next_run_at`). `created_by` is the
+subset that minted this conversation.
+
+A row is included when it is a non-cancelled `kind=thread` wake whose
+`thread_id` is this conversation, or a fire on this conversation minted it:
+the run's `kind` is `standalone`, or the run's `kind` is empty and the
+schedule is still `standalone`. A cancelled wake that only used to land
+here is omitted. A cancelled job that minted the conversation stays, so
+the chat can still open it. `origin_thread_id` does not put a job on the
+conversation that created the job. A missing conversation is `404`.
+
+```json
+{"schedules": [
+  {"id": "sch_ab12…", "kind": "thread", "thread_id": "th_ab12…",
+   "status": "active", "…": "…"}
+], "created_by": ["sch_cd34…"]}
+```
+
 ### `POST /api/schedules` → `201`
 
 Body: `kind`, `thread_id`, `origin_thread_id`, `project_id`, `provider_id`,
@@ -1585,11 +1609,27 @@ The row plus its runs, oldest first. Missing ids are `404`.
 ### `PATCH /api/schedules/:id`
 
 Pause/resume with `{"status": "paused"}` or `"active"`. Also `title`,
-`prompt`, and cadence. A title patch takes ownership (`title_auto` false).
+`prompt`, cadence, and destination. A title patch takes ownership (`title_auto` false).
 When cadence changes, send exactly one of `delay_s`,
 `every_s`, or `cron` (the others are cleared and `next_run_at` is recomputed
 from now). The Scheduled inbox editor uses this (it omits cadence when the
-interval did not change, so `next_run_at` stays put). Cancel is `DELETE`, not a status patch. Responds
+interval did not change, so `next_run_at` stays put). Omit `kind` to leave
+the destination alone. A destination edit sends `kind`:
+
+- `thread` with `thread_id` of a conversation that exists and is not archived.
+  `project_id` is cleared. The row's provider and model stay, so a later
+  switch back to a minted conversation still has them.
+- `standalone` with `thread_id` empty and `project_id` the workspace, or
+  empty for a directory of its own. If the row has no provider or model yet,
+  the save copies the current default. `origin_thread_id` is not changed.
+  `next_run_at` is not recomputed.
+
+An active or paused wait can move. A done or cancelled wait is `400`. A
+missing or archived conversation, or a missing project, is `400`. A busy
+target still saves; the next fire skips with `skipped_busy`. The edit
+applies to later fires. A fire already claimed keeps the conversation it
+started on, and a quiet archive follows the kind stored on that run.
+Cancel is `DELETE`, not a status patch. Responds
 `{"schedule": {…}}`.
 If a recurring fire ends with a context-window rejection after compaction,
 the fire remains an unread `error` run and the schedule becomes `paused`.
@@ -1622,6 +1662,11 @@ second such response ends the turn and run as `error`, leaving the run unread;
 opening prose alone cannot become findings. Automatic fires use the same
 rule. Explicit empty findings remain quiet; a real tool result preserves the
 existing omitted-report fallback. No new run is created by this continuation.
+A context-window rejection is not that retry: the turn compacts once, and if
+the next call still does not fit, the turn errors with the window sentence.
+A repeating wait (`every_s` or `cron`) is then paused so the next tick cannot
+send the same prompt. A delay one-shot is not paused. Resume is
+`PATCH` `{"status":"active"}`.
 
 ### `POST /api/schedules/runs/:rid/read` → `204`
 

@@ -29,6 +29,27 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "Standing objective blocked: progress needs you or an external change.":
     "notice.goalBlocked",
   "Retrying after a model error.": "notice.modelRetry",
+  "The model returned a tool call that was not valid JSON. Retrying.":
+    "notice.modelRetryToolJSON",
+  "The model service is rate limiting requests. Retrying.":
+    "notice.modelRetryRateLimited",
+  "The model service is unavailable. Retrying.": "notice.modelRetryUnavailable",
+  "The connection to the model service dropped. Retrying.":
+    "notice.modelRetryTransport",
+  "The model service stopped sending data. Retrying.": "notice.modelRetryIdle",
+  "the model request failed because a tool call was not valid JSON":
+    "notice.invalidToolJSON",
+  "the model returned a tool call that was not valid JSON":
+    "notice.invalidToolJSON",
+  "the model service is rate limiting requests": "notice.modelServiceRateLimited",
+  "the model service is unavailable": "notice.modelServiceUnavailable",
+  "the connection to the model service dropped": "notice.modelServiceTransport",
+  "The prompt exceeds the model window. Compressing and trying once.":
+    "notice.contextOverflowRetry",
+  "the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry":
+    "notice.contextOverflow",
+  "the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry. The scheduled check is paused":
+    "notice.contextOverflowPaused",
   "Continuing the scheduled check.": "notice.scheduleContinue",
   "Standing objective updated.": "notice.goalEdited",
   "Resuming the standing objective.": "notice.goalResumed",

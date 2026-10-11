@@ -6,23 +6,14 @@ import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
-  SelectGroup,
   SelectItem,
-  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { chromeTypeClass } from "@/lib/chrome-type"
-import {
-  RUNS_IN_NEW,
-  applyRunsIn,
-  pickerThreadLabel,
-  pinnedPickerThreads,
-  runsInThreadId,
-  runsInThreadValue,
-  unpinnedPickerGroups,
-} from "@/lib/schedule-dest"
+import { applyRunsIn, runsInThreadId } from "@/lib/schedule-dest"
+import { ScheduleRunsInPicker } from "@/components/app/schedule-runs-in"
 import {
   cadenceCreateFields,
   type ScheduleCadenceKind,
@@ -30,7 +21,6 @@ import {
 import type { ScheduleCreate } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 import { cn } from "@/lib/utils"
-import { useApp } from "@/store/app"
 import { useProjects } from "@/store/projects"
 
 export type Cadence = ScheduleCadenceKind
@@ -74,8 +64,8 @@ function FormSection({
   )
 }
 
-/** Fields for a wait drawer. Create can pick destination; edit locks it
- *  (PATCH has no kind/thread/project) and may save title with the body. */
+/** Fields for a wait drawer. A live edit can change where the next fire
+ *  lands; a finished wait is read-only. Title rides the same save. */
 export function ScheduleInboxForm({
   expanded = false,
   title,
@@ -84,7 +74,6 @@ export function ScheduleInboxForm({
   cadenceValue,
   projectId,
   runsIn,
-  destinationLocked = false,
   readOnly = false,
   canSubmit,
   submitLabel,
@@ -103,7 +92,6 @@ export function ScheduleInboxForm({
   cadenceValue: string
   projectId: string
   runsIn: string
-  destinationLocked?: boolean
   readOnly?: boolean
   canSubmit?: boolean
   submitLabel?: string
@@ -116,7 +104,6 @@ export function ScheduleInboxForm({
   onSubmit: (body: ScheduleCreate) => void
 }) {
   const t = useT()
-  const threads = useApp((s) => s.threads)
   const projects = useProjects((s) => s.projects)
   const waking = Boolean(runsInThreadId(runsIn))
   const cadenceLabel =
@@ -125,9 +112,6 @@ export function ScheduleInboxForm({
       : cadence === "cron"
         ? t("schedule.cron")
         : t("schedule.delay")
-  const pinned = pinnedPickerThreads(threads)
-  const groups = unpinnedPickerGroups(threads, projects)
-  const destLocked = destinationLocked || readOnly
   const fieldsLocked = readOnly
   const selectWidth = expanded ? "max-w-[22rem]" : "max-w-[13rem]"
 
@@ -139,7 +123,7 @@ export function ScheduleInboxForm({
       ...cadenceCreateFields(cadence, cadenceValue),
     }
     if (title !== undefined) body.title = title.trim()
-    onSubmit(destLocked ? body : applyRunsIn(body, runsIn, projectId))
+    onSubmit(applyRunsIn(body, runsIn, projectId))
   }
 
   return (
@@ -167,46 +151,17 @@ export function ScheduleInboxForm({
         />
         <FormSection title={t("schedule.details")}>
           <FormRow label={t("schedule.runsIn")} htmlFor="schedule-runs-in">
-            <Select value={runsIn} onValueChange={onRunsIn} disabled={destLocked}>
-              <SelectTrigger
-                id="schedule-runs-in"
-                aria-label={t("schedule.runsIn")}
-                className={cn(settingsSelectTriggerClass, selectWidth)}
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="w-72">
-                <SelectGroup>
-                  <SelectItem value={RUNS_IN_NEW} className="whitespace-nowrap">
-                    {t("schedule.runsInNew")}
-                  </SelectItem>
-                </SelectGroup>
-                {pinned.length > 0 ? (
-                  <SelectGroup>
-                    <SelectLabel>{t("schedule.runsInPinned")}</SelectLabel>
-                    {pinned.map((row) => (
-                      <SelectItem key={row.id} value={runsInThreadValue(row.id)}>
-                        {pickerThreadLabel(row, t("sidebar.untitled"))}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ) : null}
-                {groups.map((g) => (
-                  <SelectGroup key={g.key || "none"}>
-                    {g.label ? <SelectLabel>{g.label}</SelectLabel> : null}
-                    {g.threads.map((row) => (
-                      <SelectItem key={row.id} value={runsInThreadValue(row.id)}>
-                        {pickerThreadLabel(row, t("sidebar.untitled"))}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                ))}
-              </SelectContent>
-            </Select>
+            <ScheduleRunsInPicker
+              id="schedule-runs-in"
+              value={runsIn}
+              disabled={fieldsLocked}
+              expanded={expanded}
+              onChange={onRunsIn}
+            />
           </FormRow>
           {waking ? null : (
             <FormRow label={t("schedule.project")} htmlFor="schedule-project">
-              <Select value={projectId} onValueChange={onProjectId} disabled={destLocked}>
+              <Select value={projectId} onValueChange={onProjectId} disabled={fieldsLocked}>
                 <SelectTrigger
                   id="schedule-project"
                   aria-label={t("schedule.project")}

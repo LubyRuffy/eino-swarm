@@ -34,9 +34,25 @@ func TestCompactTriggerKeepsOutputHeadroomOnASmallWindow(t *testing.T) {
 	if got := s.CompactTrigger(32_000); got != 32_000-DefaultMaxCompletionTokens {
 		t.Fatalf("32k window trigger = %d, want %d", got, 32_000-DefaultMaxCompletionTokens)
 	}
+	// Completion cap is smaller than the reserve, so the reserve still wins.
+	small := SwarmConfig{AutoCompactTokens: 80_000, GoalAutoCompactPercent: 80, CompactOutputReserveTokens: 8_192, MaxCompletionTokens: 4_096}
+	if got := small.CompactTrigger(32_000); got != 32_000-8_192 {
+		t.Fatalf("32k window trigger = %d, want %d", got, 32_000-8_192)
+	}
 	// The reserve is larger than this window, so the percent is the only lever.
 	if got := s.CompactTrigger(4_000); got != 3_200 {
 		t.Fatalf("window smaller than the reserve = %d, want 3200", got)
+	}
+}
+
+func TestCompactTriggerLeavesRoomForTheRequestedCompletion(t *testing.T) {
+	// 80% of this window is 209715. The request still sends 64000 output
+	// tokens, and the endpoint counts those against the window, so the
+	// prompt has to stay under window−64000 or the call is rejected
+	// before compression runs.
+	s := SwarmConfig{AutoCompactTokens: 80_000, GoalAutoCompactPercent: 80, CompactOutputReserveTokens: 8_192, MaxCompletionTokens: 64_000}
+	if got := s.CompactTrigger(262_144); got != 262_144-64_000 {
+		t.Fatalf("trigger = %d, want %d", got, 262_144-64_000)
 	}
 }
 

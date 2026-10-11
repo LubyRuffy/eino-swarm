@@ -79,16 +79,20 @@ type Schedule struct {
 
 // ScheduleRun is one fire (or a skipped tick) of a schedule.
 type ScheduleRun struct {
-	ID         string     `gorm:"primaryKey;size:64" json:"id"`
-	ScheduleID string     `gorm:"index;size:64" json:"schedule_id"`
-	ThreadID   string     `gorm:"index;size:64" json:"thread_id"`
-	TurnID     string     `gorm:"size:64" json:"turn_id"`
-	Status     string     `gorm:"size:32" json:"status"`
-	Summary    string     `json:"summary"`
-	Unread     bool       `json:"unread"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	EndedAt    *time.Time `json:"ended_at,omitempty"`
+	ID         string `gorm:"primaryKey;size:64" json:"id"`
+	ScheduleID string `gorm:"index;size:64" json:"schedule_id"`
+	ThreadID   string `gorm:"index;size:64" json:"thread_id"`
+	TurnID     string `gorm:"size:64" json:"turn_id"`
+	// Kind is the schedule kind at claim time. Quiet archive reads this,
+	// not the row after a later destination edit. Empty on fires claimed
+	// before the column existed: those still follow the schedule row.
+	Kind      string     `gorm:"size:32" json:"kind,omitempty"`
+	Status    string     `gorm:"size:32" json:"status"`
+	Summary   string     `json:"summary"`
+	Unread    bool       `json:"unread"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	EndedAt   *time.Time `json:"ended_at,omitempty"`
 }
 
 func prepareSchedule(row *Schedule) {

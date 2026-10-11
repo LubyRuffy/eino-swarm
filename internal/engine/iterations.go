@@ -86,6 +86,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	used := 0
 	modelRetries := 0
 	overflowRetries := 0
+	forceCompact := false
 	scheduleContinued := false
 	var res swarm.RunResult
 	var runErr error
@@ -98,8 +99,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			MaxIterations:      budget,
 			RestoreWorkers:     restore,
 			FinishedWorkers:    planted,
-			ManagerMiddlewares: e.autoCompactHandlers(rt.threadID, turn.ID, th),
+			ManagerMiddlewares: e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact),
 		}, swarm.Callback(acc.onNotify))
+		forceCompact = false
 		restore, planted = nil, nil
 		used += budget
 		if ctx.Err() != nil {
@@ -120,14 +122,24 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			}
 		}
 		if !isMaxIterations(runErr) {
-			if runErr != nil && th != nil && isContextOverflow(runErr) && overflowRetries < 1 &&
-				e.learnContextCeiling(th.ProviderID, th.Model, runErr, promptTokenCount(messages)) {
+			if runErr != nil && th != nil && isContextOverflow(runErr) && overflowRetries < 1 {
+				// A ceiling that does not move is still a prompt that did not
+				// fit: the request asked for max_tokens on top of the input.
+				// Fold once and retry. Sending the same messages again is how
+				// the 400 repeats on the next scheduled check.
+				_ = e.learnContextCeiling(th.ProviderID, th.Model, runErr, promptTokenCount(messages))
 				overflowRetries++
+				forceCompact = true
+				e.record(store.Event{
+					ThreadID: turn.ThreadID, TurnID: turn.ID,
+					Kind: KindModelRetry, AgentID: swarm.DefaultManagerID,
+					Text: `{"attempt":1,"cap":1,"reason":"` + modelRetryReasonContextOverflow + `"}`,
+				})
 				continue
 			}
 			if runErr != nil && isRetryableModelError(runErr) && modelRetries < modelErrorRetries {
 				modelRetries++
-				rt.recordModelRetry(turn, modelRetries)
+				rt.recordModelRetry(turn, modelRetries, modelFailureClass(runErr))
 				messages = rt.retryManagerRun(turn, res, messages, reg)
 				continue
 			}

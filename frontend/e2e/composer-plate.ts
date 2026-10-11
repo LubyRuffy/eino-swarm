@@ -28,11 +28,10 @@ export async function showDeveloperLog(page: Page) {
   await page.getByRole("button", { name: "App menu" }).click()
 }
 
-/** User view keeps a fold per thought/tool group. The live ticker is the
- *  last group of the running turn — matching every work-fold is a strict-mode
- *  miss once an earlier answer has split the groups. */
+/** Live work can be an aggregate fold or one directly rendered row. */
 export function liveWorkFold(page: Page) {
-  return page.getByTestId("work-fold").filter({ has: page.locator(".animate-spin") })
+  return page.getByTestId("work-fold").or(page.getByTestId("single-work"))
+    .filter({ has: page.locator(".animate-spin") }).last()
 }
 
 /** Live geometry of the composer plate: slab behind pins+box, join above. */

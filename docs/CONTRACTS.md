@@ -2,6 +2,13 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
+## C-021 Single PC work rows use one disclosure
+
+- 状态：active；类型：lifecycle / compatibility；作用范围：PC 主对话用户视图；关联功能：`F-130`。
+- 契约内容：连续工作区块只有一段思考或一个可见工具调用时，直接渲染该条自身的折叠，不增加外层聚合；多项继续聚合，回答保持可见并分隔工作区块。单段流式思考默认展开，用户可手动收起；单个工具沿用自身的加载、折叠与失败表现。
+- 允许行为：开发者视图继续逐条显示；禁止行为：单项需要先打开聚合再打开内容；失败语义：单个失败工具保留错误标记与可展开结果；不变量：事件顺序、Trace、正文可见性与 Find 展开不变；边界条件：忽略隐藏元数据后计数，单项增长为多项时聚合；自身没有可见工具行的 pending `spawn_agent` / `close_agent` 保留活动 ticker；手机折叠不在本契约范围内。
+- 证据：实现 `frontend/src/components/app/work-fold.tsx`；测试 `frontend/src/components/app/transcript-fold.test.tsx`, `frontend/src/components/app/work-fold.test.tsx`, `frontend/e2e/work-fold.spec.ts`；变更规则：同步用户文档、渲染回归和 UI E2E；来源：用户 2026-10-08 单项工作区块无需两次展开的要求。
+
 ## C-001 One engine per data directory
 
 - 状态：active；类型：lifecycle；作用范围：desktop、web、tui、engine；关联功能：`F-110`, `F-120`, `F-320`。

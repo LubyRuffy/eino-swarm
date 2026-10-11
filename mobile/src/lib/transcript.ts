@@ -297,7 +297,6 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
     case "plan_cancelled":
     case "max_iterations":
     case "max_iterations_continued":
-    case "model_retry":
     case "compacted":
       // Packed JSON here is a pulse/cap/retry envelope. Desktop never
       // paints it into the chat; a notice would be the elapsed_ms wall.
@@ -305,6 +304,13 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
         next.push({ id: blockId(ev), kind: "notice", text: ev.text })
       }
       return next
+    case "model_retry": {
+      const notice = modelRetryNotice(ev.text)
+      if (notice) {
+        next.push({ id: blockId(ev), kind: "notice", text: notice })
+      }
+      return next
+    }
     case "progress":
       // Live chrome on desktop, not a transcript fact. Pulses are not
       // stored; stacking each one on the phone was a new JSON dump every
@@ -379,6 +385,32 @@ export function phoneAgents(blocks: CompactBlock[]): PhoneAgent[] {
 
 function blockId(ev: RemoteEvent): string {
   return `${ev.seq}:${ev.kind}:${ev.tool_call_id ?? ""}`
+}
+
+// A classified retry names the side that failed. An older envelope is only
+// an attempt counter, so it stays off the chat.
+function modelRetryNotice(text: string): string {
+  try {
+    const body = JSON.parse(text) as { reason?: string }
+    switch (body?.reason) {
+      case "context_overflow":
+        return "The prompt exceeds the model window. Compressing and trying once."
+      case "invalid_tool_json":
+        return "The model returned a tool call that was not valid JSON. Retrying."
+      case "rate_limited":
+        return "The model service is rate limiting requests. Retrying."
+      case "model_unavailable":
+        return "The model service is unavailable. Retrying."
+      case "model_transport":
+        return "The connection to the model service dropped. Retrying."
+      case "model_idle":
+        return "The model service stopped sending data. Retrying."
+      default:
+        return ""
+    }
+  } catch {
+    return ""
+  }
 }
 
 function parseSteerRevision(text: string): { seq: number; text: string } | undefined {

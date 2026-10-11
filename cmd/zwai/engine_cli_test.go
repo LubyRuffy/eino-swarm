@@ -24,11 +24,57 @@ import (
 // harness, which would run the suite again. An "engine" argument means the
 // spawn is probing a child that is not the app.
 func TestMain(m *testing.M) {
+	if os.Getenv("ZWAI_LEASE_HOLD") == "1" {
+		h, err := lease.Acquire(os.Getenv("ZWAI_LEASE_DIR"))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		defer h.Release()
+		fmt.Println("held")
+		_ = os.Stdout.Sync()
+		time.Sleep(30 * time.Second)
+		os.Exit(0)
+	}
 	if len(os.Args) > 1 && os.Args[1] == "engine" {
 		fmt.Fprintln(os.Stderr, "not an engine")
 		os.Exit(2)
 	}
 	os.Exit(m.Run())
+}
+
+// startLeaseHolder is another process. flock in this test would succeed
+// twice and hide the shell that arrives during startup.
+func startLeaseHolder(t *testing.T, dir string) *exec.Cmd {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "-test.run=^$")
+	cmd.Env = append(os.Environ(), "ZWAI_LEASE_HOLD=1", "ZWAI_LEASE_DIR="+dir)
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+	read := make(chan string, 1)
+	go func() {
+		buf := make([]byte, 64)
+		n, _ := out.Read(buf)
+		read <- string(buf[:n])
+	}()
+	select {
+	case got := <-read:
+		if !strings.Contains(got, "held") {
+			t.Fatalf("helper never held the lock: %q", got)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("helper never held the lock")
+	}
+	return cmd
 }
 
 // A terminal task is a conversation in the shared database. A second shell
@@ -105,6 +151,88 @@ func TestShellURLKeepsABrokenBase(t *testing.T) {
 	}
 	if got := shellURL("://", "desktop"); got != "://" {
 		t.Fatalf("a broken url must be left alone, got %q", got)
+	}
+}
+
+func TestEnsureEngineAttachesWhileTheHolderIsStillStarting(t *testing.T) {
+	dir := t.TempDir()
+	holder := startLeaseHolder(t, dir)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data_dir": dir, "mock": true})
+	}))
+	defer srv.Close()
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		_ = lease.Publish(dir, lease.Record{PID: holder.Process.Pid, URL: srv.URL, Mock: true})
+	}()
+	url, err := ensureEngine(dir, "127.0.0.1:0", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if url != srv.URL {
+		t.Fatalf("attached to %s, want the holder", url)
+	}
+}
+
+func TestEnsureEngineReportsAHolderThatNeverListens(t *testing.T) {
+	dir := t.TempDir()
+	startLeaseHolder(t, dir)
+	old := engineBootWait
+	engineBootWait = 200 * time.Millisecond
+	t.Cleanup(func() { engineBootWait = old })
+	_, err := ensureEngine(dir, "127.0.0.1:0", true)
+	if err == nil || !strings.Contains(err.Error(), "not listening") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestSpawnEngineAttachesAfterItsChildLosesTheLock(t *testing.T) {
+	dir := t.TempDir()
+	holder := startLeaseHolder(t, dir)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"data_dir": dir, "mock": true})
+	}))
+	defer srv.Close()
+
+	type result struct {
+		url string
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		url, err := spawnEngine(dir, "127.0.0.1:0", true)
+		done <- result{url, err}
+	}()
+
+	// Publish only after the child has already exited. Discover succeeding
+	// before that exit is the normal path and does not prove the wait.
+	logPath := filepath.Join(dir, "engine.log")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		body, _ := os.ReadFile(logPath)
+		if strings.Contains(string(body), "not an engine") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("child never exited")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := lease.Publish(dir, lease.Record{
+		PID: holder.Process.Pid, URL: srv.URL, Mock: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatal(got.err)
+		}
+		if got.url != srv.URL {
+			t.Fatalf("url = %s", got.url)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("spawn did not attach to the holder")
 	}
 }
 

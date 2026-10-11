@@ -352,6 +352,47 @@ describe("compact transcript", () => {
     expect(blocks.some((b) => b.text.includes("through_seq"))).toBe(false)
   })
 
+  it("names a context-window retry and hides other model retries", () => {
+    const generic = applyEvent(
+      [],
+      ev({ seq: 44, kind: "model_retry", text: JSON.stringify({ attempt: 1, cap: 2 }) }),
+    )
+    expect(generic).toEqual([])
+    const named = applyEvent(
+      [],
+      ev({
+        seq: 45,
+        kind: "model_retry",
+        text: JSON.stringify({ attempt: 1, cap: 1, reason: "context_overflow" }),
+      }),
+    )
+    expect(named.map((b) => b.kind)).toEqual(["notice"])
+    expect(named[0].text).toBe(
+      "The prompt exceeds the model window. Compressing and trying once.",
+    )
+    const badJSON = applyEvent(
+      [],
+      ev({
+        seq: 46,
+        kind: "model_retry",
+        text: JSON.stringify({ attempt: 1, cap: 2, reason: "invalid_tool_json" }),
+      }),
+    )
+    expect(badJSON[0].text).toBe(
+      "The model returned a tool call that was not valid JSON. Retrying.",
+    )
+    const down = applyEvent(
+      [],
+      ev({
+        seq: 47,
+        kind: "model_retry",
+        text: JSON.stringify({ attempt: 1, cap: 2, reason: "model_unavailable" }),
+      }),
+    )
+    expect(down[0].text).toBe("The model service is unavailable. Retrying.")
+    expect(badJSON[0].text).not.toBe(down[0].text)
+  })
+
   it("keeps a streamed thought as one block, then closes it when the answer starts", () => {
     let blocks: CompactBlock[] = []
     blocks = applyEvent(blocks, ev({ seq: 50, kind: "reasoning_delta", text: "first" }))

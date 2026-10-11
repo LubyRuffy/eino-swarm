@@ -432,6 +432,25 @@ export const en = {
   "notice.goalBlocked":
     "Standing objective blocked: progress needs you or an external change.",
   "notice.modelRetry": "Retrying after a model error.",
+  "notice.modelRetryToolJSON":
+    "The model returned a tool call that was not valid JSON. Retrying.",
+  "notice.modelRetryRateLimited":
+    "The model service is rate limiting requests. Retrying.",
+  "notice.modelRetryUnavailable": "The model service is unavailable. Retrying.",
+  "notice.modelRetryTransport":
+    "The connection to the model service dropped. Retrying.",
+  "notice.modelRetryIdle": "The model service stopped sending data. Retrying.",
+  "notice.invalidToolJSON":
+    "the model returned a tool call that was not valid JSON",
+  "notice.modelServiceRateLimited": "the model service is rate limiting requests",
+  "notice.modelServiceUnavailable": "the model service is unavailable",
+  "notice.modelServiceTransport": "the connection to the model service dropped",
+  "notice.contextOverflowRetry":
+    "The prompt exceeds the model window. Compressing and trying once.",
+  "notice.contextOverflow":
+    "Context window exceeded: the prompt plus the requested output does not fit. Automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry.",
+  "notice.contextOverflowPaused":
+    "Context window exceeded: the prompt plus the requested output does not fit. Automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry. The scheduled check is paused and will not run again until you resume it.",
   "notice.scheduleContinue": "Continuing the scheduled check.",
   "notice.goalEdited": "Standing objective updated.",
   "notice.goalResumed": "Resuming the standing objective.",
@@ -508,6 +527,8 @@ export const en = {
   "schedule.runsIn": "Runs in",
   "schedule.runsInNew": "New conversation each run",
   "schedule.runsInPinned": "Pinned",
+  "schedule.runsInSearch": "Search chats",
+  "schedule.runsInEmpty": "No matching chats",
   "schedule.frequency": "Frequency",
   "schedule.repeat": "Repeat",
   "schedule.repeatDelay": "After a delay",
