@@ -85,7 +85,7 @@ type ScheduleRun struct {
 	TurnID     string `gorm:"size:64" json:"turn_id"`
 	// Kind is the schedule kind at claim time. Quiet archive reads this,
 	// not the row after a later destination edit. Empty on fires claimed
-	// before the column existed: those still follow the schedule row.
+	// before the column existed: retarget freezes the old kind first.
 	Kind      string     `gorm:"size:32" json:"kind,omitempty"`
 	Status    string     `gorm:"size:32" json:"status"`
 	Summary   string     `json:"summary"`
@@ -223,8 +223,11 @@ func (s *Store) HasPendingThreadWake(threadID string) (bool, error) {
 	}
 	err = s.db.Model(&ScheduleRun{}).
 		Joins("JOIN schedules ON schedules.id = schedule_runs.schedule_id").
-		Where("schedule_runs.status = ? AND schedules.kind = ? AND (schedules.thread_id = ? OR schedule_runs.thread_id = ?)",
-			ScheduleRunRunning, ScheduleThread, threadID, threadID).
+		Where(`schedule_runs.status = ? AND (
+			(schedule_runs.kind = ? AND schedule_runs.thread_id = ?) OR
+			((schedule_runs.kind = '' OR schedule_runs.kind IS NULL) AND schedules.kind = ?
+				AND (schedules.thread_id = ? OR schedule_runs.thread_id = ?)))`,
+			ScheduleRunRunning, ScheduleThread, threadID, ScheduleThread, threadID, threadID).
 		Limit(1).Count(&n).Error
 	if err != nil {
 		return false, fmt.Errorf("store: has pending thread wake: %w", err)
@@ -266,7 +269,9 @@ func (s *Store) PendingWakeThreadIDs() ([]string, error) {
 	var claimed []string
 	err = s.db.Model(&ScheduleRun{}).
 		Joins("JOIN schedules ON schedules.id = schedule_runs.schedule_id").
-		Where("schedule_runs.status = ? AND schedules.kind = ?", ScheduleRunRunning, ScheduleThread).
+		Where(`schedule_runs.status = ? AND (schedule_runs.kind = ? OR
+			((schedule_runs.kind = '' OR schedule_runs.kind IS NULL) AND schedules.kind = ?))`,
+			ScheduleRunRunning, ScheduleThread, ScheduleThread).
 		Pluck("schedule_runs.thread_id", &claimed).Error
 	if err != nil {
 		return nil, fmt.Errorf("store: pending wake run thread ids: %w", err)
@@ -274,7 +279,8 @@ func (s *Store) PendingWakeThreadIDs() ([]string, error) {
 	var fromSched []string
 	err = s.db.Model(&ScheduleRun{}).
 		Joins("JOIN schedules ON schedules.id = schedule_runs.schedule_id").
-		Where("schedule_runs.status = ? AND schedules.kind = ? AND schedules.thread_id <> ?",
+		Where(`schedule_runs.status = ? AND (schedule_runs.kind = '' OR schedule_runs.kind IS NULL)
+			AND schedules.kind = ? AND schedules.thread_id <> ?`,
 			ScheduleRunRunning, ScheduleThread, "").
 		Pluck("schedules.thread_id", &fromSched).Error
 	if err != nil {
@@ -571,18 +577,62 @@ func (s *Store) ApplyAutoScheduleTitle(id, title string) (bool, error) {
 // UpdateSchedule applies a field patch. Unknown ids report ErrNotFound
 // rather than silently doing nothing.
 func (s *Store) UpdateSchedule(id string, fields map[string]any) error {
+	_, err := s.PatchScheduleFields(id, fields, 0)
+	return err
+}
+
+// PatchScheduleFields preserves legacy fire ownership before changing a
+// destination. The optional active cap, history freeze and field update
+// commit together. The returned old row is the actual displaced wake owner,
+// even if another edit landed after the engine's validation read.
+func (s *Store) PatchScheduleFields(id string, fields map[string]any, cap int) (*Schedule, error) {
 	if len(fields) == 0 {
+		return nil, nil
+	}
+	var before Schedule
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&before, "id = ?", id).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrNotFound
+			}
+			return fmt.Errorf("store: get schedule: %w", err)
+		}
+		if cap > 0 && fields["status"] == ScheduleActive && before.Status != ScheduleActive {
+			if before.Status != SchedulePaused {
+				return fmt.Errorf("store: schedule is not paused")
+			}
+			n, err := countActive(tx)
+			if err != nil {
+				return err
+			}
+			if n >= cap {
+				return ErrScheduleCap
+			}
+		}
+		if cap > 0 && fields["status"] == SchedulePaused && before.Status != ScheduleActive && before.Status != SchedulePaused {
+			return fmt.Errorf("store: schedule is not pauseable")
+		}
+		if _, moves := fields["kind"]; moves {
+			if err := tx.Model(&ScheduleRun{}).
+				Where("schedule_id = ? AND (kind = '' OR kind IS NULL)", id).
+				UpdateColumn("kind", before.Kind).Error; err != nil {
+				return fmt.Errorf("store: freeze schedule run kind: %w", err)
+			}
+		}
+		fields["updated_at"] = time.Now().UTC()
+		res := tx.Model(&Schedule{}).Where("id = ?", id).Updates(fields)
+		if res.Error != nil {
+			return fmt.Errorf("store: update schedule: %w", res.Error)
+		}
+		if res.RowsAffected == 0 {
+			return ErrNotFound
+		}
 		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	fields["updated_at"] = time.Now().UTC()
-	res := s.db.Model(&Schedule{}).Where("id = ?", id).Updates(fields)
-	if res.Error != nil {
-		return fmt.Errorf("store: update schedule: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return ErrNotFound
-	}
-	return nil
+	return &before, nil
 }
 
 // UpdateActiveSchedule patches an armed row. Zero rows means it is no

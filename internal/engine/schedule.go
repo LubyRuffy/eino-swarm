@@ -347,14 +347,24 @@ type ScheduleFields struct {
 	ProjectID *string
 }
 
-// PatchScheduleFields applies an inbox edit. Pause/resume still goes
-// through PatchSchedule so the active cap stays one code path.
+// PatchScheduleFields applies an inbox edit atomically, including the active
+// cap when resuming. Rejected status edits must not partially move a wake.
 func (e *Engine) PatchScheduleFields(id string, p ScheduleFields) (*store.Schedule, error) {
 	row, err := e.store.GetSchedule(id)
 	if err != nil {
 		return nil, err
 	}
 	fields := map[string]any{}
+	if p.Status != nil {
+		status := strings.TrimSpace(*p.Status)
+		if status != store.SchedulePaused && status != store.ScheduleActive {
+			return nil, fmt.Errorf("engine: schedule patch is pause or resume")
+		}
+		if row.Status != store.ScheduleActive && row.Status != store.SchedulePaused {
+			return nil, fmt.Errorf("engine: schedule is not pauseable")
+		}
+		fields["status"] = status
+	}
 	if p.Kind != nil {
 		dest, err := e.destinationFields(row, p)
 		if err != nil {
@@ -400,12 +410,19 @@ func (e *Engine) PatchScheduleFields(id string, p ScheduleFields) (*store.Schedu
 		fields["next_run_at"] = next
 	}
 	if len(fields) > 0 {
-		if err := e.store.UpdateSchedule(id, fields); err != nil {
+		previous, err := e.store.PatchScheduleFields(id, fields, e.maxActiveSchedules())
+		if errors.Is(err, store.ErrScheduleCap) {
+			return nil, fmt.Errorf("engine: too many active schedules")
+		}
+		if err != nil {
 			return nil, err
 		}
+		row = previous
 	}
-	if p.Status != nil {
-		return e.PatchSchedule(id, *p.Status)
+	if row.Kind == store.ScheduleThread &&
+		((p.Kind != nil && (fields["kind"] != store.ScheduleThread || fields["thread_id"] != row.ThreadID)) ||
+			(fields["status"] == store.SchedulePaused && row.Status != store.SchedulePaused)) {
+		e.continueGoalAfterWakeStop(row)
 	}
 	return e.store.GetSchedule(id)
 }
