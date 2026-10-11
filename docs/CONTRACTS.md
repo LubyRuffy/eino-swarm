@@ -2,7 +2,7 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
-## C-021 Single PC work rows use one disclosure
+## C-022 Single PC work rows use one disclosure
 
 - 状态：active；类型：lifecycle / compatibility；作用范围：PC 主对话用户视图；关联功能：`F-130`。
 - 契约内容：连续工作区块只有一段思考或一个可见工具调用时，直接渲染该条自身的折叠，不增加外层聚合；多项继续聚合，回答保持可见并分隔工作区块。单段流式思考默认展开，用户可手动收起；单个工具沿用自身的加载、折叠与失败表现。

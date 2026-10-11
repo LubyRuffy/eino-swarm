@@ -1,6 +1,6 @@
 # Testing
 
-## Single PC work disclosures (F-130 / C-021)
+## Single PC work disclosures (F-130 / C-022)
 
 `frontend/src/components/app/transcript-fold.test.tsx` verifies that one finished
 thought or tool result opens with one click, a lone live thought can fold,

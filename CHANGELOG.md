@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `C-022`: the single PC work disclosure uses its own stable contract ID; `C-021` remains the independent task message contract. The documentation gate catches duplicate identities (Issue #73).
+
 - `F-220`, `F-222`, `C-006`: live phone answer/thought blocks keep distinct identities across model calls. Loading earlier history no longer leaves manager paragraphs above the worker roster; streaming updates, worker details and back navigation retain their behavior (Issue #70).
 
 - `F-130`, `F-160`, `C-012`: model API failures preserve their HTTP status and concrete rejection or response-decoding cause in desktop and phone errors. An empty HTTP 502 response is no longer misreported as invalid tool-call JSON. Public causes exclude raw response bodies, graph paths and authentication values; original calls and bounded retries remain in the same turn's Trace.
@@ -59,7 +61,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
-- `F-130` / `C-021`: PC user view renders a lone thought or visible tool call with its own disclosure, so one click opens its content. Multiple adjacent work rows retain the aggregate fold; a lone live thought keeps its usual open behavior.
+- `F-130` / `C-022`: PC user view renders a lone thought or visible tool call with its own disclosure, so one click opens its content. Multiple adjacent work rows retain the aggregate fold; a lone live thought keeps its usual open behavior.
 
 - **A live wait can change where the next run lands.** The Scheduled editor's Runs in list searches conversations, or starts a new one each fire. Project applies only to that new conversation. Saving does not move the run already in progress, past findings, or the next-run time. A finished wait stays as it was.
 
