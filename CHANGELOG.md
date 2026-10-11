@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`, `F-222`, `F-230`, `C-015`: iOS now returns one visible layer after a completed left-edge swipe to the right, including worker → Agents → conversation → inbox and model-picker dismissal. Root pages remain open; short, vertical and non-edge swipes do not navigate (Issue #75).
+
 - `F-130`, `C-003`: a late desktop send acknowledgement cannot restore Working after the same turn finished, or mark another selected conversation running; live steering and new turns retain their existing behavior (Issue #74).
 
 - `F-110`, `C-001`: a shell waiting for engine startup applies the same version/binary identity and active-turn replacement checks as an already listening engine (Issue #74).
@@ -66,6 +68,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group and folds. The first page is at most five tasks from the last 3 days; More loads the next five. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
 
 ### Changed
+
+- `C-015`: the phone Back contract now also covers iOS native left-edge gestures and its root-page no-op; Android's existing layered Back and root exit remain unchanged (Issue #75).
 
 - `F-130` / `C-022`: PC user view renders a lone thought or visible tool call with its own disclosure, so one click opens its content. Multiple adjacent work rows retain the aggregate fold; a lone live thought keeps its usual open behavior.
 

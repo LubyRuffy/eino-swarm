@@ -433,7 +433,9 @@ end-to-end tests run on and the fastest way to see the UI work.
    **Agents / 子 Agent** counts running workers and separates them from finished
    or failed history; each row shows status and opens its separate
    activity log. Back returns through the Agents list, then the conversation;
-   Android's system Back follows the same order. The phone shows only
+   Android's system Back and an iOS swipe right from the left screen edge follow
+   the same order. An open model picker closes first; iOS root screens stay open.
+   The phone shows only
    Pairlink-permitted, clipped events, not the worker's launch instruction.
    A tap paints the chrome immediately;
    **Outputs / 产出物** opens this conversation's PC workspace tree. Folders

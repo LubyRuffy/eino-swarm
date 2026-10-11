@@ -4,6 +4,97 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testLeftEdgeSwipeReturnsThroughAgentPages() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let agents = app.buttons["Agents (3)"]
+    XCTAssertTrue(agents.waitForExistence(timeout: 20), "requires history=streamed-agents")
+    agents.tap()
+    let group = app.staticTexts["Active (3)"]
+    XCTAssertTrue(group.waitForExistence(timeout: 8))
+    let worker = app.buttons.matching(NSPredicate(format: "label CONTAINS 'worker-1'")).firstMatch
+    XCTAssertTrue(worker.isHittable)
+    worker.tap()
+    XCTAssertTrue(app.staticTexts["Worker evidence"].waitForExistence(timeout: 8))
+    recordAgentPage(app, name: "edge-back-worker-before")
+
+    leftEdgeBack(app)
+    let workerReturned = group.waitForExistence(timeout: 5)
+    recordAgentPage(app, name: "edge-back-worker-to-roster")
+    XCTAssertTrue(workerReturned, "one native left-edge swipe must return from worker to the Agents list")
+    guard workerReturned else { return }
+    XCTAssertFalse(app.staticTexts["Worker evidence"].exists)
+    assertNoManagerHistory(app)
+
+    leftEdgeBack(app)
+    XCTAssertTrue(agents.waitForExistence(timeout: 5), "one swipe from Agents must return to the manager, not skip to the inbox")
+    XCTAssertTrue(app.textViews["Message"].exists)
+    recordAgentPage(app, name: "edge-back-roster-to-manager")
+
+    leftEdgeBack(app)
+    let inboxThread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Trim the layout pass'")).firstMatch
+    XCTAssertTrue(inboxThread.waitForExistence(timeout: 5), "the next swipe must return to the inbox")
+    XCTAssertFalse(app.buttons["Back"].exists)
+    recordAgentPage(app, name: "edge-back-manager-to-inbox")
+    leftEdgeBack(app)
+    XCTAssertTrue(inboxThread.exists, "a root swipe must leave the inbox open")
+    XCTAssertFalse(app.buttons["Back"].exists)
+    recordAgentPage(app, name: "edge-back-inbox-root-unchanged")
+  }
+
+  func testLeftEdgeSwipeDismissesModelPickerBeforeThread() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let agents = app.buttons["Agents (3)"]
+    XCTAssertTrue(agents.waitForExistence(timeout: 20))
+    let model = app.buttons["Model"].firstMatch
+    XCTAssertTrue(model.waitForExistence(timeout: 8))
+    model.tap()
+    let close = app.buttons["Close"].firstMatch
+    XCTAssertTrue(close.waitForExistence(timeout: 5))
+    recordAgentPage(app, name: "edge-back-model-picker-before")
+    leftEdgeBack(app, y: 0.8)
+    XCTAssertTrue(close.waitForNonExistence(timeout: 5), "the dynamically installed model-picker hook must own the first swipe")
+    XCTAssertTrue(agents.exists, "dismissing the model picker must preserve the conversation")
+    XCTAssertTrue(app.textViews["Message"].exists)
+    recordAgentPage(app, name: "edge-back-model-picker-dismissed")
+    leftEdgeBack(app)
+    let inboxThread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Trim the layout pass'")).firstMatch
+    XCTAssertTrue(inboxThread.waitForExistence(timeout: 5), "the restored conversation hook must own the next swipe")
+    recordAgentPage(app, name: "edge-back-after-model-picker-to-inbox")
+  }
+
+  func testEdgeSwipeIgnoresShortVerticalAndNonEdgeMotion() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let agents = app.buttons["Agents (3)"]
+    XCTAssertTrue(agents.waitForExistence(timeout: 20))
+    agents.tap()
+    let group = app.staticTexts["Active (3)"]
+    XCTAssertTrue(group.waitForExistence(timeout: 8))
+    for (name, start, end) in [
+      ("short", CGVector(dx: 0.01, dy: 0.45), CGVector(dx: 0.09, dy: 0.45)),
+      ("vertical", CGVector(dx: 0.01, dy: 0.4), CGVector(dx: 0.01, dy: 0.7)),
+      ("center-right", CGVector(dx: 0.4, dy: 0.6), CGVector(dx: 0.85, dy: 0.6)),
+      ("right-edge-left", CGVector(dx: 0.99, dy: 0.6), CGVector(dx: 0.2, dy: 0.6)),
+    ] {
+      app.coordinate(withNormalizedOffset: start).press(forDuration: 0.05,
+        thenDragTo: app.coordinate(withNormalizedOffset: end))
+      XCTAssertTrue(group.exists, "\(name) motion must not navigate")
+      XCTAssertFalse(agents.exists, "\(name) motion must not leave the Agents page")
+      recordAgentPage(app, name: "edge-back-ignored-" + name)
+    }
+    leftEdgeBack(app)
+    XCTAssertTrue(agents.waitForExistence(timeout: 5), "a subsequent committed edge swipe must still work")
+    recordAgentPage(app, name: "edge-back-valid-after-ignored-motion")
+  }
+
+  private func leftEdgeBack(_ app: XCUIApplication, y: CGFloat = 0.45) {
+    let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: y))
+    let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.75, dy: y))
+    start.press(forDuration: 0.05, thenDragTo: end)
+  }
+
   func testModelResponseErrorIsLocalizedWithoutToolBlame() throws {
     let app = XCUIApplication()
     app.launch()

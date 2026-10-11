@@ -19,7 +19,11 @@ final class BindFlowTests: XCTestCase {
       baseURL.tap()
       baseURL.typeText("http://127.0.0.1:1/v1")
       XCTAssertEqual(baseURL.value as? String, "http://127.0.0.1:1/v1")
-      app.toolbars.buttons["Done"].tap()
+      // iOS 26 exposes the accessory checkmark as "selected", rather than "Done".
+      let dismissKeyboard = try XCTUnwrap(app.toolbars.buttons.allElementsBoundByIndex.last)
+      XCTAssertTrue(dismissKeyboard.isHittable)
+      dismissKeyboard.tap()
+      XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3), "the accessory must dismiss the keyboard")
       // The provider visibility fields can put Save below a small phone viewport.
       app.webViews.firstMatch.swipeUp()
       app.webViews.buttons["Save"].tap()

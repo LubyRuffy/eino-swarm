@@ -100,6 +100,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：在手机查看同一对话并发送、跟进、回答问题、插入及翻页；使用者：手机用户；入口：手机收件箱和对话页；输入：消息与操作，包括切换已绑定 PC、对 PC 的提问选择选项或填写 Other、把队列首条等待消息中断插入当前轮次；输出：切换 PC 后停留在该 PC 收件箱，进入对话后看到 PC 上同一对话的事件，提问回答经 PC 确认后继续，窄屏长输入仍可直接提交；当前轮次只有被隐藏的后台协调记录时说明空白原因，「更早」一次跨过连续隐藏记录到达可显示历史；前置条件：已绑定且在线；失败表现：重连提示或 RPC 错误，提问提交被拒绝时显示原因并保留草稿重试；关联契约：`C-002`, `C-003`, `C-006`, `C-015`, `C-016`, `C-017`；实现证据：`internal/remote/log.go`, `internal/remote/log_test.go`, `mobile/src/app.tsx`, `mobile/src/app.test.tsx`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/components/ask-card.tsx`, `mobile/src/lib/ask.ts`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/ask-answer.spec.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`。
 - 手机在每个已结束轮次后显示完成事件的本地日期时间和分界线；定时输入隐藏、失败轮次及历史翻页不丢掉边界。实现证据：`mobile/src/lib/transcript.ts`, `mobile/src/components/thread-blocks.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/components/thread-blocks.test.tsx`, `mobile/e2e/walkthrough.spec.ts`。
+- iOS 从左屏幕边缘向右完成滑动，按当前可见详情／弹层逐层返回；根页面保持打开。手势沿用 Android 已有页面返回处理器，不依赖浏览器历史。证据：`mobile/ios/App/App/BridgeViewController.swift`, `mobile/e2e/ios-wait-layout.swift`；关联契约：`C-015`。
 - 手机空输入框在真实运行时提供停止图标；输入文字、附件或引用后仍可跟进／插入，提问时回答、定时等待时发送。停止沿用 PC 的 interrupt 操作，不发送空消息。证据：`mobile/src/components/thread-stop.test.tsx`, `mobile/e2e/composer-layout.spec.ts`。
 
 ### F-221 Quote PC conversation text
@@ -108,7 +109,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-222 Inspect sub-agents on the phone
 
-- 目的：在手机查看 PC 对话中的子 Agent 而不混入主 Agent 回答；使用者：已配对手机用户；入口：对话页 → 子 Agent／Agents → 子 Agent 行；输入：Pairlink 已允许的事件及更早历史页；输出：页头仅统计运行中的子 Agent，列表按进行中／已结束分组，保留完成与失败历史的角色、ID、状态、活动摘要及独立思考、工具、回答记录；页面或 Android 系统返回按详情→列表→对话逐级返回；列表在实时多段输出与历史分页后仍不显示主管正文或工作折叠；前置条件：PC 端有可回放的子 Agent 事件；失败表现：离线时沿用重连提示，未加载到启动事件前角色暂以 ID 显示；关联契约：`C-003`, `C-006`, `C-015`；实现证据：`mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/src/components/agent-page.test.tsx`, `mobile/e2e/agent-roster.spec.ts`。
+- 目的：在手机查看 PC 对话中的子 Agent 而不混入主 Agent 回答；使用者：已配对手机用户；入口：对话页 → 子 Agent／Agents → 子 Agent 行；输入：Pairlink 已允许的事件及更早历史页；输出：页头仅统计运行中的子 Agent，列表按进行中／已结束分组，保留完成与失败历史的角色、ID、状态、活动摘要及独立思考、工具、回答记录；页面返回、Android 系统返回或 iOS 左边缘右滑按详情→列表→对话逐级返回；列表在实时多段输出与历史分页后仍不显示主管正文或工作折叠；前置条件：PC 端有可回放的子 Agent 事件；失败表现：离线时沿用重连提示，未加载到启动事件前角色暂以 ID 显示；关联契约：`C-003`, `C-006`, `C-015`；实现证据：`mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/src/components/agent-page.test.tsx`, `mobile/e2e/agent-roster.spec.ts`。
 
 ### F-223 Inspect local client tasks on the phone
 
@@ -125,7 +126,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-230 Direct model chat
 
-- 目的：手机在没有 PC 时直接连接模型，并在应用内按服务商选择模型；使用者：手机用户；入口：Models、Chat 和输入框模型按钮；输入：兼容端点、所选模型、消息及附件，Models 里可把某个接口从输入框列表里关掉；输出：流式回答，长模型名和长输入不挤出发送按钮，关掉的接口不出现在列表里，已经选中它的对话继续用；前置条件：端点可访问；失败表现：连接或模型错误；关联契约：`C-002`, `C-006`, `C-009`, `C-013`, `C-017`；实现证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.test.tsx`, `mobile/e2e/composer-layout.spec.ts`, `mobile/src/lib/openai-client.ts`。
+- 目的：手机在没有 PC 时直接连接模型，并在应用内按服务商选择模型；使用者：手机用户；入口：Models、Chat 和输入框模型按钮；输入：兼容端点、所选模型、消息及附件，Models 里可把某个接口从输入框列表里关掉；输出：流式回答，长模型名和长输入不挤出发送按钮，关掉的接口不出现在列表里，已经选中它的对话继续用；前置条件：端点可访问；失败表现：连接或模型错误；关联契约：`C-002`, `C-006`, `C-009`, `C-013`, `C-015`, `C-017`；实现证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.test.tsx`, `mobile/e2e/composer-layout.spec.ts`, `mobile/src/lib/openai-client.ts`。
 - 直连流式回复期间输入框主按钮显示可点击停止图标，取消后保留已收到的回复并恢复发送。证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/direct-chat-screen.test.tsx`。
 
 ### F-240 Phone updates

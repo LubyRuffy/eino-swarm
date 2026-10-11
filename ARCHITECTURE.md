@@ -117,6 +117,14 @@ scan), allowing the native Activity to exit. A Clients task is an overlay
 owned by `ClientGroups`, so it registers a temporary handler and removes it
 when the task closes; a pending task read cannot reopen it after Back.
 
+The iOS `BridgeViewController` also calls the current `window.__zwaiAndroidBack`
+when a left-edge pan finishes with sufficient horizontal travel. Reading the
+hook at completion lets a model picker opened later consume Back before its
+underlying page. Cancelled, short, vertical and non-edge gestures do not pop a
+page; a root screen remains open. This uses the React screen handlers rather
+than WKWebView's browser history, because phone navigation does not create
+browser history entries.
+
 ## Modules
 
 | package | responsibility |

@@ -48,6 +48,11 @@ The header Back button and Android system Back return from a worker log to
 the Agents list, then to the conversation, before leaving for the inbox.
 Loading Earlier history after several streamed replies keeps the Agents list free
 of manager paragraphs and work folds; those remain in the manager conversation.
+On iOS, swipe right from the left screen edge to return through the same visible
+layers, including dismissing an open model picker first. One completed gesture
+returns one layer; root screens stay open. Short, cancelled, vertical or
+non-edge swipes do not navigate, and swiping left does not create forward
+navigation. The gesture does not use browser history.
 The `schedule` event is still **A wait is armed.** in the transcript; the live
 wait is the banner (next check, **Run now**, **Cancel wait**).
 Each finished PC turn leaves a divider stamped with its host completion time,

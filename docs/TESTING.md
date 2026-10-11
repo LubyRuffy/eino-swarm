@@ -1846,6 +1846,23 @@ UDID (`xcrun simctl list devices`). The fixture script copies the current
 native app into a new temporary directory and enables the existing offline
 walkthrough there. It does not alter shipping assets, sign, or upload anything.
 The keyboard accessory fallback coordinate is specific to that simulator.
+The formal `mobile/ios/App/AppUITests/BindFlowTests.swift`
+`testNativeIOSMenuHidesAndroidUpdateCheck` taps the last keyboard accessory
+button and asserts that the keyboard disappears before opening the menu.
+iOS 26 exposes its checkmark as `selected`, so looking for a literal `Done`
+fails before the menu assertions; those version/update-entry assertions remain.
+For Issue #75, set `IOS_LAYOUT_QUERY='/?mock=1&tick=150&history=streamed-agents'`
+when creating the fixture and select these three native XCTests from
+`mobile/e2e/ios-wait-layout.swift`: `testLeftEdgeSwipeReturnsThroughAgentPages`,
+`testLeftEdgeSwipeDismissesModelPickerBeforeThread` and
+`testEdgeSwipeIgnoresShortVerticalAndNonEdgeMotion` (each with
+`-only-testing:AppUITests/BindFlowTests/<test-name>`).
+Start at the left screen edge rather than
+using a centre-screen `swipeRight()`: the packaged app must return worker →
+Agents → conversation → inbox, keep the root open, dismiss the current model
+picker before its conversation and ignore short, vertical, centre and opposite
+edge gestures. Browser tests of the same return hook prove page-layer behavior;
+they do not prove recognition of the UIKit gesture.
 For the hidden-history regression, set `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=hidden'`
 when creating the disposable fixture and select only
 `AppUITests/BindFlowTests/testHiddenHistoryShowsEarlierAnswer`. That XCTest
@@ -1868,7 +1885,12 @@ xcodebuild -project "$ios_layout_fixture/mobile/ios/App/App.xcodeproj" \
   -scheme App -configuration Debug \
   -destination "platform=iOS Simulator,id=$IOS_LAYOUT_SIMULATOR" \
   -derivedDataPath "$ios_layout_fixture/DerivedData" CODE_SIGNING_ALLOWED=NO \
-  -only-testing:AppUITests/BindFlowTests \
+  -only-testing:AppUITests/BindFlowTests/testPhoneOutputPreview \
+  -only-testing:AppUITests/BindFlowTests/testClientTaskHeaderStaysVisibleAfterPull \
+  -only-testing:AppUITests/BindFlowTests/testQuoteActionBesideNativeSelectionMenu \
+  -only-testing:AppUITests/BindFlowTests/testComposerStopsLiveTurn \
+  -only-testing:AppUITests/BindFlowTests/testComposerSubmissionAfterTyping \
+  -only-testing:AppUITests/BindFlowTests/testWaitLayoutAfterTyping \
   -parallel-testing-enabled NO -resultBundlePath "$ios_layout_fixture/layout.xcresult" test
 ```
 
