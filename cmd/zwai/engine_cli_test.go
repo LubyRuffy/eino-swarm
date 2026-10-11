@@ -10,9 +10,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -25,6 +27,9 @@ import (
 // spawn is probing a child that is not the app.
 func TestMain(m *testing.M) {
 	if os.Getenv("ZWAI_LEASE_HOLD") == "1" {
+		if os.Getenv("ZWAI_LEASE_IGNORE_STOP") == "1" {
+			signal.Ignore(syscall.SIGTERM)
+		}
 		h, err := lease.Acquire(os.Getenv("ZWAI_LEASE_DIR"))
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -56,9 +61,14 @@ func startLeaseHolder(t *testing.T, dir string) *exec.Cmd {
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	stopped := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(stopped)
+	}()
 	t.Cleanup(func() {
 		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		<-stopped
 	})
 	read := make(chan string, 1)
 	go func() {
@@ -157,13 +167,17 @@ func TestShellURLKeepsABrokenBase(t *testing.T) {
 func TestEnsureEngineAttachesWhileTheHolderIsStillStarting(t *testing.T) {
 	dir := t.TempDir()
 	holder := startLeaseHolder(t, dir)
+	self := lease.ThisBuild(version)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data_dir": dir, "mock": true})
 	}))
 	defer srv.Close()
 	go func() {
 		time.Sleep(150 * time.Millisecond)
-		_ = lease.Publish(dir, lease.Record{PID: holder.Process.Pid, URL: srv.URL, Mock: true})
+		_ = lease.Publish(dir, lease.Record{
+			PID: holder.Process.Pid, URL: srv.URL, Mock: true,
+			Version: self.Version, Dev: self.Dev, Ino: self.Ino,
+		})
 	}()
 	url, err := ensureEngine(dir, "127.0.0.1:0", true)
 	if err != nil {
