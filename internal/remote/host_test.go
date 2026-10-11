@@ -3,9 +3,12 @@ package remote
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,6 +18,7 @@ import (
 	"github.com/LubyRuffy/pairlink/protocol"
 	"github.com/LubyRuffy/pairlink/relay"
 	pstore "github.com/LubyRuffy/pairlink/store"
+	"github.com/gorilla/websocket"
 )
 
 func TestHostOfferAndServeLinkOverRelay(t *testing.T) {
@@ -257,8 +261,30 @@ func TestStatusGoesOfflineWhenHubCloses(t *testing.T) {
 	hubStore := pstore.NewMemory()
 	hub := relay.New(hubStore)
 	hub.Idle = 80 * time.Millisecond
-	srv := httptest.NewServer(hub.Handler())
+	reconnecting, allowReconnect := make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	release := func() { releaseOnce.Do(func() { close(allowReconnect) }) }
+	var sockets atomic.Int32
+	handler := hub.Handler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if websocket.IsWebSocketUpgrade(r) {
+			if n := sockets.Add(1); n > 1 {
+				if n == 2 {
+					close(reconnecting)
+				}
+				// The local dial can complete between two status polls. Hold
+				// only the replacement handshake so the drop is observable.
+				select {
+				case <-allowReconnect:
+				case <-r.Context().Done():
+					return
+				}
+			}
+		}
+		handler.ServeHTTP(w, r)
+	}))
 	t.Cleanup(srv.Close)
+	t.Cleanup(release)
 	ctx := context.Background()
 	token, err := relay.IssueHostToken(ctx, hubStore)
 	if err != nil {
@@ -278,19 +304,15 @@ func TestStatusGoesOfflineWhenHubCloses(t *testing.T) {
 	if !h.Status().Online {
 		t.Fatalf("status %+v", h.Status())
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	offline := false
-	for time.Now().Before(deadline) {
-		if !h.Status().Online {
-			offline = true
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	select {
+	case <-reconnecting:
+	case <-time.After(2 * time.Second):
+		t.Fatal("quiet socket did not drop and attempt a replacement handshake")
 	}
-	// Reconnection can win a second read; retain the offline transition observed above.
-	if !offline {
-		t.Fatal("quiet socket should idle-drop without keepalive")
+	if h.Status().Online {
+		t.Fatal("status must be offline while the dropped socket reconnects")
 	}
+	release()
 	if _, err := h.Offer(ctx); err != nil {
 		t.Fatal(err)
 	}
