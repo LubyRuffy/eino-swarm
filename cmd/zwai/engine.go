@@ -142,47 +142,59 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 		return "", err
 	}
 	dir := cfg.DataDir()
-	rec, err := lease.Discover(dir, mock)
-	switch {
-	case err == nil:
-		if lease.SameEngine(rec, lease.ThisBuild(version)) {
-			return rec.URL, nil
-		}
-		// A window restart is not a new engine. The binary the user just
-		// opened has to be the one holding the database, or the phone keeps
-		// talking to the build they thought they replaced. A turn that is
-		// actually calling the model finishes first. A parked schedule and
-		// a question waiting on the human are not that turn.
-		force, err := waitUntilQuiet(rec.URL)
-		if err != nil {
-			// The process can exit while this shell is waiting. A dead pid
-			// is the same as no engine; failing the launch would leave the
-			// user with nothing to attach to.
-			if _, discErr := lease.Discover(dir, mock); !errors.Is(discErr, lease.ErrNotRunning) {
-				return "", err
-			}
-		} else {
-			stop := lease.Stop
-			if force {
-				stop = lease.Kill
-			}
-			if err := stop(rec.PID); err != nil {
-				return "", err
+	for {
+		rec, err := lease.Discover(dir, mock)
+		// The lock is taken before engine.json exists. Wait for that
+		// record, then apply the same build and active-turn checks as an
+		// engine that was already listening when this shell opened.
+		if err != nil && !errors.Is(err, lease.ErrMockMismatch) && !errors.Is(err, lease.ErrUnreachable) {
+			if started, held, waitErr := discoverIfStarting(dir, mock); held {
+				if waitErr != nil {
+					return "", waitErr
+				}
+				rec, err = started, nil
 			}
 		}
-	case errors.Is(err, lease.ErrMockMismatch), errors.Is(err, lease.ErrUnreachable):
-		return "", err
+		switch {
+		case err == nil:
+			if lease.SameEngine(rec, lease.ThisBuild(version)) {
+				return rec.URL, nil
+			}
+			// A window restart is not a new engine. The binary the user just
+			// opened has to be the one holding the database, or the phone keeps
+			// talking to the build they thought they replaced. A turn that is
+			// actually calling the model finishes first. A parked schedule and
+			// a question waiting on the human are not that turn.
+			force, err := waitUntilQuiet(rec.URL)
+			if err != nil {
+				// The process can exit while this shell is waiting. A dead pid
+				// is the same as no engine; failing the launch would leave the
+				// user with nothing to attach to.
+				if _, discErr := lease.Discover(dir, mock); !errors.Is(discErr, lease.ErrNotRunning) {
+					return "", err
+				}
+			} else {
+				stop := lease.Stop
+				if force {
+					stop = lease.Kill
+				}
+				if err := stop(rec.PID); err != nil {
+					return "", err
+				}
+			}
+			continue
+		case errors.Is(err, lease.ErrMockMismatch), errors.Is(err, lease.ErrUnreachable):
+			return "", err
+		}
+		if testing.Testing() {
+			return startInProcessEngine(dir, addr, mock)
+		}
+		if _, err := spawnEngine(dir, addr, mock); err != nil {
+			return "", err
+		}
+		// A competing holder may have won while our child started. Its
+		// published identity must pass the checks above before attaching.
 	}
-	// The lock is taken before engine.json exists. A second shell that
-	// only looked at Discover would start another process, lose, and
-	// report the frontend build as a crash.
-	if url, held, err := attachIfStarting(dir, mock); held {
-		return url, err
-	}
-	if testing.Testing() {
-		return startInProcessEngine(dir, addr, mock)
-	}
-	return spawnEngine(dir, addr, mock)
 }
 
 // engineBootWait is how long a shell waits for an engine that already
@@ -190,27 +202,27 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 // the UI. Tests shrink it; a real frontend build fits in the default.
 var engineBootWait = 15 * time.Second
 
-// attachIfStarting waits when another process already holds the lock but
-// has not published a URL yet. The bool is true when this shell must not
-// start its own engine: either it attached, or the holder never listened.
-func attachIfStarting(dir string, mock bool) (string, bool, error) {
+// discoverIfStarting waits when another process already holds the lock but
+// has not published a URL yet. The bool is true when this shell must inspect
+// that holder's identity or report its startup failure instead of starting.
+func discoverIfStarting(dir string, mock bool) (lease.Record, bool, error) {
 	if !lease.Busy(dir) {
-		return "", false, nil
+		return lease.Record{}, false, nil
 	}
 	deadline := time.Now().Add(engineBootWait)
 	for {
 		rec, err := lease.Discover(dir, mock)
 		if err == nil {
-			return rec.URL, true, nil
+			return rec, true, nil
 		}
 		if errors.Is(err, lease.ErrMockMismatch) || errors.Is(err, lease.ErrUnreachable) {
-			return "", true, err
+			return lease.Record{}, true, err
 		}
 		if !lease.Busy(dir) {
-			return "", false, nil
+			return lease.Record{}, false, nil
 		}
 		if !time.Now().Before(deadline) {
-			return "", true, errors.New("engine holds the data directory but is not listening")
+			return lease.Record{}, true, errors.New("engine holds the data directory but is not listening")
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
