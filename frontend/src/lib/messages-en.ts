@@ -439,6 +439,8 @@ export const en = {
   "notice.modelRetryUnavailable": "The model service is unavailable. Retrying.",
   "notice.modelRetryTransport":
     "The connection to the model service dropped. Retrying.",
+  "notice.modelRetryResponse": "The model service returned a response that could not be decoded. Retrying.",
+  "notice.modelServiceResponse": "the model service returned a response that could not be decoded",
   "notice.modelRetryIdle": "The model service stopped sending data. Retrying.",
   "notice.invalidToolJSON":
     "the model returned a tool call that was not valid JSON",

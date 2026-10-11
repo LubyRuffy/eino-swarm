@@ -206,6 +206,10 @@ describe("standing objective and compact notices", () => {
       "The model returned a tool call that was not valid JSON. Retrying.",
     )
     expect(manager(badJSON).blocks[0].text).not.toMatch(/attempt|reason/)
+    const malformedResponse = fold([ev({ kind: "model_retry", text: '{"attempt":1,"cap":2,"reason":"model_response_invalid"}' })])
+    expect(manager(malformedResponse).blocks[0].text).toBe("The model service returned a response that could not be decoded. Retrying.")
+    expect(manager(malformedResponse).blocks[0].text).not.toMatch(/tool call/)
+
     const rate = fold([
       ev({ kind: "model_retry", text: '{"attempt":1,"cap":2,"reason":"rate_limited"}' }),
     ])

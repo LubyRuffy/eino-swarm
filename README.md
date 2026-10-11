@@ -306,8 +306,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   **Full log** for the on-screen timeline.
   Model API errors retain their HTTP status and concrete rejection or response
   decoding cause in desktop and phone chat. An empty 502 response does not imply
-  invalid tool arguments. The public error omits raw bodies and graph paths;
+  invalid tool arguments. Empty/HTML errors without a more specific HTTP or parsed API category, and
+  malformed successful streams, show a response-decoding retry, including
+  incorrect JSON field types. Rate limits and 5xx keep their status category;
+  actual tool argument failures retain their own diagnosis. The public
+  error omits raw bodies and graph paths;
   inspect the original call and retry records through the same turn's Trace.
+  An immediate completion stays Idle when its send acknowledgement arrives later.
 
 ## Quick start
 

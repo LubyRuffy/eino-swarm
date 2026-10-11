@@ -12,9 +12,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-001 One engine per data directory
 
 - 状态：active；类型：lifecycle；作用范围：desktop、web、tui、engine；关联功能：`F-110`, `F-120`, `F-320`。
-- 契约内容：同一数据目录只由一个 engine 进程持有；客户端连接同一 loopback 服务；不同版本替换引擎时先等待安全时机。
+- 契约内容：同一数据目录只由一个 engine 进程持有；客户端连接同一 loopback 服务；不同版本或开发二进制身份替换引擎时先等待安全时机。持锁但尚未发布地址的引擎必须在地址出现后经过同一身份和活动 turn 检查；子进程启动输给竞争者时也不得直接接受竞争者的 URL。身份/状态检查失败或拒绝安全退出时，旧引擎保持原状并明确报告。
 - 允许行为：多个 shell 同时连接；禁止行为：多个进程同时写同一数据库；失败语义：引擎不可达或租约冲突需明确报告；不变量：一个目录一把 lease；边界条件：进程异常结束后可恢复。
-- 证据：实现 `internal/lease`, `internal/app`, `cmd/zwai`；测试 `internal/lease`, `internal/app`；变更规则：同步架构、CLI 和恢复测试；来源：`ARCHITECTURE.md` 和 Git 历史。
+- 证据：实现 `internal/lease`, `internal/app`, `cmd/zwai`；测试 `internal/lease`, `internal/app`, `cmd/zwai/engine_startup_test.go`；变更规则：同步架构、CLI 和恢复测试；来源：`ARCHITECTURE.md` 和 Git 历史。
 
 ## C-002 One turn per conversation
 
@@ -28,6 +28,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：data / consistency；作用范围：engine、store、SSE、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-310`, `F-330`, `F-410`。
 - 契约内容：完成事件按同一锁分配 seq、保存、广播；流式 delta 包含截至当前的完整文本，不逐 token 持久化；慢订阅者通过数据库追赶，事件 kind 是回放格式的一部分。桌面运行态在首个进度脉冲前显示动态等待，不伪造服务端耗时；脉冲到达后显示服务端计时，轮次结束即移除。桌面与手机的轮次分界仅由真实 `done` / `error` 的 `created_at` 标记，不以最后一条回答或设备当前时间推断；隐藏定时输入也不能抹去已完成轮次的时间边界。
+- 桌面发送 ACK 仅确认服务器接受请求，不能把同一 turn 已收到的 `done` / `error` 回退为运行中；迟到 ACK 不得改变后来选择的其他对话。正常新 turn 和实时 steer 仍遵循真实事件及 ACK 身份。证据：`frontend/src/store/app.ts`, `frontend/src/store/app-send.test.ts`, `frontend/e2e/api-error.spec.ts`；来源：GitHub Issue #74。
 - 允许行为：delta 丢失后下一帧恢复；禁止行为：丢弃已存储事件或随意重命名 kind；失败语义：落后订阅者转追赶；不变量：存储顺序与流顺序一致；边界条件：重连和回放。
 - 证据：实现 `internal/engine`, `internal/store`, `internal/remote`, `frontend/src/components/app/transcript.tsx`, `frontend/src/components/app/transcript-session.tsx`, `mobile/src/lib/transcript.ts`, `mobile/src/components/thread-blocks.tsx`；测试 `internal/engine`, `internal/remote`, `frontend/src/components/app/transcript.test.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/components/thread-blocks.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、数据模型和 wire 测试；来源：`AGENTS.md`、GitHub Issues #59、#61。
 
@@ -74,8 +75,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 状态：active；类型：compatibility / lifecycle；作用范围：config、provider、engine；关联功能：`F-150`, `F-170`, `F-230`, `F-420`。
 - 契约内容：端点、模型等配置有默认值且可在 Settings 编辑；`OPENAI_*` 只用于首次空字段填充；已知模型窗口的自动压缩阈值必须同时预留固定输出空间和配置的最大输出 token，不得只按输入占比判断；缺失计费信息的重放消息和工具结果须保守估算非 ASCII 文本及每条消息的结构开销，不能按 ASCII 的每四字符一 token 低估；未知窗口仍用固定 token 阈值。无法压缩的上下文越界须给出降低输出上限或缩短请求的提示；周期检查因此终止时保留失败记录并暂停该计划，避免相同错误循环触发，调整后可手动恢复。计划触发或取消需保留状态。成功轮次若有下一次已安排的同对话唤醒，未完成的 sub-agent 保持原 ID 和运行状态供下次轮次续办；没有下一次唤醒且无持续目标、取消或暂停最后一次唤醒、轮次错误或中断时清理，无下一轮的独立任务不保留 worker。定时触发与立即执行没有任何工具结果或显式 `report_schedule` 时，只在原 turn 继续一次；仍无证据则 turn/run 为 error、unread=true，不把开场话当 findings 或空回答当 quiet。显式空 findings 保持 quiet；真实工具结果后的省略报告兜底保持兼容，模型错误清理生成的虚拟工具结果不算执行证据。判断不得依赖回答长度、标点、语言、任务样本或模型名。重试原因 `scheduled_no_activity` 进入同一 turn 的 Trace。
 - 允许行为：用户更改设置；禁止行为：生产代码硬编码用户端点或模型；失败语义：配置或计划错误明确报告；不变量：用户设置优先于环境种子；边界条件：首次运行与重启。
+- 目标编辑：legacy 空/NULL `schedule_runs.kind` 在目标编辑前按真实旧计划 kind 冻结；冻结、目标、可选 pause/resume 和活动数量上限检查在同一事务，失败无部分副作用。已领取 fire 按冻结 kind 与原 thread 保持 Waiting/worker 归属；成功移动最后一个 wake 后才清理原会话 parked workers 或续办 goal，其他 wake、已领取 fire 与 live turn 保持原有边界。
 - 续办展示：`scheduled_no_activity` 的桌面提示是继续执行定时检查，不冒称发生了模型错误；旧模型错误提示保持兼容。
-- 证据：实现 `internal/config/compact_trigger.go`, `internal/engine/autocompact.go`, `internal/engine/session_memory.go`, `internal/engine/runerr.go`, `internal/engine/goal_session.go`, `internal/engine/schedule.go`, `internal/store`, `frontend/src/lib/transcript-notices.ts`；测试 `internal/config/compact_trigger_test.go`, `internal/engine/runerr_test.go`, `internal/engine/schedule_context_overflow_test.go`, `internal/engine/goal_session_test.go`, `internal/engine/schedule_completion_test.go`, `internal/engine/schedule_goal_test.go`, `frontend/src/lib/transcript-goal.test.ts`, `frontend/e2e/schedules.spec.ts`；变更规则：同步 CONFIG、API 和计划测试；来源：`AGENTS.md`、GitHub Issues #52、#55。
+- 证据：实现 `internal/config/compact_trigger.go`, `internal/engine/autocompact.go`, `internal/engine/session_memory.go`, `internal/engine/runerr.go`, `internal/engine/goal_session.go`, `internal/engine/schedule.go`, `internal/store`, `frontend/src/lib/transcript-notices.ts`；测试 `internal/config/compact_trigger_test.go`, `internal/engine/runerr_test.go`, `internal/engine/schedule_context_overflow_test.go`, `internal/engine/context_overflow_flow_test.go`, `internal/engine/schedule_retarget_test.go`, `internal/store/schedule_retarget_test.go`, `internal/engine/goal_session_test.go`, `internal/engine/schedule_completion_test.go`, `internal/engine/schedule_goal_test.go`, `frontend/src/lib/transcript-goal.test.ts`, `frontend/e2e/schedules.spec.ts`；变更规则：同步 CONFIG、API 和计划测试；来源：`AGENTS.md`、GitHub Issues #52、#55。
 
 ## C-010 Build artifacts and update channel
 
@@ -106,6 +108,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 模型接口失败的公共 turn/error 展示保留可判断的 HTTP 状态码及接口拒绝/响应解码原因。JSON 解码错误本身不证明工具参数无效；SDK/Eino 类型错误经包装仍按接口错误处理。公共文本不包含原始响应正文、图执行路径或认证值，原因最多 512 字符；原始调用与重试仍在同一 turn 的 Trace 内可查，上下文溢出及超时提示保留现有恢复建议。
 - 允许行为：敏感值脱敏；禁止行为：丢掉诊断所需事件或输出令牌/完整 Cookie；失败语义：不存在的 id 报不存在；不变量：同 id 贯穿运行；边界条件：部分失败和重启恢复。
 - 证据：实现 `internal/engine/runerr.go`, `internal/engine`, `internal/server`, `internal/store`；测试 `internal/engine/runerr_api_test.go`, `internal/engine/api_error_integration_test.go`, `internal/server`；变更规则：同步 CLI、API 和 Trace 测试；来源：`AGENTS.md`、GitHub Issue #71。
+
+- 模型响应来源：provider model-call 边界保留 SDK 原因和错误类型；没有更具体 HTTP 状态或已解析 API 拒绝类别时的空/HTML 错误响应，以及 HTTP 200 流的 JSON 语法或字段类型解析失败使用 `model_response_invalid`，不冒称工具参数错误。真正工具参数错误保留 `invalid_tool_json`，已解析的 API 拒绝、HTTP 状态、鉴权不重试与有界重试语义不变；原始原因留在同 turn Trace。证据：`internal/provider/call_error.go`, `internal/engine/api_error_integration_test.go`, `internal/engine/model_response_error_test.go`, `frontend/e2e/api-error.spec.ts`, `mobile/e2e/api-error.spec.ts`。
 
 ## C-013 Phone model picker
 

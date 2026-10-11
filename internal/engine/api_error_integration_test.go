@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -35,6 +36,88 @@ func TestAPIAuthenticationFailureEndsTheSameTurnWithoutRetry(t *testing.T) {
 				fmt.Sprintf("model API request failed: HTTP %d %s: request not authorized", status, http.StatusText(status)),
 				fmt.Sprintf("error, status code: %d, status: %d %s, message: request not authorized", status, status, http.StatusText(status)),
 				1, 0)
+		})
+	}
+}
+
+func TestDecodedAPIErrorDoesNotBlameToolArguments(t *testing.T) {
+	for _, body := range []string{"", "<html>upstream failed</html>"} {
+		t.Run(fmt.Sprintf("body_%d", len(body)), func(t *testing.T) {
+			e, requests := newAPIErrorEngine(t, http.StatusBadRequest, body)
+			cause := "unexpected end of JSON input"
+			if body != "" {
+				cause = "invalid character '<' looking for beginning of value"
+			}
+			assertAPIErrorTurn(t, e, requests,
+				"model API request failed: HTTP 400 Bad Request: "+cause,
+				"error, status code: 400, status: 400 Bad Request, message: "+cause+", body: "+body,
+				3, 2, "model_response_invalid")
+		})
+	}
+}
+
+// A successfully decoded API rejection remains distinct from a broken response.
+func TestParsedToolAPIRejectionKeepsToolReasonThroughRealSDK(t *testing.T) {
+	const cause = "Unterminated string in tool arguments"
+	e, requests := newAPIErrorEngine(t, http.StatusBadRequest, `{"error":{"message":"`+cause+`","type":"invalid_request_error"}}`)
+	assertAPIErrorTurn(t, e, requests,
+		"model API request failed: HTTP 400 Bad Request: "+cause,
+		"error, status code: 400, status: 400 Bad Request, message: "+cause,
+		3, 2, "invalid_tool_json")
+}
+
+func TestMalformedSuccessfulStreamIsAModelResponseFailure(t *testing.T) {
+	for _, body := range []string{"data: {\n\n", "data: {\"choices\":\"invalid-shape\"}\n\n"} {
+		t.Run(fmt.Sprintf("body_%d", len(body)), func(t *testing.T) {
+			e, requests := newAPIErrorEngine(t, http.StatusOK, body)
+			thread, err := e.CreateThread("response decode regression", "", "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			turn, err := e.StartTurn(thread.ID, "run the requested check")
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := waitForTurn(t, e, turn.ID)
+			events, err := e.Store().ListTurnEvents(turn.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			retries := 0
+			for _, event := range events {
+				if event.Kind == swarm.NotifyToolCall.String() {
+					t.Fatal("a malformed model response must not invent a tool call")
+				}
+				if event.Kind != KindModelRetry {
+					continue
+				}
+				retries++
+				var envelope struct {
+					Reason string `json:"reason"`
+				}
+				if err := json.Unmarshal([]byte(event.Text), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope.Reason != "model_response_invalid" {
+					t.Errorf("reason=%q, want model_response_invalid", envelope.Reason)
+				}
+			}
+			if got.Status != store.TurnError || got.Error != "the model service returned a response that could not be decoded" || retries != 2 || requests.Load() != 3 {
+				t.Errorf("status=%s error=%q retries=%d requests=%d", got.Status, got.Error, retries, requests.Load())
+			}
+			calls, err := e.Store().ListLLMCalls(turn.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(calls) != 3 {
+				t.Fatalf("Trace calls=%d, want 3", len(calls))
+			}
+			for _, call := range calls {
+				if call.TurnID != turn.ID || call.Err == "" || call.OutputChars != 0 {
+					t.Errorf("bad response trace: %+v", call)
+				}
+			}
+
 		})
 	}
 }
@@ -79,7 +162,7 @@ func newAPIErrorEngine(t *testing.T, status int, body string) (*Engine, *atomic.
 	return e, requests
 }
 
-func assertAPIErrorTurn(t *testing.T, e *Engine, requests *atomic.Int32, publicError, rawError string, attempts, retries int) {
+func assertAPIErrorTurn(t *testing.T, e *Engine, requests *atomic.Int32, publicError, rawError string, attempts, retries int, reason ...string) {
 	t.Helper()
 	thread, err := e.CreateThread("API failure regression", "", "")
 	if err != nil {
@@ -111,6 +194,17 @@ func assertAPIErrorTurn(t *testing.T, e *Engine, requests *atomic.Int32, publicE
 		switch event.Kind {
 		case KindModelRetry:
 			retryCount++
+			if len(reason) > 0 {
+				var envelope struct {
+					Reason string `json:"reason"`
+				}
+				if err := json.Unmarshal([]byte(event.Text), &envelope); err != nil {
+					t.Fatal(err)
+				}
+				if envelope.Reason != reason[0] {
+					t.Errorf("retry reason=%q, want %q", envelope.Reason, reason[0])
+				}
+			}
 		case swarm.NotifyError.String():
 			terminalCount++
 			if event.AgentID != swarm.DefaultManagerID || event.Err != publicError || event.Seq <= 0 {

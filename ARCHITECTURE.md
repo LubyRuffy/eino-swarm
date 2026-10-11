@@ -571,6 +571,11 @@ worker before closing SQLite.
 and phone. Wrapped SDK/Eino API failures retain the HTTP status and concrete API
 rejection or response-decoder cause, with credentials masked and the cause
 bounded to 512 runes. Raw response bodies and graph paths stay out of that text.
+The recorded provider-call boundary preserves the original SDK error and marks
+its origin. Empty/HTML error bodies without a more specific HTTP or parsed API
+category, and malformed HTTP 200 chunks (syntax or field type), become
+`model_response_invalid`; a tool decoder runs after that boundary. Status/auth and
+parsed API rejections retain their priority, and raw causes remain in Trace.
 A JSON decoding failure alone cannot identify invalid tool arguments. Idle,
 first-byte and context overflow errors keep their existing recovery guidance;
 the original model-call records and bounded retry events remain tied to the same

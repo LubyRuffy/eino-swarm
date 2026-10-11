@@ -34,6 +34,8 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "The model service is rate limiting requests. Retrying.":
     "notice.modelRetryRateLimited",
   "The model service is unavailable. Retrying.": "notice.modelRetryUnavailable",
+  "The model service returned a response that could not be decoded. Retrying.": "notice.modelRetryResponse",
+  "the model service returned a response that could not be decoded": "notice.modelServiceResponse",
   "The connection to the model service dropped. Retrying.":
     "notice.modelRetryTransport",
   "The model service stopped sending data. Retrying.": "notice.modelRetryIdle",

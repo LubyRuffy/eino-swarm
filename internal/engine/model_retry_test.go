@@ -11,6 +11,7 @@ import (
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	einoopenai "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 )
@@ -268,7 +269,9 @@ func TestRecoverManagerMessagesDropsInvalidJSONEvenWithAResult(t *testing.T) {
 }
 
 func TestARetryableModelErrorRetriesInsteadOfBlockingTheGoal(t *testing.T) {
-	unterminated := errors.New("[NodeRunError] error, status code: 400, status: 400 Bad Request, message: Unterminated string starting at: line 1 column 54 (char 53)\nnode path: [node_1, ChatModel]")
+	// This fixture represents a decoded API rejection of tool arguments,
+	// not a decoder failing while parsing the HTTP response.
+	unterminated := &einoopenai.APIError{HTTPStatusCode: 400, Message: "Unterminated string starting at: line 1 column 54 (char 53)"}
 	provider.SetMockFailTimes(1, unterminated)
 	t.Cleanup(func() { provider.SetMockFailure(nil) })
 

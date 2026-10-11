@@ -98,6 +98,8 @@ describe("localizeNotice", () => {
     expect(
       localizeNotice("The model returned a tool call that was not valid JSON. Retrying.", "zh"),
     ).toBe("模型返回的工具调用不是合法 JSON，正在重试。")
+    expect(localizeNotice("The model service returned a response that could not be decoded. Retrying.", "zh")).toBe("模型服务返回的响应无法解析，正在重试。")
+    expect(localizeNotice("the model service returned a response that could not be decoded", "zh")).toBe("模型服务返回的响应无法解析。")
     expect(localizeNotice("The model service is unavailable. Retrying.", "zh")).toBe(
       "模型服务不可用，正在重试。",
     )

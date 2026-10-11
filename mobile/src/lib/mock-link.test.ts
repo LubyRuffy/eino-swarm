@@ -24,6 +24,31 @@ function host() {
 }
 
 describe("the walkthrough host", () => {
+  it("replays model response decoding retries and a terminal error without inventing tools", async () => {
+    const prior = location.href
+    history.replaceState(null, "", "/?mock=1&tick=0&history=model-response-error")
+    const h = host()
+    try {
+      const link = new MockLink(h)
+      const watch = await link.rpc({ op: OpWatch, thread_id: "t-recent" })
+      const events = watch.events ?? []
+      expect(events.map((event) => event.kind)).toEqual(["model_retry", "model_retry", "error", "done"])
+      expect(events.slice(0, 2).map((event) => JSON.parse(event.text))).toEqual([
+        { attempt: 1, cap: 2, reason: "model_response_invalid" },
+        { attempt: 2, cap: 2, reason: "model_response_invalid" },
+      ])
+      expect(events[2]).toMatchObject({ thread_id: "t-recent", agent_id: "manager", text: "", err: "the model service returned a response that could not be decoded" })
+      expect(events.every((event) => event.seq > 0)).toBe(true)
+      expect(new Set(events.map((event) => event.seq)).size).toBe(events.length)
+      expect(watch.status?.running).toBe(false)
+      expect(events.some((event) => event.kind === "tool_call" || event.kind === "tool_result")).toBe(false)
+      link.close()
+      const replay = await new MockLink(h).rpc({ op: OpWatch, thread_id: "t-recent" })
+      expect(replay.events).toEqual(events)
+      expect(replay.status?.running).toBe(false)
+    } finally { h.stop(); history.replaceState(null, "", prior) }
+  })
+
   it("replays a terminal model API failure as an error instead of a tool result", async () => {
     const prior = location.href
     history.replaceState(null, "", "/?mock=1&tick=0&history=api-error")

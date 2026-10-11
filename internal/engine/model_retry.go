@@ -10,8 +10,10 @@ import (
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	einoopenai "github.com/cloudwego/eino-ext/components/model/openai"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
+	openai "github.com/meguminnnnnnnnn/go-openai"
 )
 
 // KindModelRetry is recorded when a pursuing (or any) manager run hits a
@@ -44,6 +46,7 @@ const (
 	modelRetryReasonUnavailable     = "model_unavailable"
 	modelRetryReasonTransport       = "model_transport"
 	modelRetryReasonIdle            = "model_idle"
+	modelRetryReasonResponse        = "model_response_invalid"
 )
 
 // modelRetryCue is what the model reads after a dropped generate. The failed
@@ -101,6 +104,23 @@ func modelFailureClass(err error) string {
 		strings.Contains(s, "status code: 504"),
 		strings.Contains(s, "status code: 529"):
 		return modelRetryReasonUnavailable
+	}
+	var request *openai.RequestError
+	var call *provider.CallError
+	if errors.As(err, &request) || errors.As(err, &call) {
+		// Parsed API rejections may describe invalid tool arguments. A
+		// decoder failing inside the model call never reached a tool. The
+		// SDK uses both encoding/json and Sonic for response fields.
+		var api *einoopenai.APIError
+		var sdkAPI *openai.APIError
+		var syntax *json.SyntaxError
+		var shape *json.UnmarshalTypeError
+		if !errors.As(err, &api) && !errors.As(err, &sdkAPI) &&
+			(errors.As(err, &syntax) || errors.As(err, &shape) ||
+				isInvalidToolJSON(err) || strings.Contains(s, "invalid character") ||
+				strings.Contains(s, "mismatch type ") || strings.Contains(s, "json: cannot unmarshal")) {
+			return modelRetryReasonResponse
+		}
 	}
 	if isInvalidToolJSON(err) || strings.Contains(s, "invalid character") {
 		return modelRetryReasonInvalidToolJSON

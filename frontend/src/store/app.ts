@@ -671,11 +671,19 @@ export const useApp = create<AppState>((set, get) => ({
           )
         }
       }
-      await api.steer(id, text, images, opts?.files)
-      set((s) => ({
-        status: withRunningClock(s.status),
-        threads: setThreadRunning(s.threads, id, true),
-      }))
+      const sentSeq = get().transcript.lastSeq
+      const accepted = await api.steer(id, text, images, opts?.files)
+      set((s) => {
+        // The acknowledgement may arrive after this turn's terminal event.
+        if (s.activeId !== id || (!s.status.running &&
+          ((accepted.turn?.id && (s.status.turn_id === accepted.turn.id ||
+            s.transcript.turns.some((t) => t.id === accepted.turn?.id && t.status !== "running"))) ||
+            (accepted.steered && s.transcript.lastSeq > sentSeq)))) return {}
+        return {
+          status: withRunningClock(s.status),
+          threads: setThreadRunning(s.threads, id, true),
+        }
+      })
       void get().refreshFollowups()
       void get().refreshThreads()
     } catch (e) {

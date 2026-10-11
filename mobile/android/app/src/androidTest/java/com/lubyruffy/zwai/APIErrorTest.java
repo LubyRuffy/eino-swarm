@@ -21,7 +21,7 @@ import org.json.JSONObject;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-/** Run against a disposable packaged app using the existing history=api-error walkthrough. */
+/** Run against disposable packages using history=api-error or history=model-response-error. */
 @RunWith(AndroidJUnit4.class)
 public class APIErrorTest {
     private static final String ERROR = "model API request failed: HTTP 502 Bad Gateway: unexpected end of JSON input";
@@ -56,6 +56,57 @@ public class APIErrorTest {
             }
         } catch (Exception | AssertionError failure) {
             saveEvidence("failure");
+            throw failure;
+        }
+    }
+
+    @Test
+    public void testModelResponseErrorRetriesRemainLocalizedWhenReopened() throws Exception {
+        String locale = InstrumentationRegistry.getArguments().getString("modelResponseLocale", "en");
+        assertTrue("The fixture locale must be en or zh", "en".equals(locale) || "zh".equals(locale));
+        boolean chinese = "zh".equals(locale);
+        String retry = chinese ? "模型服务返回的响应无法解析，正在重试。"
+            : "The model service returned a response that could not be decoded. Retrying.";
+        String error = chinese ? "模型服务返回的响应无法解析。"
+            : "the model service returned a response that could not be decoded";
+        String back = chinese ? "返回" : "Back";
+        String open = (chinese ? "打开 " : "Open ") + "Sweep the unused exports";
+        String send = chinese ? "发送" : "Send";
+        String directory = "model-response-error-" + locale;
+        Intent launch = instrumentation.getTargetContext().getPackageManager()
+            .getLaunchIntentForPackage(instrumentation.getTargetContext().getPackageName());
+        assertNotNull("The packaged app must have a launch Activity", launch);
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        instrumentation.startActivitySync(launch);
+        try {
+            click(waitFor(back, true));
+            for (String phase : new String[] { "first-open", "reopened" }) {
+                click(waitFor(open, true));
+                waitFor(error, false);
+                int retries = 0;
+                for (AccessibilityNodeInfo node : nodes(ui.getRootInActiveWindow())) {
+                    if (!node.isVisibleToUser()) continue;
+                    if (named(node, retry)) retries++;
+                    for (String active : new String[] { "Stop", "停止", "Steer", "插入", "Follow-up", "跟进" }) {
+                        assertFalse("The failed turn must return to the idle composer", named(node, active));
+                    }
+                    String content = String.valueOf(node.getText()) + " " + node.getContentDescription();
+                    for (String forbidden : new String[] { "a tool call", "工具调用", "invalid_tool_json", "NodeRunError", "node path:" }) {
+                        assertFalse("A response decoding failure must not blame tool arguments", content.contains(forbidden));
+                    }
+                    String otherLocale = chinese
+                        ? "The model service returned a response that could not be decoded. Retrying."
+                        : "模型服务返回的响应无法解析，正在重试。";
+                    assertFalse("Retry notices must follow the fixture locale", content.contains(otherLocale));
+                }
+                assertEquals("Both bounded model-response retries must remain visible", 2, retries);
+                assertFalse("The idle empty draft must remain disabled", waitFor(send, true).isEnabled());
+                saveEvidence(directory, phase);
+                click(waitFor(back, true));
+                waitFor(open, true);
+            }
+        } catch (Exception | AssertionError failure) {
+            saveEvidence(directory, "failure");
             throw failure;
         }
     }
@@ -98,7 +149,11 @@ public class APIErrorTest {
     }
 
     private void saveEvidence(String name) throws Exception {
-        File directory = new File(instrumentation.getTargetContext().getExternalFilesDir(null), "api-error");
+        saveEvidence("api-error", name);
+    }
+
+    private void saveEvidence(String directoryName, String name) throws Exception {
+        File directory = new File(instrumentation.getTargetContext().getExternalFilesDir(null), directoryName);
         assertTrue("Native evidence directory must be writable", directory.isDirectory() || directory.mkdirs());
         Bitmap screenshot = ui.takeScreenshot();
         assertNotNull("The reached native screen must be captured", screenshot);

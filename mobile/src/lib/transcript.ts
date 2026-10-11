@@ -401,6 +401,8 @@ function modelRetryNotice(text: string): string {
         return "The model service is rate limiting requests. Retrying."
       case "model_unavailable":
         return "The model service is unavailable. Retrying."
+      case "model_response_invalid":
+        return "The model service returned a response that could not be decoded. Retrying."
       case "model_transport":
         return "The connection to the model service dropped. Retrying."
       case "model_idle":

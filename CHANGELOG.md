@@ -13,6 +13,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `C-003`: a late desktop send acknowledgement cannot restore Working after the same turn finished, or mark another selected conversation running; live steering and new turns retain their existing behavior (Issue #74).
+
+- `F-110`, `C-001`: a shell waiting for engine startup applies the same version/binary identity and active-turn replacement checks as an already listening engine (Issue #74).
+- `F-150`, `C-009`: schedule destination/status edits freeze legacy fire ownership atomically; claimed wakes keep their original Waiting ownership, and moving the final wake releases parked workers or resumes its goal after a successful edit (Issue #74).
+- `F-130`, `F-220`, `C-012`: empty/HTML API responses without a more specific HTTP/API category, and malformed successful streams including JSON field type mismatches, receive a model-response diagnosis on desktop and phone instead of blaming tool arguments. Bounded retries and raw same-turn Trace causes remain intact (Issue #74).
+
 - `F-130`, `C-022`: the single PC work disclosure uses its own stable contract ID; `C-021` remains the independent task message contract. The documentation gate catches duplicate identities (Issue #73).
 
 - `F-220`, `F-222`, `C-006`: live phone answer/thought blocks keep distinct identities across model calls. Loading earlier history no longer leaves manager paragraphs above the worker roster; streaming updates, worker details and back navigation retain their behavior (Issue #70).

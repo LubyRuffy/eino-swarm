@@ -156,6 +156,8 @@ export const zh: Record<MessageKey, string> = {
   "notice.modelRetryRateLimited": "模型服务正在限流，正在重试。",
   "notice.modelRetryUnavailable": "模型服务不可用，正在重试。",
   "notice.modelRetryTransport": "与模型服务的连接中断，正在重试。",
+  "notice.modelRetryResponse": "模型服务返回的响应无法解析，正在重试。",
+  "notice.modelServiceResponse": "模型服务返回的响应无法解析。",
   "notice.modelRetryIdle": "模型服务停止发送数据，正在重试。",
   "notice.invalidToolJSON": "模型返回的工具调用不是合法 JSON。",
   "notice.modelServiceRateLimited": "模型服务正在限流。",

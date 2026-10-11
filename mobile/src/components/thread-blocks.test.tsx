@@ -6,6 +6,18 @@ import { setLocale } from "@/lib/i18n"
 import { renderBlock, ThreadLog } from "./thread-blocks"
 
 describe("thread blocks", () => {
+  it("localizes model response decoding independently of tool arguments", () => {
+    setLocale("zh")
+    render(<ThreadLog blocks={[
+      { id: "retry-response", kind: "notice", text: "The model service returned a response that could not be decoded. Retrying." },
+      { id: "failed-response", kind: "error", text: "the model service returned a response that could not be decoded" },
+    ]} />)
+    expect(screen.getByText("模型服务返回的响应无法解析，正在重试。")).toBeInTheDocument()
+    expect(screen.getByText("模型服务返回的响应无法解析。")).toBeInTheDocument()
+    expect(screen.queryByText(/工具调用/)).not.toBeInTheDocument()
+    setLocale("en")
+  })
+
   it("separates completed runs with the host completion time, including a failed run", () => {
     render(<ThreadLog blocks={[
       { id: "a1", kind: "answer", text: "first findings" },

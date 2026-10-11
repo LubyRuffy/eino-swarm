@@ -333,7 +333,7 @@ func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opt
 	start := time.Now()
 	out, err := r.inner.Generate(ctx, in, opts...)
 	if r.rec == nil {
-		return out, err
+		return out, modelCallError(err)
 	}
 	rec := r.base(in, start)
 	rec.Err = err
@@ -342,7 +342,7 @@ func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opt
 		applyUsage(&rec, tokenUsageOf(out))
 	}
 	r.rec(rec)
-	return out, err
+	return out, modelCallError(err)
 }
 
 func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
@@ -350,13 +350,13 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 	start := time.Now()
 	stream, err := r.inner.Stream(ctx, in, opts...)
 	if r.rec == nil {
-		return stream, err
+		return stream, modelCallError(err)
 	}
 	if err != nil {
 		rec := r.base(in, start)
 		rec.Err = err
 		r.rec(rec)
-		return nil, err
+		return nil, modelCallError(err)
 	}
 	// A streamed call is not over when Stream returns, it is over when the
 	// stream is drained — so relay it and emit the record at the end, where
@@ -377,7 +377,7 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 				applyUsage(&rec, usage)
 				if !isStreamEnd(recvErr) {
 					rec.Err = recvErr
-					sw.Send(nil, recvErr)
+					sw.Send(nil, modelCallError(recvErr))
 				}
 				r.rec(rec)
 				return

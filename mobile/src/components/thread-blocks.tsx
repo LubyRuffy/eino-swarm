@@ -207,6 +207,10 @@ function localizeNotice(text: string): string {
       return t("notice.modelRetryToolJSON")
     case "The model service is rate limiting requests. Retrying.":
       return t("notice.modelRetryRateLimited")
+    case "The model service returned a response that could not be decoded. Retrying.":
+      return t("notice.modelRetryResponse")
+    case "the model service returned a response that could not be decoded":
+      return t("notice.modelServiceResponse")
     case "The model service is unavailable. Retrying.":
       return t("notice.modelRetryUnavailable")
     case "The connection to the model service dropped. Retrying.":

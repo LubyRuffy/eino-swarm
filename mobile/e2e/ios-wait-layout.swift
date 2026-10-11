@@ -4,6 +4,45 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testModelResponseErrorIsLocalizedWithoutToolBlame() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons.matching(NSPredicate(format: "label IN %@", ["Back", "返回"])).firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 12))
+    let chinese = back.label == "返回"
+    let expected = chinese ? "模型服务返回的响应无法解析。" : "the model service returned a response that could not be decoded"
+    let retry = chinese ? "模型服务返回的响应无法解析，正在重试。" : "The model service returned a response that could not be decoded. Retrying."
+    back.tap()
+    let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'")).firstMatch
+    XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    for phase in ["first-open", "reopened"] {
+      thread.tap()
+      let error = app.staticTexts[expected]
+      XCTAssertTrue(error.waitForExistence(timeout: 8), "requires history=model-response-error; model-response decoding is independent of tool arguments")
+      XCTAssertEqual(error.label, expected)
+      let retries = app.staticTexts.matching(NSPredicate(format: "label == %@", retry))
+      XCTAssertEqual(retries.count, 2, "both bounded model-response retries must remain visible")
+      for forbidden in ["tool call", "工具调用", "NodeRunError", "node path:"] {
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[cd] %@", forbidden)).firstMatch.exists)
+      }
+      XCTAssertFalse(app.buttons[chinese ? "停止" : "Stop"].exists)
+      let send = app.buttons[chinese ? "发送" : "Send"]
+      XCTAssertTrue(send.waitForExistence(timeout: 5))
+      XCTAssertFalse(send.isEnabled, "the completed failed turn must be idle with an empty draft")
+      XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label MATCHES %@", "^[0-9]+ (tools?|个工具)$")).count, 0)
+      let screenshot = XCTAttachment(screenshot: app.screenshot())
+      screenshot.name = "model-response-error-" + phase
+      screenshot.lifetime = .keepAlways
+      add(screenshot)
+      let nodes = XCTAttachment(string: app.debugDescription)
+      nodes.name = "model-response-error-accessibility-" + phase
+      nodes.lifetime = .keepAlways
+      add(nodes)
+      back.tap()
+      XCTAssertTrue(thread.waitForExistence(timeout: 8))
+    }
+  }
+
   func testModelAPIErrorShowsHTTPStatusAndDecodeCause() throws {
     let app = XCUIApplication()
     app.launch()

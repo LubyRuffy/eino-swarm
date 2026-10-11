@@ -391,6 +391,10 @@ describe("compact transcript", () => {
     )
     expect(down[0].text).toBe("The model service is unavailable. Retrying.")
     expect(badJSON[0].text).not.toBe(down[0].text)
+    const malformedResponse = applyEvent([], ev({ seq: 48, kind: "model_retry", text: JSON.stringify({ attempt: 1, cap: 2, reason: "model_response_invalid" }) }))
+    expect(malformedResponse[0].text).toBe("The model service returned a response that could not be decoded. Retrying.")
+    expect(malformedResponse[0].text).not.toMatch(/tool call/)
+
   })
 
   it("keeps a streamed thought as one block, then closes it when the answer starts", () => {

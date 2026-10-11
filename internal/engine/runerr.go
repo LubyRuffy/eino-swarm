@@ -19,6 +19,8 @@ const publicModelUnavailable = "the model service is unavailable"
 
 const publicModelTransport = "the connection to the model service dropped"
 
+const publicModelResponseInvalid = "the model service returned a response that could not be decoded"
+
 // publicContextOverflow is the transcript line when the endpoint rejects
 // the call because input plus the requested output does not fit the window.
 // The provider paragraph stays in Trace. This sentence is stable when a
@@ -59,6 +61,8 @@ func publicTurnError(err error) string {
 		return publicModelUnavailable
 	case modelRetryReasonTransport:
 		return publicModelTransport
+	case modelRetryReasonResponse:
+		return publicModelResponseInvalid
 	}
 	if isMaxIterations(err) {
 		return "stopped at the tool-round cap"
