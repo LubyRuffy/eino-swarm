@@ -92,6 +92,12 @@ E2E suite.
   the next action from observations, never logs in. A passed observation needs
   real behavior/window evidence bound to the same version, source SHA, ZIP name
   and SHA-256. SSH/process success and the audit's exit code are not acceptance.
+- Desktop install exclusion belongs to the application bundle, not an engine or
+  data directory. Regress two Service instances and two real processes
+  updating the same bundle, launch failure/rollback, independent bundles and
+  process exit. Keep the lock identity stable while the app is replaced. A
+  delayed cleanup must own a unique old-bundle path, never a later install's
+  shared `.previous` path. Single-Service concurrency alone is insufficient.
 - A context-budget fix must test replayed messages without billed usage, with
   mixed ASCII/CJK tool results, message framing, and the configured output cap. A synthetic
   billed-token boundary alone cannot prove a long scheduled conversation will

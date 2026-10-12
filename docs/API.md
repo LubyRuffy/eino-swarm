@@ -63,8 +63,10 @@ a new instance with the same absolute data directory and offline mode. If
 that command fails, the previous app is restored and old windows stay open.
 `200` is `{ "status": "restarting" }`: the launch request was accepted;
 it does not attest that the new window or engine is already ready.
-Parallel installs and repeated requests while restarting return `409` with
-`code: "update_busy"`; a failed install releases the lock for retry.
+Parallel installs for the same app bundle return `409` with `code: "update_busy"`,
+including requests through different engine data directories. The lock remains
+held while restarting and until the old engine exits; failed installation or
+launch/rollback releases it for retry. Different app bundles are independent.
 `409` is `{ "error": "..." }` when there is nothing to install or the
 swap failed. `501` when this process has no updater. `400` when the body
 is not JSON.

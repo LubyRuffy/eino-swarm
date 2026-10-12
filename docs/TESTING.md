@@ -18,6 +18,27 @@ cd frontend && npm test -- src/components/app/transcript-fold.test.tsx src/compo
 cd frontend && npm run e2e -- e2e/work-fold.spec.ts
 ```
 
+## Phone queue steering after Stop (F-220 / C-003)
+
+The phone does not decide whether a queued row is a live steer or a new turn;
+the host does. `internal/remote/followup_relay_test.go` sends real encrypted
+Pairlink requests through the production LinkPump and engine, verifies the
+new user event against the persisted Trace, and retains the unselected row
+after a second Stop. `internal/engine/followup_failure_test.go` uses SQLite
+triggers to prove deletion, event-persistence and restoration error behavior;
+`internal/server/followup_failure_test.go` covers the HTTP missing/storage paths.
+
+The offline phone fixture now matches the existing host's idle-Steer rule. Its
+RED was a missing fixture `user_message`, not a new Go product failure.
+`mobile/e2e/composer-layout.spec.ts`,
+`BindFlowTests/testQueueSteerAfterStopStartsNewTurn`, and
+`ComposerStopTest#steeringQueuedMessageAfterStopStartsANewTurn` exercise
+Stop, idle waiting rows, explicit Steer, the restarted live composer and a
+second Stop. They assert the other row while the selected turn is live or
+cancelled; they do not invent a rule that clean completion leaves the FIFO
+waiting forever. Native screenshots and accessibility must reach that state
+in the packaged app; an offline Web screenshot is separate evidence.
+
 ## Desktop update lifecycle (F-190 / C-024)
 
 The update controller tests use fake time and delayed responses. They prove that
@@ -29,6 +50,21 @@ E2E uses an offline update feed; it does not install a public Release. ZIP
 replacement, launch arguments and old-app recovery run against a local launcher
 stub in `internal/update/apply_recovery_test.go`. That stub does not open a
 signed Mac window. Release acceptance still follows [RELEASE.md](RELEASE.md).
+
+`internal/update/bundle_lock_test.go` covers two services and real helper
+processes with different data directories targeting one bundle. The losing
+install must be busy and the first launch failure must restore the original
+bytes. It also covers separate app targets, stable lock identity through
+replacement, failure/exit release, and cleanup ownership across later installs.
+The original two-service failure was observed before the fix; a same-service
+mutex test cannot establish this application-wide boundary.
+Whole-bundle and parent-directory symlink aliases must resolve to that same
+target even while replacement temporarily removes it. Cleanup tests execute
+the generated script against temporary paths containing quotes, dollar command
+substitution and backticks; they prove no marker command runs and a later
+installation's backup remains. These alias and shell-path counterexamples were
+also observed failing before the repair. Filesystem rename/write failures retain
+the old bundle for recovery.
 
 ```bash
 go test -race -count=1 -cover -timeout 20m ./internal/update ./internal/app ./internal/server ./cmd/zwai
@@ -475,6 +511,9 @@ the gate),
 turn is `done`, even while a session briefing is still blocked on the
 summarizer; Steer on a leftover row after Stop starts that text, and a lost
 slot puts the row back),
+`internal/engine/followup_failure_test.go` (real SQLite failures during queued
+row deletion, steering-event persistence and row restoration retain observable
+errors and the unclaimed queue),
 `internal/engine/session_memory_bound_test.go` (newest-first rune cap, a
 multi-thousand-event log staying under the cap, tool results clipped harder than
 answers, dump not stamped, a failed refresh stamping the token watermark

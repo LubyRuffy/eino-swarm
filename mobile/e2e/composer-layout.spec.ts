@@ -53,6 +53,36 @@ test("the empty live composer stops the turn while a typed draft still sends a f
   await page.screenshot({ path: "test-results/composer-stopped.png" })
 })
 
+test("Steer on a waiting row starts it after Stop while leaving the other row queued", async ({ page }, testInfo) => {
+  await page.goto("/?mock=1&tick=400&queue=1")
+  const form = page.locator("form")
+  const queue = page.getByTestId("followup-queue")
+  await expect(queue).toContainText("first waiting message")
+  await expect(queue).toContainText("second waiting message")
+  await form.getByRole("button", { name: "停止", exact: true }).click()
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0)
+  await expect(form.getByRole("button", { name: "发送", exact: true })).toBeDisabled()
+  await expect(queue.locator("li")).toHaveCount(2)
+  await page.screenshot({ path: testInfo.outputPath("queued-steer-after-stop-idle.png") })
+
+  await queue.locator("li").filter({ hasText: "first waiting message" })
+    .getByRole("button", { name: "插入", exact: true }).click()
+  await expect(queue.locator("li")).toHaveCount(1)
+  await expect(queue).not.toContainText("first waiting message")
+  await expect(queue).toContainText("second waiting message")
+  await expect(page.getByTestId("transcript")).toContainText("first waiting message")
+  await expect(form.getByRole("button", { name: "停止", exact: true })).toBeEnabled()
+  await page.screenshot({ path: testInfo.outputPath("queued-steer-after-stop-running.png") })
+
+  await form.getByRole("button", { name: "停止", exact: true }).click()
+  await expect(page.getByRole("button", { name: "停止", exact: true })).toHaveCount(0)
+  await expect(form.getByRole("button", { name: "发送", exact: true })).toBeDisabled()
+  await expect(queue.locator("li")).toHaveCount(1)
+  await expect(queue).toContainText("second waiting message")
+  await expect(page.getByRole("alert")).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath("queued-steer-after-stop-stopped-again.png") })
+})
+
 test("direct model chat keeps submission inside the phone", async ({ page }) => {
   await page.addInitScript(() => {
     const model = "long-model-name-".repeat(12)

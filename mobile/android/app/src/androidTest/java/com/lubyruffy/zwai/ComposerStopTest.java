@@ -55,6 +55,87 @@ public class ComposerStopTest {
         }
     }
 
+    @Test
+    public void steeringQueuedMessageAfterStopStartsANewTurn() throws Exception {
+        Intent launch = instrumentation.getTargetContext().getPackageManager()
+            .getLaunchIntentForPackage(instrumentation.getTargetContext().getPackageName());
+        assertNotNull("The packaged app must have a launch Activity", launch);
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        instrumentation.startActivitySync(launch);
+        try {
+            AccessibilityNodeInfo stop = waitForButton("Stop", true);
+            assertTrue("The native bottom Stop must accept the tap", stop.performAction(AccessibilityNodeInfo.ACTION_CLICK));
+            AccessibilityNodeInfo send = waitForButton("Send", false);
+            assertFalse("After Stop the empty draft is idle", send.isEnabled());
+            waitForText("first waiting message");
+            waitForText("second waiting message");
+            List<AccessibilityNodeInfo> steers = waitForQueueSteers(2);
+            saveEvidence("queued-steer-after-stop-idle");
+
+            AccessibilityNodeInfo first = steers.get(0);
+            Rect firstBounds = new Rect();
+            first.getBoundsInScreen(firstBounds);
+            for (AccessibilityNodeInfo candidate : steers) {
+                Rect bounds = new Rect();
+                candidate.getBoundsInScreen(bounds);
+                if (bounds.top < firstBounds.top) { first = candidate; firstBounds = bounds; }
+            }
+            assertTrue("The first waiting row Steer must be enabled", first.isEnabled());
+            assertTrue("The native queue Steer must accept the tap", first.performAction(AccessibilityNodeInfo.ACTION_CLICK));
+            waitForButton("Stop", true);
+            waitForQueueSteers(1);
+            waitForText("first waiting message");
+            waitForText("second waiting message");
+            saveEvidence("queued-steer-after-stop-running");
+
+            stop = waitForButton("Stop", true);
+            assertTrue("The restarted turn can be stopped through the composer", stop.performAction(AccessibilityNodeInfo.ACTION_CLICK));
+            send = waitForButton("Send", false);
+            assertFalse("Stopping again returns the empty draft to disabled Send", send.isEnabled());
+            assertTrue("The stopped new turn is idle", buttons("Stop").isEmpty());
+            waitForQueueSteers(1);
+            waitForText("second waiting message");
+            saveEvidence("queued-steer-after-stop-stopped-again");
+        } catch (Exception | AssertionError failure) {
+            saveEvidence("queued-steer-after-stop-failure");
+            throw failure;
+        }
+    }
+
+    private List<AccessibilityNodeInfo> waitForQueueSteers(int count) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 10000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            List<AccessibilityNodeInfo> enabled = new ArrayList<>();
+            for (AccessibilityNodeInfo node : buttons("Steer")) {
+                if (node.isEnabled() && node.isClickable() && onScreen(node)) enabled.add(node);
+            }
+            if (enabled.size() == count) return enabled;
+            SystemClock.sleep(50);
+        }
+        throw new AssertionError("The native queue must retain exactly " + count + " enabled Steer controls");
+    }
+
+    private void waitForText(String text) throws Exception {
+        long deadline = SystemClock.uptimeMillis() + 10000;
+        while (SystemClock.uptimeMillis() < deadline) {
+            for (AccessibilityNodeInfo node : nodes(ui.getRootInActiveWindow())) {
+                if (text.contentEquals(node.getText() == null ? "" : node.getText()) && onScreen(node)) return;
+            }
+            SystemClock.sleep(50);
+        }
+        throw new AssertionError("No visible native text: " + text);
+    }
+
+    private boolean onScreen(AccessibilityNodeInfo node) {
+        AccessibilityNodeInfo root = ui.getRootInActiveWindow();
+        if (root == null || !node.isVisibleToUser()) return false;
+        Rect viewport = new Rect();
+        Rect bounds = new Rect();
+        root.getBoundsInScreen(viewport);
+        node.getBoundsInScreen(bounds);
+        return !bounds.isEmpty() && Rect.intersects(viewport, bounds);
+    }
+
     private AccessibilityNodeInfo waitForButton(String label, boolean mustBeClickable) throws Exception {
         long deadline = SystemClock.uptimeMillis() + 45000;
         while (SystemClock.uptimeMillis() < deadline) {

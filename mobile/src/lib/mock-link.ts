@@ -789,7 +789,8 @@ export class MockLink {
         const item = th?.followups?.find((row) => row.id === req.followup_id)
         if (!th || !item) return this.missing(id)
         th.followups = th.followups?.filter((row) => row.id !== item.id)
-        this.host.push(th, { kind: "steer", text: item.text })
+        if (th.running) this.host.push(th, { kind: "steer", text: item.text })
+        else this.host.run(th, item.text)
         return this.ok({ id, followups: th.followups })
       }
       case OpPreempt:

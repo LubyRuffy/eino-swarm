@@ -367,7 +367,9 @@ background failures stay quiet. A newer Mac installer shows **Update / 升级**
 and **Not now / 暂不**. Update downloads and replaces this `zwai.app`, then
 reopens it with the same data directory. **Menu → Check for updates** checks
 immediately and shows errors with **Retry / 重试**. A launch-command failure
-restores the previous app and leaves its window open. Installation requires
+restores the previous app and leaves its window open. Two engines using different
+data directories still share one installer lock for this app; a competing install
+reports busy. Separate app bundles can update independently. Installation requires
 confirmation; Windows/Linux and unversioned development builds have no update
 installer in this channel.
 

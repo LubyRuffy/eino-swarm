@@ -15,6 +15,12 @@ engine exits after the idle grace once no presence connection is held, the
 phone hub socket is down, and no turn is running. A host that is killed
 releases `engine.lock`; the next shell takes it and resumes orphaned turns.
 
+Desktop update installation is also locked by the actual app bundle across
+engines with different data directories. The stable filesystem lock covers
+download, replacement and native launch/rollback; a successful installation
+keeps it until the old engine exits. Old-bundle cleanup owns a unique backup,
+so a later installer cannot lose its rollback copy.
+
 Both graphical shells load the **same** `http://127.0.0.1` origin, so there
 is exactly one implementation of uploads, downloads and the live event stream.
 Traffic lights follow the window (`?shell=desktop` or the native bridge), not

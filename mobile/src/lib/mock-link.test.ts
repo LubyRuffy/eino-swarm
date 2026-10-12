@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { MockHost, MockLink, mockTickMs, resetMockHost, wantsMock } from "./mock-link"
 import {
   OpEvent,
+  OpFollowupSteer,
   OpList,
   OpLog,
   OpClients,
@@ -10,6 +11,7 @@ import {
   OpReady,
   OpSend,
   OpStart,
+  OpStop,
   OpWatch,
   type RemoteResponse,
 } from "./rpc"
@@ -24,6 +26,78 @@ function host() {
 }
 
 describe("the walkthrough host", () => {
+  it("starts the selected waiting message after Stop without consuming its sibling", async () => {
+    const prior = location.href
+    history.replaceState(null, "", "/?mock=1&tick=400&queue=1")
+    vi.useFakeTimers()
+    const h = new MockHost(400)
+    const link = new MockLink(h)
+    try {
+      const frames: RemoteResponse[] = []
+      link.onPush = (frame) => frames.push(frame)
+      const ready = await link.rpc({ op: OpWatch, thread_id: "t-live" })
+      await link.rpc({ op: OpStop, thread_id: "t-live" })
+      const stopped = await link.rpc({ op: OpOpen, thread_id: "t-live" })
+      expect(stopped.detail?.running).toBeUndefined()
+      expect(h.find("t-live")?.followups?.map((row) => row.id)).toEqual(["first", "second"])
+
+      const accepted = await link.rpc({ op: OpFollowupSteer, thread_id: "t-live", followup_id: "first" })
+      expect(accepted.ok).toBe(true)
+      expect(accepted.followups?.map((row) => row.id)).toEqual(["second"])
+      await vi.advanceTimersByTimeAsync(0)
+      const started = frames.find((frame) => frame.event?.kind === "user_message")
+      expect(started?.event?.text).toBe("first waiting message")
+      expect(started?.event?.seq).toBeGreaterThan(ready.seq!)
+      expect(started?.status?.running).toBe(true)
+      expect(frames.some((frame) => frame.event?.kind === "steer")).toBe(false)
+      expect(started?.status?.followups?.map((row) => row.id)).toEqual(["second"])
+
+      expect(frames.filter((frame) => frame.event?.kind === "user_message")).toHaveLength(1)
+      await link.rpc({ op: OpStop, thread_id: "t-live" })
+      expect(h.find("t-live")?.running).toBe(false)
+      expect(h.find("t-live")?.followups?.map((row) => row.id)).toEqual(["second"])
+    } finally { link.close(); h.stop(); history.replaceState(null, "", prior) }
+  })
+
+  it("injects a waiting message into a live turn without starting another turn", async () => {
+    const prior = location.href
+    history.replaceState(null, "", "/?mock=1&tick=400&queue=1")
+    vi.useFakeTimers()
+    const h = new MockHost(400)
+    const link = new MockLink(h)
+    try {
+      const frames: RemoteResponse[] = []
+      link.onPush = (frame) => frames.push(frame)
+      await link.rpc({ op: OpWatch, thread_id: "t-live" })
+      const accepted = await link.rpc({ op: OpFollowupSteer, thread_id: "t-live", followup_id: "first" })
+      expect(accepted.ok).toBe(true)
+      expect(accepted.followups?.map((row) => row.id)).toEqual(["second"])
+      await vi.runAllTimersAsync()
+      expect(frames).toHaveLength(1)
+      expect(frames[0].event).toMatchObject({ kind: "steer", text: "first waiting message" })
+      expect(frames[0].status?.running).toBe(true)
+    } finally { link.close(); h.stop(); history.replaceState(null, "", prior) }
+  })
+
+  it("rejects a missing waiting message without changing the turn or queue", async () => {
+    const prior = location.href
+    history.replaceState(null, "", "/?mock=1&tick=400&queue=1")
+    const h = new MockHost(400)
+    const link = new MockLink(h)
+    try {
+      const frames: RemoteResponse[] = []
+      link.onPush = (frame) => frames.push(frame)
+      await link.rpc({ op: OpWatch, thread_id: "t-live" })
+      await link.rpc({ op: OpStop, thread_id: "t-live" })
+      const rejected = await link.rpc({ op: OpFollowupSteer, thread_id: "t-live", followup_id: "gone" })
+      expect(rejected.ok).toBe(false)
+      expect(rejected.error).toBe("no such thread")
+      expect(frames).toHaveLength(0)
+      expect(h.find("t-live")?.running).toBe(false)
+      expect(h.find("t-live")?.followups?.map((row) => row.id)).toEqual(["first", "second"])
+    } finally { link.close(); h.stop(); history.replaceState(null, "", prior) }
+  })
+
   it("replays model response decoding retries and a terminal error without inventing tools", async () => {
     const prior = location.href
     history.replaceState(null, "", "/?mock=1&tick=0&history=model-response-error")

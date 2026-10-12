@@ -48,6 +48,8 @@ func (s *Service) Apply(ctx context.Context, version string, desktopPIDs []int) 
 		// version still advertises the same offer while the new app starts.
 		if err != nil {
 			s.mu.Lock()
+			s.install.Release()
+			s.install = nil
 			s.applying = false
 			s.mu.Unlock()
 		}
@@ -67,6 +69,13 @@ func (s *Service) Apply(ctx context.Context, version string, desktopPIDs []int) 
 	if err != nil {
 		return err
 	}
+	app, hold, err := lockBundle(app)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	s.install = hold
+	s.mu.Unlock()
 	dir, err := os.MkdirTemp("", "zwai-update-*")
 	if err != nil {
 		return err
@@ -151,13 +160,27 @@ func (s *Service) signal(pids []int) {
 }
 
 func (s *Service) retirePrevious(app string) {
+	s.schedulePreviousCleanup(app, os.Rename, os.WriteFile)
+}
+
+func (s *Service) schedulePreviousCleanup(app string, rename func(string, string) error, write func(string, []byte, os.FileMode) error) {
 	previous := app + ".previous"
 	if _, err := os.Stat(previous); err != nil {
 		return
 	}
-	script := fmt.Sprintf("#!/bin/sh\nwhile kill -0 %d 2>/dev/null; do sleep 0.2; done\nrm -rf %q\n", os.Getpid(), previous)
-	path := filepath.Join(os.TempDir(), fmt.Sprintf("zwai-update-cleanup-%d.sh", os.Getpid()))
-	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+	// The next engine may start another update after this engine exits. Its
+	// backup must never be the target of this delayed cleanup.
+	retired, err := os.MkdirTemp(filepath.Dir(app), "."+filepath.Base(app)+".previous-")
+	if err != nil {
+		return
+	}
+	if err := rename(previous, filepath.Join(retired, "zwai.app")); err != nil {
+		_ = os.Remove(retired)
+		return
+	}
+	script := fmt.Sprintf("#!/bin/sh\nwhile kill -0 %d 2>/dev/null; do sleep 0.2; done\nrm -rf %s\n", os.Getpid(), shellQuote(retired))
+	path := filepath.Join(retired, "cleanup.sh")
+	if err := write(path, []byte(script), 0o700); err != nil {
 		return
 	}
 	spawn := s.Spawn
@@ -167,6 +190,10 @@ func (s *Service) retirePrevious(app string) {
 	if err := spawn(path); err != nil {
 		_ = os.Remove(path)
 	}
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func spawnDetached(script string) error {

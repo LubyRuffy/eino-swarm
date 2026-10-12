@@ -13,6 +13,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`, `C-003`, `C-006`: the offline phone fixture now starts an idle queued Steer as a new turn after Stop, matching the host. Regression evidence covers real Pairlink, storage failures and packaged-phone controls without changing the paired client's production request behavior (Issue #77).
+
+- `F-190`, `C-024`: updater installation exclusion now belongs to the app bundle across engines and processes, including different data directories. A competing install cannot overwrite a pending rollback backup; delayed cleanup only owns that installation's old bundle (Issue #77).
+
 - `F-130`, `C-002`: Steer on a queued row starts that text as the next turn after Stop. A live turn still injects at the next model boundary. Stop still does not flush the rest of the queue by itself.
 
 - `F-220`, `F-222`, `F-230`, `C-015`: iOS now returns one visible layer after a completed left-edge swipe to the right, including worker → Agents → conversation → inbox and model-picker dismissal. Root pages remain open; short, vertical and non-edge swipes do not navigate (Issue #75).
@@ -40,6 +44,10 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-130`, `C-021`: late system/peer notices are excluded from human follow-up turns; only user messages can become late human steering.
 
 - `F-130`, `C-019`: repeated invalid spawn calls from one model reply now produce counted refusals instead of flooding tool history; valid and corrected calls continue, and refused calls never claim worker creation (Issue #64).
+
+### Security
+
+- `F-190`, `C-024`: delayed updater cleanup treats installer paths as literal shell arguments, including quotes, dollar command substitution and backticks. Bundle symlink aliases share the actual target's installation lock (Issue #77).
 
 ### Added
 

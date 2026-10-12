@@ -496,6 +496,51 @@ final class BindFlowTests: XCTestCase {
     add(after)
   }
 
+  func testQueueSteerAfterStopStartsNewTurn() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 10))
+    back.tap()
+    let live = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Trim the layout pass'")).firstMatch
+    XCTAssertTrue(live.waitForExistence(timeout: 5))
+    live.tap()
+    let stops = app.buttons.matching(NSPredicate(format: "label == 'Stop'"))
+    XCTAssertTrue(stops.firstMatch.waitForExistence(timeout: 5))
+    let stop = try XCTUnwrap(stops.allElementsBoundByIndex.max { $0.frame.midY < $1.frame.midY })
+    XCTAssertGreaterThan(stop.frame.minY, app.frame.midY)
+    XCTAssertTrue(stop.isHittable)
+    stop.tap()
+    XCTAssertTrue(stops.firstMatch.waitForNonExistence(timeout: 8))
+    let send = app.buttons["Send"]
+    XCTAssertTrue(send.waitForExistence(timeout: 5))
+    XCTAssertFalse(send.isEnabled)
+    let steers = app.buttons.matching(NSPredicate(format: "label == 'Steer'"))
+    XCTAssertEqual(steers.count, 2, "Stop must leave both waiting rows, without a composer Steer")
+    XCTAssertTrue(app.staticTexts["first waiting message"].exists)
+    XCTAssertTrue(app.staticTexts["second waiting message"].exists)
+    recordAgentPage(app, name: "queued-steer-after-stop-idle")
+
+    XCTAssertTrue(steers.firstMatch.isHittable)
+    steers.firstMatch.tap()
+    XCTAssertTrue(stops.firstMatch.waitForExistence(timeout: 5), "the queued click must start a new turn")
+    XCTAssertTrue(app.staticTexts["first waiting message"].waitForExistence(timeout: 5), "the selected text must be a new main user message")
+    XCTAssertTrue(app.staticTexts["second waiting message"].exists, "the other row must remain queued")
+    XCTAssertEqual(steers.allElementsBoundByIndex.filter { $0.isEnabled }.count, 1,
+                   "only the remaining queue row is enabled; the empty composer Steer is disabled")
+    recordAgentPage(app, name: "queued-steer-after-stop-running")
+
+    let restartedStop = try XCTUnwrap(stops.allElementsBoundByIndex.max { $0.frame.midY < $1.frame.midY })
+    XCTAssertTrue(restartedStop.isHittable)
+    restartedStop.tap()
+    XCTAssertTrue(stops.firstMatch.waitForNonExistence(timeout: 8))
+    XCTAssertTrue(send.exists)
+    XCTAssertFalse(send.isEnabled)
+    XCTAssertEqual(steers.count, 1, "stopping again keeps the remaining row waiting")
+    XCTAssertTrue(app.staticTexts["second waiting message"].exists)
+    recordAgentPage(app, name: "queued-steer-after-stop-stopped-again")
+  }
+
   func testComposerSubmissionAfterTyping() throws {
     let app = XCUIApplication()
     app.launch()

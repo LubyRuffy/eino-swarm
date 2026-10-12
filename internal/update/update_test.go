@@ -205,7 +205,11 @@ func TestApplySwapsTheRunningApp(t *testing.T) {
 	if string(got) != "new" {
 		t.Fatalf("binary %q", got)
 	}
-	if opened != app {
+	wantApp, err := filepath.EvalSymlinks(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened != wantApp {
 		t.Fatalf("opened %s", opened)
 	}
 	if len(signaled) != 1 || signaled[0] != 42 {
@@ -438,11 +442,6 @@ func TestApplyStopsAtTheFirstFailure(t *testing.T) {
 		t.Fatal("linux has no desktop package")
 	}
 	root := t.TempDir()
-	parent := filepath.Join(root, "not-a-dir")
-	if err := os.WriteFile(parent, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	exe := filepath.Join(parent, "zwai.app", "Contents", "MacOS", "zwai")
 	svc := &Service{Current: "1.2.3", OS: "darwin", Arch: "arm64", Exe: func() (string, error) {
 		return "", os.ErrNotExist
 	}}
@@ -452,7 +451,8 @@ func TestApplyStopsAtTheFirstFailure(t *testing.T) {
 	if err := svc.Apply(context.Background(), "1.2.4", nil); err == nil {
 		t.Fatal("missing executable")
 	}
-	svc.Exe = func() (string, error) { return exe, nil }
+	live := mustApp(t, "old")
+	svc.Exe = func() (string, error) { return filepath.Join(live, "Contents", "MacOS", "zwai"), nil }
 	svc.Fetch = func(_ context.Context, rawURL string) (*http.Response, error) {
 		if strings.Contains(rawURL, "releases/latest") {
 			return jsonResponse(releaseJSON("1.2.4", false, false)), nil
@@ -486,11 +486,12 @@ func TestApplyStopsAtTheFirstFailure(t *testing.T) {
 		}
 		return &http.Response{StatusCode: 200, Status: "200 OK", Body: ioNopCloserBytes(bytes.NewReader(good.Bytes())), Header: make(http.Header)}, nil
 	}
-	svc.Exe = func() (string, error) { return exe, nil }
+	svc.Exe = func() (string, error) {
+		return filepath.Join(t.TempDir(), "missing.app", "Contents", "MacOS", "zwai"), nil
+	}
 	if err := svc.Apply(context.Background(), "1.2.4", nil); err == nil {
 		t.Fatal("swap")
 	}
-	live := mustApp(t, "old")
 	svc.Exe = func() (string, error) {
 		return filepath.Join(live, "Contents", "MacOS", "zwai"), nil
 	}

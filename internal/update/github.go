@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/LubyRuffy/eino-swarm/internal/lease"
 )
 
 const checkTTL = 6 * time.Hour
@@ -57,6 +59,8 @@ type Service struct {
 	mu       sync.Mutex
 	cache    *cached
 	applying bool
+	// Keep the descriptor reachable until this engine exits after a restart.
+	install *lease.Hold
 }
 
 type cached struct {

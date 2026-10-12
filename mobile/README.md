@@ -95,7 +95,10 @@ zoomed and the top/right controls clipped. User pinch zoom remains available.
 The waiting-message tray offers **Insert** on each row. **Interrupt and insert**
 promotes the oldest waiting message into the current turn, then interrupts
 the current manager step so it can read that message sooner; later messages
-remain queued.
+remain queued. Stop also leaves waiting rows in place. The selected row's
+Steer action starts it as a new turn when the PC is idle; the other rows stay
+queued while that turn runs. A later clean finish continues the FIFO, whereas
+a second Stop leaves the remaining rows waiting.
 Select text in the PC conversation and tap **Add to chat** near the selection,
 below the system Copy/Select menu when there is room, to attach it to
 the next message. The quote appears above the box and can be read, edited, or removed before

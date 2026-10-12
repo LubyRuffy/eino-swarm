@@ -189,6 +189,7 @@ func recoveryService(t *testing.T) (*Service, string) {
 		Open:  func(string) error { return nil },
 		Spawn: func(path string) error { return os.Remove(path) },
 	}
+	t.Cleanup(func() { svc.install.Release() })
 	svc.Fetch = func(_ context.Context, rawURL string) (*http.Response, error) {
 		if strings.Contains(rawURL, "releases/latest") {
 			return jsonResponse(releaseJSON("1.2.4", false, false)), nil
