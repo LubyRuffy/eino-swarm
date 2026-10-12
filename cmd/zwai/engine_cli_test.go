@@ -8,10 +8,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -21,6 +23,27 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/lease"
 	"github.com/LubyRuffy/eino-swarm/internal/tui"
 )
+
+func TestDesktopURLCarriesTheWindowPIDForUpdateRestart(t *testing.T) {
+	for _, surface := range []string{"desktop", "web"} {
+		raw := shellURL("http://127.0.0.1:1/?existing=value", surface)
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		query := parsed.Query()
+		if query.Get("existing") != "value" || query.Get("shell") != surface {
+			t.Fatalf("shell URL lost its context: %s", raw)
+		}
+		wantPID := ""
+		if surface == "desktop" {
+			wantPID = strconv.Itoa(os.Getpid())
+		}
+		if query.Get("pid") != wantPID {
+			t.Fatalf("%s window PID = %q, want %q", surface, query.Get("pid"), wantPID)
+		}
+	}
+}
 
 // spawnEngine re-execs this binary. Under `go test` that binary is the test
 // harness, which would run the suite again. An "engine" argument means the

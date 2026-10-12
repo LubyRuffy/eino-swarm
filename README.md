@@ -361,6 +361,16 @@ also ranks by meaning.
 On macOS desktop, a LAN endpoint needs Local Network permission (the
 window is not Terminal; `curl` working does not mean zwai can dial).
 
+Released macOS apps check for updates at launch and every six hours while open.
+Returning to the window or reconnecting the network checks again when due;
+background failures stay quiet. A newer Mac installer shows **Update / 升级**
+and **Not now / 暂不**. Update downloads and replaces this `zwai.app`, then
+reopens it with the same data directory. **Menu → Check for updates** checks
+immediately and shows errors with **Retry / 重试**. A launch-command failure
+restores the previous app and leaves its window open. Installation requires
+confirmation; Windows/Linux and unversioned development builds have no update
+installer in this channel.
+
 ```bash
 export OPENAI_BASE_URL=https://your-endpoint/v1
 export OPENAI_API_KEY=sk-...

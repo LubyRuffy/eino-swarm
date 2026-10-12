@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +17,22 @@ type updateStub struct {
 	result update.Result
 	err    error
 	pids   []int
+}
+
+func TestPresenceRejectsPIDValuesThatCouldBecomeProcessGroups(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	s := &Server{presence: newPresence()}
+	r := gin.New()
+	r.POST("/api/presence", s.postPresence)
+	for _, pid := range []string{"-1", "2147483648", "4294967295"} {
+		req := httptest.NewRequest(http.MethodPost, "/api/presence", strings.NewReader(`{"surface":"desktop","pid":`+pid+`}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("unsafe native PID %s was registered: %d %s", pid, rec.Code, rec.Body.String())
+		}
+	}
 }
 
 func (s *updateStub) Check(context.Context, bool) update.Result { return s.result }
@@ -31,19 +49,30 @@ func TestUpdateCheckAndInstall(t *testing.T) {
 		Offer:  &update.Offer{Version: "1.2.4"},
 	}}
 	s := &Server{presence: newPresence(), updater: stub}
-	id, err := s.presence.reserve("desktop", 4242)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, ok := s.presence.attach(id); !ok {
-		t.Fatal("attach")
-	}
 	r := gin.New()
 	r.GET("/api/update", s.getUpdate)
 	r.POST("/api/update", s.postUpdate)
-
-	req := httptest.NewRequest(http.MethodGet, "/api/update?fresh=1", nil)
+	r.POST("/api/presence", s.postPresence)
+	// Use the same body the native window sends; a manually seeded slot hid
+	// a missing PID in the real launcher-to-presence chain.
+	req := httptest.NewRequest(http.MethodPost, "/api/presence", strings.NewReader(`{"surface":"desktop","pid":4242}`))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	var reserved struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &reserved); err != nil || rec.Code != http.StatusOK {
+		t.Fatalf("presence %d %s: %v", rec.Code, rec.Body.String(), err)
+	}
+	if _, release, ok := s.presence.attach(reserved.ID); !ok {
+		t.Fatal("attach")
+	} else {
+		defer release()
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/update?fresh=1", nil)
+	rec = httptest.NewRecorder()
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"available"`) {
 		t.Fatalf("check %d %s", rec.Code, rec.Body.String())
@@ -66,6 +95,14 @@ func TestUpdateCheckAndInstall(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("failed apply %d", rec.Code)
+	}
+	stub.err = fmt.Errorf("install: %w", update.ErrBusy)
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequest(http.MethodPost, "/api/update", strings.NewReader(`{"version":"1.2.4"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(rec, req)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), `"code":"update_busy"`) {
+		t.Fatalf("concurrent install %d %s", rec.Code, rec.Body.String())
 	}
 }
 

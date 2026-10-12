@@ -14,6 +14,14 @@ export function desktopShell(): boolean {
   return desktopShellFrom(window.location.search, w._wails != null)
 }
 
+/** The native launcher publishes its window PID so an update can close that
+ *  window after starting the replacement. A browser has no native PID. */
+export function desktopProcessID(search: string): number | undefined {
+  const raw = new URLSearchParams(search).get("pid") ?? ""
+  const pid = Number(raw)
+  return /^\d+$/.test(raw) && Number.isInteger(pid) && pid > 0 && pid <= 2147483647 ? pid : undefined
+}
+
 /** A loopback engine advertises open_url because the desktop window has no
  *  other way out of the webview. A browser tab on that same process opens
  *  a new window itself; calling the endpoint would spawn a browser on the host. */

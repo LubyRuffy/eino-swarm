@@ -198,3 +198,13 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 边界条件：quiet 仅撤销对应 turn 的提示；回退重算可见完成与已读水位，但保留持久终态编号上限，重启后不能复用旧终态身份。归档不在提示列表，恢复仍按保存的水位判断；完成后再进入新轮次时运行／问答／等待状态优先，旧未读结果仍可查看。
 - 证据：实现 `internal/store/completion.go`, `internal/server/completion.go`, `internal/remote/protocol.go`, `frontend/src/components/app/completion-reader.tsx`, `mobile/src/lib/completion-read.ts`；测试 `internal/store/completion_test.go`, `frontend/src/components/app/completion-reader.test.tsx`, `frontend/e2e/unread-completion.spec.ts`, `mobile/e2e/unread-completion.spec.ts`。
 - 变更规则：同步 HTTP/RPC、存储模型、客户端读取与回退／重启／竞态测试、功能及 CHANGELOG；来源：Issue #76。
+
+## C-024 Desktop update lifecycle
+
+- 状态：active；类型：lifecycle / consistency / compatibility；作用范围：桌面更新提示、presence、更新服务和原生启动；关联功能：`F-190`。
+- 契约内容：桌面启动和持续运行每六小时自动检查；恢复可见、焦点或联网时仅在检查到期或上次检查失败后检查。自动失败保持安静，不清除已显示的可升级版本；已显示的手动错误在后续自动检查得到不支持结果时收起。菜单检查绕过缓存，明确显示当前、可用、不支持或具体错误。安装必须经用户确认；安装和重启期间不得自动或手动检查覆盖安装状态，较旧响应不得覆盖较新操作。
+- 原生窗口将真实 PID 经启动 URL 和 presence 登记；HTTP 拒绝负数或超过 2147483647 的 PID，信号发送端再次过滤越界值，避免整数截断成为进程组信号。确认安装后，更新服务仅允许一个安装，成功后保持锁直到旧引擎退出，重复请求返回 `update.ErrBusy`，HTTP `409`、`code: update_busy`。失败释放锁，允许用户重试。
+- 安装保留原应用的绝对数据目录和离线模式；以新实例启动替换后的 `.app`，启动命令成功后才通知旧窗口退出。启动命令失败恢复旧应用文件，不通知旧窗口退出；恢复也失败时保留两类错误和上下文。`restarting` 只表示原生启动请求已接受，不能作为新窗口或新引擎已就绪的证明。
+- 允许行为：暂不显示某个版本、手动强制检查、失败后显式重试；禁止行为：未经确认安装、两个窗口并行替换同一应用、旧检查覆盖安装状态、更新后改用另一数据目录；失败语义：自动检查静默，手动检查和安装错误可观察并可重试；不变量：同一实例数据目录不变，原生版本发现与下载仍遵守 `C-010`；边界条件：应用长开、离线、恢复前台、多窗口、启动拒绝、不支持的平台和未打数字版本的构建。
+- 证据：实现 `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/src/lib/shell.ts`, `frontend/src/lib/api.ts`, `cmd/zwai/serve.go`, `internal/app/app.go`, `internal/update/apply.go`, `internal/server/update.go`, `internal/server/presence.go`；测试 `frontend/src/lib/desktop-update.test.ts`, `frontend/src/components/app/desktop-update.test.tsx`, `frontend/src/lib/desktop-presence.test.ts`, `frontend/e2e/desktop-update.spec.ts`, `cmd/zwai/engine_cli_test.go`, `internal/app/update_test.go`, `internal/update/apply_recovery_test.go`, `internal/server/update_test.go`。
+- 变更规则：同步 README、API、FEATURES、TESTING 和 CHANGELOG，并回归安装锁、启动失败恢复和更新提示竞态；来源：用户 2026-10-12 桌面自动更新需求与当前可达更新链路。

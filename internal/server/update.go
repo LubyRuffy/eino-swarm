@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/LubyRuffy/eino-swarm/internal/update"
@@ -36,6 +37,10 @@ func (s *Server) postUpdate(c *gin.Context) {
 	}
 	pids := s.presence.desktopPIDs()
 	if err := s.updater.Apply(c.Request.Context(), req.Version, pids); err != nil {
+		if errors.Is(err, update.ErrBusy) {
+			s.fail(c, err)
+			return
+		}
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		return
 	}

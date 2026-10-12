@@ -130,7 +130,7 @@ func New(opts Options) (*App, error) {
 		Assets:  assets,
 		Reveal:  revealFor(opts.Mode, addr),
 		OpenURL: openURLFor(opts.Mode, addr),
-		Updater: &update.Service{Current: opts.Version},
+		Updater: desktopUpdater(cfg, opts),
 	})
 	if err != nil {
 		idx.Stop()
@@ -148,6 +148,10 @@ func New(opts Options) (*App, error) {
 		Config: cfg, Store: st, Pool: pool, Engine: eng, Server: srv,
 		Remote: host, Search: idx, Logger: logger, addr: addr,
 	}, nil
+}
+
+func desktopUpdater(cfg *config.Config, opts Options) *update.Service {
+	return &update.Service{Current: opts.Version, DataDir: cfg.DataDir(), Mock: opts.Mock}
 }
 
 func newLogger(cfg *config.Config) *slog.Logger {

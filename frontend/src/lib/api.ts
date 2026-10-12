@@ -1,3 +1,5 @@
+import { desktopProcessID } from "./shell"
+
 import type {
   Attachment,
   FileEntry,
@@ -269,11 +271,13 @@ export const api = {
       body: JSON.stringify({ version }),
     }),
 
-  presence: (surface: "desktop" | "web" | "tui") =>
-    request<{ id: string }>("/api/presence", {
+  presence: (surface: "desktop" | "web" | "tui") => {
+    const pid = surface === "desktop" ? desktopProcessID(window.location.search) : undefined
+    return request<{ id: string }>("/api/presence", {
       method: "POST",
-      body: JSON.stringify({ surface }),
-    }),
+      body: JSON.stringify({ surface, ...(pid ? { pid } : {}) }),
+    })
+  },
 
   /** Keeps the shell counted until the page closes. EventSource reconnects
    *  the same id, which the engine treats as one client. */

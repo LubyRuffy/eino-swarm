@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"math"
 	"net/http"
 	"sort"
 	"sync"
@@ -161,6 +162,10 @@ func (s *Server) postPresence(c *gin.Context) {
 	}
 	if !presenceSurfaces[req.Surface] {
 		badRequest(c, "unknown presence surface")
+		return
+	}
+	if req.PID < 0 || req.PID > math.MaxInt32 {
+		badRequest(c, "presence PID must fit a positive native process ID")
 		return
 	}
 	id, err := s.presence.reserve(req.Surface, req.PID)

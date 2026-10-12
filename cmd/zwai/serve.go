@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -68,6 +69,9 @@ func shellURL(base, shell string) string {
 	}
 	q := u.Query()
 	q.Set("shell", shell)
+	if shell == "desktop" {
+		q.Set("pid", strconv.Itoa(os.Getpid()))
+	}
 	u.RawQuery = q.Encode()
 	return u.String()
 }

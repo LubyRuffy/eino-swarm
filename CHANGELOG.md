@@ -23,6 +23,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-130`, `C-022`: the single PC work disclosure uses its own stable contract ID; `C-021` remains the independent task message contract. The documentation gate catches duplicate identities (Issue #73).
 
+- `F-190`, `C-024`: desktop apps keep checking for updates while open and after returning online or to a due window. Background failures stay quiet; manual failures can be retried. Update checks cannot overwrite installation state. A later automatic unsupported result clears a stale manual error without hiding an offered version. Native windows register their PID; installation starts a new instance with the same data directory/offline mode, rejects parallel installs, and restores the previous app if the launch command fails.
+
 - `F-220`, `F-222`, `C-006`: live phone answer/thought blocks keep distinct identities across model calls. Loading earlier history no longer leaves manager paragraphs above the worker roster; streaming updates, worker details and back navigation retain their behavior (Issue #70).
 
 - `F-130`, `F-160`, `C-012`: model API failures preserve their HTTP status and concrete rejection or response-decoding cause in desktop and phone errors. An empty HTTP 502 response is no longer misreported as invalid tool-call JSON. Public causes exclude raw response bodies, graph paths and authentication values; original calls and bounded retries remain in the same turn's Trace.

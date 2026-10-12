@@ -42,6 +42,9 @@ type Checker interface {
 // Service talks to GitHub and installs a downloaded zwai.app over this one.
 type Service struct {
 	Current string
+	// DataDir and Mock preserve the engine instance when reopening the app.
+	DataDir string
+	Mock    bool
 	Arch    string
 	OS      string
 	Fetch   func(ctx context.Context, rawURL string) (*http.Response, error)
@@ -51,8 +54,9 @@ type Service struct {
 	Now     func() time.Time
 	Spawn   func(script string) error
 
-	mu    sync.Mutex
-	cache *cached
+	mu       sync.Mutex
+	cache    *cached
+	applying bool
 }
 
 type cached struct {

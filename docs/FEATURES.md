@@ -95,7 +95,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-190 Desktop updates
 
-- 目的：在 Mac 桌面应用里看到版本，并从 GitHub Release 升级到更新的 `zwai.app`；使用者：Mac 桌面用户；入口：侧边栏版本、菜单 Check for updates；输入：本仓库最近一个含同架构 `zwai-<version>-darwin-<arch>.zip` 的 Release；输出：替换当前应用并重新打开，解压后 Finder 显示与 Dock 一致的 ZWAI 图标；前置条件：运行的是带数字版本号的 `zwai.app`；失败表现：菜单检查显示错误，自动检查保持安静；关联契约：`C-010`；实现证据：`internal/update`, `frontend/src/components/app/desktop-update.tsx`, `internal/desktop/pack`, `internal/desktop/bundle_darwin.go`。
+- 目的：在 Mac 桌面应用里自动发现并确认安装新版本；使用者：Mac 桌面用户；入口：启动、每六小时、到期后的恢复前台／联网检查，以及菜单 Check for updates；输入：本仓库最近一个含同架构 `zwai-<version>-darwin-<arch>.zip` 的 Release；输出：确认后替换当前应用，以同一数据目录和离线模式打开新实例，关闭已登记的旧窗口，解压后 Finder 显示与 Dock 一致的 ZWAI 图标；前置条件：运行的是带数字版本号的 `zwai.app`；失败表现：自动检查保持安静，手动检查与安装显示可重试错误，启动命令失败恢复旧应用；关联契约：`C-010`, `C-024`；实现证据：`internal/update`, `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/e2e/desktop-update.spec.ts`, `internal/desktop/pack`, `internal/desktop/bundle_darwin.go`。
 
 ### F-210 Pair a phone with a PC
 

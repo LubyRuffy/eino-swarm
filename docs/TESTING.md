@@ -18,6 +18,24 @@ cd frontend && npm test -- src/components/app/transcript-fold.test.tsx src/compo
 cd frontend && npm run e2e -- e2e/work-fold.spec.ts
 ```
 
+## Desktop update lifecycle (F-190 / C-024)
+
+The update controller tests use fake time and delayed responses. They prove that
+six hours is measured after a successful check, foreground/network events are
+throttled, background failures stay quiet, an older response cannot restore an
+install button while installation is running, and a later automatic unsupported
+result clears a stale manual error without hiding an offered version. The UI
+E2E uses an offline update feed; it does not install a public Release. ZIP
+replacement, launch arguments and old-app recovery run against a local launcher
+stub in `internal/update/apply_recovery_test.go`. That stub does not open a
+signed Mac window. Release acceptance still follows [RELEASE.md](RELEASE.md).
+
+```bash
+go test -race -count=1 -cover -timeout 20m ./internal/update ./internal/app ./internal/server ./cmd/zwai
+cd frontend && npm test -- src/lib/desktop-update.test.ts src/components/app/desktop-update.test.tsx src/lib/desktop-presence.test.ts
+cd frontend && npm run e2e -- e2e/desktop-update.spec.ts
+```
+
 `make test-mobile` runs the phone TypeScript check before Vitest. A successful
 transpile-only unit suite does not prove the production bundle can compile.
 The mobile production build and UI E2E remain separate required evidence.
@@ -211,7 +229,7 @@ refuses a store upload without a keystore, skips JAVA_HOME 17, and copies
 the APK into `bin/`. `internal/update` is why a Mac desktop install only
 accepts this repo's `zwai-<version>-darwin-<arch>.zip`, skips drafts, searches
 past a phone-only latest Release for the newest Mac package, and
-swaps `zwai.app` before reopening. `internal/release` is why `make release` refuses a dirty version, uploads
+swaps `zwai.app` before reopening. `internal/update/apply_recovery_test.go` proves install exclusion, retry after failure, old-file recovery after launch rejection, and native launch arguments. `internal/app/update_test.go` verifies the absolute data directory is retained; `cmd/zwai/engine_cli_test.go` and `frontend/src/lib/desktop-presence.test.ts` verify the window PID reaches presence. `frontend/src/lib/desktop-update.test.ts` and `frontend/src/components/app/desktop-update.test.tsx` cover long-running checks, stale responses, quiet background failures and manual recovery. `frontend/e2e/desktop-update.spec.ts` drives those interactions with an offline update feed; its clock and API interception prove the UI flow, not an installed native upgrade. `internal/release` is why `make release` refuses a dirty version, uploads
 only the required platform assets, and fails when a required asset is absent
 after upload. `internal/desktop/pack` refuses a
 non-release version so `make desktop-release` cannot stamp a dirty describe.

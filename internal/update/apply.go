@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -20,6 +21,9 @@ const (
 )
 
 var (
+	// ErrBusy means an update is installing or its new app is restarting.
+	ErrBusy = errors.New("a desktop update is already in progress")
+
 	errNotInstalled = errors.New("desktop updates replace an installed zwai.app")
 	errNoAsset      = errors.New("this release has no macOS build")
 	errBadArchive   = errors.New("the downloaded update is not a zwai.app")
@@ -27,11 +31,27 @@ var (
 
 // Apply downloads the offered version and swaps it over the running app.
 // desktopPIDs are window processes to close after the new app is opened.
-func (s *Service) Apply(ctx context.Context, version string, desktopPIDs []int) error {
+func (s *Service) Apply(ctx context.Context, version string, desktopPIDs []int) (err error) {
 	want := Canonical(version)
 	if want == "" {
 		return errors.New("missing version")
 	}
+	s.mu.Lock()
+	if s.applying {
+		s.mu.Unlock()
+		return ErrBusy
+	}
+	s.applying = true
+	s.mu.Unlock()
+	defer func() {
+		// Keep a successful install locked until the old engine exits: its
+		// version still advertises the same offer while the new app starts.
+		if err != nil {
+			s.mu.Lock()
+			s.applying = false
+			s.mu.Unlock()
+		}
+	}()
 	result := s.Check(ctx, true)
 	if result.Status != "available" || result.Offer == nil || result.Offer.Version != want {
 		if result.Message != "" {
@@ -64,7 +84,11 @@ func (s *Service) Apply(ctx context.Context, version string, desktopPIDs []int) 
 		return err
 	}
 	if err := s.open(app); err != nil {
-		return err
+		launchErr := fmt.Errorf("launch updated desktop: %w", err)
+		if restoreErr := restorePrevious(app); restoreErr != nil {
+			return errors.Join(launchErr, fmt.Errorf("restore previous desktop: %w", restoreErr))
+		}
+		return launchErr
 	}
 	s.signal(desktopPIDs)
 	s.retirePrevious(app)
@@ -82,7 +106,31 @@ func (s *Service) open(app string) error {
 	if s.Open != nil {
 		return s.Open(app)
 	}
-	return exec.Command("open", app).Start()
+	return exec.Command("open", s.launcherArgs(app)...).Run()
+}
+
+func (s *Service) launcherArgs(app string) []string {
+	args := []string{"-n", app, "--args", "desktop"}
+	if s.DataDir != "" {
+		args = append(args, "--data-dir", s.DataDir)
+	}
+	if s.Mock {
+		args = append(args, "--mock")
+	}
+	return args
+}
+
+func restorePrevious(app string) error {
+	incoming := app + ".incoming"
+	if err := os.Rename(app, incoming); err != nil {
+		return err
+	}
+	if err := os.Rename(app+".previous", app); err != nil {
+		// Keep the downloaded app reachable when the old bundle cannot be
+		// restored, and report both failures if the second rename also fails.
+		return errors.Join(err, os.Rename(incoming, app))
+	}
+	return os.RemoveAll(incoming)
 }
 
 func (s *Service) signal(pids []int) {
@@ -92,7 +140,9 @@ func (s *Service) signal(pids []int) {
 	}
 	seen := map[int]bool{}
 	for _, pid := range pids {
-		if pid <= 0 || pid == os.Getpid() || seen[pid] {
+		// Native PID arguments are signed 32-bit even on a 64-bit host.
+		// Truncating a larger JSON number can signal a whole process group.
+		if pid <= 0 || pid > math.MaxInt32 || pid == os.Getpid() || seen[pid] {
 			continue
 		}
 		seen[pid] = true

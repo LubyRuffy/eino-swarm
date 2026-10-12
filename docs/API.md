@@ -16,7 +16,7 @@ the URL in `engine.json` (a random loopback port unless `--addr` was set).
 |---|---|
 | `400` | malformed body, bad path, or a rejected value; `code: "workdir"` — a project's working directory is not an absolute path to an existing directory |
 | `404` | no such conversation / turn / file / project / skill / unread steer / schedule / schedule run |
-| `409` | `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable; `code: "exists"` copying a skill onto a name the destination already has; `code: "local"` or `"diverged"` pulling a skill would replace local edits |
+| `409` | `code: "update_busy"` a desktop update is installing or restarting; `code: "busy"` a turn is already running; `code: "idle"` nothing is waiting; `code: "no_steer"` Interrupt was asked with no unread steering; `code: "ask_mismatch"` that `ask_user` call is not the open questionnaire; `code: "nothing_to_compact"` compact had nothing to fold; `code: "conflict"` a stale memory write; `code: "skipped_busy"` Run now skipped because the target conversation is already running or a fire is already claimed; `code: "remote_offline"` phone pairing is off or the hub is unreachable; `code: "exists"` copying a skill onto a name the destination already has; `code: "local"` or `"diverged"` pulling a skill would replace local edits |
 | `429` | too many terminals are already open |
 | `501` | the shell cannot do this (`reveal` / `open` when this process is not a loopback engine or the desktop app) |
 
@@ -26,6 +26,10 @@ the URL in `engine.json` (a random loopback port unless `--addr` was set).
 
 The Mac desktop window reads this to decide whether to show an upgrade
 prompt. `?fresh=1` skips the six-hour memory cache (Check for updates).
+The desktop checks at launch and every six hours. Focus, becoming visible,
+and going online trigger a due check; repeated events within a successful
+check's six-hour window do not poll again. Background errors stay quiet;
+manual errors and unsupported systems are visible and can be retried.
 Other systems, and a build whose version is not `x.y.z`, do not call
 GitHub.
 
@@ -54,7 +58,13 @@ this machine's architecture.
 ```
 
 Downloads that asset, replaces the running `zwai.app`, opens the new app,
-and asks the desktop window to quit. `200` is `{ "status": "restarting" }`.
+and asks registered old desktop windows to quit. The launch command creates
+a new instance with the same absolute data directory and offline mode. If
+that command fails, the previous app is restored and old windows stay open.
+`200` is `{ "status": "restarting" }`: the launch request was accepted;
+it does not attest that the new window or engine is already ready.
+Parallel installs and repeated requests while restarting return `409` with
+`code: "update_busy"`; a failed install releases the lock for retry.
 `409` is `{ "error": "..." }` when there is nothing to install or the
 swap failed. `501` when this process has no updater. `400` when the body
 is not JSON.
@@ -139,7 +149,10 @@ uses that list, not a writer lock, to decide when it may exit.
 ```
 
 `surface` is `desktop`, `web`, or `tui`. Anything else is `400`. The
-response is `{ "id": "pc_…" }`. `pid` may be omitted.
+response is `{ "id": "pc_…" }`. `pid` may be omitted or zero; negative values and values above 2147483647 are `400`, so a native signal cannot become a process-group signal after integer conversion.
+The native desktop launcher includes its process ID in `?shell=desktop&pid=…`;
+the frontend sends that positive integer as `pid` so an accepted update can
+close the old windows. Web presence does not send a native PID.
 
 ### `GET /api/presence/:id`
 

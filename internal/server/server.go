@@ -261,6 +261,8 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, engine.ErrBusy):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "busy"})
+	case errors.Is(err, update.ErrBusy):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "update_busy"})
 	case errors.Is(err, engine.ErrSkippedBusy):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "skipped_busy"})
 	case errors.Is(err, engine.ErrIdle):
