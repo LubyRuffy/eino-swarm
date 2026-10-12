@@ -48,20 +48,24 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-006 Phone remote protocol
 
-- 状态：active；类型：compatibility / security；作用范围：pairlink、phone、PC remote；关联功能：`F-170`, `F-210`, `F-220`, `F-222`, `F-224`, `F-230`。
+- 状态：active；类型：compatibility / security；作用范围：pairlink、phone、PC remote；关联功能：`F-125`, `F-170`, `F-210`, `F-220`, `F-222`, `F-224`, `F-230`。
 - 契约内容：手机通过 pairlink 加密 RPC 与 PC 通信，不直接调用 PC 的 `/api`；已持久化事件的 kind 和正 seq 可在手机回放；断线重连不解除绑定。回答 `ask_user` 时客户端必须使用 PC 规范化后的 question ID（如 `test-window` → `test_window`），RPC 拒绝必须显示原因并保留草稿，接受后不得重复提交。子 Agent 的事件按 `agent_id` 与主 Agent 分开回放，`spawned` 启动指令正文不离开 PC；手机只显示协议允许并按 `event_chars` 裁剪的活动。当前页只有手机隐藏的子任务调用及孤立工具回执时，`log` 必须继续向前查找可显示历史，不能让用户逐页点击隐藏记录；当前轮次没有可显示消息时必须说明原因并保留「更早」入口。
 - 允许行为：relay/direct 路径切换及手机查看子 Agent 角色、状态和截断记录；手机页头计数仅包含运行中的子 Agent，列表按进行中／已结束分组，完成和失败记录仍可查看；禁止行为：把本地 PC API 或子 Agent 启动指令直接暴露给手机，或把子 Agent 回答混作主 Agent 回答；失败语义：连接错误与 host offline 可区分；不变量：一个 PC 对话跨端一致，同一 agent 的流式文本只更新自己的记录；边界条件：ticket 过期、掉线、历史翻页、子 Agent 续办和重连。
 - 证据：实现 `internal/remote/clip.go`, `internal/remote/log.go`, `internal/engine/ask.go`, `frontend/src/lib/transcript-ask.ts`, `mobile/src/lib/link.ts`, `mobile/src/lib/ask.ts`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/ask-card.tsx`, `mobile/src/components/thread-screen.tsx`；测试 `internal/remote/watch_test.go` 的 `TestSpawnedInstructionNeverLeavesTheHost`, `internal/remote/log_test.go` 的 `TestLogFindsEarlierAnswerPastHiddenSubagentBookkeeping`, `frontend/src/lib/transcript-ask.test.ts`, `mobile/src/lib/ask.test.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/src/components/ask-card.test.tsx`, `mobile/e2e/ask-answer.spec.ts`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、手机测试和数据模型；来源：`ARCHITECTURE.md`、GitHub Issue #30 的 A 方案确认、GitHub Issue #47 的混合状态截图、GitHub Issue #51 的提问提交失败、GitHub Issue #58 的长会话空白。
 
 - 不变量：序号为 0 的实时 delta 不可重放，也不能单独充当界面块身份。每个新实时块在当前对话内具有唯一身份，后续片段及完成消息保留它；历史分页或重连不会留下旧节点。子 Agent 列表仅显示分组和工作 Agent 卡片，不含主管正文或工作折叠。
 - 身份与切页回归证据：`mobile/src/lib/transcript.test.ts`、`mobile/src/lib/session.test.ts`、`mobile/src/components/agent-page.test.tsx`、`mobile/e2e/agent-roster.spec.ts`。
+- 完成未读列表按序列化后的实际字节预算装页，不得因累计结果超过 Pairlink 的 64 KiB 帧上限而无法加载。第一页返回 `attention_more` / `attention_cursor`，独立 More 使用 `group: "attention"`；边界行被读取或删除后游标仍须前进。单行或原有列表元数据本身超限时明确返回 `too_large`，不静默截断或反复发送同一页。证据：`internal/remote/attention.go`、`internal/remote/attention_test.go`；来源：Issue #76。
 
 ## C-007 Phone inbox pagination
 
-- 状态：active；类型：consistency；作用范围：phone inbox；关联功能：`F-220`。
+- 状态：active；类型：consistency；作用范围：phone inbox；关联功能：`F-125`, `F-220`。
 - 契约内容：定期 poll 是第一页增量更新，已用 More 加载的旧行保留；离开第一页的行不被重复塞回。
 - 允许行为：第一页内容更新；禁止行为：整表替换抹掉已翻页数据；失败语义：失败保留已显示列表；不变量：翻页成果不因 poll 消失；边界条件：同一行跨分组或状态变化。
-- 证据：实现 `mobile/src/lib/inbox-window.ts`, `mobile/src/app.tsx`；测试 `mobile/src/lib/inbox-window.test.ts`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步手机走测；来源：`AGENTS.md`。
+- 证据：实现 `mobile/src/lib/inbox-window.ts`, `mobile/src/lib/inbox-refresh.ts`, `mobile/src/app.tsx`；测试 `mobile/src/lib/inbox-window.test.ts`, `mobile/src/lib/inbox-refresh.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步手机走测；来源：`AGENTS.md`。
+- 完成未读页独立于普通分组和正在运行集合；More 仅合并完成未读页，不覆盖普通页、分组或 live。首页轮询保留已展开的完成未读尾页，空首页仍有续页时必须保留 More；已读 ACK 仅移除对应完成，不能清空未读列表或自动恢复该任务。
+- 已展开的完成集合刷新须读到原已加载窗口的最旧时间／ID 边界，再一次性对账；不能只重复首页而永久保留另一客户端已经读过的尾页。新增首页结果不缩短原窗口，刷新失败保留已有内容，刷新期间继续 More 的新增尾页及游标也保留。同一宿主不重叠刷新，旧宿主的迟到结果不能更新当前列表。排序须保留服务端时间的小数精度。
+- 当前宿主已确认读取的完成编号抑制同编号或更旧的迟到列表提示，较新完成仍须显示。刷新须比较请求开始时与当前所有已加载集合的完成身份；刷新期间经服务端回执确认的较新完成，即使已移出旧完成集合，也不能被旧列表删除或覆盖；切换宿主清空该客户端确认记录。不能从 quiet／cancel 的观察编号伪造服务端完成水位。
 
 ## C-008 Durable local data
 
@@ -184,3 +188,13 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 失败语义：非法参数、未知或归档目标、数据库失败返回工具错误；不变量：一条消息保留 `source_thread_id`、`source_turn_id` 和收件 timeline `seq`，不会成为 `user_message`/`steer` 或一个假 worker；边界条件：未读通知晚于结束时保留持久化消息，但不发起人类跟进。用户显式重写/删除对话历史仍遵循 `C-008` 的数据生命周期。
 - 证据：实现 `internal/engine/task_coordination.go`、`internal/engine/goal_session.go`、`internal/store/event_kind.go`、`internal/remote/clip.go`；测试 `internal/engine/task_coordination_test.go`、`internal/engine/task_coordination_flow_test.go`、`internal/store/event_kind_test.go`、`internal/remote/task_message_test.go`、`frontend/src/lib/task-message.test.ts`、`mobile/src/lib/task-message.test.ts`。
 - 变更规则：同步 API、DATA_MODEL、TESTING、桌面/手机事件回放与 CHANGELOG；来源：GitHub Issue #57 的通信协商选择，评论 6071858524。
+
+## C-023 Completion attention is durable until the result is viewed
+
+- 状态：active；类型：lifecycle / consistency / data；作用范围：store、HTTP、配对 RPC、桌面与手机；关联功能：`F-125`、`F-120`、`F-220`、`F-410`。
+- 契约内容：主任务成功或错误的终态事件与完成水位在广播前原子保存；子 Agent 终态、用户取消和安静计划结果不新增提示。旧数据不回填为未读。桌面收起项目在标题右侧汇总，手机完成未读置顶集合独立于 running 与普通分页额度，独立按实际字节预算分页并提供 More，已展开页不被首页轮询删除，直到明确打开并渲染结果；自动恢复、列表轮询、后台页面和失败导航不算查看。
+- 允许行为：正在查看的主结果实际渲染后确认其编号；跨客户端读取后在后续刷新同步；禁止行为：用当前最新编号代替使用者实际看到的编号，或把未读完成当正在执行以触发自动恢复。
+- 失败语义：无效或未来编号返回 `bad_request`，未知对话返回 `not_found`；已存储的取消／安静主终态允许无副作用读取；回执失败保留未读并显示错误；不变量：延迟或重复 ACK 不消费较新完成，同一完成的旧回执不能重新点亮已读提示，回执不改运行状态或标题。手机须区分实际渲染的终态编号与服务端完成水位，不能用 quiet／cancel 事件自行改写完成水位；回退低于请求开始时的水位后，旧回执不得恢复已删除完成。
+- 边界条件：quiet 仅撤销对应 turn 的提示；回退重算可见完成与已读水位，但保留持久终态编号上限，重启后不能复用旧终态身份。归档不在提示列表，恢复仍按保存的水位判断；完成后再进入新轮次时运行／问答／等待状态优先，旧未读结果仍可查看。
+- 证据：实现 `internal/store/completion.go`, `internal/server/completion.go`, `internal/remote/protocol.go`, `frontend/src/components/app/completion-reader.tsx`, `mobile/src/lib/completion-read.ts`；测试 `internal/store/completion_test.go`, `frontend/src/components/app/completion-reader.test.tsx`, `frontend/e2e/unread-completion.spec.ts`, `mobile/e2e/unread-completion.spec.ts`。
+- 变更规则：同步 HTTP/RPC、存储模型、客户端读取与回退／重启／竞态测试、功能及 CHANGELOG；来源：Issue #76。

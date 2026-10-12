@@ -11,6 +11,7 @@ import {
   SettingsIdleChrome,
 } from "@/components/app/app-chrome"
 import { ClientChat } from "@/components/app/client-transcript"
+import { CompletionReader } from "@/components/app/completion-reader"
 import { ClientsStage } from "@/components/app/local-clients"
 import { Composer } from "@/components/app/composer"
 import { DeleteProjectDialog } from "@/components/app/delete-project-dialog"
@@ -109,7 +110,7 @@ function TaskBody({ chat }: { chat: ReactNode }) {
   const client = useOpenClient()
   if (pane === "scheduled") return <ScheduleDetail />
   if (pane === "clients" && !client) return <ClientsStage />
-  return chat
+  return <>{!client ? <CompletionReader /> : null}{chat}</>
 }
 
 /** Chrome that must not re-render on every streamed token: sidebar, header,

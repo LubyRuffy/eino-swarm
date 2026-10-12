@@ -90,6 +90,9 @@ in this database: notes and skills are files, so a person can read and fix them
 | `session_memory` | text | rolling briefing of this conversation, updated from the event log at token/tool breakpoints (newest events that fit a rune cap). Compact copies it; the post-turn reviewer reads it. Empty until the first accepted refresh. Post-turn refresh is background work and does not block the next follow-up |
 | `session_memory_through_seq` | int64 | last **event** seq included in that briefing. Advanced only on an accepted refresh. A rewind that deletes that event clears the three session-memory columns |
 | `session_memory_tokens` | int | estimated event-log tokens at the last refresh attempt (accepted or failed), so the next gate knows how far the window has grown and a failed refresh cannot resend the same payload |
+| `completed_seq` | int64, default 0 | latest eligible primary terminal event; quiet, cancelled and worker terminals do not add completion attention |
+| `read_completed_seq` | int64, default 0 | observed completion acknowledged by a visible client; never advances beyond the supplied event |
+| `terminal_seq_high_water` | int64, default 0 | persisted primary-terminal identity floor; retained across rewind so restart cannot reuse an old ACK's event number |
 | `task_message_through_seq` (not null, default 0 for existing conversations) | int64 | monotonic default peer-inbox read cursor; not acknowledgement; explicit `after_seq` may reread older events |
 | `archived` | bool | hidden from the sidebar's default list |
 | `pinned` | bool | tracked in the sidebar Pinned section |
@@ -200,6 +203,7 @@ stream still walks forward.
 | `id` | auto increment |
 | `thread_id` | |
 | `turn_id` | groups a turn's events for the trace view and the turn footers |
+| `completion` | bool, default false, internal only | eligible primary terminal whose event and thread watermark commit atomically; not exposed as a new wire event kind. quiet removes only that turn's eligibility |
 | `seq` | per-conversation, assigned upward even after a rewind, `(thread_id, seq)` indexed. The SSE `id`, and what `?since=`/`Last-Event-ID` resume from. Editing a `user_message` deletes that row and everything after it, so this column can have a gap; the next event is still larger than the previous high-water mark |
 | `kind` | see the [event table in the API docs](API.md#event-stream) |
 | `source_thread_id`, `source_turn_id` | optional runtime-bound origin of a `task_message`; old events omit these columns |
@@ -520,3 +524,8 @@ is required. Exact-build export-compliance records still use source SHA and
 build number, with an optional source batch `version`; an iOS marketing-version
 change does not authorize reusing another build's declaration. See
 [release version and recovery rules](RELEASE.md#testflight-version-and-build-number).
+
+Completion columns migrate as zero/false, so existing conversation history does
+not suddenly appear unread. Rewind deletes events and recomputes the surviving
+completion/read watermarks in the same transaction; the terminal identity floor
+is retained when the event counter is reseeded after restart (`C-023`).

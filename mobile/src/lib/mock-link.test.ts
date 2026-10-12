@@ -279,3 +279,74 @@ describe("the walkthrough host", () => {
     expect(r.code).toBe("unknown_op")
   })
 })
+
+
+it("retains completed attention through open/watch and clears only the exact read watermark", async () => {
+  const prior = location.href
+  history.replaceState(null, "", "/?mock=1&tick=0&history=unread-completion")
+  const h = host(), link = new MockLink(h)
+  try {
+    const first = await link.rpc({ op: OpList })
+    const completed = first.attention?.find((row) => row.id === "t-recent")
+    expect(completed).toMatchObject({ unread: true, running: false })
+    const open = await link.rpc({ op: OpOpen, thread_id: "t-recent" })
+    await link.rpc({ op: OpWatch, thread_id: "t-recent" })
+    expect((await link.rpc({ op: OpList })).attention).toEqual(first.attention)
+    const read = await link.rpc({ op: "read", thread_id: "t-recent", completed_seq: open.detail!.completed_seq })
+    expect(read.detail).toMatchObject({ unread: false, completed_seq: completed!.completed_seq })
+    expect((await link.rpc({ op: OpList })).attention).toEqual([])
+    const th = h.find("t-recent")!
+    h.push(th, { kind: "done", agentID: "manager" })
+    expect((await link.rpc({ op: "read", thread_id: "t-recent", completed_seq: completed!.completed_seq })).detail?.unread).toBe(true)
+    expect((await link.rpc({ op: OpList })).attention).toHaveLength(1)
+  } finally { link.close(); h.stop(); history.replaceState(null, "", prior) }
+})
+
+
+it("pages unread completion independently and continues after its keyset anchor is read", async () => {
+  const prior = location.href
+  history.replaceState(null, "", "/?mock=1&tick=0&history=unread-completion-pages")
+  const h = host(), link = new MockLink(h)
+  try {
+    const first = await link.rpc({ op: OpList })
+    expect(first.attention?.map((row) => row.id)).toEqual(["t-recent", "done-1", "done-2"])
+    expect(first.attention_more).toBe(true)
+    const second = await link.rpc({ op: "more", group: "attention", cursor: first.attention_cursor })
+    expect(second.attention?.map((row) => row.id)).toEqual(["done-3", "done-4", "done-5"])
+    expect(second.threads).toBeUndefined()
+    expect(second.running).toBeUndefined()
+    expect(second.groups).toBeUndefined()
+    const anchor = await link.rpc({ op: OpOpen, thread_id: "done-5" })
+    await link.rpc({ op: "read", thread_id: "done-5", completed_seq: anchor.detail!.completed_seq })
+    const last = await link.rpc({ op: "more", group: "attention", cursor: second.attention_cursor })
+    expect(last.attention?.map((row) => row.id)).toEqual(["done-6", "done-7"])
+    expect(last.attention_more).toBe(false)
+    expect(last.attention_cursor).toBe("")
+    expect((await link.rpc({ op: OpList })).attention?.map((row) => row.id)).toEqual(first.attention?.map((row) => row.id))
+  } finally { link.close(); h.stop(); history.replaceState(null, "", prior) }
+})
+
+
+it("keeps persisted completion ordering timestamps stable across walkthrough list polls", () => {
+  const now = vi.spyOn(Date, "now").mockReturnValue(1700000000000)
+  try {
+    const host = new MockHost(0)
+    const before = host.listing().threads.map((row) => [row.id, row.last_active_at])
+    now.mockReturnValue(1700000002000)
+    expect(host.listing().threads.map((row) => [row.id, row.last_active_at])).toEqual(before)
+    host.stop()
+  } finally { now.mockRestore() }
+})
+
+
+it("pages equal-time completions in the host's descending id order", () => {
+  const host = new MockHost(0)
+  for (const id of ["t-live", "t-wait", "t-recent", "t-notes", "t-loose"]) {
+    const th = host.find(id)!
+    th.completedSeq = 12; th.readSeq = 0; th.minutesAgo = 1
+  }
+  const first = host.attentionPage()
+  expect(first.attention.map((row) => row.id)).toEqual(["t-wait", "t-recent", "t-notes"])
+  expect(host.attentionPage(first.attention_cursor).attention.map((row) => row.id)).toEqual(["t-loose", "t-live"])
+  host.stop()
+})

@@ -19,6 +19,7 @@ import type { RemoteLink } from "@/lib/link"
 
 export function ThreadScreen({
   detail,
+  onReadVisibility,
   fileLink,
   blocks,
   hasMore,
@@ -45,6 +46,7 @@ export function ThreadScreen({
   onResumeGoal,
 }: {
   detail: ThreadDetail
+  onReadVisibility?: (visible: boolean) => void
   fileLink?: RemoteLink
   blocks: CompactBlock[]
   hasMore?: boolean
@@ -82,6 +84,7 @@ export function ThreadScreen({
     { id: "finished", label: t("thread.agent.finishedGroup", { n: finishedAgents.length }), agents: finishedAgents },
   ]
   const [agentPage, setAgentPage] = useState("chat")
+  useLayoutEffect(() => { onReadVisibility?.(agentPage === "chat") }, [agentPage, onReadVisibility])
   const selectedAgent = agents.find((agent) => agent.id === agentPage)
   const ask = pendingAsk(manager)
   const opening = !caughtUp && blocks.length === 0

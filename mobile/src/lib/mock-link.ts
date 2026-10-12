@@ -13,6 +13,7 @@ import {
   OpLog,
   OpMore,
   OpOpen,
+  OpRead,
   OpPreempt,
   OpReady,
   OpResumeGoal,
@@ -24,6 +25,7 @@ import {
   OpPut,
   OpTune,
   GROUP_RECENT,
+  GROUP_ATTENTION,
   OpUnwatch,
   OpWatch,
   PROTOCOL_V,
@@ -88,6 +90,8 @@ type MockThread = {
   model?: string
   reasoning?: string
   events: RemoteEvent[]
+  completedSeq?: number
+  readSeq?: number
   followups?: FollowupView[]
 }
 
@@ -198,12 +202,14 @@ function threadSeed(): MockThread[] {
 type Watcher = { threadID: string; deliver: (resp: RemoteResponse) => void }
 
 export class MockHost {
+  private createdAt = Date.now()
   private threads = threadSeed()
   private watchers = new Set<Watcher>()
   private timers = new Set<number>()
   private seq = 0
   private calls = 0
   private streamedAgentsStarted = false
+  private readFailures = new URLSearchParams(location.search).get("readfail") === "1" ? 1 : 0
   private askFailures = new URLSearchParams(location.search).get("askfail") === "1" ? 1 : 0
 
   constructor(readonly tickMs = mockTickMs()) {
@@ -278,6 +284,27 @@ export class MockHost {
         ], false)
       }
     }
+    // Ordinary walkthrough rows start read; the attention fixture isolates this flow.
+    for (const th of this.threads) th.readSeq = th.completedSeq ?? 0
+    const completionHistory = new URLSearchParams(location.search).get("history")
+    if (completionHistory === "unread-completion" || completionHistory === "unread-completion-pages") {
+      const th = this.find("t-recent")
+      if (th) th.readSeq = 0
+      if (th && completionHistory === "unread-completion-pages") {
+        for (let i = 1; i <= 7; i++) {
+          const completed = { ...th, id: `done-${i}`, title: `Completed task ${i}`, minutesAgo: th.minutesAgo + i, events: [] }
+          this.seed(completed, [{ kind: "user_message", text: "Check the result." },
+            { kind: "agent_message", agentID: "manager", text: "The result is complete." }, { kind: "done", agentID: "manager" }], false)
+          this.threads.push(completed)
+        }
+      }
+    }
+  }
+
+  read(th: MockThread, seq: number): boolean {
+    if (this.readFailures > 0 && th.id === "t-recent") { this.readFailures -= 1; return false }
+    th.readSeq = Math.max(th.readSeq ?? 0, Math.min(seq, th.completedSeq ?? 0))
+    return true
   }
 
   stop() {
@@ -340,6 +367,7 @@ export class MockHost {
     return {
       projects,
       threads: idle,
+      ...this.attentionPage(),
       running,
       // One idle row lives past this page so More is a real page, not a
       // button that appends nothing. The first page never includes it.
@@ -352,6 +380,18 @@ export class MockHost {
       ],
       clients: this.clientCatalog(),
     }
+  }
+
+  attentionPage(cursor?: string) {
+    const all = this.threads.filter((th) => (th.completedSeq ?? 0) > (th.readSeq ?? 0))
+      .sort((a, b) => a.minutesAgo - b.minutesAgo || b.id.localeCompare(a.id))
+    const anchor = cursor ? JSON.parse(cursor) as [number, string] : undefined
+    const rows = anchor ? all.filter((th) => th.minutesAgo > anchor[0]
+      || (th.minutesAgo === anchor[0] && th.id < anchor[1])) : all
+    const page = rows.slice(0, 3)
+    const last = page.at(-1)
+    return { attention: page.map((th) => this.view(th)), attention_more: rows.length > page.length,
+      attention_cursor: rows.length > page.length && last ? JSON.stringify([last.minutesAgo, last.id]) : "" }
   }
 
   // The walkthrough stands in for a PC that has the clients switch on.
@@ -404,13 +444,15 @@ export class MockHost {
   }
 
   at(th: MockThread): string {
-    return new Date(Date.now() - th.minutesAgo * 60_000).toISOString()
+    return new Date(this.createdAt - th.minutesAgo * 60_000).toISOString()
   }
 
   view(th: MockThread): ThreadView {
     return {
       id: th.id,
       title: th.title,
+      unread: (th.completedSeq ?? 0) > (th.readSeq ?? 0),
+      completed_seq: th.completedSeq ?? 0,
       project_id: th.projectID || undefined,
       running: th.running,
       waiting: th.waiting,
@@ -423,6 +465,8 @@ export class MockHost {
     return {
       id: th.id,
       title: th.title,
+      unread: (th.completedSeq ?? 0) > (th.readSeq ?? 0),
+      completed_seq: th.completedSeq ?? 0,
       goal: th.goal,
       goal_on: Boolean(th.goal),
       waiting: th.waiting,
@@ -539,6 +583,7 @@ export class MockHost {
     // A delta is live-only on the wire, so it never takes a sequence number.
     const streamed = step.kind === "delta" || step.kind === "reasoning_delta"
     if (!streamed) this.seq += 1
+    if (["done", "error"].includes(step.kind) && (!step.agentID || step.agentID === "manager")) th.completedSeq = this.seq
     // A tool result has to find its call, and ids must not collide across
     // replays of the same script.
     let callID = step.callID
@@ -645,6 +690,7 @@ export class MockLink {
           clients: this.host.clientCatalog(req.before, req.group),
         })
       case OpMore:
+        if (req.group === GROUP_ATTENTION) return this.ok({ id, ...this.host.attentionPage(req.cursor) })
         return this.ok({ id, threads: [this.host.older()], more: false, next: "" })
       case OpFiles:
         if (!thread()) return this.missing(id)
@@ -695,6 +741,12 @@ export class MockLink {
         if (pause > 0) await new Promise((resolve) => window.setTimeout(resolve, pause))
         const th = thread()
         if (!th) return this.missing(id)
+        return this.ok({ id, detail: this.host.detail(th) })
+      }
+      case OpRead: {
+        const th = thread()
+        if (!th) return this.missing(id)
+        if (!this.host.read(th, req.completed_seq ?? 0)) return this.ok({ id, ok: false, error: "Read acknowledgement unavailable" })
         return this.ok({ id, detail: this.host.detail(th) })
       }
       case OpWatch: {

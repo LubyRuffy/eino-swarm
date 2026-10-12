@@ -428,6 +428,10 @@ export const api = {
     request<{ thread: Thread; status: ThreadStatus; usage?: UsageSnapshot }>(
       `/api/threads/${id}`,
     ),
+  readThread: (id: string, completedSeq: number) =>
+    request<{ thread: Thread }>(`/api/threads/${id}/read`, {
+      method: "POST", body: JSON.stringify({ completed_seq: completedSeq }),
+    }),
   patchThread: (
     id: string,
     patch: {

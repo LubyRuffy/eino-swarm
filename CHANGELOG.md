@@ -39,6 +39,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-125`, `C-023`: completed PC tasks keep a static unread indicator until their result is viewed, including the right side of collapsed desktop projects and a persistent phone attention list. Host watermarks synchronize reads, including expanded phone tail pages. Delayed ACKs/list replies, quiet checks, cancellation, pagination, rewind and restart retain correct completion identities (Issue #76).
+
 - **An open conversation lists the waits that use it.** The right side shows tasks aimed at that chat and any task whose run created it. Click a row to open that task.
 
 - `F-135`, `C-021`: independent conversation managers can discover active tasks and exchange durable peer messages, with runtime-bound provenance, persistent read cursors and explicit acknowledgement. Idle or paused recipients are not started or resumed (Issue #57).
@@ -68,6 +70,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group and folds. The first page is at most five tasks from the last 3 days; More loads the next five. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
 
 ### Changed
+
+- `C-006`, `C-007`, `F-125`: the paired phone protocol adds completion/read metadata and independent byte-bounded attention pages. Refreshes reconcile the full loaded completion window, preserve newer verified results across all loaded collections, and reject stale read/list responses without changing existing event identities (Issue #76).
 
 - `C-015`: the phone Back contract now also covers iOS native left-edge gestures and its root-page no-op; Android's existing layered Back and root exit remain unchanged (Issue #75).
 

@@ -15,7 +15,7 @@ import { GROUP_RECENT, INBOX_PREVIEW, type InboxGroupState } from "@/lib/inbox-w
 import { inboxPreview } from "@/lib/inbox-preview"
 import { searchRunning, searchThreads } from "@/lib/inbox-search"
 import { collectLive } from "@/lib/resume"
-import type { ClientTool, ProjectView, RunningView, ThreadView } from "@/lib/rpc"
+import { GROUP_ATTENTION, type ClientTool, type ProjectView, type RunningView, type ThreadView } from "@/lib/rpc"
 import type { SavedLink } from "@/lib/store"
 
 // HomeScreen unmounts when a conversation opens. A fold that resets on
@@ -48,6 +48,7 @@ export function HomeScreen({
   projects,
   threads,
   running,
+  attention = [],
   more,
   loadingMore = false,
   groups = [],
@@ -80,6 +81,7 @@ export function HomeScreen({
   projects: ProjectView[]
   threads: ThreadView[]
   running: RunningView[]
+  attention?: ThreadView[]
   more: boolean
   loadingMore?: boolean
   groups?: InboxGroupState[]
@@ -110,10 +112,11 @@ export function HomeScreen({
   const [query, setQuery] = useState("")
   const [folded, setFolded] = useState(readFolded)
   const [runningShown, setRunningShown] = useState(INBOX_PREVIEW)
-  const sectioned = groups.length > 0
+  const sectioned = groups.some((g) => g.id !== GROUP_ATTENTION)
   const roster = collectLive(running, threads)
   const liveById = new Map(roster.map((r) => [r.thread_id, r]))
   const live = searchRunning(roster, query)
+  const unread = searchThreads(attention.filter((th) => th.unread), query)
   const grouped = groupInbox(projects, searchThreads(threads, query), live).filter(
     // A project with nothing left to show is still a place to start one,
     // unless a search just proved it has no match.
@@ -164,8 +167,9 @@ export function HomeScreen({
   // The skeleton means "nothing has arrived yet", so it reads the roster
   // rather than the filtered rows: a query that matches nothing is an
   // answer, not a reason to paint a dead link as still loading.
-  const waiting = connecting || (!connected && running.length === 0 && threads.length === 0)
-  const empty = live.length === 0 && grouped.length === 0
+  const waiting = connecting || (!connected && running.length === 0 && threads.length === 0 && attention.length === 0)
+  const attentionMore = Boolean(sectionMore(groups, GROUP_ATTENTION)?.more) && !query
+  const empty = live.length === 0 && unread.length === 0 && !attentionMore && grouped.length === 0
   return (
     <main className="mx-auto flex h-full max-w-lg flex-col overflow-hidden">
       <HostChrome
@@ -193,6 +197,21 @@ export function HomeScreen({
               <p className="px-1 text-sm text-destructive" role="alert">
                 {error}
               </p>
+            ) : null}
+            {unread.length > 0 || attentionMore ? (
+              <div data-testid="completion-attention">
+                <InboxSection title={t("home.completedUnread")}
+                  more={attentionMore}
+                  moreBusy={loadingGroup === GROUP_ATTENTION}
+                  moreLabel={loadingGroup === GROUP_ATTENTION ? t("home.loadingMore") : t("home.more")}
+                  onMore={() => onMore(GROUP_ATTENTION)}>
+                  {unread.map((th) => (
+                    <InboxRow key={th.id} id={th.id} title={th.title || th.id}
+                      detail={inboxPreview(th.summary) || undefined} state="unread"
+                      at={th.last_active_at} onOpen={onOpen} />
+                  ))}
+                </InboxSection>
+              </div>
             ) : null}
             {live.length > 0 ? (
               <InboxSection
@@ -270,7 +289,7 @@ function projectRow(th: ThreadView, live?: RunningView): {
   detail?: string
 } {
   if (!live) {
-    return { state: "idle", at: th.last_active_at, detail: inboxPreview(th.summary) || undefined }
+    return { state: th.unread ? "unread" : "idle", at: th.last_active_at, detail: inboxPreview(th.summary) || undefined }
   }
   return {
     state: liveState(live),

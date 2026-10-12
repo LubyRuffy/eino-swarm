@@ -4,6 +4,70 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testUnreadCompletionPersistsUntilExplicitVisit() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons.matching(NSPredicate(format: "label IN %@", ["Back", "返回"])).firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 12), "requires history=unread-completion")
+    let chinese = back.label == "返回"
+    let stop = app.buttons.matching(NSPredicate(format: "label IN %@", ["Stop", "停止"])).firstMatch
+    XCTAssertTrue(stop.waitForExistence(timeout: 5), "the walkthrough initially resumes its running task")
+    recordAgentPage(app, name: "completion-auto-resume-live")
+    back.tap()
+    let heading = app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", chinese ? "已完成未读" : "Completed unread")).firstMatch
+    XCTAssertTrue(heading.waitForExistence(timeout: 8), "automatic live-task recovery must preserve the other completed task")
+    let thread = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Sweep the unused exports'")).firstMatch
+    XCTAssertTrue(thread.waitForExistence(timeout: 5))
+    XCTAssertTrue(thread.isHittable, "completed unread attention must remain at the top above project folders")
+    recordAgentPage(app, name: "completion-unread-inbox")
+    thread.tap()
+    let message = app.textViews.matching(NSPredicate(format: "label IN %@", ["Message", "消息"])).firstMatch
+    XCTAssertTrue(message.waitForExistence(timeout: 8), "the explicit visit must reach the packaged conversation UI")
+    XCTAssertFalse(app.buttons.matching(NSPredicate(format: "label IN %@", ["Stop", "停止"])).firstMatch.exists)
+    recordAgentPage(app, name: "completion-explicit-detail")
+    back.tap()
+    XCTAssertTrue(heading.waitForNonExistence(timeout: 8), "successful explicit reading must clear the completion attention")
+    recordAgentPage(app, name: "completion-read-inbox")
+  }
+
+  func testUnreadCompletionPagesContinueAfterReadingTheCursorAnchor() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 12), "requires history=unread-completion-pages")
+    back.tap()
+    let heading = app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "Completed unread")).firstMatch
+    XCTAssertTrue(heading.waitForExistence(timeout: 8))
+    XCTAssertTrue(app.buttons["Open Completed task 2"].exists)
+    let anchorRows = app.buttons.matching(identifier: "Open Completed task 5")
+    let lastRows = app.buttons.matching(identifier: "Open Completed task 7")
+    let anchorOrdinaryCount = anchorRows.count
+    let lastOrdinaryCount = lastRows.count
+    recordAgentPage(app, name: "completion-page-one")
+    app.buttons["More"].firstMatch.tap()
+    let anchor = anchorRows.firstMatch
+    XCTAssertTrue(waitForButtonCount(anchorRows, anchorOrdinaryCount + 1), "More must append the completion row above its ordinary entry")
+    sleep(3)
+    XCTAssertEqual(anchorRows.count, anchorOrdinaryCount + 1, "a first-page poll must retain loaded completion rows")
+    if !anchor.isHittable { app.swipeUp() }
+    recordAgentPage(app, name: "completion-page-two-after-poll")
+    anchor.tap()
+    XCTAssertTrue(app.textViews["Message"].waitForExistence(timeout: 8))
+    recordAgentPage(app, name: "completion-page-anchor-detail")
+    back.tap()
+    XCTAssertTrue(waitForButtonCount(anchorRows, anchorOrdinaryCount), "only the explicitly read attention entry disappears; its ordinary conversation remains")
+    app.buttons["More"].firstMatch.tap()
+    XCTAssertTrue(waitForButtonCount(lastRows, lastOrdinaryCount + 1), "an already-read cursor anchor must not hide the last completion page")
+    XCTAssertTrue(heading.exists, "other completions must remain unread")
+    XCTAssertTrue(app.buttons["Open Completed task 6"].exists)
+    recordAgentPage(app, name: "completion-page-final-after-anchor-read")
+  }
+
+  private func waitForButtonCount(_ query: XCUIElementQuery, _ count: Int) -> Bool {
+    let reached = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in query.count == count }, object: nil)
+    return XCTWaiter.wait(for: [reached], timeout: 8) == .completed
+  }
+
   func testLeftEdgeSwipeReturnsThroughAgentPages() throws {
     let app = XCUIApplication()
     app.launch()

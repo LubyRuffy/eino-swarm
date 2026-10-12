@@ -142,6 +142,8 @@ export interface TurnState {
   endedAt?: string
   final?: string
   error?: string
+  /** A primary terminal event loaded into the main transcript, not a roster cursor. */
+  completedSeq?: number
   /** Sub-agents spawned during this turn, in the order they appeared. */
   agentIds: string[]
   /** True when this turn is a /goal work session (auto-continue or a forced yield). */
@@ -627,6 +629,8 @@ export function reduceEvent(
         endedAt: ev.created_at,
         final: ev.text,
         error: ev.err,
+        ...(!rosterOnly && (!ev.agent_id || ev.agent_id === MANAGER_ID) && (!ev.role || ev.role === MANAGER_ID)
+          ? { completedSeq: ev.seq } : {}),
       })
       next.running = false
       next.pulse = undefined
@@ -763,7 +767,8 @@ export function rewindTranscript(
   return {
     agentOrder,
     agents,
-    turns: state.turns.filter((t) => keptTurns.has(t.id)),
+    turns: state.turns.filter((t) => keptTurns.has(t.id)).map((t) =>
+      t.completedSeq && t.completedSeq >= fromSeq ? { ...t, completedSeq: undefined } : t),
     lastSeq: state.lastSeq,
     running: pending,
     pulse: undefined,

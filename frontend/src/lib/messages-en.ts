@@ -412,6 +412,9 @@ export const en = {
   "tool.emptyFile": "(empty file)",
   "tool.diffMore": "{n} more lines",
 
+  "status.unread": "Completed, unread",
+  "sidebar.unreadOne": "{count} unread completed task",
+  "sidebar.unreadMany": "{count} unread completed tasks",
   "status.running": "running",
   "status.waiting": "waiting",
   "status.asking": "needs your answer",

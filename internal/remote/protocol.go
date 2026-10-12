@@ -11,6 +11,7 @@ const (
 	OpList          = "list"
 	OpMore          = "more"
 	OpOpen          = "open"
+	OpRead          = "read"
 	OpStart         = "start"
 	OpSend          = "send"
 	OpSteer         = "steer"
@@ -41,6 +42,9 @@ const (
 // GroupRecent is the inbox section for conversations with no project.
 const GroupRecent = "recent"
 
+// GroupAttention pages completed results independently of idle inbox groups.
+const GroupAttention = "attention"
+
 // MaxPushPayload is pairlink's sealed-frame cap. Seal adds an 8-byte
 // counter and a 16-byte tag, and a reply may still stamp a display name,
 // so a JSON body packed to this size never leaves the PC.
@@ -56,17 +60,18 @@ func plaintextBudget() int {
 
 // Request is the slim RPC the phone sends over a sealed pairlink frame.
 type Request struct {
-	V         int             `json:"v"`
-	ID        string          `json:"id"`
-	Op        string          `json:"op"`
-	Cursor    string          `json:"cursor,omitempty"`
-	ThreadID  string          `json:"thread_id,omitempty"`
-	ProjectID string          `json:"project_id,omitempty"`
-	Text      string          `json:"text,omitempty"`
-	CallID    string          `json:"call_id,omitempty"`
-	Answers   json.RawMessage `json:"answers,omitempty"`
-	Since     int64           `json:"since,omitempty"`
-	Before    int64           `json:"before,omitempty"`
+	V            int             `json:"v"`
+	ID           string          `json:"id"`
+	Op           string          `json:"op"`
+	Cursor       string          `json:"cursor,omitempty"`
+	ThreadID     string          `json:"thread_id,omitempty"`
+	ProjectID    string          `json:"project_id,omitempty"`
+	Text         string          `json:"text,omitempty"`
+	CallID       string          `json:"call_id,omitempty"`
+	Answers      json.RawMessage `json:"answers,omitempty"`
+	Since        int64           `json:"since,omitempty"`
+	CompletedSeq int64           `json:"completed_seq,omitempty"`
+	Before       int64           `json:"before,omitempty"`
 	// ProviderID and Model switch the conversation's endpoint. Empty leaves it.
 	ProviderID string `json:"provider_id,omitempty"`
 	Model      string `json:"model,omitempty"`
@@ -109,6 +114,9 @@ type Response struct {
 	Projects        []ProjectView   `json:"projects,omitempty"`
 	Threads         []ThreadView    `json:"threads,omitempty"`
 	Running         []RunningView   `json:"running,omitempty"`
+	Attention       []ThreadView    `json:"attention,omitempty"`
+	AttentionMore   bool            `json:"attention_more,omitempty"`
+	AttentionCursor string          `json:"attention_cursor,omitempty"`
 	More            bool            `json:"more,omitempty"`
 	Next            string          `json:"next,omitempty"`
 	Detail          *ThreadDetail   `json:"detail,omitempty"`
@@ -271,6 +279,8 @@ type ProjectView struct {
 }
 
 type ThreadView struct {
+	Unread       bool      `json:"unread"`
+	CompletedSeq int64     `json:"completed_seq"`
 	ID           string    `json:"id"`
 	Title        string    `json:"title"`
 	ProjectID    string    `json:"project_id,omitempty"`
@@ -306,6 +316,8 @@ type RunningView struct {
 }
 
 type ThreadDetail struct {
+	Unread          bool         `json:"unread"`
+	CompletedSeq    int64        `json:"completed_seq"`
 	ID              string       `json:"id"`
 	Title           string       `json:"title"`
 	Goal            string       `json:"goal,omitempty"`

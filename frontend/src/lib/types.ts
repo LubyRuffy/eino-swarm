@@ -220,6 +220,9 @@ export type MemoryNotify = "off" | "on" | "verbose"
 
 export interface Thread {
   id: string
+  /** Latest primary completion event, retained until that result is viewed. */
+  completed_seq?: number
+  unread?: boolean
   title: string
   /** True while the engine still owns the sidebar name. A generated `title`
    *  event or a user rename clears it. */

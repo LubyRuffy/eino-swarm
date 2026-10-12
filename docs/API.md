@@ -442,7 +442,7 @@ painted.
 Drops that phone. Further tickets fail at the hub.
 
 The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
-`hello` / `list` / `more` / `open` / `start` / `send` / `steer` / `stop` /
+`hello` / `list` / `more` / `open` / `read` / `start` / `send` / `steer` / `stop` /
 `followup_drop` / `followup_steer` / `preempt` /
 `answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
 `resume_goal` / `catalog` / `tune` / `put` / `clients` / `files` /
@@ -451,6 +451,25 @@ keys it by the pairlink fingerprint, not a client-supplied id.
 OK replies carry `host` (this PC's `remote.display_name`) so the phone can
 label the chip; an older host omits it and the phone falls back to a short
 fingerprint, never the hub hostname.
+`ThreadView` and `open.detail` include `unread` and `completed_seq`. `list.attention`
+is a byte-bounded page of the unarchived unread-completion roster, independent
+of `running` and `thread_limit`. `attention_more` and the opaque
+`attention_cursor` continue with `more` `{group:"attention", cursor}`; that
+response only updates attention, leaving ordinary threads/groups/running intact.
+The phone retains expanded attention pages during first-page polling and offers
+More until all unread rows are reachable. Cursor boundaries survive a read or
+deletion of the previous boundary row. Attention must not trigger automatic
+live-task recovery.
+For an expanded completion window, the phone follows the same continuation
+until it has checked the previously loaded oldest timestamp/ID boundary, then
+reconciles that range atomically. Failed continuation preserves the window;
+concurrent More extensions survive. This uses the existing list/more fields.
+`read` `{thread_id, completed_seq}` confirms only the primary terminal event
+that was actually displayed and returns the updated `detail`; listing, open
+for recovery and `ready` do not acknowledge it. Invalid/future/worker-event
+sequences return `bad_request`; stored quiet/cancelled primary terminals are
+valid no-ops. Delayed ACKs do not read newer results.
+
 Default list size is 5 idle recents (`thread_limit`); live turns and
 parked waits sit on `list.running` and do not occupy that quota, so In
 progress cannot starve the project / Recents list. `list.groups` is one
@@ -819,6 +838,21 @@ objective was set (not edited). `plan_mode` is true while `/plan` is open.
 `plan_markdown` is the current plan body (also written to
 `$ZWAI_HOME/plans/<thread_id>/PLAN.md`). `compacted` is true after `/compact` or auto-compact has folded
 earlier replay into a briefing; the event log is unchanged.
+
+### `POST /api/threads/:id/read` → `200`
+
+```json
+{"completed_seq": 42}
+```
+
+Returns `{thread}` with the updated `unread` and `completed_seq`. Both fields
+also appear in thread detail and listings. Completion is persisted before the
+primary `done`/`error` is broadcast. Call only after the observed result is
+rendered in a visible conversation, using that event's sequence. A listing or
+failed navigation cannot mark a result read. ACKs are monotonic and idempotent;
+invalid or future sequences return `400 bad_request`, unknown threads `404`.
+A quiet/cancelled stored primary terminal is a no-op, and older acknowledgements
+cannot consume a newer completion. See `C-023` in [CONTRACTS](CONTRACTS.md).
 
 ### `POST /api/threads` → `201`
 

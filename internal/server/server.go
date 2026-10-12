@@ -137,6 +137,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/threads", s.createThread)
 		api.PUT("/threads/reorder", s.reorderThreads)
 		api.GET("/threads/:id", s.getThread)
+		api.POST("/threads/:id/read", s.readThread)
 		api.GET("/threads/:id/schedules", s.listThreadSchedules)
 		api.PATCH("/threads/:id", s.patchThread)
 		api.DELETE("/threads/:id", s.deleteThread)
@@ -276,6 +277,8 @@ func (s *Server) fail(c *gin.Context, err error) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "workdir"})
 	case errors.Is(err, store.ErrInvalidReorder):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	case errors.Is(err, store.ErrInvalidCompletionSeq):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "bad_request"})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}

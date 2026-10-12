@@ -619,6 +619,10 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 
 	final := store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 		AgentID: swarm.DefaultManagerID, Text: res.Final}
+	final.SuppressCompletion = status == store.TurnCancelled
+	if status == store.TurnDone && turn.ScheduleContinue {
+		final.SuppressCompletion, _ = e.scheduledRunOutcome(turn.ID, res.Final)
+	}
 	if status == store.TurnDone {
 		final.Kind = swarm.NotifyDone.String()
 	} else {

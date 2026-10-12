@@ -59,6 +59,7 @@ export function rosterFingerprint(
   running: RunningView[],
   more: boolean,
   cursor: string,
+  attention: ThreadView[] = [],
 ): string {
   const ps = projects.map((p) => `${p.id}\0${p.name}`).join("|")
   const live = running
@@ -78,10 +79,13 @@ export function rosterFingerprint(
         t.running ? "1" : "",
         t.project_id ?? "",
         t.last_active_at,
+        t.unread ? "1" : "",
+        t.completed_seq ?? 0,
       ].join("\0"),
     )
     .join("|")
-  return [ps, live, th, more ? "1" : "0", cursor].join("#")
+  const unread = attention.map((t) => [t.id, t.title, t.summary, t.unread, t.completed_seq].join("\0")).join("|")
+  return [ps, live, th, unread, more ? "1" : "0", cursor].join("#")
 }
 
 export function detailFromListing(
@@ -100,6 +104,8 @@ export function detailFromListing(
   return {
     id,
     title,
+    unread: th?.unread,
+    completed_seq: th?.completed_seq,
     ...(waiting ? { waiting: true } : {}),
     ...(liveTurn
       ? {

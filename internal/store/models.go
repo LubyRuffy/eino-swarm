@@ -43,6 +43,10 @@ type Project struct {
 // Thread is one conversation. Its ID also names its workspace directory, so it
 // must stay filesystem-safe.
 type Thread struct {
+	CompletedSeq     int64 `gorm:"not null;default:0" json:"completed_seq"`
+	ReadCompletedSeq int64 `gorm:"not null;default:0" json:"-"`
+	// Rewind may remove the terminal row, but a delayed read still names it.
+	TerminalSeqHighWater int64 `gorm:"not null;default:0" json:"-"`
 	// TaskMessageThroughSeq is a read cursor, not peer acknowledgement.
 	TaskMessageThroughSeq int64  `gorm:"not null;default:0" json:"task_message_through_seq"`
 	ID                    string `gorm:"primaryKey;size:64" json:"id"`
@@ -189,20 +193,24 @@ type Turn struct {
 // reconnecting client asks for everything after the last seq it saw and misses
 // nothing.
 type Event struct {
-	SourceThreadID string     `gorm:"size:64" json:"source_thread_id,omitempty"`
-	SourceTurnID   string     `gorm:"size:64" json:"source_turn_id,omitempty"`
-	ID             uint       `gorm:"primaryKey" json:"-"`
-	ThreadID       string     `gorm:"index:idx_evt_thread_seq;size:64" json:"thread_id"`
-	TurnID         string     `gorm:"index;size:64" json:"turn_id"`
-	Seq            int64      `gorm:"index:idx_evt_thread_seq" json:"seq"`
-	Kind           string     `gorm:"size:32" json:"kind"`
-	AgentID        string     `gorm:"size:64" json:"agent_id"`
-	Role           string     `gorm:"size:64" json:"role,omitempty"`
-	Text           string     `json:"text"`
-	ToolCallID     string     `gorm:"size:128" json:"tool_call_id,omitempty"`
-	Err            string     `json:"err,omitempty"`
-	Images         []ImageRef `gorm:"serializer:json" json:"images,omitempty"`
-	CreatedAt      time.Time  `json:"created_at"`
+	// Completion is persisted so quiet/rewind cannot revive pre-upgrade
+	// history. SuppressCompletion is a runtime decision, never wire data.
+	Completion         bool       `gorm:"not null;default:false" json:"-"`
+	SuppressCompletion bool       `gorm:"-" json:"-"`
+	SourceThreadID     string     `gorm:"size:64" json:"source_thread_id,omitempty"`
+	SourceTurnID       string     `gorm:"size:64" json:"source_turn_id,omitempty"`
+	ID                 uint       `gorm:"primaryKey" json:"-"`
+	ThreadID           string     `gorm:"index:idx_evt_thread_seq;size:64" json:"thread_id"`
+	TurnID             string     `gorm:"index;size:64" json:"turn_id"`
+	Seq                int64      `gorm:"index:idx_evt_thread_seq" json:"seq"`
+	Kind               string     `gorm:"size:32" json:"kind"`
+	AgentID            string     `gorm:"size:64" json:"agent_id"`
+	Role               string     `gorm:"size:64" json:"role,omitempty"`
+	Text               string     `json:"text"`
+	ToolCallID         string     `gorm:"size:128" json:"tool_call_id,omitempty"`
+	Err                string     `json:"err,omitempty"`
+	Images             []ImageRef `gorm:"serializer:json" json:"images,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
 }
 
 // LLMCall records one model request. It carries sizes, token counts and

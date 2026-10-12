@@ -2083,3 +2083,58 @@ Mac native verification runs the current packaged candidate against a local empt
 The opt-in desktop `ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e -- api-error.spec.ts` checks empty 502, empty 400 and a malformed successful stream through the real SDK, Chat and Trace, then replays after reload. Mobile `history=model-response-error` complements `history=api-error` with response-decoding notices/error, correct localization and no active Stop or tool blame. Packaged native acceptance must run `BindFlowTests/testModelResponseErrorIsLocalizedWithoutToolBlame` and `APIErrorTest#testModelResponseErrorRetriesRemainLocalizedWhenReopened` and inspect the reached screen; old published package receipts do not accept a new source.
 
 `frontend/src/store/app-send.test.ts` defers the API fixture acknowledgement while event payloads pass through the production stream/store reducer and finish the turn, then resolves it. Fast success/error, live steering, new-turn identity, follow-up and navigation regressions keep terminal state authoritative; the real loopback HTTP E2E reproduces the same former Working-after-error race. The first full Go race run also exposed an old string-only mock of a decoded API rejection: the fixture now uses the SDK API error type, and `TestParsedToolAPIRejectionKeepsToolReasonThroughRealSDK` verifies actual HTTP JSON rejection and its distinct retry category. The original failure logs remain private evidence.
+
+## Unread completion attention (Issue #76, F-125, C-023)
+
+`internal/store/completion_test.go` checks persisted completion/read cursors,
+old-data migration, quiet/cancel filtering, late reads, rewind and restart.
+HTTP and paired RPC tests check exact ACK validation and an attention roster
+independent of live work/ordinary pagination. Large attention collections are
+serialized within the existing encrypted-message byte budget; keyset continuation
+survives a read/deletion of its boundary, and phone polling keeps expanded pages.
+An offline engine run checks real primary
+success/error and cancellation/quiet paths.
+
+Desktop `sidebar-unread.test.tsx` and `completion-reader.test.tsx` distinguish
+static completion from live pulse, aggregate collapsed projects on the right,
+and preserve newer results on late replies. Read confirmation requires the exact
+primary terminal event in the rendered main history: worker/roster-only cursors,
+rewound terminals and quiet turns retain attention. In-flight first-page responses
+must not undo a newer local completion or read. Two delayed read responses returned
+in reverse order must not relight the same already-read completion.
+`frontend/e2e/unread-completion.spec.ts`
+runs a real offline host task, reloads a folded project and opens its result.
+Phone `mobile/src/lib/completion-read.test.tsx` and
+`mobile/e2e/unread-completion.spec.ts` cover automatic recovery, explicit reads,
+visibility, failed ACK retries and English/Chinese layouts. Native iOS uses
+`BindFlowTests/testUnreadCompletionPersistsUntilExplicitVisit` with the packaged
+`history=unread-completion` offline fixture. Phone read tests distinguish the
+request's authoritative completion baseline from the rendered terminal event:
+late replies cannot revive a rewound result, while the first live result remains
+readable when the initial server watermark is zero. Quiet/cancel events do not
+manufacture an authoritative completion watermark.
+`mobile/src/lib/inbox-refresh.test.tsx` checks the actual loaded attention window:
+a desktop read removes a phone tail row even when the head is unchanged; new
+head rows do not shrink its old boundary; failed continuation preserves the
+window. Tests also cover reads and More during a refresh, host switches,
+non-overlapping polls and sub-millisecond timestamp ordering. A confirmed read
+must not be undone by an older list response for the same completion. A newer
+completion verified before or during refresh remains reachable whether it is in
+attention, the ordinary head, or an expanded tail. A successful explicit read
+retry also clears the previous read error. Whole cursor pages are retained,
+including rows beyond the old boundary, so consuming a cursor never loses rows.
+`BindFlowTests/testUnreadCompletionPagesContinueAfterReadingTheCursorAnchor`
+uses `history=unread-completion-pages` to expand independent pages, retain them
+through polling, read the cursor's boundary row and continue without duplicates.
+These source tests do not themselves
+claim native acceptance or Release/TestFlight delivery; current receipts must
+include the tested package/source identity and reached screens.
+
+Android native completion uses `UnreadCompletionTest` in the existing
+`mobile/android/app/src/androidTest` harness: automatic recovery retains the
+completed row, entering its result clears it, and Back returns to the inbox
+without that attention row. Screenshots validate the static badge because an
+InboxRow button groups its label in native accessibility output.
+`UnreadCompletionTest#completionPagesContinueAfterReadingTheCursorAnchor`
+exercises the same independent pagination and read-boundary continuation in the
+packaged Android WebView.

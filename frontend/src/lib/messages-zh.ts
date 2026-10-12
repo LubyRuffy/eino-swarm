@@ -391,6 +391,9 @@ export const zh: { [K in keyof typeof en]: string } = {
   "tool.emptyFile": "（空文件）",
   "tool.diffMore": "还有 {n} 行",
 
+  "status.unread": "已完成，未读",
+  "sidebar.unreadOne": "{count} 个已完成未读任务",
+  "sidebar.unreadMany": "{count} 个已完成未读任务",
   "status.running": "进行中",
   "status.waiting": "等待中",
   "status.asking": "需要你选择",

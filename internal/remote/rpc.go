@@ -40,6 +40,11 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 		return handleFileChunk(eng, req, path, sessionID)
 	case OpOpen:
 		return handleOpen(eng, cfg, req, path, sessionID)
+	case OpRead:
+		if err := eng.Store().MarkThreadRead(req.ThreadID, req.CompletedSeq); err != nil {
+			return mapErr(req.ID, path, sessionID, err)
+		}
+		return handleOpen(eng, cfg, req, path, sessionID)
 	case OpStart:
 		return composeStart(eng, cfg, stage, req, path, sessionID)
 	case OpSend:
@@ -98,6 +103,9 @@ func withHost(resp Response, cfg config.RemoteConfig) Response {
 
 func handleList(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, sessionID string) Response {
 	resp := okBase(req.ID, path, sessionID)
+	if req.Group == GroupAttention {
+		return packAttention(eng, cfg, req, resp)
+	}
 	ps, err := listProjects(eng)
 	if err != nil {
 		return fail(req.ID, path, sessionID, "", fmtErr(err))
@@ -124,6 +132,9 @@ func handleList(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, 
 	if req.Op == OpList && req.Group == "" && req.Cursor == "" {
 		resp.Groups = inboxGroups(eng, cfg, ps, idle)
 		resp.Clients = clientCatalog(eng.Config().Clients, 0, false)
+	}
+	if req.Op == OpList && req.Group == "" && req.Cursor == "" {
+		return packAttention(eng, cfg, req, resp)
 	}
 	return resp
 }
@@ -194,6 +205,8 @@ func mapErr(id, path, sessionID string, err error) Response {
 		return fail(id, path, sessionID, "skipped_busy", err.Error())
 	case errors.Is(err, store.ErrNotFound):
 		return fail(id, path, sessionID, "not_found", err.Error())
+	case errors.Is(err, store.ErrInvalidCompletionSeq):
+		return fail(id, path, sessionID, "bad_request", err.Error())
 	default:
 		return fail(id, path, sessionID, "", fmtErr(err))
 	}

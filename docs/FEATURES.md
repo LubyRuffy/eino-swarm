@@ -6,6 +6,7 @@ This is the current user-facing capability map. The code and tests named below a
   - `F-100` PC conversations
     - `F-110` Desktop, browser, and terminal shells
     - `F-120` Conversations and projects
+    - `F-125` Unread completion attention
     - `F-130` Agent runs, tools, and live control
     - `F-135` Independent task coordination
     - `F-140` Files and attachments
@@ -41,6 +42,10 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-120 Conversations and projects
 
 - 目的：创建、组织、搜索和继续对话；使用者：PC 用户；入口：侧边栏、项目、`/api/threads`；输入：项目和消息；输出：可恢复的对话；前置条件：本机数据库可写；失败表现：错误提示或不存在的对话；关联契约：`C-001`, `C-008`；实现证据：`internal/engine`, `internal/store`, `frontend/src/store/app.ts`。
+
+### F-125 Unread completion attention
+
+- 目的：让多任务完成后的结果持续可见，直到使用者实际查看；使用者：PC 与配对手机用户；入口：桌面任务前的静态状态灯、收起项目标题右侧的汇总状态、手机顶部完成未读列表；输入：主任务完成事件与已观察的 `completed_seq`；输出：独立于运行呼吸灯的完成提示，查看后在同一 PC 的客户端同步清除；前置条件：同一 host 的未归档对话；失败表现：读取回执失败保留提示并显示错误；关联契约：`C-023`、`C-003`、`C-006`、`C-007`；实现证据：`internal/store/completion.go`, `internal/server/completion.go`, `internal/remote/rpc.go`, `frontend/src/components/app/completion-reader.tsx`, `mobile/src/lib/completion-read.ts`, `mobile/src/lib/inbox-refresh.ts`；验证：`internal/store/completion_test.go`, `frontend/e2e/unread-completion.spec.ts`, `mobile/e2e/unread-completion.spec.ts`, `mobile/src/lib/inbox-refresh.test.tsx`。
 
 ### F-130 Agent runs, tools, and live control
 

@@ -985,3 +985,23 @@ manager. Event replay restores the budget across process restart, including old
 worker-specific watchdog receipts. Explicit human new input or goal Start resets
 it; model `reopen_goal` does not. The terminal turn path blocks pursuit and pauses
 only its owning recurring schedule. Failed pause persistence is never success.
+
+## Completion attention
+
+`internal/store/completion.go` commits an eligible primary terminal event and
+its thread completion watermark atomically before the engine broadcasts it.
+Quiet and cancelled turns stay out of attention; worker events retain their
+existing Trace path. A durable terminal-number floor prevents old read requests
+from matching a new result after rewind/restart. HTTP `POST …/read` and paired
+RPC `read` carry the exact observed event number. Client UI acknowledges after
+the main result renders visibly; polling/recovery only reads snapshots. Phone
+`list.attention` is independent of live work and ordinary page quotas. Its own
+byte-bounded cursor pages use `more` with `group:"attention"`, preserve loaded
+pages on polls and keep every unread result reachable (`F-125`, `C-023`, `C-006`).
+`mobile/src/lib/inbox-refresh.ts` refreshes an expanded completion window to its
+previous oldest timestamp/ID boundary before reconciling it atomically. This
+lets a desktop read remove a phone tail row without losing loaded results when
+new completions enter the head. Per-host confirmed reads reject stale list
+replies; failed refreshes preserve the window. Refresh snapshots compare completion
+identities across all loaded head, tail and attention rows, preserving newer
+results verified by a concurrent read reply (`C-007`).

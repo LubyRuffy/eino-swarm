@@ -20,7 +20,7 @@ import {
 } from "@/lib/client"
 import { openLink, type RemoteLink } from "@/lib/link"
 import { getLocale, t, toggleLocale } from "@/lib/i18n"
-import { emptyInbox, inboxThreads, reduceInbox, type InboxGroupState } from "@/lib/inbox-window"
+import { emptyInbox, inboxThreads, reduceInbox, type InboxGroupState, type InboxWindow } from "@/lib/inbox-window"
 import type {
   ClientTool,
   ModelChoice,
@@ -35,7 +35,6 @@ import { readClientTask } from "@/lib/read-client"
 import {
   OpCancelWait,
   OpCatalog,
-  OpList,
   OpLog,
   OpMore,
   OpOpen,
@@ -73,6 +72,9 @@ import {
   saveHostLabel,
   saveLink,
 } from "@/lib/store"
+import { mergeCompletion, readInbox, useCompletionRead } from "@/lib/completion-read"
+import { useInboxRefresh } from "@/lib/inbox-refresh"
+import { usePhoneVisibility } from "@/lib/phone-visibility"
 import { openPhoneThread } from "@/lib/open-thread"
 import { answerPhoneQuestion, interruptPhoneFollowup, sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
 import { sendComposed } from "@/lib/turn-send"
@@ -99,6 +101,7 @@ export function App() {
   const [error, setError] = useState<string>()
   const [projects, setProjects] = useState<ProjectView[]>([])
   const [threads, setThreads] = useState<ThreadView[]>([])
+  const [attention, setAttention] = useState<ThreadView[]>([])
   const [running, setRunning] = useState<RunningView[]>([])
   const [more, setMore] = useState(false)
   const [groups, setGroups] = useState<InboxGroupState[]>([])
@@ -112,6 +115,7 @@ export function App() {
   const [composerPending, setComposerPending] = useState(false)
   const [view, setView] = useState<PhoneView>(emptyView())
   const [loadingOlder, setLoadingOlder] = useState(false)
+  const managerVisible = useRef(true)
   const inboxRef = useRef(emptyInbox())
   const moreBusy = useRef(false)
   const linkRef = useRef<RemoteLink | null>(null)
@@ -145,6 +149,22 @@ export function App() {
     setView(next)
   }
 
+  const completionRead = useCompletionRead({
+    link: linkRef, view: viewRef, contentVisible: managerVisible,
+    visible: Boolean(view.detail) && !adding && !composing && !modelsOpen && surface !== "chat",
+    onError: setError,
+    onRead: (detail, baseline) => {
+      setError(undefined)
+      const next = readInbox(inboxRef.current, detail, viewRef.current, baseline)
+      inboxRef.current = next
+      rosterFp.current = ""
+      setAttention(next.attention)
+      setThreads(inboxThreads(next))
+      const current = viewRef.current
+      if (current.detail?.id === detail.id) commitView({ ...current, detail: mergeCompletion(current.detail, detail, baseline) })
+    },
+  })
+
   const takeHostName = (resp: RemoteResponse) => {
     const name = resp.host?.trim()
     if (!name) return
@@ -163,6 +183,7 @@ export function App() {
     setThreads([])
     setProjects([])
     setRunning([])
+    setAttention([])
     setMore(false)
     setGroups([])
     setClientsOn(false)
@@ -172,7 +193,8 @@ export function App() {
     setLevels([])
   }
 
-  const applyList = (resp: RemoteResponse, append: boolean, target?: RemoteLink, group?: string) => {
+  const applyList = (resp: RemoteResponse, append: boolean, target?: RemoteLink, group?: string, refreshed?: InboxWindow) => {
+    if (target && target !== linkRef.current) return
     if (!resp.ok) {
       setError(remoteError(resp.error || resp.code || ""))
       return
@@ -180,10 +202,10 @@ export function App() {
     // Head is page one. Tail is what More already loaded. A quiet poll
     // must not put those rows back, and a row that left page one is not
     // kept just because it was there last time.
-    const next = reduceInbox(inboxRef.current, resp, append ? "append" : "replace", group)
+    const next = refreshed ?? reduceInbox(inboxRef.current, resp, append ? "append" : "replace", group)
     const merged = inboxThreads(next)
     const groupSig = next.groups.map((g) => `${g.id}:${g.more ? 1 : 0}:${g.cursor}`).join(",")
-    const fp = rosterFingerprint(next.projects, merged, next.running, next.more, `${next.cursor}|${groupSig}`)
+    const fp = rosterFingerprint(next.projects, merged, next.running, next.more, `${next.cursor}|${groupSig}`, next.attention)
     const cur = target ?? linkRef.current
     if (resp.path && cur) cur.path = resp.path
     takeHostName(resp)
@@ -200,13 +222,18 @@ export function App() {
     setProjects(next.projects)
     setThreads(merged)
     setRunning(next.running)
+    setAttention(next.attention)
     setMore(next.more)
     setGroups(next.groups)
   }
 
+  const refreshInbox = useInboxRefresh({ link: linkRef, window: inboxRef, onError: setError,
+    onPage: (page, next, target) => applyList(page, false, target, undefined, next) })
+
   const attachPush = (next: RemoteLink) => {
     next.onPush = (resp) => {
       if (resp.path) next.path = resp.path
+      completionRead.observe(next, resp)
       commitView(applyPush(viewRef.current, resp))
     }
     next.onDisconnect = (err) => {
@@ -238,9 +265,9 @@ export function App() {
       },
     })
 
-  const consumeFirstList = async (target: RemoteLink, resp: RemoteResponse) => {
-    applyList(resp, false, target)
-    if (!resp.ok || resumedRef.current || viewRef.current.detail) return
+  const consumeFirstList = async (target: RemoteLink) => {
+    const resp = await refreshInbox(target)
+    if (!resp || !resp.ok || resumedRef.current || viewRef.current.detail) return
     if (surfaceRef.current === "chat") return
     const id = pickResumeThread(loadLastThreadId(), resp.running ?? [], resp.threads ?? [])
     if (!id) return
@@ -275,7 +302,7 @@ export function App() {
       setError(undefined)
       const id = viewRef.current.threadId
       if (id) await openThreadOn(next, id)
-      else await consumeFirstList(next, await next.rpc({ op: OpList }))
+      else await consumeFirstList(next)
     } catch (e) {
       if (gen !== bindGen.current) return
       setError(linkError(e))
@@ -309,7 +336,7 @@ export function App() {
       attachPush(next)
       linkRef.current = next
       setLink(next)
-      await consumeFirstList(next, await next.rpc({ op: OpList }))
+      await consumeFirstList(next)
     } catch (e) {
       if (gen !== bindGen.current) return
       setError(bindError(e))
@@ -330,31 +357,17 @@ export function App() {
     }
   }, [boot])
 
-  useEffect(() => {
-    const wake = () => {
-      if (document.visibilityState && document.visibilityState !== "visible") return
-      if (!loadSavedLink() || linkRef.current?.alive()) return
-      window.clearTimeout(retryTimer.current)
-      void recoverRef.current()
-    }
-    document.addEventListener("visibilitychange", wake)
-    window.addEventListener("online", wake)
-    window.addEventListener("pageshow", wake)
-    return () => {
-      document.removeEventListener("visibilitychange", wake)
-      window.removeEventListener("online", wake)
-      window.removeEventListener("pageshow", wake)
-    }
-  }, [])
+  usePhoneVisibility(() => {
+    if (!loadSavedLink() || linkRef.current?.alive()) return
+    window.clearTimeout(retryTimer.current)
+    void recoverRef.current()
+  })
 
   useEffect(() => {
     if (!link || view.detail) return
     const id = window.setInterval(() => {
       if (!link.alive()) return
-      void link
-        .rpc({ op: OpList })
-        .then((r) => applyList(r, false))
-        .catch((e) => setError(linkError(e)))
+      void refreshInbox(link)
     }, 2000)
     return () => window.clearInterval(id)
   }, [link, view.detail])
@@ -417,7 +430,7 @@ export function App() {
       attached = true
       linkRef.current = next
       setLink(next)
-      await consumeFirstList(next, await next.rpc({ op: OpList }))
+      await consumeFirstList(next)
       if (gen === bindGen.current) setBusy(false)
     } catch (e) {
       if (!attached) next?.close()
@@ -446,7 +459,9 @@ export function App() {
     if (viewRef.current.threadId !== id) {
       commitView(openView(detailFromListing(id, running, threads)))
     }
-    await openThreadOn(target, id)
+    if (await openThreadOn(target, id)) {
+      completionRead.request(target, id, viewRef.current.detail?.completed_seq ?? 0)
+    }
   }
 
   const startConversation = async (text: string, projectId: string, extra?: ComposerExtra) => {
@@ -477,7 +492,7 @@ export function App() {
       setComposing(false)
       setComposeProject("")
       await openThread(started.id)
-      applyList(await target.rpc({ op: OpList }), false)
+      await refreshInbox(target)
     } catch (e) {
       if (e instanceof Error && (e.message === "refused" || e.message === "offline")) throw e
       fail(e)
@@ -554,7 +569,7 @@ export function App() {
           group,
         }),
         true,
-        undefined,
+        target,
         group,
       )
     } catch (e) {
@@ -608,7 +623,7 @@ export function App() {
     if (!target?.alive()) return
     try {
       if (id) await target.rpc({ op: OpUnwatch, thread_id: id })
-      applyList(await target.rpc({ op: OpList }), false)
+      await refreshInbox(target)
     } catch (e) {
       fail(e)
     }
@@ -818,6 +833,7 @@ export function App() {
           <ThreadScreen
             key={locale + detail.id}
             detail={detail}
+            onReadVisibility={(visible) => { managerVisible.current = visible }}
             fileLink={link}
             blocks={view.blocks}
             followups={view.followups}
@@ -924,6 +940,7 @@ export function App() {
           projects={projects}
           threads={threads}
           running={running}
+          attention={attention}
           more={more}
           loadingMore={loadingMore}
           groups={groups}
@@ -951,7 +968,7 @@ export function App() {
               return
             }
             try {
-              applyList(await target.rpc({ op: OpList }), false)
+              await refreshInbox(target)
             } catch (e) {
               fail(e)
             }

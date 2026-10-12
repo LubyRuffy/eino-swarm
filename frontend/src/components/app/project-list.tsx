@@ -21,6 +21,7 @@ import { SidebarThreadGroup } from "@/components/app/sidebar-thread-group"
 import { AskMark } from "@/components/app/ask-mark"
 import { StatusDot } from "@/components/app/transcript"
 import { WaitMark } from "@/components/app/wait-mark"
+import { UnreadMark } from "@/components/app/unread-mark"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -190,6 +191,7 @@ function ProjectRow({
   onPinThread: (id: string, pinned: boolean) => void
 }) {
   const t = useT()
+  const unread = threads.filter((thread) => thread.unread).length
   const asking = threads.some((thread) =>
     Boolean(askingIds?.has(thread.id) || thread.awaiting_answer),
   )
@@ -261,6 +263,9 @@ function ProjectRow({
             </span>
           ) : null}
         </button>
+        {!open && unread > 0 ? (
+          <UnreadMark count={unread} testId="project-unread-completion" />
+        ) : null}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

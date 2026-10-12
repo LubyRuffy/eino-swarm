@@ -1,4 +1,4 @@
-import type { ProjectView, RunningView, ThreadView } from "./rpc"
+import { GROUP_ATTENTION, type ProjectView, type RunningView, type ThreadView } from "./rpc"
 
 /** The inbox is a loaded window, not a single page snapshot. `head` is the
  *  latest first page. `tail` is what More already brought in. A later first
@@ -18,6 +18,9 @@ export type InboxWindow = {
   projects: ProjectView[]
   head: ThreadView[]
   tail: ThreadView[]
+  attention: ThreadView[]
+  attentionHead: string[]
+  confirmedReads: Record<string, number>
   running: RunningView[]
   more: boolean
   cursor: string
@@ -30,6 +33,9 @@ export type InboxWindow = {
 export type InboxPage = {
   projects?: ProjectView[]
   threads?: ThreadView[]
+  attention?: ThreadView[]
+  attention_more?: boolean
+  attention_cursor?: string
   running?: RunningView[]
   more?: boolean
   next?: string
@@ -49,6 +55,9 @@ export function emptyInbox(): InboxWindow {
     head: [],
     tail: [],
     running: [],
+    attention: [],
+    attentionHead: [],
+    confirmedReads: {},
     more: false,
     cursor: "",
     grouped: false,
@@ -66,16 +75,37 @@ export function reduceInbox(
   mode: "replace" | "append",
   group?: string,
 ): InboxWindow {
+  const attention = reduceAttention(prev, page, mode, group === GROUP_ATTENTION)
+  const next = mode === "append" && group === GROUP_ATTENTION ? prev : reduceThreadInbox(prev, page, mode, group)
+  return protectConfirmedReads({ ...next, confirmedReads: prev.confirmedReads, attention: attention.rows, attentionHead: attention.head,
+    groups: [...next.groups.filter((g) => g.id !== GROUP_ATTENTION), attention.group] })
+}
+
+function reduceAttention(prev: InboxWindow, page: InboxPage, mode: "replace" | "append", attentionPage: boolean) {
+  const prior = prev.groups.find((g) => g.id === GROUP_ATTENTION) ?? { id: GROUP_ATTENTION, more: false, cursor: "" }
+  const incoming = dedupe(page.attention ?? []).filter((row) => row.unread)
+  const group = { id: GROUP_ATTENTION, more: Boolean(page.attention_more), cursor: page.attention_cursor ?? "" }
+  if (mode === "replace") return { rows: incoming, head: incoming.map((row) => row.id), group }
+  const observed = [...(page.attention ?? []), ...(page.threads ?? [])]
+  const rows = prev.attention.map((row) => observed.find((next) => next.id === row.id) ?? row).filter((row) => row.unread)
+  return { rows: attentionPage ? dedupe([...rows, ...incoming]) : rows, head: prev.attentionHead,
+    group: attentionPage ? group : prior }
+}
+
+function reduceThreadInbox(
+  prev: InboxWindow, page: InboxPage, mode: "replace" | "append", group?: string,
+): InboxWindow {
   const projects = page.projects ?? prev.projects
+  const attention = page.attention ?? (mode === "append" ? prev.attention : [])
   const running = page.running ?? (mode === "append" ? prev.running : [])
   if (page.groups && mode === "replace") {
-    return replaceGroups(prev, projects, running, page.groups)
+    return replaceGroups(prev, projects, running, attention, page.groups)
   }
   if (mode === "append" && group) {
-    return appendGroup(prev, projects, running, group, page)
+    return appendGroup(prev, projects, running, attention, group, page)
   }
   const incoming = dedupe(page.threads ?? [])
-  const plain = { grouped: false, groups: [] as InboxGroupState[] }
+  const plain = { grouped: false, groups: [] as InboxGroupState[], confirmedReads: prev.confirmedReads }
   if (mode === "append") {
     const known = new Set(inboxThreads(prev).map((row) => row.id))
     const tail = prev.tail.map((row) => incoming.find((next) => next.id === row.id) ?? row)
@@ -90,6 +120,8 @@ export function reduceInbox(
       head: prev.head,
       tail,
       running,
+      attention,
+      attentionHead: prev.attentionHead,
       more: Boolean(page.more),
       cursor: page.next ?? "",
     }
@@ -102,6 +134,8 @@ export function reduceInbox(
       head: incoming,
       tail: [],
       running,
+      attention,
+      attentionHead: prev.attentionHead,
       more: Boolean(page.more),
       cursor: page.next ?? "",
     }
@@ -112,6 +146,8 @@ export function reduceInbox(
     head: incoming,
     tail: prev.tail.filter((row) => row.id && !headIds.has(row.id)),
     running,
+    attention,
+    attentionHead: prev.attentionHead,
     more: prev.more,
     cursor: prev.cursor,
   }
@@ -121,6 +157,7 @@ function replaceGroups(
   prev: InboxWindow,
   projects: ProjectView[],
   running: RunningView[],
+  attention: ThreadView[],
   pages: InboxGroupPage[],
 ): InboxWindow {
   const head = dedupe(pages.flatMap((g) => g.threads ?? []))
@@ -137,6 +174,9 @@ function replaceGroups(
     head,
     tail,
     running,
+    attention,
+    attentionHead: prev.attentionHead,
+    confirmedReads: prev.confirmedReads,
     more: false,
     cursor: "",
     grouped: true,
@@ -148,6 +188,7 @@ function appendGroup(
   prev: InboxWindow,
   projects: ProjectView[],
   running: RunningView[],
+  attention: ThreadView[],
   group: string,
   page: InboxPage,
 ): InboxWindow {
@@ -167,6 +208,9 @@ function appendGroup(
     head: prev.head,
     tail,
     running,
+    attention,
+    attentionHead: prev.attentionHead,
+    confirmedReads: prev.confirmedReads,
     more: false,
     cursor: "",
     grouped: true,
@@ -188,4 +232,12 @@ function dedupe(rows: ThreadView[]): ThreadView[] {
     out.push(row)
   }
   return out
+}
+
+/** A successful read is host-scoped and monotone for that completion identity. */
+export function protectConfirmedReads(window: InboxWindow): InboxWindow {
+  const protect = (row: ThreadView): ThreadView => row.unread && (row.completed_seq ?? 0) > 0
+    && (window.confirmedReads[row.id] ?? 0) >= (row.completed_seq ?? 0) ? { ...row, unread: false } : row
+  return { ...window, head: window.head.map(protect), tail: window.tail.map(protect),
+    attention: window.attention.map(protect).filter((row) => row.unread) }
 }

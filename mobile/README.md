@@ -349,3 +349,15 @@ fixture documented in [TESTING](../docs/TESTING.md).
 ## Model API errors
 
 Chat shows the host turn's HTTP status and concrete API rejection or response-decoding cause. An empty HTTP 502 response does not mean a tool had invalid JSON arguments. Public errors omit raw response bodies and graph paths, mask authentication values and bound the cause to 512 runes. Phone has no Trace page; use the same turn ID on the PC (`zwai trace <id>` or the desktop Trace tab) for original model calls and retries.
+
+### Completed unread tasks
+
+The inbox keeps completed unread PC tasks above project folders until you tap
+and view their result. The static completion mark differs from the running
+pulse; these rows do not start or resume a task. Automatic session recovery,
+failed opens, background views and pagination do not acknowledge results. A
+read error preserves the row and displays an error; entering it again retries.
+Read state is stored on the host and follows the paired host identity.
+Expanded completion pages also refresh through their previously loaded oldest
+row, so viewing a result on the PC clears its phone tail row. Failed refreshes
+keep the displayed window; a late list cannot relight a confirmed read.

@@ -26,6 +26,8 @@ export const en = {
   "home.addHost": "Add a PC",
   "home.close": "Close",
   "home.inProgress": "In progress",
+  "home.completedUnread": "Completed unread",
+  "home.unread": "Unread completion",
   "home.recent": "Recent",
   "home.more": "More",
   "home.clients": "Clients",

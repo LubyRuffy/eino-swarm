@@ -2,7 +2,7 @@ import { cn } from "@/lib/cn"
 import { t } from "@/lib/i18n"
 import { timeAgo } from "@/lib/when"
 
-export type RowState = "idle" | "running" | "waiting" | "ask"
+export type RowState = "idle" | "running" | "waiting" | "ask" | "unread"
 
 /** A row has to answer "does this need me" before it is read. State is a
  *  badge, not a two-pixel dot, and the age sits opposite the title. */
@@ -58,6 +58,7 @@ export function InboxRow({
 
 function StatusBadge({ state }: { state: RowState }) {
   const text =
+    state === "unread" ? t("home.unread") :
     state === "ask"
       ? t("home.ask")
       : state === "waiting"
@@ -69,7 +70,9 @@ function StatusBadge({ state }: { state: RowState }) {
       data-state={state}
       className={cn(
         "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
-        state === "ask"
+        state === "unread"
+          ? "bg-[hsl(var(--done)/0.14)] text-[hsl(var(--done))]"
+          : state === "ask"
           ? "bg-[hsl(var(--running))] text-background"
           : "bg-[hsl(var(--running)/0.14)] text-[hsl(var(--running))]",
       )}

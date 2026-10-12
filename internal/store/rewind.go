@@ -58,6 +58,9 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 				return err
 			}
 		}
+		if err := refreshCompletionWatermark(tx, threadID); err != nil {
+			return err
+		}
 		if err := tx.Where("thread_id = ?", threadID).Delete(&Followup{}).Error; err != nil {
 			return err
 		}

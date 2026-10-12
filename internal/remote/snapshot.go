@@ -111,6 +111,8 @@ func threadView(eng *engine.Engine, th store.Thread, cfg config.RemoteConfig) Th
 	st := eng.Status(th.ID)
 	title := strings.TrimSpace(th.Title)
 	return ThreadView{
+		Unread:       th.CompletedSeq > th.ReadCompletedSeq,
+		CompletedSeq: th.CompletedSeq,
 		ID:           th.ID,
 		Title:        title,
 		ProjectID:    th.ProjectID,
@@ -230,6 +232,8 @@ func openDetail(eng *engine.Engine, threadID string, cfg config.RemoteConfig) (*
 func threadDetail(eng *engine.Engine, th *store.Thread, cfg config.RemoteConfig) *ThreadDetail {
 	st := eng.Status(th.ID)
 	d := &ThreadDetail{
+		Unread:          th.CompletedSeq > th.ReadCompletedSeq,
+		CompletedSeq:    th.CompletedSeq,
 		ID:              th.ID,
 		Title:           strings.TrimSpace(th.Title),
 		Goal:            th.Goal,

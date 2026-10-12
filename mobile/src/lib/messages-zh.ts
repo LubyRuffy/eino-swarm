@@ -27,6 +27,8 @@ export const zh: Record<MessageKey, string> = {
   "home.addHost": "添加 PC",
   "home.close": "关闭",
   "home.inProgress": "进行中",
+  "home.completedUnread": "已完成未读",
+  "home.unread": "完成未读",
   "home.recent": "最近",
   "home.more": "更多",
   "home.clients": "客户端",

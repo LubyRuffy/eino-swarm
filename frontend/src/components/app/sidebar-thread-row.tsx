@@ -13,6 +13,7 @@ import { SidebarKindSlot, sidebarRowClass } from "@/components/app/sidebar-slots
 import { StatusDot } from "@/components/app/transcript"
 import { AskMark } from "@/components/app/ask-mark"
 import { WaitMark } from "@/components/app/wait-mark"
+import { UnreadMark } from "@/components/app/unread-mark"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import { useSortableList } from "@/lib/sortable"
 import type { Thread } from "@/lib/types"
@@ -111,6 +112,8 @@ export function SidebarThreadRow({
             <StatusDot status="running" />
           ) : waiting ? (
             <WaitMark />
+          ) : thread.unread ? (
+            <UnreadMark />
           ) : null}
         </SidebarKindSlot>
         <span data-testid="row-label" className="truncate">

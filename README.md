@@ -804,3 +804,13 @@ Reading uses a saved cursor by default; explicit cursors recover earlier pages.
 The capability is advisory: wait for a peer's explicit agreement before relying
 on file division or execution order. It does not lock resources, wake idle tasks,
 interrupt work, answer a human pause or grant new permissions (`F-135`, `C-021`).
+
+### Unread task results
+
+A task that finishes while you are elsewhere keeps a static completion mark.
+This differs from the running pulse. Collapsed projects show a completion mark
+at the right of their title; the paired phone keeps unread completions above its
+folders. Open a task to read its rendered result and clear the mark. Automatic
+reconnect and background polls leave it unread. A failed read acknowledgement
+keeps the mark and shows the error. Quiet checks and user cancellation do not
+create a completion mark. See [F-125 and C-023](docs/FEATURES.md#f-125-unread-completion-attention).

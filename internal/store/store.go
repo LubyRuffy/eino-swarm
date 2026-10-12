@@ -414,6 +414,9 @@ func (s *Store) UpdateTurn(id string, fields map[string]any) error {
 	if len(fields) == 0 {
 		return nil
 	}
+	if quiet, _ := fields["quiet"].(bool); quiet {
+		return s.suppressTurnCompletion(id, fields)
+	}
 	return s.applyTurnUpdate(id, fields)
 }
 
@@ -470,11 +473,13 @@ func (s *Store) MarkStaleTurnsCancelled() (int64, error) {
 // AppendEvent stores one timeline event, assigning its per-thread sequence
 // number. The assigned Seq is written back into e.
 func (s *Store) AppendEvent(e *Event) error {
-	e.Seq = s.nextSeq(s.evtSeq, e.ThreadID, func() int64 {
-		return s.maxSeq(&Event{}, "seq", e.ThreadID)
-	})
+	seq, err := s.nextEventSeq(e.ThreadID)
+	if err != nil {
+		return fmt.Errorf("store: seed event sequence: %w", err)
+	}
+	e.Seq = seq
 	e.CreatedAt = time.Now().UTC()
-	if err := s.db.Create(e).Error; err != nil {
+	if err := s.appendCompletionEvent(e); err != nil {
 		return fmt.Errorf("store: append event: %w", err)
 	}
 	return nil

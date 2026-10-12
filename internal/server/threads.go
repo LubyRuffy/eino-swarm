@@ -47,6 +47,8 @@ type threadView struct {
 	CreatedAt       string `json:"created_at"`
 	LastActiveAt    string `json:"last_active_at"`
 	Running         bool   `json:"running"`
+	Unread          bool   `json:"unread"`
+	CompletedSeq    int64  `json:"completed_seq"`
 	// Live only: ask_user is blocked waiting for the human. The turn is
 	// still Running. Omitted when idle so a listing of finished rows
 	// does not dump a field of falses.
@@ -82,6 +84,8 @@ func viewThread(th *store.Thread, running, awaitingAnswer, waiting bool) threadV
 		CreatedAt:       th.CreatedAt.Format(timeFormat),
 		LastActiveAt:    th.LastActiveAt.Format(timeFormat),
 		Running:         running,
+		Unread:          th.CompletedSeq > th.ReadCompletedSeq,
+		CompletedSeq:    th.CompletedSeq,
 		AwaitingAnswer:  awaitingAnswer,
 		Waiting:         waiting,
 	}

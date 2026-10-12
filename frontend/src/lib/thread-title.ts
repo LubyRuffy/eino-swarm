@@ -6,10 +6,17 @@ import type { Thread } from "@/lib/types"
  *  `title_auto` is treated the same as still machine-owned — GET used to
  *  drop the field, and that stomped the name back to the opening line. */
 export function preferNamedTitles(local: Thread[], incoming: Thread[]): Thread[] {
+  const previousById = new Map(local.map((row) => [row.id, row]))
   const named = new Map(
     local.filter((t) => t.title_auto === false).map((t) => [t.id, t.title]),
   )
   return incoming.map((t) => {
+    const previous = previousById.get(t.id)
+    // Read watermarks only advance at a fixed completion. A listing that
+    // began before the ACK may arrive last, but must not relight that result.
+    if (previous?.completed_seq === t.completed_seq && previous?.unread === false && t.unread) {
+      t = { ...t, unread: false }
+    }
     const keep = named.get(t.id)
     if (keep && t.title_auto !== false) {
       return { ...t, title: keep, title_auto: false }
@@ -49,8 +56,19 @@ export function mergeThreadList(
   local: Thread[],
   incoming: Thread[],
   overlay?: ThreadListOverlay,
+  baseline?: Thread[],
 ): Thread[] {
-  const named = preferNamedTitles(local, incoming)
+  const current = new Map(local.map((row) => [row.id, row]))
+  const before = new Map(baseline?.map((row) => [row.id, row]))
+  const reconciled = baseline ? incoming.map((row) => {
+    const now = current.get(row.id)
+    const started = before.get(row.id)
+    // A response that began before a new result/read/rewind cannot undo it.
+    // A real server rewind still applies when the local fields did not change.
+    if (!now || (now.completed_seq === started?.completed_seq && now.unread === started?.unread)) return row
+    return { ...row, completed_seq: now.completed_seq, unread: now.unread }
+  }) : incoming
+  const named = preferNamedTitles(local, reconciled)
   if (!overlay) return named
   return named.map((t) => {
     if (t.id !== overlay.id) return t

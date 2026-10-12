@@ -2,7 +2,9 @@ export const PROTOCOL_V = 1
 
 export const OpList = "list"
 export const OpMore = "more"
+export const GROUP_ATTENTION = "attention"
 export const OpOpen = "open"
+export const OpRead = "read"
 export const OpStart = "start"
 export const OpSend = "send"
 export const OpSteer = "steer"
@@ -40,6 +42,7 @@ export type RemoteRequest = {
   text?: string
   call_id?: string
   answers?: unknown
+  completed_seq?: number
   since?: number
   before?: number
   provider_id?: string
@@ -87,6 +90,8 @@ export type ThreadView = {
   running: boolean
   waiting?: boolean
   last_active_at: string
+  unread?: boolean
+  completed_seq?: number
   summary?: string
 }
 
@@ -142,6 +147,8 @@ export type RemoteEvent = {
 }
 
 export type ThreadDetail = {
+  unread?: boolean
+  completed_seq?: number
   id: string
   title: string
   goal?: string
@@ -173,6 +180,9 @@ export type RemoteResponse = {
   host?: string
   projects?: ProjectView[]
   threads?: ThreadView[]
+  attention?: ThreadView[]
+  attention_more?: boolean
+  attention_cursor?: string
   running?: RunningView[]
   more?: boolean
   next?: string

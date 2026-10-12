@@ -24,9 +24,7 @@ import {
 import type { SendImage } from "@/lib/paste-image"
 import { subscribeEvents } from "@/lib/stream"
 import {
-  mergeThreadList,
   setThreadRunning,
-  threadListOverlay,
   upsertThread,
 } from "@/lib/thread-title"
 import { logPageSize, type ThreadLog } from "@/lib/thread-log"
@@ -54,6 +52,7 @@ import { planAskActions } from "./app-plan"
 import { scheduleActions, type ScheduleSlice } from "./app-schedule"
 import { steerInjectActions } from "./app-steer"
 import { dropQueued, queueEvent, withRunningClock } from "./app-stream"
+import { applyThreadListing } from "./app-thread-list"
 import {
   bumpFollowups,
   dropMatchingFollowups,
@@ -75,6 +74,7 @@ import {
 export type Theme = "light" | "dark" | "system"
 
 interface AppState extends ScheduleSlice {
+  completionVisit?: number
   meta?: Meta
   models: ModelInfo[]
   threads: Thread[]
@@ -180,15 +180,6 @@ function inflightKey(id: string | undefined, text: string) {
   return `${id ?? ""}:${text.trim()}`
 }
 
-function applyThreadListing(
-  threads: Thread[],
-  incoming: Thread[],
-  activeId: string | undefined,
-  status: ThreadStatus,
-): Thread[] {
-  return mergeThreadList(threads, incoming, threadListOverlay(activeId, status))
-}
-
 const THEME_KEY = "zwai.theme"
 
 export const useApp = create<AppState>((set, get) => ({
@@ -247,10 +238,11 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   refreshThreads: async () => {
+    const baseline = get().threads
     try {
       const incoming = await api.threads()
       set((s) => ({
-        threads: applyThreadListing(s.threads, incoming, s.activeId, s.status),
+        threads: applyThreadListing(s.threads, incoming, s.activeId, s.status, baseline),
       }))
     } catch (e) {
       set({ error: message(e) })
@@ -261,13 +253,14 @@ export const useApp = create<AppState>((set, get) => ({
   /** Same listing as refreshThreads, but a dropped packet must not toast:
    *  this is the background pass that keeps folder progress honest. */
   syncThreads: async () => {
+    const baseline = get().threads
     try {
       const [incoming, meta] = await Promise.all([
         api.threads(),
         api.meta().catch(() => undefined),
       ])
       set((s) => ({
-        threads: applyThreadListing(s.threads, incoming, s.activeId, s.status),
+        threads: applyThreadListing(s.threads, incoming, s.activeId, s.status, baseline),
         ...(meta ? { meta } : {}),
       }))
     } catch {
@@ -346,6 +339,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
 
   openThread: async (id, opts) => {
+    set((s) => ({ completionVisit: (s.completionVisit ?? 0) + 1 }))
     // Leave Scheduled even when this conversation is already open; Open
     // findings would otherwise be a no-op and leave the page up. A project
     // topic stays on the project list; a loose one opens Conversations.

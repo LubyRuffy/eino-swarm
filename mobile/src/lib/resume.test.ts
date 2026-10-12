@@ -141,3 +141,16 @@ describe("rosterFingerprint", () => {
     )
   })
 })
+
+
+it("completion state changes the roster fingerprint without making an idle task live", () => {
+  const completed = { id: "completed", title: "Task", running: false, last_active_at: "", unread: true, completed_seq: 12 }
+  expect(collectLive([], [completed])).toEqual([])
+  expect(pickResumeThread("", [], [completed])).toBe("")
+  expect(rosterFingerprint([], [completed], [], false, "", [completed])).not.toBe(
+    rosterFingerprint([], [{ ...completed, unread: false }], [], false, "", []),
+  )
+  expect(rosterFingerprint([], [], [], false, "", [completed])).not.toBe(
+    rosterFingerprint([], [], [], false, "", [{ ...completed, completed_seq: 13 }]),
+  )
+})
