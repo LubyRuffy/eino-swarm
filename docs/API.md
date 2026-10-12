@@ -1133,7 +1133,8 @@ that turn to finish cleanly, then starts as the next turn. The live turn's own
 user text is not queued: a leftover Enter or an IME restoring the committed
 string must not schedule the same request again. ⌘Enter (and Steer on a waiting
 row) injects into this turn and drops a queued copy of that text. Cancelled and failed
-turns leave the remaining queue in place. Refresh, a crash, or quitting the app does not
+turns leave the remaining queue in place. Steer on one of those leftover rows starts
+that text as the next turn; Stop still does not flush the rest by itself. Refresh, a crash, or quitting the app does not
 lose it: the rows live on the conversation and run after a leftover turn
 finishes. Editing a waiting row and submitting it moves that message to the
 back of the FIFO. Pasted images are not queued (the row is text-only) — they
@@ -1179,11 +1180,16 @@ follow-up.
 ### `POST /api/threads/:id/followups/:fid/steer` → `202`
 
 Pulls that waiting message into the running turn (same injection as
-`POST …/steer`). The row leaves the queue. If the turn has already ended the
-row is put back and the response is `409 idle`.
+`POST …/steer`). The row leaves the queue. If the turn has already ended, the
+same click starts that text as the next turn (`steered: false` plus `turn`).
+A start that loses the slot puts the row back (`409 busy`, or another error).
 
 ```json
 {"steered": true}
+```
+
+```json
+{"steered": false, "turn": {"id": "tn_cd34…", "status": "running", "…": "…"}}
 ```
 
 ### `POST /api/threads/:id/interrupt` → `202`

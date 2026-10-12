@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `C-002`: Steer on a queued row starts that text as the next turn after Stop. A live turn still injects at the next model boundary. Stop still does not flush the rest of the queue by itself.
+
 - `F-220`, `F-222`, `F-230`, `C-015`: iOS now returns one visible layer after a completed left-edge swipe to the right, including worker → Agents → conversation → inbox and model-picker dismissal. Root pages remain open; short, vertical and non-edge swipes do not navigate (Issue #75).
 
 - `F-130`, `C-003`: a late desktop send acknowledgement cannot restore Working after the same turn finished, or mark another selected conversation running; live steering and new turns retain their existing behavior (Issue #74).

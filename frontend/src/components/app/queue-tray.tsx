@@ -9,7 +9,8 @@ import { useT } from "@/lib/use-t"
 /** Codex-style tray: messages waiting for the current turn to finish.
  *  Click a row to pull it into the composer and drop it from this list.
  *  Enter while the turn is still running queues that draft at the back.
- *  Steer injects one into this turn; trash asks, then drops it. */
+ *  Steer injects one into this turn, or starts it when the turn has already
+ *  stopped. Trash asks, then drops it. */
 export function QueueTray({
   items,
   onSteer,

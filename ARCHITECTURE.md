@@ -186,7 +186,8 @@ worker before closing SQLite.
    in place for other clients. **Steer** / ⌘Enter injects into the current turn
    (`POST /api/threads/:id/steer` or `…/followups/:fid/steer`) at the next
    model boundary — it does not kill an in-flight tool, and it does not
-   rewind. **Interrupt** on the unread-steer pin (`POST …/preempt`) cancels
+   rewind. When that turn has already ended, Steer on a queued row starts
+   that text as the next turn instead of leaving it in the tray. **Interrupt** on the unread-steer pin (`POST …/preempt`) cancels
    the current manager tool/generate (nested epoch ctx) so those steers drain
    on this turn; workers stay up. **Delete** on one bubble
    (`DELETE …/steers/:seq`) retracts that inbox item (`steer_retracted`).
@@ -466,7 +467,7 @@ worker before closing SQLite.
    manager's last model call is not dropped — it starts a follow-up turn, and
    takes that slot ahead of anything waiting in the follow-up table. A clean
    `done` then pops the oldest queued follow-up and starts it; Stop and errors
-   leave those rows where they are.
+   leave those rows where they are until Steer on one row starts that text.
 7. **Startup resume.** A turn is `running` until it finishes, errors, or the
    user stops it. A crash, a kill, or quitting the app leaves that row running.
    The next `app.New` calls `Engine.ResumeOrphanedTurns`: every leftover turn

@@ -447,6 +447,26 @@ test("Enter while working queues until the turn finishes", async ({ page }) => {
   await expect(page.getByTestId("followup-queue")).toHaveCount(0)
 })
 
+test("Steer on a queued row after Stop starts that text as the next turn", async ({ page }) => {
+  await freshConversation(page)
+  await send(page, "Look at this from two angles and merge the findings")
+  await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
+  const later = "continue after the stop"
+  await composer(page).fill(later)
+  await composer(page).press("Enter")
+  const tray = page.getByTestId("followup-queue")
+  await expect(tray).toContainText(later)
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
+  await waitForIdle(page)
+  await expect(tray).toContainText(later)
+  await tray.getByRole("button", { name: `Steer: ${later}` }).click()
+  await expect(page.getByTestId("followup-queue")).toHaveCount(0)
+  await expect(page.getByTestId("user-message").filter({ hasText: later })).toBeVisible({
+    timeout: 30_000,
+  })
+  await expect(page.getByTestId("steer").filter({ hasText: later })).toHaveCount(0)
+})
+
 test("Steer on a queued row injects and empties the tray", async ({ page }) => {
   await freshConversation(page)
   await send(page, "Look at this from two angles and merge the findings")

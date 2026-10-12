@@ -63,7 +63,7 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 		}
 		return attachFollowups(eng, okBase(req.ID, path, sessionID), req.ThreadID)
 	case OpFollowupSteer:
-		err := eng.SteerFollowup(req.ThreadID, req.FollowupID)
+		_, err := eng.SteerFollowup(req.ThreadID, req.FollowupID)
 		if err != nil {
 			return mapErr(req.ID, path, sessionID, err)
 		}

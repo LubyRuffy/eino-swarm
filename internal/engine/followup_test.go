@@ -95,8 +95,12 @@ func TestSteerFollowupInjectsIntoTheRunningTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	queued := queueWhileRunning(t, e, th.ID, "narrow it")
-	if err := e.SteerFollowup(th.ID, queued.ID); err != nil {
+	turn, err := e.SteerFollowup(th.ID, queued.ID)
+	if err != nil {
 		t.Fatalf("SteerFollowup: %v", err)
+	}
+	if turn != nil {
+		t.Fatalf("a live turn started another one: %+v", turn)
 	}
 	left, _ := e.ListFollowups(th.ID)
 	if len(left) != 0 {
@@ -242,7 +246,9 @@ func TestEnqueueFollowupWhileIdleIsIdle(t *testing.T) {
 	}
 }
 
-func TestSteerFollowupRestoresTheRowWhenIdle(t *testing.T) {
+// Stop leaves the queue. Steer on that row is "send this now", so an idle
+// conversation starts the text instead of putting the row back.
+func TestSteerFollowupStartsATurnWhenNothingIsRunning(t *testing.T) {
 	e := newTestEngine(t)
 	th, err := e.CreateThread("", "", "")
 	if err != nil {
@@ -252,18 +258,56 @@ func TestSteerFollowupRestoresTheRowWhenIdle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.SteerFollowup(th.ID, item.ID); !errors.Is(err, ErrIdle) {
+	turn, err := e.SteerFollowup(th.ID, item.ID)
+	if err != nil {
 		t.Fatalf("idle steer-followup: %v", err)
 	}
-	left, _ := e.ListFollowups(th.ID)
-	if len(left) != 1 || left[0].ID != item.ID {
-		t.Fatalf("failed steer dropped the follow-up: %+v", left)
+	if turn == nil || turn.UserText != "still waiting" {
+		t.Fatalf("idle click did not start a turn: %+v", turn)
 	}
-	if err := e.DeleteFollowup(th.ID, item.ID); err != nil {
+	left, _ := e.ListFollowups(th.ID)
+	if len(left) != 0 {
+		t.Fatalf("started follow-up still queued: %+v", left)
+	}
+	waitForTurn(t, e, turn.ID)
+	if _, err := e.SteerFollowup(th.ID, item.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing follow-up: %v", err)
+	}
+}
+
+// The slot can close between "nothing to inject into" and the new turn.
+// Losing that race must not drop the text.
+func TestSteerFollowupRestoresTheRowWhenTheSlotIsTaken(t *testing.T) {
+	e := newTestEngine(t)
+	th, err := e.CreateThread("", "", "")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.SteerFollowup(th.ID, item.ID); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing follow-up: %v", err)
+	item, err := e.Store().EnqueueFollowup(th.ID, "still waiting")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := e.runtimeFor(th.ID)
+	rt.mu.Lock()
+	rt.running = true
+	rt.reg = nil
+	rt.mu.Unlock()
+	t.Cleanup(func() {
+		rt.mu.Lock()
+		rt.running = false
+		if rt.idle == nil {
+			rt.idle = make(chan struct{})
+			close(rt.idle)
+		}
+		rt.mu.Unlock()
+	})
+	turn, err := e.SteerFollowup(th.ID, item.ID)
+	if turn != nil || !errors.Is(err, ErrBusy) {
+		t.Fatalf("busy start: turn=%v err=%v", turn, err)
+	}
+	left, _ := e.ListFollowups(th.ID)
+	if len(left) != 1 || left[0].ID != item.ID || left[0].Text != "still waiting" {
+		t.Fatalf("failed start dropped the follow-up: %+v", left)
 	}
 }
 

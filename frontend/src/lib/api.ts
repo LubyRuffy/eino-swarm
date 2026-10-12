@@ -508,8 +508,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ text }),
     }).then((r) => r.followup),
+  /** Injects a queued row into the running turn. A stopped turn starts it
+   *  as the next one (`steered: false` plus `turn`), same as `steer`. */
   steerFollowup: (id: string, fid: string) =>
-    request<{ steered: boolean }>(`/api/threads/${id}/followups/${fid}/steer`, {
+    request<{ steered: boolean; turn?: Turn }>(`/api/threads/${id}/followups/${fid}/steer`, {
       method: "POST",
     }),
   /** Aborts the current manager tool/generate so unread steering lands now.

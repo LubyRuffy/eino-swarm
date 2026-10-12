@@ -80,9 +80,14 @@ func (s *Server) steerFollowup(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := s.engine.SteerFollowup(th.ID, c.Param("fid")); err != nil {
+	turn, err := s.engine.SteerFollowup(th.ID, c.Param("fid"))
+	if err != nil {
 		s.fail(c, err)
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"steered": true})
+	if turn == nil {
+		c.JSON(http.StatusAccepted, gin.H{"steered": true})
+		return
+	}
+	c.JSON(http.StatusAccepted, gin.H{"steered": false, "turn": turn})
 }

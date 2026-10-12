@@ -57,24 +57,38 @@ func (e *Engine) RequeueFollowup(threadID, id, text string) (*store.Followup, er
 }
 
 // SteerFollowup pulls a waiting message into the running turn at the next
-// model boundary. It does not cancel an in-flight tool. If the turn has
-// already ended, the row is put back so a refresh still shows it.
-func (e *Engine) SteerFollowup(threadID, id string) error {
+// model boundary. It does not cancel an in-flight tool. A nil turn means
+// that injection landed. When nothing is running, the same click starts the
+// text as the next turn: Stop leaves the queue, and this button is the user
+// saying send it now. A start that loses the slot puts the row back.
+func (e *Engine) SteerFollowup(threadID, id string) (*store.Turn, error) {
 	f, err := e.store.GetFollowup(threadID, id)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := e.store.DeleteFollowup(threadID, id); err != nil {
-		return err
+		return nil, err
 	}
 	if err := e.Steer(threadID, f.Text); err != nil {
-		if uerr := e.store.UnshiftFollowup(f); uerr != nil {
-			e.log.Warn("could not restore a follow-up after a failed steer",
-				"thread", threadID, "followup", id, "err", uerr)
+		if !errors.Is(err, ErrIdle) {
+			e.restoreFollowup(f)
+			return nil, err
 		}
-		return err
+		turn, startErr := e.StartTurn(threadID, f.Text)
+		if startErr != nil {
+			e.restoreFollowup(f)
+			return nil, startErr
+		}
+		return turn, nil
 	}
-	return nil
+	return nil, nil
+}
+
+func (e *Engine) restoreFollowup(f *store.Followup) {
+	if uerr := e.store.UnshiftFollowup(f); uerr != nil {
+		e.log.Warn("could not restore a follow-up after a failed steer",
+			"thread", f.ThreadID, "followup", f.ID, "err", uerr)
+	}
 }
 
 // flushFollowup starts the oldest waiting message as the next turn. Only a

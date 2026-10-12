@@ -52,6 +52,7 @@ This is the current user-facing capability map. The code and tests named below a
 - PC 用户视图：连续工作区块只有一段思考或一个可见工具时，直接显示该条自身的折叠，一次点击即可查看内容；流式思考沿用默认展开与手动折叠。多项保留聚合，回答分隔工作区块。关联契约：`C-022`；实现证据：`frontend/src/components/app/work-fold.tsx`, `frontend/src/components/app/transcript-fold.test.tsx`, `frontend/e2e/work-fold.spec.ts`。
 
 - 目的：运行 manager/sub-agent、查看工具并发送跟进或插入；使用者：PC 用户；入口：对话输入框和 Agent 面板；输入：消息、工具结果、排队消息的修改、未读 steer 的修改；输出：实时事件和最终回答；前置条件：配置可用 provider；失败表现：运行错误和 Trace；关联契约：`C-002`, `C-003`, `C-012`；实现证据：`internal/engine`, `internal/tools`, `frontend/src/components/app`。
+- 停止后的排队行点击注入，作为下一轮发送；活动轮次仍注入当前回合。Stop 不自动清空其余队列。证据：`internal/engine/followup_test.go`, `frontend/e2e/conversation.spec.ts`。
 - 极快完成的轮次在发送 ACK 晚于终态事件时仍保持空闲，迟到 ACK 不改变后来选择的对话；证据：`frontend/src/store/app-send.test.ts`, `frontend/e2e/api-error.spec.ts`。
 - 轮次开始后响应区立即显示旋转的“工作中”，首个服务端进度脉冲到达后切换为计时；轮次结束即消失，不等待本地模型首字节。实现证据：`frontend/src/components/app/transcript.tsx`, `frontend/src/components/app/transcript.test.tsx`。
 - 每个已结束轮次在桌面/Web 对话中都有横线及本地日期时间，持续目标折叠的轮次也保留该分界；进行中不提前标结束。实现证据：`frontend/src/components/app/transcript-session.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `frontend/e2e/schedules.spec.ts`。

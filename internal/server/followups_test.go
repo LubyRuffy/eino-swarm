@@ -88,11 +88,37 @@ func TestSteerFollowupInjectsThroughTheAPI(t *testing.T) {
 	fu := enqueueWhileRunning(t, h, id, "narrow it")
 	fid, _ := fu["id"].(string)
 
-	h.json(http.MethodPost, "/api/threads/"+id+"/followups/"+fid+"/steer",
+	steered := h.json(http.MethodPost, "/api/threads/"+id+"/followups/"+fid+"/steer",
 		nil, http.StatusAccepted)
+	if steered["steered"] != true {
+		t.Fatalf("live steer started a turn: %v", steered)
+	}
 	listed := h.json(http.MethodGet, "/api/threads/"+id+"/followups", nil, http.StatusOK)
 	if rows, _ := listed["followups"].([]any); len(rows) != 0 {
 		t.Fatalf("steered follow-up still queued: %v", listed)
+	}
+	h.waitTurnDone(id)
+}
+
+func TestSteerFollowupStartsATurnWhenTheConversationIsIdle(t *testing.T) {
+	h := newHarness(t)
+	id := h.newThread()
+	item, err := h.app.Store.EnqueueFollowup(id, "send me anyway")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := h.json(http.MethodPost, "/api/threads/"+id+"/followups/"+item.ID+"/steer",
+		nil, http.StatusAccepted)
+	if body["steered"] != false {
+		t.Fatalf("idle steer did not start a turn: %v", body)
+	}
+	turn, _ := body["turn"].(map[string]any)
+	if turn["user_text"] != "send me anyway" || turn["status"] != store.TurnRunning {
+		t.Fatalf("started turn: %v", body)
+	}
+	empty := h.json(http.MethodGet, "/api/threads/"+id+"/followups", nil, http.StatusOK)
+	if rows, _ := empty["followups"].([]any); len(rows) != 0 {
+		t.Fatalf("started follow-up still queued: %v", empty)
 	}
 	h.waitTurnDone(id)
 }

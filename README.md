@@ -226,7 +226,7 @@ uploads, downloads and the live event stream have exactly one implementation.
   pull it into the composer; the row leaves, and Enter queues that draft at the back. **Steer** on
   that row, or ⌘Enter, injects into the current turn at the next model boundary
   — it does not kill an in-flight tool, and it drops a queued copy of the same
-  text. Unread steering sits under the working line: **Interrupt** aborts the current manager tool so those nudges land now
+  text. After Stop, Steer on a leftover row starts that text as the next turn. Unread steering sits under the working line: **Interrupt** aborts the current manager tool so those nudges land now
   (workers stay up); the pencil pulls one bubble into the composer and retracts it, so Enter queues it instead; **Delete** retracts one bubble so the model never sees it.
   Stop is what cancels the whole turn. If the manager
   hits its tool-round limit, the transcript asks whether to add another slice
