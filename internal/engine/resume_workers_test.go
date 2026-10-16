@@ -11,6 +11,7 @@ import (
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
 )
 
 func TestOrphanedWorkersSplitsRunningAndFinished(t *testing.T) {
@@ -104,7 +105,7 @@ func TestResumeConversationKeepsThisTurnsSpawnResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := spawnIDsInMessages(msgs)
+	ids := knownWorkerIDsInMessages(msgs)
 	if len(ids) != 1 || ids[0] != "worker-1" {
 		t.Fatalf("resume lost the in-flight spawn: %v", ids)
 	}
@@ -329,7 +330,7 @@ func TestThisTurnMessagesReconstructsSpawnResultsFromEvents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := spawnIDsInMessages(msgs)
+	ids := knownWorkerIDsInMessages(msgs)
 	if len(ids) != 1 || ids[0] != "worker-1" {
 		t.Fatalf("event-only spawn was not replayed for the manager: %v", ids)
 	}
@@ -624,11 +625,11 @@ func TestDropTrailingIncompleteKeepsUnreadSteers(t *testing.T) {
 }
 
 func TestSpawnPairsFromEventsSkipsTheManager(t *testing.T) {
-	got := spawnPairsFromEvents([]store.Event{
+	got := workerRosterFromEvents([]store.Event{
 		{Kind: swarm.NotifySpawned.String(), AgentID: swarm.DefaultManagerID, Role: "manager"},
 		{Kind: swarm.NotifySpawned.String(), AgentID: "worker-1", Role: "worker"},
 	})
-	ids := spawnIDsInMessages(got)
+	ids := knownWorkerIDsInMessages(got)
 	if len(ids) != 1 || ids[0] != "worker-1" {
 		t.Fatalf("manager spawn leaked into replay: %v", ids)
 	}
@@ -737,6 +738,25 @@ func TestResumeConversationReportsAClosedStore(t *testing.T) {
 	if _, err := e.resumeConversation(turn); err == nil {
 		t.Fatal("a closed store must surface")
 	}
+}
+
+func knownWorkerIDsInMessages(msgs []adk.Message) []string {
+	ids := spawnIDsInMessages(msgs)
+	seen := make(map[string]bool)
+	for _, id := range ids {
+		seen[id] = true
+	}
+	for _, message := range msgs {
+		if snapshot, ok := workerstate.Parse(message); ok {
+			for _, worker := range snapshot.Workers {
+				if !seen[worker.AgentID] {
+					ids = append(ids, worker.AgentID)
+					seen[worker.AgentID] = true
+				}
+			}
+		}
+	}
+	return ids
 }
 
 func spawnIDsInMessages(msgs []adk.Message) []string {

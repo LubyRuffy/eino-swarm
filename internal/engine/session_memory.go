@@ -123,6 +123,7 @@ The briefing must:
 - record errors and how they were resolved
 - record a procedure that worked or failed, in enough detail to follow again
 - say what is still unfinished
+- use the supplied worker lifecycle evidence for the listed turns; a previous briefing or assistant claim cannot establish creation, resume or execution
 - stay shorter than the text it replaces
 - not be a Tool/Human/Assistant transcript and not paste tool JSON`
 }
@@ -136,10 +137,14 @@ func sessionMemoryInput(previous string, events []store.Event) string {
 // that fit the rune cap. Tool results are clipped harder than assistant
 // text so one exec payload cannot crowd out the work.
 func boundSessionMemoryInput(previous string, events []store.Event) (string, int64) {
-	prev := acceptBriefing(previous, "")
-	prefix := ""
+	return sessionMemorySource(previous, events, events)
+}
+
+func sessionMemorySource(previous string, events, history []store.Event) (string, int64) {
+	prev := acceptBriefing(withoutWorkerEvidence(previous), "")
+	prefix := workerLifecycleFacts(history, workerFactTurns(events))
 	if prev != "" {
-		prefix = "Previous briefing:\n" + prev + "\n\n"
+		prefix += "Previous briefing (model-written claims):\n" + clip(prev, compactSummaryMaxRunes) + "\n\n"
 	}
 	budget := sessionMemoryInputMaxRunes - utf8.RuneCountInString(prefix)
 	if budget < sessionMemoryToolClip {
@@ -182,7 +187,7 @@ func boundSessionMemoryInput(previous string, events []store.Event) (string, int
 	}
 	body := strings.TrimSpace(b.String())
 	if utf8.RuneCountInString(body) > sessionMemoryInputMaxRunes {
-		body = clip(body, sessionMemoryInputMaxRunes)
+		body = clip(body, sessionMemoryInputMaxRunes-2)
 	}
 	return body, through
 }
@@ -307,7 +312,7 @@ func (e *Engine) syncSessionMemory(ctx context.Context, threadID, turnID string,
 	if strings.TrimSpace(sessionMemoryInput("", fresh)) == "" {
 		return nil
 	}
-	input := sessionMemoryInput(th.SessionMemory, fresh)
+	input, _ := sessionMemorySource(th.SessionMemory, fresh, events)
 	return e.refreshSessionMemory(ctx, threadID, turnID, th, events, tokens, input)
 }
 
@@ -344,6 +349,7 @@ func (e *Engine) refreshSessionMemory(ctx context.Context, threadID, turnID stri
 		e.markSessionMemoryAttempt(threadID, tokens)
 		return nil
 	}
+	summary = workerEvidenceSummary(summary, events, workerFactTurns(eventsAfter(events, th.SessionMemoryThroughSeq)))
 	through := lastEventSeq(events)
 	if err := e.store.UpdateThread(threadID, map[string]any{
 		"session_memory":             summary,
@@ -436,11 +442,11 @@ func mergeSessionProgress(previous, progress string) string {
 	if prev == "" {
 		return clip(progress, compactSummaryMaxRunes)
 	}
-	return clip(prev+"\n\n"+progress, compactSummaryMaxRunes)
+	return clip(progress+"\n\n"+prev, compactSummaryMaxRunes)
 }
 
 func (e *Engine) mergeSessionMemory(threadID, turnID, progress string) {
-	progress = strings.TrimSpace(progress)
+	progress = acceptBriefing(progress, "")
 	if progress == "" {
 		return
 	}
@@ -448,9 +454,17 @@ func (e *Engine) mergeSessionMemory(threadID, turnID, progress string) {
 	if err != nil {
 		return
 	}
-	summary := mergeSessionProgress(th.SessionMemory, progress)
+	summary := mergeSessionProgress(withoutWorkerEvidence(th.SessionMemory), progress)
 	if summary == "" || summary == strings.TrimSpace(th.SessionMemory) {
 		return
+	}
+	if turnID != "" {
+		events, err := e.store.ListEvents(threadID, 0, 0)
+		if err != nil {
+			e.recordSessionMemory(threadID, turnID, "", 0, err.Error())
+			return
+		}
+		summary = workerEvidenceSummary(summary, events, []string{turnID})
 	}
 	if err := e.store.UpdateThread(threadID, map[string]any{
 		"session_memory": summary,

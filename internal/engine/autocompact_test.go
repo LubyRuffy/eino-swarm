@@ -460,26 +460,11 @@ func TestRosterPinComesFromTurnEventsNotFoldedMessages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if next == nil || !hasSpawnID(next.Messages, "worker-1") {
+	if next == nil || !hasWorkerID(next.Messages, "worker-1") {
 		t.Fatalf("roster must be rehydrated from spawned events, not from folded text: %+v", next)
 	}
 	if hasToolCall(state.Messages, spawnAgentToolName) {
 		t.Fatal("this fixture must not carry a spawn pair in the ADK history")
-	}
-}
-
-func TestPinWorkerPairsSkipWhenTailAlreadyHasTheAgent(t *testing.T) {
-	pin := pinWorkerPairs([]swarm.RestoredWorker{{ID: "worker-1", Role: "worker"}}, nil)
-	tail := []*schema.Message{
-		schema.AssistantMessage("", []schema.ToolCall{{
-			ID: "c-spawn", Type: "function",
-			Function: schema.FunctionCall{Name: spawnAgentToolName, Arguments: `{"role":"worker"}`},
-		}}),
-		&schema.Message{Role: schema.Tool, Content: `{"agent_id":"worker-1"}`, ToolCallID: "c-spawn"},
-	}
-	got := dropPairsAlreadyIn(pin, tail)
-	if len(got) != 0 {
-		t.Fatalf("duplicate pin for an id already in the tail: %+v", got)
 	}
 }
 

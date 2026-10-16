@@ -69,10 +69,14 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-008 Durable local data
 
-- 状态：active；类型：data；作用范围：store、search；关联功能：`F-120`, `F-410`。
+- 状态：active；类型：data；作用范围：store、search、engine 会话摘要与记忆复核；关联功能：`F-120`、`F-130`、`F-410`、`F-420`。
 - 契约内容：对话、turn、完成事件和计划保存在本机数据目录；测试使用临时目录，不写用户数据目录。
+- Worker 事实优先级：会话摘要、目标收尾直写和记忆复核从完整持久化历史确定对应 turn 的生命周期事实。`source: persisted_worker_lifecycle` 的 JSON 行保留 `turn_id`、`through_seq`、`new_workers`、`resumed_workers`、`finished_workers`、`rejected_spawn_calls`、`rejected_resume_calls`、`cleanup_events`；新建／续办／完成按各 turn 内不同 worker ID 计数，历史已出现或重复的 spawned ID 属续办／进程恢复，拒绝调用不算创建，cleanup 计事件数。拒绝数量须有 manager 调用与错误回执配对，合并拒绝使用 `rejected_calls`。
+- 摘要预算与污染恢复：输入和落库摘要优先保留最多最近四个相关 turn 的事实，最新在前；目标收尾也走同一证据路径。旧摘要、回答、worker 正文与文件是待核对叙述，不能代替生命周期证据；不得通过匹配用户业务词语删除历史或改写记忆。读取完整历史失败时复核跳过并记录原因，不从缺失数据伪造零创建。该边界不承诺任意真实模型都遵从提示词，也不自动删除既有笔记或技能。
+- 展示边界：手动和自动压缩的 `compacted` 事件 `summary` 仅包含摘要正文，剥离自己开头的完整内部事实块；`session_memory`、`compact_summary`、模型输入及 session-memory Trace 保留证据。展示裁剪不得回写删除内部事实，也不处理引用或损坏的标记。证据：`internal/engine/compact.go`、`internal/engine/autocompact.go`、`internal/engine/compact_evidence_test.go`、`internal/server/compact_evidence_test.go`。
 - 允许行为：搜索索引后台更新；禁止行为：测试污染用户目录；失败语义：存储错误需显式显示；不变量：事件可按 turn 恢复；边界条件：进程重启和索引延后。
 - 证据：实现 `internal/store`, `internal/search`；测试 `internal/store`, `internal/search`；Schema `docs/DATA_MODEL.md`；变更规则：同步 schema、迁移和恢复测试；来源：`AGENTS.md`。
+- 摘要／复核证据：实现 `internal/engine/worker_lifecycle_facts.go`、`internal/engine/session_memory.go`、`internal/engine/review_source.go`、`internal/engine/review.go`；测试 `internal/engine/worker_lifecycle_facts_test.go`、`internal/engine/session_memory_bound_test.go`、`internal/engine/review_source_test.go`；变更规则：同步摘要、目标收尾、复核及事实裁剪回归；来源：GitHub Issue #78。
 
 ## C-009 Editable configuration and scheduled waits
 
@@ -109,6 +113,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-320`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
+- Worker 计数证据：创建／续办以该 turn 的真实调用与持久化生命周期事件为准，历史名册和 assistant 自述不能当作本轮创建量。错误回执保留拒绝类别及聚合数量，已恢复 ID 不冒称新 ID；摘要事实按 `turn_id` 和 `through_seq` 归属。仅注入名册快照不得新增 `spawned` 或伪造 `spawn_agent` 工具记录；真实续办／进程恢复保留事件并按已有 ID 区分。证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`frontend/e2e/worker-roster-history.spec.ts`；来源：GitHub Issue #78。
 - 模型接口失败的公共 turn/error 展示保留可判断的 HTTP 状态码及接口拒绝/响应解码原因。JSON 解码错误本身不证明工具参数无效；SDK/Eino 类型错误经包装仍按接口错误处理。公共文本不包含原始响应正文、图执行路径或认证值，原因最多 512 字符；原始调用与重试仍在同一 turn 的 Trace 内可查，上下文溢出及超时提示保留现有恢复建议。
 - 允许行为：敏感值脱敏；禁止行为：丢掉诊断所需事件或输出令牌/完整 Cookie；失败语义：不存在的 id 报不存在；不变量：同 id 贯穿运行；边界条件：部分失败和重启恢复。
 - 证据：实现 `internal/engine/runerr.go`, `internal/engine`, `internal/server`, `internal/store`；测试 `internal/engine/runerr_api_test.go`, `internal/engine/api_error_integration_test.go`, `internal/server`；变更规则：同步 CLI、API 和 Trace 测试；来源：`AGENTS.md`、GitHub Issue #71。
@@ -160,8 +165,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-019 Proactive delegation for time or quality
 
-- 状态：active；类型：compatibility；作用范围：engine 普通对话和持续目标、共享 manager 提示词的终端入口；关联功能：`F-130`。
+- 状态：active；类型：compatibility；作用范围：engine 普通对话、持续目标、定时续办、上下文恢复和共享 manager 提示词的终端入口；关联功能：`F-130`、`F-150`。
 - 契约内容：运行时提示词必须要求 manager 在能节省时间或提高质量时主动使用 subagents，并随任务进展重新评估，无需等待用户提出；时间与质量是独立理由。只有一个 worker、需要等待或任务较小不得成为拒绝有质量收益的独立审查／第二思路的绝对条件。
+- 历史身份边界：完整历史 worker 名册以一个 System JSON 快照传入，`source` 为 `runtime_worker_roster`，`note` 标明是历史创建的当前状态且不授予人类权限，`workers` 保留 `agent_id`、`role` 和 `running`／`done`／`failed`。只有 running 表示仍在运行；已结束 worker 可查询或显式 resume，但恢复名册不得伪造 assistant `spawn_agent` 调用、成功回执或新的生命周期事件。重复恢复替换旧快照，保留真实工具尾及调用／回执配对；goal、schedule、compact、retry、restart 遵循相同语义。实现／测试：`internal/workerstate/snapshot.go`、`internal/workerstate/snapshot_test.go`、`internal/engine/autocompact_roster.go`、`internal/engine/resume_workers.go`、`internal/engine/worker_roster_test.go`、`frontend/e2e/worker-roster-history.spec.ts`；来源：GitHub Issue #78。
 - 允许行为：无实质收益时自行完成；禁止行为：仅显式要求才委派、为满足调用比例强制创建 worker、持续目标提示词重新引入单 worker 等待禁令；失败语义：worker 失败或超时需如实说明，不能视为成功；不变量：遵守用户显式限制与并发上限，分离写入路径，manager 核验并整合结果；边界条件：并发上限为一、先自行执行后发现委派机会、用户限制委派。
 - 无效调用边界：manager 的同一模型回复中，role/task 缺失、空白或参数不可读的 spawn 调用按同类错误合并，只执行保留代表的拒绝反馈，回执含 `rejected_calls`。保留代表原始 ID 和参数，保证模型历史、通知和 trace 的调用／回执配对；所有有效调用和其他工具均保留。流式参数拼完后判断，取消或流错误不执行未完成批次。拒绝调用未创建、续办、引导或取消任何 worker；不保证真实模型永不产生无效参数，正常修正不受固定调用配额限制。实现／测试：`spawn_batch.go`, `spawn_batch_test.go`, `swarm.go`, `tools.go`；来源：GitHub Issue #64。
 - Worker watchdog 恢复边界：同一 worker 连续三次由 `AgentTimeout` 截止后，`resume_agent`、同角色 `spawn_agent` 和进程恢复不得再次启动它；可判断的 `WorkerTimeoutLimitError` 终止 manager，持续目标阻断，仅其失败周期计划暂停。provider idle/network timeout、取消和成功不累计；成功或明确的人类新消息／目标 Start 清除计数。模型恢复、`reopen_goal`、自动触发和注册表归档不得清除原 worker 计数。

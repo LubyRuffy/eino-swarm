@@ -23,7 +23,7 @@ func managerScript(turn int, msgs []*schema.Message) *schema.Message {
 		return msg
 	}
 	task := lastUserText(msgs)
-	ids := spawnedIDs(msgs)
+	ids := knownWorkerIDs(msgs)
 	// Spawn only when this conversation has no workers yet. A continued run
 	// starts a new model instance whose turn counter is 1 again; re-spawning
 	// would fan out forever instead of finishing the work already in flight.
@@ -67,7 +67,7 @@ func managerScript(turn int, msgs []*schema.Message) *schema.Message {
 		return schema.AssistantMessage(mockAnswer(task, collectResults(report)), nil)
 	}
 	args, _ := json.Marshal(map[string]any{"agent_ids": ids, "timeout_s": 60})
-	content := "Both workers are running; I will report back as each finishes.\n"
+	content := "Checking the workers’ current results.\n"
 	if report != nil {
 		content = waitProgressLine(report)
 	}

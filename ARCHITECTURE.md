@@ -141,6 +141,7 @@ browser history entries.
 | `internal/provider` | builds eino chat models from config, lists an endpoint's catalog (`GET {base_url}/models`), omits an endpoint switched off in Settings from the composer list, records per-call telemetry, POSTs OpenAI-compatible `/embeddings` when search is on, and provides the scripted offline provider used by `--mock` and the tests (character n-grams stand in for a real embed). The provider request timeout is silence after the first byte, not the whole streamed body: a thinking model that is still emitting tokens is not cut off. The first byte itself has a shorter cap. |
 | `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. `BindExecOutput` is the host binder that tees `exec` stdout/stderr into `NotifyToolDelta` without the swarm library importing eino-tools. A wrapper shortens a remaining-time `sleep` / `Start-Sleep` of five seconds or more to about a third of that duration so a progress poll still runs instead of sitting out the full estimate. |
 | `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the three agent tools (`memory`, `skill_view`, `skill_manage` including `merge`), the prompt sections they are rendered into, the reviewer's instruction, and the deterministic family fold that keeps one subject as one skill. A copied skill is a separate file with `origin_*` front matter so a later pull can read the source; the prompt and `skill_view` do not include that link. Owns the files; knows nothing about conversations. |
+| `internal/workerstate` | the manager's System-message worker snapshot: `source: "runtime_worker_roster"`, an explicit historical-state note, and every worker's `agent_id`, role and `running` / `done` / `failed` status. Shared by runtime restoration and the offline model; it is neither tool history nor human authorization. |
 | `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a pending thread wake (waiting is the next turn), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream / a mid-stream TCP read timeout retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from the event log (note extraction skipped when the manager already wrote; leftover skill families still fold), and resolves an in-app terminal's working directory from the conversation or project the client named. A clock + ticker (`StartScheduler`) fires due waits (`schedule_fired`) or skips a busy target (`schedule_skipped`) without bursting missed ticks; event kinds `schedule` / `schedule_fired` / `schedule_skipped` / `schedule_report` / `schedule_cancelled` are the wire contract. |
 | `internal/search` | ⌘K ranking. FTS5 is always on. Embeddings are off until Settings pins a model; then query vectors fuse with keywords via reciprocal rank fusion (`k=60`). Indexing embeddings is a background queue so a turn is not blocked on `/embeddings`. A failed query embed falls back to keywords. |
 | `internal/clients` | read-only scan of local Claude, Codex, and Cursor transcripts for the sidebar and the phone. `View` returns the last finished snapshot and walks the disk beside the caller, so a phone inbox `list` does not wait on it. Each refresh checks file metadata and reuses parsed rows from unchanged transcripts, retaining no raw buffers. It sorts once before publishing an immutable snapshot; readers select and copy only one page outside the snapshot lock. A session read is the live tail; `older` / `before` page backward by byte offset, and the opening request is on every page. It does not start or resume those tools. |
@@ -398,10 +399,13 @@ worker before closing SQLite.
    it would drop the in-flight ReAct tail. The briefing is streamed
    (Codex-style) even though eino calls Generate — a wrapper drains
    Stream. Silence between chunks uses the provider idle timeout
-   (`timeout_seconds`). After the briefing, spawn/resume
-   identity is rehydrated from the conversation's `spawned` / `finished`
-   events — not only this turn's, and not salvaged from compactable
-   messages — and summarizer errors are
+   (`timeout_seconds`). After the briefing, worker identity and current status
+   are rehydrated from the conversation's lifecycle events — not only this
+   turn's, and not salvaged from compactable messages. One System JSON snapshot
+   (`runtime_worker_roster`) replaces any older snapshot while the real
+   in-flight tool tail stays intact. It includes running and finished workers;
+   no synthetic assistant `spawn_agent` calls or successful tool receipts are
+   inserted. Summarizer errors are
    swallowed (recorded, turn continues uncompacted). The keep-or-delete
    comparison is `TestCompactEffectComparedWithEinoDefault`. The transcript
    the human sees does not change: compact is a view, the event log stays
@@ -474,6 +478,20 @@ worker before closing SQLite.
    takes that slot ahead of anything waiting in the follow-up table. A clean
    `done` then pops the oldest queued follow-up and starts it; Stop and errors
    leave those rows where they are until Steer on one row starts that text.
+   `worker_lifecycle_facts.go` separately derives worker counts from the full
+   persisted history, scoped to at most the four newest turns being summarized.
+   Its `persisted_worker_lifecycle` JSON rows lead the bounded input and the
+   stored briefing: first-seen IDs are new, repeated IDs are resumed/restored,
+   finished IDs are counted once per turn, and refused manager calls require
+   paired error receipts. Cleanup counts events, not killed workers. Direct
+   goal-session wrap-up merges use the same evidence. Earlier briefings and
+   model-written prose remain labelled claims; no user-specific word filter
+   rewrites the historical transcript or memory files.
+   Manual and automatic `compacted` events expose only the briefing prose in
+   their `summary` field. The complete generated evidence block remains in
+   `session_memory`, `compact_summary`, model input and the session-memory Trace;
+   presentation strips only that complete internal prefix, leaving the facts
+   available for future turns and diagnostics.
 7. **Startup resume.** A turn is `running` until it finishes, errors, or the
    user stops it. A crash, a kill, or quitting the app leaves that row running.
    The next `app.New` calls `Engine.ResumeOrphanedTurns`: every leftover turn
@@ -488,15 +506,16 @@ worker before closing SQLite.
    completed as a timed-out snapshot of those ids (live leftovers `running`)
    so the manager waits again instead of seeing a tool call with no result.
    Workers that already `finished` are planted so `wait_agents` /
-   `resume_agent` still resolve the id; they are **not** re-pinned as
-   `spawn_agent({role})` on that leftover turn — that made a long `/goal`
-   look like a new naked swarm and `wait_agents` returned on the first
-   already-done id. A quit does not record `cleanup` or `finished` for those
+   `resume_agent` still resolve the id. The manager receives their current
+   state as a System snapshot, never as replayed creation calls. A quit does
+   not record `cleanup` or `finished` for those
    in-flight workers — that would make the next start treat them as done. A
    `/goal` session that finished before the crash is a new turn on the next
    start: leftover workers are restored and planted from the **conversation**
-   event log (not the empty new turn), and spawn ids are re-pinned because
-   later turns drop previous tool results. `cleanup` marks killed leftovers as
+   event log (not the empty new turn). Because later turns drop previous tool
+   results, goal/schedule continuation and model retries refresh the same
+   explicit worker snapshot; historical finished workers remain stopped.
+   `cleanup` marks killed leftovers as
    stopped so they are not restarted as if they were still live. A sub-agent
    that already `finished` because the process stopped (the model stream died
    with `context canceled` / `context deadline`) is not still writing. When
@@ -538,6 +557,10 @@ worker before closing SQLite.
    same turn id as `memory-reviewer`, and one `memory_review` event says what
    changed. The log it reads is clipped per message and in total, so a turn
    that read a large file cannot make the review cost more than the work. The
+   reviewer receives that turn's deterministic worker lifecycle facts before
+   the briefing and prose; the full conversation history distinguishes restored
+   IDs from newly created workers. A failed full-history read skips review
+   rather than asserting zero creations from incomplete evidence. The
    reviewer reads the index. It does not open every skill, and it does not
    walk same-stem families: those are folded after it finishes. Hitting
    `memory.review_max_iterations` keeps whatever was written and leaves

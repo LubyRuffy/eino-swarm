@@ -43,7 +43,7 @@ func (m *autoCompact) einoSummarizeConfig(cm model.BaseChatModel, prev string) *
 		Trigger:         &summarization.TriggerCondition{ContextMessages: 1},
 		UserInstruction: compactPrompt(),
 		GenModelInput: func(_ context.Context, _, _ *schema.Message, original []*schema.Message) ([]*schema.Message, error) {
-			_, older, _ := splitCompactable(original, keep)
+			_, older, _ := splitCompactable(withoutLegacyWorkerPairs(original, m.rosterPin(original)), keep)
 			return []*schema.Message{
 				schema.SystemMessage(compactPrompt()),
 				schema.UserMessage(compactInputFromADK(prev, older)),
@@ -54,6 +54,7 @@ func (m *autoCompact) einoSummarizeConfig(cm model.BaseChatModel, prev string) *
 }
 
 func (m *autoCompact) finalizeFold(_ context.Context, original []*schema.Message, summary *schema.Message) ([]*schema.Message, error) {
+	original = withoutLegacyWorkerPairs(original, m.rosterPin(original))
 	prev := ""
 	if th, err := m.engine.store.GetThread(m.threadID); err == nil {
 		prev = th.CompactSummary
@@ -64,7 +65,7 @@ func (m *autoCompact) finalizeFold(_ context.Context, original []*schema.Message
 		return nil, errors.New(briefingRejectReason(compactAssistantText(summary), compactInputFromADK(prev, older)))
 	}
 	system, older, tail := splitCompactable(original, m.keep)
-	roster := dropPairsAlreadyIn(m.rosterPin(), tail)
+	roster := m.rosterPin(original)
 	next := assembleCompacted(system, text, older, tail, roster)
 	clearBilledUsage(next)
 	return next, nil

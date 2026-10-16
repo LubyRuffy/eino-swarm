@@ -313,7 +313,7 @@ func reviewerScript(turn int, msgs []*schema.Message) *schema.Message {
 	if isLibraryReview(msgs) {
 		return libraryReviewScript(turn, msgs)
 	}
-	task := oneLine(firstUserText(msgs))
+	task := oneLine(mockReviewSubject(msgs))
 	tag := conversationTag(task)
 	clip := clipRunes(task, 96)
 	switch turn {
@@ -376,7 +376,7 @@ func isLibraryReview(msgs []*schema.Message) bool {
 // no note store, and calling memory here would be a tool the reviewer was
 // not given.
 func libraryReviewScript(turn int, msgs []*schema.Message) *schema.Message {
-	task := oneLine(firstUserText(msgs))
+	task := oneLine(mockReviewSubject(msgs))
 	tag := conversationTag(task)
 	switch turn {
 	case 1:
@@ -480,7 +480,11 @@ const mockBriefingMaxRunes = 160
 // it was handed. Same rule as the namer: nothing here may encode a particular
 // task, or it would leak into tests as if the product had decided it.
 func compactSummarizerScript(_ int, msgs []*schema.Message) *schema.Message {
-	return schema.AssistantMessage(mockBriefing(lastUserText(msgs)), nil)
+	src := lastUserText(msgs)
+	if _, fresh, ok := strings.Cut(src, "New events:\n"); ok {
+		src = fresh
+	}
+	return schema.AssistantMessage(mockBriefing(src), nil)
 }
 
 func mockBriefing(src string) string {
@@ -834,8 +838,6 @@ func plainUserText(m *schema.Message) string {
 	return ""
 }
 
-// spawnedIDs harvests the agent ids the spawn tool handed back, exactly as a
-// real manager has to read them out of its own tool results.
 func nextWaitCallID(msgs []*schema.Message) string {
 	n := 0
 	for _, m := range msgs {
@@ -849,22 +851,6 @@ func nextWaitCallID(msgs []*schema.Message) string {
 		}
 	}
 	return fmt.Sprintf("mock-wait-%d", n+1)
-}
-
-func spawnedIDs(msgs []*schema.Message) []string {
-	var ids []string
-	for _, m := range msgs {
-		if m == nil || m.Role != schema.Tool || !strings.Contains(m.Content, "agent_id") {
-			continue
-		}
-		var r struct {
-			AgentID string `json:"agent_id"`
-		}
-		if json.Unmarshal([]byte(m.Content), &r) == nil && r.AgentID != "" {
-			ids = append(ids, r.AgentID)
-		}
-	}
-	return ids
 }
 
 // mockWaitReport mirrors the wait_agents result wire shape the manager reads.

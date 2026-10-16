@@ -107,7 +107,7 @@ func TestAttachLeftoverWorkersPlantsAndPinsAContinuation(t *testing.T) {
 	if len(running) != 0 || len(finished) != 1 || finished[0].ID != "worker-1" || finished[0].Result != "already on disk" {
 		t.Fatalf("restore=%+v finished=%+v", running, finished)
 	}
-	ids := spawnIDsInMessages(msgs)
+	ids := knownWorkerIDsInMessages(msgs)
 	if len(ids) != 1 || ids[0] != "worker-1" {
 		t.Fatalf("continuation must pin leftover ids: %v", ids)
 	}
@@ -130,7 +130,7 @@ func TestAttachLeftoverWorkersDoesNotRestoreIntoAParkedRegistry(t *testing.T) {
 	if len(running)+len(finished) != 0 {
 		t.Fatalf("a parked registry already holds them: running=%+v finished=%+v", running, finished)
 	}
-	ids := spawnIDsInMessages(msgs)
+	ids := knownWorkerIDsInMessages(msgs)
 	if len(ids) != 1 || ids[0] != "worker-1" {
 		t.Fatalf("the parked path must still pin ids: %v", ids)
 	}
@@ -198,7 +198,7 @@ func TestAttachLeftoverWorkersDoesNotPinARegularTurn(t *testing.T) {
 	if len(finished) != 1 || finished[0].ID != "worker-1" {
 		t.Fatalf("a fresh registry must still plant leftovers: %+v", finished)
 	}
-	if ids := spawnIDsInMessages(msgs); len(ids) != 0 {
+	if ids := knownWorkerIDsInMessages(msgs); len(ids) != 0 {
 		t.Fatalf("a regular turn must not look like those workers were just spawned: %v", ids)
 	}
 }

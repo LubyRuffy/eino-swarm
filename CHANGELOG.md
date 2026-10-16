@@ -13,6 +13,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `F-150`, `C-019`, `C-012`: goals, scheduled checks, compaction, model retries and restart restore historical workers through one explicit runtime state snapshot instead of fabricating successful `spawn_agent` calls. Finished workers remain queryable under their original IDs without appearing newly created on every turn; a loopback model/UI regression verifies the later turn's Trace (Issue #78).
+- `F-420`, `C-008`, `C-012`: session briefings, direct goal wrap-up and memory reviews prioritize deterministic per-turn worker lifecycle facts from the full persisted event log. Repeated IDs are restored/resumed, refused calls create no worker, and bounded summaries retain the evidence even when model prose repeats a false count. Earlier briefings remain labelled claims instead of being rewritten with task-specific word filters (Issue #78).
+- `F-420`, `C-008`: manual and automatic compressed-context previews show briefing prose while internal worker evidence stays in persisted model context and diagnostics. Offline memory reviewers use the human task instead of repeated evidence headers as their subject (Issue #78).
+
 - `F-220`, `C-003`, `C-006`: the offline phone fixture now starts an idle queued Steer as a new turn after Stop, matching the host. Regression evidence covers real Pairlink, storage failures and packaged-phone controls without changing the paired client's production request behavior (Issue #77).
 
 - `F-190`, `C-024`: updater installation exclusion now belongs to the app bundle across engines and processes, including different data directories. A competing install cannot overwrite a pending rollback backup; delayed cleanup only owns that installation's old bundle (Issue #77).

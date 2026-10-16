@@ -73,13 +73,13 @@ func TestBoundSessionMemoryInputClipsToolResultsHarderThanAnswers(t *testing.T) 
 		{Seq: 1, Kind: swarm.NotifyToolResult.String(), Text: strings.Repeat("x", 2000)},
 		{Seq: 2, Kind: swarm.NotifyAgentMessage.String(), AgentID: swarm.DefaultManagerID, Text: strings.Repeat("y", 2000)},
 	})
-	if strings.Count(body, "x") > sessionMemoryToolClip {
+	if strings.Contains(body, strings.Repeat("x", sessionMemoryToolClip+1)) {
 		t.Fatal("a tool result must not spend the compact clip")
 	}
-	if strings.Count(body, "y") > sessionMemoryMessageClip {
+	if strings.Contains(body, strings.Repeat("y", sessionMemoryMessageClip+1)) {
 		t.Fatal("assistant text is clipped to the message cap")
 	}
-	if strings.Count(body, "y") <= sessionMemoryToolClip {
+	if !strings.Contains(body, strings.Repeat("y", sessionMemoryToolClip+1)) {
 		t.Fatal("assistant text may keep more than a tool result")
 	}
 }

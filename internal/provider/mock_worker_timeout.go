@@ -26,7 +26,7 @@ func mockWorkerTimeout(msgs []*schema.Message) *schema.Message {
 	if os.Getenv("ZWAI_MOCK_WORKER_TIMEOUT") != "1" {
 		return nil
 	}
-	ids := spawnedIDs(msgs)
+	ids := knownWorkerIDs(msgs)
 	name, args := "spawn_agent", `{"role":"timeout-worker","task":"perform the assigned work"}`
 	if len(ids) > 0 {
 		name = "wait_agents"

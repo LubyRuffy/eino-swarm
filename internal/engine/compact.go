@@ -198,7 +198,7 @@ func (e *Engine) CompactThread(threadID string) (*store.Thread, error) {
 		return nil, err
 	}
 	payload, _ := json.Marshal(compactPayload{
-		Summary:     summary,
+		Summary:     withoutWorkerEvidence(summary),
 		ThroughSeq:  through,
 		CharsBefore: before,
 		CharsAfter:  e.contextChars(th),

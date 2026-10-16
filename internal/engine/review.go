@@ -123,7 +123,16 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 		return
 	}
 	skipLLM := !e.cfg.Memory.AutoReview || managerWroteMemory(events)
-	transcript := renderReviewFromEvents(events, e.sessionMemoryOf(threadID), final)
+	transcript := ""
+	if !skipLLM {
+		history, historyErr := e.store.ListEvents(threadID, 0, 0)
+		if historyErr != nil {
+			e.log.Warn("could not read worker lifecycle evidence for the memory review", "turn", turn.ID, "err", historyErr)
+			skipLLM = true
+		} else {
+			transcript = reviewSourceWithHistory(events, history, e.sessionMemoryOf(threadID), final)
+		}
+	}
 	if !skipLLM && strings.TrimSpace(transcript) == "" {
 		skipLLM = true
 	}
@@ -185,11 +194,12 @@ func (e *Engine) ReviewTurn(threadID string) (*store.Turn, error) {
 	// Replayed from the stored event log rather than from compacted ADK
 	// state, so a conversation can be reviewed again long after its turn
 	// ended and after compact has folded what the model sees.
-	events, err := e.store.ListTurnEvents(latest.ID)
+	history, err := e.store.ListEvents(threadID, 0, 0)
 	if err != nil {
 		return nil, err
 	}
-	transcript := renderReviewFromEvents(events, e.sessionMemoryOf(threadID), latest.Final)
+	events := reviewEventsForTurn(history, latest.ID)
+	transcript := reviewSourceWithHistory(events, history, e.sessionMemoryOf(threadID), latest.Final)
 	if strings.TrimSpace(transcript) == "" {
 		return nil, ErrIdle
 	}

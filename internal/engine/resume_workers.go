@@ -8,6 +8,7 @@ import (
 
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/schema"
 )
@@ -66,30 +67,39 @@ func (e *Engine) workersFromTurn(turn *store.Turn) ([]swarm.RestoredWorker, []sw
 // Conversation events still know who was live. A /goal continuation that
 // only looked at the new empty turn made wait_agents report unknown.
 func (e *Engine) workersFromThread(threadID string) ([]swarm.RestoredWorker, []swarm.FinishedWorker) {
+	running, finished, _ := e.readWorkersFromThread(threadID)
+	return running, finished
+}
+
+func (e *Engine) readWorkersFromThread(threadID string) ([]swarm.RestoredWorker, []swarm.FinishedWorker, error) {
 	if e == nil || e.store == nil || strings.TrimSpace(threadID) == "" {
-		return nil, nil
+		return nil, nil, nil
 	}
 	events, err := e.store.ListEvents(threadID, 0, 0)
 	if err != nil {
-		return nil, nil
+		return nil, nil, err
 	}
-	return orphanedWorkers(events)
+	running, finished := orphanedWorkers(events)
+	return running, finished, nil
 }
 
 // attachLeftoverWorkers plants leftover ids on a fresh registry and, when
-// the manager is expected to wait on them, pins spawn pairs back into the
-// prompt. Later turns drop tool results, so without the pin the model (and
-// the scripted manager) would mint twins or wait_agents unknown.
+// the manager needs their identities, adds an explicit runtime state snapshot.
+// Later turns drop tool results; identity must survive without replaying
+// historical workers as new tool executions.
 func (rt *runtime) attachLeftoverWorkers(reused, pin bool, live int, messages []adk.Message) []adk.Message {
 	if rt == nil || rt.engine == nil {
 		return messages
 	}
-	running, finished := rt.engine.workersFromThread(rt.threadID)
+	running, finished, err := rt.engine.readWorkersFromThread(rt.threadID)
+	if err != nil {
+		return messages
+	}
 	if !reused {
 		rt.setWorkerRestore(running, finished)
 	}
 	if pin {
-		messages = appendWorkerPairs(messages, running, finished)
+		messages = appendWorkerRoster(messages, running, finished)
 	}
 	switch {
 	case reused && live > 0:
@@ -104,21 +114,16 @@ func (rt *runtime) attachLeftoverWorkers(reused, pin bool, live int, messages []
 	return messages
 }
 
-func appendWorkerPairs(msgs []adk.Message, running []swarm.RestoredWorker, finished []swarm.FinishedWorker) []adk.Message {
-	pairs := pinWorkerPairs(running, finished)
-	if len(pairs) == 0 {
-		return msgs
+func appendWorkerRoster(msgs []adk.Message, running []swarm.RestoredWorker, finished []swarm.FinishedWorker) []adk.Message {
+	roster := workerRosterMessages(running, finished)
+	messages := withoutLegacyWorkerPairs(workerstate.Without(msgs), roster)
+	leading := 0
+	for leading < len(messages) && messages[leading] != nil && messages[leading].Role == schema.System {
+		leading++
 	}
-	tail := make([]*schema.Message, 0, len(msgs))
-	for _, m := range msgs {
-		if m != nil {
-			tail = append(tail, m)
-		}
-	}
-	for _, m := range dropPairsAlreadyIn(pairs, tail) {
-		msgs = append(msgs, m)
-	}
-	return msgs
+	out := append([]adk.Message{}, messages[:leading]...)
+	out = append(out, roster...)
+	return append(out, messages[leading:]...)
 }
 
 type workerSlot struct {
@@ -327,11 +332,9 @@ func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
 	if text == "" && !hasUserMessage(combined) {
 		return nil, fmt.Errorf("engine: leftover turn has no request to continue")
 	}
-	// Finished leftovers stay planted on the registry. Pinning them here
-	// as spawn_agent({role}) with no task made a long /goal look like the
-	// manager had just opened a naked army, and wait_agents returned on
-	// the first already-done id instead of blocking on the live ones.
-	combined = appendWorkerPairs(combined, running, nil)
+	// Keep all resumable identities as explicit state; completed workers must
+	// not look like newly executed spawn calls after a restart.
+	combined = appendWorkerRoster(combined, running, finished)
 	msgs := resumeMessages(combined, text)
 	if len(running) > 0 && !hasUserContent(msgs, resumeWorkersCue) {
 		msgs = append(msgs, schema.UserMessage(resumeWorkersCue))
@@ -407,7 +410,7 @@ func (e *Engine) thisTurnMessages(turn *store.Turn) ([]adk.Message, error) {
 		out = append(out, schema.AssistantMessage(text, nil))
 	}
 	if !hasTools {
-		out = append(out, spawnPairsFromEvents(events)...)
+		out = append(out, workerRosterFromEvents(events)...)
 	}
 	return out, nil
 }
@@ -436,21 +439,7 @@ func (e *Engine) storedToSchema(r store.Message) adk.Message {
 	}
 }
 
-func spawnPairsFromEvents(events []store.Event) []adk.Message {
-	out := make([]adk.Message, 0)
-	for i, ev := range events {
-		if ev.Kind != swarm.NotifySpawned.String() || isManagerAgent(ev.AgentID) {
-			continue
-		}
-		callID := fmt.Sprintf("restore-spawn-%d", i)
-		role := strings.TrimSpace(ev.Role)
-		args, _ := json.Marshal(map[string]string{"role": role})
-		out = append(out, schema.AssistantMessage("", []schema.ToolCall{{
-			ID: callID, Type: "function",
-			Function: schema.FunctionCall{Name: "spawn_agent", Arguments: string(args)},
-		}}))
-		body, _ := json.Marshal(map[string]string{"agent_id": ev.AgentID})
-		out = append(out, &schema.Message{Role: schema.Tool, Content: string(body), ToolCallID: callID})
-	}
-	return out
+func workerRosterFromEvents(events []store.Event) []adk.Message {
+	running, finished := orphanedWorkers(events)
+	return workerRosterMessages(running, finished)
 }

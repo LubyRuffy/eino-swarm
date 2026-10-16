@@ -57,6 +57,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 轮次开始后响应区立即显示旋转的“工作中”，首个服务端进度脉冲到达后切换为计时；轮次结束即消失，不等待本地模型首字节。实现证据：`frontend/src/components/app/transcript.tsx`, `frontend/src/components/app/transcript.test.tsx`。
 - 每个已结束轮次在桌面/Web 对话中都有横线及本地日期时间，持续目标折叠的轮次也保留该分界；进行中不提前标结束。实现证据：`frontend/src/components/app/transcript-session.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `frontend/e2e/schedules.spec.ts`。
 - 代理名单：行上是 `resume_agent` 使用的 `agent_id`，不是 `#n`。进行中与已完成各自成组。组内默认按最后更新从新到旧；可改为创建时间或行上的名称，并在从新到旧 / 从旧到新（名称则是 A 到 Z / Z 到 A）之间切换。没有时间的行留在底部。实现证据：`frontend/src/lib/agent-label.ts`, `frontend/src/lib/agent-roster-sort.ts`, `frontend/src/components/app/panel.tsx`。
+- 历史 worker 续接：manager 通过 System JSON 状态快照接收历史 worker 的 ID、角色及运行／完成／失败状态；已结束 worker 仍可查询或显式续办，不把历史名册重放为本轮新建调用。持续目标、定时检查、压缩、模型重试及重启使用同一状态语义。关联契约：`C-019`、`C-012`；实现／测试证据：`internal/workerstate/snapshot.go`、`internal/engine/autocompact_roster.go`、`internal/engine/resume_workers.go`、`internal/engine/worker_roster_test.go`、`frontend/e2e/worker-roster-history.spec.ts`。
 - 排队与未读引导：工作中的 Enter 进入队列。点开一条排队消息，或点未读引导上的铅笔，原文进输入框（引用变成卡片），原来的那条先拿掉。再按 Enter，和新建一条排队一样，排到队尾。已读引导不会被拉进输入框。只有图片的未读引导没有可排队的文字，只能删除。
 - 主动委派：共享运行时提示词要求 manager 在能提效或提高质量时主动调用 subagents，执行中重新评估；单个 worker 也可承担独立审查或第二种思路，不要求用户显式提出。普通对话与持续目标遵循相同策略；无收益时自行处理，遵守用户限制与并发上限，由 manager 核验和整合结果。关联契约：`C-019`；实现证据：`internal/engine/prompt.go`, `internal/engine/prompt_test.go`, `cmd/zwai/tui_prompt_test.go`。
 
@@ -80,10 +81,12 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：持续目标及未来时间继续执行；使用者：PC 用户；入口：`/goal`、Scheduled 页、`schedule_wake`；输入：目标和时间；输出：状态、唤醒、运行结果；进行中或已暂停的任务可在编辑里改下次落点（每次新开对话，或某个未归档会话，列表可搜索），已完成的不能；已认领的那一轮留在原会话，安静归档看认领时的类型；打开会话时右侧列出仍指向该会话的唤醒，以及某次运行创建了该会话的任务，点一条打开该任务；有下一次已安排唤醒时，成功轮次中的未完成 sub-agent 保持原 ID 继续运行，下次轮次可接回；取消或暂停最后一次唤醒会停止无人接手的 worker；无工具结果或显式报告的定时检查原轮继续一次，仍无证据显示错误；周期检查的无计费重放内容按多语言文本和消息结构估算，在达到阈值时先自动压缩；若仍因上下文越界而终止，对话写出稳定原因并暂停该检查，用户调整后可恢复；进程重启后，若最近一次派出的 sub-agent 已因进程停止而失败，且会话停在未来的 thread wake 上，启动把这次唤醒提前到现在，并在 resume 这些 id 或新 spawn 之前拒绝 `schedule_wake` 和 `report_schedule` 的 `next_in_s`；前置条件：引擎运行；失败表现：跳过、失败或等待状态；关联契约：`C-002`, `C-003`, `C-009`；实现证据：`internal/engine/goal_session.go`, `internal/engine/autocompact.go`, `internal/engine/schedule.go`, `internal/engine/schedule_dest.go`, `internal/engine/schedule_context_overflow_test.go`, `internal/engine/context_overflow_schedule_test.go`, `internal/store/schedule_thread.go`, `frontend/e2e/schedules.spec.ts`, `frontend/src/components/app/conversation-schedules.tsx`。
 
 - 目标编辑：历史 fire 类型冻结、目标与状态编辑及活动上限原子提交；已领取旧 wake 保持归属，移走最后 wake 后恢复原目标或收尾 worker。证据：`internal/engine/schedule_retarget_test.go`, `internal/store/schedule_retarget_test.go`。
+- 续轮 worker 身份和状态沿用 `F-130` 的历史状态快照，不把历史总数当成本轮创建量。关联契约：`C-019`；证据：`internal/engine/resume_workers.go`、`internal/engine/worker_roster_test.go`、`frontend/e2e/worker-roster-history.spec.ts`。
 
 ### F-160 Trace and diagnostics
 
 - 目的：用 turn id 还原一次运行；使用者：开发者和用户；入口：`zwai trace`, `/api/trace/:turn`, Trace 面板；输入：turn id；输出：事件、模型和工具记录，桌面/手机公共错误保留模型 HTTP 状态及具体接口/解码原因，同 ID 可查看原始调用和重试；前置条件：该 turn 已记录；失败表现：找不到记录；关联契约：`C-012`；实现证据：`internal/engine/runerr.go`, `internal/engine/api_error_integration_test.go`, `internal/server`, `internal/store`, `frontend/src/components/app`, `mobile/e2e/api-error.spec.ts`。
+- Worker 创建核验：按真实 turn 的调用、拒绝回执和生命周期事件区分新建、续办／恢复、完成及清理，不从历史名册或模型自述推断本轮创建量。证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`frontend/e2e/worker-roster-history.spec.ts`。
 
 ### F-170 Settings and providers
 
@@ -160,6 +163,8 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-420 Configuration and project memory
 
 - 目的：保留本机设置、项目说明和技能；使用者：PC 用户；入口：Settings、Memory、技能管理；输入：配置及项目文件；输出：后续运行可用的上下文；前置条件：本机数据目录；失败表现：保存或解析错误；关联契约：`C-009`；实现证据：`internal/config`, `internal/memory`, `docs/CONFIG.md`。
+- 会话摘要与记忆复核接收按 turn 归属的持久化 worker 生命周期事实，输入预算及摘要落库优先保留事实；旧摘要和模型自述只作待核对叙述，冲突创建量不能提升为执行证据。旧笔记／技能仍可在 Memory 中人工编辑，系统不按用户业务关键词清洗。关联契约：`C-008`、`C-012`；实现／测试证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`internal/engine/session_memory.go`、`internal/engine/review_source.go`。
+- 压缩提示预览只显示摘要正文；生命周期证据继续保存在内部摘要、模型上下文与诊断中。关联契约：`C-008`；证据：`internal/engine/compact.go`、`internal/engine/autocompact.go`、`internal/engine/compact_evidence_test.go`、`internal/server/compact_evidence_test.go`。
 - 技能可以复制到另一个项目，得到的是独立文件。来源以后的修改要在副本上点更新才会过来；副本改过则不会被静默覆盖，也不会写回来源。没改过的副本仍跟踪最初的项目。入口：Memory 里每个技能的复制，以及多于一个技能时的复制全部。实现证据：`internal/memory/skill_copy.go`, `internal/server/skill_copy.go`, `frontend/src/components/app/skill-copy-dialog.tsx`, `frontend/e2e/skill-copy.spec.ts`。
 - 不在项目里的会话没有笔记。回合正常结束后，可复用流程写入数据目录下的共享技能库（数据目录中的 library/skills/）。之后的纯对话会带上这份索引，并用 `skill_view` 打开；当场不能改库。Memory 页可以整理目录，也可以把技能复制进某个项目；副本的更新从技能库拉取。副本改过、两边都改过、或来源已删，文案按这个状态说，不把来源是技能库当成唯一信息。点项目文件夹不会把这份列表换成那个项目的笔记。总开关 `memory.enabled` 关掉后，提示词里不再带上，也不再写入。实现证据：`internal/engine/library_test.go`, `internal/memory/library.go`, `internal/server/library.go`, `frontend/e2e/library-skills.spec.ts`。
 

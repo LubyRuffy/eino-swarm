@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/LubyRuffy/eino-swarm/internal/store"
+	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -142,11 +143,11 @@ func (m *autoCompact) foldWithBriefing(state *adk.ChatModelAgentState, summary s
 	if state == nil || summary == "" {
 		return nil
 	}
-	system, older, tail := splitCompactable(state.Messages, m.keep)
+	roster := m.rosterPin(state.Messages)
+	system, older, tail := splitCompactable(withoutLegacyWorkerPairs(state.Messages, roster), m.keep)
 	if len(older) == 0 {
 		return nil
 	}
-	roster := dropPairsAlreadyIn(m.rosterPin(), tail)
 	next := *state
 	next.Messages = assembleCompacted(system, summary, older, tail, roster)
 	clearBilledUsage(next.Messages)
@@ -197,7 +198,7 @@ func (m *autoCompact) persist(summary string, through int64, tokensBefore, token
 		return
 	}
 	body, _ := json.Marshal(compactPayload{
-		Summary:      summary,
+		Summary:      withoutWorkerEvidence(summary),
 		ThroughSeq:   th.CompactThroughSeq,
 		CharsAfter:   m.engine.contextChars(th),
 		Auto:         true,
@@ -293,6 +294,7 @@ func compactSchemaLine(m *schema.Message) string {
 }
 
 func splitCompactable(msgs []*schema.Message, keep int) (system, older, tail []*schema.Message) {
+	msgs = workerstate.Without(msgs)
 	i := 0
 	for i < len(msgs) && msgs[i] != nil && msgs[i].Role == schema.System {
 		i++
@@ -342,14 +344,16 @@ func tailToolSafe(tail []*schema.Message) bool {
 }
 
 func assembleCompacted(system []*schema.Message, summary string, older, tail, roster []*schema.Message) []*schema.Message {
+	system = withoutLegacyWorkerPairs(workerstate.Without(system), roster)
+	tail = withoutLegacyWorkerPairs(workerstate.Without(tail), roster)
 	briefing := schema.UserMessage(summary)
 	if briefing.Extra == nil {
 		briefing.Extra = map[string]any{}
 	}
 	briefing.Extra[compactBriefingExtraKey] = true
 	out := append([]*schema.Message{}, system...)
-	out = append(out, briefing)
 	out = append(out, roster...)
+	out = append(out, briefing)
 	if u := lastHuman(older); u != nil && !containsMsg(tail, u) && !containsMsg(roster, u) {
 		out = append(out, u)
 	}

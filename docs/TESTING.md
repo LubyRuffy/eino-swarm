@@ -1,5 +1,51 @@
 # Testing
 
+## Historical worker state (F-130 / F-150 / C-019)
+
+`internal/workerstate/snapshot_test.go` keeps runtime snapshots separate from
+human messages and real tool pairs. `internal/engine/worker_roster_test.go`
+regresses a large finished roster without fabricating new spawn calls.
+Goal/schedule continuation, auto-compaction, retries and restart must retain
+IDs, roles and current states through the same System JSON snapshot; an old
+snapshot is replaced rather than accumulated.
+
+`frontend/e2e/worker-roster-history.spec.ts` drives the real engine, model HTTP
+adapter and desktop Web UI against `frontend/e2e/worker-roster-fixture.ts`, a
+keyless loopback-only model fixture. It
+finishes a worker, sends a later message, checks the existing worker with
+`wait_agents`, and verifies zero creation events/calls on that later turn.
+It also reloads the visible result and opens its Trace. This proves the
+offline path and recorded evidence; it does not promise a real model will
+never choose to delegate.
+The same fixture exercises Run now and an automatic scheduled fire: each
+queries the original finished worker and records no new spawn.
+
+`internal/engine/worker_lifecycle_facts_test.go` supplies a false creation
+claim with zero lifecycle events, then checks summary input, stored summary,
+goal wrap-up and memory review against the real turn-attributed zero. It also
+distinguishes first creation from repeated/restored IDs and paired refused
+calls, and retains evidence before long prose under the input cap. The
+deterministic rows survive even if the summarizer repeats a false count;
+existing prose is labelled as claims rather than cleaned by business keywords.
+
+`internal/engine/compact_evidence_test.go` and
+`internal/server/compact_evidence_test.go` keep generated facts in persisted
+briefings and model input while manual/automatic `compacted.summary` contains
+only the prose shown in the compressed-context preview. Thread API views do
+not expose the raw internal summary fields. The offline reviewer tests in
+`internal/provider/mock_briefing_test.go` derive a task from human/user event
+text, so a shared evidence preamble cannot make distinct tasks create the same
+scripted note or skill.
+
+```bash
+go test -race ./internal/workerstate ./internal/engine -run 'WorkerRoster|FinishedRoster|Snapshot|WorkerFacts|WorkerClaims'
+cd frontend && ZWAI_E2E_WORKER_ROSTER=1 npm run e2e
+```
+
+Concurrent E2E runs need separate `ZWAI_E2E_PORT`, `ZWAI_E2E_DATA_DIR` and
+Playwright `--output` directories; shared output cleanup can delete another
+run's screenshots or traces.
+
 ## Single PC work disclosures (F-130 / C-022)
 
 `frontend/src/components/app/transcript-fold.test.tsx` verifies that one finished
@@ -525,16 +571,16 @@ generic and is dropped from leftover steers, heat vs
 session memory when the meter is still cold), and
 `internal/engine/autocompact_test.go` (under-budget
 skip, in-turn fire, summarizer errors swallowed, a canceled turn stopping compact, a rejected dump leaving ADK state and `compact_summary` alone, roster rehydrated from
-`spawned` events, default budget leaving a mock turn alone). `internal/engine/autocompact_vs_eino_test.go` is the keep-or-delete
+the lifecycle events as a current runtime snapshot, default budget leaving a mock turn alone). `internal/engine/autocompact_vs_eino_test.go` is the keep-or-delete
 gate against eino's `adk/middlewares/summarization`: same fixture, same stub
-briefing, score spawn roster / in-flight `wait_agents` / last human as a user
+briefing, score runtime roster states / in-flight `wait_agents` / last human as a user
 message / swallowed summarizer errors / a task-agnostic summarizer prompt. The
-Generate is eino's; Finalize keeps the tail and pins ids from events. It
+Generate is eino's; Finalize keeps the tail and restores one state snapshot from events. It
 does not score briefing prose. `internal/engine/autocompact_invariants_test.go`
 locks the wiring and the regressions that would silently come back: default
 Finalize, fishing spawn pairs from folded text, dropping `wait_agents`,
 losing the current user message, stale billed usage, missing finished-worker
-pins (including leftovers from an earlier `/goal` session). `TestLiveCompactBriefingQualityVsEino` does
+states (including leftovers from an earlier `/goal` session). `TestLiveCompactBriefingQualityVsEino` does
 that against the configured endpoint when `ZWAI_LIVE_COMPACT=1`; default
 `go test` / `make test` skip it. If the custom Finalize does not beat eino's
 `DefaultFinalize` on the structural checks, it should be deleted.
@@ -801,14 +847,13 @@ while `Registry.Spawn` still queues.
 `TestNextGoalSessionAfterRestartRestoresRunningWorkers` are why a process
 death between `/goal` sessions does not turn `wait_agents` into
 `unknown agent`: leftovers are planted or restored from the conversation
-event log, and spawn ids are re-pinned because later turns drop previous
-tool results. `TestResumeConversationCompletesADanglingWaitOnTheLiveIds` /
+event log, and one runtime-state snapshot preserves IDs and terminal states
+after later turns drop previous tool results.
+`TestResumeConversationCompletesADanglingWaitOnTheLiveIds` /
 `TestResumeConversationDoesNotPinFinishedLeftoversAsNakedSpawns` /
 `TestCloseOrphanedWaitAgentsRecordsATimedOutSnapshot` are why a kill
 mid-`wait_agents` completes that wait as a timed-out snapshot of the live
-ids instead of dropping it and pinning every finished leftover as
-`spawn_agent({role})` (that made the manager recount a two-day roster as a
-new naked swarm, and `wait_agents` returned on the first already-done id).
+ids without replaying finished leftovers as new `spawn_agent` calls.
 `TestOrphanedWorkersTreatsCleanupAsFinished` is why a
 killed leftover is planted as stopped instead of restarted.
 `TestStartupPullsAWakeWhenTheLatestDispatchWasStopped` is why a restart does
@@ -1753,6 +1798,7 @@ long enough for Steer; unit tests leave it unset.
 | spec | covers |
 |---|---|
 | `e2e/agent-roster.spec.ts` | Agents opens on last update, newest first; Name flips between Z to A and A to Z and the rows follow the label; Created flips between oldest and newest |
+| `e2e/worker-roster-history.spec.ts` | opt-in loopback model adapter: a later turn queries an existing finished worker, emits no new spawn call/event, survives reload and exposes its Trace |
 | `e2e/work-fold.spec.ts` | user-mode work folded behind one live ticker (`work-fold` with the spinner, not every finished fold); click expands the thought box and click again collapses it |
 | `e2e/conversation.spec.ts` | a full swarm turn, user-mode work folded behind one live ticker (`work-fold` + `swap-line` + `MarqueeText` shimmer or left-to-right scroll), a live status line marked as sweeping while the turn runs, opening a sub-agent (back control beside the scroller, not sticky on it; system prompt from the chrome; log at the live edge; a collapsed `write` opens to the file body, not `Updated file`), a generated sidebar title from the opening message (not the raw request, not a transcript row), a chart in the scripted answer with Chart/Table tabs (reload returns to the home page with nothing selected; reopening the row replays the chart), scrolling up mid-stream leaving the viewport put and a jump-to-latest control returning to the live edge (developer view, so spawn rows exist to overflow), switching conversations landing at the latest turn rather than the top of the history (latest jump-rail tick current), context carried across turns, jumping to an earlier user message from the left rail (latest tick current while idle at the live edge), Enter while `wait_agents` is pending queuing a follow-up until the turn finishes, the corner button swapping from Stop to Send once that draft is typed and the click queueing without leaving Working, **Steer** on that queued row injecting and emptying the tray, **Steer** after Stop starting that leftover row as the next user turn, pulling a queued row into the composer and Enter queueing that edit at the back of the FIFO, a pencil on unread steering doing the same, **Steer** (⌘Enter while `wait_agents` is pending) pinning unread steering under the working line with Interrupt and Delete, retracting an unread steer so the turn stays Working, Interrupt aborting the current tool without cancelling the turn, **Stop** while a tool is in flight leaving no spinner next to the interrupted banner, hovering a user request or the last finished answer fading in the reserved event clock without a layout jump, copying or editing a sent message in place so Send restarts from that bubble and clears everything below, file upload appearing in the Files panel with the user bubble naming `uploads/brief.txt`, collapsing a workspace directory in Files and filtering to a nested file, dropping a file and an image onto the composer (overlay, then a workspace chip vs a vision thumb), the turn id on the Trace summary with the event log folded until Full log, an IME-confirming Enter leaving the draft in the box, the manager tool-round cap pausing for Continue/Stop instead of dumping eino's iteration error, and switching the catalog model from a grouped searchable picker (Refresh models / Edit providers) so a reload still sends that name, and the composer context ring plus Trace usage after a turn (reload keeps the ring; the snapshot never lands as a transcript row), `/` listing goal, plan and compact without a 0% hint on an empty chat, pinning a standing objective, starting it from the banner without a human message, editing it in place, compacting without rewriting user bubbles (an icon opens the briefing), auto-compacting at a low token budget with a visible compressed notice and the same briefing icon, a scripted run with a goal finishing as Done, and a one-round ReAct slice leaving a standing objective running until Done instead of pausing it as two Worked-for sessions, `/plan` (`e2e/plan.spec.ts`) showing a Planning banner and an `ask_user` dialog that spans the conversation column (**Your answer needed**, still `border-ask`, no ring or ping on the card; **Your turn** on the title bar with a pinging `ask-mark`; a numbered choice then Submit continues the same turn), then Implement remounting work and leaving planning |
 | `e2e/quotes.spec.ts` | quoting selected transcript text into the next send as an editable composer annotation (count chip at rest, hover for the snippet, not `<selected_text>` tags in the bubble), and Add to chat still landing while a turn is streaming (user-mode work fold, not the inner thought box) |

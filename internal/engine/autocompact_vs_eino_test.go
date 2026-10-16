@@ -2,7 +2,6 @@ package engine
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -123,8 +122,8 @@ func ourFinalize(ctx context.Context, original []*schema.Message, summary *schem
 		text = summary.Content
 	}
 	system, older, tail := splitCompactable(original, 2)
-	roster := pinWorkerPairs([]swarm.RestoredWorker{{ID: cmpSpawnID, Role: "worker"}}, nil)
-	out := assembleCompacted(system, sanitizeCompact(text), older, tail, dropPairsAlreadyIn(roster, tail))
+	roster := workerRosterMessages([]swarm.RestoredWorker{{ID: cmpSpawnID, Role: "worker"}}, nil)
+	out := assembleCompacted(system, sanitizeCompact(text), older, tail, roster)
 	clearBilledUsage(out)
 	return out, nil
 }
@@ -227,7 +226,7 @@ func scoreCompact(name string, state *adk.ChatModelAgentState, err error, summar
 	// matters is tokens (eino billed TotalTokens vs our cleared usage).
 	s.checks["shrinks"] = promptTokenCount(msgs) < beforeTok
 	s.checks["keeps_system"] = len(msgs) > 0 && msgs[0] != nil && msgs[0].Role == schema.System
-	s.checks["keeps_spawn_roster"] = hasSpawnID(msgs, cmpSpawnID)
+	s.checks["keeps_spawn_roster"] = hasWorkerID(msgs, cmpSpawnID)
 	s.checks["keeps_inflight_wait"] = hasToolCall(msgs, "wait_agents") && hasToolResult(msgs, "c-wait")
 	s.checks["keeps_last_human_as_user"] = hasExactUser(msgs, cmpCurrentRequest)
 	s.checks["tool_safe"] = tailToolSafe(msgs) || tailToolSafe(dropLeadingSystem(msgs))
@@ -283,15 +282,11 @@ func logScorecard(t *testing.T, rows ...compactScore) {
 	t.Log(b.String())
 }
 
-func hasSpawnID(msgs []*schema.Message, id string) bool {
-	for _, m := range msgs {
-		if m == nil || m.Role != schema.Tool {
-			continue
-		}
-		var r struct {
-			AgentID string `json:"agent_id"`
-		}
-		if json.Unmarshal([]byte(m.Content), &r) == nil && r.AgentID == id {
+// hasWorkerID accepts explicit runtime state and real tool receipts; it does
+// not count a state snapshot as a new spawn.
+func hasWorkerID(msgs []*schema.Message, id string) bool {
+	for _, known := range knownWorkerIDsInMessages(msgs) {
+		if known == id {
 			return true
 		}
 	}

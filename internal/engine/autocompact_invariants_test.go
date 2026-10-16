@@ -57,7 +57,7 @@ func TestAutoCompactDoesNotSalvageSpawnPairsFromFoldedMessages(t *testing.T) {
 	}
 	turn := plantUnfinishedTurn(t, e, th.ID, cmpCurrentRequest)
 	next := mustAutoCompact(t, e, th.ID, turn.ID, swarmCompactFixture(), &scriptedChatModel{out: cmpBriefing})
-	if hasSpawnID(next.Messages, cmpSpawnID) {
+	if hasWorkerID(next.Messages, cmpSpawnID) {
 		t.Fatal("spawn pairs in folded history must not become the roster; that source is compacted away")
 	}
 }
@@ -89,7 +89,7 @@ func TestAutoCompactRehydratesFinishedWorkersFromEvents(t *testing.T) {
 		overBudgetAssistant("waiting"),
 	}
 	next := mustAutoCompact(t, e, th.ID, turn.ID, state, &scriptedChatModel{out: cmpBriefing})
-	if !hasSpawnID(next.Messages, "helper-2") {
+	if !hasWorkerID(next.Messages, "helper-2") {
 		t.Fatal("a finished worker must still be pinned so resume_agent can see the id")
 	}
 }
@@ -125,7 +125,7 @@ func TestAutoCompactRehydratesFinishedWorkersFromEarlierTurn(t *testing.T) {
 		overBudgetAssistant("waiting"),
 	}
 	next := mustAutoCompact(t, e, th.ID, turn.ID, state, &scriptedChatModel{out: cmpBriefing})
-	if !hasSpawnID(next.Messages, "helper-2") {
+	if !hasWorkerID(next.Messages, "helper-2") {
 		t.Fatal("a leftover worker from an earlier session must still be pinned so wait_agents can see the id")
 	}
 }
@@ -200,7 +200,7 @@ func TestAutoCompactPinsTwoWorkersFromEvents(t *testing.T) {
 		Kind: swarm.NotifySpawned.String(), AgentID: "helper-2", Role: "helper",
 	})
 	next := mustAutoCompact(t, e, th.ID, turn.ID, swarmCompactFixture(), &scriptedChatModel{out: cmpBriefing})
-	if !hasSpawnID(next.Messages, "worker-1") || !hasSpawnID(next.Messages, "helper-2") {
+	if !hasWorkerID(next.Messages, "worker-1") || !hasWorkerID(next.Messages, "helper-2") {
 		t.Fatalf("every spawned id on the turn must be pinned: %+v", next.Messages)
 	}
 }

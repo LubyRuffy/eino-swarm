@@ -234,7 +234,11 @@ func (e *Engine) closeDanglingManagerTools(turn *store.Turn) {
 func (rt *runtime) retryManagerRun(turn *store.Turn, res swarm.RunResult, fallback []adk.Message, reg *swarm.Registry) []adk.Message {
 	msgs := recoverManagerMessages(res, fallback, reg.TakePendingSteerMessages(), rt.engine.managerToolResults(turn.ID))
 	rt.engine.closeDanglingManagerTools(turn)
-	return msgs
+	running, finished, err := rt.engine.readWorkersFromThread(rt.threadID)
+	if err != nil {
+		return msgs
+	}
+	return appendWorkerRoster(msgs, running, finished)
 }
 
 func modelRetryEventText(attempt int, reason string) string {

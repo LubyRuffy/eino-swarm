@@ -570,6 +570,12 @@ What you get:
    the roster shows that `agent_id`, the same string `resume_agent` takes, not a `#n` badge. The log opens at the latest line, not the first tool call. The tab lists
    every worker this conversation started, not only the ones whose tools are
    still in the live-edge viewport.
+   Continuing a goal or scheduled check, compacting, retrying a model call, or
+   restarting retains those IDs and their current states. Finished workers
+   stay stopped and can still be inspected or explicitly resumed. The manager
+   receives that history as runtime state; it does not count the old roster
+   as workers created by the new turn. Use that turn's Trace to check actual
+   creation and resume activity.
 2. **A workspace.** Every conversation has its own directory
    (`~/.zwai-swarm/workspaces/<thread-id>/`). Uploads land in `uploads/`, agent
    output lands next to it, and the **Files** tab shows a collapsible tree —
@@ -714,6 +720,16 @@ short of full) and scrolls the model's reply in a short box. Reload first if
 you edited files outside the app. When it finishes, the card names what was
 merged, deleted, created and patched, with counts (scanned / merged / deleted /
 created / updated / remaining).
+
+Session briefings and the reviewer also receive worker lifecycle facts from
+the stored event log, attributed to the turns they describe. A historical
+worker being restored is different from a new worker, and a refused creation
+call creates none. Earlier briefings and assistant claims are labelled as
+model-written claims, so their worker counts cannot replace the recorded
+evidence. This does not delete existing notes or skills; correct a wrong saved
+note in Memory and inspect the relevant turn in Trace.
+The compressed-context preview shows the briefing prose; internal lifecycle
+records remain available to later turns and diagnostics.
 
 Memory lives in the data directory, never in your working directory, so a project
 pointed at a repository leaves nothing in it. A procedure that already lives in

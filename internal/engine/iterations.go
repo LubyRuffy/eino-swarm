@@ -9,6 +9,7 @@ import (
 	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
+	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -375,16 +376,24 @@ func (e *Engine) managerToolResults(turnID string) []store.Event {
 	return out
 }
 
-// messagesWithoutSystem drops leading system messages so a continued run can
-// feed the previous transcript back as RunConfig.Messages. Instruction
-// regenerates the system prompt; keeping the old one would send two.
+// messagesWithoutSystem drops regenerated prompt instructions while retaining
+// the latest runtime roster. Losing that system state after a ReAct slice
+// discards the only remaining worker identities after compaction.
 func messagesWithoutSystem(msgs []adk.Message) []adk.Message {
 	out := make([]adk.Message, 0, len(msgs))
+	var roster *schema.Message
 	for _, m := range msgs {
+		if _, ok := workerstate.Parse(m); ok {
+			roster = m
+			continue
+		}
 		if m == nil || m.Role == schema.System {
 			continue
 		}
 		out = append(out, m)
+	}
+	if roster != nil {
+		return append([]adk.Message{roster}, out...)
 	}
 	return out
 }

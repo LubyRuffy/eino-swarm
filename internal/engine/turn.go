@@ -13,6 +13,7 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/tools"
+	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
@@ -412,7 +413,7 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	}
 
 	messages := history
-	messages = rt.attachLeftoverWorkers(reused, reused || in.ContinueGoal, liveWorkers(reg.Progress()), messages)
+	messages = rt.attachLeftoverWorkers(reused, reused || in.ContinueGoal || in.ContinueSchedule, liveWorkers(reg.Progress()), messages)
 	if in.retryWorkers || (!in.ContinueGoal && !in.ContinueSchedule && !in.ImplementPlan) {
 		reg.ResetWorkerTimeouts()
 		rt.resetRestoredWorkerTimeouts()
@@ -802,6 +803,9 @@ func (e *Engine) persistTranscript(threadID, turnID string, transcript []adk.Mes
 	haveUsers := e.storedUserText(threadID, turnID)
 	var rows []store.Message
 	for _, m := range transcript[start:] {
+		if _, runtimeState := workerstate.Parse(m); runtimeState {
+			continue
+		}
 		if m == nil {
 			continue
 		}

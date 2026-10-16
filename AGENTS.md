@@ -104,6 +104,17 @@ E2E suite.
   compact before the provider rejects it. Recheck the actual scheduled turn
   and desktop error path before closing a context-overflow Issue.
 - Model error classification must retain model-call versus tool-decoder origin. Regress empty/HTML API bodies and malformed successful-stream field types through the actual offline HTTP adapter, not only error strings. Observe transient reconnect transitions by controlling the fixture handshake; a polling interval may miss the whole transition.
+- Restored worker identities are runtime state, never fabricated assistant tool
+  calls or successful spawn receipts. Preserve each worker's ID, role and current
+  status across goals, schedules, compaction, model retries and restart. Regress a
+  large finished roster through those paths and a real loopback model adapter;
+  assert that the next turn has no new spawn when none occurred. Session
+  briefings and memory review must use turn-attributed lifecycle evidence over
+  assistant prose, including a false creation claim with zero lifecycle events.
+  Keep generated evidence in model state, storage and diagnostics; a compact
+  briefing shown to the user contains prose, not the internal evidence prefix.
+  Regress both manual and automatic compact payloads without discarding stored facts.
+  Do not repair this feedback loop by matching a user's words or business data.
 - Never test against a network or a real model. Use the scripted offline
   provider, and keep its script generic.
 - Every feature must be reachable through the one-id troubleshooting path: a turn

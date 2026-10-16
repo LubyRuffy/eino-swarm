@@ -11,17 +11,24 @@ import (
 
 // renderReviewFromEvents is what the post-turn reviewer reads.
 //
-// The source of truth is the event log (and the rolling session briefing),
-// never the manager's compacted ADK transcript. Compact is a view for the
-// next Generate; memory extraction that read that view would learn the
-// briefing instead of the work.
+// Lifecycle facts come from persisted events; prose and the rolling briefing
+// supply context, not execution evidence. The compacted ADK transcript is a
+// view for the next Generate, not another source of observed work.
 //
-// Session briefing first, then this turn's events, so a long earlier
-// conversation cannot spend the 24k budget before the work being reviewed.
+// Facts lead, then the bounded briefing and this turn's events, so earlier
+// prose cannot crowd the work being reviewed out of the 24k budget.
 func renderReviewFromEvents(events []store.Event, sessionMemory, final string) string {
+	return reviewSourceWithHistory(events, events, sessionMemory, final)
+}
+
+func reviewSourceWithHistory(events, history []store.Event, sessionMemory, final string) string {
 	var b strings.Builder
 	budget := reviewMaxChars
 	wrote := false
+	if facts := workerLifecycleFacts(history, workerFactTurns(events)); facts != "" {
+		b.WriteString(facts)
+		budget -= len([]rune(facts))
+	}
 
 	write := func(role, text string) {
 		text = strings.TrimSpace(text)
@@ -40,10 +47,10 @@ func renderReviewFromEvents(events []store.Event, sessionMemory, final string) s
 		fmt.Fprintf(&b, "%s: %s\n\n", role, text)
 	}
 
-	if mem := strings.TrimSpace(sessionMemory); mem != "" {
+	if mem := strings.TrimSpace(withoutWorkerEvidence(sessionMemory)); mem != "" {
 		// Bound the briefing so a long /goal cannot spend the review budget
 		// before this turn's tool calls — those are what become skills.
-		write("session briefing", clip(mem, compactSummaryMaxRunes))
+		write("session briefing (model-written claims)", clip(mem, compactSummaryMaxRunes))
 	}
 	retracted := retractedSteerSeqs(events)
 	revised := revisedSteerText(events)
