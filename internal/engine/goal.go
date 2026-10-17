@@ -161,34 +161,7 @@ func (e *Engine) steerGoalEdit(id, goal string) {
 // after the current turn. An already-complete goal is a no-op; no goal is
 // an error the tool surfaces as JSON rather than crashing the turn.
 func (e *Engine) CompleteThreadGoal(id, summary string) error {
-	th, err := e.store.GetThread(id)
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(th.Goal) == "" {
-		return fmt.Errorf("engine: there is no standing objective to complete")
-	}
-	if th.GoalComplete {
-		return nil
-	}
-	if err := e.store.UpdateThread(id, map[string]any{
-		"goal_complete":     true,
-		"goal_capped":       false,
-		"goal_blocked":      false,
-		"goal_block_reason": "",
-		"goal_idle":         false,
-	}); err != nil {
-		return err
-	}
-	text, _ := json.Marshal(struct {
-		Summary string `json:"summary,omitempty"`
-	}{Summary: strings.TrimSpace(summary)})
-	e.record(store.Event{
-		ThreadID: id, TurnID: e.lastTurnID(id),
-		Kind: KindGoalComplete, AgentID: swarm.DefaultManagerID,
-		Text: string(text),
-	})
-	return nil
+	return e.completeThreadGoal(id, "", summary)
 }
 
 // BlockThreadGoal marks the standing objective stuck. Auto-continue stops

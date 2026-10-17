@@ -55,6 +55,9 @@ type Engine struct {
 	// recordMu keeps a stored event's sequence number and its delivery in the
 	// same order. See record.
 	recordMu sync.Mutex
+	// goalWakeMu orders the three manager lifecycle tools. Store transactions
+	// also recheck human edits, which do not acquire this tool-only lock.
+	goalWakeMu sync.Mutex
 	// armChipMu serializes the "already armed this turn" check with the
 	// chip write. schedule_wake and report_schedule next_in_s both arm,
 	// and they run as parallel tool calls.

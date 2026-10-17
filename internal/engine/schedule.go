@@ -44,6 +44,10 @@ type ScheduleInput struct {
 // CreateSchedule arms a wait. It does not fire: the ticker (later) is what
 // starts a turn. Thread wakes require an existing conversation.
 func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
+	return e.createSchedule(in, nil)
+}
+
+func (e *Engine) createSchedule(in ScheduleInput, scope *store.GoalTurnScope) (*store.Schedule, error) {
 	in.Kind = strings.TrimSpace(in.Kind)
 	in.ThreadID = strings.TrimSpace(in.ThreadID)
 	in.OriginThreadID = strings.TrimSpace(in.OriginThreadID)
@@ -123,7 +127,7 @@ func (e *Engine) CreateSchedule(in ScheduleInput) (*store.Schedule, error) {
 		UntilAt:         in.UntilAt,
 		CreatedBy:       in.CreatedBy,
 	}
-	if err := e.store.CreateScheduleUnderCap(row, e.maxActiveSchedules()); err != nil {
+	if err := e.store.CreateScheduleForTurn(scope, row, e.maxActiveSchedules()); err != nil {
 		if errors.Is(err, store.ErrScheduleCap) {
 			return nil, fmt.Errorf("engine: too many active schedules")
 		}

@@ -81,6 +81,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：持续目标及未来时间继续执行；使用者：PC 用户；入口：`/goal`、Scheduled 页、`schedule_wake`；输入：目标和时间；输出：状态、唤醒、运行结果；进行中或已暂停的任务可在编辑里改下次落点（每次新开对话，或某个未归档会话，列表可搜索），已完成的不能；已认领的那一轮留在原会话，安静归档看认领时的类型；打开会话时右侧列出仍指向该会话的唤醒，以及某次运行创建了该会话的任务，点一条打开该任务；有下一次已安排唤醒时，成功轮次中的未完成 sub-agent 保持原 ID 继续运行，下次轮次可接回；取消或暂停最后一次唤醒会停止无人接手的 worker；无工具结果或显式报告的定时检查原轮继续一次，仍无证据显示错误；周期检查的无计费重放内容按多语言文本和消息结构估算，在达到阈值时先自动压缩；若仍因上下文越界而终止，对话写出稳定原因并暂停该检查，用户调整后可恢复；进程重启后，若最近一次派出的 sub-agent 已因进程停止而失败，且会话停在未来的 thread wake 上，启动把这次唤醒提前到现在，并在 resume 这些 id 或新 spawn 之前拒绝 `schedule_wake` 和 `report_schedule` 的 `next_in_s`；前置条件：引擎运行；失败表现：跳过、失败或等待状态；关联契约：`C-002`, `C-003`, `C-009`；实现证据：`internal/engine/goal_session.go`, `internal/engine/autocompact.go`, `internal/engine/schedule.go`, `internal/engine/schedule_dest.go`, `internal/engine/schedule_context_overflow_test.go`, `internal/engine/context_overflow_schedule_test.go`, `internal/store/schedule_thread.go`, `frontend/e2e/schedules.spec.ts`, `frontend/src/components/app/conversation-schedules.tsx`。
 
 - 目标编辑：历史 fire 类型冻结、目标与状态编辑及活动上限原子提交；已领取旧 wake 保持归属，移走最后 wake 后恢复原目标或收尾 worker。证据：`internal/engine/schedule_retarget_test.go`, `internal/store/schedule_retarget_test.go`。
+
+- 完成范围：定时轮次自己的 manager thread wake 仍有后续触发，或本轮新排了这类等待时，`complete_goal` 返回可恢复冲突；完成该等待后才能完成长期目标。同轮先完成目标再重新排等待也返回冲突；人工和独立任务的等待保持独立。证据：`internal/engine/goal_schedule_completion_test.go`, `frontend/e2e/goal-schedule.spec.ts`；关联契约：`C-009`, `C-012`。
 - 续轮 worker 身份和状态沿用 `F-130` 的历史状态快照，不把历史总数当成本轮创建量。关联契约：`C-019`；证据：`internal/engine/resume_workers.go`、`internal/engine/worker_roster_test.go`、`frontend/e2e/worker-roster-history.spec.ts`。
 
 ### F-160 Trace and diagnostics

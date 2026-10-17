@@ -151,8 +151,16 @@ uploads, downloads and the live event stream have exactly one implementation.
   the command, never a user message. A raw `POST /turns` of that line is
   intercepted the same way. The
   conversation keeps pursuing a goal until the manager calls `complete_goal` (or you
-  clear it from the banner). A mistaken `complete_goal` can be undone in that
-  turn with `reopen_goal`, or later with **Start** on the Done banner. A live turn is steered so this round sees the
+  clear it from the banner). A scheduled check cannot complete the objective
+  while its own manager-created conversation wait still has another fire,
+  including a new wait armed in that turn after consuming a one-shot;
+  the manager must first finish that wait with `report_schedule(keep:false)`
+  or cancel it. The final check can then complete the objective. Conflicting
+  calls return a recoverable tool error rather than marking a partial check Done.
+  Human-created waits and independent jobs retain their separate lifecycle.
+  A mistaken `complete_goal` can be undone in that
+  turn with `reopen_goal`, or later with **Start** on the Done banner. Existing
+  completed records are not reopened automatically. A live turn is steered so this round sees the
   new text. A turn ends when the manager stops calling tools; the runtime
   then continues, unless an active thread wake is waiting on this
   conversation — that wait is the next turn until it fires or you cancel it. Context pressure compact in place. Hitting the manager

@@ -67,7 +67,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		tid := rt.threadID
 		managerTools = append(managerTools,
 			CompleteGoalTool(func(summary string) (string, error) {
-				return e.completeGoalJSON(tid, summary)
+				return e.completeGoalForTurnJSON(tid, turn.ID, summary)
 			}),
 			BlockGoalTool(func(reason string) (string, error) {
 				return e.blockGoalJSON(tid, reason)

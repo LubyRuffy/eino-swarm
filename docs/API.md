@@ -836,7 +836,15 @@ instead of Idle, and `/goal` does not auto-continue. `reasoning_effort` is the c
 `low`, `medium`, `high`); empty means the model's own default. `project_id` is empty for
 a conversation that belongs to no project. `goal` is the standing objective from
 `/goal` (empty when none). `goal_complete` is true after the manager called
-`complete_goal`; `reopen_goal` in that turn, or **Start** on the Done banner,
+`complete_goal` succeeds; a scheduled check with its own still-active manager
+thread wake (or a new manager wake armed in that turn) instead returns `{"ok":false,"code":"goal_schedule_conflict","error":"…"}`.
+Finish that wait with `report_schedule(keep:false)` or cancel it before
+completing the objective. A consumed one-shot does not block completion.
+Rearming that continuation after a successful completion in the same turn is
+also refused. These are recoverable tool results, retained under the same turn
+in Trace, and do not cancel independent or human-created waits. Goal completion
+and its event commit together; storage errors leave both unchanged. Existing
+completed records retain their explicit recovery path: `reopen_goal` in that turn, or **Start** on the Done banner,
 clears it and pursuit continues. `goal_blocked` is true after `block_goal` or after a pursuing
 turn fails for a reason that is not a recoverable model error (progress needs the
 human or an external change). A truncated tool-call JSON, a `429`, or a dropped

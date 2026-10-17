@@ -11,8 +11,13 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Changed
+
+- `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
+
 ### Fixed
 
+- `F-150`, `C-012`: goal completion and its persisted Trace event commit together, so a storage failure cannot report success with only half the lifecycle transition (Issue #79).
 - `F-130`, `F-150`, `C-019`, `C-012`: goals, scheduled checks, compaction, model retries and restart restore historical workers through one explicit runtime state snapshot instead of fabricating successful `spawn_agent` calls. Finished workers remain queryable under their original IDs without appearing newly created on every turn; a loopback model/UI regression verifies the later turn's Trace (Issue #78).
 - `F-420`, `C-008`, `C-012`: session briefings, direct goal wrap-up and memory reviews prioritize deterministic per-turn worker lifecycle facts from the full persisted event log. Repeated IDs are restored/resumed, refused calls create no worker, and bounded summaries retain the evidence even when model prose repeats a false count. Earlier briefings remain labelled claims instead of being rewritten with task-specific word filters (Issue #78).
 - `F-420`, `C-008`: manual and automatic compressed-context previews show briefing prose while internal worker evidence stays in persisted model context and diagnostics. Offline memory reviewers use the human task instead of repeated evidence headers as their subject (Issue #78).

@@ -356,6 +356,15 @@ func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, err
 	if err := e.store.CreateTurn(turn); err != nil {
 		return nil, err
 	}
+	if in.ContinueSchedule && in.ScheduleRunID != "" {
+		if err := e.bindScheduledTurn(turn); err != nil {
+			_ = e.store.FinishTurn(turn.ID, store.TurnError, "", err.Error())
+			if !errors.Is(err, store.ErrScheduleRunConflict) {
+				e.finishScheduledRun(turn, store.TurnError, "", err.Error())
+			}
+			return nil, err
+		}
+	}
 	if err := e.bindAttachmentTurns(files, turn.ID); err != nil {
 		_ = e.store.FinishTurn(turn.ID, store.TurnError, "", err.Error())
 		e.finishScheduledRun(turn, store.TurnError, "", err.Error())

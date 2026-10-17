@@ -285,16 +285,15 @@ func (e *Engine) startClaimedFire(c claimedFire) (*store.Turn, error) {
 				Text: c.row.ID,
 			})
 		}
-		if finErr := e.store.FinishRun(c.run.ID, status, err.Error(), status == store.ScheduleRunError); finErr != nil {
-			e.log.Warn("could not close a failed schedule claim", "schedule", c.row.ID, "err", finErr)
+		if !errors.Is(err, store.ErrScheduleRunConflict) {
+			if finErr := e.store.FinishRun(c.run.ID, status, err.Error(), status == store.ScheduleRunError); finErr != nil {
+				e.log.Warn("could not close a failed schedule claim", "schedule", c.row.ID, "err", finErr)
+			}
 		}
 		if !errors.Is(err, ErrBusy) {
 			e.log.Warn("could not start a scheduled turn", "schedule", c.row.ID, "err", err)
 		}
 		return nil, out
-	}
-	if err := e.store.BindRun(c.run.ID, threadID, turn.ID); err != nil {
-		e.log.Warn("could not bind a schedule run to its turn", "schedule", c.row.ID, "turn", turn.ID, "err", err)
 	}
 	return turn, nil
 }

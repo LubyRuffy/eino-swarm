@@ -247,6 +247,24 @@ worker before closing SQLite.
    `report_schedule` fails unless `ScheduleContinue`; empty findings are
    quiet. `next_in_s` rearms an already-active interval, or a delay that
    claim marked `done`, under the same cap transaction as create/resume.
+   New scheduled turns persist their claimed-run binding before the runtime
+   launches. Goal-bearing restored scheduled turns validate the same binding
+   through the shared entry gate; only an empty or identical binding is safe,
+   and a conflicting claim must not be overwritten or finished as this turn's.
+   Goal completion binds the exact current turn and claimed run. Its still-active
+   claimed manager thread wake, or a manager wake armed by this turn, conflicts
+   with completing the goal while it still points to that conversation;
+   the manager ends that wait before completing. The reverse tool
+   order also refuses to rearm the same continuation. A lifecycle tool lock
+   serializes parallel calls, and store transactions recheck the persisted
+   scope before mutation. `schedules.armed_turn_id` binds each tool arm to
+   its exact turn in that transaction, so a consumed one-shot followed by a
+   newly created wake ID cannot evade completion checks. The field is internal;
+   it is not exposed in schedule JSON or inferred for historical rows.
+   Completion fields and the `goal_complete` event
+   commit together under the event-order lock; only committed events broadcast.
+   Human-created, independent and retargeted waits keep their separate lifecycle.
+   Existing completed records are not inferred wrong or reopened from prose.
    `schedule_wake` and that recadence in the same turn record one `schedule`
    chip; a cancel in between still records the next arm. The transcript
    drops a second armed chip for that id in the turn, so a reload of an

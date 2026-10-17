@@ -8,11 +8,12 @@ const dataDir = process.env.ZWAI_E2E_DATA_DIR ?? ".e2e-data"
 const scheduledAck = process.env.ZWAI_MOCK_SCHEDULE_ACK === "always" ? "always" : "once"
 const modelAPIError = process.env.ZWAI_E2E_MODEL_API_ERROR === "1"
 const workerRoster = process.env.ZWAI_E2E_WORKER_ROSTER === "1"
-const loopbackModel = modelAPIError || workerRoster
+const goalSchedule = process.env.ZWAI_E2E_GOAL_SCHEDULE === "1"
+const loopbackModel = modelAPIError || workerRoster || goalSchedule
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : undefined,
+  testMatch: modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : undefined,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,

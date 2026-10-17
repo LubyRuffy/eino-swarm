@@ -207,7 +207,13 @@ func (e *Engine) scheduleInputFromArgs(a scheduleToolArgs) (ScheduleInput, error
 	}, nil
 }
 
-func (e *Engine) scheduleWakeJSON(threadID, _, args string) (string, error) {
+func (e *Engine) scheduleWakeJSON(threadID, turnID, args string) (string, error) {
+	e.goalWakeMu.Lock()
+	defer e.goalWakeMu.Unlock()
+	scope, err := e.wakeGoalScope(threadID, turnID)
+	if err != nil {
+		return goalScheduleFailure(err), nil
+	}
 	if msg, err := e.interruptedWakeRefusal(threadID); err != nil {
 		return scheduleToolFailure("%s", err.Error()), nil
 	} else if msg != "" {
@@ -233,9 +239,9 @@ func (e *Engine) scheduleWakeJSON(threadID, _, args string) (string, error) {
 	if id := strings.TrimSpace(a.ID); id != "" {
 		_, err := e.store.GetSchedule(id)
 		if err == nil {
-			row, err := e.replaceThreadWake(threadID, id, in)
+			row, err := e.replaceThreadWake(threadID, id, in, scope)
 			if err != nil {
-				return scheduleToolFailure("%s", err.Error()), nil
+				return goalScheduleFailure(err), nil
 			}
 			return scheduleArmedOK(row.ID), nil
 		}
@@ -248,17 +254,17 @@ func (e *Engine) scheduleWakeJSON(threadID, _, args string) (string, error) {
 		return scheduleToolFailure("%s", listErr.Error()), nil
 	}
 	if found != "" {
-		row, err := e.replaceThreadWake(threadID, found, in)
+		row, err := e.replaceThreadWake(threadID, found, in, scope)
 		if err == nil {
 			return scheduleArmedOK(row.ID), nil
 		}
 		if !errors.Is(err, store.ErrNotFound) {
-			return scheduleToolFailure("%s", err.Error()), nil
+			return goalScheduleFailure(err), nil
 		}
 	}
-	row, err := e.CreateSchedule(in)
+	row, err := e.createSchedule(in, scope)
 	if err != nil {
-		return scheduleToolFailure("%s", err.Error()), nil
+		return goalScheduleFailure(err), nil
 	}
 	return scheduleArmedOK(row.ID), nil
 }
@@ -291,7 +297,7 @@ func (e *Engine) openThreadWakeID(threadID string) (string, error) {
 	return id, nil
 }
 
-func (e *Engine) replaceThreadWake(threadID, id string, in ScheduleInput) (*store.Schedule, error) {
+func (e *Engine) replaceThreadWake(threadID, id string, in ScheduleInput, scope *store.GoalTurnScope) (*store.Schedule, error) {
 	row, err := e.store.GetSchedule(id)
 	if err != nil {
 		return nil, err
@@ -323,7 +329,7 @@ func (e *Engine) replaceThreadWake(threadID, id string, in ScheduleInput) (*stor
 		fields["title"] = in.Title
 		fields["title_auto"] = false
 	}
-	if err := e.store.UpdateSchedule(id, fields); err != nil {
+	if err := e.store.ReplaceThreadWakeForTurn(scope, threadID, id, fields); err != nil {
 		return nil, err
 	}
 	got, err := e.store.GetSchedule(id)
@@ -403,6 +409,8 @@ func (e *Engine) cancelScheduleJSON(_, _, args string) (string, error) {
 }
 
 func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, error) {
+	e.goalWakeMu.Lock()
+	defer e.goalWakeMu.Unlock()
 	turn, err := e.store.GetTurn(turnID)
 	if err != nil {
 		return scheduleToolFailure("%s", err.Error()), nil
@@ -424,9 +432,20 @@ func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, erro
 	}
 	findings := strings.TrimSpace(a.Findings)
 	quiet := findings == ""
-	if sch := e.scheduleForTurn(turn); sch != nil {
+	scope, err := e.wakeGoalScope(threadID, turnID)
+	if err != nil {
+		return goalScheduleFailure(err), nil
+	}
+	if err := e.store.CheckGoalContinuation(scope, a.Keep == nil || *a.Keep); err != nil {
+		return goalScheduleFailure(err), nil
+	}
+	sch, err := e.scheduleForGoalReport(turn, scope)
+	if err != nil {
+		return goalScheduleFailure(err), nil
+	}
+	if sch != nil {
 		if a.Keep != nil && !*a.Keep {
-			if err := e.CancelSchedule(sch.ID); err != nil {
+			if err := e.cancelScheduleForTurn(scope, sch.ID); err != nil {
 				return scheduleToolFailure("%s", err.Error()), nil
 			}
 		} else if a.NextInS != 0 {
@@ -435,8 +454,8 @@ func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, erro
 			} else if msg != "" {
 				return scheduleToolFailure("%s", msg), nil
 			}
-			if err := e.rearmScheduleInterval(sch, a.NextInS); err != nil {
-				return scheduleToolFailure("%s", err.Error()), nil
+			if err := e.rearmScheduleIntervalForTurn(sch, a.NextInS, scope); err != nil {
+				return goalScheduleFailure(err), nil
 			}
 		}
 	}
@@ -458,6 +477,10 @@ func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, erro
 // left a future next_run_at that the ticker would never fire. Cancelled
 // and paused rows stay dead — recadence is not an undo.
 func (e *Engine) rearmScheduleInterval(sch *store.Schedule, nextInS int) error {
+	return e.rearmScheduleIntervalForTurn(sch, nextInS, nil)
+}
+
+func (e *Engine) rearmScheduleIntervalForTurn(sch *store.Schedule, nextInS int, scope *store.GoalTurnScope) error {
 	if sch == nil || nextInS == 0 {
 		return nil
 	}
@@ -468,24 +491,11 @@ func (e *Engine) rearmScheduleInterval(sch *store.Schedule, nextInS int) error {
 		"cron":        "",
 		"next_run_at": next,
 	}
-	switch sch.Status {
-	case store.ScheduleActive:
-		ok, err := e.store.UpdateActiveSchedule(sch.ID, fields)
-		if err != nil {
-			return err
+	if err := e.store.RearmScheduleForTurn(scope, sch.ID, e.maxActiveSchedules(), fields); err != nil {
+		if errors.Is(err, store.ErrScheduleCap) {
+			return fmt.Errorf("engine: too many active schedules")
 		}
-		if !ok {
-			return fmt.Errorf("engine: that wait is no longer active")
-		}
-	case store.ScheduleDone:
-		if err := e.store.ActivateDoneUnderCap(sch.ID, e.maxActiveSchedules(), fields); err != nil {
-			if errors.Is(err, store.ErrScheduleCap) {
-				return fmt.Errorf("engine: too many active schedules")
-			}
-			return err
-		}
-	default:
-		return fmt.Errorf("engine: that wait is no longer active")
+		return err
 	}
 	got, err := e.store.GetSchedule(sch.ID)
 	if err != nil {

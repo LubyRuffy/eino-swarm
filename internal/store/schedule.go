@@ -73,8 +73,12 @@ type Schedule struct {
 	MaxRuns   int        `json:"max_runs"`
 	UntilAt   *time.Time `json:"until_at,omitempty"`
 	CreatedBy string     `gorm:"size:32" json:"created_by"`
-	CreatedAt time.Time  `json:"created_at"`
-	UpdatedAt time.Time  `json:"updated_at"`
+	// ArmedTurnID attributes a manager tool's continuation to its exact turn.
+	// Legacy/public creates start empty. A scoped tool can subsequently arm
+	// either creator's row; callers cannot supply this internal field.
+	ArmedTurnID string    `gorm:"index;size:64" json:"-"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // ScheduleRun is one fire (or a skipped tick) of a schedule.

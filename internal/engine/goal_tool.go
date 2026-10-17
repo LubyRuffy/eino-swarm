@@ -69,6 +69,16 @@ func (e *Engine) completeGoalJSON(threadID, summary string) (string, error) {
 	return string(body), nil
 }
 
+func (e *Engine) completeGoalForTurnJSON(threadID, turnID, summary string) (string, error) {
+	if strings.TrimSpace(turnID) == "" {
+		return goalToolFailure("complete_goal needs its current turn"), nil
+	}
+	if err := e.completeThreadGoal(threadID, turnID, summary); err != nil {
+		return goalScheduleFailure(err), nil
+	}
+	return `{"ok":true}`, nil
+}
+
 // BlockGoalTool is the manager-only tool that records an open standing
 // objective as stuck. Pause and resume stay with the human.
 func BlockGoalTool(block func(reason string) (string, error)) tool.BaseTool {

@@ -55,7 +55,9 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 				continue
 			}
 			_ = e.store.FinishTurn(t.ID, store.TurnError, "", err.Error())
-			e.finishScheduledRun(&t, store.TurnError, "", err.Error())
+			if !errors.Is(err, store.ErrScheduleRunConflict) {
+				e.finishScheduledRun(&t, store.TurnError, "", err.Error())
+			}
 			e.record(store.Event{
 				ThreadID: t.ThreadID, TurnID: t.ID,
 				Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID,
@@ -104,6 +106,11 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 	th, err := e.store.GetThread(turn.ThreadID)
 	if err != nil {
 		return err
+	}
+	if turn.ScheduleContinue && strings.TrimSpace(th.Goal) != "" {
+		if err := e.bindScheduledTurn(turn); err != nil {
+			return err
+		}
 	}
 	messages, err := e.resumeConversation(turn)
 	if err != nil {

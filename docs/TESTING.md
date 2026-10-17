@@ -809,6 +809,23 @@ confirm card;
 can be undone in-turn (`reopen_goal`, which also resets `goal_auto_turns` so
 a complete at the cap does not immediately recap) and later from **Start**
 (`ResumeThreadGoal` no longer rejects a completed objective);
+`internal/engine/goal_schedule_completion_test.go` covers the narrower scheduled
+tool conflict: a manager-owned current wake cannot both continue and complete
+the goal, either tool order must agree, the last check can finish, and independent
+waits remain valid. Database failure checks must leave completion state and its
+Trace event together. The keyless loopback HTTP fixture in
+`frontend/e2e/goal-schedule.spec.ts` exercises Run now and automatic fires through
+the real tool graph, checks the recoverable `goal_schedule_conflict`, then ends
+the wait and completes the goal. It verifies Waiting/Open and Idle/Done after
+reload, preserving screenshots and Trace JSON. Run separately with
+`cd frontend && ZWAI_E2E_GOAL_SCHEDULE=1 npm run e2e`; this is Web behavior evidence,
+not a substitute for required native-window acceptance.
+`internal/engine/goal_schedule_start_test.go` controls the actual binding/write
+boundary without sleeps: a runtime must not start before its claimed fire is
+persisted, binding failure must not launch a model, and a second schedule lookup
+failure must not report a successful mutation. Restored goal-bearing fires use
+the same checked ownership boundary; independent legacy no-goal reports retain
+their compatibility path.
 `TestCatchUpStopsWhenTheWatchIsCancelled` /
 `TestWatchCancelSkipsReady` /
 `TestWatchReplaysAfterALaggedSubscriber` are why a phone `unwatch` / second

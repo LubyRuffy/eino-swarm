@@ -144,6 +144,13 @@ E2E suite.
 
 ## Backend rules
 
+- A scheduled check ending is not its standing goal completing. Enforce the
+  current manager-owned thread wake versus `complete_goal` conflict at the
+  tool boundary, including the reverse call order and parallel calls; prompt
+  wording alone is not a guard. Completion state and its Trace event must
+  commit together. Preserve legitimate independent/human waits and the final
+  check's ability to finish; never infer goal completion from report prose.
+
 - A worker watchdog bounds one lifetime, not unlimited recovery. Preserve its
   consecutive failures across resume, same-role spawn, archive and restoration.
   Three failures stop manager recovery and pause only its recurring check.

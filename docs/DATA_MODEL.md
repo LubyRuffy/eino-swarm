@@ -76,7 +76,7 @@ in this database: notes and skills are files, so a person can read and fix them
 | `model` | text | the name this conversation sends; empty follows the provider's default so a Settings change applies until someone picks in the composer |
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
-| `goal_complete` | bool | true after `complete_goal`. The text stays so the banner can show it; auto-continue stops. `reopen_goal` or **Start** on the Done banner clears it, resets `goal_auto_turns`, and pursuit continues |
+| `goal_complete` | bool | true after successful `complete_goal`. Completion fields and the `goal_complete` event commit atomically. A scheduled tool call whose own manager-created thread wake remains active returns `goal_schedule_conflict` without changing either. The text stays so the banner can show it; auto-continue stops. `reopen_goal` or **Start** on the Done banner clears it, resets `goal_auto_turns`, and pursuit continues |
 | `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn fails for a reason that is not a recoverable model error. Auto-continue stops until the human resumes or sends a message |
 | `goal_block_reason` | text | optional one-line reason from `block_goal`, or the public turn error when a pursuing turn dies before the manager can call it |
 | `goal_started_at` | time | when the current objective was set (not edited). Nil when there is no goal |
@@ -327,6 +327,7 @@ engine enforces that exactly one is set.
 | `next_run_at`, `last_run_at` | UTC. Due = `status=active` AND `next_run_at <= now` |
 | `run_count`, `max_runs`, `until_at` | `0` / null means until cancelled |
 | `created_by` | `human` or `manager` |
+| `armed_turn_id` | exact manager tool turn that last armed this thread wake, written in the same transaction as its create/replace/recadence. Initially empty for untouched legacy rows and public/human creates; a later manager tool arm records its turn without changing `created_by`. Goal completion filters manager-created thread wakes and uses this identity as well as the claimed run, so consuming a one-shot and creating a new wake ID cannot evade the same-turn conflict. Internal lifecycle metadata (`json:"-"`), not a client-supplied goal association; legacy rows are not heuristically backfilled |
 | `created_at`, `updated_at` | |
 
 Deleting a conversation **cancels** wakes whose `thread_id` is that
