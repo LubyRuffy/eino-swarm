@@ -424,3 +424,29 @@ it("pages equal-time completions in the host's descending id order", () => {
   expect(host.attentionPage(first.attention_cursor).attention.map((row) => row.id)).toEqual(["t-loose", "t-live"])
   host.stop()
 })
+
+it.each(["legacy", "modern"])("replays separate scheduled completions using the %s host wire shape", async (version) => {
+  const prior = location.href
+  history.replaceState(null, "", `/?mock=1&history=completion-compatibility&completion=${version}`)
+  vi.useFakeTimers()
+  const h = new MockHost(0), link = new MockLink(h)
+  try {
+    const list = await link.rpc({ op: OpList })
+    const opened = await link.rpc({ op: OpOpen, thread_id: "t-wait" })
+    expect(opened.detail?.completed_seq).toBe(version === "legacy" ? undefined : 0)
+    expect(list.attention).toEqual(version === "legacy" ? undefined : [])
+    expect(list.threads?.every((row) => version === "legacy" ? row.completed_seq === undefined : typeof row.completed_seq === "number")).toBe(true)
+    const frames: RemoteResponse[] = []
+    link.onPush = (frame) => frames.push(frame)
+    await link.rpc({ op: OpWatch, thread_id: "t-wait" })
+    await vi.advanceTimersByTimeAsync(600)
+    expect(frames.filter((r) => r.event?.kind === "done")).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(600)
+    const completions = frames.filter((r) => r.event?.kind === "done")
+    expect(completions).toHaveLength(2)
+    expect(completions.every((r) => r.status?.waiting && r.event?.seq)).toBe(true)
+    const read = await link.rpc({ op: "read", thread_id: "t-wait", completed_seq: completions[1].event!.seq })
+    if (version === "legacy") expect(read).toMatchObject({ ok: false, code: "unknown_op", error: "unknown op" })
+    else expect(read.detail).toMatchObject({ unread: false, completed_seq: 0 })
+  } finally { link.close(); h.stop(); history.replaceState(null, "", prior) }
+})

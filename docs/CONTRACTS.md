@@ -199,6 +199,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-023 Completion attention is durable until the result is viewed
 
 - 状态：active；类型：lifecycle / consistency / data；作用范围：store、HTTP、配对 RPC、桌面与手机；关联功能：`F-125`、`F-120`、`F-220`、`F-410`。
+- 手机兼容性（`C-006`）：只有当前主机 detail 包含数值 `completed_seq` 时才发送可选 `read`；旧主机缺失或 `undefined` 字段时，实时／定时终态不触发不支持的读操作。数值 `0` 表示支持但尚无完成水位，不能禁用首次可见结果回执。切换 PC 后按当前 detail 判断，不继承其他主机能力。已声明支持的主机明确拒绝读或发生网络错误时仍显示错误、保留未读，不把 `unknown_op` 当成功。证据：`mobile/src/lib/completion-read.ts`、`mobile/src/lib/completion-read-compatibility.test.tsx`、`mobile/e2e/unread-completion.spec.ts`；来源：Issue #80。
 - 契约内容：主任务成功或错误的终态事件与完成水位在广播前原子保存；子 Agent 终态、用户取消和安静计划结果不新增提示。旧数据不回填为未读。桌面收起项目在标题右侧汇总，手机完成未读置顶集合独立于 running 与普通分页额度，独立按实际字节预算分页并提供 More，已展开页不被首页轮询删除，直到明确打开并渲染结果；自动恢复、列表轮询、后台页面和失败导航不算查看。
 - 允许行为：正在查看的主结果实际渲染后确认其编号；跨客户端读取后在后续刷新同步；禁止行为：用当前最新编号代替使用者实际看到的编号，或把未读完成当正在执行以触发自动恢复。
 - 失败语义：无效或未来编号返回 `bad_request`，未知对话返回 `not_found`；已存储的取消／安静主终态允许无副作用读取；回执失败保留未读并显示错误；不变量：延迟或重复 ACK 不消费较新完成，同一完成的旧回执不能重新点亮已读提示，回执不改运行状态或标题。手机须区分实际渲染的终态编号与服务端完成水位，不能用 quiet／cancel 事件自行改写完成水位；回退低于请求开始时的水位后，旧回执不得恢复已删除完成。

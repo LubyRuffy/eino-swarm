@@ -1,5 +1,28 @@
 import { expect, test } from "@playwright/test"
 
+for (const host of ["legacy", "modern"]) {
+  test(`scheduled checks stay usable with a ${host} completion host`, async ({ page }, info) => {
+    await page.addInitScript(() => localStorage.setItem("zwai.phone.locale", "en"))
+    await page.goto(`/?mock=1&tick=20&history=completion-compatibility&completion=${host}`)
+    await page.getByRole("button", { name: "Back", exact: true }).click()
+    await page.getByTestId("project-stack").getByRole("button", { name: "Open Watch the nightly export", exact: true }).click()
+    await expect(page.getByTestId("schedule-banner")).toBeVisible()
+    await expect(page.getByTestId("transcript").getByTestId("turn-boundary")).toHaveCount(2)
+    await expect(page.getByRole("alert")).toHaveCount(0)
+    await expect(page.getByTestId("schedule-banner")).toBeVisible()
+    await page.screenshot({ path: info.outputPath(`completion-${host}-checks.png`), animations: "disabled" })
+    // The same conversation still sends and receives after repeated checks.
+    await page.getByRole("textbox", { name: "Message" }).fill("Review the current result")
+    await page.getByRole("button", { name: "Send", exact: true }).click()
+    await expect(page.getByTestId("transcript")).toContainText("Here is what changed")
+    await expect(page.getByTestId("transcript").getByTestId("turn-boundary")).toHaveCount(3)
+    await expect(page.getByRole("alert")).toHaveCount(0)
+    await page.screenshot({ path: info.outputPath(`completion-${host}-conversation.png`), animations: "disabled" })
+    await page.getByRole("button", { name: "Back", exact: true }).click()
+    await expect(page.getByTestId("completion-attention")).toHaveCount(0)
+  })
+}
+
 for (const language of [
   { locale: "en", back: "Back", completed: "Completed unread", state: "Unread completion", open: "Open Sweep the unused exports", running: "In progress" },
   { locale: "zh", back: "返回", completed: "已完成未读", state: "完成未读", open: "打开 Sweep the unused exports", running: "进行中" },

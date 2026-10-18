@@ -2234,6 +2234,20 @@ request's authoritative completion baseline from the rendered terminal event:
 late replies cannot revive a rewound result, while the first live result remains
 readable when the initial server watermark is zero. Quiet/cancel events do not
 manufacture an authoritative completion watermark.
+`mobile/src/lib/completion-read-compatibility.test.tsx` regresses repeated
+legacy `done`/`error` checks with missing completion fields, a modern host's
+first zero-watermark result, switching between those hosts and real read
+refusals without a false clear. Existing read tests retain delayed/reversed
+ACK, visibility, rewind and newer-completion guards. The two host variants in
+`mobile/e2e/unread-completion.spec.ts` stream separate scheduled completions,
+then send in the same conversation and return to the inbox. They run in both
+Chromium phone and WebKit iPhone layouts. The offline
+`history=completion-compatibility&completion=legacy` fixture omits completion
+fields and rejects `read` exactly as a pre-completion host does;
+`completion=modern` retains the initial numeric zero. The fixture has unit
+coverage in `mobile/src/lib/mock-link.test.ts`. These browser receipts do not
+identify the exact RPC from an uninstrumented user screenshot or prove a
+native package was accepted.
 `mobile/src/lib/inbox-refresh.test.tsx` checks the actual loaded attention window:
 a desktop read removes a phone tail row even when the head is unchanged; new
 head rows do not shrink its old boundary; failed continuation preserves the

@@ -484,6 +484,13 @@ that was actually displayed and returns the updated `detail`; listing, open
 for recovery and `ready` do not acknowledge it. Invalid/future/worker-event
 sequences return `bad_request`; stored quiet/cancelled primary terminals are
 valid no-ops. Delayed ACKs do not read newer results.
+Hosts supporting `read` include a numeric `completed_seq` in `open.detail`,
+including `0` before the first result. Older hosts omit the field; the phone
+does not send optional completion acknowledgements to them, including for
+live `done`/`error` events from scheduled checks. This compatibility decision
+uses the current host detail, not a previous PC's state or a positive-only
+watermark test. An advertised read that fails remains an error and never
+clears completion attention locally.
 
 Default list size is 5 idle recents (`thread_limit`); live turns and
 parked waits sit on `list.running` and do not occupy that quota, so In

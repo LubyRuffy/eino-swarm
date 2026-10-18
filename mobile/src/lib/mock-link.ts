@@ -209,6 +209,8 @@ export class MockHost {
   private seq = 0
   private calls = 0
   private streamedAgentsStarted = false
+  private completionChecksStarted = false
+  readonly legacyCompletion = new URLSearchParams(location.search).get("completion") === "legacy"
   private readFailures = new URLSearchParams(location.search).get("readfail") === "1" ? 1 : 0
   private askFailures = new URLSearchParams(location.search).get("askfail") === "1" ? 1 : 0
 
@@ -315,6 +317,19 @@ export class MockHost {
 
   watch(w: Watcher) {
     this.watchers.add(w)
+    if (w.threadID === "t-wait" && new URLSearchParams(location.search).get("history") === "completion-compatibility"
+      && !this.completionChecksStarted) {
+      this.completionChecksStarted = true
+      const th = this.find(w.threadID)!
+      // Separate checks reach the rendered live path after ready, rather than
+      // arriving together in a replay that must not acknowledge results.
+      for (const check of [1, 2]) this.later(() => {
+        const completed = th.completedSeq
+        this.push(th, { kind: "schedule_report", text: JSON.stringify({ quiet: true }) })
+        this.push(th, { kind: "done", agentID: "manager" })
+        th.completedSeq = completed // A quiet terminal does not create attention.
+      }, check * 600)
+    }
     if (w.threadID === "t-live" && new URLSearchParams(location.search).get("history") === "streamed-agents"
       && !this.streamedAgentsStarted) {
       this.streamedAgentsStarted = true
@@ -367,7 +382,7 @@ export class MockHost {
     return {
       projects,
       threads: idle,
-      ...this.attentionPage(),
+      ...(this.legacyCompletion ? {} : this.attentionPage()),
       running,
       // One idle row lives past this page so More is a real page, not a
       // button that appends nothing. The first page never includes it.
@@ -451,8 +466,7 @@ export class MockHost {
     return {
       id: th.id,
       title: th.title,
-      unread: (th.completedSeq ?? 0) > (th.readSeq ?? 0),
-      completed_seq: th.completedSeq ?? 0,
+      ...(this.legacyCompletion ? {} : { unread: (th.completedSeq ?? 0) > (th.readSeq ?? 0), completed_seq: th.completedSeq ?? 0 }),
       project_id: th.projectID || undefined,
       running: th.running,
       waiting: th.waiting,
@@ -465,8 +479,7 @@ export class MockHost {
     return {
       id: th.id,
       title: th.title,
-      unread: (th.completedSeq ?? 0) > (th.readSeq ?? 0),
-      completed_seq: th.completedSeq ?? 0,
+      ...(this.legacyCompletion ? {} : { unread: (th.completedSeq ?? 0) > (th.readSeq ?? 0), completed_seq: th.completedSeq ?? 0 }),
       goal: th.goal,
       goal_on: Boolean(th.goal),
       waiting: th.waiting,
@@ -744,6 +757,7 @@ export class MockLink {
         return this.ok({ id, detail: this.host.detail(th) })
       }
       case OpRead: {
+        if (this.host.legacyCompletion) return this.ok({ id, ok: false, code: "unknown_op", error: "unknown op" })
         const th = thread()
         if (!th) return this.missing(id)
         if (!this.host.read(th, req.completed_seq ?? 0)) return this.ok({ id, ok: false, error: "Read acknowledgement unavailable" })

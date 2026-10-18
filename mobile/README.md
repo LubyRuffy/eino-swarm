@@ -364,3 +364,9 @@ Read state is stored on the host and follows the paired host identity.
 Expanded completion pages also refresh through their previously loaded oldest
 row, so viewing a result on the PC clears its phone tail row. Failed refreshes
 keep the displayed window; a late list cannot relight a confirmed read.
+An older PC without a numeric `open.detail.completed_seq` does not implement
+completion acknowledgements. The phone skips those optional reads while
+conversation streaming, scheduled waits and sending remain available. Zero
+is a supported PC's initial watermark, so its first visible completion still
+receives an acknowledgement. A host that advertises completion support but
+rejects a read still shows the actual error and retains unread state.

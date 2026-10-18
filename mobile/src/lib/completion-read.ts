@@ -51,7 +51,9 @@ export function useCompletionRead(opts: {
   const latest = useRef(opts)
   latest.current = opts
   const request = (target: RemoteLink, id: string, seq: number) => {
-    if (seq <= 0) return
+    // Older PCs omit this field and do not implement read. Zero is the
+    // supported host's baseline before its first completed result.
+    if (seq <= 0 || typeof latest.current.view.current.detail?.completed_seq !== "number") return
     const next = { target, id, seq, baseline: latest.current.view.current.detail?.completed_seq ?? 0 }
     observed.current = next
     setIntent(next)
