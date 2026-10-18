@@ -275,3 +275,28 @@ describe("Composer", () => {
     expect(screen.getByLabelText("Message")).toHaveValue("explain")
   })
 })
+
+
+describe("catalog changes preserve an explicit conversation model", () => {
+  it("does not switch an existing selection to a newly listed default", () => {
+    setLocale("en")
+    const send = vi.fn()
+    const props = { label: "Message", sendLabel: "Send", onSubmit: send, providerId: "a", model: "retained" }
+    const { rerender } = render(<Composer {...props} models={[{ provider_id: "a", model: "retained", default: true }]} />)
+    rerender(<Composer {...props} models={[{ provider_id: "a", model: "new-model", default: true }]} />)
+    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("retained")
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "continue" } })
+    fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    expect(send).toHaveBeenCalledWith("continue", expect.objectContaining({ providerId: "a", model: "retained" }))
+  })
+})
+
+it("keeps a user's local new-chat pick when refreshing the available models", () => {
+  setLocale("en")
+  const props = { label: "Message", sendLabel: "Send", onSubmit: vi.fn() }
+  const { rerender } = render(<Composer {...props} models={[{ provider_id: "p", model: "picked", default: true }]} />)
+  fireEvent.click(screen.getByRole("button", { name: "Model" }))
+  fireEvent.click(screen.getByRole("radio", { name: "picked" }))
+  rerender(<Composer {...props} models={[{ provider_id: "p", model: "fresh", default: true }]} />)
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent("picked")
+})

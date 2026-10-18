@@ -48,6 +48,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-006 Phone remote protocol
 
+- 模型目录刷新是显式只读的 `refresh_catalog`：普通 `catalog` 仍读本地配置快照；刷新只返回启用且就绪提供商的实时发现结果，不补回已下线默认模型，不保存目录、默认项或凭据，也不改写显式选择。全部发现成功才替换手机目录，失败保留旧目录并在选择器内提供错误与重试；旧 PC 的 `unknown_op` 提示更新 PC，不能伪装为刷新成功或断开聊天。每条链接最多一个刷新，发现并发且受单次总时限约束，关闭链接取消并等待任务结束；响应继续遵守帧预算。手机只能应用当前链接、当前刷新代次的结果和清理回调。证据：`internal/remote/catalog_refresh.go`, `internal/remote/catalog_refresh_test.go`, `internal/remote/pump_catalog.go`, `internal/remote/pump_catalog_test.go`, `mobile/src/lib/use-model-catalog.ts`, `mobile/src/lib/use-model-catalog.test.ts`, `mobile/src/components/composer.test.tsx`, `mobile/e2e/model-refresh.spec.ts`；来源：Issue #81。
 - 状态：active；类型：compatibility / security；作用范围：pairlink、phone、PC remote；关联功能：`F-125`, `F-170`, `F-210`, `F-220`, `F-222`, `F-224`, `F-230`。
 - 契约内容：手机通过 pairlink 加密 RPC 与 PC 通信，不直接调用 PC 的 `/api`；已持久化事件的 kind 和正 seq 可在手机回放；断线重连不解除绑定。回答 `ask_user` 时客户端必须使用 PC 规范化后的 question ID（如 `test-window` → `test_window`），RPC 拒绝必须显示原因并保留草稿，接受后不得重复提交。子 Agent 的事件按 `agent_id` 与主 Agent 分开回放，`spawned` 启动指令正文不离开 PC；手机只显示协议允许并按 `event_chars` 裁剪的活动。当前页只有手机隐藏的子任务调用及孤立工具回执时，`log` 必须继续向前查找可显示历史，不能让用户逐页点击隐藏记录；当前轮次没有可显示消息时必须说明原因并保留「更早」入口。
 - 允许行为：relay/direct 路径切换及手机查看子 Agent 角色、状态和截断记录；手机页头计数仅包含运行中的子 Agent，列表按进行中／已结束分组，完成和失败记录仍可查看；禁止行为：把本地 PC API 或子 Agent 启动指令直接暴露给手机，或把子 Agent 回答混作主 Agent 回答；失败语义：连接错误与 host offline 可区分；不变量：一个 PC 对话跨端一致，同一 agent 的流式文本只更新自己的记录；边界条件：ticket 过期、掉线、历史翻页、子 Agent 续办和重连。

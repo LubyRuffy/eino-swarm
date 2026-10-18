@@ -69,6 +69,10 @@ export const zh: Record<MessageKey, string> = {
   "queue.interrupt": "中断插入",
 
   "home.newMessage": "新消息",
+  "composer.refreshModels": "刷新模型",
+  "composer.noModels": "没有可用模型。",
+  "composer.refreshFailed": "无法刷新模型列表，请重试。",
+  "composer.refreshUnsupported": "请更新电脑端以刷新模型列表。",
   "composer.attach": "添加文件",
   "composer.remove": "移除{name}",
   "composer.model": "模型",

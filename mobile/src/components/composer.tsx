@@ -44,6 +44,9 @@ export function Composer({
   model = "",
   reasoning = "",
   catalogBusy = false,
+  onRefreshModels,
+  refreshBusy,
+  refreshError,
   onTune,
 }: {
   label: string
@@ -66,11 +69,15 @@ export function Composer({
   model?: string
   reasoning?: string
   catalogBusy?: boolean
+  onRefreshModels?: () => void | Promise<void>
+  refreshBusy?: boolean
+  refreshError?: string
   onTune?: (next: { providerId: string; model: string; reasoning: string }) => void
 }) {
   const [text, setText] = useState("")
   const [attached, setAttached] = useState<File[]>([])
   const [pick, setPick] = useState(() => chosen(models, providerId, model))
+  const explicitPick = useRef(false)
   const [level, setLevel] = useState(reasoning)
   const [modelPickerOpen, setModelPickerOpen] = useState(false)
   const modelTextId = useId()
@@ -81,12 +88,16 @@ export function Composer({
   const hasDraft = text.trim().length > 0 || attached.length > 0 || quotes.some((quote) => quote.trim().length > 0)
   const ready = hasDraft && !disabled && !pending
   const showStop = Boolean(onStop && stopLabel && (pending || !hasDraft))
-  const showTools = models.length > 0 || reasoningLevels.length > 0 || catalogBusy
+  const showTools = models.length > 0 || reasoningLevels.length > 0 || catalogBusy || Boolean(onRefreshModels)
 
   // The conversation's selection arrives after catalog. A local edit is not
   // overwritten until those props themselves change.
   useEffect(() => {
+    explicitPick.current = false
     setPick(chosen(models, providerId, model))
+  }, [providerId, model])
+  useEffect(() => {
+    if (!explicitPick.current) setPick(chosen(models, providerId, model))
   }, [models, providerId, model])
   useEffect(() => {
     setLevel(reasoning)
@@ -136,6 +147,7 @@ export function Composer({
   }
 
   const tune = (next: { providerId: string; model: string; reasoning: string }) => {
+    explicitPick.current = true
     setPick({ providerId: next.providerId, model: next.model })
     setLevel(next.reasoning)
     onTune?.(next)
@@ -285,7 +297,7 @@ export function Composer({
             <span className="sr-only">{t("composer.loading")}</span>
           </div>
         ) : null}
-        {models.length > 0 ? (
+        {models.length > 0 || onRefreshModels ? (
           <button
             type="button"
             aria-label={t("composer.model")}
@@ -294,7 +306,7 @@ export function Composer({
             disabled={disabled || pending}
             onClick={() => setModelPickerOpen(true)}
           >
-            <span id={modelTextId}>{pick.model}</span>
+            <span id={modelTextId}>{pick.model || t("composer.model")}</span>
           </button>
         ) : null}
         {reasoningLevels.length > 0 ? (
@@ -324,6 +336,9 @@ export function Composer({
             tune({ providerId: nextProviderId, model: nextModel, reasoning: level })
             setModelPickerOpen(false)
           }}
+          onRefresh={onRefreshModels}
+          refreshBusy={refreshBusy}
+          refreshError={refreshError}
           onClose={() => setModelPickerOpen(false)}
         />
       ) : null}
@@ -333,6 +348,7 @@ export function Composer({
 }
 
 function chosen(models: ModelChoice[], providerId: string, model: string) {
+  if (providerId && model) return { providerId, model }
   const ready = models.filter((row) => row.model)
   // A known provider that left the catalog was switched off. Keep the
   // conversation on it instead of silently sending the next endpoint.

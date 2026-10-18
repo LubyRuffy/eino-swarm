@@ -18,6 +18,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`, `C-006`, `C-009`: the phone's PC model picker can refresh upstream catalogs, show newly available models and remove retired choices. Refresh is read-only, preserves explicit selection and the previous list on failure, and reports an older PC locally without disconnecting the conversation (Issue #81).
 - `F-125`, `F-220`, `C-006`, `C-023`: phones skip optional completion reads when an older PC omits its completion watermark, so repeated scheduled checks do not show unsupported-operation link errors. A numeric zero watermark still accepts the first visible completion, and real acknowledgement failures retain their error and unread state (Issue #80).
 - `F-150`, `C-012`: goal completion and its persisted Trace event commit together, so a storage failure cannot report success with only half the lifecycle transition (Issue #79).
 - `F-130`, `F-150`, `C-019`, `C-012`: goals, scheduled checks, compaction, model retries and restart restore historical workers through one explicit runtime state snapshot instead of fabricating successful `spawn_agent` calls. Finished workers remain queryable under their original IDs without appearing newly created on every turn; a loopback model/UI regression verifies the later turn's Trace (Issue #78).

@@ -10,7 +10,7 @@ export type RemoteLink = {
   alive(): boolean
   rpc(
     req: Omit<RemoteRequest, "v" | "id"> & { id?: string },
-    opts?: { dropOnTimeout?: boolean },
+    opts?: { dropOnTimeout?: boolean; timeoutMs?: number },
   ): Promise<RemoteResponse>
   close(): void
   announceDevice(label?: string): Promise<RemoteResponse | undefined>

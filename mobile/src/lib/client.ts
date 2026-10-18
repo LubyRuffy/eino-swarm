@@ -348,7 +348,7 @@ export class DeviceLink {
 
   async rpc(
     partial: Omit<RemoteRequest, "v" | "id"> & { id?: string },
-    opts?: { dropOnTimeout?: boolean },
+    opts?: { dropOnTimeout?: boolean; timeoutMs?: number },
   ): Promise<RemoteResponse> {
     if (!this.alive() || !this.sess || !this.ws) throw new LinkFault("offline", "network")
     const req: RemoteRequest = {
@@ -364,7 +364,7 @@ export class DeviceLink {
         // Inbox RPCs own the socket. A side read (local agent list) must
         // not tear the PC down when the walk is slow.
         if (opts?.dropOnTimeout !== false) this.drop(err)
-      }, this.rpcTimeoutMs)
+      }, opts?.timeoutMs ?? this.rpcTimeoutMs)
       this.pending.set(req.id, { resolve, reject, timer })
     })
     try {

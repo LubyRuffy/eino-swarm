@@ -21,6 +21,9 @@ export function NewChatScreen({
   models,
   reasoningLevels,
   catalogBusy,
+  onRefreshModels,
+  refreshBusy,
+  refreshError,
   pending,
   onSelectHost,
   onBack,
@@ -35,6 +38,9 @@ export function NewChatScreen({
   models?: ModelChoice[]
   reasoningLevels?: string[]
   catalogBusy?: boolean
+  onRefreshModels?: () => void | Promise<void>
+  refreshBusy?: boolean
+  refreshError?: string
   pending?: boolean
   onSelectHost: (fingerprint: string) => void
   onBack: () => void
@@ -102,6 +108,9 @@ export function NewChatScreen({
         models={models}
         reasoningLevels={reasoningLevels}
         catalogBusy={catalogBusy}
+        onRefreshModels={onRefreshModels}
+        refreshBusy={refreshBusy}
+        refreshError={refreshError}
         onSubmit={(text, extra) => (extra ? onStart(text, project, extra) : onStart(text, project))}
       />
     </main>

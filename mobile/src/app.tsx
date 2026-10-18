@@ -23,7 +23,6 @@ import { getLocale, t, toggleLocale } from "@/lib/i18n"
 import { emptyInbox, inboxThreads, reduceInbox, type InboxGroupState, type InboxWindow } from "@/lib/inbox-window"
 import type {
   ClientTool,
-  ModelChoice,
   ProjectView,
   RemoteResponse,
   RunningView,
@@ -34,7 +33,6 @@ import { mergeClientTools } from "@/lib/local-clients"
 import { readClientTask } from "@/lib/read-client"
 import {
   OpCancelWait,
-  OpCatalog,
   OpLog,
   OpMore,
   OpOpen,
@@ -78,6 +76,7 @@ import { usePhoneVisibility } from "@/lib/phone-visibility"
 import { openPhoneThread } from "@/lib/open-thread"
 import { answerPhoneQuestion, interruptPhoneFollowup, sendPhoneQueue, sendPhoneTurn } from "@/lib/phone-turn"
 import { sendComposed } from "@/lib/turn-send"
+import { useModelCatalog } from "@/lib/use-model-catalog"
 
 export function App() {
   const [locale, setLocaleTick] = useState(getLocale())
@@ -109,9 +108,7 @@ export function App() {
   const [clientTools, setClientTools] = useState<ClientTool[]>([])
   const [loadingGroup, setLoadingGroup] = useState("")
   const [loadingMore, setLoadingMore] = useState(false)
-  const [models, setModels] = useState<ModelChoice[]>([])
-  const [levels, setLevels] = useState<string[]>([])
-  const [catalogBusy, setCatalogBusy] = useState(false)
+  const { models, levels, catalogBusy, refreshModels, refreshBusy, refreshError } = useModelCatalog(link)
   const [composerPending, setComposerPending] = useState(false)
   const [view, setView] = useState<PhoneView>(emptyView())
   const [loadingOlder, setLoadingOlder] = useState(false)
@@ -189,8 +186,6 @@ export function App() {
     setClientsOn(false)
     setClientTools([])
     setLoadingGroup("")
-    setModels([])
-    setLevels([])
   }
 
   const applyList = (resp: RemoteResponse, append: boolean, target?: RemoteLink, group?: string, refreshed?: InboxWindow) => {
@@ -372,25 +367,7 @@ export function App() {
     return () => window.clearInterval(id)
   }, [link, view.detail])
   useClientPoll(link, linkRef, setClientsOn, setClientTools)
-  useEffect(() => {
-    if (!link?.alive()) return
-    let gone = false
-    setCatalogBusy(true)
-    void link
-      .rpc({ op: OpCatalog })
-      .then((r) => {
-        if (gone || linkRef.current !== link || !r.ok) return
-        setModels(r.models ?? [])
-        setLevels(r.reasoning_levels ?? [])
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!gone) setCatalogBusy(false)
-      })
-    return () => {
-      gone = true
-    }
-  }, [link])
+
 
   const onURI = async (uri: string) => {
     const isAdd = adding
@@ -808,6 +785,9 @@ export function App() {
             models={models}
             reasoningLevels={levels}
             catalogBusy={catalogBusy}
+            onRefreshModels={refreshModels}
+            refreshBusy={refreshBusy}
+            refreshError={refreshError}
             pending={composerPending}
             onSelectHost={selectHost}
             onBack={() => {
@@ -847,6 +827,9 @@ export function App() {
             models={models}
             reasoningLevels={levels}
             catalogBusy={catalogBusy}
+            onRefreshModels={refreshModels}
+            refreshBusy={refreshBusy}
+            refreshError={refreshError}
             onTune={(next) => void tuneThread(detail.id, next)}
             onBack={() => void closeThread()}
             onOlder={() => void loadOlder()}

@@ -4,6 +4,77 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testModelRefreshReplacesNamesAndKeepsExplicitSelection() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let model = app.buttons["Model"].firstMatch
+    XCTAssertTrue(model.waitForExistence(timeout: 15), "requires the default offline catalog fixture")
+    model.tap()
+    let oldChoice = app.otherElements["scripted"].firstMatch
+    XCTAssertTrue(oldChoice.waitForExistence(timeout: 5))
+    oldChoice.tap()
+    model.tap()
+    let refresh = app.buttons["Refresh models"].firstMatch
+    XCTAssertTrue(refresh.waitForExistence(timeout: 5))
+    XCTAssertTrue(refresh.isHittable)
+    recordAgentPage(app, name: "model-refresh-before")
+    refresh.tap()
+    let freshChoice = app.otherElements["scripted-next"].firstMatch
+    XCTAssertTrue(freshChoice.waitForExistence(timeout: 8), "the packaged app must paint the newly discovered name")
+    XCTAssertFalse(oldChoice.exists, "the removed model must leave the picker")
+    XCTAssertEqual(freshChoice.value as? String, "0", "the new name must remain unselected rather than silently tuning this conversation")
+    recordAgentPage(app, name: "model-refresh-fresh-catalog")
+    app.buttons["Close"].firstMatch.tap()
+    XCTAssertTrue(model.exists)
+    XCTAssertTrue(app.textViews["Message"].exists)
+    let selectedModel = XCTAttachment(string: model.debugDescription + "\nlabel=" + model.label + "\nvalue=" + String(describing: model.value))
+    selectedModel.name = "model-refresh-retained-button-accessibility"
+    selectedModel.lifetime = .keepAlways
+    add(selectedModel)
+    recordAgentPage(app, name: "model-refresh-selection-retained")
+  }
+
+  func testModelRefreshFailureKeepsChoicesAndCanRetryLocally() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let model = app.buttons["Model"].firstMatch
+    XCTAssertTrue(model.waitForExistence(timeout: 15), "requires catalog=retry")
+    model.tap()
+    let refresh = app.buttons["Refresh models"].firstMatch
+    XCTAssertTrue(refresh.waitForExistence(timeout: 5))
+    refresh.tap()
+    let error = app.staticTexts["Could not refresh models. Try again."].firstMatch
+    XCTAssertTrue(error.waitForExistence(timeout: 8))
+    XCTAssertTrue(app.otherElements["scripted"].firstMatch.exists, "a failed provider discovery must retain the old list")
+    XCTAssertTrue(refresh.isEnabled)
+    recordAgentPage(app, name: "model-refresh-local-failure")
+    refresh.tap()
+    XCTAssertTrue(app.otherElements["scripted-next"].firstMatch.waitForExistence(timeout: 8))
+    XCTAssertFalse(error.exists)
+    recordAgentPage(app, name: "model-refresh-local-retry")
+  }
+
+  func testModelRefreshLegacyHostFeedbackDoesNotBlockConversation() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let model = app.buttons["Model"].firstMatch
+    XCTAssertTrue(model.waitForExistence(timeout: 15), "requires catalog=legacy")
+    model.tap()
+    let refresh = app.buttons["Refresh models"].firstMatch
+    XCTAssertTrue(refresh.waitForExistence(timeout: 5))
+    refresh.tap()
+    let error = app.staticTexts["Update the PC app to refresh its models."].firstMatch
+    XCTAssertTrue(error.waitForExistence(timeout: 8))
+    XCTAssertTrue(app.otherElements["scripted"].firstMatch.exists)
+    recordAgentPage(app, name: "model-refresh-legacy-local-feedback")
+    app.buttons["Close"].firstMatch.tap()
+    XCTAssertTrue(error.waitForNonExistence(timeout: 5), "optional old-host feedback belongs only to the picker")
+    let message = app.textViews["Message"].firstMatch
+    XCTAssertTrue(message.exists)
+    XCTAssertTrue(message.isEnabled)
+    recordAgentPage(app, name: "model-refresh-legacy-conversation-usable")
+  }
+
   func testUnreadCompletionPersistsUntilExplicitVisit() throws {
     let app = XCUIApplication()
     app.launch()

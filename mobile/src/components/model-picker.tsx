@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
-import { Check, X } from "lucide-react"
+import { Check, RefreshCw, X } from "lucide-react"
 
 import { t } from "@/lib/i18n"
 import type { ModelChoice } from "@/lib/rpc"
@@ -13,12 +13,18 @@ export function ModelPicker({
   model,
   onSelect,
   onClose,
+  onRefresh,
+  refreshBusy = false,
+  refreshError,
 }: {
   models: ModelChoice[]
   providerId: string
   model: string
   onSelect: (providerId: string, model: string) => void
   onClose: () => void
+  onRefresh?: () => void | Promise<void>
+  refreshBusy?: boolean
+  refreshError?: string
 }) {
   const closeRef = useRef(onClose)
   const closeButton = useRef<HTMLButtonElement>(null)
@@ -72,6 +78,19 @@ export function ModelPicker({
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-2">
           <h2 className="text-base font-semibold">{t("composer.model")}</h2>
+          {onRefresh ? (
+            <button
+              type="button"
+              aria-label={t("composer.refreshModels")}
+              aria-busy={refreshBusy || undefined}
+              disabled={refreshBusy}
+              className="flex min-h-10 shrink-0 items-center gap-1 rounded-full px-3 text-xs text-foreground active:bg-accent disabled:opacity-40"
+              onClick={() => void onRefresh()}
+            >
+              <RefreshCw className={refreshBusy ? "size-4 animate-spin motion-reduce:animate-none" : "size-4"} aria-hidden />
+              {t("composer.refreshModels")}
+            </button>
+          ) : null}
           <button
             ref={closeButton}
             type="button"
@@ -82,6 +101,8 @@ export function ModelPicker({
             <X className="size-5" aria-hidden />
           </button>
         </div>
+        {refreshError ? <p role="alert" className="px-3 py-2 text-sm text-destructive">{refreshError}</p> : null}
+        {models.length === 0 ? <p className="px-3 py-3 text-sm text-muted-foreground">{t("composer.noModels")}</p> : null}
         <div role="radiogroup" aria-label={t("composer.model")} className="min-h-0 overflow-y-auto overscroll-contain px-2 py-2">
           {groups.map((group) => (
             <div key={group.label}>

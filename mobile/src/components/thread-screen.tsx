@@ -37,6 +37,9 @@ export function ThreadScreen({
   models,
   reasoningLevels,
   catalogBusy,
+  onRefreshModels,
+  refreshBusy,
+  refreshError,
   onTune,
   onStop,
   onAnswer,
@@ -64,6 +67,9 @@ export function ThreadScreen({
   models?: ModelChoice[]
   reasoningLevels?: string[]
   catalogBusy?: boolean
+  onRefreshModels?: () => void | Promise<void>
+  refreshBusy?: boolean
+  refreshError?: string
   onTune?: (next: { providerId: string; model: string; reasoning: string }) => void
   onStop: () => void
   onAnswer: (text: string) => void | Promise<void>
@@ -463,6 +469,9 @@ export function ThreadScreen({
         model={detail.model}
         reasoning={detail.reasoning ?? ""}
         catalogBusy={catalogBusy}
+        onRefreshModels={onRefreshModels}
+        refreshBusy={refreshBusy}
+        refreshError={refreshError}
         onTune={onTune}
         onSubmit={asking ? onAnswer : onSend}
       /> : null}

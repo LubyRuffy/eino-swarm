@@ -16,7 +16,7 @@ import { generateIdentity, respond } from "./crypto"
 import { bytesToB64url, bytesToHex } from "./bytes"
 import { marshalFrame, TYPE_DATA, TYPE_HANDSHAKE, TYPE_LABEL, TYPE_PUNCH_PING, unmarshalFrame } from "./frame"
 import { hubDeviceFields } from "./device"
-import { OpClients, OpHello, OpList, PROTOCOL_V } from "./rpc"
+import { OpClients, OpHello, OpList, OpRefreshCatalog, PROTOCOL_V } from "./rpc"
 
 describe("redeemOffer", () => {
   it("posts the device public key and reads ticket fields", async () => {
@@ -315,6 +315,23 @@ describe("DeviceLink drop", () => {
     await expect(link.rpc({ op: OpList })).rejects.toThrow("rpc timeout")
     expect(onDisconnect).toHaveBeenCalledOnce()
     expect(link.alive()).toBe(false)
+  })
+
+  it("allows explicit refresh extra transport time without changing or dropping the session", async () => {
+    const { link } = await livePair({ rpcTimeoutMs: 40 })
+    const disconnected = vi.fn()
+    link.onDisconnect = disconnected
+    let finished = false
+    const pending = link.rpc({ op: OpRefreshCatalog }, { dropOnTimeout: false, timeoutMs: 120 })
+    pending.catch(() => { finished = true })
+    const rejected = expect(pending).rejects.toThrow("rpc timeout")
+    await new Promise((resolve) => setTimeout(resolve, 65))
+    expect(finished).toBe(false)
+    expect(link.alive()).toBe(true)
+    await rejected
+    expect(disconnected).not.toHaveBeenCalled()
+    expect(link.alive()).toBe(true)
+    link.close()
   })
 
   it("keeps the socket when a side rpc times out", async () => {

@@ -460,7 +460,7 @@ The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `hello` / `list` / `more` / `open` / `read` / `start` / `send` / `steer` / `stop` /
 `followup_drop` / `followup_steer` / `preempt` /
 `answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
-`resume_goal` / `catalog` / `tune` / `put` / `clients` / `files` /
+`resume_goal` / `catalog` / `refresh_catalog` / `tune` / `put` / `clients` / `files` /
 `file_chunk`. `hello` `{text}` is the phone's one-line model; the host
 keys it by the pairlink fingerprint, not a client-supplied id.
 OK replies carry `host` (this PC's `remote.display_name`) so the phone can
@@ -569,6 +569,21 @@ tearing the link.
 `catalog` lists ready models (`provider_id`, `provider_label`, `model`,
 `default`) and `reasoning_levels`. It carries no keys, URLs, or context
 windows. A catalog that would not fit a pairlink frame is `too_large`.
+`refresh_catalog` explicitly discovers the current upstream models for the
+enabled, ready PC providers and returns the same response shape. Ordinary
+`catalog` remains a network-free configuration snapshot. Discovery runs in
+parallel within one PC discovery timeout (15 seconds), and returns models in
+configured provider order. The result uses the discovered names directly:
+it does not add a removed configured default back to the choices, save settings,
+change default models, or invalidate existing model clients. Provider keys and
+URLs stay on the PC. Any discovery failure returns sanitized `refresh_failed`
+instead of a partially fresh catalog; an oversized result returns `too_large`.
+Only one refresh runs per link (`busy` otherwise); closing the link cancels it.
+The refresh does not block ordinary conversation RPCs. The phone gives only
+this operation a 30-second wait without disconnecting the link on timeout,
+retains its previous list on error, and ignores responses from an old link or
+refresh generation. An older host's `unknown_op` becomes an update-PC message
+inside the model picker. Refresh never silently replaces an explicit selection.
 `tune` `{thread_id, provider_id, model, reasoning}` sets that conversation.
 Omitting `reasoning` leaves the level; `""` is the model's default. An
 unknown level is refused.

@@ -1,5 +1,38 @@
 # Testing
 
+## Phone model catalog refresh (F-220 / C-006)
+
+`internal/remote/catalog_refresh_test.go` uses `provider.New` and loopback
+HTTP model endpoints so the test exercises the real discovery adapter, not
+the provider mock's saved catalog. It distinguishes the network-free `catalog`
+from explicit `refresh_catalog`, including newly available and removed default
+models, all-or-error results, bounded discovery, frame limits and secret/config
+isolation. `internal/remote/pump_catalog_test.go` checks that refresh cannot
+stall conversation RPCs or outlive its link.
+
+`mobile/src/lib/use-model-catalog.test.ts` covers current-link/generation
+ownership, loading, retry and old-host errors; picker/composer tests retain an
+explicit selection when refreshed choices change. `mobile/e2e/model-refresh.spec.ts`
+drives the offline phone UI from both a PC conversation and New chat. It proves
+the web shell interaction, not packaged native-device acceptance.
+
+The disposable iOS layout fixture also runs
+`BindFlowTests/testModelRefreshReplacesNamesAndKeepsExplicitSelection`,
+`testModelRefreshFailureKeepsChoicesAndCanRetryLocally` and
+`testModelRefreshLegacyHostFeedbackDoesNotBlockConversation` from
+`mobile/e2e/ios-wait-layout.swift`. Use the matching `IOS_LAYOUT_QUERY` in
+`mobile/README.md`, retain the packaged app's screenshots and accessibility
+attachments, and inspect the reached model picker. A private development
+package retains its source fingerprint separately from any public batch SHA;
+these checks neither upload a build nor accept another release's installer.
+
+```bash
+go test -race -count=1 -run 'TestRefreshCatalog|TestCatalogRefresh' ./internal/remote
+cd mobile && npm test
+npm run lint && npm run build
+npx playwright test e2e/model-refresh.spec.ts
+```
+
 ## Historical worker state (F-130 / F-150 / C-019)
 
 `internal/workerstate/snapshot_test.go` keeps runtime snapshots separate from

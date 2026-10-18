@@ -109,6 +109,17 @@ flowchart TB
 Path switches do not mint new session keys. `zwai trace` still keys off a turn
 id; remote replies include pairlink `session_id` and `path`.
 
+The phone model picker reads the saved `catalog` when a link becomes ready.
+Its explicit `refresh_catalog` operation runs upstream discovery on the PC,
+with one cancellable refresh per link and parallel providers under a shared
+discovery deadline. `internal/remote/catalog_refresh.go` returns discovered
+names without writing configuration or changing existing model clients;
+`pump_catalog.go` keeps discovery from blocking conversation RPCs. The phone's
+`mobile/src/lib/use-model-catalog.ts` owns loading, errors and link/generation
+guards. A failed refresh retains the old list, and a successful refresh keeps
+an explicit model selection until the user changes it. No model call or turn
+is created by refreshing the directory.
+
 ## Phone navigation
 
 The first bind or a cold launch may resume a live or last PC conversation.

@@ -23,6 +23,13 @@ reason) or the server refused (its own text). `host offline` is still
 "this PC is not on the hub". It never
 calls zwai `/api`.
 
+In a PC conversation or New chat, open the model picker and tap **Refresh
+models / 刷新模型** to discover the current upstream choices on that PC. The
+button shows progress; a failure keeps the old list and can be retried there.
+An older PC asks you to update its app. New models appear and retired models
+leave the choices, while an explicit selection remains until you change it.
+Refreshing does not save a catalog or change the PC's configured default.
+
 The phone is a compact screen on the same conversation as the desktop: same
 event kinds and seq (`watch` / `unwatch` / `log`), clipped bodies so a frame
 stays under 64KiB. First paint is a live-edge snapshot on the `watch` RPC
@@ -344,6 +351,36 @@ Composer width regressions run on Chromium and iPhone WebKit:
 `npx playwright install chromium webkit && npm run e2e`.
 The packaged iOS keyboard-dismissal and submission checks use the disposable
 fixture documented in [TESTING](../docs/TESTING.md).
+
+The paired-PC model picker also has packaged iPhone checks in the disposable
+layout fixture. They use the generic offline catalog, not a live provider or
+saved PC credentials. Set `IOS_LAYOUT_SIMULATOR` to an isolated iPhone 17 and run:
+
+```bash
+cd mobile
+npm run build
+npx cap copy ios
+fixture="$(IOS_LAYOUT_QUERY='/?mock=1&tick=0' python3 scripts/ios-layout-fixture.py)"
+xcodebuild -project "$fixture/mobile/ios/App/App.xcodeproj" \
+  -scheme App -configuration Debug \
+  -destination "platform=iOS Simulator,id=$IOS_LAYOUT_SIMULATOR" \
+  -derivedDataPath "$fixture/DerivedData" CODE_SIGNING_ALLOWED=NO \
+  -only-testing:AppUITests/BindFlowTests/testModelRefreshReplacesNamesAndKeepsExplicitSelection \
+  -parallel-testing-enabled NO -resultBundlePath "$fixture/refresh.xcresult" test
+```
+
+For each failure-path case create a new fixture with its matching query and
+select its test method instead:
+
+| `IOS_LAYOUT_QUERY` | `BindFlowTests` method |
+| --- | --- |
+| `/?mock=1&tick=0&catalog=retry` | `testModelRefreshFailureKeepsChoicesAndCanRetryLocally` |
+| `/?mock=1&tick=0&catalog=legacy` | `testModelRefreshLegacyHostFeedbackDoesNotBlockConversation` |
+
+These cases retain screenshots and accessibility trees before/after refresh,
+local failure/retry, and old-host feedback. The fixture copies current assets
+and injects only its query; it never edits the shipping native project or marks
+a private development build as a published release.
 
 ## iOS TestFlight release
 

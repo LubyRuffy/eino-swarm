@@ -46,6 +46,11 @@ type LinkPump struct {
 	watching string
 	watchWG  sync.WaitGroup
 	stage    *Staging
+
+	catalogMu     sync.Mutex
+	catalogCancel context.CancelFunc
+	catalogClosed bool
+	catalogWG     sync.WaitGroup
 }
 
 func newLinkPump(eng *engine.Engine, cfg config.RemoteConfig, l *client.Link) *LinkPump {
@@ -68,6 +73,7 @@ func newLinkPump(eng *engine.Engine, cfg config.RemoteConfig, l *client.Link) *L
 }
 
 func (p *LinkPump) Close() {
+	p.stopCatalogRefresh()
 	p.stopWatch()
 }
 
@@ -102,6 +108,8 @@ func (p *LinkPump) Dispatch(msg []byte) {
 	case OpHello:
 		p.touchDevice(req.Text)
 		p.reply(okBase(req.ID, p.path, p.sessionID))
+	case OpRefreshCatalog:
+		p.startCatalogRefresh(req)
 	default:
 		p.reply(HandleWith(p.eng, p.cfg, p.stage, req, p.path, p.sessionID))
 	}

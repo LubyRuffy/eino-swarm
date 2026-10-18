@@ -468,6 +468,12 @@ end-to-end tests run on and the fastest way to see the UI work.
    whole turn. The composer matches the PC: a model, a thinking level, and a
    file or image. Tap the model button for an in-app list grouped by provider;
    long model names wrap and Back closes the list before leaving the chat.
+    In a PC conversation or New chat, **Refresh models / 刷新模型** asks that PC
+    for the current upstream model lists. New models appear and removed models
+    leave the choices; an explicit selection stays unchanged until you choose
+    another model. Refresh shows progress, and a failure keeps the previous
+    list with a retryable error. An older PC without this operation asks you
+    to update the PC. Refresh does not change the PC's saved models or defaults.
    Long drafts keep Send, Follow-up, and Steer inside the phone screen;
    closing the iOS keyboard preserves that width.
    An image is shown to the model; other files go into the

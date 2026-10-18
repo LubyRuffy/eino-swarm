@@ -2,6 +2,7 @@ import {
   OpAnswer,
   OpCancelWait,
   OpCatalog,
+  OpRefreshCatalog,
   OpEvent,
   OpFiles,
   OpFileChunk,
@@ -212,6 +213,12 @@ export class MockHost {
   private completionChecksStarted = false
   readonly legacyCompletion = new URLSearchParams(location.search).get("completion") === "legacy"
   private readFailures = new URLSearchParams(location.search).get("readfail") === "1" ? 1 : 0
+  private catalogFailures = new URLSearchParams(location.search).get("catalog") === "retry" ? 1 : 0
+  takeCatalogFailure() {
+    if (this.catalogFailures <= 0) return false
+    this.catalogFailures -= 1
+    return true
+  }
   private askFailures = new URLSearchParams(location.search).get("askfail") === "1" ? 1 : 0
 
   constructor(readonly tickMs = mockTickMs()) {
@@ -671,7 +678,7 @@ export class MockLink {
 
   async rpc(
     req: Omit<RemoteRequest, "v" | "id"> & { id?: string },
-    _opts?: { dropOnTimeout?: boolean },
+    _opts?: { dropOnTimeout?: boolean; timeoutMs?: number },
   ): Promise<RemoteResponse> {
     if (this.closed) throw new Error("offline")
     const id = req.id ?? ""
@@ -722,6 +729,13 @@ export class MockLink {
           path: req.file_path!, name: req.file_path!.split("/").at(-1)!, size: bytes.length, mime: file.mime,
           offset, next_offset: bytes.length, data: btoa(data), more: false,
         } })
+      }
+      case OpRefreshCatalog: {
+        const scenario = new URLSearchParams(location.search).get("catalog")
+        if (scenario === "legacy") return this.ok({ id, ok: false, code: "unknown_op" })
+        if (scenario === "slow") await new Promise((resolve) => setTimeout(resolve, 1200))
+        if (this.host.takeCatalogFailure()) return this.ok({ id, ok: false, code: "refresh_failed" })
+        return this.ok({ id, models: scenario === "empty" ? [] : [{ provider_id: "walkthrough", provider_label: "Walkthrough", model: "scripted-next", default: true }], reasoning_levels: ["low", "medium", "high"] })
       }
       case OpCatalog:
         return this.ok({
