@@ -1,7 +1,6 @@
 package engine
 
 import (
-	"fmt"
 	"strings"
 
 	swarm "github.com/LubyRuffy/eino-swarm"
@@ -9,71 +8,23 @@ import (
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
-// renderReviewFromEvents is what the post-turn reviewer reads.
-//
-// The source of truth is the event log (and the rolling session briefing),
-// never the manager's compacted ADK transcript. Compact is a view for the
-// next Generate; memory extraction that read that view would learn the
-// briefing instead of the work.
-//
-// Session briefing first, then this turn's events, so a long earlier
-// conversation cannot spend the 24k budget before the work being reviewed.
+// renderReviewFromEvents reads the durable event log rather than the manager's
+// compacted transcript. Selection protects human input before tool output;
+// rendering then restores source order so evidence keeps its original context.
 func renderReviewFromEvents(events []store.Event, sessionMemory, final string) string {
-	var b strings.Builder
-	budget := reviewMaxChars
-	wrote := false
-
-	write := func(role, text string) {
-		text = strings.TrimSpace(text)
-		if text == "" || budget <= 0 {
-			return
-		}
-		if !wrote {
-			b.WriteString("Conversation to review:\n\n")
-			wrote = true
-		}
-		text = clip(text, reviewMaxCharsPerMessage)
-		if len(text) > budget {
-			text = clip(text, budget)
-		}
-		budget -= len(text)
-		fmt.Fprintf(&b, "%s: %s\n\n", role, text)
-	}
-
-	if mem := strings.TrimSpace(sessionMemory); mem != "" {
-		// Bound the briefing so a long /goal cannot spend the review budget
-		// before this turn's tool calls — those are what become skills.
-		write("session briefing", clip(mem, compactSummaryMaxRunes))
-	}
-	retracted := retractedSteerSeqs(events)
-	revised := revisedSteerText(events)
-	for _, ev := range events {
-		if ev.Kind == KindSteer {
-			if _, ok := retracted[ev.Seq]; ok {
-				continue
-			}
-			if text, ok := revised[ev.Seq]; ok {
-				ev.Text = text
-			}
-		}
-		role, text, ok := reviewEventLine(ev)
-		if !ok {
-			continue
-		}
-		write(role, text)
-	}
-	write("final answer", final)
-	return b.String()
+	return renderSelectedReviewSources(events, sessionMemory, final)
 }
 
 func reviewEventLine(ev store.Event) (role, text string, ok bool) {
 	text = strings.TrimSpace(ev.Text)
 	switch ev.Kind {
-	case KindUser, KindGoalContinued, KindSteer:
+	case KindUser, KindSteer:
 		if text == "" || isGoalSessionWrapSteer(text) {
 			return "", "", false
 		}
 		return "human", text, true
+	case KindGoalContinued:
+		return "runtime", text, text != ""
 	case KindSteerRetracted, KindSteerPreempted, KindSteerRevised:
 		return "", "", false
 	case swarm.NotifyAgentMessage.String():
@@ -102,7 +53,7 @@ func reviewEventLine(ev store.Event) (role, text string, ok bool) {
 			if text == "" {
 				text = ev.Err
 			} else {
-				text = text + "\n" + ev.Err
+				text = ev.Err + "\n" + text
 			}
 		}
 		return "tool", text, true
@@ -127,45 +78,6 @@ func reviewEventLine(ev store.Event) (role, text string, ok bool) {
 	default:
 		return "", "", false
 	}
-}
-
-// managerWroteMemory reports that the manager already curated the project
-// store during this turn. The automatic reviewer then stays out of the way,
-// the same way Claude Code skips extract-memories when the main agent wrote.
-func managerWroteMemory(events []store.Event) bool {
-	wrote := map[string]struct{}{}
-	for _, ev := range events {
-		if ev.Kind != swarm.NotifyToolCall.String() || !isManagerAgent(ev.AgentID) {
-			continue
-		}
-		if !memoryWriteTool(toolCallName(ev.Text)) {
-			continue
-		}
-		if id := strings.TrimSpace(ev.ToolCallID); id != "" {
-			wrote[id] = struct{}{}
-			continue
-		}
-		// A call with no id still counts: the pairing is a convenience, not
-		// a requirement for "the manager already handled this".
-		return true
-	}
-	if len(wrote) == 0 {
-		return false
-	}
-	for _, ev := range events {
-		if ev.Kind != swarm.NotifyToolResult.String() {
-			continue
-		}
-		id := strings.TrimSpace(ev.ToolCallID)
-		if _, ok := wrote[id]; !ok {
-			continue
-		}
-		if ev.Err != "" {
-			continue
-		}
-		return true
-	}
-	return false
 }
 
 func memoryWriteTool(name string) bool {

@@ -816,6 +816,13 @@ export const en = {
   "settings.memory.notifyVerbose": "The line, plus a preview of the text",
   "settings.memory.notifyOff": "Nothing in the transcript",
   "settings.memory.budget": "Budget",
+  "settings.memory.reviewThinking": "Review thinking",
+  "settings.memory.reviewThinkingHint":
+    "Choose a separate reasoning level for automatic reviews and Review now. Select a level supported by your model; other conversation work keeps its own setting.",
+  "settings.memory.reviewThinkingInherit": "Inherit conversation",
+  "settings.memory.reviewThinkingLow": "Low",
+  "settings.memory.reviewThinkingMedium": "Medium",
+  "settings.memory.reviewThinkingHigh": "High",
   "settings.memory.charLimit": "Notes budget (characters)",
   "settings.memory.charLimitHint":
     "Every note is in the prompt of every turn in the project, so this is a per-turn cost. Once it is full, an agent must replace a note to add one.",

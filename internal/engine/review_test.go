@@ -436,12 +436,11 @@ func TestReviewNowReplaysTheLastFinishedTurn(t *testing.T) {
 	}
 }
 
-// A reviewer that runs out of iterations mid-curation must still record what
-// it managed to write. The alternative is a store that quietly gained an entry
-// nothing accounts for.
-func TestAReviewThatHitsItsIterationCapStillReportsWhatItWrote(t *testing.T) {
+// A complete validated batch reports its own writes. The reviewer must not
+// need a second model generation merely to announce the committed batch.
+func TestACompleteReviewBatchDoesNotSpendAClosingIteration(t *testing.T) {
 	e := newTestEngine(t)
-	// One iteration is enough to call the tools and not enough to answer.
+	// One iteration must be enough to submit and report a complete batch.
 	e.Config().Memory.ReviewMaxIterations = 1
 	p, th := projectThread(t, e)
 
@@ -459,8 +458,8 @@ func TestAReviewThatHitsItsIterationCapStillReportsWhatItWrote(t *testing.T) {
 	if !outcome.Changed {
 		t.Fatalf("the writes it did make must be reported: %+v", outcome)
 	}
-	if outcome.Note != reviewCapNote {
-		t.Fatalf("trace still needs the cap when the closing line never arrived: %q", outcome.Note)
+	if !strings.Contains(outcome.Note, "Saved") {
+		t.Fatalf("the complete batch must generate its own receipt: %q", outcome.Note)
 	}
 	snap, _ := e.ProjectMemory(p.ID).Read()
 	if len(snap.Entries) != 1 {
@@ -530,7 +529,7 @@ func TestReviewReadsTheEventLogNotACompactedTranscript(t *testing.T) {
 	}
 }
 
-func TestReviewIsSkippedWhenTheManagerAlreadyWroteMemory(t *testing.T) {
+func TestReviewStillRunsWhenTheManagerAlreadyWroteMemory(t *testing.T) {
 	e := newTestEngine(t)
 	p, th := projectThread(t, e)
 	turn := &store.Turn{ThreadID: th.ID, UserText: "keep going"}
@@ -557,14 +556,19 @@ func TestReviewIsSkippedWhenTheManagerAlreadyWroteMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	found := false
 	for _, ev := range events {
 		if ev.Kind == KindMemoryReview {
-			t.Fatalf("the automatic reviewer ran after the manager already wrote: %s", ev.Text)
+			found = true
 		}
 	}
-	if snap, _ := e.ProjectMemory(p.ID).Read(); len(snap.Entries) != 0 {
-		t.Fatalf("a skipped review still wrote notes: %+v", snap.Entries)
+	if !found {
+		t.Fatal("a manager write must not suppress review of other requirements")
 	}
+	if snap, _ := e.ProjectMemory(p.ID).Read(); len(snap.Entries) == 0 {
+		t.Fatalf("the reviewer did not apply its batch: %+v", snap)
+	}
+
 }
 
 func TestReviewNowStillRunsAfterTheManagerWrote(t *testing.T) {
@@ -804,8 +808,10 @@ func TestSkillFamiliesStillFoldWhenTheManagerAlreadyWrote(t *testing.T) {
 	if !outcome.Changed {
 		t.Fatalf("the leftover family must still fold: %+v", outcome)
 	}
-	if listedSkillNames(t, e, p.ID) != "weekly-rollup" {
-		t.Fatalf("skills=%s", listedSkillNames(t, e, p.ID))
+	names := strings.Split(listedSkillNames(t, e, p.ID), ",")
+	if len(names) != 2 || !strings.Contains(strings.Join(names, ","), "weekly-rollup") ||
+		strings.Contains(strings.Join(names, ","), "weekly-rollup-notes") || strings.Contains(strings.Join(names, ","), "weekly-rollup-send") {
+		t.Fatalf("the existing family must fold alongside the review's new skill: %v", names)
 	}
 }
 

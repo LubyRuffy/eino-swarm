@@ -107,7 +107,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-012 One-ID troubleshooting
 
-- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-320`。
+- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-320`, `F-420`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
 - 模型接口失败的公共 turn/error 展示保留可判断的 HTTP 状态码及接口拒绝/响应解码原因。JSON 解码错误本身不证明工具参数无效；SDK/Eino 类型错误经包装仍按接口错误处理。公共文本不包含原始响应正文、图执行路径或认证值，原因最多 512 字符；原始调用与重试仍在同一 turn 的 Trace 内可查，上下文溢出及超时提示保留现有恢复建议。
 - 允许行为：敏感值脱敏；禁止行为：丢掉诊断所需事件或输出令牌/完整 Cookie；失败语义：不存在的 id 报不存在；不变量：同 id 贯穿运行；边界条件：部分失败和重启恢复。
@@ -208,3 +208,20 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 允许行为：暂不显示某个版本、手动强制检查、失败后显式重试；禁止行为：未经确认安装、两个窗口并行替换同一应用、旧检查覆盖安装状态、更新后改用另一数据目录；失败语义：自动检查静默，手动检查和安装错误可观察并可重试；不变量：同一实例数据目录不变，原生版本发现与下载仍遵守 `C-010`；边界条件：应用长开、离线、恢复前台、多窗口、启动拒绝、不支持的平台和未打数字版本的构建。
 - 证据：实现 `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/src/lib/shell.ts`, `frontend/src/lib/api.ts`, `cmd/zwai/serve.go`, `internal/app/app.go`, `internal/update/apply.go`, `internal/server/update.go`, `internal/server/presence.go`；测试 `frontend/src/lib/desktop-update.test.ts`, `frontend/src/components/app/desktop-update.test.tsx`, `frontend/src/lib/desktop-presence.test.ts`, `frontend/e2e/desktop-update.spec.ts`, `cmd/zwai/engine_cli_test.go`, `internal/app/update_test.go`, `internal/update/apply_recovery_test.go`, `internal/server/update_test.go`。
 - 变更规则：同步 README、API、FEATURES、TESTING 和 CHANGELOG，并回归安装锁、启动失败恢复和更新提示竞态；来源：用户 2026-10-12 桌面自动更新需求与当前可达更新链路。
+
+
+## C-025 Memory review evidence and commit
+
+- 状态：active；类型：lifecycle / consistency / data / compatibility；作用范围：自动复盘、notes 存储、skill 写入、复盘 Trace；关联功能：`F-420`、`F-160`；关联契约：`C-012`。
+- 契约内容：memory 与 auto-review 开启时，成功回合完整复盘，不因 manager 曾写入任何一项记忆而跳过。失败项目回合只允许有效真实人类要求形成 notes，不读任务工具/助手/运行时续办/派生摘要作为新证据，不写技能或执行技能 fold；取消不自动复盘。手动 Review now 仍选择最近成功回合。
+- 输入边界：有效 steer 先应用修订与撤回；源事件优先人类、再近期按 agent/call ID 配对的工具交互、最后助手及派生文本，渲染保持时间顺序。单源 2000、源总量 24000 rune 含 framing、分隔与截断标记；身份 framing 本身超出单源上限时省略整个来源组，工具配对不拆分，不截断身份字段或赋予被省略正文来源权限。当前 notes、技能目录和系统指令不在此源预算内，不承诺完整模型输入或费用的同一上限。取得项目复盘串行锁后、模型调用前读取当前 notes。
+- 写入边界：自动 reviewer 提交完整 apply_memory_review 批次，公开 manager 的 memory/skill 工具契约不变。notes 在内存草稿复用单条/总量上限、唯一匹配与技能重叠校验，基线与首次模型请求中的 notes 使用同一快照，在取得项目复盘锁后捕获；最终在同 Store 共享锁内比较该 Rev 并一次提交，零净变化不写盘。普通拒绝后的修复仍绑定同一 Rev，不自动刷新或静默重基；批次开始前检测到模型读取后的人类/manager 修改会终止冲突，不追加修复请求；最终 commit 的极短竞态可能追加一次修复请求，随后固定 Rev 仍禁止覆盖或静默重基。输入 notes 不可读时在模型调用前报错。失败不发布半套 notes，不自动重基覆盖并发人类/manager 修改；不承诺与外部直接文件写入之间的跨进程 CAS。
+- 推理配置：`memory.review_reasoning_effort` 默认空，自动及手动回合复盘继承原 turn；显式 `low` / `medium` / `high` 仅覆盖该复盘。无效值归空；不改变 manager、catalog tidy、模型、输出 cap 或超时。模型不支持显式档位时保留原 API 错误，不静默冒充降档成功。
+- 技能边界：skills 保持即时真实文件写入，不属于 notes 的跨文件事务。后续操作或 notes commit 失败，之前真实技能变化仍必须进入 changes。成功回合的既有 family fold 和独立 catalog tidy 保留，失败回合不 fold。
+- 提炼指令：技能须区分常规路径与故障已经发生时可独立执行的恢复分支，写清有证据的进入条件、恢复动作及回归正常或结束条件；失败探测是诊断上下文，不自动成为必须重做的步骤。该指令不构成程序对流程语义正确性的证明，效果仍须独立评测。
+- 来源约束：每个操作须引用可用源 seq 和有效原文；工具来源必须有配对调用且非显式拒绝，memory 写入回执及派生总结不能自证事实。notes 新增阿拉伯数字细节须保持引文或被替换旧条目中的拼写；引用存在和数字出现不证明蕴含、因果、长期价值、语义去重或授权。旧 notes 不因缺少引用而被批量删除或冒称正确。
+- 完成与失败语义：完整成功批次（可为空）结束 reviewer，由程序生成结果行，不为结束语追加模型调用；重复完成不重复写入。拒绝为可修复工具反馈，在原迭代上限内修正；没有成功提交完整批次而结束（含耗尽上限）明确记录 err，不伪造已完成。冲突/存储失败不改变主回合终态。现有同 turn 的 memory_review 可附 evidence/refused，旧事件缺字段仍兼容；公开诊断继续遵守 `C-012` 的脱敏边界。
+- 允许行为：保留当前有用记忆、用 replace 更正失效条目、对不确定可选知识不写入、在拒绝后有界修复；禁止行为：把先增后删的中间 notes 暴露为最终记忆，把 source quote 或模型置信度当真值，或把技能落盘误称整批回滚。
+- 不变量：正式 notes 的 changes 仅描述已提交净变化；原 Markdown 和手工编辑兼容；技能已落盘事实不因 notes 失败而消失；边界条件：长 CJK/工具输出、末尾纠正、同回合多项要求、工具拒绝、失败/取消、并发编辑、超限、跨技能写入与重复完成。
+- 证据：实现 `internal/engine/review.go`、`internal/engine/review_batch.go`、`internal/engine/review_evidence.go`、`internal/engine/review_human.go`、`internal/engine/review_source_select.go`、`internal/memory/notes_draft.go`；测试 `internal/engine/review_quality_test.go`、`internal/engine/review_batch_test.go`、`internal/engine/review_cas_test.go`、`internal/engine/review_evidence_test.go`、`internal/engine/review_source_select_test.go`、`internal/memory/notes_draft_test.go`、`internal/memory/notes_draft_bench_unix_test.go`。
+- 变更规则：同步 README、ARCHITECTURE、API、DATA_MODEL、FEATURES、TESTING、CHANGELOG 及来源/批次/存储回归；来源：用户 2026-10-19 的记忆实际效果对照及现有链路修复要求。

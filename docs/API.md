@@ -193,6 +193,7 @@ provider carries `has_api_key` and `ready` instead.
             "proxy": {"http": "", "https": "", "no_proxy": ""}},
   "memory": {"enabled": true, "auto_review": true, "char_limit": 2200,
              "entry_max": 360, "review_max_iterations": 8,
+             "review_reasoning_effort": "",
              "skills_index_max": 50, "notifications": "on"},
   "personality": {"instructions": ""},
   "log": {"level": "info"},
@@ -1243,12 +1244,12 @@ the previous human tick.
 
 ### `POST /api/threads/:id/review` → `202`
 
-Reviews the conversation's most recent completed turn again, curating the
-project's memory from it. The reviewer reads the stored event log (and the
-rolling session briefing), not a compacted ADK transcript. Auto-review after
-a turn is skipped when the manager already wrote with `memory` or
-`skill_manage`; leftover skill families are still folded. This endpoint still
-runs the reviewer. Answers with the turn being reviewed
+Reviews the conversation's most recent successfully completed turn again,
+curating the project's memory from effective stored events and a bounded rolling
+session briefing. Current notes are read after acquiring the review gate.
+Manager memory writes no longer suppress automatic review. This explicit
+endpoint also runs when auto-review is off; it does not select failed or
+cancelled turns. Answers with the turn being reviewed
 (`{"turn": {…}}`), not the outcome: the review is a background job and its
 result arrives on the event stream as `memory_review`, the same way a turn's
 answer does. A conversation in no project reviews into the shared skill
@@ -1429,56 +1430,64 @@ the context used.
 
 ### Memory reviews
 
-A turn of a project conversation with memory on is read back afterwards, and one
-`memory_review` event is stored under **the turn's own id** — so one turn id
-still reaches everything that happened, including the reviewer's model calls
-(`agent_id: "memory-reviewer"` in `llm_calls`). `text` is JSON:
+With memory and auto-review enabled, a successful turn receives a full review
+regardless of manager writes. A failed project turn can retain explicit human
+requirements as notes only, excluding task-tool output, assistant/derived text,
+skill edits and skill folding. Cancellation starts no automatic review.
+`memory_review` is stored under the original turn id, with model calls attributed
+to `memory-reviewer`. `text` is JSON:
 
 ```json
 {
   "changed": true,
-  "notes": {"add": 1, "replace": 1},
-  "skills": [{"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"},
-             {"target": "skill_manage", "action": "merge", "name": "a-procedure", "text": "a-procedure-notes, a-procedure-send"}],
+  "notes": {"add": 1},
+  "skills": [{"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"}],
   "changes": [
     {"target": "memory", "action": "add", "text": "the durable fact that was stored"},
     {"target": "skill_manage", "action": "create", "name": "a-procedure", "text": "when it applies"}
   ],
-  "note": "Kept what this project treats as done.",
+  "note": "Saved 1 note changes and 1 skill changes.",
   "notify": "on",
   "library": false,
-  "err": ""
+  "evidence": [{"target": "memory", "action": "add", "sources": [1]},
+               {"target": "skill_manage", "action": "create", "name": "a-procedure", "sources": [7]}],
+  "refused": [{"index": 0, "reason": "a previous proposal was refused and repaired"}]
 }
 ```
 
-`library` is true when the writes landed in the shared skill library
-(`library/skills/`) because the conversation belongs to no project. The
-transcript then says the skill library was updated. Omit or false means a
-project's own memory.
+`evidence` and `refused` are optional additive fields; old events omit them.
+Each evidence record names the target/action, optional skill name and cited
+source event seqs. The batch tool call carries the exact quotes. References
+identify admissible sources; they do not certify semantic truth. A refusal has a
+zero-based operation `index`, or `-1` for the whole batch/commit, and a diagnostic
+`reason`. A refusal can be repaired within the existing iteration cap.
 
-The event is stored even when `changed` is false: a review that left no trace
-could not be told apart from one that never ran. Hitting `review_max_iterations`
-is that budget, not a failed review: `err` stays empty, writes that landed stay
-in `changes`, and `note` is `Stopped at the review tool-round cap.` when the
-closing line never arrived. The transcript does not call that a failure. A `skill_manage` create that
-collides (same subject, shared name stem, or a copied procedure), or a `memory`
-write that exceeds `entry_max` or restates a skill (summary or steps), is a
-tool refusal — it does not appear in `changes`. After the reviewer finishes —
-or instead, when auto-review is skipped or off — leftover skill families are
-folded into one skill under the shared stem. That fold is a `merge` change on
-the same `memory_review` event when it landed, and is the only event recorded
-when the reviewer did not run. The Memory panel's tidy
-(`POST /api/projects/:id/memory/tidy-skills`) still folds leftover stems, then
-runs the reviewer against the catalog. Model calls and a quiet `memory_review`
-(`notify: off`) hang on the project's latest finished turn when there is one.
-The turn's status is not affected — a failed
-review (`err`) costs a note, not the answer.
+The reviewer submits one complete `apply_memory_review` proposal. Notes retain
+the existing agent checks in an in-memory draft and are committed once against
+the original revision. `notes` / note entries in `changes` describe only committed
+net changes; a draft refusal, conflict or write failure publishes no partial
+notes. Skill writes remain immediate. An earlier actual skill change can
+therefore appear with refusals or `err` even when the notes never commit.
+There is no cross-file transaction. Manager tools and their receipts are unchanged.
 
-`notify` is `off`, `on` or `verbose` — `memory.notifications` at the moment the
-review finished, stamped so a later settings change does not rewrite history.
-The transcript shows a line when something was kept (`on`), plus a preview of
-the written text (`verbose`), or nothing (`off`). Failures always show. The
-Trace tab's Full log still lists the event either way.
+A successful batch finishes the agent and the program generates `note`, without
+another model request for a closing sentence. An empty successful batch records
+`changed: false`. A post-turn review ending without a successful batch, including
+at `review_max_iterations`, reports `err`; real skill changes remain recorded.
+The turn's answer/status is not changed by a failed review.
+
+`library: true` identifies a standalone successful turn's shared skill-library
+writes. Missing/false identifies project memory. After a successful turn,
+leftover skill families still fold, including with auto-review off; a fold-only
+path records an event only when it changed files or failed. Failed turns do not
+fold. The separate catalog-tidy endpoint keeps its existing direct skill-tool,
+JSON/SSE and iteration-cap behavior and can record a quiet review against the
+project's latest successful turn.
+
+`notify` is `off`, `on` or `verbose`, stamped from `memory.notifications` at record
+time. The transcript reports actual writes, adds previews in verbose mode, and
+shows failures. Trace Full log still exposes the outcome and original model/tool
+records under the same turn id. See [C-025](CONTRACTS.md#c-025-memory-review-evidence-and-commit).
 
 ### Conversation titles
 

@@ -144,7 +144,8 @@ type Store struct {
 	dir      string
 	limit    int
 	entryMax int
-	mu       sync.Mutex
+	mu       *sync.Mutex
+	draft    *notesDraftState
 }
 
 // New returns the store rooted at dir, bounding MEMORY.md at limit characters.
@@ -167,7 +168,7 @@ func NewLimited(dir string, limit, entryMax int) *Store {
 	if entryMax > limit {
 		entryMax = limit
 	}
-	return &Store{dir: dir, limit: limit, entryMax: entryMax}
+	return &Store{dir: dir, limit: limit, entryMax: entryMax, mu: &sync.Mutex{}}
 }
 
 // Dir is the directory this store lives in, which the UI shows so a user can
@@ -211,6 +212,9 @@ func (s *Store) Read() (Snapshot, error) {
 }
 
 func (s *Store) read() (Snapshot, error) {
+	if s.draft != nil {
+		return s.snapshot(append([]string(nil), s.draft.entries...)), nil
+	}
 	raw, err := os.ReadFile(s.memoryPath())
 	if err != nil && !os.IsNotExist(err) {
 		return Snapshot{Limit: s.limit}, fmt.Errorf("memory: read %s: %w", MemoryFile, err)
@@ -360,6 +364,10 @@ func (s *Store) OverwriteIf(rev, text string) (Snapshot, error) {
 // much of the result is new, for the error message.
 func (s *Store) write(entries []string, adding int) (Snapshot, error) {
 	next := s.snapshot(entries)
+	if s.draft != nil && s.draft.closed {
+		current, _ := s.read()
+		return current, ErrDraftClosed
+	}
 	if next.Chars > s.limit {
 		current, _ := s.read()
 		return current, &OverflowError{
@@ -369,6 +377,10 @@ func (s *Store) write(entries []string, adding int) (Snapshot, error) {
 			WouldBe: next.Chars,
 			Entries: current.Entries,
 		}
+	}
+	if s.draft != nil {
+		s.draft.entries = append([]string(nil), entries...)
+		return next, nil
 	}
 	body := next.Text
 	if body != "" {

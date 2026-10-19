@@ -25,6 +25,9 @@ type MemoryConfig struct {
 	// runaway. The Memory panel's catalog tidy uses TidyIterations instead:
 	// a whole index is more than one conversation.
 	ReviewMaxIterations int `yaml:"review_max_iterations" json:"review_max_iterations"`
+	// ReviewReasoningEffort overrides only post-turn extraction. Empty or
+	// unknown values inherit the original turn; this never disables thinking.
+	ReviewReasoningEffort string `yaml:"review_reasoning_effort" json:"review_reasoning_effort"`
 	// SkillsIndexMax is how many skills the prompt lists. Only the name and
 	// the one-line summary are listed, so the agent pays for the index and not
 	// for every procedure it might not need.
@@ -33,6 +36,15 @@ type MemoryConfig struct {
 	// off (nothing), on (one line naming what changed), verbose (the line
 	// plus a preview of the written text).
 	Notifications string `yaml:"notifications" json:"notifications"`
+}
+
+// ReviewEffort keeps the conversation's provider behavior unless an explicit
+// supported review override is configured. Catalog tidy has its own policy.
+func (m MemoryConfig) ReviewEffort(inherited string) string {
+	if effort := NormalizeReasoning(m.ReviewReasoningEffort); effort != "" {
+		return effort
+	}
+	return inherited
 }
 
 // ReviewIterations is the reviewer's iteration cap.

@@ -14,7 +14,9 @@ import (
 // Tool names. They travel in transcripts and in the Trace view, so renaming
 // one changes what a stored conversation looks like on replay.
 const (
-	ToolMemory      = "memory"
+	ToolMemory = "memory"
+	// ToolApplyReview is the engine-bound batch tool, not a manager write tool.
+	ToolApplyReview = "apply_memory_review"
 	ToolSkillView   = "skill_view"
 	ToolSkillManage = "skill_manage"
 )
@@ -46,6 +48,8 @@ const changeTextMax = 160
 // may be nil; when set it is called once per write that actually landed, and
 // must be safe for concurrent use. The manager gets this set. Sub-agents get
 // ViewTools: they may open a recorded procedure, not curate the store.
+// With a NotesDraft.Store, note callbacks describe pending draft edits; the
+// caller must wait for Commit before reporting them as persisted changes.
 func Tools(s *Store, onChange func(Change)) []tool.BaseTool {
 	if onChange == nil {
 		onChange = func(Change) {}

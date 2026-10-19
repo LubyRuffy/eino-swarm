@@ -768,6 +768,13 @@ export const zh: { [K in keyof typeof en]: string } = {
   "settings.memory.notifyVerbose": "那一行，外加正文预览",
   "settings.memory.notifyOff": "记录里什么都不写",
   "settings.memory.budget": "预算",
+  "settings.memory.reviewThinking": "复盘推理级别",
+  "settings.memory.reviewThinkingHint":
+    "单独控制自动复盘和手动复盘的推理级别。请选择当前模型支持的档位，其他会话工作继续使用原设置。",
+  "settings.memory.reviewThinkingInherit": "跟随会话",
+  "settings.memory.reviewThinkingLow": "低",
+  "settings.memory.reviewThinkingMedium": "中",
+  "settings.memory.reviewThinkingHigh": "高",
   "settings.memory.charLimit": "笔记预算（字符）",
   "settings.memory.charLimitHint":
     "每条笔记都在项目每一轮的提示词里，所以这是按轮计费。满了之后，代理必须替换一条才能再加。",

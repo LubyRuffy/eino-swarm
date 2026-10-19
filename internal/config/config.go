@@ -476,13 +476,14 @@ func Default() *Config {
 			WebSearchMaxResults: DefaultWebSearchResults,
 		},
 		Memory: MemoryConfig{
-			Enabled:             true,
-			AutoReview:          true,
-			CharLimit:           DefaultMemoryCharLimit,
-			EntryMax:            DefaultMemoryEntryMax,
-			ReviewMaxIterations: DefaultReviewMaxIterations,
-			SkillsIndexMax:      DefaultSkillsIndexMax,
-			Notifications:       DefaultMemoryNotifications,
+			Enabled:               true,
+			AutoReview:            true,
+			CharLimit:             DefaultMemoryCharLimit,
+			EntryMax:              DefaultMemoryEntryMax,
+			ReviewMaxIterations:   DefaultReviewMaxIterations,
+			ReviewReasoningEffort: ReasoningDefault,
+			SkillsIndexMax:        DefaultSkillsIndexMax,
+			Notifications:         DefaultMemoryNotifications,
 		},
 		Log: LogConfig{Level: DefaultLogLevel},
 		UI: UIConfig{
@@ -674,7 +675,7 @@ func (c *Config) normalize() {
 	if c.Tools.WebSearchMaxResults <= 0 {
 		c.Tools.WebSearchMaxResults = d.Tools.WebSearchMaxResults
 	}
-	// Only the budgets are repaired. The two switches are booleans a user may
+	// Budgets and preferences are normalized. The two switches are booleans a user may
 	// legitimately have set to false, and "repairing" a false to the default
 	// would turn memory back on behind their back.
 	if c.Memory.CharLimit <= 0 {
@@ -688,6 +689,7 @@ func (c *Config) normalize() {
 	if c.Memory.ReviewMaxIterations <= 0 {
 		c.Memory.ReviewMaxIterations = d.Memory.ReviewMaxIterations
 	}
+	c.Memory.ReviewReasoningEffort = NormalizeReasoning(c.Memory.ReviewReasoningEffort)
 	if c.Memory.SkillsIndexMax <= 0 {
 		c.Memory.SkillsIndexMax = d.Memory.SkillsIndexMax
 	}

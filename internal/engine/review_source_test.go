@@ -84,48 +84,6 @@ func TestReviewSourcePutsThisTurnAheadOfALongBriefingBudget(t *testing.T) {
 	}
 }
 
-func TestManagerWroteMemoryRequiresALandedWrite(t *testing.T) {
-	if managerWroteMemory(nil) {
-		t.Fatal("no events is not a write")
-	}
-	if managerWroteMemory([]store.Event{{
-		Kind: swarm.NotifyToolCall.String(), AgentID: swarm.DefaultManagerID,
-		Text: memory.ToolSkillView + "({name:x})", ToolCallID: "c0",
-	}}) {
-		t.Fatal("opening a skill is not curating memory")
-	}
-	if managerWroteMemory([]store.Event{{
-		Kind: swarm.NotifyToolCall.String(), AgentID: "worker-1",
-		Text: memory.ToolMemory + "({action:add})", ToolCallID: "c1",
-	}, {
-		Kind: swarm.NotifyToolResult.String(), ToolCallID: "c1", Text: "ok",
-	}}) {
-		t.Fatal("a worker cannot curate the project store")
-	}
-	if managerWroteMemory([]store.Event{{
-		Kind: swarm.NotifyToolCall.String(), AgentID: swarm.DefaultManagerID,
-		Text: memory.ToolMemory + "({action:add})", ToolCallID: "c2",
-	}, {
-		Kind: swarm.NotifyToolResult.String(), ToolCallID: "c2", Err: "refused",
-	}}) {
-		t.Fatal("a refused write must not skip the reviewer")
-	}
-	if !managerWroteMemory([]store.Event{{
-		Kind: swarm.NotifyToolCall.String(), AgentID: swarm.DefaultManagerID,
-		Text: memory.ToolMemory + "({action:add})", ToolCallID: "c3",
-	}, {
-		Kind: swarm.NotifyToolResult.String(), ToolCallID: "c3", Text: "stored",
-	}}) {
-		t.Fatal("a landed memory write must skip the automatic reviewer")
-	}
-	if !managerWroteMemory([]store.Event{{
-		Kind: swarm.NotifyToolCall.String(), AgentID: swarm.DefaultManagerID,
-		Text: memory.ToolSkillManage + "({action:create})",
-	}}) {
-		t.Fatal("a skill write without a call id still counts")
-	}
-}
-
 func TestToolCallNameStopsAtTheParen(t *testing.T) {
 	if got := toolCallName("  memory({\"action\":\"add\"})  "); got != memory.ToolMemory {
 		t.Fatalf("toolCallName=%q", got)
@@ -148,7 +106,7 @@ func TestReviewEventLineReadsTheLogNotTheNoise(t *testing.T) {
 		{store.Event{Kind: KindSteerRetracted, Text: `{"seq":3}`}, "", "", false},
 		{store.Event{Kind: KindSteerPreempted}, "", "", false},
 		{store.Event{Kind: KindSteerRevised, Text: `{"seq":3,"text":"later"}`}, "", "", false},
-		{store.Event{Kind: KindGoalContinued, Text: "again"}, "human", "again", true},
+		{store.Event{Kind: KindGoalContinued, Text: "again"}, "runtime", "again", true},
 		{store.Event{Kind: swarm.NotifyAgentMessage.String()}, "", "", false},
 		{store.Event{Kind: swarm.NotifyAgentMessage.String(), Text: "answer"}, "assistant", "answer", true},
 		{store.Event{Kind: swarm.NotifyAgentMessage.String(), AgentID: "worker-1", Text: "from a worker"}, "worker-1", "from a worker", true},

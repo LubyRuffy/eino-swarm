@@ -1,5 +1,57 @@
 # Testing
 
+## Memory review provenance and commit (F-420 / C-025 / C-012)
+
+The scripted offline reviewer submits one complete batch. Tests assert real
+memory files and stored outcomes, not agreement with the old reviewer's answer:
+
+- `internal/engine/review_quality_test.go`: current notes in the review input,
+  partial/refused manager writes do not skip the rest, failed turns retain only
+  human requirements, and a successful batch needs no billed closing call.
+- `internal/engine/review_source_select_test.go`: late human input, revision and
+  retraction, recent interleaved tool pairs, chronological rendering, CJK/rune
+  budgets including all framing, visible omission markers, and whole-group
+  omission when identity metadata alone exceeds the per-source cap. Other
+  visible source bytes and evidence authority remain unchanged.
+- `internal/memory/prompt_test.go`: task-agnostic delta instructions and separate,
+  self-contained normal/recovery paths with supported entry and return/completion
+  conditions. Failed probes remain context; these structure assertions do not
+  prove a model will produce a correct procedure.
+- `internal/engine/review_batch_test.go` and `review_evidence_test.go`: exact
+  source quotes, refused/unpaired receipts, failed-turn boundaries, unsupported
+  new numeric details, whole JSON parsing, repair within the existing cap,
+  no partial notes on failure, actual skills surviving later refusal, and
+  duplicate completion. Numeric checks explicitly do not prove entailment.
+- `internal/engine/review_cas_test.go`: real offline HTTP requests paused during model work; human/manager edits survive both the first proposal and a repair, conflicts stop without another request, queued reviews read notes after the project gate, and unreadable notes stop before a model call.
+- `internal/memory/notes_draft_test.go`: existing write validation, real skill
+  overlap, no intermediate notes file writes, net-zero drafts, CAS conflicts,
+  legacy notes, storage failure and concurrent drafts against a real store.
+
+```bash
+go test -race -count=1 -timeout 20m ./internal/memory ./internal/engine
+go test -race -run '^(TestReviewBatch|TestReviewEvidence|TestValidateReview|TestReviewNoteDiff|TestInvokeReviewOperation)' ./internal/engine
+```
+
+Real-file notes microbenchmarks (macOS/Linux) apply the same three edits and
+compare immediate writes with one draft commit. File identities count actual
+atomic replacements; process user+system CPU time, allocations and elapsed time
+are measured, with fixture reset outside the measured section. Both modes
+include the same file-stat probes. This measures storage work, not end-to-end
+model latency. Source-render benchmarks use offline synthetic events and verify
+that the old late-input loss is actually present in the comparison fixture.
+
+```bash
+go test -run '^$' -bench '^BenchmarkNotesReviewWrites$' -benchtime=100x -count=5 -benchmem ./internal/memory
+go test -run '^$' -bench '^BenchmarkReviewSourceRender$' -count=5 -benchmem ./internal/engine
+```
+
+Online gateway studies are separate experiments, not CI tests or proof of
+production benefit. Freeze source evidence and follow-up checks before scoring;
+compare final supported facts, explicit corrections, conflicts and later task
+behavior. Neither prior memory, old reviewer outputs nor model consensus is a
+truth label. Keep paired/shared-output samples distinct from independent runs.
+
+
 ## Single PC work disclosures (F-130 / C-022)
 
 `frontend/src/components/app/transcript-fold.test.tsx` verifies that one finished
@@ -417,15 +469,22 @@ each extra word is another `mockChunkDelay`, and streaming them on every
 manager answer blew the engine package's 10m budget. `zwai --mock` and
 Playwright (`go run`) still emit them.
 
-It answers as a **memory reviewer** too, when the agent asking is the review
-after a turn: it stores one note and records one skill, both derived from the
-event log it was handed (not a compacted ADK transcript), then reports in a
-line. A review whose user message starts with `Shared skill library:` records
-the skill only — that is a conversation in no project, and the file lands in
-the shared library. Auto-review is skipped when the manager already wrote; Review now still
-runs. Without that, a `--mock` run
-and the E2E suite would exercise projects but quietly skip the whole memory
-path — the tools, the files, the event and the panel.
+It answers as a **memory reviewer** too: the post-turn script submits a complete
+`apply_memory_review` batch derived from effective source events, with exact
+seq/quote citations. A normal project review can store a note and a skill;
+failed-turn requirements-only input stores notes without skills. Shared-library
+review submits skills only. The batch exits the agent and the program supplies
+the result line, rather than billing a closing model call. A manager write does
+not skip this path. Explicit Review now selects the latest successful turn.
+`frontend/src/components/app/memory-settings.test.tsx` and the settings E2E
+cover an older settings payload without a review effort, saving each supported
+generic level, persistence of Low, and restoring empty inheritance without
+changing other settings. `internal/engine/review_profile_test.go` captures real
+loopback HTTP requests to verify the review-only override and unchanged output
+cap; manager and catalog tidy retain their own effort. Low is optional and
+must be accepted by the configured model.
+The offline tests and E2E therefore exercise the actual tools, draft commit,
+files, outcome event and panel without requiring a real model.
 
 It also answers as a **conversation namer** (`title-namer`): a short label
 derived from the request, shorter than the placeholder, so `--mock` and the
@@ -628,7 +687,7 @@ are why a project worker gets `skill_view` and the notes/skills snapshot,
 not `memory` / `skill_manage`, and why that worker prompt stays generic.
 `internal/memory/families_test.go`, `internal/engine/review_test.go` and
 `internal/engine/review_tidy_test.go` are why
-a shared name stem is one skill, leftover families fold after a finished turn
+a shared name stem is one skill, leftover families fold after a successful turn
 without a reviewer call when auto-review is off, the fold is still on the
 turn id as `memory_review`, `FoldProjectSkills` still folds stems then asks
 the reviewer to curate the live catalog (and refuses after shutdown), a
@@ -637,10 +696,12 @@ catalog-tidy model calls hang on the project's latest finished turn rather
 than the first sidebar conversation that happens to have one. The reviewer's
 model call streams (`TestReviewGenerateStreamsSoTheFirstByteIsNotTheWholeBody`):
 a one-shot body would hold headers until it finished, and the 30s first-byte
-cap would fail the review. Hitting `review_max_iterations` keeps the writes
-and does not fail the review
-(`TestAReviewThatHitsItsIterationCapStillReportsWhatItWrote`). The reviewer
-prompt does not tell it to open every skill.
+cap would fail the review. `TestACompleteReviewBatchDoesNotSpendAClosingIteration`
+verifies that a successful post-turn batch finishes within its write iteration.
+An incomplete batch at the cap now records an error rather than announcing
+uncommitted notes; already-persisted skills remain reported. Catalog tidy keeps
+its separate direct skill-tool cap behavior. The reviewer prompt does not tell
+it to open every skill.
 `internal/engine/library_test.go` and `internal/server/library_test.go` are
 why a conversation in no project records one skill in the shared library,
 lists that skill in the next such conversation's prompt, leaves the library

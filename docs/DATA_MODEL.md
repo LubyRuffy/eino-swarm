@@ -87,7 +87,7 @@ in this database: notes and skills are files, so a person can read and fix them
 | `plan_markdown` | text | current plan body. The file `$ZWAI_HOME/plans/<thread_id>/PLAN.md` is the on-disk copy; this column is what GET returns |
 | `compact_summary` | text | briefing that replaces earlier replay in the next turn's prompt. Empty means no fold yet. Copied from `session_memory` when that is set and accepted. A transcript dump is not stored, and a previously stored dump is omitted from the next manager prompt |
 | `compact_through_seq` | int64 | last **message** seq included in that briefing. Replay skips `seq <=` this when a summary is set |
-| `session_memory` | text | rolling briefing of this conversation, updated from the event log at token/tool breakpoints (newest events that fit a rune cap). Compact copies it; the post-turn reviewer reads it. Empty until the first accepted refresh. Post-turn refresh is background work and does not block the next follow-up |
+| `session_memory` | text | rolling briefing of this conversation, updated from the event log at token/tool breakpoints (newest events that fit a rune cap). Compact copies it; successful-turn review may read it, while failed-turn requirements-only review excludes it. Empty until the first accepted refresh. Post-turn refresh is background work and does not block the next follow-up |
 | `session_memory_through_seq` | int64 | last **event** seq included in that briefing. Advanced only on an accepted refresh. A rewind that deletes that event clears the three session-memory columns |
 | `session_memory_tokens` | int | estimated event-log tokens at the last refresh attempt (accepted or failed), so the next gate knows how far the window has grown and a failed refresh cannot resend the same payload |
 | `completed_seq` | int64, default 0 | latest eligible primary terminal event; quiet, cancelled and worker terminals do not add completion attention |
@@ -413,12 +413,30 @@ that never changed the text. Agent writes to `MEMORY.md`
 are also capped per paragraph (`memory.entry_max`); a create that collides with
 an existing skill (same subject, shared name stem, or a copied procedure) is
 refused; a note that restates a skill's summary or steps is refused. After a
-finished turn, leftover families are folded into one `SKILL.md` under the
+successful turn, leftover families are folded into one `SKILL.md` under the
 shared stem. A hand edit of those files does not fold until the next turn, or
 until `POST /api/projects/:id/memory/tidy-skills` (stems fold first, then the
 reviewer curates the live catalog; the response names what was merged, deleted,
 created and patched). Hand-edits of notes and the
 Memory panel still use the total `char_limit` only.
+
+Automatic review notes use a private in-memory snapshot, not a second persisted
+memory format. `NotesDraft` reuses agent Add/Replace/Remove checks, then compares
+the baseline content revision under the shared store lock before one atomic
+`MEMORY.md` replacement. A net-zero draft writes nothing; conflicts and storage
+failures leave the official notes unchanged. Existing Markdown paragraphs and
+human-authored notes remain readable without a migration or mandatory provenance
+backfill. Direct external file writers do not participate in that in-process
+lock.
+
+Skills keep immediate file writes, including merge/delete; they are not part of
+the notes commit. A later refusal must not hide an earlier actual skill write.
+The `events.text` payload for `memory_review` adds optional `evidence` (target,
+action, optional skill name, source seqs) and `refused` (operation index/reason).
+Existing events omit these fields and stay valid. Quotes remain in the recorded
+batch tool arguments; no new SQLite columns, Markdown front matter or event kind
+are introduced. See [Memory reviews](API.md#memory-reviews) and
+[C-025](CONTRACTS.md#c-025-memory-review-evidence-and-commit).
 
 **Memory lives here, never in your working directory.** A project pointed at a
 repository must not leave files in it, and a memory that was in the repository

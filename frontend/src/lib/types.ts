@@ -628,6 +628,7 @@ export interface MemorySettings {
   char_limit: number
   entry_max: number
   review_max_iterations: number
+  review_reasoning_effort?: string
   skills_index_max: number
   notifications: MemoryNotify | string
 }

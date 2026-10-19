@@ -184,6 +184,42 @@ test("per-note memory cap round-trips through settings", async ({
   }
 })
 
+test("review thinking saves independently and can restore inheritance", async ({ page, request }, info) => {
+  const { settings } = await (await request.get("/api/settings")).json()
+  try {
+    await page.goto("/")
+    await page.getByRole("button", { name: "Settings" }).click()
+    const dialog = page.getByRole("dialog")
+    await dialog.getByRole("tab", { name: "Memory" }).click()
+    const thinking = dialog.getByLabel("Review thinking")
+    await expect(thinking).toContainText("Inherit conversation")
+    await thinking.click()
+    await page.getByRole("option", { name: "Low", exact: true }).click()
+    await expect(thinking).toContainText("Low")
+    await info.attach("review-thinking-low", {
+      body: await dialog.screenshot(), contentType: "image/png",
+    })
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+    const saved = await (await request.get("/api/settings")).json()
+    expect(saved.settings.memory).toEqual({ ...settings.memory, review_reasoning_effort: "low" })
+    expect(saved.settings.swarm).toEqual(settings.swarm)
+    expect(saved.settings.models).toEqual(settings.models)
+
+    await page.getByRole("button", { name: "Settings" }).click()
+    await dialog.getByRole("tab", { name: "Memory" }).click()
+    await expect(thinking).toContainText("Low")
+    await thinking.click()
+    await page.getByRole("option", { name: "Inherit conversation", exact: true }).click()
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+    const restored = await (await request.get("/api/settings")).json()
+    expect(restored.settings.memory).toEqual({ ...settings.memory, review_reasoning_effort: "" })
+  } finally {
+    await request.put("/api/settings", { data: { memory: settings.memory } })
+  }
+})
+
 test("personality round-trips through settings", async ({ page, request }) => {
   const { settings } = await (await request.get("/api/settings")).json()
   try {

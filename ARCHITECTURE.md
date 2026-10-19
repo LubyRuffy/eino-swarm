@@ -66,7 +66,7 @@ flowchart LR
   Cfg --> RT
   Mem[internal/memory<br/>MEMORY.md + skills/]
   RT -->|prompt sections + tools| Mem
-  RT -->|after a done turn| Review[review: one reviewer agent]
+  RT -->|done or error with human requirements| Review[review: one reviewer agent]
   Review --> Mem
   Review --> Bus
 ```
@@ -134,8 +134,8 @@ browser history entries.
 | `internal/store` | gorm + pure-Go SQLite. Conversations, transcript messages, turns, the event timeline, model-call records, attachments, follow-ups waiting for the current turn, `schedules` / `schedule_runs`, conversation search (`search_docs` + FTS5 `thread_fts`, optional `search_chunks`), and `remote_devices` (phone model + last-seen keyed by pairlink fingerprint). Sidebar lists conversations and projects by `sort_rank` then last activity (`last_active_at` / `updated_at`); unranked rows interleave by activity so they cannot sit above ranked work that just ran. A drop pins ranks. Quiet standalone fires are archived out of Recents, using the kind stored when that fire was claimed. The open conversation lists wakes aimed at that thread and jobs whose fire minted it (`GET /api/threads/:id/schedules`); `origin_thread_id` is not that link. See [docs/DATA_MODEL.md](docs/DATA_MODEL.md). |
 | `internal/provider` | builds eino chat models from config, lists an endpoint's catalog (`GET {base_url}/models`), omits an endpoint switched off in Settings from the composer list, records per-call telemetry, POSTs OpenAI-compatible `/embeddings` when search is on, and provides the scripted offline provider used by `--mock` and the tests (character n-grams stand in for a real embed). The provider request timeout is silence after the first byte, not the whole streamed body: a thinking model that is still emitting tokens is not cut off. The first byte itself has a shorter cap. |
 | `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. `BindExecOutput` is the host binder that tees `exec` stdout/stderr into `NotifyToolDelta` without the swarm library importing eino-tools. A wrapper shortens a remaining-time `sleep` / `Start-Sleep` of five seconds or more to about a third of that duration so a progress poll still runs instead of sitting out the full estimate. |
-| `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the three agent tools (`memory`, `skill_view`, `skill_manage` including `merge`), the prompt sections they are rendered into, the reviewer's instruction, and the deterministic family fold that keeps one subject as one skill. A copied skill is a separate file with `origin_*` front matter so a later pull can read the source; the prompt and `skill_view` do not include that link. Owns the files; knows nothing about conversations. |
-| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a pending thread wake (waiting is the next turn), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream / a mid-stream TCP read timeout retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from the event log (note extraction skipped when the manager already wrote; leftover skill families still fold), and resolves an in-app terminal's working directory from the conversation or project the client named. A clock + ticker (`StartScheduler`) fires due waits (`schedule_fired`) or skips a busy target (`schedule_skipped`) without bursting missed ticks; event kinds `schedule` / `schedule_fired` / `schedule_skipped` / `schedule_report` / `schedule_cancelled` are the wire contract. |
+| `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the manager tools (`memory`, `skill_view`, `skill_manage` including `merge`), in-memory notes drafts with revision-checked commit, the prompt sections they are rendered into, the reviewer's instruction, and the deterministic family fold that keeps one subject as one skill. A copied skill is a separate file with `origin_*` front matter so a later pull can read the source; the prompt and `skill_view` do not include that link. Owns the files; knows nothing about conversations. |
+| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a pending thread wake (waiting is the next turn), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream / a mid-stream TCP read timeout retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from effective events (successful turns receive a full review regardless of manager writes; failed project turns allow human requirements only; skill families fold only after successful turns), and resolves an in-app terminal's working directory from the conversation or project the client named. A clock + ticker (`StartScheduler`) fires due waits (`schedule_fired`) or skips a busy target (`schedule_skipped`) without bursting missed ticks; event kinds `schedule` / `schedule_fired` / `schedule_skipped` / `schedule_report` / `schedule_cancelled` are the wire contract. |
 | `internal/search` | ⌘K ranking. FTS5 is always on. Embeddings are off until Settings pins a model; then query vectors fuse with keywords via reciprocal rank fusion (`k=60`). Indexing embeddings is a background queue so a turn is not blocked on `/embeddings`. A failed query embed falls back to keywords. |
 | `internal/clients` | read-only scan of local Claude, Codex, and Cursor transcripts for the sidebar and the phone. `View` returns the last finished snapshot and walks the disk beside the caller, so a phone inbox `list` does not wait on it. Each refresh checks file metadata and reuses parsed rows from unchanged transcripts, retaining no raw buffers. It sorts once before publishing an immutable snapshot; readers select and copy only one page outside the snapshot lock. A session read is the live tail; `older` / `before` page backward by byte offset, and the opening request is on every page. It does not start or resume those tools. |
 | `internal/server` | gin: REST, SSE, upload/download, trace, PTY terminals, embedded assets. See [docs/API.md](docs/API.md). |
@@ -509,59 +509,85 @@ worker before closing SQLite.
    `schedule_continue` that cannot restart, or that is dropped as superseded,
    still closes the bound schedule run (`error`) so `HasRunningRun` cannot
    stick a wait that will never fire again.
-8. **Review** (project conversations with memory on, and conversations in no
-   project, when `memory.enabled` and `memory.auto_review`): a
-   goroutine hands the finished turn's **event log** (plus the rolling session
-   briefing, clipped so it cannot spend the whole budget) to a single reviewer
-   agent — one `adk.ChatModelAgent` with the memory tools, not a swarm — which
-   stores what is worth carrying forward. The reviewer always streams, and
-   `Generate` on that model drains the stream (same split as compact): a
-   one-shot completion holds response headers until the JSON body exists,
-   and the 30s first-byte cap then fails the review after a turn that
-   itself streamed for minutes. Silence after the first byte is the
-   provider idle budget. A conversation in no project has no
-   note store: the reviewer gets `skill_view` and `skill_manage` only, and the
-   files land in the shared library (`library/skills/` under the data
-   directory). The next conversation in no project lists those skills and
-   can open one with `skill_view`. It cannot write the library during the
-   turn; the review does. A person can still copy a skill into a project.
-   It does not read the compacted ADK
-   transcript: that view is for the next Generate. If the manager already
-   wrote with `memory` or `skill_manage` this turn, auto-review stays out of
-   the way; **Review now** still runs. Its model calls are recorded under the
-   same turn id as `memory-reviewer`, and one `memory_review` event says what
-   changed. The log it reads is clipped per message and in total, so a turn
-   that read a large file cannot make the review cost more than the work. The
-   reviewer reads the index. It does not open every skill, and it does not
-   walk same-stem families: those are folded after it finishes. Hitting
-   `memory.review_max_iterations` keeps whatever was written and leaves
-   `err` empty — the cap is the budget, not a failed review. The
-   tools refuse a second skill on the same subject (including a shared name
-   stem), a note longer than
-   `memory.entry_max`, and a note that restates a recorded skill — the
-   instruction alone did not stop the store filling with twins. After the
-   reviewer finishes — or instead, when auto-review is skipped — leftover
-   skill families are folded into one skill under the shared stem, so a
-   catalog that already grew chapter-skills still collapses without anyone
-   asking. The Memory panel's tidy (`POST /api/projects/:id/memory/tidy-skills`)
-   still folds leftover stems, then runs the same reviewer against the live
-   catalog (no notes, content merge/patch/delete). `Accept: text/event-stream`
-   writes the scan, the assistant prose so far, and each skill write while
-   the model is still going; `done` is the same body as the JSON call. The response names what was
-   merged, deleted, created and patched, with counts, and `reviewed` when the
-   model ran. The panel keeps that card on the project that was tidied:
-   opening another project shows that project's card (or none), and coming
-   back shows the progress while the request is still running, or the report
-   once it has finished. A memory read that started during the tidy does not
-   paint the pre-tidy catalog over the result. Model calls hang on the
-   project's latest finished turn when there is one. Opening the tab does
-   not rewrite files. Reviews of one
-   project are serialized: two turns finishing together would each read the same
-   bounded notes, both decide there is room, and one would lose its entry.
-   Conversations outside a project share one lock on the library. The library
-   tidy is `POST /api/library/tidy-skills`. Only
-   a turn that finished cleanly is reviewed, and `Shutdown` waits for the ones
-   in flight before exiting.
+8. **Review** (`F-420`, `C-025`): with memory and auto-review enabled, a
+   successful turn starts a single streaming `adk.ChatModelAgent` from the stored
+   event log, even when the manager already used a memory tool. Compacted ADK
+   history is not the source. A failed project turn can retain explicit human
+   requirements only: effective `user_message` / `steer`, no generated
+   continuation, session briefing, final answer or task-tool evidence, no skill
+   tools and no skill fold. Cancellation starts no automatic review.
+
+   `review_source_select.go` prioritizes effective human messages, then recent
+   call/result groups paired by agent and call id, then assistant/derived text.
+   Selection is newest first within each priority and rendering is chronological.
+   Each source item uses at most 2,000 runes and the source transcript at most
+   24,000 runes, including provenance framing, separators and omission markers.
+   If identity framing alone exceeds the item cap, the whole source group is
+   omitted without splitting a tool pair or granting its text evidence authority.
+   Current notes, the skill catalog and system instruction are additional input
+   outside that source budget; this cap is not a total model-context or cost cap.
+   After acquiring the per-project review gate, `reviewUserMessage` reads current
+   notes and the live skill index immediately before the model call. Existing
+   notes are claims to compare or correct, not ground truth.
+
+   The reviewer can inspect recorded skills and submit one complete
+   `apply_memory_review` batch, including an empty batch. It does not receive the
+   manager's direct write tools. Each operation cites event seq and an exact
+   quote from admissible effective human text or a paired, non-refused tool
+   result; generated prose, prior memory writes and derived summaries do not
+   establish new facts. New Arabic-digit details in notes must retain numeric
+   spelling present in cited quotes or the replaced note. These are provenance
+   and spelling guards, not entailment, authority or semantic-deduplication
+   proofs. Public manager tool names, arguments and recoverable receipts stay
+   unchanged.
+
+   All proposed note operations use an in-memory `NotesDraft` with the existing
+   entry/total caps, unique matching and skill-overlap checks. One final commit
+   compares the revision shown in the first model request under the shared store
+   lock and replaces `MEMORY.md` once; net-zero proposals do not write. The input
+   snapshot is captured after acquiring the project review gate. Every repair
+   retains that same baseline. A changed revision detected before batch execution
+   terminates without a repair request; a race at final commit can cause one
+   repair request before the fixed revision blocks further note edits. Unreadable
+   input notes stop before the model call.
+   Conflict or storage failure
+   does not publish half the notes. Unchanged legacy notes retain their existing
+   format and human-edit limits. Skill operations still write real files
+   immediately; actual skill changes remain in the outcome when a later skill or
+   notes commit fails. There is no notes/skills multi-file transaction.
+
+   A refusal is model-readable feedback and may be repaired within the existing
+   `memory.review_max_iterations`. `memory.review_reasoning_effort` can override
+   only this turn-review agent's effort; empty inherits the turn. Conversation
+   work and catalog tidy keep their existing effort, model and output budget.
+   The instruction starts with source-supported durable deltas and separates
+   normal workflows from self-contained recovery branches for an existing
+   failure. Branch entry, observed recovery actions and return/completion
+   conditions are explicit; failed probes are context, not an automatic replay.
+   A successful batch records net note changes
+   and exits the agent with an ADK action; the program generates its completion
+   line without another billed model request. Ending a post-turn review without
+   a successful complete batch records an explicit error, including at the cap;
+   any skill writes already on disk remain recorded. Reviews stream even when
+   ADK asks for Generate, retaining provider first-byte/idle timeout behavior.
+   Calls and the `memory_review` outcome, including optional refusal/evidence
+   arrays, use the original turn id and `memory-reviewer` attribution.
+
+   Successful-turn reviews, or successful turns with auto-review off, still fold
+   leftover skill families. A standalone successful turn writes procedures only
+   into the shared library. Manual **Review now** selects the most recent
+   successful turn. Catalog tidy remains its separate live-catalog flow with
+   direct skill tools and no notes. `POST /api/projects/:id/memory/tidy-skills`
+   folds stems before model curation; `Accept: text/event-stream` reports the
+   scan, streamed prose and actual writes, then the same result as JSON with
+   created/deleted/patched/unchanged counts and `reviewed` when the model ran.
+   The Memory panel keeps each tidy card with its own project; switching away
+   and back preserves in-flight progress or the finished result. An earlier
+   memory read cannot replace the completed catalog with stale content. Opening
+   the tab does not rewrite files, and tidy model calls use the project's latest
+   successful turn when available. Project reviews and tidy share their project
+   gate; standalone conversations share the library gate and
+   `POST /api/library/tidy-skills`. `Shutdown` waits for in-flight reviews.
 9. **Title** (untitled conversations and untitled waits, `swarm.auto_title`): a goroutine asks the
    configured namer (the conversation's model, or `swarm.title_provider` /
    `swarm.title_model` when pinned) for a short sidebar name from the opening
