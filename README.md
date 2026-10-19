@@ -666,8 +666,12 @@ things:
   permissions. Leave it empty and zwai keeps one for you;
 - **memory**, on by default.
 
-With memory on, each finished turn is read back and what is worth carrying
-forward is kept: short notes about how this project works, and *skills* —
+With memory and auto-review on, each successful turn is reviewed even if the
+manager already wrote memory: one saved requirement does not prove that the
+whole turn was covered. A failed project turn may retain explicit human
+requirements as notes, without learning skills from failed work. Cancellation
+does not start an automatic review. What is worth carrying forward is kept:
+short notes about how this project works, and *skills* —
 step-by-step procedures the agents wrote for themselves. The next conversation in
 that project starts with the notes in its prompt and an index of the skills, and
 opens a skill when it needs one. Sub-agents on that conversation get the same
@@ -709,7 +713,21 @@ asks before replacing the local steps. Nothing is written back. Keep one
 project for the shared procedures and copy from that one. A copy that was
 edited is what the next project receives, so do not copy a business project's
 version when you wanted the shared procedure. An unmodified copy still tracks
-the original project. **Review now** (the sparkles on the Memory tab) re-reads the last finished turn.
+the original project. **Review now** (the sparkles on the Memory tab) re-reads the last successfully completed turn.
+Automatic review starts with current notes and effective source events, giving
+human corrections priority over tool noise. Sources whose identity framing
+cannot fit the per-source limit are omitted as a whole group. Skill extraction
+separates normal work from recovery after an existing failure, without requiring
+the failed work to be repeated first. Note changes stay in an in-memory
+draft until the complete proposal passes validation and its original revision
+still matches the notes shown in the first model request; a refusal or conflict leaves the stored notes intact. A changed input revision detected before batch execution stops the review without another repair call; a change racing the final commit may use one repair call before the fixed input revision stops further note edits. Skill
+changes remain immediate and may survive a later refusal: this is not a
+transaction across notes and skills. Successful submission finishes the review
+without another model request just to announce the result. Trace records source
+references and refusals under the original turn id. These checks verify source
+identity, exact quotes and numeric spelling; they do not prove semantic truth.
+Set **Settings → Memory → Review thinking** to choose a separate reasoning level for automatic review and **Review now**. The default **Inherit conversation** preserves the reviewed turn's choice; **Low** is an optional latency profile for models that support it. It does not change conversation work, catalog tidy, the model, or the output cap.
+See [the review contract](docs/CONTRACTS.md#c-025-memory-review-evidence-and-commit).
 The panel says when it is reading, and what it decided — including when it kept
 nothing. A write that landed is also named in the transcript itself
 (`Memory updated: …`), so you do not have to have the tab open to notice. If you were mid-edit when a review wrote, the panel says so
@@ -723,8 +741,8 @@ shorter has to land first. Creating a skill that already covers the same
 subject is refused: the result names the existing skill so the next call is
 a patch, not a second name. Skills that share a name stem (the same procedure
 split into chapter-skills) are refused the same way, and leftover families are
-folded into one skill after a finished turn — automatically, including when
-auto-review is off or the manager already wrote this turn. The fold is reported
+folded into one skill after a successful turn — automatically, including when
+auto-review is off. Failed-turn requirements-only reviews do not fold skills. The fold is reported
 as a `memory_review` when it changed the catalog. Editing a skill file by hand
 does **not** fold until the next turn; **Tidy skills** on the Skills
 heading still folds leftover name-stem families, then asks the model to curate
@@ -735,7 +753,7 @@ you edited files outside the app. When it finishes, the card names what was
 merged, deleted, created and patched, with counts (scanned / merged / deleted /
 created / updated / remaining).
 
-Session briefings and the reviewer also receive worker lifecycle facts from
+Session briefings and successful-turn reviews also receive worker lifecycle facts from
 the stored event log, attributed to the turns they describe. A historical
 worker being restored is different from a new worker, and a refused creation
 call creates none. Earlier briefings and assistant claims are labelled as

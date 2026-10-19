@@ -99,14 +99,20 @@ func (p *reviewPool) stop(wait time.Duration) bool {
 // with memory on. The fold is the quality guarantee that does not wait for
 // anyone to ask: a catalog that grew chapter-skills still collapses.
 //
-// Only a turn that finished cleanly is reviewed: an interrupted or failed
-// turn has nothing reliable to learn from, and someone who pressed stop did
-// not ask for its half-finished approach to become a skill. Folding is the
-// same rule — it runs after the work, not instead of it.
+// Error turns may retain explicit human requirements, but never procedures
+// from the failed work. Cancellation does not start another model call.
 func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string,
 	pc *projectContext, final string,
 ) {
-	if status != store.TurnDone {
+	if status != store.TurnDone && status != store.TurnError {
+		return
+	}
+	// FinishTurn updates storage, not the runtime pointer. Capture the terminal
+	// state before the background review can wait for the project gate.
+	snapshot := *turn
+	snapshot.Status = status
+	turn = &snapshot
+	if status == store.TurnError && (pc == nil || !pc.memoryLive() || pc.library || !e.cfg.Memory.AutoReview) {
 		return
 	}
 	// A conversation in no project has no project memory. Its procedures
@@ -122,18 +128,26 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 		e.log.Warn("could not read events for the memory review", "turn", turn.ID, "err", err)
 		return
 	}
-	skipLLM := !e.cfg.Memory.AutoReview || managerWroteMemory(events)
-	transcript := ""
+	skipLLM := !e.cfg.Memory.AutoReview
+	var input reviewSourceInput
 	if !skipLLM {
-		history, historyErr := e.store.ListEvents(threadID, 0, 0)
-		if historyErr != nil {
-			e.log.Warn("could not read worker lifecycle evidence for the memory review", "turn", turn.ID, "err", historyErr)
-			skipLLM = true
+		if status == store.TurnError {
+			events = reviewHumanEvents(events)
+			if len(events) == 0 {
+				return
+			}
+			input = selectReviewInput(events, "", "")
 		} else {
-			transcript = reviewSourceWithHistory(events, history, e.sessionMemoryOf(threadID), final)
+			history, historyErr := e.store.ListEvents(threadID, 0, 0)
+			if historyErr != nil {
+				e.log.Warn("could not read worker lifecycle evidence for the memory review", "turn", turn.ID, "err", historyErr)
+				skipLLM = true
+			} else {
+				input = selectReviewInputWithHistory(events, history, e.sessionMemoryOf(threadID), final)
+			}
 		}
 	}
-	if !skipLLM && strings.TrimSpace(transcript) == "" {
+	if !skipLLM && strings.TrimSpace(input.Transcript) == "" {
 		skipLLM = true
 	}
 	gate := e.reviews.begin(pc.reviewKey())
@@ -154,7 +168,7 @@ func (e *Engine) scheduleReview(threadID string, turn *store.Turn, status string
 			e.foldSkillsAfterTurn(threadID, turn, pc)
 			return
 		}
-		e.runReview(threadID, turn, pc, transcript)
+		e.runReviewInput(threadID, turn, pc, input, events)
 	}()
 }
 
@@ -199,8 +213,8 @@ func (e *Engine) ReviewTurn(threadID string) (*store.Turn, error) {
 		return nil, err
 	}
 	events := reviewEventsForTurn(history, latest.ID)
-	transcript := reviewSourceWithHistory(events, history, e.sessionMemoryOf(threadID), latest.Final)
-	if strings.TrimSpace(transcript) == "" {
+	input := selectReviewInputWithHistory(events, history, e.sessionMemoryOf(threadID), latest.Final)
+	if strings.TrimSpace(input.Transcript) == "" {
 		return nil, ErrIdle
 	}
 	gate := e.reviews.begin(pc.reviewKey())
@@ -216,7 +230,7 @@ func (e *Engine) ReviewTurn(threadID string) (*store.Turn, error) {
 				e.log.Error("memory review panicked", "turn", latest.ID, "panic", r)
 			}
 		}()
-		e.runReview(threadID, latest, pc, transcript)
+		e.runReviewInput(threadID, latest, pc, input, events)
 	}()
 	return latest, nil
 }
@@ -238,7 +252,9 @@ type reviewOutcome struct {
 	Err     string          `json:"err,omitempty"`
 	// Notify is how chatty this review should be in the transcript, stamped
 	// at record time so a later settings change does not rewrite history.
-	Notify string `json:"notify,omitempty"`
+	Notify   string           `json:"notify,omitempty"`
+	Evidence []reviewEvidence `json:"evidence,omitempty"`
+	Refused  []reviewRefusal  `json:"refused,omitempty"`
 }
 
 // reviewRun is one reviewer agent: post-turn extraction or the Memory panel's
@@ -257,7 +273,9 @@ type reviewRun struct {
 	// onText is the assistant prose so far, one call per streamed chunk.
 	// Tool-call frames are not prose. Nil on the post-turn review, which
 	// only keeps the finished line.
-	onText func(full string)
+	onText     func(full string)
+	sequential bool
+	completed  func() (string, bool)
 }
 
 func collectReviewChange(outcome *reviewOutcome, c memory.Change) {
@@ -275,34 +293,76 @@ func collectReviewChange(outcome *reviewOutcome, c memory.Change) {
 
 // runReview drives one post-turn reviewer to completion.
 func (e *Engine) runReview(threadID string, turn *store.Turn, pc *projectContext, transcript string) {
+	history, err := e.store.ListEvents(threadID, 0, 0)
+	if err != nil {
+		e.finishReview(threadID, turn, pc, reviewOutcome{Err: publicTurnError(err)})
+		return
+	}
+	sourceEvents := reviewEventsForTurn(history, turn.ID)
+	input := selectReviewInputWithHistory(sourceEvents, history, e.sessionMemoryOf(threadID), turn.Final)
+	if turn.Status == store.TurnError {
+		sourceEvents = reviewHumanEvents(sourceEvents)
+		input = selectReviewInput(sourceEvents, "", "")
+	}
+	if input.Transcript != transcript {
+		// Private callers may supply diagnostic text. It is not an authority
+		// for creating writable source references into a different transcript.
+		input = reviewSourceInput{Transcript: transcript}
+	}
+	e.runReviewInput(threadID, turn, pc, input, sourceEvents)
+}
+
+func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectContext, input reviewSourceInput, sourceEvents []store.Event) {
 	var mu sync.Mutex
 	outcome := reviewOutcome{Notes: map[string]int{}}
-	onChange := func(c memory.Change) {
-		mu.Lock()
-		defer mu.Unlock()
-		collectReviewChange(&outcome, c)
+	var notes *memory.Snapshot
+	if !pc.library {
+		snapshot, err := pc.memory.Read()
+		if err != nil {
+			outcome.Err = publicTurnError(err)
+			e.finishReview(threadID, turn, pc, outcome)
+			return
+		}
+		notes = &snapshot
 	}
 	instruction := memory.ReviewPrompt()
 	description := "curates this project's memory after a conversation"
-	tools := memory.Tools(pc.memory, onChange)
+	batch := &reviewBatchTool{store: pc.memory, sources: reviewEvidenceSources(sourceEvents, input.Events),
+		humanOnly: turn.Status == store.TurnError, library: pc.library, mu: &mu, outcome: &outcome, finish: finishReviewBatch}
+	if notes != nil {
+		batch.notesRev = notes.Rev
+	}
+	tools := append(memory.ViewTools(pc.memory), batch)
+	if turn.Status == store.TurnError {
+		instruction += "\nThis turn failed. Retain only explicit durable requirements stated by the human. Do not infer preferences from the task itself, and do not record procedures or conclusions from failed work.\n"
+		tools = []tool.BaseTool{batch}
+	}
 	if pc.library {
 		instruction = memory.LibraryReviewPrompt()
 		description = "records reusable procedures from a conversation that belongs to no project"
-		tools = memory.CatalogTools(pc.memory, onChange)
 	}
 	e.driveReviewer(reviewRun{
 		threadID:    threadID,
 		turnID:      turn.ID,
 		providerID:  turn.ProviderID,
 		model:       turn.Model,
-		effort:      turn.ReasoningEffort,
+		effort:      e.cfg.Memory.ReviewEffort(turn.ReasoningEffort),
 		description: description,
 		instruction: instruction,
-		userMsg:     e.reviewUserMessage(pc, transcript),
+		userMsg:     e.reviewUserMessageWithNotes(pc, input.Transcript, notes),
 		maxIter:     e.cfg.Memory.ReviewIterations(),
 		tools:       tools,
+		sequential:  true,
+		completed: func() (string, bool) {
+			mu.Lock()
+			defer mu.Unlock()
+			return outcome.Note, batch.complete
+		},
 	}, &mu, &outcome)
 	mu.Lock()
+	if !batch.complete && outcome.Err == "" {
+		outcome.Err = "The review ended without submitting a complete memory proposal."
+	}
 	if len(outcome.Notes) == 0 {
 		outcome.Notes = nil
 	}
@@ -335,9 +395,9 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 		Name:        ReviewAgentID,
 		Description: run.description,
 		Instruction: run.instruction,
-		Model:       &reviewStreamModel{inner: builder(ReviewAgentID, ReviewAgentID)},
+		Model:       &reviewStreamModel{inner: builder(ReviewAgentID, ReviewAgentID), completed: run.completed},
 		ToolsConfig: adk.ToolsConfig{
-			ToolsNodeConfig: compose.ToolsNodeConfig{Tools: run.tools},
+			ToolsNodeConfig: compose.ToolsNodeConfig{Tools: run.tools, ExecuteSequentially: run.sequential},
 		},
 		MaxIterations: run.maxIter,
 	})
@@ -379,10 +439,20 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 		if text := reviewAssistantText(ev, run.onText); text != "" {
 			final = text
 		}
+		if ev.Action != nil && ev.Action.Exit {
+			break
+		}
 	}
 
+	if run.completed != nil {
+		if note, done := run.completed(); done {
+			final = note
+		}
+	}
 	mu.Lock()
-	outcome.Note = oneLine(final)
+	if final != "" || outcome.Note == "" {
+		outcome.Note = oneLine(final)
+	}
 	if capped && outcome.Note == "" {
 		outcome.Note = reviewCapNote
 	}
@@ -393,8 +463,29 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 // instruction is fixed; the index has to ride on the user turn or the
 // reviewer cannot merge a family it cannot see.
 func (e *Engine) reviewUserMessage(pc *projectContext, transcript string) string {
+	return e.reviewUserMessageWithNotes(pc, transcript, nil)
+}
+
+func (e *Engine) reviewUserMessageWithNotes(pc *projectContext, transcript string, notes *memory.Snapshot) string {
 	if pc == nil || pc.memory == nil {
 		return transcript
+	}
+	if !pc.library {
+		if notes == nil {
+			if snapshot, err := pc.memory.Read(); err == nil {
+				notes = &snapshot
+			}
+		}
+		if notes != nil {
+			transcript += "\nCurrent project notes (existing claims may need correction):\n"
+			if len(notes.Entries) == 0 {
+				transcript += "(none)\n"
+			} else {
+				for _, entry := range notes.Entries {
+					transcript += "- " + entry + "\n"
+				}
+			}
+		}
 	}
 	skills, err := pc.memory.ListSkills()
 	if err != nil {
@@ -420,7 +511,9 @@ func (e *Engine) finishReview(threadID string, turn *store.Turn, pc *projectCont
 	if pc != nil && pc.library {
 		outcome.Library = true
 	}
-	e.applySkillFold(pc, &outcome)
+	if turn.Status != store.TurnError {
+		e.applySkillFold(pc, &outcome)
+	}
 	if len(outcome.Notes) == 0 {
 		outcome.Notes = nil
 	}
@@ -485,14 +578,25 @@ func (e *Engine) recordReview(threadID, turnID string, outcome reviewOutcome) {
 // split compact already uses. A non-streaming body would sit until the
 // model finished thinking, which is longer than the first-byte cap.
 type reviewStreamModel struct {
-	inner model.BaseChatModel
+	inner     model.BaseChatModel
+	completed func() (string, bool)
 }
 
 func (m *reviewStreamModel) Generate(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.Message, error) {
+	if m.completed != nil {
+		if note, done := m.completed(); done {
+			return schema.AssistantMessage(note, nil), nil
+		}
+	}
 	return compactStream(ctx, m.inner, in, opts...)
 }
 
 func (m *reviewStreamModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
+	if m.completed != nil {
+		if note, done := m.completed(); done {
+			return schema.StreamReaderFromArray([]*schema.Message{schema.AssistantMessage(note, nil)}), nil
+		}
+	}
 	return m.inner.Stream(ctx, in, opts...)
 }
 

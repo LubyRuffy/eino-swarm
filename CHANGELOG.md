@@ -11,6 +11,10 @@ co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
 `SetMaxConcurrent`).
 
+### Added
+
+- `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.
+
 ### Changed
 
 - `F-430`, `C-010`: prepared mobile package `0.1.32` and development iOS build `132` metadata for the existing allocated batch; platform publication remains pending and TestFlight marketing version is selected independently by the release adapter.
@@ -28,6 +32,12 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-220`, `C-003`, `C-006`: the offline phone fixture now starts an idle queued Steer as a new turn after Stop, matching the host. Regression evidence covers real Pairlink, storage failures and packaged-phone controls without changing the paired client's production request behavior (Issue #77).
 
 - `F-190`, `C-024`: updater installation exclusion now belongs to the app bundle across engines and processes, including different data directories. A competing install cannot overwrite a pending rollback backup; delayed cleanup only owns that installation's old bundle (Issue #77).
+
+- `F-420`, `C-025`: source groups whose identity framing exceeds the per-source rune limit are omitted together, preserving tool pairing and source authority. Review instructions now distinguish normal work from self-contained recovery after an existing failure, with supported branch entry and return/completion conditions instead of requiring failed probes to be replayed.
+
+- `F-420`, `C-025`, `C-008`: successful-turn reviews retain authoritative lifecycle facts from full persisted history alongside source-selected evidence. Lifecycle/briefing context cannot become a cited write source, and failed-turn human-only review excludes it.
+
+- `F-420`, `C-025`, `C-012`: a partial, refused or unchanged manager memory write no longer suppresses whole-turn review. Failed project turns can retain explicit human requirements without learning failed procedures or folding skills; cancelled turns start no automatic review. Automatic review captures a terminal snapshot before waiting for the project gate, so database-only `FinishTurn` transitions and later caller ID/status changes cannot alter failed-turn permissions, skill folding or Trace attribution. Source/quote validation and a numeric-spelling guard refuse unsupported new note digits, and rejected or conflicting note batches leave official notes intact without hiding already-persisted skill changes. Review input and note writes share the first model request's notes revision; edits detected before proposal execution terminate without another repair; a race at final commit may spend one repair call but cannot silently rebase or overwrite the changed notes.
 
 - `F-130`, `C-002`: Steer on a queued row starts that text as the next turn after Stop. A live turn still injects at the next model boundary. Stop still does not flush the rest of the queue by itself.
 
@@ -63,6 +73,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-420`, `C-025`, `C-012`: memory-review outcomes add optional evidence source references and indexed refusal diagnostics under the original turn id. Automatic review submits a complete batch; notes use an in-memory draft and one revision-checked commit while skill files retain their immediate-write contract.
+
 - `F-125`, `C-023`: completed PC tasks keep a static unread indicator until their result is viewed, including the right side of collapsed desktop projects and a persistent phone attention list. Host watermarks synchronize reads, including expanded phone tail pages. Delayed ACKs/list replies, quiet checks, cancellation, pagination, rewind and restart retain correct completion identities (Issue #76).
 
 - **An open conversation lists the waits that use it.** The right side shows tasks aimed at that chat and any task whose run created it. Click a row to open that task.
@@ -94,6 +106,8 @@ co-working app built on it. The library API is unchanged except where noted
 - **Local agent progress in the sidebar and on the phone.** Settings → Clients turns on a read-only list of Claude, Codex, and Cursor tasks from this machine. Each tool is a group and folds. The first page is at most five tasks from the last 3 days; More loads the next five. A breathing light means the task is still running; a steady light means it finished. The list does not send or resume. A paired phone shows the same groups.
 
 ### Changed
+
+- `F-420`, `C-025`: the automatic reviewer reads current notes and prioritizes effective human evidence before recent tool pairs within a rune budget that includes provenance framing. A successful complete batch exits with a program-generated result, avoiding a second model request solely for a closing sentence; incomplete post-turn batches now report failure. Public manager memory tools and legacy Markdown remain compatible.
 
 - `C-006`, `C-007`, `F-125`: the paired phone protocol adds completion/read metadata and independent byte-bounded attention pages. Refreshes reconcile the full loaded completion window, preserve newer verified results across all loaded collections, and reject stale read/list responses without changing existing event identities (Issue #76).
 

@@ -9,6 +9,12 @@ const composer = (page: Page) => page.getByTestId("composer-input")
 const statusBadge = (page: Page) => page.getByTestId("status-badge")
 const notes = (page: Page) => page.getByLabel("Project notes")
 
+type MemoryTrace = {
+  turn: { id: string; thread_id: string; status: string }
+  events: { seq: number; thread_id: string; turn_id: string; kind: string; text?: string }[]
+  llm_calls: { agent_id: string; thread_id: string; turn_id: string; err?: string }[]
+}
+
 async function send(page: Page, text: string) {
   await composer(page).fill(text)
   await composer(page).press("Enter")
@@ -42,7 +48,8 @@ async function openMemory(page: Page) {
 
 test("a project carries what one conversation learned into the next", async ({
   page,
-}) => {
+  request,
+}, info) => {
   const project = `Project ${Date.now()}`
   await createProject(page, project)
 
@@ -61,7 +68,49 @@ test("a project carries what one conversation learned into the next", async ({
   expect(Math.abs(projectBox!.y - titleBox!.y)).toBeLessThan(4)
 
   const first = `Trace the ${Date.now()} material and summarise it`
+  const threadID = await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")
+  expect(threadID).toBeTruthy()
+  const accepted = page.waitForResponse((response) => response.request().method() === "POST"
+    && new URL(response.url()).pathname === `/api/threads/${threadID}/steer`)
   await send(page, first)
+  const started = await accepted
+  expect(started.status()).toBe(202)
+  const { turn } = await started.json() as { turn: { id: string } }
+  await expect.poll(async () => {
+    const response = await request.get(`/api/trace/${turn.id}`)
+    expect(response.ok()).toBe(true)
+    const trace = await response.json() as MemoryTrace
+    return trace.events.filter((event) => event.kind === "memory_review").length
+  }, { timeout: 60_000 }).toBe(1)
+  const traceResponse = await request.get(`/api/trace/${turn.id}`)
+  expect(traceResponse.ok()).toBe(true)
+  const trace = await traceResponse.json() as MemoryTrace
+  expect(trace.turn).toMatchObject({ id: turn.id, thread_id: threadID, status: "done" })
+  const reviewerCalls = trace.llm_calls.filter((call) => call.agent_id === "memory-reviewer")
+  expect(reviewerCalls).toHaveLength(1)
+  expect(reviewerCalls[0]).toMatchObject({ thread_id: threadID, turn_id: turn.id })
+  expect(reviewerCalls[0].err ?? "").toBe("")
+  const reviewEvent = trace.events.find((event) => event.kind === "memory_review")!
+  const review = JSON.parse(reviewEvent.text ?? "{}") as {
+    changed: boolean; err?: string; notes?: Record<string, number>; skills?: { name: string }[]
+    evidence?: { target: string; action: string; sources: number[] }[]
+  }
+  expect(review.changed).toBe(true)
+  expect(review.err ?? "").toBe("")
+  expect(review.notes?.add).toBe(1)
+  expect(review.skills).toHaveLength(1)
+  expect(review.evidence?.length ?? 0).toBeGreaterThan(0)
+  for (const evidence of review.evidence ?? []) {
+    expect(evidence.sources.length).toBeGreaterThan(0)
+    for (const seq of evidence.sources) {
+      expect(seq).toBeGreaterThan(0)
+      const source = trace.events.find((event) => event.seq === seq)
+      expect(source).toBeDefined()
+      expect(source).toMatchObject({ thread_id: threadID, turn_id: turn.id })
+      expect(["user_message", "steer", "tool_result"]).toContain(source!.kind)
+    }
+  }
+  await info.attach("memory-review-trace", { body: JSON.stringify(trace, null, 2), contentType: "application/json" })
 
   // The review runs after the turn, on its own. Skills live behind the
   // project menu so the folder stays a directory, not a catalogue.
@@ -73,8 +122,23 @@ test("a project carries what one conversation learned into the next", async ({
   })
   const skillCard = page.getByTestId("skill-card")
   await expect(skillCard).toBeVisible({ timeout: 60_000 })
-  const skillName = ((await skillCard.locator("button").first().textContent()) ?? "").trim()
+  const skillName = review.skills?.[0].name ?? ""
   expect(skillName).not.toBe("")
+  await expect(skillCard.getByText(skillName, { exact: true })).toBeVisible()
+  const threadResponse = await request.get(`/api/threads/${threadID}`)
+  expect(threadResponse.ok()).toBe(true)
+  const { thread } = await threadResponse.json() as { thread: { project_id: string } }
+  const memoryResponse = await request.get(`/api/projects/${thread.project_id}/memory`)
+  expect(memoryResponse.ok()).toBe(true)
+  const { memory } = await memoryResponse.json() as { memory: { memory: { text: string; rev: string }; skills: { name: string }[] } }
+  expect(memory.memory.text).toContain(first)
+  expect(memory.memory.rev).not.toBe("")
+  expect(memory.skills.map((skill) => skill.name)).toContain(skillName)
+  const skillResponse = await request.get(`/api/projects/${thread.project_id}/skills/${skillName}`)
+  expect(skillResponse.ok()).toBe(true)
+  const { skill } = await skillResponse.json() as { skill: { name: string; body: string } }
+  expect(skill.name).toBe(skillName)
+  expect(skill.body.trim().length).toBeGreaterThan(0)
   await skillCard.locator("button").first().click()
   const skillToggle = skillCard.locator("button").first()
   await expect(skillToggle).toHaveAttribute("aria-expanded", "true")

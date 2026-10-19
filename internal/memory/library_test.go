@@ -7,12 +7,12 @@ import (
 
 func TestLibraryReviewPromptStoresSkillsAndRefusesNotes(t *testing.T) {
 	p := LibraryReviewPrompt()
-	for _, want := range []string{ToolSkillManage, ToolSkillView, "no project", "shared skill library", "write nothing", "collides", "no note store"} {
+	for _, want := range []string{ToolSkillManage, ToolSkillView, "no project", "shared skill library", "write nothing", "One subject", "no note store"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("library review missing %q:\n%s", want, p)
 		}
 	}
-	if strings.Contains(p, ToolMemory) {
+	if strings.Contains(p, "target "+ToolMemory) {
 		t.Fatalf("a library review must not be handed the notes tool:\n%s", p)
 	}
 }

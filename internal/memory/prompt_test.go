@@ -206,12 +206,12 @@ func TestMemoryPromptsStayGenericAndGrounded(t *testing.T) {
 // bar is what keeps the store worth reading.
 func TestReviewPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 	p := ReviewPrompt()
-	for _, want := range []string{ToolMemory, ToolSkillManage, ToolSkillView} {
+	for _, want := range []string{ToolMemory, ToolSkillManage, ToolSkillView, ToolApplyReview} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("the reviewer must be told about %q:\n%s", want, p)
 		}
 	}
-	for _, want := range []string{"not continuing", "nothing worth storing", "write nothing", "do not retry", "collides", "remaining count", "one or two", "merge", "stem", "one by one"} {
+	for _, want := range []string{"not continuing", "no update", "current project notes", "exact quote", "unstated date", "fallible", "refusal", "empty array", "merge", "one by one"} {
 		if !strings.Contains(p, want) {
 			t.Fatalf("the reviewer must be allowed to store nothing (%q missing):\n%s", want, p)
 		}
@@ -299,5 +299,45 @@ func TestPromptAtHighFillForbidsGrowingWrites(t *testing.T) {
 	}
 	if !strings.Contains(out, "will be refused") || !strings.Contains(out, "replacing a note with a longer one") {
 		t.Fatalf("a store at 80%% must say a growing write will be refused:\n%s", out)
+	}
+}
+
+func TestReviewPromptBoundsTheDeltaAndMaintainsProcedureExecutionOrder(t *testing.T) {
+	prompt := ReviewPrompt()
+	for _, required := range []string{"First identify durable changes supported by this turn", "Compare only related", "unrelated old memory", "immediately submit an empty array", "execution order", "preconditions", "recovery steps", "not append a timeline"} {
+		if !strings.Contains(prompt, required) {
+			t.Fatalf("review instruction lacks the generic delta/order boundary %q", required)
+		}
+	}
+	if strings.Index(prompt, "First identify") > strings.Index(prompt, "Compare only related") {
+		t.Fatal("review must identify supported differences before comparing related old entries")
+	}
+	for _, preserved := range []string{"scope, conditions, version and negation", "exact quote", "unstated date", "revision-checked commit", "quoted text", "successful paired tool_result"} {
+		if !strings.Contains(prompt, preserved) {
+			t.Fatalf("latency instructions weakened %q", preserved)
+		}
+	}
+}
+
+func TestReviewPromptSeparatesNormalWorkFromConditionalRecovery(t *testing.T) {
+	prompt := ReviewPrompt()
+	for _, required := range []string{
+		"normal path separately from recovery branches for failures that have already occurred",
+		"Make each recovery branch self-contained",
+		"entry condition for each branch",
+		"success was observed after the relevant failure",
+		"observed return-to-normal or completion condition",
+		"do not require executing the normal path first",
+		"failed probes are diagnostic context, not actions to repeat automatically",
+		"without turning observed chronology into a required replay",
+	} {
+		if !strings.Contains(prompt, required) {
+			t.Errorf("review instruction does not constrain procedure branches: missing %q", required)
+		}
+	}
+	for _, leak := range []string{"fixture", "heldout", "baseline", "dataset", "python", "docker", "example", "e.g."} {
+		if strings.Contains(strings.ToLower(prompt), leak) {
+			t.Errorf("review instruction contains task-specific illustration %q", leak)
+		}
 	}
 }

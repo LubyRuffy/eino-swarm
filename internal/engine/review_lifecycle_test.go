@@ -67,7 +67,7 @@ func TestLifecycleHistoryReadFailurePreservesSkillFolding(t *testing.T) {
 				}
 			}
 			want := int32(0)
-			if mode == "review" {
+			if mode != "disabled" {
 				want = 1
 			}
 			if fullReads.Load() != want {

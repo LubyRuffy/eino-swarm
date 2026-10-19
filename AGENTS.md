@@ -117,6 +117,18 @@ E2E suite.
   Do not repair this feedback loop by matching a user's words or business data.
 - Never test against a network or a real model. Use the scripted offline
   provider, and keep its script generic.
+- Memory quality tests must not treat prior notes, old reviewer output, or model
+  agreement as truth. Freeze source evidence and follow-up checks before comparing
+  final facts, missed explicit corrections, conflicts and task behavior. Optional
+  knowledge need not be stored. Distinguish source/number checks from semantic
+  truth, and paired/shared outputs from independent runs.
+- Review note callbacks on a NotesDraft are proposals until commit. Regress
+  failure/conflict without partial notes, and actual skill changes surviving a
+  later batch refusal; skills are not part of a cross-file notes transaction.
+- Post-turn memory review must bind an immutable snapshot to the finishing
+  path's terminal status. A database finish does not update the caller's running
+  turn object. Regress that real boundary, notes-only failed-review tools and no
+  skill folding; a fixture already initialized as failed is insufficient.
 - Every feature must be reachable through the one-id troubleshooting path: a turn
   id in, the whole run out (`zwai trace <id>`, `GET /api/trace/:turn`, the Trace
   tab's Full log). A new event kind that is not recorded there is not finished.

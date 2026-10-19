@@ -167,11 +167,16 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-420 Configuration and project memory
 
-- 目的：保留本机设置、项目说明和技能；使用者：PC 用户；入口：Settings、Memory、技能管理；输入：配置及项目文件；输出：后续运行可用的上下文；前置条件：本机数据目录；失败表现：保存或解析错误；关联契约：`C-009`；实现证据：`internal/config`, `internal/memory`, `docs/CONFIG.md`。
-- 会话摘要与记忆复核接收按 turn 归属的持久化 worker 生命周期事实，输入预算及摘要落库优先保留事实；旧摘要和模型自述只作待核对叙述，冲突创建量不能提升为执行证据。旧笔记／技能仍可在 Memory 中人工编辑，系统不按用户业务关键词清洗。关联契约：`C-008`、`C-012`；实现／测试证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`internal/engine/session_memory.go`、`internal/engine/review_source.go`。
+- 目的：保留本机设置、项目说明和技能；使用者：PC 用户；入口：Settings、Memory、技能管理；输入：配置及项目文件；输出：后续运行可用的上下文；前置条件：本机数据目录；失败表现：保存或解析错误；关联契约：`C-009`、`C-012`、`C-025`；实现证据：`internal/config`, `internal/memory`, `docs/CONFIG.md`。
+- 会话摘要与成功回合记忆复核接收从完整历史重建、按 turn 归属的持久化 worker 生命周期事实；摘要预算与落库优先保留事实，复核先从源总 rune 预算预留完整事实块并独立前置，再选择事件来源，不把事实或派生摘要当作可引用写入来源。失败回合 human-only 不接收该前置块；旧摘要和模型自述只作待核对叙述，冲突创建量不能提升为执行证据。旧笔记／技能仍可在 Memory 中人工编辑，系统不按用户业务关键词清洗。关联契约：`C-008`、`C-012`；实现／测试证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`internal/engine/session_memory.go`、`internal/engine/review_source.go`。
 - 压缩提示预览只显示摘要正文；生命周期证据继续保存在内部摘要、模型上下文与诊断中。关联契约：`C-008`；证据：`internal/engine/compact.go`、`internal/engine/autocompact.go`、`internal/engine/compact_evidence_test.go`、`internal/server/compact_evidence_test.go`。
 - 技能可以复制到另一个项目，得到的是独立文件。来源以后的修改要在副本上点更新才会过来；副本改过则不会被静默覆盖，也不会写回来源。没改过的副本仍跟踪最初的项目。入口：Memory 里每个技能的复制，以及多于一个技能时的复制全部。实现证据：`internal/memory/skill_copy.go`, `internal/server/skill_copy.go`, `frontend/src/components/app/skill-copy-dialog.tsx`, `frontend/e2e/skill-copy.spec.ts`。
 - 不在项目里的会话没有笔记。回合正常结束后，可复用流程写入数据目录下的共享技能库（数据目录中的 library/skills/）。之后的纯对话会带上这份索引，并用 `skill_view` 打开；当场不能改库。Memory 页可以整理目录，也可以把技能复制进某个项目；副本的更新从技能库拉取。副本改过、两边都改过、或来源已删，文案按这个状态说，不把来源是技能库当成唯一信息。点项目文件夹不会把这份列表换成那个项目的笔记。总开关 `memory.enabled` 关掉后，提示词里不再带上，也不再写入。实现证据：`internal/engine/library_test.go`, `internal/memory/library.go`, `internal/server/library.go`, `frontend/e2e/library-skills.spec.ts`。
+
+- Settings → Memory 的 Review thinking 可独立指定回合复盘推理档位，默认跟随会话；只影响自动复盘和 Review now。入口证据：`frontend/src/components/app/memory-settings.tsx`、`frontend/e2e/settings.spec.ts`、`internal/config/memory.go`、`internal/engine/review_profile_test.go`；关联契约 `C-025`。
+- 来源身份 framing 超过单源 rune 上限时整组省略，配对工具不拆开，被省略正文不能作为写入证据。技能提炼指令区分常规路径与已发生故障的独立恢复分支，明确有证据的进入、恢复及回归/结束条件，不要求重演失败探测。该指令仍须效果评测验证。关联契约：`C-025`；证据：`internal/engine/review_source_select_test.go`、`internal/memory/prompt_test.go`。
+- 自动复盘不再因 manager 曾写入一项记忆而跳过整轮；成功回合复盘完整有效来源，失败项目回合只保留真实人类长期要求，不提炼技能、工具结果或派生摘要；取消不触发自动复盘。当前 notes 在项目复盘锁内、模型调用前读取；源事件优先保留人类纠正，再选择近期完整工具配对，按 rune 限额包含来源 framing；现有 notes、技能目录及系统指令另计。入口：正常/失败回合后的自动复盘、Memory 的 Review now（最近成功回合）；实现证据：`internal/engine/review.go`、`internal/engine/review_human.go`、`internal/engine/review_source_select.go`、`internal/engine/review_quality_test.go`、`internal/engine/review_source_select_test.go`。
+- 自动 reviewer 用一次完整批次提交 notes/skills 变更；notes 在内存草稿复用既有校验，最终按首次模型输入的同一 notes revision 一次提交，普通拒绝后不重基；思考期间的并发编辑终止本轮，不追加修复请求，失败或冲突不半写；skills 仍即时落盘，后续失败也记录真实技能变化，不声称跨文件事务。每项变更引用源 seq 与原文，notes 的新增数字须出现在引文或被替换旧条目中；这是来源/拼写约束，不证明语义真值。成功后程序收尾，不再请求模型写结束语；拒绝可在原迭代上限内修复，同 turn Trace 保留可选 evidence/refused。关联契约：`C-025`、`C-012`；实现证据：`internal/engine/review_batch.go`、`internal/engine/review_evidence.go`、`internal/memory/notes_draft.go`、`internal/engine/review_batch_test.go`、`internal/engine/review_evidence_test.go`、`internal/memory/notes_draft_test.go`。
 
 ### F-430 Build and release paths
 

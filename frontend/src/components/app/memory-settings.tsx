@@ -72,6 +72,20 @@ export function MemorySettings({
       </SettingsSection>
 
       <SettingsSection title={t("settings.memory.budget")}>
+        <SettingsChoice
+          query={query}
+          label={t("settings.memory.reviewThinking")}
+          hint={t("settings.memory.reviewThinkingHint")}
+          value={settings.memory.review_reasoning_effort || "inherit"}
+          onValueChange={(effort) =>
+            update({ review_reasoning_effort: effort === "inherit" ? "" : effort })
+          }
+        >
+          <SelectItem value="inherit">{t("settings.memory.reviewThinkingInherit")}</SelectItem>
+          <SelectItem value="low">{t("settings.memory.reviewThinkingLow")}</SelectItem>
+          <SelectItem value="medium">{t("settings.memory.reviewThinkingMedium")}</SelectItem>
+          <SelectItem value="high">{t("settings.memory.reviewThinkingHigh")}</SelectItem>
+        </SettingsChoice>
         <Field
           query={query}
           label={t("settings.memory.charLimit")}
