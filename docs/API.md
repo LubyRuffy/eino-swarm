@@ -615,7 +615,11 @@ phone composer can still attach a file or an image.
 
 A project is a working directory, an instruction and a memory shared by its
 conversations. See [CONFIG.md](CONFIG.md) for the budgets and
-[DATA_MODEL.md](DATA_MODEL.md) for the on-disk layout.
+[DATA_MODEL.md](DATA_MODEL.md) for the on-disk layout. The native desktop directory
+picker supplies a path draft; creation and updates still use the endpoints and
+workdir validation below. See [C-026](CONTRACTS.md#c-026-project-working-directory-selection).
+
+A non-empty `workdir` is a literal absolute path: leading/trailing whitespace is not removed. Empty or all-whitespace selects managed storage. Save and runtime resolution preserve the same directory; if a selected directory disappears, the request is refused rather than redirected to a trimmed sibling. Existing normalized stored paths need no migration; callers should remove decorative padding themselves.
 
 ### `GET /api/projects`
 

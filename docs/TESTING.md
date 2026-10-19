@@ -164,6 +164,36 @@ compare final supported facts, explicit corrections, conflicts and later task
 behavior. Neither prior memory, old reviewer outputs nor model consensus is a
 truth label. Keep paired/shared-output samples distinct from independent runs.
 
+## Project working-directory selection (F-120 / C-026)
+
+`frontend/src/lib/workdir.test.ts` verifies the native bridge boundary and
+request/result pairing. `frontend/src/components/app/workdir-input.test.tsx`
+covers selection, cancellation, inline errors, preserved manual entry, and late
+results after the form closes. `project-dialog.test.tsx` covers filling the form
+without saving it, waiting for the picker before save, and clearing a refused
+workdir after another selection.
+`frontend/e2e/workdir.spec.ts` drives project create/edit and saved paths with a
+controlled native bridge, and checks that the browser does not offer a folder
+picker. `internal/desktop/directory_test.go` tests origin and existing absolute
+directory validation; `internal/engine/project_test.go` retains the save-time
+workdir contract.
+
+```bash
+go test -race -count=1 -cover -timeout 20m ./internal/desktop ./internal/engine
+cd frontend && npm test -- src/lib/workdir.test.ts src/components/app/workdir-input.test.tsx src/components/app/project-dialog.test.tsx
+cd frontend && npm run e2e -- e2e/workdir.spec.ts
+```
+
+The controlled browser bridge proves the form flow, not the system picker.
+Native acceptance opens New project and Edit project in the actual desktop
+window, chooses a folder, cancels without losing the path, then saves and
+reopens the project. Closing the form while the picker is open must leave a
+subsequently opened form unchanged.
+With no extension filters, Go regressions require `AllowsOtherFileTypes=true`
+and `CanChooseFiles=false`; native acceptance must also confirm that the folder
+confirmation button is enabled and fills the path. Option assertions alone do
+not replace that native check.
+
 ## Single PC work disclosures (F-130 / C-022)
 
 `frontend/src/components/app/transcript-fold.test.tsx` verifies that one finished
@@ -2408,3 +2438,5 @@ packaged Android WebView.
 ```bash
 go test -race ./internal/engine -run 'TestToolJSONGuard|TestInvalidTrailingToolCall'
 ```
+
+Directory identity regressions in `internal/engine/project_workdir_identity_test.go`, `project-dialog.test.tsx` and `frontend/e2e/workdir.spec.ts` cover a selected trailing-space folder with and without its trimmed sibling, create/edit/readback/runtime resolution, and deletion after a real selection before Save. Manual non-empty paths are literal; all-whitespace remains managed. Native acceptance must repeat create/edit through the actual system picker against the same candidate binary; browser bridge fixtures alone are insufficient.

@@ -236,3 +236,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 不变量：正式 notes 的 changes 仅描述已提交净变化；原 Markdown 和手工编辑兼容；技能已落盘事实不因 notes 失败而消失；边界条件：长 CJK/工具输出、末尾纠正、同回合多项要求、工具拒绝、失败/取消、并发编辑、超限、跨技能写入与重复完成。
 - 证据：实现 `internal/engine/review.go`、`internal/engine/review_batch.go`、`internal/engine/review_evidence.go`、`internal/engine/review_human.go`、`internal/engine/review_source_select.go`、`internal/engine/review_source.go`、`internal/engine/worker_lifecycle_facts.go`、`internal/memory/notes_draft.go`；测试 `internal/engine/review_quality_test.go`、`internal/engine/review_batch_test.go`、`internal/engine/review_cas_test.go`、`internal/engine/review_evidence_test.go`、`internal/engine/review_source_select_test.go`、`internal/engine/worker_lifecycle_facts_test.go`、`internal/memory/notes_draft_test.go`、`internal/memory/notes_draft_bench_unix_test.go`。
 - 变更规则：同步 README、ARCHITECTURE、API、DATA_MODEL、FEATURES、TESTING、CHANGELOG 及来源/批次/存储回归；来源：用户 2026-10-19 的记忆实际效果对照及现有链路修复要求。
+
+## C-026 Project working-directory selection
+
+- 状态：active；类型：lifecycle / compatibility / security；作用范围：项目新建／编辑对话框、原生桌面目录桥接、工作目录保存及运行解析；关联功能：`F-120`。
+- 契约内容：选择目录入口仅在当前窗口具有真实原生桌面桥接时显示，不以 URL 的 shell 标记或引擎 mode 推断。系统选择器只选择单个现存的绝对目录。原生端校验请求来源和目录路径，选择成功只填入工作目录草稿，保存沿用现有项目接口及工作目录校验。非空目录路径不裁剪首尾空白；路径标准化仍使用 filepath.Clean。全空白保留托管目录行为。保存、编辑和实际运行解析必须指向同一所选目录；路径失效时拒绝并保留草稿，不回退到去空白后的同名目录。
+- 允许行为：手动输入绝对路径、取消选择、清空后使用 zwai 管理目录；禁止行为：将文件或不存在的路径当成已接受的工作目录，将目录选择变成上传／复制操作，浏览器提供无法获得本机绝对路径的选择入口。
+- 失败语义：取消不清空原值；选择错误在工作目录字段下显示，保留当前草稿并允许重试；不变量：关闭或切换项目后迟到的选择结果不能改变后续对话框，目录权限与项目删除边界不变；边界条件：桌面和浏览器共享同一引擎、目录在选择后被删除、选择器未结束时关闭对话框。
+- 证据：实现 `frontend/src/components/app/project-dialog.tsx`, `frontend/src/components/app/workdir-input.tsx`, `frontend/src/lib/workdir.ts`, `internal/desktop/directory.go`, `internal/engine/project.go`；测试 `frontend/src/components/app/project-dialog.test.tsx`, `frontend/src/components/app/workdir-input.test.tsx`, `frontend/src/lib/workdir.test.ts`, `frontend/e2e/workdir.spec.ts`, `internal/desktop/directory_test.go`, `internal/engine/project_test.go`, `internal/engine/project_workdir_identity_test.go`。
+- 变更规则：同步 README、FEATURES、TESTING、ARCHITECTURE 和 CHANGELOG，回归原生来源／目录校验、取消／迟到结果、Web 降级与保存；来源：用户 2026-10-13 避免手动输入项目工作目录的要求。

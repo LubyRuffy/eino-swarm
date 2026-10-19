@@ -67,7 +67,8 @@ func appOptions(opts Options) application.Options {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
-		OnShutdown: opts.OnShutdown,
+		OnShutdown:        opts.OnShutdown,
+		RawMessageHandler: directoryMessageHandler(opts.URL, chooseNativeDirectory),
 		WarningHandler: func(msg string) {
 			if staleWindowWarning(msg) {
 				return

@@ -41,7 +41,9 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-120 Conversations and projects
 
-- 目的：创建、组织、搜索和继续对话；使用者：PC 用户；入口：侧边栏、项目、`/api/threads`；输入：项目和消息；输出：可恢复的对话；前置条件：本机数据库可写；失败表现：错误提示或不存在的对话；关联契约：`C-001`, `C-008`；实现证据：`internal/engine`, `internal/store`, `frontend/src/store/app.ts`。
+- 目的：创建、组织、搜索和继续对话；使用者：PC 用户；入口：侧边栏、项目、`/api/threads`；输入：项目和消息；输出：可恢复的对话；前置条件：本机数据库可写；失败表现：错误提示或不存在的对话；关联契约：`C-001`, `C-008`, `C-026`；实现证据：`internal/engine`, `internal/store`, `frontend/src/store/app.ts`。
+- 项目工作目录：原生桌面新建／编辑项目时可用「选择目录」打开系统目录窗口，将单个现存目录的绝对路径填入字段；取消保留原值，选择失败在字段下显示错误。手动输入与留空使用 zwai 管理目录仍可用；浏览器提示桌面支持选择目录，不提供无法返回本机绝对路径的目录上传。保存仍经现有工作目录校验。实现／验证证据：`frontend/src/components/app/project-dialog.tsx`, `frontend/src/components/app/workdir-input.tsx`, `frontend/src/lib/workdir.ts`, `internal/desktop/directory.go`, `internal/desktop/directory_test.go`, `internal/engine/project_test.go`, `frontend/src/components/app/project-dialog.test.tsx`, `frontend/src/components/app/workdir-input.test.tsx`, `frontend/src/lib/workdir.test.ts`, `frontend/e2e/workdir.spec.ts`。
+- 目录身份：非空目录路径不裁剪首尾空白；路径标准化仍使用 filepath.Clean。全空白保留托管目录行为。保存、编辑和实际运行解析必须指向同一所选目录；路径失效时拒绝并保留草稿，不回退到去空白后的同名目录。兼容变化：手动输入非空路径也按实际路径验证，不再猜测修正外围空白；已保存的规范路径无需迁移。证据：`internal/engine/project_workdir_identity_test.go`。
 
 ### F-125 Unread completion attention
 

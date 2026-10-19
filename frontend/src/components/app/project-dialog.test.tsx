@@ -1,10 +1,25 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ProjectDialog } from "./project-dialog"
 import { ToastStack } from "./toast-stack"
 import { ApiError } from "@/lib/api"
 import type { Project } from "@/lib/types"
+
+const directory = vi.hoisted(() => ({
+  available: vi.fn(),
+  choose: vi.fn(),
+}))
+vi.mock("@/lib/workdir", () => ({
+  nativeDirectoryAvailable: directory.available,
+  chooseDirectory: directory.choose,
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  directory.available.mockReturnValue(true)
+  directory.choose.mockResolvedValue("/picked/project")
+})
 
 const project: Project = {
   id: "pj_1",
@@ -34,6 +49,51 @@ function renderDialog(props: Partial<Parameters<typeof ProjectDialog>[0]> = {}) 
 }
 
 describe("Project dialog", () => {
+  it("lets a directory selection fill the project without saving it", async () => {
+    const { onSave } = renderDialog()
+    fireEvent.click(screen.getByRole("button", { name: "Choose directory" }))
+    await waitFor(() =>
+      expect(screen.getByLabelText("Working directory")).toHaveValue(
+        "/picked/project",
+      ),
+    )
+    expect(onSave).not.toHaveBeenCalled()
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Chosen" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }))
+    await waitFor(() => expect(onSave).toHaveBeenCalled())
+    expect(onSave.mock.calls[0][0].workdir).toBe("/picked/project")
+  })
+
+  it("waits for directory selection before enabling project creation", async () => {
+    let finish!: (path: string) => void
+    directory.choose.mockReturnValue(new Promise<string>((resolve) => {
+      finish = resolve
+    }))
+    renderDialog()
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Selected" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Choose directory" }))
+    expect(screen.getByRole("button", { name: "Create project" })).toBeDisabled()
+    finish("/picked")
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Create project" })).toBeEnabled(),
+    )
+  })
+
+  it("clears a refused directory error when another directory is selected", async () => {
+    const onSave = vi.fn().mockRejectedValue(new ApiError("not a directory", 400, "workdir"))
+    renderDialog({ onSave })
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "P" } })
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("not a directory")
+    fireEvent.click(screen.getByRole("button", { name: "Choose directory" }))
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull())
+    expect(screen.getByLabelText("Working directory")).toHaveValue("/picked/project")
+  })
+
   it("sends what the user typed and closes", async () => {
     const { onSave, onOpenChange } = renderDialog()
     fireEvent.change(screen.getByLabelText("Name"), {
@@ -45,13 +105,25 @@ describe("Project dialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create project" }))
 
     await waitFor(() => expect(onSave).toHaveBeenCalled())
-    // Trailing whitespace in a path is a typo, never an intention, and the
-    // server would refuse it.
+    // Filesystem names can contain whitespace. Validation belongs to the
+    // server; the form must not silently select a different directory.
     expect(onSave.mock.calls[0][0]).toMatchObject({
       name: "Spaced",
-      workdir: "/tmp/anchor",
+      workdir: " /tmp/anchor ",
     })
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+  })
+
+  it.each([false, true])("preserves the chosen directory identity when editing=%s", async (editing) => {
+    const selected = "/picked/project \t"
+    directory.choose.mockResolvedValue(selected)
+    const { onSave } = renderDialog(editing ? { project } : {})
+    if (!editing) fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Exact" } })
+    fireEvent.click(screen.getByRole("button", { name: "Choose directory" }))
+    await waitFor(() => expect(screen.getByLabelText("Working directory")).toHaveValue(selected))
+    fireEvent.click(screen.getByRole("button", { name: editing ? "Save" : "Create project" }))
+    await waitFor(() => expect(onSave).toHaveBeenCalled())
+    expect(onSave.mock.calls[0][0].workdir).toBe(selected)
   })
 
   it("cannot create a nameless project", () => {

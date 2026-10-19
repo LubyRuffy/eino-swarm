@@ -666,6 +666,16 @@ things:
   permissions. Leave it empty and zwai keeps one for you;
 - **memory**, on by default.
 
+In the desktop window, **Choose directory / 选择目录** opens the system folder
+picker and fills the working-directory field with the chosen folder's absolute
+path. Cancelling keeps the current value; a selection error appears below the
+field. The browser keeps manual path entry and the empty managed-directory
+option because it cannot provide a local folder's absolute path. Saving checks
+that the selected directory still exists. Selecting a directory uses its files
+in place. See [C-026](docs/CONTRACTS.md#c-026-project-working-directory-selection).
+
+A non-empty working directory keeps its path whitespace, including a folder name ending in a space. Saving and later turns use the same directory. Paste the intended absolute path without decorative padding; empty or all-whitespace still uses the managed directory.
+
 With memory and auto-review on, each successful turn is reviewed even if the
 manager already wrote memory: one saved requirement does not prove that the
 whole turn was covered. A failed project turn may retain explicit human

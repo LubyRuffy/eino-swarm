@@ -1039,8 +1039,9 @@ server chose. Eight sessions per process.
 
 ## Shell differences
 
-Everything is shared except the native affordances, advertised by `GET /api/meta`
-so the UI never renders a control it cannot deliver:
+Everything is shared except the native affordances. File reveal and URL opening
+are advertised by `GET /api/meta`; project-directory selection depends on the
+live native bridge in the current window:
 
 | | `zwai web` | `zwai desktop` |
 |---|---|---|
@@ -1049,6 +1050,18 @@ so the UI never renders a control it cannot deliver:
 | `capabilities.reveal` | `false` — download instead | `true` — opens the file manager |
 | `capabilities.open_url` | `false` — `window.open` a new tab | `true` — system browser |
 | integrated terminal | same PTY on the loopback process | same |
+| project working-directory input | manual absolute path or empty managed directory | same, plus system directory picker |
+
+`frontend/src/lib/workdir.ts` sends directory requests through the Wails raw
+message bridge. `internal/desktop/directory.go` checks the window origin, opens a
+directory-only picker, and returns the single existing absolute directory.
+The frontend fills the project form without trimming path whitespace. Save
+and runtime resolution preserve the same directory; a missing selection is
+refused without falling back to a trimmed sibling. The existing
+`POST /api/projects` / `PATCH /api/projects/:id` validation and persistence flow
+remains in use. Cancellation preserves the field, and a closed form
+ignores a late result. No directory is uploaded or copied. See
+`C-026` in [CONTRACTS.md](docs/CONTRACTS.md#c-026-project-working-directory-selection).
 
 The in-app terminal is not a desktop-only affordance: web mode is still a
 loopback process, and the shell starts in the conversation's workspace on

@@ -70,6 +70,9 @@ E2E suite.
 - A pre-model validation test must run through the actual Registry/ADK/HTTP
   adapter boundary and thread each middleware's returned state. A manual hook
   invocation cannot prove that an upstream request was prevented.
+- Selected filesystem paths have identity. Regress save and runtime resolution
+  with trailing whitespace, a trimmed sibling, and deletion after selection;
+  never silently redirect a missing selection to another existing directory.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
 - If something cannot be tested, split it until the untestable part is a two-line

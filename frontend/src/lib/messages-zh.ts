@@ -844,6 +844,10 @@ export const zh: { [K in keyof typeof en]: string } = {
   "project.workdirPlaceholder": "留空则由 zwai 管理",
   "project.workdirHint":
     "必须是已经存在的绝对路径。代理用你的权限直接读写。",
+  "project.workdirChoose": "选择目录",
+  "project.workdirChoosing": "正在选择目录…",
+  "project.workdirDesktopHint": "桌面端支持选择目录。",
+  "project.workdirChooseFailed": "没法选择目录：{error}",
   "project.memory": "记忆",
   "project.memoryOn": "每次会话后留下值得带走的：笔记和可复用流程。",
   "project.memoryOff": "这次安装关掉了记忆；请先在设置里打开。",

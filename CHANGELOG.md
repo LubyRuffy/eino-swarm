@@ -13,9 +13,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-120`, `C-026`: desktop project creation and editing now offer a system directory picker. Cancelling keeps the current path; selection failures show an inline error. Manual entry and the empty managed directory remain available, and the browser explains the desktop option. Directory selection uses files in place and retains save-time validation. The native folder confirmation button is usable without extension filters.
+
 - `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.
 
 ### Changed
+
+- **Breaking** `F-120`, `C-026`: non-empty working directories keep their path whitespace through save and runtime resolution. Callers must send the intended absolute path without decorative padding; all-whitespace input still selects managed storage. Previously stored normalized paths require no migration.
 
 - `F-430`, `C-010`: prepared mobile package `0.1.32` and development iOS build `132` metadata for the existing allocated batch; platform publication remains pending and TestFlight marketing version is selected independently by the release adapter.
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).

@@ -161,8 +161,8 @@ func (e *Engine) MoveThread(threadID, projectID string) error {
 // ProjectWorkdir is where a project's conversations work: the directory the
 // user named, or the one zwai manages for it.
 func (e *Engine) ProjectWorkdir(p *store.Project) string {
-	if dir := strings.TrimSpace(p.Workdir); dir != "" {
-		return dir
+	if strings.TrimSpace(p.Workdir) != "" {
+		return p.Workdir
 	}
 	return e.cfg.ProjectWorkspaceDir(p.ID)
 }
@@ -406,10 +406,11 @@ func (e *Engine) prepareProjectDirs(p *store.Project) error {
 // directory that looks like the right one, and finding that out ten minutes
 // into a turn.
 func normalizeWorkdir(dir string) (string, error) {
-	dir = strings.TrimSpace(dir)
-	if dir == "" {
+	if strings.TrimSpace(dir) == "" {
 		return "", nil
 	}
+	// Nonblank paths are filesystem identities. Trimming a selected name can
+	// redirect a turn into a different existing sibling without any error.
 	if !filepath.IsAbs(dir) {
 		return "", fmt.Errorf("%w: %q is not an absolute path", ErrInvalidWorkdir, dir)
 	}

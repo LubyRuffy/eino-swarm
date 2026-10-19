@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { WorkdirInput } from "@/components/app/workdir-input"
 import { ApiError, type ProjectPatch } from "@/lib/api"
 import type { Project } from "@/lib/types"
 import { useT } from "@/lib/use-t"
@@ -42,6 +43,7 @@ export function ProjectDialog({
   const [workdir, setWorkdir] = useState("")
   const [memory, setMemory] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [choosingWorkdir, setChoosingWorkdir] = useState(false)
   const [workdirError, setWorkdirError] = useState<string>()
 
   useEffect(() => {
@@ -62,7 +64,7 @@ export function ProjectDialog({
       await onSave({
         name: name.trim(),
         system_prompt: prompt,
-        workdir: workdir.trim(),
+        workdir,
         memory_enabled: memory,
       })
       onOpenChange(false)
@@ -117,20 +119,18 @@ export function ProjectDialog({
 
           <div className="grid gap-1.5">
             <Label htmlFor="project-workdir">{t("project.workdir")}</Label>
-            <Input
-              id="project-workdir"
+            <WorkdirInput
+              key={project?.id ?? "new"}
               value={workdir}
-              placeholder={t("project.workdirPlaceholder")}
-              onChange={(e) => setWorkdir(e.target.value)}
-              aria-invalid={Boolean(workdirError)}
+              onChange={(next) => {
+                setWorkdir(next)
+                setWorkdirError(undefined)
+              }}
+              error={workdirError}
+              disabled={saving}
+              active={open}
+              onBusyChange={setChoosingWorkdir}
             />
-            {workdirError ? (
-              <p className="text-xs text-destructive">{workdirError}</p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                {t("project.workdirHint")}
-              </p>
-            )}
           </div>
 
           <div className="flex items-start justify-between gap-4 rounded-md border border-border p-3">
@@ -161,7 +161,7 @@ export function ProjectDialog({
             {t("project.cancel")}
           </Button>
           <Button
-            disabled={saving || name.trim() === ""}
+            disabled={saving || choosingWorkdir || name.trim() === ""}
             onClick={() => void submit()}
           >
             {project ? t("project.save") : t("project.create")}

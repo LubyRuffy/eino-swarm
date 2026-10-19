@@ -895,6 +895,10 @@ export const en = {
   "project.workdirPlaceholder": "Leave empty and zwai manages one",
   "project.workdirHint":
     "An absolute path that already exists. The agents read and write it directly, with your permissions.",
+  "project.workdirChoose": "Choose directory",
+  "project.workdirChoosing": "Choosing directory…",
+  "project.workdirDesktopHint": "Choose a directory in the desktop app.",
+  "project.workdirChooseFailed": "Couldn't choose the directory: {error}",
   "project.memory": "Memory",
   "project.memoryOn":
     "After each conversation, keep what is worth carrying forward: notes and reusable procedures.",
