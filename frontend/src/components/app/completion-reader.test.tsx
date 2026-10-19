@@ -25,6 +25,15 @@ describe("reading a displayed completion", () => {
     await waitFor(() => expect(read).toHaveBeenCalledWith("one", 12))
     await waitFor(() => expect(useApp.getState().threads[0].unread).toBe(false))
   })
+  it("acks a displayed stopped turn without calling it successful", async () => {
+    const transcript = [event("user_message", 10), event("user_stop_requested", 11), event("error", 12, { err: "interrupted" })]
+      .reduce((state, ev) => reduceEvent(state, ev), emptyTranscript())
+    expect(transcript.turns[0].status).toBe("cancelled")
+    useApp.setState({ transcript })
+    render(<CompletionReader />)
+    await waitFor(() => expect(read).toHaveBeenCalledWith("one", 12))
+    await waitFor(() => expect(useApp.getState().threads[0].unread).toBe(false))
+  })
   it.each(["loading", "not displayed", "hidden"])("keeps attention while %s", async (state) => {
     if (state === "loading") useApp.setState({ loaded: false })
     if (state === "not displayed") useApp.setState({ transcript: emptyTranscript() })

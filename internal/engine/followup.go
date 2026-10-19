@@ -96,7 +96,7 @@ func (e *Engine) restoreFollowup(f *store.Followup) {
 // A late steer that already claimed the next turn gets ErrBusy; the row
 // goes back to the front so it runs after that one.
 func (rt *runtime) flushFollowup(status string) bool {
-	if status != store.TurnDone {
+	if status != store.TurnDone || rt.engine.restarting() {
 		return false
 	}
 	item, err := rt.engine.store.PopFollowup(rt.threadID)

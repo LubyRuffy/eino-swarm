@@ -234,8 +234,8 @@ function AgentsTab({
     )
   }
 
-  // One order for both groups. Running stays under Active; finished and
-  // failed stay under Done. The clock is this worker's own events, so a
+  // Stopped tasks have no completion evidence and stay separate from Done.
+  // The clock is this worker's own events, so a
   // resume does not look newly created.
   const active = sortAgentIds(
     workers.filter((id) => transcript.agents[id].status === "running"),
@@ -244,7 +244,13 @@ function AgentsTab({
     t.locale,
   )
   const finished = sortAgentIds(
-    workers.filter((id) => transcript.agents[id].status !== "running"),
+    workers.filter((id) => ["done", "failed"].includes(transcript.agents[id].status)),
+    transcript.agents,
+    sort,
+    t.locale,
+  )
+  const stopped = sortAgentIds(
+    workers.filter((id) => transcript.agents[id].status === "cancelled"),
     transcript.agents,
     sort,
     t.locale,
@@ -264,6 +270,13 @@ function AgentsTab({
         {finished.length > 0 ? (
           <Section title={t("panel.done", { n: finished.length })}>
             {finished.map((id) => (
+              <AgentRow key={id} agent={transcript.agents[id]} onSelect={onSelect} />
+            ))}
+          </Section>
+        ) : null}
+        {stopped.length > 0 ? (
+          <Section title={t("panel.stopped", { n: stopped.length })}>
+            {stopped.map((id) => (
               <AgentRow key={id} agent={transcript.agents[id]} onSelect={onSelect} />
             ))}
           </Section>
@@ -388,9 +401,10 @@ function AgentRow({
   agent,
   onSelect,
 }: {
-  agent: { id: string; role: string; status: "running" | "done" | "failed"; activity: string }
+  agent: Pick<AgentState, "id" | "role" | "status" | "activity">
   onSelect: (id: string) => void
 }) {
+  const t = useT()
   return (
     <button
       type="button"
@@ -401,7 +415,7 @@ function AgentRow({
       <StatusDot status={agent.status} />
       <AgentName agent={agent} />
       <MarqueeText
-        text={agent.activity}
+        text={agent.status === "cancelled" ? t("status.cancelled") : agent.activity}
         active={agent.status === "running"}
         className="text-xs text-muted-foreground"
       />

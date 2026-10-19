@@ -44,12 +44,21 @@ func timeoutRecoveryError(id string, failures int) error {
 func (h *Handle) completeWorker(result string, err error, timeout time.Duration, watchErr, runErr error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	if h.handoff.cancelled || (h.handoff.read && err == nil) {
+		if h.handoff.read && err == nil {
+			h.handoff.summary = result
+		}
+		h.result, h.err, h.finished = "", ErrHandoff, time.Now()
+		return
+	}
 	h.result, h.err = result, err
 	if err != nil && errors.Is(watchErr, context.DeadlineExceeded) && runErr == nil {
 		h.timeoutFailures++
 		h.err = &WorkerTimeoutError{AgentID: h.ID, Timeout: timeout, Consecutive: h.timeoutFailures, Err: err}
 	} else {
-		h.timeoutFailures = 0
+		if err == nil || !h.handoff.requested {
+			h.timeoutFailures = 0
+		}
 		if err != nil && runErr != nil {
 			h.err = fmt.Errorf("swarm: agent %s cancelled: %w", h.ID, err)
 		}

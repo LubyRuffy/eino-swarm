@@ -276,6 +276,9 @@ func (rt *runtime) waitAsk(ctx context.Context, questions []AskQuestion) (AskAns
 		return reply.answers, reply.err
 	}
 	rt.ask = &pendingAsk{callID: callID, questions: questions, ch: ch}
+	if rt.acceptedAsk != nil && rt.acceptedAsk.CallID != callID {
+		rt.acceptedAsk = nil
+	}
 	rt.mu.Unlock()
 	if callID == "" {
 		if id := rt.peekAskCallID(); id != "" {
@@ -321,14 +324,19 @@ func (rt *runtime) signalAsk(callID string, reply askReply) error {
 		if rt.ask != nil && rt.ask.ch != nil {
 			expected := rt.ask.callID
 			ch := rt.ask.ch
-			rt.mu.Unlock()
 			if expected != "" && callID != "" && expected != callID {
+				rt.mu.Unlock()
 				return ErrAskMismatch
 			}
 			select {
 			case ch <- reply:
+				if reply.err == nil {
+					rt.acceptedAsk = &restartAskAnswer{CallID: expected, Answers: reply.answers}
+				}
+				rt.mu.Unlock()
 				return nil
 			default:
+				rt.mu.Unlock()
 				return ErrAskMismatch
 			}
 		}
@@ -357,6 +365,9 @@ func (rt *runtime) signalAsk(callID string, reply askReply) error {
 		// tool_call is recorded before InvokableRun arms the channel.
 		rt.askStash = &reply
 		rt.askStashCallID = callID
+		if reply.err == nil {
+			rt.acceptedAsk = &restartAskAnswer{CallID: openID, Answers: reply.answers}
+		}
 		rt.mu.Unlock()
 		return nil
 	}
@@ -379,6 +390,11 @@ func (rt *runtime) askCallIDOnTurn(tid string) string {
 
 // AnswerTurn delivers structured choices for the in-flight ask_user call.
 func (e *Engine) AnswerTurn(threadID, callID string, raw AskAnswers) error {
+	done, err := e.beginAdmission()
+	if err != nil {
+		return err
+	}
+	defer done()
 	if _, err := e.store.GetThread(threadID); err != nil {
 		return err
 	}
@@ -407,6 +423,11 @@ func (e *Engine) AnswerTurn(threadID, callID string, raw AskAnswers) error {
 
 // AnswerTurnText answers every pending question with the typed line as Other.
 func (e *Engine) AnswerTurnText(threadID, text string) error {
+	done, err := e.beginAdmission()
+	if err != nil {
+		return err
+	}
+	defer done()
 	if _, err := e.store.GetThread(threadID); err != nil {
 		return err
 	}
@@ -515,7 +536,14 @@ func (rt *runtime) resolveOrphanedAsk(ctx context.Context, turn *store.Turn, mes
 		waitCtx, stop = rt.reg.WithEpoch(ctx)
 		defer stop()
 	}
-	answers, werr := rt.waitAsk(waitCtx, questions)
+	var answers AskAnswers
+	var werr error
+	checkpoint := rt.engine.checkpointForTurn(turn.ID)
+	if checkpoint != nil && checkpoint.Answer != nil && checkpoint.Answer.CallID == open.ToolCallID {
+		answers = checkpoint.Answer.Answers
+	} else {
+		answers, werr = rt.waitAsk(waitCtx, questions)
+	}
 	body := FormatAskResult(answers)
 	if werr != nil {
 		raw, _ := json.Marshal(map[string]any{"ok": false, "error": werr.Error()})

@@ -116,7 +116,7 @@ export interface Block {
   images?: ImageRef[]
 }
 
-export type AgentStatus = "running" | "done" | "failed"
+export type AgentStatus = "running" | "done" | "failed" | "cancelled"
 
 export interface AgentState {
   id: string
@@ -243,6 +243,12 @@ export function reduceEvent(
     rewindCut: state.rewindCut,
   }
   if (applyScheduleEvent(next, ev)) return sealQuietTurns(next, ev)
+  // Recovery state is trace evidence, not a chat message or a new agent.
+  if (ev.kind === "engine_restart_checkpoint") return next
+  if (ev.kind === "restart_preparing" || ev.kind === "restart_ready" || ev.kind === "user_stop_requested") {
+    if (ev.text) append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text))
+    return next
+  }
   if (ev.kind === "steer_preempted") {
     return next
   }
@@ -292,7 +298,7 @@ export function reduceEvent(
     append(touchAgent(next, MANAGER_ID), row)
     return next
   }
-  if (ev.kind === "resumed") {
+  if (ev.kind === "resumed" || ev.kind === "restart_resumed") {
     next.running = true
     upsertTurn(next, ev.turn_id, { status: "running" })
     const manager = touchAgent(next, MANAGER_ID)
@@ -582,8 +588,9 @@ export function reduceEvent(
         closeStreaming(child, "reasoning")
         closeStreaming(child, "answer")
         closePendingTools(child, ev.text)
-        child.status = "done"
-        child.activity = "done"
+        child.status = "cancelled"
+        child.activity = "stopped"
+        child.endedAt = ev.created_at
       }
       break
 
@@ -624,8 +631,9 @@ export function reduceEvent(
     case "done":
     case "error": {
       const failed = ev.kind === "error"
+      const cancelled = failed && ev.err === "interrupted"
       upsertTurn(next, ev.turn_id, {
-        status: failed ? "error" : "done",
+        status: cancelled ? "cancelled" : failed ? "error" : "done",
         endedAt: ev.created_at,
         final: ev.text,
         error: ev.err,
@@ -651,11 +659,12 @@ export function reduceEvent(
           closeStreaming(child, "answer")
           closePendingTools(child, ev.err)
           if (child.status === "running") {
-            child.status = "failed"
+            child.status = cancelled ? "cancelled" : "failed"
             child.activity = "stopped"
+            child.endedAt = ev.created_at
           }
         }
-        if (ev.err) append(manager, block(ev, "error", ev.err))
+        if (ev.err) append(manager, block(ev, cancelled ? "notice" : "error", ev.err))
       }
       break
     }

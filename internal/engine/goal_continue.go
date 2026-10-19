@@ -28,7 +28,7 @@ func GoalContinueText() string {
 // workers, and the next fire reads the bare context-canceled finish as a
 // process death, resumes the same ids, and is reaped again.
 func (rt *runtime) continueGoal(status string) {
-	if status != store.TurnDone {
+	if status != store.TurnDone || rt.engine.restarting() {
 		return
 	}
 	if rt.engine.hasFutureWake(rt.threadID) {

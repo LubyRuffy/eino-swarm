@@ -9,6 +9,7 @@ import (
 
 	"github.com/cloudwego/eino/adk"
 	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/schema"
 )
 
 // RestoredWorker is a sub-agent that was still running when the previous
@@ -19,8 +20,10 @@ type RestoredWorker struct {
 	Role            string
 	Instruction     string // stored system prompt; empty means workerInstruction(Task)
 	Task            string
-	Seed            string // conversation so far, injected before the first model call
-	TimeoutFailures int    // consecutive watchdog stops before the process died
+	Seed            string            // conversation so far, injected before the first model call
+	TimeoutFailures int               // consecutive watchdog stops before the process died
+	History         []*schema.Message // structured replay, preferred over a flattened Seed
+	Inbox           []string          // messages not yet delivered before the process stopped
 }
 
 // FinishedWorker is a sub-agent that already completed in the previous
@@ -61,6 +64,11 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	if err != nil {
 		return nil, err
 	}
+	h.mu.Lock()
+	h.handoff.task, h.handoff.instruction = task, instruction
+	h.handoff.restoreHistory = cloneMessages(w.History)
+	h.inbox = append(h.inbox, w.Inbox...)
+	h.mu.Unlock()
 	r.mu.Lock()
 	hook := r.spawnHook
 	r.mu.Unlock()
@@ -74,6 +82,9 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 func (r *Registry) claimForRestore(id, role string, failures int) (*Handle, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.handingOff {
+		return nil, ErrHandoff
+	}
 	if r.closed {
 		return nil, fmt.Errorf("restore: registry closed")
 	}

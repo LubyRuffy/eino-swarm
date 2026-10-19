@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -14,8 +13,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -114,7 +111,7 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 	started := time.Now()
 	watch.Run(ctx, started, func() (int, bool, int) {
 		phone := a.Remote != nil && a.Remote.Status().Online
-		return len(a.Server.Clients()), phone, len(a.Engine.Running())
+		return len(a.Server.Clients()), phone, a.Engine.ActiveWork()
 	})
 	shut(a)
 	select {
@@ -142,13 +139,19 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 		return "", err
 	}
 	dir := cfg.DataDir()
+	started := time.Now()
+	ctx := context.Background()
+	restarting := false
 	for {
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("engine restart exceeded its 30s budget: %w", err)
+		}
 		rec, err := lease.Discover(dir, mock)
 		// The lock is taken before engine.json exists. Wait for that
 		// record, then apply the same build and active-turn checks as an
 		// engine that was already listening when this shell opened.
 		if err != nil && !errors.Is(err, lease.ErrMockMismatch) && !errors.Is(err, lease.ErrUnreachable) {
-			if started, held, waitErr := discoverIfStarting(dir, mock); held {
+			if started, held, waitErr := discoverIfStartingContext(ctx, dir, mock); held {
 				if waitErr != nil {
 					return "", waitErr
 				}
@@ -158,27 +161,19 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 		switch {
 		case err == nil:
 			if lease.SameEngine(rec, lease.ThisBuild(version)) {
+				if restarting {
+					log.Printf("engine restarted in %s; continuing tasks from saved progress", time.Since(started).Round(time.Millisecond))
+				}
 				return rec.URL, nil
 			}
-			// A window restart is not a new engine. The binary the user just
-			// opened has to be the one holding the database, or the phone keeps
-			// talking to the build they thought they replaced. A turn that is
-			// actually calling the model finishes first. A parked schedule and
-			// a question waiting on the human are not that turn.
-			force, err := waitUntilQuiet(rec.URL)
-			if err != nil {
-				// The process can exit while this shell is waiting. A dead pid
-				// is the same as no engine; failing the launch would leave the
-				// user with nothing to attach to.
+			if !restarting {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithDeadline(ctx, started.Add(restartBudget))
+				defer cancel()
+				restarting = true
+			}
+			if err := replaceEngine(ctx, rec); err != nil {
 				if _, discErr := lease.Discover(dir, mock); !errors.Is(discErr, lease.ErrNotRunning) {
-					return "", err
-				}
-			} else {
-				stop := lease.Stop
-				if force {
-					stop = lease.Kill
-				}
-				if err := stop(rec.PID); err != nil {
 					return "", err
 				}
 			}
@@ -187,9 +182,9 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 			return "", err
 		}
 		if testing.Testing() {
-			return startInProcessEngine(dir, addr, mock)
+			return startInProcessEngineContext(ctx, dir, addr, mock)
 		}
-		if _, err := spawnEngine(dir, addr, mock); err != nil {
+		if _, err := spawnEngineContext(ctx, dir, addr, mock); err != nil {
 			return "", err
 		}
 		// A competing holder may have won while our child started. Its
@@ -205,12 +200,15 @@ var engineBootWait = 15 * time.Second
 // discoverIfStarting waits when another process already holds the lock but
 // has not published a URL yet. The bool is true when this shell must inspect
 // that holder's identity or report its startup failure instead of starting.
-func discoverIfStarting(dir string, mock bool) (lease.Record, bool, error) {
+func discoverIfStartingContext(ctx context.Context, dir string, mock bool) (lease.Record, bool, error) {
 	if !lease.Busy(dir) {
 		return lease.Record{}, false, nil
 	}
 	deadline := time.Now().Add(engineBootWait)
 	for {
+		if err := ctx.Err(); err != nil {
+			return lease.Record{}, true, fmt.Errorf("engine startup wait: %w", err)
+		}
 		rec, err := lease.Discover(dir, mock)
 		if err == nil {
 			return rec, true, nil
@@ -225,136 +223,6 @@ func discoverIfStarting(dir string, mock bool) (lease.Record, bool, error) {
 			return lease.Record{}, true, errors.New("engine holds the data directory but is not listening")
 		}
 		time.Sleep(50 * time.Millisecond)
-	}
-}
-
-// quietPoll is how often a newer shell asks whether the live engine is
-// still in a model call. Short enough that a turn ending is not a long
-// pause before the window opens. replaceHeartbeat is the status line
-// while that wait continues. replaceForceAfter is when the shell asks
-// before it kills the old process.
-const (
-	quietPoll         = 200 * time.Millisecond
-	replaceHeartbeat  = 10 * time.Second
-	replaceForceAfter = 30 * time.Second
-)
-
-// quietNow, quietSleep and confirmReplace are the wait loop's clock and
-// the yes/no question. Tests move the clock instead of sleeping 30s.
-var (
-	quietNow       = time.Now
-	quietSleep     = time.Sleep
-	confirmReplace = func() bool { return readForceReplace(os.Stdin, stdinIsTTY()) }
-)
-
-type replaceWait struct {
-	poll       time.Duration
-	heartbeat  time.Duration
-	forceAfter time.Duration
-	now        func() time.Time
-	sleep      func(time.Duration)
-	logf       func(string, ...any)
-	confirm    func() bool
-}
-
-// waitUntilQuiet reports whether the caller should kill the live engine.
-// False means no conversation is in a model call. True means the user
-// confirmed a force stop while one still was.
-func waitUntilQuiet(base string) (bool, error) {
-	client := &http.Client{Timeout: 2 * time.Second}
-	return waitToReplace(func() (bool, error) {
-		return engineBusy(client, base)
-	}, replaceWait{
-		poll: quietPoll, heartbeat: replaceHeartbeat, forceAfter: replaceForceAfter,
-		now: quietNow, sleep: quietSleep, logf: log.Printf, confirm: confirmReplace,
-	})
-}
-
-func waitToReplace(busy func() (bool, error), w replaceWait) (bool, error) {
-	if w.now == nil {
-		w.now = time.Now
-	}
-	if w.sleep == nil {
-		w.sleep = time.Sleep
-	}
-	if w.logf == nil {
-		w.logf = log.Printf
-	}
-	if w.confirm == nil {
-		w.confirm = confirmReplace
-	}
-	if w.poll <= 0 {
-		w.poll = quietPoll
-	}
-	started := w.now()
-	var lastBeat, lastAsk time.Time
-	told := false
-	for {
-		running, err := busy()
-		if err != nil {
-			return false, err
-		}
-		if !running {
-			if told {
-				w.logf("the running turn finished; replacing the engine")
-			}
-			return false, nil
-		}
-		if !told {
-			w.logf("waiting for the running turn to finish before replacing the engine")
-			told = true
-		}
-		now := w.now()
-		elapsed := now.Sub(started)
-		if w.heartbeat > 0 && elapsed >= w.heartbeat && (lastBeat.IsZero() || now.Sub(lastBeat) >= w.heartbeat) {
-			w.logf("engine replace: checked at %s; a turn is still running", elapsed.Round(time.Second))
-			lastBeat = now
-		}
-		if w.forceAfter > 0 && elapsed >= w.forceAfter && (lastAsk.IsZero() || now.Sub(lastAsk) >= w.forceAfter) {
-			if w.confirm() {
-				running, err = busy()
-				if err != nil {
-					return false, err
-				}
-				if !running {
-					w.logf("the running turn finished; replacing the engine")
-					return false, nil
-				}
-				w.logf("force-stopping the running turn and replacing the engine")
-				return true, nil
-			}
-			// Count the interval from the answer. A slow "no" must not
-			// be followed by another question on the next poll.
-			lastAsk = w.now()
-			w.logf("still waiting for the running turn to finish")
-		}
-		w.sleep(w.poll)
-	}
-}
-
-var toldNoTerminal sync.Once
-
-func readForceReplace(in io.Reader, tty bool) bool {
-	if !tty {
-		toldNoTerminal.Do(func() {
-			log.Print("engine replace: no terminal to confirm a force stop; still waiting")
-		})
-		return false
-	}
-	fmt.Fprint(os.Stderr, "Force stop the running turn and replace the engine? [y/N] ")
-	line, err := bufio.NewReader(in).ReadString('\n')
-	if err != nil && line == "" {
-		return false
-	}
-	return replaceConfirmed(line)
-}
-
-func replaceConfirmed(line string) bool {
-	switch strings.ToLower(strings.TrimSpace(line)) {
-	case "y", "yes", "是":
-		return true
-	default:
-		return false
 	}
 }
 
@@ -391,7 +259,12 @@ func engineBusy(client *http.Client, base string) (bool, error) {
 	return false, nil
 }
 
-func startInProcessEngine(dir, addr string, mock bool) (string, error) {
+func startInProcessEngineContext(parent context.Context, dir, addr string, mock bool) (string, error) {
+	if err := parent.Err(); err != nil {
+		return "", err
+	}
+	boot, stopBoot := context.WithTimeout(parent, restartBudget)
+	defer stopBoot()
 	ctx, cancel := context.WithCancel(context.Background())
 	ready := make(chan string, 1)
 	errCh := make(chan error, 1)
@@ -411,13 +284,20 @@ func startInProcessEngine(dir, addr string, mock bool) (string, error) {
 			err = errors.New("engine stopped before it was listening")
 		}
 		return "", err
-	case <-time.After(30 * time.Second):
+	case <-boot.Done():
 		cancel()
-		return "", errors.New("engine did not start")
+		return "", fmt.Errorf("engine did not start: %w", boot.Err())
 	}
 }
 
 func spawnEngine(dir, addr string, mock bool) (string, error) {
+	return spawnEngineContext(context.Background(), dir, addr, mock)
+}
+
+func spawnEngineContext(ctx context.Context, dir, addr string, mock bool) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return "", err
@@ -454,6 +334,9 @@ func spawnEngine(dir, addr string, mock bool) (string, error) {
 	deadline := time.Now().Add(engineBootWait)
 	childExited := false
 	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return "", fmt.Errorf("engine restart: %w", err)
+		}
 		if !childExited {
 			select {
 			case <-exited:

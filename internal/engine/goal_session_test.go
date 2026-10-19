@@ -341,7 +341,7 @@ func TestTurnOutcomePrefersAModelFailureOverInterruptNoise(t *testing.T) {
 	rt := e.runtimeFor(th.ID)
 	interrupt, stopInterrupt := context.WithCancel(context.Background())
 	t.Cleanup(stopInterrupt)
-	status, text := rt.turnOutcome(interrupt, errors.New("chat model refused the request"))
+	status, text, _ := rt.turnOutcome(interrupt, errors.New("chat model refused the request"))
 	if status != store.TurnError {
 		t.Fatalf("status=%s text=%q", status, text)
 	}
@@ -356,7 +356,7 @@ func TestTurnOutcomeTreatsABareCancelAsAnError(t *testing.T) {
 	rt := e.runtimeFor(th.ID)
 	interrupt, stopInterrupt := context.WithCancel(context.Background())
 	t.Cleanup(stopInterrupt)
-	status, text := rt.turnOutcome(interrupt, context.Canceled)
+	status, text, _ := rt.turnOutcome(interrupt, context.Canceled)
 	if status != store.TurnError {
 		t.Fatalf("a cancelled model without Interrupt must not look done: status=%s text=%q", status, text)
 	}

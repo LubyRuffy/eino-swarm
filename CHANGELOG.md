@@ -21,12 +21,16 @@ co-working app built on it. The library API is unchanged except where noted
 
 - **Breaking** `F-120`, `C-026`: non-empty working directories keep their path whitespace through save and runtime resolution. Callers must send the intended absolute path without decorative padding; all-whitespace input still selects managed storage. Previously stored normalized paths require no migration.
 
+- `F-110`, `F-130`, `F-150`, `C-001`, `C-027`: replacing an engine now automatically checkpoints active/background agents and resumes unfinished work within one 30s launch budget, without a terminal confirmation. Worker summaries remain best effort and never count as task completion; histories, unread messages, human pauses and timeout budgets survive handoff. Checkpoint failures explicitly stop replacement. Older engines use bounded event-based recovery.
+
 - `F-430`, `C-010`: prepared mobile package `0.1.32` and development iOS build `132` metadata for the existing allocated batch; platform publication remains pending and TestFlight marketing version is selected independently by the release adapter.
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
 
 - `F-140`, `C-028`: image-suffixed generic binary/UTI drops remain vision input with a normalized MIME claim; real-byte type validation remains on the server. Browser regressions use decodable JPEGs and verify unchanged bytes, saved images and reload.
+
+- `F-130`, `C-002`, `C-003`, `C-027`: PC cleanup and human interruption retain stopped workers in a separate Stopped group across replay instead of reporting successful completion or model failure. Restart ownership is ordered against complete turn finalization, including worker parking and durable terminal writes, preventing false human stops, lost workers and premature readiness.
 
 - `F-220`, `C-006`, `C-009`: the phone's PC model picker can refresh upstream catalogs, show newly available models and remove retired choices. Refresh is read-only, preserves explicit selection and the previous list on failure, and reports an older PC locally without disconnecting the conversation (Issue #81).
 - `F-125`, `F-220`, `C-006`, `C-023`: phones skip optional completion reads when an older PC omits its completion watermark, so repeated scheduled checks do not show unsupported-operation link errors. A numeric zero watermark still accepts the first visible completion, and real acknowledgement failures retain their error and unread state (Issue #80).

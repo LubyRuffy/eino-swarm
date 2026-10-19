@@ -48,7 +48,13 @@ type runtime struct {
 	// abandoned is set when the process is dying. The in-memory run stops,
 	// but the turn stays running in the database so the next start continues
 	// it. Distinct from interrupt(), which is a user stop.
-	abandoned bool
+	abandoned        bool
+	restartAskCallID string
+	restartCap       *restartCheckpoint
+	acceptedAsk      *restartAskAnswer
+	acceptedContinue *bool
+	userStopped      bool
+	finishGate       chan struct{}
 	// leftover workers from a crashed process, consumed by the first RunWith.
 	restore []swarm.RestoredWorker
 	planted []swarm.FinishedWorker
@@ -114,8 +120,15 @@ func (rt *runtime) status() Status {
 	return st
 }
 
-func (rt *runtime) interrupt() {
+func (rt *runtime) interruptTurn(turnID string) bool {
 	rt.mu.Lock()
+	if turnID != "" && rt.turnID != turnID {
+		rt.mu.Unlock()
+		return false
+	}
+	if turnID != "" {
+		rt.userStopped = true
+	}
 	cancel := rt.cancel
 	running := rt.running
 	ch := rt.continueCh
@@ -136,6 +149,7 @@ func (rt *runtime) interrupt() {
 	if running && cancel != nil {
 		cancel()
 	}
+	return true
 }
 
 // abandon cancels the in-memory run without treating it as a user stop.
@@ -163,6 +177,8 @@ func (rt *runtime) occupy(reg *swarm.Registry, cancel context.CancelFunc, turnID
 	rt.abandoned = false
 	rt.restore, rt.planted = nil, nil
 	rt.ask, rt.askStash, rt.askStashCallID, rt.askCompletedCallID = nil, nil, "", ""
+	rt.acceptedAsk, rt.acceptedContinue = nil, nil
+	rt.userStopped = false
 	rt.planImplement = false
 	return true
 }
@@ -242,6 +258,15 @@ func (e *Engine) StartTurn(threadID, text string) (*store.Turn, error) {
 }
 
 func (e *Engine) StartTurnInput(threadID string, in UserInput) (*store.Turn, error) {
+	done, err := e.beginAdmission()
+	if err != nil {
+		return nil, err
+	}
+	defer done()
+	return e.startTurnInput(threadID, in)
+}
+
+func (e *Engine) startTurnInput(threadID string, in UserInput) (*store.Turn, error) {
 	th, err := e.store.GetThread(threadID)
 	if err != nil {
 		return nil, err
@@ -488,23 +513,7 @@ func (e *Engine) SteerInput(threadID string, in UserInput) error {
 // conversation with parked /goal workers is also stopped: those would
 // otherwise keep burning tokens after the manager has already finished.
 func (e *Engine) Interrupt(threadID string) error {
-	if _, err := e.store.GetThread(threadID); err != nil {
-		return err
-	}
-	e.mu.Lock()
-	rt := e.runtimes[threadID]
-	e.mu.Unlock()
-	if rt == nil {
-		return ErrIdle
-	}
-	if rt.status().Running {
-		rt.interrupt()
-		return nil
-	}
-	if rt.reapParked() {
-		return nil
-	}
-	return ErrIdle
+	return e.interruptThread(threadID)
 }
 
 // ---------- the run itself ----------
@@ -529,6 +538,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	messages []adk.Message, inputCount int, images []store.ImageRef, resumed bool,
 ) {
 	e := rt.engine
+	var finishUnlock func()
 	defer func() {
 		r := recover()
 		rt.release(cancel, idle, turn.ID)
@@ -540,6 +550,9 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 				Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID,
 				Err: fmt.Sprintf("internal error: %v", r)})
 			rt.blockOpenGoalOnTurnError()
+		}
+		if finishUnlock != nil {
+			finishUnlock()
 		}
 	}()
 
@@ -559,8 +572,12 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		}
 		e.closeOrphanedToolCalls(turn)
 		messages = rt.resolveOrphanedAsk(ctx, turn, messages)
+		kind, notice := KindResumed, resumeNotice
+		if e.checkpointForTurn(turn.ID) != nil {
+			kind, notice = KindRestartResumed, "Saved task progress restored; continuing."
+		}
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
-			Kind: KindResumed, AgentID: swarm.DefaultManagerID, Text: resumeNotice})
+			Kind: kind, AgentID: swarm.DefaultManagerID, Text: notice})
 	} else if turn.GoalContinue {
 		e.record(store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 			Kind: KindGoalContinued, AgentID: swarm.DefaultManagerID, Text: goalContinuedNotice})
@@ -585,21 +602,25 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	res, runErr := rt.runManager(ctx, turn, reg, acc, toolset, pc, messages)
 	stopBeat()
 	acc.flushAll()
+	finishUnlock, _ = rt.lockFinish(context.Background())
 
-	leftover := reg.TakePendingSteerMessages()
+	var leftover []*schema.Message
+	if !rt.isAbandoned() {
+		leftover = reg.TakePendingSteerMessages()
+	}
 	e.persistTranscript(rt.threadID, turn.ID, res.Transcript, inputCount)
 
-	// The process is exiting: keep the row running so the next start continues
-	// it. A user Interrupt takes the switch below and records cancelled.
-	if rt.isAbandoned() {
-		_ = reg.Cleanup()
-		reg.Close()
+	// Decide before releasing, which cancels the context. Freeze and this
+	// decision share rt.mu so a restart cancellation cannot become user Stop.
+	status, errText, abandoned := rt.turnOutcome(ctx, runErr)
+	if abandoned {
+		if !e.restarting() {
+			_ = reg.Cleanup()
+			reg.Close()
+		}
 		return
 	}
 
-	// Read the outcome before releasing, because releasing cancels the
-	// interrupt context and would make every turn look interrupted.
-	status, errText := rt.turnOutcome(ctx, runErr)
 	if status == store.TurnError && isContextOverflow(runErr) {
 		errText = e.noteContextOverflow(turn, errText)
 	}
@@ -660,6 +681,8 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		rt.pauseOpenGoalOnInterrupt()
 	}
 	_ = e.store.TouchThread(rt.threadID)
+	finishUnlock()
+	finishUnlock = nil
 	// Briefing and review run after the terminal event, in the background:
 	// the composer already looks idle, and a queued follow-up must start
 	// rather than sit there looking stuck. Compact still waits on the
@@ -749,6 +772,9 @@ func isAuxiliaryAgent(id string) bool {
 // highest sequence it has seen would discard the older one as a duplicate and
 // lose it until the next reload.
 func (e *Engine) record(ev store.Event) {
+	if e.skipRestartAskResult(ev) {
+		return
+	}
 	e.recordMu.Lock()
 	if ev.TurnID != "" {
 		if _, dropped := e.droppedTurns[ev.TurnID]; dropped {

@@ -51,6 +51,7 @@ type Engine struct {
 	runtimes map[string]*runtime
 	subs     map[string]map[int]*subscriber
 	nextSub  int
+	restart  restartState
 
 	// recordMu keeps a stored event's sequence number and its delivery in the
 	// same order. See record.
@@ -444,6 +445,16 @@ func (e *Engine) Waiting() []string {
 // a review that is cut off mid-write would leave a note half stored, and a
 // review that never finishes must not keep the app open.
 func (e *Engine) Shutdown() {
+	if e.GetRestartStatus().Ready {
+		e.StopScheduler()
+		e.mu.Lock()
+		targets := append([]*restartTarget(nil), e.restart.targets...)
+		e.mu.Unlock()
+		for _, target := range targets {
+			target.reg.Close()
+		}
+		return
+	}
 	e.StopScheduler()
 	// Wrappers register on sessions.wg at launch and scheduleReview after
 	// the briefing. Wait for them before refusing new reviews, or a quit

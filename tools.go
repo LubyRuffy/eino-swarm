@@ -150,6 +150,9 @@ func refuseAdmit(err error) (string, error, bool) {
 }
 
 func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
+	if r.isHandingOff() {
+		return ctlRefuse(ErrHandoff.Error())
+	}
 	a, problem := readSpawnArgs(args)
 	if problem != "" {
 		return ctlRefuse(problem)

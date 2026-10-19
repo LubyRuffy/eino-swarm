@@ -1,5 +1,62 @@
 # Testing
 
+## Automatic restart handoff (F-110 / C-027)
+
+`handoff_test.go` and `internal/engine/restart_test.go` cover shared deadlines,
+worker/tool admission, structured histories and unread inboxes, real completion
+versus handoff, watchdog budgets, active/parked workers, human pauses and
+checkpoint failures. `internal/engine/restart_parked_test.go` proves actual
+worker execution after restart while the manager remains completed and its
+future wake stays unchanged. `internal/remote/restart_test.go` prevents private
+checkpoint bodies leaving the PC. `internal/server/restart_http_test.go` covers idempotent
+HTTP acknowledgement, readable status, same-origin refusal and admission errors.
+`TestRestartLateWorkerToolResultStaysUnknownAfterRegistryClose` keeps late
+cancelled tool results unknown even after the registry has closed;
+`TestRestartLateUnknownReceiptKeepsItsCallIdentity` replays both unknown and
+confirmed late receipts for managers and workers without losing call pairing.
+`TestRestartCannotCancelATurnBetweenItsFinishChecks` gates the real manager's
+outcome read while `PrepareRestart` takes ownership; it prevents restart from
+turning completed work into a human cancellation.
+`internal/engine/restart_finish_ownership_test.go` exercises restart at the
+normal completion/worker parking boundary and while terminal persistence is
+blocked after idle closes. It also checks deadline failure and retry without
+partial runtime abandonment; readiness cannot precede durable finalization.
+`TestRestartRejectsAnUnstoredNormalCompletion` injects terminal-event and turn
+status write failures into a real completed run. Replacement must report the
+missing durable completion instead of accepting an idle runtime as ready.
+`internal/engine/restart_answer_replay_test.go` sends real answers before the
+waiter arms and across a new question, then checks cold-replayed tool results
+and model input. `internal/engine/restart_inbox_replay_test.go` checks unread
+messages, distinct steering sequences and peer roles survive exactly once.
+`internal/app/restart_parked_failure_test.go` opens real saved checkpoints with
+a missing provider or exhausted watchdog; startup must report failure without
+inventing work, changing the completed manager or advancing its future wake.
+`frontend/src/lib/transcript-stop.test.ts`,
+`frontend/src/components/app/panel-stop.test.tsx` and the restart UI E2E cover
+cleanup/interruption, stopped grouping, terminal ordering and persisted replay.
+
+`cmd/zwai/engine_restart_acceptance_test.go` builds real race-enabled binaries,
+starts an old engine and a new shell on one temporary data directory, and
+measures process replacement and original task/worker restoration against 30s.
+Its keyless loopback model drives a real shell tool with a single filesystem
+side effect; recovery must retain the unknown call identity, inspect the effect
+and finish without repeating the write. It rejects replacement user turns,
+worker twins, false completion and terminal confirmation prompts. Binary build
+time precedes the measured restart. `go test -short` skips this expensive real
+process gate; a short run cannot substitute for the full acceptance.
+`cmd/zwai/engine_restart_budget_test.go` checks caller deadlines against real
+blocked startup and lease competition, including cleanup of owned resources.
+Native acceptance must use private data even when LaunchServices reopens the
+bundle without arguments. A default-directory launch invalidates that scenario;
+application startup or a backend script alone is not native-window acceptance.
+
+```bash
+go test -race -timeout 5m ./cmd/zwai -run TestRestartReplacesTheRealProcess -count=1 -v
+go test -race ./internal/engine ./internal/server -run Restart -count=1
+cd frontend && npm test -- --run src/lib/transcript-restart.test.ts
+```
+
+
 ## Phone model catalog refresh (F-220 / C-006)
 
 `internal/remote/catalog_refresh_test.go` uses `provider.New` and loopback
@@ -218,7 +275,10 @@ The phone does not decide whether a queued row is a live steer or a new turn;
 the host does. `internal/remote/followup_relay_test.go` sends real encrypted
 Pairlink requests through the production LinkPump and engine, verifies the
 new user event against the persisted Trace, and retains the unselected row
-after a second Stop. `internal/engine/followup_failure_test.go` uses SQLite
+after a second Stop. `TestFollowupRelayCleanupJoinsItsActiveWatch` verifies
+that fixture cleanup joins the LinkPump and its watch before another test
+can replace watch hooks; closing the Pairlink socket alone does not do this.
+`internal/engine/followup_failure_test.go` uses SQLite
 triggers to prove deletion, event-persistence and restoration error behavior;
 `internal/server/followup_failure_test.go` covers the HTTP missing/storage paths.
 
@@ -620,12 +680,16 @@ split so that everything which can fail is testable: `startDesktopServer`
 returns the window options without opening a window, and closing that
 window does not stop the engine. `serveWeb` takes an injected stop signal
 and leaves the engine up. `runTUI` attaches with `ensureEngine` and
-`tui.RunClient`. `TestEnsureEngineReplacesAnOlderBuild` is why a newer
-binary stops the process it would otherwise attach to; `TestEnsureEngineWaitsUntilTheTurnIsNotExecuting`
-is why that stop waits out a model call and does not wait on a question or
-a parked schedule. `TestReplaceAsksBeforeItKillsATurnThatWillNotFinish` is
-the 10s check and the 30s force question; `TestEnsureEngineKillsWhenTheUserForces`
-is why a yes kills the old process while the turn is still running.
+`tui.RunClient`. `TestEnsureEngineReplacesAnOlderBuild` checks why a newer
+binary replaces the process it would otherwise attach to.
+`TestReplacementStopsOnlyAfterTheCheckpointAcknowledgement` requires a durable
+handoff acknowledgement before stopping a capable engine.
+`TestEnsureEngineWaitsUntilTheTurnIsNotExecuting` covers the older engine's
+quiet wait, which does not wait on a human question or a parked schedule.
+`TestLegacyRestartUsesOneDeadlineWithoutAConfirmation` and
+`TestEnsureEngineAutomaticallyReplacesAnOlderBusyEngine` bound that legacy
+wait without terminal input. The launcher reports progress every 5s and shares
+one 30s budget across handoff, process exit and replacement readiness.
 `TestEnsureEngineStartsWhenTheOldProcessDiesWhileWaiting` is why a process
 that exits during that wait does not fail the launch.
 `TestKillEndsAProcessThatIgnoresStop` is why that kill follows a ignored

@@ -5,6 +5,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
@@ -43,7 +44,7 @@ func watchOpenEvents(cfg config.RemoteConfig) int {
 func eventView(ev store.Event, cfg config.RemoteConfig) EventView {
 	text := ev.Text
 	switch ev.Kind {
-	case "spawned":
+	case "spawned", engine.KindRestartCheckpoint:
 		// Worker instructions are project/task material. The phone gets
 		// the spawn notice, not the prompt body.
 		text = ""

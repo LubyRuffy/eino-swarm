@@ -104,6 +104,11 @@ func New(opts Options) (*App, error) {
 	} else if n > 0 {
 		logger.Info("resumed turns left over from a previous run", "count", n)
 	}
+	if n, err := eng.ResumeParkedWorkers(); err != nil {
+		logger.Warn("could not resume parked workers from a previous run", "err", err)
+	} else if n > 0 {
+		logger.Info("resumed parked workers from a previous run", "count", n)
+	}
 	// A future wake is not evidence those sub-agents survived the quit.
 	// Pull it due before the scheduler's first tick, or the tick waits
 	// out a timer that is polling corpses.

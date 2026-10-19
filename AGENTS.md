@@ -78,6 +78,19 @@ E2E suite.
   cannot prove that the selected image reached the visual-input path.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
+- Engine replacement follows `C-027`: freeze new work, durably checkpoint every
+  active or parked registry, then stop and restore within one launch deadline.
+  Regress real process replacement, original turn/worker identities, human
+  pauses and Stop, storage failure, and tool results arriving after shutdown.
+  Unknown external effects require verification before retry; a model summary
+  or process launch is not proof of handoff or recovery.
+- A cleanup event is not a worker completion receipt. Regress Stop and replay
+  with unfinished workers shown as stopped, actual finished workers retained,
+  and no model-failure retry banner for human interruption. Serialize restart
+  ownership against the whole normal finalization, including worker parking
+  and durable terminal writes. Regress a deadline while waiting for that
+  ownership: no partial abandonment, premature ready or lost parked worker.
+  Handoff cancellation cannot become a human-cancelled terminal event.
 - If something cannot be tested, split it until the untestable part is a two-line
   wrapper: `startDesktopServer` vs `runDesktop`, `serveWeb` vs `runWeb`,
   `buildTUISwarm` vs `runTUI`. Do not leave logic inside a function that no test

@@ -1,6 +1,10 @@
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
+  "notice.userStopRequested": "Stop requested by the user.",
+  "notice.restartPreparing": "Preparing task handoff before restarting.",
+  "notice.restartReady": "Task handoff saved; waiting for the replacement engine.",
+  "notice.restartResumed": "Saved task progress restored; continuing.",
   "notice.peerTask": "Peer task {id}: {text}",
   "header.idle": "Idle",
   "header.working": "Working",
@@ -242,6 +246,7 @@ export const en = {
     "No sub-agents yet. The manager starts them when a task is worth splitting up.",
   "panel.active": "Active ({n})",
   "panel.done": "Done ({n})",
+  "panel.stopped": "Stopped ({n})",
   "panel.sortBy": "Sort by",
   "panel.sortCreated": "Created",
   "panel.sortUpdated": "Last update",

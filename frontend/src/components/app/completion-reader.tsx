@@ -19,7 +19,7 @@ export function CompletionReader() {
   const displayed = useApp((s) => {
     const seq = s.threads.find((thread) => thread.id === s.activeId)?.completed_seq
     const turn = s.transcript.turns.find((row) => row.completedSeq === seq && !row.quiet)
-    return Boolean(turn && (turn.status === "done" || turn.status === "error") &&
+    return Boolean(turn && turn.status !== "running" &&
       s.transcript.agents[MANAGER_ID]?.blocks.some((block) => block.turnId === turn.id && !block.quiet && block.kind !== "spawn"))
   })
   const visit = useApp((s) => s.completionVisit ?? 0)

@@ -111,13 +111,13 @@ describe("standing objective and compact notices", () => {
     expect(JSON.stringify(state)).not.toMatch(/notes\.md|summarize|look into this/)
   })
 
-  it("revives a worker that is still emitting after a stale done tick", () => {
+  it("revives a worker that is still emitting after a stale cleanup tick", () => {
     const parked = fold([
       ev({ kind: "user_message", text: "go" }),
       ev({ kind: "spawned", agent_id: "worker-1", role: "worker" }),
       ev({ kind: "cleanup", text: "stopped 1 sub-agent(s) still running" }),
     ])
-    expect(parked.agents["worker-1"].status).toBe("done")
+    expect(parked.agents["worker-1"].status).toBe("cancelled")
     const live = fold(
       [
         ev({
@@ -146,7 +146,7 @@ describe("standing objective and compact notices", () => {
       ev({ kind: "cleanup", text: "stopped 1 sub-agent(s) still running at the end of the turn" }),
       ev({ kind: "done", text: "progress" }),
     ])
-    expect(state.agents["worker-1"].status).toBe("done")
+    expect(state.agents["worker-1"].status).toBe("cancelled")
     const [tool] = state.agents["worker-1"].blocks.filter((b) => b.kind === "tool")
     expect(tool.tool?.pending).toBe(false)
     expect(JSON.stringify(state)).not.toMatch(/notes\.md|summarize|look into this/)

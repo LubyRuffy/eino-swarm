@@ -548,3 +548,33 @@ Completion columns migrate as zero/false, so existing conversation history does
 not suddenly appear unread. Rewind deletes events and recomputes the surviving
 completion/read watermarks in the same transaction; the terminal identity floor
 is retained when the event counter is reseeded after restart (`C-023`).
+
+## Restart checkpoints (`C-027`)
+
+No new table is needed. A version-1 `engine_restart_checkpoint` event belongs
+to the original conversation/turn and stores `pause`, iteration-cap state and `cap_decision`, an accepted question
+`answer`, `human_stopped`,
+`manager_history`, `manager_inbox` and `workers`. Each worker records its
+original `id` and `role`, current invocation `task`, original-task
+`instruction`, structured `history`, unread
+`inbox`, `timeout_failures`, actual `finished`/`result`/`err`, optional handoff
+`summary`, and `in_flight` tools (`name`, `call_id`, `arguments`). After recovery,
+`task` can be a resumption cue; the original assignment remains in `instruction`
+and its retained conversation history.
+
+The latest valid checkpoint supplies recovery state; confirmed lifecycle
+events remain authoritative for subsequent completed work. Summaries are
+separate from results. In-flight calls receive an explicit unconfirmed outcome
+and retain their call identity rather than being automatically executed again.
+Checkpoints do not create completion attention. The event stays in the normal
+Trace and follows the existing data-directory permissions; streamed deltas
+remain broadcast-only. See `internal/engine/restart.go`,
+`internal/engine/resume_workers.go` and `handoff.go`.
+
+`user_stop_requested` is a durable human stop intent, separate from a turn's
+terminal event. Startup settles an unfinished turn that already has an
+acknowledged Stop or authoritative terminal event without executing it again.
+A completed manager turn can still own parked worker checkpoints;
+`ResumeParkedWorkers` restores those workers directly without minting another
+manager turn or moving its future wake. Active parked workers keep the engine
+alive while a future wake with no execution does not.

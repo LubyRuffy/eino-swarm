@@ -133,6 +133,8 @@ type workerSlot struct {
 	nseed                          int
 	timeoutFailures                int
 	history                        []adk.Message
+	restoredHistory                []*schema.Message
+	inbox                          []string
 }
 
 func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, finished []swarm.FinishedWorker) {
@@ -146,6 +148,30 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 			order = append(order, id)
 		}
 		return s
+	}
+	if checkpoint, index := latestRestartCheckpoint(events); checkpoint != nil {
+		for _, w := range checkpoint.Workers {
+			s := note(w.ID)
+			s.role, s.instruction, s.spawned, s.running = w.Role, w.Instruction, true, !w.Finished
+			s.result, s.err, s.timeoutFailures = w.Result, w.Err, w.TimeoutFailures
+			if checkpoint.HumanStopped {
+				s.running = false
+				s.err = "interrupted"
+			}
+			s.restoredHistory, s.inbox = w.History, w.Inbox
+			s.history = append(s.history, w.History...)
+			if w.Summary != "" {
+				fmt.Fprintf(&s.seed, "handoff summary: %s\n", w.Summary)
+				s.nseed++
+			}
+			if len(w.InFlight) > 0 {
+				body, _ := json.Marshal(w.InFlight)
+				fmt.Fprintf(&s.seed, "The following tool operations have unknown outcomes. Inspect actual state or a receipt before deciding whether retry is safe; never assume they failed: %s\n", body)
+				s.nseed++
+				s.inflight = true
+			}
+		}
+		events = events[index+1:]
 	}
 	for _, ev := range events {
 		if ev.Kind == KindUser || (ev.Kind == KindGoalResumed && ev.Role == "human") {
@@ -206,6 +232,9 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 				fmt.Fprintf(&s.seed, "assistant: %s\n", t)
 				s.nseed++
 				s.history = append(s.history, schema.AssistantMessage(t, nil))
+				if s.restoredHistory != nil {
+					s.restoredHistory = append(s.restoredHistory, schema.AssistantMessage(t, nil))
+				}
 			}
 			s.inflight = false
 		case swarm.NotifyToolResult.String():
@@ -213,9 +242,16 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 				fmt.Fprintf(&s.seed, "tool: %s\n", t)
 				s.nseed++
 			}
+			if s.restoredHistory != nil {
+				s.restoredHistory = append(s.restoredHistory, schema.ToolMessage(ev.Text, ev.ToolCallID))
+			}
 			s.inflight = false
 		case swarm.NotifyToolCall.String():
 			s.inflight = true
+			if s.restoredHistory != nil {
+				name, args := splitToolCallText(ev.Text)
+				s.restoredHistory = append(s.restoredHistory, schema.AssistantMessage("", []schema.ToolCall{{ID: ev.ToolCallID, Type: "function", Function: schema.FunctionCall{Name: name, Arguments: args}}}))
+			}
 		}
 	}
 	for _, id := range order {
@@ -226,6 +262,7 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 		if s.running {
 			w := swarm.RestoredWorker{
 				ID: id, Role: s.role, Instruction: s.instruction, Task: resumeCue, TimeoutFailures: s.timeoutFailures,
+				History: s.restoredHistory, Inbox: s.inbox,
 			}
 			if s.nseed > 0 {
 				w.Seed = "conversation so far:\n" + s.seed.String()
@@ -325,6 +362,12 @@ func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
 	if err != nil {
 		return nil, err
 	}
+	if events, err := e.store.ListTurnEvents(turn.ID); err == nil {
+		if checkpoint, index := latestRestartCheckpoint(events); checkpoint != nil && len(checkpoint.ManagerHistory) > 0 {
+			prior = nil
+			live = checkpointManagerMessages(checkpoint, events, index)
+		}
+	}
 	running, finished := e.workersFromThread(turn.ThreadID)
 	live = sealTrailingIncompleteToolCalls(live, running, finished)
 	combined := append(prior, live...)
@@ -336,6 +379,14 @@ func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
 	// not look like newly executed spawn calls after a restart.
 	combined = appendWorkerRoster(combined, running, finished)
 	msgs := resumeMessages(combined, text)
+	if events, err := e.store.ListTurnEvents(turn.ID); err == nil {
+		for _, call := range orphanedToolCalls(events) {
+			name := toolCallName(call.Text)
+			if name != waitAgentsToolName && name != ToolAskUser {
+				msgs = append(msgs, schema.UserMessage("This tool has an unknown outcome after restart. Inspect actual state or an external receipt before deciding whether retry is safe; do not assume failure: "+call.Text))
+			}
+		}
+	}
 	if len(running) > 0 && !hasUserContent(msgs, resumeWorkersCue) {
 		msgs = append(msgs, schema.UserMessage(resumeWorkersCue))
 	}

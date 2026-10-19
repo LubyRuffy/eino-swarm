@@ -86,7 +86,7 @@ What the UI reads once at startup to decide what to render.
   "default_provider": "default",
   "reasoning_levels": ["low", "medium", "high"],
   "data_dir": "/Users/me/.zwai-swarm",
-  "capabilities": { "reveal": false, "open_url": false, "memory": true },
+  "capabilities": { "reveal": false, "open_url": false, "memory": true, "restart_handoff": true },
   "swarm": { "max_concurrent": 6, "agent_timeout_seconds": 600,
              "max_turns": 200, "manager_max_iterations": 200,
              "progress_interval_seconds": 5, "delta_coalesce_ms": 50,
@@ -1380,7 +1380,7 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `steer_retracted` | the human dropped one unread `steer` before the manager read it. `text` is JSON `{seq}` naming that steer. The chat hides the bubble; the Trace log still has both rows |
 | `steer_revised` | the human edited one unread `steer` before the manager read it. `text` is JSON `{seq,text}`. The chat shows `text` on that bubble; the original `steer` row stays. A later revision for the same seq wins. The model reads the revised caption, not the original |
 | `steer_preempted` | Interrupt aborted the current manager tool or generate so unread steering can land on this turn. No payload. Workers were not cancelled |
-| `cleanup` | sub-agents were stopped at the end of the turn |
+| `cleanup` | unfinished sub-agents were stopped at the end of the turn; this is not a successful `finished` receipt. The PC view keeps them stopped after the terminal event and replay |
 | `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated. In-flight `tool_call` rows that never got a result are closed first (`tool_result` with `err`: `the previous process stopped`) so a killed `exec` does not keep spinning — except an unfinished `ask_user`, which is re-armed so the human can still answer. Leftover sub-agents are started again under the same `agent_id` (a second `spawned` for that id is the roster coming back, not a twin). Unread `steer` rows stay on the turn. A leftover `max_iterations` confirm is no longer pending |
 | `progress` | a pulse while the turn runs (see below); `seq` is 0, not stored |
 | `usage` | a live token snapshot after each model call (see below); `seq` is 0, not stored |
@@ -1861,3 +1861,39 @@ do not. Event kinds and phone RPC shapes stay stable. See `C-019` and
 ### PC image MIME normalization (F-140 / C-028)
 
 The composer retains image-suffixed generic binary/UTI drops as vision input and normalizes their MIME claim before the existing turn/steer image payload. Bytes remain unchanged. Explicit text/PDF files stay attachments. The server still sniffs real bytes and rejects unsupported or mismatched claims; client filename inference is not content validation. See [C-028](CONTRACTS.md#c-028-image-intake-retains-vision-bytes).
+
+## Engine restart handoff (`F-110`, `C-027`)
+
+`POST /api/engine/restart` prepares the current engine for a launcher-owned
+replacement. It does not start a second process itself. Same-origin checks
+apply. The handler sets a 19s deadline for one shared, idempotent handoff; the
+launcher reserves the remainder of its 30s budget for exit and new readiness.
+New turn admission returns `409` with `code: "restarting"`.
+
+A `200` acknowledgement is returned only after durable checkpoints:
+
+```json
+{"stage":"ready","threads":2,"workers":3,"checkpointed":3,"threads_checkpointed":2,"ready":true}
+```
+
+`GET /api/engine/restart` reads those progress fields without changing state.
+`stage` is initially empty, then `preparing`, `summarizing`, `checkpointing`,
+`ready`, or `failed`. The endpoint
+is safe to read while handoff runs. `checkpointed` counts worker checkpoints;
+`threads_checkpointed` counts conversation checkpoints. A failed save returns
+an error; retry reuses the frozen recovery state rather than granting another
+summary period. A disconnected caller cannot turn an incomplete save into a
+positive acknowledgement.
+
+The same turn's event/Trace stream contains `restart_preparing`,
+`engine_restart_checkpoint`, `restart_ready`, `restart_resumed` and `user_stop_requested`.
+`engine_restart_checkpoint` is versioned recovery data, hidden from ordinary
+conversation rendering; it is not a completed answer, tool result or worker
+creation. Unknown interrupted tools require verification of external effects.
+
+An acknowledged user Stop is recorded as `user_stop_requested` before its
+cancellation is signalled. Restart must consume that intent rather than
+reviving the stopped turn. A pending accepted answer or iteration-cap decision
+is retained even if its waiter had not consumed it before handoff. Phone
+watch/log retain checkpoint sequence identity with an empty body; internal
+manager/worker prompts and histories stay on the PC.

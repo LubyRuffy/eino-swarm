@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,8 +20,15 @@ import (
 )
 
 type followupRelay struct {
-	link *client.Link
-	seen []Response
+	link         *client.Link
+	seen         []Response
+	close        func()
+	handlerReady chan followupRelayHandler
+}
+
+type followupRelayHandler struct {
+	pump   *LinkPump
+	exited <-chan struct{}
 }
 
 // This uses encrypted local relay frames and the production LinkPump, so
@@ -51,13 +59,55 @@ func newFollowupRelay(t *testing.T, e *engine.Engine) *followupRelay {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = host.Close() })
+	r := &followupRelay{handlerReady: make(chan followupRelayHandler, 1)}
+	stop := make(chan struct{})
+	var admission sync.Mutex
+	var stopping bool
+	var handlers sync.WaitGroup
+	var closeOnce sync.Once
+	r.close = func() {
+		closeOnce.Do(func() {
+			admission.Lock()
+			stopping = true
+			close(stop)
+			admission.Unlock()
+			host.OnLink(nil)
+			_ = host.Close()
+			handlers.Wait()
+		})
+	}
+	t.Cleanup(r.close)
 	host.OnLink(func(link *client.Link) {
+		// Close does not join OnLink or close Recv. Seal admission before
+		// waiting, including a callback the client captured before Close.
+		admission.Lock()
+		if stopping {
+			admission.Unlock()
+			return
+		}
+		handlers.Add(1)
+		admission.Unlock()
 		go func() {
+			defer handlers.Done()
+			exited := make(chan struct{})
+			defer close(exited)
 			pump := newLinkPump(e, config.RemoteConfig{EventChars: 400, SummaryChars: 80}, link)
 			defer pump.Close()
-			for raw := range link.Recv() {
-				pump.Dispatch(raw)
+			select {
+			case r.handlerReady <- followupRelayHandler{pump: pump, exited: exited}:
+			case <-stop:
+				return
+			}
+			for {
+				select {
+				case <-stop:
+					return
+				case raw, ok := <-link.Recv():
+					if !ok {
+						return
+					}
+					pump.Dispatch(raw)
+				}
 			}
 		}()
 	})
@@ -82,7 +132,40 @@ func newFollowupRelay(t *testing.T, e *engine.Engine) *followupRelay {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &followupRelay{link: link}
+	r.link = link
+	return r
+}
+
+// A later test may replace global watch hooks as soon as cleanup returns.
+// Socket closure alone cannot establish that the previous pump stopped.
+func TestFollowupRelayCleanupJoinsItsActiveWatch(t *testing.T) {
+	e := testEngine(t)
+	th, err := e.CreateThread("relay cleanup", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newFollowupRelay(t, e)
+	if response := r.rpc(t, Request{ID: "watch-cleanup", Op: OpWatch, ThreadID: th.ID}); !response.OK || response.Op != OpReady {
+		t.Fatalf("the real relay did not start its watch: %+v", response)
+	}
+	var handler followupRelayHandler
+	select {
+	case handler = <-r.handlerReady:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the relay watch handler never started")
+	}
+	r.close()
+	select {
+	case <-handler.exited:
+	default:
+		t.Fatal("relay cleanup returned before its pump handler exited")
+	}
+	handler.pump.mu.Lock()
+	watching, cancel := handler.pump.watching, handler.pump.cancel
+	handler.pump.mu.Unlock()
+	if watching != "" || cancel != nil {
+		t.Fatal("relay cleanup left its watch active")
+	}
 }
 
 func (r *followupRelay) receive(t *testing.T, deadline <-chan time.Time) Response {

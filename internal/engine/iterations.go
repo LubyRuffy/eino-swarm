@@ -47,6 +47,24 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	acc *accumulator, toolset *tools.Set, pc *projectContext, messages []adk.Message,
 ) (swarm.RunResult, error) {
 	e := rt.engine
+	rt.mu.Lock()
+	paused := rt.restartCap
+	rt.restartCap = nil
+	rt.mu.Unlock()
+	proceed := true
+	if paused != nil {
+		if paused.CapDecision != nil {
+			proceed = *paused.CapDecision
+		} else {
+			proceed = rt.waitToExtend(ctx, turn, paused.CapUsed, paused.CapExtend)
+		}
+	}
+	if !proceed {
+		if ctx.Err() != nil {
+			return swarm.RunResult{}, ctx.Err()
+		}
+		return swarm.RunResult{}, limitStopError{Used: paused.CapUsed}
+	}
 	var th *store.Thread
 	if got, err := e.store.GetThread(rt.threadID); err == nil {
 		th = got
@@ -204,6 +222,7 @@ func (rt *runtime) waitToExtend(ctx context.Context, turn *store.Turn, used, ext
 	ch := make(chan bool, 1)
 	rt.mu.Lock()
 	rt.continueCh = ch
+	rt.acceptedContinue = nil
 	rt.mu.Unlock()
 	defer func() {
 		rt.mu.Lock()
@@ -238,6 +257,11 @@ func (rt *runtime) waitToExtend(ctx context.Context, turn *store.Turn, used, ext
 // ContinueTurn answers a pause at the manager's tool-round cap. proceed
 // extends the current turn by another configured slice; false ends it.
 func (e *Engine) ContinueTurn(threadID string, proceed bool) error {
+	done, err := e.beginAdmission()
+	if err != nil {
+		return err
+	}
+	defer done()
 	if _, err := e.store.GetThread(threadID); err != nil {
 		return err
 	}
@@ -258,13 +282,14 @@ func (e *Engine) ContinueTurn(threadID string, proceed bool) error {
 
 func (rt *runtime) signalContinue(proceed bool) bool {
 	rt.mu.Lock()
+	defer rt.mu.Unlock()
 	ch := rt.continueCh
-	rt.mu.Unlock()
 	if ch == nil {
 		return false
 	}
 	select {
 	case ch <- proceed:
+		rt.acceptedContinue = &proceed
 		return true
 	default:
 		return false

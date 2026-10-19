@@ -49,6 +49,21 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 	n := 0
 	for i := range resume {
 		t := resume[i]
+		if reconciled, err := e.convergeTerminalTurn(&t); err != nil {
+			return n, err
+		} else if reconciled {
+			continue
+		}
+		checkpoint := e.checkpointForTurn(t.ID)
+		if e.turnHasKind(t.ID, KindUserStopRequested) || checkpoint != nil && checkpoint.HumanStopped {
+			e.record(store.Event{ThreadID: t.ThreadID, TurnID: t.ID, Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID, Err: "interrupted", SuppressCompletion: true})
+			if err := e.store.FinishTurn(t.ID, store.TurnCancelled, "", "interrupted"); err != nil {
+				return n, err
+			}
+			e.finishScheduledRun(&t, store.TurnCancelled, "", "interrupted")
+			e.runtimeFor(t.ThreadID).pauseOpenGoalOnInterrupt()
+			continue
+		}
 		if err := e.resumeTurn(&t); err != nil {
 			e.log.Warn("could not resume a leftover turn", "turn", t.ID, "thread", t.ThreadID, "err", err)
 			if errors.Is(err, ErrBusy) {
@@ -161,6 +176,24 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 		_ = reg.SteerManagerMessage(m)
 	}
 	rt.setWorkerRestore(e.workersFromThread(turn.ThreadID))
+	if checkpoint := e.checkpointForTurn(turn.ID); checkpoint != nil {
+		if checkpoint.Pause == "cap" {
+			rt.mu.Lock()
+			rt.restartCap = checkpoint
+			rt.mu.Unlock()
+		}
+		for _, msg := range checkpoint.ManagerInbox {
+			duplicate := false
+			for _, delivered := range unread {
+				if sameRestartMessage(msg, delivered) {
+					duplicate = true
+				}
+			}
+			if !duplicate && msg != nil {
+				_ = reg.SteerManagerMessage(msg)
+			}
+		}
+	}
 
 	_ = e.store.TouchThread(turn.ThreadID)
 	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), e.imagesForTurn(turn), true)

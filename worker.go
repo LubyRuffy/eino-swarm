@@ -2,6 +2,7 @@ package swarm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -40,6 +41,12 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 	watchCtx, watchCancel := context.WithTimeout(runCtx, timeout)
 	h.mu.Lock()
 	h.cancel = cancel
+	h.handoff.task, h.handoff.instruction = task, instruction
+	initial := restoredWorkerMessages(task, workerReplayHistory(h.handoff.restoreHistory, instruction))
+	h.handoff.restoreHistory = nil
+	if h.handoff.cancelled {
+		cancel()
+	}
 	done := h.done
 	h.mu.Unlock()
 	if seed != "" {
@@ -60,7 +67,9 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 				h.mu.Lock()
 				res, e := h.result, h.err
 				h.mu.Unlock()
-				fh(role, id, res, e)
+				if !errors.Is(e, ErrHandoff) {
+					fh(role, id, res, e)
+				}
 			}
 		}()
 		r.acquireSlot()
@@ -85,7 +94,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 			return
 		}
 		runner := adk.NewRunner(watchCtx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
-		iter := runner.Run(watchCtx, []adk.Message{schema.UserMessage(task)})
+		iter := runner.Run(watchCtx, initial)
 		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true}
 		final := ""
 		for {

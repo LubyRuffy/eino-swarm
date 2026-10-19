@@ -2,6 +2,10 @@ import type { en } from "./messages-en"
 
 /** Chinese UI chrome. Every key in messages-en.ts must have a string here. */
 export const zh: { [K in keyof typeof en]: string } = {
+  "notice.userStopRequested": "已收到停止任务的请求。",
+  "notice.restartPreparing": "正在保存任务进度，准备重启。",
+  "notice.restartReady": "任务进度已保存，正在重启引擎。",
+  "notice.restartResumed": "引擎已重启，正在从保存的进度继续。",
   "notice.peerTask": "协作任务 {id}：{text}",
   "header.idle": "空闲",
   "header.working": "工作中",
@@ -233,6 +237,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "panel.noAgents": "还没有子代理。任务值得拆开时，主管会启动它们。",
   "panel.active": "进行中 ({n})",
   "panel.done": "已完成 ({n})",
+  "panel.stopped": "已停止 ({n})",
   "panel.sortBy": "排序",
   "panel.sortCreated": "创建时间",
   "panel.sortUpdated": "最后更新",

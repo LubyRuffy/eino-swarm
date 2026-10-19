@@ -28,6 +28,7 @@ type agentPast struct {
 	Role            string
 	History         []adk.Message
 	TimeoutFailures int
+	checkpoint      WorkerCheckpoint
 }
 
 func (r *Registry) historyCap() int {
@@ -77,7 +78,7 @@ func (h *Handle) ensureResultLocked() {
 func (h *Handle) snapshotPast() agentPast {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return agentPast{ID: h.ID, Role: h.Role, History: cloneMessages(h.history), TimeoutFailures: h.timeoutFailures}
+	return agentPast{ID: h.ID, Role: h.Role, History: cloneMessages(h.history), TimeoutFailures: h.timeoutFailures, checkpoint: h.checkpointLocked()}
 }
 
 func (r *Registry) remember(h *Handle) {
@@ -225,6 +226,9 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 	if err != nil {
 		return nil, err
 	}
+	h.mu.Lock()
+	h.handoff.task, h.handoff.instruction = task, r.workerInstruction(task)
+	h.mu.Unlock()
 	r.mu.Lock()
 	hook := r.spawnHook
 	r.mu.Unlock()
@@ -238,6 +242,10 @@ func (r *Registry) resumeHandle(ctx context.Context, fromID, task string,
 
 func (r *Registry) claimForResume(past *agentPast, admit bool) (*Handle, error) {
 	r.mu.Lock()
+	if r.handingOff {
+		r.mu.Unlock()
+		return nil, ErrHandoff
+	}
 	if r.closed {
 		r.mu.Unlock()
 		return nil, fmt.Errorf("resume_agent: registry closed")
@@ -252,6 +260,9 @@ func (r *Registry) claimForResume(past *agentPast, admit bool) (*Handle, error) 
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.handingOff {
+		return nil, ErrHandoff
+	}
 	if r.closed {
 		return nil, fmt.Errorf("resume_agent: registry closed")
 	}
@@ -297,6 +308,7 @@ func (h *Handle) resetForResume(fromID string) {
 	h.activity = ""
 	h.inbox = nil
 	h.cancel = nil
+	h.handoff = workerHandoff{}
 	h.resumedFrom = fromID
 	h.spawned = time.Now()
 }
@@ -381,7 +393,7 @@ func clonePast(p *agentPast) *agentPast {
 	if p == nil {
 		return nil
 	}
-	return &agentPast{ID: p.ID, Role: p.Role, History: cloneMessages(p.History), TimeoutFailures: p.TimeoutFailures}
+	return &agentPast{ID: p.ID, Role: p.Role, History: cloneMessages(p.History), TimeoutFailures: p.TimeoutFailures, checkpoint: cloneWorkerCheckpoint(p.checkpoint)}
 }
 
 func trimHistory(msgs []adk.Message, limit int) []adk.Message {

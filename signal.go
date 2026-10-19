@@ -196,6 +196,9 @@ func (r *Registry) sink() Callback {
 
 // emit delivers one notification to the current sink (no-op when headless).
 func (r *Registry) emit(n Notification) {
+	if n.Kind == NotifyToolResult {
+		n.Text = r.checkpointToolResult(n.AgentID, n.ToolCallID, n.Text)
+	}
 	if cb := r.sink(); cb != nil {
 		cb(n)
 	}

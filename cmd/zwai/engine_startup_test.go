@@ -32,6 +32,10 @@ func TestEnsureEngineReplacesADifferentBuildThatWasStillStarting(t *testing.T) {
 			dir := t.TempDir()
 			holder := startLeaseHolder(t, dir)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/engine/restart" {
+					http.NotFound(w, r)
+					return
+				}
 				if r.URL.Path == "/api/threads" {
 					_ = json.NewEncoder(w).Encode(map[string]any{"threads": []any{}})
 					return
@@ -81,6 +85,10 @@ func TestEnsureEnginePreservesAStartingHolderWithADiscoveryFailure(t *testing.T)
 			dir := t.TempDir()
 			holder := startLeaseHolder(t, dir)
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/api/engine/restart" {
+					http.NotFound(w, r)
+					return
+				}
 				w.WriteHeader(tc.status)
 				_ = json.NewEncoder(w).Encode(map[string]any{"data_dir": dir, "mock": tc.mock})
 			}))
@@ -108,6 +116,10 @@ func TestEnsureEngineWaitsForAStartingBuildsActiveTurn(t *testing.T) {
 	var quiet atomic.Bool
 	checked := make(chan struct{}, 1)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/engine/restart" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.URL.Path == "/api/threads" {
 			running := !quiet.Load()
 			_ = json.NewEncoder(w).Encode(map[string]any{"threads": []any{map[string]any{"running": running}}})
@@ -182,6 +194,10 @@ func TestEnsureEnginePreservesAHolderWhenItsTurnStateCannotBeRead(t *testing.T) 
 	dir := t.TempDir()
 	holder := startLeaseHolder(t, dir)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/engine/restart" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.URL.Path == "/api/threads" {
 			_, _ = w.Write([]byte("{"))
 			return
@@ -200,13 +216,17 @@ func TestEnsureEnginePreservesAHolderWhenItsTurnStateCannotBeRead(t *testing.T) 
 	}
 }
 
-// An older engine can refuse a graceful stop. This must leave its lock intact;
-// the shell may not silently promote that refusal into a force kill.
-func TestEnsureEnginePreservesAHolderThatRefusesGracefulStop(t *testing.T) {
+// The restart budget also bounds an older engine that ignores SIGTERM.
+func TestEnsureEngineAutomaticallyStopsAHolderThatIgnoresSIGTERM(t *testing.T) {
+	t.Cleanup(stopTestEngine)
 	t.Setenv("ZWAI_LEASE_IGNORE_STOP", "1")
 	dir := t.TempDir()
 	holder := startLeaseHolder(t, dir)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/engine/restart" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.URL.Path == "/api/threads" {
 			_ = json.NewEncoder(w).Encode(map[string]any{"threads": []any{}})
 			return
@@ -217,11 +237,9 @@ func TestEnsureEnginePreservesAHolderThatRefusesGracefulStop(t *testing.T) {
 	if err := lease.Publish(dir, lease.Record{PID: holder.Process.Pid, URL: srv.URL, Mock: true, Version: version + "-older"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ensureEngine(dir, "127.0.0.1:0", true); err == nil || !strings.Contains(err.Error(), "did not exit") {
-		t.Fatalf("refused stop must be reported: %v", err)
-	}
-	if !lease.Busy(dir) {
-		t.Fatal("refused stop was silently turned into a force kill")
+	url, err := ensureEngine(dir, "127.0.0.1:0", true)
+	if err != nil || url == srv.URL {
+		t.Fatalf("automatic restart failed: url=%s err=%v", url, err)
 	}
 }
 

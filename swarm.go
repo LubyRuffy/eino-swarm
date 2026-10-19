@@ -73,6 +73,7 @@ type Handle struct {
 	finished        time.Time
 	activity        string // latest streamed reasoning/answer tail (for progress)
 	timeoutFailures int    // consecutive watchdog stops, retained across resume
+	handoff         workerHandoff
 }
 
 // Activity returns the agent's most recent streamed text tail (thinking or
@@ -155,10 +156,13 @@ func (h *Handle) drainInbox() []string {
 // ToolsNode runs each tool call in its own goroutine when the host model
 // issues multiple calls in one message.
 type Registry struct {
-	mu     sync.Mutex
-	agents map[string]*Handle
-	seq    int
-	closed bool
+	mu                  sync.Mutex
+	agents              map[string]*Handle
+	seq                 int
+	closed              bool
+	handingOff          bool
+	handoffManagerTools map[string]bool
+	closingWorkers      map[string]*Handle // late tool callbacks after a handoff Close
 
 	slots *slotGate
 
@@ -431,6 +435,10 @@ func (m *historyRecorder) WrapInvokableToolCall(ctx context.Context,
 	endpoint adk.InvokableToolCallEndpoint, tc *adk.ToolContext,
 ) (adk.InvokableToolCallEndpoint, error) {
 	return func(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
+		if m.reg.isHandingOff() {
+			m.reg.appendHistoryToolResult(tc, handoffToolResult, nil)
+			return handoffToolResult, nil
+		}
 		parent := ctx
 		ctx, id := m.reg.bindEpoch(ctx)
 		defer m.reg.dropEpoch(id)
@@ -441,7 +449,7 @@ func (m *historyRecorder) WrapInvokableToolCall(ctx context.Context,
 			out, err = endpoint(ctx, argumentsInJSON, opts...)
 		}
 		out, err = m.reg.preemptToolResult(parent, ctx, out, err)
-		m.reg.appendHistoryToolResult(tc, out, err)
+		m.reg.appendHistoryToolResult(tc, m.reg.checkpointManagerToolResult(ctx, tc.CallID, out), err)
 		return out, err
 	}, nil
 }
@@ -465,13 +473,17 @@ func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
 	endpoint adk.StreamableToolCallEndpoint, tc *adk.ToolContext,
 ) (adk.StreamableToolCallEndpoint, error) {
 	return func(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (*schema.StreamReader[string], error) {
+		if m.reg.isHandingOff() {
+			m.reg.appendHistoryToolResult(tc, handoffToolResult, nil)
+			return schema.StreamReaderFromArray([]string{handoffToolResult}), nil
+		}
 		parent := ctx
 		ctx, id := m.reg.bindEpoch(ctx)
 		defer m.reg.dropEpoch(id)
 		sr, err := endpoint(ctx, argumentsInJSON, opts...)
 		if err != nil {
 			out, err := m.reg.preemptToolResult(parent, ctx, "", err)
-			m.reg.appendHistoryToolResult(tc, out, err)
+			m.reg.appendHistoryToolResult(tc, m.reg.checkpointManagerToolResult(ctx, tc.CallID, out), err)
 			if err != nil {
 				return nil, err
 			}
@@ -486,7 +498,7 @@ func (m *historyRecorder) WrapStreamableToolCall(ctx context.Context,
 			b.WriteString(chunk)
 		}
 		out, err := m.reg.preemptToolResult(parent, ctx, b.String(), nil)
-		m.reg.appendHistoryToolResult(tc, out, err)
+		m.reg.appendHistoryToolResult(tc, m.reg.checkpointManagerToolResult(ctx, tc.CallID, out), err)
 		return schema.StreamReaderFromArray([]string{out}), err
 	}, nil
 }
@@ -557,6 +569,10 @@ func (r *Registry) spawnAgent(ctx context.Context, role, task string,
 	modelOpt ModelBuilder, seed string, admit bool, extraTools ...tool.BaseTool) (*Handle, error) {
 
 	r.mu.Lock()
+	if r.handingOff {
+		r.mu.Unlock()
+		return nil, ErrHandoff
+	}
 	if r.closed {
 		r.mu.Unlock()
 		return nil, fmt.Errorf("swarm: registry closed")
@@ -569,6 +585,7 @@ func (r *Registry) spawnAgent(ctx context.Context, role, task string,
 	r.seq++
 	id := fmt.Sprintf("%s-%d", role, r.seq)
 	h := &Handle{ID: id, Role: role, done: make(chan struct{}), spawned: time.Now()}
+	h.handoff.task, h.handoff.instruction = task, r.workerInstruction(task)
 	r.agents[id] = h
 	hook := r.spawnHook
 	r.mu.Unlock()
@@ -776,6 +793,14 @@ func (r *Registry) Close() {
 	for _, h := range r.agents {
 		handles = append(handles, h)
 	}
+	if r.handingOff && len(handles) > 0 {
+		if r.closingWorkers == nil {
+			r.closingWorkers = map[string]*Handle{}
+		}
+		for _, h := range handles {
+			r.closingWorkers[h.ID] = h
+		}
+	}
 	r.agents = map[string]*Handle{}
 	r.past = map[string]*agentPast{}
 	r.pastIDs = nil
@@ -909,6 +934,7 @@ func (in *Injector) BeforeModelRewriteState(ctx context.Context,
 	for _, msg := range in.handle.drainInbox() {
 		state.Messages = append(state.Messages, schema.UserMessage("[steer] "+msg))
 	}
+	in.handle.injectHandoff(state)
 	in.handle.setHistory(state.Messages, in.histCap)
 	return ctx, state, nil
 }
@@ -928,9 +954,17 @@ func (in *Injector) WrapInvokableToolCall(ctx context.Context,
 ) (adk.InvokableToolCallEndpoint, error) {
 	return func(ctx context.Context, argumentsInJSON string, opts ...tool.Option) (string, error) {
 		if in.reg != nil && in.handle != nil {
+			if !in.reg.beginWorkerTool(in.handle, tc.Name, tc.CallID, argumentsInJSON) {
+				in.handle.finishTool(tc.Name, tc.CallID, handoffToolResult, nil)
+				return handoffToolResult, nil
+			}
 			ctx = in.reg.bindToolOutput(ctx, in.handle.ID, in.handle.Role, tc)
 		}
-		return endpoint(ctx, argumentsInJSON, opts...)
+		out, err := endpoint(ctx, argumentsInJSON, opts...)
+		if in.handle != nil {
+			in.handle.finishTool(tc.Name, tc.CallID, out, checkpointToolError(ctx, err))
+		}
+		return out, err
 	}, nil
 }
 

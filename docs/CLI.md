@@ -47,16 +47,23 @@ that is still going keeps the process up. A user **Stop** is the only path
 that records `cancelled`. If the engine process is killed, the next shell
 takes the lock and resumes orphaned turns.
 
-Opening a **different build** (another version, or a binary that replaced
-the file on disk) waits until no conversation is in a model call, then
-stops that engine and starts one from the binary you just launched. Every
-10s it prints a check while a turn is still in that call. At 30s, and again
-every 30s after the answer, a terminal asks whether to force-stop; `y`,
-`yes`, or `是` kills the old process and switches. Anything else keeps
-waiting. If that process exits during the wait, this shell starts its own.
-With no terminal it does not force. A question waiting on the human, and a schedule
-that has not fired, do not count as that call. A second window of the same
-build still attaches.
+Opening a **different build** (another version, or a replacement executable)
+automatically hands off and replaces the old engine, with one **30s budget**
+covering handoff, old-process exit and the new listener. No terminal answer
+is required. Up to 20s is reserved for saving progress and workers' best-effort
+summaries; the remaining time is for replacement and recovery. The new engine
+continues unfinished tasks under the original turn and worker IDs. Finished
+workers stay finished; human questions and iteration-cap pauses still wait
+for the human.
+
+The launcher prints handoff/restart progress. A capable engine must acknowledge
+its durable checkpoints; storage failures stop replacement and report a
+retryable error. An older engine without handoff support gets a bounded quiet
+wait followed by automatic stop and event-based recovery. This compatibility
+path cannot recover unread in-memory worker messages that the old code never
+saved. A tool stopped with an unconfirmed outcome requires checking its actual
+effects before repeating it. Provider outages or a failed new-process startup
+are reported; a 30s budget is not a promise that a model will finish its task.
 
 A second `zwai desktop` on the same data directory opens another window on
 the same engine. Both can type. The app menu (the `…` at the bottom of the icon rail) names the connected shells when more than one is attached.

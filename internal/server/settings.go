@@ -53,9 +53,10 @@ func (s *Server) getMeta(c *gin.Context) {
 			// opening a URL in the system browser does too, and a
 			// project's memory switch would promise nothing while memory is
 			// off for the whole install.
-			"reveal":   s.opts.Reveal != nil,
-			"open_url": s.opts.OpenURL != nil,
-			"memory":   cfg.Memory.Enabled,
+			"reveal":          s.opts.Reveal != nil,
+			"open_url":        s.opts.OpenURL != nil,
+			"memory":          cfg.Memory.Enabled,
+			"restart_handoff": true,
 		},
 		Swarm:   cfg.Swarm,
 		Locale:  cfg.UI.Locale,

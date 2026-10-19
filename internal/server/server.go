@@ -99,6 +99,8 @@ func New(opts Options) (*Server, error) {
 	api.Use(s.rejectForeignOrigin())
 	{
 		api.GET("/meta", s.getMeta)
+		api.GET("/engine/restart", s.restartStatus)
+		api.POST("/engine/restart", s.prepareRestart)
 		api.GET("/update", s.getUpdate)
 		api.POST("/update", s.postUpdate)
 		api.POST("/presence", s.postPresence)
@@ -259,6 +261,8 @@ func (s *Server) fail(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+	case errors.Is(err, engine.ErrRestarting):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "restarting"})
 	case errors.Is(err, engine.ErrBusy):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "busy"})
 	case errors.Is(err, update.ErrBusy):

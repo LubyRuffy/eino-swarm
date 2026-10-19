@@ -87,13 +87,21 @@ type claimedFire struct {
 }
 
 func (e *Engine) fireDueSchedules() {
+	done, err := e.beginAdmission()
+	if err != nil {
+		return
+	}
+	defer done()
 	claimed := e.claimDueSchedules()
 	for _, c := range claimed {
-		_, _ = e.startClaimedFire(c)
+		_, _ = e.startAdmittedFire(c)
 	}
 }
 
 func (e *Engine) claimDueSchedules() []claimedFire {
+	if e.restarting() {
+		return nil
+	}
 	e.fireMu.Lock()
 	defer e.fireMu.Unlock()
 
@@ -256,6 +264,15 @@ func (e *Engine) startScheduledTurn(row store.Schedule, spec scheduleSpec, now t
 }
 
 func (e *Engine) startClaimedFire(c claimedFire) (*store.Turn, error) {
+	done, err := e.beginAdmission()
+	if err != nil {
+		return nil, err
+	}
+	defer done()
+	return e.startAdmittedFire(c)
+}
+
+func (e *Engine) startAdmittedFire(c claimedFire) (*store.Turn, error) {
 	threadID := c.threadID
 	if c.standalone {
 		th, err := e.mintStandaloneThread(c.row)
@@ -267,7 +284,7 @@ func (e *Engine) startClaimedFire(c claimedFire) (*store.Turn, error) {
 		}
 		threadID = th.ID
 	}
-	turn, err := e.StartTurnInput(threadID, UserInput{
+	turn, err := e.startTurnInput(threadID, UserInput{
 		Text:             ScheduleContinueText(c.row.Prompt),
 		ContinueSchedule: true,
 		ScheduleID:       c.row.ID,
@@ -350,14 +367,22 @@ func (e *Engine) advanceAfterFire(row store.Schedule, spec scheduleSpec, now tim
 // still in the future. The ticker path is ListDue; this is the inbox
 // button. fireMu is only held while claiming — StartTurn is outside it.
 func (e *Engine) RunScheduleNow(id string) (*store.Turn, error) {
+	done, err := e.beginAdmission()
+	if err != nil {
+		return nil, err
+	}
+	defer done()
 	c, err := e.claimRunNow(id)
 	if err != nil {
 		return nil, err
 	}
-	return e.startClaimedFire(*c)
+	return e.startAdmittedFire(*c)
 }
 
 func (e *Engine) claimRunNow(id string) (*claimedFire, error) {
+	if e.restarting() {
+		return nil, ErrRestarting
+	}
 	e.fireMu.Lock()
 	defer e.fireMu.Unlock()
 

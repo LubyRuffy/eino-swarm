@@ -318,3 +318,24 @@ directory's engine (`zwai tui`, or `zwai tui --task "…"` for one stored turn).
 ```bash
 go test -race ./...
 ```
+
+## Bounded process handoff
+
+`Registry.BeginHandoff()` freezes new worker creation/resumption and tool
+admission. `SnapshotWorkers()` makes non-consuming copies of all live and
+retained finished workers. Persist that deterministic snapshot before waiting
+for summaries. `PrepareRestart(ctx)` gives existing workers one shared deadline
+to produce a tool-free handoff at their next model boundary, then cancels those
+still active and returns `[]WorkerCheckpoint`. It launches no extra summarizer
+models. A cooperative handoff uses `ErrHandoff`; it is not successful task
+completion or a watchdog failure.
+
+`WorkerCheckpoint` keeps original task/instruction, structured history, unread
+inbox, timeout budget, confirmed completion and unknown in-flight tools.
+`RestoredWorker` accepts the corresponding history/inbox on restoration.
+Recovery keeps the same ID and seals open tool calls with an
+`outcome_unknown` receipt: verify effects before deciding whether to repeat.
+`ManagerHistory()` and `ManagerInbox()` expose copies for the host's matching
+checkpoint. The host owns durable storage, manager cancellation, human pause
+restoration and process replacement; see `handoff_test.go` and
+`internal/engine/restart_test.go`.

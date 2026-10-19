@@ -239,9 +239,21 @@ uploads, downloads and the live event stream have exactly one implementation.
   — it does not kill an in-flight tool, and it drops a queued copy of the same
   text. After Stop, Steer on a leftover row starts that text as the next turn. Unread steering sits under the working line: **Interrupt** aborts the current manager tool so those nudges land now
   (workers stay up); the pencil pulls one bubble into the composer and retracts it, so Enter queues it instead; **Delete** retracts one bubble so the model never sees it.
-  Stop is what cancels the whole turn. If the manager
+  Stop is what cancels the whole turn. The PC Agents panel lists unfinished
+  workers under **Stopped**, separate from successful or failed workers;
+  cleanup alone never means their tasks completed. If the manager
   hits its tool-round limit, the transcript asks whether to add another slice
   rather than dying with a graph error.
+- **Automatic restart with saved progress.** Opening a newer/different build
+  requests a handoff and automatically replaces the engine within a 30s launch
+  budget. Active and background sub-agents retain their IDs, histories, unread
+  messages and confirmed results. Summaries are best effort under one shared
+  deadline; a task does not become completed because it was summarized.
+  Questions and iteration-cap pauses still wait for you. The conversation
+  shows saving/saved/restored notices, and its turn ID exposes the complete
+  handoff in Trace. Checkpoint failures stop replacement with an explicit
+  error. An older engine without handoff support uses bounded event-based
+  recovery; its unsaved messages cannot be reconstructed.
 - **Unfinished work survives a crash.** Kill the process, quit the window, or
   lose power mid-turn: the next start continues every leftover conversation,
   with the answers already on screen still in the model's context, any
@@ -803,8 +815,10 @@ zwai --data-dir /tmp/demo   # use a throwaway data directory
 `--data-dir` works on every subcommand, as does `--mock`. Desktop, web, and
 the terminal share one engine for that directory: the first shell starts
 it, the next one attaches, and closing a window does not stop a turn that
-is still running. A newer binary waits for that turn, prints a check every
-10s, and after 30s asks before it force-stops the old process. See
+is still running. A newer binary requests a durable task handoff, prints
+progress every 5s, and automatically replaces the engine within one 30s launch
+budget. The old engine must acknowledge saved progress before it is stopped;
+engines without this API use bounded compatibility recovery. See
 [docs/CLI.md](docs/CLI.md).
 
 ## Where things live

@@ -802,13 +802,13 @@ export function Heartbeat({
 export function StatusDot({ status }: { status: AgentState["status"] }) {
   const t = useT()
   const color =
-    status === "running" ? "bg-running" : status === "failed" ? "bg-failed" : "bg-done"
+    status === "running" ? "bg-running" : status === "failed" ? "bg-failed" : status === "cancelled" ? "bg-muted-foreground" : "bg-done"
   const label =
     status === "running"
       ? t("status.running")
       : status === "failed"
         ? t("status.failed")
-        : t("status.done")
+        : status === "cancelled" ? t("status.cancelled") : t("status.done")
   return (
     <span
       aria-label={label}

@@ -95,7 +95,7 @@ func handleLog(eng *engine.Engine, cfg config.RemoteConfig, req Request, path, s
 // Keep scanning locally so one Earlier tap reaches actual conversation text.
 func hasPhoneContent(events []store.Event) bool {
 	for _, ev := range events {
-		if !shouldPush(ev.Kind) || ev.Kind == "tool_result" {
+		if !shouldPush(ev.Kind) || ev.Kind == "tool_result" || ev.Kind == "engine_restart_checkpoint" {
 			continue
 		}
 		if ev.Kind == "max_iterations" || ev.Kind == "max_iterations_continued" || ev.Kind == "model_retry" || ev.Kind == "compacted" {

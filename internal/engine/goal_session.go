@@ -33,17 +33,25 @@ func isGoalSessionWrapSteer(text string) bool {
 	return strings.HasPrefix(t, "This work session is ending.")
 }
 
-func (rt *runtime) turnOutcome(interrupt context.Context, runErr error) (status, errText string) {
-	if interrupt.Err() != nil {
-		return store.TurnCancelled, "interrupted"
+// Order the final outcome against abandon/restartTargets under their lock.
+// Otherwise a handoff between checking abandoned and reading cancellation
+// would become an authoritative user-interrupted terminal event.
+func (rt *runtime) turnOutcome(interrupt context.Context, runErr error) (status, errText string, abandoned bool) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	if rt.abandoned {
+		return "", "", true
+	}
+	if rt.userStopped || interrupt.Err() != nil {
+		return store.TurnCancelled, "interrupted", false
 	}
 	if isLimitStop(runErr) {
-		return store.TurnCancelled, runErr.Error()
+		return store.TurnCancelled, runErr.Error(), false
 	}
 	if runErr != nil {
-		return store.TurnError, publicTurnError(runErr)
+		return store.TurnError, publicTurnError(runErr), false
 	}
-	return store.TurnDone, ""
+	return store.TurnDone, "", false
 }
 
 func (rt *runtime) shouldPark(status string) bool {
