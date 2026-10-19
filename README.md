@@ -44,6 +44,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   before sending, and goes to the model as visual input — not as a file in the
   workspace. Dragging a file onto the box does the same split: images become
   thumbs, other files become workspace attachments, same as the paperclip.
+  A photo whose drop reports a generic binary type, or only a `png` / `jpg` /
+  `gif` / `webp` name, is still a thumb. The server sniffs the bytes and
+  refuses unsupported or mismatched type claims. The client preserves the original bytes; a filename alone is not content validation.
   Sending names those files on the message, so the model reads what you just
   attached instead of an older leftover sitting in the same folder.
 - **Copy or edit a sent message.** Hover a user bubble or a finished answer

@@ -80,6 +80,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-140 Files and attachments
 
 - 目的：让对话使用工作区文件和附件；使用者：PC 用户；入口：文件面板、上传及下载 API；输入：文件或图片；输出：文件、预览或模型视觉输入；前置条件：工作区和权限可用；失败表现：上传或工具错误；关联契约：`C-004`, `C-005`；实现证据：`internal/server`, `internal/tools`, `frontend/src/components/app`。
+- 图片输入：png/jpeg/gif/webp 文件在空 MIME、通用 binary 或 UTI 标签下仍进入视觉输入；显式 text/PDF 保持文件附件。客户端只归一化 MIME 声明，不改原字节，服务端继续执行真实类型与声明匹配校验。关联契约：`C-028`；证据：`frontend/src/lib/paste-image.ts`、`frontend/src/lib/paste-image.test.ts`、`frontend/src/components/app/composer-image-drop.test.tsx`、`frontend/e2e/image-input.spec.ts`。
 
 ### F-150 Goals and scheduled waits
 

@@ -9,6 +9,7 @@ import {
   filesFromClipboard,
   isPasteImage,
   pasteImageFromFile,
+  visionMIME,
   plainTextFromClipboard,
   recoverDroppedPaste,
   revokePasteImages,
@@ -27,6 +28,38 @@ describe("isPasteImage", () => {
     expect(isPasteImage(file("shot.PNG", ""))).toBe(true)
     expect(isPasteImage(file("notes.md", "text/plain"))).toBe(false)
     expect(isPasteImage(file("x.bin", "application/octet-stream"))).toBe(false)
+  })
+
+  // A Finder drop into WKWebView reports octet-stream, or a UTI, for a real
+  // photo. Treating that as a workspace file is how the model only saw a path.
+  it("treats a photo the desktop labeled as generic binary as vision", () => {
+    expect(isPasteImage(file("photo.jpg", "application/octet-stream"))).toBe(true)
+    expect(isPasteImage(file("photo.jpeg", "application/octet-stream"))).toBe(true)
+    expect(isPasteImage(file("shot.GIF", "binary/octet-stream"))).toBe(true)
+    expect(isPasteImage(file("pic.webp", "application/x-octet-stream"))).toBe(true)
+    expect(isPasteImage(file("photo.jpg", "application/binary"))).toBe(true)
+    expect(isPasteImage(file("photo.jpg", "public.jpeg"))).toBe(true)
+    expect(isPasteImage(file("notes.txt", "application/octet-stream"))).toBe(false)
+    expect(isPasteImage(file("photo.jpg", "text/plain"))).toBe(false)
+    expect(isPasteImage(file("photo.jpg", "application/pdf"))).toBe(false)
+  })
+})
+
+describe("visionMIME", () => {
+  it("normalizes supported declarations and generic or UTI image labels", () => {
+    expect(visionMIME(file("photo.jpg", "application/octet-stream"))).toBe("image/jpeg")
+    expect(visionMIME(file("photo.jpeg", "public.jpeg"))).toBe("image/jpeg")
+    expect(visionMIME(file("shot.PNG", ""))).toBe("image/png")
+    expect(visionMIME(file("a.gif", "image/gif"))).toBe("image/gif")
+    expect(visionMIME(file("a.jpg", "image/jpg"))).toBe("image/jpeg")
+    expect(visionMIME(file("a.jpg", "image/pjpeg"))).toBe("image/jpeg")
+    expect(visionMIME(file("clip.png", "image/png"))).toBe("image/png")
+    expect(visionMIME(file("a.gif", "application/binary"))).toBe("image/gif")
+    expect(visionMIME(file("a.webp", "public.webp"))).toBe("image/webp")
+    // Unsupported image types keep their claim so the backend can refuse
+    // them, rather than being relabeled as one of the supported families.
+    expect(visionMIME(file("a.bmp", "image/bmp"))).toBe("image/bmp")
+    expect(visionMIME(file("image", ""))).toBe("image/png")
   })
 })
 
@@ -91,6 +124,15 @@ describe("filesFromClipboard", () => {
     expect(filesFromClipboard(data)).toEqual([png])
     expect(filesFromClipboard(null)).toEqual([])
   })
+
+  it("extracts generic binary and UTI photos without consuming explicit document types", () => {
+    const jpeg = file("photo.jpg", "application/octet-stream")
+    const uti = file("photo.jpeg", "public.jpeg")
+    const text = file("photo.jpg", "text/plain")
+    const pdf = file("photo.jpg", "application/pdf")
+    const data = { files: [jpeg, uti, text, pdf] } as unknown as DataTransfer
+    expect(filesFromClipboard(data)).toEqual([jpeg, uti])
+  })
 })
 
 function stubObjectURLs() {
@@ -143,5 +185,14 @@ describe("toSendImages", () => {
       { name: "clip.png", mime: "image/png", data: await fileToBase64(img.file) },
     ])
     expect(payload[0].data).toBe(btoa(String.fromCharCode(1, 2, 3, 4)))
+  })
+
+  it("keeps the dropped bytes unchanged while normalizing the image claim", async () => {
+    stubObjectURLs()
+    const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0x00, 0x01, 0xfe])
+    const img = pasteImageFromFile(file("photo.jpg", "application/octet-stream", bytes))
+    expect(img.file.type).toBe("application/octet-stream")
+    const payload = await toSendImages([img])
+    expect(payload).toEqual([{ name: "photo.jpg", mime: "image/jpeg", data: "/9j/AAH+" }])
   })
 })

@@ -1559,7 +1559,10 @@ Several things are tested here, some as pure logic and some in jsdom:
   a follow-up.
   File drop onto the box (`composer-drop.ts`) arms a dashed overlay, then
   splits images into vision thumbs and other files into workspace chips
-  (`composer-attachments.tsx`); a disabled composer ignores the drop.
+  (`composer-attachments.tsx`). A png/jpeg/gif/webp whose drop type is empty,
+  a generic binary, or a UTI is still a thumb; the vision body claims
+  `image/jpeg` (or the matching type), not `application/octet-stream`. An
+  explicit non-image MIME stays a chip. A disabled composer ignores the drop.
   Send names the uploaded paths on the turn (`files` on `POST /turns`); a
   failed upload keeps the chip and does not start a turn.
   `/plan` waits for the work after picking the command (the box shows
@@ -2440,3 +2443,12 @@ go test -race ./internal/engine -run 'TestToolJSONGuard|TestInvalidTrailingToolC
 ```
 
 Directory identity regressions in `internal/engine/project_workdir_identity_test.go`, `project-dialog.test.tsx` and `frontend/e2e/workdir.spec.ts` cover a selected trailing-space folder with and without its trimmed sibling, create/edit/readback/runtime resolution, and deletion after a real selection before Save. Manual non-empty paths are literal; all-whitespace remains managed. Native acceptance must repeat create/edit through the actual system picker against the same candidate binary; browser bridge fixtures alone are insufficient.
+
+## Decodable generic-type photos (F-140 / C-028)
+
+`frontend/e2e/fixtures/vision-photo.jpg` is a valid JPEG (684 bytes, 16x12), not a three-byte magic marker. `frontend/e2e/image-input.spec.ts` checks MIME and unchanged base64 through submission, exact stored bytes, Trace references, natural dimensions and reload. `composer-image-drop.test.tsx` owns the corresponding component behavior; the large conversation/composer suites keep their other responsibilities. A visible img element or src alone does not prove decoding. The default offline provider does not prove image semantics; independent keyless loopback acceptance can inspect actual OpenAI image_url transport without using a real model.
+
+```bash
+cd frontend && npm test -- src/lib/paste-image.test.ts src/lib/composer-drop.test.ts src/components/app/composer-image-drop.test.tsx
+cd frontend && npm run e2e -- image-input.spec.ts
+```

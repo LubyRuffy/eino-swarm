@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test"
+import { expect, test } from "@playwright/test"
 
 import { liveWorkFold, showDeveloperLog, userMessageGap } from "./composer-plate"
 import { composer, filterFiles, freshConversation, openFiles, reloadOpenConversation, send, statusBadge, waitForIdle } from "./session"
@@ -534,92 +534,6 @@ test("collapses a workspace directory in Files", async ({ page }) => {
   await files.getByLabel("Filter files").fill("reviewer")
   await expect(files.getByRole("treeitem", { name: "reviewer.md" })).toBeVisible()
   await expect(files.getByRole("treeitem", { name: "researcher.md" })).toHaveCount(0)
-})
-
-const tinyPngB64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
-
-async function dropFilesOnComposer(
-  page: Page,
-  files: { name: string; mime: string; b64: string }[],
-  phase: "dragenter" | "drop",
-) {
-  const dataTransfer = await page.evaluateHandle(async (payload) => {
-    const dt = new DataTransfer()
-    for (const f of payload) {
-      const binary = atob(f.b64)
-      const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
-      dt.items.add(new File([bytes], f.name, { type: f.mime }))
-    }
-    return dt
-  }, files)
-  const zone = page.getByTestId("composer-drop")
-  await zone.dispatchEvent("dragenter", { dataTransfer })
-  await zone.dispatchEvent("dragover", { dataTransfer })
-  if (phase === "drop") await zone.dispatchEvent("drop", { dataTransfer })
-  await dataTransfer.dispose()
-}
-
-test("pastes an image as vision input, not a workspace file", async ({ page }) => {
-  await freshConversation(page)
-  await composer(page).evaluate((el, b64) => {
-    const binary = atob(b64)
-    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0))
-    const file = new File([bytes], "clip.png", { type: "image/png" })
-    const data = new DataTransfer()
-    data.items.add(file)
-    const event = new Event("paste", { bubbles: true, cancelable: true })
-    Object.defineProperty(event, "clipboardData", { value: data })
-    el.dispatchEvent(event)
-  }, tinyPngB64)
-  await expect(page.getByTestId("composer-images")).toBeVisible()
-  await expect(page.getByAltText("clip.png")).toBeVisible()
-  await send(page, "what is on this")
-  await waitForIdle(page)
-
-  const thumb = page.getByTestId("user-message").getByTestId("input-images").locator("img")
-  await expect(thumb).toBeVisible()
-  await expect(thumb).toHaveAttribute("src", /\/input-images\/img_/)
-
-  const files = await filterFiles(page, "clip.png")
-  await expect(files.getByText("clip.png")).toBeHidden()
-
-  await reloadOpenConversation(page)
-  await expect(
-    page.getByTestId("user-message").getByTestId("input-images").locator("img"),
-  ).toBeVisible()
-})
-
-test("drops a file and an image onto the composer", async ({ page }) => {
-  await freshConversation(page)
-  const files = [
-    {
-      name: "notes.txt",
-      mime: "text/plain",
-      b64: Buffer.from("workspace material").toString("base64"),
-    },
-    { name: "shot.png", mime: "image/png", b64: tinyPngB64 },
-  ]
-  await dropFilesOnComposer(page, files, "dragenter")
-  await expect(page.getByTestId("composer-drop-overlay")).toBeVisible()
-  await expect(page.getByTestId("composer-drop-overlay")).toContainText(
-    "Drop files to attach",
-  )
-  await dropFilesOnComposer(page, files, "drop")
-  await expect(page.getByTestId("composer-drop-overlay")).toBeHidden()
-  await expect(page.getByTestId("composer-attachments")).toContainText("notes.txt")
-  await expect(page.getByAltText("shot.png")).toBeVisible()
-  await send(page, "Use the attached material")
-  await waitForIdle(page)
-
-  const thumb = page.getByTestId("user-message").getByTestId("input-images").locator("img")
-  await expect(thumb).toBeVisible()
-  await expect(thumb).toHaveAttribute("src", /\/input-images\/img_/)
-
-  await page.getByRole("tab", { name: "Files" }).click()
-  const listed = await filterFiles(page, "notes.txt")
-  await expect(listed.getByRole("treeitem", { name: "notes.txt" })).toBeVisible()
-  await expect(listed.getByText("shot.png")).toBeHidden()
 })
 
 test("shows the turn id for troubleshooting", async ({ page }) => {

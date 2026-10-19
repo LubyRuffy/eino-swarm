@@ -76,10 +76,13 @@ describe("splitDroppedFiles", () => {
   it("sends images as vision and everything else as workspace attachments", () => {
     const png = file("shot.png", "image/png")
     const jpeg = file("photo.JPG", "")
+    const generic = file("photo.jpg", "application/octet-stream")
     const notes = file("notes.txt", "text/plain")
-    expect(splitDroppedFiles([png, jpeg, notes])).toEqual({
-      images: [png, jpeg],
-      attachments: [notes],
+    const explicitText = file("photo.jpg", "text/plain")
+    const pdf = file("photo.jpg", "application/pdf")
+    expect(splitDroppedFiles([png, jpeg, generic, notes, explicitText, pdf])).toEqual({
+      images: [png, jpeg, generic],
+      attachments: [notes, explicitText, pdf],
     })
   })
 })

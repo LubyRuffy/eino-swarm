@@ -21,10 +21,54 @@ export interface PasteImage {
 
 let pasteSeq = 0
 
+const imageSuffix = /\.(png|jpe?g|gif|webp)$/i
+
+/** Finder and WKWebView often label a local photo as a generic binary, or
+ *  hand back a UTI (`public.jpeg`) instead of a MIME. Those still count when
+ *  the name ends in png/jpeg/gif/webp. A real `image/*` type counts on its
+ *  own. An explicit non-image MIME (text, pdf) stays a workspace file.
+ *  DecodeImages still refuses bytes that are not one of those four. */
 export function isPasteImage(file: File): boolean {
-  if (file.type.startsWith("image/")) return true
-  if (file.type) return false
-  return /\.(png|jpe?g|gif|webp)$/i.test(file.name)
+  const type = file.type.trim().toLowerCase()
+  if (type.startsWith("image/")) return true
+  if (!imageSuffix.test(file.name)) return false
+  if (!type || !type.includes("/") || isGenericBinary(type)) return true
+  return false
+}
+
+function isGenericBinary(type: string): boolean {
+  return (
+    type === "application/octet-stream" ||
+    type === "application/binary" ||
+    type === "binary/octet-stream" ||
+    type === "application/x-octet-stream"
+  )
+}
+
+/** Normalize the vision body's claim. The server still sniffs the bytes
+ *  and rejects a claim that does not match their image family. */
+export function visionMIME(file: File): string {
+  const type = file.type.trim().toLowerCase()
+  if (type === "image/jpg" || type === "image/pjpeg") return "image/jpeg"
+  if (
+    type === "image/png" ||
+    type === "image/jpeg" ||
+    type === "image/gif" ||
+    type === "image/webp"
+  ) {
+    return type
+  }
+  if (type.startsWith("image/")) return file.type.trim()
+  return mimeFromName(file.name) || "image/png"
+}
+
+function mimeFromName(name: string): string {
+  const lower = name.toLowerCase()
+  if (lower.endsWith(".png")) return "image/png"
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg"
+  if (lower.endsWith(".gif")) return "image/gif"
+  if (lower.endsWith(".webp")) return "image/webp"
+  return ""
 }
 
 /** Plain text on a paste. Missing or hostile clipboard data is empty, not a throw. */
@@ -94,7 +138,7 @@ export function pasteImageFromFile(file: File): PasteImage {
   return {
     id: `paste_${++pasteSeq}`,
     name: file.name || "image.png",
-    mime: file.type || "image/png",
+    mime: visionMIME(file),
     file,
     previewUrl: previewURL(file),
   }

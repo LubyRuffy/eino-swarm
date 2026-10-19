@@ -1857,3 +1857,7 @@ remains `error`. Provider idle failures and cancellation do not count. Explicit
 human messages or goal Start reset recovery; automatic fires and `reopen_goal`
 do not. Event kinds and phone RPC shapes stay stable. See `C-019` and
 `worker_timeout_test.go`.
+
+### PC image MIME normalization (F-140 / C-028)
+
+The composer retains image-suffixed generic binary/UTI drops as vision input and normalizes their MIME claim before the existing turn/steer image payload. Bytes remain unchanged. Explicit text/PDF files stay attachments. The server still sniffs real bytes and rejects unsupported or mismatched claims; client filename inference is not content validation. See [C-028](CONTRACTS.md#c-028-image-intake-retains-vision-bytes).

@@ -73,6 +73,9 @@ E2E suite.
 - Selected filesystem paths have identity. Regress save and runtime resolution
   with trailing whitespace, a trimmed sibling, and deletion after selection;
   never silently redirect a missing selection to another existing directory.
+- Image acceptance must use a decodable fixture and verify dimensions, MIME
+  and unchanged bytes after save/reload. Magic bytes and an img src alone
+  cannot prove that the selected image reached the visual-input path.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
 - If something cannot be tested, split it until the untestable part is a two-line

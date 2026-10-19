@@ -245,3 +245,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 失败语义：取消不清空原值；选择错误在工作目录字段下显示，保留当前草稿并允许重试；不变量：关闭或切换项目后迟到的选择结果不能改变后续对话框，目录权限与项目删除边界不变；边界条件：桌面和浏览器共享同一引擎、目录在选择后被删除、选择器未结束时关闭对话框。
 - 证据：实现 `frontend/src/components/app/project-dialog.tsx`, `frontend/src/components/app/workdir-input.tsx`, `frontend/src/lib/workdir.ts`, `internal/desktop/directory.go`, `internal/engine/project.go`；测试 `frontend/src/components/app/project-dialog.test.tsx`, `frontend/src/components/app/workdir-input.test.tsx`, `frontend/src/lib/workdir.test.ts`, `frontend/e2e/workdir.spec.ts`, `internal/desktop/directory_test.go`, `internal/engine/project_test.go`, `internal/engine/project_workdir_identity_test.go`。
 - 变更规则：同步 README、FEATURES、TESTING、ARCHITECTURE 和 CHANGELOG，回归原生来源／目录校验、取消／迟到结果、Web 降级与保存；来源：用户 2026-10-13 避免手动输入项目工作目录的要求。
+
+## C-028 Image intake retains vision bytes
+
+- 状态：active；类型：data / compatibility；作用范围：PC composer 的粘贴／拖入图片、视觉请求和输入图片存储；关联功能：`F-140`。
+- 契约内容：真实 image MIME 继续走视觉输入；空、通用 binary 或 UTI 标签且名称为 png/jpeg/gif/webp 的文件也走视觉输入。显式 text/PDF 不因图片后缀改为视觉输入。客户端归一化 MIME 声明但不改原图片字节；服务端保留内容类型嗅探及声明匹配校验，不信任扩展名替代该校验。
+- 允许行为：兼容 Finder/WKWebView 的通用文件类型；禁止行为：图片仅变为 uploads 路径，或客户端 MIME 推断绕过服务端校验。
+- 失败语义：不支持的格式或真实类型不匹配沿用既有输入错误；不变量：有效图片在预览、请求、存储与重载中保留原字节及可解码尺寸；边界条件：JPEG MIME 别名、大小写扩展名、明确非图片类型。
+- 证据：实现 `frontend/src/lib/paste-image.ts`, `internal/engine/input.go`；测试 `frontend/src/lib/paste-image.test.ts`, `frontend/src/components/app/composer-image-drop.test.tsx`, `frontend/e2e/image-input.spec.ts`；Schema：现有 turn 图片请求。
+- 变更规则：同步 Files/attachments 功能、README、API、TESTING、CHANGELOG；使用可解码的有效图片验收，不能只用魔数或 img src。来源：本地图片拖入修复及本轮未提交工作审计。

@@ -26,6 +26,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-140`, `C-028`: image-suffixed generic binary/UTI drops remain vision input with a normalized MIME claim; real-byte type validation remains on the server. Browser regressions use decodable JPEGs and verify unchanged bytes, saved images and reload.
+
 - `F-220`, `C-006`, `C-009`: the phone's PC model picker can refresh upstream catalogs, show newly available models and remove retired choices. Refresh is read-only, preserves explicit selection and the previous list on failure, and reports an older PC locally without disconnecting the conversation (Issue #81).
 - `F-125`, `F-220`, `C-006`, `C-023`: phones skip optional completion reads when an older PC omits its completion watermark, so repeated scheduled checks do not show unsupported-operation link errors. A numeric zero watermark still accepts the first visible completion, and real acknowledgement failures retain their error and unread state (Issue #80).
 - `F-150`, `C-012`: goal completion and its persisted Trace event commit together, so a storage failure cannot report success with only half the lifecycle transition (Issue #79).
