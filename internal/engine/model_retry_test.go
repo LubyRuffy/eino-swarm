@@ -251,6 +251,52 @@ func TestRecoverManagerMessagesDropsATruncatedToolCall(t *testing.T) {
 	}
 }
 
+func TestTruncatedToolJSONIsRefusedBeforeTheNextModelCall(t *testing.T) {
+	// The gateway re-parses arguments on the next request. Refusing here is
+	// what stops a 400 Unterminated string; dropping them only after that
+	// 400 already spent the request.
+	state := &adk.ChatModelAgentState{Messages: []adk.Message{
+		schema.UserMessage("start the work"),
+		&schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
+			ID: "c-edit", Function: schema.FunctionCall{Name: "edit", Arguments: `{"file_path":"`},
+		}}},
+		schema.ToolMessage("error: failed to parse arguments: unexpected end of JSON input", "c-edit"),
+	}}
+	e := newTestEngine(t)
+	var refused error
+	ctx := context.Background()
+	for _, h := range e.autoCompactHandlers("th", "tn", nil, false) {
+		nextCtx, next, err := h.BeforeModelRewriteState(ctx, state, nil)
+		ctx, state = nextCtx, next
+		if err != nil {
+			refused = err
+			break
+		}
+	}
+	if refused == nil {
+		t.Fatal("truncated tool arguments were still eligible for the next model call")
+	}
+	if modelFailureClass(refused) != modelRetryReasonInvalidToolJSON || !isRetryableModelError(refused) {
+		t.Fatalf("the refusal must take the existing retry path: %v", refused)
+	}
+}
+
+func TestToolJSONGuardLeavesAllowedStateAndContextUntouched(t *testing.T) {
+	valid := &adk.ChatModelAgentState{Messages: []adk.Message{
+		schema.UserMessage("continue the requested work"),
+		schema.AssistantMessage("", []schema.ToolCall{{ID: "checked", Function: schema.FunctionCall{Name: "inspect", Arguments: `{"path":"workspace"}`}}}),
+		schema.ToolMessage("checked", "checked"),
+	}}
+	for _, state := range []*adk.ChatModelAgentState{nil, {}, valid} {
+		ctx, cancel := context.WithCancel(context.Background())
+		nextCtx, next, err := (&invalidToolJSONGuard{}).BeforeModelRewriteState(ctx, state, nil)
+		cancel()
+		if err != nil || next != state || nextCtx != ctx {
+			t.Fatalf("allowed state/context must pass through unchanged: next=%p want=%p err=%v", next, state, err)
+		}
+	}
+}
+
 func TestRecoverManagerMessagesDropsInvalidJSONEvenWithAResult(t *testing.T) {
 	asst := &schema.Message{Role: schema.Assistant, ToolCalls: []schema.ToolCall{{
 		ID: "c-edit", Function: schema.FunctionCall{Name: "edit", Arguments: `{"file_path":"`},

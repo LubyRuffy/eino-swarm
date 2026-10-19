@@ -344,7 +344,8 @@ worker before closing SQLite.
    clear/interrupt, or
    `swarm.goal_max_auto_turns`. A truncated tool-call JSON, a `429`, a
    dropped stream, or a mid-stream TCP read timeout (`operation timed out`
-   / `i/o timeout`) retries in-turn then auto-continues. The `model_retry`
+   / `i/o timeout`) retries in-turn then auto-continues. Truncated tool
+   arguments are refused before that next model request is sent. The `model_retry`
    reason and the turn error name which side failed: the model returned a
    tool call that was not valid JSON, or the model service (rate limit,
    unavailable, dropped connection, idle). Interrupt pauses an open goal (`goal_capped`)

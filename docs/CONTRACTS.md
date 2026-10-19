@@ -122,6 +122,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 模型响应来源：provider model-call 边界保留 SDK 原因和错误类型；没有更具体 HTTP 状态或已解析 API 拒绝类别时的空/HTML 错误响应，以及 HTTP 200 流的 JSON 语法或字段类型解析失败使用 `model_response_invalid`，不冒称工具参数错误。真正工具参数错误保留 `invalid_tool_json`，已解析的 API 拒绝、HTTP 状态、鉴权不重试与有界重试语义不变；原始原因留在同 turn Trace。证据：`internal/provider/call_error.go`, `internal/engine/api_error_integration_test.go`, `internal/engine/model_response_error_test.go`, `frontend/e2e/api-error.spec.ts`, `mobile/e2e/api-error.spec.ts`。
 
+- 请求前拒绝：manager middleware 检查前序状态重写后的当前尾部非空工具参数；无效 JSON 通过 `invalid_tool_json` 进入同 turn 有界重试，拒绝本身不发送 HTTP。普通新 user 之前的旧调用和空参数保持既有边界，不宣称消毒全部历史。实际 ADK/HTTP、压缩状态串联、steer 与 worker 恢复证据：`internal/engine/model_retry_http_test.go`。
+
 ## C-013 Phone model picker
 
 - 状态：active；类型：compatibility / lifecycle；作用范围：phone composer；关联功能：`F-230`。

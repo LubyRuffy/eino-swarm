@@ -67,6 +67,9 @@ E2E suite.
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in
   [docs/TESTING.md](docs/TESTING.md); do not regress it.
+- A pre-model validation test must run through the actual Registry/ADK/HTTP
+  adapter boundary and thread each middleware's returned state. A manual hook
+  invocation cannot prove that an upstream request was prevented.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
 - If something cannot be tested, split it until the untestable part is a two-line
@@ -236,6 +239,11 @@ If documentation and code disagree, fixing the disagreement comes before any new
 feature.
 
 ## Repository conventions
+
+- Before editing, identify the task branch and worktree. Keep independent tasks
+  in separate worktrees and record their owned files. Finish accepted work as
+  coherent commits; list any remaining work and its owner explicitly. Never
+  bundle another task's unfinished changes merely to clear a dirty checkout.
 
 - Commit in coherent slices with a scope: `feat(engine): …`, `fix(server): …`,
   `docs: …`. A commit should build and pass tests on its own.

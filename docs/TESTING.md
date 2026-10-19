@@ -2400,3 +2400,11 @@ InboxRow button groups its label in native accessibility output.
 `UnreadCompletionTest#completionPagesContinueAfterReadingTheCursorAnchor`
 exercises the same independent pagination and read-boundary continuation in the
 packaged Android WebView.
+
+## Truncated tool arguments before HTTP (F-130 / C-012)
+
+`internal/engine/model_retry_http_test.go` exercises Registry, ADK and the actual OpenAI HTTP adapter on a keyless loopback server. Invalid trailing parameters and trailing parameters followed by steer make zero HTTP requests; valid parameters keep one. The compaction test uses the returned middleware state, and runtime recovery checks bounded attempts, error classification, steer and historical worker identity. Manual hook calls alone do not prove that HTTP was prevented.
+
+```bash
+go test -race ./internal/engine -run 'TestToolJSONGuard|TestInvalidTrailingToolCall'
+```

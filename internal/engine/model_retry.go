@@ -148,6 +148,25 @@ func appendModelRetryCue(msgs []adk.Message) []adk.Message {
 	return append(msgs, schema.UserMessage(modelRetryCue))
 }
 
+// errInvalidToolJSONNotSent is raised before the model HTTP call. The
+// "unterminated string" substring is what classifies the retry; the rest
+// is the turn text if the retries run out.
+var errInvalidToolJSONNotSent = errors.New("unterminated string in tool arguments; the call was not sent")
+
+// invalidToolJSONGuard refuses a manager model call whose latest tool
+// arguments are not valid JSON. The gateway parses those arguments on the
+// way in. Dropping them only after that call returns is how the 400 happens.
+type invalidToolJSONGuard struct {
+	adk.BaseChatModelAgentMiddleware
+}
+
+func (invalidToolJSONGuard) BeforeModelRewriteState(ctx context.Context, state *adk.ChatModelAgentState, _ *adk.TypedModelContext[*schema.Message]) (context.Context, *adk.ChatModelAgentState, error) {
+	if state == nil || invalidTrailingToolCall(state.Messages) < 0 {
+		return ctx, state, nil
+	}
+	return ctx, state, errInvalidToolJSONNotSent
+}
+
 func recoverManagerMessages(res swarm.RunResult, fallback []adk.Message, extra []*schema.Message, results []store.Event) []adk.Message {
 	msgs := stitchManagerToolResults(nextManagerMessages(res, fallback, extra), results)
 	msgs = dropTrailingIncompleteToolCalls(msgs)
@@ -160,34 +179,8 @@ func recoverManagerMessages(res swarm.RunResult, fallback []adk.Message, extra [
 // GLM re-parses arguments on the next request; sending the truncated
 // payload back is how a 400 Unterminated string repeats.
 func dropInvalidTrailingToolJSON(msgs []adk.Message) []adk.Message {
-	lastAsst := -1
-	for i := len(msgs) - 1; i >= 0; i-- {
-		if msgs[i] == nil || isSteerUser(msgs[i]) {
-			continue
-		}
-		if msgs[i].Role == schema.Assistant && len(msgs[i].ToolCalls) > 0 {
-			lastAsst = i
-			break
-		}
-		if msgs[i].Role == schema.User || (msgs[i].Role == schema.Assistant && len(msgs[i].ToolCalls) == 0) {
-			return msgs
-		}
-	}
+	lastAsst := invalidTrailingToolCall(msgs)
 	if lastAsst < 0 {
-		return msgs
-	}
-	valid := true
-	for _, tc := range msgs[lastAsst].ToolCalls {
-		args := strings.TrimSpace(tc.Function.Arguments)
-		if args == "" {
-			continue
-		}
-		if !json.Valid([]byte(args)) {
-			valid = false
-			break
-		}
-	}
-	if valid {
 		return msgs
 	}
 	out := append([]adk.Message{}, msgs[:lastAsst]...)
@@ -197,6 +190,33 @@ func dropInvalidTrailingToolJSON(msgs []adk.Message) []adk.Message {
 		}
 	}
 	return out
+}
+
+// invalidTrailingToolCall is the index of the latest assistant tool call
+// whose arguments are not valid JSON. -1 means the next model request can
+// keep the tail. Empty arguments are left alone: the tool reports that itself.
+func invalidTrailingToolCall(msgs []adk.Message) int {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i] == nil || isSteerUser(msgs[i]) {
+			continue
+		}
+		if msgs[i].Role == schema.Assistant && len(msgs[i].ToolCalls) > 0 {
+			for _, tc := range msgs[i].ToolCalls {
+				args := strings.TrimSpace(tc.Function.Arguments)
+				if args == "" {
+					continue
+				}
+				if !json.Valid([]byte(args)) {
+					return i
+				}
+			}
+			return -1
+		}
+		if msgs[i].Role == schema.User || (msgs[i].Role == schema.Assistant && len(msgs[i].ToolCalls) == 0) {
+			return -1
+		}
+	}
+	return -1
 }
 
 func (e *Engine) closeDanglingManagerTools(turn *store.Turn) {
