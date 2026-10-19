@@ -211,6 +211,8 @@ export class MockHost {
   private calls = 0
   private streamedAgentsStarted = false
   private completionChecksStarted = false
+  private activeUnreadEnded = false
+  private readonly activeUnread = new URLSearchParams(location.search).get("history") === "active-unread"
   readonly legacyCompletion = new URLSearchParams(location.search).get("completion") === "legacy"
   private readFailures = new URLSearchParams(location.search).get("readfail") === "1" ? 1 : 0
   private catalogFailures = new URLSearchParams(location.search).get("catalog") === "retry" ? 1 : 0
@@ -308,6 +310,45 @@ export class MockHost {
         }
       }
     }
+    if (this.activeUnread) this.seedActiveUnread()
+  }
+
+  private seedActiveUnread() {
+    this.threads = []
+    const rows = [
+      { id: "active-run", title: "Shared task", running: true },
+      { id: "active-ask", title: "Pending answer", running: true, askUser: true },
+      { id: "completed-shared", title: "Shared task" },
+      { id: "active-wait", title: "Scheduled task", waiting: true },
+      ...Array.from({ length: 4 }, (_, i) => ({ id: `completed-${i}`, title: `Completed item ${i + 1}` })),
+    ]
+    for (const [i, row] of rows.entries()) {
+      const th: MockThread = {
+        id: row.id, title: row.title, projectID: "", summary: "Earlier result", events: [],
+        running: false, waiting: false, action: "", askUser: false, minutesAgo: i,
+      }
+      this.seed(th, [{ kind: "agent_message", text: "Earlier result" }, { kind: "done" }], false)
+      th.readSeq = 0
+      th.running = "running" in row && Boolean(row.running)
+      th.waiting = "waiting" in row && Boolean(row.waiting)
+      th.askUser = "askUser" in row && Boolean(row.askUser)
+      th.action = th.askUser ? "Waiting for an answer" : th.running ? "Checking current work" : ""
+      this.threads.push(th)
+    }
+  }
+
+  finishActiveUnreadAfterMore() {
+    if (!this.activeUnread || this.activeUnreadEnded) return
+    this.activeUnreadEnded = true
+    // Another client ends the activities while this phone stays on Home.
+    // No new completion or read watermark is created by that status change.
+    // Only the final More page advances this fixture, never a wall-clock timer.
+    for (const th of this.threads) {
+      th.running = false
+      th.waiting = false
+      th.askUser = false
+      th.action = ""
+    }
   }
 
   read(th: MockThread, seq: number): boolean {
@@ -366,7 +407,7 @@ export class MockHost {
     return this.threads.find((th) => th.id === id)
   }
 
-  listing() {
+  listing(first = false) {
     const running: RunningView[] = this.threads
       .filter((th) => th.running || th.waiting)
       .map((th) => ({
@@ -390,7 +431,8 @@ export class MockHost {
       projects,
       threads: idle,
       ...(this.legacyCompletion ? {} : this.attentionPage()),
-      running,
+      // Start on Home rather than auto-opening an active task and reading it.
+      running: this.activeUnread && first ? [] : running,
       // One idle row lives past this page so More is a real page, not a
       // button that appends nothing. The first page never includes it.
       // Each folder pages itself; the loose row is the recent section.
@@ -412,7 +454,9 @@ export class MockHost {
       || (th.minutesAgo === anchor[0] && th.id < anchor[1])) : all
     const page = rows.slice(0, 3)
     const last = page.at(-1)
-    return { attention: page.map((th) => this.view(th)), attention_more: rows.length > page.length,
+    return { attention: page.map((th) => this.activeUnread
+      ? { ...this.view(th), running: false, waiting: false }
+      : this.view(th)), attention_more: rows.length > page.length,
       attention_cursor: rows.length > page.length && last ? JSON.stringify([last.minutesAgo, last.id]) : "" }
   }
 
@@ -658,6 +702,7 @@ export class MockLink {
   onDisconnect?: (err: Error) => void
 
   private closed = false
+  private listed = false
   private watcher: Watcher | null = null
 
   constructor(private readonly host: MockHost = mockHost()) {}
@@ -689,8 +734,11 @@ export class MockLink {
       case OpUnwatch:
         this.stopWatching()
         return this.ok({ id })
-      case OpList:
-        return this.ok({ id, ...this.host.listing() })
+      case OpList: {
+        const listing = this.host.listing(!this.listed)
+        this.listed = true
+        return this.ok({ id, ...listing })
+      }
       case OpClientRead:
         return this.ok({
           id,
@@ -710,7 +758,11 @@ export class MockLink {
           clients: this.host.clientCatalog(req.before, req.group),
         })
       case OpMore:
-        if (req.group === GROUP_ATTENTION) return this.ok({ id, ...this.host.attentionPage(req.cursor) })
+        if (req.group === GROUP_ATTENTION) {
+          const page = this.host.attentionPage(req.cursor)
+          if (!page.attention_more) this.host.finishActiveUnreadAfterMore()
+          return this.ok({ id, ...page })
+        }
         return this.ok({ id, threads: [this.host.older()], more: false, next: "" })
       case OpFiles:
         if (!thread()) return this.missing(id)

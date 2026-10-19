@@ -901,6 +901,10 @@ folders. Open a task to read its rendered result and clear the mark. Automatic
 reconnect and background polls leave it unread. A failed read acknowledgement
 keeps the mark and shows the error. Quiet checks and user cancellation do not
 create a completion mark. See [F-125 and C-023](docs/FEATURES.md#f-125-unread-completion-attention).
+The phone hides an earlier unread completion while that conversation is running,
+waiting or asking for an answer. The result stays unread and can reappear when the
+conversation becomes idle; this does not send a read acknowledgement. Status is
+matched by conversation ID, so separate tasks with the same title remain separate.
 Older PCs that omit completion watermarks keep ordinary phone conversations
 and scheduled checks usable. The phone does not send the optional read
 acknowledgement to those hosts. A supported PC's initial watermark of zero

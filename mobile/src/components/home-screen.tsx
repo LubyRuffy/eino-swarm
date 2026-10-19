@@ -116,7 +116,9 @@ export function HomeScreen({
   const roster = collectLive(running, threads)
   const liveById = new Map(roster.map((r) => [r.thread_id, r]))
   const live = searchRunning(roster, query)
-  const unread = searchThreads(attention.filter((th) => th.unread), query)
+  // Current activity owns this ID's display without acknowledging its old result.
+  const unread = searchThreads(attention.filter((th) =>
+    th.unread && !th.running && !th.waiting && !liveById.has(th.id)), query)
   const grouped = groupInbox(projects, searchThreads(threads, query), live).filter(
     // A project with nothing left to show is still a place to start one,
     // unless a search just proved it has no match.

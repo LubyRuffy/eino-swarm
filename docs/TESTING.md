@@ -2451,7 +2451,39 @@ in reverse order must not relight the same already-read completion.
 runs a real offline host task, reloads a folded project and opens its result.
 Phone `mobile/src/lib/completion-read.test.tsx` and
 `mobile/e2e/unread-completion.spec.ts` cover automatic recovery, explicit reads,
-visibility, failed ACK retries and English/Chinese layouts. Native iOS uses
+visibility, failed ACK retries and English/Chinese layouts.
+`mobile/src/components/home-screen-unread.test.tsx` (Issue #83) covers live,
+waiting and asking rosters, running/waiting listing and attention-only flags,
+different IDs with one title, search matching only an old completion, idle
+reappearance without watermark mutation, and More with every loaded result hidden.
+`mobile/src/lib/resume.test.ts` covers attention-only running/waiting fingerprint
+transitions in both directions and stable repeated input.
+`mobile/src/active-unread-refresh.test.tsx` sends those transitions through the
+real App inbox poll and quiet-poll guard, retaining the unread watermark and
+checking that hiding/reappearance sends neither `open` nor `read`.
+Run `cd mobile && npm run e2e -- active-unread.spec.ts` for Chromium phone and
+iPhone WebKit. The `history=active-unread` fixture exercises running, waiting and
+asking IDs alongside a different completed ID with the same title, expanded pages,
+polls and an idle transition without opening a result or acknowledging it.
+For the disposable native fixture described above, use
+`IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=active-unread'`, place the current bundle
+in the private native project, and copy `mobile/e2e/ios-active-unread.swift` to its
+`AppUITests/BindFlowTests.swift`. Select
+`-only-testing:AppUITests/BindFlowTests/testNativeActiveUnreadHomeProjectionKeepsOldWatermarks`
+in the existing `xcodebuild test` command. Android uses the same query and locale
+in a disposable native copy; build with the app-scoped Gradle tasks
+`./gradlew --offline --no-daemon :app:assembleDebug :app:assembleDebugAndroidTest`,
+install as above and run AndroidJUnitRunner
+with `-e class com.lubyruffy.zwai.ActiveUnreadTest#nativeActiveUnreadHomeProjectionKeepsOldWatermarks`, implemented in
+`mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/ActiveUnreadTest.java`.
+Both drivers retain reached-screen screenshots and accessibility output; Android
+also reads the installed APK's WebView DOM. More uses native accessibility clicks;
+DOM inspection never invokes clicks, mutates state or injects RPCs. Confirm one
+actually executed test and its exact method, runner and test APK identity; a script
+exit of zero alone does not prove acceptance. These entries require actual
+candidate runs and package/source receipts; their presence does not claim native
+acceptance or publication.
+Native iOS uses
 `BindFlowTests/testUnreadCompletionPersistsUntilExplicitVisit` with the packaged
 `history=unread-completion` offline fixture. Phone read tests distinguish the
 request's authoritative completion baseline from the rendered terminal event:

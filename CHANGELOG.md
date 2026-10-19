@@ -30,6 +30,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-125`, `F-220`, `C-023`: phones hide a conversation's earlier unread completion while it is running, waiting or asking, without clearing its watermark or sending a read acknowledgement. Idle results and different IDs with the same title remain available; search cannot revive an active completion and completion More remains reachable (Issue #83).
+
 - `F-140`, `C-028`: image-suffixed generic binary/UTI drops remain vision input with a normalized MIME claim; real-byte type validation remains on the server. Browser regressions use decodable JPEGs and verify unchanged bytes, saved images and reload.
 
 - `F-130`, `C-002`, `C-003`, `C-027`: PC cleanup and human interruption retain stopped workers in a separate Stopped group across replay instead of reporting successful completion or model failure. Restart ownership is ordered against complete turn finalization, including worker parking and durable terminal writes, preventing false human stops, lost workers and premature readiness.

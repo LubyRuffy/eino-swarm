@@ -140,6 +140,23 @@ describe("rosterFingerprint", () => {
       a,
     )
   })
+
+  it.each(["running", "waiting"] as const)("refreshes an attention-only row entering and leaving %s", (activity) => {
+    const completed: ThreadView = { id: "attention-only", title: "Retained result", running: false,
+      waiting: false, last_active_at: "2026-01-01T00:00:00Z", unread: true, completed_seq: 17 }
+    const active = { ...completed, [activity]: true }
+    const fingerprint = (row: ThreadView) => rosterFingerprint([], [], [], false, "", [row])
+    const idleFingerprint = fingerprint(completed)
+    const activeFingerprint = fingerprint(active)
+
+    // The App's quiet-poll guard must see activity changes even without a roster/listing row.
+    expect(activeFingerprint).not.toBe(idleFingerprint)
+    expect(fingerprint({ ...active })).toBe(activeFingerprint)
+    expect(fingerprint({ ...active, [activity]: false })).not.toBe(activeFingerprint)
+    expect(fingerprint({ ...completed })).toBe(idleFingerprint)
+    expect(active.unread).toBe(true)
+    expect(active.completed_seq).toBe(17)
+  })
 })
 
 

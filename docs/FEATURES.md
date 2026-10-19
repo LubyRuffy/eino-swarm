@@ -47,6 +47,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-125 Unread completion attention
 
+- 手机当前状态：同一对话 ID 正在运行、等待或待答时，顶部完成未读列表暂不显示其旧结果；未读水位与已读回执保持不变，空闲后仍可显示。同名不同 ID 独立保留；搜索使用未过滤的 live 集合判定，非搜索视图中全部已加载结果暂隐藏时仍可继续 More。实现／验证：`mobile/src/components/home-screen.tsx`、`mobile/src/components/home-screen-unread.test.tsx`、`mobile/e2e/active-unread.spec.ts`；关联契约：`C-023`、`C-007`；来源：Issue #83。
 - 兼容性：旧 PC 的 `open.detail.completed_seq` 缺失或为 `undefined` 时，手机跳过可选完成回执，正常对话及定时等待继续可用；现代 PC 的数值 `0` 仍允许首次可见终态回执。明确拒绝或网络失败保留未读并显示错误，不伪造成功；证据：`mobile/src/lib/completion-read-compatibility.test.tsx`、`mobile/e2e/unread-completion.spec.ts`；关联契约：`C-006`、`C-023`。
 
 - 目的：让多任务完成后的结果持续可见，直到使用者实际查看；使用者：PC 与配对手机用户；入口：桌面任务前的静态状态灯、收起项目标题右侧的汇总状态、手机顶部完成未读列表；输入：主任务完成事件与已观察的 `completed_seq`；输出：独立于运行呼吸灯的完成提示，查看后在同一 PC 的客户端同步清除；前置条件：同一 host 的未归档对话；失败表现：读取回执失败保留提示并显示错误；关联契约：`C-023`、`C-003`、`C-006`、`C-007`；实现证据：`internal/store/completion.go`, `internal/server/completion.go`, `internal/remote/rpc.go`, `frontend/src/components/app/completion-reader.tsx`, `mobile/src/lib/completion-read.ts`, `mobile/src/lib/inbox-refresh.ts`；验证：`internal/store/completion_test.go`, `frontend/e2e/unread-completion.spec.ts`, `mobile/e2e/unread-completion.spec.ts`, `mobile/src/lib/inbox-refresh.test.tsx`。

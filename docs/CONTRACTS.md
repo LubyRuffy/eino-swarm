@@ -208,6 +208,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 允许行为：正在查看的主结果实际渲染后确认其编号；跨客户端读取后在后续刷新同步；禁止行为：用当前最新编号代替使用者实际看到的编号，或把未读完成当正在执行以触发自动恢复。
 - 失败语义：无效或未来编号返回 `bad_request`，未知对话返回 `not_found`；已存储的取消／安静主终态允许无副作用读取；回执失败保留未读并显示错误；不变量：延迟或重复 ACK 不消费较新完成，同一完成的旧回执不能重新点亮已读提示，回执不改运行状态或标题。手机须区分实际渲染的终态编号与服务端完成水位，不能用 quiet／cancel 事件自行改写完成水位；回退低于请求开始时的水位后，旧回执不得恢复已删除完成。
 - 边界条件：quiet 仅撤销对应 turn 的提示；回退重算可见完成与已读水位，但保留持久终态编号上限，重启后不能复用旧终态身份。归档不在提示列表，恢复仍按保存的水位判断；完成后再进入新轮次时运行／问答／等待状态优先，旧未读结果仍可查看。
+- 手机展示互斥：按对话 ID 从未搜索过滤的 live roster、普通行或完成行自身的 running／waiting 状态排除顶部完成未读行；roster 的待答也属于 live。完成行单独进入或退出 running／waiting 时，列表轮询指纹必须变化并刷新展示；相同状态的重复轮询保持指纹稳定。只隐藏当前展示，不清除 `unread`／`completed_seq`、不发 `read`，空闲后仍可呈现旧未读。同名不同 ID 不能互相排除；非搜索视图中，More 的完成页游标与入口不因当前页全被隐藏而丢失。证据：`mobile/src/components/home-screen.tsx`、`mobile/src/components/home-screen-unread.test.tsx`、`mobile/src/lib/resume.ts`、`mobile/src/lib/resume.test.ts`、`mobile/src/active-unread-refresh.test.tsx`、`mobile/e2e/active-unread.spec.ts`；来源：Issue #83。
 - 证据：实现 `internal/store/completion.go`, `internal/server/completion.go`, `internal/remote/protocol.go`, `frontend/src/components/app/completion-reader.tsx`, `mobile/src/lib/completion-read.ts`；测试 `internal/store/completion_test.go`, `frontend/src/components/app/completion-reader.test.tsx`, `frontend/e2e/unread-completion.spec.ts`, `mobile/e2e/unread-completion.spec.ts`。
 - 变更规则：同步 HTTP/RPC、存储模型、客户端读取与回退／重启／竞态测试、功能及 CHANGELOG；来源：Issue #76。
 

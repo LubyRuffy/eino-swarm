@@ -84,7 +84,9 @@ export function rosterFingerprint(
       ].join("\0"),
     )
     .join("|")
-  const unread = attention.map((t) => [t.id, t.title, t.summary, t.unread, t.completed_seq].join("\0")).join("|")
+  const unread = attention
+    .map((t) => [t.id, t.title, t.summary, t.unread, t.completed_seq, t.running ? "1" : "", t.waiting ? "1" : ""].join("\0"))
+    .join("|")
   return [ps, live, th, unread, more ? "1" : "0", cursor].join("#")
 }
 
