@@ -2452,3 +2452,15 @@ Directory identity regressions in `internal/engine/project_workdir_identity_test
 cd frontend && npm test -- src/lib/paste-image.test.ts src/lib/composer-drop.test.ts src/components/app/composer-image-drop.test.tsx
 cd frontend && npm run e2e -- image-input.spec.ts
 ```
+
+## Forked worker role boundary
+
+`go test -race -run 'TestForkedWorkerDoesNotReceiveManagerSystemInstructions|TestForkContextOmitsSystemOnlyAndEmptyConversations' .`
+
+The regression observes actual model input through Registry and ADK for both
+`SpawnForked` and the manager lifecycle tool. A `spawned` event only carries the
+worker instruction and cannot prove that the separately injected conversation
+seed excludes manager System/personality. Check retained user/assistant/tool
+evidence, empty/System-only history, manager input immutability and unchanged
+same-role resume formatting. Do not infer actual model behavior or memory
+quality improvement from this deterministic payload test.

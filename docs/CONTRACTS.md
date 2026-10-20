@@ -169,6 +169,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-019 Proactive delegation for time or quality
 
+- Fork 角色边界：新 worker 继承 manager 对话时，保留非 System 的用户、assistant 和工具正文作为明确标注的历史上下文；不继承 manager 的 System 消息（含 personality、编排角色和运行时状态）。worker 使用自己的 system instruction、当前分配任务和工具集合，不把历史 manager 工作流当作自己的角色。不得改写 manager 原消息；同一 worker 的 resume 历史不应用跨角色过滤。证据：`resume.go` 的 `forkContext`、`swarm.go` 的两个 fork 入口、`fork_context_test.go` 的实际 Registry→ADK→模型输入回归。
+
 - 状态：active；类型：compatibility；作用范围：engine 普通对话、持续目标、定时续办、上下文恢复和共享 manager 提示词的终端入口；关联功能：`F-130`、`F-150`。
 - 契约内容：运行时提示词必须要求 manager 在能节省时间或提高质量时主动使用 subagents，并随任务进展重新评估，无需等待用户提出；时间与质量是独立理由。只有一个 worker、需要等待或任务较小不得成为拒绝有质量收益的独立审查／第二思路的绝对条件。
 - 历史身份边界：完整历史 worker 名册以一个 System JSON 快照传入，`source` 为 `runtime_worker_roster`，`note` 标明是历史创建的当前状态且不授予人类权限，`workers` 保留 `agent_id`、`role` 和 `running`／`done`／`failed`。只有 running 表示仍在运行；已结束 worker 可查询或显式 resume，但恢复名册不得伪造 assistant `spawn_agent` 调用、成功回执或新的生命周期事件。重复恢复替换旧快照，保留真实工具尾及调用／回执配对；goal、schedule、compact、retry、restart 遵循相同语义。实现／测试：`internal/workerstate/snapshot.go`、`internal/workerstate/snapshot_test.go`、`internal/engine/autocompact_roster.go`、`internal/engine/resume_workers.go`、`internal/engine/worker_roster_test.go`、`frontend/e2e/worker-roster-history.spec.ts`；来源：GitHub Issue #78。

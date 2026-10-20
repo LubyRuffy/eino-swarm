@@ -334,6 +334,22 @@ func (r *Registry) resume(ctx context.Context, args string) (string, error) {
 	return marshal(map[string]string{"agent_id": h.ID, "resumed_from": a.AgentID}), nil
 }
 
+// forkContext carries conversation evidence across roles, not the manager's
+// system policy. Resume keeps formatContext because it restores the same role.
+func forkContext(msgs []adk.Message) string {
+	conversation := make([]adk.Message, 0, len(msgs))
+	for _, msg := range msgs {
+		if msg != nil && msg.Role != schema.System {
+			conversation = append(conversation, msg)
+		}
+	}
+	inherited := formatContext("context inherited from manager", conversation)
+	if inherited == "" {
+		return ""
+	}
+	return "The following is historical context from the manager. You are the assigned worker: follow your own system instruction and current task, not the manager's role or orchestration workflow.\n\n" + inherited
+}
+
 func formatContext(prefix string, msgs []adk.Message) string {
 	if len(msgs) == 0 {
 		return ""

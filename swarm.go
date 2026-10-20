@@ -544,7 +544,7 @@ func (r *Registry) spawnAdmitted(ctx context.Context, role, task string,
 
 func (r *Registry) spawnForkedAdmitted(ctx context.Context, role, task string,
 	modelOpt ModelBuilder, msgs []adk.Message, extraTools ...tool.BaseTool) (*Handle, error) {
-	seed := formatContext("context inherited from manager", msgs)
+	seed := forkContext(msgs)
 	return r.spawnAgent(ctx, role, task, modelOpt, seed, true, extraTools...)
 }
 
@@ -629,7 +629,7 @@ func (r *Registry) turnsLimit() int {
 // message, so the worker starts with the manager's context so far.
 func (r *Registry) SpawnForked(ctx context.Context, role, task string,
 	modelOpt ModelBuilder, msgs []adk.Message, extraTools ...tool.BaseTool) (*Handle, error) {
-	seed := formatContext("context inherited from manager", msgs)
+	seed := forkContext(msgs)
 	return r.spawnAgent(ctx, role, task, modelOpt, seed, false, extraTools...)
 }
 

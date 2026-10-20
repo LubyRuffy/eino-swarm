@@ -19,6 +19,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `C-019`: a new forked worker receives non-System manager conversation as historical context. Manager System/personality and orchestration instructions are excluded; the worker retains its own assignment and tools. Same-worker resume and the manager history are unchanged.
+
 - **Breaking** `F-120`, `C-026`: non-empty working directories keep their path whitespace through save and runtime resolution. Callers must send the intended absolute path without decorative padding; all-whitespace input still selects managed storage. Previously stored normalized paths require no migration.
 
 - `F-430`, `C-010`: prepared mobile package `0.1.32` and development iOS build `132` metadata for the existing allocated batch; platform publication remains pending and TestFlight marketing version is selected independently by the release adapter.

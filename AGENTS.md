@@ -64,6 +64,11 @@ E2E suite.
 
 ## Testing rules
 
+- Fork-context role isolation must be tested at actual worker model input through
+  both Registry and manager-tool paths. `spawned.Text` omits the separately
+  injected conversation seed, so it cannot prove manager System/personality did
+  not leak. Preserve historical task evidence and same-role resume behavior.
+
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in
   [docs/TESTING.md](docs/TESTING.md); do not regress it.
