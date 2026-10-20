@@ -209,3 +209,29 @@ describe("Trace tab summary", () => {
     expect(screen.queryByTestId("trace-log")).toBeNull()
   })
 })
+
+describe("historical turn usage", () => {
+  it("never attributes the latest turn's token counts to a focused earlier turn", () => {
+    const history = structuredClone(noisy)
+    history.turns.push({ id: "tn_2", userText: "later work", status: "done", agentIds: [] })
+    const latestUsage = { ...usage, turn: { ...usage.turn, prompt_tokens: 9876 } }
+    const turns = [turn(), turn({ id: "tn_2" })]
+    const view = render(<TraceTab turns={turns} transcript={history} usage={latestUsage} focusedTurnId="tn_1" />)
+    expect(screen.queryByTestId("trace-usage")).not.toBeInTheDocument()
+    view.rerender(<TraceTab turns={turns} transcript={history} usage={latestUsage} focusedTurnId="tn_2" />)
+    expect(screen.getByTestId("trace-usage")).toHaveTextContent(/9.9K/)
+  })
+})
+
+describe("review Full log summary", () => {
+  it("renders a successful review summary once so it stays an unambiguous log row", () => {
+    const reviewed = structuredClone(noisy)
+    reviewed.agents[MANAGER_ID].blocks.push(block({
+      id: "review", kind: "notice", text: "Memory updated: 1 note stored.",
+      review: { changed: true, stop_reason: "completed", notes: { add: 1 } },
+    }))
+    render(<TraceTab turns={[turn()]} transcript={reviewed} />)
+    fireEvent.click(screen.getByTestId("trace-log-toggle"))
+    expect(screen.getAllByText("Memory updated: 1 note stored.")).toHaveLength(1)
+  })
+})

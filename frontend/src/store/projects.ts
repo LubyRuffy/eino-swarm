@@ -3,8 +3,8 @@ import { create } from "zustand"
 import { applyPinnedOrder } from "@/lib/reorder"
 import { api, ApiError, type ProjectPatch } from "@/lib/api"
 import { LIBRARY_ID } from "@/lib/library"
-import { reviewPanelHint } from "@/lib/transcript"
-import type { MemoryEntries, Project, ProjectMemory, ReviewOutcome, SkillTidyReport, TidyLive } from "@/lib/types"
+import { parseReview, reviewPanelHint } from "@/lib/transcript"
+import type { MemoryEntries, Project, ProjectMemory, ReviewOutcome, SkillTidyReport, SwarmEvent, TidyLive } from "@/lib/types"
 import { normalizeTidyReport } from "@/lib/skill-tidy"
 
 /** Projects and the memory panel live in their own store.
@@ -27,16 +27,24 @@ interface ProjectsState {
   reviewing: boolean
   /** What the last click decided, once it has an answer. */
   reviewHint?: string
+  reviewOutcome?: ReviewOutcome
+  reviewTurnId?: string
+  reviewThreadId?: string
+  reviewProjectId?: string
+  reviewGeneration: number
   /** The turn a click is waiting on. Absent means the next review event. */
   pendingReviewTurnId?: string
+  pendingReviewAfter?: number
   error?: string
 
   refresh: () => Promise<void>
   select: (id?: string) => void
-  beginReview: () => void
-  awaitReview: (turnId: string) => void
-  endReview: (hint?: string) => void
-  finishReview: (turnId: string, outcome?: ReviewOutcome) => void
+  beginReview: (threadId?: string, projectId?: string, afterSeq?: number) => void
+  awaitReview: (turnId: string, threadId?: string) => void
+  endReview: (hint?: string, threadId?: string) => void
+  finishReview: (turnId: string, outcome?: ReviewOutcome, threadId?: string, seq?: number) => void
+  replayReviews: (threadId: string, events: SwarmEvent[]) => void
+  restoreReview: (threadId: string, events: SwarmEvent[]) => Promise<void>
   /** create and update throw on refusal: the dialog shows the server's
    *  message against the field it names, which an error swallowed into the
    *  store could not do. */
@@ -69,22 +77,31 @@ export const useProjects = create<ProjectsState>((set, get) => ({
   memoryLoading: false,
   memoryUnread: false,
   reviewing: false,
+  reviewGeneration: 0,
   tidying: false,
   tidySlots: {},
 
-  beginReview: () =>
-    set({ reviewing: true, reviewHint: undefined, pendingReviewTurnId: undefined }),
+  beginReview: (reviewThreadId, reviewProjectId, pendingReviewAfter) =>
+    set({
+      reviewThreadId, reviewProjectId, pendingReviewAfter,
+      reviewGeneration: get().reviewGeneration + 1,
+      reviewing: true, reviewHint: undefined, reviewOutcome: undefined,
+      reviewTurnId: undefined, pendingReviewTurnId: undefined,
+    }),
 
-  awaitReview: (turnId) => {
-    if (!get().reviewing) return
+  awaitReview: (turnId, threadId) => {
+    if (!get().reviewing || (threadId && get().reviewThreadId !== threadId)) return
     set({ pendingReviewTurnId: turnId })
   },
 
-  endReview: (reviewHint) =>
-    set({ reviewing: false, reviewHint, pendingReviewTurnId: undefined }),
+  endReview: (reviewHint, threadId) => {
+    if (threadId && get().reviewThreadId !== threadId) return
+    set({ reviewing: false, reviewHint, reviewOutcome: undefined, reviewTurnId: undefined, pendingReviewTurnId: undefined })
+  },
 
-  finishReview: (turnId, outcome) => {
-    if (!get().reviewing) return
+  finishReview: (turnId, outcome, threadId, seq) => {
+    if (!get().reviewing || (threadId && get().reviewThreadId && get().reviewThreadId !== threadId)) return
+    if (seq !== undefined && seq <= (get().pendingReviewAfter ?? 0)) return
     const pending = get().pendingReviewTurnId
     // A click that has not yet heard which turn was accepted still owns the
     // next review event: the job can finish before the 202 body is parsed.
@@ -92,8 +109,35 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     set({
       reviewing: false,
       reviewHint: reviewPanelHint(outcome),
+      reviewOutcome: outcome,
+      reviewTurnId: turnId,
       pendingReviewTurnId: undefined,
     })
+  },
+
+  replayReviews: (threadId, events) => {
+    for (const event of events) {
+      if (event.kind === "memory_review" && event.thread_id === threadId) {
+        get().finishReview(event.turn_id, parseReview(event), threadId, event.seq)
+      }
+    }
+  },
+
+  restoreReview: async (threadId, events) => {
+    get().replayReviews(threadId, events)
+    const pending = get()
+    const turnId = pending.pendingReviewTurnId
+    if (!pending.reviewing || pending.reviewThreadId !== threadId || !turnId) return
+    const generation = pending.reviewGeneration
+    try {
+      // A completed review may already be older than the loaded tail. One
+      // turn read restores this click; an unfinished review still uses SSE.
+      const trace = await api.trace(turnId)
+      if (get().reviewGeneration !== generation || get().reviewThreadId !== threadId || get().pendingReviewTurnId !== turnId) return
+      get().replayReviews(threadId, trace.events)
+    } catch {
+      // A failed read does not claim that the review finished or start a poll.
+    }
   },
 
   refresh: async () => {

@@ -203,6 +203,10 @@ export interface SkillTidyReport {
  *  to keep. `changed: false` is the common case and shows nothing. */
 export interface ReviewOutcome {
   changed: boolean
+  stop_reason?: "completed" | "iteration_limit" | "proposal_missing" | "error"
+  attempt_count?: number
+  attempts?: ReviewAttempt[]
+  refused?: ReviewRefusal[]
   notes?: Record<string, number>
   skills?: MemoryChange[]
   changes?: MemoryChange[]
@@ -212,6 +216,22 @@ export interface ReviewOutcome {
   notify?: MemoryNotify
   /** True when the write landed in the shared skill library. */
   library?: boolean
+}
+
+export interface ReviewRefusal {
+  index: number
+  reason: string
+  code?: "evidence" | "numeric" | "capacity" | "validation" | "conflict" | "storage"
+  attempt?: number
+  sources?: number[]
+  usage?: string
+  over_by?: number
+}
+
+export interface ReviewAttempt {
+  number: number
+  status: "accepted" | "refused" | "error"
+  operations: { target: string; action: string; sources?: number[] }[]
 }
 
 export interface MemoryChange {

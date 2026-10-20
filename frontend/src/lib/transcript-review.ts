@@ -1,4 +1,6 @@
 import type { ReviewOutcome, SwarmEvent } from "./types"
+import { type Locale, localizeNotice } from "./i18n"
+import { parseReviewDiagnostics, reviewFailure } from "./review-diagnostics"
 
 /** Read a review's outcome out of an event. A malformed one is dropped: the
  *  review is an extra, and half a summary is worse than none. */
@@ -12,6 +14,7 @@ export function parseReview(ev: SwarmEvent): ReviewOutcome | undefined {
   if (!raw || typeof raw !== "object") return undefined
   const body = raw as Partial<ReviewOutcome>
   return {
+    ...parseReviewDiagnostics(raw),
     changed: body.changed === true,
     notes: typeof body.notes === "object" && body.notes ? body.notes : undefined,
     skills: Array.isArray(body.skills) ? body.skills : undefined,
@@ -45,15 +48,16 @@ const SKILL_VERBS: Record<string, string> = {
  *  Auto-review stays quiet when it kept nothing — a line after every answer
  *  would train people to ignore the ones that matter. A click is a request
  *  for an answer, so the panel always says what happened. */
-export function reviewPanelHint(outcome?: ReviewOutcome): string {
-  if (outcome?.err) return `Memory review failed: ${outcome.err}`
-  if (!outcome?.changed) return "Review finished — nothing new to keep."
-  return "Review finished."
+export function reviewPanelHint(outcome?: ReviewOutcome, locale: Locale = "en"): string {
+  const failure = reviewFailure(outcome, locale)
+  if (failure) return failure
+  return localizeNotice(outcome?.changed ? "Review finished." : "Review finished — nothing new to keep.", locale)
 }
 
-export function reviewNotice(outcome?: ReviewOutcome): string | undefined {
+export function reviewNotice(outcome?: ReviewOutcome, locale: Locale = "en"): string | undefined {
   if (!outcome) return undefined
-  if (outcome.err) return `Memory review failed: ${outcome.err}`
+  const failure = reviewFailure(outcome, locale)
+  if (failure) return failure
   if (!outcome.changed) return undefined
   const parts: string[] = []
   for (const action of Object.keys(NOTE_VERBS)) {
@@ -71,12 +75,13 @@ export function reviewNotice(outcome?: ReviewOutcome): string | undefined {
     : parts.length > 0
       ? `Memory updated: ${parts.join(", ")}.`
       : "Memory updated."
-  if (outcome.notify !== "verbose") return head
+  const localizedHead = localizeNotice(head, locale)
+  if (outcome.notify !== "verbose") return localizedHead
   const preview = (outcome.changes ?? [])
     .map(changePreview)
     .filter(Boolean)
     .join("\n")
-  return preview ? `${head}\n${preview}` : head
+  return preview ? `${localizedHead}\n${preview}` : localizedHead
 }
 
 function changePreview(c: { action?: string; name?: string; text?: string; target?: string }): string {

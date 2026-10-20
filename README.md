@@ -748,8 +748,19 @@ draft until the complete proposal passes validation and its original revision
 still matches the notes shown in the first model request; a refusal or conflict leaves the stored notes intact. A changed input revision detected before batch execution stops the review without another repair call; a change racing the final commit may use one repair call before the fixed input revision stops further note edits. Skill
 changes remain immediate and may survive a later refusal: this is not a
 transaction across notes and skills. Successful submission finishes the review
-without another model request just to announce the result. Trace records source
-references and refusals under the original turn id. These checks verify source
+without another model request just to announce the result. If review fails, the
+transcript and Memory panel show its stopping reason, proposal count and concrete
+refusal categories, including capacity usage and excess characters when present.
+They distinguish notes that did not commit from any skill changes already saved.
+The failure's **Trace** button opens the original turn's Full log even when a
+newer turn exists or the right panel is closed. The button loads older source
+history when needed and reports an unavailable Trace explicitly. Expand its review
+row, or run `zwai trace <turn-id> --full`, for bounded proposal metadata and source
+references. A historical focus does not show the latest turn's token usage as its
+own. Returning to the review's conversation restores a completed result even
+when it is older than the loaded transcript tail. Rejected proposal text and quotes are
+not added to that diagnostic history. Older review events remain readable.
+These checks verify source
 identity, exact quotes and numeric spelling; they do not prove semantic truth.
 Set **Settings → Memory → Review thinking** to choose a separate reasoning level for automatic review and **Review now**. The default **Inherit conversation** preserves the reviewed turn's choice; **Low** is an optional latency profile for models that support it. It does not change conversation work, catalog tidy, the model, or the output cap.
 See [the review contract](docs/CONTRACTS.md#c-025-memory-review-evidence-and-commit).
@@ -761,8 +772,12 @@ win. Correcting a wrong note there matters: it would otherwise be repeated in
 every future conversation. Notes are budgeted (`memory.char_limit`, default 2200
 characters; one agent note is also capped at `memory.entry_max`, default 360)
 because they ride in every prompt — once full, a write that would
-grow the notes is refused, even a replace with a longer note. Something
-shorter has to land first. Creating a skill that already covers the same
+grow the notes is refused, even a replace with a longer note. Review receives the
+current usage, capacity gap and existing entries as structured repair feedback.
+It can shorten or replace source-supported related notes before adding a new one
+within the same review budget; it must not clear unrelated notes to make room.
+If it cannot safely submit the complete proposal, it reports failure and leaves
+pending notes unsaved. Creating a skill that already covers the same
 subject is refused: the result names the existing skill so the next call is
 a patch, not a second name. Skills that share a name stem (the same procedure
 split into chapter-skills) are refused the same way, and leftover families are

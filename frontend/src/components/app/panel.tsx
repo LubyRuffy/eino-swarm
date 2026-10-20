@@ -1,5 +1,5 @@
 import { ArrowDownNarrowWide, ArrowLeft, ArrowUpNarrowWide, ChevronDown } from "lucide-react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { AgentPromptButton } from "@/components/app/agent-prompt"
 import { ConversationSchedules } from "@/components/app/conversation-schedules"
@@ -33,6 +33,7 @@ import {
 import { useT, type Translate } from "@/lib/use-t"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import { cn } from "@/lib/utils"
+import { useTraceFocus } from "@/store/trace-focus"
 import { useApp } from "@/store/app"
 
 export type PanelTab = "agents" | "files" | "trace" | "memory"
@@ -77,6 +78,17 @@ export function RightPanel({
   usage?: UsageSnapshot | null
 }) {
   const t = useT()
+  const traceFocus = useTraceFocus()
+  const previousThread = useRef(threadId)
+  const changeTab = useRef(onTabChange)
+  changeTab.current = onTabChange
+  useEffect(() => {
+    if (previousThread.current !== threadId) useTraceFocus.getState().clear()
+    previousThread.current = threadId
+  }, [threadId])
+  useEffect(() => {
+    if (traceFocus.turnId) changeTab.current("trace")
+  }, [traceFocus.request, traceFocus.turnId])
   const [width, setWidth] = useState(352)
   const [rosterSort, setRosterSort] = useState<AgentRosterSort>(defaultAgentRosterSort)
   return (
@@ -96,7 +108,10 @@ export function RightPanel({
       <ConversationSchedules key={threadId ?? ""} threadId={threadId} />
       <Tabs
         value={tab}
-        onValueChange={(v) => onTabChange(v as PanelTab)}
+        onValueChange={(v) => {
+          if (v === "trace") useTraceFocus.getState().clear()
+          onTabChange(v as PanelTab)
+        }}
         className="flex min-h-0 flex-1 flex-col"
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2">
@@ -162,7 +177,7 @@ export function RightPanel({
             value="trace"
             className="thin-scrollbar min-h-0 flex-1 overflow-auto bg-card"
           >
-            <TraceTab turns={turns} transcript={transcript} usage={usage} />
+            <TraceTab turns={turns} transcript={transcript} usage={usage} focusedTurnId={traceFocus.turnId} />
           </TabsContent>
 
           {memory ? (

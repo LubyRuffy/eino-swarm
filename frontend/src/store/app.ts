@@ -320,20 +320,20 @@ export const useApp = create<AppState>((set, get) => ({
       useProjects.getState().endReview("Open a conversation first.")
       return
     }
-    useProjects.getState().beginReview()
+    useProjects.getState().beginReview(id, useProjects.getState().memoryProjectId, get().transcript.lastSeq)
     try {
       const { turn } = await api.reviewThread(id)
-      if (turn?.id) useProjects.getState().awaitReview(turn.id)
+      if (turn?.id) useProjects.getState().awaitReview(turn.id, id)
     } catch (e) {
       // Idle is an answer: no finished turn, or memory is off. The banner
       // would make it look like the app broke; the panel is where they clicked.
       if (e instanceof ApiError && e.code === "idle") {
         useProjects.getState().endReview(
-          "Nothing to review. Finish a turn in this project first.",
+          "Nothing to review. Finish a turn in this project first.", id,
         )
         return
       }
-      useProjects.getState().endReview()
+      useProjects.getState().endReview(undefined, id)
       set({ error: message(e) })
     }
   },
@@ -449,6 +449,7 @@ export const useApp = create<AppState>((set, get) => ({
       // The Memory tab belongs to the project, not the conversation. Opening
       // a Recents chat must drop the previous project's highlight or the
       // folder would still look selected.
+      void useProjects.getState().restoreReview(id, log.events ?? [])
       useProjects.getState().select(thread.project_id || undefined)
       void useProjects.getState().loadMemory(thread.project_id || LIBRARY_ID)
       void get().refreshSchedules()

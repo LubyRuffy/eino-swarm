@@ -1,4 +1,4 @@
-import type { ImageRef, SwarmEvent } from "./types"
+import type { ImageRef, ReviewOutcome, SwarmEvent } from "./types"
 import {
   compactBriefing,
   compactNotice,
@@ -85,6 +85,8 @@ export interface Block {
   /** Extra body a notice can open. Compact keeps the briefing here so the
    *  chat row stays a one-liner instead of pasting the next prompt. */
   detail?: string
+  /** Structured reviewer diagnostics, formatted when the UI language changes. */
+  review?: ReviewOutcome
   /** Tool blocks only. */
   tool?: {
     callId: string
@@ -270,6 +272,7 @@ export function reduceEvent(
     if (notice) {
       const row = block(ev, "notice", notice)
       row.quiet = outcome?.notify === "off"
+      row.review = outcome
       append(touchAgent(next, MANAGER_ID), row)
     }
     return next

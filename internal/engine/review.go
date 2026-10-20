@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -252,9 +253,12 @@ type reviewOutcome struct {
 	Err     string          `json:"err,omitempty"`
 	// Notify is how chatty this review should be in the transcript, stamped
 	// at record time so a later settings change does not rewrite history.
-	Notify   string           `json:"notify,omitempty"`
-	Evidence []reviewEvidence `json:"evidence,omitempty"`
-	Refused  []reviewRefusal  `json:"refused,omitempty"`
+	Notify       string           `json:"notify,omitempty"`
+	Evidence     []reviewEvidence `json:"evidence,omitempty"`
+	Refused      []reviewRefusal  `json:"refused,omitempty"`
+	StopReason   string           `json:"stop_reason,omitempty"`
+	AttemptCount int              `json:"attempt_count"`
+	Attempts     []reviewAttempt  `json:"attempts,omitempty"`
 }
 
 // reviewRun is one reviewer agent: post-turn extraction or the Memory panel's
@@ -319,7 +323,8 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 	if !pc.library {
 		snapshot, err := pc.memory.Read()
 		if err != nil {
-			outcome.Err = publicTurnError(err)
+			outcome.Err = reviewRefusalReason("storage")
+			outcome.StopReason = "error"
 			e.finishReview(threadID, turn, pc, outcome)
 			return
 		}
@@ -362,6 +367,12 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 	mu.Lock()
 	if !batch.complete && outcome.Err == "" {
 		outcome.Err = "The review ended without submitting a complete memory proposal."
+		if outcome.StopReason == "iteration_limit" {
+			outcome.Err = "The review exhausted its tool-round budget without submitting a complete memory proposal."
+		}
+	}
+	if !batch.complete {
+		outcome.Note = "No complete memory proposal was submitted."
 	}
 	if len(outcome.Notes) == 0 {
 		outcome.Notes = nil
@@ -388,6 +399,7 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 	if err != nil {
 		mu.Lock()
 		outcome.Err = publicTurnError(err)
+		outcome.StopReason = "error"
 		mu.Unlock()
 		return
 	}
@@ -404,6 +416,7 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 	if err != nil {
 		mu.Lock()
 		outcome.Err = publicTurnError(err)
+		outcome.StopReason = "error"
 		mu.Unlock()
 		return
 	}
@@ -433,6 +446,7 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 			}
 			mu.Lock()
 			outcome.Err = publicTurnError(ev.Err)
+			outcome.StopReason = "error"
 			mu.Unlock()
 			break
 		}
@@ -452,6 +466,18 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 	mu.Lock()
 	if final != "" || outcome.Note == "" {
 		outcome.Note = oneLine(final)
+	}
+	if outcome.Err != "" {
+		outcome.StopReason = "error"
+	} else if outcome.StopReason != "completed" {
+		switch {
+		case capped:
+			outcome.StopReason = "iteration_limit"
+		case run.completed != nil:
+			outcome.StopReason = "proposal_missing"
+		default:
+			outcome.StopReason = "completed"
+		}
 	}
 	if capped && outcome.Note == "" {
 		outcome.Note = reviewCapNote
@@ -477,7 +503,7 @@ func (e *Engine) reviewUserMessageWithNotes(pc *projectContext, transcript strin
 			}
 		}
 		if notes != nil {
-			transcript += "\nCurrent project notes (existing claims may need correction):\n"
+			transcript += fmt.Sprintf("\nCurrent project notes (existing claims may need correction) [%d/%d characters; per-note limit %d]:\n", notes.Chars, notes.Limit, pc.memory.EntryMax())
 			if len(notes.Entries) == 0 {
 				transcript += "(none)\n"
 			} else {
@@ -514,6 +540,9 @@ func (e *Engine) finishReview(threadID string, turn *store.Turn, pc *projectCont
 	if turn.Status != store.TurnError {
 		e.applySkillFold(pc, &outcome)
 	}
+	if outcome.StopReason == "completed" && outcome.Err != "" {
+		outcome.StopReason = "error"
+	}
 	if len(outcome.Notes) == 0 {
 		outcome.Notes = nil
 	}
@@ -543,6 +572,9 @@ func (e *Engine) applySkillFold(pc *projectContext, outcome *reviewOutcome) {
 	if err != nil {
 		if outcome.Err == "" {
 			outcome.Err = err.Error()
+			if outcome.StopReason != "" {
+				outcome.Err = "Recorded skills could not be consolidated."
+			}
 		}
 		return
 	}

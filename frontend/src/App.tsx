@@ -45,6 +45,7 @@ import { isMac, readSidebarOpen, writeSidebarOpen } from "@/lib/utils"
 import { desktopShell, openLinksNatively } from "@/lib/shell"
 import { useApp } from "@/store/app"
 import { waitingThreadIds } from "@/store/app-schedule"
+import { useTraceFocus } from "@/store/trace-focus"
 import { projectOf, useProjects } from "@/store/projects"
 import { useTerminal } from "@/store/terminal"
 import { openSettings, useSettingsSheet } from "@/store/settings-sheet"
@@ -156,6 +157,13 @@ function AppShell() {
   const setAppearance = useApp((s) => s.setAppearance)
   const selectAgent = useApp((s) => s.selectAgent)
   const activeId = useApp((s) => s.activeId)
+  const traceRequest = useTraceFocus((s) => s.request)
+  useEffect(() => useTraceFocus.getState().clear(), [activeId])
+  useEffect(() => {
+    if (!useTraceFocus.getState().turnId) return
+    setPanelOpen(true)
+    setPanelTab("trace")
+  }, [traceRequest])
   const trafficLights = desktopShell() && isMac()
   const client = useOpenClient()
 
@@ -846,6 +854,10 @@ function AppPanel({
   const memoryProjectId = useProjects((s) => s.memoryProjectId)
   const reviewing = useProjects((s) => s.reviewing)
   const reviewHint = useProjects((s) => s.reviewHint)
+  const reviewOutcome = useProjects((s) => s.reviewOutcome)
+  const reviewTurnId = useProjects((s) => s.reviewTurnId)
+  const reviewThreadId = useProjects((s) => s.reviewThreadId)
+  const reviewProjectId = useProjects((s) => s.reviewProjectId)
   const conversationProject = projectOf(
     projects,
     threads.find((t) => t.id === activeId)?.project_id,
@@ -860,6 +872,7 @@ function AppPanel({
   // No project means the shared library: procedures from conversations that
   // belong to none, kept so they can be copied into an agent later.
   const memoryTarget = project?.id ?? (activeId ? LIBRARY_ID : undefined)
+  const reviewForTarget = (!reviewThreadId || reviewThreadId === activeId) && (!reviewProjectId || reviewProjectId === memoryTarget)
   const memoryForTarget =
     memoryTarget && memoryProjectId === memoryTarget ? memory : undefined
   // A project-row click loads that project's catalog. This panel follows the
@@ -901,8 +914,10 @@ function AppPanel({
               onRefresh: () => void loadMemory(memoryTarget),
               onReview: () => void reviewNow(),
               onTidySkills: () => void tidySkills(),
-              reviewing,
-              reviewHint,
+              reviewing: reviewForTarget && reviewing,
+              reviewHint: reviewForTarget ? reviewHint : undefined,
+              reviewOutcome: reviewForTarget ? reviewOutcome : undefined,
+              reviewTurnId: reviewForTarget ? reviewTurnId : undefined,
               tidying,
               tidyReport,
               tidyError,

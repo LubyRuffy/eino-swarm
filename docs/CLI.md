@@ -257,6 +257,11 @@ under the agent `memory-reviewer`. A project turn writes that project's notes
 and skills. A conversation in no project writes procedures into the shared
 skill library and sets `"library": true` on that event. The review is part of
 the turn, so the same id explains both what the swarm answered and what it wrote down.
+Use `zwai trace <turn-id> --full` for review stopping reason, submitted-proposal
+count, bounded attempt metadata and refusal categories/capacity numbers. These
+fields distinguish budget exhaustion from an invalid source or a full notes
+store, without recording rejected proposal bodies or exact quotes. Old review
+events can omit them; the same command still reads those events.
 
 Given a **conversation** id it prints every turn of that conversation in order.
 Given an unknown id it fails with a message naming the data directory it looked

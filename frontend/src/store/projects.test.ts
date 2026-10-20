@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { api } from "@/lib/api"
 import { projectOf, useProjects } from "@/store/projects"
 import type { Project, ProjectMemory } from "@/lib/types"
 import { emptyTidyReport } from "@/lib/skill-tidy"
@@ -83,6 +84,7 @@ vi.mock("@/lib/api", () => ({
       if (fake.fail) throw new Error("cannot read memory")
       return snap
     },
+    trace: vi.fn(),
     library: async () => memory("library"),
     deleteLibrarySkill: async (name: string) => {
       fake.deleted.push(`library/${name}`)
@@ -172,6 +174,7 @@ function memory(id: string): ProjectMemory {
 }
 
 beforeEach(() => {
+  vi.mocked(api.trace).mockReset()
   fake.projects = []
   fake.memoryDelays = {}
   fake.blockMemory = new Set()
@@ -646,5 +649,82 @@ describe("projectOf", () => {
     expect(projectOf(projects, "pj_b")?.name).toBe("b")
     expect(projectOf(projects, undefined)).toBeUndefined()
     expect(projectOf(projects, "pj_gone")).toBeUndefined()
+  })
+})
+
+describe("review click ownership", () => {
+  it("does not let a different conversation steal a click before the acknowledgement", () => {
+    useProjects.getState().beginReview("th_a", "pj_a")
+    useProjects.getState().finishReview("tn_b", { changed: false, err: "failed" }, "th_b")
+    expect(useProjects.getState().reviewing).toBe(true)
+    useProjects.getState().finishReview("tn_a", { changed: false, err: "failed", stop_reason: "iteration_limit", attempt_count: 3 }, "th_a")
+    expect(useProjects.getState()).toMatchObject({ reviewing: false, reviewThreadId: "th_a", reviewProjectId: "pj_a", reviewTurnId: "tn_a" })
+    expect(useProjects.getState().reviewOutcome?.attempt_count).toBe(3)
+  })
+
+  it("ignores late acknowledgements and errors after another conversation starts a review", () => {
+    useProjects.getState().beginReview("th_a", "pj_a")
+    useProjects.getState().beginReview("th_b", "pj_b")
+    useProjects.getState().awaitReview("tn_a", "th_a")
+    useProjects.getState().endReview("old failure", "th_a")
+    expect(useProjects.getState()).toMatchObject({ reviewing: true, reviewThreadId: "th_b" })
+    expect(useProjects.getState().pendingReviewTurnId).toBeUndefined()
+    expect(useProjects.getState().reviewHint).toBeUndefined()
+  })
+})
+
+describe("review completion while the conversation was closed", () => {
+  it("restores the matching result from history while ignoring old reviews of that turn", () => {
+    const event = (seq: number, changed: boolean) => ({ thread_id: "th_a", turn_id: "tn_a", seq, kind: "memory_review", agent_id: "memory-reviewer", text: JSON.stringify({ changed }), created_at: "" })
+    useProjects.getState().beginReview("th_a", "pj_a", 20)
+    useProjects.getState().awaitReview("tn_a", "th_a")
+    useProjects.getState().replayReviews("th_a", [event(10, true)])
+    expect(useProjects.getState().reviewing).toBe(true)
+    useProjects.getState().replayReviews("th_a", [event(21, false)])
+    expect(useProjects.getState().reviewing).toBe(false)
+    expect(useProjects.getState().reviewOutcome).toMatchObject({ changed: false })
+  })
+})
+
+describe("review result outside the open conversation tail", () => {
+  const event = (seq: number) => ({ thread_id: "th_a", turn_id: "tn_a", seq, kind: "memory_review", agent_id: "memory-reviewer", text: JSON.stringify({ changed: false, stop_reason: "iteration_limit", attempt_count: 3, err: "failed" }), created_at: "" })
+
+  it("checks the pending turn once when its result was pushed out of the initial tail", async () => {
+    useProjects.getState().beginReview("th_a", "pj_a", 20)
+    useProjects.getState().awaitReview("tn_a", "th_a")
+    vi.mocked(api.trace).mockResolvedValue({ turn: {} as never, events: [event(10), event(21)], llm_calls: [] })
+    await useProjects.getState().restoreReview("th_a", [])
+    expect(api.trace).toHaveBeenCalledTimes(1)
+    expect(api.trace).toHaveBeenCalledWith("tn_a")
+    expect(useProjects.getState()).toMatchObject({ reviewing: false, reviewTurnId: "tn_a" })
+    expect(useProjects.getState().reviewOutcome?.attempt_count).toBe(3)
+  })
+
+  it("does not let a late trace response claim a new click for the same conversation", async () => {
+    let finish!: (value: Awaited<ReturnType<typeof api.trace>>) => void
+    useProjects.getState().beginReview("th_a", "pj_a", 20)
+    useProjects.getState().awaitReview("tn_a", "th_a")
+    vi.mocked(api.trace).mockImplementation(() => new Promise((resolve) => { finish = resolve }))
+    const pending = useProjects.getState().restoreReview("th_a", [])
+    useProjects.getState().beginReview("th_b", "pj_b", 20)
+    useProjects.getState().beginReview("th_a", "pj_a", 20)
+    useProjects.getState().awaitReview("tn_a", "th_a")
+    finish({ turn: {} as never, events: [event(21)], llm_calls: [] })
+    await pending
+    expect(useProjects.getState().reviewing).toBe(true)
+    expect(useProjects.getState().reviewOutcome).toBeUndefined()
+  })
+
+  it("keeps waiting for SSE without polling when Trace has no new review or cannot be read", async () => {
+    useProjects.getState().beginReview("th_a", "pj_a", 20)
+    useProjects.getState().awaitReview("tn_a", "th_a")
+    vi.mocked(api.trace).mockResolvedValue({ turn: {} as never, events: [event(10)], llm_calls: [] })
+    await useProjects.getState().restoreReview("th_a", [])
+    expect(api.trace).toHaveBeenCalledTimes(1)
+    expect(useProjects.getState().reviewing).toBe(true)
+    vi.mocked(api.trace).mockRejectedValue(new Error("offline"))
+    await useProjects.getState().restoreReview("th_a", [])
+    expect(api.trace).toHaveBeenCalledTimes(2)
+    expect(useProjects.getState().reviewing).toBe(true)
   })
 })

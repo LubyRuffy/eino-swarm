@@ -73,18 +73,20 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 	if done {
 		return reviewBatchResult(true, "review already completed"), nil
 	}
+	number := t.beginAttempt()
 	var input struct {
 		Changes *[]reviewOperation `json:"changes"`
 	}
 	decoder := json.NewDecoder(strings.NewReader(args))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil || input.Changes == nil {
-		return t.refuse(-1, "invalid proposal: provide a changes array"), nil
+		return t.refuse(number, -1, "validation", errors.New("invalid proposal: provide a changes array"), nil), nil
 	}
 	if err := decoder.Decode(new(any)); err != io.EOF {
-		return t.refuse(-1, "invalid proposal: expected exactly one JSON object"), nil
+		return t.refuse(number, -1, "validation", errors.New("invalid proposal: expected exactly one JSON object"), nil), nil
 	}
 	operations := *input.Changes
+	t.describeAttempt(number, operations)
 	hasNotes := false
 	for _, op := range operations {
 		hasNotes = hasNotes || op.Target == memory.ToolMemory
@@ -92,17 +94,17 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 	if hasNotes && t.notesRev != "" {
 		current, err := t.store.Read()
 		if err != nil {
-			return "", err
+			return "", t.terminalError(number, err, operations)
 		}
 		if current.Rev != t.notesRev {
-			return "", &memory.ConflictError{Current: current}
+			return "", t.terminalError(number, &memory.ConflictError{Current: current}, operations)
 		}
 	}
 	evidence := make([]reviewEvidence, 0, len(operations))
 	for i, op := range operations {
 		if op.Target == memory.ToolMemory && (op.Action == "replace" || op.Action == "add") {
 			if op.Content != "" && op.NewText != "" && op.Content != op.NewText {
-				return t.refuse(i, "conflicting replacement text fields"), nil
+				return t.refuse(number, i, "validation", errors.New("conflicting replacement text fields"), operations), nil
 			}
 			if op.Content == "" {
 				op.Content = op.NewText
@@ -111,18 +113,18 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 			operations[i] = op
 		}
 		if err := t.validateOperation(op); err != nil {
-			return t.refuse(i, err.Error()), nil
+			return t.refuse(number, i, "validation", err, operations), nil
 		}
 		seqs, quotes, err := validateReviewEvidence(op, t.sources, t.humanOnly)
 		if err != nil {
-			return t.refuse(i, err.Error()), nil
+			return t.refuse(number, i, "evidence", err, operations), nil
 		}
 		if op.Target == memory.ToolMemory && op.Action != "remove" {
 			previous := ""
 			if op.Action == "replace" {
 				snap, readErr := t.store.Read()
 				if readErr != nil {
-					return t.refuse(i, readErr.Error()), nil
+					return t.refuse(number, i, "storage", readErr, operations), nil
 				}
 				for _, entry := range snap.Entries {
 					if strings.Contains(entry, op.OldText) {
@@ -131,25 +133,25 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 				}
 			}
 			if err := validateReviewNumbers(op.Content, quotes, previous); err != nil {
-				return t.refuse(i, err.Error()), nil
+				return t.refuse(number, i, "numeric", err, operations), nil
 			}
 		}
 		evidence = append(evidence, reviewEvidence{Target: op.Target, Action: op.Action, Name: op.Name, Sources: seqs})
 	}
 	// The empty batch is a real decision, with no filesystem mutation.
 	if len(operations) == 0 {
-		return t.completed(ctx, nil)
+		return t.completed(ctx, number, nil)
 	}
 	draft, err := t.store.BeginNotesDraft()
 	if err != nil {
-		return t.refuse(-1, err.Error()), nil
+		return t.refuse(number, -1, "storage", err, operations), nil
 	}
 	before, err := draft.Store.Read()
 	if err != nil {
-		return t.refuse(-1, err.Error()), nil
+		return t.refuse(number, -1, "storage", err, operations), nil
 	}
 	if hasNotes && t.notesRev != "" && before.Rev != t.notesRev {
-		return "", &memory.ConflictError{Current: before}
+		return "", t.terminalError(number, &memory.ConflictError{Current: before}, operations)
 	}
 	noteTool := memory.Tools(draft.Store, nil)[0].(tool.InvokableTool)
 	for i, op := range operations {
@@ -157,7 +159,7 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 			continue
 		}
 		if err := invokeReviewOperation(ctx, noteTool, op); err != nil {
-			return t.refuse(i, err.Error()), nil
+			return t.refuse(number, i, "storage", err, operations), nil
 		}
 	}
 	// Skill files keep their existing immediate-write contract. Persist each
@@ -168,21 +170,21 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 			continue
 		}
 		if err := invokeReviewOperation(ctx, skillTool, op); err != nil {
-			return t.refuse(i, err.Error()), nil
+			return t.refuse(number, i, "storage", err, operations), nil
 		}
 	}
 	proposed, err := draft.Store.Read()
 	if err != nil {
-		return t.refuse(-1, err.Error()), nil
+		return t.refuse(number, -1, "storage", err, operations), nil
 	}
 	// Rephrasing and then undoing it, or only reordering the same notes, must
 	// not mutate the live file or advertise a change.
 	if len(reviewNoteDiff(before, proposed)) == 0 {
-		return t.completed(ctx, evidence)
+		return t.completed(ctx, number, evidence)
 	}
 	after, changed, err := draft.Commit()
 	if err != nil {
-		return t.refuse(-1, err.Error()), nil
+		return t.refuse(number, -1, "storage", err, operations), nil
 	}
 	if changed {
 		t.mu.Lock()
@@ -191,7 +193,7 @@ func (t *reviewBatchTool) InvokableRun(ctx context.Context, args string, _ ...to
 		}
 		t.mu.Unlock()
 	}
-	return t.completed(ctx, evidence)
+	return t.completed(ctx, number, evidence)
 }
 
 func (t *reviewBatchTool) validateOperation(op reviewOperation) error {
@@ -232,21 +234,17 @@ func invokeReviewOperation(ctx context.Context, invoke tool.InvokableTool, op re
 		return fmt.Errorf("invalid memory tool receipt: %w", err)
 	}
 	if !decoded.Success {
-		return fmt.Errorf("memory operation refused: %s", decoded.Error)
+		var feedback map[string]json.RawMessage
+		_ = json.Unmarshal([]byte(result), &feedback)
+		return &reviewOperationError{message: fmt.Sprintf("memory operation refused: %s", decoded.Error), feedback: feedback}
 	}
 	return nil
 }
 
-func (t *reviewBatchTool) refuse(index int, reason string) string {
-	t.mu.Lock()
-	t.outcome.Refused = append(t.outcome.Refused, reviewRefusal{Index: index, Reason: reason})
-	t.mu.Unlock()
-	return reviewBatchResult(false, reason)
-}
-
-func (t *reviewBatchTool) completed(ctx context.Context, evidence []reviewEvidence) (string, error) {
+func (t *reviewBatchTool) completed(ctx context.Context, number int, evidence []reviewEvidence) (string, error) {
 	t.mu.Lock()
 	t.complete = true
+	t.outcome.StopReason = "completed"
 	t.outcome.Evidence = append(t.outcome.Evidence, evidence...)
 	t.outcome.Note = "Review finished — nothing new to keep."
 	if t.outcome.Changed {
@@ -254,6 +252,7 @@ func (t *reviewBatchTool) completed(ctx context.Context, evidence []reviewEviden
 	}
 	note := t.outcome.Note
 	t.mu.Unlock()
+	t.markAttempt(number, "accepted")
 	if t.finish != nil {
 		if err := t.finish(ctx); err != nil {
 			return "", fmt.Errorf("finish memory review: %w", err)

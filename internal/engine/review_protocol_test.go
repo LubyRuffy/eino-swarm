@@ -44,7 +44,7 @@ func TestReviewProtocolRepairsRefusedNumbersAndUsesProgramReceipt(t *testing.T) 
 	if err != nil || !reflect.DeepEqual(snap.Entries, []string{requirement}) {
 		t.Fatalf("repaired notes=%+v err=%v", snap, err)
 	}
-	if out.Err != "" || !out.Changed || len(out.Refused) != 1 || !strings.Contains(out.Refused[0].Reason, "2037") || out.Note != "Saved 1 note changes and 0 skill changes." {
+	if out.Err != "" || !out.Changed || len(out.Refused) != 1 || out.Refused[0].Code != "numeric" || out.Note != "Saved 1 note changes and 0 skill changes." {
 		t.Fatalf("refusal/prose hid the committed receipt: %+v", out)
 	}
 	requests := fixture.snapshot()
@@ -119,7 +119,7 @@ func TestReviewProtocolFailedTurnExcludesTaskEvidenceAndCannotWriteSkills(t *tes
 	settleReviewProtocol(t, e)
 	out := decodeReview(t, waitForReview(t, e, turn.ID))
 	requests := fixture.snapshot()
-	if len(requests) != 2 || out.Err != "" || len(out.Refused) != 1 || !strings.Contains(out.Refused[0].Reason, "failed turns") {
+	if len(requests) != 2 || out.Err != "" || len(out.Refused) != 1 || out.Refused[0].Code != "validation" {
 		t.Fatalf("failed-turn protocol requests=%d outcome=%+v", len(requests), out)
 	}
 	for _, raw := range requests {

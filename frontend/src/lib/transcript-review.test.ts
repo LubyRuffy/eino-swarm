@@ -141,7 +141,7 @@ describe("the memory review", () => {
     expect(reviewPanelHint({ changed: false })).toMatch(/nothing new to keep/)
     expect(reviewPanelHint({ changed: true })).toBe("Review finished.")
     expect(reviewPanelHint({ changed: false, err: "model refused" })).toBe(
-      "Memory review failed: model refused",
+      "Memory review failed. Open the turn Trace for details.\nNotes were not saved.",
     )
   })
 
@@ -149,7 +149,7 @@ describe("the memory review", () => {
   // being kept, and is not, is the failure they cannot see.
   it("reports a failed review", () => {
     const state = fold([review({ changed: false, err: "model refused" })])
-    expect(manager(state).blocks[0].text).toBe("Memory review failed: model refused")
+    expect(manager(state).blocks[0].text).toBe("Memory review failed. Open the turn Trace for details.\nNotes were not saved.")
   })
 
   it("survives a malformed payload without a block", () => {

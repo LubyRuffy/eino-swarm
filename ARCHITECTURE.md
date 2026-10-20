@@ -628,7 +628,13 @@ worker before closing SQLite.
    notes commit fails. There is no notes/skills multi-file transaction.
 
    A refusal is model-readable feedback and may be repaired within the existing
-   `memory.review_max_iterations`. `memory.review_reasoning_effort` can override
+   `memory.review_max_iterations`. The review input includes current note usage,
+   total capacity and the agent's per-entry cap. Capacity refusals preserve
+   structured `usage`, `over_by`, `current_entries` and `matched` feedback for the
+   model. Repairs may shorten or replace related, source-supported entries before
+   additions, in the draft's existing operation order; unrelated notes are not
+   automatic eviction candidates. Evidence, numeric spelling, caps and the fixed
+   revision remain mandatory. `memory.review_reasoning_effort` can override
    only this turn-review agent's effort; empty inherits the turn. Conversation
    work and catalog tidy keep their existing effort, model and output budget.
    The instruction starts with source-supported durable deltas and separates
@@ -641,8 +647,27 @@ worker before closing SQLite.
    a successful complete batch records an explicit error, including at the cap;
    any skill writes already on disk remain recorded. Reviews stream even when
    ADK asks for Generate, retaining provider first-byte/idle timeout behavior.
-   Calls and the `memory_review` outcome, including optional refusal/evidence
-   arrays, use the original turn id and `memory-reviewer` attribution.
+   Model-call diagnostics and the `memory_review` outcome use the original turn
+   id and `memory-reviewer` attribution. Outcomes add `stop_reason`
+   (`completed`, `iteration_limit`, `proposal_missing` or `error`), `attempt_count`
+   and bounded `attempts` for submitted batches. Each attempt retains only its
+   number, operation target/action/source seqs and accepted/refused/error status;
+   refusals retain controlled categories, operation index, source seqs and safe
+   capacity numbers. Up to 32 attempts, 32 operations per attempt and 16 source
+   seqs per operation are retained. No rejected note/skill body, exact quote,
+   old note, skill name, `current_entries` or `matched` is added to these
+   diagnostics. Existing committed-change previews and evidence keep their
+   meanings. Transcript and Memory panel expose the stopping/refusal reasons
+   without treating a failed note draft as saved; old events may omit the fields.
+   A failure's Trace action loads its original turn before opening the side
+   panel; unavailable history remains explicit. Historical focus hides the live
+   usage snapshot, which belongs to the latest turn. Manual-review state is
+   bound to the click's project, thread, returned turn and starting event seq.
+   On returning to that conversation, `restoreReview` first replays the loaded
+   tail and, if still pending with a known turn id, reads that turn's Trace once.
+   The response must retain the click generation/thread/turn and contain a newer
+   review event; it cannot finish a later click with an earlier outcome. Missing
+   results or read failure keep waiting for SSE without starting a poll.
 
    Successful-turn reviews, or successful turns with auto-review off, still fold
    leftover skill families. A standalone successful turn writes procedures only

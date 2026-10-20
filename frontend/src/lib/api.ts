@@ -603,7 +603,7 @@ export const api = {
     }),
 
   trace: (turnId: string) =>
-    request<{ turn: Turn; events: unknown[]; llm_calls: unknown[] }>(
+    request<{ turn: Turn; events: SwarmEvent[]; llm_calls: unknown[] }>(
       `/api/trace/${turnId}`,
     ),
 

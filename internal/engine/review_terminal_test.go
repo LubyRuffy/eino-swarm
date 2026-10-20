@@ -39,7 +39,7 @@ func TestReviewFailedTerminalStatusOverridesTheOriginalRunningPointer(t *testing
 	settleReviewProtocol(t, e)
 	out := decodeReview(t, waitForReview(t, e, turn.ID))
 	requests := fixture.snapshot()
-	if len(requests) != 2 || out.Err != "" || len(out.Refused) != 1 || !strings.Contains(out.Refused[0].Reason, "failed turns") {
+	if len(requests) != 2 || out.Err != "" || len(out.Refused) != 1 || out.Refused[0].Code != "validation" {
 		t.Errorf("failed status did not refuse skills and retain the human note: requests=%d outcome=%+v", len(requests), out)
 	}
 	for _, raw := range requests {

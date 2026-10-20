@@ -1,6 +1,7 @@
 import { ScrollText, Sparkles } from "lucide-react"
 import { useState } from "react"
 
+import { ReviewStatus } from "@/components/app/review-status"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -21,6 +22,7 @@ export function CompactNotice({ block }: { block: Block }) {
   const t = useT()
   const [open, setOpen] = useState(false)
   if (block.quiet || !block.text) return null
+  if (block.review) return <ReviewStatus outcome={block.review} turnId={block.turnId} />
   const briefing = block.detail?.trim() ?? ""
   return (
     <div

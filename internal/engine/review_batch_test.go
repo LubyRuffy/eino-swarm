@@ -83,7 +83,7 @@ func TestReviewBatchInventedNumericDetailRejectsEntireUncommittedNotes(t *testin
 		{Target: memory.ToolMemory, Action: "add", Content: "The format was revised in 2037.", Evidence: quote},
 	}, false)
 	assertReviewBatchNotes(t, batch)
-	if batch.outcome.Changed || batch.complete || len(batch.outcome.Refused) != 1 || batch.outcome.Refused[0].Index != 1 || !strings.Contains(batch.outcome.Refused[0].Reason, "2037") {
+	if batch.outcome.Changed || batch.complete || len(batch.outcome.Refused) != 1 || batch.outcome.Refused[0].Index != 1 || batch.outcome.Refused[0].Code != "numeric" {
 		t.Fatalf("invented numeric detail was not identified: %+v", batch.outcome)
 	}
 }

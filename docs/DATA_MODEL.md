@@ -432,11 +432,20 @@ lock.
 
 Skills keep immediate file writes, including merge/delete; they are not part of
 the notes commit. A later refusal must not hide an earlier actual skill write.
-The `events.text` payload for `memory_review` adds optional `evidence` (target,
-action, optional skill name, source seqs) and `refused` (operation index/reason).
-Existing events omit these fields and stay valid. Quotes remain in the recorded
-batch tool arguments; no new SQLite columns, Markdown front matter or event kind
-are introduced. See [Memory reviews](API.md#memory-reviews) and
+The `events.text` JSON payload for `memory_review` has optional `evidence`
+(target/action, optional skill name and source seqs), `refused`, `stop_reason`,
+`attempt_count` and bounded `attempts`. Stopping reasons distinguish completion,
+iteration exhaustion, missing successful proposal and runtime error. Attempts
+retain only number, accepted/refused/error status and operation target/action/
+source seqs (at most 32 attempts, 32 operations each and 16 seqs per operation).
+Refusals retain a controlled reason/category, operation index, attempt number,
+source seqs and safe capacity usage/excess fields. Full proposal counts may exceed
+the retained metadata list. Rejected bodies, exact quotes, old note/skill names
+and model-only `current_entries`/`matched` feedback are not added to these fields;
+existing accepted evidence and committed-change previews keep their meaning.
+Batch tool arguments are not recorded as a proposal transcript. Existing events
+may omit the new fields and remain valid. No new SQLite columns, Markdown front
+matter or event kind are introduced. See [Memory reviews](API.md#memory-reviews) and
 [C-025](CONTRACTS.md#c-025-memory-review-evidence-and-commit).
 
 **Memory lives here, never in your working directory.** A project pointed at a

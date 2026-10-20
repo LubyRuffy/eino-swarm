@@ -341,3 +341,24 @@ func TestReviewPromptSeparatesNormalWorkFromConditionalRecovery(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewPromptRepairsOnlyRelatedNotesWithinTheExistingCapacity(t *testing.T) {
+	prompt := ReviewPrompt()
+	for _, required := range []string{
+		"existing iteration budget",
+		"usage, over_by, current_entries and matched",
+		"shorten or replace only related notes",
+		"preserve unrelated memory",
+		"Each draft operation must fit the same limits",
+		"release related space before adding a new note",
+		"not a way to hide blocked writes",
+		"stop without submitting a successful empty proposal",
+	} {
+		if !strings.Contains(prompt, required) {
+			t.Errorf("review capacity repair rule missing %q", required)
+		}
+	}
+	if strings.Contains(prompt, "If no safe supported change fits, submit an empty") {
+		t.Fatal("a capacity-blocked proposal must not become a successful empty review")
+	}
+}

@@ -67,7 +67,7 @@ func TestReviewProtocolDoesNotOverwriteNotesEditedWhileModelThinks(t *testing.T)
 				settleReviewProtocol(t, e)
 				out := decodeReview(t, waitForReview(t, e, turn.ID))
 				snap, err := pc.memory.Read()
-				if err != nil || !reflect.DeepEqual(snap.Entries, []string{edited}) || out.Changed || !strings.Contains(out.Err, memory.ErrConflict.Error()) {
+				if err != nil || !reflect.DeepEqual(snap.Entries, []string{edited}) || out.Changed || !strings.Contains(out.Err, memory.ErrConflict.Error()) || out.StopReason != "error" || len(out.Refused) == 0 || out.Refused[len(out.Refused)-1].Code != "conflict" || out.Attempts[len(out.Attempts)-1].Status != "error" {
 					t.Fatalf("stale proposal overwrote concurrent edit: notes=%+v read=%v outcome=%+v", snap, err, out)
 				}
 				wantCalls := 1
@@ -135,7 +135,7 @@ func TestReviewConflictStopsBeforeRequestingRepairOfInvalidProposal(t *testing.T
 		t.Fatal(err)
 	}
 	args := encodeReviewOperations(t, []reviewOperation{{Target: memory.ToolMemory, Action: "add", Content: "Use concise replies since 2037.", Evidence: []reviewCitation{{Seq: 1, Quote: "concise replies"}}}})
-	if _, err := batch.InvokableRun(context.Background(), args); !errors.Is(err, memory.ErrConflict) || len(batch.outcome.Refused) != 0 {
+	if _, err := batch.InvokableRun(context.Background(), args); !errors.Is(err, memory.ErrConflict) || (len(batch.outcome.Refused) != 1 || batch.outcome.Refused[0].Code != "conflict" || batch.outcome.Attempts[0].Status != "error") {
 		t.Fatalf("stale input started a futile proposal repair: err=%v outcome=%+v", err, batch.outcome)
 	}
 	assertReviewBatchNotes(t, batch, "new human policy")

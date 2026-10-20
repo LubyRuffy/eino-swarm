@@ -1,6 +1,7 @@
 import { ChevronRight, Copy, Layers, Loader2, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
+import { ReviewStatus } from "@/components/app/review-status"
 import { MemoMarkdown } from "@/components/app/markdown"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import { SkillCopyDialog, SkillPullDialog } from "@/components/app/skill-copy-dialog"
@@ -10,7 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 import { LIBRARY_ID } from "@/lib/library"
-import type { Project, ProjectMemory, Skill, SkillOrigin, SkillTidyReport, TidyLive } from "@/lib/types"
+import type { Project, ProjectMemory, ReviewOutcome, Skill, SkillOrigin, SkillTidyReport, TidyLive } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
 export interface MemoryPanelProps {
@@ -26,6 +27,8 @@ export interface MemoryPanelProps {
   reviewing?: boolean
   /** What the last click decided, once it has an answer. */
   reviewHint?: string
+  reviewOutcome?: ReviewOutcome
+  reviewTurnId?: string
   /** True between a tidy click and the response. */
   tidying?: boolean
   /** What the last tidy decided. Absent until a click has an answer. */
@@ -66,6 +69,8 @@ export function MemoryPanel({
   onTidySkills,
   reviewing,
   reviewHint,
+  reviewOutcome,
+  reviewTurnId,
   tidying,
   tidyReport,
   tidyError,
@@ -172,10 +177,12 @@ export function MemoryPanel({
         </Button>
       </div>
 
-      {reviewing || reviewHint ? (
-        <p role="status" data-testid="review-status" className="text-xs text-muted-foreground">
-          {reviewing ? t("memory.reviewing") : reviewHint}
-        </p>
+      {reviewing ? (
+        <p role="status" data-testid="review-status" className="text-xs text-muted-foreground">{t("memory.reviewing")}</p>
+      ) : reviewOutcome ? (
+        <ReviewStatus outcome={reviewOutcome} turnId={reviewTurnId} panel />
+      ) : reviewHint ? (
+        <p role="status" data-testid="review-status" className="text-xs text-muted-foreground">{reviewHint}</p>
       ) : null}
 
       {memory && !memory.enabled ? (

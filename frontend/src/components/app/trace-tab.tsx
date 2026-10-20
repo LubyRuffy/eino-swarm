@@ -1,6 +1,9 @@
 import { ChevronDown, ChevronRight } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
+import { reviewTraceMetadata } from "@/lib/review-diagnostics"
+import { reviewNotice } from "@/lib/transcript-review"
+import type { Locale } from "@/lib/i18n"
 import { CopyButton } from "@/components/app/copy-button"
 import { Badge } from "@/components/ui/badge"
 import { Disclosure } from "@/components/ui/collapsible"
@@ -21,24 +24,27 @@ export function TraceTab({
   turns,
   transcript,
   usage,
+  focusedTurnId,
 }: {
   turns: Turn[]
   transcript: TranscriptState
   usage?: UsageSnapshot | null
+  focusedTurnId?: string
 }) {
   const t = useT()
   const [logOpen, setLogOpen] = useState(false)
-  const latest = turns.at(-1)
-  const current = transcript.turns.at(-1)
-  const turnId = current?.id ?? latest?.id
+  const newestTurnId = transcript.turns.at(-1)?.id ?? turns.at(-1)?.id
+  const latest = focusedTurnId ? turns.find((turn) => turn.id === focusedTurnId) : turns.at(-1)
+  const current = focusedTurnId ? transcript.turns.find((turn) => turn.id === focusedTurnId) : transcript.turns.at(-1)
+  const turnId = focusedTurnId ?? current?.id ?? latest?.id
 
   useEffect(() => {
-    setLogOpen(false)
-  }, [turnId])
+    setLogOpen(Boolean(focusedTurnId))
+  }, [turnId, focusedTurnId])
 
   const rows = useMemo(
-    () => (turnId ? collectRows(transcript, turnId) : []),
-    [transcript, turnId],
+    () => (turnId ? collectRows(transcript, turnId, t.locale) : []),
+    [transcript, turnId, t.locale],
   )
 
   if (!turnId) {
@@ -93,7 +99,7 @@ export function TraceTab({
         ) : null}
       </div>
 
-      <UsageSummary usage={usage} />
+      <UsageSummary usage={!focusedTurnId || focusedTurnId === newestTurnId ? usage : undefined} />
 
       {rows.length > 0 ? (
         <Disclosure
@@ -118,6 +124,7 @@ export function TraceTab({
                 key={`${row.at}-${i}`}
                 className={cn(
                   "flex items-start gap-2 rounded px-2 py-1 text-[12px] hover:bg-accent/60",
+                  row.details && "flex-wrap",
                   row.failed ? "text-destructive" : "",
                 )}
               >
@@ -126,14 +133,20 @@ export function TraceTab({
                 </span>
                 <span className="shrink-0 font-medium">{row.kind}</span>
                 <span className="shrink-0 text-muted-foreground">{row.agent}</span>
-                <span
+                <div
                   className={cn(
-                    "min-w-0 flex-1 truncate",
+                    row.details ? "w-full min-w-0" : "min-w-0 flex-1 truncate",
                     row.failed ? "text-destructive" : "text-muted-foreground",
                   )}
                 >
-                  {row.text}
-                </span>
+                  {row.details ? (
+                    <details>
+                      <summary data-testid="review-trace-details" className="cursor-pointer truncate" title={row.text.split("\n")[0]}>{row.text.split("\n")[0]}</summary>
+                      {row.text.includes("\n") ? <p className="mt-1 whitespace-pre-wrap">{row.text.split("\n").slice(1).join("\n")}</p> : null}
+                      <pre className="thin-scrollbar max-h-80 overflow-auto whitespace-pre-wrap break-words">{row.details}</pre>
+                    </details>
+                  ) : row.text}
+                </div>
               </li>
             ))}
           </ul>
@@ -193,13 +206,14 @@ function statusVariant(status: string): "warning" | "success" | "danger" | "outl
   return "outline"
 }
 
-function collectRows(transcript: TranscriptState, turnId: string) {
+function collectRows(transcript: TranscriptState, turnId: string, locale: Locale) {
   const rows: {
     at: string
     kind: string
     agent: string
     text: string
     failed: boolean
+    details?: string
   }[] = []
   for (const id of transcript.agentOrder) {
     for (const b of transcript.agents[id].blocks) {
@@ -208,8 +222,9 @@ function collectRows(transcript: TranscriptState, turnId: string) {
         at: b.at,
         kind: b.kind === "tool" ? (b.tool?.name ?? "tool") : b.kind,
         agent: b.agentId || id,
-        text: b.kind === "tool" ? (b.tool?.args ?? "") : b.text,
-        failed: b.kind === "error" || Boolean(b.tool?.failed),
+        text: b.review ? (reviewNotice(b.review, locale) ?? b.text) : b.kind === "tool" ? (b.tool?.args ?? "") : b.text,
+        details: b.review ? reviewTraceMetadata(b.review) : undefined,
+        failed: b.kind === "error" || Boolean(b.tool?.failed) || Boolean(b.review?.err),
       })
     }
   }

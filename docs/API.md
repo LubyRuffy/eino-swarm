@@ -1491,16 +1491,48 @@ to `memory-reviewer`. `text` is JSON:
   "library": false,
   "evidence": [{"target": "memory", "action": "add", "sources": [1]},
                {"target": "skill_manage", "action": "create", "name": "a-procedure", "sources": [7]}],
-  "refused": [{"index": 0, "reason": "a previous proposal was refused and repaired"}]
+  "stop_reason": "completed",
+  "attempt_count": 2,
+  "attempts": [
+    {"number": 1, "operations": [{"target": "memory", "action": "add", "sources": [1]}], "status": "refused"},
+    {"number": 2, "operations": [{"target": "memory", "action": "add", "sources": [1]},
+                                  {"target": "skill_manage", "action": "create", "sources": [7]}], "status": "accepted"}
+  ],
+  "refused": [{"index": 0, "reason": "Memory capacity exceeded.", "code": "capacity",
+               "attempt": 1, "sources": [1], "usage": "2200/2200", "over_by": 125}]
 }
 ```
 
-`evidence` and `refused` are optional additive fields; old events omit them.
-Each evidence record names the target/action, optional skill name and cited
-source event seqs. The batch tool call carries the exact quotes. References
-identify admissible sources; they do not certify semantic truth. A refusal has a
-zero-based operation `index`, or `-1` for the whole batch/commit, and a diagnostic
-`reason`. A refusal can be repaired within the existing iteration cap.
+`evidence`, `refused`, `stop_reason`, `attempt_count` and `attempts` are optional
+additive fields; old events remain valid. Evidence records name the accepted
+operation's target/action, optional skill name and cited source event seqs.
+References identify admissible sources; they do not certify semantic truth.
+
+`stop_reason` is `completed` for a successful complete batch and finalization,
+`iteration_limit` for an exhausted review budget, `proposal_missing` when the
+agent ends without submitting a successful batch, or `error` for a terminating
+runtime/model/storage/conflict or finalization failure. `attempt_count` counts submitted batch proposals, not model requests.
+`attempts` retains at most 32 batch metadata records, each with a one-based
+`number`, `status` (`accepted`, `refused` or `error`), and up to 32 operations
+containing only target/action and up to 16 cited source seqs. The count can exceed
+this bounded diagnostic list.
+
+A refusal has a zero-based operation `index`, or `-1` for the whole batch/commit,
+a controlled diagnostic `reason`, and optional `code` (`evidence`, `numeric`,
+`capacity`, `validation`, `conflict` or `storage`), one-based `attempt`, `sources`,
+`usage` and `over_by`. Terminal conflicts can instead have an error-status
+attempt and `err`. Legacy refusals may contain only index/reason. Raw rejected
+proposal bodies, exact quotes, old notes, skill names, current entries and matched
+note text are not persisted in these new diagnostic fields. Previously committed
+changes and accepted evidence keep their existing payloads.
+
+A refusal can be repaired within the existing iteration cap. The model receives
+structured capacity feedback (`usage`, `over_by`, `current_entries`, and `matched`
+when a replacement found a note), while the stored outcome includes only safe
+metadata. Repair preserves per-note/total limits, evidence and numeric checks,
+unique matching and the original notes revision. The draft checks operations in
+order: a supported shortening/replacement must make room before an addition.
+Unrelated notes must not be removed to fit a proposal.
 
 The reviewer submits one complete `apply_memory_review` proposal. Notes retain
 the existing agent checks in an in-memory draft and are committed once against
@@ -1508,7 +1540,9 @@ the original revision. `notes` / note entries in `changes` describe only committ
 net changes; a draft refusal, conflict or write failure publishes no partial
 notes. Skill writes remain immediate. An earlier actual skill change can
 therefore appear with refusals or `err` even when the notes never commit.
-There is no cross-file transaction. Manager tools and their receipts are unchanged.
+There is no cross-file transaction. An accepted attempt can coexist with
+`stop_reason: error` if the later skill-family fold fails; committed note/skill
+changes remain recorded. Manager tools and their receipts are unchanged.
 
 A successful batch finishes the agent and the program generates `note`, without
 another model request for a closing sentence. An empty successful batch records
@@ -1526,8 +1560,23 @@ project's latest successful turn.
 
 `notify` is `off`, `on` or `verbose`, stamped from `memory.notifications` at record
 time. The transcript reports actual writes, adds previews in verbose mode, and
-shows failures. Trace Full log still exposes the outcome and original model/tool
-records under the same turn id. See [C-025](CONTRACTS.md#c-025-memory-review-evidence-and-commit).
+shows failures with the stopping reason, proposal count and refusal details,
+including capacity usage/excess when present. Failure text distinguishes pending
+notes left unsaved from skill changes already committed. The failure's Trace
+button loads and selects the original turn and opens the right panel if closed;
+its Full log review row expands safe attempt/refusal metadata and source seqs.
+A historical focus does not display the latest turn's live usage as historical
+usage. A pending manual review restored outside the loaded transcript tail makes
+one read of its known turn's Trace; click generation, thread/turn identity and
+starting seq prevent an old response from finishing another click. An absent
+result or failed read keeps waiting for SSE without polling. Trace and model-call
+diagnostics retain the same turn id; review batch tool
+arguments and their quotes are not a persisted proposal transcript. See [C-025](CONTRACTS.md#c-025-memory-review-evidence-and-commit).
+
+The real-route regression is
+`internal/server/review_diagnostics_test.go`: a full notes store produces an
+explainable review failure through `GET /api/trace/:turn`, while the original
+turn remains done and official notes remain unchanged.
 
 ### Conversation titles
 

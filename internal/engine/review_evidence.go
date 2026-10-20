@@ -22,11 +22,6 @@ type reviewEvidence struct {
 	Sources []int64 `json:"sources"`
 }
 
-type reviewRefusal struct {
-	Index  int    `json:"index"`
-	Reason string `json:"reason"`
-}
-
 var reviewNumber = regexp.MustCompile(`[0-9]+(?:[./:_-][0-9]+)*(?:%|[a-zA-Z]+)?`)
 
 // Evidence keeps the source role and effective steer text. A tool receipt is

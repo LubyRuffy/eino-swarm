@@ -177,6 +177,48 @@ memory files and stored outcomes, not agreement with the old reviewer's answer:
   new numeric details, whole JSON parsing, repair within the existing cap,
   no partial notes on failure, actual skills surviving later refusal, and
   duplicate completion. Numeric checks explicitly do not prove entailment.
+- `internal/engine/review_diagnostics_test.go`: full-capacity review input and
+  structured refusal receipts (`usage`, `over_by`, `current_entries`, `matched`),
+  supported repair within the existing cap, iteration exhaustion without pending
+  notes, missing proposal versus successful empty batch, model/runtime errors,
+  terminal conflict/storage categories and bounded safe attempt/refusal metadata.
+  Raw proposed note/skill text, old
+  entries, exact quotes and arbitrary target/action values must not leak into the
+  diagnostic outcome. Capacity and provenance checks retain their existing gates.
+- `internal/engine/review_finalize_test.go`: an actual accepted batch followed
+  by a real skill-fold write failure retains committed notes/skills and records
+  `stop_reason: error` without the storage path. A separate real `NotesDraft`
+  CAS conflict checks refusal metadata and the next actual batch's fixed-revision
+  termination; its manually supplied refusal receipt does not claim to reproduce
+  the entire final-commit race inside `InvokableRun` deterministically.
+- `internal/server/review_diagnostics_test.go`: the real settings → project
+  memory → turn → automatic offline review → `GET /api/trace/:turn` path.
+  Full-capacity failure retains usage, excess, attempt/refusal metadata and the
+  original turn id; the main turn stays done, official notes remain unchanged,
+  and repair-only entries/quotes do not appear in the stored review outcome.
+- `frontend/src/lib/review-diagnostics.test.ts` and
+  `frontend/src/lib/transcript-review.test.ts`: optional-field/legacy replay,
+  malformed diagnostic fields, distinct stopping/refusal categories, capacity
+  usage/excess, submitted proposal count, and truthful unsaved-notes versus
+  already-saved-skills wording. UI display must not reflect raw legacy refusal
+  text into the chat.
+- `frontend/src/components/app/review-status.test.tsx`,
+  `frontend/src/components/app/trace-tab.test.tsx` and
+  `frontend/src/store/projects.test.ts`: both languages, original-turn Trace
+  navigation while newer work exists, loading/failed source reads, safe expanded
+  attempt/source metadata, and historical focus that hides the latest live usage.
+  Project/conversation ownership and late acknowledgements/errors cannot replace
+  another review's result. A pending result outside the initial transcript tail
+  is recovered by one known-turn Trace read; generation/thread/turn and starting
+  seq guards reject stale responses, and missing/failed reads do not start polling.
+- `frontend/e2e/memory-review.spec.ts` with `memory-review-fixture.ts`: a
+  keyless loopback model and the real UI/engine adapters produce evidence,
+  numeric and full-capacity refusals over the original eight-round budget.
+  The browser checks unchanged notes, both transcript and Memory failure
+  details, late-result ownership after conversation navigation, original-turn
+  Trace details while newer work exists, opening Trace with the right panel
+  closed, reload replay and a repaired commit.
+  This suite uses the opt-in loopback mode, not a real provider or model.
 - `internal/engine/review_cas_test.go`: real offline HTTP requests paused during model work; human/manager edits survive both the first proposal and a repair, conflicts stop without another request, queued reviews read notes after the project gate, and unreadable notes stop before a model call.
 - `internal/memory/notes_draft_test.go`: existing write validation, real skill
   overlap, no intermediate notes file writes, net-zero drafts, CAS conflicts,
@@ -186,6 +228,10 @@ memory files and stored outcomes, not agreement with the old reviewer's answer:
 go test -race -count=1 -timeout 20m ./internal/memory ./internal/engine
 go test -race -run '^(TestReviewBatch|TestReviewEvidence|TestValidateReview|TestReviewNoteDiff|TestInvokeReviewOperation)' ./internal/engine
 go test -race -count=1 ./internal/engine -run 'ReviewHistory|FullThreadWorkerHistory|LifecycleHistory|CompatibilityWrapper|TerminalStatus'
+go test -race -count=1 ./internal/engine -run 'Review.*(Capacity|Proposal|Diagnostics|ReceiptFeedback|Bounded|Refusal|ModelError|TerminalFailure)'
+go test -race -count=1 ./internal/server -run TestReviewCapacityFailureIsExplainedByTheOriginalTurnTrace
+cd frontend && npm test -- src/lib/review-diagnostics.test.ts src/lib/transcript-review.test.ts src/components/app/review-status.test.tsx src/components/app/trace-tab.test.tsx src/store/projects.test.ts
+ZWAI_E2E_MEMORY_REVIEW=1 ZWAI_E2E_PORT=18849 ZWAI_E2E_DATA_DIR=.e2e-data-memory-review npm run e2e
 ```
 
 The merged lifecycle/provenance path must also keep full-history worker facts
@@ -201,6 +247,19 @@ neither the lifecycle preamble nor derived/task-tool context. The lifecycle regr
 `internal/engine/worker_lifecycle_facts_test.go` and the source/evidence tests
 above cover these distinct boundaries; a valid exact quote is not a proof that
 its surrounding model conclusion is true.
+
+The 2026-10-20 Issue #84 targeted offline race run
+(`go test -race ./internal/engine -run 'TestReview|TestInvokeReview' -count=1 -coverprofile=/tmp/memory-review-engine-final.cover`)
+covered all new diagnostic functions at 100%. Diff-intersected executable blocks
+measured 146/155 statements (94.19%); `runReviewInput` was 100%,
+`reviewUserMessageWithNotes` 95.7%, batch `InvokableRun` 95.5%,
+`invokeReviewOperation` 92.9%, `completed` and `finishReview` 100%, and
+`applySkillFold` 92.9%. The shared `driveReviewer`
+function measured 89.8% overall: its remaining blocks are existing ADK
+constructor rejection and a nil iterator event, neither produced by the current
+fixed constructor/iterator path. No production test hook was added to fabricate
+those states. This is targeted change coverage, not a repository-wide baseline
+or a measurement of model memory quality.
 
 Real-file notes microbenchmarks (macOS/Linux) apply the same three edits and
 compare immediate writes with one draft commit. File identities count actual

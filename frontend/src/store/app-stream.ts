@@ -251,7 +251,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       const outcome = parseReview(ev)
       void useProjects.getState().loadMemory()
       if (outcome?.changed) useProjects.getState().noteMemoryWrite()
-      useProjects.getState().finishReview(ev.turn_id, outcome)
+      useProjects.getState().finishReview(ev.turn_id, outcome, ev.thread_id, ev.seq)
     }
     if (ev.kind === "tool_result") {
       const name = toolNameOf(transcript, ev.tool_call_id)
