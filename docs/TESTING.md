@@ -2327,8 +2327,13 @@ The offline tests first observed the missing recovery CLI fail, then verify that
 a ready guest remains actionable with the host locked, unlocked or unobserved.
 A locked guest with an existing authorized account yields a login action;
 successful evidenced unlock leads to window inspection. Only an actual failed
-target-guest unlock with evidence yields a blocker. Missing evidence, unknown
-session state, SSH/process success and mismatched candidate/window receipts stay
+target-guest unlock with evidence yields a blocker. Without completed exact-package
+acceptance, unknown session state requires fresh guest observation even when
+historical successful or failed login evidence remains, regardless of the host lock.
+The regression covers that decision through the CLI and a recovery sequence from
+an old failure through re-observation to exact-package acceptance; a later unknown
+session or host lock does not invalidate that completed acceptance.
+Missing evidence, SSH/process success and mismatched candidate/window receipts stay
 unaccepted. Passed observations require real window/behavior references and exact
 version/source SHA/ZIP/hash/guest identity. Invalid JSON, unsupported credential
 fields and non-boolean flags are rejected without printing private input values.
@@ -2338,6 +2343,11 @@ These tests exercise a pure JSON decision function and CLI with temporary files;
 they do not operate UTM, SSH, UI, login or an app. The caller must inspect the
 actual window and behavior before writing the private observation. The audit
 does not create that evidence, and its successful exit is not native acceptance.
+When resuming pending acceptance after a user unlock, session change or
+VM/control-channel change, the caller starts with `guest.state=unknown` and
+rechecks the actual guest. Prior transport/login failures remain historical;
+replace the active state and login result with observations from this recovery
+before declaring a blocker. A host that locks again does not revive an old failure.
 
 ### Phone live-turn Stop action (Issue #69, C-002)
 

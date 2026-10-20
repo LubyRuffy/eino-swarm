@@ -107,6 +107,12 @@ E2E suite.
   and `Contents/Resources/AppIcon.icns`, then inspect the extracted `.app` in
   Finder and launch that same package. A running process alone is insufficient.
 - For native Mac acceptance, a locked host does not block a ready UTM guest.
+  On resuming pending acceptance after a user unlock, a session change, or a
+  VM/control-channel change, start the guest observation as `unknown` and
+  recheck the actual guest before choosing the next action. Keep earlier
+  unreachable/login results as history; they cannot describe this recovery's
+  state or justify a blocker when the host locks again. After observing the
+  guest, record only the current recovery's login attempt as the active result.
   A locked guest with an existing authorized account from the UTM skill/private
   materials needs an actual login attempt before declaring a blocker. Record
   the target and result without credentials; only a failed guest unlock with

@@ -30,6 +30,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-010`: pending native Mac acceptance resumes with a fresh guest observation. Unknown guest state takes precedence over historical login success or failure, so old UTM failures cannot keep a resumed check blocked. Exact-package native acceptance remains valid after a later session or host lock; the audit still performs no login or VM operations.
+
 - `F-125`, `F-220`, `C-023`: phones hide a conversation's earlier unread completion while it is running, waiting or asking, without clearing its watermark or sending a read acknowledgement. Idle results and different IDs with the same title remain available; search cannot revive an active completion and completion More remains reachable (Issue #83).
 
 - `F-140`, `C-028`: image-suffixed generic binary/UTI drops remain vision input with a normalized MIME claim; real-byte type validation remains on the server. Browser regressions use decodable JPEGs and verify unchanged bytes, saved images and reload.

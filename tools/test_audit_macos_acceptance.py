@@ -99,9 +99,39 @@ class MacAcceptanceTests(unittest.TestCase):
         self.assertEqual(self.decide(row)["next_action"], "locate_authorized_credentials")
 
     def test_unknown_guest_state_requires_fresh_observation(self):
+        for host_locked in (True, False, None):
+            for previous_unlock in (None, "succeeded", "failed"):
+                with self.subTest(host_locked=host_locked, previous_unlock=previous_unlock):
+                    row = observation()
+                    row["guest"]["state"] = "unknown"
+                    if host_locked is None:
+                        del row["host_locked"]
+                    else:
+                        row["host_locked"] = host_locked
+                    if previous_unlock is not None:
+                        self.unlock(row, previous_unlock, ["private/previous-session-login.json"])
+                    result = self.decide(row)
+                    self.assertEqual(result["status"], "pending")
+                    self.assertEqual(result["next_action"], "observe_guest_session")
+                    self.assertEqual(result["reason"], "guest_state_unknown")
+                    self.assertEqual(result["evidence_refs"], [])
+
+    def test_resumed_acceptance_reobserves_the_guest_but_retains_exact_window_evidence(self):
+        # Old login evidence remains history after resumption, not the current
+        # session state. A completed exact-package acceptance is durable evidence.
         row = observation()
+        self.unlock(row, "failed", ["private/previous-session-login.json"])
+        self.assertEqual(self.decide(row)["status"], "blocked")
+        row["host_locked"] = False
         row["guest"]["state"] = "unknown"
         self.assertEqual(self.decide(row)["next_action"], "observe_guest_session")
+        row["guest"]["state"] = "ready"
+        self.assertEqual(self.decide(row)["next_action"], "inspect_native_window")
+        self.window(row)
+        self.assertEqual(self.decide(row)["status"], "passed")
+        row["guest"]["state"] = "unknown"
+        row["host_locked"] = True
+        self.assertEqual(self.decide(row)["status"], "passed")
 
     def test_ssh_and_process_success_do_not_accept_a_native_window(self):
         row = observation()
@@ -197,6 +227,17 @@ class MacAcceptanceTests(unittest.TestCase):
         result = self.cli(json.dumps(observation()))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["next_action"], "unlock_guest")
+
+    def test_cli_unknown_guest_ignores_a_historical_login_failure(self):
+        row = observation()
+        row["guest"]["state"] = "unknown"
+        self.unlock(row, "failed", ["private/previous-session-login.json"])
+        result = self.cli(json.dumps(row))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        decision = json.loads(result.stdout)
+        self.assertEqual(decision["status"], "pending")
+        self.assertEqual(decision["next_action"], "observe_guest_session")
+        self.assertEqual(decision["evidence_refs"], [])
 
     def test_cli_invalid_input_does_not_echo_private_values(self):
         for contents in ('{"password":"do-not-print"}', '{"private":"do-not-print",'):

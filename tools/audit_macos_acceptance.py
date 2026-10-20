@@ -99,6 +99,8 @@ def decide(row):
         return result("passed", "record_acceptance", "exact_native_window_verified", window["evidence"])
 
     # Host locks and SSH/process success do not describe the guest's native screen.
+    if guest["state"] == "unknown":
+        return result("pending", "observe_guest_session", "guest_state_unknown")
     if guest["state"] == "ready":
         return result("pending", "inspect_native_window", "native_window_evidence_required")
     unlock = guest.get("unlock", {})
@@ -109,8 +111,6 @@ def decide(row):
         if outcome == "succeeded":
             return result("pending", "inspect_native_window", "guest_unlocked_native_evidence_required")
         return result("blocked", "resolve_guest_unlock_failure", "guest_unlock_failed", unlock["evidence"])
-    if guest["state"] == "unknown":
-        return result("pending", "observe_guest_session", "guest_state_unknown")
     if guest["existing_credentials_available"]:
         return result("pending", "unlock_guest", "authorized_guest_login_not_attempted")
     return result("pending", "locate_authorized_credentials", "existing_authorized_account_needed")

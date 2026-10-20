@@ -32,6 +32,11 @@ Desktop-only releases leave the mobile version/build number unchanged.
 ### Recover native Mac acceptance in a locked session
 
 When native acceptance is pending, inspect the existing UTM guest session.
+After a user unlock, session change or VM/control-channel change, begin the
+resumed observation with `guest.state=unknown` and recheck the actual guest.
+Keep earlier transport/login failures as history, then replace the active
+state and login result with this recovery's observations. Do not reuse an old
+UTM-unreachable claim when the host locks again.
 A host lock says nothing about that guest's readiness. If the guest is locked,
 use its existing authorized account from the UTM skill/private materials through
 the available computer-use interface, then inspect the retained package in an
@@ -48,7 +53,7 @@ python3 tools/audit_macos_acceptance.py --observation /absolute/private/observat
 | Observation field | Meaning |
 |---|---|
 | `candidate` | Object with `version` (numeric `x.y.z`), full lowercase `source_sha`, ZIP basename `asset_name` and lowercase SHA-256 `asset_sha256` from the frozen candidate |
-| `guest.target`, `guest.state` | Existing guest identity; state is `locked`, `ready` or `unknown` |
+| `guest.target`, `guest.state` | Existing guest identity; current state is `locked`, `ready` or `unknown`. `unknown` requires fresh guest observation before using any login result |
 | `guest.existing_credentials_available` | Boolean availability of an already authorized account; never the account or secret itself |
 | `guest.unlock` (optional) | Object with that guest's `target`, `result` (`not_attempted`, `succeeded`, `failed`) and `evidence` list of private observation references |
 | `native_window` (optional) | Object with `guest_target`, the same four-field `candidate`, boolean `observed` and `behavior_verified`, and an `evidence` list of real window/behavior receipt references |
@@ -62,7 +67,9 @@ Unknown fields and invalid input are rejected without echoing input values.
 Exit 0 means a valid decision, including `pending`/`blocked`; exit 2 means invalid
 or unreadable input. Read the status, not the exit code, to decide acceptance.
 
-`locked` with an available authorized account and no attempt yields
+Except for already verified exact-package window evidence, `unknown` always
+yields `observe_guest_session`; older successful or failed unlock observations
+cannot override it. `locked` with an available authorized account and no attempt yields
 `unlock_guest`; successful evidenced unlock or a ready guest yields
 `inspect_native_window`. Missing attempt evidence requires observation, and only
 an evidenced unlock failure for the target guest yields `blocked`. `passed`
