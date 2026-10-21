@@ -374,6 +374,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   explicit finish reason; a truncated connection cannot prove recovery. Stop
   cancels waiting and the active request. Trace records
   `model_backoff` waits separately from actual calls and retry attempts.
+  Stream errors and EOF reach the consumer after the call-record callback finishes,
+  retaining received usage before the turn can finish or storage can shut down.
   Model API errors retain their HTTP status and concrete rejection or response
   decoding cause in desktop and phone chat. An empty 502 response does not imply
   invalid tool arguments. Empty/HTML errors without a more specific HTTP or parsed API category, and

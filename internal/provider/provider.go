@@ -414,10 +414,14 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 				applyUsage(&rec, usage)
 				if !isStreamEnd(recvErr) {
 					rec.Err = recvErr
-					sw.Send(nil, modelCallError(recvErr))
 				}
+				// The consumer may shut down storage after this terminal result.
+				// Finish recording the call before allowing that shutdown to race it.
 				if r.rec != nil {
 					r.rec(rec)
+				}
+				if rec.Err != nil {
+					sw.Send(nil, modelCallError(recvErr))
 				}
 				return
 			}

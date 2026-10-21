@@ -2840,6 +2840,15 @@ without clearing failures. A header reconnect following a cooldown longer than
 the header budget still gets a fresh response-header budget. These are service-
 failure fixtures, not scripted success claimed as retry evidence.
 
+`internal/provider/stream_terminal_order_test.go` blocks the real recording
+wrapper's callback and uses `testing/synctest` to prove receive errors,
+truncation, caller cancellation and normal EOF cannot reach the consumer before
+that callback completes. It asserts one attributed record with all received
+usage, and retains one record if the consumer closes while persistence waits.
+The receive-error, cancellation and truncation cases failed before the ordering
+fix; the actual HTTP truncation/completion fixtures above retain the adapter
+and shared-gate coverage.
+
 `internal/engine/model_backoff_test.go` asserts actual agent/turn provenance and
 that waiting creates no LLM call or usage pulse, while actual and auxiliary calls
 retain their accounting and storage failures cannot emit usage.
