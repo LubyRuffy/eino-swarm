@@ -66,6 +66,7 @@ func eventView(ev store.Event, cfg config.RemoteConfig) EventView {
 		Role:           ev.Role,
 		Text:           text,
 		ToolCallID:     ev.ToolCallID,
+		MessageID:      ev.MessageID,
 		Err:            ev.Err,
 		HasImages:      len(ev.Images) > 0,
 		CreatedAt:      ev.CreatedAt,

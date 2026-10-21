@@ -1384,10 +1384,20 @@ data: {"seq":41,"status":{"running":true,"…":"…"}}
 
 Event names (the SSE `event:` field and the payload's `kind`):
 
+Model-output events may carry optional `message_id`. One streamed output keeps
+that identity across worker checkpoints and manager turns; a new model round
+or restored stream gets a new identity. PC clients update the same agent/kind
+block for cumulative snapshots with that ID. Stored checkpoint events retain
+their own `seq` in history and Trace. Older events omit the field; clients
+must not infer identity from equal or overlapping text. History and SSE can
+overlap: apply a stored `(thread_id, seq)` only once, including side effects.
+`message_id` does not replace `tool_call_id` or the SSE resume cursor. Pairlink
+also preserves the optional field; clients that do not use it remain compatible.
+
 | kind | meaning |
 |---|---|
 | `user_message` | the request that started this turn. `images` is `{id,name,mime}[]` when the send carried pasted vision input; never the pixels |
-| `reasoning` | a completed thought block |
+| `reasoning` | a durable reasoning snapshot; it may checkpoint a still-running worker output identified by `message_id` |
 | `reasoning_delta` | streamed thinking, **full text so far**, not a fragment |
 | `delta` | streamed answer, **full text so far** |
 | `agent_message` | a completed assistant message |

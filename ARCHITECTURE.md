@@ -543,6 +543,13 @@ worker before closing SQLite.
      cleanup notices are **persisted with a gap-free per-conversation `seq`**,
      then broadcast. A manager `agent_message` also appends an assistant row
      to `messages` so a crash before turn-end still has context to resume;
+   - a streamed model output owns one `message_id`, independent of its
+     manager turn. Parked workers keep that identity while manager checks
+     checkpoint their growing reasoning or answer. The PC transcript updates
+     the same output/kind block instead of inserting each cumulative snapshot
+     as a new thought; all stored checkpoint events remain in Trace. A new
+     model round or restored stream gets a new identity. Legacy rows have no
+     inferred identity;
    Alongside them a ticker emits a `progress` pulse every
    `swarm.progress_interval_seconds`, built from `Registry.Progress()`. It is
    broadcast only, for the same reason a delta is: it restates events that are

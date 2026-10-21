@@ -5,6 +5,7 @@ package swarm
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"strings"
 	"sync"
@@ -124,6 +125,11 @@ type Notification struct {
 	// several calls in one turn, so matching by position or name is wrong;
 	// match on this instead.
 	ToolCallID string
+
+	// MessageID identifies one streamed model output across host checkpoints.
+	// Reasoning and answer share this ID but remain separate message kinds.
+	// Empty means the source did not provide an output identity.
+	MessageID string `json:"message_id,omitempty" yaml:"message_id,omitempty"`
 }
 
 func doneNotif(final string, err error) Notification {
@@ -337,11 +343,12 @@ type streamAcc struct {
 	// which is the raw (non-UI) hook workers have always exposed.
 	rawEvents bool
 
-	mu       sync.Mutex
-	turn     int
-	answer   strings.Builder
-	reason   strings.Builder
-	previews map[string]string // last tool_call_delta text per call id
+	mu        sync.Mutex
+	turn      int
+	answer    strings.Builder
+	reason    strings.Builder
+	previews  map[string]string // last tool_call_delta text per call id
+	messageID string
 }
 
 // errOutputBudget is a model call that hit its output cap before any answer
@@ -467,6 +474,7 @@ func (s *streamAcc) beginTurn() {
 	s.mu.Lock()
 	s.turn++
 	turn := s.turn
+	s.messageID = rand.Text()
 	s.answer.Reset()
 	s.reason.Reset()
 	s.previews = nil
@@ -534,6 +542,9 @@ func (s *streamAcc) answerText() string {
 func (s *streamAcc) emit(n Notification) {
 	n.AgentID = s.agentID
 	n.Role = s.role
+	s.mu.Lock()
+	n.MessageID = s.messageID
+	s.mu.Unlock()
 	s.reg.emit(n)
 }
 

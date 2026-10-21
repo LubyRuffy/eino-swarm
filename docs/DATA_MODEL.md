@@ -194,7 +194,8 @@ wipe; startup does not call it.
 
 ## `events` — the UI timeline
 
-What the front end renders and replays. One row per **completed** thing.
+What the front end renders and replays. One row per durable event, including
+cumulative checkpoints of a worker output that outlives a manager turn.
 `GET /api/threads/:id/log` reads this table from the newest seq backward so
 opening a conversation does not replay the whole log; `?since=` on the event
 stream still walks forward.
@@ -212,6 +213,7 @@ stream still walks forward.
 | `role` | for `spawned`, the sub-agent's role |
 | `text` | the payload. For `spawned` this is the worker's system prompt (host snapshot plus the task). Older rows stored the role name here; `role` is the reliable role field. For `tool_result` this is the tool's stdout with newlines kept (clipped at 64k runes), not a one-line summary |
 | `tool_call_id` | pairs `tool_call` with `tool_result` (and live `tool_delta`); agents issue several at once and they finish out of order |
+| `message_id` | optional identity of one streamed model output. Worker checkpoints across manager turns retain it; a new model round or restored stream gets another identity. Legacy rows remain empty. It does not replace event seq or tool-call identity |
 | `err` | set on `error` and on a failed `finished` |
 | `images` | JSON array of `{id,name,mime}` on `user_message` and `steer` when the send carried pasted images. Never the pixels |
 | `created_at` | UTC; the timeline offsets are computed against the turn's `started_at` |

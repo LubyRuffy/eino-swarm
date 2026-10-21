@@ -55,6 +55,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- PC 输出身份与回放：同一 worker 模型输出跨 manager 巡检轮次时，累计思考／回答快照更新同一条记录；独立输出即使文字相同也保留。历史页、按需 Agent 日志和实时事件重叠时，同一持久事件只应用一次，重放不重复触发终态刷新等副作用。旧记录缺少输出身份时不按相似文字推断合并。关联契约：`C-003`；证据：`signal.go`、`internal/engine/accumulator.go`、`frontend/src/lib/transcript-blocks.ts`、`frontend/src/store/thread-history.ts`、`frontend/src/store/app-stream.ts`、`signal_identity_test.go`、`internal/engine/accumulator_identity_test.go`、`frontend/src/lib/transcript-message.test.ts`、`frontend/src/store/app-stream-history.test.ts`、`frontend/e2e/agent-history-overlap.spec.ts`。
 - PC 停止操作：桌面和 Web 使用输入框中的 Stop 按钮停止正在运行的任务；Esc 只关闭图片预览、Find 或其他当前弹层，未打开弹层和连续按 Esc 时也不会停止任务。关联契约：`C-002`、`C-028`；实现／验证证据：`frontend/src/App.tsx`、`frontend/src/App.test.tsx`、`frontend/e2e/shell.spec.ts`。
 - 排队注入：同一会话／排队 ID 的进行中请求去重；已离队时刷新队列并明确提示，刷新失败保留独立错误；跨会话迟到响应不污染当前会话。后台自动出队以实际删除行作为唯一消费权，避免竞争重复投递或丢失并发编辑。关联契约：`C-002`、`C-012`；证据：`internal/store/followups_claim_test.go`、`internal/server/missing_record_test.go`、`frontend/src/store/app-followup.ts`、`frontend/src/store/app-followup.test.ts`、`frontend/e2e/followup-error.spec.ts`。
 
@@ -188,6 +189,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-330 Swarm library
 
+- 模型输出通知提供可选 `MessageID`，同一流的思考、正文与 checkpoint 保留身份，新模型轮次使用不同身份；无身份的旧通知保持兼容。关联契约：`C-003`；证据：`signal.go`、`signal_identity_test.go`、`docs/LIBRARY.md`。
 - 进程交接 API 与恢复边界见 `F-110`、`C-027`；库使用说明：`docs/LIBRARY.md`；证据：`handoff.go`、`handoff_test.go`。
 
 - 目的：让 Go 程序嵌入 manager 与 sub-agent；使用者：Go 开发者；入口：模块公开 API；输入：registry、provider 和任务；输出：结果与通知；前置条件：依赖可编译；失败表现：Go 错误或结构化工具错误；关联契约：`C-003`；实现证据：`swarm.go`, `run.go`, `docs/LIBRARY.md`, `examples`。

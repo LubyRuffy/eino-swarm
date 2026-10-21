@@ -118,6 +118,7 @@ type Notification struct {
     Text       string
     Err        error
     ToolCallID string
+    MessageID  string
 }
 ```
 
@@ -136,7 +137,7 @@ type Notification struct {
 | `NotifyDone` | the final answer |
 | `NotifyError` | fatal failure |
 
-Two properties a consumer depends on:
+Three properties a consumer depends on:
 
 - **Deltas carry the full text so far, not a fragment.** Replace your buffer with
   it. A dropped delta then costs nothing. A provider chunk that already
@@ -147,6 +148,13 @@ Two properties a consumer depends on:
   in one message and they return out of order; matching by name or by arrival
   order produces the wrong pairing exactly when a run gets interesting.
   `NotifyToolDelta` uses the same id so two live streams do not mix.
+
+- **`MessageID` identifies one streamed model output.** Its deltas, final
+  messages and durable application checkpoints retain the same ID even if a
+  worker outlives several manager turns. New model rounds and restored
+  streams get distinct IDs. Consumers keep reasoning and answer buffers
+  separate within that identity. Empty means no known output identity;
+  legacy and non-streaming notifications must not be merged by text.
 
 `NotifyKind.String()` and `ParseNotifyKind` round-trip the names, so they can be
 stored and read back.

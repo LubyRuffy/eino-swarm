@@ -22,6 +22,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `F-330`, `C-003`: streamed model notifications and stored events carry optional `message_id`, preserved by remote and TUI adapters. The additive SQLite column leaves legacy events unchanged; each new model output receives a distinct identity (Issue #88).
+
 - `F-130`, `C-002`, `C-028`: desktop and Web Escape no longer stop a running task. Escape continues to close image previews, Find and other local overlays; stopping a task uses the composer's explicit Stop button, including after repeated Escape presses.
 
 - `F-430`, `C-010`: prepared unified source batch `0.1.33` with mobile package/build `133` after the cumulative main-commit threshold was met. Android and iOS use this complete source batch; TestFlight marketing version remains independently selected, and macOS publication waits for its exact-package native acceptance.
@@ -36,6 +38,9 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-130`, `C-003`: PC worker thoughts and answers retain one model-output identity across manager checks, live updates and replay. Cumulative checkpoints update one block; independent outputs with identical text remain separate. Historical pages, on-demand worker logs and SSE apply stored events once before rendering or completion side effects; rewind restores the retained earlier checkpoint. Existing records without output identity retain their original interpretation (Issue #88).
+- `F-130`, `F-160`, `C-009`, `C-027`: document the verified sources of six repeated model cancellations: five engine handoffs and one failed scheduled-check cleanup. This is a diagnostic correction, not a provider-timeout fix or a change to worker cleanup policy; see `docs/diagnostics/issue88-cancellation-evidence.md` (Issue #88).
 
 - `F-160`, `C-012`, `C-029`: a streamed model call finishes its call-record callback before exposing an error or EOF to its consumer. Truncation and cancellation retain the received usage and caller identity, including when the consumer closes during persistence, so turn shutdown cannot outrun that record.
 
