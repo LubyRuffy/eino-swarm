@@ -277,3 +277,14 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 失败语义：不支持的格式或真实类型不匹配沿用既有输入错误；大图加载中有可见状态，加载失败明确显示错误且仍可关闭；不变量：有效图片在预览、请求、存储与重载中保留原字节及可解码尺寸；边界条件：JPEG MIME 别名、大小写扩展名、明确非图片类型、多图所选身份。
 - 证据：实现 `frontend/src/lib/paste-image.ts`, `frontend/src/components/app/input-thumbs.tsx`, `frontend/src/App.tsx`, `internal/engine/input.go`；测试 `frontend/src/lib/paste-image.test.ts`, `frontend/src/components/app/composer-image-drop.test.tsx`, `frontend/src/components/app/input-thumbs.test.tsx`, `frontend/src/App.test.tsx`, `frontend/e2e/image-input.spec.ts`；Schema：现有 turn 图片请求。
 - 变更规则：同步 Files/attachments 功能、README、API、TESTING、CHANGELOG；使用可解码的有效图片验收，不能只用魔数或 img src。来源：本地图片拖入修复及用户 2026-10-21 的已发送图片放大需求。
+
+## C-029 Shared chat-service recovery backoff
+
+- 状态：active；类型：lifecycle / consistency / compatibility；作用范围：provider pool、manager、subagent、目标续轮及 title／review／compact 等模型调用；关联功能：`F-130`、`F-150`、`F-160`、`F-170`。
+- 契约内容：同一进程的 chat pool 按 URL origin 共享故障状态，跨 provider ID、模型、角色和轮次；健康请求保持原并发。暂态服务故障（408、429、5xx）、连接失败、流空闲／中途断流和成功响应解码错误触发 5→10→20→30 秒封顶指数冷却。故障前同代并发请求只计首次失败，过期结果不能改变较新故障。
+- 冷却结束仅允许一个恢复探测；只有完整 Generate 成功或正常读完模型流才清零并恢复并发，HTTP 200 或流握手成功本身不足。HTTP 模型流必须读到 SSE `[DONE]` 行或显式 finish reason；缺少两者的 EOF 返回 `io.ErrUnexpectedEOF`，保留故障档位及已收到的 usage。鉴权、已解析参数错误、context overflow 不新增服务失败次数；取消和非暂态探测错误释放许可但保留故障档位并再次冷却。清客户端缓存不清故障状态；重启不保留进程内冷却。
+- 允许行为：正常模型工具往返、独立 origin 并发、用户停止等待；禁止行为：每个 subagent 单独计时造成并发重试洪峰，或内部首字节超时重发绕过冷却；不变量：provider 门只延后请求，不新增自动重试次数，不改变 `C-019` 的 worker watchdog 预算。
+- 失败语义：原始模型错误及 `model_retry` 分类保留；等待取消立即返回可判断的 context 错误。冷却等待以 `model_backoff` 事件写入原 turn 和真实 agent，`text` 为 `{attempt,wait_ms}`，不伪造 LLM 请求或生命周期；桌面 Chat、Trace Full log 及重放显示可读等待文字。后续故障可延长已观察的等待，不承诺该毫秒值是最终延迟；等待已有探测结果时 `wait_ms: 0` 表示余时未知。
+- 边界条件：已发出的并发请求不会被门自动撤销；仅控制本进程 chat pool，不控制其他客户端、其他进程、catalog discovery 或 embedding。探测中的其他调用继续等结果；成功前不会一齐重发。每次 HTTP 请求的响应头超时从实际发送起计，等待冷却不消耗该预算，但仍受调用者 context 的总截止时间约束。放弃读取的调用者必须取消请求 context；单独关闭 Eino reader 不会中断 SDK 的阻塞读取，不能把它视为恢复成功；Stop 取消该 context。
+- 证据：实现 `internal/config/backoff.go`、`internal/provider/backoff.go`、`internal/provider/model_backoff.go`、`internal/provider/provider.go`、`internal/provider/http.go`、`internal/provider/stream_completion.go`、`internal/engine/model_backoff.go`、`frontend/src/lib/transcript-backoff.ts`；测试 `internal/provider/backoff_test.go`、`internal/provider/model_backoff_test.go`、`internal/provider/backoff_integration_test.go`、`internal/provider/stream_completion_test.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`、`frontend/e2e/api-error.spec.ts`。
+- 变更规则：同步 CONFIG、API 事件、README、架构、功能及 CHANGELOG，回归同源多调用者、取消、迟到结果、完整流、内部重发、Trace 与 UI；来源：用户 2026-10-19 对模型及 subagent 高频重试压垮低配置服务的修复要求。

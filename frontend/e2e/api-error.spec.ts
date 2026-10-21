@@ -7,7 +7,7 @@ import { composer, freshConversation, reloadOpenConversation, waitForIdle } from
 const PUBLIC_ERROR = "model API request failed: HTTP 502 Bad Gateway: unexpected end of JSON input"
 const RAW_ERROR = "error, status code: 502, status: 502 Bad Gateway, message: unexpected end of JSON input, body: "
 
-type TraceEvent = { thread_id: string; turn_id: string; seq: number; kind: string; err?: string; text?: string }
+type TraceEvent = { thread_id: string; turn_id: string; agent_id?: string; seq: number; kind: string; err?: string; text?: string }
 type TraceCall = { thread_id: string; turn_id: string; agent_id: string; output_chars: number; err: string }
 
 for (const responseCase of [
@@ -17,9 +17,9 @@ for (const responseCase of [
 ]) {
 test(`${responseCase.name} stays visible in Chat and the same turn Trace after reload`, async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_MODEL_API_ERROR !== "1", "requires the opt-in keyless loopback model endpoint")
-  const attempts: { method?: string; path?: string; hasAuthorization: boolean }[] = []
+  const attempts: { method?: string; path?: string; hasAuthorization: boolean; receivedAt: number }[] = []
   const endpoint = createServer((incoming, response) => {
-    attempts.push({ method: incoming.method, path: incoming.url, hasAuthorization: Boolean(incoming.headers.authorization) })
+    attempts.push({ method: incoming.method, path: incoming.url, hasAuthorization: Boolean(incoming.headers.authorization), receivedAt: Date.now() })
     incoming.resume()
     response.writeHead(responseCase.status, { "Content-Type": responseCase.status === 200 ? "text/event-stream" : "application/json" })
     response.end(responseCase.body)
@@ -57,8 +57,13 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
     const started = await accepted
     expect(started.status()).toBe(202)
     const { turn } = await started.json()
-    await waitForIdle(page)
     const transcript = page.getByTestId("transcript")
+    const backoffNotices = [5, 10].map((seconds) => `Waiting ${seconds}s before retrying the model request.`)
+    if (responseCase.status === 502) {
+      await expect(transcript.getByText(backoffNotices[0], { exact: true })).toBeVisible()
+      await expect(transcript).not.toContainText('"wait_ms"')
+    }
+    await waitForIdle(page)
     await expect(transcript.getByText(responseCase.error, { exact: true })).toBeVisible()
     await expect(transcript).not.toContainText("a tool call was not valid JSON")
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
@@ -77,6 +82,19 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
       expect(JSON.parse(event.text ?? "{}").reason).toBe(responseCase.reason)
     }
     expect(trace.events.some((event: TraceEvent) => event.kind === "tool_call")).toBe(false)
+    if (responseCase.status === 502) {
+      const waits = trace.events.filter((event: TraceEvent) => event.kind === "model_backoff") as TraceEvent[]
+      expect(waits).toHaveLength(2)
+      for (const [index, event] of waits.entries()) {
+        expect(event).toMatchObject({ turn_id: turn.id, thread_id: threadID, agent_id: "manager" })
+        const wait = JSON.parse(event.text ?? "{}")
+        expect(wait.attempt).toBe(index + 1)
+        expect(wait.wait_ms).toBeGreaterThan(0)
+        expect(wait.wait_ms).toBeLessThanOrEqual((index + 1) * 5000)
+        expect(attempts[index + 1].receivedAt - attempts[index].receivedAt).toBeGreaterThanOrEqual((index + 1) * 5000 - 100)
+        await expect(transcript.getByText(backoffNotices[index], { exact: true })).toBeVisible()
+      }
+    }
 
     const errors = trace.events.filter((event: TraceEvent) => event.kind === "error")
     expect(errors).toHaveLength(1)
@@ -86,7 +104,8 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
     for (const call of trace.llm_calls as TraceCall[]) {
       expect(call).toMatchObject({ thread_id: threadID, turn_id: turn.id, agent_id: "manager", output_chars: 0, err: responseCase.raw })
     }
-    expect(attempts).toEqual(Array.from({ length: 3 }, () => ({ method: "POST", path: "/chat/completions", hasAuthorization: false })))
+    expect(attempts.map(({ method, path, hasAuthorization }) => ({ method, path, hasAuthorization })))
+      .toEqual(Array.from({ length: 3 }, () => ({ method: "POST", path: "/chat/completions", hasAuthorization: false })))
     const turns = await (await request.get(`/api/threads/${threadID}/turns`)).json()
     expect(turns.turns.map((row: { id: string }) => row.id)).toEqual([turn.id])
 
@@ -98,6 +117,9 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
     const log = page.getByTestId("trace-log")
     await expect(log.getByText(responseCase.error, { exact: true })).toBeVisible()
     await expect(log.getByText(responseCase.notice, { exact: true })).toHaveCount(2)
+    if (responseCase.status === 502) {
+      for (const notice of backoffNotices) await expect(log.getByText(notice, { exact: true })).toBeVisible()
+    }
     await page.screenshot({ path: info.outputPath("api-error-trace.png"), animations: "disabled" })
 
     await reloadOpenConversation(page)
@@ -109,6 +131,10 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
     await page.getByTestId("trace-log-toggle").click()
     await expect(log.getByText(responseCase.error, { exact: true })).toBeVisible()
     await expect(log.getByText(responseCase.notice, { exact: true })).toHaveCount(2)
+    if (responseCase.status === 502) {
+      for (const notice of backoffNotices) await expect(log.getByText(notice, { exact: true })).toBeVisible()
+      await expect(transcript).not.toContainText('"wait_ms"')
+    }
     expect(attempts).toHaveLength(3)
     await page.screenshot({ path: info.outputPath("api-error-replayed.png"), animations: "disabled" })
     await writeFile(info.outputPath("api-error-trace.json"), JSON.stringify({ trace, attempts }, null, 2), { mode: 0o600 })
