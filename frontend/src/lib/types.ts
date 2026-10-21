@@ -470,6 +470,8 @@ export interface ProviderSettings {
   model: string
   catalog?: string[]
   timeout_seconds: number
+  /** Missing or nonpositive uses the server default; independent of stream idle. */
+  first_byte_timeout_seconds?: number
   context_window?: number
   model_context?: Record<string, number>
   has_api_key: boolean

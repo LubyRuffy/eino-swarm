@@ -14,6 +14,7 @@ co-working app built on it. The library API is unchanged except where noted
 ### Added
 
 - `F-140`, `C-028`: sent image thumbnails in desktop and Web conversations open the selected saved image in a window-fitting preview. Mouse and keyboard activation, loading/error states, Escape/backdrop/Close dismissal and return focus are supported after sending and reloading; closing the preview keeps the running task going.
+- `F-170`, `C-009`: each PC model provider has an editable first-byte timeout (default 30 seconds), independent of the existing stream idle timeout. Older settings clients preserve a saved first-byte value when omitting the new field.
 
 - `F-120`, `C-026`: desktop project creation and editing now offer a system directory picker. Cancelling keeps the current path; selection failures show an inline error. Manual entry and the empty managed directory remain available, and the browser explains the desktop option. Directory selection uses files in place and retains save-time validation. The native folder confirmation button is usable without extension filters.
 
@@ -24,6 +25,7 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-130`, `C-002`, `C-028`: desktop and Web Escape no longer stop a running task. Escape continues to close image previews, Find and other local overlays; stopping a task uses the composer's explicit Stop button, including after repeated Escape presses.
 
 - `F-430`, `C-010`: prepared unified source batch `0.1.33` with mobile package/build `133` after the cumulative main-commit threshold was met. Android and iOS use this complete source batch; TestFlight marketing version remains independently selected, and macOS publication waits for its exact-package native acceptance.
+- `F-170`, `C-009`: a provider's stream idle timeout no longer shortens its first-byte wait when set below 30 seconds. Set `first_byte_timeout_seconds` explicitly to retain a shorter initial wait; older files otherwise use the 30-second default.
 
 - **Breaking** `F-120`, `C-026`: non-empty working directories keep their path whitespace through save and runtime resolution. Callers must send the intended absolute path without decorative padding; all-whitespace input still selects managed storage. Previously stored normalized paths require no migration.
 
@@ -44,6 +46,7 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-430`, `C-010`: pending native Mac acceptance resumes with a fresh guest observation. Unknown guest state takes precedence over historical login success or failure, so old UTM failures cannot keep a resumed check blocked. Exact-package native acceptance remains valid after a later session or host lock; the audit still performs no login or VM operations.
 
 - `F-125`, `F-220`, `C-023`: phones hide a conversation's earlier unread completion while it is running, waiting or asking, without clearing its watermark or sending a read acknowledgement. Idle results and different IDs with the same title remain available; search cannot revive an active completion and completion More remains reachable (Issue #83).
+- `F-130`, `F-170`, `F-420`, `C-012`: a first-byte timeout reports its actual wait; desktop/Web explains how to increase it. The error opens Settings → Models, expands the failed turn's provider and focuses its first-byte field; an unknown or deleted provider opens the Models page without guessing a replacement. Catalog-tidy timeout guidance also follows the configured wait instead of claiming a fixed 30 seconds.
 
 - `F-140`, `C-028`: image-suffixed generic binary/UTI drops remain vision input with a normalized MIME claim; real-byte type validation remains on the server. Browser regressions use decodable JPEGs and verify unchanged bytes, saved images and reload.
 

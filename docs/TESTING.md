@@ -1089,8 +1089,8 @@ tidy report names what was created, deleted, patched, and left unchanged, and
 catalog-tidy model calls hang on the project's latest finished turn rather
 than the first sidebar conversation that happens to have one. The reviewer's
 model call streams (`TestReviewGenerateStreamsSoTheFirstByteIsNotTheWholeBody`):
-a one-shot body would hold headers until it finished, and the 30s first-byte
-cap would fail the review. `TestACompleteReviewBatchDoesNotSpendAClosingIteration`
+a one-shot body would hold headers until it finished, and the default 30s
+first-byte wait would fail the review. `TestACompleteReviewBatchDoesNotSpendAClosingIteration`
 verifies that a successful post-turn batch finishes within its write iteration.
 An incomplete batch at the cap now records an error rather than announcing
 uncommitted notes; already-persisted skills remain reported. Catalog tidy keeps
@@ -2578,6 +2578,47 @@ Phone `mobile/e2e/api-error.spec.ts` uses `history=api-error` to regress existin
 
 Mac native verification runs the current packaged candidate against a local empty-502 HTTP model in a separate data directory, without `--mock`: verify terminal error, Idle state, same-turn Trace status and Full log, three LLM calls and two retry events, and save window/Trace evidence.
 
+
+## First-byte timeout configuration and guidance
+
+`internal/config/provider_timeout_test.go` covers the 30-second default,
+missing/invalid legacy values, save/reload and a first-byte wait longer than the
+independent stream idle timeout. `internal/server/settings_timeout_test.go`
+checks actual PUT/GET settings round trips, including an older client's omitted
+field preserving the saved value and an explicit nonpositive value resetting it.
+`internal/provider/first_byte_test.go` exercises the real Eino HTTP adapter,
+independent initial/idle waits, actual timeout duration, cancellation and the
+single fresh-connection retry. `internal/provider/http_test.go` retains the
+moving-stream idle and connection recovery regressions.
+`internal/engine/runerr_timeout_test.go` checks the configured duration through
+the public error wrapper without adding another model retry loop. Run
+`go test -race ./internal/config ./internal/provider ./internal/server ./internal/engine`.
+
+`frontend/src/components/app/transcript-error.test.tsx` checks that the error
+opens the failed turn's provider, focuses the first-byte field and saves a longer
+wait while leaving the other provider alone. It also checks localized durations,
+an unavailable turn, and the absence of first-byte advice for an idle timeout.
+`frontend/src/lib/first-byte-timeout.test.ts` checks Go duration parsing and
+provider-specific settings anchors; `frontend/src/components/app/model-settings.test.tsx`
+covers editing the independent field. Run
+`cd frontend && npm test -- transcript-error.test.tsx model-settings.test.tsx first-byte-timeout.test.ts`.
+`frontend/src/components/app/skill-tidy-card.test.tsx` checks that catalog-tidy
+header failures also give configuration guidance without inventing a fixed wait.
+
+`frontend/e2e/api-error.spec.ts` includes the real loopback adapter recovery:
+one-second first-byte and idle values fail against a 1.2-second header delay
+after exactly two HTTP attempts. The error survives reload and its button opens
+the focused provider field. Changing only the first-byte wait to three seconds
+persists through Settings reopen, and resending succeeds with the same idle
+value. Failed and successful turns retain their own Trace, screenshots and
+`first-byte-traces.json`. Run
+`cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e -- api-error.spec.ts`.
+
+Native macOS acceptance uses the same loopback endpoint and a separate data
+directory: send in the actual desktop window, follow the timeout button, verify
+the provider field receives focus, increase one to three seconds, close Settings
+and resend. Inspect the successful response and Idle state in that window, and
+read Settings and both turn rows back to verify persistence and terminal status.
 
 ## Issue #74 complete-main release review regressions
 
