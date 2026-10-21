@@ -102,11 +102,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-010 Build artifacts and update channel
 
+- 原生验收位置和清理遵循 `C-031`；实际 checkout 交付核验不授权在宿主机启动测试窗口。
 - 状态：active；类型：compatibility / lifecycle；作用范围：checkout frontend build、mobile update、macOS desktop update；关联功能：`F-110`, `F-190`, `F-240`, `F-430`。
 - checkout 构建依赖：需要重建 bundle 时，按 manifest 检查直接 `dependencies`／`devDependencies` 的已安装包 JSON 及所声明的本地 bin 入口，不能只凭 `node_modules` 目录存在或 mtime 判定可构建；不递归审计传递依赖或保证任意包内容完整。缺失时执行 `npm install --include=dev` 并在成功返回后复验，仍不满足则明确失败，不运行 build、不写 source stamp。安装、构建和 stamp 在 checkout 的忽略目录 `.build-lock` 下跨进程互斥，持锁后重查 staleness，等待可取消。新鲜 bundle 和无 checkout 的发布 embed 不新增 Node 要求。证据：`frontend/ensure.go`、`frontend/ensure_build_lock.go`、`frontend/ensure_dependencies_test.go`、`frontend/ensure_build_lock_test.go`。
 - 构建进程所有权：脚本退出或取消后，先终止并等待本次构建的进程树，再允许后续 builder 复用 checkout 锁，不能只结束 npm 而留下 Node 写入 `dist`／`node_modules`。取消错误保留可判断的 context 类别，脚本退出状态和清理错误保留，不把清理失败报告为成功。Unix 用进程组，Windows 用 Job Object；平台行为验收分别记录，交叉编译只证明可构建。证据：`frontend/ensure_process_unix.go`、`frontend/ensure_process_windows.go`、`frontend/ensure_process_test.go`、`frontend/ensure_process_windows_test.go`。
 
-- 实际目录交付：用户报告某个 checkout 启动行为时，修复提交必须进入那个目录的 HEAD，并保留无关未提交内容；从同目录运行报告命令，核对服务资源及真实窗口行为后才能声称修复已交付。独立 worktree、远端主线和另一个安装包不能替代该验收。只读核验器的 `source_and_assets_only` 范围明确不包含原生行为。证据：`tools/check_checkout_delivery.py`, `tools/test_check_checkout_delivery.py`；变更规则：同步开发规则及 TESTING；来源：用户 2026-10-21 对实际 desktop 启动仍缺修复的纠正。
+- 实际目录交付：用户报告某个 checkout 启动行为时，修复提交必须进入那个目录的 HEAD，并保留无关未提交内容；该目录的源码和已运行服务资源只读核验，原生行为使用可核对 HEAD、脏文件哈希及构建身份的 `ci-macOS` 副本验收。不得在用户宿主机启动测试窗口；来宾验收不能证明宿主已运行实例更新。独立 worktree、远端主线和另一个安装包不能替代实际目录交付。只读核验器的 `source_and_assets_only` 范围明确不包含原生行为。证据：`tools/check_checkout_delivery.py`, `tools/test_check_checkout_delivery.py`；变更规则：同步开发规则及 TESTING；来源：用户 2026-10-21 对实际 desktop 启动仍缺修复及测试不得抢占桌面的纠正。
 - 契约内容：`make build` 先更新嵌入的前端；Android sideload 使用 GitHub Release 中版本匹配的 `zwai-<version>-android.apk`；iOS 不显示 GitHub 版本检查菜单，测试版由 TestFlight 分发和更新。手机新版本从 package 版本派生 Android versionCode 和 iOS build number；开发用 Xcode 设置仍从 package 同步，TestFlight archive 默认沿用本应用私有台账中最高 build 的成功交付 marketing version，无成功历史时使用批次版本。私有 `marketing_version` 可显式开启新版本；已存在的候选状态、IPA 或源码回执冻结原 iOS 版本。批次 version/SHA 与 iOS marketing version/build number 分别保存，build number 必须高于远端全部 builds/uploads。macOS 桌面发布物是 `zwai-<version>-darwin-<arch>.zip`，根目录为 `zwai.app`。新版本仅在未分配待发布修复存在、主线自上一个公开源码 SHA 后提交超过三次，或最早待发布验收记录超过 24 小时时分配；跨日期、跨运行累计。`make release` 按台账只发布本批实际受影响且尚未交付的平台：desktop 为 macOS，mobile 为 Android 与 iOS；混合批次共享 tag 和源码 SHA，桌面单端发布无需增加手机 package/build number。各端门禁独立，最终缺任一必需端则非零。附件同名同 SHA-256 跳过，不允许覆盖；已发布 tag 必须对应冻结完整主线 SHA。TestFlight 只有 VALID、内测 READY_FOR_BETA_TESTING、外测 IN_BETA_TESTING 且全部既定组关联时才完成；存在审核记录时还必须 APPROVED，无审核记录不能代替真实外测状态。加组后重新观察，仅 READY_FOR_BETA_SUBMISSION 请求提交审核；同版本后续 build 仍可能被 Apple 要求审核。上传前查 builds/buildUploads、当前构建声明和北京日成功账本，每日最多一新构建成功；已接受上传、处理或审核等待均保存恢复信息，不重复上传。Mac 与 Android 更新器从本仓库最近的非 draft、非 prerelease 且包含本平台安全安装包的 Release 升级，不假定 `/releases/latest` 含每个平台；下载只跟随 github.com 与 GitHub 的 release 资源主机。
 - 允许行为：不同渠道单独验收；禁止行为：把本地 APK/AAB 或未上传的 zip 称为远端发布，或从其他仓库安装；失败语义：构建、签名、下载错误可观察；不变量：用户可获取与显示版本一致的产物；边界条件：安装签名、新旧版本按数字比较、未打版本号的构建不提供升级。
 - Mac 安装 ZIP 的根目录 `zwai.app` 必须在 `Info.plist` 声明 `CFBundleIconFile=AppIcon.icns`，并包含有效的 Contents/Resources/AppIcon.icns 图标资源；发布入口在首次上传前检查这两处。运行时 Wails/Dock 图标不能代替 Finder 安装包图标。
@@ -320,3 +321,23 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 证据：实现 `internal/config/provider_tools.go`、`internal/provider/responses.go`、`internal/engine/builtin_tools.go`；测试 `internal/config/provider_tools_test.go`、`internal/server/settings_provider_tools_test.go`、`internal/engine/builtin_tools_test.go`、`frontend/e2e/builtin-tools.spec.ts`。
 - 变更规则：类型支持、协议或执行来源变化必须同步配置/API/功能文档、适配器及 Trace 回归测试。
 - 来源：2026-10-21 provider 云端内置工具配置需求；[OpenAI web search](https://developers.openai.com/api/docs/guides/tools-web-search?api-mode=responses)。
+
+## C-031 Native desktop tests own their guest lifecycle
+
+- 状态：active
+- 类型：lifecycle / security / consistency
+- 作用范围：原生桌面验收、UTM 来宾、测试数据与证据；关联功能：`F-430`。
+- 契约内容：
+  - macOS 原生测试仅在 UTM `ci-macOS` 来宾运行；宿主只编排、构建、传输和收集证据。不得启动宿主测试窗口、抢前台或修改用户的运行实例、缓存 bundle 和正常数据。
+  - 同一来宾用户同时只运行一个用例；每例使用全新私有 app 副本、home/cache、数据库、配置及 workspace，场景子进程继承私有 `HOME` 和 `ZWAI_HOME`；checkout 启动写入的 macOS 缓存 bundle 也属于本例。仅同一恢复场景内部步骤允许复用数据。
+  - 用例成功、失败、超时或取消时，先保留证据，再停止本例 app、engine 及子进程并确认退出，然后删除本例临时数据及 home/cache；清理失败必须失败并阻止下一例启动。
+  - `cleanup.json` 记录用例身份、清理完成状态、剩余进程和数据删除结果。日志、断言、截图及版本/源码/安装包证据保留在临时数据外。
+- 允许行为：宿主执行无窗口单元测试、headless 浏览器 E2E 和只读交付核验；来宾不可控时记录原生验收 pending。
+- 禁止行为：来宾失败后回退宿主；按程序名称全局终止进程；删除用户或其他用例的数据；把程序启动或 runner 的成功退出当作窗口行为验收。
+- 失败语义：物理宿主在启动前拒绝；锁冲突拒绝并发用例；清理未完成返回失败并保留待清理现场。
+- 不变量：一个用例的退出不能破坏另一个实例；下一用例不继承上一用例数据。
+- 边界条件：硬杀 runner／断电无法运行 finally，后续用例必须识别未清理记录并拒绝启动，核实并完成同一用例清理后才能继续。历史未知来源的残留不得按名称一并清空。
+- 场景与辅助进程必须保留继承的 `ZWAI_NATIVE_CASE_ID`，使已脱离父进程／新建 session 的辅助进程仍可归因；不得主动清除标记后创建脱管 daemon。测试 runner 不是 OS 进程容器，不终止共享系统服务。
+- 证据：实现 `tools/native_macos_case.py`, `AGENTS.md`；测试 `tools/test_native_macos_case.py`；操作说明 `docs/TESTING.md`, `docs/RELEASE.md`。
+- 变更规则：同步 runner、生命周期回归、开发规则及原生验收文档；保留源码身份与真实窗口行为的独立证据边界。
+- 来源：用户 2026-10-21 反馈测试抢占桌面及 UTM 中程序、数据残留；Added。

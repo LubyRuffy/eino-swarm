@@ -11,7 +11,7 @@ required platforms in order:
 
 Installer upload does not replace the native installation/window/device acceptance
 required for each candidate. Run project checks and native acceptance before release.
-For Mac, inspect the extracted `zwai.app` in Finder: the visible mark comes
+For Mac, inspect the extracted `zwai.app` in the guest's Finder: the visible mark comes
 from `Contents/Resources/AppIcon.icns` selected by `CFBundleIconFile` in
 `Info.plist`. The Dock icon supplied to Wails is a separate runtime path.
 `tools/release.py` rejects a new ZIP without those installer resources before upload.
@@ -31,6 +31,14 @@ Desktop-only releases leave the mobile version/build number unchanged.
 
 ### Recover native Mac acceptance in a locked session
 
+Run native desktop cases only inside UTM **ci-macOS**, using the
+[isolated native case lifecycle](TESTING.md#native-desktop-isolation-f-430--c-031).
+Never fall back to launching/focusing a test app or UTM console on the user's
+host desktop. Guest control unavailable means native acceptance remains pending.
+Cases are serial: retain window/behavior evidence, close the case-owned app and
+engine, wait for exit, then remove private home/cache and data before the next case. A window
+receipt does not prove cleanup; retain the runner's `cleanup.json` separately.
+
 When native acceptance is pending, inspect the existing UTM guest session.
 After a user unlock, session change or VM/control-channel change, begin the
 resumed observation with `guest.state=unknown` and recheck the actual guest.
@@ -39,8 +47,8 @@ state and login result with this recovery's observations. Do not reuse an old
 UTM-unreachable claim when the host locks again.
 A host lock says nothing about that guest's readiness. If the guest is locked,
 use its existing authorized account from the UTM skill/private materials through
-the available computer-use interface, then inspect the retained package in an
-isolated `ZWAI_HOME`. Do not change login/security settings or print credentials.
+background guest control, then inspect the retained package in the isolated
+case. Do not focus the host's UTM console, change login/security settings or print credentials.
 Record a real failed login before calling guest unlock blocked; a locked screen,
 SSH connection or started process alone does not prove failure or acceptance.
 

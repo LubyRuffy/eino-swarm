@@ -1209,6 +1209,17 @@ will ignore.
 
 ## Release orchestration
 
+Native desktop acceptance is guest-side test infrastructure, separate from the
+product engine. `tools/native_macos_case.py` refuses physical hosts, serializes
+cases in UTM `ci-macOS`, and owns a disposable app copy plus home/cache,
+data and workspace. Scenario children inherit the private home so checkout
+launches do not replace the guest user's normal cached app bundle.
+The scenario collects real window/behavior evidence; the runner terminates its
+owned processes before deleting disposable state, retaining logs and cleanup
+receipts separately. A failed cleanup blocks another case. Host-side provenance
+checks do not launch or replace the user's native app. See `C-031` and
+[Testing](docs/TESTING.md#native-desktop-isolation-f-430--c-031).
+
 The iOS source Info.plist retains the authorized application-wide export declaration. Preflight reads it before an archive, and IPA verification checks the exported field matches. Frozen sources without that field use an exact private source/build confirmation. Source, IPA and exact receipt conflicts fail the platform; ordinary version increments do not require repeated classification questions. Encryption use or implementation changes require reassessment. See `tools/test_release_ios_compliance.py`.
 
 `tools/audit_pending_batch.py` joins the delivery and TestFlight ledgers with GitHub Issue states and main ancestry. It counts commits after the last public source SHA and elapsed time since the oldest accepted unallocated change. `tools/release.py` selects only that batch's outstanding desktop/mobile platforms and connects Make local builders and the GitHub publisher to `tools/release_ios.py`. The iOS adapter uses the existing private App Store Connect client for archive/export/upload, compliance, group association and review. One clean pushed main batch/version identifies the source across platforms; TestFlight archives reuse the last successfully published marketing version and advance the package-derived build number. An explicit private marketing_version starts a new train for new candidates; retained state/IPA/source receipts freeze the original train on recovery. Group association is followed by an availability read before any review request. Platforms execute serially with independent gates. The Mac and Android updaters inspect earlier GitHub Releases when the newest release has no compatible installer. Private signing configuration and resumable platform state remain under `ZWAI_HOME`, outside Git. See [docs/RELEASE.md](docs/RELEASE.md).
