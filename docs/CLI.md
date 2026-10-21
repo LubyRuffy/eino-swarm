@@ -47,6 +47,19 @@ that is still going keeps the process up. A user **Stop** is the only path
 that records `cancelled`. If the engine process is killed, the next shell
 takes the lock and resumes orphaned turns.
 
+A cold start waits up to **two minutes** for the local engine, printing startup
+progress every **10s**. Waiting for another process that already holds the
+directory lock uses the same readiness limit and checks its published build
+before attaching. Phone-hub registration runs in the background; a slow hub
+does not block the local window. Local initialization/restoration phases log
+`phase` and `duration_ms` in `engine.log`: `database_ready`,
+`unfinished_runs_restored`, then `local_handlers_ready`.
+
+If this launch fails, the error retains its child's exit status and only log
+output appended during this attempt. Historical model errors are not used as
+its cause. Cancellation or timeout stops and reaps this launcher's child;
+a competing process that owns the directory remains untouched.
+
 Opening a **different build** (another version, or a replacement executable)
 automatically hands off and replaces the old engine, with one **30s budget**
 covering handoff, old-process exit and the new listener. No terminal answer

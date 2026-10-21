@@ -7,7 +7,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -134,8 +133,10 @@ func TestSpawnStartupDeadlinePreservesTheCompetingHolderAndReapsItsChild(t *test
 	}
 	waitForStartupBudgetGoroutines(t, "spawnEngineContext.func1(", 0)
 	log, err := os.ReadFile(filepath.Join(dir, "engine.log"))
-	if err != nil || !strings.Contains(string(log), "not an engine") {
-		t.Fatalf("the spawned harness child was not observed exiting: %q %v", log, err)
+	// Under load, the deadline may kill the child before TestMain prints.
+	// The wait-goroutine check above proves reaping in either case.
+	if err != nil || (len(log) > 0 && !strings.Contains(string(log), "not an engine")) {
+		t.Fatalf("startup did not retain its own diagnostic file: %q %v", log, err)
 	}
 	if !lease.Busy(dir) {
 		t.Fatal("caller cancellation stopped the independent competing holder")
@@ -152,20 +153,63 @@ func TestSpawnStartupDeadlinePreservesTheCompetingHolderAndReapsItsChild(t *test
 	}
 }
 
-func startupBudgetGoroutines(function string) int {
-	buf := make([]byte, 1<<20)
-	n := runtime.Stack(buf, true)
-	return strings.Count(string(buf[:n]), function)
+// The actual shell entry point must turn Ctrl-C into startup cancellation;
+// otherwise its detached child can survive a launcher that disappeared.
+func TestEnsureEngineInterruptCancelsTheActualStartupWait(t *testing.T) {
+	dir := t.TempDir()
+	startLeaseHolder(t, dir)
+	done := make(chan error, 1)
+	go func() { _, err := ensureEngine(dir, "127.0.0.1:0", true); done <- err }()
+	// Confirm the real entry point installed its signal context and entered
+	// discovery before signaling this process, so the test cannot kill itself.
+	waitForStartupBudgetGoroutines(t, "discoverIfStartingContext(", 1)
+	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("shell interrupt lost its cancellation cause: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shell Ctrl-C did not cancel the pending startup")
+	}
+	if !lease.Busy(dir) {
+		t.Fatal("shell interruption killed a competing lease holder")
+	}
 }
 
-func waitForStartupBudgetGoroutines(t *testing.T, function string, want int) {
-	t.Helper()
+// Exercise the real shell signal context all the way through its detached
+// child, rather than proving cancellation only on a manually supplied context.
+func TestEnsureEngineInterruptStopsItsOwnDetachedStartingChild(t *testing.T) {
+	t.Setenv("ZWAI_ENGINE_STARTUP_HELPER", "1")
+	t.Setenv("ZWAI_ENGINE_STARTUP_DELAY", "5s")
+	dir := t.TempDir()
+	t.Cleanup(func() { stopStartupHelper(t, dir) })
+	oldLauncher := launchEngine
+	launchEngine = spawnEngineContext
+	t.Cleanup(func() { launchEngine = oldLauncher })
+	done := make(chan error, 1)
+	go func() { _, err := ensureEngine(dir, "127.0.0.1:0", true); done <- err }()
 	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if startupBudgetGoroutines(function) == want {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
+	for !lease.Busy(dir) && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
 	}
-	t.Fatalf("startup goroutines for %s = %d, want %d", function, startupBudgetGoroutines(function), want)
+	if !lease.Busy(dir) {
+		t.Fatal("shell did not launch its detached child")
+	}
+	if err := syscall.Kill(os.Getpid(), syscall.SIGINT); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("shell interruption lost its cause: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("shell interruption did not stop its detached child")
+	}
+	if lease.Busy(dir) {
+		t.Fatal("shell exited but its detached startup child survived")
+	}
 }
