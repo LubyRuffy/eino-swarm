@@ -217,6 +217,12 @@ E2E suite.
   the next action from observations, never logs in. A passed observation needs
   real behavior/window evidence bound to the same version, source SHA, ZIP name
   and SHA-256. SSH/process success and the audit's exit code are not acceptance.
+  Execute the reported next action during the current recovery. A failed
+  control channel alone is not a reason to leave authorized acceptance waiting:
+  try another available isolated native control path and record its actual
+  result. Routine recovery already authorized by the user needs no second
+  approval. Preserve passed evidence for its exact source and package; a later
+  main change requires checking the affected inputs, not erasing that evidence.
 - Desktop install exclusion belongs to the application bundle, not an engine or
   data directory. Regress two Service instances and two real processes
   updating the same bundle, launch failure/rollback, independent bundles and
