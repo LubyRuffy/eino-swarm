@@ -1040,7 +1040,12 @@ The UI treats both as a red error, not a grey success.
 it finished. A role that is a path, or otherwise not a short job name, is
 rewritten to that job word before this check (`-2`, `-3`, … when the word
 is already taken), so the roster is not the path the model invented.
-`fork_context` does not mint a twin for an existing role.
+`fork_context` does not mint a twin for an existing role. For a new worker,
+`forkContext` removes manager System messages and labels the remaining
+conversation as historical context before placing it in the worker inbox.
+The worker system instruction and assignment remain its role; inherited text
+does not carry the manager personality or orchestration policy. Same-role
+resume keeps its existing history formatter.
 `close_agent` is only for a still-running worker; leftover finished ids
 return `already_finished` rather than `cancelled`. The chat hides that
 call (Trace keeps it), matching the TUI.

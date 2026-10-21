@@ -620,7 +620,9 @@ A request with independent parts is one way to benefit:
 What you get:
 
 1. **A plan, then sub-agents.** The manager spawns workers (`fork_context` when a
-   new worker needs this conversation so far). A later task for the same role
+   new worker needs this conversation so far). This supplies historical conversation
+   evidence, without copying the manager system role or personal preferences;
+   the worker follows its own assignment. A later task for the same role
    stays on that agent — new description, same `agent_id` — whether it is still
    running or already finished. `resume_agent` targets a specific leftover
    sibling. Open one in the Agents tab to read the system prompt it was given;

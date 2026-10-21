@@ -26,6 +26,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-430`, `C-010`: prepared unified source batch `0.1.33` with mobile package/build `133` after the cumulative main-commit threshold was met. Android and iOS use this complete source batch; TestFlight marketing version remains independently selected, and macOS publication waits for its exact-package native acceptance.
 - `F-170`, `C-009`: a provider's stream idle timeout no longer shortens its first-byte wait when set below 30 seconds. Set `first_byte_timeout_seconds` explicitly to retain a shorter initial wait; older files otherwise use the 30-second default.
+- `F-130`, `C-019`: a new forked worker receives non-System manager conversation as historical context. Manager System/personality and orchestration instructions are excluded; the worker retains its own assignment and tools. Same-worker resume and the manager history are unchanged.
 
 - **Breaking** `F-120`, `C-026`: non-empty working directories keep their path whitespace through save and runtime resolution. Callers must send the intended absolute path without decorative padding; all-whitespace input still selects managed storage. Previously stored normalized paths require no migration.
 
