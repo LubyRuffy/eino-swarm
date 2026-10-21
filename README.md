@@ -990,6 +990,12 @@ Native desktop tests run only in UTM `ci-macOS`, one isolated case at a time.
 Use the [native case runner](docs/TESTING.md#native-desktop-isolation-f-430--c-031):
 it refuses a physical host and closes case-owned processes before removing
 their private home/cache and test data. Keep the user's running desktop and normal data untouched.
+For a daily offline native round, build/transfer the identified candidate once,
+then run `make native-smoke APP=/absolute/candidate/zwai.app EVIDENCE=/absolute/private/new-round`
+inside the guest. Its 60-second budget includes preparation, native behavior
+checks, evidence and cleanup; `cleanup.json` reports stage and total timings.
+Cold builds and long recovery scenarios have separate explicit budgets; see
+the [daily round procedure](docs/TESTING.md#daily-native-round-60-seconds-including-cleanup).
 
 Invalid delegation calls do not create workers. Within one manager reply, repeated spawn argument errors are reported once per error with their rejected count; the manager can supply both role and task and continue. See [the lifecycle tools](docs/LIBRARY.md).
 

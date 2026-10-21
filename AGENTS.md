@@ -23,6 +23,7 @@ make mobile-android-release        # signed (or ANDROID_UNSIGNED=1) APK/AAB into
 make release VERSION=x.y.z         # only pending required Mac/Android/iOS platforms; independent gates
 make release-check VERSION=x.y.z   # read-only source/signing/remote preflight
 python3 tools/audit_macos_acceptance.py --observation <private.json> # offline native recovery decision
+make native-smoke APP=/absolute/candidate/zwai.app EVIDENCE=/absolute/private/new-round # ci-macOS only, 60s including cleanup
 make mobile-ios-release VERSION=x.y.z # resume only this TestFlight batch
 go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launcher slots
 ```
@@ -92,6 +93,11 @@ E2E suite.
   injected conversation seed, so it cannot prove manager System/personality did
   not leak. Preserve historical task evidence and same-role resume behavior.
 
+- Daily native regression has a 60-second whole-round success budget once the
+  guest and identified candidate are ready. Use `make native-smoke`; retain phase
+  and total timings including cleanup. Build/first transfer and deliberately
+  long recovery tests have separate measured scope and explicit budgets. Do not
+  replace behavior checks with shorter timeouts or abandon cleanup at expiry.
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in
   [docs/TESTING.md](docs/TESTING.md); do not regress it.

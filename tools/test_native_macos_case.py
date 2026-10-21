@@ -51,13 +51,214 @@ class NativeCaseTests(unittest.TestCase):
                     shutil.copytree(evidence, durable / evidence.name)
             print("native case failure evidence: " + str(durable), file=sys.stderr)
 
-    def run_case(self, script="", timeout=5):
+    def run_case(self, script="", timeout=5, budget=60):
         evidence = self.root / ("evidence-" + str(time.monotonic_ns()))
-        code = runner.run_case(self.app, evidence, timeout, [sys.executable, "-c", script])
+        code = runner.run_case(self.app, evidence, timeout, [sys.executable, "-c", script], budget=budget)
         receipt = json.loads((evidence / "cleanup.json").read_text())
         if "case_root" in receipt:
             self.addCleanup(lambda path=receipt["case_root"]: shutil.rmtree(path, ignore_errors=True))
         return code, evidence, receipt
+
+    def test_cycle_budget_measures_each_phase_and_includes_receipt_write(self):
+        clock = [100.0]
+        original_copy, original_launch = runner.copy_app, runner.subprocess.Popen
+        original_wait, original_stop = runner.wait_scenario, runner.stop_owned
+        original_save = runner.save_json
+        limits, saves = [], []
+        def gate():
+            clock[0] += .2
+        def copy(*args):
+            result = original_copy(*args)
+            clock[0] += .5
+            return result
+        def launch(*args, **kwargs):
+            result = original_launch(*args, **kwargs)
+            if args[0][0] != "/bin/ps":
+                clock[0] += .1
+            return result
+        def wait(process, timeout):
+            limits.append(timeout)
+            result = original_wait(process, timeout)
+            clock[0] += .3
+            return result
+        def stop(*args, **kwargs):
+            result = original_stop(*args, **kwargs)
+            clock[0] += .4
+            return result
+        def save(*args):
+            original_save(*args)
+            saves.append(True)
+            if len(saves) == 1:
+                clock[0] += .6
+        scenario = ("import os,json; from pathlib import Path; "
+                    "Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'budget-env.json').write_text("
+                    "json.dumps(dict(pid=os.environ['ZWAI_NATIVE_APP_PID'],"
+                    "timeout=os.environ['ZWAI_NATIVE_SCENARIO_TIMEOUT_SECONDS'])))")
+        with mock.patch.object(runner.time, "monotonic", side_effect=lambda: clock[0]), \
+                mock.patch.object(runner, "require_guest", side_effect=gate), \
+                mock.patch.object(runner, "copy_app", side_effect=copy), \
+                mock.patch.object(runner.subprocess, "Popen", side_effect=launch), \
+                mock.patch.object(runner, "wait_scenario", side_effect=wait), \
+                mock.patch.object(runner, "stop_owned", side_effect=stop), \
+                mock.patch.object(runner, "save_json", side_effect=save):
+            code, evidence, receipt = self.run_case(scenario, timeout=90)
+        self.assertEqual(code, 0)
+        self.assertEqual(receipt["budget_seconds"], 60)
+        self.assertEqual(receipt["cleanup_reserve_seconds"], 5)
+        self.assertFalse(receipt["budget_exceeded"])
+        self.assertAlmostEqual(limits[0], 54.1)
+        self.assertAlmostEqual(receipt["scenario_limit_seconds"], 54.2)
+        timings = receipt["timings_seconds"]
+        for phase, expected in (("guest_gate", .2), ("prepare", .5), ("launch", .1),
+                                ("scenario", .4), ("cleanup", .4), ("total", 2.2)):
+            self.assertAlmostEqual(timings[phase], expected, msg=phase)
+        environment = json.loads((evidence / "budget-env.json").read_text())
+        self.assertEqual(environment["pid"], str(receipt["app_pid"]))
+        self.assertAlmostEqual(float(environment["timeout"]), receipt["scenario_limit_seconds"])
+
+    def test_slow_guest_gate_or_copy_cannot_launch_after_work_budget(self):
+        for phase, duration in (("require_guest", 61), ("copy_app", 56)):
+            with self.subTest(phase=phase):
+                clock = [100.0]
+                original = getattr(runner, phase)
+                def delayed(*args):
+                    result = original(*args)
+                    clock[0] += duration
+                    return result
+                with mock.patch.object(runner.time, "monotonic", side_effect=lambda: clock[0]), \
+                        mock.patch.object(runner, phase, side_effect=delayed), \
+                        mock.patch.object(runner.subprocess, "Popen") as launch, \
+                        mock.patch.object(runner.ProcessScope, "sample", return_value=[]):
+                    code, _, receipt = self.run_case()
+                self.assertEqual(code, 124)
+                self.assertFalse(receipt["launched"])
+                self.assertTrue(receipt["cleanup_complete"])
+                self.assertIn("budget", receipt["failure"])
+                self.assertEqual(receipt["budget_exceeded"], duration > 60)
+                self.assertEqual(receipt["timings_seconds"]["total"], duration)
+                launch.assert_not_called()
+
+    def test_slow_app_launch_cleans_app_without_starting_scenario(self):
+        clock, launches = [100.0], []
+        original = runner.subprocess.Popen
+        def delayed(*args, **kwargs):
+            process = original(*args, **kwargs)
+            if args[0][0] != "/bin/ps":
+                launches.append(process)
+                if len(launches) == 1:
+                    clock[0] += 56
+            return process
+        with mock.patch.object(runner.time, "monotonic", side_effect=lambda: clock[0]), \
+                mock.patch.object(runner.subprocess, "Popen", side_effect=delayed):
+            code, _, receipt = self.run_case()
+        self.assertEqual(code, 124)
+        self.assertEqual(len(launches), 1)
+        self.assertTrue(receipt["launched"])
+        self.assertTrue(receipt["cleanup_complete"])
+        self.assertTrue(receipt["data_removed"])
+        self.assertIsNotNone(launches[0].poll())
+        self.assertEqual(receipt["timings_seconds"]["launch"], 56)
+        self.assertEqual(receipt["timings_seconds"]["scenario"], 0)
+
+    def test_slow_cleanup_or_receipt_cannot_report_success_over_budget(self):
+        for phase, slow_call in (("stop_owned", 1), ("save_json", 1), ("save_json", 2)):
+            with self.subTest(phase=phase, slow_call=slow_call):
+                clock, calls = [100.0], []
+                original = getattr(runner, phase)
+                def delayed(*args, **kwargs):
+                    result = original(*args, **kwargs)
+                    calls.append(True)
+                    if len(calls) == slow_call:
+                        clock[0] += 61
+                    return result
+                with mock.patch.object(runner.time, "monotonic", side_effect=lambda: clock[0]), \
+                        mock.patch.object(runner, phase, side_effect=delayed):
+                    code, _, receipt = self.run_case()
+                self.assertEqual(code, 124)
+                self.assertEqual(receipt["exit_code"], 124)
+                self.assertEqual(receipt["scenario_exit"], 0)
+                self.assertTrue(receipt["budget_exceeded"])
+                self.assertTrue(receipt["cleanup_complete"])
+                self.assertTrue(receipt["data_removed"])
+                self.assertEqual(receipt["timings_seconds"]["total"], 61)
+                self.assertIn("budget", receipt["failure"])
+
+    def test_slow_scenario_launch_counts_toward_scenario_timeout(self):
+        clock, launches = [100.0], []
+        original = runner.subprocess.Popen
+        def delayed(*args, **kwargs):
+            process = original(*args, **kwargs)
+            if args[0][0] != "/bin/ps":
+                launches.append(process)
+                if len(launches) == 2:
+                    clock[0] += .6
+            return process
+        with mock.patch.object(runner.time, "monotonic", side_effect=lambda: clock[0]), \
+                mock.patch.object(runner.subprocess, "Popen", side_effect=delayed), \
+                mock.patch.object(runner, "wait_scenario", return_value=0) as wait:
+            code, _, receipt = self.run_case(timeout=.5)
+        self.assertEqual(code, 124)
+        self.assertEqual(receipt["failure"], "scenario timeout")
+        self.assertFalse(receipt["budget_exceeded"])
+        self.assertTrue(receipt["cleanup_complete"])
+        self.assertAlmostEqual(receipt["timings_seconds"]["scenario"], .6)
+        wait.assert_not_called()
+
+    def test_over_budget_keeps_scenario_failure_cancel_and_cleanup_failure(self):
+        for expected in (7, 124, 130, 3):
+            with self.subTest(expected=expected):
+                clock = [100.0]
+                original = runner.stop_owned
+                def delayed(*args, **kwargs):
+                    result = original(*args, **kwargs)
+                    clock[0] += 61
+                    if expected == 3:
+                        raise OSError("cleanup unavailable")
+                    return result
+                failure = (KeyboardInterrupt() if expected == 130 else
+                           subprocess.TimeoutExpired("scenario", .1) if expected == 124 else None)
+                def wait(process, timeout):
+                    if failure:
+                        raise failure
+                    return process.wait(timeout=1)
+                with mock.patch.object(runner.time, "monotonic", side_effect=lambda: clock[0]), \
+                        mock.patch.object(runner, "stop_owned", side_effect=delayed), \
+                        mock.patch.object(runner, "wait_scenario", side_effect=wait):
+                    code, _, receipt = self.run_case("raise SystemExit(7)" if expected == 7 else "")
+                self.assertEqual(code, expected)
+                self.assertTrue(receipt["budget_exceeded"])
+                self.assertEqual(receipt["cleanup_complete"], expected != 3)
+                if expected == 3:
+                    self.lock.unlink()
+
+    def test_cycle_budget_validates_finite_positive_input_and_cli_default(self):
+        for budget in (0, -1, float("nan"), float("inf")):
+            with self.subTest(budget=budget), mock.patch.object(runner.subprocess, "Popen") as launch:
+                code, _, receipt = self.run_case(budget=budget)
+                self.assertEqual(code, 2)
+                self.assertIn("budget", receipt["failure"])
+                launch.assert_not_called()
+        for supplied, expected in (([], 60), (["--budget", "90"], 90)):
+            with mock.patch.object(runner, "run_case", return_value=0) as run:
+                self.assertEqual(runner.main(["--app", str(self.app), "--evidence", str(self.root / "cli"),
+                                             "--timeout", "30", *supplied, "--", "true"]), 0)
+                self.assertEqual(run.call_args.kwargs["budget"], expected)
+
+    def test_cli_cancellation_ignores_repeat_signals_during_cleanup_and_restores_handlers(self):
+        original = {sig: signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)}
+        def interrupted_case(*args, **kwargs):
+            handler = signal.getsignal(signal.SIGTERM)
+            with self.assertRaises(KeyboardInterrupt):
+                handler(signal.SIGTERM, None)
+            for sig in original:
+                self.assertEqual(signal.getsignal(sig), signal.SIG_IGN)
+            return 130
+        with mock.patch.object(runner, "run_case", side_effect=interrupted_case):
+            code = runner.main(["--app", str(self.app), "--evidence", str(self.root / "cli"),
+                                "--timeout", "30", "--", "true"])
+        self.assertEqual(code, 130)
+        for sig, handler in original.items():
+            self.assertEqual(signal.getsignal(sig), handler)
 
     def test_success_has_unique_paths_preserved_logs_and_no_seed(self):
         self.executable.write_text("#!" + sys.executable + "\nimport os,time\nfrom pathlib import Path\n"

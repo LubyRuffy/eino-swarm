@@ -13,6 +13,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-430`, `C-031`: add `make native-smoke` for one automated offline guest round
+  with worker/tool/Trace assertions, native window content and screenshot checks.
+  The case runner records phase/total timing and applies a default 60-second
+  whole-round success budget including cleanup. Expiry cannot skip cleanup;
+  cold build/transfer and long recovery tests retain separate explicit scope.
 - `F-430`, `C-031`: native desktop acceptance has a guest-only case runner with
   serial ownership, fresh app/home/cache/data/workspace per case, bounded process shutdown
   and cleanup receipts on success, failure, timeout and cancellation. Physical
@@ -35,6 +40,10 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-130`, `F-150`, `C-009`, `C-027`: a failed scheduled check hands unfinished workers to their executable standing goal or active same-thread wake instead of treating the manager error as the end of every worker. The failed turn/run remain errors and unread; ordinary model rejections and exhausted transient retries do not automatically block the goal or immediately start another goal turn. A durable `workers_retained` receipt precedes the error and gates restoration of a failed check's workers; restart also requires current ownership and preserves the manager's failed outcome. No owner, human Stop, context-budget exhaustion and the worker-watchdog failure limit retain their stop boundaries (Issue #89).
 
 - `F-130`, `F-330`, `C-003`: streamed model notifications and stored events carry optional `message_id`, preserved by remote and TUI adapters. The additive SQLite column leaves legacy events unchanged; each new model output receives a distinct identity (Issue #88).
+
+- `F-430`, `C-031`: `native_macos_case.py --timeout` now shares the default
+  60-second whole-round budget. Deliberately longer native scenarios must pass
+  an explicit larger `--budget` as well as their scenario timeout.
 
 - `F-130`, `C-002`, `C-028`: desktop and Web Escape no longer stop a running task. Escape continues to close image previews, Find and other local overlays; stopping a task uses the composer's explicit Stop button, including after repeated Escape presses.
 

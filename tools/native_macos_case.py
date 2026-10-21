@@ -2,7 +2,7 @@
 """Run one isolated native case inside a macOS VM; never launch on its host.
 
 The scenario owns window/behavior assertions. A zero exit code proves only that
-its command succeeded and all case processes/data were cleaned up.
+its command succeeded and case processes/data were cleaned up within the budget.
 """
 import argparse
 from contextlib import contextmanager
@@ -233,7 +233,54 @@ def copy_app(source, root):
     return target, executable
 
 
-def run_case(app, evidence, timeout, command):
+class CaseBudgetExpired(TimeoutError):
+    pass
+
+
+@contextmanager
+def measure_phase(receipt, name):
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        receipt["timings_seconds"][name] += time.monotonic() - started
+
+
+def work_remaining(started, receipt, phase):
+    remaining = (receipt["budget_seconds"] - (time.monotonic() - started)
+                 - receipt["cleanup_reserve_seconds"])
+    if remaining <= 0:
+        raise CaseBudgetExpired("native case work budget exhausted before " + phase)
+    return remaining
+
+
+def finish_receipt(evidence, receipt, started, code):
+    def update():
+        nonlocal code
+        receipt["timings_seconds"]["total"] = time.monotonic() - started
+        budget = receipt["budget_seconds"]
+        if budget is not None and receipt["timings_seconds"]["total"] > budget:
+            receipt["budget_exceeded"] = True
+            if code == 0:
+                code = 124
+                receipt["failure"] = "native case budget exceeded"
+        receipt["exit_code"] = code
+    # Count the first evidence write, then retain that measured duration. The
+    # final write cannot be measured inside its own payload; check its deadline
+    # once more so a slow receipt can never turn an over-budget case green.
+    update()
+    save_json(evidence / "cleanup.json", receipt)
+    update()
+    save_json(evidence / "cleanup.json", receipt)
+    budget = receipt["budget_seconds"]
+    if budget is not None and time.monotonic() - started > budget and not receipt["budget_exceeded"]:
+        update()
+        save_json(evidence / "cleanup.json", receipt)
+    return code
+
+
+def run_case(app, evidence, timeout, command, *, budget=60):
+    started = time.monotonic()
     evidence = evidence.absolute()
     # Evidence is durable and must never be recursively copied with the source app.
     if evidence.resolve().is_relative_to(app.resolve()):
@@ -242,50 +289,75 @@ def run_case(app, evidence, timeout, command):
     receipt = {"case_id": uuid.uuid4().hex, "virtualized": False, "launched": False,
                "cleanup_complete": True, "data_removed": False, "remaining_owned_pids": [],
                "app_source": str(app.absolute()), "scenario_exit": None,
+               "budget_seconds": budget if math.isfinite(budget) and budget > 0 else None,
+               "cleanup_reserve_seconds": min(5, budget / 10) if math.isfinite(budget) and budget > 0 else 0,
+               "budget_exceeded": False,
+               "timings_seconds": {name: 0 for name in
+                                   ("guest_gate", "prepare", "launch", "scenario", "cleanup", "total")},
                "native_behavior": "scenario assertions and window evidence required"}
     code = 2
     try:
-        require_guest()
+        if receipt["budget_seconds"] is None:
+            raise ValueError("provide a positive finite case budget")
+        with measure_phase(receipt, "guest_gate"):
+            require_guest()
         receipt["virtualized"] = True
         if not command or not math.isfinite(timeout) or timeout <= 0:
             raise ValueError("provide a scenario command and a positive finite timeout")
+        work_remaining(started, receipt, "preparation")
         with case_lock() as lock:
             root = Path(tempfile.mkdtemp(prefix="zwai-native-" + receipt["case_id"] + "-")).resolve()
             bundle, data = root / "app-not-copied", root / "data"
             processes, scenario, scope = [], None, None
             receipt.update(case_root=str(root), data_dir=str(data), cleanup_complete=False)
             try:
-                save_lock(lock, receipt)
-                bundle, executable = copy_app(app, root)
-                workspace = root / "workspace"
-                case_home = root / "home"
-                data.mkdir()
-                workspace.mkdir()
-                case_home.mkdir(mode=0o700)
-                receipt.update(app_copy=str(bundle), workspace=str(workspace), home_dir=str(case_home))
-                environment = {key: value for key, value in os.environ.items() if not key.startswith("OPENAI_")}
-                environment.update(HOME=str(case_home), ZWAI_HOME=str(data), ZWAI_NATIVE_APP=str(bundle),
-                                   ZWAI_NATIVE_DATA=str(data), ZWAI_NATIVE_WORKSPACE=str(workspace),
-                                   ZWAI_NATIVE_EVIDENCE=str(evidence), ZWAI_NATIVE_CASE_ID=receipt["case_id"])
-                scope = ProcessScope(bundle, data, processes, receipt["case_id"])
+                with measure_phase(receipt, "prepare"):
+                    save_lock(lock, receipt)
+                    bundle, executable = copy_app(app, root)
+                    workspace = root / "workspace"
+                    case_home = root / "home"
+                    data.mkdir()
+                    workspace.mkdir()
+                    case_home.mkdir(mode=0o700)
+                    receipt.update(app_copy=str(bundle), workspace=str(workspace), home_dir=str(case_home))
+                    environment = {key: value for key, value in os.environ.items() if not key.startswith("OPENAI_")}
+                    environment.update(HOME=str(case_home), ZWAI_HOME=str(data), ZWAI_NATIVE_APP=str(bundle),
+                                       ZWAI_NATIVE_DATA=str(data), ZWAI_NATIVE_WORKSPACE=str(workspace),
+                                       ZWAI_NATIVE_EVIDENCE=str(evidence), ZWAI_NATIVE_CASE_ID=receipt["case_id"])
+                    scope = ProcessScope(bundle, data, processes, receipt["case_id"])
+                work_remaining(started, receipt, "app launch")
                 with (evidence / "app.stdout.log").open("wb") as out, \
                         (evidence / "app.stderr.log").open("wb") as err, \
                         (evidence / "scenario.stdout.log").open("wb") as scenario_out, \
                         (evidence / "scenario.stderr.log").open("wb") as scenario_err:
-                    desktop = subprocess.Popen([str(executable), "desktop", "--mock", "--data-dir", str(data)],
-                                               cwd=workspace, env=environment, stdout=out, stderr=err,
-                                               start_new_session=True)
-                    processes.append(desktop)
-                    receipt["launched"] = True
-                    receipt["app_pid"] = desktop.pid
-                    scope.sample()
-                    scenario = subprocess.Popen(command, cwd=workspace, env=environment,
-                                                stdout=scenario_out, stderr=scenario_err, start_new_session=True)
-                    processes.append(scenario)
-                    scope.groups.add(scenario.pid)
-                    scenario.native_scope = scope
-                    code = wait_scenario(scenario, timeout)
-                    receipt["scenario_exit"] = code
+                    with measure_phase(receipt, "launch"):
+                        desktop = subprocess.Popen([str(executable), "desktop", "--mock", "--data-dir", str(data)],
+                                                   cwd=workspace, env=environment, stdout=out, stderr=err,
+                                                   start_new_session=True)
+                        processes.append(desktop)
+                        receipt["launched"] = True
+                        receipt["app_pid"] = desktop.pid
+                        scope.sample()
+                    scenario_limit = min(timeout, work_remaining(started, receipt, "scenario launch"))
+                    receipt["scenario_limit_seconds"] = scenario_limit
+                    environment.update(ZWAI_NATIVE_APP_PID=str(desktop.pid),
+                                       ZWAI_NATIVE_SCENARIO_TIMEOUT_SECONDS=str(scenario_limit))
+                    with measure_phase(receipt, "scenario"):
+                        scenario_deadline = time.monotonic() + scenario_limit
+                        scenario = subprocess.Popen(command, cwd=workspace, env=environment,
+                                                    stdout=scenario_out, stderr=scenario_err, start_new_session=True)
+                        processes.append(scenario)
+                        scope.groups.add(scenario.pid)
+                        scenario.native_scope = scope
+                        wait_limit = min(scenario_deadline - time.monotonic(),
+                                         work_remaining(started, receipt, "scenario wait"))
+                        if wait_limit <= 0:
+                            raise subprocess.TimeoutExpired(command, scenario_limit)
+                        code = wait_scenario(scenario, wait_limit)
+                        receipt["scenario_exit"] = code
+            except CaseBudgetExpired as error:
+                code = 124
+                receipt["failure"] = str(error)
             except subprocess.TimeoutExpired:
                 code = 124
                 receipt["failure"] = "scenario timeout"
@@ -296,30 +368,34 @@ def run_case(app, evidence, timeout, command):
                 code = 2
                 receipt["failure"] = str(error)
             finally:
-                handlers = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGTERM)}
-                try:
+                with measure_phase(receipt, "cleanup"):
+                    handlers = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGTERM)}
                     try:
-                        remaining = stop_owned(bundle, data, processes, scope=scope)
-                        receipt["remaining_owned_pids"] = remaining
-                        if not remaining:
-                            engine_log = data / "engine.log"
-                            if engine_log.is_file() and not engine_log.is_symlink():
-                                shutil.copyfile(engine_log, evidence / "engine.log")
-                            shutil.rmtree(root)
-                            receipt["data_removed"] = True
-                            receipt["cleanup_complete"] = True
-                        else:
+                        try:
+                            remaining = stop_owned(bundle, data, processes, scope=scope)
+                            receipt["remaining_owned_pids"] = remaining
+                            if not remaining:
+                                engine_log = data / "engine.log"
+                                if engine_log.is_file() and not engine_log.is_symlink():
+                                    shutil.copyfile(engine_log, evidence / "engine.log")
+                                shutil.rmtree(root)
+                                receipt["data_removed"] = True
+                                receipt["cleanup_complete"] = True
+                            else:
+                                code = 3
+                        except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                            receipt["cleanup_error"] = str(error)
                             code = 3
-                    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
-                        receipt["cleanup_error"] = str(error)
-                        code = 3
-                    # A failed cleanup keeps the original fsynced refusal latch.
-                    # Truncating that latch could otherwise allow the next case.
-                    if receipt["cleanup_complete"]:
-                        save_lock(lock, receipt)
-                finally:
-                    for sig, handler in handlers.items():
-                        signal.signal(sig, handler)
+                        # A failed cleanup keeps the original fsynced refusal latch.
+                        # Truncating that latch could otherwise allow the next case.
+                        if receipt["cleanup_complete"]:
+                            save_lock(lock, receipt)
+                    finally:
+                        for sig, handler in handlers.items():
+                            signal.signal(sig, handler)
+    except CaseBudgetExpired as error:
+        code = 124
+        receipt["failure"] = str(error)
     except KeyboardInterrupt:
         code = 130
         receipt["failure"] = "interrupted"
@@ -327,8 +403,7 @@ def run_case(app, evidence, timeout, command):
         code = 2
         receipt["failure"] = str(error)
     finally:
-        receipt["exit_code"] = code
-        save_json(evidence / "cleanup.json", receipt)
+        code = finish_receipt(evidence, receipt, started, code)
     return code
 
 
@@ -337,12 +412,16 @@ def main(argv=None):
         "Scenario environment: HOME (isolated home/cache, parent unchanged), "
         "ZWAI_HOME / ZWAI_NATIVE_DATA (isolated data), "
         "ZWAI_NATIVE_APP (copied .app), ZWAI_NATIVE_WORKSPACE (cwd), "
+        "ZWAI_NATIVE_APP_PID (launched desktop PID), "
+        "ZWAI_NATIVE_SCENARIO_TIMEOUT_SECONDS (remaining limit at scenario launch), "
         "ZWAI_NATIVE_EVIDENCE (persistent logs and cleanup.json). "
         "Preserve ZWAI_NATIVE_CASE_ID in descendants so detached helpers remain attributable. "
         "Perform multiple restart steps within one scenario; independent cases never share data."))
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--evidence", required=True, type=Path, help="new persistent directory outside the app")
     parser.add_argument("--timeout", required=True, type=float, help="scenario deadline in seconds")
+    parser.add_argument("--budget", type=float, default=60,
+                        help="whole-case budget in seconds (default: 60); cleanup always runs and may exceed it")
     parser.add_argument("command", nargs=argparse.REMAINDER, help="-- followed by a scenario command")
     args = parser.parse_args(argv)
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
@@ -353,7 +432,7 @@ def main(argv=None):
         raise KeyboardInterrupt
     handlers = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGTERM, signal.SIGINT)}
     try:
-        return run_case(args.app, args.evidence, args.timeout, command)
+        return run_case(args.app, args.evidence, args.timeout, command, budget=args.budget)
     except (OSError, ValueError) as error:
         parser.exit(2, str(error) + "\n")
     finally:

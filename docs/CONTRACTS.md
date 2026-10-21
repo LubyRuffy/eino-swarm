@@ -345,13 +345,15 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
   - 同一来宾用户同时只运行一个用例；每例使用全新私有 app 副本、home/cache、数据库、配置及 workspace，场景子进程继承私有 `HOME` 和 `ZWAI_HOME`；checkout 启动写入的 macOS 缓存 bundle 也属于本例。仅同一恢复场景内部步骤允许复用数据。
   - 用例成功、失败、超时或取消时，先保留证据，再停止本例 app、engine 及子进程并确认退出，然后删除本例临时数据及 home/cache；清理失败必须失败并阻止下一例启动。
   - `cleanup.json` 记录用例身份、清理完成状态、剩余进程和数据删除结果。日志、断言、截图及版本/源码/安装包证据保留在临时数据外。
+  - 日常 native 回归在来宾和候选就绪后以整轮 60 秒为成功预算，包含准备、启动、行为断言、证据及清理；runner 的 `--budget` 默认 60 秒，场景 `--timeout` 不能另起一个脱离总预算的时钟。耗尽场景可用预算后不得再启动进程。总耗时越界不能返回成功，但必须继续清理并保留超时和清理结果。
+  - 冷构建、首次传输和刻意长时恢复另列耗时与显式预算，不冒充一分钟回归。复用已准备候选不允许复用用例数据。快速场景必须保留原生窗口内容、截图及真实离线 worker/tool/Trace 断言；只有 HTTP 或进程证据时不得验收原生行为。
 - 允许行为：宿主执行无窗口单元测试、headless 浏览器 E2E 和只读交付核验；来宾不可控时记录原生验收 pending。
 - 禁止行为：来宾失败后回退宿主；按程序名称全局终止进程；删除用户或其他用例的数据；把程序启动或 runner 的成功退出当作窗口行为验收。
 - 失败语义：物理宿主在启动前拒绝；锁冲突拒绝并发用例；清理未完成返回失败并保留待清理现场。
 - 不变量：一个用例的退出不能破坏另一个实例；下一用例不继承上一用例数据。
 - 边界条件：硬杀 runner／断电无法运行 finally，后续用例必须识别未清理记录并拒绝启动，核实并完成同一用例清理后才能继续。历史未知来源的残留不得按名称一并清空。
 - 场景与辅助进程必须保留继承的 `ZWAI_NATIVE_CASE_ID`，使已脱离父进程／新建 session 的辅助进程仍可归因；不得主动清除标记后创建脱管 daemon。测试 runner 不是 OS 进程容器，不终止共享系统服务。
-- 证据：实现 `tools/native_macos_case.py`, `AGENTS.md`；测试 `tools/test_native_macos_case.py`；操作说明 `docs/TESTING.md`, `docs/RELEASE.md`。
+- 证据：实现 `tools/native_macos_case.py`, `tools/native_macos_smoke.py`, `Makefile`, `AGENTS.md`；测试 `tools/test_native_macos_case.py`, `tools/test_native_macos_smoke.py`；操作说明 `docs/TESTING.md`, `docs/RELEASE.md`。
 - 变更规则：同步 runner、生命周期回归、开发规则及原生验收文档；保留源码身份与真实窗口行为的独立证据边界。
 - 现场证据：[2026-10-21 ci-macOS 串行窗口与清理验收](diagnostics/native-isolation-20261021.md)；仅接受其冻结候选和明确成功路径。
 - 来源：用户 2026-10-21 反馈测试抢占桌面及 UTM 中程序、数据残留；Added。
