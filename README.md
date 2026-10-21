@@ -136,10 +136,16 @@ uploads, downloads and the live event stream have exactly one implementation.
   it was given. A run already in progress stays on the conversation it
   started on. The conversation
   Agents/Files/Trace rail stays hidden on this page, like Settings. A row is
-  the title, then the next time and cadence, then the task when it is not
+  the title, then the next time (active) or status (paused/completed/cancelled)
+  and cadence, then the task when it is not
   already the title. Click one for the editor.
-  An open conversation's right rail lists every wait aimed at that chat and
-  any job whose run created it (a cancelled job stays if it minted the chat).
+  An open conversation's right rail lists active or paused waits aimed at that
+  chat and any job whose run created it (including completed or cancelled jobs,
+  labelled with their status). Completed/cancelled conversation wakes leave
+  the rail; their history remains in Scheduled → Completed. With no current
+  waits or creating job, the rail's scheduled section is hidden.
+  A one-shot leaves that section when claimed; its current execution can still
+  be Working. The turn and run result show when execution actually finishes.
   Click a row to open that task. An active wake on the open conversation
   shows a banner with the next check and the wait's title or prompt, **Run now**, and **Cancel wait** (not
   an icon-only dismiss — that sat under the goal banner's X). Run now and

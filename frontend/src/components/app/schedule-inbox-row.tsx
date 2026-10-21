@@ -54,7 +54,11 @@ export function scheduleMetaLine(row: Schedule, t: TFn, nowMs?: number): string 
         : t("schedule.metaDelay", { n: amt.n, unit })
   }
   const parts: string[] = []
-  if (row.next_run_at) {
+  const status = (row.status ?? "").trim()
+  if (status === "paused") parts.push(t("schedule.statusPaused"))
+  else if (status === "done") parts.push(t("schedule.statusDone"))
+  else if (status === "cancelled") parts.push(t("schedule.statusCancelled"))
+  else if (row.next_run_at) {
     parts.push(
       isScheduleDue(row.next_run_at, nowMs)
         ? t("schedule.nextRunNow")

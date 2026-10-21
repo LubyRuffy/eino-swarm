@@ -1006,6 +1006,16 @@ ordinary chat remaining unchanged, and event-based evidence independent of
 answer length or language. Synthetic model-retry cleanup is not tool work.
 The desktop notice reducer and localization tests distinguish this continuation
 from a genuine model error while preserving older retry envelopes.
+`frontend/src/lib/schedule-view.test.ts` and
+`frontend/src/components/app/conversation-schedules.test.tsx` verify that
+completed/cancelled bound wakes leave the right rail, including active-to-done
+updates, while creating jobs keep their source link.
+`frontend/src/components/app/schedule-inbox-row.test.tsx` verifies status labels
+for paused/completed/cancelled rows instead of stale next-run times.
+`frontend/e2e/schedules.spec.ts` runs a one-shot through the real offline server,
+checks its paused label and removal after completion, reloads the conversation,
+and opens its retained Completed history (`F-150` / `C-009`).
+
 `frontend/e2e/schedules.spec.ts` drives Run now through the real UI and Trace
 with `ZWAI_MOCK_SCHEDULE_ACK=once` (the E2E server default); `always` reproduces
 the visible error path with `ZWAI_MOCK_SCHEDULE_ACK=always npm run e2e -- schedules.spec.ts -g "Run now handles"` (use an isolated E2E port/data dir). These knobs only

@@ -413,3 +413,52 @@ test("conversation rail opens the wait bound to this chat", async ({ page, reque
   await expect(page.getByTestId("schedule-edit-drawer")).toBeVisible()
   await expect(page.getByLabel("Title")).toHaveValue("Bound check")
 })
+
+test("completed one-shot leaves the conversation rail and remains in completed history", async ({ page, request }) => {
+  await freshConversation(page)
+  const threadId = await page
+    .locator('[data-testid="thread-row"][aria-current="true"]')
+    .getAttribute("data-id")
+  expect(threadId).toBeTruthy()
+  const created = await request.post("/api/schedules", { data: {
+    kind: "thread", thread_id: threadId, title: "One-shot check",
+    prompt: "Check the current state.", delay_s: 3600,
+  } })
+  expect(created.status()).toBe(201)
+  const { schedule } = await created.json()
+  try {
+    const rail = page.getByTestId("conversation-schedules")
+    await expect(rail).toContainText("One-shot check")
+    expect((await request.patch(`/api/schedules/${schedule.id}`, {
+      data: { status: "paused" },
+    })).ok()).toBe(true)
+    await expect(rail).toContainText("Paused")
+    await expect(rail).not.toContainText("Next run now")
+    expect((await request.patch(`/api/schedules/${schedule.id}`, {
+      data: { status: "active" },
+    })).ok()).toBe(true)
+    await page.getByTestId("schedule-banner").getByRole("button", { name: "Run now" }).click()
+    await expect.poll(async () => {
+      const body = await (await request.get(`/api/schedules/${schedule.id}`)).json()
+      return [body.schedule.status, body.runs[0]?.status]
+    }).toEqual(["done", "findings"])
+    await expect(rail).toHaveCount(0)
+    await waitForIdle(page)
+
+    // A reload must derive the same view from persisted history, rather than
+    // only hiding a row locally when the terminal event arrives.
+    await page.reload()
+    const row = await revealThread(page, threadId!)
+    await row.getByTestId("row-label").click()
+    await expect(page.getByTestId("composer-input")).toBeVisible()
+    await expect(page.getByTestId("conversation-schedules")).toHaveCount(0)
+    await openInbox(page)
+    await page.getByTestId("schedule-filter-menu").click()
+    await page.getByTestId("schedule-filter-completed").click()
+    const completed = page.getByTestId("schedule-row").filter({ hasText: "One-shot check" })
+    await expect(completed).toContainText("Done")
+    await expect(completed).not.toContainText("Next run now")
+  } finally {
+    expect((await request.delete(`/api/schedules/${schedule.id}`)).ok()).toBe(true)
+  }
+})
