@@ -25,6 +25,7 @@ import {
 } from "./transcript-steer"
 import { applyScheduleEvent, sealQuietTurns } from "./transcript-schedule"
 import { findToolBlock, splitToolCall, summarise } from "./transcript-tool-block"
+import { closePendingTools, parseWorkerRetention, settleFailedWorkers, type WorkerRetention } from "./transcript-worker-ownership"
 import {
   MANAGER_ID,
   append,
@@ -159,6 +160,8 @@ export interface TurnState {
   /** quiet: omitted scheduled check. scheduledFindings: keep the chip on empty done. */
   quiet?: boolean
   scheduledFindings?: boolean
+  /** Durable proof that named workers survived this manager check's failure. */
+  workerRetention?: WorkerRetention
 }
 
 /** The public error of the newest failed turn, if any. The banner used to
@@ -251,6 +254,12 @@ export function reduceEvent(
     rewindCut: state.rewindCut,
   }
   if (applyScheduleEvent(next, ev)) return sealQuietTurns(next, ev)
+  if (ev.kind === "workers_retained") {
+    const retained = parseWorkerRetention(ev)
+    const turn = next.turns.find((item) => item.id === ev.turn_id)
+    if (retained && (!turn || turn.status === "running")) upsertTurn(next, ev.turn_id, { workerRetention: retained })
+    return next
+  }
   // Recovery state is trace evidence, not a chat message or a new agent.
   if (ev.kind === "engine_restart_checkpoint") return next
   if (ev.kind === "restart_preparing" || ev.kind === "restart_ready" || ev.kind === "user_stop_requested") {
@@ -669,26 +678,11 @@ export function reduceEvent(
       closePendingTools(manager, ev.err)
       // A clean `done` parks leftover workers for the next /goal session.
       // Closing their exec here made Agents say Done while wait_agents was
-      // still blocked on that same worker. An error/interrupt does kill them.
+      // still blocked on that same worker. A failed check may also retain
+      // explicitly named workers; Stop and cleanup remain authoritative.
       if (failed) {
-        for (const id of next.agentOrder) {
-          if (id === MANAGER_ID) continue
-          const child = next.agents[id]
-          if (!child) continue
-          closeStreaming(child, "reasoning")
-          closeStreaming(child, "answer")
-          closePendingTools(child, ev.err)
-          if (child.status === "running") {
-            child.status = cancelled ? "cancelled" : "failed"
-            child.activity = "stopped"
-            child.endedAt = ev.created_at
-            if (!cancelled && ev.err) {
-              child.error = ev.err
-              child.errorSource = "turn"
-            }
-          }
-        }
-        if (ev.err) append(manager, block(ev, cancelled ? "notice" : "error", ev.err))
+        settleFailedWorkers(next, ev)
+        if (ev.err && !rosterOnly) append(manager, block(ev, cancelled ? "notice" : "error", ev.err))
       }
       break
     }
@@ -800,8 +794,11 @@ export function rewindTranscript(
   return {
     agentOrder,
     agents,
-    turns: state.turns.filter((t) => keptTurns.has(t.id)).map((t) =>
-      t.completedSeq && t.completedSeq >= fromSeq ? { ...t, completedSeq: undefined } : t),
+    turns: state.turns.filter((t) => keptTurns.has(t.id)).map((t) => ({
+      ...t,
+      completedSeq: t.completedSeq && t.completedSeq >= fromSeq ? undefined : t.completedSeq,
+      workerRetention: t.workerRetention && t.workerRetention.seq >= fromSeq ? undefined : t.workerRetention,
+    })),
     lastSeq: state.lastSeq,
     running: pending,
     pulse: undefined,
@@ -942,33 +939,6 @@ function addAgentToTurn(state: TranscriptState, turnId: string, agentId: string)
 /** Stable with engine.resumeToolStopped. The wire event is English; a
  *  crashed exec must not keep saying "running…". */
 const resumeToolStopped = "the previous process stopped"
-
-/** A call with no result when the turn (or the agent) ends was killed, not
- *  left running. The spinner is keyed off `pending`; leaving it true next to
- *  an "interrupted" banner is the lie the Stop button used to leave behind.
- *  `result` must be a string or the expanded body still says "running…". */
-function closePendingTools(agent: AgentState, reason?: string, keepQuestions?: boolean) {
-  let changed = false
-  const blocks = agent.blocks.map((b) => {
-    if (b.kind === "question" && b.question?.pending) {
-      if (keepQuestions) return b
-      changed = true
-      return { ...b, question: { ...b.question, pending: false } }
-    }
-    if (b.kind !== "tool" || !b.tool?.pending) return b
-    changed = true
-    return {
-      ...b,
-      tool: {
-        ...b.tool,
-        pending: false,
-        failed: true,
-        result: b.tool.result ?? reason ?? "",
-      },
-    }
-  })
-  if (changed) agent.blocks = blocks
-}
 
 function settlePendingConfirm(agent: AgentState, continued: boolean, text?: string) {
   const blocks = agent.blocks.slice()

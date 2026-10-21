@@ -334,7 +334,7 @@ func TestListRosterEventsSkipsTheToolRows(t *testing.T) {
 		t.Fatal(err)
 	}
 	kinds := []string{
-		"user_message", "spawned", "tool_call", "tool_result", "finished", "cleanup", "done",
+		"user_message", "spawned", "tool_call", "tool_result", "finished", "cleanup", "done", "workers_retained", "error",
 	}
 	for _, kind := range kinds {
 		if err := s.AppendEvent(&Event{ThreadID: th.ID, Kind: kind, AgentID: "worker-1"}); err != nil {
@@ -346,7 +346,7 @@ func TestListRosterEventsSkipsTheToolRows(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 3 {
+	if len(got) != 5 {
 		t.Fatalf("roster=%+v", got)
 	}
 	if got[0].Kind != "spawned" || got[0].Seq != 2 {
@@ -357,6 +357,9 @@ func TestListRosterEventsSkipsTheToolRows(t *testing.T) {
 	}
 	if got[2].Kind != "cleanup" || got[2].Seq != 6 {
 		t.Fatalf("third=%+v", got[2])
+	}
+	if got[3].Kind != "workers_retained" || got[4].Kind != "error" {
+		t.Fatalf("failure ownership receipts=%+v", got[3:])
 	}
 
 	empty, err := s.ListRosterEvents("th_missing")

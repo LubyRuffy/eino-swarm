@@ -629,9 +629,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	if status == store.TurnError && e.pauseScheduledWorkerTimeout(turn, runErr) {
 		errText += "; this recurring check is paused to avoid repeating the worker timeout loop. Inspect the worker trace, model and task before resuming it"
 	}
-	if rt.shouldPark(status) {
-		rt.parkRegistry(reg)
-	} else {
+	if !rt.parkAfterTurn(turn, status, runErr, reg) {
 		// A turn owns its sub-agents unless a goal or scheduled wake is
 		// handing them to the next turn. A quit is not the end of the turn — do not
 		// record cleanup, or the next start cannot tell those workers were
@@ -649,6 +647,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// it sees "done". Record that event before FinishTurn so a client that
 	// polls the turn status cannot Replay a finished turn missing its last row.
 	rt.release(cancel, idle, turn.ID)
+	rt.reapUnownedParked()
 
 	final := store.Event{ThreadID: rt.threadID, TurnID: turn.ID,
 		AgentID: swarm.DefaultManagerID, Text: res.Final}
@@ -676,7 +675,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// Close the claimed fire even when FinishTurn missed (deleted thread):
 	// leaving status=running sticks HasRunningRun and a CountRunningRuns slot.
 	e.finishScheduledRun(turn, status, res.Final, errText)
-	if status == store.TurnError && !isRetryableModelError(runErr) {
+	if status == store.TurnError && !isolatedScheduledFailure(turn, status, runErr) && !isRetryableModelError(runErr) {
 		rt.blockOpenGoalOnTurnError()
 	}
 	if status == store.TurnCancelled {
@@ -691,7 +690,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// same gate if the next Generate actually needs the briefing.
 	e.scheduleSessionAndReview(rt.threadID, turn, status, pc, res.Final)
 	started := false
-	if shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal()) {
+	if !(turn.ScheduleContinue && status == store.TurnError) && shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal()) {
 		started = rt.runLateSteerMessages(store.TurnDone, leftover)
 		if !started {
 			started = rt.flushFollowup(store.TurnDone)

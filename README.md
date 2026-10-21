@@ -94,7 +94,15 @@ uploads, downloads and the live event stream have exactly one implementation.
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   A successful check with another wake scheduled keeps its unfinished
   sub-agents running for that next check; pausing or cancelling the last
-  wake stops workers that have no continuing goal. If a recurring check still
+  wake stops workers that have no continuing goal. A failed check also keeps
+  workers that still belong to an active conversation wake or executable
+  standing goal. Their original IDs, model requests and pending tools remain
+  active in Agents after live updates or reload. The check stays failed and
+  unread; it does not block the goal or immediately start another goal turn.
+  The next scheduled check or your next message can collect those workers.
+  A consumed one-shot, paused/blocked/completed goal, plan mode or exhausted
+  goal budget cannot keep an otherwise unowned worker running. Stop and
+  resource/watchdog termination still stop the workers. If a recurring check still
   exceeds the model context window, its failed run shows how to reduce the
   output budget or request, and that check pauses instead of repeating the
   same error. Replayed Chinese and other non-ASCII messages without billed
@@ -195,7 +203,7 @@ uploads, downloads and the live event stream have exactly one implementation.
   the same way — the banner says this is not an error, and **Start**
   keeps going. If it hits an
   obstacle it cannot pass, it calls
-  `block_goal` and stops instead of retrying forever — a crashed turn that
+  `block_goal` and stops instead of retrying forever — a crashed ordinary turn that
   is not a recoverable model error does the same, and the banner shows the
   public error. Truncated tool JSON / a `429` / a dropped stream / a
   mid-stream TCP read timeout retry in-turn, and the transcript names the model service for a rate limit, an outage, or a dropped connection. A concrete API rejection stays as that status and cause. Three consecutive worker lifetime watchdog failures stop automatic resume: the turn errors, its goal blocks and its recurring check pauses. Inspect the worker trace, model and task before an explicit new message or **Start** retries. Provider idle timeouts are separate. A
@@ -229,7 +237,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   so you can inspect the endpoint's idle timeout; it does not guess which provider
   to edit. Saving a limit does not resume the stopped worker. A worker still
   running when a parent-turn error arrives keeps that error as its stopping
-  reason, marked as a parent error. Generic deadline or cancellation errors do
+  reason, marked as a parent error, unless the engine explicitly retained its
+  independent ownership after a failed scheduled check. Retained workers stay
+  running without inheriting that check's error. Generic deadline or cancellation errors do
   not suggest a timeout setting.
   Built on [eino](https://github.com/cloudwego/eino) ADK and the swarm library in
   this repository.

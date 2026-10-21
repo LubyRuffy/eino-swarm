@@ -22,6 +22,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `F-150`, `C-009`, `C-027`: a failed scheduled check hands unfinished workers to their executable standing goal or active same-thread wake instead of treating the manager error as the end of every worker. The failed turn/run remain errors and unread; ordinary model rejections and exhausted transient retries do not automatically block the goal or immediately start another goal turn. A durable `workers_retained` receipt precedes the error and gates restoration of a failed check's workers; restart also requires current ownership and preserves the manager's failed outcome. No owner, human Stop, context-budget exhaustion and the worker-watchdog failure limit retain their stop boundaries (Issue #89).
+
 - `F-130`, `F-330`, `C-003`: streamed model notifications and stored events carry optional `message_id`, preserved by remote and TUI adapters. The additive SQLite column leaves legacy events unchanged; each new model output receives a distinct identity (Issue #88).
 
 - `F-130`, `C-002`, `C-028`: desktop and Web Escape no longer stop a running task. Escape continues to close image previews, Find and other local overlays; stopping a task uses the composer's explicit Stop button, including after repeated Escape presses.
@@ -40,6 +42,8 @@ co-working app built on it. The library API is unchanged except where noted
 ### Fixed
 
 - `F-130`, `F-222`, `C-002`, `C-003`: PC and phone worker rosters retain Stopped after human Stop and replay, including cancellation finish receipts before cleanup, after cleanup or after the manager terminal. Classification binds the current worker ID and an engine cancellation cause; unrelated provider/watchdog errors remain failures, genuine results survive cleanup, and explicit same-ID resume can run again (Issue #85).
+- `F-130`, `C-003`, `C-012`: desktop/Web live events and replay keep explicitly retained workers running with their pending tools and current output after a scheduled manager error. The parent error stays visible without becoming the worker's own failure; Stop, cleanup and real worker completion remain authoritative. Ownership JSON stays in Trace. Parked-worker cleanup publication is ordered before a replacement registry can start, preventing an old global stop from marking new workers stopped (Issue #89).
+
 - `F-130`, `C-003`: PC worker thoughts and answers retain one model-output identity across manager checks, live updates and replay. Cumulative checkpoints update one block; independent outputs with identical text remain separate. Historical pages, on-demand worker logs and SSE apply stored events once before rendering or completion side effects; rewind restores the retained earlier checkpoint. Existing records without output identity retain their original interpretation (Issue #88).
 - `F-130`, `F-160`, `C-009`, `C-027`: document the verified sources of six repeated model cancellations: five engine handoffs and one failed scheduled-check cleanup. This is a diagnostic correction, not a provider-timeout fix or a change to worker cleanup policy; see `docs/diagnostics/issue88-cancellation-evidence.md` (Issue #88).
 

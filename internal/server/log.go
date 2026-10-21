@@ -20,7 +20,7 @@ const (
 // listLog is the tail of the event log as JSON, not SSE. Opening a
 // conversation paints the live edge first; older pages load when the
 // reader scrolls up. The live-edge payload also carries spawned /
-// finished / cleanup rows that have fallen out of that viewport, so
+// finished / cleanup and failure ownership rows outside that viewport, so
 // the Agents tab still has a roster.
 func (s *Server) listLog(c *gin.Context) {
 	th, ok := s.thread(c)

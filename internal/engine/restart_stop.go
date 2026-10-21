@@ -38,6 +38,7 @@ func (e *Engine) interruptThread(threadID string) error {
 		rt.mu.Unlock()
 		return ErrBusy
 	}
+	rt.recordParkedStop(parked, turnID)
 	rt.parked, rt.userStopped = nil, true
 	rt.mu.Unlock()
 	parked.Cleanup()

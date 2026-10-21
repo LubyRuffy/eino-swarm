@@ -90,6 +90,21 @@ E2E suite.
   stored `(thread_id, seq)` once before state changes or side effects. Do not
   use text similarity or a highest-seq cutoff as identity. Regress both arrival
   orders and rewind across multiple checkpoints of one output.
+- A long-running worker belongs to its executable goal or active same-thread
+  wake, not to one manager check's terminal status. A failed scheduled check
+  must retain that ownership durably before its terminal error; the failed
+  turn/run and unread result stay failed. Never infer retention from error
+  wording or invent success. Regress real worker HTTP requests across failed
+  checks, live/history/roster replay, restart, same-ID collection, Stop and
+  revocation of the last owner. Keep resource-budget and watchdog termination
+  separate, and do not turn a failed check into an immediate goal retry.
+- A parked registry's conversation-wide cleanup recording/publication attempt
+  must finish before another registry can be taken or occupied. Serialize that
+  attempt with the runtime claim; cancel/close the detached registry outside
+  the runtime lock. Existing best-effort event writes WARN on storage failure;
+  do not claim a durable cleanup receipt then. Regress Stop, last-wake removal
+  and finalization with storage blocked before cleanup so an old receipt
+  cannot mark a new worker stopped.
 - Engine replacement follows `C-027`: freeze new work, durably checkpoint every
   active or parked registry, then stop and restore within one launch deadline.
   Regress real process replacement, original turn/worker identities, human
@@ -124,6 +139,12 @@ E2E suite.
   When changing desktop packaging, check the ZIP's `Info.plist` icon reference
   and `Contents/Resources/AppIcon.icns`, then inspect the extracted `.app` in
   Finder and launch that same package. A running process alone is insufficient.
+- Native QA launchers must enforce their private data directory themselves,
+  including a parameter-free LaunchServices launch. Attaching through app
+  automation can launch another instance without the original command args;
+  an already-running isolated PID does not make that safe. Validate the actual
+  launch entry with no args and an inherited default-data environment before
+  attaching. Never overwrite or re-sign a bundle used by a live engine.
 - For native Mac acceptance, a locked host does not block a ready UTM guest.
   On resuming pending acceptance after a user unlock, a session change, or a
   VM/control-channel change, start the guest observation as `unknown` and
