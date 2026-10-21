@@ -111,13 +111,15 @@ describe("standing objective and compact notices", () => {
     expect(JSON.stringify(state)).not.toMatch(/notes\.md|summarize|look into this/)
   })
 
-  it("revives a worker that is still emitting after a stale cleanup tick", () => {
+  it("revives a parked worker incorrectly painted done by an older roster", () => {
     const parked = fold([
       ev({ kind: "user_message", text: "go" }),
       ev({ kind: "spawned", agent_id: "worker-1", role: "worker" }),
-      ev({ kind: "cleanup", text: "stopped 1 sub-agent(s) still running" }),
+      ev({ kind: "done", text: "progress" }),
     ])
-    expect(parked.agents["worker-1"].status).toBe("cancelled")
+    // Legacy clients painted parked workers done at a manager boundary.
+    // That stale derived state differs from cleanup's actual cancellation.
+    parked.agents["worker-1"].status = "done"
     const live = fold(
       [
         ev({

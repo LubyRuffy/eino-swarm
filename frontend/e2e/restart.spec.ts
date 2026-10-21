@@ -57,6 +57,8 @@ test("cleanup and interruption replay shows stopped workers separately from comp
       { kind: "user_stop_requested", text: "Stop requested by the user." },
       { kind: "cleanup", text: "Stopped unfinished workers." },
       { kind: "error", err: "interrupted" },
+      { kind: "agent_message", agent_id: "worker-1", text: "Late buffered answer." },
+      { kind: "tool_call", agent_id: "worker-2", text: "exec({})", tool_call_id: "late-call" },
       { kind: "finished", agent_id: "worker-1", err: "swarm: agent worker-1 cancelled: context canceled" },
       { kind: "finished", agent_id: "worker-2", text: "Late result." },
     ].map((event, index) => ({ ...base, seq: index + 1, ...event }))

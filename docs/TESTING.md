@@ -35,9 +35,15 @@ inventing work, changing the completed manager or advancing its future wake.
 `frontend/src/components/app/panel-stop.test.tsx` and the restart UI E2E cover
 cleanup/interruption, stopped grouping, terminal ordering and persisted replay.
 The stop reducer regressions deliver cancellation and successful `finished`
-events after `cleanup` or `interrupted`, preserving stopped status, activity and
-stop time in live, full-history and roster replay. Explicit `spawned` resume
-then allows a new `finished` to complete normally. The real Stop E2E in
+events after `cleanup` or `interrupted`, including late `agent_message`,
+`delta`, `reasoning_delta`, `tool_call` and `tool_call_delta` immediately before
+completion. Stopped status, activity and stop time remain unchanged in live,
+full-history and roster replay. Explicit `spawned` resume then allows new output
+and `finished` to complete normally; existing parked-worker live-output recovery
+is retained. `transcript-goal.test.ts` models that legacy derived `done` state
+directly: a real `cleanup` cancels execution and is never a stale roster tick.
+The replay UI fixture also places late messages and tool calls
+between Stop and completion. The real Stop E2E in
 `frontend/e2e/restart.spec.ts` waits for both worker `finished` events to be
 persisted before checking the stopped roster and reloading, so a fast UI check
 cannot miss the late-completion race. Those original events remain in Trace;

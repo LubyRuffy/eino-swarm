@@ -30,6 +30,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `C-002`: late worker messages, streamed text and tool-call notifications cannot revive stopped workers before a late completion receipt. Explicit resume still accepts new output and completion; parked workers retain their existing live-output recovery.
+
 - `F-130`, `C-002`: stopped PC workers retain their stopped status, activity and stop time when a late `finished` reports cancellation or success, including live updates and replay. Explicit resume enables normal completion again. This restores the existing stop contract; raw completion events remain in Trace, with no wire or storage change.
 
 - `F-130`, `F-170`, `C-012`, `C-009`: failed PC sub-agents offer View failure reason. Their recorded error stays above the scrolling log, with explicit missing-reason text for old records. Exact worker-watchdog, iteration-limit and output-budget errors link to the corresponding Swarm setting and focus it; identified provider stream-idle errors open Models without guessing a provider. Generic deadlines, cancellation and unknown errors do not guess a configuration fix. A parent-turn error retains its cause and origin for workers still running when it arrives, while independent worker failures keep their own reason. Changing settings does not resume a worker or trigger a manager retry.
