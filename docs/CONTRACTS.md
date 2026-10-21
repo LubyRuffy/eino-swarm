@@ -114,8 +114,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-012 One-ID troubleshooting
 
-- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-320`, `F-420`。
+- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace、PC 子代理详情；关联功能：`F-130`, `F-160`, `F-170`, `F-320`, `F-420`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
+- PC 子代理错误入口：failed 行须提供可见的查看原因入口；详情错误信息位于日志滚动区外，保留记录的错误并本地化已知错误，历史缺失原因时明确未记录，不伪造诊断。仅父 turn 的 error 到达时仍为 running 的子代理派生为 failed 并保留父错误及所属轮次来源，不能冒称子代理独立失败；已有子代理终态错误不被覆盖，续办清除上次原因与来源。先前 cleanup 已停止的代理不因后到父错误倒推为失败，人工停止及 cleanup 继续遵守 `C-002`。只有精确匹配本代理 `swarm: agent <id> exceeded timeout <duration>` 的 watchdog 错误可指向 `swarm.agent_timeout_seconds`，精确输出额度错误可指向 `swarm.max_completion_tokens`，已知 worker 迭代上限错误可指向 `swarm.max_turns`；这些入口打开 Settings → Swarm 并聚焦该字段。已识别的 provider 流空闲超时打开 Settings → Models，不猜测具体 provider 或聚焦字段。配置入口不修改设置或自动续办。普通 deadline、取消、其他代理的错误和未知错误不猜测超时配置。证据：`frontend/src/components/app/agent-failure.tsx`、`frontend/src/lib/agent-failure.ts`、`frontend/src/lib/transcript.ts`、`frontend/src/components/app/agent-failure.test.tsx`、`frontend/src/lib/agent-failure.test.ts`、`frontend/src/lib/transcript-failure.test.ts`、`frontend/e2e/agent-failure.spec.ts`、`frontend/e2e/worker-timeout.spec.ts`；来源：用户 2026-10-21 子代理失败原因及配置入口要求。
 - Worker 计数证据：创建／续办以该 turn 的真实调用与持久化生命周期事件为准，历史名册和 assistant 自述不能当作本轮创建量。错误回执保留拒绝类别及聚合数量，已恢复 ID 不冒称新 ID；摘要事实按 `turn_id` 和 `through_seq` 归属。仅注入名册快照不得新增 `spawned` 或伪造 `spawn_agent` 工具记录；真实续办／进程恢复保留事件并按已有 ID 区分。证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`frontend/e2e/worker-roster-history.spec.ts`；来源：GitHub Issue #78。
 - 模型接口失败的公共 turn/error 展示保留可判断的 HTTP 状态码及接口拒绝/响应解码原因。JSON 解码错误本身不证明工具参数无效；SDK/Eino 类型错误经包装仍按接口错误处理。公共文本不包含原始响应正文、图执行路径或认证值，原因最多 512 字符；原始调用与重试仍在同一 turn 的 Trace 内可查，上下文溢出及超时提示保留现有恢复建议。
 - 允许行为：敏感值脱敏；禁止行为：丢掉诊断所需事件或输出令牌/完整 Cookie；失败语义：不存在的 id 报不存在；不变量：同 id 贯穿运行；边界条件：部分失败和重启恢复。

@@ -1960,6 +1960,17 @@ Several things are tested here, some as pure logic and some in jsdom:
   it, a query surfaces a nested file without expanding first, download/delete
   stay off directory rows, deleting a file asks first, and the tree takes
   arrow keys.
+- **`src/lib/agent-failure.test.ts`** checks exact worker watchdog identity and
+  duration, known worker iteration and provider stream-idle limits, the exact
+  output-budget error, and absence of speculative settings
+  links for generic deadlines, cancellation, another worker's timeout or unknown
+  errors. **`src/components/app/agent-failure.test.tsx`** checks the visible cause
+  entry, the error card outside the log scroller, bounded scrolling for a long
+  error, localized missing-reason text, and opening the exact Swarm input without
+  arming a manager retry, plus the Models entry without a guessed provider.
+  **`src/lib/transcript-failure.test.ts`** checks live and
+  replayed parent-failure origin, preservation of an independent worker error,
+  clearing stale causes on resume, and existing cleanup/human-stop semantics.
 - **`src/components/app/panel.tsx`**, rendered in jsdom: opening a sub-agent
   puts the back row *beside* the scroller, not sticky on top of it — dragging
   the transcript must not paint through the back button. The worker log
@@ -2097,6 +2108,7 @@ long enough for Steer; unit tests leave it unset.
 
 | spec | covers |
 |---|---|
+| `e2e/agent-failure.spec.ts` | replayed failure details remain visible outside a long worker log; the exact watchdog setting receives focus, saves and survives reload; an ambiguous provider deadline has no guessed repair link, and a parent-turn failure keeps its origin and cause after replay |
 | `e2e/agent-roster.spec.ts` | Agents opens on last update, newest first; Name flips between Z to A and A to Z and the rows follow the label; Created flips between oldest and newest |
 | `e2e/worker-roster-history.spec.ts` | opt-in loopback model adapter: a later turn queries an existing finished worker, emits no new spawn call/event, survives reload and exposes its Trace |
 | `e2e/work-fold.spec.ts` | user-mode work folded behind one live ticker (`work-fold` with the spinner, not every finished fold); click expands the thought box and click again collapses it |
@@ -2347,6 +2359,11 @@ real offline worker expiry, goal blocking, exact-plan pause, failed pause writes
 and persisted legacy receipts across restart. `frontend/e2e/worker-timeout.spec.ts`
 uses `ZWAI_MOCK_WORKER_TIMEOUT=1` and a one-second watchdog to observe three actual
 starts of one ID, terminal error, no model retry, schedule pause, reload and Trace.
+It also opens that worker's recorded failure, focuses and saves the watchdog
+setting, and verifies the failed task remains idle with its original cause.
+The separate `frontend/e2e/agent-failure.spec.ts` replay fixture tests long-log
+visibility and failure-entry navigation without claiming to trigger a watchdog;
+the real-watchdog script above provides that independent lifecycle evidence.
 Default demo scripts are unchanged. Phone `history=timeout` checks existing error
 rendering and absence of Stop; packaged iOS uses
 `BindFlowTests/testWorkerTimeoutShowsPausedErrorInsteadOfRunning`, with the same

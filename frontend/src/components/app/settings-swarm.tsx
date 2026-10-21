@@ -1,6 +1,7 @@
 import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import { MAX_COMPLETION_SETTINGS_KEY } from "@/lib/output-budget"
+import { AGENT_MAX_TURNS_SETTINGS_KEY, AGENT_TIMEOUT_SETTINGS_KEY } from "@/lib/agent-failure"
 import type { Settings } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
@@ -63,6 +64,7 @@ export function SwarmTab({
           query={query}
           label={t("settings.swarm.agentTimeout")}
           hint={t("settings.swarm.agentTimeoutHint")}
+          anchor={AGENT_TIMEOUT_SETTINGS_KEY}
         >
           <Input
             type="number"
@@ -77,6 +79,7 @@ export function SwarmTab({
           query={query}
           label={t("settings.swarm.maxTurns")}
           hint={t("settings.swarm.maxTurnsHint")}
+          anchor={AGENT_MAX_TURNS_SETTINGS_KEY}
         >
           <Input
             type="number"

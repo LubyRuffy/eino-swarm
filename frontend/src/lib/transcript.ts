@@ -134,6 +134,9 @@ export interface AgentState {
   endedAt?: string
   result?: string
   error?: string
+  /** A parent turn can fail while this worker is still running. Preserve
+   *  that cause without presenting it as the worker's own failure. */
+  errorSource?: "agent" | "turn"
 }
 
 export interface TurnState {
@@ -547,6 +550,7 @@ export function reduceEvent(
       child.status = "running"
       child.endedAt = undefined
       child.error = undefined
+      child.errorSource = undefined
       child.activity = existed || painted ? "continuing" : "starting"
       if (!existed) child.startedAt = ev.created_at
       if (!rosterOnly) {
@@ -571,6 +575,7 @@ export function reduceEvent(
       child.endedAt = ev.created_at
       child.result = ev.text
       child.error = ev.err
+      child.errorSource = ev.err ? "agent" : undefined
       child.activity = ev.err ? "failed" : "done"
       closeStreaming(child, "reasoning")
       closeStreaming(child, "answer")
@@ -665,6 +670,10 @@ export function reduceEvent(
             child.status = cancelled ? "cancelled" : "failed"
             child.activity = "stopped"
             child.endedAt = ev.created_at
+            if (!cancelled && ev.err) {
+              child.error = ev.err
+              child.errorSource = "turn"
+            }
           }
         }
         if (ev.err) append(manager, block(ev, cancelled ? "notice" : "error", ev.err))
@@ -845,6 +854,7 @@ function keepWorkerLive(agent: AgentState) {
   agent.status = "running"
   agent.endedAt = undefined
   agent.error = undefined
+  agent.errorSource = undefined
 }
 
 /** Older spawned events stored the role in `text`. The instruction only
