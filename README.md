@@ -278,6 +278,7 @@ uploads, downloads and the live event stream have exactly one implementation.
   handoff in Trace. Checkpoint failures stop replacement with an explicit
   error. An older engine without handoff support uses bounded event-based
   recovery; its unsaved messages cannot be reconstructed.
+- **Local startup remains available while the phone hub connects.** Phone registration runs in a cancellable background lifecycle, so its network wait does not hold the window closed.
 - **Unfinished work survives a crash.** Kill the process, quit the window, or
   lose power mid-turn: the next start continues every leftover conversation,
   with the answers already on screen still in the model's context, any

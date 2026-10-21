@@ -1,5 +1,18 @@
 # Testing
 
+## Phone hub startup independence (F-210 / C-006)
+
+`internal/remote/host_start_test.go` holds a loopback registration request
+open while exercising local lifecycle operations. `internal/app/startup_remote_test.go`
+starts the real app against that blocked hub and checks a successful local
+`/api/meta` response before registration completes. Remote lifecycle tests
+must also preserve cancellation and reject late results after Stop/Reload.
+These offline checks do not replace opening the actual native window.
+
+```bash
+go test -race -count=1 ./internal/remote -run 'TestHost'
+go test -race -count=1 ./internal/app -run 'TestNewDoesNotWaitForRemoteRegistration'
+```
 
 ## Automatic restart handoff (F-110 / C-027)
 

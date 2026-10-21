@@ -27,7 +27,7 @@ type Host struct {
 	mu       sync.Mutex
 	conn     *client.Conn
 	id       *crypto.Identity
-	cancel   context.CancelFunc
+	starting *hostStart
 	offerURI string
 	offerAt  time.Time
 	err      string
@@ -64,80 +64,34 @@ func New(eng *engine.Engine, cfg *config.Config, log *slog.Logger) *Host {
 
 func (h *Host) Reload() {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.stopLocked()
-	h.startLocked()
+	previous := h.stopLocked()
+	attempt, launch := h.prepareStartLocked(context.Background())
 	h.applyWakeLocked()
+	h.mu.Unlock()
+	if previous != nil {
+		<-previous.done
+	}
+	h.finishStart(attempt, launch)
 }
 
+// Start connects before returning. Concurrent callers share the pending attempt.
 func (h *Host) Start() {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.startLocked()
+	attempt, launch := h.prepareStartLocked(context.Background())
 	h.applyWakeLocked()
-}
-
-func (h *Host) startLocked() {
-	if h.conn != nil {
-		return
-	}
-	cfg := h.cfg
-	if cfg == nil || !cfg.Remote.Enabled {
-		return
-	}
-	hub := cfg.Remote.HubURL
-	if hub == "" {
-		h.err = "remote needs hub_url"
-		return
-	}
-	token, err := cfg.EnsureHostToken()
-	if err != nil {
-		h.err = err.Error()
-		return
-	}
-	id, err := loadIdentity(cfg)
-	if err != nil {
-		h.err = err.Error()
-		return
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	// The gateway list reads this label and the build string. Neither is the hub URL.
-	name := config.SeedRemoteDisplayName(cfg.Remote.DisplayName)
-	if err := client.RegisterHostMeta(ctx, nil, hub, token, name, h.version, id); err != nil {
-		cancel()
-		h.err = err.Error()
-		h.log.Warn("remote host register failed", "err", err)
-		return
-	}
-	conn, err := client.Dial(ctx, client.Config{
-		HubURL:    hub,
-		Identity:  id,
-		Token:     token,
-		KeepAlive: h.keepAlive,
-		Name:      name,
-		Version:   h.version,
-	})
-	if err != nil {
-		cancel()
-		h.err = err.Error()
-		h.log.Warn("remote host dial failed", "err", err)
-		return
-	}
-	conn.OnLink(func(l *client.Link) {
-		go h.serveLink(l)
-	})
-	h.conn = conn
-	h.id = id
-	h.cancel = cancel
-	h.err = ""
+	h.mu.Unlock()
+	h.finishStart(attempt, launch)
 }
 
 func (h *Host) Stop() {
 	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.stopLocked()
+	attempt := h.stopLocked()
 	if h.wake != nil {
 		_ = h.wake.Set(false)
+	}
+	h.mu.Unlock()
+	if attempt != nil {
+		<-attempt.done
 	}
 }
 
@@ -155,16 +109,18 @@ func (h *Host) applyWakeLocked() {
 	}
 }
 
-func (h *Host) stopLocked() {
-	if h.cancel != nil {
-		h.cancel()
-		h.cancel = nil
+func (h *Host) stopLocked() *hostStart {
+	attempt := h.starting
+	if attempt != nil {
+		attempt.cancel()
+		h.starting = nil
 	}
 	if h.conn != nil {
 		_ = h.conn.Close()
 		h.conn = nil
 	}
 	h.offerURI = ""
+	return attempt
 }
 
 func (h *Host) serveLink(l *client.Link) {
@@ -195,12 +151,11 @@ func (h *Host) waitConnectedLocked(deadline time.Time) {
 }
 
 func (h *Host) Offer(ctx context.Context) (*Offer, error) {
+	if err := h.startForOffer(ctx); err != nil {
+		return nil, err
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.conn == nil {
-		h.startLocked()
-		h.applyWakeLocked()
-	}
 	if h.conn == nil {
 		if h.err != "" {
 			return nil, fmt.Errorf("%s", h.err)

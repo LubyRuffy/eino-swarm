@@ -83,10 +83,13 @@ func New(opts Options) (*App, error) {
 	}
 	logger := newLogger(cfg)
 
+	phaseStarted := time.Now()
 	st, err := store.Open(cfg.DBPath())
 	if err != nil {
 		return nil, err
 	}
+	logger.Info("engine startup", "phase", "database_ready", "duration_ms", time.Since(phaseStarted).Milliseconds())
+	phaseStarted = time.Now()
 
 	pool := provider.New(cfg)
 	if opts.Mock {
@@ -118,6 +121,8 @@ func New(opts Options) (*App, error) {
 		logger.Info("pulled waits sitting on sub-agents the previous process stopped", "count", n)
 	}
 	eng.StartScheduler()
+	logger.Info("engine startup", "phase", "unfinished_runs_restored", "duration_ms", time.Since(phaseStarted).Milliseconds())
+	phaseStarted = time.Now()
 
 	assets := opts.Assets
 	if assets == nil && !opts.NoAssets {
@@ -146,9 +151,10 @@ func New(opts Options) (*App, error) {
 
 	host := remote.New(eng, cfg, logger)
 	host.SetVersion(opts.Version)
-	host.Start()
+	host.StartBackground()
 	srv.SetRemote(host)
 	srv.SetSearch(idx)
+	logger.Info("engine startup", "phase", "local_handlers_ready", "duration_ms", time.Since(phaseStarted).Milliseconds())
 	return &App{
 		Config: cfg, Store: st, Pool: pool, Engine: eng, Server: srv,
 		Remote: host, Search: idx, Logger: logger, addr: addr,

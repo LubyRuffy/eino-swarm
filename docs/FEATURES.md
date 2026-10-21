@@ -135,6 +135,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-210 Pair a phone with a PC
 
 - 目的：安全绑定手机和 PC；使用者：手机用户；入口：Settings → Phone QR、扫码或粘贴；输入：pairlink URI；输出：加密连接和设备列表；前置条件：hub 和 PC 在线；失败表现：网络、过期或 host offline；关联契约：`C-006`；实现证据：`internal/remote`, `mobile/src/components/scan-screen.tsx`, `mobile/src/lib/link.ts`。
+- PC 的 hub 注册在受控后台生命周期内执行；网络迟缓只影响手机连接，不阻塞本地程序启动。Stop／Reload 可取消注册，旧结果不得重新启用已停止或已替换的 host。证据：`internal/remote/host.go`、`internal/remote/host_start.go`、`internal/remote/host_start_test.go`、`internal/app/startup_remote_test.go`。
 
 ### F-220 Read and control PC conversations
 
