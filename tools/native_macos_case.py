@@ -84,16 +84,22 @@ def process_identity(pid):
             return None, None
     libc = ctypes.CDLL(None, use_errno=True)
     mib = (ctypes.c_int * 3)(1, 49, pid)  # CTL_KERN, KERN_PROCARGS2.
-    size = ctypes.c_size_t()
-    if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0):
-        if ctypes.get_errno() in (errno.ESRCH, errno.EPERM, errno.EINVAL):
+    for attempt in range(3):
+        size = ctypes.c_size_t()
+        if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0):
+            error = ctypes.get_errno()
+        else:
+            buffer = ctypes.create_string_buffer(size.value)
+            if not libc.sysctl(mib, 3, buffer, ctypes.byref(size), None, 0):
+                break
+            error = ctypes.get_errno()
+        if error in (errno.ESRCH, errno.EPERM, errno.EINVAL):
             return None, None
-        raise OSError(ctypes.get_errno(), "cannot inspect process arguments")
-    buffer = ctypes.create_string_buffer(size.value)
-    if libc.sysctl(mib, 3, buffer, ctypes.byref(size), None, 0):
-        if ctypes.get_errno() in (errno.ESRCH, errno.EPERM, errno.EINVAL):
-            return None, None
-        raise OSError(ctypes.get_errno(), "cannot inspect process arguments")
+        # An exiting/execing process can invalidate the stack while sysctl
+        # copies it. Re-read the size too; a live unreadable PID still fails.
+        if error not in (errno.EIO, errno.ENOMEM) or attempt == 2:
+            raise OSError(error, f"cannot inspect process arguments for pid {pid}")
+        time.sleep(.01)
     raw = buffer.raw[:size.value]
     if len(raw) < ctypes.sizeof(ctypes.c_int):
         return None, None

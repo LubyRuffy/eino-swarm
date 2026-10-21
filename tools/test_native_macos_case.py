@@ -1,5 +1,7 @@
 """Native cases own only their copied bundle, data and scenario processes."""
 from contextlib import redirect_stderr
+import ctypes
+import errno
 import importlib.util
 import io
 import json
@@ -38,6 +40,16 @@ class NativeCaseTests(unittest.TestCase):
         self.addCleanup(mock.patch.stopall)
         mock.patch.object(runner, "LOCK_PATH", self.lock).start()
         mock.patch.object(runner, "require_guest", return_value=None).start()
+
+    def tearDown(self):
+        result = self._outcome.result
+        if any(test is self or getattr(test, "test_case", None) is self
+               for test, _ in result.failures + result.errors):
+            durable = Path(tempfile.mkdtemp(prefix="native-case-failure-evidence-"))
+            for evidence in self.root.glob("*evidence*"):
+                if evidence.is_dir():
+                    shutil.copytree(evidence, durable / evidence.name)
+            print("native case failure evidence: " + str(durable), file=sys.stderr)
 
     def run_case(self, script="", timeout=5):
         evidence = self.root / ("evidence-" + str(time.monotonic_ns()))
@@ -412,6 +424,86 @@ time.sleep(.2)
         launch.assert_not_called()
         self.assertFalse(receipt["virtualized"])
         self.assertFalse(receipt["launched"])
+
+    def procargs_fixture(self, failures):
+        raw = bytes(ctypes.c_int(2)) + b"/fixture\0\0fixture\0arg\0ZWAI_NATIVE_CASE_ID=fixture-id\0SECRET=never-export\0"
+        phases = []
+        def sysctl(mib, count, output, size, *unused):
+            phase = "size" if output is None else "read"
+            phases.append(phase)
+            if failures and failures[0][0] == phase:
+                _, error = failures.pop(0)
+                ctypes.set_errno(error)
+                return -1
+            ctypes.cast(size, ctypes.POINTER(ctypes.c_size_t)).contents.value = len(raw)
+            if output is not None:
+                ctypes.memmove(output, raw, len(raw))
+            return 0
+        library = mock.Mock(sysctl=mock.Mock(side_effect=sysctl))
+        return library, phases
+
+    def test_process_arguments_retry_bounded_exec_and_exit_races(self):
+        for phase in ("size", "read"):
+            for error in (errno.EIO, errno.ENOMEM):
+                with self.subTest(phase=phase, error=error):
+                    library, phases = self.procargs_fixture([(phase, error)])
+                    with mock.patch.object(runner.platform, "system", return_value="Darwin"), \
+                            mock.patch.object(runner.ctypes, "CDLL", return_value=library), \
+                            mock.patch.object(runner.time, "sleep") as pause:
+                        self.assertEqual(runner.process_identity(123), (["fixture", "arg"], "fixture-id"))
+                    self.assertEqual(pause.call_count, 1)
+                    self.assertEqual(phases[-2:], ["size", "read"])
+        library, phases = self.procargs_fixture([("read", errno.EIO), ("size", errno.ESRCH)])
+        with mock.patch.object(runner.platform, "system", return_value="Darwin"), \
+                mock.patch.object(runner.ctypes, "CDLL", return_value=library), \
+                mock.patch.object(runner.time, "sleep"):
+            self.assertEqual(runner.process_identity(123), (None, None))
+        self.assertEqual(phases, ["size", "read", "size"])
+
+    def test_unreadable_live_process_remains_failure_after_retry_limit(self):
+        for phase in ("size", "read"):
+            for error, attempts in ((errno.EIO, 3), (errno.ENOMEM, 3), (errno.ENOSYS, 1)):
+                with self.subTest(phase=phase, error=error):
+                    library, phases = self.procargs_fixture([(phase, error)] * attempts)
+                    with mock.patch.object(runner.platform, "system", return_value="Darwin"), \
+                            mock.patch.object(runner.ctypes, "CDLL", return_value=library), \
+                            mock.patch.object(runner.time, "sleep") as pause:
+                        with self.assertRaises(OSError) as raised:
+                            runner.process_identity(123)
+                    self.assertEqual(raised.exception.errno, error)
+                    self.assertIn("123", str(raised.exception))
+                    self.assertEqual(phases.count(phase), attempts)
+                    self.assertEqual(pause.call_count, attempts - 1)
+
+    def test_unreadable_owned_process_cannot_claim_cleanup_or_unlock_next_case(self):
+        original_launch, original_identity = runner.subprocess.Popen, runner.process_identity
+        processes = []
+        def launch(command, *args, **kwargs):
+            process = original_launch(command, *args, **kwargs)
+            if len(command) > 1 and command[1] == "desktop":
+                processes.append(process)
+            return process
+        def identity(pid):
+            if any(process.pid == pid for process in processes):
+                raise OSError(errno.EIO, f"cannot inspect process arguments for pid {pid}")
+            return original_identity(pid)
+        try:
+            with mock.patch.object(runner.subprocess, "Popen", side_effect=launch), \
+                    mock.patch.object(runner, "process_identity", side_effect=identity):
+                code, _, receipt = self.run_case()
+            self.assertEqual(code, 3)
+            self.assertFalse(receipt["cleanup_complete"])
+            self.assertFalse(receipt["data_removed"])
+            self.assertIn(str(processes[0].pid), receipt["cleanup_error"])
+            self.assertTrue(Path(receipt["data_dir"]).is_dir())
+            code, _, blocked = self.run_case()
+            self.assertNotEqual(code, 0)
+            self.assertFalse(blocked["launched"])
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
 
 
 if __name__ == "__main__":

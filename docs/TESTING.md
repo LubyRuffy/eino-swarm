@@ -59,6 +59,16 @@ Do not deliberately clear it and create an untracked daemon: this runner owns
 cooperating test processes, not an OS process container. System services shared
 with other applications are not test-owned processes.
 
+Darwin process-argument inspection retries the complete size/read sequence only
+for `EIO` or `ENOMEM`, at most three attempts with 10 ms between attempts.
+Persistent errors and unknown error categories still fail the case; diagnostics
+include the PID and numeric errno without recording process arguments or
+environment values. `tools/test_native_macos_case.py` injects transient,
+persistent and unknown sysctl failures to verify those boundaries. A failed
+headless regression preserves its evidence directories and prints their retained
+location, including `cleanup.json` and app/scenario logs. These checks do not
+establish the cause of an earlier failure whose evidence was not retained.
+
 For a reported checkout defect, preserve that checkout and record HEAD plus
 dirty-file hashes before/after. Transfer the exact identified source snapshot
 or candidate to the guest. Host-side provenance/asset checks remain read-only;
