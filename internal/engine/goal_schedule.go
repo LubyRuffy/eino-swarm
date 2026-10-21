@@ -62,6 +62,9 @@ func (e *Engine) completeThreadGoal(threadID, turnID, summary string) error {
 }
 
 func goalScheduleFailure(err error) string {
+	if errors.Is(err, store.ErrThreadWakeDenied) || errors.Is(err, store.ErrWakePolicyPending) {
+		return threadWakeFailure(err)
+	}
 	body := map[string]any{"ok": false, "error": err.Error()}
 	if errors.Is(err, store.ErrGoalScheduleConflict) {
 		body["code"] = "goal_schedule_conflict"

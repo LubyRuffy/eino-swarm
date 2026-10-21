@@ -888,6 +888,48 @@ garbage arguments come back as JSON `ok:false`, and workers get a deny stub.
 `internal/engine/schedule_tool_info_test.go` is why the tool names stay
 stable, Info text stays generic, a remaining-time estimate is biased to
 about a third, and `report_schedule` must not stretch the interval.
+`internal/engine/thread_wake_policy_test.go` sends the original human event to
+a keyless loopback OpenAI-compatible classifier, then drives the actual
+manager/ADK tool graph with a manager that attempts to wait and claims success.
+Assertions use the refusal code, exact source event and persisted schedule
+state; assistant prose cannot pass as an arm. Scripted classifier decisions
+test program enforcement and provenance, not the accuracy of arbitrary model
+interpretations.
+`TestReportRecadenceCannotCancelOrChangeAHumanProhibitedWake` refuses the whole
+rearm call before cancellation or findings are persisted, while reports
+without `next_in_s` remain usable.
+`TestHumanWakeAuthoritySurvivesRealCompactAndEngineRestart` removes the original
+human sentence from actual compacted replay, reopens the database in a new
+engine, rejects generated User-role/peer cues and then accepts a later human
+allowance. `TestUnverifiedWakePermissionFailsClosedWithoutRetryingThisTurn`
+keeps malformed or unsupported classifier answers pending without repeat
+requests in that turn. `TestWakeClassificationCannotOutrunANewHumanInstruction`
+and `TestParallelWakeAttemptsShareOneHumanClassification` cover late human input
+and concurrent attempts. `TestHumanSteeringAtTheWriteBoundaryCannotBeBypassed`
+injects new human input at the first schedule query after verification, proving
+the write transaction must recheck authority. `TestWakeClassificationHasACancellableGateAndPerTurnBudget`
+covers cancellation while waiting for the classification gate, the 16-input
+turn budget, and continued backfill from persisted successes in a later turn.
+`internal/store/wake_policy_test.go` covers effective human-only sources,
+exact quotes, immutable classification, unread-steer edits/retractions,
+compaction, restart and a later explicit human allowance.
+`internal/store/wake_policy_guard_test.go` covers the actual schedule write
+transactions: create/replace/recadence leave the entire row unchanged when
+denied or pending; a newly arrived human input closes the classification/write
+race; rewinds, deletion, stale cache rows and storage failures cannot grant
+consent. Human inbox operations and independent jobs retain their boundaries.
+`internal/provider/mock_wake_policy_test.go` keeps offline policy extraction
+neutral and tool-free rather than routing it to the worker script.
+`frontend/e2e/human-wake-policy.spec.ts` runs the keyless scripted fixture with
+`cd frontend && ZWAI_E2E_HUMAN_WAKE_POLICY=1 ZWAI_E2E_PORT=8814 ZWAI_E2E_DATA_DIR=.e2e-data-human-wake-policy npm run e2e -- human-wake-policy.spec.ts --workers=1 --retries=0`.
+In a fresh worktree, first run `go generate ./frontend` from the repository
+root so the engine startup budget does not include the first Vite build.
+It verifies no new armed card/banner/Waiting status despite a false manager
+claim, source-attributed Trace, reload, later human permission producing one
+real wait, and a scheduled report refusing recadence after a one-shot fire.
+An existing wait is compared unchanged on rejection; prior arm/fire notices
+remain valid history. The fixture's source text is generic and its decisions
+are scripted; no production endpoint, credential or real model is used.
 `internal/engine/schedule_rearm_test.go` is why that recadence refuses
 cancelled and paused rows, respects `schedule_max_active`, and why
 `schedule_wake` plus `next_in_s` in one turn record one armed chip

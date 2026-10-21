@@ -260,6 +260,33 @@ worker before closing SQLite.
    `report_schedule` fails unless `ScheduleContinue`; empty findings are
    quiet. `next_in_s` rearms an already-active interval, or a delay that
    claim marked `done`, under the same cap transaction as create/resume.
+   Before either thread-wake arming path, the engine resolves durable human
+   policy from the original effective `user_message` and `steer` events. A
+   dedicated read-only model extracts `deny`, `allow`, or `unchanged`, with an
+   exact source quote; it does not run tools or decide from task keywords.
+   Deterministic validation proves source identity and an exact quote; the
+   semantic decision still depends on that model's interpretation. A cached
+   denial cannot be reclassified away by later manager output.
+   Decisions in `thread_wake_decisions` are cached against the source event seq,
+   event identity and effective-text fingerprint, outside
+   compressed replay. Only a later explicit human `allow` releases `deny`.
+   Classification is lazy: ordinary work makes no policy model call until it
+   attempts to arm a thread wake. Each verification has a total 30-second
+   deadline, including cancellable waiting for the conversation's classification
+   gate. One turn classifies at most 16 uncached human inputs; successful
+   decisions persist across turns, so another turn may continue the backfill.
+   A failed extraction of the same input is not retried in that turn. Deadline,
+   budget or extraction failure returns pending and asks the manager to continue
+   work in the current turn.
+   Manager output, peer data, schedule prompts and summaries are not human
+   authority. The tool checks the policy and the schedule mutation transaction
+   checks it again, so parallel calls or a late human prohibition cannot arm
+   a wait. `thread_wake_prohibited` and `thread_wake_policy_pending` refusals
+   leave the wait row unchanged, emit no `schedule` event, and retain the human
+   source event seq, text and exact quote in a classified denial's tool-result
+   Trace. A pending refusal retains its known source seq. Reports without
+   `next_in_s`, including `keep:false` cancellation, remain available; a
+   refused recadence does not partially cancel the wait.
    New scheduled turns persist their claimed-run binding before the runtime
    launches. Goal-bearing restored scheduled turns validate the same binding
    through the shared entry gate; only an empty or identical binding is safe,
@@ -286,7 +313,7 @@ worker before closing SQLite.
    fails the tool if listing wakes fails, instead of minting a second row.
    Workers get JSON deny stubs (`workers cannot schedule`).
    The manager prompt has a generic `## Waiting` section after Asking the
-   human: gated progress calls `schedule_wake` and ends the turn; it must
+   human: when human policy permits, gated progress calls `schedule_wake` and ends the turn; it must
    not spin, block a tool, or wait for the human to remind it. A parallel
    `exec` that sleeps and then checks progress is fine. Estimated remaining
    time is biased short (about a third, then that interval) so a finish is
@@ -295,7 +322,12 @@ worker before closing SQLite.
    more to about a third of that duration so a padded wait cannot hide
    inside a blocked tool. Open wakes for this conversation
    are injected in extra (`## Scheduled`) so the
-   model can upsert. A pending wake is the next `/goal` turn — ending a
+   model can upsert. Waiting and scheduled-check cues defer to the persisted
+   human prohibition; compaction and restart do not erase it. Its runtime
+   System message carries only the source event seq and at most 256 runes of
+   the quote, so a long original message is not repeatedly restored after
+   compaction. Refused-tool Trace retains the full source text and quote.
+   A pending wake is the next `/goal` turn — ending a
    wait-turn does not imply an immediate auto-continue. Cancelling that
    wake while idle starts the next pursuing turn; a cancel during a live
    turn restores auto-continue when that turn finishes.

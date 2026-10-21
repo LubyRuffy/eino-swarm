@@ -90,9 +90,17 @@ uploads, downloads and the live event stream have exactly one implementation.
   check after changing the setting or conversation.
   `schedule_wake` does not take an id. It arms or replaces the open wait;
   the host assigns the id. Cancel copies an id from the open-wait list.
+  If you explicitly prohibit parking this conversation, the engine preserves
+  that instruction independently of summaries and refuses both a new/replaced
+  wake and a scheduled report's `next_in_s`. The refusal leaves the wait row
+  unchanged and records the human source in the same turn's Trace; assistant
+  prose cannot create an armed-wait card. Only a later explicit human allowance
+  releases the prohibition. Reporting findings without rescheduling and
+  cancelling a wait still work. A source awaiting policy classification also
+  prevents arming until it can be checked.
   When progress is gated on time or a condition not worth polling now, it is
-  told to wake and end the turn instead of spinning or asking you to remind
-  it. A parallel `exec` that sleeps and then checks progress is fine; that
+  told to wake and end the turn when your conversation policy allows it.
+  A parallel `exec` that sleeps and then checks progress is fine; that
   sleep and `schedule_wake` both bias estimated remaining time short (about
   a third, then that interval) so a check lands before the work is already
   done; extra checks are expected. A named clock time you asked for is still

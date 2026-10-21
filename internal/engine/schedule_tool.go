@@ -23,10 +23,10 @@ const (
 )
 
 const (
-	scheduleWakeDesc = "Arm or replace a wait on this conversation. Call this when progress is gated on time or a condition that is not worth polling inside this turn, then end the turn. When remaining time is an estimate, bias delay_s/every_s to about a third of it; extra checks are fine. Do not schedule work that can finish now. Do not use a wait instead of asking the human."
+	scheduleWakeDesc = "Arm or replace a wait on this conversation. Call this when progress is gated on time or a condition that is not worth polling inside this turn, then end the turn. When remaining time is an estimate, bias delay_s/every_s to about a third of it; extra checks are fine. Do not schedule work that can finish now. Do not use a wait instead of asking the human. A human prohibition on parking this conversation overrides this guidance; only later direct human permission can lift it."
 	scheduleTaskDesc = "Arm an independent job that mints its own conversation when it fires. Only from a human-originated turn — never from a continuation, a scheduled check, or an accepted-plan execute turn."
 	cancelSchedDesc  = "Cancel a wait by id so it stops firing."
-	reportSchedDesc  = "Report the result of a scheduled check. Empty findings mean nothing to surface. Call this only on a scheduled turn. If this wait is on an estimated remaining time and still open, recadence shorter, never stretch."
+	reportSchedDesc  = "Report the result of a scheduled check. Empty findings mean nothing to surface. Call this only on a scheduled turn. If this wait is on an estimated remaining time and still open, recadence shorter, never stretch. Human prohibitions on parking this conversation forbid next_in_s; reporting without it and ending the wait remain available."
 )
 
 func scheduleCadenceParams() map[string]*schema.ParameterInfo {
@@ -92,6 +92,7 @@ type jsonArgsTool struct {
 	name, desc string
 	params     map[string]*schema.ParameterInfo
 	run        func(args string) (string, error)
+	runContext func(context.Context, string) (string, error)
 }
 
 func (t *jsonArgsTool) Info(context.Context) (*schema.ToolInfo, error) {
@@ -102,8 +103,14 @@ func (t *jsonArgsTool) Info(context.Context) (*schema.ToolInfo, error) {
 	}, nil
 }
 
-func (t *jsonArgsTool) InvokableRun(_ context.Context, args string, _ ...tool.Option) (string, error) {
-	out, err := t.run(args)
+func (t *jsonArgsTool) InvokableRun(ctx context.Context, args string, _ ...tool.Option) (string, error) {
+	var out string
+	var err error
+	if t.runContext != nil {
+		out, err = t.runContext(ctx, args)
+	} else {
+		out, err = t.run(args)
+	}
 	if err != nil {
 		return scheduleToolFailure("%s", err.Error()), nil
 	}
@@ -132,34 +139,39 @@ func (rt *runtime) managerScheduleTools(turn *store.Turn) []tool.BaseTool {
 	if turn != nil {
 		turnID = turn.ID
 	}
+	wake := ScheduleWakeTool(nil).(*jsonArgsTool)
+	wake.runContext = func(ctx context.Context, args string) (string, error) {
+		return e.scheduleWakeContextJSON(ctx, tid, turnID, args)
+	}
+	report := ReportScheduleTool(nil).(*jsonArgsTool)
+	report.runContext = func(ctx context.Context, args string) (string, error) {
+		return e.reportScheduleContextJSON(ctx, tid, turnID, args)
+	}
 	return []tool.BaseTool{
-		ScheduleWakeTool(func(args string) (string, error) {
-			return e.scheduleWakeJSON(tid, turnID, args)
-		}),
+		wake,
 		ScheduleTaskTool(func(args string) (string, error) {
 			return e.scheduleTaskJSON(tid, turnID, args)
 		}),
 		CancelScheduleTool(func(args string) (string, error) {
 			return e.cancelScheduleJSON(tid, turnID, args)
 		}),
-		ReportScheduleTool(func(args string) (string, error) {
-			return e.reportScheduleJSON(tid, turnID, args)
-		}),
+		report,
 	}
 }
 
 type scheduleToolArgs struct {
-	ID       string `json:"id"`
-	Prompt   string `json:"prompt"`
-	Title    string `json:"title"`
-	DelayS   int    `json:"delay_s"`
-	EveryS   int    `json:"every_s"`
-	Cron     string `json:"cron"`
-	MaxRuns  int    `json:"max_runs"`
-	Until    string `json:"until"`
-	Findings string `json:"findings"`
-	Keep     *bool  `json:"keep"`
-	NextInS  int    `json:"next_in_s"`
+	ID             string `json:"id"`
+	Prompt         string `json:"prompt"`
+	Title          string `json:"title"`
+	DelayS         int    `json:"delay_s"`
+	EveryS         int    `json:"every_s"`
+	Cron           string `json:"cron"`
+	MaxRuns        int    `json:"max_runs"`
+	Until          string `json:"until"`
+	Findings       string `json:"findings"`
+	Keep           *bool  `json:"keep"`
+	NextInS        int    `json:"next_in_s"`
+	NextInSPresent bool   `json:"-"`
 }
 
 func parseScheduleToolArgs(args string) (scheduleToolArgs, error) {
@@ -170,6 +182,15 @@ func parseScheduleToolArgs(args string) (scheduleToolArgs, error) {
 	}
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
 		return a, fmt.Errorf("could not read the arguments: %v", err)
+	}
+	var fields map[string]json.RawMessage
+	// The typed parse above already verified that this is a JSON object.
+	_ = json.Unmarshal([]byte(args), &fields)
+	for name := range fields {
+		if strings.EqualFold(name, "next_in_s") {
+			a.NextInSPresent = true
+			break
+		}
 	}
 	return a, nil
 }
@@ -208,6 +229,13 @@ func (e *Engine) scheduleInputFromArgs(a scheduleToolArgs) (ScheduleInput, error
 }
 
 func (e *Engine) scheduleWakeJSON(threadID, turnID, args string) (string, error) {
+	return e.scheduleWakeContextJSON(context.Background(), threadID, turnID, args)
+}
+
+func (e *Engine) scheduleWakeContextJSON(ctx context.Context, threadID, turnID, args string) (string, error) {
+	if err := e.verifyThreadWakePolicy(ctx, threadID, turnID); err != nil {
+		return threadWakeFailure(err), nil
+	}
 	e.goalWakeMu.Lock()
 	defer e.goalWakeMu.Unlock()
 	scope, err := e.wakeGoalScope(threadID, turnID)
@@ -409,6 +437,21 @@ func (e *Engine) cancelScheduleJSON(_, _, args string) (string, error) {
 }
 
 func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, error) {
+	return e.reportScheduleContextJSON(context.Background(), threadID, turnID, args)
+}
+
+func (e *Engine) reportScheduleContextJSON(ctx context.Context, threadID, turnID, args string) (string, error) {
+	// Verification happens before lifecycle locks and every report side effect.
+	// Even keep:false must not mutate the wait when a recadence was refused.
+	if a, err := parseScheduleToolArgs(args); err == nil && a.NextInSPresent {
+		if turn, err := e.store.GetTurn(turnID); err == nil && turn.ThreadID == threadID && turn.ScheduleContinue {
+			if sch := e.scheduleForTurn(turn); sch != nil && sch.Kind == store.ScheduleThread && sch.ThreadID == threadID {
+				if err := e.verifyThreadWakePolicy(ctx, threadID, turnID); err != nil {
+					return threadWakeFailure(err), nil
+				}
+			}
+		}
+	}
 	e.goalWakeMu.Lock()
 	defer e.goalWakeMu.Unlock()
 	turn, err := e.store.GetTurn(turnID)
@@ -445,8 +488,19 @@ func (e *Engine) reportScheduleJSON(threadID, turnID, args string) (string, erro
 	}
 	if sch != nil {
 		if a.Keep != nil && !*a.Keep {
-			if err := e.cancelScheduleForTurn(scope, sch.ID); err != nil {
-				return scheduleToolFailure("%s", err.Error()), nil
+			var cancelErr error
+			if a.NextInSPresent && sch.Kind == store.ScheduleThread {
+				var changed *store.Schedule
+				changed, cancelErr = e.store.CancelScheduleForTurnWithWakePolicy(scope, sch.ID)
+				if cancelErr == nil && changed != nil {
+					e.recordScheduleCancelled(changed)
+					e.continueGoalAfterWakeStop(changed)
+				}
+			} else {
+				cancelErr = e.cancelScheduleForTurn(scope, sch.ID)
+			}
+			if err := cancelErr; err != nil {
+				return goalScheduleFailure(err), nil
 			}
 		} else if a.NextInS != 0 {
 			if msg, err := e.interruptedWakeRefusal(threadID); err != nil {
