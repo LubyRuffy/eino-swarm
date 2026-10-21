@@ -23,6 +23,18 @@ discard a concurrent edit. PC queue actions coalesce pending clicks per
 conversation/row and ignore another conversation's late response. Missing-record
 HTTP responses carry a request ID and matching safe WARN log
 (`internal/server/missing_record.go`); they do not terminate the model turn.
+When a bundle needs rebuilding, `frontend/ensure.go` checks `package.json`'s
+direct dependencies and devDependencies through installed package manifests
+and declared local executable entries. Missing packages or build tools trigger
+`npm install --include=dev`, followed by another readiness check before build
+and source-stamp publication. `frontend/ensure_build_lock.go` serializes
+installation/build/stamping across processes using the checkout's ignored
+`.build-lock` directory, rechecks staleness after locking and permits cancelling
+a waiter. A build command owns its process tree: cancellation or script exit
+stops and waits for its descendants before the checkout lock can be reused.
+Unix uses a process group; Windows uses a Job Object. A fresh bundle or installed
+embed does not acquire a new Node dependency.
+
 
 Desktop update installation is also locked by the actual app bundle across
 engines with different data directories. The stable filesystem lock covers

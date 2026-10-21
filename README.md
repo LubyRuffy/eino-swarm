@@ -367,8 +367,8 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 ## Quick start
 
-Requirements: Go 1.26+ and Node.js (for the UI bundle on first run; `npm install`
-uses the public registry). The desktop window uses
+Requirements: Go 1.26+ and Node.js (for a missing/stale checkout UI bundle or
+dependency repair; `npm install --include=dev` uses the public registry). The desktop window uses
 [Wails 3](https://wails.io) and needs a C toolchain (macOS: Xcode Command Line
 Tools; Linux: `webkit2gtk` dev packages).
 
@@ -383,6 +383,11 @@ go run ./cmd/zwai desktop
 # or the same app in your browser
 go run ./cmd/zwai web
 ```
+
+When a checkout bundle needs rebuilding, startup checks its declared direct
+dependencies and development build tools. An empty or partial `node_modules`
+is repaired before building even when its directory timestamp is recent.
+Installation is checked again before the build can be stamped as current.
 
 First launch writes `~/.zwai-swarm/config.yaml` and shows a setup banner until a
 model is configured. Open **Settings** (⌘,) — a full-page sheet that starts on

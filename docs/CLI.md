@@ -68,10 +68,14 @@ are reported; a 30s budget is not a promise that a model will finish its task.
 A second `zwai desktop` on the same data directory opens another window on
 the same engine. Both can type. The app menu (the `…` at the bottom of the icon rail) names the connected shells when more than one is attached.
 
-A checkout with no `frontend/dist/index.html` (or with TypeScript newer than
-the last build) runs `npm install` then `npm run build` before the window
-opens, against `registry.npmjs.org` (the project `.npmrc`, not a user-level
-mirror). Ctrl-C during that first install stops it.
+A checkout with a missing or stale `frontend/dist` prepares it before the
+window opens. It checks declared direct dependencies, development dependencies
+and their local executable entries; a missing/partial install triggers
+`npm install --include=dev` against `registry.npmjs.org` (the project `.npmrc`).
+The install is checked again before `npm run build` and the new source stamp.
+Preparation serializes across processes using the same checkout; Ctrl-C can
+cancel installation, building or waiting for another build. A current bundle
+and an installed binary's embed keep working without new Node requirements.
 
 A loopback engine can show a file in the platform file manager and open
 http(s) links in the system browser. A non-loopback bind cannot; the UI

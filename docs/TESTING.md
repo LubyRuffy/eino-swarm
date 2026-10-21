@@ -1,5 +1,6 @@
 # Testing
 
+
 ## Automatic restart handoff (F-110 / C-027)
 
 `handoff_test.go` and `internal/engine/restart_test.go` cover shared deadlines,
@@ -767,6 +768,21 @@ reload. Camera on a real device is the product path (`make mobile-ios` /
 require Node. `TestCommittedLockfilesMatchThePublicNpmRegistry` refuses a
 lockfile whose `resolved` hosts are not `registry.npmjs.org` — npm 12
 treats those tarballs as remote packages (`EALLOWREMOTE`) on a fresh clone.
+`frontend/ensure_dependencies_test.go` regresses empty/partial installs newer
+than the manifests, missing production/development packages, missing compiler
+entries and broken executable links. Install must include development packages
+and pass revalidation before build/stamping; a current bundle does not require
+Node. `frontend/ensure_build_lock_test.go` uses separate processes to prove
+one shared checkout builds once and that a waiting preparation can be cancelled.
+`frontend/ensure_process_test.go` runs the real offline npm → shell → Node
+chain and cancels after the descendant starts writing. It requires the original
+context cancellation error, then lets another builder acquire the lock and
+asserts the old writer cannot change the output. Separate cases let npm exit
+successfully or with an error while a background child remains. The Unix helper
+and Windows Job Object fixtures exercise their own process ownership paths;
+Windows cross-compilation is build evidence and does not certify those runtime
+tests or native Windows behavior.
+These fixtures do not replace the original-checkout native command check below.
 `assembleApp` in `cmd/zwai` is the two-line call that
 production `desktop` / `web` go through.
 
@@ -2235,6 +2251,11 @@ a client at all is verified in the engine and reducer tests.
   browser, not replace the window. The Dock / taskbar should show the rounded
   app mark at the same size as a bundled `.app`, not a square canvas, not a
   full-bleed tile, and not the generic Unix-exec glyph.
+  For a reported checkout startup failure, run the reported command from that
+  exact checkout after verifying the current source/build and preserving
+  unrelated edits. Retain its startup/build output and observe the window plus
+  a completed offline turn from that launch; another worktree or a separately
+  launched `.app` is not acceptance of the reported command.
   Double-click the title bar: the window should zoom,
   then restore on the next double-click. On macOS the traffic lights and the
   sidebar toggle must share one baseline in that title bar; New conversation
