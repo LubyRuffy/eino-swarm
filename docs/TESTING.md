@@ -2,6 +2,8 @@
 
 ## Native desktop isolation (F-430 / C-031)
 
+Recorded guest acceptance: [2026-10-21 native isolation evidence](diagnostics/native-isolation-20261021.md). It binds a frozen candidate, precise legacy cleanup, serial real-window cases and host foreground observations; it is not latest-main or release acceptance.
+
 Native macOS acceptance runs in the UTM **ci-macOS** guest. The user's host
 desktop may already be running zwai; do not launch or focus another desktop
 app there, replace its cache bundle, change its engine/data, or bring UTM,

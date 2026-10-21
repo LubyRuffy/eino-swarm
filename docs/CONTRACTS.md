@@ -353,4 +353,5 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 场景与辅助进程必须保留继承的 `ZWAI_NATIVE_CASE_ID`，使已脱离父进程／新建 session 的辅助进程仍可归因；不得主动清除标记后创建脱管 daemon。测试 runner 不是 OS 进程容器，不终止共享系统服务。
 - 证据：实现 `tools/native_macos_case.py`, `AGENTS.md`；测试 `tools/test_native_macos_case.py`；操作说明 `docs/TESTING.md`, `docs/RELEASE.md`。
 - 变更规则：同步 runner、生命周期回归、开发规则及原生验收文档；保留源码身份与真实窗口行为的独立证据边界。
+- 现场证据：[2026-10-21 ci-macOS 串行窗口与清理验收](diagnostics/native-isolation-20261021.md)；仅接受其冻结候选和明确成功路径。
 - 来源：用户 2026-10-21 反馈测试抢占桌面及 UTM 中程序、数据残留；Added。

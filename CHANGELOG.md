@@ -53,6 +53,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`: completed ci-macOS background-channel recovery, precise cleanup of 12 legacy test directories and a leftover fixture, and serial native-window isolation acceptance with per-case shutdown/data removal and host foreground observations. The receipt binds its frozen candidate and does not accept later application changes or a release.
+
 - `F-190`, `C-024`: desktop updates show downloaded bytes and a percentage when the installer size is known, then installation/restart stages. Check and install failures display red alerts; installation retry retains the confirmed version and retries it directly. A failed progress read does not end a pending installation. Installer bodies use a separate bounded download timeout instead of the metadata request's 30-second limit.
 
 - `F-430`, `C-031`: native-case process inspection bounds Darwin `EIO`/`ENOMEM`
