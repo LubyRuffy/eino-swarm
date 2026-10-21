@@ -24,9 +24,9 @@ function setup() {
   const dismissVersion = vi.fn()
   const onChange = vi.fn()
   const controller = new DesktopUpdateController({
-    check, install, dismissVersion, dismissedVersion: () => "", onChange, now: () => now,
+    check, install, progress: vi.fn().mockResolvedValue({ stage: "idle" }), dismissVersion, dismissedVersion: () => "", onChange, now: () => now,
   })
-  return { controller, check, install, dismissVersion, onChange, advance: (ms: number) => { now += ms } }
+  return { controller, check, install, progress: vi.fn().mockResolvedValue({ stage: "idle" }), dismissVersion, onChange, advance: (ms: number) => { now += ms } }
 }
 
 afterEach(() => vi.useRealTimers())
@@ -217,7 +217,7 @@ describe("desktop update checks", () => {
   it("ignores a dismissed version during automatic checks", async () => {
     const check = vi.fn().mockResolvedValue(available)
     const controller = new DesktopUpdateController({
-      check, install: vi.fn(), dismissedVersion: () => "1.2.4", dismissVersion: vi.fn(), onChange: vi.fn(),
+      check, install: vi.fn(), progress: vi.fn().mockResolvedValue({ stage: "idle" }), dismissedVersion: () => "1.2.4", dismissVersion: vi.fn(), onChange: vi.fn(),
     })
     controller.autoCheck()
     await settle()
@@ -270,7 +270,7 @@ describe("desktop update installation", () => {
     await settle()
     controller.install()
     await settle()
-    expect(controller.phase).toEqual({ kind: "error", message: "download failed" })
+    expect(controller.phase).toEqual({ kind: "error", message: "download failed", version: "1.2.4" })
     controller.checkManually()
     await settle()
     expect(install).toHaveBeenCalledTimes(1)
@@ -317,7 +317,7 @@ describe("desktop update window lifecycle", () => {
     const startup = deferred<DesktopUpdate>()
     const check = vi.fn().mockReturnValueOnce(startup.promise).mockResolvedValue({ status: "current" })
     const controller = new DesktopUpdateController({
-      check, install: vi.fn(), dismissedVersion: () => "", dismissVersion: vi.fn(), onChange: vi.fn(),
+      check, install: vi.fn(), progress: vi.fn().mockResolvedValue({ stage: "idle" }), dismissedVersion: () => "", dismissVersion: vi.fn(), onChange: vi.fn(),
     })
     const stop = watchDesktopUpdates(controller)
     await vi.advanceTimersByTimeAsync(2500)

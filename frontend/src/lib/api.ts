@@ -252,6 +252,14 @@ export interface DesktopUpdate {
   offer?: DesktopUpdateOffer
 }
 
+export interface DesktopUpdateProgress {
+  stage: "idle" | "checking" | "downloading" | "installing" | "restarting" | "error"
+  version?: string
+  downloaded_bytes: number
+  total_bytes: number
+  error?: string
+}
+
 const DISMISS_KEY = "zwai.desktop.update.dismissed"
 
 export function dismissedDesktopVersion(): string {
@@ -283,6 +291,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ version }),
     }),
+
+  desktopUpdateProgress: (signal: AbortSignal) =>
+    request<DesktopUpdateProgress>("/api/update/progress", { signal }),
 
   presence: (surface: "desktop" | "web" | "tui") => {
     const pid = surface === "desktop" ? desktopProcessID(window.location.search) : undefined

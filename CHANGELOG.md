@@ -46,6 +46,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-190`, `C-024`: desktop updates show downloaded bytes and a percentage when the installer size is known, then installation/restart stages. Check and install failures display red alerts; installation retry retains the confirmed version and retries it directly. A failed progress read does not end a pending installation. Installer bodies use a separate bounded download timeout instead of the metadata request's 30-second limit.
+
 - `F-130`, `F-160`, `C-029`: model service failures now impose a shared 5/10/20/30-second capped backoff across manager, subagents, models and provider aliases on the same origin. Only one recovery probe runs at a time; full success restores normal concurrency. Cancellation, cache refresh and new turns cannot bypass a failed service's cooldown. Header-timeout reconnects also wait; `model_backoff` records the actual caller and delay in the turn Trace without granting retries or inventing model calls. Late waits after a quiet scheduled report stay hidden from Chat while retaining Trace evidence.
 
 

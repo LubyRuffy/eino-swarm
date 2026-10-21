@@ -1,3 +1,5 @@
+import { updateZH } from "./messages-update"
+
 import type { en } from "./messages-en"
 
 /** Chinese UI chrome. Every key in messages-en.ts must have a string here. */
@@ -49,19 +51,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "sidebar.closeMenu": "关闭菜单",
   "sidebar.version": "版本 {version}",
   "sidebar.checkUpdate": "检查更新",
-  "update.available": "有新版本 {version}，是否升级？",
-  "update.later": "暂不",
-  "update.upgrade": "升级",
-  "update.checking": "正在检查最新版本",
-  "update.current": "已是最新版本",
-  "update.restarting": "正在安装更新，zwai 会重新打开。",
-  "update.working": "正在下载更新",
-  "update.unsupported": "自动更新适用于安装版 Mac 应用。",
-  "update.failed": "检查更新失败，请重试。",
-  "update.retry": "重试",
-  "update.retryLabel": "重新检查更新",
-  "update.close": "关闭",
-  "update.closeLabel": "关闭更新提示",
+  ...updateZH,
   "sidebar.resize": "调整会话列表宽度",
   "sidebar.empty": "还没有会话。开一个就会出现在这里。",
   "sidebar.emptyProject": "这个项目里还没有会话。",

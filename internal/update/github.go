@@ -18,6 +18,12 @@ import (
 
 const checkTTL = 6 * time.Hour
 
+var updateTransport = func() *http.Transport {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.ResponseHeaderTimeout = 30 * time.Second
+	return transport
+}()
+
 // Offer is one newer Mac build on the public release.
 type Offer struct {
 	Version   string `json:"version"`
@@ -59,6 +65,7 @@ type Service struct {
 	mu       sync.Mutex
 	cache    *cached
 	applying bool
+	progress Progress
 	// Keep the descriptor reachable until this engine exits after a restart.
 	install *lease.Hold
 }
@@ -209,8 +216,19 @@ func (s *Service) fetch(ctx context.Context, rawURL string) (*http.Response, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "zwai")
-	client := &http.Client{
-		Timeout: 30 * time.Second,
+	return defaultHTTPClient(AllowedDownload(rawURL) != "").Do(req)
+}
+
+func defaultHTTPClient(download bool) *http.Client {
+	timeout := 30 * time.Second
+	if download {
+		// A package can legitimately take longer than a metadata request. Keep
+		// the download bounded without cutting off a healthy slow body at 30s.
+		timeout = 30 * time.Minute
+	}
+	return &http.Client{
+		Timeout:   timeout,
+		Transport: updateTransport,
 		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
 			if !AllowedHost(req.URL.Hostname()) {
 				return errors.New("update download left GitHub")
@@ -218,7 +236,6 @@ func (s *Service) fetch(ctx context.Context, rawURL string) (*http.Response, err
 			return nil
 		},
 	}
-	return client.Do(req)
 }
 
 func githubMessage(raw []byte) string {
