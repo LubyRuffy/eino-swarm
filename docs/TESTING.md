@@ -2632,11 +2632,16 @@ go test -race ./internal/engine -run 'TestToolJSONGuard|TestInvalidTrailingToolC
 
 Directory identity regressions in `internal/engine/project_workdir_identity_test.go`, `project-dialog.test.tsx` and `frontend/e2e/workdir.spec.ts` cover a selected trailing-space folder with and without its trimmed sibling, create/edit/readback/runtime resolution, and deletion after a real selection before Save. Manual non-empty paths are literal; all-whitespace remains managed. Native acceptance must repeat create/edit through the actual system picker against the same candidate binary; browser bridge fixtures alone are insufficient.
 
-## Decodable generic-type photos (F-140 / C-028)
+## Decodable image input and sent-image preview (F-140 / C-028)
 
 `frontend/e2e/fixtures/vision-photo.jpg` is a valid JPEG (684 bytes, 16x12), not a three-byte magic marker. `frontend/e2e/image-input.spec.ts` checks MIME and unchanged base64 through submission, exact stored bytes, Trace references, natural dimensions and reload. `composer-image-drop.test.tsx` owns the corresponding component behavior; the large conversation/composer suites keep their other responsibilities. A visible img element or src alone does not prove decoding. The default offline provider does not prove image semantics; independent keyless loopback acceptance can inspect actual OpenAI image_url transport without using a real model.
 
+`frontend/src/components/app/input-thumbs.test.tsx` covers selected-image identity, mouse/keyboard opening, loading/error states and closing with focus returned to the thumbnail. The sent-image browser path in `frontend/e2e/image-input.spec.ts` uses decoded stored images, checks proportional viewport fitting and verifies that the selected image opens again after reload. `frontend/src/App.test.tsx` exercises the actual window capture handler with a mounted Radix dialog: Escape closes the preview before a Find bar underneath it, and repeated Escape after either closes never calls interrupt. It also covers a focused composer, closed dialog remnants, the explicit Stop button and unchanged unrelated shortcuts. `frontend/e2e/shell.spec.ts` verifies Find dismissal during a running turn, repeated Escape keeping that turn active and the Stop button ending it (`F-130` / `C-002`). Desktop and Web share this component; a browser run does not by itself claim a native-window acceptance result.
+
+`frontend/e2e/fixtures/preview-landscape.png` is a deterministic 1200x800 PNG used to prove enlargement beyond the thumbnail, proportional fitting at several viewport sizes and unchanged stored bytes. Geometry checks wait for the dialog's entry animation to finish after a resize. Backdrop dismissal also waits for a visible, entered dialog before clicking outside; an immediate raw coordinate click can race Radix's deferred outside-pointer listener.
+
 ```bash
-cd frontend && npm test -- src/lib/paste-image.test.ts src/lib/composer-drop.test.ts src/components/app/composer-image-drop.test.tsx
+cd frontend && npm test -- src/lib/paste-image.test.ts src/lib/composer-drop.test.ts src/components/app/composer-image-drop.test.tsx src/components/app/input-thumbs.test.tsx src/App.test.tsx
 cd frontend && npm run e2e -- image-input.spec.ts
+cd frontend && npm run e2e -- shell.spec.ts
 ```

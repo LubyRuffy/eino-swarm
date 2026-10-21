@@ -372,6 +372,22 @@
 }
 
 @layer components {
+  .input-image-preview[role="dialog"] {
+    @apply gap-3 rounded-lg p-3;
+    width: max-content;
+    max-width: calc(100vw - theme(spacing.8));
+    max-height: calc(100dvh - theme(spacing.8));
+  }
+
+  .input-image-preview-image {
+    @apply mx-auto max-w-full rounded-md object-contain;
+    max-height: calc(100dvh - theme(spacing.28));
+  }
+
+  .input-image-preview-status {
+    @apply flex min-h-40 items-center justify-center gap-2 px-6 text-sm text-muted-foreground;
+  }
+
   /* Conversation column. --content-max is 48rem (max-w-3xl) until Settings
      or the title-bar control overwrites it to none. */
   .content-column {

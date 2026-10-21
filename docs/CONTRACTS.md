@@ -21,6 +21,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 状态：active；类型：consistency；作用范围：engine、server、desktop、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-230`, `F-310`。
 - 契约内容：同一对话同时只有一个活动 turn；第二条普通消息进入 follow-up，活动中的 steer 指向该 turn；排队行在 turn 已经结束后点击注入，改为作为下一轮发送，Stop 仍不自动清空其余队列；排队消息和尚未被 manager 读取的 steer 可以拉进输入框后重新排队，已读 steer 不能改；手机在等待队列上执行“中断插入”时，先将队首消息转为本轮 steer，再请求中断当前 manager 步骤，其他消息继续排队；并发 API 冲突返回可识别的状态。
 - 手机主按钮：真实运行且无可发送草稿（包括附件或引用）时显示可点击停止图标，连接既有停止请求；有内容仍可点击跟进／插入，提问时保持回答，定时等待不显示停止。直连流式回复期间停止按钮可中止请求并保留已收到的文本；停止不发送空消息。
+- PC 停止交互：桌面和 Web 保留输入框的明确 Stop 按钮；Esc 不得调用停止请求，无弹层、输入框聚焦、关闭弹层后及连续按键均遵守该边界。Esc 继续关闭当前图片预览、Find 或其他局部弹层；图片预览优先于底层 Find。证据：实现 `frontend/src/App.tsx`；测试 `frontend/src/App.test.tsx`、`frontend/e2e/shell.spec.ts`。来源：用户 2026-10-21 避免 Esc 误停任务的要求。
 - PC 停止展示：`cleanup` 只证明尚在运行的子代理已停止，不证明其任务成功完成；其派生状态为 `cancelled`，与真实完成及失败分组区分。稳定的人工 `interrupted` 终态显示停止，不显示模型失败／重试。后续终态与回放不得把已停止的代理改成成功，真实 `finished` 结果不得被清理回退。该派生展示状态不增加 wire event。证据：`frontend/src/lib/transcript.ts`、`frontend/src/components/app/panel.tsx`、`frontend/src/lib/transcript-stop.test.ts`、`frontend/e2e/restart.spec.ts`。
 - 允许行为：排队和插入；禁止行为：在同一对话并行启动两个 turn；失败语义：`ErrBusy`/`ErrIdle` 对应 409 与 code；不变量：turn 状态可恢复；边界条件：中断和等待。
 - 证据：实现 `internal/engine`, `internal/server`, `mobile/src/app.tsx`, `mobile/src/lib/phone-turn.ts`, `mobile/src/components/composer.tsx`, `mobile/src/components/direct-chat-screen.tsx`；测试 `internal/engine`, `frontend/src/store/app-steer.test.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/src/components/thread-stop.test.tsx`, `mobile/src/components/direct-chat-screen.test.tsx`, `mobile/e2e/composer-layout.spec.ts`；变更规则：同步 API、手机 RPC 和竞态测试；来源：`AGENTS.md`、GitHub Issues #31、#69。
@@ -262,11 +263,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 证据：实现 `handoff.go`、`internal/engine/restart.go`、`cmd/zwai/engine_restart.go`、`internal/server/restart.go`；测试 `handoff_test.go`、`internal/engine/restart_test.go`、`cmd/zwai/engine_restart_acceptance_test.go`、`internal/server/restart_http_test.go`、`frontend/src/lib/transcript-restart.test.ts`。
 - 变更规则：同步 CLI、API、持久化格式、恢复及真实进程验收、UI 通知和 CHANGELOG；来源：用户 2026-10-19 的自动交接重启需求。
 
-## C-028 Image intake retains vision bytes
+## C-028 Image intake and sent-image preview retain vision bytes
 
-- 状态：active；类型：data / compatibility；作用范围：PC composer 的粘贴／拖入图片、视觉请求和输入图片存储；关联功能：`F-140`。
+- 状态：active；类型：data / compatibility；作用范围：PC composer 的粘贴／拖入图片、视觉请求、输入图片存储与桌面／Web 已发送图片预览；关联功能：`F-140`。
 - 契约内容：真实 image MIME 继续走视觉输入；空、通用 binary 或 UTI 标签且名称为 png/jpeg/gif/webp 的文件也走视觉输入。显式 text/PDF 不因图片后缀改为视觉输入。客户端归一化 MIME 声明但不改原图片字节；服务端保留内容类型嗅探及声明匹配校验，不信任扩展名替代该校验。
+- 预览交互：已发送缩略图是可用鼠标及 Enter／Space 操作的按钮；每次打开所选图片的现有 input-images 地址，刷新重载后仍可打开。大图按原比例适配窗口，Esc、遮罩或关闭按钮关闭后焦点回到打开它的缩略图。预览打开时 Esc 由弹层优先消费，不得关闭底层 Find 搜索；预览关闭后继续按 Esc 也不得停止正在运行的任务，沿用 `C-002` 的 PC 停止边界。
 - 允许行为：兼容 Finder/WKWebView 的通用文件类型；禁止行为：图片仅变为 uploads 路径，或客户端 MIME 推断绕过服务端校验。
-- 失败语义：不支持的格式或真实类型不匹配沿用既有输入错误；不变量：有效图片在预览、请求、存储与重载中保留原字节及可解码尺寸；边界条件：JPEG MIME 别名、大小写扩展名、明确非图片类型。
-- 证据：实现 `frontend/src/lib/paste-image.ts`, `internal/engine/input.go`；测试 `frontend/src/lib/paste-image.test.ts`, `frontend/src/components/app/composer-image-drop.test.tsx`, `frontend/e2e/image-input.spec.ts`；Schema：现有 turn 图片请求。
-- 变更规则：同步 Files/attachments 功能、README、API、TESTING、CHANGELOG；使用可解码的有效图片验收，不能只用魔数或 img src。来源：本地图片拖入修复及本轮未提交工作审计。
+- 失败语义：不支持的格式或真实类型不匹配沿用既有输入错误；大图加载中有可见状态，加载失败明确显示错误且仍可关闭；不变量：有效图片在预览、请求、存储与重载中保留原字节及可解码尺寸；边界条件：JPEG MIME 别名、大小写扩展名、明确非图片类型、多图所选身份。
+- 证据：实现 `frontend/src/lib/paste-image.ts`, `frontend/src/components/app/input-thumbs.tsx`, `frontend/src/App.tsx`, `internal/engine/input.go`；测试 `frontend/src/lib/paste-image.test.ts`, `frontend/src/components/app/composer-image-drop.test.tsx`, `frontend/src/components/app/input-thumbs.test.tsx`, `frontend/src/App.test.tsx`, `frontend/e2e/image-input.spec.ts`；Schema：现有 turn 图片请求。
+- 变更规则：同步 Files/attachments 功能、README、API、TESTING、CHANGELOG；使用可解码的有效图片验收，不能只用魔数或 img src。来源：本地图片拖入修复及用户 2026-10-21 的已发送图片放大需求。

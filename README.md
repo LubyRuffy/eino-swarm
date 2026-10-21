@@ -56,6 +56,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   refuses unsupported or mismatched type claims. The client preserves the original bytes; a filename alone is not content validation.
   Sending names those files on the message, so the model reads what you just
   attached instead of an older leftover sitting in the same folder.
+- **Enlarge an image in a sent message.** Click its thumbnail, or focus it and
+  press Enter or Space, to open that image over the conversation. The full image
+  keeps its aspect ratio and fits the window, including after a reload. Escape,
+  the backdrop or Close returns to the thumbnail; loading and failures are shown
+  in the preview. Closing the preview keeps a running task going.
 - **Copy or edit a sent message.** Hover a user bubble or a finished answer
   to see the event time (touch keeps it visible). Copy and a pencil sit under
   your bubbles. Copy takes the text. Edit opens the bubble in place
@@ -651,8 +656,9 @@ the draft into the current turn · Shift+Enter a newline · `⌘K` command palet
 (titles, bodies, and meaning when embeddings are on) · `⌘N` new
 conversation · `⌘F` find in the open conversation · `⌘B` hide or show the
 list beside the icon rail (the rail stays) · `⌘\` toggle the right panel · `⌘J` open a terminal in the
-current project (or conversation) directory · `⌘,` settings · `Esc` stop
-the running turn (or close find first, if that bar is open). Drag the border
+current project (or conversation) directory · `⌘,` settings · `Esc` close
+the active preview, find bar or other local overlay. To stop a running turn,
+click **Stop** in the composer; Escape never stops it. Drag the border
 of the conversation list or the right panel to resize them. Conversations
 and projects sort by last update; drag a row to pin a custom order (a click
 still opens it). On the
