@@ -233,6 +233,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 已完成的隔离生命周期验收及证据范围：[2026-10-21 ci-macOS 记录](diagnostics/native-isolation-20261021.md)，关联 `C-031`。
 
+- TestFlight 首先公开且 GitHub 尚无 tag 时，发布入口交叉核对冻结批次、精确源码/build/营销版本/IPA 与首次公开时的严格组／审核证明，恢复同版本的其余端。旧状态无该证明时只读核验 Apple，实际恢复持锁落证，预检不写；已有证明不因 iOS 后来过期或 Apple 不可达而阻断其他端。新批次门槛和各端原生门禁仍独立生效。证据：`tools/release.py`, `tools/release_ios.py`, `tools/test_release_public_recovery.py`；契约：`C-010`。
+
 - 原生桌面用例：`python3 tools/native_macos_case.py --app <app> --evidence <new-directory> --timeout <seconds> -- <scenario-command>` 仅允许在 macOS 虚拟机运行；维护者选择 `ci-macOS`，串行运行各场景，每例独立 app/home/cache/data/workspace，场景继承私有环境，在成功、失败、超时和取消后停止本例进程再删除数据及缓存，持久保留日志和 `cleanup.json`；物理宿主、并发或未清理的前例拒绝启动。窗口行为仍由场景及真实来宾证据验收。关联契约：`C-031`；实现证据：`tools/native_macos_case.py`, `tools/test_native_macos_case.py`, `docs/TESTING.md`。
 - 实际启动目录核验：`python3 tools/check_checkout_delivery.py --checkout <absolute-path> --required-commit <sha> [--url <loopback-origin>]` 只读检查修复提交是否进入指定目录的 HEAD，可选比较该服务的全部 module script 与该目录 dist 的哈希；允许未提交改动，失败分项非零退出。原生行为在 `ci-macOS` 中按相同 HEAD、脏文件内容及构建身份的私有副本运行报告命令验收，不能以核验器成功或宿主已运行进程替代；宿主源码交付与来宾行为结果分别记录。关联契约：`C-010`, `C-031`；证据：`tools/check_checkout_delivery.py`, `tools/test_check_checkout_delivery.py`, `tools/native_macos_case.py`。
 - iOS 发布预检读取应用源码中经授权的持续合规声明；加密用途不变的普通更新无需重复问答，签名 IPA 及精确回执发生冲突时拒绝发布。无源码字段的旧批次仍读取私有精确确认。证据：`mobile/ios/App/App/Info.plist`, `tools/release_ios.py`, `tools/test_release_ios_compliance.py`, `docs/RELEASE.md`。

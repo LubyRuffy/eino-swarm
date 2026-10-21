@@ -126,6 +126,25 @@ def source_preflight(root, version, platforms=('macos', 'android', 'ios')):
         if tag_sha != sha:
             raise ValueError('Published version is frozen at another source SHA; use its isolated checkout')
     else:
+        delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
+        frozen, _ = delivery_batch(delivery, version, sha)
+        if frozen and frozen.get('version_locked'):
+            workset = frozen.get('finalized_workset', {})
+            if (frozen.get('ios') != 'published' or not frozen.get('issues')
+                    or workset.get('source_sha') != sha or workset.get('active_issue') is not None
+                    or set(workset.get('issues', [])) != set(frozen.get('issues', []))
+                    or set(workset.get('platforms_to_release', [])) != set(frozen.get('platforms_to_release', []))
+                    or not set(platforms) <= set(frozen.get('platforms_to_release', []))):
+                raise ValueError('Frozen public batch has no matching finalized source/platform workset')
+            # TestFlight can be the first public channel, before GitHub has a tag.
+            from release_ios import IOSRelease, verify_public_receipt
+            receipt = read_json(home() / 'releases' / f'{version}.json', {})
+            if 'first_publication' in receipt:
+                verify_public_receipt(version, sha, receipt,
+                                      read_json(home() / 'ios-signing/testflight-releases.json', {}))
+            else:
+                IOSRelease(root, version, sha, receipt).verify_publication()
+            return sha
         if run(['git', 'rev-parse', 'origin/main'], cwd=root) != sha:
             raise ValueError('New publication must use the latest fetched complete main')
         batch = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
@@ -283,6 +302,13 @@ def execute(root, version, selected, state_path, check=False):
     if state['version'] != version or state['source_sha'] != source_sha:
         raise ValueError('Release state belongs to another version/source SHA')
     from release_ios import IOSRelease
+    delivery = read_json(Path(os.environ.get('DELIVERY_STATE', home() / 'issue-automation/delivery-state.json')), {})
+    frozen, _ = delivery_batch(delivery, version, source_sha)
+    if (not check and frozen and frozen.get('version_locked') and frozen.get('ios') == 'published'
+            and 'first_publication' not in state
+            and not run(['git', 'ls-remote', 'origin', f'refs/tags/v{version}'], cwd=root)):
+        state['first_publication'] = IOSRelease(root, version, source_sha, state).verify_publication()
+        write_json(state_path, state)
     failures = []
     for platform in platforms:
         try:

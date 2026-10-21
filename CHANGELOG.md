@@ -30,6 +30,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-010`: prepared unified source batch `0.1.34` with mobile package/build `134` for the complete accepted main. Required Mac, Android and iOS platforms share this batch source; TestFlight marketing version remains independently selected, and each platform retains its own acceptance and publication gates.
+
 - `F-430`, `C-010`: native acceptance recovery instructions now require executing the audit's next action and trying an available isolated native control path when one channel fails. Already authorized routine recovery does not wait for renewed approval; accepted source/package evidence stays bound to its actual scope when main advances.
 
 - `F-130`, `F-150`, `C-009`, `C-027`: a failed scheduled check hands unfinished workers to their executable standing goal or active same-thread wake instead of treating the manager error as the end of every worker. The failed turn/run remain errors and unread; ordinary model rejections and exhausted transient retries do not automatically block the goal or immediately start another goal turn. A durable `workers_retained` receipt precedes the error and gates restoration of a failed check's workers; restart also requires current ownership and preserves the manager's failed outcome. No owner, human Stop, context-budget exhaustion and the worker-watchdog failure limit retain their stop boundaries (Issue #89).
@@ -54,6 +56,12 @@ co-working app built on it. The library API is unchanged except where noted
 ### Fixed
 
 - `F-430`, `C-031`: completed ci-macOS background-channel recovery, precise cleanup of 12 legacy test directories and a leftover fixture, and serial native-window isolation acceptance with per-case shutdown/data removal and host foreground observations. The receipt binds its frozen candidate and does not accept later application changes or a release.
+
+- `F-430`, `C-010`: resume an already public TestFlight-first batch before its
+  GitHub tag exists, retaining precise first-public source/build/IPA and strict
+  availability evidence independently of later iOS expiry or Apple availability.
+  Legacy proof bootstrap is read-only during preflight. Keep new-batch qualification, independent native gates,
+  immutable tag/source identity and publication locking intact (Issue #90).
 
 - `F-190`, `C-024`: desktop updates show downloaded bytes and a percentage when the installer size is known, then installation/restart stages. Check and install failures display red alerts; installation retry retains the confirmed version and retries it directly. A failed progress read does not end a pending installation. Installer bodies use a separate bounded download timeout instead of the metadata request's 30-second limit.
 

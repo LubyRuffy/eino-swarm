@@ -109,6 +109,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-010 Build artifacts and update channel
 
+- TestFlight 可以先于 GitHub tag 完成首次公开。无 tag 的冻结批次恢复必须匹配原版本、完整源码 SHA 和收口工作集，交叉核对成功 iOS 交付账本、官方状态中的精确 build、营销版本、构建 ID、IPA 哈希及首次严格公开证明；不能把已公开批次重新计入未分配集合。首次公开证明持久保存当时的时间、VALID／未过期、双向组关联和测试／审核状态，不能被后来的 iOS 过期、撤组或 Apple 不可达撤销。旧状态缺该证明时允许一次只读实时核验，预检不写，实际恢复在现有发布锁内落证；缺失／冲突证明拒绝，不能以布尔 published 代替。实际 iOS 交付仍执行当前门禁。旧冻结源码无需追随较新 main，其他端的原生验收独立生效。冲突 tag/SHA 必须拒绝；未公开批次继续执行实时门槛、最新完整 main 和 active_issue／finalized_workset 检查。证据：`tools/release.py`, `tools/release_ios.py`, `tools/test_release_public_recovery.py`；来源：GitHub Issue #90。
+
 - 原生验收位置和清理遵循 `C-031`；实际 checkout 交付核验不授权在宿主机启动测试窗口。
 - 状态：active；类型：compatibility / lifecycle；作用范围：checkout frontend build、mobile update、macOS desktop update；关联功能：`F-110`, `F-190`, `F-240`, `F-430`。
 - checkout 构建依赖：需要重建 bundle 时，按 manifest 检查直接 `dependencies`／`devDependencies` 的已安装包 JSON 及所声明的本地 bin 入口，不能只凭 `node_modules` 目录存在或 mtime 判定可构建；不递归审计传递依赖或保证任意包内容完整。缺失时执行 `npm install --include=dev` 并在成功返回后复验，仍不满足则明确失败，不运行 build、不写 source stamp。安装、构建和 stamp 在 checkout 的忽略目录 `.build-lock` 下跨进程互斥，持锁后重查 staleness，等待可取消。新鲜 bundle 和无 checkout 的发布 embed 不新增 Node 要求。证据：`frontend/ensure.go`、`frontend/ensure_build_lock.go`、`frontend/ensure_dependencies_test.go`、`frontend/ensure_build_lock_test.go`。
