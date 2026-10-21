@@ -35,6 +35,7 @@ erDiagram
   THREAD ||--o{ TURN : has
   THREAD ||--o{ MESSAGE : has
   THREAD ||--o{ EVENT : has
+  THREAD ||--o{ THREAD_WAKE_DECISION : classifies
   THREAD ||--o{ ATTACHMENT : has
   THREAD ||--o{ FOLLOWUP : queues
   THREAD ||--o{ SCHEDULE : originates
@@ -304,6 +305,44 @@ deletes leftover rows.
 | `seq` | per-conversation FIFO; an unshift after a lost `StartTurn` race uses a value in front of whatever is still waiting; submitting an edit assigns a new seq at the back |
 | `text` | what will be sent |
 | `created_at` | |
+
+## `thread_wake_decisions` — human conversation-wait policy
+
+The original effective human `user_message` and `steer` events supply authority
+for a conversation's thread-wake policy. Unread-steer edits replace the text
+being classified; retracted steers, peer messages and generated continuations
+are excluded. The engine's read-only policy model caches `deny`, `allow` or
+`unchanged` for each source. This is separate from `messages`,
+`compact_summary` and `session_memory`: a source older than
+`compact_through_seq` still governs the next arm after compaction or restart.
+
+| column | notes |
+|---|---|
+| `thread_id`, `event_seq` | composite primary key. `event_seq` is the human timeline `events.seq`, **not** the model transcript's `messages.seq` |
+| `event_id` | exact `events.id` that supplied the human message; prevents a rewound/reused sequence from inheriting another input's decision |
+| `input_digest` | SHA-256 of the event kind, a NUL separator and effective human text. A revised source invalidates its old classification |
+| `decision` | `deny`, `allow` or `unchanged`; callers cannot rewrite a cached decision for the same event identity and digest |
+| `quote` | exact, nonempty substring of the effective human text for `deny` or `allow`; empty for `unchanged` |
+| `created_at`, `updated_at` | gorm-managed |
+
+The current policy is read from valid decisions in human-event order. The
+latest explicit `deny` or `allow` decides; `unchanged` leaves it intact. Missing,
+stale or invalid classifications are pending and refuse a manager thread-wake
+write until classified. Stale rows are not authority. A later explicit human
+`allow` releases a prohibition; a summary, manager, tool, skill or peer cannot.
+Source text is read from the effective event, rather than copied into this
+table. Classification runs lazily on a manager's thread-wake attempt, with at
+most 16 uncached inputs per turn and a total 30-second verification deadline
+including cancellable gate waiting. Successful cached decisions allow later
+turns to continue backfill; a failed input is not requested again in the same
+turn and remains pending. Refused `schedule_wake` and thread `report_schedule(next_in_s)` leave the
+entire schedule row unchanged and emit no armed event. Reports without
+recadence, including `keep:false` cancellation, remain available; a refused
+recadence does not partially cancel the wait.
+
+Implementation: `internal/store/wake_policy.go`. Existing human schedule-inbox
+operations and `schedule_task` restrictions retain their behavior; there is no
+new HTTP policy mutation endpoint.
 
 ## `schedules` — a wall-clock wait
 

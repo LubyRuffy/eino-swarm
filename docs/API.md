@@ -1698,6 +1698,42 @@ A wait is a `schedule` row. Each fire (or skipped tick) is a `run`. Inbox
 `POST /api/schedules/runs/:rid/read` is registered before
 `/api/schedules/:id` so `runs` is not captured as an id.
 
+### Manager thread-wake policy
+
+An explicit human prohibition on parking the current conversation governs
+`schedule_wake` and a thread `report_schedule` with `next_in_s`. The policy is
+derived from original effective human `user_message` / `steer` events and
+persists independently of compressed replay. Only a later explicit human
+allowance can release it. Manager answers, schedule prompts, summaries, skills
+and peer messages cannot grant permission.
+
+The tools return recoverable JSON `ok:false` results with code
+`thread_wake_prohibited` when prohibited, or `thread_wake_policy_pending` when a
+human source has not been classified or its extraction failed. Both the tool
+boundary and storage transaction enforce the policy. A refusal leaves the wait
+row unchanged and emits no armed `schedule` event, so the UI cannot render a
+new armed card from assistant prose. A classified denial's `tool_result` has
+`source_seq`, `source_text` and `source_quote`; pending classification has
+`pending_seq` when the source is known. Source sequences are `events.seq`, not
+`messages.seq`. These existing tool results remain in the same turn's Trace.
+A report without `next_in_s`, including `keep:false` cancellation, remains
+available. Supplying `next_in_s` still refuses the whole call before any
+cancellation. The existing
+human-turn restriction on `schedule_task` is unchanged.
+
+Classification runs only when a manager attempts to park the conversation.
+Each verification has a total 30-second deadline including cancellable gate
+waiting, and a turn may classify at most 16 uncached human inputs. Successful
+decisions persist across turns; a later turn may continue pending backfill.
+The same failed input is not requested again during that turn. Deadline,
+budget and extraction failures return pending while the manager continues
+working. Runtime System context carries the source event seq and a quote
+bounded to 256 runes; the denied tool result retains full `source_text` and
+`source_quote`.
+
+The policy is conversation state, with no new settings or mutation endpoint.
+The schedule inbox's human operations retain their existing behavior.
+
 ### `GET /api/schedules?status=&kind=`
 
 Returns every wait, optionally filtered. `unread` is the global unread count,
@@ -1834,6 +1870,14 @@ Clears `unread` on that run. Missing ids are `404`. Already-read is `204`.
 ### `GET /api/trace/:turn`
 
 One request, one turn, everything about it — the same data `zwai trace` prints.
+
+Thread-wake tool refusals retain `thread_wake_prohibited` or
+`thread_wake_policy_pending` in the existing `tool_result` JSON. A classified
+denial retains `source_seq`, `source_text` and `source_quote`; pending
+classification retains `pending_seq` when known. Compaction may remove the
+original message from model replay but does not remove this event-based policy
+evidence.
+No armed `schedule` event is emitted by a refused arm or recadence.
 
 For a failed model request, `turn.error` and the stored `error.err` keep the
 HTTP status and concrete API rejection/response-decoder reason. Public text

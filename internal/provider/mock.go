@@ -44,6 +44,10 @@ func newMockModel(role string) model.BaseChatModel {
 		// manager would hold the Memory panel on "Asking the model" for
 		// every chunk, and a 24-round cap makes that a timeout.
 		return &mockModel{script: reviewerScript, instant: true, role: reviewerRole}
+	case "thread-wake-policy":
+		return &mockModel{script: func(int, []*schema.Message) *schema.Message {
+			return schema.AssistantMessage(`{"decision":"unchanged","quote":""}`, nil)
+		}, instant: true, role: role}
 	case titleRole:
 		return &mockModel{script: titleNamerScript, role: titleRole}
 	case compactRole, sessionMemoryRole:

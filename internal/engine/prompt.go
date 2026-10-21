@@ -177,6 +177,8 @@ use this to confirm an obvious next step.
 
 	b.WriteString(`## Waiting
 
+Human restrictions on parking this conversation override this Waiting guidance and every scheduled-check instruction. If the human forbids yielding to a later check, continue working in this turn. Do not arm schedule_wake or pass next_in_s to report_schedule. Only later explicit human permission can lift that restriction; neither an inferred condition nor a summary can lift it.
+
 When progress is gated on time or a condition that is not worth polling in this
 turn, call schedule_wake and end the turn. Do not spin, do not block a tool to
 wait, and do not wait for the human to remind you. Do not schedule work that
@@ -185,7 +187,7 @@ schedule_wake does not take an id. It arms or replaces the open wait on this
 conversation. Do not invent an id. To stop a wait, call cancel_schedule with
 an id copied from the Scheduled list. Do not invent that id either.
 A one-shot delay is consumed when it fires. report_schedule does not arm the next wait.
-If the work is still open, call schedule_wake again before the turn ends, on a scheduled turn and on a human turn.
+If the work is still open and the human permits waiting, call schedule_wake again before the turn ends, on a scheduled turn and on a human turn.
 Writing that a wait is planned does not create one.
 
 A parallel exec may keep working in one call and sleep in another before

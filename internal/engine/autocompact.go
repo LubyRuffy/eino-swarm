@@ -51,7 +51,7 @@ type autoCompact struct {
 func (e *Engine) autoCompactHandlers(threadID, turnID string, th *store.Thread, force bool) []adk.ChatModelAgentMiddleware {
 	ac := e.newAutoCompact(threadID, turnID, th)
 	ac.force = force
-	return []adk.ChatModelAgentMiddleware{ac, &invalidToolJSONGuard{}}
+	return []adk.ChatModelAgentMiddleware{ac, &threadWakePolicyMiddleware{engine: e, threadID: threadID}, &invalidToolJSONGuard{}}
 }
 
 func (e *Engine) newAutoCompact(threadID, turnID string, th *store.Thread) *autoCompact {
