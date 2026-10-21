@@ -239,7 +239,10 @@ type metaView struct {
 	Version string `json:"version"`
 }
 
-// Discover reports the engine a shell should attach to.
+// Discover reports a verified ready engine only when err is nil. With
+// ErrUnreachable, the returned record is unverified: its PID may identify a
+// caller's already-known child during startup, but the record must not be used
+// to attach, accept its mode/build identity or stop an unrelated process.
 func Discover(dataDir string, mock bool) (Record, error) {
 	body, err := os.ReadFile(filepath.Join(dataDir, fileName))
 	if err != nil {
@@ -258,19 +261,19 @@ func Discover(dataDir string, mock bool) (Record, error) {
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	resp, err := client.Get(rec.URL + "/api/meta")
 	if err != nil {
-		return Record{}, ErrUnreachable
+		return rec, ErrUnreachable
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return Record{}, ErrUnreachable
+		return rec, ErrUnreachable
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
-		return Record{}, ErrUnreachable
+		return rec, ErrUnreachable
 	}
 	var meta metaView
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		return Record{}, ErrUnreachable
+		return rec, ErrUnreachable
 	}
 	if filepath.Clean(meta.DataDir) != filepath.Clean(dataDir) {
 		return Record{}, ErrNotRunning

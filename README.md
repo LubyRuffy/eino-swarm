@@ -269,8 +269,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   hits its tool-round limit, the transcript asks whether to add another slice
   rather than dying with a graph error.
 - **Automatic restart with saved progress.** Opening a newer/different build
-  requests a handoff and automatically replaces the engine within a 30s launch
-  budget. Active and background sub-agents retain their IDs, histories, unread
+  prepares the checkout frontend while the old engine keeps serving, then
+  requests a handoff and automatically replaces the engine within a 30s
+  handoff/recovery budget. A preparation error leaves the old engine in place.
+  Active and background sub-agents retain their IDs, histories, unread
   messages and confirmed results. Summaries are best effort under one shared
   deadline; a task does not become completed because it was summarized.
   Questions and iteration-cap pauses still wait for you. The conversation
@@ -278,7 +280,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   handoff in Trace. Checkpoint failures stop replacement with an explicit
   error. An older engine without handoff support uses bounded event-based
   recovery; its unsaved messages cannot be reconstructed.
-- **Local startup remains available while the phone hub connects.** Phone registration runs in a cancellable background lifecycle, so its network wait does not hold the window closed.
+- **Local startup remains available while the phone hub connects.** A cold
+  launch allows up to two minutes for local initialization after frontend
+  preparation and reports progress
+  every ten seconds. Phone registration runs in the background, so its network
+  wait does not hold the window closed. Startup errors show the current
+  attempt's log and actual process failure. The separate 30s restart budget
+  still applies when replacing an existing engine.
 - **Unfinished work survives a crash.** Kill the process, quit the window, or
   lose power mid-turn: the next start continues every leftover conversation,
   with the answers already on screen still in the model's context, any
@@ -866,8 +874,9 @@ zwai --data-dir /tmp/demo   # use a throwaway data directory
 the terminal share one engine for that directory: the first shell starts
 it, the next one attaches, and closing a window does not stop a turn that
 is still running. A newer binary requests a durable task handoff, prints
-progress every 5s, and automatically replaces the engine within one 30s launch
-budget. The old engine must acknowledge saved progress before it is stopped;
+progress every 5s, and automatically replaces the engine within one 30s
+handoff/recovery budget after checkout frontend preparation. The old engine
+must acknowledge saved progress before it is stopped;
 engines without this API use bounded compatibility recovery. See
 [docs/CLI.md](docs/CLI.md).
 

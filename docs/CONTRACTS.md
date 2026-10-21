@@ -13,6 +13,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：lifecycle；作用范围：desktop、web、tui、engine；关联功能：`F-110`, `F-120`, `F-320`。
 - 契约内容：同一数据目录只由一个 engine 进程持有；客户端连接同一 loopback 服务；不同版本或开发二进制身份替换引擎时先进行有界持久化交接并自动恢复。持锁但尚未发布地址的引擎必须在地址出现后经过同一身份和活动 turn 检查；子进程启动输给竞争者时也不得直接接受竞争者的 URL。身份/状态检查或检查点保存失败时不得假称已安全交接；明确报告错误并保留可重试的恢复现场。
+- 就绪和失败边界：前端准备后的普通冷启动最多等待 2 分钟，每 10 秒报告进度；替换引擎仍受 `C-027` 的统一 30 秒预算约束。同步元数据探测后必须重新检查取消，迟到的成功或失败都不能覆盖调用方的取消类别；证据：`cmd/zwai/engine_startup_cancel_test.go`。启动失败必须保留实际子进程退出错误，日志仅取本次启动后追加的部分，不得用旧模型错误充当本次原因。取消／超时必须回收本次启动的子进程，不得终止竞争 lease 的其他持有者。本地就绪不得等待可选手机 hub 注册，turn／worker 恢复与调度仍有序完成。证据：`cmd/zwai/engine_boot_test.go`、`cmd/zwai/engine_restart_budget_test.go`、`internal/app/startup_remote_test.go`。
+- 单次健康探测边界：`lease.Discover` 在 `ErrUnreachable` 时保留已解析的未验证租约，仅用于将 PID 与本次启动的自有 child 关联；错误记录不能作为附着地址、版本或模式已验证的证据。仅当 PID 属于本次 child 且尚未观察其退出时，启动器可在原总截止时间内继续探测；成功元数据校验仍是附着前提。竞争 holder 的不可达与模式冲突保持可判断错误并立即返回，不能借此终止竞争进程。证据：`internal/lease/lease.go`、`internal/lease/lease_test.go`、`cmd/zwai/engine_boot.go`、`cmd/zwai/engine_boot_test.go`。
+- 前端准备边界：当前 checkout 的 `frontend.Load` 在引擎发现／交接／启动前、同一可取消启动上下文内执行；准备失败或取消不得冻结／停止旧引擎或启动新 child。准备耗时不消耗随后 30 秒交接／恢复预算，后续进程仍须完成自身构建／启动校验，不保证准备后不会发生新的故障。证据：`cmd/zwai/engine.go`、`cmd/zwai/engine_frontend_test.go`。
 - 允许行为：多个 shell 同时连接；禁止行为：多个进程同时写同一数据库；失败语义：引擎不可达或租约冲突需明确报告；不变量：一个目录一把 lease；边界条件：进程异常结束后可恢复。
 - 证据：实现 `internal/lease`, `internal/app`, `cmd/zwai`；测试 `internal/lease`, `internal/app`, `cmd/zwai/engine_startup_test.go`；变更规则：同步架构、CLI 和恢复测试；来源：`ARCHITECTURE.md` 和 Git 历史。
 
@@ -267,7 +270,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-027 Automatic bounded restart handoff
 
 - 状态：active；类型：lifecycle / consistency / compatibility；作用范围：swarm、engine、lease、server、PC shell；关联功能：`F-110`、`F-130`、`F-150`、`F-160`、`F-330`。
-- 契约内容：不同构建启动后自动交接，无终端确认；交接、旧进程退出、新引擎监听共用 30 秒启动预算。交接先冻结新工作，覆盖活动及停泊 registry；先保存确定性检查点，再在统一截止时间内尽力收集 worker 摘要；不能为每个 worker 重新计算 30 秒。
+- 契约内容：不同构建在当前 checkout 的前端准备成功后自动交接，无终端确认；准备后的引擎发现／交接检查、旧进程退出、新引擎监听共用 30 秒预算，依赖安装／前端构建时间不计入该预算。准备失败或取消时旧引擎继续服务；准备成功不代表后续进程已就绪。交接先冻结新工作，覆盖活动及停泊 registry；先保存确定性检查点，再在统一截止时间内尽力收集 worker 摘要；不能为每个 worker 重新计算 30 秒。证据：`cmd/zwai/engine_frontend_test.go`。
+- 启动预算边界：普通冷启动的 2 分钟就绪等待不能延长本项 30 秒预算；启动等待、lease 竞争和子进程回收都遵守调用方剩余截止时间。证据：`cmd/zwai/engine_boot_test.go`、`cmd/zwai/engine_restart_budget_test.go`。
 - 恢复不变量：保留原 turn／worker ID、真实完成结果、原任务与历史、未消费消息及 watchdog 预算；交接摘要／停止不等于完成、失败或用户取消。人类问答和迭代上限暂停不能被重启绕过；成功 ACK 的回答、继续／停止决定必须保留；已有权威终态的遗留 running 行只能收敛状态，不能重新执行；后台 worker 不能被会话 `running=false` 漏掉，启动后直接恢复其执行而不提前未来唤醒，且活跃后台 worker 阻止空闲退出。检查点的完整指令／历史不得离开 PC，手机仅保留空正文与序号。
 - 收尾顺序：正常收尾与重启接管必须互斥排序，覆盖终态判断、worker 停泊／清理和终态持久化，不能仅凭 idle 通知报告交接成功；先收尾的 turn 必须完成持久化，先接管的 turn 必须保留 worker 检查点。等待收尾使用同一截止时间，超时不能部分接管，也不能返回 ready，后续可重试。重启取消不能被写成权威的用户 `interrupted` 终态；真实的人类 Stop 仍必须取消。证据：`internal/engine/goal_session.go`、`internal/engine/restart_finish.go`、`internal/engine/restart.go`、`internal/engine/restart_finish_test.go`、`internal/engine/restart_finish_ownership_test.go`。
 - 失败语义：有能力的旧引擎必须持久化成功后才返回 `ready:true`；保存失败明确报错并允许重试，不能静默降级为强杀。已释放 runtime 但尚无持久化终态的正常收尾同样必须拒绝替换，不能把 idle 当作保存成功。证据：`internal/engine/restart_finish_storage_test.go`。旧引擎无交接 API 时允许有界自动停止并从已有事件恢复，但不宣称保全旧版本未存储的内存消息。未知工具结果必须标明未确认并先核验副作用，不保证任意外部操作 exactly-once。

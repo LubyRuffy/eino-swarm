@@ -78,6 +78,16 @@ E2E suite.
   cannot prove that the selected image reached the visual-input path.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
+- Local startup must not wait for optional phone-hub registration. Keep remote
+  startup cancellable and serialize Stop/Reload; a late registration must not
+  revive a stopped host. Keep orphaned-turn/parked-worker restoration ordered
+  before scheduling rather than moving it into an unowned goroutine.
+  Regress a real child taking longer than 15s to publish its lease, blocked
+  registration with a responsive local API, current-attempt logs and exit
+  status, and cancellation that reaps only the launcher's own child. Cold-start
+  readiness must not extend the separate `C-027` 30s replacement deadline.
+  Cancel during successful and failed metadata probes; neither a late ready URL
+  nor a discovery error may override the caller's cancellation.
 - A reported checkout-launch failure must be accepted through the reported
   command in that same checkout, with current source/build provenance and
   unrelated dirty edits preserved. Regress empty and partial `node_modules`

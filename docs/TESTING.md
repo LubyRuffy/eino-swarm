@@ -1,5 +1,41 @@
 # Testing
 
+## Local startup readiness (F-110 / C-001 / C-027)
+
+`cmd/zwai/engine_frontend_test.go` injects preparation failure and actual
+startup cancellation before a real serving holder can receive any handoff or
+new launch. Its delayed successful preparation checks that the subsequent
+replacement still receives its 30-second budget. These are preparation-order
+regressions, not proof that every later build/startup must succeed.
+
+`cmd/zwai/engine_boot_test.go` launches an actual offline child that acquires
+the data-directory lease and publishes its HTTP metadata after 16 seconds.
+It reproduces startup beyond the former 15-second cutoff and verifies the
+ready URL belongs to that child. Additional cases check current-attempt log
+isolation, the actual exit status, and cancellation that reaps the launched
+child. `cmd/zwai/engine_restart_budget_test.go` retains the independent caller
+deadline and competing-holder checks; the cold-start allowance cannot extend
+the 30-second replacement budget.
+
+`TestSpawnEngineRetriesItsOwnFirstReadinessProbeTimeout` delays the real
+child's first metadata response by 750ms, beyond the individual 500ms probe,
+then requires a later successful probe and a surviving validated child.
+`TestSpawnEngineStopsItsOwnUnreachableChildAtTheStartupDeadline` keeps every
+probe slow and checks the caller's deadline and child cleanup. The lease
+regression retains the unverified recorded identity on connection, status,
+body-read and JSON failures; it does not treat that record as readiness.
+Competing-holder regressions keep unreachable/mock-mismatch errors immediate
+and preserve the independent process.
+`engine_startup_cancel_test.go` cancels during real synchronous metadata probes,
+including healthy, unavailable and mode-mismatched responses. The launcher's
+actual SIGINT path must return a recognizable cancellation, never a late ready
+URL or a discovery error, and must preserve the independent lease holder.
+
+```bash
+go test -race -count=1 ./cmd/zwai -run 'TestSpawnEngine|TestSpawnStartup|TestInProcessStartup'
+go test -race -count=1 ./internal/lease -run 'TestDiscover'
+```
+
 ## Phone hub startup independence (F-210 / C-006)
 
 `internal/remote/host_start_test.go` holds a loopback registration request

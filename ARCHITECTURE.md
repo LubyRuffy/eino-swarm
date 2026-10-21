@@ -7,7 +7,8 @@ shell starts `zwai engine` (its own session, so closing the shell does not
 hang it up). A later shell of the same build attaches. A different version,
 or a binary whose file identity is not the one `engine.json` published,
 requests an automatic, bounded handoff from the old engine, stops it and
-starts its replacement within one 30-second launch budget. The old engine
+starts its replacement within one 30-second handoff/recovery budget after
+checkout frontend preparation. The old engine
 freezes new work, checkpoints every active or parked registry, gives workers
 a shared opportunity to summarize, and preserves uncertain tool effects for
 verification after recovery. It never treats a handoff summary as completion. Clients attach over loopback HTTP: they list, watch, send,
@@ -23,6 +24,12 @@ discard a concurrent edit. PC queue actions coalesce pending clicks per
 conversation/row and ignore another conversation's late response. Missing-record
 HTTP responses carry a request ID and matching safe WARN log
 (`internal/server/missing_record.go`); they do not terminate the model turn.
+
+The launcher prepares the checkout frontend before discovering or handing off
+an existing engine, while that engine continues serving. A preparation failure
+or cancellation returns before replacement begins. This catches build failures
+available at preparation time; the new process still validates its own startup.
+
 When a bundle needs rebuilding, `frontend/ensure.go` checks `package.json`'s
 direct dependencies and devDependencies through installed package manifests
 and declared local executable entries. Missing packages or build tools trigger
@@ -35,6 +42,12 @@ stops and waits for its descendants before the checkout lock can be reused.
 Unix uses a process group; Windows uses a Job Object. A fresh bundle or installed
 embed does not acquire a new Node dependency.
 
+After preparation, `cmd/zwai/engine_boot.go` waits up to two minutes for cold-start local readiness, reporting progress
+every ten seconds. This does not extend the separate 30-second replacement
+budget. Failed launches retain the actual child exit status and only that
+attempt's appended log bytes; old model errors are not reported as the new
+startup cause. Cancellation or expiry cleans up the launcher's own child,
+without stopping a competing lease holder.
 
 Desktop update installation is also locked by the actual app bundle across
 engines with different data directories. The stable filesystem lock covers
