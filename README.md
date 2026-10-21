@@ -219,8 +219,20 @@ uploads, downloads and the live event stream have exactly one implementation.
   Pin a cheaper summarizer
   under Settings → Models the same way as the conversation namer.
 - **Swarm, visible.** Sub-agents appear as they spawn, with live status and their
-  own transcript. Built on [eino](https://github.com/cloudwego/eino) ADK and the
-  swarm library in this repository.
+  own transcript. A failed row offers **View failure reason**. Opening it keeps
+  the recorded error above the scrolling log; old records without a reason say
+  so. A recorded overall runtime limit links to **Settings → Swarm → Sub-agent
+  timeout** (`agent_timeout_seconds`); an exact output-budget failure links to
+  **Max completion tokens** (`max_completion_tokens`), and a recorded worker
+  iteration limit links to **Sub-agent tool rounds** (`max_turns`). Each link focuses that
+  field. An identified provider stream-idle timeout opens **Settings → Models**
+  so you can inspect the endpoint's idle timeout; it does not guess which provider
+  to edit. Saving a limit does not resume the stopped worker. A worker still
+  running when a parent-turn error arrives keeps that error as its stopping
+  reason, marked as a parent error. Generic deadline or cancellation errors do
+  not suggest a timeout setting.
+  Built on [eino](https://github.com/cloudwego/eino) ADK and the swarm library in
+  this repository.
 - **It says what it is doing, even when it is quiet.** The response area shows
   a spinning "working…" as soon as the turn starts, including while a local
   model loads. Server progress then updates it every few seconds with a ticking

@@ -134,6 +134,9 @@ export interface AgentState {
   endedAt?: string
   result?: string
   error?: string
+  /** A parent turn can fail while this worker is still running. Preserve
+   *  that cause without presenting it as the worker's own failure. */
+  errorSource?: "agent" | "turn"
 }
 
 export interface TurnState {
@@ -417,14 +420,14 @@ export function reduceEvent(
     case "reasoning_delta":
       // Deltas carry the whole accumulated string, so the open block is
       // replaced. Appending here is the classic bug that doubles every word.
-      keepWorkerLive(agent)
+      if (!keepWorkerLive(agent)) break
       replaceStreaming(agent, ev, "reasoning")
       agent.activity = "thinking"
       break
 
     case "delta":
       // The model has started answering, so any thinking block is done.
-      keepWorkerLive(agent)
+      if (!keepWorkerLive(agent)) break
       closeStreaming(agent, "reasoning")
       replaceStreaming(agent, ev, "answer")
       agent.activity = "writing"
@@ -438,7 +441,7 @@ export function reduceEvent(
       break
 
     case "agent_message":
-      keepWorkerLive(agent)
+      if (!keepWorkerLive(agent)) break
       closeStreaming(agent, "reasoning")
       replaceComplete(agent, ev, "answer")
       agent.activity = summarise(ev.text ?? "")
@@ -446,7 +449,7 @@ export function reduceEvent(
 
     case "tool_call":
     case "tool_call_delta": {
-      keepWorkerLive(agent)
+      if (!keepWorkerLive(agent)) break
       closeStreaming(agent, "reasoning")
       // tool_call_delta arrives while the commentary is still streaming.
       // Closing the answer here seals that paragraph, and the agent_message
@@ -547,6 +550,7 @@ export function reduceEvent(
       child.status = "running"
       child.endedAt = undefined
       child.error = undefined
+      child.errorSource = undefined
       child.activity = existed || painted ? "continuing" : "starting"
       if (!existed) child.startedAt = ev.created_at
       if (!rosterOnly) {
@@ -567,10 +571,14 @@ export function reduceEvent(
 
     case "finished": {
       const child = touchAgent(next, ev.agent_id, ev.role)
+      // Cancelled calls can report after cleanup. Only an explicit resume
+      // may replace that stopped state; the receipt remains in Trace.
+      if (child.status === "cancelled") break
       child.status = ev.err ? "failed" : "done"
       child.endedAt = ev.created_at
       child.result = ev.text
       child.error = ev.err
+      child.errorSource = ev.err ? "agent" : undefined
       child.activity = ev.err ? "failed" : "done"
       closeStreaming(child, "reasoning")
       closeStreaming(child, "answer")
@@ -665,6 +673,10 @@ export function reduceEvent(
             child.status = cancelled ? "cancelled" : "failed"
             child.activity = "stopped"
             child.endedAt = ev.created_at
+            if (!cancelled && ev.err) {
+              child.error = ev.err
+              child.errorSource = "turn"
+            }
           }
         }
         if (ev.err) append(manager, block(ev, cancelled ? "notice" : "error", ev.err))
@@ -838,13 +850,16 @@ export function placePendingEdit(
   return next
 }
 
-/** A parked worker that is still emitting is not done, even if an older
- *  reducer painted it that way. Live work wins over a stale roster tick. */
-function keepWorkerLive(agent: AgentState) {
-  if (agent.id === MANAGER_ID || agent.status === "running") return
+/** Live output can correct a stale parked roster, but cannot undo Stop.
+ *  Cancelled workers need an explicit spawned event before output resumes. */
+function keepWorkerLive(agent: AgentState): boolean {
+  if (agent.status === "cancelled") return false
+  if (agent.id === MANAGER_ID || agent.status === "running") return true
   agent.status = "running"
   agent.endedAt = undefined
   agent.error = undefined
+  agent.errorSource = undefined
+  return true
 }
 
 /** Older spawned events stored the role in `text`. The instruction only

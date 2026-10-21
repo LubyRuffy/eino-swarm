@@ -2,6 +2,7 @@ import { ArrowDownNarrowWide, ArrowLeft, ArrowUpNarrowWide, ChevronDown } from "
 import { useEffect, useRef, useState } from "react"
 
 import { AgentPromptButton } from "@/components/app/agent-prompt"
+import { AgentFailure } from "@/components/app/agent-failure"
 import { ConversationSchedules } from "@/components/app/conversation-schedules"
 import { FilesTab } from "@/components/app/files-tab"
 import { MemoryPanel, type MemoryPanelProps } from "@/components/app/memory-panel"
@@ -236,6 +237,7 @@ function AgentsTab({
             <AgentPromptButton instruction={agent.instruction} />
           ) : null}
         </div>
+        <AgentFailure agent={agent} />
         <AgentLog key={agent.id} agent={agent} />
       </div>
     )
@@ -382,11 +384,6 @@ function AgentLog({ agent }: { agent: AgentState }) {
         data-quote-source=""
         className="thin-scrollbar min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]"
       >
-        {agent.error ? (
-          <p className="mx-2 mt-2 rounded border border-destructive/40 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
-            {agent.error}
-          </p>
-        ) : null}
         {loading && agent.blocks.length === 0 ? (
           <p className="px-3 py-6 text-center text-xs text-muted-foreground">
             {t("transcript.agentLoading")}
@@ -430,7 +427,7 @@ function AgentRow({
       <StatusDot status={agent.status} />
       <AgentName agent={agent} />
       <MarqueeText
-        text={agent.status === "cancelled" ? t("status.cancelled") : agent.activity}
+        text={agent.status === "cancelled" ? t("status.cancelled") : agent.status === "failed" ? t("agentFailure.viewReason") : agent.activity}
         active={agent.status === "running"}
         className="text-xs text-muted-foreground"
       />
