@@ -178,7 +178,8 @@ provider carries `has_api_key` and `ready` instead.
     {"id": "default", "label": "", "base_url": "https://endpoint/v1",
      "model": "some-model", "catalog": ["some-model", "other-model"],
      "api_mode": "", "builtin_tools": [],
-     "timeout_seconds": 300, "context_window": 0, "model_context": {},
+     "timeout_seconds": 300, "first_byte_timeout_seconds": 30,
+     "context_window": 0, "model_context": {},
      "has_api_key": true, "ready": true, "enabled": true}
   ]},
   "swarm": {"max_concurrent": 6, "agent_timeout_seconds": 600,
@@ -304,6 +305,17 @@ the same way as a key you are not replacing:
 | `false` | hide it from `GET /api/models` and the paired phone catalog. |
 
 A PUT that hides the current `default` moves `default` to the first endpoint still on. A PUT that would hide every endpoint leaves the default one on.
+
+`first_byte_timeout_seconds` sets this provider's wait for response headers,
+independently of `timeout_seconds` (silence after streaming starts). The default
+is `30`; an explicit zero or negative value resets it to that default. Omitting
+the field preserves the saved value for the same provider id, so older clients
+do not reset it. A new provider or an older configuration file without the field
+uses 30 seconds. Saving invalidates the model pool, and the next turn uses the
+new wait without an engine restart. If both header waits fail, the turn error
+preserves the actual duration as `the model sent no first byte within <duration>`.
+Desktop/Web adds guidance and a button to the failed turn's
+provider in Settings → Models. The provider's one fresh-connection retry remains bounded.
 
 ### `GET /api/models`
 

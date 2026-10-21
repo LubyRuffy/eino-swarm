@@ -341,7 +341,7 @@ export const en = {
   "memory.tidyStream": "Model output",
   "memory.tidyWaiting": "Waiting for the model…",
   "memory.tidyHeaderTimeout":
-    "No first byte from the model within 30s. The connection was given up.",
+    "No first byte arrived before the configured timeout. Increase First-byte timeout in Settings → Models, then retry.",
   "memory.tidySummary":
     "Deleted {deleted}, created {created}, merged {merged}, updated {patched}.",
   "memory.tidyActMerge": "Merged {name}",
@@ -398,6 +398,10 @@ export const en = {
     "You can raise the per-request output limit in Settings.",
   "transcript.outputBudgetSettings": "Max completion tokens",
   "transcript.outputBudgetRetry": "Retry",
+  "notice.firstByteTimeout": "The model sent no first byte within {duration}.",
+  "transcript.firstByteTimeoutHint":
+    "If the model needs longer to respond, increase the first-byte timeout in Settings → Models for the affected provider, then retry.",
+  "transcript.firstByteTimeoutSettings": "Configure first-byte timeout",
   "transcript.workingFor": "Working for {duration}",
   "transcript.workingAgents":
     "Working for {duration} · {n} sub-agent{s} running",
@@ -722,7 +726,10 @@ export const en = {
     "Used only when a name has no window of its own. Do not put one model's limit here.",
   "settings.models.timeout": "Request timeout (seconds)",
   "settings.models.timeoutHint":
-    "How long to wait for the next byte from the model. A call that is still streaming is not cut off; a silent endpoint is. Compact uses the same timeout.",
+    "How long a started stream may stay silent. A call that is still streaming is not cut off; a silent endpoint is. Compact uses the same timeout.",
+  "settings.models.firstByteTimeout": "First-byte timeout (seconds)",
+  "settings.models.firstByteTimeoutHint":
+    "How long to wait for the model's response headers. Increase this if the model is slow to start. Separate from the request timeout after streaming starts. 0 uses the default.",
 
   "settings.aux.title": "Auxiliary models",
   "settings.aux.desc":

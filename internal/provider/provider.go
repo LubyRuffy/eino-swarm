@@ -285,7 +285,7 @@ func buildOpenAI(ctx context.Context, p config.Provider) (model.BaseChatModel, e
 		BaseURL:    strings.TrimSpace(p.BaseURL),
 		APIKey:     strings.TrimSpace(p.APIKey),
 		Model:      strings.TrimSpace(p.Model),
-		HTTPClient: chatHTTPClient(p.Timeout()),
+		HTTPClient: chatHTTPClient(p.Timeout(), p.FirstByteTimeout()),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("provider: build %q: %w", p.ID, err)

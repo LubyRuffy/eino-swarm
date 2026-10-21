@@ -106,19 +106,23 @@ describe("Skill tidy card", () => {
     expect(screen.getByTestId("tidy-status")).toHaveTextContent("cannot tidy skills")
   })
 
-  it("turns a header timeout into a settings hint and does not say the catalog is empty", () => {
+  it.each([
+    '[NodeRunError] failed to create chat completion: Post "https://example.invalid/v1/chat/completions": http2: timeout awaiting response headers\nnode path: [node_a, ChatModel]',
+    "provider: no first byte within 2m0s: net/http: timeout awaiting response headers",
+  ])("turns a header timeout into a settings hint without inventing a fixed wait: %s", (err) => {
     render(
       <SkillTidyCard
         tidying={false}
         skillCount={8}
         report={{
           ...emptyTidyReport(8),
-          err: '[NodeRunError] failed to create chat completion: Post "https://example.invalid/v1/chat/completions": http2: timeout awaiting response headers\nnode path: [node_a, ChatModel]',
+          err,
         }}
       />,
     )
     const status = screen.getByTestId("tidy-status")
-    expect(status).toHaveTextContent(/30s/)
+    expect(status).toHaveTextContent(/First-byte timeout in Settings/)
+    expect(status).not.toHaveTextContent(/30s/)
     expect(status).not.toHaveTextContent("NodeRunError")
     expect(status).not.toHaveTextContent("example.invalid")
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/8 remaining/)

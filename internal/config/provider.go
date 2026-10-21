@@ -22,8 +22,11 @@ type Provider struct {
 	// serves. The composer offers these without a provider row per name.
 	// Empty means only Model is available until someone discovers.
 	Catalog []string `yaml:"catalog" json:"catalog"`
+	// FirstByteTimeoutSeconds is the wait for response headers, independent
+	// of stream idle. 0 means DefaultFirstByteTimeout.
+	FirstByteTimeoutSeconds int `yaml:"first_byte_timeout_seconds" json:"first_byte_timeout_seconds"`
 	// TimeoutSeconds is how long a stream may stay silent after the first
-	// byte. The wait for that first byte is DefaultFirstByteTimeout.
+	// byte.
 	// 0 means DefaultRequestTimeout.
 	// A call that is still streaming is not cut off; a silent endpoint is.
 	// Compact uses this idle clock; there is no second swarm compact timeout.
@@ -65,6 +68,14 @@ func (p Provider) Timeout() time.Duration {
 		return DefaultRequestTimeout
 	}
 	return time.Duration(p.TimeoutSeconds) * time.Second
+}
+
+// FirstByteTimeout is how long a model call may wait for response headers.
+func (p Provider) FirstByteTimeout() time.Duration {
+	if p.FirstByteTimeoutSeconds <= 0 {
+		return DefaultFirstByteTimeout
+	}
+	return time.Duration(p.FirstByteTimeoutSeconds) * time.Second
 }
 
 // DisplayName is what the UI shows for this provider.

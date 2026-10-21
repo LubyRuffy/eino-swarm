@@ -46,7 +46,12 @@ func publicTurnError(err error) string {
 		return publicContextOverflow
 	}
 	if isHeaderWaitTimeout(err) {
-		return fmt.Sprintf("the model sent no first byte within %s", config.DefaultFirstByteTimeout)
+		wait := config.DefaultFirstByteTimeout
+		var firstByte provider.FirstByteTimeoutError
+		if errors.As(err, &firstByte) {
+			wait = firstByte.Wait
+		}
+		return fmt.Sprintf("the model sent no first byte within %s", wait)
 	}
 	// A typed API error keeps its HTTP status and decode cause. A 502 with
 	// an empty body is not a broken tool call. String-only failures below

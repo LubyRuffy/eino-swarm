@@ -441,13 +441,14 @@ func Default() *Config {
 		Models: ModelsConfig{
 			Default: DefaultProviderID,
 			Providers: []Provider{{
-				ID:             DefaultProviderID,
-				Label:          "",
-				BaseURL:        "",
-				APIKey:         "",
-				Model:          "",
-				Catalog:        []string{},
-				TimeoutSeconds: int(DefaultRequestTimeout / time.Second),
+				ID:                      DefaultProviderID,
+				Label:                   "",
+				BaseURL:                 "",
+				APIKey:                  "",
+				Model:                   "",
+				Catalog:                 []string{},
+				TimeoutSeconds:          int(DefaultRequestTimeout / time.Second),
+				FirstByteTimeoutSeconds: int(DefaultFirstByteTimeout / time.Second),
 			}},
 		},
 		Swarm: SwarmConfig{
@@ -728,6 +729,9 @@ func (c *Config) normalize() {
 		seen[p.ID] = true
 		if p.TimeoutSeconds <= 0 {
 			p.TimeoutSeconds = int(DefaultRequestTimeout / time.Second)
+		}
+		if p.FirstByteTimeoutSeconds <= 0 {
+			p.FirstByteTimeoutSeconds = int(DefaultFirstByteTimeout / time.Second)
 		}
 		if p.ContextWindow < 0 {
 			p.ContextWindow = 0

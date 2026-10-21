@@ -326,7 +326,7 @@ export const zh: { [K in keyof typeof en]: string } = {
   "memory.tidyProgress": "整理进度",
   "memory.tidyStream": "模型输出",
   "memory.tidyWaiting": "正在等模型响应…",
-  "memory.tidyHeaderTimeout": "30 秒内没有收到模型的第一个字节，连接已放弃。",
+  "memory.tidyHeaderTimeout": "模型未在配置的首字节等待时间内响应。请到设置 → 模型调大首字节等待时间后重试。",
   "memory.tidySummary": "删除 {deleted}，新增 {created}，合并 {merged}，更新 {patched}。",
   "memory.tidyActMerge": "合并 {name}",
   "memory.tidyActDelete": "删除 {name}",
@@ -378,6 +378,10 @@ export const zh: { [K in keyof typeof en]: string } = {
   "transcript.outputBudgetHint": "可以在设置里调高单次输出上限。",
   "transcript.outputBudgetSettings": "单次输出上限",
   "transcript.outputBudgetRetry": "重试",
+  "notice.firstByteTimeout": "模型在 {duration} 内未返回首字节。",
+  "transcript.firstByteTimeoutHint":
+    "如果模型需要更长的响应准备时间，请到设置 → 模型，调大对应提供商的首字节等待时间后重试。",
+  "transcript.firstByteTimeoutSettings": "配置首字节等待时间",
   "transcript.workingFor": "已工作 {duration}",
   "transcript.workingAgents": "已工作 {duration} · {n} 个子代理在跑",
   "transcript.workedFor": "工作了",
@@ -683,7 +687,10 @@ export const zh: { [K in keyof typeof en]: string } = {
     "只在某个名字没有自己的窗口时用。别把某一个模型的上限填在这里。",
   "settings.models.timeout": "请求超时（秒）",
   "settings.models.timeoutHint":
-    "等多久才等到模型的下一个字节。还在往外流的调用不会被砍；一直哑巴的接口会。压缩也走这个超时。",
+    "流开始后允许连续静默多久。还在输出的调用不会被中断；持续静默的接口会。压缩也使用这个超时。",
+  "settings.models.firstByteTimeout": "首字节等待时间（秒）",
+  "settings.models.firstByteTimeoutHint":
+    "等待模型响应头的时间。模型启动响应较慢时可调大；与流开始后的请求超时独立。0 使用默认值。",
 
   "settings.aux.title": "辅助模型",
   "settings.aux.desc": "这些活默认跟会话模型走，除非你钉死一个。",

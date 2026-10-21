@@ -31,24 +31,40 @@ func (e IdleTimeoutError) Error() string {
 
 func (e IdleTimeoutError) Unwrap() error { return ErrIdleTimeout }
 
+// FirstByteTimeoutError retains the configured response-header wait through
+// the HTTP and model adapters so the transcript reports the actual budget.
+type FirstByteTimeoutError struct {
+	Wait time.Duration
+	Err  error
+}
+
+func (e FirstByteTimeoutError) Error() string {
+	return fmt.Sprintf("provider: no first byte within %s: %v", e.Wait, e.Err)
+}
+
+func (e FirstByteTimeoutError) Unwrap() error { return e.Err }
+
 // chatHTTPClient bounds silence, not the whole streamed body.
 //
 // eino's ChatModelConfig.Timeout becomes http.Client.Timeout, and that clock
 // includes reading the body. A reasoning model that thinks for longer than
 // the setting dies mid-thought with "failed to receive stream chunk: context
 // deadline exceeded (Client.Timeout …)", even while tokens are still arriving.
-// The first byte gets a short budget. After headers arrive, silence
+// The first byte gets its own budget. After headers arrive, silence
 // between chunks gets `idle`. A live stream can outlast the first-byte cap.
-func chatHTTPClient(idle time.Duration) *http.Client {
+func chatHTTPClient(idle, firstByte time.Duration) *http.Client {
 	if idle <= 0 {
 		idle = config.DefaultRequestTimeout
 	}
+	if firstByte <= 0 {
+		firstByte = config.DefaultFirstByteTimeout
+	}
 	return &http.Client{
-		Transport: &idleTransport{base: chatTransport(idle), idle: idle},
+		Transport: &idleTransport{base: chatTransport(firstByte), idle: idle, firstByte: firstByte},
 	}
 }
 
-func chatTransport(idle time.Duration) *http.Transport {
+func chatTransport(firstByte time.Duration) *http.Transport {
 	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
@@ -57,25 +73,14 @@ func chatTransport(idle time.Duration) *http.Transport {
 		IdleConnTimeout:       90 * time.Second,
 		TLSHandshakeTimeout:   10 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
-		ResponseHeaderTimeout: firstByteTimeout(idle),
+		ResponseHeaderTimeout: firstByte,
 	}
-}
-
-// firstByteTimeout is the wait for response headers. It never outgrows the
-// stream idle budget, and it never inherits a multi-minute idle setting:
-// this endpoint sends headers in well under a second when the connection
-// is alive.
-func firstByteTimeout(idle time.Duration) time.Duration {
-	cap := config.DefaultFirstByteTimeout
-	if idle > 0 && idle < cap {
-		return idle
-	}
-	return cap
 }
 
 type idleTransport struct {
-	base http.RoundTripper
-	idle time.Duration
+	base      http.RoundTripper
+	idle      time.Duration
+	firstByte time.Duration
 }
 
 func (t *idleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -104,6 +109,9 @@ func (t *idleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 func (t *idleTransport) roundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := t.base.RoundTrip(req)
 	if err != nil {
+		if headerWaitTimedOut(err) {
+			return nil, FirstByteTimeoutError{Wait: t.firstByte, Err: err}
+		}
 		return nil, err
 	}
 	if resp != nil && resp.Body != nil {

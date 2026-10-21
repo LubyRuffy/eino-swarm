@@ -68,7 +68,7 @@ function sections(t: Translate) {
       id: "models",
       label: t("settings.nav.models"),
       icon: Cpu,
-      keys: "provider endpoint api key base url responses cloud builtin tools discover auxiliary title compact context window timeout model embedding semantic search 模型 提供商 云端 内置 工具 嵌入 语义 搜索",
+      keys: "provider endpoint api key base url responses cloud builtin tools discover auxiliary title compact context window timeout first byte model embedding semantic search 模型 提供商 云端 内置 工具 嵌入 语义 搜索 首字节 等待 超时",
     },
     {
       id: "swarm",
@@ -456,6 +456,7 @@ export function SettingsDialog({
                         setToolsDrafts(toolsDraftsRef.current)
                         apply(settings)
                       }}
+                      focusKey={focusKey}
                     />
                   ) : null}
                   {page === "swarm" ? (
