@@ -439,6 +439,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "notice.goalPaused": "目标已暂停。点「开始目标」继续。",
   "notice.goalBlocked": "目标已卡住：需要你或外部条件才能继续。",
   "notice.modelRetry": "模型出错，正在重试。",
+  "notice.modelBackoff": "等待 {seconds} 秒后重试模型请求。",
+  "notice.modelBackoffUnknown": "等待后重试模型请求。",
   "notice.modelRetryToolJSON": "模型返回的工具调用不是合法 JSON，正在重试。",
   "notice.modelRetryRateLimited": "模型服务正在限流，正在重试。",
   "notice.modelRetryUnavailable": "模型服务不可用，正在重试。",

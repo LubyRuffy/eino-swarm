@@ -2810,3 +2810,50 @@ seed excludes manager System/personality. Check retained user/assistant/tool
 evidence, empty/System-only history, manager input immutability and unchanged
 same-role resume formatting. Do not infer actual model behavior or memory
 quality improvement from this deterministic payload test.
+## Shared model recovery backoff (`C-029`)
+
+The 2026-10-21 provider race audit reports 95.3% package coverage. The shared
+gate, admission/classification, HTTP reconnect adapter, Generate/Stream wrappers
+and stream-completion observer each have 100% target statement coverage. Engine
+wait recording and the call-recorder dispatch each have 100% target statement
+coverage in the focused race run. The
+2026-10-19 loopback 502 browser run observed HTTP arrival gaps of 5002ms and
+10003ms for the unchanged three-call budget; that historical run does not certify
+a later merged candidate, which must rerun the browser fixture.
+
+`internal/provider/backoff_test.go` uses `testing/synctest` to assert the actual
+5/10/20/30-second sequence without wall-clock sleeps. It covers one recovery
+probe, healthy concurrency, stale in-flight replies, cancellation, renewed
+cooldown notifications and idempotent release. `model_backoff_test.go` exercises
+classification and recorder/context wiring; authentication/parameter errors
+cannot add failures or prove recovery. `backoff_integration_test.go` uses the
+real SDK with keyless loopback HTTP fixtures to verify cross-role/model/provider
+and cache-invalidated calls, independent origins, malformed successful streams,
+complete-stream recovery and delayed/cancelled header reconnects. An actual HTTP
+stream ending after valid deltas but without `[DONE]` or finish reason must fail
+with `io.ErrUnexpectedEOF`, retain received usage and keep sibling requests
+blocked. Complete `[DONE]`, `stop`, `length` and `tool_calls` responses preserve
+usage and reopen admission. `stream_completion_test.go` verifies exact unchanged
+bytes, fragmented/large frames and false terminator matches. Closing an Eino
+reader alone retains a silent probe; canceling its request context releases it
+without clearing failures. A header reconnect following a cooldown longer than
+the header budget still gets a fresh response-header budget. These are service-
+failure fixtures, not scripted success claimed as retry evidence.
+
+`internal/engine/model_backoff_test.go` asserts actual agent/turn provenance and
+that waiting creates no LLM call or usage pulse, while actual and auxiliary calls
+retain their accounting and storage failures cannot emit usage.
+`frontend/src/lib/transcript-backoff.test.ts`
+checks SSE subscription, replay, localized human text and no invented workers.
+The opt-in `frontend/e2e/api-error.spec.ts` measures actual HTTP arrival gaps on
+502 (at least 5s then 10s), and checks the original turn, Chat, Full log and reload.
+
+```bash
+go test -race ./internal/provider -count=1 -coverprofile=/tmp/provider-backoff.cover
+go test -race ./internal/engine -run 'TestModelBackoff|TestEmptyGatewayResponse'
+cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e
+```
+
+This preserves the original manager retry count and worker watchdog budget;
+no real model or external service is used. It does not certify another client's
+retry behavior or impose a server-wide request limit.

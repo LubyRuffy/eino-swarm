@@ -19,8 +19,9 @@ import (
 	"github.com/cloudwego/eino/schema"
 )
 
-// CallRecord is one model request, as the trace view reports it.
+// CallRecord is one model request or a Backoff wait, as the trace reports it.
 type CallRecord struct {
+	Backoff          *BackoffRecord
 	AgentID          string
 	ProviderID       string
 	Model            string
@@ -36,8 +37,9 @@ type CallRecord struct {
 	Err              error
 }
 
-// Recorder receives one CallRecord per model request. Implementations must be
-// safe for concurrent use: a swarm calls several models at once.
+// Recorder receives completed model requests and separate Backoff observations.
+// Implementations must be safe for concurrent use: a swarm calls several models
+// at once. A Backoff observation must not be counted as a request or billed usage.
 type Recorder func(CallRecord)
 
 // Info describes one selectable model to the UI. A provider with a catalog
@@ -76,8 +78,9 @@ type Pool struct {
 	build builder
 	mock  bool
 
-	mu    sync.Mutex
-	cache map[string]model.BaseChatModel
+	mu       sync.Mutex
+	cache    map[string]model.BaseChatModel
+	backoffs map[string]*backoffGate
 	// discover is swapped in tests so listing models does not need a network.
 	discover func(ctx context.Context, p config.Provider) (Catalog, error)
 }
@@ -222,6 +225,9 @@ func (p *Pool) Get(ctx context.Context, id, model string) (model.BaseChatModel, 
 	if err != nil {
 		return nil, err
 	}
+	if !p.mock {
+		m = &recordingModel{inner: m, gate: p.backoffFor(prov.BaseURL)}
+	}
 	p.cache[key] = m
 	return m, nil
 }
@@ -297,7 +303,13 @@ func wrap(m model.BaseChatModel, agentID string, p config.Provider, effort strin
 	if rec == nil && effort == "" && maxTokens <= 0 {
 		return m
 	}
-	return &recordingModel{inner: m, agentID: agentID, providerID: p.ID, model: p.Model, reasoning: effort, maxTokens: maxTokens, rec: rec}
+	r := &recordingModel{inner: m, agentID: agentID, providerID: p.ID, model: p.Model, reasoning: effort, maxTokens: maxTokens, rec: rec}
+	if shared, ok := m.(*recordingModel); ok && shared.gate != nil && shared.rec == nil {
+		// Admission and telemetry must surround the same request. Wrapping the
+		// gate again would count a cancelled wait as a completed model call.
+		r.inner, r.gate = shared.inner, shared.gate
+	}
+	return r
 }
 
 // recordingModel times each request and reports its shape. It deliberately
@@ -307,6 +319,7 @@ func wrap(m model.BaseChatModel, agentID string, p config.Provider, effort strin
 // client cached instead of one instance per thinking level.
 type recordingModel struct {
 	inner      model.BaseChatModel
+	gate       *backoffGate
 	agentID    string
 	providerID string
 	model      string
@@ -330,8 +343,13 @@ func (r *recordingModel) withReasoning(opts []model.Option) []model.Option {
 
 func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	opts = r.withReasoning(opts)
+	ctx, finish, err := r.admit(ctx)
+	if err != nil {
+		return nil, modelCallError(err)
+	}
 	start := time.Now()
 	out, err := r.inner.Generate(ctx, in, opts...)
+	finish(err)
 	if r.rec == nil {
 		return out, modelCallError(err)
 	}
@@ -347,9 +365,18 @@ func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opt
 
 func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
 	opts = r.withReasoning(opts)
+	completion := &streamCompletion{}
+	ctx = context.WithValue(ctx, streamCompletionKey{}, completion)
+	ctx, finish, err := r.admit(ctx)
+	if err != nil {
+		return nil, modelCallError(err)
+	}
 	start := time.Now()
 	stream, err := r.inner.Stream(ctx, in, opts...)
-	if r.rec == nil {
+	if err != nil {
+		finish(err)
+	}
+	if r.rec == nil && (r.gate == nil || err != nil) {
 		return stream, modelCallError(err)
 	}
 	if err != nil {
@@ -360,18 +387,28 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 	}
 	// A streamed call is not over when Stream returns, it is over when the
 	// stream is drained — so relay it and emit the record at the end, where
-	// both the real duration and the output size are known. Relaying through a
-	// pipe also means an abandoned stream cannot leak the goroutine: Send
-	// reports the closed reader and the loop stops.
+	// both the real duration and the output size are known. The pipe stops
+	// relaying when its reader closes. A caller abandoning a silent upstream
+	// must also cancel ctx to interrupt the SDK's pending Recv.
 	sr, sw := schema.Pipe[*schema.Message](streamRelayBuffer)
 	go func() {
 		defer stream.Close()
 		defer sw.Close()
+		defer finish(context.Canceled)
 		chars := 0
 		var usage *schema.TokenUsage
+		finished := false
 		for {
 			msg, recvErr := stream.Recv()
+			if isStreamEnd(recvErr) && completion.http.Load() && !completion.done.Load() && !finished {
+				recvErr = io.ErrUnexpectedEOF
+			}
 			if recvErr != nil {
+				if isStreamEnd(recvErr) {
+					finish(nil)
+				} else {
+					finish(recvErr)
+				}
 				rec := r.base(in, start)
 				rec.OutputChars = chars
 				applyUsage(&rec, usage)
@@ -379,10 +416,15 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 					rec.Err = recvErr
 					sw.Send(nil, modelCallError(recvErr))
 				}
-				r.rec(rec)
+				if r.rec != nil {
+					r.rec(rec)
+				}
 				return
 			}
 			if msg != nil {
+				if msg.ResponseMeta != nil && msg.ResponseMeta.FinishReason != "" {
+					finished = true
+				}
 				chars += len(msg.Content) + len(msg.ReasoningContent)
 				usage = mergeUsage(usage, msg)
 			}
@@ -390,7 +432,9 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 				rec := r.base(in, start)
 				rec.OutputChars = chars
 				applyUsage(&rec, usage)
-				r.rec(rec)
+				if r.rec != nil {
+					r.rec(rec)
+				}
 				return
 			}
 		}

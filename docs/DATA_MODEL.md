@@ -216,6 +216,11 @@ stream still walks forward.
 | `images` | JSON array of `{id,name,mime}` on `user_message` and `steer` when the send carried pasted images. Never the pixels |
 | `created_at` | UTC; the timeline offsets are computed against the turn's `started_at` |
 
+`model_backoff` stores `{attempt,wait_ms}` on the original turn and caller:
+the remaining cooldown observed before sending, or `0` while waiting for an
+active recovery probe. It is a wait observation, not a retry allowance or an
+LLM request; a later failure can extend it. No migration or new column is needed.
+
 `spawned`, `finished` and `cleanup` are the worker roster. Auto-compact
 re-injects those ids into the next Generate after a fold. Do not treat
 `messages` as the source of truth for who is alive. The live-edge log
@@ -256,6 +261,11 @@ sees the truncated tables (`events`, `messages`, `turns`, `llm_calls`,
 
 One row per model request. Sizes and durations, **not** prompts: enough to explain
 a slow or failed turn without turning the database into a transcript archive.
+Admission waits and cancellation before sending create no row. Request duration
+starts after admission; the adapter's internal reconnect remains inside that
+same call, including its separately traced backoff. A truncated streamed response
+records a model error and keeps any usage already received; its EOF cannot clear
+the shared service failure. See `C-029`.
 
 | column | notes |
 |---|---|

@@ -367,6 +367,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   `zwai trace <id>` replays the whole run: timeline, tool calls, model calls
   with billed tokens. The Trace tab shows the same turn's status and cost; open
   **Full log** for the on-screen timeline.
+  After a chat service fails, manager and subagents on that same service share
+  a 5 → 10 → 20 → 30-second capped recovery backoff, including new turns and
+  provider aliases. One probe tests recovery at a time; a complete successful
+  response restores normal concurrency. A stream needs a protocol terminator or
+  explicit finish reason; a truncated connection cannot prove recovery. Stop
+  cancels waiting and the active request. Trace records
+  `model_backoff` waits separately from actual calls and retry attempts.
   Model API errors retain their HTTP status and concrete rejection or response
   decoding cause in desktop and phone chat. An empty 502 response does not imply
   invalid tool arguments. Empty/HTML errors without a more specific HTTP or parsed API category, and

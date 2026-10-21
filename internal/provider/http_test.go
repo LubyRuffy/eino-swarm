@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -174,6 +175,46 @@ func TestIdleClientRetriesOnceAfterAHeaderTimeout(t *testing.T) {
 		t.Fatalf("body=%q attempts=%d", got, n.Load())
 	}
 }
+
+// A broken request body is a local failure, so the adapter must not contact
+// the model or replace the original timeout with a replay-construction error.
+func TestIdleClientDoesNotSendUnreadableOrUnreplayableBodies(t *testing.T) {
+	for _, replayFailure := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replay=%v", replayFailure), func(t *testing.T) {
+			bodyErr := errors.New("request body unavailable")
+			headerErr := errors.New("timeout awaiting response headers")
+			calls := 0
+			transport := &idleTransport{idle: time.Second, base: backoffRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				return nil, headerErr
+			})}
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://fixture.invalid", &backoffFailingBody{err: bodyErr})
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantCalls, wantErr := 0, bodyErr
+			if replayFailure {
+				req.GetBody = func() (io.ReadCloser, error) { return nil, bodyErr }
+				wantCalls, wantErr = 1, headerErr
+			}
+			resp, err := transport.RoundTrip(req)
+			if resp != nil || !errors.Is(err, wantErr) || calls != wantCalls {
+				t.Fatalf("response=%v error=%v requests=%d; want error=%v requests=%d", resp, err, calls, wantErr, wantCalls)
+			}
+		})
+	}
+}
+
+type backoffRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f backoffRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type backoffFailingBody struct{ err error }
+
+func (b *backoffFailingBody) Read([]byte) (int, error) { return 0, b.err }
+func (b *backoffFailingBody) Close() error             { return nil }
 
 func TestIdleClientAllowsALongHTTPStreamThatKeepsMoving(t *testing.T) {
 	idle := 80 * time.Millisecond

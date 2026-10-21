@@ -464,6 +464,8 @@ export const en = {
   "notice.goalBlocked":
     "Standing objective blocked: progress needs you or an external change.",
   "notice.modelRetry": "Retrying after a model error.",
+  "notice.modelBackoff": "Waiting {seconds}s before retrying the model request.",
+  "notice.modelBackoffUnknown": "Waiting before retrying the model request.",
   "notice.modelRetryToolJSON":
     "The model returned a tool call that was not valid JSON. Retrying.",
   "notice.modelRetryRateLimited":

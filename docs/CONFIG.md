@@ -160,6 +160,17 @@ turn's provider, scrolls to this field and focuses it. If that provider is
 unknown or was deleted, the button opens Models without selecting a different
 provider. Raise the wait, let the change save, close Settings and resend the
 request when ready.
+Chat recovery uses a shared origin-level cooldown: 5 → 10 → 20 → 30 seconds,
+then 30 seconds until a complete request succeeds. These policy defaults live
+in `internal/config/backoff.go`; they are not new YAML fields or retry counts.
+Provider aliases and models on the same scheme/host/port share one probe;
+settings saves replace clients without clearing failures. Stop cancels waiting.
+The one fresh-connection header retry also waits. The response-header timeout
+starts when each HTTP attempt is sent, after admission; an explicit caller
+deadline includes the cooldown. A streamed probe needs `[DONE]` or an explicit
+finish reason, so a connection ending after a partial answer cannot reset failures.
+Catalog discovery and embeddings
+keep their existing request policies. See `C-029` in `docs/CONTRACTS.md`.
 
 A provider is **ready** when it has both `base_url` and `model`. Until the default
 provider is ready, `GET /api/meta` reports `configured: false` and the UI shows a
