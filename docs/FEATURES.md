@@ -87,6 +87,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 首字节超时恢复：错误保留实际等待时长；桌面/Web 建议到设置 → 模型调大首字节等待时间，可从错误直接打开失败轮次的提供商并聚焦字段。设置能力和提供商缺失时的行为见 `F-170`；关联契约：`C-009`、`C-012`。
 - 请求前工具参数检查：压缩 middleware 返回状态后检查当前尾部调用的非空 JSON 参数；无效参数在实际模型 HTTP 前拒绝，沿既有有界重试清理，不清除人类 steer 或伪造 worker 创建。不是全历史 JSON 扫描。关联契约：`C-012`；证据：`internal/engine/autocompact.go`、`internal/engine/model_retry.go`、`internal/engine/model_retry_http_test.go`。
 
+- 模型故障退避：同一上游 origin 的 manager、subagent、模型及 provider 别名共享 5→10→20→30 秒封顶冷却，到期仅放行一个恢复探测；完整成功才恢复并发，Stop 可取消等待，换轮次或清缓存不能绕过。等待记录进入原 turn 的 Trace，不增加自动重试次数；quiet 报告后的迟到等待不重新显示 Chat 通知。关联契约：`C-029`；实现／测试证据：`internal/provider/backoff.go`、`internal/provider/model_backoff.go`、`internal/provider/backoff_integration_test.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`。
+
 ### F-135 Independent task coordination
 
 - 目的：让不同 PC 对话的管理 Agent 发现活跃任务、协商共享资源的处理顺序；使用者：PC 用户和配对手机用户；入口：manager 工具 `list_tasks`、`send_task_message`、`read_task_messages`，对话内的协作消息通知；输入：真实 conversation ID、消息和可选收件游标；输出：活跃任务的工作目录/请求/状态、持久化发送回执、来源可追溯的消息和明确回复；前置条件：同一 host 的未归档对话；失败表现：未知/归档目标、非法参数或数据库错误返回工具错误，不伪造送达；关联契约：`C-021`、`C-012`；实现证据：`internal/engine/task_coordination.go`、`internal/engine/task_coordination_flow_test.go`、`internal/store/event_kind.go`、`frontend/e2e/task-coordination.spec.ts`、`mobile/src/lib/task-message.test.ts`。
@@ -107,6 +109,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 目标编辑：历史 fire 类型冻结、目标与状态编辑及活动上限原子提交；已领取旧 wake 保持归属，移走最后 wake 后恢复原目标或收尾 worker。证据：`internal/engine/schedule_retarget_test.go`, `internal/store/schedule_retarget_test.go`。
 
 - 完成范围：定时轮次自己的 manager thread wake 仍有后续触发，或本轮新排了这类等待时，`complete_goal` 返回可恢复冲突；完成该等待后才能完成长期目标。同轮先完成目标再重新排等待也返回冲突；人工和独立任务的等待保持独立。证据：`internal/engine/goal_schedule_completion_test.go`, `frontend/e2e/goal-schedule.spec.ts`；关联契约：`C-009`, `C-012`。
+- 续轮模型请求遵循 `F-130` 的共享服务退避（`C-029`），新 turn 不重置故障档位。
 - 续轮 worker 身份和状态沿用 `F-130` 的历史状态快照，不把历史总数当成本轮创建量。关联契约：`C-019`；证据：`internal/engine/resume_workers.go`、`internal/engine/worker_roster_test.go`、`frontend/e2e/worker-roster-history.spec.ts`。
 
 ### F-160 Trace and diagnostics
@@ -114,11 +117,15 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：用 turn id 还原一次运行；使用者：开发者和用户；入口：`zwai trace`, `/api/trace/:turn`, Trace 面板；输入：turn id；输出：事件、模型和工具记录，桌面/手机公共错误保留模型 HTTP 状态及具体接口/解码原因，同 ID 可查看原始调用和重试；前置条件：该 turn 已记录；失败表现：找不到记录；关联契约：`C-012`；实现证据：`internal/engine/runerr.go`, `internal/engine/api_error_integration_test.go`, `internal/server`, `internal/store`, `frontend/src/components/app`, `mobile/e2e/api-error.spec.ts`。
 - Worker 创建核验：按真实 turn 的调用、拒绝回执和生命周期事件区分新建、续办／恢复、完成及清理，不从历史名册或模型自述推断本轮创建量。证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`frontend/e2e/worker-roster-history.spec.ts`。
 
+- 模型冷却以 `model_backoff` 保留真实调用者与等待信息，不计作 LLM 请求；等待状态沿用 `F-130`（`C-029`）。证据：`internal/engine/model_backoff.go`、`internal/engine/model_backoff_test.go`。
+
 ### F-170 Settings and providers
 
 - 目的：配置模型、外观、工具和远程连接；使用者：PC 用户；入口：Settings；输入：配置字段，包括每个提供商在输入框模型列表里的开关；输出：持久化设置和可用模型，关掉的提供商不出现在输入框和已配对手机的目录里，已经选中它的会话继续用；前置条件：本机数据目录；失败表现：校验或连接错误；关联契约：`C-006`, `C-009`, `C-012`；实现证据：`internal/config`, `internal/provider`, `frontend/src`。
 - 首字节等待：设置 → 模型的每个提供商可单独设置「首字节等待时间（秒）」，默认 30 秒，与流开始后的请求空闲超时独立。首字节错误的「配置首字节等待时间」打开失败 turn 的提供商并滚动聚焦输入框，不跟随后来切换的模型；未知或已删除提供商只打开模型页。修改自动保存，关闭设置后用户可重新发送请求。实现证据：`internal/config/provider.go`, `internal/provider/http.go`, `frontend/src/components/app/model-settings.tsx`, `frontend/src/components/app/transcript-error.tsx`；验证：`internal/config/provider_timeout_test.go`, `internal/server/settings_timeout_test.go`, `frontend/src/components/app/transcript-error.test.tsx`, `frontend/e2e/api-error.spec.ts`。
 - 输出额度用尽：桌面端这条错误下面有提示，链到设置 → 集群的「单次输出上限」，并聚焦该输入。关掉设置后，同一条错误上出现重试，按原来的请求再跑一轮。手机不能改这项，只显示错误原文。实现证据：`frontend/src/components/app/transcript-error.tsx`, `frontend/src/lib/output-budget.ts`。
+
+- 同源 provider 别名沿用 `F-130` 的共享冷却；保存设置不清故障档位（`C-029`）。证据：`internal/provider/backoff_integration_test.go`。
 
 ### F-175 Provider cloud built-in tools
 

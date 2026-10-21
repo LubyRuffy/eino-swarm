@@ -41,6 +41,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `F-160`, `C-029`: model service failures now impose a shared 5/10/20/30-second capped backoff across manager, subagents, models and provider aliases on the same origin. Only one recovery probe runs at a time; full success restores normal concurrency. Cancellation, cache refresh and new turns cannot bypass a failed service's cooldown. Header-timeout reconnects also wait; `model_backoff` records the actual caller and delay in the turn Trace without granting retries or inventing model calls. Late waits after a quiet scheduled report stay hidden from Chat while retaining Trace evidence.
+
 
 - `F-110`, `F-430`, `C-001`, `C-010`: checkout frontend preparation repairs empty or incomplete direct dependency installs even when `node_modules` has a newer timestamp. Installation explicitly includes development packages and is revalidated before build/stamping. Concurrent processes serialize preparation for the same checkout; cancellation/script exit stops build descendants before lock reuse and retains the cancellation cause. Current-bundle/embed behavior is preserved.
 

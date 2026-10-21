@@ -2851,6 +2851,44 @@ cd frontend && npm run e2e -- image-input.spec.ts
 cd frontend && npm run e2e -- shell.spec.ts
 ```
 
+## Shared model recovery backoff (`C-029`)
+
+The current provider race run reports 96.0% package coverage. Backoff admission,
+classification, Generate/Stream recording and HTTP reconnect paths have 100%
+function statement coverage; Pool.Get has 93.3%. The loopback browser regression
+measures HTTP arrival gaps against the unchanged three-call budget.
+
+`internal/provider/backoff_test.go` uses `testing/synctest` to assert the actual
+5/10/20/30-second sequence without wall-clock sleeps. It covers one recovery
+probe, healthy concurrency, stale in-flight replies, cancellation, renewed
+cooldown notifications and idempotent release. `model_backoff_test.go` exercises
+classification and recorder/context wiring; authentication/parameter errors
+cannot add failures or prove recovery. `backoff_integration_test.go` uses the
+real SDK with keyless loopback HTTP fixtures to verify cross-role/model/provider
+and cache-invalidated calls, independent origins, malformed successful streams,
+complete-stream recovery and delayed/cancelled header reconnects. These are
+service-failure fixtures, not scripted success claimed as retry evidence.
+
+`internal/engine/model_backoff_test.go` asserts actual agent/turn provenance and
+that waiting creates no LLM call. `frontend/src/lib/transcript-backoff.test.ts`
+checks SSE subscription, replay, localized human text, no invented workers, and
+late waits after a quiet scheduled report remaining hidden from Chat. Their raw
+Trace events are retained. `internal/provider/backoff_responses_test.go` exercises
+the actual Pool/Responses boundary, including reasoning, output caps, cloud-tool
+receipts and cancelled admission producing no invented model call.
+The opt-in `frontend/e2e/api-error.spec.ts` measures actual HTTP arrival gaps on
+502 (at least 5s then 10s), and checks the original turn, Chat, Full log and reload.
+
+```bash
+go test -race ./internal/provider -count=1 -coverprofile=/tmp/provider-backoff.cover
+go test -race ./internal/engine -run 'TestModelBackoff|TestEmptyGatewayResponse'
+cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e
+```
+
+This preserves the original manager retry count and worker watchdog budget;
+no real model or external service is used. It does not certify another client's
+retry behavior or impose a server-wide request limit.
+
 ### Provider Responses and cloud tools
 
 Use keyless loopback fixtures, never a real model or network service:

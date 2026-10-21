@@ -11,6 +11,7 @@ import {
   modelRetryNotice,
 } from "./transcript-notices"
 import { parseReview, reviewNotice } from "./transcript-review"
+import { modelBackoffNotice } from "./transcript-backoff"
 import { askCardFromEvent, parseAskResult, ASK_TOOL, type AskCard } from "./transcript-ask"
 import { isPlanEvent, planNotice } from "./transcript-plan"
 import { parseIterationLimit, parsePulse } from "./transcript-pulse"
@@ -365,6 +366,10 @@ export function reduceEvent(
   if (ev.kind === "model_retry") {
     append(touchAgent(next, MANAGER_ID), block(ev, "notice", modelRetryNotice(ev.text)))
     return next
+  }
+  if (ev.kind === "model_backoff") {
+    append(touchAgent(next, MANAGER_ID), block(ev, "notice", modelBackoffNotice(ev.text)))
+    return sealQuietTurns(next, ev)
   }
   if (ev.kind === "goal_edited") {
     append(touchAgent(next, MANAGER_ID), block(ev, "notice", "Standing objective updated."))

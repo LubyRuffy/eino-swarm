@@ -152,6 +152,14 @@ the new row.
 | `context_window` | fallback token limit for **names that have no row of their own**. `0` means unknown: the composer ring then shows a count (not a fake 0%) and a saturating arc scaled by `swarm.context_char_budget`. Never invented from a model name. Do not put one model's limit here — that would pin every other name on the endpoint to the same number. |
 | `model_context` | per-name windows. Settings lists one field per catalog name; **Discover models** fills a value when the listing included `context_length` / `max_model_len` / `context_window` / `max_context_length` / `max_input_tokens` / `n_ctx` / `max_seq_len`, including one nesting under `top_provider` / `meta` / `limits` / `parameters`. Empty for endpoints that only return names. Output caps are not copied. |
 
+Chat recovery uses a shared origin-level cooldown: 5 → 10 → 20 → 30 seconds,
+then 30 seconds until a complete request succeeds. These policy defaults live
+in `internal/config/backoff.go`; they are not new YAML fields or retry counts.
+Provider aliases and models on the same scheme/host/port share one probe;
+settings saves replace clients without clearing failures. Stop cancels waiting.
+The one fresh-connection header retry also waits. Catalog discovery and embeddings
+keep their existing request policies. See `C-029` in `docs/CONTRACTS.md`.
+
 Existing configuration files need no migration: an omitted first-byte wait uses
 30 seconds. Previously, a `timeout_seconds` below 30 also shortened the
 first-byte wait; these budgets are now independent. Set

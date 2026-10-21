@@ -734,6 +734,10 @@ func (rt *runtime) runLateSteerMessages(status string, leftover []*schema.Messag
 // explain where a turn's time went.
 func (e *Engine) callRecorder(threadID, turnID string) provider.Recorder {
 	return func(r provider.CallRecord) {
+		if r.Backoff != nil {
+			e.recordModelBackoff(threadID, turnID, r)
+			return
+		}
 		rec := &store.LLMCall{
 			ThreadID: threadID, TurnID: turnID, AgentID: r.AgentID,
 			ProviderID: r.ProviderID, Model: r.Model,

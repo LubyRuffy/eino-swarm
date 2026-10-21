@@ -34,6 +34,7 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "Standing objective blocked: progress needs you or an external change.":
     "notice.goalBlocked",
   "Retrying after a model error.": "notice.modelRetry",
+  "Waiting before retrying the model request.": "notice.modelBackoffUnknown",
   "The model returned a tool call that was not valid JSON. Retrying.":
     "notice.modelRetryToolJSON",
   "The model service is rate limiting requests. Retrying.":
@@ -155,6 +156,8 @@ export function t(locale: Locale, key: MessageKey, vars?: Vars): string {
 /** Transcript chrome the reducer still emits in English. Model text and
  *  unknown notices pass through so a translation table cannot swallow them. */
 export function localizeNotice(text: string, locale: Locale): string {
+  const backoff = /^Waiting (\d+)s before retrying the model request\.$/.exec(text)
+  if (backoff) return t(locale, "notice.modelBackoff", { seconds: backoff[1] })
   const firstByteWait = firstByteTimeoutDuration(text)
   if (firstByteWait) return t(locale, "notice.firstByteTimeout", { duration: firstByteWait })
   const peer = /^Peer task ([^:]*): ([\s\S]*)$/.exec(text)

@@ -95,6 +95,11 @@ func (t *idleTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if err == nil || !headerWaitTimedOut(err) || req.GetBody == nil {
 		return resp, err
 	}
+	if wait, ok := req.Context().Value(reconnectBackoffKey{}).(func() error); ok {
+		if waitErr := wait(); waitErr != nil {
+			return nil, waitErr
+		}
+	}
 	next := req.Clone(req.Context())
 	next.Close = true
 	body, berr := req.GetBody()
