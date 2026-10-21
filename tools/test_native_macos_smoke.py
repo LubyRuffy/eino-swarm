@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import struct
+import subprocess
+import sys
 import tempfile
 import threading
 import unittest
@@ -37,6 +39,16 @@ class SmokeTests(unittest.TestCase):
             "ZWAI_NATIVE_SCENARIO_TIMEOUT_SECONDS": "40",
         }
         self.context = smoke.case_context(self.environment)
+
+    def native_row(self):
+        return dict(pid=123, title="zwai", frontmost=True, has_web_area=True,
+                    textareas=1, rect=[10, 20, 800, 600], expected_visible=True,
+                    bundle=str(self.context["app"]), case_verified=True,
+                    origin="http://127.0.0.1:4567", screen_capture_allowed=True,
+                    web_urls=["http://127.0.0.1:4567/?shell=desktop&pid=123"],
+                    window_count=1, window_id=17, window_owner_pid=123,
+                    windows=[dict(id=17, owner_pid=123)],
+                    area_values=[""], send_count=1, send_enabled=False)
 
     def trace(self):
         events = []
@@ -190,14 +202,153 @@ class SmokeTests(unittest.TestCase):
             smoke.request_json(origin, "/array", smoke.Deadline(1))
 
     def test_window_requires_rendered_page_and_result_not_just_pid_or_title(self):
-        row = dict(pid=123, title="zwai", frontmost=True, has_web_area=True,
-                   textareas=1, rect=[10, 20, 800, 600], expected_visible=True)
+        row = self.native_row()
         smoke.assert_window(row, 123, require_result=True)
         for field, value in (("pid", 124), ("title", ""), ("frontmost", False),
                              ("has_web_area", False), ("textareas", 0),
                              ("expected_visible", False), ("rect", [0, 0, 0, 1])):
             with self.subTest(field=field), self.assertRaises(RuntimeError):
                 smoke.assert_window(dict(row, **{field: value}), 123, require_result=True)
+
+    def test_rendered_window_must_have_our_web_origin_shell_pid_and_window_owner(self):
+        row = self.native_row()
+        for field, value in (("web_urls", ["http://127.0.0.1:9999/?shell=desktop&pid=123"]),
+                             ("web_urls", ["http://127.0.0.1:4567/?shell=web&pid=123"]),
+                             ("web_urls", ["http://127.0.0.1:4567/?shell=desktop&pid=124"]),
+                             ("window_owner_pid", 124), ("window_count", 2),
+                             ("window_id", 0), ("case_verified", False)):
+            with self.subTest(field=field, value=value), self.assertRaises(RuntimeError):
+                smoke.assert_window(dict(row, **{field: value}), 123)
+
+    def test_send_waits_for_exact_unique_draft_and_enabled_unique_button(self):
+        row = dict(self.native_row(), area_values=["exact draft"], send_enabled=True)
+        smoke.assert_draft(row, "exact draft")
+        for field, value in (("area_values", ["partial"]), ("area_values", ["exact draft", "exact draft"]),
+                             ("send_enabled", False), ("send_count", 2), ("textareas", 2)):
+            with self.subTest(field=field), self.assertRaises(RuntimeError):
+                smoke.assert_draft(dict(row, **{field: value}), "exact draft")
+
+    def test_native_dispatch_uses_prepared_helper_and_remaining_budget_without_global_input(self):
+        context = dict(self.context, ax=self.root / "prepared-helper", origin="http://127.0.0.1:4567")
+        row = self.native_row()
+        clock = mock.Mock(return_value=10)
+        deadline = smoke.Deadline(1, clock=clock)
+        clock.return_value = 10.75
+        with mock.patch.object(smoke, "assert_process", return_value=self.context["app"] / "Contents/MacOS/zwai"), \
+                mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                mock.patch.object(smoke.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(row), "")) as run:
+            smoke.native_snapshot(context, deadline)
+        command = run.call_args.args[0]
+        self.assertEqual(command[0], str(context["ax"]))
+        self.assertNotIn("/usr/bin/osascript", command)
+        self.assertIn(context["case_id"], command)
+        self.assertIn(context["origin"], command)
+        self.assertAlmostEqual(run.call_args.kwargs["timeout"], .25)
+
+    def test_preparation_reuses_verified_source_and_binary_hash_and_runtime_refuses_drift(self):
+        output = self.root / "prepared-helper"
+        def compile_helper(command, **kwargs):
+            Path(command[command.index("-o")+1]).write_bytes(b"offline compile fixture")
+            return subprocess.CompletedProcess(command, 0)
+        with mock.patch.object(smoke.subprocess, "run", side_effect=compile_helper) as compile_run:
+            first = smoke.prepare_helper(output)
+            second = smoke.prepare_helper(output)
+            self.assertEqual(compile_run.call_count, 1)
+            self.assertEqual(first["source_sha256"], second["source_sha256"])
+        smoke.validate_helper(output)
+        output.write_bytes(b"unverified replacement")
+        with self.assertRaisesRegex(RuntimeError, "helper"):
+            smoke.validate_helper(output)
+
+    def test_preparation_never_attributes_a_changed_source_to_an_older_compile(self):
+        source = self.root / "native_macos_ax.m"
+        source.write_text("frozen source")
+        output = self.root / "prepared-helper"
+        def compile_then_edit(command, **kwargs):
+            self.assertEqual(Path(command[-3]).read_text(), "frozen source")
+            source.write_text("new source during compilation")
+            Path(command[command.index("-o")+1]).write_bytes(b"binary from frozen source")
+            return subprocess.CompletedProcess(command, 0)
+        with mock.patch.object(smoke, "AX_SOURCE", source), \
+                mock.patch.object(smoke.subprocess, "run", side_effect=compile_then_edit):
+            with self.assertRaisesRegex(RuntimeError, "source changed"):
+                smoke.prepare_helper(output)
+        self.assertFalse(output.exists())
+
+    def test_preparation_rebuilds_after_source_or_flag_receipts_drift(self):
+        source = self.root / "native_macos_ax.m"
+        source.write_text("first source")
+        output = self.root / "prepared-helper"
+        def compile_helper(command, **kwargs):
+            Path(command[-1]).write_bytes(Path(command[-3]).read_bytes())
+            return subprocess.CompletedProcess(command, 0)
+        with mock.patch.object(smoke, "AX_SOURCE", source), \
+                mock.patch.object(smoke.subprocess, "run", side_effect=compile_helper) as compile_run:
+            smoke.prepare_helper(output)
+            source.write_text("changed source")
+            with self.assertRaisesRegex(RuntimeError, "helper"):
+                smoke.validate_helper(output)
+            smoke.prepare_helper(output)
+            manifest = smoke.helper_manifest_path(output)
+            row = json.loads(manifest.read_text())
+            row["flags"] = ["unverified compiler flags"]
+            manifest.write_text(json.dumps(row))
+            with self.assertRaisesRegex(RuntimeError, "helper"):
+                smoke.validate_helper(output)
+            smoke.prepare_helper(output)
+            self.assertEqual(compile_run.call_count, 3)
+            self.assertEqual(output.read_bytes(), b"changed source")
+
+    def test_fill_is_single_and_send_happens_only_after_exact_draft(self):
+        deadline = smoke.Deadline(2)
+        sequence = []
+        def native(context, shared, action="snapshot", message="", **kwargs):
+            self.assertIs(shared, deadline)
+            sequence.append(action)
+            return {"filled": True} if action == "fill" else {"submitted": True}
+        drafts = iter((dict(self.native_row(), area_values=["partial"], send_enabled=False),
+                       dict(self.native_row(), area_values=["exact draft"], send_enabled=True)))
+        def window(context, shared, **kwargs):
+            self.assertIs(shared, deadline)
+            sequence.append("draft")
+            return next(drafts)
+        with mock.patch.object(smoke, "native_snapshot", side_effect=native), \
+                mock.patch.object(smoke, "wait_window", side_effect=window), \
+                mock.patch.object(deadline, "pause"):
+            smoke.submit_native(self.context, deadline, "exact draft")
+        self.assertEqual(sequence, ["fill", "draft", "draft", "send"])
+        row = json.loads((self.context["evidence"] / "smoke-window-draft.json").read_text())
+        self.assertEqual(row["area_values"], ["exact draft"])
+
+    def test_native_helper_source_contains_only_pid_targeted_keyboard_posts(self):
+        source = smoke.AX_SOURCE.read_text()
+        self.assertIn("CGEventPostToPid(pid, down)", source)
+        self.assertNotIn("CGEventPost(", source)
+        self.assertNotIn("CGEventPostToPSN", source)
+        self.assertLess(source.index('"kern.hv_vmm_present"'), source.index("if (!AXIsProcessTrusted())"))
+        self.assertLess(source.index("if (!validOrigin(origin)) return fail"), source.index("if (!AXIsProcessTrusted())"))
+
+    @unittest.skipUnless(sys.platform == "darwin" and Path("/usr/bin/xcrun").exists(), "macOS SDK required for pure helper checks")
+    def test_direct_helper_origin_and_case_parser_without_accessibility_or_gui_calls(self):
+        source = self.root / "helper-pure-checks.m"
+        source.write_text('#define main native_macos_helper_main\n#include ' + json.dumps(str(smoke.AX_SOURCE.resolve())) + '''
+#undef main
+int main(void) { @autoreleasepool {
+    if (!pageMatches(@"http://127.0.0.1:4567/?shell=desktop&pid=123", @"http://127.0.0.1:4567", 123)) return 1;
+    if (pageMatches(@"https://example.invalid:443/?shell=desktop&pid=123", @"https://example.invalid:443", 123)) return 2;
+    if (pageMatches(@"http://127.0.0.1:4567/other?shell=desktop&pid=123", @"http://127.0.0.1:4567", 123)) return 3;
+    if (pageMatches(@"http://127.0.0.1:4567/?shell=desktop&pid=124", @"http://127.0.0.1:4567", 123)) return 4;
+    if (!ownsCase(getpid(), @"pure-parser-fixture") || ownsCase(getpid(), @"wrong-case")) return 5;
+    if (![normalized(@"a\\n  b") isEqualToString:@"a b"]) return 6;
+    return 0;
+} }
+''')
+        binary = self.root / "helper-pure-checks"
+        subprocess.run(["/usr/bin/xcrun", "clang", *smoke.AX_FLAGS, str(source), "-o", str(binary)],
+                       capture_output=True, text=True, check=True, timeout=30)
+        environment = dict(os.environ, ZWAI_NATIVE_CASE_ID="pure-parser-fixture")
+        result = subprocess.run([str(binary)], capture_output=True, text=True, env=environment, timeout=5)
+        self.assertEqual(result.returncode, 0, "headless parser/identity contract failed with code " + str(result.returncode))
 
     def test_screenshot_must_decode_dimensions_and_not_accept_magic_bytes(self):
         path = self.root / "image.png"

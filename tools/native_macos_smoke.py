@@ -15,6 +15,7 @@ import plistlib
 import re
 import struct
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -25,6 +26,9 @@ import zlib
 _spec = importlib.util.spec_from_file_location("native_macos_case", Path(__file__).with_name("native_macos_case.py"))
 runner = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(runner)
+AX_SOURCE = Path(__file__).with_name("native_macos_ax.m")
+AX_FLAGS = ["-fobjc-arc", "-mmacosx-version-min=13.0", "-framework", "Foundation",
+            "-framework", "AppKit", "-framework", "ApplicationServices", "-framework", "CoreGraphics"]
 
 
 class Deadline:
@@ -43,6 +47,54 @@ class Deadline:
 
     def pause(self, stage):
         time.sleep(min(.1, self.remaining(stage)))
+
+
+def helper_manifest_path(binary):
+    return Path(str(binary) + ".json")
+
+
+def validate_helper(binary):
+    binary = binary.resolve(strict=True)
+    try:
+        manifest = json.loads(helper_manifest_path(binary).read_text())
+        if (not isinstance(manifest, dict) or manifest.get("schema_version") != 1 or manifest.get("source_name") != AX_SOURCE.name
+                or manifest.get("source_sha256") != hashlib.sha256(AX_SOURCE.read_bytes()).hexdigest()
+                or manifest.get("binary_sha256") != hashlib.sha256(binary.read_bytes()).hexdigest()
+                or manifest.get("compiler") != "/usr/bin/xcrun clang" or manifest.get("flags") != AX_FLAGS
+                or not os.access(binary, os.X_OK)):
+            raise ValueError("helper source, binary or build flags differ from preparation")
+    except (OSError, ValueError, TypeError) as error:
+        raise RuntimeError("prepared native helper identity is invalid; prepare it before the case") from error
+    return dict(manifest, binary=str(binary), current_source=str(AX_SOURCE.resolve()))
+
+
+def prepare_helper(binary):
+    """Compile only in preparation; runtime never installs or builds anything."""
+    binary = binary.absolute()
+    try:
+        return validate_helper(binary)
+    except (OSError, RuntimeError):
+        pass
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    source_bytes = AX_SOURCE.read_bytes()
+    with tempfile.TemporaryDirectory(prefix=".native-ax-", dir=binary.parent) as temporary:
+        source = Path(temporary) / AX_SOURCE.name
+        source.write_bytes(source_bytes)
+        candidate = Path(temporary) / "native-macos-ax"
+        subprocess.run(["/usr/bin/xcrun", "clang", *AX_FLAGS, str(source), "-o", str(candidate)],
+                       check=True, timeout=120)
+        if AX_SOURCE.read_bytes() != source_bytes:
+            raise RuntimeError("native helper source changed during preparation; candidate was not published")
+        candidate.chmod(0o755)
+        receipt = dict(schema_version=1, source_name=AX_SOURCE.name,
+                       source_sha256=hashlib.sha256(source_bytes).hexdigest(),
+                       binary_sha256=hashlib.sha256(candidate.read_bytes()).hexdigest(),
+                       compiler="/usr/bin/xcrun clang", flags=AX_FLAGS)
+        receipt_path = helper_manifest_path(candidate)
+        runner.save_json(receipt_path, receipt)
+        os.replace(candidate, binary)
+        os.replace(receipt_path, helper_manifest_path(binary))
+    return validate_helper(binary)
 
 
 def case_context(environment):
@@ -119,66 +171,22 @@ def wait_engine(context, deadline):
             deadline.pause("engine readiness")
 
 
-# System Events accesses only the exact case-owned PID, after require_guest.
-# A rendered WKWebView and composer are required before sending real key events.
-NATIVE_SCRIPT = r'''
-function run(argv) {
-  const pid=Number(argv[0]), action=argv[1], message=argv[2], expected=argv[3];
-  const se=Application('System Events');
-  const matches=se.applicationProcesses.whose({unixId:pid})();
-  if (matches.length===0) return JSON.stringify({ready:false});
-  const p=matches[0];
-  p.frontmost=true;
-  const windows=p.windows();
-  if (windows.length===0) return JSON.stringify({ready:false});
-  const w=windows[0];
-  try { w.actions.byName('AXRaise').perform(); } catch (_) {}
-  if (w.sheets().length!==0) throw Error('case window has a modal sheet');
-  const pos=w.position(), size=w.size(), texts=[], roles={}, all=w.entireContents();
-  let area=null, expectedVisible=false;
-  for (let i=0;i<all.length;i++) {
-    const e=all[i]; let role='';
-    try {role=e.role();} catch (_) {continue;}
-    roles[role]=(roles[role]||0)+1;
-    if (role==='AXTextArea' && !area) area=e;
-    if (!['AXStaticText','AXHeading','AXTextArea','AXButton','AXLink'].includes(role)) continue;
-    let text='';
-    try {text=String(e.value()||'');} catch (_) {}
-    if (!text) try {text=String(e.name()||'');} catch (_) {}
-    if (text) texts.push(text);
-    if (expected && text.replace(/\s+/g,' ').includes(expected)) {
-      try { e.actions.byName('AXScrollToVisible').perform(); } catch (_) {}
-      try {
-        const ep=e.position(), es=e.size();
-        expectedVisible=expectedVisible || (es[0]>0 && es[1]>0 && ep[0]<pos[0]+size[0] &&
-          ep[1]<pos[1]+size[1] && ep[0]+es[0]>pos[0] && ep[1]+es[1]>pos[1]);
-      } catch (_) {}
-    }
-  }
-  const ready=!!roles.AXWebArea && !!area;
-  if (action==='submit' && ready) {
-    if (!p.frontmost()) throw Error('case window did not take keyboard focus');
-    area.attributes.byName('AXFocused').value=true;
-    se.keystroke(message);
-    se.keyCode(36);
-  }
-  return JSON.stringify({ready:ready,pid:p.unixId(),title:w.name(),frontmost:p.frontmost(),
-    rect:[pos[0],pos[1],size[0],size[1]],has_web_area:!!roles.AXWebArea,
-    textareas:roles.AXTextArea||0,expected_visible:expectedVisible,texts:texts,roles:roles,
-    submitted:action==='submit'&&ready});
-}
-'''
-
-
 def native_snapshot(context, deadline, action="snapshot", message="", expected=""):
-    assert_process(context, context["app_pid"], "desktop")
-    result = subprocess.run(["/usr/bin/osascript", "-l", "JavaScript", "-e", NATIVE_SCRIPT,
-                             str(context["app_pid"]), action, message, expected],
+    executable = assert_process(context, context["app_pid"], "desktop")
+    identity = validate_helper(context["ax"])
+    if context.get("ax_identity", identity)["binary_sha256"] != identity["binary_sha256"]:
+        raise RuntimeError("native helper changed during the case")
+    result = subprocess.run([str(context["ax"]), str(context["app_pid"]), action,
+                             context["case_id"], str(executable.parent.parent.parent), context["origin"],
+                             message if action in ("fill", "send") else expected],
                             capture_output=True, text=True,
-                            timeout=min(4, deadline.remaining("native accessibility")))
+                            timeout=min(8, deadline.remaining("native accessibility")))
     if result.returncode:
-        raise RuntimeError("guest native Accessibility/window check failed: " + result.stderr.strip()[:500])
-    return json.loads(result.stdout)
+        raise RuntimeError("guest native Accessibility/window check failed: " + (result.stdout + result.stderr).strip()[:500])
+    row = json.loads(result.stdout)
+    if row.get("origin") != context["origin"] or row.get("bundle") != str(executable.parent.parent.parent):
+        raise RuntimeError("native helper returned another bundle or origin")
+    return row
 
 
 def assert_window(row, pid, require_result=False):
@@ -187,8 +195,29 @@ def assert_window(row, pid, require_result=False):
             or row.get("has_web_area") is not True or row.get("textareas", 0) < 1
             or len(rect) != 4 or not all(isinstance(n, (int, float)) and math.isfinite(n) for n in rect)
             or rect[2] <= 0 or rect[3] <= 0
+            or row.get("case_verified") is not True or row.get("window_count") != 1
+            or type(row.get("window_id")) is not int or row["window_id"] <= 0
+            or row.get("window_owner_pid") != pid or row.get("screen_capture_allowed") is not True
+            or row.get("windows") != [dict(id=row["window_id"], owner_pid=pid)]
             or (require_result and row.get("expected_visible") is not True)):
         raise RuntimeError("native window lacks this case's rendered page or visible final result")
+    origin = engine_origin(row.get("origin", ""))
+    urls = row.get("web_urls", [])
+    if not urls:
+        raise RuntimeError("native window has no bound webview origin")
+    for value in urls:
+        url = urllib.parse.urlsplit(value)
+        query = urllib.parse.parse_qs(url.query)
+        if (url.scheme + "://" + url.netloc != origin or query.get("shell") != ["desktop"]
+                or query.get("pid") != [str(pid)] or url.path not in ("", "/")
+                or url.username or url.password or url.fragment):
+            raise RuntimeError("native webview origin, shell or PID belongs to another client")
+
+
+def assert_draft(row, message):
+    if (row.get("textareas") != 1 or row.get("area_values") != [message]
+            or row.get("send_count") != 1 or row.get("send_enabled") is not True):
+        raise RuntimeError("native draft is not exact or its unique Send button is not enabled")
 
 
 def wait_window(context, deadline, expected=""):
@@ -199,6 +228,23 @@ def wait_window(context, deadline, expected=""):
             assert_window(row, context["app_pid"], require_result=bool(expected))
             return row
         deadline.pause("native rendered result" if expected else "native composer")
+
+
+def submit_native(context, deadline, message):
+    filled = native_snapshot(context, deadline, action="fill", message=message)
+    if filled.get("filled") is not True:
+        raise RuntimeError("native composer did not accept the fill action")
+    while True:
+        draft = wait_window(context, deadline)
+        try:
+            assert_draft(draft, message)
+            break
+        except RuntimeError:
+            deadline.pause("exact native draft and enabled Send")
+    runner.save_json(context["evidence"] / "smoke-window-draft.json", draft)
+    sent = native_snapshot(context, deadline, action="send", message=message)
+    if sent.get("submitted") is not True:
+        raise RuntimeError("native composer did not accept the single Send action")
 
 
 def wait_trace(origin, context, message, deadline):
@@ -338,6 +384,8 @@ def png_dimensions(path):
 def run_smoke(context):
     deadline = Deadline(context["timeout"])
     runner.require_guest()
+    context["ax_identity"] = validate_helper(context["ax"])
+    runner.save_json(context["evidence"] / "smoke-helper.json", context["ax_identity"])
     phases = {}
     executable = assert_process(context, context["app_pid"], "desktop")
     binary_hash = hashlib.sha256()
@@ -349,13 +397,14 @@ def run_smoke(context):
     with (executable.parent.parent / "Info.plist").open("rb") as stream:
         bundle = plistlib.load(stream)
     origin, lease = wait_engine(context, deadline)
+    context["origin"] = origin
     phases["engine_ready_seconds"] = deadline.clock() - deadline.started
     before = wait_window(context, deadline)
     runner.save_json(context["evidence"] / "smoke-window-before.json", before)
     message = "Inspect this workspace and report findings. native-smoke-" + context["case_id"]
-    submitted = native_snapshot(context, deadline, action="submit", message=message)
-    if not submitted.get("submitted"):
-        raise RuntimeError("native composer did not accept the smoke submission")
+    if request_json(origin, "/api/threads", deadline).get("threads") != []:
+        raise RuntimeError("native smoke case must start without existing conversations")
+    submit_native(context, deadline, message)
     phases["native_submitted_seconds"] = deadline.clock() - deadline.started
     trace, fragment = wait_trace(origin, context, message, deadline)
     outputs = assert_workspace_outputs(origin, context, trace, deadline)
@@ -363,7 +412,7 @@ def run_smoke(context):
     final = wait_window(context, deadline, expected=fragment)
     runner.save_json(context["evidence"] / "smoke-window-final.json", final)
     image = context["evidence"] / "smoke-window.png"
-    result = subprocess.run(["/usr/sbin/screencapture", "-x", "-R" + ",".join(str(round(n)) for n in final["rect"]), str(image)],
+    result = subprocess.run(["/usr/sbin/screencapture", "-x", "-l", str(final["window_id"]), str(image)],
                             capture_output=True, text=True, timeout=deadline.remaining("native window screenshot"))
     if result.returncode:
         raise RuntimeError("native window screenshot failed: " + result.stderr.strip()[:500])
@@ -375,15 +424,24 @@ def run_smoke(context):
                 bundle_version=bundle.get("CFBundleShortVersionString"), bundle_build=bundle.get("CFBundleVersion"),
                 source_sha="unknown; requires external candidate provenance", thread_id=trace["turn"]["thread_id"],
                 turn_id=trace["turn"]["id"], result_fragment=fragment, screenshot=str(image),
-                screenshot_dimensions=dimensions, screenshot_rect_points=final["rect"], worker_outputs=outputs, phases=phases)
+                screenshot_dimensions=dimensions, screenshot_window_id=final["window_id"],
+                screenshot_owner_pid=final["window_owner_pid"], screenshot_rect_points=final["rect"],
+                native_helper=context["ax_identity"], worker_outputs=outputs, phases=phases)
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.parse_args(argv)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--prepare-ax", type=Path, help="prepare/reuse the tracked direct AX helper before starting a case")
+    mode.add_argument("--ax", type=Path, help="prepared direct AX helper, with its adjacent .json identity receipt")
+    args = parser.parse_args(argv)
     context = None
     try:
+        if args.prepare_ax is not None:
+            print(json.dumps(prepare_helper(args.prepare_ax)))
+            return 0
         context = case_context(os.environ)
+        context["ax"] = args.ax.resolve(strict=True)
         receipt = run_smoke(context)
         runner.save_json(context["evidence"] / "smoke.json", receipt)
         print(json.dumps(receipt))

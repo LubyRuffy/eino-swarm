@@ -23,8 +23,17 @@ python3 tools/native_macos_case.py \
 
 ### Daily native round: 60 seconds including cleanup
 
-With `ci-macOS` already running and the identified candidate already built and
-transferred, run the repository's offline smoke scenario in the guest:
+With the identified candidate, prepare the direct Accessibility helper once on
+macOS (host builds are safe; this command opens no window):
+
+```bash
+make native-smoke-prepare
+```
+
+Transfer the helper and its adjacent JSON receipt with the tracked harness
+sources, retaining the same `tools/` and `bin/` layout. With `ci-macOS` already
+running and those prepared inputs present, run the offline smoke scenario in
+the guest:
 
 ```bash
 make native-smoke APP=/absolute/candidate/zwai.app EVIDENCE=/absolute/private/new-round
@@ -33,9 +42,14 @@ make native-smoke APP=/absolute/candidate/zwai.app EVIDENCE=/absolute/private/ne
 This single command replaces separate manual preparation, API polling, window
 inspection and cleanup steps. It uses fresh case state, waits for actual
 readiness and completion rather than fixed startup sleeps, verifies a real
-offline worker/tool run and Trace, inspects the native window's accessibility
-content, and saves a window screenshot. Missing accessibility/screenshot access
+offline worker/tool run and Trace, inspects the native window through direct
+Accessibility calls, and saves its PID-owned window screenshot. The helper
+binds the WebView to this case's origin, desktop shell and PID; input must read
+back exactly and the unique Send control must be enabled before it is pressed.
+This avoids one System Events request per AX attribute. Missing accessibility/screenshot access
 is a failed native check. HTTP success alone does not accept the window.
+The scenario verifies the helper's source, build arguments and binary hash from
+its preparation receipt; missing or stale inputs fail without cold compilation.
 
 The runner's default `--budget 60` counts guest checks, isolated copy/preparation,
 launch, scenario, cleanup and receipt writing. `--timeout` remains the scenario's
@@ -47,7 +61,7 @@ Cancellation and cleanup failures retain their own nonzero results. Cleanup
 always runs to completion or reports failure, even after the deadline; the
 budget is a success gate, not permission to leave running processes behind.
 
-Build and first transfer are preparation costs outside this daily-round target;
+App/helper build and first transfer are preparation costs outside this daily-round target;
 retain their source SHA, candidate executable/ZIP SHA-256 and elapsed time
 separately, then bind the smoke receipt's executed binary hash to that candidate.
 An app path or a version label alone is not build provenance. Reuse the same
@@ -129,10 +143,11 @@ checkout command. The scenario's command and descendants remain case-owned.
 refusal, serial ownership, success/error/timeout cleanup and unrelated process
 preservation. These use headless child fixtures; they do not accept a native
 window. A real guest window and cleanup receipt are separate evidence.
-`tools/test_native_macos_smoke.py` checks the shared deadline, case/loopback
-identity, worker-specific tool receipts, unchanged workspace bytes, visible-result
-requirements and PNG pixel completeness. These offline checks and JXA syntax
-validation do not prove guest Accessibility access or native rendering.
+`tools/test_native_macos_smoke.py` checks helper preparation/identity, the shared
+deadline, case/loopback identity, worker-specific tool receipts, unchanged
+workspace bytes, draft/Send checks, visible-result requirements and PNG pixel
+completeness. Offline checks and helper compilation do not prove guest
+Accessibility access or native rendering.
 
 ## Local startup readiness (F-110 / C-001 / C-027)
 

@@ -1285,6 +1285,13 @@ accessibility checks and a window screenshot into one guest command. The runner
 records phase/total timings under a default 60-second round budget, reserving
 time for cleanup and refusing success after budget expiry. Build/first transfer
 and explicitly longer recovery cases retain separate scopes and budgets.
+`make native-smoke-prepare` compiles `tools/native_macos_ax.m` alongside the
+candidate, recording source/build/binary identity. The timed scenario validates
+that receipt and invokes direct AX calls rather than per-attribute System Events
+requests. The helper owns no application lifecycle: it checks the case PID and
+WebView origin before observing, filling or pressing the unique enabled Send
+control; the Python scenario retains Trace, actual file bytes and screenshot
+assertions, and the runner retains shutdown/data cleanup.
 
 The iOS source Info.plist retains the authorized application-wide export declaration. Preflight reads it before an archive, and IPA verification checks the exported field matches. Frozen sources without that field use an exact private source/build confirmation. Source, IPA and exact receipt conflicts fail the platform; ordinary version increments do not require repeated classification questions. Encryption use or implementation changes require reassessment. See `tools/test_release_ios_compliance.py`.
 

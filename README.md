@@ -991,9 +991,11 @@ Use the [native case runner](docs/TESTING.md#native-desktop-isolation-f-430--c-0
 it refuses a physical host and closes case-owned processes before removing
 their private home/cache and test data. Keep the user's running desktop and normal data untouched.
 For a daily offline native round, build/transfer the identified candidate once,
+prepare its AX helper with `make native-smoke-prepare`,
 then run `make native-smoke APP=/absolute/candidate/zwai.app EVIDENCE=/absolute/private/new-round`
 inside the guest. Its 60-second budget includes preparation, native behavior
 checks, evidence and cleanup; `cleanup.json` reports stage and total timings.
+The timed scenario validates the prepared helper and performs no compilation.
 Cold builds and long recovery scenarios have separate explicit budgets; see
 the [daily round procedure](docs/TESTING.md#daily-native-round-60-seconds-including-cleanup).
 

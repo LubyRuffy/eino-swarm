@@ -35,6 +35,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-031`: native smoke prepares a source-identified direct AX helper
+  with the candidate, then validates it during timed rounds without compilation.
+  The helper verifies the case WebView, exact input and unique enabled Send;
+  screenshots are bound to the case's window owner. This removes per-attribute
+  System Events requests from the normal round.
+
 - `F-430`, `C-010`: native acceptance recovery instructions now require executing the audit's next action and trying an available isolated native control path when one channel fails. Already authorized routine recovery does not wait for renewed approval; accepted source/package evidence stays bound to its actual scope when main advances.
 
 - `F-130`, `F-150`, `C-009`, `C-027`: a failed scheduled check hands unfinished workers to their executable standing goal or active same-thread wake instead of treating the manager error as the end of every worker. The failed turn/run remain errors and unread; ordinary model rejections and exhausted transient retries do not automatically block the goal or immediately start another goal turn. A durable `workers_retained` receipt precedes the error and gates restoration of a failed check's workers; restart also requires current ownership and preserves the manager's failed outcome. No owner, human Stop, context-budget exhaustion and the worker-watchdog failure limit retain their stop boundaries (Issue #89).

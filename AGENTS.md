@@ -24,6 +24,7 @@ make release VERSION=x.y.z         # only pending required Mac/Android/iOS platf
 make release-check VERSION=x.y.z   # read-only source/signing/remote preflight
 python3 tools/audit_macos_acceptance.py --observation <private.json> # offline native recovery decision
 make native-smoke APP=/absolute/candidate/zwai.app EVIDENCE=/absolute/private/new-round # ci-macOS only, 60s including cleanup
+make native-smoke-prepare          # build/identify the native AX helper once, before timed rounds
 make mobile-ios-release VERSION=x.y.z # resume only this TestFlight batch
 go run ./mobile/scripts/genicons.go  # paint appicon.png into iOS/Android launcher slots
 ```
