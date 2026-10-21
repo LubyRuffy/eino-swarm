@@ -571,6 +571,9 @@ export function reduceEvent(
 
     case "finished": {
       const child = touchAgent(next, ev.agent_id, ev.role)
+      // Cancelled calls can report after cleanup. Only an explicit resume
+      // may replace that stopped state; the receipt remains in Trace.
+      if (child.status === "cancelled") break
       child.status = ev.err ? "failed" : "done"
       child.endedAt = ev.created_at
       child.result = ev.text

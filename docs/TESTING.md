@@ -34,6 +34,14 @@ inventing work, changing the completed manager or advancing its future wake.
 `frontend/src/lib/transcript-stop.test.ts`,
 `frontend/src/components/app/panel-stop.test.tsx` and the restart UI E2E cover
 cleanup/interruption, stopped grouping, terminal ordering and persisted replay.
+The stop reducer regressions deliver cancellation and successful `finished`
+events after `cleanup` or `interrupted`, preserving stopped status, activity and
+stop time in live, full-history and roster replay. Explicit `spawned` resume
+then allows a new `finished` to complete normally. The real Stop E2E in
+`frontend/e2e/restart.spec.ts` waits for both worker `finished` events to be
+persisted before checking the stopped roster and reloading, so a fast UI check
+cannot miss the late-completion race. Those original events remain in Trace;
+these checks only constrain the frontend's derived worker state.
 
 `cmd/zwai/engine_restart_acceptance_test.go` builds real race-enabled binaries,
 starts an old engine and a new shell on one temporary data directory, and

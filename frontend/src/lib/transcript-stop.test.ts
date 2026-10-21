@@ -23,6 +23,59 @@ function terminal(kind: string, seq: number, err?: string): SwarmEvent {
 }
 
 describe("stopping unfinished workers", () => {
+  describe.each(["full", "roster"] as const)("late worker receipts in %s history", (mode) => {
+    // A cancelled model call can finish after cleanup and the turn's terminal
+    // event. Neither that receipt nor replay may rewrite the user's Stop.
+    it.each([undefined, "swarm: agent worker-1 cancelled: context canceled"])("keeps Stop authoritative after late finished (%s)", (err) => {
+      const stopped = [
+        ...events(), terminal("user_stop_requested", 8),
+        terminal("cleanup", 9), terminal("error", 10, "interrupted"),
+      ]
+      const late = {
+        ...terminal("finished", 11, err), agent_id: "worker-1",
+        text: err ? undefined : "Late result.", created_at: "2026-10-19T01:00:02Z",
+      }
+      const reduce = (history: SwarmEvent[]) => history.reduce((state, event) => reduceEvent(state, event, mode), emptyTranscript())
+      const live = reduceEvent(reduce(stopped), late, mode)
+      const replay = reduce([...stopped, late])
+      expect(replay).toEqual(live)
+      for (const state of [live, replay]) {
+        expect(state.agents["worker-1"]).toMatchObject({
+          status: "cancelled", activity: "stopped", endedAt: "2026-10-19T01:00:01Z",
+        })
+        expect(state.agents["worker-1"].error).toBeUndefined()
+        expect(state.agents["worker-1"].errorSource).toBeUndefined()
+        expect(liveWorkers(state)).toBe(0)
+      }
+    })
+
+    it.each([undefined, "worker-specific failure"])("allows an explicitly resumed worker to finish (%s)", (err) => {
+      const history = [
+        ...events(), terminal("cleanup", 8), terminal("error", 9, "interrupted"),
+        { ...terminal("spawned", 10), agent_id: "worker-1", turn_id: "next-turn", role: "worker" },
+        { ...terminal("finished", 11, err), agent_id: "worker-1", turn_id: "next-turn", text: err ? undefined : "Verified after resume." },
+      ]
+      const state = history.reduce((state, event) => reduceEvent(state, event, mode), emptyTranscript())
+      expect(state.agents["worker-1"]).toMatchObject({
+        status: err ? "failed" : "done", activity: err ? "failed" : "done",
+      })
+      expect(state.agents["worker-1"].error).toBe(err)
+      expect(state.agents["worker-1"].result).toBe(err ? undefined : "Verified after resume.")
+    })
+
+    it("preserves workers that already completed or failed before cleanup", () => {
+      const history = [
+        ...events(),
+        { ...terminal("finished", 8, "worker-specific failure"), agent_id: "worker-2" },
+        terminal("cleanup", 9), terminal("error", 10, "interrupted"),
+      ]
+      const state = history.reduce((state, event) => reduceEvent(state, event, mode), emptyTranscript())
+      expect(state.agents["worker-1"].status).toBe("cancelled")
+      expect(state.agents["worker-2"]).toMatchObject({ status: "failed", error: "worker-specific failure" })
+      expect(state.agents["worker-3"]).toMatchObject({ status: "done", result: "Verified result." })
+    })
+  })
+
   // Cleanup is evidence that execution stopped, never evidence that its task succeeded.
   it.each(["error", "done"])("keeps cleanup workers stopped after %s and persisted replay", (kind) => {
     const history = [...events(), terminal("cleanup", 8), terminal(kind, 9, kind === "error" ? "interrupted" : undefined)]
