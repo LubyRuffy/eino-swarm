@@ -45,7 +45,9 @@ func TestScheduledRuntimeBindsItsClaimBeforeTheFirstModelTool(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { unblock(); _ = db.Callback().Update().Remove(name) })
+	// This private DB owns the callback until close; a finished turn can
+	// still be updating it when cleanup starts.
+	t.Cleanup(unblock)
 	sub := e.Subscribe(thread)
 	defer sub.Close()
 	type outcome struct {

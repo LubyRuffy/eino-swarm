@@ -1148,6 +1148,11 @@ persisted, binding failure must not launch a model, and a second schedule lookup
 failure must not report a successful mutation. Restored goal-bearing fires use
 the same checked ownership boundary; independent legacy no-goal reports retain
 their compatibility path.
+The scheduled-start fixture leaves its update callback registered for its
+private database's lifetime and only releases the gate during cleanup. A
+terminal turn status or idle runtime does not join its final `TouchThread`
+write; unregistering a Gorm callback then can race an active update. Repeat
+the regression with `go test -race ./internal/engine -run '^TestScheduledRuntimeBindsItsClaimBeforeTheFirstModelTool$' -count=20`.
 `TestCatchUpStopsWhenTheWatchIsCancelled` /
 `TestWatchCancelSkipsReady` /
 `TestWatchReplaysAfterALaggedSubscriber` are why a phone `unwatch` / second
