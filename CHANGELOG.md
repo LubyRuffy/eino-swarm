@@ -13,6 +13,14 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-430`, `C-031`: native desktop acceptance has a guest-only case runner with
+  serial ownership, fresh app/home/cache/data/workspace per case, bounded process shutdown
+  and cleanup receipts on success, failure, timeout and cancellation. Physical
+  hosts and cases following incomplete cleanup are refused. Native tests use
+  UTM `ci-macOS` and do not take over the user's host desktop.
+- `F-430`, `C-010`, `C-031`: add a read-only checkout delivery check for fix ancestry and optional served frontend asset hashes, preserving unrelated edits. Checkout-launch behavior is accepted in `ci-macOS` from an identified copy of that exact source and dirty content; host delivery and guest native behavior are separate results.
+- `F-175`, `C-030`, `C-012`: providers can explicitly select Responses and configure cloud built-in tools (`web_search`, `web_search_preview`, `file_search`, `code_interpreter`) with their parameters in Settings or YAML/API. Cloud tools coexist with local functions, preserve clickable sources and retain attributed Trace receipts without local execution. Existing providers keep Chat Completions with no cloud tools. Invalid drafts pause automatic saving.
+
 - `F-140`, `C-028`: sent image thumbnails in desktop and Web conversations open the selected saved image in a window-fitting preview. Mouse and keyboard activation, loading/error states, Escape/backdrop/Close dismissal and return focus are supported after sending and reloading; closing the preview keeps the running task going.
 - `F-170`, `C-009`: each PC model provider has an editable first-byte timeout (default 30 seconds), independent of the existing stream idle timeout. Older settings clients preserve a saved first-byte value when omitting the new field.
 
@@ -36,6 +44,8 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-170`, `C-009`: a provider's stream idle timeout no longer shortens its first-byte wait when set below 30 seconds. Set `first_byte_timeout_seconds` explicitly to retain a shorter initial wait; older files otherwise use the 30-second default.
 - `F-130`, `C-019`: a new forked worker receives non-System manager conversation as historical context. Manager System/personality and orchestration instructions are excluded; the worker retains its own assignment and tools. Same-worker resume and the manager history are unchanged.
 
+- `F-170`, `C-009`: a provider's stream idle timeout no longer shortens its first-byte wait when set below 30 seconds. Set `first_byte_timeout_seconds` explicitly to retain a shorter initial wait; older files otherwise use the 30-second default.
+
 - **Breaking** `F-120`, `C-026`: non-empty working directories keep their path whitespace through save and runtime resolution. Callers must send the intended absolute path without decorative padding; all-whitespace input still selects managed storage. Previously stored normalized paths require no migration.
 
 - `F-110`, `F-130`, `F-150`, `C-001`, `C-027`: replacing an engine now automatically checkpoints active/background agents and resumes unfinished work within one 30s launch budget, without a terminal confirmation. Worker summaries remain best effort and never count as task completion; histories, unread messages, human pauses and timeout budgets survive handoff. Checkpoint failures explicitly stop replacement. Older engines use bounded event-based recovery.
@@ -45,6 +55,18 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-190`, `C-024`: desktop updates show downloaded bytes and a percentage when the installer size is known, then installation/restart stages. Check and install failures display red alerts; installation retry retains the confirmed version and retries it directly. A failed progress read does not end a pending installation. Installer bodies use a separate bounded download timeout instead of the metadata request's 30-second limit.
+
+- `F-430`, `C-031`: native-case process inspection bounds Darwin `EIO`/`ENOMEM`
+  retries to three complete size/read attempts, 10 ms apart. Persistent or
+  unknown errors remain failures with PID/errno diagnostics that omit arguments
+  and environment values. Failed headless regressions retain their evidence
+  directory for diagnosis rather than deleting it during fixture cleanup.
+
+- `F-110`, `F-430`, `C-001`, `C-010`: checkout frontend preparation repairs empty or incomplete direct dependency installs even when `node_modules` has a newer timestamp. Installation explicitly includes development packages and is revalidated before build/stamping. Concurrent processes serialize preparation for the same checkout; cancellation/script exit stops build descendants before lock reuse and retains the cancellation cause. Current-bundle/embed behavior is preserved.
+
+- `F-110`, `C-001`, `C-027`: checkout frontend preparation now runs before engine discovery/replacement while the old engine continues serving. A preparation build error or cancellation leaves that engine in place; installation/build time does not consume the subsequent 30s handoff/recovery budget. Later process startup is still checked independently.
+
 - `F-130`, `F-222`, `C-002`, `C-003`: PC and phone worker rosters retain Stopped after human Stop and replay, including cancellation finish receipts before cleanup, after cleanup or after the manager terminal. Classification binds the current worker ID and an engine cancellation cause; unrelated provider/watchdog errors remain failures, genuine results survive cleanup, and explicit same-ID resume can run again (Issue #85).
 - `F-130`, `C-003`, `C-012`: desktop/Web live events and replay keep explicitly retained workers running with their pending tools and current output after a scheduled manager error. The parent error stays visible without becoming the worker's own failure; Stop, cleanup and real worker completion remain authoritative. Ownership JSON stays in Trace. Parked-worker cleanup publication is ordered before a replacement registry can start, preventing an old global stop from marking new workers stopped (Issue #89).
 
@@ -53,9 +75,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-160`, `C-012`, `C-029`: a streamed model call finishes its call-record callback before exposing an error or EOF to its consumer. Truncation and cancellation retain the received usage and caller identity, including when the consumer closes during persistence, so turn shutdown cannot outrun that record.
 
-- `F-130`, `F-160`, `C-029`: model service failures now impose a shared 5/10/20/30-second capped backoff across manager, subagents, models and provider aliases on the same origin. Only one recovery probe runs at a time; full success restores normal concurrency. An HTTP stream ending without `[DONE]` or an explicit finish reason fails as truncated, retaining received usage and the failure streak. Cancellation, cache refresh and new turns cannot bypass a failed service's cooldown. Header-timeout reconnects also wait; `model_backoff` records the actual caller and delay in the turn Trace without granting retries or inventing model calls.
+- `F-130`, `F-160`, `C-029`: model service failures now impose a shared 5/10/20/30-second capped backoff across manager, subagents, models and provider aliases on the same origin. Only one recovery probe runs at a time; full success restores normal concurrency. A Chat Completions HTTP stream ending without `[DONE]` or an explicit finish reason fails as truncated, retaining received usage and the failure streak. Cancellation, cache refresh and new turns cannot bypass a failed service's cooldown. Header-timeout reconnects also wait; `model_backoff` records the actual caller and delay in the turn Trace without granting retries or inventing model calls. Late waits after a quiet scheduled report remain hidden from Chat while retaining Trace evidence.
 
 - `F-150`, `F-160`, `C-009`, `C-012`: an explicit human prohibition on parking the conversation now persists independently of compressed summaries. Thread `schedule_wake` and `report_schedule(next_in_s)` refuse at the tool and storage boundaries with source-attributed Trace evidence, leaving the wait unchanged and producing no armed card. Pending policy classification also refuses arming. Only a later explicit human allowance releases the prohibition; reporting without rescheduling and cancellation remain available. The scheduled-start regression keeps its callback for its private database's lifetime so test cleanup cannot race the runtime's final writes.
+
+- `F-210`, `C-006`: phone-hub registration runs in a cancellable background lifecycle without blocking local startup or status. Stop/Reload reject stale results, and task restoration remains ordered before scheduling.
+
+- `F-110`, `C-001`, `C-027`: slow local initialization has a bounded two-minute readiness window with 10s progress. Failed launches retain their actual exit status and only the current attempt's log; cancellation reaps only the launched child and remains authoritative over late metadata responses. The separate 30s engine-replacement budget remains in force.
+
+- `F-110`, `C-001`: a slow metadata probe after the launcher's own child publishes its lease no longer aborts startup. Only that still-starting child may be retried within the original total deadline; attachment still needs validated metadata. Unreachable competing holders and mode conflicts retain their immediate errors and preserve the competing process.
 
 - `F-120`, `F-130`, `C-003`: late memory-review notices and hidden turn metadata no longer repeat an older turn's duration/completion footer after newer work. PC transcript slices preserve event order, keep one footer after each non-quiet turn's last visible pre-completion content, and leave late review feedback outside completed goal-session folds. Older feedback also retains the running turn's live activity. Original answers, tool details, stored events and Trace remain available (Issue #87).
 - `F-130`, `F-310`, `C-002`, `C-012`: repeated clicks on a queued message send one steering request. A stale queue action refreshes that conversation and explains that the message is no longer waiting; a late reply cannot change another conversation. Queue consumers deliver only records they actually removed, preserving concurrent edits and preventing a competing consumer from delivering the same message twice. Missing-record HTTP errors identify the request and relevant record in a safe default-level diagnostic instead of exposing `store: not found`.
@@ -70,6 +98,8 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-430`, `C-010`: pending native Mac acceptance resumes with a fresh guest observation. Unknown guest state takes precedence over historical login success or failure, so old UTM failures cannot keep a resumed check blocked. Exact-package native acceptance remains valid after a later session or host lock; the audit still performs no login or VM operations.
 
 - `F-125`, `F-220`, `C-023`: phones hide a conversation's earlier unread completion while it is running, waiting or asking, without clearing its watermark or sending a read acknowledgement. Idle results and different IDs with the same title remain available; search cannot revive an active completion and completion More remains reachable (Issue #83).
+- `F-130`, `F-170`, `F-420`, `C-012`: a first-byte timeout reports its actual wait; desktop/Web explains how to increase it. The error opens Settings → Models, expands the failed turn's provider and focuses its first-byte field; an unknown or deleted provider opens the Models page without guessing a replacement. Catalog-tidy timeout guidance also follows the configured wait instead of claiming a fixed 30 seconds.
+
 - `F-130`, `F-170`, `F-420`, `C-012`: a first-byte timeout reports its actual wait; desktop/Web explains how to increase it. The error opens Settings → Models, expands the failed turn's provider and focuses its first-byte field; an unknown or deleted provider opens the Models page without guessing a replacement. Catalog-tidy timeout guidance also follows the configured wait instead of claiming a fixed 30 seconds.
 
 - `F-140`, `C-028`: image-suffixed generic binary/UTI drops remain vision input with a normalized MIME claim; real-byte type validation remains on the server. Browser regressions use decodable JPEGs and verify unchanged bytes, saved images and reload.

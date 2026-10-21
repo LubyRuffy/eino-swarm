@@ -42,6 +42,7 @@ func (s *Service) Apply(ctx context.Context, version string, desktopPIDs []int) 
 		return ErrBusy
 	}
 	s.applying = true
+	s.progress = Progress{Stage: "checking", Version: want}
 	s.mu.Unlock()
 	defer func() {
 		// Keep a successful install locked until the old engine exits: its
@@ -51,6 +52,8 @@ func (s *Service) Apply(ctx context.Context, version string, desktopPIDs []int) 
 			s.install.Release()
 			s.install = nil
 			s.applying = false
+			s.progress.Stage = "error"
+			s.progress.Error = err.Error()
 			s.mu.Unlock()
 		}
 	}()
@@ -82,9 +85,11 @@ func (s *Service) Apply(ctx context.Context, version string, desktopPIDs []int) 
 	}
 	defer os.RemoveAll(dir)
 	zipPath := filepath.Join(dir, "update.zip")
+	s.setStage("downloading")
 	if err := s.download(ctx, result.Offer.AssetURL, zipPath); err != nil {
 		return err
 	}
+	s.setStage("installing")
 	if err := unzipApp(zipPath, filepath.Join(dir, "unpack")); err != nil {
 		return err
 	}
@@ -99,6 +104,7 @@ func (s *Service) Apply(ctx context.Context, version string, desktopPIDs []int) 
 		}
 		return launchErr
 	}
+	s.setStage("restarting")
 	s.signal(desktopPIDs)
 	s.retirePrevious(app)
 	return nil
@@ -232,12 +238,17 @@ func (s *Service) download(ctx context.Context, rawURL, dest string) error {
 		}
 		return errors.New(msg)
 	}
+	s.mu.Lock()
+	if res.ContentLength > 0 {
+		s.progress.TotalBytes = res.ContentLength
+	}
+	s.mu.Unlock()
 	out, err := os.Create(dest)
 	if err != nil {
 		return err
 	}
 	defer out.Close()
-	n, err := io.Copy(out, io.LimitReader(res.Body, maxZipBytes+1))
+	n, err := io.Copy(out, io.LimitReader(downloadReader{Reader: res.Body, service: s}, maxZipBytes+1))
 	if err != nil {
 		return err
 	}

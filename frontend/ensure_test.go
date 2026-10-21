@@ -15,13 +15,14 @@ import (
 )
 
 type scriptRunner struct {
-	lookPath    string
-	lookPathErr error
-	calls       [][]string
-	runErr      error
-	installErr  error
-	buildErr    error
-	writeIndex  bool
+	lookPath     string
+	lookPathErr  error
+	calls        [][]string
+	runErr       error
+	installErr   error
+	buildErr     error
+	writeIndex   bool
+	afterInstall func(string) error
 }
 
 func (s *scriptRunner) LookPath(file string) (string, error) {
@@ -48,6 +49,9 @@ func (s *scriptRunner) Run(ctx context.Context, dir, name string, args ...string
 	if len(args) > 0 && args[0] == npmInstallArg {
 		if s.installErr != nil {
 			return s.installErr
+		}
+		if s.afterInstall != nil {
+			return s.afterInstall(dir)
 		}
 		return nil
 	}

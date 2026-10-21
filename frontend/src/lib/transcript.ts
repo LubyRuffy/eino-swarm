@@ -1,4 +1,5 @@
 import type { ImageRef, ReviewOutcome, SwarmEvent } from "./types"
+import { cloudToolSummary, parseCloudTool } from "./cloud-tool"
 import {
   compactBriefing,
   compactNotice,
@@ -91,6 +92,8 @@ export interface Block {
   detail?: string
   /** Structured reviewer diagnostics, formatted when the UI language changes. */
   review?: ReviewOutcome
+  /** Provider-executed tool metadata; never a local function call. */
+  cloudTool?: Record<string, unknown>
   /** Tool blocks only. */
   tool?: {
     callId: string
@@ -292,6 +295,14 @@ export function reduceEvent(
     }
     return next
   }
+  if (ev.kind === "builtin_tool") {
+    const metadata = parseCloudTool(ev.text)
+    const row = block(ev, "notice", cloudToolSummary(metadata))
+    row.cloudTool = metadata
+    row.detail = ev.text
+    append(touchAgent(next, MANAGER_ID), row)
+    return sealQuietTurns(next, ev)
+  }
   if (ev.kind === "task_message") {
     const manager = touchAgent(next, MANAGER_ID)
     const notice = block(ev, "notice", `Peer task ${ev.source_thread_id ?? ""}: ${ev.text ?? ""}`)
@@ -372,7 +383,7 @@ export function reduceEvent(
   }
   if (ev.kind === "model_backoff") {
     append(touchAgent(next, MANAGER_ID), block(ev, "notice", modelBackoffNotice(ev.text)))
-    return next
+    return sealQuietTurns(next, ev)
   }
   if (ev.kind === "goal_edited") {
     append(touchAgent(next, MANAGER_ID), block(ev, "notice", "Standing objective updated."))

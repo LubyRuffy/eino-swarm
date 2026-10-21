@@ -1,5 +1,145 @@
 # Testing
 
+## Native desktop isolation (F-430 / C-031)
+
+Native macOS acceptance runs in the UTM **ci-macOS** guest. The user's host
+desktop may already be running zwai; do not launch or focus another desktop
+app there, replace its cache bundle, change its engine/data, or bring UTM,
+Finder, a browser or a simulator to the foreground for a test. Builds and
+headless unit/browser tests may run on the host. Use background guest control
+(SSH when available) and guest-side screenshots/accessibility. An unavailable
+guest is a pending native check, never permission to test on the host.
+
+Inside the guest, run one scenario at a time:
+
+```bash
+python3 tools/native_macos_case.py \
+  --app /absolute/candidate/zwai.app \
+  --evidence /absolute/private/new-case-evidence \
+  --timeout 180 -- /absolute/scenarios/check-native-window.sh
+```
+
+The runner refuses physical macOS hosts before launching anything; its VM guard
+does not verify the UTM inventory name, so the operator must select `ci-macOS`.
+It holds a guest-user lock, makes a disposable app copy and fresh home/cache,
+data and workspace, starts
+the copied executable with `desktop --mock --data-dir`, and removes inherited
+OpenAI seed variables. Child processes receive a private `HOME` and `ZWAI_HOME`;
+macOS checkout re-exec bundles under `HOME/Library/Caches` are removed with the
+case rather than replacing the guest user's normal cache. The runner's own
+environment is unchanged. The scenario receives the paths in environment variables
+documented by `python3 tools/native_macos_case.py --help`. Readiness and native
+window/behavior assertions belong to that scenario; a process launch or a zero
+exit status is not by itself UI acceptance. Use the scripted offline provider
+or a keyless loopback fixture, never a production model/account.
+
+For an HTTP-adapter scenario, stop the initial mock client and engine inside
+that same case, write only the case's isolated fixture configuration, and
+relaunch the copied app without `--mock` against a keyless loopback fixture.
+Keep that transition and all helper processes inside the scenario's owned
+lifecycle; the final process/data cleanup still belongs to the runner. This
+does not enable a production-provider test or change the candidate bundle.
+
+Each case must finish before another starts. This includes **success, failure,
+timeout and cancellation**: retain assertions, stdout/stderr, screenshots, source
+and package identity outside the disposable directory; stop the app, its engine
+and case-owned children; wait for exit; then remove the app copy, home/cache, database,
+configuration, uploads and managed workspace. Merely closing a window leaves
+the engine alive. `cleanup.json` records the case ID, remaining owned PIDs and
+data removal; incomplete cleanup fails the case and blocks the next case.
+Only case-owned paths/processes may be removed. Never run `killall zwai`,
+`pkill zwai`, or clear the normal `~/.zwai-swarm` directory. A deliberate
+restart/reopen recovery scenario keeps its state between its own steps; a
+different scenario always starts with new data.
+
+Scenario helpers must inherit the runner's `ZWAI_NATIVE_CASE_ID` marker, even
+when they create a new session or outlive a short-lived parent. The marker
+lets cleanup find those detached helpers without killing unrelated processes.
+Do not deliberately clear it and create an untracked daemon: this runner owns
+cooperating test processes, not an OS process container. System services shared
+with other applications are not test-owned processes.
+
+Darwin process-argument inspection retries the complete size/read sequence only
+for `EIO` or `ENOMEM`, at most three attempts with 10 ms between attempts.
+Persistent errors and unknown error categories still fail the case; diagnostics
+include the PID and numeric errno without recording process arguments or
+environment values. `tools/test_native_macos_case.py` injects transient,
+persistent and unknown sysctl failures to verify those boundaries. A failed
+headless regression preserves its evidence directories and prints their retained
+location, including `cleanup.json` and app/scenario logs. These checks do not
+establish the cause of an earlier failure whose evidence was not retained.
+
+For a reported checkout defect, preserve that checkout and record HEAD plus
+dirty-file hashes before/after. Transfer the exact identified source snapshot
+or candidate to the guest. Host-side provenance/asset checks remain read-only;
+report guest native behavior and actual host delivery separately. Never use an
+exact-checkout requirement as permission to open the user's host UI.
+
+When the defect concerns `go run ./cmd/zwai desktop` or checkout frontend
+preparation, the scenario stops the initial copied app and engine, places the
+identified source snapshot in the case's private workspace, then runs the
+reported command there with the inherited isolated `ZWAI_HOME` and case marker.
+Use a case-local keyless loopback fixture, or the reported command's mock option,
+for that launch; do not inherit a production provider configuration.
+Retain its build/startup output, served asset identity, native window and completed
+offline turn. Starting the runner's prebuilt `.app` alone cannot accept this
+checkout command. The scenario's command and descendants remain case-owned.
+
+`make docs-check` runs the runner's offline regressions for physical-host
+refusal, serial ownership, success/error/timeout cleanup and unrelated process
+preservation. These use headless child fixtures; they do not accept a native
+window. A real guest window and cleanup receipt are separate evidence.
+
+## Local startup readiness (F-110 / C-001 / C-027)
+
+`cmd/zwai/engine_frontend_test.go` injects preparation failure and actual
+startup cancellation before a real serving holder can receive any handoff or
+new launch. Its delayed successful preparation checks that the subsequent
+replacement still receives its 30-second budget. These are preparation-order
+regressions, not proof that every later build/startup must succeed.
+
+`cmd/zwai/engine_boot_test.go` launches an actual offline child that acquires
+the data-directory lease and publishes its HTTP metadata after 16 seconds.
+It reproduces startup beyond the former 15-second cutoff and verifies the
+ready URL belongs to that child. Additional cases check current-attempt log
+isolation, the actual exit status, and cancellation that reaps the launched
+child. `cmd/zwai/engine_restart_budget_test.go` retains the independent caller
+deadline and competing-holder checks; the cold-start allowance cannot extend
+the 30-second replacement budget.
+
+`TestSpawnEngineRetriesItsOwnFirstReadinessProbeTimeout` delays the real
+child's first metadata response by 750ms, beyond the individual 500ms probe,
+then requires a later successful probe and a surviving validated child.
+`TestSpawnEngineStopsItsOwnUnreachableChildAtTheStartupDeadline` keeps every
+probe slow and checks the caller's deadline and child cleanup. The lease
+regression retains the unverified recorded identity on connection, status,
+body-read and JSON failures; it does not treat that record as readiness.
+Competing-holder regressions keep unreachable/mock-mismatch errors immediate
+and preserve the independent process.
+`engine_startup_cancel_test.go` cancels during real synchronous metadata probes,
+including healthy, unavailable and mode-mismatched responses. The launcher's
+actual SIGINT path must return a recognizable cancellation, never a late ready
+URL or a discovery error, and must preserve the independent lease holder.
+
+```bash
+go test -race -count=1 ./cmd/zwai -run 'TestSpawnEngine|TestSpawnStartup|TestInProcessStartup'
+go test -race -count=1 ./internal/lease -run 'TestDiscover'
+```
+
+## Phone hub startup independence (F-210 / C-006)
+
+`internal/remote/host_start_test.go` holds a loopback registration request
+open while exercising local lifecycle operations. `internal/app/startup_remote_test.go`
+starts the real app against that blocked hub and checks a successful local
+`/api/meta` response before registration completes. Remote lifecycle tests
+must also preserve cancellation and reject late results after Stop/Reload.
+These offline checks do not replace opening the actual native window.
+
+```bash
+go test -race -count=1 ./internal/remote -run 'TestHost'
+go test -race -count=1 ./internal/app -run 'TestNewDoesNotWaitForRemoteRegistration'
+```
+
 ## Scheduled-check failure and worker ownership (F-130 / F-150 / C-009 / C-027)
 
 `internal/engine/schedule_worker_ownership_test.go` runs the real Engine,
@@ -250,9 +390,7 @@ go test -race -count=1 ./internal/provider -run 'TestMock(Reviewer|ReviewSource|
 cd frontend && ZWAI_E2E_WORKER_ROSTER=1 npm run e2e
 ```
 
-Concurrent E2E runs need separate `ZWAI_E2E_PORT`, `ZWAI_E2E_DATA_DIR` and
-Playwright `--output` directories; shared output cleanup can delete another
-run's screenshots or traces.
+Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
 
@@ -593,11 +731,29 @@ The update controller tests use fake time and delayed responses. They prove that
 six hours is measured after a successful check, foreground/network events are
 throttled, background failures stay quiet, an older response cannot restore an
 install button while installation is running, and a later automatic unsupported
-result clears a stale manual error without hiding an offered version. The UI
-E2E uses an offline update feed; it does not install a public Release. ZIP
+result clears a stale manual-check error without hiding an offered version. The UI
+tests also retain the confirmed version after install failure so Retry installs
+it directly, keep a progress-query failure separate from the pending install
+result, ignore stale progress, and render actual byte counts with a percentage
+only when the total is known. Component and E2E checks assert red alert styling,
+the distinct check/install retry actions, and download/install/restart stages.
+The UI E2E uses an offline update feed; it does not install a public Release. ZIP
 replacement, launch arguments and old-app recovery run against a local launcher
 stub in `internal/update/apply_recovery_test.go`. That stub does not open a
 signed Mac window. Release acceptance still follows [RELEASE.md](RELEASE.md).
+
+`internal/update/progress_test.go` reads a pipe-backed response while Apply is
+still pending. It verifies received body bytes, known and unknown lengths,
+retained failure, busy-request isolation and clean same-version retry.
+It also checks the separate 30-minute download total / 30-second header deadlines,
+the metadata request's 30-second total deadline, caller cancellation and redirect
+host restrictions. `internal/server/update_test.go` reads progress through real
+loopback HTTP while the installation POST remains blocked; the default response
+without a progress reporter is idle with zero bytes.
+`frontend/src/lib/desktop-update-progress.test.ts` covers progress polling,
+direct retry and disposal without using a public update feed. A stalled poll is
+aborted after five seconds and the next observation continues while the
+installation result remains pending.
 
 `internal/update/bundle_lock_test.go` covers two services and real helper
 processes with different data directories targeting one bundle. The losing
@@ -616,7 +772,7 @@ the old bundle for recovery.
 
 ```bash
 go test -race -count=1 -cover -timeout 20m ./internal/update ./internal/app ./internal/server ./cmd/zwai
-cd frontend && npm test -- src/lib/desktop-update.test.ts src/components/app/desktop-update.test.tsx src/lib/desktop-presence.test.ts
+cd frontend && npm test -- src/lib/desktop-update.test.ts src/lib/desktop-update-progress.test.ts src/components/app/desktop-update.test.tsx src/lib/desktop-presence.test.ts
 cd frontend && npm run e2e -- e2e/desktop-update.spec.ts
 ```
 
@@ -954,6 +1110,21 @@ reload. Camera on a real device is the product path (`make mobile-ios` /
 require Node. `TestCommittedLockfilesMatchThePublicNpmRegistry` refuses a
 lockfile whose `resolved` hosts are not `registry.npmjs.org` — npm 12
 treats those tarballs as remote packages (`EALLOWREMOTE`) on a fresh clone.
+`frontend/ensure_dependencies_test.go` regresses empty/partial installs newer
+than the manifests, missing production/development packages, missing compiler
+entries and broken executable links. Install must include development packages
+and pass revalidation before build/stamping; a current bundle does not require
+Node. `frontend/ensure_build_lock_test.go` uses separate processes to prove
+one shared checkout builds once and that a waiting preparation can be cancelled.
+`frontend/ensure_process_test.go` runs the real offline npm → shell → Node
+chain and cancels after the descendant starts writing. It requires the original
+context cancellation error, then lets another builder acquire the lock and
+asserts the old writer cannot change the output. Separate cases let npm exit
+successfully or with an error while a background child remains. The Unix helper
+and Windows Job Object fixtures exercise their own process ownership paths;
+Windows cross-compilation is build evidence and does not certify those runtime
+tests or native Windows behavior.
+These fixtures do not replace the original-checkout native command check below.
 `assembleApp` in `cmd/zwai` is the two-line call that
 production `desktop` / `web` go through.
 
@@ -2378,6 +2549,25 @@ Playwright starts the real server itself (`go run ./cmd/zwai web --mock --no-ope
 so a run exercises the whole stack: gin, the engine, SQLite, SSE and the built
 front end.
 
+Concurrent Playwright commands must isolate all three resources: server port
+(`ZWAI_E2E_PORT`), application data (`ZWAI_E2E_DATA_DIR`) and artifacts
+(`--output`). Separate ports and databases still leave shared output cleanup
+able to delete another run's trace, network or ZIP files. For two independent
+runs, use distinct paths and ports, for example in separate terminals:
+
+```bash
+cd frontend
+ZWAI_E2E_PORT=18860 ZWAI_E2E_DATA_DIR=.e2e-data-default npm run e2e -- --output=test-results/default --retries=0
+ZWAI_E2E_PORT=18861 ZWAI_E2E_DATA_DIR=.e2e-data-ownership ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP=1 npm run e2e -- --output=test-results/ownership --retries=0
+```
+
+Keep the first failure log and its available artifacts. Inspect whether a
+failure is a business assertion or an artifact/teardown error such as `ENOENT`
+for a trace, network file or ZIP; do not relabel an assertion failure as an
+environment problem. After correcting shared resources, rerun the complete
+affected suite with isolated output and retain that separate result. A retry
+turning green alone neither explains the first failure nor accepts that run.
+
 **The data directory is deleted before the server starts**, so every run is a
 first install. This matters: a config file written by an earlier run has already
 been normalized, which once hid a crash that only happened on a fresh one. The
@@ -2428,12 +2618,19 @@ a client at all is verified in the engine and reducer tests.
 
 ## Manual checks that no automated test replaces
 
-- **The desktop window**: `go run ./cmd/zwai desktop`. Check that the window
+- **The desktop window**: run the isolated native case above in `ci-macOS`.
+  Check that the window
   opens, the UI loads, a turn runs, an upload opens a native file dialog, and
   "Show in Finder" works. A link in the transcript must open the system
   browser, not replace the window. The Dock / taskbar should show the rounded
   app mark at the same size as a bundled `.app`, not a square canvas, not a
   full-bleed tile, and not the generic Unix-exec glyph.
+  For a reported checkout startup failure, run the reported command from the
+  exact source/dirty-content-identified guest copy under the isolated lifecycle
+  above. Retain its startup/build output and observe the window plus a completed
+  offline turn from that launch; a different snapshot or separately launched
+  `.app` is not acceptance of the reported command. Keep the original host
+  checkout's source and served-asset checks read-only.
   Double-click the title bar: the window should zoom,
   then restore on the next double-click. On macOS the traffic lights and the
   sidebar toggle must share one baseline in that title bar; New conversation
@@ -2780,10 +2977,40 @@ accessibility tree alongside the test result and packaged asset hashes.
 
 Phone `mobile/e2e/api-error.spec.ts` uses `history=api-error` to regress existing error-text passthrough on Chromium and iPhone WebKit, including return/reopen and reload. Native packaged XCTest entry is `AppUITests/BindFlowTests/testModelAPIErrorShowsHTTPStatusAndDecodeCause`, with `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=api-error'`; Android entry is `com.lubyruffy.zwai.APIErrorTest`. Check the reached screen and exact production-bundle hashes; fixture/replay tests supplement the real engine HTTP test, not replace it. A system ANR before the page is reached is an environment failure, never behavior acceptance.
 
-Mac native verification runs the current packaged candidate against a local empty-502 HTTP model in a separate data directory, without `--mock`: verify terminal error, Idle state, same-turn Trace status and Full log, three LLM calls and two retry events, and save window/Trace evidence.
+Mac native verification runs the current packaged candidate in `ci-macOS`
+through the isolated case lifecycle above. Its HTTP-adapter scenario replaces
+the initial mock client/engine within that case and uses a local keyless
+empty-502 model fixture without `--mock`: verify terminal error, Idle state,
+same-turn Trace status and Full log, three LLM calls and two retry events, and
+save window/Trace evidence before final cleanup.
 
 
 ## First-byte timeout configuration and guidance
+
+### Actual checkout delivery
+
+For a reported `go run ./cmd/zwai desktop` failure, record the absolute checkout,
+HEAD, index and dirty-file hashes before integration. Preserve unrelated edits
+and verify the fix reached that checkout. Do not launch the command on the
+user's host desktop. Transfer the exact source/dirty-content-identified snapshot
+to `ci-macOS` for the corresponding native scenario. A different source snapshot
+does not accept the defect; a guest run does not prove the host's already-running
+binary changed. Verify host source and currently served assets read-only with:
+
+```bash
+python3 tools/check_checkout_delivery.py --checkout /absolute/checkout --required-commit <fix-sha> --url http://127.0.0.1:<actual-port>
+python3 -m unittest discover -s tools -p 'test_check_checkout_delivery.py'
+```
+
+The checker allows dirty trees, rejects missing fix ancestry, compares every
+module script and refuses redirects, external origins and escaping paths. Its
+`native_behavior_verified=false` requires a separate real-window observation
+inside `ci-macOS`: bind the guest launch PID, source snapshot and origin,
+trigger the loopback timeout, open its field, save a longer wait and verify a
+successful new turn in that same window. Finish the case's process/data cleanup
+before starting another scenario.
+
+### Configuration and recovery
 
 `internal/config/provider_timeout_test.go` covers the 30-second default,
 missing/invalid legacy values, save/reload and a first-byte wait longer than the
@@ -2794,6 +3021,8 @@ field preserving the saved value and an explicit nonpositive value resetting it.
 independent initial/idle waits, actual timeout duration, cancellation and the
 single fresh-connection retry. `internal/provider/http_test.go` retains the
 moving-stream idle and connection recovery regressions.
+`internal/provider/responses_timeout_test.go` covers the same independent budgets
+through both Generate and Stream on the real loopback Responses adapter.
 `internal/engine/runerr_timeout_test.go` checks the configured duration through
 the public error wrapper without adding another model retry loop. Run
 `go test -race ./internal/config ./internal/provider ./internal/server ./internal/engine`.
@@ -2818,8 +3047,8 @@ value. Failed and successful turns retain their own Trace, screenshots and
 `first-byte-traces.json`. Run
 `cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e -- api-error.spec.ts`.
 
-Native macOS acceptance uses the same loopback endpoint and a separate data
-directory: send in the actual desktop window, follow the timeout button, verify
+Native macOS acceptance uses the same loopback endpoint in `ci-macOS` and the
+isolated case lifecycle above: send in the actual desktop window, follow the timeout button, verify
 the provider field receives focus, increase one to three seconds, close Settings
 and resend. Inspect the successful response and Idle state in that window, and
 read Settings and both turn rows back to verify persistence and terminal status.
@@ -2974,16 +3203,18 @@ seed excludes manager System/personality. Check retained user/assistant/tool
 evidence, empty/System-only history, manager input immutability and unchanged
 same-role resume formatting. Do not infer actual model behavior or memory
 quality improvement from this deterministic payload test.
+
 ## Shared model recovery backoff (`C-029`)
 
-The 2026-10-21 provider race audit reports 95.3% package coverage. The shared
-gate, admission/classification, HTTP reconnect adapter, Generate/Stream wrappers
-and stream-completion observer each have 100% target statement coverage. Engine
-wait recording and the call-recorder dispatch each have 100% target statement
-coverage in the focused race run. The
-2026-10-19 loopback 502 browser run observed HTTP arrival gaps of 5002ms and
-10003ms for the unchanged three-call budget; that historical run does not certify
-a later merged candidate, which must rerun the browser fixture.
+Before this integration, the local provider race audit reported 96.0% package
+coverage and Pool.Get at 93.3%; the 2026-10-21 remote audit reported 95.3% package
+coverage. Its shared gate, admission/classification, HTTP reconnect adapter,
+Generate/Stream wrappers, stream-completion observer, engine wait recording
+and call-recorder dispatch reached 100% target statement coverage in focused
+race runs. These are separate pre-integration observations, not coverage of
+the merged candidate, which requires a fresh run. The 2026-10-19 loopback 502
+browser run observed HTTP arrival gaps of 5002ms and 10003ms for the unchanged
+three-call budget; rerun that fixture for the merged candidate.
 
 `internal/provider/backoff_test.go` uses `testing/synctest` to assert the actual
 5/10/20/30-second sequence without wall-clock sleeps. It covers one recovery
@@ -2993,7 +3224,7 @@ classification and recorder/context wiring; authentication/parameter errors
 cannot add failures or prove recovery. `backoff_integration_test.go` uses the
 real SDK with keyless loopback HTTP fixtures to verify cross-role/model/provider
 and cache-invalidated calls, independent origins, malformed successful streams,
-complete-stream recovery and delayed/cancelled header reconnects. An actual HTTP
+complete-stream recovery and delayed/cancelled header reconnects. An actual Chat Completions HTTP
 stream ending after valid deltas but without `[DONE]` or finish reason must fail
 with `io.ErrUnexpectedEOF`, retain received usage and keep sibling requests
 blocked. Complete `[DONE]`, `stop`, `length` and `tool_calls` responses preserve
@@ -3018,6 +3249,10 @@ that waiting creates no LLM call or usage pulse, while actual and auxiliary call
 retain their accounting and storage failures cannot emit usage.
 `frontend/src/lib/transcript-backoff.test.ts`
 checks SSE subscription, replay, localized human text and no invented workers.
+Late waits after a quiet scheduled report remain hidden from Chat while their
+raw Trace events are retained. `internal/provider/backoff_responses_test.go`
+exercises the actual Pool/Responses boundary, including reasoning, output caps,
+cloud-tool receipts and cancelled admission producing no invented model call.
 The opt-in `frontend/e2e/api-error.spec.ts` measures actual HTTP arrival gaps on
 502 (at least 5s then 10s), and checks the original turn, Chat, Full log and reload.
 
@@ -3030,3 +3265,41 @@ cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e
 This preserves the original manager retry count and worker watchdog budget;
 no real model or external service is used. It does not certify another client's
 retry behavior or impose a server-wide request limit.
+
+## Provider Responses and cloud tools (`F-175` / `C-030`)
+
+Use keyless loopback fixtures, never a real model or network service:
+
+```bash
+go test -race -timeout 20m ./internal/config ./internal/provider ./internal/server ./internal/engine
+cd frontend && npm run lint && npm test && npm run build
+ZWAI_E2E_BUILTIN_TOOLS=1 ZWAI_E2E_PORT=8819 npm run e2e -- builtin-tools.spec.ts
+```
+
+`internal/config/provider_tools_test.go` and
+`internal/server/settings_provider_tools_test.go` verify old configuration,
+protocol/type errors, nested parameter round trips, omission/clearing, API key
+masking and refused writes. `internal/engine/responses_spawn_replay_test.go` verifies the actual Registry/ADK
+boundary keeps merged refused-spawn calls paired without resurrecting discarded
+calls from raw Responses metadata. `internal/engine/builtin_tools_test.go` drives the
+actual Responses HTTP adapter and Eino manager: cloud and local declarations
+coexist; hosted calls never execute locally; usage, sources and attributed
+receipts persist once in the original turn. The opt-in browser test checks
+clickable sources, Trace Full log and reload through the real server with a
+keyless local Responses endpoint. Default `make e2e` remains offline scripted.
+
+Responses streams retain ordinary text deltas, function argument pairing,
+non-strict optional function parameters, encrypted reasoning, HTTP/stream error
+origin and context cancellation. The framework's plain StreamReader.Close does
+not expose a transport-close hook: it is observed at the next publication;
+request context cancellation or the configured silence timeout bounds a quiet
+upstream. User Stop uses context cancellation. Quiet scheduled checks hide cloud
+notices in Chat while retaining their full metadata in Trace.
+
+`internal/engine/responses_budget_test.go` regresses replay without billed usage:
+ASCII/CJK/emoji hosted output and encrypted reasoning are included using the
+larger of the visible estimate and actual filtered Responses replay JSON. Shared
+text is not counted twice and removed calls do not inflate the request. The
+Registry/ADK loopback test observes compaction before the HTTP request, preserving
+the current human request and briefing. Existing billed-usage precedence remains
+unchanged; this test does not establish its accuracy for arbitrary providers.

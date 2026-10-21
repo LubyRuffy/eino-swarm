@@ -1,4 +1,4 @@
-import type { DesktopUpdate } from "./api"
+import type { DesktopUpdate, DesktopUpdateProgress } from "./api"
 
 // Match the existing release cache so a long-lived window notices new builds
 // without repeatedly reaching GitHub when the user switches applications.
@@ -9,14 +9,15 @@ export type DesktopUpdatePhase =
   | { kind: "checking" }
   | { kind: "current" }
   | { kind: "available"; version: string }
-  | { kind: "working" }
+  | { kind: "working"; progress?: DesktopUpdateProgress }
   | { kind: "restarting" }
   | { kind: "unsupported"; message: string }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; version?: string }
 
 interface UpdateClient {
   check: (fresh: boolean) => Promise<DesktopUpdate>
   install: (version: string) => Promise<{ status: string }>
+  progress: (signal: AbortSignal) => Promise<DesktopUpdateProgress>
   dismissedVersion: () => string
   dismissVersion: (version: string) => void
   onChange: (phase: DesktopUpdatePhase) => void
@@ -29,6 +30,8 @@ export class DesktopUpdateController {
   private sequence = 0
   private active: { manual: boolean } | null = null
   private disposed = false
+  private progressTimer?: ReturnType<typeof setTimeout>
+  private progressRequest?: AbortController
 
   constructor(private readonly client: UpdateClient) {}
 
@@ -44,6 +47,7 @@ export class DesktopUpdateController {
 
   private check(manual: boolean): Promise<void> {
     if (this.disposed || this.installing()) return Promise.resolve()
+    if (!manual && this.phase.kind === "error" && this.phase.version) return Promise.resolve()
     if (this.active && (!manual || this.active.manual)) return Promise.resolve()
     const now = this.client.now?.() ?? Date.now()
     if (!manual && this.lastSuccess !== null && now - this.lastSuccess < DESKTOP_UPDATE_INTERVAL_MS) return Promise.resolve()
@@ -83,7 +87,16 @@ export class DesktopUpdateController {
 
   install() {
     if (this.disposed || this.phase.kind !== "available") return
-    const version = this.phase.version
+    this.installVersion(this.phase.version)
+  }
+
+  retry() {
+    if (this.disposed || this.phase.kind !== "error") return
+    if (this.phase.version) this.installVersion(this.phase.version)
+    else void this.checkManually()
+  }
+
+  private installVersion(version: string) {
     // Invalidate any background request before painting Working. A response
     // from that request must not bring the install button back during download.
     const id = ++this.sequence
@@ -91,12 +104,48 @@ export class DesktopUpdateController {
     this.paint({ kind: "working" })
     void this.client.install(version).then(
       () => {
-        if (!this.disposed && id === this.sequence) this.paint({ kind: "restarting" })
+        if (!this.disposed && id === this.sequence) {
+          this.stopProgress()
+          this.paint({ kind: "restarting" })
+        }
       },
       (error: unknown) => {
-        if (!this.disposed && id === this.sequence) this.paint({ kind: "error", message: errorMessage(error) })
+        if (!this.disposed && id === this.sequence) {
+          this.stopProgress()
+          this.paint({ kind: "error", message: errorMessage(error), version })
+        }
       },
     )
+    void this.pollProgress(id, version)
+  }
+
+  private async pollProgress(id: number, version: string) {
+    const request = new AbortController()
+    this.progressRequest = request
+    const timeout = setTimeout(() => request.abort(), 5000)
+    try {
+      const progress = await this.client.progress(request.signal)
+      if (!this.disposed && id === this.sequence && this.phase.kind === "working" &&
+        progress.version === version && progress.stage !== "idle" && progress.stage !== "error") {
+        this.paint({ kind: "working", progress })
+      }
+    } catch {
+      // The install request owns the outcome. A failed observation is not a
+      // failed installation and must not enable a competing retry.
+    } finally {
+      clearTimeout(timeout)
+      if (this.progressRequest === request) this.progressRequest = undefined
+      if (!this.disposed && id === this.sequence && this.phase.kind === "working") {
+        this.progressTimer = setTimeout(() => { void this.pollProgress(id, version) }, 500)
+      }
+    }
+  }
+
+  private stopProgress() {
+    clearTimeout(this.progressTimer)
+    this.progressTimer = undefined
+    this.progressRequest?.abort()
+    this.progressRequest = undefined
   }
 
   dismiss() {
@@ -115,6 +164,7 @@ export class DesktopUpdateController {
     this.disposed = true
     this.sequence++
     this.active = null
+    this.stopProgress()
   }
 
   private installing() {

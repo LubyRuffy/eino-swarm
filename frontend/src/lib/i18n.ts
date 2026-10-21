@@ -156,10 +156,10 @@ export function t(locale: Locale, key: MessageKey, vars?: Vars): string {
 /** Transcript chrome the reducer still emits in English. Model text and
  *  unknown notices pass through so a translation table cannot swallow them. */
 export function localizeNotice(text: string, locale: Locale): string {
-  const firstByteWait = firstByteTimeoutDuration(text)
-  if (firstByteWait) return t(locale, "notice.firstByteTimeout", { duration: firstByteWait })
   const backoff = /^Waiting (\d+)s before retrying the model request\.$/.exec(text)
   if (backoff) return t(locale, "notice.modelBackoff", { seconds: backoff[1] })
+  const firstByteWait = firstByteTimeoutDuration(text)
+  if (firstByteWait) return t(locale, "notice.firstByteTimeout", { duration: firstByteWait })
   const peer = /^Peer task ([^:]*): ([\s\S]*)$/.exec(text)
   if (peer) return t(locale, "notice.peerTask", { id: peer[1], text: peer[2] })
   const key = NOTICE_EXACT[text]

@@ -662,3 +662,12 @@ A completed manager turn can still own parked worker checkpoints;
 `ResumeParkedWorkers` restores those workers directly without minting another
 manager turn or moving its future wake. Active parked workers keep the engine
 alive while a future wake with no execution does not.
+
+### Cloud built-in tool receipts
+
+Provider `api_mode` and `builtin_tools` live in `config.yaml`; no new database
+schema is needed. Existing events store `kind=builtin_tool` and a JSON `text`
+receipt with cloud ID/type/status/action/details, provider/model and `llm_call_id`.
+`details` retains the actual cloud output item returned by the provider.
+Event turn/agent identity remains the one-ID troubleshooting key. These rows do
+not create local tool results or worker lifecycle events (`C-030`).

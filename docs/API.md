@@ -68,9 +68,41 @@ Parallel installs for the same app bundle return `409` with `code: "update_busy"
 including requests through different engine data directories. The lock remains
 held while restarting and until the old engine exits; failed installation or
 launch/rollback releases it for retry. Different app bundles are independent.
+Release metadata requests have a 30-second total timeout. Installer downloads
+have a separate 30-minute total timeout and a 30-second response-header limit;
+cancelling the installation request can end either earlier.
 `409` is `{ "error": "..." }` when there is nothing to install or the
 swap failed. `501` when this process has no updater. `400` when the body
 is not JSON.
+
+### `GET /api/update/progress`
+
+Reads this engine's current installation snapshot without starting an update
+check or installation. While `POST /api/update` is pending, the desktop polls it
+to display progress:
+
+```json
+{
+  "stage": "downloading",
+  "version": "1.2.4",
+  "downloaded_bytes": 5242880,
+  "total_bytes": 20971520
+}
+```
+
+`stage` is `idle`, `checking`, `downloading`, `installing`, `restarting`, or
+`error`. `version` identifies the attempted version when known; `error` is set
+for a failed attempt. Both byte counts are always present. `total_bytes: 0`
+means the response did not supply a known size; the UI then shows downloaded
+bytes without inventing a percentage. `installing` follows a completed download;
+`restarting` still means launch acceptance, not window readiness.
+
+The pending POST's result remains authoritative. A failed progress read does
+not mean installation failed. The desktop cancels a progress read after five
+seconds and continues polling; this does not cancel the installation POST.
+A POST failure leaves its confirmed version
+available for direct installation retry. A process without a progress reporter
+returns `200` with `stage: "idle"` and zero byte counts; it does not start a check.
 
 ## Meta
 
@@ -177,6 +209,7 @@ provider carries `has_api_key` and `ready` instead.
   "models": {"default": "default", "providers": [
     {"id": "default", "label": "", "base_url": "https://endpoint/v1",
      "model": "some-model", "catalog": ["some-model", "other-model"],
+     "api_mode": "", "builtin_tools": [],
      "timeout_seconds": 300, "first_byte_timeout_seconds": 30,
      "context_window": 0, "model_context": {},
      "has_api_key": true, "ready": true, "enabled": true}
@@ -2057,3 +2090,31 @@ that receipt can be restored. Missing legacy receipts do not imply retention;
 Stop, cleanup and checkpoint pauses revoke recovery. Worker restoration keeps
 the manager turn/run failed, preserves its original error and unread result,
 and neither reruns that manager nor fires its future wake early.
+
+## Provider Responses tools and Trace
+
+`GET /api/settings` includes provider `api_mode` and `builtin_tools` (an array,
+empty when disabled). `PUT /api/settings` accepts these fields in each provider:
+
+```json
+{"models":{"default":"cloud","providers":[{"id":"cloud","base_url":"https://endpoint.example/v1","model":"your-model","api_mode":"responses","builtin_tools":[{"type":"web_search","search_context_size":"low"}]}]}}
+```
+
+Omitting `api_mode` or `builtin_tools`, or sending JSON `null` for either,
+preserves that field for the same provider ID; `builtin_tools: []` clears the
+list. Other provider fields retain their documented PUT semantics. Empty/`chat_completions` retains the old protocol. Invalid API
+mode, non-object entries, missing/non-string/duplicate/unsupported types or tools
+on Chat Completions return `400` before changing configuration. API key omission,
+clearing and masking retain their existing semantics. Supported types and cloud
+resource limits are described in [configuration](CONFIG.md#provider-cloud-tools).
+
+`builtin_tool` is a durable event kind returned by `GET /api/trace/:turn` and the
+conversation event log/SSE. Its `text` is JSON with `provider_id`, `model`,
+`llm_call_id`, `id` (provider cloud call ID), `type` (such as web_search_call),
+`status`, optional `action`, and `details` containing the actual cloud output item
+(search queries/results or interpreter code/container/output when returned). Event `turn_id` and `agent_id` identify the actual
+model caller. These are cloud receipts, never local tool-dispatch instructions.
+Quiet scheduled checks keep these receipts in Trace Full log while hiding cloud
+activity notices from Chat. No local `tool_call` or `tool_result` is fabricated for cloud work. Receipts are
+recorded when the model request ends, including partial/failed requests; only
+provider-reported completion produces a completed status.

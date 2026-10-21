@@ -65,9 +65,13 @@ func TestMain(m *testing.M) {
 		os.Exit(0)
 	}
 	if len(os.Args) > 1 && os.Args[1] == "engine" {
+		if os.Getenv("ZWAI_ENGINE_STARTUP_HELPER") == "1" {
+			os.Exit(runStartupHelper())
+		}
 		fmt.Fprintln(os.Stderr, "not an engine")
 		os.Exit(2)
 	}
+	launchEngine = startInProcessEngineContext
 	os.Exit(m.Run())
 }
 

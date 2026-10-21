@@ -64,6 +64,29 @@ E2E suite.
 
 ## Testing rules
 
+- Concurrent Playwright runs must each own a separate server port, data
+  directory and `--output` directory. Preserve the first failure and identify
+  whether it came from a business assertion or artifact/teardown handling;
+  shared trace/network/ZIP `ENOENT` errors require an isolated rerun with its
+  own evidence. A retry turning green alone does not establish the cause or
+  accept the original run. See `docs/TESTING.md` for existing CLI options.
+- Native desktop acceptance runs only inside the UTM `ci-macOS` guest. The
+  host is for building, transferring and collecting evidence; never open or
+  focus a test app, Finder, a browser, UTM console or simulator on the user's
+  desktop as an acceptance fallback. Leave the user's desktop app, engine,
+  cache bundle and data untouched. If guest control is unavailable, retain a
+  pending native result instead of switching to the host.
+- Run native cases one at a time through `tools/native_macos_case.py` in the
+  guest (see `docs/TESTING.md`). Each case owns a fresh app copy, home/cache,
+  data and workspace; scenario children inherit that private environment.
+  On success, failure, timeout or cancellation, collect evidence,
+  close that case's app, stop its engine and children, wait for exit, then
+  remove its private data. A closed window is not an exited engine. Confirm
+  cleanup before the next case; cleanup failure blocks it. Recovery steps
+  within one case may retain state, independent cases may not. Never use
+  process-name-wide kills or delete another case/user's data. Preserve logs,
+  assertions, screenshots and cleanup receipts outside disposable state.
+
 - Fork-context role isolation must be tested at actual worker model input through
   both Registry and manager-tool paths. `spawned.Text` omits the separately
   injected conversation seed, so it cannot prove manager System/personality did
@@ -83,6 +106,32 @@ E2E suite.
   cannot prove that the selected image reached the visual-input path.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
+- Local startup must not wait for optional phone-hub registration. Keep remote
+  startup cancellable and serialize Stop/Reload; a late registration must not
+  revive a stopped host. Keep orphaned-turn/parked-worker restoration ordered
+  before scheduling rather than moving it into an unowned goroutine.
+  Regress a real child taking longer than 15s to publish its lease, blocked
+  registration with a responsive local API, current-attempt logs and exit
+  status, and cancellation that reaps only the launcher's own child. Cold-start
+  readiness must not extend the separate `C-027` 30s replacement deadline.
+  Cancel during successful and failed metadata probes; neither a late ready URL
+  nor a discovery error may override the caller's cancellation.
+- A reported checkout-launch failure needs the reported command exercised in
+  `ci-macOS` from an identified copy of that checkout's exact source and dirty
+  content, with current build provenance and unrelated edits preserved. Keep
+  the original host checkout's delivery checks read-only. Regress empty and
+  partial `node_modules` newer than the manifests, including missing development
+  build tools. Observe the guest launch's native window and an offline turn.
+  A different source snapshot, prebuilt embed or separately launched `.app`
+  cannot accept the original checkout command. Use the isolated case lifecycle
+  above; this requirement never authorizes launching the host GUI.
+  Check declared direct/development packages and executable entries before a
+  rebuild, revalidate after installation, and do not stamp an incomplete build.
+  Serialize install/build/stamping for one checkout across processes; regress
+  cancellation while waiting and staleness checked again after locking.
+  Regress real npm-to-Node descendants: cancellation or script exit must stop
+  old writers before another build acquires the lock; retain the context cause.
+
 - A worker model output can outlive several manager checks. Preserve its
   `message_id` through live deltas and durable checkpoints; regress one real
   worker stream across those boundaries, replay and a later distinct output
@@ -124,6 +173,15 @@ E2E suite.
   and durable terminal writes. Regress a deadline while waiting for that
   ownership: no partial abandonment, premature ready or lost parked worker.
   Handoff cancellation cannot become a human-cancelled terminal event.
+- A fix for a reported checkout launch must reach that exact checkout. Record
+  its HEAD and dirty-file hashes, preserve unrelated edits, and verify the fix
+  commit is in that checkout's HEAD. Verify its source and served assets
+  read-only. Native behavior runs from a source- and dirty-content-identified
+  copy in `ci-macOS`, never the user's host GUI. Record that scope explicitly:
+  a guest copy cannot prove that the host's already-running binary changed.
+  Another worktree or a remote commit is not delivery.
+  `tools/check_checkout_delivery.py` checks source ancestry and optional
+  loopback asset hashes; it cannot accept native behavior.
 - If something cannot be tested, split it until the untestable part is a two-line
   wrapper: `startDesktopServer` vs `runDesktop`, `serveWeb` vs `runWeb`,
   `buildTUISwarm` vs `runTUI`. Do not leave logic inside a function that no test

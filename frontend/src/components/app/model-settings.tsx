@@ -1,5 +1,5 @@
 import { ChevronRight, Loader2, Plus, RefreshCw, Trash2 } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,8 @@ import { chromeTypeClass } from "@/lib/chrome-type"
 import { firstByteTimeoutSettingsKey } from "@/lib/first-byte-timeout"
 import { mergeModelContext } from "@/lib/usage"
 import type { Settings } from "@/lib/types"
+import type { MessageKey } from "@/lib/i18n"
+import type { ProviderToolsDrafts } from "@/lib/provider-tools"
 import { cn } from "@/lib/utils"
 import { useT, type Translate } from "@/lib/use-t"
 import { errorMessage, toastError, useToasts } from "@/store/toasts"
@@ -25,6 +27,7 @@ import { AuxiliaryModels } from "./auxiliary-models"
 import { SearchSettingsPanel } from "./settings-search"
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog"
 import { ProviderWindows } from "./provider-windows"
+import { ProviderCloudTools } from "./provider-cloud-tools"
 import {
   Field,
   SettingsPage,
@@ -42,21 +45,35 @@ export function ModelsTab({
   settings,
   onChange,
   query = "",
+  toolsDrafts = {},
+  toolsErrors = {},
+  onToolsDraftChange,
   focusKey = "",
 }: {
   settings: Settings
   onChange: (s: Settings) => void
   query?: string
+  toolsDrafts?: ProviderToolsDrafts
+  toolsErrors?: Record<string, MessageKey>
+  onToolsDraftChange?: (id: string, text: string) => void
   focusKey?: string
 }) {
   const t = useT()
   const [busy, setBusy] = useState<string>()
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(
-    settings.models.providers
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set([
+    ...Object.keys(toolsErrors),
+    ...settings.models.providers
       .filter((p) => focusKey === firstByteTimeoutSettingsKey(p.id))
       .map((p) => p.id),
-  ))
+  ]))
   const [doomed, setDoomed] = useState<ProviderConfig>()
+
+  useEffect(() => {
+    setOpen((previous) => {
+      const missing = Object.keys(toolsErrors).filter((id) => !previous.has(id))
+      return missing.length ? new Set([...previous, ...missing]) : previous
+    })
+  }, [toolsErrors])
 
   const update = (
     index: number,
@@ -156,7 +173,7 @@ export function ModelsTab({
             isDefault={settings.models.default === p.id}
             canRemove={settings.models.providers.length > 1}
             lockOn={p.enabled !== false && listedCount(settings) < 2}
-            open={open.has(p.id) || providerFieldsMatch(query, p, t)}
+            open={open.has(p.id) || Boolean(toolsErrors[p.id]) || providerFieldsMatch(query, p, t)}
             busy={busy === p.id}
             onToggle={() => toggle(p.id)}
             onUpdate={(patch) => update(i, patch)}
@@ -168,6 +185,9 @@ export function ModelsTab({
               })
             }
             onRemove={() => setDoomed(p)}
+            toolsDraft={toolsDrafts[p.id]}
+            toolsError={toolsErrors[p.id]}
+            onToolsDraftChange={(text) => onToolsDraftChange?.(p.id, text)}
           />
         ))}
       </SettingsSection>
@@ -191,6 +211,8 @@ export function ModelsTab({
                     id,
                     label: "",
                     base_url: "",
+                    api_mode: "chat_completions",
+                    builtin_tools: [],
                     model: "",
                     catalog: [],
                     timeout_seconds: 300,
@@ -241,6 +263,9 @@ function ProviderRow({
   onDiscover,
   onMakeDefault,
   onRemove,
+  toolsDraft,
+  toolsError,
+  onToolsDraftChange,
 }: {
   provider: ProviderConfig
   query: string
@@ -255,6 +280,9 @@ function ProviderRow({
   onDiscover: () => void
   onMakeDefault: () => void
   onRemove: () => void
+  toolsDraft?: string
+  toolsError?: MessageKey
+  onToolsDraftChange: (text: string) => void
 }) {
   const t = useT()
   const detailsId = `provider-details-${p.id}`
@@ -345,6 +373,14 @@ function ProviderRow({
               onChange={(e) => onUpdate({ base_url: e.target.value })}
             />
           </Field>
+          <ProviderCloudTools
+            provider={p}
+            query={query}
+            draft={toolsDraft}
+            error={toolsError}
+            onUpdate={onUpdate}
+            onDraftChange={onToolsDraftChange}
+          />
           <Field
             query={query}
             label={t("settings.models.apiKey")}
@@ -469,6 +505,10 @@ function providerVisible(query: string, p: ProviderConfig, t: Translate): boolea
     t("settings.models.provider"),
     t("settings.models.baseUrl"),
     t("settings.models.apiKey"),
+    t("settings.models.apiMode"),
+    t("settings.models.apiModeHint"),
+    t("settings.models.builtinTools"),
+    t("settings.models.builtinToolsHint"),
     t("settings.models.defaultModel"),
     t("settings.models.discover"),
     t("settings.models.window"),
@@ -495,6 +535,10 @@ function providerFieldsMatch(query: string, p: ProviderConfig, t: Translate): bo
     t("settings.models.provider"),
     t("settings.models.baseUrl"),
     t("settings.models.apiKey"),
+    t("settings.models.apiMode"),
+    t("settings.models.apiModeHint"),
+    t("settings.models.builtinTools"),
+    t("settings.models.builtinToolsHint"),
     t("settings.models.defaultModel"),
     t("settings.models.discover"),
     t("settings.models.window"),

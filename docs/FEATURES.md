@@ -13,6 +13,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-150` Goals and scheduled waits
     - `F-160` Trace and diagnostics
     - `F-170` Settings and providers
+    - `F-175` Provider cloud built-in tools
     - `F-180` PC text quoting
     - `F-190` Desktop updates
   - `F-200` Phone
@@ -37,7 +38,12 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：从原生窗口、网页或终端使用同一引擎；使用者：PC 用户；入口：`zwai desktop`, `zwai web`, `zwai tui`；输入：本机配置和对话；输出：同源的对话和状态；前置条件：本机引擎可启动；失败表现：启动或连接错误；关联契约：`C-001`, `C-005`, `C-027`；实现证据：`cmd/zwai`, `internal/app`, `internal/desktop`, `frontend/src`。
 
-- 自动交接重启：新版本／不同二进制启动时，在统一 30 秒启动预算内请求旧引擎交接、退出并启动新引擎；无需输入确认。manager 及所有活跃／后台 worker 保存检查点，模型摘要尽力完成，不以摘要标记任务完成；原 turn／worker 身份、历史、未读消息、超时预算及人类暂停保留。存储失败不确认安全退出；旧引擎缺少交接 API 时采用有界兼容恢复。关联契约：`C-001`、`C-027`、`C-012`；证据：`cmd/zwai/engine_restart.go`、`internal/engine/restart.go`、`handoff.go`、`cmd/zwai/engine_restart_acceptance_test.go`、`frontend/src/lib/transcript-restart.test.ts`。
+- 冷启动就绪：完成当前 checkout 的前端准备后，允许本地初始化最多 2 分钟，每 10 秒报告启动进度；手机 hub 注册不阻塞本地窗口。探测期间取消不得因迟到响应而继续附着或丢失取消类别，失败保留本次子进程退出原因及本次追加日志，取消／超时仅清理自己的启动子进程，保留竞争引擎。替换已有引擎仍遵守准备后的统一 30 秒交接预算。关联契约：`C-001`、`C-006`、`C-027`；实现／验证证据：`cmd/zwai/engine_boot.go`、`cmd/zwai/engine_boot_test.go`、`internal/app/app.go`、`internal/app/startup_remote_test.go`。
+- 前端准备在引擎发现／交接前执行，准备失败或取消时保留仍在服务的旧引擎，不消耗其 30 秒交接／恢复预算；后续进程仍须完成自身启动校验。关联契约：`C-001`、`C-027`；证据：`cmd/zwai/engine.go`、`cmd/zwai/engine_frontend_test.go`。
+- checkout 前端需要重建时，检查 manifest 直接依赖、开发依赖及命令入口；空／部分 `node_modules` 即使时间戳较新也先用 `npm install --include=dev` 修复并复验。安装／构建／stamp 按 checkout 跨进程串行，等待可取消；已有新鲜 bundle／发布 embed 不新增 Node 要求。关联契约：`C-001`、`C-010`；证据：`frontend/ensure.go`、`frontend/ensure_dependencies_test.go`、`frontend/ensure_build_lock.go`、`frontend/ensure_build_lock_test.go`。
+- 自有启动子进程发布租约后，单次元数据探测暂时不可达时继续在原总预算内等待；元数据成功校验后才附着。竞争引擎不可达或模式冲突仍立即报错并保留其进程。关联契约：`C-001`；证据：`internal/lease/lease_test.go`、`cmd/zwai/engine_boot_test.go`。
+
+- 自动交接重启：新版本／不同二进制启动时，在前端准备后的统一 30 秒预算内请求旧引擎交接、退出并启动新引擎；无需输入确认。manager 及所有活跃／后台 worker 保存检查点，模型摘要尽力完成，不以摘要标记任务完成；原 turn／worker 身份、历史、未读消息、超时预算及人类暂停保留。存储失败不确认安全退出；旧引擎缺少交接 API 时采用有界兼容恢复。关联契约：`C-001`、`C-027`、`C-012`；证据：`cmd/zwai/engine_restart.go`、`internal/engine/restart.go`、`handoff.go`、`cmd/zwai/engine_restart_acceptance_test.go`、`frontend/src/lib/transcript-restart.test.ts`。
 
 ### F-120 Conversations and projects
 
@@ -85,7 +91,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 首字节超时恢复：错误保留实际等待时长；桌面/Web 建议到设置 → 模型调大首字节等待时间，可从错误直接打开失败轮次的提供商并聚焦字段。设置能力和提供商缺失时的行为见 `F-170`；关联契约：`C-009`、`C-012`。
 - 请求前工具参数检查：压缩 middleware 返回状态后检查当前尾部调用的非空 JSON 参数；无效参数在实际模型 HTTP 前拒绝，沿既有有界重试清理，不清除人类 steer 或伪造 worker 创建。不是全历史 JSON 扫描。关联契约：`C-012`；证据：`internal/engine/autocompact.go`、`internal/engine/model_retry.go`、`internal/engine/model_retry_http_test.go`。
 
-- 模型故障退避：同一上游 origin 的 manager、subagent、模型及 provider 别名共享 5→10→20→30 秒封顶冷却，到期仅放行一个恢复探测；完整成功才恢复并发，HTTP 流缺少结束标记及 finish reason 时作为截断错误，保留故障及已收到的 usage。Stop 可取消等待及请求，换轮次或清缓存不能绕过。等待记录进入原 turn 的 Trace，不增加自动重试次数。关联契约：`C-029`；实现／测试证据：`internal/provider/backoff.go`、`internal/provider/model_backoff.go`、`internal/provider/stream_completion.go`、`internal/provider/stream_completion_test.go`、`internal/provider/backoff_integration_test.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`。
+- 模型故障退避：同一上游 origin 的 manager、subagent、模型及 provider 别名共享 5→10→20→30 秒封顶冷却，到期仅放行一个恢复探测；完整成功才恢复并发，Chat Completions HTTP 流缺少结束标记及 finish reason 时作为截断错误，保留故障及已收到的 usage。Stop 可取消等待及请求，换轮次或清缓存不能绕过。等待记录进入原 turn 的 Trace，不增加自动重试次数；quiet 报告后的迟到等待不重新显示 Chat 通知。关联契约：`C-029`；实现／测试证据：`internal/provider/backoff.go`、`internal/provider/model_backoff.go`、`internal/provider/stream_completion.go`、`internal/provider/stream_completion_test.go`、`internal/provider/backoff_integration_test.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`。
 
 ### F-135 Independent task coordination
 
@@ -127,6 +133,11 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 同源 provider 别名沿用 `F-130` 的共享冷却；保存设置不清故障档位（`C-029`）。证据：`internal/provider/backoff_integration_test.go`。
 
+### F-175 Provider cloud built-in tools
+
+- 目的：让支持 Responses 的 provider 在云端执行自带工具；使用者：PC 用户及 API 配置管理者；入口：Settings → Models 的 provider API 模式和工具 JSON、`PUT /api/settings`、`config.yaml`；输入：`api_mode` 和 `builtin_tools`，工具对象包含唯一非空 `type` 及服务商参数；输出：云端工具与本地函数工具共同供模型选择，流式回答含可点击来源，同 turn 的 `builtin_tool` Trace 回执；前置条件：端点、模型及所配置工具支持 Responses；失败表现：无效配置拒绝且保留草稿，服务端拒绝或流错误沿现有模型错误通道显示；关联契约：`C-030`、`C-009`、`C-012`；实现证据：`internal/config/provider_tools.go`、`internal/provider/responses.go`、`internal/engine/builtin_tools.go`、`frontend/src/components/app/model-settings.tsx`；验证：`internal/config/provider_tools_test.go`、`internal/server/settings_provider_tools_test.go`、`internal/engine/builtin_tools_test.go`、`frontend/e2e/builtin-tools.spec.ts`。
+- 当前支持 `web_search`、`web_search_preview`、`file_search`、`code_interpreter`；参数原样保留，不另行上传文件或调用资源管理接口；自动容器等选项仍可在服务商执行时创建资源。默认仍为 Chat Completions 且工具为空，不能根据服务商名称自动开工具。PC provider 配置也作用于通过 PC 执行的配对手机会话；手机独立直连配置不在此功能范围。
+
 ### F-180 PC text quoting
 
 - 目的：把选中的对话原文与提问分开提交；使用者：PC 用户；入口：选中 transcript 文本 → Add to chat；输入：选区和可选请求；输出：可编辑引用与带标签的消息；前置条件：选区在对话来源内；失败表现：无有效选区时不显示操作；关联契约：`C-011`；实现证据：`frontend/src/components/app/selection-menu.tsx`, `frontend/src/lib/quote.ts`, `frontend/src/components/app/selection-menu.test.tsx`。
@@ -136,10 +147,12 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：在 Mac 桌面应用里自动发现并确认安装新版本；使用者：Mac 桌面用户；入口：启动、每六小时、到期后的恢复前台／联网检查，以及菜单 Check for updates；输入：本仓库最近一个含同架构 `zwai-<version>-darwin-<arch>.zip` 的 Release；输出：确认后替换当前应用，以同一数据目录和离线模式打开新实例，关闭已登记的旧窗口，解压后 Finder 显示与 Dock 一致的 ZWAI 图标；前置条件：运行的是带数字版本号的 `zwai.app`；失败表现：自动检查保持安静，手动检查与安装显示可重试错误，启动命令失败恢复旧应用；关联契约：`C-010`, `C-024`；实现证据：`internal/update`, `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/e2e/desktop-update.spec.ts`, `internal/desktop/pack`, `internal/desktop/bundle_darwin.go`。
 
 - 更新安装以应用包为互斥范围，跨不同数据目录的引擎/进程返回 busy；启动失败保留并恢复旧包，延迟清理仅处理该次安装独有的备份。证据：`internal/update`, `internal/update/bundle_lock_test.go`；契约：`C-024`。
+- 下载显示已接收字节；总量已知时显示百分比，未知时不伪造百分比，随后显示安装与重启阶段。检查和安装错误使用红色警示；安装失败保留已确认版本，重试直接安装该版本，检查失败重试检查。进度读取暂时失败不结束进行中的安装。入口：更新横幅、`GET /api/update/progress`；实现证据：`internal/update`, `internal/server/update.go`, `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/e2e/desktop-update.spec.ts`；契约：`C-024`。
 
 ### F-210 Pair a phone with a PC
 
 - 目的：安全绑定手机和 PC；使用者：手机用户；入口：Settings → Phone QR、扫码或粘贴；输入：pairlink URI；输出：加密连接和设备列表；前置条件：hub 和 PC 在线；失败表现：网络、过期或 host offline；关联契约：`C-006`；实现证据：`internal/remote`, `mobile/src/components/scan-screen.tsx`, `mobile/src/lib/link.ts`。
+- PC 的 hub 注册在受控后台生命周期内执行；网络迟缓只影响手机连接，不阻塞本地程序启动。Stop／Reload 可取消注册，旧结果不得重新启用已停止或已替换的 host。证据：`internal/remote/host.go`、`internal/remote/host_start.go`、`internal/remote/host_start_test.go`、`internal/app/startup_remote_test.go`。
 
 ### F-220 Read and control PC conversations
 
@@ -218,6 +231,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 原生桌面用例：`python3 tools/native_macos_case.py --app <app> --evidence <new-directory> --timeout <seconds> -- <scenario-command>` 仅允许在 macOS 虚拟机运行；维护者选择 `ci-macOS`，串行运行各场景，每例独立 app/home/cache/data/workspace，场景继承私有环境，在成功、失败、超时和取消后停止本例进程再删除数据及缓存，持久保留日志和 `cleanup.json`；物理宿主、并发或未清理的前例拒绝启动。窗口行为仍由场景及真实来宾证据验收。关联契约：`C-031`；实现证据：`tools/native_macos_case.py`, `tools/test_native_macos_case.py`, `docs/TESTING.md`。
+- 实际启动目录核验：`python3 tools/check_checkout_delivery.py --checkout <absolute-path> --required-commit <sha> [--url <loopback-origin>]` 只读检查修复提交是否进入指定目录的 HEAD，可选比较该服务的全部 module script 与该目录 dist 的哈希；允许未提交改动，失败分项非零退出。原生行为在 `ci-macOS` 中按相同 HEAD、脏文件内容及构建身份的私有副本运行报告命令验收，不能以核验器成功或宿主已运行进程替代；宿主源码交付与来宾行为结果分别记录。关联契约：`C-010`, `C-031`；证据：`tools/check_checkout_delivery.py`, `tools/test_check_checkout_delivery.py`, `tools/native_macos_case.py`。
 - iOS 发布预检读取应用源码中经授权的持续合规声明；加密用途不变的普通更新无需重复问答，签名 IPA 及精确回执发生冲突时拒绝发布。无源码字段的旧批次仍读取私有精确确认。证据：`mobile/ios/App/App/Info.plist`, `tools/release_ios.py`, `tools/test_release_ios_compliance.py`, `docs/RELEASE.md`。
 - Mac 原生窗口验收后，发布恢复核对私有批次回执的版本、源码 SHA、文件名与 SHA-256，上传同一 ZIP；文件缺失或变化时保留待发布状态。证据：`tools/release.py`, `tools/test_release.py`, `docs/RELEASE.md`。
 - Mac 原生验收恢复的离线入口 `python3 tools/audit_macos_acceptance.py --observation <private.json>` 接收无凭据的来宾状态、登录结果与精确候选窗口回执，输出待解锁、待窗口验收、真实登录阻塞或同包验收通过。恢复待验收工作时先以 `guest.state=unknown` 重新观察来宾；unknown 优先于残留的旧登录成功／失败结果，要求重新观察，不直接阻塞或跳到窗口检查。宿主锁屏不阻断就绪来宾，已完成的同包真实验收不因后续锁屏失效，SSH/进程成功不算窗口验收；工具不执行登录、SSH 或发布，也不替代真实证据检查。证据：`tools/audit_macos_acceptance.py`, `tools/test_audit_macos_acceptance.py`, `docs/RELEASE.md`。

@@ -188,6 +188,8 @@ describe("ModelsTab", () => {
     const next = onChange.mock.calls[0][0] as Settings
     expect(next.models.providers).toHaveLength(2)
     expect(next.models.providers[1].id).toBe("provider-2")
+    expect(next.models.providers[1].api_mode).toBe("chat_completions")
+    expect(next.models.providers[1].builtin_tools).toEqual([])
     rerender(<ModelsTab settings={next} onChange={onChange} />)
     expect(screen.getByRole("button", { name: "provider-2 details" })).toHaveAttribute(
       "aria-expanded",

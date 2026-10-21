@@ -22,3 +22,13 @@ func TestUntaggedBuildDoesNotOfferAnUpdate(t *testing.T) {
 		t.Fatalf("install %d %s", res.StatusCode, raw)
 	}
 }
+
+func TestUpdateProgressRouteIsAvailable(t *testing.T) {
+	h := newHarness(t)
+	res := h.do(http.MethodGet, "/api/update/progress", nil)
+	defer res.Body.Close()
+	raw, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(raw), `"stage":"idle"`) || !strings.Contains(string(raw), `"downloaded_bytes":0`) {
+		t.Fatalf("progress %d %s", res.StatusCode, raw)
+	}
+}

@@ -303,8 +303,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   hits its tool-round limit, the transcript asks whether to add another slice
   rather than dying with a graph error.
 - **Automatic restart with saved progress.** Opening a newer/different build
-  requests a handoff and automatically replaces the engine within a 30s launch
-  budget. Active and background sub-agents retain their IDs, histories, unread
+  prepares the checkout frontend while the old engine keeps serving, then
+  requests a handoff and automatically replaces the engine within a 30s
+  handoff/recovery budget. A preparation error leaves the old engine in place.
+  Active and background sub-agents retain their IDs, histories, unread
   messages and confirmed results. Summaries are best effort under one shared
   deadline; a task does not become completed because it was summarized.
   Questions and iteration-cap pauses still wait for you. The conversation
@@ -312,6 +314,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   handoff in Trace. Checkpoint failures stop replacement with an explicit
   error. An older engine without handoff support uses bounded event-based
   recovery; its unsaved messages cannot be reconstructed.
+- **Local startup remains available while the phone hub connects.** A cold
+  launch allows up to two minutes for local initialization after frontend
+  preparation and reports progress
+  every ten seconds. Phone registration runs in the background, so its network
+  wait does not hold the window closed. Startup errors show the current
+  attempt's log and actual process failure. The separate 30s restart budget
+  still applies when replacing an existing engine.
 - **Unfinished work survives a crash.** Kill the process, quit the window, or
   lose power mid-turn: the next start continues every leftover conversation,
   with the answers already on screen still in the model's context, any
@@ -392,7 +401,7 @@ uploads, downloads and the live event stream have exactly one implementation.
   After a chat service fails, manager and subagents on that same service share
   a 5 → 10 → 20 → 30-second capped recovery backoff, including new turns and
   provider aliases. One probe tests recovery at a time; a complete successful
-  response restores normal concurrency. A stream needs a protocol terminator or
+  response restores normal concurrency. A Chat Completions stream needs a protocol terminator or
   explicit finish reason; a truncated connection cannot prove recovery. Stop
   cancels waiting and the active request. Trace records
   `model_backoff` waits separately from actual calls and retry attempts.
@@ -410,8 +419,8 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 ## Quick start
 
-Requirements: Go 1.26+ and Node.js (for the UI bundle on first run; `npm install`
-uses the public registry). The desktop window uses
+Requirements: Go 1.26+ and Node.js (for a missing/stale checkout UI bundle or
+dependency repair; `npm install --include=dev` uses the public registry). The desktop window uses
 [Wails 3](https://wails.io) and needs a C toolchain (macOS: Xcode Command Line
 Tools; Linux: `webkit2gtk` dev packages).
 
@@ -426,6 +435,11 @@ go run ./cmd/zwai desktop
 # or the same app in your browser
 go run ./cmd/zwai web
 ```
+
+When a checkout bundle needs rebuilding, startup checks its declared direct
+dependencies and development build tools. An empty or partial `node_modules`
+is repaired before building even when its directory timestamp is recent.
+Installation is checked again before the build can be stamped as current.
 
 First launch writes `~/.zwai-swarm/config.yaml` and shows a setup banner until a
 model is configured. Open **Settings** (⌘,) — a full-page sheet that starts on
@@ -459,8 +473,11 @@ Released macOS apps check for updates at launch and every six hours while open.
 Returning to the window or reconnecting the network checks again when due;
 background failures stay quiet. A newer Mac installer shows **Update / 升级**
 and **Not now / 暂不**. Update downloads and replaces this `zwai.app`, then
-reopens it with the same data directory. **Menu → Check for updates** checks
-immediately and shows errors with **Retry / 重试**. A launch-command failure
+reopens it with the same data directory. The banner shows downloaded bytes and,
+when the installer size is known, a percentage, followed by installation and
+restart stages. Errors use a red alert. **Retry / 重试** after installation
+failure retries the confirmed version directly; a failed check retries the
+check. **Menu → Check for updates** checks immediately. A launch-command failure
 restores the previous app and leaves its window open. Two engines using different
 data directories still share one installer lock for this app; a competing install
 reports busy. Separate app bundles can update independently. Installation requires
@@ -905,8 +922,9 @@ zwai --data-dir /tmp/demo   # use a throwaway data directory
 the terminal share one engine for that directory: the first shell starts
 it, the next one attaches, and closing a window does not stop a turn that
 is still running. A newer binary requests a durable task handoff, prints
-progress every 5s, and automatically replaces the engine within one 30s launch
-budget. The old engine must acknowledge saved progress before it is stopped;
+progress every 5s, and automatically replaces the engine within one 30s
+handoff/recovery budget after checkout frontend preparation. The old engine
+must acknowledge saved progress before it is stopped;
 engines without this API use bounded compatibility recovery. See
 [docs/CLI.md](docs/CLI.md).
 
@@ -968,6 +986,11 @@ embed inside the binary is current. `make frontend` is `go generate ./frontend`.
 Rules for changing this code — coverage bars, prompt hygiene, documentation
 duties — are in [AGENTS.md](AGENTS.md). Read it before opening a pull request.
 
+Native desktop tests run only in UTM `ci-macOS`, one isolated case at a time.
+Use the [native case runner](docs/TESTING.md#native-desktop-isolation-f-430--c-031):
+it refuses a physical host and closes case-owned processes before removing
+their private home/cache and test data. Keep the user's running desktop and normal data untouched.
+
 Invalid delegation calls do not create workers. Within one manager reply, repeated spawn argument errors are reported once per error with their rejected count; the manager can supply both role and task and continue. See [the lifecycle tools](docs/LIBRARY.md).
 
 ### Coordination between conversations
@@ -998,3 +1021,14 @@ Older PCs that omit completion watermarks keep ordinary phone conversations
 and scheduled checks usable. The phone does not send the optional read
 acknowledgement to those hosts. A supported PC's initial watermark of zero
 still allows the first visible result to be acknowledged.
+
+### Cloud built-in tools
+
+Settings → Models → open a provider, select **Responses**, and configure its cloud
+tools JSON, for example `[{"type":"web_search"}]`. The endpoint and model must
+support that API and tool. The default remains Chat Completions with no cloud
+tools. Cloud calls run at the provider, coexist with local Agent functions, and
+appear in the same turn's Trace; web sources remain clickable in answers.
+See [configuration](docs/CONFIG.md#provider-cloud-tools) for supported tool types,
+parameters, YAML and limits. Paired phone sessions using the PC inherit its
+provider configuration; independent phone direct chat has its own configuration.

@@ -753,6 +753,7 @@ func (e *Engine) callRecorder(threadID, turnID string) provider.Recorder {
 			e.log.Warn("could not record a model call", "turn", turnID, "err", err)
 			return
 		}
+		e.recordBuiltinTools(rec, r.BuiltinTools)
 		if isAuxiliaryAgent(r.AgentID) {
 			return
 		}

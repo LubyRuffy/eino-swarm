@@ -49,6 +49,20 @@ describe("model request backoff", () => {
     expect(state.agents[MANAGER_ID].blocks[0].text).toBe("Waiting 5s before retrying the model request.")
   })
 
+  it("does not revive chat notices when a quiet scheduled turn later waits for a model", () => {
+    const event = backoff('{"attempt":1,"wait_ms":5000}')
+    const quiet = reduceEvents(emptyTranscript(), [
+      { ...event, seq: 1, kind: "schedule_fired" },
+      { ...event, seq: 2, kind: "schedule_report", text: '{"quiet":true}' },
+    ])
+    // A post-turn title or memory call may wait after the scheduled report.
+    const state = reduceEvent(quiet, { ...event, seq: 3, agent_id: "reviewer" })
+    expect(state.quietTurns).toContain("tn_1")
+    expect(state.agents[MANAGER_ID].blocks).toEqual([])
+    expect(state.agents.reviewer).toBeUndefined()
+    expect(state.lastSeq).toBe(3)
+  })
+
   it.each(["", "broken", "null", "{}", '{"wait_ms":"5000"}', '{"wait_ms":0}', '{"wait_ms":-1}', '{"wait_ms":1e400}'])
     ("keeps malformed payload %j out of the chat", (text) => {
       const state = reduceEvent(emptyTranscript(), backoff(text))

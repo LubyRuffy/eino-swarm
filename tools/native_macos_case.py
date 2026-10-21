@@ -1,0 +1,365 @@
+#!/usr/bin/env python3
+"""Run one isolated native case inside a macOS VM; never launch on its host.
+
+The scenario owns window/behavior assertions. A zero exit code proves only that
+its command succeeded and all case processes/data were cleaned up.
+"""
+import argparse
+from contextlib import contextmanager
+import ctypes
+import errno
+import fcntl
+import json
+import math
+import os
+from pathlib import Path
+import platform
+import plistlib
+import shutil
+import signal
+import subprocess
+import tempfile
+import time
+import uuid
+
+
+LOCK_PATH = Path("/tmp") / f"zwai-native-macos-{os.getuid()}.lock"
+
+
+def require_guest():
+    """Fail closed before any GUI launch; the CLI has no bypass switch."""
+    if platform.system() != "Darwin":
+        raise RuntimeError("native cases require a macOS virtual machine")
+    try:
+        present = subprocess.check_output(
+            ["/usr/sbin/sysctl", "-n", "kern.hv_vmm_present"],
+            stderr=subprocess.DEVNULL, timeout=5)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise RuntimeError("cannot establish macOS VM identity") from error
+    if present.strip() != b"1":
+        raise RuntimeError("physical host refused; execute inside ci-macOS")
+
+
+@contextmanager
+def case_lock():
+    # Never unlink this inode: a new inode would permit two concurrent owners.
+    fd = os.open(LOCK_PATH, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "r+", encoding="utf-8") as stream:
+        try:
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError("another native case still owns the guest") from error
+        saved = stream.read()
+        if saved:
+            try:
+                previous = json.loads(saved)
+            except ValueError as error:
+                raise RuntimeError("native case lock receipt is unreadable; inspect before reuse") from error
+            if not isinstance(previous, dict) or previous.get("cleanup_complete") is not True:
+                raise RuntimeError("previous native case is not cleaned; inspect lock receipt before reuse")
+        yield stream
+
+
+def save_json(path, row):
+    path.write_text(json.dumps(row, indent=2) + "\n", encoding="utf-8")
+
+
+def save_lock(stream, row):
+    stream.seek(0)
+    stream.truncate()
+    json.dump(row, stream)
+    stream.flush()
+    os.fsync(stream.fileno())
+
+
+def process_identity(pid):
+    """Read exact argv and only our case marker; discard all other environment."""
+    if platform.system() == "Linux":
+        # Headless process fixtures can run on Linux; require_guest still denies CLI.
+        try:
+            argv = [os.fsdecode(arg) for arg in Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0") if arg]
+            environment = Path(f"/proc/{pid}/environ").read_bytes().split(b"\0")
+            return argv, case_marker(environment)
+        except (FileNotFoundError, PermissionError, ProcessLookupError):
+            return None, None
+    libc = ctypes.CDLL(None, use_errno=True)
+    mib = (ctypes.c_int * 3)(1, 49, pid)  # CTL_KERN, KERN_PROCARGS2.
+    for attempt in range(3):
+        size = ctypes.c_size_t()
+        if libc.sysctl(mib, 3, None, ctypes.byref(size), None, 0):
+            error = ctypes.get_errno()
+        else:
+            buffer = ctypes.create_string_buffer(size.value)
+            if not libc.sysctl(mib, 3, buffer, ctypes.byref(size), None, 0):
+                break
+            error = ctypes.get_errno()
+        if error in (errno.ESRCH, errno.EPERM, errno.EINVAL):
+            return None, None
+        # An exiting/execing process can invalidate the stack while sysctl
+        # copies it. Re-read the size too; a live unreadable PID still fails.
+        if error not in (errno.EIO, errno.ENOMEM) or attempt == 2:
+            raise OSError(error, f"cannot inspect process arguments for pid {pid}")
+        time.sleep(.01)
+    raw = buffer.raw[:size.value]
+    if len(raw) < ctypes.sizeof(ctypes.c_int):
+        return None, None
+    argc = ctypes.c_int.from_buffer_copy(raw[:4]).value
+    # The executable path precedes argv, with an arbitrary amount of null padding.
+    _, _, argv = raw[4:].partition(b"\0")
+    entries = argv.lstrip(b"\0").split(b"\0")
+    return [os.fsdecode(arg) for arg in entries[:argc]], case_marker(entries[argc:])
+
+
+def case_marker(environment):
+    prefix = b"ZWAI_NATIVE_CASE_ID="
+    return next((os.fsdecode(entry[len(prefix):]) for entry in environment if entry.startswith(prefix)), None)
+
+
+def process_argv(pid):
+    return process_identity(pid)[0]
+
+
+def owns_argv(argv, bundle, data):
+    if not argv:
+        return False
+    bundle_prefix = str(bundle) + os.sep
+    for index, arg in enumerate(argv):
+        if arg.startswith(bundle_prefix):
+            return True
+        if arg == "--data-dir=" + str(data):
+            return True
+        if arg == "--data-dir" and index + 1 < len(argv) and argv[index + 1] == str(data):
+            return True
+    return False
+
+
+class ProcessScope:
+    """Attribute inherited case markers, private sessions and observed descendants."""
+    def __init__(self, bundle, data, processes, case_id=None):
+        self.bundle, self.data, self.processes = bundle, data, processes
+        self.case_id = case_id
+        self.groups = {process.pid for process in processes}
+        self.identities = {}
+
+    def sample(self):
+        listing = subprocess.check_output(
+            ["/bin/ps", "-axo", "pid=,ppid=,pgid=,uid=,stat=,lstart="], timeout=5, text=True)
+        rows = {}
+        for line in listing.splitlines():
+            parts = line.split(maxsplit=5)
+            pid, parent, group, uid = map(int, parts[:4])
+            if uid == os.getuid() and pid != os.getpid() and not parts[4].startswith("Z"):
+                rows[pid] = (parent, group, parts[5])
+        self.groups.update(process.pid for process in self.processes if process.poll() is None)
+        owned = set()
+        for pid, (_, group, born) in rows.items():
+            argv, marker = process_identity(pid)
+            if (group in self.groups or self.identities.get(pid) == born
+                    or owns_argv(argv, self.bundle, self.data)
+                    or (self.case_id is not None and marker == self.case_id)):
+                owned.add(pid)
+        while True:
+            children = {pid for pid, (parent, _, _) in rows.items() if parent in owned}
+            if children <= owned:
+                break
+            owned.update(children)
+        self.identities = {pid: rows[pid][2] for pid in owned}
+        self.groups = {rows[pid][1] for pid in owned
+                       if rows[pid][1] in self.groups or rows[pid][1] == pid}
+        return sorted(owned)
+
+
+def send_signal(pids, sig):
+    for pid in pids:
+        try:
+            os.kill(pid, sig)
+        except ProcessLookupError:
+            pass
+
+
+def stop_owned(bundle, data, processes, grace=2, scope=None):
+    """Rescan after TERM/KILL, retaining ownership after a parent exits."""
+    scope = scope or ProcessScope(bundle, data, processes)
+    for sig, duration in ((signal.SIGTERM, grace), (signal.SIGKILL, grace)):
+        deadline = time.monotonic() + duration
+        quiet = 0
+        while True:
+            remaining = scope.sample()
+            if not remaining:
+                quiet += 1
+                if quiet == 2:
+                    return []
+            else:
+                quiet = 0
+                send_signal(remaining, sig)
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(.05)
+    return scope.sample()
+
+
+def wait_scenario(process, timeout):
+    deadline = time.monotonic() + timeout
+    while True:
+        process.native_scope.sample()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        try:
+            return process.wait(timeout=min(.05, remaining))
+        except subprocess.TimeoutExpired:
+            pass
+
+
+def copy_app(source, root):
+    source = source.resolve(strict=True)
+    if source.suffix != ".app" or not source.is_dir():
+        raise ValueError("--app must identify an existing .app directory")
+    with (source / "Contents/Info.plist").open("rb") as stream:
+        metadata = plistlib.load(stream)
+    if not isinstance(metadata, dict):
+        raise ValueError("bundle Info.plist must contain a dictionary")
+    name = metadata.get("CFBundleExecutable")
+    if not isinstance(name, str) or not name or Path(name).name != name:
+        raise ValueError("bundle executable must be one filename")
+    original = source / "Contents/MacOS" / name
+    if not original.resolve(strict=True).is_relative_to(source) or not os.access(original, os.X_OK):
+        raise ValueError("bundle executable must be executable within the supplied app")
+    target = root / source.name
+    shutil.copytree(source, target, symlinks=True)
+    executable = target / "Contents/MacOS" / name
+    if not executable.resolve(strict=True).is_relative_to(target):
+        raise ValueError("copied executable must remain inside the isolated bundle")
+    return target, executable
+
+
+def run_case(app, evidence, timeout, command):
+    evidence = evidence.absolute()
+    # Evidence is durable and must never be recursively copied with the source app.
+    if evidence.resolve().is_relative_to(app.resolve()):
+        raise ValueError("evidence must be outside the supplied app")
+    evidence.mkdir(parents=True, exist_ok=False, mode=0o700)
+    receipt = {"case_id": uuid.uuid4().hex, "virtualized": False, "launched": False,
+               "cleanup_complete": True, "data_removed": False, "remaining_owned_pids": [],
+               "app_source": str(app.absolute()), "scenario_exit": None,
+               "native_behavior": "scenario assertions and window evidence required"}
+    code = 2
+    try:
+        require_guest()
+        receipt["virtualized"] = True
+        if not command or not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("provide a scenario command and a positive finite timeout")
+        with case_lock() as lock:
+            root = Path(tempfile.mkdtemp(prefix="zwai-native-" + receipt["case_id"] + "-")).resolve()
+            bundle, data = root / "app-not-copied", root / "data"
+            processes, scenario, scope = [], None, None
+            receipt.update(case_root=str(root), data_dir=str(data), cleanup_complete=False)
+            try:
+                save_lock(lock, receipt)
+                bundle, executable = copy_app(app, root)
+                workspace = root / "workspace"
+                case_home = root / "home"
+                data.mkdir()
+                workspace.mkdir()
+                case_home.mkdir(mode=0o700)
+                receipt.update(app_copy=str(bundle), workspace=str(workspace), home_dir=str(case_home))
+                environment = {key: value for key, value in os.environ.items() if not key.startswith("OPENAI_")}
+                environment.update(HOME=str(case_home), ZWAI_HOME=str(data), ZWAI_NATIVE_APP=str(bundle),
+                                   ZWAI_NATIVE_DATA=str(data), ZWAI_NATIVE_WORKSPACE=str(workspace),
+                                   ZWAI_NATIVE_EVIDENCE=str(evidence), ZWAI_NATIVE_CASE_ID=receipt["case_id"])
+                scope = ProcessScope(bundle, data, processes, receipt["case_id"])
+                with (evidence / "app.stdout.log").open("wb") as out, \
+                        (evidence / "app.stderr.log").open("wb") as err, \
+                        (evidence / "scenario.stdout.log").open("wb") as scenario_out, \
+                        (evidence / "scenario.stderr.log").open("wb") as scenario_err:
+                    desktop = subprocess.Popen([str(executable), "desktop", "--mock", "--data-dir", str(data)],
+                                               cwd=workspace, env=environment, stdout=out, stderr=err,
+                                               start_new_session=True)
+                    processes.append(desktop)
+                    receipt["launched"] = True
+                    receipt["app_pid"] = desktop.pid
+                    scope.sample()
+                    scenario = subprocess.Popen(command, cwd=workspace, env=environment,
+                                                stdout=scenario_out, stderr=scenario_err, start_new_session=True)
+                    processes.append(scenario)
+                    scope.groups.add(scenario.pid)
+                    scenario.native_scope = scope
+                    code = wait_scenario(scenario, timeout)
+                    receipt["scenario_exit"] = code
+            except subprocess.TimeoutExpired:
+                code = 124
+                receipt["failure"] = "scenario timeout"
+            except KeyboardInterrupt:
+                code = 130
+                receipt["failure"] = "interrupted"
+            except (OSError, ValueError, RuntimeError) as error:
+                code = 2
+                receipt["failure"] = str(error)
+            finally:
+                handlers = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGTERM)}
+                try:
+                    try:
+                        remaining = stop_owned(bundle, data, processes, scope=scope)
+                        receipt["remaining_owned_pids"] = remaining
+                        if not remaining:
+                            engine_log = data / "engine.log"
+                            if engine_log.is_file() and not engine_log.is_symlink():
+                                shutil.copyfile(engine_log, evidence / "engine.log")
+                            shutil.rmtree(root)
+                            receipt["data_removed"] = True
+                            receipt["cleanup_complete"] = True
+                        else:
+                            code = 3
+                    except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                        receipt["cleanup_error"] = str(error)
+                        code = 3
+                    # A failed cleanup keeps the original fsynced refusal latch.
+                    # Truncating that latch could otherwise allow the next case.
+                    if receipt["cleanup_complete"]:
+                        save_lock(lock, receipt)
+                finally:
+                    for sig, handler in handlers.items():
+                        signal.signal(sig, handler)
+    except KeyboardInterrupt:
+        code = 130
+        receipt["failure"] = "interrupted"
+    except (OSError, ValueError, RuntimeError) as error:
+        code = 2
+        receipt["failure"] = str(error)
+    finally:
+        receipt["exit_code"] = code
+        save_json(evidence / "cleanup.json", receipt)
+    return code
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, epilog=(
+        "Scenario environment: HOME (isolated home/cache, parent unchanged), "
+        "ZWAI_HOME / ZWAI_NATIVE_DATA (isolated data), "
+        "ZWAI_NATIVE_APP (copied .app), ZWAI_NATIVE_WORKSPACE (cwd), "
+        "ZWAI_NATIVE_EVIDENCE (persistent logs and cleanup.json). "
+        "Preserve ZWAI_NATIVE_CASE_ID in descendants so detached helpers remain attributable. "
+        "Perform multiple restart steps within one scenario; independent cases never share data."))
+    parser.add_argument("--app", required=True, type=Path)
+    parser.add_argument("--evidence", required=True, type=Path, help="new persistent directory outside the app")
+    parser.add_argument("--timeout", required=True, type=float, help="scenario deadline in seconds")
+    parser.add_argument("command", nargs=argparse.REMAINDER, help="-- followed by a scenario command")
+    args = parser.parse_args(argv)
+    command = args.command[1:] if args.command[:1] == ["--"] else args.command
+    def interrupt(signum, frame):
+        # Once cancellation begins, a second signal must not bypass final cleanup.
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        raise KeyboardInterrupt
+    handlers = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGTERM, signal.SIGINT)}
+    try:
+        return run_case(args.app, args.evidence, args.timeout, command)
+    except (OSError, ValueError) as error:
+        parser.exit(2, str(error) + "\n")
+    finally:
+        for sig, handler in handlers.items():
+            signal.signal(sig, handler)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

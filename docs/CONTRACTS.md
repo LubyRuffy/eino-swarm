@@ -13,6 +13,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：lifecycle；作用范围：desktop、web、tui、engine；关联功能：`F-110`, `F-120`, `F-320`。
 - 契约内容：同一数据目录只由一个 engine 进程持有；客户端连接同一 loopback 服务；不同版本或开发二进制身份替换引擎时先进行有界持久化交接并自动恢复。持锁但尚未发布地址的引擎必须在地址出现后经过同一身份和活动 turn 检查；子进程启动输给竞争者时也不得直接接受竞争者的 URL。身份/状态检查或检查点保存失败时不得假称已安全交接；明确报告错误并保留可重试的恢复现场。
+- 就绪和失败边界：前端准备后的普通冷启动最多等待 2 分钟，每 10 秒报告进度；替换引擎仍受 `C-027` 的统一 30 秒预算约束。同步元数据探测后必须重新检查取消，迟到的成功或失败都不能覆盖调用方的取消类别；证据：`cmd/zwai/engine_startup_cancel_test.go`。启动失败必须保留实际子进程退出错误，日志仅取本次启动后追加的部分，不得用旧模型错误充当本次原因。取消／超时必须回收本次启动的子进程，不得终止竞争 lease 的其他持有者。本地就绪不得等待可选手机 hub 注册，turn／worker 恢复与调度仍有序完成。证据：`cmd/zwai/engine_boot_test.go`、`cmd/zwai/engine_restart_budget_test.go`、`internal/app/startup_remote_test.go`。
+- 单次健康探测边界：`lease.Discover` 在 `ErrUnreachable` 时保留已解析的未验证租约，仅用于将 PID 与本次启动的自有 child 关联；错误记录不能作为附着地址、版本或模式已验证的证据。仅当 PID 属于本次 child 且尚未观察其退出时，启动器可在原总截止时间内继续探测；成功元数据校验仍是附着前提。竞争 holder 的不可达与模式冲突保持可判断错误并立即返回，不能借此终止竞争进程。证据：`internal/lease/lease.go`、`internal/lease/lease_test.go`、`cmd/zwai/engine_boot.go`、`cmd/zwai/engine_boot_test.go`。
+- 前端准备边界：当前 checkout 的 `frontend.Load` 在引擎发现／交接／启动前、同一可取消启动上下文内执行；准备失败或取消不得冻结／停止旧引擎或启动新 child。准备耗时不消耗随后 30 秒交接／恢复预算，后续进程仍须完成自身构建／启动校验，不保证准备后不会发生新的故障。证据：`cmd/zwai/engine.go`、`cmd/zwai/engine_frontend_test.go`。
 - 允许行为：多个 shell 同时连接；禁止行为：多个进程同时写同一数据库；失败语义：引擎不可达或租约冲突需明确报告；不变量：一个目录一把 lease；边界条件：进程异常结束后可恢复。
 - 证据：实现 `internal/lease`, `internal/app`, `cmd/zwai`；测试 `internal/lease`, `internal/app`, `cmd/zwai/engine_startup_test.go`；变更规则：同步架构、CLI 和恢复测试；来源：`ARCHITECTURE.md` 和 Git 历史。
 
@@ -59,6 +62,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 模型目录刷新是显式只读的 `refresh_catalog`：普通 `catalog` 仍读本地配置快照；刷新只返回启用且就绪提供商的实时发现结果，不补回已下线默认模型，不保存目录、默认项或凭据，也不改写显式选择。全部发现成功才替换手机目录，失败保留旧目录并在选择器内提供错误与重试；旧 PC 的 `unknown_op` 提示更新 PC，不能伪装为刷新成功或断开聊天。每条链接最多一个刷新，发现并发且受单次总时限约束，关闭链接取消并等待任务结束；响应继续遵守帧预算。手机只能应用当前链接、当前刷新代次的结果和清理回调。证据：`internal/remote/catalog_refresh.go`, `internal/remote/catalog_refresh_test.go`, `internal/remote/pump_catalog.go`, `internal/remote/pump_catalog_test.go`, `mobile/src/lib/use-model-catalog.ts`, `mobile/src/lib/use-model-catalog.test.ts`, `mobile/src/components/composer.test.tsx`, `mobile/e2e/model-refresh.spec.ts`；来源：Issue #81。
 - 状态：active；类型：compatibility / security；作用范围：pairlink、phone、PC remote；关联功能：`F-125`, `F-170`, `F-210`, `F-220`, `F-222`, `F-224`, `F-230`。
+- 本地生命周期：hub 注册在可取消后台任务中执行，不阻塞 PC 本地启动或状态查询；Stop／Reload 取消进行中的注册，并拒绝旧生命周期迟到的成功结果，不得复活已停用 host。注册错误仍通过远程状态／日志暴露；任务恢复与调度的顺序不因此改成裸异步。证据：`internal/remote/host.go`、`internal/remote/host_start.go`、`internal/remote/host_start_test.go`、`internal/app/app.go`、`internal/app/startup_remote_test.go`；变更规则：同步本地启动、取消／重载和无网络回归。
 - 契约内容：手机通过 pairlink 加密 RPC 与 PC 通信，不直接调用 PC 的 `/api`；已持久化事件的 kind 和正 seq 可在手机回放；断线重连不解除绑定。回答 `ask_user` 时客户端必须使用 PC 规范化后的 question ID（如 `test-window` → `test_window`），RPC 拒绝必须显示原因并保留草稿，接受后不得重复提交。子 Agent 的事件按 `agent_id` 与主 Agent 分开回放，`spawned` 启动指令正文不离开 PC；手机只显示协议允许并按 `event_chars` 裁剪的活动。当前页只有手机隐藏的子任务调用及孤立工具回执时，`log` 必须继续向前查找可显示历史，不能让用户逐页点击隐藏记录；当前轮次没有可显示消息时必须说明原因并保留「更早」入口。
 - 允许行为：relay/direct 路径切换及手机查看子 Agent 角色、状态和截断记录；手机页头计数仅包含运行中的子 Agent，列表按进行中／已结束分组，完成和失败记录仍可查看；禁止行为：把本地 PC API 或子 Agent 启动指令直接暴露给手机，或把子 Agent 回答混作主 Agent 回答；失败语义：连接错误与 host offline 可区分；不变量：一个 PC 对话跨端一致，同一 agent 的流式文本只更新自己的记录；边界条件：ticket 过期、掉线、历史翻页、子 Agent 续办和重连。
 - 证据：实现 `internal/remote/clip.go`, `internal/remote/log.go`, `internal/engine/ask.go`, `frontend/src/lib/transcript-ask.ts`, `mobile/src/lib/link.ts`, `mobile/src/lib/ask.ts`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/ask-card.tsx`, `mobile/src/components/thread-screen.tsx`；测试 `internal/remote/watch_test.go` 的 `TestSpawnedInstructionNeverLeavesTheHost`, `internal/remote/log_test.go` 的 `TestLogFindsEarlierAnswerPastHiddenSubagentBookkeeping`, `frontend/src/lib/transcript-ask.test.ts`, `mobile/src/lib/ask.test.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/src/components/ask-card.test.tsx`, `mobile/e2e/ask-answer.spec.ts`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、手机测试和数据模型；来源：`ARCHITECTURE.md`、GitHub Issue #30 的 A 方案确认、GitHub Issue #47 的混合状态截图、GitHub Issue #51 的提问提交失败、GitHub Issue #58 的长会话空白。
@@ -105,7 +109,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-010 Build artifacts and update channel
 
-- 状态：active；类型：compatibility / lifecycle；作用范围：build、mobile update、macOS desktop update；关联功能：`F-190`, `F-240`, `F-430`。
+- 原生验收位置和清理遵循 `C-031`；实际 checkout 交付核验不授权在宿主机启动测试窗口。
+- 状态：active；类型：compatibility / lifecycle；作用范围：checkout frontend build、mobile update、macOS desktop update；关联功能：`F-110`, `F-190`, `F-240`, `F-430`。
+- checkout 构建依赖：需要重建 bundle 时，按 manifest 检查直接 `dependencies`／`devDependencies` 的已安装包 JSON 及所声明的本地 bin 入口，不能只凭 `node_modules` 目录存在或 mtime 判定可构建；不递归审计传递依赖或保证任意包内容完整。缺失时执行 `npm install --include=dev` 并在成功返回后复验，仍不满足则明确失败，不运行 build、不写 source stamp。安装、构建和 stamp 在 checkout 的忽略目录 `.build-lock` 下跨进程互斥，持锁后重查 staleness，等待可取消。新鲜 bundle 和无 checkout 的发布 embed 不新增 Node 要求。证据：`frontend/ensure.go`、`frontend/ensure_build_lock.go`、`frontend/ensure_dependencies_test.go`、`frontend/ensure_build_lock_test.go`。
+- 构建进程所有权：脚本退出或取消后，先终止并等待本次构建的进程树，再允许后续 builder 复用 checkout 锁，不能只结束 npm 而留下 Node 写入 `dist`／`node_modules`。取消错误保留可判断的 context 类别，脚本退出状态和清理错误保留，不把清理失败报告为成功。Unix 用进程组，Windows 用 Job Object；平台行为验收分别记录，交叉编译只证明可构建。证据：`frontend/ensure_process_unix.go`、`frontend/ensure_process_windows.go`、`frontend/ensure_process_test.go`、`frontend/ensure_process_windows_test.go`。
+
+- 实际目录交付：用户报告某个 checkout 启动行为时，修复提交必须进入那个目录的 HEAD，并保留无关未提交内容；该目录的源码和已运行服务资源只读核验，原生行为使用可核对 HEAD、脏文件哈希及构建身份的 `ci-macOS` 副本验收。不得在用户宿主机启动测试窗口；来宾验收不能证明宿主已运行实例更新。独立 worktree、远端主线和另一个安装包不能替代实际目录交付。只读核验器的 `source_and_assets_only` 范围明确不包含原生行为。证据：`tools/check_checkout_delivery.py`, `tools/test_check_checkout_delivery.py`；变更规则：同步开发规则及 TESTING；来源：用户 2026-10-21 对实际 desktop 启动仍缺修复及测试不得抢占桌面的纠正。
 - 契约内容：`make build` 先更新嵌入的前端；Android sideload 使用 GitHub Release 中版本匹配的 `zwai-<version>-android.apk`；iOS 不显示 GitHub 版本检查菜单，测试版由 TestFlight 分发和更新。手机新版本从 package 版本派生 Android versionCode 和 iOS build number；开发用 Xcode 设置仍从 package 同步，TestFlight archive 默认沿用本应用私有台账中最高 build 的成功交付 marketing version，无成功历史时使用批次版本。私有 `marketing_version` 可显式开启新版本；已存在的候选状态、IPA 或源码回执冻结原 iOS 版本。批次 version/SHA 与 iOS marketing version/build number 分别保存，build number 必须高于远端全部 builds/uploads。macOS 桌面发布物是 `zwai-<version>-darwin-<arch>.zip`，根目录为 `zwai.app`。新版本仅在未分配待发布修复存在、主线自上一个公开源码 SHA 后提交超过三次，或最早待发布验收记录超过 24 小时时分配；跨日期、跨运行累计。`make release` 按台账只发布本批实际受影响且尚未交付的平台：desktop 为 macOS，mobile 为 Android 与 iOS；混合批次共享 tag 和源码 SHA，桌面单端发布无需增加手机 package/build number。各端门禁独立，最终缺任一必需端则非零。附件同名同 SHA-256 跳过，不允许覆盖；已发布 tag 必须对应冻结完整主线 SHA。TestFlight 只有 VALID、内测 READY_FOR_BETA_TESTING、外测 IN_BETA_TESTING 且全部既定组关联时才完成；存在审核记录时还必须 APPROVED，无审核记录不能代替真实外测状态。加组后重新观察，仅 READY_FOR_BETA_SUBMISSION 请求提交审核；同版本后续 build 仍可能被 Apple 要求审核。上传前查 builds/buildUploads、当前构建声明和北京日成功账本，每日最多一新构建成功；已接受上传、处理或审核等待均保存恢复信息，不重复上传。Mac 与 Android 更新器从本仓库最近的非 draft、非 prerelease 且包含本平台安全安装包的 Release 升级，不假定 `/releases/latest` 含每个平台；下载只跟随 github.com 与 GitHub 的 release 资源主机。
 - 允许行为：不同渠道单独验收；禁止行为：把本地 APK/AAB 或未上传的 zip 称为远端发布，或从其他仓库安装；失败语义：构建、签名、下载错误可观察；不变量：用户可获取与显示版本一致的产物；边界条件：安装签名、新旧版本按数字比较、未打版本号的构建不提供升级。
 - Mac 安装 ZIP 的根目录 `zwai.app` 必须在 `Info.plist` 声明 `CFBundleIconFile=AppIcon.icns`，并包含有效的 Contents/Resources/AppIcon.icns 图标资源；发布入口在首次上传前检查这两处。运行时 Wails/Dock 图标不能代替 Finder 安装包图标。
@@ -235,11 +244,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-024 Desktop update lifecycle
 
 - 状态：active；类型：lifecycle / consistency / compatibility；作用范围：桌面更新提示、presence、更新服务和原生启动；关联功能：`F-190`。
-- 契约内容：桌面启动和持续运行每六小时自动检查；恢复可见、焦点或联网时仅在检查到期或上次检查失败后检查。自动失败保持安静，不清除已显示的可升级版本；已显示的手动错误在后续自动检查得到不支持结果时收起。菜单检查绕过缓存，明确显示当前、可用、不支持或具体错误。安装必须经用户确认；安装和重启期间不得自动或手动检查覆盖安装状态，较旧响应不得覆盖较新操作。
+- 契约内容：桌面启动和持续运行每六小时自动检查；恢复可见、焦点或联网时仅在检查到期或上次检查失败后检查。自动失败保持安静，不清除已显示的可升级版本；已显示的手动检查错误在后续自动检查得到不支持结果时收起。菜单检查绕过缓存，明确显示当前、可用、不支持或具体错误。安装必须经用户确认；安装和重启期间不得自动或手动检查覆盖安装状态，较旧响应不得覆盖较新操作。
+- 安装期间可通过只读 `GET /api/update/progress` 查看目标版本、阶段和实际下载字节；总量未知时不得显示虚构百分比。下载完成后区分安装与重启阶段。单次进度观测有界，失败或超时后继续查询，不将待决安装改成失败，安装终态以 `POST /api/update` 结果为准。检查和安装错误使用红色可访问警示；安装失败保留已确认目标版本，显式重试直接重发同版本安装，检查失败重试检查。
 - 原生窗口将真实 PID 经启动 URL 和 presence 登记；HTTP 拒绝负数或超过 2147483647 的 PID，信号发送端再次过滤越界值，避免整数截断成为进程组信号。确认安装后，以实际应用目标为范围跨引擎和进程只允许一个安装；不同数据目录、父目录别名和 `.app` 符号链接不能绕过同一包的安装锁，不同应用包互不阻塞。锁不依赖替换中的包 inode，成功后保持锁直到旧引擎退出，重复请求返回 `update.ErrBusy`，HTTP `409`、`code: update_busy`。失败释放锁，允许用户重试。
 - 安装保留原应用的绝对数据目录和离线模式；以新实例启动替换后的 `.app`，启动命令成功后才通知旧窗口退出。启动命令失败恢复旧应用文件，不通知旧窗口退出；恢复也失败时保留两类错误和上下文。成功安装的旧备份在锁内转移至该次安装独有的路径；旧引擎退出后的清理不得删除后来安装的备份，路径中的引号、命令替换或反引号只能作为路径字符，不能执行。`restarting` 只表示原生启动请求已接受，不能作为新窗口或新引擎已就绪的证明。
 - 允许行为：暂不显示某个版本、手动强制检查、失败后显式重试；禁止行为：未经确认安装、两个窗口并行替换同一应用、旧检查覆盖安装状态、更新后改用另一数据目录；失败语义：自动检查静默，手动检查和安装错误可观察并可重试；不变量：同一实例数据目录不变，原生版本发现与下载仍遵守 `C-010`；边界条件：应用长开、离线、恢复前台、多窗口、启动拒绝、不支持的平台和未打数字版本的构建。
-- 证据：实现 `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/src/lib/shell.ts`, `frontend/src/lib/api.ts`, `cmd/zwai/serve.go`, `internal/app/app.go`, `internal/update/apply.go`, `internal/server/update.go`, `internal/server/presence.go`；测试 `frontend/src/lib/desktop-update.test.ts`, `frontend/src/components/app/desktop-update.test.tsx`, `frontend/src/lib/desktop-presence.test.ts`, `frontend/e2e/desktop-update.spec.ts`, `cmd/zwai/engine_cli_test.go`, `internal/app/update_test.go`, `internal/update/apply_recovery_test.go`, `internal/update/bundle_lock_test.go`, `internal/server/update_test.go`。
+- 证据：实现 `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/src/lib/shell.ts`, `frontend/src/lib/api.ts`, `cmd/zwai/serve.go`, `internal/app/app.go`, `internal/update/apply.go`, `internal/update/progress.go`, `internal/server/update.go`, `internal/server/presence.go`；测试 `frontend/src/lib/desktop-update.test.ts`, `frontend/src/lib/desktop-update-progress.test.ts`, `frontend/src/components/app/desktop-update.test.tsx`, `frontend/src/lib/desktop-presence.test.ts`, `frontend/e2e/desktop-update.spec.ts`, `cmd/zwai/engine_cli_test.go`, `internal/app/update_test.go`, `internal/update/apply_recovery_test.go`, `internal/update/progress_test.go`, `internal/update/bundle_lock_test.go`, `internal/server/update_test.go`。
 - 变更规则：同步 README、API、FEATURES、TESTING 和 CHANGELOG，并回归安装锁、启动失败恢复和更新提示竞态；来源：用户 2026-10-12 桌面自动更新需求与当前可达更新链路、Issue #77 的同包跨引擎旧备份丢失反例。
 
 ## C-025 Memory review evidence and commit
@@ -273,7 +283,8 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-027 Automatic bounded restart handoff
 
 - 状态：active；类型：lifecycle / consistency / compatibility；作用范围：swarm、engine、lease、server、PC shell；关联功能：`F-110`、`F-130`、`F-150`、`F-160`、`F-330`。
-- 契约内容：不同构建启动后自动交接，无终端确认；交接、旧进程退出、新引擎监听共用 30 秒启动预算。交接先冻结新工作，覆盖活动及停泊 registry；先保存确定性检查点，再在统一截止时间内尽力收集 worker 摘要；不能为每个 worker 重新计算 30 秒。
+- 契约内容：不同构建在当前 checkout 的前端准备成功后自动交接，无终端确认；准备后的引擎发现／交接检查、旧进程退出、新引擎监听共用 30 秒预算，依赖安装／前端构建时间不计入该预算。准备失败或取消时旧引擎继续服务；准备成功不代表后续进程已就绪。交接先冻结新工作，覆盖活动及停泊 registry；先保存确定性检查点，再在统一截止时间内尽力收集 worker 摘要；不能为每个 worker 重新计算 30 秒。证据：`cmd/zwai/engine_frontend_test.go`。
+- 启动预算边界：普通冷启动的 2 分钟就绪等待不能延长本项 30 秒预算；启动等待、lease 竞争和子进程回收都遵守调用方剩余截止时间。证据：`cmd/zwai/engine_boot_test.go`、`cmd/zwai/engine_restart_budget_test.go`。
 - 恢复不变量：保留原 turn／worker ID、真实完成结果、原任务与历史、未消费消息及 watchdog 预算；交接摘要／停止不等于完成、失败或用户取消。人类问答和迭代上限暂停不能被重启绕过；成功 ACK 的回答、继续／停止决定必须保留；已有权威终态的遗留 running 行只能收敛状态，不能重新执行；后台 worker 不能被会话 `running=false` 漏掉，启动后直接恢复其执行而不提前未来唤醒，且活跃后台 worker 阻止空闲退出。检查点的完整指令／历史不得离开 PC，手机仅保留空正文与序号。
 - 失败巡检下的后台 worker：最新 turn 为 scheduled error 时，只有有效 manager `workers_retained` 回执中明确列出的原 worker ID 才可从检查点恢复，且恢复时仍须有 `C-009` 定义的当前有效目标或同对话 wake。回执不是重试许可；不重新执行已失败的 manager，不改变原 turn/run error、错误原因或未读状态，不提前未来唤醒。缺失／无效回执、无当前归属、人工 Stop、cleanup、检查点 HumanStopped 或 pause 均不能据旧错误或旧运行名册恢复。历史未记录回执的 error 不自动补造归属。证据：实现 `internal/engine/restart_parked.go`、`internal/engine/worker_ownership.go`；测试 `internal/engine/worker_ownership_test.go`；变更类型：Changed；来源：GitHub Issue #89。
 - 收尾顺序：正常收尾与重启接管必须互斥排序，覆盖终态判断、worker 停泊／清理和终态持久化，不能仅凭 idle 通知报告交接成功；先收尾的 turn 必须完成持久化，先接管的 turn 必须保留 worker 检查点。等待收尾使用同一截止时间，超时不能部分接管，也不能返回 ready，后续可重试。重启取消不能被写成权威的用户 `interrupted` 终态；真实的人类 Stop 仍必须取消。证据：`internal/engine/goal_session.go`、`internal/engine/restart_finish.go`、`internal/engine/restart.go`、`internal/engine/restart_finish_test.go`、`internal/engine/restart_finish_ownership_test.go`。
@@ -296,9 +307,50 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：lifecycle / consistency / compatibility；作用范围：provider pool、manager、subagent、目标续轮及 title／review／compact 等模型调用；关联功能：`F-130`、`F-150`、`F-160`、`F-170`。
 - 契约内容：同一进程的 chat pool 按 URL origin 共享故障状态，跨 provider ID、模型、角色和轮次；健康请求保持原并发。暂态服务故障（408、429、5xx）、连接失败、流空闲／中途断流和成功响应解码错误触发 5→10→20→30 秒封顶指数冷却。故障前同代并发请求只计首次失败，过期结果不能改变较新故障。
-- 冷却结束仅允许一个恢复探测；只有完整 Generate 成功或正常读完模型流才清零并恢复并发，HTTP 200 或流握手成功本身不足。HTTP 模型流必须读到 SSE `[DONE]` 行或显式 finish reason；缺少两者的 EOF 返回 `io.ErrUnexpectedEOF`，保留故障档位及已收到的 usage。鉴权、已解析参数错误、context overflow 不新增服务失败次数；取消和非暂态探测错误释放许可但保留故障档位并再次冷却。清客户端缓存不清故障状态；重启不保留进程内冷却。
+- 冷却结束仅允许一个恢复探测；只有完整 Generate 成功或正常读完模型流才清零并恢复并发，HTTP 200 或流握手成功本身不足。Chat Completions HTTP 模型流必须读到 SSE `[DONE]` 行或显式 finish reason；缺少两者的 EOF 返回 `io.ErrUnexpectedEOF`，保留故障档位及已收到的 usage。Responses 适配器只在合法 `response.completed` 后输出显式 finish reason，原始 `[DONE]` 不是该协议的完成事件。鉴权、已解析参数错误、context overflow 不新增服务失败次数；取消和非暂态探测错误释放许可但保留故障档位并再次冷却。清客户端缓存不清故障状态；重启不保留进程内冷却。
 - 允许行为：正常模型工具往返、独立 origin 并发、用户停止等待；禁止行为：每个 subagent 单独计时造成并发重试洪峰，或内部首字节超时重发绕过冷却；不变量：provider 门只延后请求，不新增自动重试次数，不改变 `C-019` 的 worker watchdog 预算。
-- 失败语义：原始模型错误及 `model_retry` 分类保留；等待取消立即返回可判断的 context 错误。冷却等待以 `model_backoff` 事件写入原 turn 和真实 agent，`text` 为 `{attempt,wait_ms}`，不伪造 LLM 请求或生命周期；桌面 Chat、Trace Full log 及重放显示可读等待文字。后续故障可延长已观察的等待，不承诺该毫秒值是最终延迟；等待已有探测结果时 `wait_ms: 0` 表示余时未知。
+- 失败语义：原始模型错误及 `model_retry` 分类保留；等待取消立即返回可判断的 context 错误。冷却等待以 `model_backoff` 事件写入原 turn 和真实 agent，`text` 为 `{attempt,wait_ms}`，不伪造 LLM 请求或生命周期；桌面 Chat、Trace Full log 及重放显示可读等待文字；安静计划轮次的迟到等待遵循 quiet 策略，不重新显示 Chat 通知，原始事件仍保留在 Trace。后续故障可延长已观察的等待，不承诺该毫秒值是最终延迟；等待已有探测结果时 `wait_ms: 0` 表示余时未知。
 - 边界条件：已发出的并发请求不会被门自动撤销；仅控制本进程 chat pool，不控制其他客户端、其他进程、catalog discovery 或 embedding。探测中的其他调用继续等结果；成功前不会一齐重发。每次 HTTP 请求的响应头超时从实际发送起计，等待冷却不消耗该预算，但仍受调用者 context 的总截止时间约束。放弃读取的调用者必须取消请求 context；单独关闭 Eino reader 不会中断 SDK 的阻塞读取，不能把它视为恢复成功；Stop 取消该 context。
-- 证据：实现 `internal/config/backoff.go`、`internal/provider/backoff.go`、`internal/provider/model_backoff.go`、`internal/provider/provider.go`、`internal/provider/http.go`、`internal/provider/stream_completion.go`、`internal/engine/model_backoff.go`、`frontend/src/lib/transcript-backoff.ts`；测试 `internal/provider/backoff_test.go`、`internal/provider/model_backoff_test.go`、`internal/provider/backoff_integration_test.go`、`internal/provider/stream_completion_test.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`、`frontend/e2e/api-error.spec.ts`。
+- 证据：实现 `internal/config/backoff.go`、`internal/provider/backoff.go`、`internal/provider/model_backoff.go`、`internal/provider/provider.go`、`internal/provider/http.go`、`internal/provider/stream_completion.go`、`internal/engine/model_backoff.go`、`frontend/src/lib/transcript-backoff.ts`；测试 `internal/provider/backoff_test.go`、`internal/provider/model_backoff_test.go`、`internal/provider/backoff_integration_test.go`、`internal/provider/stream_completion_test.go`、`internal/provider/backoff_responses_test.go`、`internal/provider/backoff_http_test.go`、`internal/engine/model_backoff_test.go`、`frontend/src/lib/transcript-backoff.test.ts`、`frontend/e2e/api-error.spec.ts`。
 - 变更规则：同步 CONFIG、API 事件、README、架构、功能及 CHANGELOG，回归同源多调用者、取消、迟到结果、完整流、内部重发、Trace 与 UI；来源：用户 2026-10-19 对模型及 subagent 高频重试压垮低配置服务的修复要求。
+
+## C-030 Provider cloud tools retain protocol and execution origin
+
+- 状态：active
+- 类型：API / compatibility / security / lifecycle
+- 作用范围：config、provider、engine、server、PC Settings/Trace
+- 关联功能：`F-175`、`F-160`、`F-170`
+- 契约内容：
+  - 空或 `chat_completions` 的 `api_mode` 保留现有 POST /chat/completions 行为；`responses` 显式选择 POST /responses，不根据名称猜测协议。
+  - `builtin_tools` 默认空；非空只允许 Responses。每项为完整对象，`type` 为非空字符串、不得重复，当前支持 web_search/web_search_preview/file_search/code_interpreter，嵌套参数原样保存。
+  - 云端工具与实际 Agent 本地函数声明合并；只有 function_call 进入本地工具调度，云端 *_call 不能伪造成本地调用、spawn 或本地成功回执。
+  - 云端调用状态同模型请求归属原 turn/agent/provider/model，保存在 `builtin_tool` 事件，并可通过一 ID Trace 重建；同请求中重复的同 ID/状态不重复计数。quiet 定时检查保持 Chat 安静，同时在 Trace Full log 保留收据。流式失败或取消不得伪造完成。
+  - 回答文本保持流式；URL 引用保留为可点击 Markdown 来源。无 billed usage 的历史预算取可见消息与实际 Responses 回放 JSON 估算的较大值，纳入云端输出及 encrypted reasoning，不计被剔除的调用。协议错误保留原始模型调用错误类别，不能归咎于本地工具 JSON。
+- 允许行为：模型自行选择不调用已声明工具；由服务商验证更具体的参数或模型支持情况。
+- 禁止行为：静默启用工具、将云端回执本地再执行、把任意需客户端审批/执行的类型透传为已支持功能。
+- 失败语义：非法配置在写入前失败，Settings 保留草稿；服务商/流错误沿现有模型失败与有界重试链路处理。
+- 不变量：provider API key 继续仅以 has_api_key 暴露；工具配置不授予本地额外权限。
+- 边界条件：同 provider ID 的 PUT 中省略 api_mode/builtin_tools 或发送 JSON null 保留该字段旧值，显式 [] 清空工具；其他 PUT 字段沿用原语义。旧 YAML 无需迁移。云端资源参数必须由用户提供，不保证服务商实际可用。
+- 证据：实现 `internal/config/provider_tools.go`、`internal/provider/responses.go`、`internal/engine/builtin_tools.go`；测试 `internal/config/provider_tools_test.go`、`internal/server/settings_provider_tools_test.go`、`internal/engine/builtin_tools_test.go`、`frontend/e2e/builtin-tools.spec.ts`。
+- 变更规则：类型支持、协议或执行来源变化必须同步配置/API/功能文档、适配器及 Trace 回归测试。
+- 来源：2026-10-21 provider 云端内置工具配置需求；[OpenAI web search](https://developers.openai.com/api/docs/guides/tools-web-search?api-mode=responses)。
+
+## C-031 Native desktop tests own their guest lifecycle
+
+- 状态：active
+- 类型：lifecycle / security / consistency
+- 作用范围：原生桌面验收、UTM 来宾、测试数据与证据；关联功能：`F-430`。
+- 契约内容：
+  - macOS 原生测试仅在 UTM `ci-macOS` 来宾运行；宿主只编排、构建、传输和收集证据。不得启动宿主测试窗口、抢前台或修改用户的运行实例、缓存 bundle 和正常数据。
+  - 同一来宾用户同时只运行一个用例；每例使用全新私有 app 副本、home/cache、数据库、配置及 workspace，场景子进程继承私有 `HOME` 和 `ZWAI_HOME`；checkout 启动写入的 macOS 缓存 bundle 也属于本例。仅同一恢复场景内部步骤允许复用数据。
+  - 用例成功、失败、超时或取消时，先保留证据，再停止本例 app、engine 及子进程并确认退出，然后删除本例临时数据及 home/cache；清理失败必须失败并阻止下一例启动。
+  - `cleanup.json` 记录用例身份、清理完成状态、剩余进程和数据删除结果。日志、断言、截图及版本/源码/安装包证据保留在临时数据外。
+- 允许行为：宿主执行无窗口单元测试、headless 浏览器 E2E 和只读交付核验；来宾不可控时记录原生验收 pending。
+- 禁止行为：来宾失败后回退宿主；按程序名称全局终止进程；删除用户或其他用例的数据；把程序启动或 runner 的成功退出当作窗口行为验收。
+- 失败语义：物理宿主在启动前拒绝；锁冲突拒绝并发用例；清理未完成返回失败并保留待清理现场。
+- 不变量：一个用例的退出不能破坏另一个实例；下一用例不继承上一用例数据。
+- 边界条件：硬杀 runner／断电无法运行 finally，后续用例必须识别未清理记录并拒绝启动，核实并完成同一用例清理后才能继续。历史未知来源的残留不得按名称一并清空。
+- 场景与辅助进程必须保留继承的 `ZWAI_NATIVE_CASE_ID`，使已脱离父进程／新建 session 的辅助进程仍可归因；不得主动清除标记后创建脱管 daemon。测试 runner 不是 OS 进程容器，不终止共享系统服务。
+- 证据：实现 `tools/native_macos_case.py`, `AGENTS.md`；测试 `tools/test_native_macos_case.py`；操作说明 `docs/TESTING.md`, `docs/RELEASE.md`。
+- 变更规则：同步 runner、生命周期回归、开发规则及原生验收文档；保留源码身份与真实窗口行为的独立证据边界。
+- 来源：用户 2026-10-21 反馈测试抢占桌面及 UTM 中程序、数据残留；Added。

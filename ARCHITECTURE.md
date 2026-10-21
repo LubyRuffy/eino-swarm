@@ -7,7 +7,8 @@ shell starts `zwai engine` (its own session, so closing the shell does not
 hang it up). A later shell of the same build attaches. A different version,
 or a binary whose file identity is not the one `engine.json` published,
 requests an automatic, bounded handoff from the old engine, stops it and
-starts its replacement within one 30-second launch budget. The old engine
+starts its replacement within one 30-second handoff/recovery budget after
+checkout frontend preparation. The old engine
 freezes new work, checkpoints every active or parked registry, gives workers
 a shared opportunity to summarize, and preserves uncertain tool effects for
 verification after recovery. It never treats a handoff summary as completion. Clients attach over loopback HTTP: they list, watch, send,
@@ -24,11 +25,39 @@ conversation/row and ignore another conversation's late response. Missing-record
 HTTP responses carry a request ID and matching safe WARN log
 (`internal/server/missing_record.go`); they do not terminate the model turn.
 
+The launcher prepares the checkout frontend before discovering or handing off
+an existing engine, while that engine continues serving. A preparation failure
+or cancellation returns before replacement begins. This catches build failures
+available at preparation time; the new process still validates its own startup.
+
+When a bundle needs rebuilding, `frontend/ensure.go` checks `package.json`'s
+direct dependencies and devDependencies through installed package manifests
+and declared local executable entries. Missing packages or build tools trigger
+`npm install --include=dev`, followed by another readiness check before build
+and source-stamp publication. `frontend/ensure_build_lock.go` serializes
+installation/build/stamping across processes using the checkout's ignored
+`.build-lock` directory, rechecks staleness after locking and permits cancelling
+a waiter. A build command owns its process tree: cancellation or script exit
+stops and waits for its descendants before the checkout lock can be reused.
+Unix uses a process group; Windows uses a Job Object. A fresh bundle or installed
+embed does not acquire a new Node dependency.
+
+After preparation, `cmd/zwai/engine_boot.go` waits up to two minutes for cold-start local readiness, reporting progress
+every ten seconds. This does not extend the separate 30-second replacement
+budget. Failed launches retain the actual child exit status and only that
+attempt's appended log bytes; old model errors are not reported as the new
+startup cause. Cancellation or expiry cleans up the launcher's own child,
+without stopping a competing lease holder.
+
 Desktop update installation is also locked by the actual app bundle across
 engines with different data directories. The stable filesystem lock covers
 download, replacement and native launch/rollback; a successful installation
 keeps it until the old engine exits. Old-bundle cleanup owns a unique backup,
-so a later installer cannot lose its rollback copy.
+so a later installer cannot lose its rollback copy. `POST /api/update` remains
+the installation result; while it is pending, the frontend polls the read-only
+`GET /api/update/progress` snapshot for downloaded bytes and installation stage.
+An unavailable progress read leaves the installation running. A failed install
+retains its confirmed version for a direct retry.
 
 Both graphical shells load the **same** `http://127.0.0.1` origin, so there
 is exactly one implementation of uploads, downloads and the live event stream.
@@ -101,6 +130,13 @@ system sleep assertion (`awake` on that same status). The assertion
 follows the config, not the socket: a hub reload must not release and
 re-acquire or idle sleep wins the gap. On macOS the hold is AC-only.
 
+`internal/remote/host_start.go` owns the cancellable background registration
+lifecycle started by `Host.StartBackground`; hub registration is not a local
+HTTP readiness condition. A slow or unavailable hub leaves desktop, browser
+and terminal startup available while the phone reports its connection state.
+Stop and Reload cancel pending registration; late results cannot install a
+host after its lifecycle has ended.
+
 ```mermaid
 flowchart TB
   QR["PC Settings → Phone QR"] --> Scan["Phone camera"]
@@ -167,7 +203,7 @@ browser history entries.
 | `internal/clients` | read-only scan of local Claude, Codex, and Cursor transcripts for the sidebar and the phone. `View` returns the last finished snapshot and walks the disk beside the caller, so a phone inbox `list` does not wait on it. Each refresh checks file metadata and reuses parsed rows from unchanged transcripts, retaining no raw buffers. It sorts once before publishing an immutable snapshot; readers select and copy only one page outside the snapshot lock. A session read is the live tail; `older` / `before` page backward by byte offset, and the opening request is on every page. It does not start or resume those tools. |
 | `internal/server` | gin: REST, SSE, upload/download, trace, PTY terminals, embedded assets. See [docs/API.md](docs/API.md). |
 | `internal/terminal` | PTY sessions for the in-app shell. The HTTP layer names a conversation or a project; this package never takes a client-supplied path. |
-| `internal/app` | wiring shared by the engine, plus listen/serve/shutdown, `openURL` and `revealPath`. `App.New` starts the schedule ticker (`Engine.StartScheduler`), the pairlink remote host, and the search embed worker; `Shutdown` stops the search worker before closing SQLite. Loopback `engine` mode still reveals files and opens URLs; a non-loopback bind does not. |
+| `internal/app` | wiring shared by the engine, plus listen/serve/shutdown, `openURL` and `revealPath`. `App.New` restores orphaned turns and parked workers before starting the schedule ticker (`Engine.StartScheduler`), starts the pairlink remote host without waiting for hub registration, and starts the search embed worker. Startup phases record elapsed time in structured logs; `Shutdown` stops remote/search work before closing SQLite. Loopback `engine` mode still reveals files and opens URLs; a non-loopback bind does not. |
 | `internal/lease` | exclusive `engine.lock` for one data directory (`flock`, released by the kernel on death) and `engine.json` (`pid`, `url`, `mock`, `started_at`, `version`, `exe_dev`, `exe_ino`). Discover treats a dead pid as free, a live pid that will not answer `/api/meta` as unreachable, and a mock mismatch as a different lease. A shell that arrives while the lock is held but `engine.json` is not published yet waits for that process to listen and attaches; the losing spawn is not a failed engine. A different live version or executable identity triggers replacement. The launcher uses `POST /api/engine/restart` and waits for a durable positive acknowledgement before signalling a capable engine. Handoff has at most 20s; process exit and new listener readiness share the remainder of a 30s launch budget. An older engine without the endpoint gets a bounded quiet wait and automatic recovery without terminal input. A failed checkpoint is an explicit launch error, never permission to discard progress. The idle rule is a pure function of connected shells, the phone hub, running turns, active background workers and restart handoff. |
 | `internal/wakeup` | process-wide sleep assertion for phone remote. `Set` is idempotent. Darwin uses `caffeinate -s -w <pid>` (AC-only); Linux `systemd-inhibit` when present; Windows `SetThreadExecutionState`. Tests install a recorder so `go test` does not caffeinate the builder. |
 | `internal/remote` | phone RPC over pairlink: QR offers, sealed JSON (`hello`/`list`/`more`/`open`/`start`/`send`/`steer`/`followup_drop`/`followup_steer`/`preempt`/`stop`/`answer`/`watch`/`unwatch`/`log`/`run_now`/`cancel_wait`/`resume_goal`/`catalog`/`tune`/`put`). `hello` stores the phone's model line on `remote_devices` keyed by the link fingerprint so `GET /api/remote/bindings` can show a name, not only hex. OK replies include `host` (`remote.display_name`) so the phone chip is this PC, not the hub hostname. `watch` with `since` 0 returns a live-edge snapshot (at most 24 stored events from the last turn) as the RPC `ready` `{events, more, seq, status}` (`status.waiting` / `status.wake` while a thread wait is parked); `log` `{before}` (or `before` 0 = older than that window, size `watch_events`) pages older events when the phone pulls up. Live and lagged catch-up still push `event`; goal/schedule/`done` frames include `status` so a parked `/goal` is not idle. Same kinds as desktop SSE (`PushKinds` frozen against `frontend/src/lib/stream.ts`), seq-identical, bodies clipped (`event_chars`, empty `spawned` text, 64KiB sealed frame; JSON leaves room for the seal and the host name). `list.running[].action` and `list.threads[].summary` are human one-liners (`preview.go`): findings / command / assistant prose, never a `tool_call` envelope. A parked wait has no live turn to preview, so its `action` is the thread's own summary — an In progress row that is only a title and a Waiting badge says nothing about what is being waited on. `list` drops a roster thread from `threads` so Recents does not repeat it and it does not consume `thread_limit`, which makes `running[].last_active_at` the only place a wait's age can come from. `running[].project_id` names the folder so the phone can list that same row under the project. `list.threads` is the idle recents page (`thread_limit`); live rows are `list.running` and do not consume that quota. `more` pages that idle list. A later first-page `list` patches page one and keeps rows already loaded with `more`. `catalog` lists ready models and reasoning levels with no keys or URLs. `tune` sets this conversation's provider, model, and reasoning. `put` stages a file in 36KiB chunks (256MiB cap, same as a desktop upload); an image is vision and anything else is a workspace file. Text with no attachments while a turn runs is a follow-up; attachments while a turn runs steer. Does not expose loopback `/api` to the internet. |
@@ -185,10 +221,12 @@ by URL origin, across provider IDs, models, roles and turns. Healthy calls stay
 concurrent. A transient service/transport failure starts a 5/10/20/30-second
 capped exponential cooldown; after it expires, one probe may run. A full
 successful Generate or drained stream restores concurrency, while an old
-in-flight reply cannot clear a newer failure. HTTP streams must have an SSE
+in-flight reply cannot clear a newer failure. Chat Completions HTTP streams must have an SSE
 `[DONE]` line or explicit response finish reason; an EOF without either is
 `io.ErrUnexpectedEOF`. A constant-space body observer checks the fixed terminator
 without retaining response content, and the relay preserves usage and errors.
+The Responses adapter instead requires a valid `response.completed` event before
+projecting an explicit finish reason; a raw `[DONE]` is not a Responses completion.
 Cancellation releases a probe without clearing the failure streak. A caller
 abandoning a stream must cancel its request context: closing the Eino reader
 alone does not interrupt the SDK's blocked receive. Stop cancels that context.
@@ -1230,6 +1268,17 @@ will ignore.
 
 ## Release orchestration
 
+Native desktop acceptance is guest-side test infrastructure, separate from the
+product engine. `tools/native_macos_case.py` refuses physical hosts, serializes
+cases in UTM `ci-macOS`, and owns a disposable app copy plus home/cache,
+data and workspace. Scenario children inherit the private home so checkout
+launches do not replace the guest user's normal cached app bundle.
+The scenario collects real window/behavior evidence; the runner terminates its
+owned processes before deleting disposable state, retaining logs and cleanup
+receipts separately. A failed cleanup blocks another case. Host-side provenance
+checks do not launch or replace the user's native app. See `C-031` and
+[Testing](docs/TESTING.md#native-desktop-isolation-f-430--c-031).
+
 The iOS source Info.plist retains the authorized application-wide export declaration. Preflight reads it before an archive, and IPA verification checks the exported field matches. Frozen sources without that field use an exact private source/build confirmation. Source, IPA and exact receipt conflicts fail the platform; ordinary version increments do not require repeated classification questions. Encryption use or implementation changes require reassessment. See `tools/test_release_ios_compliance.py`.
 
 `tools/audit_pending_batch.py` joins the delivery and TestFlight ledgers with GitHub Issue states and main ancestry. It counts commits after the last public source SHA and elapsed time since the oldest accepted unallocated change. `tools/release.py` selects only that batch's outstanding desktop/mobile platforms and connects Make local builders and the GitHub publisher to `tools/release_ios.py`. The iOS adapter uses the existing private App Store Connect client for archive/export/upload, compliance, group association and review. One clean pushed main batch/version identifies the source across platforms; TestFlight archives reuse the last successfully published marketing version and advance the package-derived build number. An explicit private marketing_version starts a new train for new candidates; retained state/IPA/source receipts freeze the original train on recovery. Group association is followed by an availability read before any review request. Platforms execute serially with independent gates. The Mac and Android updaters inspect earlier GitHub Releases when the newest release has no compatible installer. Private signing configuration and resumable platform state remain under `ZWAI_HOME`, outside Git. See [docs/RELEASE.md](docs/RELEASE.md).
@@ -1289,3 +1338,23 @@ verified before a tool is repeated; no generic exactly-once guarantee is made.
 The full process replacement is exercised by
 `cmd/zwai/engine_restart_acceptance_test.go` using real processes and a keyless
 loopback model fixture.
+
+## Provider cloud tool boundary
+
+`internal/config/provider_tools.go` validates `api_mode` and `builtin_tools`.
+The existing OpenAI chat adapter remains the default. An explicit Responses
+provider uses `internal/provider/responses.go`, which converts Eino messages,
+local function declarations and cloud tool objects to `/responses` requests.
+The adapter converts function calls back to Eino ToolCalls, while cloud call
+items remain provider output and diagnostics. It preserves raw Responses output
+for the next function-result/model round and appends clickable citation links
+without buffering the answer stream. Existing HTTP silence timeouts, call
+telemetry, cancellation and model error provenance surround either adapter.
+
+Each recorded model request carries its cloud receipts into
+`internal/engine/builtin_tools.go`. They use the original turn and agent plus
+provider/model/request identity and persist as `builtin_tool` events, distinct
+from locally executed `tool_call` and `tool_result`. The PC SSE reducer labels
+them as cloud activity, and Trace / `zwai trace <turn>` retain the full receipt.
+No new database table or engine-owned cloud executor is introduced. See `C-030`
+in [current contracts](docs/CONTRACTS.md).

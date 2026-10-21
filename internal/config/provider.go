@@ -12,6 +12,12 @@ type Provider struct {
 	BaseURL string `yaml:"base_url" json:"base_url"`
 	APIKey  string `yaml:"api_key" json:"-"`
 	Model   string `yaml:"model" json:"model"`
+	// APIMode selects the wire protocol. Empty keeps chat completions for
+	// older configurations; cloud tools require an explicit Responses mode.
+	APIMode string `yaml:"api_mode,omitempty" json:"api_mode"`
+	// BuiltinTools are provider-executed Responses tools, including their
+	// complete JSON options. They are separate from local function tools.
+	BuiltinTools []map[string]any `yaml:"builtin_tools,omitempty" json:"builtin_tools"`
 	// Catalog is the last discovered list of model names this endpoint
 	// serves. The composer offers these without a provider row per name.
 	// Empty means only Model is available until someone discovers.

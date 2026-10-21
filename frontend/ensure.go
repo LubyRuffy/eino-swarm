@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -42,7 +43,7 @@ func (execRunner) Run(ctx context.Context, dir, name string, args ...string) err
 	cmd.Dir = dir
 	cmd.Stdout = ensureOut
 	cmd.Stderr = ensureOut
-	return cmd.Run()
+	return runBuildCommand(ctx, cmd)
 }
 
 // findRoot / runCmd / ensureOut are swapped in tests so Ensure does not
@@ -105,6 +106,14 @@ func ensureBundle(ctx context.Context, root string, run commandRunner) error {
 	if !need {
 		return nil
 	}
+	release, err := lockBuild(ctx, root)
+	if err != nil {
+		return err
+	}
+	defer release()
+	if need, err := stale(root); err != nil || !need {
+		return err
+	}
 	if err := installAndBuild(ctx, root, run); err != nil {
 		return err
 	}
@@ -128,8 +137,11 @@ func installAndBuild(ctx context.Context, root string, run commandRunner) error 
 			return err
 		}
 		fmt.Fprintln(ensureOut, "zwai: installing frontend packages")
-		if err := run.Run(ctx, root, npm, npmInstallArg); err != nil {
+		if err := run.Run(ctx, root, npm, npmInstallArg, "--include=dev"); err != nil {
 			return fmt.Errorf("npm install: %w", err)
+		}
+		if err := checkInstalledBuildPackages(root); err != nil {
+			return fmt.Errorf("npm install did not provide frontend build dependencies: %w", err)
 		}
 	}
 	fmt.Fprintln(ensureOut, "zwai: building frontend")
@@ -144,6 +156,9 @@ func needsInstall(root string) bool {
 	if err != nil || !info.IsDir() {
 		return true
 	}
+	if err := checkInstalledBuildPackages(root); err != nil {
+		return true
+	}
 	nmTime := info.ModTime()
 	for _, name := range []string{"package.json", "package-lock.json"} {
 		if mt := mtime(filepath.Join(root, name)); mt.After(nmTime) {
@@ -151,6 +166,54 @@ func needsInstall(root string) bool {
 		}
 	}
 	return false
+}
+
+// Inspect only direct manifest dependencies. Package-directory timestamps do
+// not prove an interrupted install left the build tools or their bin links.
+func checkInstalledBuildPackages(root string) error {
+	data, err := os.ReadFile(filepath.Join(root, "package.json"))
+	if err != nil {
+		return err
+	}
+	var manifest struct {
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
+	}
+	if err := json.Unmarshal(data, &manifest); err != nil {
+		return fmt.Errorf("package.json: %w", err)
+	}
+	modules := filepath.Join(root, "node_modules")
+	for _, dependencies := range []map[string]string{manifest.Dependencies, manifest.DevDependencies} {
+		for name := range dependencies {
+			data, err := os.ReadFile(filepath.Join(modules, name, "package.json"))
+			if err != nil {
+				return fmt.Errorf("frontend package %s: %w", name, err)
+			}
+			var pkg struct {
+				Bin json.RawMessage `json:"bin"`
+			}
+			if err := json.Unmarshal(data, &pkg); err != nil {
+				return fmt.Errorf("frontend package %s: %w", name, err)
+			}
+			if len(pkg.Bin) == 0 {
+				continue
+			}
+			var bins map[string]string
+			if err := json.Unmarshal(pkg.Bin, &bins); err != nil {
+				var bin string
+				if err := json.Unmarshal(pkg.Bin, &bin); err != nil {
+					return fmt.Errorf("frontend package %s bin: %w", name, err)
+				}
+				bins = map[string]string{filepath.Base(name): bin}
+			}
+			for bin := range bins {
+				if _, err := exec.LookPath(filepath.Join(modules, ".bin", bin)); err != nil {
+					return fmt.Errorf("frontend build executable %s: %w", bin, err)
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func mtime(path string) time.Time {
