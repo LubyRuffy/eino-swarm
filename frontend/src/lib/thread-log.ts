@@ -11,7 +11,7 @@ export const LOG_LIMIT_DEFAULT = 80
 export type ThreadLog = {
   events: SwarmEvent[]
   has_more: boolean
-  /** spawned / finished / cleanup rows that fell out of this viewport.
+  /** Worker lifecycle and manager error/retention rows outside this viewport.
    *  Only the live-edge page sends it; paging must not move the cursor. */
   roster?: SwarmEvent[]
 }

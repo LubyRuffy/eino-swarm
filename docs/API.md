@@ -886,9 +886,10 @@ in Trace, and do not cancel independent or human-created waits. Goal completion
 and its event commit together; storage errors leave both unchanged. Existing
 completed records retain their explicit recovery path: `reopen_goal` in that turn, or **Start** on the Done banner,
 clears it and pursuit continues. `goal_blocked` is true after `block_goal` or after a pursuing
-turn fails for a reason that is not a recoverable model error (progress needs the
-human or an external change). A truncated tool-call JSON, a `429`, or a dropped
-stream retries inside the same turn twice, then auto-continues; `goal_capped` is true after consecutive
+turn fails for a non-recoverable reason outside the isolated scheduled-check
+boundary (progress needs the human or an external change). A truncated
+tool-call JSON, a `429`, or a dropped stream retries inside the same turn twice;
+ordinary goal turns then auto-continue, while failed scheduled checks do not; `goal_capped` is true after consecutive
 auto-continues hit `swarm.goal_max_auto_turns`, or after the human
 interrupts a pursuing turn (the banner shows Paused, a line that this is
 not an error, and Start); `goal_idle`
@@ -1253,8 +1254,12 @@ actually removed that row; a lost claim reselects the oldest remaining row.
 
 ### `POST /api/threads/:id/interrupt` → `202`
 
-Cancels the running turn; the transcript generated so far is kept and the turn is
-recorded as `cancelled`. `409 idle` when nothing is running.
+Cancels the running turn, or stops its parked worker registry after the manager
+has already ended. A running turn keeps its transcript and becomes `cancelled`;
+stopping parked workers preserves the manager's existing terminal status,
+including a failed scheduled check's error. `user_stop_requested` and cleanup
+remain authoritative over worker-retention receipts. `409 idle` means there is
+neither a running turn nor a parked registry to stop.
 
 ### `POST /api/threads/:id/continue` → `202`
 
@@ -1337,14 +1342,14 @@ The front end opens a conversation with one viewport of this tail, then
 `GET /api/threads/:id/events?since=<last seq>` for live. Scrolling up fetches
 the next older page. An empty conversation is `"events":[]` with
 `has_more: false`. The live-edge page (`before` omitted or `0`) also sends
-`roster`: every `spawned`, `finished` and `cleanup` row whose seq is **not**
-already in `events`. A long turn's viewport is often only manager tools;
+`roster`: every `spawned`, `finished`, `cleanup`, `workers_retained` and `error`
+row whose seq is **not** already in `events`. A long turn's viewport is often only manager tools;
 without those rows the Agents tab looks empty. Older pages omit `roster` —
 the client already has it, and mixing those seqs into `before` would skip
 the tools in between. The client hydrates the Agents tab from `roster`
-without inserting "Started" rows into the manager transcript — those rows
-belong to the contiguous page, or they turn a long `/goal` into a wall of
-agent names with no work in between. Clicking a worker whose tools are
+without inserting "Started" rows into the manager transcript. Sidecar ownership
+receipts and errors reconstruct worker lifecycle state without inserting old
+error bubbles or turn dividers; those belong to the contiguous event page. Clicking a worker whose tools are
 outside the viewport fetches `GET /api/threads/:id/agents/:agent/log`.
 
 ### `GET /api/threads/:id/agents/:agent/log`
@@ -1413,6 +1418,7 @@ also preserves the optional field; clients that do not use it remain compatible.
 | `steer_revised` | the human edited one unread `steer` before the manager read it. `text` is JSON `{seq,text}`. The chat shows `text` on that bubble; the original `steer` row stays. A later revision for the same seq wins. The model reads the revised caption, not the original |
 | `steer_preempted` | Interrupt aborted the current manager tool or generate so unread steering can land on this turn. No payload. Workers were not cancelled |
 | `cleanup` | unfinished sub-agents were stopped at the end of the turn; this is not a successful `finished` receipt. The PC view keeps them stopped after the terminal event and replay |
+| `workers_retained` | durable manager ownership receipt before a scheduled check's terminal `error`. `text` is JSON `{reason:"scheduled_check_failed",owner_kind,owner_id,worker_ids}`; `owner_kind` is `goal` (owner_id is the thread ID) or `thread_wake` (owner_id is the schedule ID), and `worker_ids` explicitly lists the still-running workers. PC live/history replay keeps only those workers' current output and pending tools active; the parent error remains visible. Internal JSON is available in Trace, not rendered as chat prose. This is neither a successful check nor a spawn/retry receipt |
 | `resumed` | this turn was left running by a crash or quit and is continuing; `text` is a short notice. The original `user_message` is not repeated. In-flight `tool_call` rows that never got a result are closed first (`tool_result` with `err`: `the previous process stopped`) so a killed `exec` does not keep spinning — except an unfinished `ask_user`, which is re-armed so the human can still answer. Leftover sub-agents are started again under the same `agent_id` (a second `spawned` for that id is the roster coming back, not a twin). Unread `steer` rows stay on the turn. A leftover `max_iterations` confirm is no longer pending |
 | `progress` | a pulse while the turn runs (see below); `seq` is 0, not stored |
 | `usage` | a live token snapshot after each model call (see below); `seq` is 0, not stored |
@@ -1425,7 +1431,7 @@ also preserves the optional field; clients that do not use it remain compatible.
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done`, and does not wait for this event |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
 | `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}`. `reopen_goal` in the same turn records `goal_resumed`, resets the auto-continue budget, and pursuit continues |
-| `goal_blocked` | the manager called `block_goal`, or a pursuing turn failed for a reason that is not a recoverable model error. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |
+| `goal_blocked` | the manager called `block_goal`, or a pursuing turn had a non-recoverable failure outside the isolated scheduled-check boundary. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |
 | `goal_resumed` | `role: "human"` marks an explicit goal Start and resets worker watchdog recovery; manager `reopen_goal` does not reset it. The human started pursuit again after a block, a cap, an idle open goal, or a completed objective that finished too early — or the manager called `reopen_goal` after a mistaken `complete_goal`. Same Working-clock rule as `goal_continued` |
 | `goal_continued` | the runtime started the next turn to keep pursuing an open objective. Not a `user_message`. Clients start the Working clock from this event's `created_at` (a `done` has just cleared `status.started_at`) |
 | `goal_capped` | consecutive auto-continues hit `swarm.goal_max_auto_turns` (`text` is JSON `{auto_turns,cap}`), or the human interrupted a pursuing turn (`text` is JSON `{reason:"interrupted"}`). A later human message or resume resets the budget |
@@ -1888,6 +1894,26 @@ second such response ends the turn and run as `error`, leaving the run unread;
 opening prose alone cannot become findings. Automatic fires use the same
 rule. Explicit empty findings remain quiet; a real tool result preserves the
 existing omitted-report fallback. No new run is created by this continuation.
+
+A failed scheduled check can finish while its workers continue under an
+executable standing goal or an active same-thread wake. This applies to the
+evidence failure above and ordinary model failures, including a rejected
+request or exhausted in-turn transient retries. The engine persists
+`workers_retained` before the terminal error and keeps the same registry,
+worker IDs and ongoing calls. The turn/run stay `error`, the run stays unread,
+and this failure does not automatically block the goal or immediately start
+another goal turn. A later scheduled fire or explicit human action can collect
+the same workers.
+
+A goal that is complete, blocked, capped, idle, in plan mode or out of
+automatic-turn budget cannot provide that ownership. In plan mode, conversation
+wakes cannot execute either, so an active wake does not provide worker
+ownership. A claimed one-shot that
+has become `done` is not a future wake. An independent schedule's origin
+conversation alone is not an owner. Stop, removal of the final owner and the
+existing resource/watchdog stop conditions still stop workers; a failed
+ownership-receipt write cannot grant retention. See `C-009` and `C-027`.
+
 A context-window rejection is not that retry: the turn compacts once, and if
 the next call still does not fit, the turn errors with the window sentence.
 A repeating wait (`every_s` or `cron`) is then paused so the next tick cannot
@@ -2023,3 +2049,11 @@ reviving the stopped turn. A pending accepted answer or iteration-cap decision
 is retained even if its waiter had not consumed it before handoff. Phone
 watch/log retain checkpoint sequence identity with an empty body; internal
 manager/worker prompts and histories stay on the PC.
+
+Restoring workers from a latest scheduled `error` turn additionally requires
+a valid manager `workers_retained` receipt, a recoverable checkpoint, and a
+currently executable goal or active same-thread wake. Only worker IDs named in
+that receipt can be restored. Missing legacy receipts do not imply retention;
+Stop, cleanup and checkpoint pauses revoke recovery. Worker restoration keeps
+the manager turn/run failed, preserves its original error and unread result,
+and neither reruns that manager nor fires its future wake early.

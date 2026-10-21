@@ -1,5 +1,61 @@
 # Testing
 
+## Scheduled-check failure and worker ownership (F-130 / F-150 / C-009 / C-027)
+
+`internal/engine/schedule_worker_ownership_test.go` runs the real Engine,
+Registry, ADK graph and OpenAI HTTP adapter against a keyless loopback SSE
+fixture. A first successful check spawns and parks a worker whose real model
+request remains open. A later check exhausts its single no-activity
+continuation; the turn/run must remain error/unread while the worker remains
+running. The next wake must reuse its registry, ID and original HTTP request,
+and the retained worker must finish naturally without a cancellation error.
+The goal-only case consumes a one-shot and checks that its valid standing goal
+is neither blocked nor immediately retried. HTTP 400 and exhausted 429 tests
+prove isolation does not depend on an error-text match or bypass the existing
+bounded retry/shared-backoff path. Other cases require actual HTTP cancellation
+after Stop, final-wake cancellation/pause, consumed one-shot without an owner,
+or an inactive goal. Receipt assertions bind exact owner/worker IDs to a
+persisted event before the manager's terminal error.
+
+`internal/engine/worker_ownership_test.go` covers executable-goal and wake
+selection (including plan mode with an active but non-executable wake),
+receipt write failure, resource/watchdog exclusions, owner/Stop
+revocation around finalization, and restart from failed scheduled turns. A
+valid recovery needs a checkpoint, current ownership and a valid explicit
+receipt; absent/malformed/other-agent receipts and revoked owners do not revive
+workers. Recovery executes the original worker without rerunning or rewriting
+the failed manager turn.
+The actual `PrepareRestart` → new engine → `ResumeParkedWorkers` boundary also
+runs through the loopback HTTP fixture, preserving the error/unread run and
+future wake. A receipt arriving after the manager's terminal event cannot
+authorize recovery; a later Stop still revokes an earlier valid receipt.
+
+`internal/engine/worker_ownership_order_test.go` blocks the real cleanup
+event's storage callback while another goroutine tries to take/occupy the
+next registry and start its worker. Stop, final-wake cancellation and
+finalization must all keep that new claim behind the old global cleanup's
+durable publication. After release the old worker stops and the new worker
+remains running. This prevents live/replayed cleanup from stopping an unrelated
+replacement worker even though cancellation only targeted the old registry.
+
+`frontend/src/lib/transcript-worker-ownership.test.ts` covers live/full/roster
+replay, current output and pending tools, actual completion, human interruption,
+cleanup, unrelated turns, malformed receipts and rewind. Ordinary parent
+errors retain their prior behavior. `frontend/e2e/schedule-worker-ownership.spec.ts`
+uses the actual engine and model HTTP adapter: the failed check remains visible
+and unread, Agents stays running before and after reload, and the next check
+collects that same worker's real completion with no replacement model request.
+The JSON receipt belongs in Trace, never the visible conversation. This browser
+test does not substitute for a native application-window walkthrough.
+`internal/tui/client_worker_ownership_test.go` keeps the same receipt out of
+terminal notices while preserving ordinary notice compatibility.
+
+```bash
+go test -race ./internal/engine -run 'WorkerOwner|ScheduledFailure|FailedCheckOwnership|FinalizationRechecks|RetainedWorkerRecovery|FailedScheduledCheck|FailedOneShotCheck|ScheduledManagerModelError|ParkedWorkerCleanup'
+cd frontend && npm test -- src/lib/transcript-worker-ownership.test.ts
+cd frontend && ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP=1 npm run e2e -- e2e/schedule-worker-ownership.spec.ts
+```
+
 ## Worker output identity and history overlap (F-130 / C-003)
 
 `signal_identity_test.go` and `internal/engine/accumulator_identity_test.go`

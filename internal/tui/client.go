@@ -319,6 +319,9 @@ func wireMessages(event, data string) []notificationMsg {
 	if kindName == "" {
 		kindName = ev.Kind
 	}
+	if kindName == "workers_retained" || ev.Kind == "workers_retained" {
+		return nil
+	}
 	switch kindName {
 	case "ready", "ping":
 		return nil

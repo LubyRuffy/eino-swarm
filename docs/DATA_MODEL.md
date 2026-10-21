@@ -78,7 +78,7 @@ in this database: notes and skills are files, so a person can read and fix them
 | `reasoning_effort` | text | this conversation's thinking level (``, `low`, `medium`, `high`); empty means the model's own default. Switchable in the composer, applied from the next turn |
 | `goal` | text | standing objective from `/goal`. Empty means none. Injected into later turns until changed or cleared |
 | `goal_complete` | bool | true after successful `complete_goal`. Completion fields and the `goal_complete` event commit atomically. A scheduled tool call whose own manager-created thread wake remains active returns `goal_schedule_conflict` without changing either. The text stays so the banner can show it; auto-continue stops. `reopen_goal` or **Start** on the Done banner clears it, resets `goal_auto_turns`, and pursuit continues |
-| `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn fails for a reason that is not a recoverable model error. Auto-continue stops until the human resumes or sends a message |
+| `goal_blocked` | bool | true after `block_goal`, or after a pursuing turn has a non-recoverable failure outside the isolated scheduled-check boundary. Ordinary scheduled model/evidence failures do not set this field. Auto-continue stops until the human resumes or sends a message |
 | `goal_block_reason` | text | optional one-line reason from `block_goal`, or the public turn error when a pursuing turn dies before the manager can call it |
 | `goal_started_at` | time | when the current objective was set (not edited). Nil when there is no goal |
 | `goal_auto_turns` | int | consecutive runtime-started turns that kept pursuing an open goal. A human message, `reopen_goal`, or **Start** resets it |
@@ -223,14 +223,34 @@ the remaining cooldown observed before sending, or `0` while waiting for an
 active recovery probe. It is a wait observation, not a retry allowance or an
 LLM request; a later failure can extend it. No migration or new column is needed.
 
-`spawned`, `finished` and `cleanup` are the worker roster. Auto-compact
-re-injects those ids into the next Generate after a fold. Do not treat
+`workers_retained` is an additive event kind using the existing `events.text`
+JSON payload, without a schema migration or new column:
+
+```json
+{"reason":"scheduled_check_failed","owner_kind":"thread_wake","owner_id":"sch_example","worker_ids":["worker-1"]}
+```
+
+`owner_kind` is `goal` (thread ID) or `thread_wake` (schedule ID). The manager
+records the exact still-running worker IDs durably before the scheduled
+turn's terminal `error`. The turn/run retain their errors and unread result;
+this receipt is neither successful execution evidence nor a spawn. A failed
+receipt write cannot grant retention. Restoring a latest failed scheduled turn
+requires this explicit receipt, a checkpoint and currently valid task
+ownership; Stop/cleanup and checkpoint pauses revoke restoration. Legacy error
+rows without a receipt are not rewritten or inferred to own live workers.
+See `C-009`, `C-027` and the [event stream](API.md#event-stream).
+
+`spawned`, `finished` and `cleanup` establish worker creation and terminal
+state. `workers_retained` records explicit task ownership across a failed
+scheduled check, while manager `error` completes the corresponding lifecycle
+projection. Auto-compact re-injects the worker IDs and current states into the
+next Generate after a fold. Do not treat
 `messages` as the source of truth for who is alive. The live-edge log
 page (`GET /api/threads/:id/log`) sends those rows as `roster` when they
 are no longer in the viewport, so the Agents tab can be rebuilt without
-walking the whole tool log. The client must not fold those sidecar seqs
-into the manager transcript as "Started" rows — that is how a long
-`/goal` opened as a wall of agent names. Clicking a worker loads
+walking the whole tool log. The client applies sidecar rows only to lifecycle state, without inserting
+"Started" rows, historical error bubbles or turn dividers into the manager
+transcript. Clicking a worker loads
 `GET /api/threads/:id/agents/:agent/log` (that `agent_id` only).
 
 **Streaming deltas are deliberately not stored.** `delta`, `reasoning_delta` and

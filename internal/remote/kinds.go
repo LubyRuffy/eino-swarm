@@ -21,6 +21,7 @@ var PushKinds = []string{
 	"steer_revised",
 	"steer_preempted",
 	"cleanup",
+	"workers_retained",
 	"progress",
 	"memory_review",
 	"max_iterations",

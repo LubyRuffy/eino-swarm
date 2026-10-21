@@ -162,7 +162,7 @@ browser history entries.
 | `internal/tools` | assembles the eino-tools toolset anchored at one conversation's workspace; catalog + enable/disable rules feed the Settings UI. `BindExecOutput` is the host binder that tees `exec` stdout/stderr into `NotifyToolDelta` without the swarm library importing eino-tools. A wrapper shortens a remaining-time `sleep` / `Start-Sleep` of five seconds or more to about a third of that duration so a progress poll still runs instead of sitting out the full estimate. |
 | `internal/memory` | a project's memory as files: `MEMORY.md` notes under a character budget, `skills/<name>/SKILL.md` procedures, the manager tools (`memory`, `skill_view`, `skill_manage` including `merge`), in-memory notes drafts with revision-checked commit, the prompt sections they are rendered into, the reviewer's instruction, and the deterministic family fold that keeps one subject as one skill. A copied skill is a separate file with `origin_*` front matter so a later pull can read the source; the prompt and `skill_view` do not include that link. Owns the files; knows nothing about conversations. |
 | `internal/workerstate` | the manager's System-message worker snapshot: `source: "runtime_worker_roster"`, an explicit historical-state note, and every worker's `agent_id`, role and `running` / `done` / `failed` status. Shared by runtime restoration and the offline model; it is neither tool history nor human authorization. |
-| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, a failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a pending thread wake (waiting is the next turn), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream / a mid-stream TCP read timeout retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from effective events (successful turns receive a full review regardless of manager writes; failed project turns allow human requirements only; skill families fold only after successful turns), and resolves an in-app terminal's working directory from the conversation or project the client named. A clock + ticker (`StartScheduler`) fires due waits (`schedule_fired`) or skips a busy target (`schedule_skipped`) without bursting missed ticks; event kinds `schedule` / `schedule_fired` / `schedule_skipped` / `schedule_report` / `schedule_cancelled` are the wire contract. |
+| `internal/engine` | one runtime per conversation: starts turns, queues follow-ups, steers running ones, preempts the current manager tool so unread steering lands on this turn, retracts one unread steer, interrupts, resumes leftover turns (and their in-flight sub-agents) after a crash or quit, keeps a rolling session briefing from the event log, folds earlier replay on `/compact` or automatically when a manager Generate would exceed `swarm.auto_compact_tokens` (microcompact of replayable tool results first, then the session briefing, optional pinned summarizer last; summarizer input is newest-first under a rune cap), pursues a standing `/goal` across turns until `complete_goal`, `block_goal`, an ordinary failed turn that is not a recoverable model error, a no-progress continuation (`goal_idle`), a pending thread wake (waiting is the next turn), a clear/interrupt, or `swarm.goal_max_auto_turns` (truncated tool JSON / `429` / a dropped stream / a mid-stream TCP read timeout retry in-turn then auto-continue), converts `swarm.Notification`s into persisted events, manages workspaces, projects and titles (placeholder, then a generated name), runs the post-turn memory review from effective events (successful turns receive a full review regardless of manager writes; failed project turns allow human requirements only; skill families fold only after successful turns), and resolves an in-app terminal's working directory from the conversation or project the client named. A clock + ticker (`StartScheduler`) fires due waits (`schedule_fired`) or skips a busy target (`schedule_skipped`) without bursting missed ticks; event kinds `schedule` / `schedule_fired` / `schedule_skipped` / `schedule_report` / `schedule_cancelled` are the wire contract. |
 | `internal/search` | ⌘K ranking. FTS5 is always on. Embeddings are off until Settings pins a model; then query vectors fuse with keywords via reciprocal rank fusion (`k=60`). Indexing embeddings is a background queue so a turn is not blocked on `/embeddings`. A failed query embed falls back to keywords. |
 | `internal/clients` | read-only scan of local Claude, Codex, and Cursor transcripts for the sidebar and the phone. `View` returns the last finished snapshot and walks the disk beside the caller, so a phone inbox `list` does not wait on it. Each refresh checks file metadata and reuses parsed rows from unchanged transcripts, retaining no raw buffers. It sorts once before publishing an immutable snapshot; readers select and copy only one page outside the snapshot lock. A session read is the live tail; `older` / `before` page backward by byte offset, and the opening request is on every page. It does not start or resume those tools. |
 | `internal/server` | gin: REST, SSE, upload/download, trace, PTY terminals, embedded assets. See [docs/API.md](docs/API.md). |
@@ -367,7 +367,26 @@ worker before closing SQLite.
    without `/goal`, so the next scheduled turn reuses the same worker ids and
    in-flight model calls. The current claimed one-shot alone does not count
    as a next wake. Cancelling or pausing the last wake while idle cleans up
-   parked workers; error and interrupt still clean up at turn end.
+   parked workers when no executable goal remains. A failed scheduled check
+   also hands workers to an executable goal or active same-thread wake
+   (`worker_ownership.go`), retaining their registry, IDs and in-flight calls.
+   Goal ownership excludes blocked/completed/capped/idle goals and an exhausted
+   automatic-turn budget. Plan mode prevents both goal and wake execution, so
+   neither grants worker ownership; a consumed one-shot alone is no owner.
+   The engine durably records `workers_retained` with the owner and exact live
+   worker IDs before parking and before the manager error, then rechecks owner
+   revocation after releasing the manager. A failed receipt write cannot grant
+   retention. Stopping parked work completes its conversation-wide cleanup
+   recording/publication attempt under the runtime claim lock before detaching
+   the old registry; the next registry cannot overtake that attempt. Cleanup
+   uses existing best-effort recording: storage failure warns and does not
+   promise a durable receipt or grant ownership to stale workers. Actual
+   cancellation and close run outside that lock so worker callbacks can finish.
+   The turn/run remain errors and the run remains unread; neither
+   automatic goal blocking nor immediate goal continuation follows an isolated
+   check error. Another scheduled fire or explicit user action collects the
+   same workers. Interrupt, absent ownership, context-window exhaustion and
+   the worker-watchdog failure limit retain their stop/cleanup boundaries.
    Before a successful scheduled turn returns from `runManager`, durable
    tool-result/report events in that turn are checked (`schedule_completion.go`).
    With no evidence, the transcript is preserved and the same registry/turn
@@ -404,13 +423,15 @@ worker before closing SQLite.
    While a `/goal` is open the manager
    also gets `complete_goal`, `block_goal`, and `reopen_goal` (manager-only, like the memory
    tools).    After a clean `done`, if nothing is queued, the runtime starts the
-   next turn itself until `complete_goal`, `block_goal`, a failed turn that
+   next turn itself until `complete_goal`, `block_goal`, an ordinary failed turn that
    is not a recoverable model error (the banner then shows that turn's
    public error), a
    clear/interrupt, or
    `swarm.goal_max_auto_turns`. A truncated tool-call JSON, a `429`, a
    dropped stream, or a mid-stream TCP read timeout (`operation timed out`
-   / `i/o timeout`) retries in-turn then auto-continues. Truncated tool
+   / `i/o timeout`) retries in-turn then auto-continues on ordinary turns.
+   Scheduled errors keep their failed outcome without immediately starting a
+   goal turn, including after transient retry exhaustion. Truncated tool
    arguments are refused before that next model request is sent. The `model_retry`
    reason and the turn error name which side failed: the model returned a
    tool call that was not valid JSON, or the model service (rate limit,
@@ -561,8 +582,11 @@ worker before closing SQLite.
   is so the composer ring moves without waiting for a reload. The ring is a
   child of the composer, not the textarea's parent, so the pulse cannot
   interrupt CJK IME composition.
-6. Turn end: `Registry.Cleanup()` kills sub-agents still running (recorded as a
-   `cleanup` event), the remaining transcript (tool traffic, anything not
+6. Turn end: eligible goal/wake handoffs park their sub-agents. An isolated
+   scheduled-check failure uses the durable ownership receipt described above;
+   its error alone cannot prove that its workers stopped. Other endings use
+   `Registry.Cleanup()` to stop remaining sub-agents (recorded as a `cleanup`
+   event). The remaining transcript (tool traffic, anything not
    already stored with an `agent_message`) is persisted, a terminal `done`/`error`
    event is recorded, then the turn row is closed. A rolling session briefing
    (`session_memory`) is then refreshed **in the background** when the
@@ -618,6 +642,14 @@ worker before closing SQLite.
    event log (not the empty new turn). Because later turns drop previous tool
    results, goal/schedule continuation and model retries refresh the same
    explicit worker snapshot; historical finished workers remain stopped.
+   A latest failed scheduled turn is a separate recovery boundary: a durable
+   manager `workers_retained` receipt must explicitly name each restored ID,
+   a checkpoint must exist, and a current executable goal or active same-thread
+   wake must still own the work. Stop, cleanup and checkpoint pauses forbid
+   restoring stale ownership. Restoring these workers leaves the manager's
+   error, run and unread result unchanged; it neither reruns the manager nor
+   advances its future wake. Error turns from older builds without that receipt
+   are not inferred to own running workers.
    `cleanup` marks killed leftovers as
    stopped so they are not restarted as if they were still live. A sub-agent
    that already `finished` because the process stopped (the model stream died

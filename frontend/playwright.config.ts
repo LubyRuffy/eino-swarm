@@ -11,11 +11,12 @@ const workerRoster = process.env.ZWAI_E2E_WORKER_ROSTER === "1"
 const goalSchedule = process.env.ZWAI_E2E_GOAL_SCHEDULE === "1"
 const humanWakePolicy = process.env.ZWAI_E2E_HUMAN_WAKE_POLICY === "1"
 const memoryReview = process.env.ZWAI_E2E_MEMORY_REVIEW === "1"
-const loopbackModel = modelAPIError || workerRoster || goalSchedule || humanWakePolicy || memoryReview
+const workerOwnership = process.env.ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP === "1"
+const loopbackModel = modelAPIError || workerRoster || goalSchedule || humanWakePolicy || memoryReview || workerOwnership
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: memoryReview ? "memory-review.spec.ts" : modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : undefined,
+  testMatch: workerOwnership ? "schedule-worker-ownership.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : undefined,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,

@@ -89,6 +89,10 @@ func (rt *runtime) takeParkedRegistry() *swarm.Registry {
 func (rt *runtime) reapParked() bool {
 	rt.mu.Lock()
 	reg := rt.parked
+	turnID := rt.turnID
+	if reg != nil {
+		rt.recordParkedStop(reg, turnID)
+	}
 	rt.parked = nil
 	rt.mu.Unlock()
 	if reg == nil {
