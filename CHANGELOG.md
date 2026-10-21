@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-140`, `C-028`: sent image thumbnails in desktop and Web conversations open the selected saved image in a window-fitting preview. Mouse and keyboard activation, loading/error states, Escape/backdrop/Close dismissal and return focus are supported after sending and reloading; closing the preview keeps the running task going.
+
 - `F-120`, `C-026`: desktop project creation and editing now offer a system directory picker. Cancelling keeps the current path; selection failures show an inline error. Manual entry and the empty managed directory remain available, and the browser explains the desktop option. Directory selection uses files in place and retains save-time validation. The native folder confirmation button is usable without extension filters.
 
 - `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.

@@ -1,6 +1,11 @@
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
+  "image.pasted": "Pasted image",
+  "image.enlarge": "Enlarge {name}",
+  "image.close": "Close image preview",
+  "image.loading": "Loading image…",
+  "image.failed": "Could not load image. Close and reopen to try again.",
   "notice.userStopRequested": "Stop requested by the user.",
   "notice.restartPreparing": "Preparing task handoff before restarting.",
   "notice.restartReady": "Task handoff saved; waiting for the replacement engine.",

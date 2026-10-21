@@ -302,6 +302,11 @@ function AppShell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A local dialog owns Escape before Find or turn interruption can consume it.
+      if (
+        e.key === "Escape" &&
+        document.querySelector('[role="dialog"][data-state="open"]')
+      ) return
       const dialogOpen =
         paletteOpen ||
         useSettingsSheet.getState().open ||

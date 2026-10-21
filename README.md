@@ -49,6 +49,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   refuses unsupported or mismatched type claims. The client preserves the original bytes; a filename alone is not content validation.
   Sending names those files on the message, so the model reads what you just
   attached instead of an older leftover sitting in the same folder.
+- **Enlarge an image in a sent message.** Click its thumbnail, or focus it and
+  press Enter or Space, to open that image over the conversation. The full image
+  keeps its aspect ratio and fits the window, including after a reload. Escape,
+  the backdrop or Close returns to the thumbnail; loading and failures are shown
+  in the preview. Closing the preview keeps a running task going.
 - **Copy or edit a sent message.** Hover a user bubble or a finished answer
   to see the event time (touch keeps it visible). Copy and a pencil sit under
   your bubbles. Copy takes the text. Edit opens the bubble in place

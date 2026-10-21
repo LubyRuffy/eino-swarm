@@ -7,6 +7,7 @@ const tinyPngB64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 const jpegBytes = readFileSync(new URL("./fixtures/vision-photo.jpg", import.meta.url))
 const jpegB64 = jpegBytes.toString("base64")
+const previewPngBytes = readFileSync(new URL("./fixtures/preview-landscape.png", import.meta.url))
 
 async function dropFilesOnComposer(
   page: Page,
@@ -152,4 +153,85 @@ test("pastes a UTI photo as decodable vision input", async ({ page, request }) =
   const response = await request.get((await photo.getAttribute("src"))!)
   expect(response.headers()["content-type"]).toBe("image/jpeg")
   expect(await response.body()).toEqual(jpegBytes)
+})
+
+test("enlarges the selected sent image within the viewport and after reload", async ({ page, request }, info) => {
+  await freshConversation(page)
+  await dropFilesOnComposer(page, [
+    { name: "landscape.png", mime: "image/png", b64: previewPngBytes.toString("base64") },
+    { name: "detail.jpg", mime: "image/jpeg", b64: jpegB64 },
+  ], "drop")
+  await send(page, "Inspect the images")
+  await waitForIdle(page)
+  const trigger = page.getByRole("button", { name: "Enlarge landscape.png", exact: true })
+  const thumbnail = await trigger.locator("img").boundingBox()
+  expect(thumbnail).not.toBeNull()
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 720, height: 500 }, { width: 390, height: 650 }]) {
+    // Open in the desktop layout, then resize the preview independently of
+    // the three-pane shell's minimum usable width.
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await trigger.click()
+    await page.setViewportSize(viewport)
+    const dialog = page.getByRole("dialog", { name: "landscape.png", exact: true })
+    const image = dialog.getByAltText("landscape.png")
+    await expect(image).toBeVisible()
+    await dialog.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)))
+    await expect.poll(() => image.evaluate((img: HTMLImageElement) =>
+      [img.naturalWidth, img.naturalHeight])).toEqual([1200, 800])
+    const box = (await image.boundingBox())!
+    const frame = (await dialog.boundingBox())!
+    expect(box.height).toBeGreaterThan(thumbnail!.height)
+    expect(box.width / box.height).toBeCloseTo(1.5, 1)
+    expect(frame.x).toBeGreaterThanOrEqual(0)
+    expect(frame.y).toBeGreaterThanOrEqual(0)
+    expect(frame.x + frame.width).toBeLessThanOrEqual(viewport.width)
+    expect(frame.y + frame.height).toBeLessThanOrEqual(viewport.height)
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width)
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height)
+    expect(await (await request.get((await image.getAttribute("src"))!)).body()).toEqual(previewPngBytes)
+    await page.screenshot({ path: info.outputPath(`image-preview-${viewport.width}.png`), animations: "disabled" })
+    await page.keyboard.press("Escape")
+    await expect(dialog).toHaveCount(0)
+    await expect(trigger).toBeFocused()
+  }
+  await page.setViewportSize({ width: 1440, height: 900 })
+  const second = page.getByRole("button", { name: "Enlarge detail.jpg", exact: true })
+  await second.focus()
+  await page.keyboard.press("Enter")
+  const detail = page.getByRole("dialog", { name: "detail.jpg", exact: true })
+  await expect(detail.getByAltText("detail.jpg")).toBeVisible()
+  await expect(detail.getByAltText("landscape.png")).toHaveCount(0)
+  await page.keyboard.press("Tab")
+  await expect(detail.getByRole("button", { name: "Close image preview" })).toBeFocused()
+  await page.keyboard.press("Shift+Tab")
+  await expect(detail.getByRole("button", { name: "Close image preview" })).toBeFocused()
+  await detail.getByRole("button", { name: "Close image preview" }).click()
+  await expect(detail).toHaveCount(0)
+  await trigger.click()
+  await page.mouse.click(8, 8)
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  await expect(trigger).toBeFocused()
+  await reloadOpenConversation(page)
+  await trigger.click()
+  await expect(page.getByRole("dialog", { name: "landscape.png", exact: true }).getByAltText("landscape.png")).toBeVisible()
+})
+
+test("Escape closes a sent image preview without interrupting the active task", async ({ page }) => {
+  await freshConversation(page)
+  await dropFilesOnComposer(page, [
+    { name: "working.png", mime: "image/png", b64: previewPngBytes.toString("base64") },
+  ], "drop")
+  const interruptions: string[] = []
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/interrupt")) interruptions.push(request.url())
+  })
+  await send(page, "Inspect the image")
+  await page.getByRole("button", { name: "Enlarge working.png", exact: true }).click()
+  await expect(page.getByRole("dialog", { name: "working.png", exact: true })).toBeVisible()
+  await expect(page.getByTestId("status-badge")).toContainText("Working")
+  await page.keyboard.press("Escape")
+  await expect(page.getByRole("dialog")).toHaveCount(0)
+  expect(interruptions).toEqual([])
+  await waitForIdle(page)
+  expect(interruptions).toEqual([])
 })

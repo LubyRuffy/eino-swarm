@@ -261,11 +261,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 证据：实现 `handoff.go`、`internal/engine/restart.go`、`cmd/zwai/engine_restart.go`、`internal/server/restart.go`；测试 `handoff_test.go`、`internal/engine/restart_test.go`、`cmd/zwai/engine_restart_acceptance_test.go`、`internal/server/restart_http_test.go`、`frontend/src/lib/transcript-restart.test.ts`。
 - 变更规则：同步 CLI、API、持久化格式、恢复及真实进程验收、UI 通知和 CHANGELOG；来源：用户 2026-10-19 的自动交接重启需求。
 
-## C-028 Image intake retains vision bytes
+## C-028 Image intake and sent-image preview retain vision bytes
 
-- 状态：active；类型：data / compatibility；作用范围：PC composer 的粘贴／拖入图片、视觉请求和输入图片存储；关联功能：`F-140`。
+- 状态：active；类型：data / compatibility；作用范围：PC composer 的粘贴／拖入图片、视觉请求、输入图片存储与桌面／Web 已发送图片预览；关联功能：`F-140`。
 - 契约内容：真实 image MIME 继续走视觉输入；空、通用 binary 或 UTI 标签且名称为 png/jpeg/gif/webp 的文件也走视觉输入。显式 text/PDF 不因图片后缀改为视觉输入。客户端归一化 MIME 声明但不改原图片字节；服务端保留内容类型嗅探及声明匹配校验，不信任扩展名替代该校验。
+- 预览交互：已发送缩略图是可用鼠标及 Enter／Space 操作的按钮；每次打开所选图片的现有 input-images 地址，刷新重载后仍可打开。大图按原比例适配窗口，Esc、遮罩或关闭按钮关闭后焦点回到打开它的缩略图。预览打开时 Esc 由弹层优先消费，不得关闭底层 Find 搜索或触发全局停止正在运行任务的快捷键。
 - 允许行为：兼容 Finder/WKWebView 的通用文件类型；禁止行为：图片仅变为 uploads 路径，或客户端 MIME 推断绕过服务端校验。
-- 失败语义：不支持的格式或真实类型不匹配沿用既有输入错误；不变量：有效图片在预览、请求、存储与重载中保留原字节及可解码尺寸；边界条件：JPEG MIME 别名、大小写扩展名、明确非图片类型。
-- 证据：实现 `frontend/src/lib/paste-image.ts`, `internal/engine/input.go`；测试 `frontend/src/lib/paste-image.test.ts`, `frontend/src/components/app/composer-image-drop.test.tsx`, `frontend/e2e/image-input.spec.ts`；Schema：现有 turn 图片请求。
-- 变更规则：同步 Files/attachments 功能、README、API、TESTING、CHANGELOG；使用可解码的有效图片验收，不能只用魔数或 img src。来源：本地图片拖入修复及本轮未提交工作审计。
+- 失败语义：不支持的格式或真实类型不匹配沿用既有输入错误；大图加载中有可见状态，加载失败明确显示错误且仍可关闭；不变量：有效图片在预览、请求、存储与重载中保留原字节及可解码尺寸；边界条件：JPEG MIME 别名、大小写扩展名、明确非图片类型、多图所选身份。
+- 证据：实现 `frontend/src/lib/paste-image.ts`, `frontend/src/components/app/input-thumbs.tsx`, `frontend/src/App.tsx`, `internal/engine/input.go`；测试 `frontend/src/lib/paste-image.test.ts`, `frontend/src/components/app/composer-image-drop.test.tsx`, `frontend/src/components/app/input-thumbs.test.tsx`, `frontend/src/App.test.tsx`, `frontend/e2e/image-input.spec.ts`；Schema：现有 turn 图片请求。
+- 变更规则：同步 Files/attachments 功能、README、API、TESTING、CHANGELOG；使用可解码的有效图片验收，不能只用魔数或 img src。来源：本地图片拖入修复及用户 2026-10-21 的已发送图片放大需求。
