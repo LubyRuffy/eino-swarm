@@ -17,6 +17,13 @@ engine exits after the idle grace once no presence connection is held, the
 phone hub socket is down, and no turn is running. A host that is killed
 releases `engine.lock`; the next shell takes it and resumes orphaned turns.
 
+Queued-message consumption is claimed by successful row removal: concurrent
+automatic dequeue and manual steering cannot both deliver the same row or
+discard a concurrent edit. PC queue actions coalesce pending clicks per
+conversation/row and ignore another conversation's late response. Missing-record
+HTTP responses carry a request ID and matching safe WARN log
+(`internal/server/missing_record.go`); they do not terminate the model turn.
+
 Desktop update installation is also locked by the actual app bundle across
 engines with different data directories. The stable filesystem lock covers
 download, replacement and native launch/rollback; a successful installation

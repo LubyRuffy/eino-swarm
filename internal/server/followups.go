@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -82,6 +83,12 @@ func (s *Server) steerFollowup(c *gin.Context) {
 	}
 	turn, err := s.engine.SteerFollowup(th.ID, c.Param("fid"))
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.missingRecord(c, "followup_unavailable",
+				"This message is no longer in the waiting queue. It may already have been sent or removed. Refresh the queue before trying again.",
+				gin.H{"thread_id": th.ID, "followup_id": c.Param("fid")})
+			return
+		}
 		s.fail(c, err)
 		return
 	}

@@ -54,6 +54,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 排队注入：同一会话／排队 ID 的进行中请求去重；已离队时刷新队列并明确提示，刷新失败保留独立错误；跨会话迟到响应不污染当前会话。后台自动出队以实际删除行作为唯一消费权，避免竞争重复投递或丢失并发编辑。关联契约：`C-002`、`C-012`；证据：`internal/store/followups_claim_test.go`、`internal/server/missing_record_test.go`、`frontend/src/store/app-followup.ts`、`frontend/src/store/app-followup.test.ts`、`frontend/e2e/followup-error.spec.ts`。
+
 - 自动重启的任务交接沿用 `F-110`／`C-027`：已接受的回答、继续／停止决定不会因交接被忽略；已确认终态不重复执行；完成 manager 下的后台 worker 直接按原 ID 恢复。证据：`internal/engine/restart_recovery_test.go`、`internal/engine/restart_parked_test.go`。
 - PC 人工停止与清理：未完成的子代理显示在独立的 Stopped／已停止分组，停止后的刷新与重开仍保留该状态；不把资源清理当成成功完成，也不把人工停止显示为模型失败。真实完成的代理继续显示完成。关联契约：`C-002`、`C-003`；证据：`frontend/src/lib/transcript-stop.test.ts`、`frontend/src/components/app/panel-stop.test.tsx`、`frontend/e2e/restart.spec.ts`。
 
@@ -158,6 +160,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：发现并安装 Android 可用版本；使用者：Android 手机用户；入口：菜单 Check for updates 和更新提示；输入：最近一个含匹配 APK 的 GitHub Release；输出：Android 安装请求；前置条件：网络和新版本；失败表现：手动检查显示错误。iOS 测试版由 TestFlight 分发和更新，应用内不显示 GitHub 检查入口；关联契约：`C-010`；实现证据：`mobile/src/components/host-chrome.tsx`, `mobile/src/components/update-notice.tsx`, `mobile/src/lib/app-update.ts`, `mobile/e2e/version-check.spec.ts`, `mobile/ios/App/AppUITests/BindFlowTests.swift`。
 
 ### F-310 HTTP API and live events
+
+- 缺失记录诊断：404 区分会话不存在、排队消息已离队和通用记录缺失；附请求 ID、方法、路由和可用的记录身份，使用同 ID 在默认 WARN 日志定位，避免裸存储哨兵。关联契约：`C-012`；证据：`internal/server/missing_record.go`、`internal/server/missing_record_test.go`。
 
 - 目的：给 PC 客户端提供相同服务；使用者：内置客户端及本机调用方；入口：`/api`、SSE、WebSocket；输入：同源请求；输出：状态和事件；前置条件：引擎在线；失败表现：HTTP 状态和 code；关联契约：`C-002`, `C-003`, `C-005`；实现证据：`internal/server`, `docs/API.md`。
 

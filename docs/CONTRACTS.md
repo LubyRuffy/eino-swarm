@@ -20,6 +20,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：consistency；作用范围：engine、server、desktop、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-230`, `F-310`。
 - 契约内容：同一对话同时只有一个活动 turn；第二条普通消息进入 follow-up，活动中的 steer 指向该 turn；排队行在 turn 已经结束后点击注入，改为作为下一轮发送，Stop 仍不自动清空其余队列；排队消息和尚未被 manager 读取的 steer 可以拉进输入框后重新排队，已读 steer 不能改；手机在等待队列上执行“中断插入”时，先将队首消息转为本轮 steer，再请求中断当前 manager 步骤，其他消息继续排队；并发 API 冲突返回可识别的状态。
+- 队列消费：只有实际删除成功的一方取得该排队记录的投递权，返回的内容必须属于这次删除的记录；自动出队丢失消费权或遇到编辑时重新选择队首，不投递旧内容。PC 对同一会话／排队 ID 的进行中注入请求去重；旧会话的迟到响应不得改动当前队列或错误。已离队记录返回 `404 followup_unavailable`，刷新后按真实刷新结果提示，不冒称注入成功，不按旧文本再发。证据：`internal/store/followups_claim_test.go`、`internal/server/missing_record_test.go`、`frontend/src/store/app-followup.ts`、`frontend/src/store/app-followup.test.ts`、`frontend/e2e/followup-error.spec.ts`。
 - 手机主按钮：真实运行且无可发送草稿（包括附件或引用）时显示可点击停止图标，连接既有停止请求；有内容仍可点击跟进／插入，提问时保持回答，定时等待不显示停止。直连流式回复期间停止按钮可中止请求并保留已收到的文本；停止不发送空消息。
 - PC 停止展示：`cleanup` 只证明尚在运行的子代理已停止，不证明其任务成功完成；其派生状态为 `cancelled`，与真实完成及失败分组区分。稳定的人工 `interrupted` 终态显示停止，不显示模型失败／重试。后续终态与回放不得把已停止的代理改成成功，真实 `finished` 结果不得被清理回退。该派生展示状态不增加 wire event。证据：`frontend/src/lib/transcript.ts`、`frontend/src/components/app/panel.tsx`、`frontend/src/lib/transcript-stop.test.ts`、`frontend/e2e/restart.spec.ts`。
 - 允许行为：排队和插入；禁止行为：在同一对话并行启动两个 turn；失败语义：`ErrBusy`/`ErrIdle` 对应 409 与 code；不变量：turn 状态可恢复；边界条件：中断和等待。
@@ -114,8 +115,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-012 One-ID troubleshooting
 
-- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-320`, `F-420`。
+- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-310`, `F-320`, `F-420`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
+- HTTP 缺失记录：服务端返回可判断的缺失类别、请求 ID、方法、路由模板和相关记录身份；同请求 ID 写入默认可见的 WARN 日志，响应头与 JSON 保持一致。不得记录请求正文、查询串或认证头；界面不能将此类操作失败冒充当前模型轮次失败。证据：`internal/server/missing_record.go`、`internal/server/missing_record_test.go`、`frontend/src/lib/api.test.ts`；关联功能：`F-310`。
 - Worker 计数证据：创建／续办以该 turn 的真实调用与持久化生命周期事件为准，历史名册和 assistant 自述不能当作本轮创建量。错误回执保留拒绝类别及聚合数量，已恢复 ID 不冒称新 ID；摘要事实按 `turn_id` 和 `through_seq` 归属。仅注入名册快照不得新增 `spawned` 或伪造 `spawn_agent` 工具记录；真实续办／进程恢复保留事件并按已有 ID 区分。证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`frontend/e2e/worker-roster-history.spec.ts`；来源：GitHub Issue #78。
 - 模型接口失败的公共 turn/error 展示保留可判断的 HTTP 状态码及接口拒绝/响应解码原因。JSON 解码错误本身不证明工具参数无效；SDK/Eino 类型错误经包装仍按接口错误处理。公共文本不包含原始响应正文、图执行路径或认证值，原因最多 512 字符；原始调用与重试仍在同一 turn 的 Trace 内可查，上下文溢出及超时提示保留现有恢复建议。
 - 允许行为：敏感值脱敏；禁止行为：丢掉诊断所需事件或输出令牌/完整 Cookie；失败语义：不存在的 id 报不存在；不变量：同 id 贯穿运行；边界条件：部分失败和重启恢复。

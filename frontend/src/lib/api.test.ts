@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { api, ApiError } from "./api"
+import { LOCALE_KEY } from "./i18n"
 
 function respond(body: unknown, init?: { status?: number }) {
   const status = init?.status ?? 200
@@ -14,6 +15,7 @@ function respond(body: unknown, init?: { status?: number }) {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  localStorage.removeItem(LOCALE_KEY)
 })
 
 describe("settings", () => {
@@ -91,6 +93,52 @@ describe("request", () => {
       code: "busy",
     })
     await expect(api.meta()).rejects.toBeInstanceOf(ApiError)
+  })
+
+  it("explains the missing conversation in the user's language and retains diagnostics", async () => {
+    localStorage.setItem(LOCALE_KEY, "zh")
+    const details = {
+      error: "store: not found", code: "thread_not_found",
+      request_id: "rq_test", thread_id: "th_missing", method: "POST",
+      route: "/api/threads/:id/followups/:fid/steer",
+    }
+    vi.stubGlobal("fetch", vi.fn(async () => respond(details, { status: 404 })))
+    await expect(api.steerFollowup("th_missing", "fu_1")).rejects.toMatchObject({
+      message: expect.stringContaining("会话已不存在"), status: 404,
+      code: "thread_not_found", details,
+    })
+  })
+
+  it("does not claim a missing queue has refreshed at the HTTP boundary", async () => {
+    localStorage.setItem(LOCALE_KEY, "en")
+    vi.stubGlobal("fetch", vi.fn(async () => respond({
+      error: "store: not found", code: "followup_unavailable",
+    }, { status: 404 })))
+    await expect(api.steerFollowup("th_1", "fu_1")).rejects.toMatchObject({
+      message: "This message is no longer in the waiting queue. It may already have been sent or removed.",
+      status: 404, code: "followup_unavailable",
+    })
+  })
+
+  it("adds safe operation context to opaque legacy missing-record errors", async () => {
+    localStorage.setItem(LOCALE_KEY, "en")
+    vi.stubGlobal("fetch", vi.fn(async () => respond({ error: "store: not found" }, { status: 404 })))
+    await expect(api.thread("th_0123456789abcdef")).rejects.toMatchObject({
+      message: "Could not complete GET /api/threads/:id: the requested record no longer exists. Refresh and try again.",
+      status: 404,
+    })
+  })
+
+  it("retains a missing request's route template without exposing query contents", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => respond({
+      error: "store: not found", code: "not_found", route: "/api/threads/:id",
+    }, { status: 404 })))
+    await expect(api.thread("th_hidden?token=secret")).rejects.toMatchObject({
+      message: expect.stringContaining("GET /api/threads/:id"),
+    })
+    await expect(api.thread("th_hidden?token=secret")).rejects.not.toMatchObject({
+      message: expect.stringContaining("secret"),
+    })
   })
 
   it("keeps a conflict's current notes so the editor can show both", async () => {

@@ -62,11 +62,8 @@ func (e *Engine) RequeueFollowup(threadID, id, text string) (*store.Followup, er
 // text as the next turn: Stop leaves the queue, and this button is the user
 // saying send it now. A start that loses the slot puts the row back.
 func (e *Engine) SteerFollowup(threadID, id string) (*store.Turn, error) {
-	f, err := e.store.GetFollowup(threadID, id)
+	f, err := e.store.TakeFollowup(threadID, id)
 	if err != nil {
-		return nil, err
-	}
-	if err := e.store.DeleteFollowup(threadID, id); err != nil {
 		return nil, err
 	}
 	if err := e.Steer(threadID, f.Text); err != nil {

@@ -49,6 +49,7 @@ import type {
 } from "@/lib/types"
 import { useProjects } from "./projects"
 import { planAskActions } from "./app-plan"
+import { followupActions } from "./app-followup"
 import { scheduleActions, type ScheduleSlice } from "./app-schedule"
 import { steerInjectActions } from "./app-steer"
 import { dropQueued, queueEvent, withRunningClock } from "./app-stream"
@@ -56,7 +57,6 @@ import { applyThreadListing } from "./app-thread-list"
 import {
   bumpFollowups,
   dropMatchingFollowups,
-  isFollowupGeneration,
   liveTurnUserText,
 } from "./followup-sync"
 import { managerHasVisibleBlocks } from "@/lib/welcome"
@@ -358,6 +358,7 @@ export const useApp = create<AppState>((set, get) => ({
     resetThreadHistory()
     set((s) => ({
       activeId: id,
+      error: undefined,
       transcript: emptyTranscript(),
       turns: [],
       followups: [],
@@ -769,75 +770,7 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  refreshFollowups: async () => {
-    const id = get().activeId
-    if (!id) {
-      set({ followups: [] })
-      return
-    }
-    const token = bumpFollowups()
-    try {
-      const list = await api.followups(id)
-      if (!isFollowupGeneration(token) || get().activeId !== id) return
-      set({ followups: list })
-    } catch (e) {
-      if (!isFollowupGeneration(token)) return
-      set({ error: message(e) })
-    }
-  },
-
-  steerFollowup: async (fid) => {
-    const id = get().activeId
-    if (!id) return
-    try {
-      await api.steerFollowup(id, fid)
-      bumpFollowups()
-      set((s) => ({ followups: s.followups.filter((f) => f.id !== fid) }))
-    } catch (e) {
-      void get().refreshFollowups()
-      if (!(e instanceof ApiError && e.code === "idle")) {
-        set({ error: message(e) })
-      }
-    }
-  },
-
-  deleteFollowup: async (fid) => {
-    const id = get().activeId
-    if (!id) return false
-    try {
-      await api.deleteFollowup(id, fid)
-      bumpFollowups()
-      set((s) => ({ followups: s.followups.filter((f) => f.id !== fid) }))
-      return true
-    } catch (e) {
-      void get().refreshFollowups()
-      // 404: the row already left. Anything else is still in the tray, so
-      // a composer handoff must not copy it as well.
-      if (e instanceof ApiError && e.status === 404) return true
-      set({ error: message(e) })
-      return false
-    }
-  },
-
-  requeueFollowup: async (fid, text) => {
-    const id = get().activeId
-    if (!id) return
-    try {
-      const item = await api.requeueFollowup(id, fid, text)
-      bumpFollowups()
-      set((s) => ({
-        followups: [...s.followups.filter((f) => f.id !== fid), item],
-      }))
-    } catch (e) {
-      void get().refreshFollowups()
-      set({ error: message(e) })
-    }
-  },
-
-  clearFollowups: async () => {
-    const items = get().followups
-    await Promise.all(items.map((f) => get().deleteFollowup(f.id)))
-  },
+  ...followupActions(set, get, message),
 
   interrupt: async () => {
     const id = get().activeId

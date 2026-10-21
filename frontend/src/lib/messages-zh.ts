@@ -163,6 +163,11 @@ export const zh: { [K in keyof typeof en]: string } = {
   "model.edit": "编辑提供商",
   "model.fallback": "模型",
 
+  "api.threadNotFound": "本次操作对应的会话已不存在，请刷新会话列表后重新打开。",
+  "api.recordNotFound": "无法完成 {method} {route}：所需记录已不存在，请刷新后重试。",
+  "queue.unavailable": "这条消息已不在待发送队列中，可能已经发送或被移除。",
+  "queue.unavailableRefreshed": "这条消息已不在待发送队列中，可能已经发送或被移除。队列已刷新。",
+  "queue.unavailableRefreshFailed": "这条消息已不在待发送队列中，可能已经发送或被移除。刷新待发送队列失败，请重新打开会话后重试。",
   "queue.count": "{n} 条排队",
   "queue.clear": "清空队列",
   "queue.steer": "注入",

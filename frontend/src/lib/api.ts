@@ -1,4 +1,5 @@
 import { desktopProcessID } from "./shell"
+import { readLocalePref, resolveLocale, t } from "./i18n"
 
 import type {
   Attachment,
@@ -183,6 +184,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       if (body?.code) code = body.code
     } catch {
       // a non-JSON error body is still an error; the status line will do
+    }
+    if (res.status === 404) {
+      const locale = resolveLocale(readLocalePref())
+      if (code === "followup_unavailable") message = t(locale, "queue.unavailable")
+      else if (code === "thread_not_found") message = t(locale, "api.threadNotFound")
+      else if (message === "store: not found" || code === "not_found") {
+        // Prefer the server's route template: record IDs belong in diagnostics,
+        // and query strings may contain private input.
+        const route = String(details?.route ?? path).split("?")[0]
+          .replace(/\/[a-z]+_[0-9a-f]{16}(?=\/|$)/g, "/:id")
+        message = t(locale, "api.recordNotFound", { method: init?.method ?? "GET", route })
+      }
     }
     throw new ApiError(message, res.status, code, details)
   }
