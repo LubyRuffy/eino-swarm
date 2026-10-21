@@ -514,6 +514,18 @@ Synthetic reducer histories, an offline Web fixture or an old package's failure
 screenshots do not accept the new native package. A filename saying “live” or
 “Stop” is not proof that the captured turn was still running or stopped.
 
+Continue a pending native check by executing the current audit's `next_action`.
+If one control channel fails, try another available isolated native control
+path in the same recovery and retain its real outcome. An SSH failure or a
+rejected UI action is evidence about that channel, not a completed acceptance
+attempt or a need for renewed authorization. Keep each passed source/package
+receipt when main advances; compare the changed inputs and repeat the affected
+checks on the combined candidate. Development-window evidence remains separate
+from the final versioned ZIP's installation and native behavior acceptance.
+`tools/test_audit_macos_acceptance.py` exercises the recovery decisions and exact
+package matching; its green result cannot execute the returned action for the
+operator.
+
 Packaged phone drivers are `mobile/e2e/ios-worker-stop-replay.swift` method
 `BindFlowTests/testNativeWorkerStopReplayRetainsStoppedAndFinishedOutcomes` and
 `mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/WorkerStopReplayTest.java`
