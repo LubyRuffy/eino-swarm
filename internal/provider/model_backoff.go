@@ -55,8 +55,12 @@ func (p *Pool) backoffFor(baseURL string) *backoffGate {
 func (r *recordingModel) admit(ctx context.Context) (context.Context, func(error), error) {
 	if r.rec != nil {
 		ctx = context.WithValue(ctx, backoffObserverKey{}, func(attempt int, delay time.Duration) {
+			waitMS := delay.Milliseconds()
+			if delay > 0 && waitMS == 0 {
+				waitMS = 1 // Zero means an active probe with no known remaining wait.
+			}
 			r.rec(CallRecord{AgentID: r.agentID, ProviderID: r.providerID, Model: r.model,
-				Backoff: &BackoffRecord{Attempt: attempt, WaitMS: delay.Milliseconds()}})
+				Backoff: &BackoffRecord{Attempt: attempt, WaitMS: waitMS}})
 		})
 	}
 	if r.gate == nil {

@@ -12,11 +12,12 @@ const goalSchedule = process.env.ZWAI_E2E_GOAL_SCHEDULE === "1"
 const humanWakePolicy = process.env.ZWAI_E2E_HUMAN_WAKE_POLICY === "1"
 const memoryReview = process.env.ZWAI_E2E_MEMORY_REVIEW === "1"
 const builtinTools = process.env.ZWAI_E2E_BUILTIN_TOOLS === "1"
-const loopbackModel = modelAPIError || workerRoster || goalSchedule || humanWakePolicy || memoryReview || builtinTools
+const workerOwnership = process.env.ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP === "1"
+const loopbackModel = modelAPIError || workerRoster || goalSchedule || humanWakePolicy || memoryReview || builtinTools || workerOwnership
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : undefined,
+  testMatch: workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : undefined,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,

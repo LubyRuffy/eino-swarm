@@ -308,6 +308,7 @@ func wireMessages(event, data string) []notificationMsg {
 		Role       string `json:"role"`
 		Text       string `json:"text"`
 		ToolCallID string `json:"tool_call_id"`
+		MessageID  string `json:"message_id"`
 		Err        string `json:"err"`
 		Status     *struct {
 			Running bool `json:"running"`
@@ -317,6 +318,9 @@ func wireMessages(event, data string) []notificationMsg {
 	kindName := event
 	if kindName == "" {
 		kindName = ev.Kind
+	}
+	if kindName == "workers_retained" || ev.Kind == "workers_retained" {
+		return nil
 	}
 	switch kindName {
 	case "ready", "ping":
@@ -335,7 +339,7 @@ func wireMessages(event, data string) []notificationMsg {
 		return nil
 	}
 	n := swarm.Notification{
-		Kind: kind, AgentID: ev.AgentID, Role: ev.Role, Text: ev.Text, ToolCallID: ev.ToolCallID,
+		Kind: kind, AgentID: ev.AgentID, Role: ev.Role, Text: ev.Text, ToolCallID: ev.ToolCallID, MessageID: ev.MessageID,
 	}
 	if ev.Err != "" {
 		n.Err = errors.New(ev.Err)

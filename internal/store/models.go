@@ -208,6 +208,7 @@ type Event struct {
 	Role               string     `gorm:"size:64" json:"role,omitempty"`
 	Text               string     `json:"text"`
 	ToolCallID         string     `gorm:"size:128" json:"tool_call_id,omitempty"`
+	MessageID          string     `gorm:"size:64" json:"message_id,omitempty"`
 	Err                string     `json:"err,omitempty"`
 	Images             []ImageRef `gorm:"serializer:json" json:"images,omitempty"`
 	CreatedAt          time.Time  `json:"created_at"`

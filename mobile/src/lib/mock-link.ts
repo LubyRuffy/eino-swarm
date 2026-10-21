@@ -39,6 +39,7 @@ import {
   type ThreadDetail,
   type ThreadView,
 } from "./rpc"
+import { stopReplayEnd, stopReplayStart } from "./mock-stop-replay"
 
 /** A phone with no PC in reach. The walkthrough host answers the same ops
  *  with the same shapes, so the inbox and a conversation can be driven in a
@@ -226,7 +227,9 @@ export class MockHost {
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
     if (live) {
-      if (new URLSearchParams(location.search).get("history") === "streamed-agents") {
+      if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
+        this.seed(live, stopReplayStart(), true)
+      } else if (new URLSearchParams(location.search).get("history") === "streamed-agents") {
         this.seed(live, [
           { kind: "agent_message", agentID: "manager", text: "Older manager answer" },
           { kind: "user_message", agentID: "manager", text: "Check the current workspace" },
@@ -598,6 +601,14 @@ export class MockHost {
     if (last) th.summary = last.text.split("\n")[0]
   }
 
+  stopTurn(th: MockThread) {
+    this.settle(th)
+    const params = new URLSearchParams(location.search)
+    if (params.get("history") === "stopped-workers" && th.id === "t-live") {
+      for (const step of stopReplayEnd(params.get("stop_order"))) this.push(th, step)
+    }
+  }
+
   answer(th: MockThread, req: Pick<RemoteRequest, "answers">): string | null {
     if (!th.askUser) return null
     const answers = req.answers as Record<string, { answers?: string[] }> | undefined
@@ -877,7 +888,7 @@ export class MockLink {
         return this.ok({ id })
       case OpStop: {
         const th = thread()
-        if (th) this.host.settle(th)
+        if (th) this.host.stopTurn(th)
         return this.ok({ id })
       }
       case OpCancelWait: {

@@ -553,9 +553,9 @@ func (s *Store) ListEventsByTurn(threadID, turnID string) ([]Event, error) {
 // rosterEventKinds reconstruct the Agents tab. The live-edge log page is a
 // viewport of recent tools; these kinds otherwise fall out of that window
 // and the panel claims there are no sub-agents.
-var rosterEventKinds = []string{"spawned", "finished", "cleanup"}
+var rosterEventKinds = []string{"spawned", "finished", "cleanup", "workers_retained", "error"}
 
-// ListRosterEvents returns spawned, finished and cleanup rows, oldest first.
+// ListRosterEvents returns worker lifecycles and failure ownership, oldest first.
 // Opening a long conversation paints one viewport of tools; the roster is
 // these few rows, not that window.
 func (s *Store) ListRosterEvents(threadID string) ([]Event, error) {

@@ -99,7 +99,9 @@ func TestResponsesReplayBudgetCompactsBeforeTheActualModelRequest(t *testing.T) 
 		sent = append([]byte(nil), raw...)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "text/event-stream")
-		io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"final-budget\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Checked.\"}]}]}}\n\n")
+		if _, err := io.WriteString(w, "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"final-budget\",\"role\":\"assistant\",\"content\":[{\"type\":\"output_text\",\"text\":\"Checked.\"}]}]}}\n\n"); err != nil {
+			t.Error(err)
+		}
 	}))
 	defer endpoint.Close()
 	e := newTestEngine(t)

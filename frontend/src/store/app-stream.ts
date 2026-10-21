@@ -24,7 +24,7 @@ import { setThreadRunning } from "@/lib/thread-title"
 import { applyGoalThreadFlags } from "./goal-events"
 import { applyPlanThreadFlags } from "./plan-events"
 import { useProjects } from "./projects"
-import { rememberRewind, rememberStored } from "./thread-history"
+import { rememberStored, rewindStoredTranscript } from "./thread-history"
 import { bumpFollowups, dropMatchingFollowups } from "./followup-sync"
 import {
   activeWake,
@@ -138,13 +138,11 @@ function flushQueued(set: StreamSet, get: StreamGet) {
   let closed = false
   let schedules = state.schedules ?? []
   let schedulesDirty = false
+  const applied: SwarmEvent[] = []
   for (const ev of events) {
-    rememberStored(threadId, ev)
-    if (ev.kind === "rewound") {
-      const from = Number.parseInt(String(ev.text ?? ""), 10)
-      if (Number.isFinite(from) && from > 0) rememberRewind(threadId, from, transcript.lastSeq)
-    }
-    transcript = reduceEvent(transcript, ev)
+    if (!rememberStored(threadId, ev)) continue
+    applied.push(ev)
+    transcript = foldLiveEvent(transcript, ev)
     if (ev.kind === "user_message" || ev.kind === "resumed") {
       status = withRunningClock(status, {
         turn_id: ev.turn_id,
@@ -261,6 +259,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       }
     }
   }
+  if (applied.length === 0) return
   threads = setThreadRunning(
     threads,
     threadId,
@@ -273,7 +272,7 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     transcript:
       s.transcript === base
         ? transcript
-        : events.reduce((acc, ev) => reduceEvent(acc, ev), s.transcript),
+        : applied.reduce(foldLiveEvent, s.transcript),
     status,
     threads,
     usage,
@@ -298,6 +297,14 @@ function flushQueued(set: StreamSet, get: StreamGet) {
       .then((turns) => set({ turns }))
       .catch(() => undefined)
   }
+}
+
+function foldLiveEvent(state: TranscriptState, ev: SwarmEvent): TranscriptState {
+  if (ev.kind === "rewound") {
+    const from = Number.parseInt(String(ev.text ?? ""), 10)
+    if (Number.isFinite(from) && from > 0) return rewindStoredTranscript(ev.thread_id, from, state)
+  }
+  return reduceEvent(state, ev)
 }
 
 /** Claim the conversation is mid-turn. `done` wipes `started_at`; a later

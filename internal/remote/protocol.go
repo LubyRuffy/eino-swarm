@@ -269,6 +269,7 @@ type EventView struct {
 	Role           string    `json:"role,omitempty"`
 	Text           string    `json:"text"`
 	ToolCallID     string    `json:"tool_call_id,omitempty"`
+	MessageID      string    `json:"message_id,omitempty"`
 	Err            string    `json:"err,omitempty"`
 	HasImages      bool      `json:"has_images,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`

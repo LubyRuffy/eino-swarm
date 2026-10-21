@@ -1,4 +1,5 @@
 import { updateZH } from "./messages-update"
+import { agentFailureZh } from "./messages-agent-failure-zh"
 
 import type { en } from "./messages-en"
 
@@ -415,6 +416,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "status.done": "完成",
   "status.failed": "失败",
   "status.cancelled": "已停止",
+
+  ...agentFailureZh,
 
   "notice.goalSet": "已设置目标。",
   "notice.goalCleared": "已清除目标。",

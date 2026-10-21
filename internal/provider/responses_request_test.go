@@ -91,7 +91,7 @@ func TestResponsesImageAndFunctionHistoryPreserveExactContent(t *testing.T) {
 		nil,
 		{Role: schema.User, Content: "caption", UserInputMultiContent: []schema.MessageInputPart{{Type: schema.ChatMessagePartTypeImageURL, Image: &schema.MessageInputImage{MessagePartCommon: schema.MessagePartCommon{Base64Data: &imageData, MIMEType: "image/png"}, Detail: schema.ImageURLDetailHigh}}}},
 		{Role: schema.User, Content: "caption", UserInputMultiContent: []schema.MessageInputPart{{Type: schema.ChatMessagePartTypeText, Text: "caption"}, {Type: schema.ChatMessagePartTypeImageURL, Image: &schema.MessageInputImage{MessagePartCommon: schema.MessagePartCommon{URL: &imageURL}}}}},
-		{Role: schema.User, Content: "old caption", MultiContent: []schema.ChatMessagePart{{Type: schema.ChatMessagePartTypeText, Text: "old caption"}, {Type: schema.ChatMessagePartTypeImageURL, ImageURL: &schema.ChatMessageImageURL{URL: imageURL, Detail: schema.ImageURLDetailLow}}}},
+		{Role: schema.User, Content: "old caption", MultiContent: []schema.ChatMessagePart{{Type: schema.ChatMessagePartTypeText, Text: "old caption"}, {Type: schema.ChatMessagePartTypeImageURL, ImageURL: &schema.ChatMessageImageURL{URL: imageURL, Detail: schema.ImageURLDetailLow}}}}, //nolint:staticcheck // Persisted legacy MultiContent must remain compatible with Responses.
 		{Role: schema.Assistant, Content: "answer", AssistantGenMultiContent: []schema.MessageOutputPart{{Type: schema.ChatMessagePartTypeText, Text: "answer"}, {Type: schema.ChatMessagePartTypeText, Text: "more"}}, ToolCalls: []schema.ToolCall{{ID: "local_1", Function: schema.FunctionCall{Name: "read", Arguments: `{}`}}}},
 		schema.ToolMessage("result", "local_1"),
 	}
@@ -133,8 +133,8 @@ func TestResponsesRejectInvalidInputsBeforeUpstream(t *testing.T) {
 		{Role: schema.User, UserInputMultiContent: []schema.MessageInputPart{{Type: schema.ChatMessagePartTypeImageURL}}},
 		{Role: schema.User, UserInputMultiContent: []schema.MessageInputPart{{Type: schema.ChatMessagePartTypeImageURL, Image: &schema.MessageInputImage{}}}},
 		{Role: schema.User, UserInputMultiContent: []schema.MessageInputPart{{Type: schema.ChatMessagePartTypeAudioURL}}},
-		{Role: schema.User, MultiContent: []schema.ChatMessagePart{{Type: schema.ChatMessagePartTypeImageURL}}},
-		{Role: schema.User, MultiContent: []schema.ChatMessagePart{{Type: schema.ChatMessagePartTypeAudioURL}}},
+		{Role: schema.User, MultiContent: []schema.ChatMessagePart{{Type: schema.ChatMessagePartTypeImageURL}}}, //nolint:staticcheck // Persisted legacy MultiContent must remain compatible with Responses.
+		{Role: schema.User, MultiContent: []schema.ChatMessagePart{{Type: schema.ChatMessagePartTypeAudioURL}}}, //nolint:staticcheck // Persisted legacy MultiContent must remain compatible with Responses.
 		{Role: schema.Assistant, AssistantGenMultiContent: []schema.MessageOutputPart{{Type: schema.ChatMessagePartTypeImageURL}}},
 		{Role: schema.Assistant, Extra: map[string]any{responsesOutputKey: func() {}}},
 		{Role: schema.Assistant, Extra: map[string]any{responsesOutputKey: "invalid"}},

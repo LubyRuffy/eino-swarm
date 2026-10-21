@@ -140,6 +140,105 @@ go test -race -count=1 ./internal/remote -run 'TestHost'
 go test -race -count=1 ./internal/app -run 'TestNewDoesNotWaitForRemoteRegistration'
 ```
 
+## Scheduled-check failure and worker ownership (F-130 / F-150 / C-009 / C-027)
+
+`internal/engine/schedule_worker_ownership_test.go` runs the real Engine,
+Registry, ADK graph and OpenAI HTTP adapter against a keyless loopback SSE
+fixture. A first successful check spawns and parks a worker whose real model
+request remains open. A later check exhausts its single no-activity
+continuation; the turn/run must remain error/unread while the worker remains
+running. The next wake must reuse its registry, ID and original HTTP request,
+and the retained worker must finish naturally without a cancellation error.
+The goal-only case consumes a one-shot and checks that its valid standing goal
+is neither blocked nor immediately retried. HTTP 400 and exhausted 429 tests
+prove isolation does not depend on an error-text match or bypass the existing
+bounded retry/shared-backoff path. Other cases require actual HTTP cancellation
+after Stop, final-wake cancellation/pause, consumed one-shot without an owner,
+or an inactive goal. Receipt assertions bind exact owner/worker IDs to a
+persisted event before the manager's terminal error.
+
+`internal/engine/worker_ownership_test.go` covers executable-goal and wake
+selection (including plan mode with an active but non-executable wake),
+receipt write failure, resource/watchdog exclusions, owner/Stop
+revocation around finalization, and restart from failed scheduled turns. A
+valid recovery needs a checkpoint, current ownership and a valid explicit
+receipt; absent/malformed/other-agent receipts and revoked owners do not revive
+workers. Recovery executes the original worker without rerunning or rewriting
+the failed manager turn.
+The actual `PrepareRestart` → new engine → `ResumeParkedWorkers` boundary also
+runs through the loopback HTTP fixture, preserving the error/unread run and
+future wake. A receipt arriving after the manager's terminal event cannot
+authorize recovery; a later Stop still revokes an earlier valid receipt.
+
+`internal/engine/worker_ownership_order_test.go` blocks the real cleanup
+event's storage callback while another goroutine tries to take/occupy the
+next registry and start its worker. Stop, final-wake cancellation and
+finalization must all keep that new claim behind the old global cleanup's
+durable publication. After release the old worker stops and the new worker
+remains running. This prevents live/replayed cleanup from stopping an unrelated
+replacement worker even though cancellation only targeted the old registry.
+
+`frontend/src/lib/transcript-worker-ownership.test.ts` covers live/full/roster
+replay, current output and pending tools, actual completion, human interruption,
+cleanup, unrelated turns, malformed receipts and rewind. Ordinary parent
+errors retain their prior behavior. `frontend/e2e/schedule-worker-ownership.spec.ts`
+uses the actual engine and model HTTP adapter: the failed check remains visible
+and unread, Agents stays running before and after reload, and the next check
+collects that same worker's real completion with no replacement model request.
+The JSON receipt belongs in Trace, never the visible conversation. This browser
+test does not substitute for a native application-window walkthrough.
+`internal/tui/client_worker_ownership_test.go` keeps the same receipt out of
+terminal notices while preserving ordinary notice compatibility.
+
+```bash
+go test -race ./internal/engine -run 'WorkerOwner|ScheduledFailure|FailedCheckOwnership|FinalizationRechecks|RetainedWorkerRecovery|FailedScheduledCheck|FailedOneShotCheck|ScheduledManagerModelError|ParkedWorkerCleanup'
+cd frontend && npm test -- src/lib/transcript-worker-ownership.test.ts
+cd frontend && ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP=1 npm run e2e -- e2e/schedule-worker-ownership.spec.ts
+```
+
+## Worker output identity and history overlap (F-130 / C-003)
+
+`signal_identity_test.go` and `internal/engine/accumulator_identity_test.go`
+exercise a controlled Registry/ADK worker stream across manager returns and
+notification-sink changes. Reasoning, answers and checkpoints retain one
+`message_id`; a new model round, resumed stream and another worker do not share
+it. Tool calls and results retain their original pairing. Store reopen and
+legacy-schema migration, remote projection and event-to-notification adapters
+must preserve the optional field without fabricating it for old events.
+
+`frontend/src/lib/transcript-message.test.ts` covers live/replay checkpoint
+replacement, distinct outputs with identical text, stale snapshots and
+per-output burst coalescing. `frontend/src/store/app-stream-history.test.ts`
+controls both historical/live arrival orders, exact stored identities below
+the current cursor, side effects, paging, rewind and conversation changes.
+History requests freeze a local generation so a response begun before rewind
+cannot restore deleted events beyond the client's cursor. A delayed history
+snapshot preserves newer explicitly identified live output, including before
+its first durable checkpoint, without reviving stopped workers or an older
+model output.
+`frontend/e2e/agent-history-overlap.spec.ts` verifies the visible Agents flow,
+tool details and reload through controlled offline event responses.
+
+```bash
+go test -race -timeout 20m ./...
+cd frontend && npm test -- src/lib/transcript-message.test.ts src/store/app-stream-history.test.ts
+cd frontend && npm run e2e -- e2e/agent-history-overlap.spec.ts
+```
+
+The [cancellation evidence](diagnostics/issue88-cancellation-evidence.md)
+records what was verified from existing Trace and read-only storage. A model
+call's `context canceled` string alone cannot distinguish handoff, parent-turn
+cleanup, human interruption or an upstream failure.
+
+## UI message catalogs
+
+Worker failure translations live in `frontend/src/lib/messages-agent-failure-en.ts`
+and `messages-agent-failure-zh.ts`; the main `messages-en.ts` and `messages-zh.ts`
+catalogs compose them without changing message keys or values. `i18n.test.ts`
+checks catalog key parity, while `agent-failure.test.tsx` checks translated
+failure details and their recovery-settings links. Run them with
+`cd frontend && npm test -- src/lib/i18n.test.ts src/components/app/agent-failure.test.tsx`.
+
 ## Automatic restart handoff (F-110 / C-027)
 
 `handoff_test.go` and `internal/engine/restart_test.go` cover shared deadlines,
@@ -174,6 +273,20 @@ inventing work, changing the completed manager or advancing its future wake.
 `frontend/src/lib/transcript-stop.test.ts`,
 `frontend/src/components/app/panel-stop.test.tsx` and the restart UI E2E cover
 cleanup/interruption, stopped grouping, terminal ordering and persisted replay.
+The stop reducer regressions deliver cancellation and successful `finished`
+events after `cleanup` or `interrupted`, including late `agent_message`,
+`delta`, `reasoning_delta`, `tool_call` and `tool_call_delta` immediately before
+completion. Stopped status, activity and stop time remain unchanged in live,
+full-history and roster replay. Explicit `spawned` resume then allows new output
+and `finished` to complete normally; existing parked-worker live-output recovery
+is retained. `transcript-goal.test.ts` models that legacy derived `done` state
+directly: a real `cleanup` cancels execution and is never a stale roster tick.
+The replay UI fixture also places late messages and tool calls
+between Stop and completion. The real Stop E2E in
+`frontend/e2e/restart.spec.ts` waits for both worker `finished` events to be
+persisted before checking the stopped roster and reloading, so a fast UI check
+cannot miss the late-completion race. Those original events remain in Trace;
+these checks only constrain the frontend's derived worker state.
 
 `cmd/zwai/engine_restart_acceptance_test.go` builds real race-enabled binaries,
 starts an old engine and a new shell on one temporary data directory, and
@@ -277,9 +390,7 @@ go test -race -count=1 ./internal/provider -run 'TestMock(Reviewer|ReviewSource|
 cd frontend && ZWAI_E2E_WORKER_ROSTER=1 npm run e2e
 ```
 
-Concurrent E2E runs need separate `ZWAI_E2E_PORT`, `ZWAI_E2E_DATA_DIR` and
-Playwright `--output` directories; shared output cleanup can delete another
-run's screenshots or traces.
+Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
 
@@ -490,6 +601,68 @@ when checking completion evidence, without expecting a one-tool aggregate.
 cd frontend && npm test -- src/components/app/transcript-fold.test.tsx src/components/app/work-fold.test.tsx
 cd frontend && npm run e2e -- e2e/work-fold.spec.ts
 ```
+
+## Worker Stop receipts and replay (Issue #85, F-130 / F-222, C-002 / C-003)
+
+Cleanup cancels workers without joining their goroutines. A cancellation
+`finished` receipt may precede cleanup, follow cleanup, or follow the manager's
+`interrupted` terminal. The earlier Stop fixtures omitted these real finish
+receipts, so their green cleanup/replay checks did not cover the later failure.
+This is a derived-state classification defect, not evidence of a stored versus
+streamed sequence violation.
+
+`frontend/src/lib/transcript-cancelled-finish.test.ts` exercises all three
+orders through live reduction, cold replay and the paged roster sidecar.
+`mobile/src/lib/transcript-stop.test.ts` checks the phone's independent reducer
+through live events, rewatch and earlier-history paging; cleanup alone remains
+stopped. `mobile/src/components/thread-stop-roster.test.tsx` checks English and
+Chinese Stopped groups and worker detail styling.
+
+Both reducers recognize only the existing engine envelope
+`swarm: agent ${agentID} cancelled: ` with the current event's exact agent ID
+and a nonempty cause. Regress ordinary `context canceled`, cancellation words
+inside provider errors, another ID, an ID-prefix collision, an empty cause and
+watchdog failure as genuine failures. Already successful or failed workers
+retain their results through cleanup; an explicit same-ID resume starts a new
+running lifetime and its later result remains authoritative. Retain diagnostic
+causes in Trace while settling pending tools/streams without worker-failure
+styling for a stop; the PC's derived worker error field is not its Trace record.
+
+`frontend/e2e/restart.spec.ts` includes late cancellation finish receipts and a
+genuine provider failure in the persisted replay/reload path.
+`mobile/e2e/worker-stop-replay.spec.ts` clicks Stop in the offline phone fixture,
+then inspects both locales, all three finish orders and worker details, returns
+Home and reopens the same host conversation through a new watch. It does not
+reset the mock host by reloading the browser.
+These fixtures use generic worker identities and the engine's receipt envelope,
+not words from a user's task.
+
+```bash
+(cd frontend && npm test -- src/lib/transcript-cancelled-finish.test.ts src/lib/transcript-stop.test.ts)
+(cd mobile && npm test -- src/lib/transcript-stop.test.ts src/components/thread-stop-roster.test.tsx)
+(cd frontend && npm run e2e -- e2e/restart.spec.ts)
+(cd mobile && npm run e2e -- e2e/worker-stop-replay.spec.ts)
+```
+
+For native acceptance, use the exact new candidate's real window: observe
+workers running, press Stop before they finish, retain the same worker IDs and
+turn Trace, then Reload/reopen and inspect Stopped separately from genuine
+success/failure. Bind screenshots and runtime/package identity to that run.
+Synthetic reducer histories, an offline Web fixture or an old package's failure
+screenshots do not accept the new native package. A filename saying “live” or
+“Stop” is not proof that the captured turn was still running or stopped.
+
+Packaged phone drivers are `mobile/e2e/ios-worker-stop-replay.swift` method
+`BindFlowTests/testNativeWorkerStopReplayRetainsStoppedAndFinishedOutcomes` and
+`mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/WorkerStopReplayTest.java`
+method `nativeWorkerStopReplayRetainsStoppedAndFinishedOutcomes`. Use disposable
+offline native fixtures with `history=stopped-workers&stop_order=after_terminal`.
+Both tap Stop, check stopped versus genuine done/failed workers, inspect details,
+then return Home and reopen the same host conversation for a new watch. Android
+may read the actual WebView DOM to locate visible, unoccluded targets; input
+remains native touch. Keep each attempt's screenshots/results in a new directory
+or xcresult bundle so retries cannot overwrite a failure. These are execution
+entry points, not a claim that the current package has passed native acceptance.
 
 ## Phone queue steering after Stop (F-220 / C-003)
 
@@ -2228,6 +2401,17 @@ Several things are tested here, some as pure logic and some in jsdom:
   it, a query surfaces a nested file without expanding first, download/delete
   stay off directory rows, deleting a file asks first, and the tree takes
   arrow keys.
+- **`src/lib/agent-failure.test.ts`** checks exact worker watchdog identity and
+  duration, known worker iteration and provider stream-idle limits, the exact
+  output-budget error, and absence of speculative settings
+  links for generic deadlines, cancellation, another worker's timeout or unknown
+  errors. **`src/components/app/agent-failure.test.tsx`** checks the visible cause
+  entry, the error card outside the log scroller, bounded scrolling for a long
+  error, localized missing-reason text, and opening the exact Swarm input without
+  arming a manager retry, plus the Models entry without a guessed provider.
+  **`src/lib/transcript-failure.test.ts`** checks live and
+  replayed parent-failure origin, preservation of an independent worker error,
+  clearing stale causes on resume, and existing cleanup/human-stop semantics.
 - **`src/components/app/panel.tsx`**, rendered in jsdom: opening a sub-agent
   puts the back row *beside* the scroller, not sticky on top of it — dragging
   the transcript must not paint through the back button. The worker log
@@ -2353,6 +2537,25 @@ Playwright starts the real server itself (`go run ./cmd/zwai web --mock --no-ope
 so a run exercises the whole stack: gin, the engine, SQLite, SSE and the built
 front end.
 
+Concurrent Playwright commands must isolate all three resources: server port
+(`ZWAI_E2E_PORT`), application data (`ZWAI_E2E_DATA_DIR`) and artifacts
+(`--output`). Separate ports and databases still leave shared output cleanup
+able to delete another run's trace, network or ZIP files. For two independent
+runs, use distinct paths and ports, for example in separate terminals:
+
+```bash
+cd frontend
+ZWAI_E2E_PORT=18860 ZWAI_E2E_DATA_DIR=.e2e-data-default npm run e2e -- --output=test-results/default --retries=0
+ZWAI_E2E_PORT=18861 ZWAI_E2E_DATA_DIR=.e2e-data-ownership ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP=1 npm run e2e -- --output=test-results/ownership --retries=0
+```
+
+Keep the first failure log and its available artifacts. Inspect whether a
+failure is a business assertion or an artifact/teardown error such as `ENOENT`
+for a trace, network file or ZIP; do not relabel an assertion failure as an
+environment problem. After correcting shared resources, rerun the complete
+affected suite with isolated output and retain that separate result. A retry
+turning green alone neither explains the first failure nor accepts that run.
+
 **The data directory is deleted before the server starts**, so every run is a
 first install. This matters: a config file written by an earlier run has already
 been normalized, which once hid a crash that only happened on a fresh one. The
@@ -2365,6 +2568,7 @@ long enough for Steer; unit tests leave it unset.
 
 | spec | covers |
 |---|---|
+| `e2e/agent-failure.spec.ts` | replayed failure details remain visible outside a long worker log; the exact watchdog setting receives focus, saves and survives reload; an ambiguous provider deadline has no guessed repair link, and a parent-turn failure keeps its origin and cause after replay |
 | `e2e/agent-roster.spec.ts` | Agents opens on last update, newest first; Name flips between Z to A and A to Z and the rows follow the label; Created flips between oldest and newest |
 | `e2e/worker-roster-history.spec.ts` | opt-in loopback model adapter: a later turn queries an existing finished worker, emits no new spawn call/event, survives reload and exposes its Trace |
 | `e2e/work-fold.spec.ts` | user-mode work folded behind one live ticker (`work-fold` with the spinner, not every finished fold); click expands the thought box and click again collapses it |
@@ -2622,6 +2826,11 @@ real offline worker expiry, goal blocking, exact-plan pause, failed pause writes
 and persisted legacy receipts across restart. `frontend/e2e/worker-timeout.spec.ts`
 uses `ZWAI_MOCK_WORKER_TIMEOUT=1` and a one-second watchdog to observe three actual
 starts of one ID, terminal error, no model retry, schedule pause, reload and Trace.
+It also opens that worker's recorded failure, focuses and saves the watchdog
+setting, and verifies the failed task remains idle with its original cause.
+The separate `frontend/e2e/agent-failure.spec.ts` replay fixture tests long-log
+visibility and failure-entry navigation without claiming to trigger a watchdog;
+the real-watchdog script above provides that independent lifecycle evidence.
 Default demo scripts are unchanged. Phone `history=timeout` checks existing error
 rendering and absence of Stop; packaged iOS uses
 `BindFlowTests/testWorkerTimeoutShowsPausedErrorInsteadOfRunning`, with the same
@@ -2971,12 +3180,29 @@ cd frontend && npm run e2e -- image-input.spec.ts
 cd frontend && npm run e2e -- shell.spec.ts
 ```
 
+## Forked worker role boundary
+
+`go test -race -run 'TestForkedWorkerDoesNotReceiveManagerSystemInstructions|TestForkContextOmitsSystemOnlyAndEmptyConversations' .`
+
+The regression observes actual model input through Registry and ADK for both
+`SpawnForked` and the manager lifecycle tool. A `spawned` event only carries the
+worker instruction and cannot prove that the separately injected conversation
+seed excludes manager System/personality. Check retained user/assistant/tool
+evidence, empty/System-only history, manager input immutability and unchanged
+same-role resume formatting. Do not infer actual model behavior or memory
+quality improvement from this deterministic payload test.
+
 ## Shared model recovery backoff (`C-029`)
 
-The current provider race run reports 96.0% package coverage. Backoff admission,
-classification, Generate/Stream recording and HTTP reconnect paths have 100%
-function statement coverage; Pool.Get has 93.3%. The loopback browser regression
-measures HTTP arrival gaps against the unchanged three-call budget.
+Before this integration, the local provider race audit reported 96.0% package
+coverage and Pool.Get at 93.3%; the 2026-10-21 remote audit reported 95.3% package
+coverage. Its shared gate, admission/classification, HTTP reconnect adapter,
+Generate/Stream wrappers, stream-completion observer, engine wait recording
+and call-recorder dispatch reached 100% target statement coverage in focused
+race runs. These are separate pre-integration observations, not coverage of
+the merged candidate, which requires a fresh run. The 2026-10-19 loopback 502
+browser run observed HTTP arrival gaps of 5002ms and 10003ms for the unchanged
+three-call budget; rerun that fixture for the merged candidate.
 
 `internal/provider/backoff_test.go` uses `testing/synctest` to assert the actual
 5/10/20/30-second sequence without wall-clock sleeps. It covers one recovery
@@ -2986,16 +3212,35 @@ classification and recorder/context wiring; authentication/parameter errors
 cannot add failures or prove recovery. `backoff_integration_test.go` uses the
 real SDK with keyless loopback HTTP fixtures to verify cross-role/model/provider
 and cache-invalidated calls, independent origins, malformed successful streams,
-complete-stream recovery and delayed/cancelled header reconnects. These are
-service-failure fixtures, not scripted success claimed as retry evidence.
+complete-stream recovery and delayed/cancelled header reconnects. An actual Chat Completions HTTP
+stream ending after valid deltas but without `[DONE]` or finish reason must fail
+with `io.ErrUnexpectedEOF`, retain received usage and keep sibling requests
+blocked. Complete `[DONE]`, `stop`, `length` and `tool_calls` responses preserve
+usage and reopen admission. `stream_completion_test.go` verifies exact unchanged
+bytes, fragmented/large frames and false terminator matches. Closing an Eino
+reader alone retains a silent probe; canceling its request context releases it
+without clearing failures. A header reconnect following a cooldown longer than
+the header budget still gets a fresh response-header budget. These are service-
+failure fixtures, not scripted success claimed as retry evidence.
+
+`internal/provider/stream_terminal_order_test.go` blocks the real recording
+wrapper's callback and uses `testing/synctest` to prove receive errors,
+truncation, caller cancellation and normal EOF cannot reach the consumer before
+that callback completes. It asserts one attributed record with all received
+usage, and retains one record if the consumer closes while persistence waits.
+The receive-error, cancellation and truncation cases failed before the ordering
+fix; the actual HTTP truncation/completion fixtures above retain the adapter
+and shared-gate coverage.
 
 `internal/engine/model_backoff_test.go` asserts actual agent/turn provenance and
-that waiting creates no LLM call. `frontend/src/lib/transcript-backoff.test.ts`
-checks SSE subscription, replay, localized human text, no invented workers, and
-late waits after a quiet scheduled report remaining hidden from Chat. Their raw
-Trace events are retained. `internal/provider/backoff_responses_test.go` exercises
-the actual Pool/Responses boundary, including reasoning, output caps, cloud-tool
-receipts and cancelled admission producing no invented model call.
+that waiting creates no LLM call or usage pulse, while actual and auxiliary calls
+retain their accounting and storage failures cannot emit usage.
+`frontend/src/lib/transcript-backoff.test.ts`
+checks SSE subscription, replay, localized human text and no invented workers.
+Late waits after a quiet scheduled report remain hidden from Chat while their
+raw Trace events are retained. `internal/provider/backoff_responses_test.go`
+exercises the actual Pool/Responses boundary, including reasoning, output caps,
+cloud-tool receipts and cancelled admission producing no invented model call.
 The opt-in `frontend/e2e/api-error.spec.ts` measures actual HTTP arrival gaps on
 502 (at least 5s then 10s), and checks the original turn, Chat, Full log and reload.
 

@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -428,4 +429,259 @@ func finishBackoffStream(stream *schema.StreamReader[*schema.Message]) error {
 
 func backoffMessages() []*schema.Message {
 	return []*schema.Message{schema.UserMessage("perform the requested check")}
+}
+
+// The SDK exposes EOF both for [DONE] and a socket ending after a valid delta.
+// Only a terminal model response is evidence that the shared origin recovered.
+func TestModelBackoffTruncatedDeltaStreamCannotRestoreConcurrency(t *testing.T) {
+	var requests atomic.Int32
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch requests.Add(1) {
+		case 1:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case 2:
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, backoffChunk)
+			_, _ = io.WriteString(w, "data: {\"id\":\"fixture\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n")
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = io.WriteString(w, backoffCompletion)
+		}
+	}))
+	t.Cleanup(endpoint.Close)
+	pool := backoffPool(endpoint.URL)
+	gate := newBackoffGate(20*time.Millisecond, 80*time.Millisecond)
+	pool.backoffs = map[string]*backoffGate{backoffKey(endpoint.URL): gate}
+	records := make(chan CallRecord, 8)
+	build, err := pool.ModelBuilder(context.Background(), "fixture", "", "", func(record CallRecord) { records <- record })
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := build("manager", "manager")
+	if _, err := m.Generate(context.Background(), backoffMessages()); err == nil {
+		t.Fatal("initial outage did not reach the HTTP fixture")
+	}
+	stream, err := m.Stream(context.Background(), backoffMessages())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	if err := finishBackoffStream(stream); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("a stream ending without a terminal response must fail, got %v", err)
+	}
+	for {
+		select {
+		case record := <-records:
+			if !errors.Is(record.Err, io.ErrUnexpectedEOF) {
+				continue
+			}
+			if record.TotalTokens != 5 || record.PromptTokens != 3 || record.CompletionTokens != 2 || record.AgentID != "manager" {
+				t.Fatalf("truncated stream lost received usage or attribution: %+v", record)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("truncated model request was not recorded")
+		}
+		break
+	}
+	gate.mu.Lock()
+	failures, probing := gate.failures, gate.probe
+	gate.mu.Unlock()
+	if failures != 2 || probing {
+		t.Fatalf("truncated recovery probe reset the service: failures=%d probe=%v", failures, probing)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if _, err := m.Generate(ctx, backoffMessages()); !errors.Is(err, context.DeadlineExceeded) || requests.Load() != 2 {
+		t.Fatalf("truncated stream let another request escape: err=%v requests=%d", err, requests.Load())
+	}
+}
+
+// Compatible endpoints may omit [DONE] after an explicit finish_reason; both
+// terminal forms prove completion, and their billed usage must be retained.
+func TestModelBackoffCompleteHTTPStreamPreservesUsageAndRestoresRequests(t *testing.T) {
+	for _, ending := range []string{"done", "stop", "length", "tool_calls"} {
+		t.Run(ending, func(t *testing.T) {
+			var requests atomic.Int32
+			endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch requests.Add(1) {
+				case 1:
+					w.WriteHeader(http.StatusServiceUnavailable)
+				case 2:
+					w.Header().Set("Content-Type", "text/event-stream")
+					_, _ = io.WriteString(w, backoffChunk)
+					finish := ending
+					if ending == "done" {
+						finish = ""
+					}
+					_, _ = fmt.Fprintf(w, "data: {\"id\":\"fixture\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":%q}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}\n\n", finish)
+					if ending == "done" {
+						_, _ = io.WriteString(w, "data: [DONE]\n\n")
+					}
+				default:
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = io.WriteString(w, backoffCompletion)
+				}
+			}))
+			t.Cleanup(endpoint.Close)
+			pool := backoffPool(endpoint.URL)
+			pool.backoffs = map[string]*backoffGate{backoffKey(endpoint.URL): newBackoffGate(time.Millisecond, 4*time.Millisecond)}
+			records := make(chan CallRecord, 8)
+			build, err := pool.ModelBuilder(context.Background(), "fixture", "", "", func(record CallRecord) { records <- record })
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := build("manager", "manager")
+			if _, err := m.Generate(context.Background(), backoffMessages()); err == nil {
+				t.Fatal("initial outage did not reach the fixture")
+			}
+			stream, err := m.Stream(context.Background(), backoffMessages())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+			if err := finishBackoffStream(stream); err != nil {
+				t.Fatalf("complete stream rejected: %v", err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			if _, err := m.Generate(ctx, backoffMessages()); err != nil || requests.Load() != 3 {
+				t.Fatalf("completed probe did not reopen requests: err=%v requests=%d", err, requests.Load())
+			}
+			calls, billed := 0, 0
+			for len(records) > 0 {
+				record := <-records
+				if record.Backoff == nil {
+					calls++
+				}
+				if record.TotalTokens == 5 {
+					billed++
+					if record.AgentID != "manager" || record.PromptTokens != 3 || record.CompletionTokens != 2 || record.Err != nil {
+						t.Fatalf("completed probe lost provenance or usage: %+v", record)
+					}
+				}
+			}
+			if calls != 3 || billed != 1 {
+				t.Fatalf("wait inflated call/billing totals: calls=%d billed=%d", calls, billed)
+			}
+		})
+	}
+}
+
+// Eino's Close notifies its writer; cancellation belongs to the request
+// context. Real callers drain the model stream or cancel that context on Stop.
+func TestModelBackoffClosedReaderRetainsProbeUntilRequestCancellation(t *testing.T) {
+	var requests atomic.Int32
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = io.WriteString(w, backoffChunk)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	t.Cleanup(endpoint.Close)
+	pool := backoffPool(endpoint.URL)
+	gate := newBackoffGate(time.Millisecond, 4*time.Millisecond)
+	pool.backoffs = map[string]*backoffGate{backoffKey(endpoint.URL): gate}
+	finished := make(chan CallRecord, 8)
+	build, err := pool.ModelBuilder(context.Background(), "fixture", "", "", func(record CallRecord) { finished <- record })
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := build("worker", "worker-closed-reader")
+	if _, err := m.Generate(context.Background(), backoffMessages()); err == nil {
+		t.Fatal("initial outage did not reach the fixture")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	stream, err := m.Stream(ctx, backoffMessages())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Recv(); err != nil {
+		stream.Close()
+		t.Fatal(err)
+	}
+	stream.Close()
+	if ctx.Err() != nil {
+		t.Fatalf("closing an Eino reader unexpectedly canceled its context: %v", ctx.Err())
+	}
+	gate.mu.Lock()
+	failures, probing := gate.failures, gate.probe
+	gate.mu.Unlock()
+	if failures != 1 || !probing {
+		t.Fatalf("closing an incomplete response claimed recovery: failures=%d probe=%v", failures, probing)
+	}
+	cancel()
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case record := <-finished:
+			if !errors.Is(record.Err, context.Canceled) {
+				continue
+			}
+			gate.mu.Lock()
+			failures, probing = gate.failures, gate.probe
+			gate.mu.Unlock()
+			if failures != 1 || probing {
+				t.Fatalf("request cancellation did not release the original probe: failures=%d probe=%v", failures, probing)
+			}
+			return
+		case <-deadline:
+			t.Fatal("request cancellation did not finish the silent probe")
+		}
+	}
+}
+
+// The header timeout starts with the actual network attempt, not with a
+// prior shared cooldown. The caller's context still bounds the whole call.
+func TestHeaderReconnectBudgetStartsAfterSharedBackoff(t *testing.T) {
+	var requests atomic.Int32
+	var mu sync.Mutex
+	var arrivals []time.Time
+	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		arrivals = append(arrivals, time.Now())
+		mu.Unlock()
+		_, _ = io.Copy(io.Discard, r.Body)
+		if requests.Add(1) == 1 {
+			select {
+			case <-r.Context().Done():
+			case <-time.After(2 * time.Second):
+			}
+			return
+		}
+		_, _ = io.WriteString(w, "ready")
+	}))
+	t.Cleanup(endpoint.Close)
+	gate := newBackoffGate(60*time.Millisecond, 120*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	ctx, finish, err := (&recordingModel{gate: gate}).admit(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.URL, strings.NewReader("request"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := chatHTTPClient(time.Second, 20*time.Millisecond).Do(req)
+	if err != nil {
+		finish(err)
+		t.Fatalf("shared wait consumed the next header attempt's budget: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	finish(err)
+	if err != nil || string(body) != "ready" || requests.Load() != 2 {
+		t.Fatalf("reconnect result: body=%q err=%v requests=%d", body, err, requests.Load())
+	}
+	mu.Lock()
+	gap := arrivals[1].Sub(arrivals[0])
+	mu.Unlock()
+	if gap < 60*time.Millisecond {
+		t.Fatalf("header reconnect bypassed the shared wait: %s", gap)
+	}
 }

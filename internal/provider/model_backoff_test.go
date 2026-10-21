@@ -135,6 +135,23 @@ func TestBackoffAdmissionRecorderRetainsAgentAttribution(t *testing.T) {
 	})
 }
 
+func TestBackoffShortCooldownIsNotReportedAsAnUnknownProbeWait(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		gate := newBackoffGate(500*time.Microsecond, time.Second)
+		mustAcquireBackoff(t, gate, nil).finish(backoffFailure)
+		var wait *BackoffRecord
+		r := &recordingModel{gate: gate, rec: func(record CallRecord) { wait = record.Backoff }}
+		_, finish, err := r.admit(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		finish(nil)
+		if wait == nil || wait.WaitMS != 1 {
+			t.Fatalf("a known positive cooldown must not use the unknown-probe sentinel: %+v", wait)
+		}
+	})
+}
+
 func TestBackoffAdmissionWithoutGateAndCanceledWait(t *testing.T) {
 	ctx := context.Background()
 	plain := &recordingModel{}

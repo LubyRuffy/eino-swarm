@@ -10,6 +10,7 @@ export function block(ev: SwarmEvent, kind: BlockKind, text: string): Block {
     agentId: ev.agent_id || MANAGER_ID,
     role: ev.role,
     text,
+    messageId: ev.message_id,
     turnId: ev.turn_id,
     seq: ev.seq,
     at: ev.created_at,
@@ -27,6 +28,7 @@ export function replaceStreaming(
   ev: SwarmEvent,
   kind: "reasoning" | "answer",
 ) {
+  if (replaceIdentified(agent, ev, kind, true)) return
   const blocks = agent.blocks.slice()
   const i = lastOpenIndex(blocks, kind)
   if (i === -1) {
@@ -57,6 +59,7 @@ export function replaceComplete(
   ev: SwarmEvent,
   kind: "reasoning" | "answer",
 ) {
+  if (replaceIdentified(agent, ev, kind, false)) return
   const blocks = agent.blocks.slice()
   const i = lastOpenIndex(blocks, kind)
   if (i === -1) {
@@ -78,6 +81,36 @@ export function replaceComplete(
     blocks[i] = { ...blocks[i], text: ev.text ?? "", streaming: false, seq: ev.seq }
   }
   agent.blocks = blocks
+}
+
+/** A manager checkpoint is durable evidence of the same worker output, not a
+ *  new message. Keep the first block's position while extending its content. */
+function replaceIdentified(agent: AgentState, ev: SwarmEvent, kind: "reasoning" | "answer", streaming: boolean): boolean {
+  if (!ev.message_id) return false
+  const blocks = agent.blocks.slice()
+  const i = blocks.findIndex((b) => b.kind === kind && b.messageId === ev.message_id)
+  const text = ev.text ?? ""
+  if (i === -1) {
+    for (let n = 0; n < blocks.length; n++) {
+      if (blocks[n].kind === kind && blocks[n].streaming) {
+        blocks[n] = { ...blocks[n], streaming: false }
+      }
+    }
+    blocks.push({ ...block(ev, kind, text), streaming })
+  } else {
+    const prev = blocks[i]
+    if (ev.seq > 0 && prev.seq > ev.seq) return true
+    if (streaming && blocks.slice(i + 1).some((b) => b.kind === kind && b.messageId && b.messageId !== ev.message_id)) return true
+    // A queued delta can arrive after a longer durable snapshot, and an HTTP
+    // snapshot can lag live tokens. Neither may roll back visible content.
+    if (text.length < prev.text.length) {
+      if (ev.seq > prev.seq) blocks[i] = { ...prev, seq: ev.seq }
+    } else if (!(streaming && !prev.streaming && text === prev.text)) {
+      blocks[i] = { ...prev, text, streaming, seq: ev.seq || prev.seq }
+    }
+  }
+  agent.blocks = blocks
+  return true
 }
 
 /** Exact copy of a sealed paragraph, with only tool rows after it. */

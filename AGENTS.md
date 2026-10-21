@@ -64,6 +64,12 @@ E2E suite.
 
 ## Testing rules
 
+- Concurrent Playwright runs must each own a separate server port, data
+  directory and `--output` directory. Preserve the first failure and identify
+  whether it came from a business assertion or artifact/teardown handling;
+  shared trace/network/ZIP `ENOENT` errors require an isolated rerun with its
+  own evidence. A retry turning green alone does not establish the cause or
+  accept the original run. See `docs/TESTING.md` for existing CLI options.
 - Native desktop acceptance runs only inside the UTM `ci-macOS` guest. The
   host is for building, transferring and collecting evidence; never open or
   focus a test app, Finder, a browser, UTM console or simulator on the user's
@@ -80,6 +86,12 @@ E2E suite.
   within one case may retain state, independent cases may not. Never use
   process-name-wide kills or delete another case/user's data. Preserve logs,
   assertions, screenshots and cleanup receipts outside disposable state.
+
+- Fork-context role isolation must be tested at actual worker model input through
+  both Registry and manager-tool paths. `spawned.Text` omits the separately
+  injected conversation seed, so it cannot prove manager System/personality did
+  not leak. Preserve historical task evidence and same-role resume behavior.
+
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in
   [docs/TESTING.md](docs/TESTING.md); do not regress it.
@@ -119,6 +131,29 @@ E2E suite.
   cancellation while waiting and staleness checked again after locking.
   Regress real npm-to-Node descendants: cancellation or script exit must stop
   old writers before another build acquires the lock; retain the context cause.
+
+- A worker model output can outlive several manager checks. Preserve its
+  `message_id` through live deltas and durable checkpoints; regress one real
+  worker stream across those boundaries, replay and a later distinct output
+  with identical text. History pages, agent logs and SSE must apply each
+  stored `(thread_id, seq)` once before state changes or side effects. Do not
+  use text similarity or a highest-seq cutoff as identity. Regress both arrival
+  orders and rewind across multiple checkpoints of one output.
+- A long-running worker belongs to its executable goal or active same-thread
+  wake, not to one manager check's terminal status. A failed scheduled check
+  must retain that ownership durably before its terminal error; the failed
+  turn/run and unread result stay failed. Never infer retention from error
+  wording or invent success. Regress real worker HTTP requests across failed
+  checks, live/history/roster replay, restart, same-ID collection, Stop and
+  revocation of the last owner. Keep resource-budget and watchdog termination
+  separate, and do not turn a failed check into an immediate goal retry.
+- A parked registry's conversation-wide cleanup recording/publication attempt
+  must finish before another registry can be taken or occupied. Serialize that
+  attempt with the runtime claim; cancel/close the detached registry outside
+  the runtime lock. Existing best-effort event writes WARN on storage failure;
+  do not claim a durable cleanup receipt then. Regress Stop, last-wake removal
+  and finalization with storage blocked before cleanup so an old receipt
+  cannot mark a new worker stopped.
 - Engine replacement follows `C-027`: freeze new work, durably checkpoint every
   active or parked registry, then stop and restore within one launch deadline.
   Regress real process replacement, original turn/worker identities, human
@@ -127,7 +162,13 @@ E2E suite.
   or process launch is not proof of handoff or recovery.
 - A cleanup event is not a worker completion receipt. Regress Stop and replay
   with unfinished workers shown as stopped, actual finished workers retained,
-  and no model-failure retry banner for human interruption. Serialize restart
+  and no model-failure retry banner for human interruption. Cleanup does not
+  join worker goroutines: include their actual cancellation `finished` receipts
+  before cleanup, after cleanup and after the manager terminal, through live,
+  cold and paged replay on both PC and phone. Bind cancellation to the current
+  worker ID and a nonempty engine cancellation cause; ordinary errors containing
+  cancellation words, wrong IDs and watchdog failures remain failures. A fixture
+  without these finish receipts cannot accept Stop/reload behavior. Serialize restart
   ownership against the whole normal finalization, including worker parking
   and durable terminal writes. Regress a deadline while waiting for that
   ownership: no partial abandonment, premature ready or lost parked worker.
@@ -156,6 +197,12 @@ E2E suite.
   When changing desktop packaging, check the ZIP's `Info.plist` icon reference
   and `Contents/Resources/AppIcon.icns`, then inspect the extracted `.app` in
   Finder and launch that same package. A running process alone is insufficient.
+- Native QA launchers must enforce their private data directory themselves,
+  including a parameter-free LaunchServices launch. Attaching through app
+  automation can launch another instance without the original command args;
+  an already-running isolated PID does not make that safe. Validate the actual
+  launch entry with no args and an inherited default-data environment before
+  attaching. Never overwrite or re-sign a bundle used by a live engine.
 - For native Mac acceptance, a locked host does not block a ready UTM guest.
   On resuming pending acceptance after a user unlock, a session change, or a
   VM/control-channel change, start the guest observation as `unknown` and

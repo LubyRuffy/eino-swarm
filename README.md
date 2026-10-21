@@ -94,7 +94,15 @@ uploads, downloads and the live event stream have exactly one implementation.
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   A successful check with another wake scheduled keeps its unfinished
   sub-agents running for that next check; pausing or cancelling the last
-  wake stops workers that have no continuing goal. If a recurring check still
+  wake stops workers that have no continuing goal. A failed check also keeps
+  workers that still belong to an active conversation wake or executable
+  standing goal. Their original IDs, model requests and pending tools remain
+  active in Agents after live updates or reload. The check stays failed and
+  unread; it does not block the goal or immediately start another goal turn.
+  The next scheduled check or your next message can collect those workers.
+  A consumed one-shot, paused/blocked/completed goal, plan mode or exhausted
+  goal budget cannot keep an otherwise unowned worker running. Stop and
+  resource/watchdog termination still stop the workers. If a recurring check still
   exceeds the model context window, its failed run shows how to reduce the
   output budget or request, and that check pauses instead of repeating the
   same error. Replayed Chinese and other non-ASCII messages without billed
@@ -195,7 +203,7 @@ uploads, downloads and the live event stream have exactly one implementation.
   the same way — the banner says this is not an error, and **Start**
   keeps going. If it hits an
   obstacle it cannot pass, it calls
-  `block_goal` and stops instead of retrying forever — a crashed turn that
+  `block_goal` and stops instead of retrying forever — a crashed ordinary turn that
   is not a recoverable model error does the same, and the banner shows the
   public error. Truncated tool JSON / a `429` / a dropped stream / a
   mid-stream TCP read timeout retry in-turn, and the transcript names the model service for a rate limit, an outage, or a dropped connection. A concrete API rejection stays as that status and cause. Three consecutive worker lifetime watchdog failures stop automatic resume: the turn errors, its goal blocks and its recurring check pauses. Inspect the worker trace, model and task before an explicit new message or **Start** retries. Provider idle timeouts are separate. A
@@ -219,8 +227,22 @@ uploads, downloads and the live event stream have exactly one implementation.
   Pin a cheaper summarizer
   under Settings → Models the same way as the conversation namer.
 - **Swarm, visible.** Sub-agents appear as they spawn, with live status and their
-  own transcript. Built on [eino](https://github.com/cloudwego/eino) ADK and the
-  swarm library in this repository.
+  own transcript. A failed row offers **View failure reason**. Opening it keeps
+  the recorded error above the scrolling log; old records without a reason say
+  so. A recorded overall runtime limit links to **Settings → Swarm → Sub-agent
+  timeout** (`agent_timeout_seconds`); an exact output-budget failure links to
+  **Max completion tokens** (`max_completion_tokens`), and a recorded worker
+  iteration limit links to **Sub-agent tool rounds** (`max_turns`). Each link focuses that
+  field. An identified provider stream-idle timeout opens **Settings → Models**
+  so you can inspect the endpoint's idle timeout; it does not guess which provider
+  to edit. Saving a limit does not resume the stopped worker. A worker still
+  running when a parent-turn error arrives keeps that error as its stopping
+  reason, marked as a parent error, unless the engine explicitly retained its
+  independent ownership after a failed scheduled check. Retained workers stay
+  running without inheriting that check's error. Generic deadline or cancellation errors do
+  not suggest a timeout setting.
+  Built on [eino](https://github.com/cloudwego/eino) ADK and the swarm library in
+  this repository.
 - **It says what it is doing, even when it is quiet.** The response area shows
   a spinning "working…" as soon as the turn starts, including while a local
   model loads. Server progress then updates it every few seconds with a ticking
@@ -242,6 +264,15 @@ uploads, downloads and the live event stream have exactly one implementation.
   **Reading** / **Exec** while a tool is in flight.
   Settings → General, the app menu (`…` at the bottom of the icon rail),
   or ⌘K switches to developer view.
+- **PC worker thoughts keep their identity across checks.** A background worker
+  can keep generating while the manager ends a scheduled check. Its growing
+  thought or answer updates the same row, including after reload, instead of
+  adding another copy on every check. Independent model outputs remain separate.
+  Overlapping historical pages and live events do not duplicate rows or trigger
+  the same completion refresh again. Legacy records without output identity
+  remain separate. See the [cancellation investigation](docs/diagnostics/issue88-cancellation-evidence.md)
+  for how to distinguish engine handoff and failed-check cleanup from provider
+  timeouts using Trace.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
   (finished ones are not re-parsed on every token; fenced code is highlighted
@@ -263,9 +294,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   waiting message; it does not send the old text again. Unread steering sits
   under the working line: **Interrupt** aborts the current manager tool so those nudges land now
   (workers stay up); the pencil pulls one bubble into the composer and retracts it, so Enter queues it instead; **Delete** retracts one bubble so the model never sees it.
-  Stop is what cancels the whole turn. The PC Agents panel lists unfinished
-  workers under **Stopped**, separate from successful or failed workers;
-  cleanup alone never means their tasks completed. If the manager
+  Stop is what cancels the whole turn. The PC and phone Agents panels list
+  unfinished workers under **Stopped**, separate from successful or failed
+  workers. Reopening or reloading retains that state even when a worker's
+  cancellation receipt arrives after cleanup or the manager stops. Cleanup
+  alone never means a task completed; genuine success and failure remain
+  distinct, and explicitly resuming a worker can run it again. If the manager
   hits its tool-round limit, the transcript asks whether to add another slice
   rather than dying with a graph error.
 - **Automatic restart with saved progress.** Opening a newer/different build
@@ -367,8 +401,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   After a chat service fails, manager and subagents on that same service share
   a 5 → 10 → 20 → 30-second capped recovery backoff, including new turns and
   provider aliases. One probe tests recovery at a time; a complete successful
-  response restores normal concurrency. Stop cancels waiting. Trace records
+  response restores normal concurrency. A Chat Completions stream needs a protocol terminator or
+  explicit finish reason; a truncated connection cannot prove recovery. Stop
+  cancels waiting and the active request. Trace records
   `model_backoff` waits separately from actual calls and retry attempts.
+  Stream errors and EOF reach the consumer after the call-record callback finishes,
+  retaining received usage before the turn can finish or storage can shut down.
   Model API errors retain their HTTP status and concrete rejection or response
   decoding cause in desktop and phone chat. An empty 502 response does not imply
   invalid tool arguments. Empty/HTML errors without a more specific HTTP or parsed API category, and
@@ -642,7 +680,9 @@ A request with independent parts is one way to benefit:
 What you get:
 
 1. **A plan, then sub-agents.** The manager spawns workers (`fork_context` when a
-   new worker needs this conversation so far). A later task for the same role
+   new worker needs this conversation so far). This supplies historical conversation
+   evidence, without copying the manager system role or personal preferences;
+   the worker follows its own assignment. A later task for the same role
    stays on that agent — new description, same `agent_id` — whether it is still
    running or already finished. `resume_agent` targets a specific leftover
    sibling. Open one in the Agents tab to read the system prompt it was given;

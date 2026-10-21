@@ -377,6 +377,8 @@ func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opt
 
 func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
 	opts = r.withReasoning(opts)
+	completion := &streamCompletion{}
+	ctx = context.WithValue(ctx, streamCompletionKey{}, completion)
 	ctx, finish, err := r.admit(ctx)
 	if err != nil {
 		return nil, modelCallError(err)
@@ -399,9 +401,9 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 	}
 	// A streamed call is not over when Stream returns, it is over when the
 	// stream is drained — so relay it and emit the record at the end, where
-	// both the real duration and the output size are known. Relaying through a
-	// pipe also means an abandoned stream cannot leak the goroutine: Send
-	// reports the closed reader and the loop stops.
+	// both the real duration and the output size are known. The pipe stops
+	// relaying when its reader closes. A caller abandoning a silent upstream
+	// must also cancel ctx to interrupt the SDK's pending Recv.
 	sr, sw := schema.Pipe[*schema.Message](streamRelayBuffer)
 	go func() {
 		defer stream.Close()
@@ -409,8 +411,12 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 		defer finish(context.Canceled)
 		chars := 0
 		var usage *schema.TokenUsage
+		finished := false
 		for {
 			msg, recvErr := stream.Recv()
+			if isStreamEnd(recvErr) && completion.http.Load() && !completion.done.Load() && !finished {
+				recvErr = io.ErrUnexpectedEOF
+			}
 			if recvErr != nil {
 				if isStreamEnd(recvErr) {
 					finish(nil)
@@ -423,14 +429,21 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 				applyUsage(&rec, usage)
 				if !isStreamEnd(recvErr) {
 					rec.Err = recvErr
-					sw.Send(nil, modelCallError(recvErr))
 				}
+				// The consumer may shut down storage after this terminal result.
+				// Finish recording the call before allowing that shutdown to race it.
 				if r.rec != nil {
 					r.rec(rec)
+				}
+				if rec.Err != nil {
+					sw.Send(nil, modelCallError(recvErr))
 				}
 				return
 			}
 			if msg != nil {
+				if msg.ResponseMeta != nil && msg.ResponseMeta.FinishReason != "" {
+					finished = true
+				}
 				chars += len(msg.Content) + len(msg.ReasoningContent)
 				usage = mergeUsage(usage, msg)
 			}

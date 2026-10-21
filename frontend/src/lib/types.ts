@@ -21,6 +21,7 @@ export type EventKind =
   | "steer_revised"
   | "steer_preempted"
   | "cleanup"
+  | "workers_retained"
   | "progress"
   | "memory_review"
   | "max_iterations"
@@ -71,6 +72,8 @@ export interface SwarmEvent {
   agent_id: string
   role?: string
   text?: string
+  /** Identity of one model output, retained by cumulative checkpoints across manager turns. */
+  message_id?: string
   tool_call_id?: string
   err?: string
   /** Pasted vision inputs. Handles, not pixels — the bytes live under GET

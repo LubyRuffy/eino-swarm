@@ -1,4 +1,5 @@
 import { updateEN } from "./messages-update"
+import { agentFailureEn } from "./messages-agent-failure-en"
 
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
@@ -436,6 +437,8 @@ export const en = {
   "status.done": "done",
   "status.failed": "failed",
   "status.cancelled": "stopped",
+
+  ...agentFailureEn,
 
   "notice.goalSet": "Standing objective set.",
   "notice.goalCleared": "Standing objective cleared.",

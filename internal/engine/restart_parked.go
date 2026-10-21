@@ -58,7 +58,8 @@ func (e *Engine) resumeParkedThread(th *store.Thread) (int, error) {
 		return 0, err
 	}
 	turn := &turns[len(turns)-1]
-	if turn.Status != store.TurnDone {
+	retained := e.retainedWorkerIDs(turn)
+	if turn.Status != store.TurnDone && len(retained) == 0 {
 		return 0, nil
 	}
 	checkpoint := e.checkpointForTurn(turn.ID)
@@ -66,9 +67,24 @@ func (e *Engine) resumeParkedThread(th *store.Thread) (int, error) {
 		return 0, nil
 	}
 	rt := e.runtimeFor(th.ID)
+	if _, owner := rt.workerOwner(); owner == "" {
+		return 0, nil
+	}
 	running, finished, err := e.readWorkersFromThread(th.ID)
 	if err != nil || len(running) == 0 {
 		return 0, err
+	}
+	if turn.Status == store.TurnError {
+		owned := running[:0]
+		for _, worker := range running {
+			if retained[worker.ID] {
+				owned = append(owned, worker)
+			}
+		}
+		running = owned
+		if len(running) == 0 {
+			return 0, nil
+		}
 	}
 	reg, err := e.parkedRegistry(th, turn)
 	if err != nil {
@@ -100,6 +116,7 @@ func (e *Engine) resumeParkedThread(th *store.Thread) (int, error) {
 			return 0, err
 		}
 	}
+	rt.reapUnownedParked()
 	return len(running), nil
 }
 

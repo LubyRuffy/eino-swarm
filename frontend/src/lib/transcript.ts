@@ -26,6 +26,7 @@ import {
 } from "./transcript-steer"
 import { applyScheduleEvent, sealQuietTurns } from "./transcript-schedule"
 import { findToolBlock, splitToolCall, summarise } from "./transcript-tool-block"
+import { closePendingTools, parseWorkerRetention, settleFailedWorkers, type WorkerRetention } from "./transcript-worker-ownership"
 import {
   MANAGER_ID,
   append,
@@ -78,6 +79,8 @@ export interface Block {
   agentId: string
   role?: string
   text: string
+  /** One model output can span several manager turns and durable checkpoints. */
+  messageId?: string
   /** Still being streamed. Complete blocks stop showing a cursor and can be
    *  collapsed. */
   streaming?: boolean
@@ -138,6 +141,9 @@ export interface AgentState {
   endedAt?: string
   result?: string
   error?: string
+  /** A parent turn can fail while this worker is still running. Preserve
+   *  that cause without presenting it as the worker's own failure. */
+  errorSource?: "agent" | "turn"
 }
 
 export interface TurnState {
@@ -157,6 +163,8 @@ export interface TurnState {
   /** quiet: omitted scheduled check. scheduledFindings: keep the chip on empty done. */
   quiet?: boolean
   scheduledFindings?: boolean
+  /** Durable proof that named workers survived this manager check's failure. */
+  workerRetention?: WorkerRetention
 }
 
 /** The public error of the newest failed turn, if any. The banner used to
@@ -249,6 +257,12 @@ export function reduceEvent(
     rewindCut: state.rewindCut,
   }
   if (applyScheduleEvent(next, ev)) return sealQuietTurns(next, ev)
+  if (ev.kind === "workers_retained") {
+    const retained = parseWorkerRetention(ev)
+    const turn = next.turns.find((item) => item.id === ev.turn_id)
+    if (retained && (!turn || turn.status === "running")) upsertTurn(next, ev.turn_id, { workerRetention: retained })
+    return next
+  }
   // Recovery state is trace evidence, not a chat message or a new agent.
   if (ev.kind === "engine_restart_checkpoint") return next
   if (ev.kind === "restart_preparing" || ev.kind === "restart_ready" || ev.kind === "user_stop_requested") {
@@ -433,14 +447,14 @@ export function reduceEvent(
     case "reasoning_delta":
       // Deltas carry the whole accumulated string, so the open block is
       // replaced. Appending here is the classic bug that doubles every word.
-      keepWorkerLive(agent)
+      if (!keepWorkerLive(agent)) break
       replaceStreaming(agent, ev, "reasoning")
       agent.activity = "thinking"
       break
 
     case "delta":
       // The model has started answering, so any thinking block is done.
-      keepWorkerLive(agent)
+      if (!keepWorkerLive(agent)) break
       closeStreaming(agent, "reasoning")
       replaceStreaming(agent, ev, "answer")
       agent.activity = "writing"
@@ -454,7 +468,7 @@ export function reduceEvent(
       break
 
     case "agent_message":
-      keepWorkerLive(agent)
+      if (!keepWorkerLive(agent)) break
       closeStreaming(agent, "reasoning")
       replaceComplete(agent, ev, "answer")
       agent.activity = summarise(ev.text ?? "")
@@ -462,7 +476,7 @@ export function reduceEvent(
 
     case "tool_call":
     case "tool_call_delta": {
-      keepWorkerLive(agent)
+      if (!keepWorkerLive(agent)) break
       closeStreaming(agent, "reasoning")
       // tool_call_delta arrives while the commentary is still streaming.
       // Closing the answer here seals that paragraph, and the agent_message
@@ -563,6 +577,7 @@ export function reduceEvent(
       child.status = "running"
       child.endedAt = undefined
       child.error = undefined
+      child.errorSource = undefined
       child.activity = existed || painted ? "continuing" : "starting"
       if (!existed) child.startedAt = ev.created_at
       if (!rosterOnly) {
@@ -583,11 +598,17 @@ export function reduceEvent(
 
     case "finished": {
       const child = touchAgent(next, ev.agent_id, ev.role)
-      child.status = ev.err ? "failed" : "done"
+      // Stop wins over buffered receipts until an explicit spawn resumes it.
+      if (child.status === "cancelled") break
+      // Match the current worker's engine envelope, not provider prose.
+      const cancelledPrefix = `swarm: agent ${ev.agent_id} cancelled: `
+      const cancelled = Boolean(ev.err?.startsWith(cancelledPrefix) && ev.err.slice(cancelledPrefix.length).trim())
+      child.status = cancelled ? "cancelled" : ev.err ? "failed" : "done"
       child.endedAt = ev.created_at
       child.result = ev.text
-      child.error = ev.err
-      child.activity = ev.err ? "failed" : "done"
+      child.error = cancelled ? undefined : ev.err
+      child.errorSource = child.error ? "agent" : undefined
+      child.activity = cancelled ? "stopped" : ev.err ? "failed" : "done"
       closeStreaming(child, "reasoning")
       closeStreaming(child, "answer")
       closePendingTools(child, ev.err)
@@ -668,22 +689,11 @@ export function reduceEvent(
       closePendingTools(manager, ev.err)
       // A clean `done` parks leftover workers for the next /goal session.
       // Closing their exec here made Agents say Done while wait_agents was
-      // still blocked on that same worker. An error/interrupt does kill them.
+      // still blocked on that same worker. A failed check may also retain
+      // explicitly named workers; Stop and cleanup remain authoritative.
       if (failed) {
-        for (const id of next.agentOrder) {
-          if (id === MANAGER_ID) continue
-          const child = next.agents[id]
-          if (!child) continue
-          closeStreaming(child, "reasoning")
-          closeStreaming(child, "answer")
-          closePendingTools(child, ev.err)
-          if (child.status === "running") {
-            child.status = cancelled ? "cancelled" : "failed"
-            child.activity = "stopped"
-            child.endedAt = ev.created_at
-          }
-        }
-        if (ev.err) append(manager, block(ev, cancelled ? "notice" : "error", ev.err))
+        settleFailedWorkers(next, ev)
+        if (ev.err && !rosterOnly) append(manager, block(ev, cancelled ? "notice" : "error", ev.err))
       }
       break
     }
@@ -719,7 +729,7 @@ export function collapseLiveEvents(events: SwarmEvent[]): SwarmEvent[] {
   for (let i = events.length - 1; i >= 0; i--) {
     const ev = events[i]
     if (ev.kind === "delta" || ev.kind === "reasoning_delta") {
-      const key = `${ev.agent_id || MANAGER_ID}:${ev.kind}`
+      const key = `${ev.agent_id || MANAGER_ID}:${ev.kind}:${ev.message_id || ""}`
       if (seen.has(key)) continue
       seen.add(key)
     }
@@ -795,8 +805,11 @@ export function rewindTranscript(
   return {
     agentOrder,
     agents,
-    turns: state.turns.filter((t) => keptTurns.has(t.id)).map((t) =>
-      t.completedSeq && t.completedSeq >= fromSeq ? { ...t, completedSeq: undefined } : t),
+    turns: state.turns.filter((t) => keptTurns.has(t.id)).map((t) => ({
+      ...t,
+      completedSeq: t.completedSeq && t.completedSeq >= fromSeq ? undefined : t.completedSeq,
+      workerRetention: t.workerRetention && t.workerRetention.seq >= fromSeq ? undefined : t.workerRetention,
+    })),
     lastSeq: state.lastSeq,
     running: pending,
     pulse: undefined,
@@ -854,13 +867,16 @@ export function placePendingEdit(
   return next
 }
 
-/** A parked worker that is still emitting is not done, even if an older
- *  reducer painted it that way. Live work wins over a stale roster tick. */
-function keepWorkerLive(agent: AgentState) {
-  if (agent.id === MANAGER_ID || agent.status === "running") return
+/** Live output can correct a stale parked roster, but cannot undo Stop.
+ *  Cancelled workers need an explicit spawned event before output resumes. */
+function keepWorkerLive(agent: AgentState): boolean {
+  if (agent.status === "cancelled") return false
+  if (agent.id === MANAGER_ID || agent.status === "running") return true
   agent.status = "running"
   agent.endedAt = undefined
   agent.error = undefined
+  agent.errorSource = undefined
+  return true
 }
 
 /** Older spawned events stored the role in `text`. The instruction only
@@ -934,33 +950,6 @@ function addAgentToTurn(state: TranscriptState, turnId: string, agentId: string)
 /** Stable with engine.resumeToolStopped. The wire event is English; a
  *  crashed exec must not keep saying "running…". */
 const resumeToolStopped = "the previous process stopped"
-
-/** A call with no result when the turn (or the agent) ends was killed, not
- *  left running. The spinner is keyed off `pending`; leaving it true next to
- *  an "interrupted" banner is the lie the Stop button used to leave behind.
- *  `result` must be a string or the expanded body still says "running…". */
-function closePendingTools(agent: AgentState, reason?: string, keepQuestions?: boolean) {
-  let changed = false
-  const blocks = agent.blocks.map((b) => {
-    if (b.kind === "question" && b.question?.pending) {
-      if (keepQuestions) return b
-      changed = true
-      return { ...b, question: { ...b.question, pending: false } }
-    }
-    if (b.kind !== "tool" || !b.tool?.pending) return b
-    changed = true
-    return {
-      ...b,
-      tool: {
-        ...b.tool,
-        pending: false,
-        failed: true,
-        result: b.tool.result ?? reason ?? "",
-      },
-    }
-  })
-  if (changed) agent.blocks = blocks
-}
 
 function settlePendingConfirm(agent: AgentState, continued: boolean, text?: string) {
   const blocks = agent.blocks.slice()
