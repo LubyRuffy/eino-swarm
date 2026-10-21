@@ -1,5 +1,14 @@
 # Testing
 
+## UI message catalogs
+
+Worker failure translations live in `frontend/src/lib/messages-agent-failure-en.ts`
+and `messages-agent-failure-zh.ts`; the main `messages-en.ts` and `messages-zh.ts`
+catalogs compose them without changing message keys or values. `i18n.test.ts`
+checks catalog key parity, while `agent-failure.test.tsx` checks translated
+failure details and their recovery-settings links. Run them with
+`cd frontend && npm test -- src/lib/i18n.test.ts src/components/app/agent-failure.test.tsx`.
+
 ## Automatic restart handoff (F-110 / C-027)
 
 `handoff_test.go` and `internal/engine/restart_test.go` cover shared deadlines,

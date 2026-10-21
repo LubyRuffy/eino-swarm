@@ -1,3 +1,5 @@
+import { agentFailureEn } from "./messages-agent-failure-en"
+
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
@@ -447,17 +449,7 @@ export const en = {
   "status.failed": "failed",
   "status.cancelled": "stopped",
 
-  "agentFailure.viewReason": "View failure reason",
-  "agentFailure.title": "Failure reason",
-  "agentFailure.parentStopped": "Stopped because this turn failed.",
-  "agentFailure.unrecorded": "No failure reason was recorded for this agent.",
-  "agentFailure.timeout": "Overall runtime limit reached ({duration}).",
-  "agentFailure.maxTurns": "Sub-agent tool-round limit reached.",
-  "agentFailure.providerIdle": "The model service stopped sending data for {duration}.",
-  "agentFailure.modelSettings": "Model timeout settings",
-  "agentFailure.providerHint": "In Models, check the stream idle timeout of the provider used by this task. Adjust it if needed, then start the task again.",
-  "agentFailure.timeoutSettings": "Sub-agent timeout",
-  "agentFailure.limitHint": "If this task needs a higher limit, adjust it for future runs. Changing the limit does not resume a stopped agent.",
+  ...agentFailureEn,
 
   "notice.goalSet": "Standing objective set.",
   "notice.goalCleared": "Standing objective cleared.",
