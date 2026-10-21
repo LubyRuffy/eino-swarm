@@ -10,7 +10,8 @@ the URL in `engine.json` (a random loopback port unless `--addr` was set).
   your conversations and listens on loopback. Mutating `/api` requests with a
   non-loopback `Origin` are `403`. The PTY upgrade also requires a loopback
   `Origin` (or a loopback peer when `Origin` is empty).
-- Errors are `{"error": "...")` with an optional `"code"`.
+- Errors are `{"error": "..."}` with an optional `"code"`.
+- Missing-record errors handled by the server use `code: "not_found"`; missing conversations checked by a thread route use `thread_not_found`. The JSON includes `request_id`, `method`, the matched `route` template and available record identity; `X-Request-ID` repeats that ID. The same ID is logged at WARN as `HTTP record not found` in `engine.log`, without request bodies, query strings or credentials. These client-action failures do not change a running turn into an error.
 
 | status | meaning |
 |---|---|
@@ -176,7 +177,8 @@ provider carries `has_api_key` and `ready` instead.
   "models": {"default": "default", "providers": [
     {"id": "default", "label": "", "base_url": "https://endpoint/v1",
      "model": "some-model", "catalog": ["some-model", "other-model"],
-     "timeout_seconds": 300, "context_window": 0, "model_context": {},
+     "timeout_seconds": 300, "first_byte_timeout_seconds": 30,
+     "context_window": 0, "model_context": {},
      "has_api_key": true, "ready": true, "enabled": true}
   ]},
   "swarm": {"max_concurrent": 6, "agent_timeout_seconds": 600,
@@ -302,6 +304,17 @@ the same way as a key you are not replacing:
 | `false` | hide it from `GET /api/models` and the paired phone catalog. |
 
 A PUT that hides the current `default` moves `default` to the first endpoint still on. A PUT that would hide every endpoint leaves the default one on.
+
+`first_byte_timeout_seconds` sets this provider's wait for response headers,
+independently of `timeout_seconds` (silence after streaming starts). The default
+is `30`; an explicit zero or negative value resets it to that default. Omitting
+the field preserves the saved value for the same provider id, so older clients
+do not reset it. A new provider or an older configuration file without the field
+uses 30 seconds. Saving invalidates the model pool, and the next turn uses the
+new wait without an engine restart. If both header waits fail, the turn error
+preserves the actual duration as `the model sent no first byte within <duration>`.
+Desktop/Web adds guidance and a button to the failed turn's
+provider in Settings → Models. The provider's one fresh-connection retry remains bounded.
 
 ### `GET /api/models`
 
@@ -1221,6 +1234,15 @@ Pulls that waiting message into the running turn (same injection as
 same click starts that text as the next turn (`steered: false` plus `turn`).
 A start that loses the slot puts the row back (`409 busy`, or another error).
 
+A missing waiting row is `404 followup_unavailable` with `thread_id`,
+`followup_id`, `request_id`, `method` and `route`. It may already have been
+sent or removed; the response is not a successful injection and never resends
+its old text. An unknown conversation remains `404 thread_not_found`. The PC
+client coalesces concurrent Steer clicks on the same conversation/row and
+refreshes its queue after a stale-row response, reporting whether refresh
+succeeded. Automatic dequeue grants delivery only to the consumer that
+actually removed that row; a lost claim reselects the oldest remaining row.
+
 ```json
 {"steered": true}
 ```
@@ -1387,6 +1409,7 @@ Event names (the SSE `event:` field and the payload's `kind`):
 | `memory_review` | the post-turn review of a project's memory finished (see below) |
 | `max_iterations` | the manager hit `swarm.manager_max_iterations`; `text` is `{"limit":N,"extend_by":N}` and the turn is still running |
 | `max_iterations_continued` | the human extended the turn; `text` names how many extra rounds |
+| `model_backoff` | a chat request is waiting for its shared upstream recovery cooldown. `agent_id` is the actual caller; `text` is JSON `{attempt,wait_ms}` (consecutive service failure generation and remaining cooldown at observation, with positive sub-millisecond waits recorded as `1`; `0` means waiting for an already active probe with unknown remaining time). This is neither a sent request nor a new retry allowance. Multiple waiters can record the same generation; only one probe is admitted after cooldown. A later failure can extend the wait. Stored in the same turn Trace and shown in the desktop Full log. |
 | `model_retry` | the manager hit a recoverable ChatModel failure and re-entered this turn. `text` is JSON `{attempt,cap,reason?}`. `reason` selects the transcript notice: `invalid_tool_json` (the model returned a tool call that was not valid JSON), `model_response_invalid` (the SDK cannot decode the model HTTP response or stream, including a wrong field type; the turn did not reach a tool), `rate_limited`, `model_unavailable` (HTTP 500/502/503/504/529), `model_transport` (dropped stream, connection reset, mid-stream read timeout), `model_idle` (silence after the first byte). Older rows omit `reason` and keep the generic retry line. `reason: "context_overflow"` is separate: the endpoint rejected the call because the prompt plus the requested output does not fit the window. That notice names the window, the turn compacts once, and a second rejection ends the turn with `the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry`. A repeating schedule that ends that way is paused. When the in-turn retries are exhausted, the turn error is the same class: `the model returned a tool call that was not valid JSON`, `the model service is rate limiting requests`, `the model service is unavailable`, `the model service returned a response that could not be decoded`, or `the connection to the model service dropped`. An exhausted idle timeout keeps the sentence that names how long the model sent no data. A trailing tool call whose arguments are not valid JSON is refused before the next model request and then dropped, so that payload is not sent and a `400 Unterminated string` cannot repeat. `reason: "scheduled_no_activity"` is the scheduled-check continuation, not a model failure |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
 | `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done`, and does not wait for this event |

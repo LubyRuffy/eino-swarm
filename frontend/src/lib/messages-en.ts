@@ -1,3 +1,5 @@
+import { agentFailureEn } from "./messages-agent-failure-en"
+
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
@@ -172,6 +174,11 @@ export const en = {
   "model.edit": "Edit providers",
   "model.fallback": "Model",
 
+  "api.threadNotFound": "The conversation for this action no longer exists. Refresh the conversation list and reopen it.",
+  "api.recordNotFound": "Could not complete {method} {route}: the requested record no longer exists. Refresh and try again.",
+  "queue.unavailable": "This message is no longer in the waiting queue. It may already have been sent or removed.",
+  "queue.unavailableRefreshed": "This message is no longer in the waiting queue. It may already have been sent or removed. The queue has been refreshed.",
+  "queue.unavailableRefreshFailed": "This message is no longer in the waiting queue. It may already have been sent or removed. Could not refresh the waiting queue; reopen the conversation to try again.",
   "queue.count": "{n} Queued",
   "queue.clear": "Clear queue",
   "queue.steer": "Steer",
@@ -336,7 +343,7 @@ export const en = {
   "memory.tidyStream": "Model output",
   "memory.tidyWaiting": "Waiting for the model…",
   "memory.tidyHeaderTimeout":
-    "No first byte from the model within 30s. The connection was given up.",
+    "No first byte arrived before the configured timeout. Increase First-byte timeout in Settings → Models, then retry.",
   "memory.tidySummary":
     "Deleted {deleted}, created {created}, merged {merged}, updated {patched}.",
   "memory.tidyActMerge": "Merged {name}",
@@ -393,6 +400,10 @@ export const en = {
     "You can raise the per-request output limit in Settings.",
   "transcript.outputBudgetSettings": "Max completion tokens",
   "transcript.outputBudgetRetry": "Retry",
+  "notice.firstByteTimeout": "The model sent no first byte within {duration}.",
+  "transcript.firstByteTimeoutHint":
+    "If the model needs longer to respond, increase the first-byte timeout in Settings → Models for the affected provider, then retry.",
+  "transcript.firstByteTimeoutSettings": "Configure first-byte timeout",
   "transcript.workingFor": "Working for {duration}",
   "transcript.workingAgents":
     "Working for {duration} · {n} sub-agent{s} running",
@@ -438,6 +449,8 @@ export const en = {
   "status.failed": "failed",
   "status.cancelled": "stopped",
 
+  ...agentFailureEn,
+
   "notice.goalSet": "Standing objective set.",
   "notice.goalCleared": "Standing objective cleared.",
   "notice.goalCompleted": "Standing objective completed.",
@@ -451,6 +464,8 @@ export const en = {
   "notice.goalBlocked":
     "Standing objective blocked: progress needs you or an external change.",
   "notice.modelRetry": "Retrying after a model error.",
+  "notice.modelBackoff": "Waiting {seconds}s before retrying the model request.",
+  "notice.modelBackoffUnknown": "Waiting before retrying the model request.",
   "notice.modelRetryToolJSON":
     "The model returned a tool call that was not valid JSON. Retrying.",
   "notice.modelRetryRateLimited":
@@ -710,7 +725,10 @@ export const en = {
     "Used only when a name has no window of its own. Do not put one model's limit here.",
   "settings.models.timeout": "Request timeout (seconds)",
   "settings.models.timeoutHint":
-    "How long to wait for the next byte from the model. A call that is still streaming is not cut off; a silent endpoint is. Compact uses the same timeout.",
+    "How long a started stream may stay silent. A call that is still streaming is not cut off; a silent endpoint is. Compact uses the same timeout.",
+  "settings.models.firstByteTimeout": "First-byte timeout (seconds)",
+  "settings.models.firstByteTimeoutHint":
+    "How long to wait for the model's response headers. Increase this if the model is slow to start. Separate from the request timeout after streaming starts. 0 uses the default.",
 
   "settings.aux.title": "Auxiliary models",
   "settings.aux.desc":

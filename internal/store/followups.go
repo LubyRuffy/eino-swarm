@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // EnqueueFollowup appends a waiting message to a conversation. The turn that
@@ -53,6 +54,20 @@ func (s *Store) GetFollowup(threadID, id string) (*Followup, error) {
 	return &f, nil
 }
 
+// TakeFollowup claims a waiting message for manual delivery and returns the
+// deleted contents, including any edit that committed before the claim.
+func (s *Store) TakeFollowup(threadID, id string) (*Followup, error) {
+	var f Followup
+	res := s.db.Clauses(clause.Returning{}).Where("id = ? AND thread_id = ?", id, threadID).Delete(&f)
+	if res.Error != nil {
+		return nil, fmt.Errorf("store: take follow-up: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil, ErrNotFound
+	}
+	return &f, nil
+}
+
 // DeleteFollowup drops one waiting message. Missing is not found, not success:
 // a Steer click on a row that already flushed would otherwise look like it worked.
 func (s *Store) DeleteFollowup(threadID, id string) error {
@@ -91,20 +106,32 @@ func retryBusy(n int, fn func() error) error {
 func (s *Store) PopFollowup(threadID string) (*Followup, error) {
 	var out *Followup
 	err := retryBusy(8, func() error {
-		list, err := s.ListFollowups(threadID)
-		if err != nil {
-			return err
-		}
-		if len(list) == 0 {
-			out = nil
+		for {
+			list, err := s.ListFollowups(threadID)
+			if err != nil {
+				return err
+			}
+			if len(list) == 0 {
+				out = nil
+				return nil
+			}
+			f := list[0]
+			var claimed Followup
+			deleted := s.db.Clauses(clause.Returning{}).
+				Where("id = ? AND thread_id = ? AND seq = ?", f.ID, threadID, f.Seq).Delete(&claimed)
+			if deleted.Error != nil {
+				return deleted.Error
+			}
+			// An edit moves this request behind other waiting work. Reselect
+			// if its position changed or another sender already claimed it.
+			if deleted.RowsAffected == 0 {
+				continue
+			}
+			// Restoration may reuse this FIFO position; return the deleted
+			// contents rather than the snapshot taken before that restore.
+			out = &claimed
 			return nil
 		}
-		f := list[0]
-		if err := s.db.Where("id = ? AND thread_id = ?", f.ID, threadID).Delete(&Followup{}).Error; err != nil {
-			return err
-		}
-		out = &f
-		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("store: pop follow-up: %w", err)
@@ -124,9 +151,13 @@ func (s *Store) RequeueFollowup(threadID, id, text string) (*Followup, error) {
 	f.Seq = s.nextSeq(s.followupSeq, threadID, func() int64 {
 		return s.maxSeq(&Followup{}, "seq", threadID)
 	})
-	if err := s.db.Model(&Followup{}).Where("id = ? AND thread_id = ?", id, threadID).
-		Updates(map[string]any{"text": f.Text, "seq": f.Seq}).Error; err != nil {
-		return nil, fmt.Errorf("store: requeue follow-up: %w", err)
+	updated := s.db.Model(&Followup{}).Where("id = ? AND thread_id = ?", id, threadID).
+		Updates(map[string]any{"text": f.Text, "seq": f.Seq})
+	if updated.Error != nil {
+		return nil, fmt.Errorf("store: requeue follow-up: %w", updated.Error)
+	}
+	if updated.RowsAffected == 0 {
+		return nil, ErrNotFound
 	}
 	return f, nil
 }

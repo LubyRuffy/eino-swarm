@@ -45,10 +45,11 @@ describe("worker cancellation finish receipts", () => {
         for (const id of ["worker-1", "worker-2"]) {
           expect(state.agents[id]).toMatchObject({ status: "cancelled", activity: "stopped" })
           expect(state.agents[id].error).toBeUndefined()
+          expect(state.agents[id].errorSource).toBeUndefined()
           expect(state.agents[id].blocks.every((block) => !block.streaming && !block.tool?.pending)).toBe(true)
         }
         expect(state.agents["worker-3"]).toMatchObject({ status: "done", result: "Verified result." })
-        expect(state.agents["worker-4"]).toMatchObject({ status: "failed", error: "provider unavailable" })
+        expect(state.agents["worker-4"]).toMatchObject({ status: "failed", error: "provider unavailable", errorSource: "agent" })
         expect(liveWorkers(state)).toBe(0)
       }
       expect(cold.turns[0].status).toBe("cancelled")
@@ -68,7 +69,7 @@ describe("worker cancellation finish receipts", () => {
     const events = history("before-cleanup").slice(0, 5)
     const finished: SwarmEvent = { ...events[1], kind: "finished", seq: 6, err }
     const state = reduceEvents(emptyTranscript(), [...events, finished])
-    expect(state.agents["worker-1"]).toMatchObject({ status: "failed", activity: "failed", error: err })
+    expect(state.agents["worker-1"]).toMatchObject({ status: "failed", activity: "failed", error: err, errorSource: "agent" })
   })
 
   it("classifies a worker cancellation without needing the manager's terminal event", () => {

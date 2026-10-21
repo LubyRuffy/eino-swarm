@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select"
 import { api } from "@/lib/api"
 import { chromeTypeClass } from "@/lib/chrome-type"
+import { firstByteTimeoutSettingsKey } from "@/lib/first-byte-timeout"
 import { mergeModelContext } from "@/lib/usage"
 import type { Settings } from "@/lib/types"
 import { cn } from "@/lib/utils"
@@ -41,14 +42,20 @@ export function ModelsTab({
   settings,
   onChange,
   query = "",
+  focusKey = "",
 }: {
   settings: Settings
   onChange: (s: Settings) => void
   query?: string
+  focusKey?: string
 }) {
   const t = useT()
   const [busy, setBusy] = useState<string>()
-  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
+  const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set(
+    settings.models.providers
+      .filter((p) => focusKey === firstByteTimeoutSettingsKey(p.id))
+      .map((p) => p.id),
+  ))
   const [doomed, setDoomed] = useState<ProviderConfig>()
 
   const update = (
@@ -428,6 +435,19 @@ function ProviderRow({
               onChange={(e) => onUpdate({ timeout_seconds: Number(e.target.value) })}
             />
           </Field>
+          <Field
+            query={query}
+            label={t("settings.models.firstByteTimeout")}
+            hint={t("settings.models.firstByteTimeoutHint")}
+            anchor={firstByteTimeoutSettingsKey(p.id)}
+          >
+            <Input
+              type="number"
+              min={0}
+              value={p.first_byte_timeout_seconds ?? 0}
+              onChange={(e) => onUpdate({ first_byte_timeout_seconds: Number(e.target.value) })}
+            />
+          </Field>
         </div>
       ) : null}
     </div>
@@ -456,6 +476,8 @@ function providerVisible(query: string, p: ProviderConfig, t: Translate): boolea
     t("settings.models.windowFallback"),
     t("settings.models.timeout"),
     t("settings.models.timeoutHint"),
+    t("settings.models.firstByteTimeout"),
+    t("settings.models.firstByteTimeoutHint"),
     t("settings.models.listed", { name: providerHeading(p) }),
     t("settings.models.listedHint"),
     ...(p.catalog ?? []),
@@ -480,6 +502,8 @@ function providerFieldsMatch(query: string, p: ProviderConfig, t: Translate): bo
     t("settings.models.windowFallback"),
     t("settings.models.timeout"),
     t("settings.models.timeoutHint"),
+    t("settings.models.firstByteTimeout"),
+    t("settings.models.firstByteTimeoutHint"),
     p.base_url,
     p.model,
   )

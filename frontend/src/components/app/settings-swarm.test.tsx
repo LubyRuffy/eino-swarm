@@ -35,6 +35,18 @@ const base: Settings = {
 }
 
 describe("Swarm schedule caps", () => {
+  it("exposes a stable target for the agent timeout failure link", () => {
+    render(<SwarmTab settings={base} onChange={() => undefined} />)
+    expect(screen.getByLabelText("Sub-agent timeout (seconds)").closest("[data-settings-key]"))
+      .toHaveAttribute("data-settings-key", "agent_timeout_seconds")
+  })
+
+  it("exposes a stable target for the agent tool-round failure link", () => {
+    render(<SwarmTab settings={base} onChange={() => undefined} />)
+    expect(screen.getByLabelText("Sub-agent tool rounds").closest("[data-settings-key]"))
+      .toHaveAttribute("data-settings-key", "max_turns")
+  })
+
   it("labels the three schedule fields and shows repaired defaults", () => {
     render(<SwarmTab settings={base} onChange={() => undefined} />)
     expect(screen.getByLabelText("Shortest wait (seconds)")).toHaveValue(30)

@@ -3,7 +3,8 @@ import { freshConversation, reloadOpenConversation } from "./session"
 
 test("three watchdog failures stop the same worker and pause its scheduled check", async ({ page, request }) => {
   test.skip(process.env.ZWAI_MOCK_WORKER_TIMEOUT !== "1", "requires the opt-in real-watchdog offline script")
-  expect((await request.put("/api/settings", { data: { swarm: { agent_timeout_seconds: 1 } } })).ok()).toBe(true)
+  const { settings: initial } = await (await request.get("/api/settings")).json()
+  expect((await request.put("/api/settings", { data: { swarm: { ...initial.swarm, agent_timeout_seconds: 1 } } })).ok()).toBe(true)
   await freshConversation(page)
   const id = await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")
   const created = await request.post("/api/schedules", { data: { kind: "thread", thread_id: id, prompt: "Perform the assigned check", every_s: 60 } })
@@ -24,7 +25,27 @@ test("three watchdog failures stop the same worker and pause its scheduled check
   expect(trace.events.some((ev: Event) => ev.kind === "model_retry")).toBe(false)
   const listed = await (await request.get("/api/schedules")).json()
   expect(listed.schedules.find((s: { id: string }) => s.id === schedule.id).status).toBe("paused")
+  // The diagnostic uses the real watchdog error persisted above. Editing the
+  // limit must focus its control and must not silently restart the failed task.
+  const workerID = starts[0].agent_id
+  await page.getByRole("tab", { name: "Agents", exact: true }).click()
+  const row = page.getByTestId("agent-roster").locator(`[data-agent-id="${workerID}"]`)
+  await expect(row).toContainText("View failure reason")
+  await row.click()
+  const failure = page.getByTestId("agent-failure")
+  await expect(failure).toContainText(`swarm: agent ${workerID} exceeded timeout 1s`)
+  await failure.getByRole("button", { name: "Sub-agent timeout", exact: true }).click()
+  const settings = page.getByRole("dialog")
+  const timeout = settings.getByLabel("Sub-agent timeout (seconds)", { exact: true })
+  await expect(timeout).toBeFocused()
+  await timeout.fill("90")
+  await expect.poll(async () => (await (await request.get("/api/settings")).json()).settings.swarm.agent_timeout_seconds).toBe(90)
+  await settings.getByRole("button", { name: "Back to app" }).click()
+  await expect(page.getByTestId("status-badge")).toContainText("Idle")
   await reloadOpenConversation(page)
   await expect(page.getByTestId("transcript")).toContainText("3 consecutive watchdog timeouts")
+  await page.getByRole("tab", { name: "Agents", exact: true }).click()
+  await page.getByTestId("agent-roster").locator(`[data-agent-id="${workerID}"]`).click()
+  await expect(failure).toContainText(`swarm: agent ${workerID} exceeded timeout 1s`)
   await page.screenshot({ path: "test-results/worker-timeout-paused.png" })
 })

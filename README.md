@@ -219,8 +219,20 @@ uploads, downloads and the live event stream have exactly one implementation.
   Pin a cheaper summarizer
   under Settings → Models the same way as the conversation namer.
 - **Swarm, visible.** Sub-agents appear as they spawn, with live status and their
-  own transcript. Built on [eino](https://github.com/cloudwego/eino) ADK and the
-  swarm library in this repository.
+  own transcript. A failed row offers **View failure reason**. Opening it keeps
+  the recorded error above the scrolling log; old records without a reason say
+  so. A recorded overall runtime limit links to **Settings → Swarm → Sub-agent
+  timeout** (`agent_timeout_seconds`); an exact output-budget failure links to
+  **Max completion tokens** (`max_completion_tokens`), and a recorded worker
+  iteration limit links to **Sub-agent tool rounds** (`max_turns`). Each link focuses that
+  field. An identified provider stream-idle timeout opens **Settings → Models**
+  so you can inspect the endpoint's idle timeout; it does not guess which provider
+  to edit. Saving a limit does not resume the stopped worker. A worker still
+  running when a parent-turn error arrives keeps that error as its stopping
+  reason, marked as a parent error. Generic deadline or cancellation errors do
+  not suggest a timeout setting.
+  Built on [eino](https://github.com/cloudwego/eino) ADK and the swarm library in
+  this repository.
 - **It says what it is doing, even when it is quiet.** The response area shows
   a spinning "working…" as soon as the turn starts, including while a local
   model loads. Server progress then updates it every few seconds with a ticking
@@ -257,7 +269,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   pull it into the composer; the row leaves, and Enter queues that draft at the back. **Steer** on
   that row, or ⌘Enter, injects into the current turn at the next model boundary
   — it does not kill an in-flight tool, and it drops a queued copy of the same
-  text. After Stop, Steer on a leftover row starts that text as the next turn. Unread steering sits under the working line: **Interrupt** aborts the current manager tool so those nudges land now
+  text. After Stop, Steer on a leftover row starts that text as the next turn.
+  Repeated Steer clicks while that request is pending send it once. If the row
+  has already left the queue, the app refreshes it and explains the missing
+  waiting message; it does not send the old text again. Unread steering sits
+  under the working line: **Interrupt** aborts the current manager tool so those nudges land now
   (workers stay up); the pencil pulls one bubble into the composer and retracts it, so Enter queues it instead; **Delete** retracts one bubble so the model never sees it.
   Stop is what cancels the whole turn. The PC and phone Agents panels list
   unfinished workers under **Stopped**, separate from successful or failed
@@ -310,8 +326,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   groups models by provider, searches, refreshes the catalog, and jumps
   to Edit providers. A thinking-level menu (Default / Low / Medium / High)
   sets how hard the models reason. Both apply from the next turn. A
-  thought that is still streaming is not cut off by the request timeout;
-  raise it in Settings → Models if the endpoint stays silent.
+  thought that is still streaming is not cut off by the request timeout.
+  If the model sends no first byte, open its provider under Settings → Models
+  and raise **First-byte timeout (seconds)** (default 30 seconds). The error's
+  **Configure first-byte timeout** button opens and focuses that provider's
+  field. Changes save automatically; close Settings and resend when ready.
+  **Request timeout (seconds)** separately controls silence after the stream starts.
 - **Real tools.** File read/write/edit, `ls`/`tree`/`glob`/`grep`, shell `exec`,
   web search and fetch, from [eino-tools](https://github.com/LubyRuffy/eino-tools).
   The transcript shows the command or query, not the JSON envelope; a failed
@@ -350,6 +370,15 @@ uploads, downloads and the live event stream have exactly one implementation.
   `zwai trace <id>` replays the whole run: timeline, tool calls, model calls
   with billed tokens. The Trace tab shows the same turn's status and cost; open
   **Full log** for the on-screen timeline.
+  After a chat service fails, manager and subagents on that same service share
+  a 5 → 10 → 20 → 30-second capped recovery backoff, including new turns and
+  provider aliases. One probe tests recovery at a time; a complete successful
+  response restores normal concurrency. A stream needs a protocol terminator or
+  explicit finish reason; a truncated connection cannot prove recovery. Stop
+  cancels waiting and the active request. Trace records
+  `model_backoff` waits separately from actual calls and retry attempts.
+  Stream errors and EOF reach the consumer after the call-record callback finishes,
+  retaining received usage before the turn can finish or storage can shut down.
   Model API errors retain their HTTP status and concrete rejection or response
   decoding cause in desktop and phone chat. An empty 502 response does not imply
   invalid tool arguments. Empty/HTML errors without a more specific HTTP or parsed API category, and
@@ -615,7 +644,9 @@ A request with independent parts is one way to benefit:
 What you get:
 
 1. **A plan, then sub-agents.** The manager spawns workers (`fork_context` when a
-   new worker needs this conversation so far). A later task for the same role
+   new worker needs this conversation so far). This supplies historical conversation
+   evidence, without copying the manager system role or personal preferences;
+   the worker follows its own assignment. A later task for the same role
    stays on that agent — new description, same `agent_id` — whether it is still
    running or already finished. `resume_agent` targets a specific leftover
    sibling. Open one in the Agents tab to read the system prompt it was given;

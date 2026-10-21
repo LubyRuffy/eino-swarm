@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -16,7 +17,7 @@ import (
 )
 
 func TestChatHTTPClientHasNoTotalTimeout(t *testing.T) {
-	c := chatHTTPClient(time.Second)
+	c := chatHTTPClient(time.Second, 0)
 	if c.Timeout != 0 {
 		t.Fatalf("Client.Timeout=%v; a total timeout kills a live thinking stream", c.Timeout)
 	}
@@ -30,7 +31,7 @@ func TestChatHTTPClientHasNoTotalTimeout(t *testing.T) {
 }
 
 func TestALongStreamIdleDoesNotExtendTheWaitForTheFirstByte(t *testing.T) {
-	c := chatHTTPClient(5 * time.Minute)
+	c := chatHTTPClient(5*time.Minute, 0)
 	tr := c.Transport.(*idleTransport)
 	base, ok := tr.base.(*http.Transport)
 	if !ok {
@@ -42,15 +43,15 @@ func TestALongStreamIdleDoesNotExtendTheWaitForTheFirstByte(t *testing.T) {
 	if tr.idle != 5*time.Minute {
 		t.Fatalf("stream idle=%v", tr.idle)
 	}
-	short := chatHTTPClient(80 * time.Millisecond).Transport.(*idleTransport).base.(*http.Transport)
-	if short.ResponseHeaderTimeout != 80*time.Millisecond {
-		t.Fatalf("a shorter idle must also cap headers: %v", short.ResponseHeaderTimeout)
+	short := chatHTTPClient(80*time.Millisecond, 0).Transport.(*idleTransport).base.(*http.Transport)
+	if short.ResponseHeaderTimeout != config.DefaultFirstByteTimeout {
+		t.Fatalf("stream idle must not shorten the initial wait: %v", short.ResponseHeaderTimeout)
 	}
 }
 
 func TestChatHTTPClientZeroIdleUsesTheDefault(t *testing.T) {
 	for _, idle := range []time.Duration{0, -time.Second} {
-		c := chatHTTPClient(idle)
+		c := chatHTTPClient(idle, idle)
 		tr, ok := c.Transport.(*idleTransport)
 		if !ok {
 			t.Fatal("expected idleTransport")
@@ -136,7 +137,7 @@ func TestIdleClientCutsSlowHeaders(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := chatHTTPClient(idle).Get(srv.URL)
+	_, err := chatHTTPClient(idle, idle).Get(srv.URL)
 	if err == nil {
 		t.Fatal("headers slower than the idle setting must fail")
 	}
@@ -161,7 +162,7 @@ func TestIdleClientRetriesOnceAfterAHeaderTimeout(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	resp, err := chatHTTPClient(idle).Post(srv.URL, "text/plain", strings.NewReader("body"))
+	resp, err := chatHTTPClient(idle, idle).Post(srv.URL, "text/plain", strings.NewReader("body"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,6 +175,46 @@ func TestIdleClientRetriesOnceAfterAHeaderTimeout(t *testing.T) {
 		t.Fatalf("body=%q attempts=%d", got, n.Load())
 	}
 }
+
+// A broken request body is a local failure, so the adapter must not contact
+// the model or replace the original timeout with a replay-construction error.
+func TestIdleClientDoesNotSendUnreadableOrUnreplayableBodies(t *testing.T) {
+	for _, replayFailure := range []bool{false, true} {
+		t.Run(fmt.Sprintf("replay=%v", replayFailure), func(t *testing.T) {
+			bodyErr := errors.New("request body unavailable")
+			headerErr := errors.New("timeout awaiting response headers")
+			calls := 0
+			transport := &idleTransport{idle: time.Second, base: backoffRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				return nil, headerErr
+			})}
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "http://fixture.invalid", &backoffFailingBody{err: bodyErr})
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantCalls, wantErr := 0, bodyErr
+			if replayFailure {
+				req.GetBody = func() (io.ReadCloser, error) { return nil, bodyErr }
+				wantCalls, wantErr = 1, headerErr
+			}
+			resp, err := transport.RoundTrip(req)
+			if resp != nil || !errors.Is(err, wantErr) || calls != wantCalls {
+				t.Fatalf("response=%v error=%v requests=%d; want error=%v requests=%d", resp, err, calls, wantErr, wantCalls)
+			}
+		})
+	}
+}
+
+type backoffRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f backoffRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type backoffFailingBody struct{ err error }
+
+func (b *backoffFailingBody) Read([]byte) (int, error) { return 0, b.err }
+func (b *backoffFailingBody) Close() error             { return nil }
 
 func TestIdleClientAllowsALongHTTPStreamThatKeepsMoving(t *testing.T) {
 	idle := 80 * time.Millisecond
@@ -195,7 +236,7 @@ func TestIdleClientAllowsALongHTTPStreamThatKeepsMoving(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	resp, err := chatHTTPClient(idle).Get(srv.URL)
+	resp, err := chatHTTPClient(idle, idle).Get(srv.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +269,7 @@ func TestIdleClientCutsASilentHTTPStream(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	resp, err := chatHTTPClient(idle).Get(srv.URL)
+	resp, err := chatHTTPClient(idle, idle).Get(srv.URL)
 	if err != nil {
 		t.Fatal(err)
 	}

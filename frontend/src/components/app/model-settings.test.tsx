@@ -215,6 +215,25 @@ describe("ModelsTab", () => {
     expect(screen.getByText(/still streaming is not cut off/i)).toBeTruthy()
   })
 
+  it("finds the independent first-byte wait through settings search", () => {
+    const onChange = vi.fn()
+    render(<ModelsTab settings={base} onChange={onChange} query="first-byte" />)
+    const field = screen.getByLabelText("First-byte timeout (seconds)")
+    expect(field).toHaveValue(0)
+    expect(screen.queryByLabelText("Request timeout (seconds)")).not.toBeInTheDocument()
+    fireEvent.change(field, { target: { value: "120" } })
+    expect((onChange.mock.calls[0][0] as Settings).models.providers[0]).toMatchObject({
+      first_byte_timeout_seconds: 120, timeout_seconds: 300,
+    })
+  })
+
+  it("allows the user to collapse a provider after following a timeout link", () => {
+    render(<ModelsTab settings={base} onChange={vi.fn()} focusKey="first_byte_timeout_seconds:default" />)
+    expect(screen.getByLabelText("First-byte timeout (seconds)")).toBeVisible()
+    openDetails("Endpoint")
+    expect(screen.queryByLabelText("First-byte timeout (seconds)")).not.toBeInTheDocument()
+  })
+
   it("fills the default-model dropdown from a discovered catalog", async () => {
     const onChange = vi.fn()
     render(<ModelsTab settings={base} onChange={onChange} />)

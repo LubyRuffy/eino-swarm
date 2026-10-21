@@ -38,6 +38,7 @@ export const KINDS = [
   "max_iterations",
   "max_iterations_continued",
   "model_retry",
+  "model_backoff",
   "title",
   "session_memory",
   "done",

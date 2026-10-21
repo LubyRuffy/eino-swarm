@@ -59,8 +59,10 @@ test("cleanup and interruption replay shows stopped workers separately from comp
       { kind: "user_stop_requested", text: "Stop requested by the user." },
       { kind: "cleanup", text: "Stopped unfinished workers." },
       { kind: "error", err: "interrupted" },
+      { kind: "agent_message", agent_id: "worker-1", text: "Late buffered answer." },
+      { kind: "tool_call", agent_id: "worker-2", text: "exec({})", tool_call_id: "late-call" },
       { kind: "finished", agent_id: "worker-1", err: "swarm: agent worker-1 cancelled: context canceled" },
-      { kind: "finished", agent_id: "worker-2", err: "swarm: agent worker-2 cancelled: context canceled" },
+      { kind: "finished", agent_id: "worker-2", text: "Late result." },
     ].map((event, index) => ({ ...base, seq: index + 1, ...event }))
     await route.fulfill({ response, json: body })
   })
@@ -84,10 +86,25 @@ test("cleanup and interruption replay shows stopped workers separately from comp
 
 test("Stop keeps unfinished workers stopped after a reload", async ({ page }) => {
   await freshConversation(page)
+  const accepted = page.waitForResponse((response) =>
+    response.request().method() === "POST" && /\/api\/threads\/[^/]+\/steer$/.test(new URL(response.url()).pathname),
+  )
   await send(page, "Look at this from two angles and merge the findings")
+  const started = await accepted
+  expect(started.ok()).toBe(true)
+  const { turn } = await started.json()
   await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
   await page.getByRole("button", { name: "Stop", exact: true }).click()
   await waitForIdle(page)
+  // Idle can precede the cancelled model calls' finished receipts. Wait for
+  // that real ordering before checking both the live roster and replay.
+  type Event = { seq: number; kind: string }
+  const readTrace = async () => (await (await page.request.get(`/api/trace/${turn.id}`)).json()).events as Event[]
+  await expect.poll(async () => (await readTrace()).filter((event) => event.kind === "finished").length).toBe(2)
+  const events = await readTrace()
+  const cleanup = events.find((event) => event.kind === "cleanup")
+  expect(cleanup).toBeDefined()
+  expect(events.filter((event) => event.kind === "finished").every((event) => event.seq > cleanup!.seq)).toBe(true)
   for (let replay = 0; replay < 2; replay++) {
     await page.getByRole("tab", { name: "Agents" }).click()
     const roster = page.getByTestId("agent-roster")

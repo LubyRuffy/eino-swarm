@@ -1,5 +1,14 @@
 # Testing
 
+## UI message catalogs
+
+Worker failure translations live in `frontend/src/lib/messages-agent-failure-en.ts`
+and `messages-agent-failure-zh.ts`; the main `messages-en.ts` and `messages-zh.ts`
+catalogs compose them without changing message keys or values. `i18n.test.ts`
+checks catalog key parity, while `agent-failure.test.tsx` checks translated
+failure details and their recovery-settings links. Run them with
+`cd frontend && npm test -- src/lib/i18n.test.ts src/components/app/agent-failure.test.tsx`.
+
 ## Automatic restart handoff (F-110 / C-027)
 
 `handoff_test.go` and `internal/engine/restart_test.go` cover shared deadlines,
@@ -34,6 +43,20 @@ inventing work, changing the completed manager or advancing its future wake.
 `frontend/src/lib/transcript-stop.test.ts`,
 `frontend/src/components/app/panel-stop.test.tsx` and the restart UI E2E cover
 cleanup/interruption, stopped grouping, terminal ordering and persisted replay.
+The stop reducer regressions deliver cancellation and successful `finished`
+events after `cleanup` or `interrupted`, including late `agent_message`,
+`delta`, `reasoning_delta`, `tool_call` and `tool_call_delta` immediately before
+completion. Stopped status, activity and stop time remain unchanged in live,
+full-history and roster replay. Explicit `spawned` resume then allows new output
+and `finished` to complete normally; existing parked-worker live-output recovery
+is retained. `transcript-goal.test.ts` models that legacy derived `done` state
+directly: a real `cleanup` cancels execution and is never a stale roster tick.
+The replay UI fixture also places late messages and tool calls
+between Stop and completion. The real Stop E2E in
+`frontend/e2e/restart.spec.ts` waits for both worker `finished` events to be
+persisted before checking the stopped roster and reloading, so a fast UI check
+cannot miss the late-completion race. Those original events remain in Trace;
+these checks only constrain the frontend's derived worker state.
 
 `cmd/zwai/engine_restart_acceptance_test.go` builds real race-enabled binaries,
 starts an old engine and a new shell on one temporary data directory, and
@@ -425,6 +448,31 @@ can replace watch hooks; closing the Pairlink socket alone does not do this.
 `internal/engine/followup_failure_test.go` uses SQLite
 triggers to prove deletion, event-persistence and restoration error behavior;
 `internal/server/followup_failure_test.go` covers the HTTP missing/storage paths.
+
+`internal/store/followups_claim_test.go` pauses a real GORM selection to let
+another consumer claim or edit the row, then verifies unique delivery, FIFO
+reselection, conversation isolation and storage/busy failures. The old
+implementation returned the already claimed row in controlled interleavings.
+`internal/server/missing_record_test.go` uses the actual HTTP handlers to check
+a repeated queued Steer creates one turn, distinguishes missing conversations,
+and binds response/header/default-level log to one request ID without bodies,
+query strings or authorization values.
+`frontend/src/store/app-followup.test.ts` covers pending-click coalescing,
+stale-row refresh outcomes and cross-conversation late responses;
+`frontend/e2e/followup-error.spec.ts` drives those controls through the browser.
+Queue actions live in `frontend/src/store/app-followup.ts`.
+
+For a native queue check, the app bundle must retain a private data-directory
+fallback before an app-selection tool can launch it: such tools may reopen a
+bundle without the CLI arguments of an earlier process. Keep the explicit
+`desktop --mock --data-dir <temporary-directory>` process alive, and verify
+that the native window URL matches that directory's `engine.json` with
+`mock: true` before any fixture action. A launch icon or a running process does
+not establish this identity. Never use the main data directory for queue fixtures.
+The accepted native path removes only a private waiting row, clicks its stale
+Steer button, verifies the explanatory banner and refreshed queue while the
+turn stays running, then opens a new conversation and verifies the banner clears.
+
 
 The offline phone fixture now matches the existing host's idle-Steer rule. Its
 RED was a missing fixture `user_message`, not a new Go product failure.
@@ -1126,8 +1174,8 @@ tidy report names what was created, deleted, patched, and left unchanged, and
 catalog-tidy model calls hang on the project's latest finished turn rather
 than the first sidebar conversation that happens to have one. The reviewer's
 model call streams (`TestReviewGenerateStreamsSoTheFirstByteIsNotTheWholeBody`):
-a one-shot body would hold headers until it finished, and the 30s first-byte
-cap would fail the review. `TestACompleteReviewBatchDoesNotSpendAClosingIteration`
+a one-shot body would hold headers until it finished, and the default 30s
+first-byte wait would fail the review. `TestACompleteReviewBatchDoesNotSpendAClosingIteration`
 verifies that a successful post-turn batch finishes within its write iteration.
 An incomplete batch at the cap now records an error rather than announcing
 uncommitted notes; already-persisted skills remain reported. Catalog tidy keeps
@@ -2092,6 +2140,17 @@ Several things are tested here, some as pure logic and some in jsdom:
   it, a query surfaces a nested file without expanding first, download/delete
   stay off directory rows, deleting a file asks first, and the tree takes
   arrow keys.
+- **`src/lib/agent-failure.test.ts`** checks exact worker watchdog identity and
+  duration, known worker iteration and provider stream-idle limits, the exact
+  output-budget error, and absence of speculative settings
+  links for generic deadlines, cancellation, another worker's timeout or unknown
+  errors. **`src/components/app/agent-failure.test.tsx`** checks the visible cause
+  entry, the error card outside the log scroller, bounded scrolling for a long
+  error, localized missing-reason text, and opening the exact Swarm input without
+  arming a manager retry, plus the Models entry without a guessed provider.
+  **`src/lib/transcript-failure.test.ts`** checks live and
+  replayed parent-failure origin, preservation of an independent worker error,
+  clearing stale causes on resume, and existing cleanup/human-stop semantics.
 - **`src/components/app/panel.tsx`**, rendered in jsdom: opening a sub-agent
   puts the back row *beside* the scroller, not sticky on top of it — dragging
   the transcript must not paint through the back button. The worker log
@@ -2229,6 +2288,7 @@ long enough for Steer; unit tests leave it unset.
 
 | spec | covers |
 |---|---|
+| `e2e/agent-failure.spec.ts` | replayed failure details remain visible outside a long worker log; the exact watchdog setting receives focus, saves and survives reload; an ambiguous provider deadline has no guessed repair link, and a parent-turn failure keeps its origin and cause after replay |
 | `e2e/agent-roster.spec.ts` | Agents opens on last update, newest first; Name flips between Z to A and A to Z and the rows follow the label; Created flips between oldest and newest |
 | `e2e/worker-roster-history.spec.ts` | opt-in loopback model adapter: a later turn queries an existing finished worker, emits no new spawn call/event, survives reload and exposes its Trace |
 | `e2e/work-fold.spec.ts` | user-mode work folded behind one live ticker (`work-fold` with the spinner, not every finished fold); click expands the thought box and click again collapses it |
@@ -2479,6 +2539,11 @@ real offline worker expiry, goal blocking, exact-plan pause, failed pause writes
 and persisted legacy receipts across restart. `frontend/e2e/worker-timeout.spec.ts`
 uses `ZWAI_MOCK_WORKER_TIMEOUT=1` and a one-second watchdog to observe three actual
 starts of one ID, terminal error, no model retry, schedule pause, reload and Trace.
+It also opens that worker's recorded failure, focuses and saves the watchdog
+setting, and verifies the failed task remains idle with its original cause.
+The separate `frontend/e2e/agent-failure.spec.ts` replay fixture tests long-log
+visibility and failure-entry navigation without claiming to trigger a watchdog;
+the real-watchdog script above provides that independent lifecycle evidence.
 Default demo scripts are unchanged. Phone `history=timeout` checks existing error
 rendering and absence of Stop; packaged iOS uses
 `BindFlowTests/testWorkerTimeoutShowsPausedErrorInsteadOfRunning`, with the same
@@ -2615,6 +2680,47 @@ Phone `mobile/e2e/api-error.spec.ts` uses `history=api-error` to regress existin
 
 Mac native verification runs the current packaged candidate against a local empty-502 HTTP model in a separate data directory, without `--mock`: verify terminal error, Idle state, same-turn Trace status and Full log, three LLM calls and two retry events, and save window/Trace evidence.
 
+
+## First-byte timeout configuration and guidance
+
+`internal/config/provider_timeout_test.go` covers the 30-second default,
+missing/invalid legacy values, save/reload and a first-byte wait longer than the
+independent stream idle timeout. `internal/server/settings_timeout_test.go`
+checks actual PUT/GET settings round trips, including an older client's omitted
+field preserving the saved value and an explicit nonpositive value resetting it.
+`internal/provider/first_byte_test.go` exercises the real Eino HTTP adapter,
+independent initial/idle waits, actual timeout duration, cancellation and the
+single fresh-connection retry. `internal/provider/http_test.go` retains the
+moving-stream idle and connection recovery regressions.
+`internal/engine/runerr_timeout_test.go` checks the configured duration through
+the public error wrapper without adding another model retry loop. Run
+`go test -race ./internal/config ./internal/provider ./internal/server ./internal/engine`.
+
+`frontend/src/components/app/transcript-error.test.tsx` checks that the error
+opens the failed turn's provider, focuses the first-byte field and saves a longer
+wait while leaving the other provider alone. It also checks localized durations,
+an unavailable turn, and the absence of first-byte advice for an idle timeout.
+`frontend/src/lib/first-byte-timeout.test.ts` checks Go duration parsing and
+provider-specific settings anchors; `frontend/src/components/app/model-settings.test.tsx`
+covers editing the independent field. Run
+`cd frontend && npm test -- transcript-error.test.tsx model-settings.test.tsx first-byte-timeout.test.ts`.
+`frontend/src/components/app/skill-tidy-card.test.tsx` checks that catalog-tidy
+header failures also give configuration guidance without inventing a fixed wait.
+
+`frontend/e2e/api-error.spec.ts` includes the real loopback adapter recovery:
+one-second first-byte and idle values fail against a 1.2-second header delay
+after exactly two HTTP attempts. The error survives reload and its button opens
+the focused provider field. Changing only the first-byte wait to three seconds
+persists through Settings reopen, and resending succeeds with the same idle
+value. Failed and successful turns retain their own Trace, screenshots and
+`first-byte-traces.json`. Run
+`cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e -- api-error.spec.ts`.
+
+Native macOS acceptance uses the same loopback endpoint and a separate data
+directory: send in the actual desktop window, follow the timeout button, verify
+the provider field receives focus, increase one to three seconds, close Settings
+and resend. Inspect the successful response and Idle state in that window, and
+read Settings and both turn rows back to verify persistence and terminal status.
 
 ## Issue #74 complete-main release review regressions
 
@@ -2754,3 +2860,71 @@ cd frontend && npm test -- src/lib/paste-image.test.ts src/lib/composer-drop.tes
 cd frontend && npm run e2e -- image-input.spec.ts
 cd frontend && npm run e2e -- shell.spec.ts
 ```
+
+## Forked worker role boundary
+
+`go test -race -run 'TestForkedWorkerDoesNotReceiveManagerSystemInstructions|TestForkContextOmitsSystemOnlyAndEmptyConversations' .`
+
+The regression observes actual model input through Registry and ADK for both
+`SpawnForked` and the manager lifecycle tool. A `spawned` event only carries the
+worker instruction and cannot prove that the separately injected conversation
+seed excludes manager System/personality. Check retained user/assistant/tool
+evidence, empty/System-only history, manager input immutability and unchanged
+same-role resume formatting. Do not infer actual model behavior or memory
+quality improvement from this deterministic payload test.
+## Shared model recovery backoff (`C-029`)
+
+The 2026-10-21 provider race audit reports 95.3% package coverage. The shared
+gate, admission/classification, HTTP reconnect adapter, Generate/Stream wrappers
+and stream-completion observer each have 100% target statement coverage. Engine
+wait recording and the call-recorder dispatch each have 100% target statement
+coverage in the focused race run. The
+2026-10-19 loopback 502 browser run observed HTTP arrival gaps of 5002ms and
+10003ms for the unchanged three-call budget; that historical run does not certify
+a later merged candidate, which must rerun the browser fixture.
+
+`internal/provider/backoff_test.go` uses `testing/synctest` to assert the actual
+5/10/20/30-second sequence without wall-clock sleeps. It covers one recovery
+probe, healthy concurrency, stale in-flight replies, cancellation, renewed
+cooldown notifications and idempotent release. `model_backoff_test.go` exercises
+classification and recorder/context wiring; authentication/parameter errors
+cannot add failures or prove recovery. `backoff_integration_test.go` uses the
+real SDK with keyless loopback HTTP fixtures to verify cross-role/model/provider
+and cache-invalidated calls, independent origins, malformed successful streams,
+complete-stream recovery and delayed/cancelled header reconnects. An actual HTTP
+stream ending after valid deltas but without `[DONE]` or finish reason must fail
+with `io.ErrUnexpectedEOF`, retain received usage and keep sibling requests
+blocked. Complete `[DONE]`, `stop`, `length` and `tool_calls` responses preserve
+usage and reopen admission. `stream_completion_test.go` verifies exact unchanged
+bytes, fragmented/large frames and false terminator matches. Closing an Eino
+reader alone retains a silent probe; canceling its request context releases it
+without clearing failures. A header reconnect following a cooldown longer than
+the header budget still gets a fresh response-header budget. These are service-
+failure fixtures, not scripted success claimed as retry evidence.
+
+`internal/provider/stream_terminal_order_test.go` blocks the real recording
+wrapper's callback and uses `testing/synctest` to prove receive errors,
+truncation, caller cancellation and normal EOF cannot reach the consumer before
+that callback completes. It asserts one attributed record with all received
+usage, and retains one record if the consumer closes while persistence waits.
+The receive-error, cancellation and truncation cases failed before the ordering
+fix; the actual HTTP truncation/completion fixtures above retain the adapter
+and shared-gate coverage.
+
+`internal/engine/model_backoff_test.go` asserts actual agent/turn provenance and
+that waiting creates no LLM call or usage pulse, while actual and auxiliary calls
+retain their accounting and storage failures cannot emit usage.
+`frontend/src/lib/transcript-backoff.test.ts`
+checks SSE subscription, replay, localized human text and no invented workers.
+The opt-in `frontend/e2e/api-error.spec.ts` measures actual HTTP arrival gaps on
+502 (at least 5s then 10s), and checks the original turn, Chat, Full log and reload.
+
+```bash
+go test -race ./internal/provider -count=1 -coverprofile=/tmp/provider-backoff.cover
+go test -race ./internal/engine -run 'TestModelBackoff|TestEmptyGatewayResponse'
+cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e
+```
+
+This preserves the original manager retry count and worker watchdog budget;
+no real model or external service is used. It does not certify another client's
+retry behavior or impose a server-wide request limit.
