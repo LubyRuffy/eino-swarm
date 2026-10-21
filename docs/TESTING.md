@@ -2581,6 +2581,26 @@ Mac native verification runs the current packaged candidate against a local empt
 
 ## First-byte timeout configuration and guidance
 
+### Actual checkout delivery
+
+For a reported `go run ./cmd/zwai desktop` failure, record the absolute checkout,
+HEAD, index and dirty-file hashes before integration. Preserve unrelated edits
+and run that exact command from that checkout. A different worktree or app does
+not accept this path. Verify source and currently served assets with:
+
+```bash
+python3 tools/check_checkout_delivery.py --checkout /absolute/checkout --required-commit <fix-sha> --url http://127.0.0.1:<actual-port>
+python3 -m unittest discover -s tools -p 'test_check_checkout_delivery.py'
+```
+
+The checker allows dirty trees, rejects missing fix ancestry, compares every
+module script and refuses redirects, external origins and escaping paths. Its
+`native_behavior_verified=false` requires a separate real-window observation:
+bind the launch PID, cwd and origin, trigger the loopback timeout, open its field,
+save a longer wait and verify a successful new turn in that same window.
+
+### Configuration and recovery
+
 `internal/config/provider_timeout_test.go` covers the 30-second default,
 missing/invalid legacy values, save/reload and a first-byte wait longer than the
 independent stream idle timeout. `internal/server/settings_timeout_test.go`
@@ -2590,6 +2610,8 @@ field preserving the saved value and an explicit nonpositive value resetting it.
 independent initial/idle waits, actual timeout duration, cancellation and the
 single fresh-connection retry. `internal/provider/http_test.go` retains the
 moving-stream idle and connection recovery regressions.
+`internal/provider/responses_timeout_test.go` covers the same independent budgets
+through both Generate and Stream on the real loopback Responses adapter.
 `internal/engine/runerr_timeout_test.go` checks the configured duration through
 the public error wrapper without adding another model retry loop. Run
 `go test -race ./internal/config ./internal/provider ./internal/server ./internal/engine`.

@@ -91,6 +91,12 @@ E2E suite.
   and durable terminal writes. Regress a deadline while waiting for that
   ownership: no partial abandonment, premature ready or lost parked worker.
   Handoff cancellation cannot become a human-cancelled terminal event.
+- A fix for a reported checkout launch must reach that exact checkout. Record
+  its HEAD and dirty-file hashes, preserve unrelated edits, and verify the fix
+  commit is in that checkout's HEAD. Run the reported command there and inspect
+  its native window and served assets. Another worktree or a remote commit is
+  not delivery. `tools/check_checkout_delivery.py` checks source ancestry and
+  optional loopback asset hashes; it cannot accept native behavior.
 - If something cannot be tested, split it until the untestable part is a two-line
   wrapper: `startDesktopServer` vs `runDesktop`, `serveWeb` vs `runWeb`,
   `buildTUISwarm` vs `runTUI`. Do not leave logic inside a function that no test

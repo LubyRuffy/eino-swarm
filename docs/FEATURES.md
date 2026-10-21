@@ -209,6 +209,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 实际启动目录核验：`python3 tools/check_checkout_delivery.py --checkout <absolute-path> --required-commit <sha> [--url <loopback-origin>]` 只读检查修复提交是否进入指定目录的 HEAD，可选比较该服务的全部 module script 与该目录 dist 的哈希；允许未提交改动，失败分项非零退出。它不能替代同目录命令和原生行为验收。关联契约：`C-010`；证据：`tools/check_checkout_delivery.py`, `tools/test_check_checkout_delivery.py`。
 - iOS 发布预检读取应用源码中经授权的持续合规声明；加密用途不变的普通更新无需重复问答，签名 IPA 及精确回执发生冲突时拒绝发布。无源码字段的旧批次仍读取私有精确确认。证据：`mobile/ios/App/App/Info.plist`, `tools/release_ios.py`, `tools/test_release_ios_compliance.py`, `docs/RELEASE.md`。
 - Mac 原生窗口验收后，发布恢复核对私有批次回执的版本、源码 SHA、文件名与 SHA-256，上传同一 ZIP；文件缺失或变化时保留待发布状态。证据：`tools/release.py`, `tools/test_release.py`, `docs/RELEASE.md`。
 - Mac 原生验收恢复的离线入口 `python3 tools/audit_macos_acceptance.py --observation <private.json>` 接收无凭据的来宾状态、登录结果与精确候选窗口回执，输出待解锁、待窗口验收、真实登录阻塞或同包验收通过。恢复待验收工作时先以 `guest.state=unknown` 重新观察来宾；unknown 优先于残留的旧登录成功／失败结果，要求重新观察，不直接阻塞或跳到窗口检查。宿主锁屏不阻断就绪来宾，已完成的同包真实验收不因后续锁屏失效，SSH/进程成功不算窗口验收；工具不执行登录、SSH 或发布，也不替代真实证据检查。证据：`tools/audit_macos_acceptance.py`, `tools/test_audit_macos_acceptance.py`, `docs/RELEASE.md`。

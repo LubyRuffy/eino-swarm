@@ -55,7 +55,7 @@ func newResponsesModel(p config.Provider) (*responsesModel, error) {
 		return nil, err
 	}
 	p.BuiltinTools = tools
-	return &responsesModel{provider: p, client: chatHTTPClient(p.Timeout())}, nil
+	return &responsesModel{provider: p, client: chatHTTPClient(p.Timeout(), p.FirstByteTimeout())}, nil
 }
 
 func (m *responsesModel) WithTools(tools []*schema.ToolInfo) (model.ToolCallingChatModel, error) {
