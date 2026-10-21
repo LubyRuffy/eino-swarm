@@ -5,6 +5,7 @@ import { DesktopUpdateBanner, requestDesktopUpdateCheck } from "./desktop-update
 
 const desktopUpdate = vi.fn()
 const installDesktopUpdate = vi.fn()
+const desktopUpdateProgress = vi.fn()
 let isDesktop = true
 
 vi.mock("@/lib/api", async () => {
@@ -15,6 +16,7 @@ vi.mock("@/lib/api", async () => {
       ...actual.api,
       desktopUpdate: (...args: unknown[]) => desktopUpdate(...args),
       installDesktopUpdate: (...args: unknown[]) => installDesktopUpdate(...args),
+      desktopUpdateProgress: (...args: unknown[]) => desktopUpdateProgress(...args),
     },
   }
 })
@@ -27,6 +29,7 @@ describe("DesktopUpdateBanner", () => {
   beforeEach(() => {
     desktopUpdate.mockReset()
     installDesktopUpdate.mockReset()
+    desktopUpdateProgress.mockReset().mockResolvedValue({ stage: "idle", downloaded_bytes: 0, total_bytes: 0 })
     isDesktop = true
     localStorage.clear()
   })
@@ -83,7 +86,7 @@ describe("DesktopUpdateBanner", () => {
     render(<DesktopUpdateBanner />)
     await act(async () => { await Promise.resolve() })
     await act(async () => { requestDesktopUpdateCheck() })
-    expect(await screen.findByRole("status")).toHaveTextContent("GitHub request timed out")
+    expect(await screen.findByRole("alert")).toHaveTextContent("GitHub request timed out")
     fireEvent.click(screen.getByRole("button", { name: "Retry update check" }))
     expect(await screen.findByRole("status")).toHaveTextContent("This is the latest version")
     fireEvent.click(screen.getByRole("button", { name: "Close update notice" }))
@@ -98,5 +101,39 @@ describe("DesktopUpdateBanner", () => {
     window.dispatchEvent(new Event("focus"))
     expect(desktopUpdate).not.toHaveBeenCalled()
     expect(screen.queryByTestId("desktop-update")).toBeNull()
+  })
+
+  it("shows a red installation error and retries that version without a new check", async () => {
+    desktopUpdate.mockResolvedValue({ status: "available", offer: { version: "1.2.4" } })
+    installDesktopUpdate.mockRejectedValueOnce(new Error("download timed out"))
+      .mockReturnValueOnce(new Promise(() => {}))
+    render(<DesktopUpdateBanner />)
+    fireEvent.click(await screen.findByRole("button", { name: "Update" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent("download timed out")
+    expect(screen.getByTestId("desktop-update")).toHaveClass("text-destructive")
+    fireEvent.click(screen.getByRole("button", { name: "Retry update installation" }))
+    await waitFor(() => expect(installDesktopUpdate.mock.calls).toEqual([["1.2.4"], ["1.2.4"]]))
+    expect(desktopUpdate).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it.each([1024, 0])("shows downloaded bytes with total %s without inventing a percentage", async (total) => {
+    desktopUpdate.mockResolvedValue({ status: "available", offer: { version: "1.2.4" } })
+    installDesktopUpdate.mockReturnValue(new Promise(() => {}))
+    desktopUpdateProgress.mockResolvedValue({
+      stage: "downloading", version: "1.2.4", downloaded_bytes: 512, total_bytes: total,
+    })
+    render(<DesktopUpdateBanner />)
+    fireEvent.click(await screen.findByRole("button", { name: "Update" }))
+    const bar = await screen.findByRole("progressbar", { name: "Update download progress" })
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("512 B"))
+    if (total) {
+      expect(bar).toHaveAttribute("aria-valuenow", "50")
+      expect(screen.getByRole("status")).toHaveTextContent("50%")
+      expect(screen.getByRole("status")).toHaveTextContent("1.0 KB")
+    } else {
+      expect(bar).not.toHaveAttribute("aria-valuenow")
+      expect(screen.getByRole("status")).not.toHaveTextContent("%")
+    }
   })
 })

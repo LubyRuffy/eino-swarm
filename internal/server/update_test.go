@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/update"
 	"github.com/gin-gonic/gin"
@@ -132,5 +133,83 @@ func TestUpdateWithoutAFeed(t *testing.T) {
 	r.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("bad body %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+type updateProgressStub struct {
+	updateStub
+	progress update.Progress
+	apply    func(context.Context, string, []int) error
+}
+
+func (s *updateProgressStub) Progress() update.Progress { return s.progress }
+func (s *updateProgressStub) Apply(ctx context.Context, version string, pids []int) error {
+	if s.apply != nil {
+		return s.apply(ctx, version, pids)
+	}
+	return s.updateStub.Apply(ctx, version, pids)
+}
+
+func TestUpdateProgressIsReadableWhileTheInstallRequestRuns(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	started, release := make(chan struct{}), make(chan struct{})
+	stub := &updateProgressStub{progress: update.Progress{Stage: "downloading", Version: "1.2.4", DownloadedBytes: 7, TotalBytes: 20}, apply: func(context.Context, string, []int) error { close(started); <-release; return nil }}
+	s := &Server{presence: newPresence(), updater: stub}
+	r := gin.New()
+	r.GET("/api/update/progress", s.getUpdateProgress)
+	r.POST("/api/update", s.postUpdate)
+	ts := httptest.NewServer(r)
+	defer ts.Close()
+	type applyReply struct {
+		response *http.Response
+		err      error
+	}
+	posted := make(chan applyReply, 1)
+	go func() {
+		res, err := ts.Client().Post(ts.URL+"/api/update", "application/json", strings.NewReader(`{"version":"1.2.4"}`))
+		posted <- applyReply{res, err}
+	}()
+	defer func() {
+		close(release)
+		reply := <-posted
+		if reply.err != nil {
+			t.Errorf("apply failed: %v", reply.err)
+			return
+		}
+		defer reply.response.Body.Close()
+		if reply.response.StatusCode != http.StatusOK {
+			t.Errorf("apply status=%d", reply.response.StatusCode)
+		}
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("install request did not reach Apply")
+	}
+	res, err := ts.Client().Get(ts.URL + "/api/update/progress")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	var got update.Progress
+	if err := json.NewDecoder(res.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	if res.StatusCode != http.StatusOK || got != stub.progress {
+		t.Fatalf("progress status=%d body=%+v", res.StatusCode, got)
+	}
+}
+
+func TestUpdateProgressWithoutAReporterIsIdle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, updater := range []update.Checker{nil, &updateStub{}} {
+		s := &Server{updater: updater}
+		r := gin.New()
+		r.GET("/api/update/progress", s.getUpdateProgress)
+		rec := httptest.NewRecorder()
+		r.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/update/progress", nil))
+		if rec.Code != http.StatusOK || rec.Body.String() != `{"stage":"idle","downloaded_bytes":0,"total_bytes":0}` {
+			t.Fatalf("unsupported progress=%d %s", rec.Code, rec.Body.String())
+		}
 	}
 }

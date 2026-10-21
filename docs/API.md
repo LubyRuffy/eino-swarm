@@ -68,9 +68,41 @@ Parallel installs for the same app bundle return `409` with `code: "update_busy"
 including requests through different engine data directories. The lock remains
 held while restarting and until the old engine exits; failed installation or
 launch/rollback releases it for retry. Different app bundles are independent.
+Release metadata requests have a 30-second total timeout. Installer downloads
+have a separate 30-minute total timeout and a 30-second response-header limit;
+cancelling the installation request can end either earlier.
 `409` is `{ "error": "..." }` when there is nothing to install or the
 swap failed. `501` when this process has no updater. `400` when the body
 is not JSON.
+
+### `GET /api/update/progress`
+
+Reads this engine's current installation snapshot without starting an update
+check or installation. While `POST /api/update` is pending, the desktop polls it
+to display progress:
+
+```json
+{
+  "stage": "downloading",
+  "version": "1.2.4",
+  "downloaded_bytes": 5242880,
+  "total_bytes": 20971520
+}
+```
+
+`stage` is `idle`, `checking`, `downloading`, `installing`, `restarting`, or
+`error`. `version` identifies the attempted version when known; `error` is set
+for a failed attempt. Both byte counts are always present. `total_bytes: 0`
+means the response did not supply a known size; the UI then shows downloaded
+bytes without inventing a percentage. `installing` follows a completed download;
+`restarting` still means launch acceptance, not window readiness.
+
+The pending POST's result remains authoritative. A failed progress read does
+not mean installation failed. The desktop cancels a progress read after five
+seconds and continues polling; this does not cancel the installation POST.
+A POST failure leaves its confirmed version
+available for direct installation retry. A process without a progress reporter
+returns `200` with `stage: "idle"` and zero byte counts; it does not start a check.
 
 ## Meta
 

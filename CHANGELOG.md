@@ -41,6 +41,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-190`, `C-024`: desktop updates show downloaded bytes and a percentage when the installer size is known, then installation/restart stages. Check and install failures display red alerts; installation retry retains the confirmed version and retries it directly. A failed progress read does not end a pending installation. Installer bodies use a separate bounded download timeout instead of the metadata request's 30-second limit.
+
 - `F-150`, `F-160`, `C-009`, `C-012`: an explicit human prohibition on parking the conversation now persists independently of compressed summaries. Thread `schedule_wake` and `report_schedule(next_in_s)` refuse at the tool and storage boundaries with source-attributed Trace evidence, leaving the wait unchanged and producing no armed card. Pending policy classification also refuses arming. Only a later explicit human allowance releases the prohibition; reporting without rescheduling and cancellation remain available. The scheduled-start regression keeps its callback for its private database's lifetime so test cleanup cannot race the runtime's final writes.
 
 - `F-120`, `F-130`, `C-003`: late memory-review notices and hidden turn metadata no longer repeat an older turn's duration/completion footer after newer work. PC transcript slices preserve event order, keep one footer after each non-quiet turn's last visible pre-completion content, and leave late review feedback outside completed goal-session folds. Older feedback also retains the running turn's live activity. Original answers, tool details, stored events and Trace remain available (Issue #87).

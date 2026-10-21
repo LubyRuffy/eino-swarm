@@ -1,3 +1,5 @@
+import { updateEN } from "./messages-update"
+
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
@@ -48,19 +50,7 @@ export const en = {
   "sidebar.closeMenu": "Close menu",
   "sidebar.version": "Version {version}",
   "sidebar.checkUpdate": "Check for updates",
-  "update.available": "Version {version} is available. Update?",
-  "update.later": "Not now",
-  "update.upgrade": "Update",
-  "update.checking": "Checking the latest version",
-  "update.current": "This is the latest version",
-  "update.restarting": "Installing the update. zwai will reopen.",
-  "update.working": "Downloading the update",
-  "update.unsupported": "Automatic updates are available in the packaged Mac app.",
-  "update.failed": "Could not check for updates. Try again.",
-  "update.retry": "Retry",
-  "update.retryLabel": "Retry update check",
-  "update.close": "Close",
-  "update.closeLabel": "Close update notice",
+  ...updateEN,
   "sidebar.resize": "Resize the conversation list",
   "sidebar.empty": "No conversations yet. Start one and it will appear here.",
   "sidebar.emptyProject": "No conversations in this project yet.",

@@ -406,11 +406,29 @@ The update controller tests use fake time and delayed responses. They prove that
 six hours is measured after a successful check, foreground/network events are
 throttled, background failures stay quiet, an older response cannot restore an
 install button while installation is running, and a later automatic unsupported
-result clears a stale manual error without hiding an offered version. The UI
-E2E uses an offline update feed; it does not install a public Release. ZIP
+result clears a stale manual-check error without hiding an offered version. The UI
+tests also retain the confirmed version after install failure so Retry installs
+it directly, keep a progress-query failure separate from the pending install
+result, ignore stale progress, and render actual byte counts with a percentage
+only when the total is known. Component and E2E checks assert red alert styling,
+the distinct check/install retry actions, and download/install/restart stages.
+The UI E2E uses an offline update feed; it does not install a public Release. ZIP
 replacement, launch arguments and old-app recovery run against a local launcher
 stub in `internal/update/apply_recovery_test.go`. That stub does not open a
 signed Mac window. Release acceptance still follows [RELEASE.md](RELEASE.md).
+
+`internal/update/progress_test.go` reads a pipe-backed response while Apply is
+still pending. It verifies received body bytes, known and unknown lengths,
+retained failure, busy-request isolation and clean same-version retry.
+It also checks the separate 30-minute download total / 30-second header deadlines,
+the metadata request's 30-second total deadline, caller cancellation and redirect
+host restrictions. `internal/server/update_test.go` reads progress through real
+loopback HTTP while the installation POST remains blocked; the default response
+without a progress reporter is idle with zero bytes.
+`frontend/src/lib/desktop-update-progress.test.ts` covers progress polling,
+direct retry and disposal without using a public update feed. A stalled poll is
+aborted after five seconds and the next observation continues while the
+installation result remains pending.
 
 `internal/update/bundle_lock_test.go` covers two services and real helper
 processes with different data directories targeting one bundle. The losing
@@ -429,7 +447,7 @@ the old bundle for recovery.
 
 ```bash
 go test -race -count=1 -cover -timeout 20m ./internal/update ./internal/app ./internal/server ./cmd/zwai
-cd frontend && npm test -- src/lib/desktop-update.test.ts src/components/app/desktop-update.test.tsx src/lib/desktop-presence.test.ts
+cd frontend && npm test -- src/lib/desktop-update.test.ts src/lib/desktop-update-progress.test.ts src/components/app/desktop-update.test.tsx src/lib/desktop-presence.test.ts
 cd frontend && npm run e2e -- e2e/desktop-update.spec.ts
 ```
 

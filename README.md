@@ -416,8 +416,11 @@ Released macOS apps check for updates at launch and every six hours while open.
 Returning to the window or reconnecting the network checks again when due;
 background failures stay quiet. A newer Mac installer shows **Update / 升级**
 and **Not now / 暂不**. Update downloads and replaces this `zwai.app`, then
-reopens it with the same data directory. **Menu → Check for updates** checks
-immediately and shows errors with **Retry / 重试**. A launch-command failure
+reopens it with the same data directory. The banner shows downloaded bytes and,
+when the installer size is known, a percentage, followed by installation and
+restart stages. Errors use a red alert. **Retry / 重试** after installation
+failure retries the confirmed version directly; a failed check retries the
+check. **Menu → Check for updates** checks immediately. A launch-command failure
 restores the previous app and leaves its window open. Two engines using different
 data directories still share one installer lock for this app; a competing install
 reports busy. Separate app bundles can update independently. Installation requires

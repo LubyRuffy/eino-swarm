@@ -103,6 +103,7 @@ func New(opts Options) (*Server, error) {
 		api.POST("/engine/restart", s.prepareRestart)
 		api.GET("/update", s.getUpdate)
 		api.POST("/update", s.postUpdate)
+		api.GET("/update/progress", s.getUpdateProgress)
 		api.POST("/presence", s.postPresence)
 		api.GET("/presence/:id", s.holdPresence)
 		api.POST("/open", s.openURL)

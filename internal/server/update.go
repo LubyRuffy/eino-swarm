@@ -23,6 +23,14 @@ func (s *Server) getUpdate(c *gin.Context) {
 	c.JSON(http.StatusOK, s.updater.Check(c.Request.Context(), c.Query("fresh") == "1"))
 }
 
+func (s *Server) getUpdateProgress(c *gin.Context) {
+	if reporter, ok := s.updater.(update.ProgressReporter); ok {
+		c.JSON(http.StatusOK, reporter.Progress())
+		return
+	}
+	c.JSON(http.StatusOK, update.Progress{Stage: "idle"})
+}
+
 func (s *Server) postUpdate(c *gin.Context) {
 	if s.updater == nil {
 		c.JSON(http.StatusNotImplemented, gin.H{

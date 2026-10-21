@@ -129,6 +129,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：在 Mac 桌面应用里自动发现并确认安装新版本；使用者：Mac 桌面用户；入口：启动、每六小时、到期后的恢复前台／联网检查，以及菜单 Check for updates；输入：本仓库最近一个含同架构 `zwai-<version>-darwin-<arch>.zip` 的 Release；输出：确认后替换当前应用，以同一数据目录和离线模式打开新实例，关闭已登记的旧窗口，解压后 Finder 显示与 Dock 一致的 ZWAI 图标；前置条件：运行的是带数字版本号的 `zwai.app`；失败表现：自动检查保持安静，手动检查与安装显示可重试错误，启动命令失败恢复旧应用；关联契约：`C-010`, `C-024`；实现证据：`internal/update`, `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/e2e/desktop-update.spec.ts`, `internal/desktop/pack`, `internal/desktop/bundle_darwin.go`。
 
 - 更新安装以应用包为互斥范围，跨不同数据目录的引擎/进程返回 busy；启动失败保留并恢复旧包，延迟清理仅处理该次安装独有的备份。证据：`internal/update`, `internal/update/bundle_lock_test.go`；契约：`C-024`。
+- 下载显示已接收字节；总量已知时显示百分比，未知时不伪造百分比，随后显示安装与重启阶段。检查和安装错误使用红色警示；安装失败保留已确认版本，重试直接安装该版本，检查失败重试检查。进度读取暂时失败不结束进行中的安装。入口：更新横幅、`GET /api/update/progress`；实现证据：`internal/update`, `internal/server/update.go`, `frontend/src/lib/desktop-update.ts`, `frontend/src/components/app/desktop-update.tsx`, `frontend/e2e/desktop-update.spec.ts`；契约：`C-024`。
 
 ### F-210 Pair a phone with a PC
 
