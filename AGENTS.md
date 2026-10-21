@@ -64,6 +64,21 @@ E2E suite.
 
 ## Testing rules
 
+- Native desktop acceptance runs only inside the UTM `ci-macOS` guest. The
+  host is for building, transferring and collecting evidence; never open or
+  focus a test app, Finder, a browser, UTM console or simulator on the user's
+  desktop as an acceptance fallback. Leave the user's desktop app, engine,
+  cache bundle and data untouched. If guest control is unavailable, retain a
+  pending native result instead of switching to the host.
+- Run native cases one at a time through `tools/native_macos_case.py` in the
+  guest (see `docs/TESTING.md`). Each case owns a fresh app copy, data and
+  workspace. On success, failure, timeout or cancellation, collect evidence,
+  close that case's app, stop its engine and children, wait for exit, then
+  remove its private data. A closed window is not an exited engine. Confirm
+  cleanup before the next case; cleanup failure blocks it. Recovery steps
+  within one case may retain state, independent cases may not. Never use
+  process-name-wide kills or delete another case/user's data. Preserve logs,
+  assertions, screenshots and cleanup receipts outside disposable state.
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in
   [docs/TESTING.md](docs/TESTING.md); do not regress it.
@@ -93,10 +108,13 @@ E2E suite.
   Handoff cancellation cannot become a human-cancelled terminal event.
 - A fix for a reported checkout launch must reach that exact checkout. Record
   its HEAD and dirty-file hashes, preserve unrelated edits, and verify the fix
-  commit is in that checkout's HEAD. Run the reported command there and inspect
-  its native window and served assets. Another worktree or a remote commit is
-  not delivery. `tools/check_checkout_delivery.py` checks source ancestry and
-  optional loopback asset hashes; it cannot accept native behavior.
+  commit is in that checkout's HEAD. Verify its source and served assets
+  read-only. Native behavior runs from a source- and dirty-content-identified
+  copy in `ci-macOS`, never the user's host GUI. Record that scope explicitly:
+  a guest copy cannot prove that the host's already-running binary changed.
+  Another worktree or a remote commit is not delivery.
+  `tools/check_checkout_delivery.py` checks source ancestry and optional
+  loopback asset hashes; it cannot accept native behavior.
 - If something cannot be tested, split it until the untestable part is a two-line
   wrapper: `startDesktopServer` vs `runDesktop`, `serveWeb` vs `runWeb`,
   `buildTUISwarm` vs `runTUI`. Do not leave logic inside a function that no test

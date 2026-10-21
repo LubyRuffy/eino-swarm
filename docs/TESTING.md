@@ -1,5 +1,70 @@
 # Testing
 
+## Native desktop isolation (F-430 / C-031)
+
+Native macOS acceptance runs in the UTM **ci-macOS** guest. The user's host
+desktop may already be running zwai; do not launch or focus another desktop
+app there, replace its cache bundle, change its engine/data, or bring UTM,
+Finder, a browser or a simulator to the foreground for a test. Builds and
+headless unit/browser tests may run on the host. Use background guest control
+(SSH when available) and guest-side screenshots/accessibility. An unavailable
+guest is a pending native check, never permission to test on the host.
+
+Inside the guest, run one scenario at a time:
+
+```bash
+python3 tools/native_macos_case.py \
+  --app /absolute/candidate/zwai.app \
+  --evidence /absolute/private/new-case-evidence \
+  --timeout 180 -- /absolute/scenarios/check-native-window.sh
+```
+
+The runner refuses physical macOS hosts before launching anything. It holds a
+guest-user lock, makes a disposable app copy and fresh data/workspace, starts
+the copied executable with `desktop --mock --data-dir`, and removes inherited
+OpenAI seed variables. The scenario receives the paths in environment variables
+documented by `python3 tools/native_macos_case.py --help`. Readiness and native
+window/behavior assertions belong to that scenario; a process launch or a zero
+exit status is not by itself UI acceptance. Use the scripted offline provider
+or a keyless loopback fixture, never a production model/account.
+
+For an HTTP-adapter scenario, stop the initial mock client and engine inside
+that same case, write only the case's isolated fixture configuration, and
+relaunch the copied app without `--mock` against a keyless loopback fixture.
+Keep that transition and all helper processes inside the scenario's owned
+lifecycle; the final process/data cleanup still belongs to the runner. This
+does not enable a production-provider test or change the candidate bundle.
+
+Each case must finish before another starts. This includes **success, failure,
+timeout and cancellation**: retain assertions, stdout/stderr, screenshots, source
+and package identity outside the disposable directory; stop the app, its engine
+and case-owned children; wait for exit; then remove the app copy, database,
+configuration, uploads and managed workspace. Merely closing a window leaves
+the engine alive. `cleanup.json` records the case ID, remaining owned PIDs and
+data removal; incomplete cleanup fails the case and blocks the next case.
+Only case-owned paths/processes may be removed. Never run `killall zwai`,
+`pkill zwai`, or clear the normal `~/.zwai-swarm` directory. A deliberate
+restart/reopen recovery scenario keeps its state between its own steps; a
+different scenario always starts with new data.
+
+Scenario helpers must inherit the runner's `ZWAI_NATIVE_CASE_ID` marker, even
+when they create a new session or outlive a short-lived parent. The marker
+lets cleanup find those detached helpers without killing unrelated processes.
+Do not deliberately clear it and create an untracked daemon: this runner owns
+cooperating test processes, not an OS process container. System services shared
+with other applications are not test-owned processes.
+
+For a reported checkout defect, preserve that checkout and record HEAD plus
+dirty-file hashes before/after. Transfer the exact identified source snapshot
+or candidate to the guest. Host-side provenance/asset checks remain read-only;
+report guest native behavior and actual host delivery separately. Never use an
+exact-checkout requirement as permission to open the user's host UI.
+
+`make docs-check` runs the runner's offline regressions for physical-host
+refusal, serial ownership, success/error/timeout cleanup and unrelated process
+preservation. These use headless child fixtures; they do not accept a native
+window. A real guest window and cleanup receipt are separate evidence.
+
 ## Automatic restart handoff (F-110 / C-027)
 
 `handoff_test.go` and `internal/engine/restart_test.go` cover shared deadlines,
@@ -2229,7 +2294,8 @@ a client at all is verified in the engine and reducer tests.
 
 ## Manual checks that no automated test replaces
 
-- **The desktop window**: `go run ./cmd/zwai desktop`. Check that the window
+- **The desktop window**: run the isolated native case above in `ci-macOS`.
+  Check that the window
   opens, the UI loads, a turn runs, an upload opens a native file dialog, and
   "Show in Finder" works. A link in the transcript must open the system
   browser, not replace the window. The Dock / taskbar should show the rounded
@@ -2576,7 +2642,12 @@ accessibility tree alongside the test result and packaged asset hashes.
 
 Phone `mobile/e2e/api-error.spec.ts` uses `history=api-error` to regress existing error-text passthrough on Chromium and iPhone WebKit, including return/reopen and reload. Native packaged XCTest entry is `AppUITests/BindFlowTests/testModelAPIErrorShowsHTTPStatusAndDecodeCause`, with `IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=api-error'`; Android entry is `com.lubyruffy.zwai.APIErrorTest`. Check the reached screen and exact production-bundle hashes; fixture/replay tests supplement the real engine HTTP test, not replace it. A system ANR before the page is reached is an environment failure, never behavior acceptance.
 
-Mac native verification runs the current packaged candidate against a local empty-502 HTTP model in a separate data directory, without `--mock`: verify terminal error, Idle state, same-turn Trace status and Full log, three LLM calls and two retry events, and save window/Trace evidence.
+Mac native verification runs the current packaged candidate in `ci-macOS`
+through the isolated case lifecycle above. Its HTTP-adapter scenario replaces
+the initial mock client/engine within that case and uses a local keyless
+empty-502 model fixture without `--mock`: verify terminal error, Idle state,
+same-turn Trace status and Full log, three LLM calls and two retry events, and
+save window/Trace evidence before final cleanup.
 
 
 ## First-byte timeout configuration and guidance
@@ -2585,8 +2656,11 @@ Mac native verification runs the current packaged candidate against a local empt
 
 For a reported `go run ./cmd/zwai desktop` failure, record the absolute checkout,
 HEAD, index and dirty-file hashes before integration. Preserve unrelated edits
-and run that exact command from that checkout. A different worktree or app does
-not accept this path. Verify source and currently served assets with:
+and verify the fix reached that checkout. Do not launch the command on the
+user's host desktop. Transfer the exact source/dirty-content-identified snapshot
+to `ci-macOS` for the corresponding native scenario. A different source snapshot
+does not accept the defect; a guest run does not prove the host's already-running
+binary changed. Verify host source and currently served assets read-only with:
 
 ```bash
 python3 tools/check_checkout_delivery.py --checkout /absolute/checkout --required-commit <fix-sha> --url http://127.0.0.1:<actual-port>
@@ -2595,9 +2669,11 @@ python3 -m unittest discover -s tools -p 'test_check_checkout_delivery.py'
 
 The checker allows dirty trees, rejects missing fix ancestry, compares every
 module script and refuses redirects, external origins and escaping paths. Its
-`native_behavior_verified=false` requires a separate real-window observation:
-bind the launch PID, cwd and origin, trigger the loopback timeout, open its field,
-save a longer wait and verify a successful new turn in that same window.
+`native_behavior_verified=false` requires a separate real-window observation
+inside `ci-macOS`: bind the guest launch PID, source snapshot and origin,
+trigger the loopback timeout, open its field, save a longer wait and verify a
+successful new turn in that same window. Finish the case's process/data cleanup
+before starting another scenario.
 
 ### Configuration and recovery
 
@@ -2636,8 +2712,8 @@ value. Failed and successful turns retain their own Trace, screenshots and
 `first-byte-traces.json`. Run
 `cd frontend && ZWAI_E2E_MODEL_API_ERROR=1 npm run e2e -- api-error.spec.ts`.
 
-Native macOS acceptance uses the same loopback endpoint and a separate data
-directory: send in the actual desktop window, follow the timeout button, verify
+Native macOS acceptance uses the same loopback endpoint in `ci-macOS` and the
+isolated case lifecycle above: send in the actual desktop window, follow the timeout button, verify
 the provider field receives focus, increase one to three seconds, close Settings
 and resend. Inspect the successful response and Idle state in that window, and
 read Settings and both turn rows back to verify persistence and terminal status.

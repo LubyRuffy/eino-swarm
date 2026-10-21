@@ -923,6 +923,11 @@ embed inside the binary is current. `make frontend` is `go generate ./frontend`.
 Rules for changing this code — coverage bars, prompt hygiene, documentation
 duties — are in [AGENTS.md](AGENTS.md). Read it before opening a pull request.
 
+Native desktop tests run only in UTM `ci-macOS`, one isolated case at a time.
+Use the [native case runner](docs/TESTING.md#native-desktop-isolation-f-430--c-031):
+it refuses a physical host and closes case-owned processes before removing
+their test data. Keep the user's running desktop and normal data untouched.
+
 Invalid delegation calls do not create workers. Within one manager reply, repeated spawn argument errors are reported once per error with their rejected count; the manager can supply both role and task and continue. See [the lifecycle tools](docs/LIBRARY.md).
 
 ### Coordination between conversations

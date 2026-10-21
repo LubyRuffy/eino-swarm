@@ -209,6 +209,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 原生桌面用例：`python3 tools/native_macos_case.py --app <app> --evidence <new-directory> --timeout <seconds> -- <scenario-command>` 仅允许在 macOS 虚拟机运行；维护者选择 `ci-macOS`，串行运行各场景，每例独立 app/data/workspace，在成功、失败、超时和取消后停止本例进程再删除数据，持久保留日志和 `cleanup.json`；物理宿主、并发或未清理的前例拒绝启动。窗口行为仍由场景及真实来宾证据验收。关联契约：`C-031`；实现证据：`tools/native_macos_case.py`, `tools/test_native_macos_case.py`, `docs/TESTING.md`。
 - 实际启动目录核验：`python3 tools/check_checkout_delivery.py --checkout <absolute-path> --required-commit <sha> [--url <loopback-origin>]` 只读检查修复提交是否进入指定目录的 HEAD，可选比较该服务的全部 module script 与该目录 dist 的哈希；允许未提交改动，失败分项非零退出。它不能替代同目录命令和原生行为验收。关联契约：`C-010`；证据：`tools/check_checkout_delivery.py`, `tools/test_check_checkout_delivery.py`。
 - iOS 发布预检读取应用源码中经授权的持续合规声明；加密用途不变的普通更新无需重复问答，签名 IPA 及精确回执发生冲突时拒绝发布。无源码字段的旧批次仍读取私有精确确认。证据：`mobile/ios/App/App/Info.plist`, `tools/release_ios.py`, `tools/test_release_ios_compliance.py`, `docs/RELEASE.md`。
 - Mac 原生窗口验收后，发布恢复核对私有批次回执的版本、源码 SHA、文件名与 SHA-256，上传同一 ZIP；文件缺失或变化时保留待发布状态。证据：`tools/release.py`, `tools/test_release.py`, `docs/RELEASE.md`。
