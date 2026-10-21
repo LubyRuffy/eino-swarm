@@ -37,6 +37,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：从原生窗口、网页或终端使用同一引擎；使用者：PC 用户；入口：`zwai desktop`, `zwai web`, `zwai tui`；输入：本机配置和对话；输出：同源的对话和状态；前置条件：本机引擎可启动；失败表现：启动或连接错误；关联契约：`C-001`, `C-005`, `C-027`；实现证据：`cmd/zwai`, `internal/app`, `internal/desktop`, `frontend/src`。
 
+- 冷启动就绪：允许本地初始化最多 2 分钟，每 10 秒报告启动进度；手机 hub 注册不阻塞本地窗口。失败保留本次子进程退出原因及本次追加日志，取消／超时仅清理自己的启动子进程，保留竞争引擎。替换已有引擎仍遵守统一 30 秒交接预算。关联契约：`C-001`、`C-006`、`C-027`；实现／验证证据：`cmd/zwai/engine_boot.go`、`cmd/zwai/engine_boot_test.go`、`internal/app/app.go`、`internal/app/startup_remote_test.go`。
+
 - 自动交接重启：新版本／不同二进制启动时，在统一 30 秒启动预算内请求旧引擎交接、退出并启动新引擎；无需输入确认。manager 及所有活跃／后台 worker 保存检查点，模型摘要尽力完成，不以摘要标记任务完成；原 turn／worker 身份、历史、未读消息、超时预算及人类暂停保留。存储失败不确认安全退出；旧引擎缺少交接 API 时采用有界兼容恢复。关联契约：`C-001`、`C-027`、`C-012`；证据：`cmd/zwai/engine_restart.go`、`internal/engine/restart.go`、`handoff.go`、`cmd/zwai/engine_restart_acceptance_test.go`、`frontend/src/lib/transcript-restart.test.ts`。
 
 ### F-120 Conversations and projects
@@ -121,6 +123,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-210 Pair a phone with a PC
 
 - 目的：安全绑定手机和 PC；使用者：手机用户；入口：Settings → Phone QR、扫码或粘贴；输入：pairlink URI；输出：加密连接和设备列表；前置条件：hub 和 PC 在线；失败表现：网络、过期或 host offline；关联契约：`C-006`；实现证据：`internal/remote`, `mobile/src/components/scan-screen.tsx`, `mobile/src/lib/link.ts`。
+- PC 的 hub 注册在受控后台生命周期内执行；网络迟缓只影响手机连接，不阻塞本地程序启动。Stop／Reload 可取消注册，旧结果不得重新启用已停止或已替换的 host。证据：`internal/remote/host.go`、`internal/remote/host_start.go`、`internal/remote/host_start_test.go`、`internal/app/startup_remote_test.go`。
 
 ### F-220 Read and control PC conversations
 

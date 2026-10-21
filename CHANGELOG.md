@@ -34,6 +34,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-110`, `F-210`, `C-001`, `C-006`, `C-027`: local startup no longer waits for phone-hub registration, and slow initialization has a bounded two-minute readiness window with 10s progress. Remote Stop/Reload cancel registration and reject stale results. Failed launches retain their actual exit status and only the current attempt's log; cancellation reaps only the launched child. The separate 30s engine-replacement budget and ordered task restoration remain in force.
+
 - `F-120`, `F-130`, `C-003`: late memory-review notices and hidden turn metadata no longer repeat an older turn's duration/completion footer after newer work. PC transcript slices preserve event order, keep one footer after each non-quiet turn's last visible pre-completion content, and leave late review feedback outside completed goal-session folds. Older feedback also retains the running turn's live activity. Original answers, tool details, stored events and Trace remain available (Issue #87).
 
 - `F-420`, `F-160`, `C-025`, `C-012`: memory-review failures show their stopping reason, submitted-proposal count and refusal categories, including capacity usage/excess when available. Same-turn Trace retains bounded safe proposal metadata while excluding rejected bodies and quotes. Trace opens the source turn even with the panel closed, historical focus avoids the latest turn's token usage, and pending manual results outside the loaded tail recover through one bounded turn read. Capacity repair receives structured feedback within the existing iteration budget; evidence, numeric spelling, note limits, fixed-revision commit and immediate skill writes retain their existing boundaries (Issue #84).

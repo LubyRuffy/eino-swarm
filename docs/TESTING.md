@@ -1,5 +1,29 @@
 # Testing
 
+## Local startup readiness (F-110 / F-210 / C-001 / C-006)
+
+`cmd/zwai/engine_boot_test.go` launches an actual offline child that acquires
+the data-directory lease and publishes its HTTP metadata after 16 seconds.
+It reproduces startup beyond the former 15-second cutoff and verifies the
+ready URL belongs to that child. Additional cases check current-attempt log
+isolation, the actual exit status, and cancellation that reaps the launched
+child. `cmd/zwai/engine_restart_budget_test.go` retains the independent caller
+deadline and competing-holder checks; the cold-start allowance cannot extend
+the 30-second replacement budget.
+
+`internal/remote/host_start_test.go` holds a loopback registration request
+open while exercising local lifecycle operations. `internal/app/startup_remote_test.go`
+starts the real app against that blocked hub and checks a successful local
+`/api/meta` response before registration completes. Remote lifecycle tests
+must also preserve cancellation and reject late results after Stop/Reload.
+These offline checks do not replace opening the actual native window.
+
+```bash
+go test -race -count=1 ./cmd/zwai -run 'TestSpawnEngine|TestSpawnStartup|TestInProcessStartup'
+go test -race -count=1 ./internal/remote -run 'TestHost'
+go test -race -count=1 ./internal/app -run 'TestNewDoesNotWaitForRemoteRegistration'
+```
+
 ## Automatic restart handoff (F-110 / C-027)
 
 `handoff_test.go` and `internal/engine/restart_test.go` cover shared deadlines,
