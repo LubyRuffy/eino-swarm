@@ -55,6 +55,12 @@ does not block the local window. Local initialization/restoration phases log
 `phase` and `duration_ms` in `engine.log`: `database_ready`,
 `unfinished_runs_restored`, then `local_handlers_ready`.
 
+If this launcher's child has published its lease but a metadata probe is
+temporarily unanswered, startup keeps waiting within the same total deadline.
+The published PID identifies the child; attaching still requires a successful
+metadata check. An unreachable competing holder or a mock-mode mismatch remains
+an immediate error, and the competing process is preserved.
+
 If this launch fails, the error retains its child's exit status and only log
 output appended during this attempt. Historical model errors are not used as
 its cause. Cancellation or timeout stops and reaps this launcher's child;

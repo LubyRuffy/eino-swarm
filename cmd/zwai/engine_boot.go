@@ -138,7 +138,10 @@ func spawnEngineContext(parent context.Context, dir, addr string, mock bool) (st
 			keepChild = rec.PID == cmd.Process.Pid
 			return rec.URL, nil
 		}
-		if errors.Is(err, lease.ErrMockMismatch) || errors.Is(err, lease.ErrUnreachable) {
+		// Publish can precede the first successful health probe. Only our
+		// known, still-starting child may retry within the remaining budget.
+		waitingForChild := rec.PID == cmd.Process.Pid && !childExited
+		if errors.Is(err, lease.ErrMockMismatch) || (errors.Is(err, lease.ErrUnreachable) && !waitingForChild) {
 			return "", err
 		}
 		if childExited && !lease.Busy(dir) {

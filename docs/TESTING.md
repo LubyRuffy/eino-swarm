@@ -11,6 +11,16 @@ child. `cmd/zwai/engine_restart_budget_test.go` retains the independent caller
 deadline and competing-holder checks; the cold-start allowance cannot extend
 the 30-second replacement budget.
 
+`TestSpawnEngineRetriesItsOwnFirstReadinessProbeTimeout` delays the real
+child's first metadata response by 750ms, beyond the individual 500ms probe,
+then requires a later successful probe and a surviving validated child.
+`TestSpawnEngineStopsItsOwnUnreachableChildAtTheStartupDeadline` keeps every
+probe slow and checks the caller's deadline and child cleanup. The lease
+regression retains the unverified recorded identity on connection, status,
+body-read and JSON failures; it does not treat that record as readiness.
+Competing-holder regressions keep unreachable/mock-mismatch errors immediate
+and preserve the independent process.
+
 `internal/remote/host_start_test.go` holds a loopback registration request
 open while exercising local lifecycle operations. `internal/app/startup_remote_test.go`
 starts the real app against that blocked hub and checks a successful local
@@ -20,6 +30,7 @@ These offline checks do not replace opening the actual native window.
 
 ```bash
 go test -race -count=1 ./cmd/zwai -run 'TestSpawnEngine|TestSpawnStartup|TestInProcessStartup'
+go test -race -count=1 ./internal/lease -run 'TestDiscover'
 go test -race -count=1 ./internal/remote -run 'TestHost'
 go test -race -count=1 ./internal/app -run 'TestNewDoesNotWaitForRemoteRegistration'
 ```

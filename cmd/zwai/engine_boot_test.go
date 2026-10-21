@@ -17,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -61,7 +62,13 @@ func runStartupHelper() int {
 		fmt.Fprintln(os.Stderr, err)
 		return 6
 	}
+	var metaRequests atomic.Int32
 	_ = http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count := metaRequests.Add(1)
+		_ = os.WriteFile(filepath.Join(*dir, "startup-helper-meta-count"), []byte(strconv.Itoa(int(count))), 0o600)
+		if delay, _ := time.ParseDuration(os.Getenv("ZWAI_ENGINE_FIRST_META_DELAY")); count == 1 && delay > 0 {
+			time.Sleep(delay)
+		}
 		if delay, _ := time.ParseDuration(os.Getenv("ZWAI_ENGINE_META_DELAY")); delay > 0 {
 			_ = os.WriteFile(filepath.Join(*dir, "startup-helper-meta"), []byte("requested"), 0o600)
 			time.Sleep(delay)
@@ -364,4 +371,48 @@ func waitForStartupBudgetGoroutines(t *testing.T, function string, want int) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatalf("startup goroutines for %s = %d, want %d", function, startupBudgetGoroutines(function), want)
+}
+
+// Publishing precedes Serve in the real engine. One slow first health probe
+// must not kill our still-starting child or consume its whole startup allowance.
+func TestSpawnEngineRetriesItsOwnFirstReadinessProbeTimeout(t *testing.T) {
+	t.Setenv("ZWAI_ENGINE_STARTUP_HELPER", "1")
+	t.Setenv("ZWAI_ENGINE_FIRST_META_DELAY", "750ms")
+	t.Setenv("ZWAI_ENGINE_META_DELAY", "")
+	dir := t.TempDir()
+	t.Cleanup(func() { stopStartupHelper(t, dir) })
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	started := time.Now()
+	url, err := spawnEngineContext(ctx, dir, "127.0.0.1:0", true)
+	if err != nil || url == "" {
+		t.Fatalf("the first probe killed its own still-starting child: url=%q err=%v elapsed=%s", url, err, time.Since(started))
+	}
+	if time.Since(started) < 500*time.Millisecond {
+		t.Fatal("fixture did not exceed the health probe deadline")
+	}
+	body, err := os.ReadFile(filepath.Join(dir, "startup-helper-meta-count"))
+	count, _ := strconv.Atoi(string(body))
+	if err != nil || count < 2 || !lease.Busy(dir) {
+		t.Fatalf("launcher did not retry and preserve its ready child: probes=%q err=%v held=%v", body, err, lease.Busy(dir))
+	}
+	rec, err := lease.Discover(dir, true)
+	if err != nil || rec.URL != url || !lease.SameEngine(rec, lease.ThisBuild(version)) {
+		t.Fatalf("probe recovery attached without validated readiness: record=%+v err=%v", rec, err)
+	}
+}
+
+func TestSpawnEngineStopsItsOwnUnreachableChildAtTheStartupDeadline(t *testing.T) {
+	t.Setenv("ZWAI_ENGINE_STARTUP_HELPER", "1")
+	t.Setenv("ZWAI_ENGINE_META_DELAY", "750ms")
+	dir := t.TempDir()
+	t.Cleanup(func() { stopStartupHelper(t, dir) })
+	ctx, cancel := context.WithTimeout(t.Context(), 1200*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	url, err := spawnEngineContext(ctx, dir, "127.0.0.1:0", true)
+	if url != "" || !errors.Is(err, context.DeadlineExceeded) || time.Since(started) > 2*time.Second || lease.Busy(dir) {
+		t.Fatalf("own-child retry escaped its caller's deadline: url=%q err=%v elapsed=%s held=%v", url, err, time.Since(started), lease.Busy(dir))
+	}
+	waitForStartupBudgetGoroutines(t, "spawnEngineContext.func1(", 0)
 }

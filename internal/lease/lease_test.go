@@ -495,3 +495,36 @@ func TestLockAndPidEdges(t *testing.T) {
 		t.Fatal("a closed file cannot be locked")
 	}
 }
+
+// Startup ownership must survive a failed health probe without pretending
+// that the stored URL, mode or executable identity has been verified.
+func TestDiscoverRetainsTheRecordedProcessWhenHealthIsUnreachable(t *testing.T) {
+	for _, name := range []string{"connection refused", "non-200", "truncated body", "invalid JSON"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch name {
+				case "non-200":
+					w.WriteHeader(http.StatusServiceUnavailable)
+				case "truncated body":
+					w.Header().Set("Content-Length", "100")
+					_, _ = io.WriteString(w, "{")
+				default:
+					_, _ = io.WriteString(w, "not JSON")
+				}
+			}))
+			defer srv.Close()
+			if name == "connection refused" {
+				srv.Close()
+			}
+			rec := Record{PID: os.Getpid(), URL: srv.URL, Mock: true, Version: "unverified", Dev: 7, Ino: 9}
+			if err := Publish(dir, rec); err != nil {
+				t.Fatal(err)
+			}
+			got, err := Discover(dir, false)
+			if !errors.Is(err, ErrUnreachable) || got != rec {
+				t.Fatalf("health failure discarded startup ownership or validated stale metadata: record=%+v err=%v", got, err)
+			}
+		})
+	}
+}

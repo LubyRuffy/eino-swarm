@@ -14,6 +14,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 状态：active；类型：lifecycle；作用范围：desktop、web、tui、engine；关联功能：`F-110`, `F-120`, `F-320`。
 - 契约内容：同一数据目录只由一个 engine 进程持有；客户端连接同一 loopback 服务；不同版本或开发二进制身份替换引擎时先进行有界持久化交接并自动恢复。持锁但尚未发布地址的引擎必须在地址出现后经过同一身份和活动 turn 检查；子进程启动输给竞争者时也不得直接接受竞争者的 URL。身份/状态检查或检查点保存失败时不得假称已安全交接；明确报告错误并保留可重试的恢复现场。
 - 就绪和失败边界：普通冷启动最多等待 2 分钟，每 10 秒报告进度；替换引擎仍受 `C-027` 的统一 30 秒预算约束。启动失败必须保留实际子进程退出错误，日志仅取本次启动后追加的部分，不得用旧模型错误充当本次原因。取消／超时必须回收本次启动的子进程，不得终止竞争 lease 的其他持有者。本地就绪不得等待可选手机 hub 注册，turn／worker 恢复与调度仍有序完成。证据：`cmd/zwai/engine_boot_test.go`、`cmd/zwai/engine_restart_budget_test.go`、`internal/app/startup_remote_test.go`。
+- 单次健康探测边界：`lease.Discover` 在 `ErrUnreachable` 时保留已解析的未验证租约，仅用于将 PID 与本次启动的自有 child 关联；错误记录不能作为附着地址、版本或模式已验证的证据。仅当 PID 属于本次 child 且尚未观察其退出时，启动器可在原总截止时间内继续探测；成功元数据校验仍是附着前提。竞争 holder 的不可达与模式冲突保持可判断错误并立即返回，不能借此终止竞争进程。证据：`internal/lease/lease.go`、`internal/lease/lease_test.go`、`cmd/zwai/engine_boot.go`、`cmd/zwai/engine_boot_test.go`。
 - 允许行为：多个 shell 同时连接；禁止行为：多个进程同时写同一数据库；失败语义：引擎不可达或租约冲突需明确报告；不变量：一个目录一把 lease；边界条件：进程异常结束后可恢复。
 - 证据：实现 `internal/lease`, `internal/app`, `cmd/zwai`；测试 `internal/lease`, `internal/app`, `cmd/zwai/engine_startup_test.go`；变更规则：同步架构、CLI 和恢复测试；来源：`ARCHITECTURE.md` 和 Git 历史。
 
