@@ -148,8 +148,6 @@ function AppShell() {
     selectQuery: selectFindQuery,
   } = find
 
-  const running = useApp((s) => s.status.running)
-  const interrupt = useApp((s) => s.interrupt)
   const newThread = useApp((s) => s.newThread)
   const setTheme = useApp((s) => s.setTheme)
   const theme = useApp((s) => s.theme)
@@ -302,7 +300,7 @@ function AppShell() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // A local dialog owns Escape before Find or turn interruption can consume it.
+      // A local dialog owns Escape before Find can consume it.
       if (
         e.key === "Escape" &&
         document.querySelector('[role="dialog"][data-state="open"]')
@@ -320,23 +318,6 @@ function AppShell() {
         else if (findAction.action === "select-query") selectFindQuery()
         else if (findAction.action === "next") nextFind(findAction.delta)
         else closeFind()
-        return
-      }
-      if (e.key === "Escape") {
-        const target = e.target
-        if (
-          target instanceof HTMLTextAreaElement &&
-          (target.dataset.slashOpen === "true" ||
-            target.dataset.goalDraft === "true" ||
-            target.dataset.planDraft === "true" ||
-            target.dataset.editDraft === "true" ||
-            target.dataset.askOther === "true")
-        ) {
-          return
-        }
-        if (dialogOpen || !running) return
-        e.preventDefault()
-        void interrupt()
         return
       }
       const mod = e.metaKey || e.ctrlKey
@@ -368,12 +349,10 @@ function AppShell() {
     closeFind,
     doomedProject,
     findOpen,
-    interrupt,
     nextFind,
     openFind,
     paletteOpen,
     projectDialog,
-    running,
     selectFindQuery,
     startThread,
     toggleSidebar,

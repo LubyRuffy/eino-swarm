@@ -54,6 +54,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- PC 停止操作：桌面和 Web 使用输入框中的 Stop 按钮停止正在运行的任务；Esc 只关闭图片预览、Find 或其他当前弹层，未打开弹层和连续按 Esc 时也不会停止任务。关联契约：`C-002`、`C-028`；实现／验证证据：`frontend/src/App.tsx`、`frontend/src/App.test.tsx`、`frontend/e2e/shell.spec.ts`。
 - 自动重启的任务交接沿用 `F-110`／`C-027`：已接受的回答、继续／停止决定不会因交接被忽略；已确认终态不重复执行；完成 manager 下的后台 worker 直接按原 ID 恢复。证据：`internal/engine/restart_recovery_test.go`、`internal/engine/restart_parked_test.go`。
 - PC 人工停止与清理：未完成的子代理显示在独立的 Stopped／已停止分组，停止后的刷新与重开仍保留该状态；不把资源清理当成成功完成，也不把人工停止显示为模型失败。真实完成的代理继续显示完成。关联契约：`C-002`、`C-003`；证据：`frontend/src/lib/transcript-stop.test.ts`、`frontend/src/components/app/panel-stop.test.tsx`、`frontend/e2e/restart.spec.ts`。
 

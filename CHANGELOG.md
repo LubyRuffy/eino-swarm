@@ -21,6 +21,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `C-002`, `C-028`: desktop and Web Escape no longer stop a running task. Escape continues to close image previews, Find and other local overlays; stopping a task uses the composer's explicit Stop button, including after repeated Escape presses.
+
 - `F-430`, `C-010`: prepared unified source batch `0.1.33` with mobile package/build `133` after the cumulative main-commit threshold was met. Android and iOS use this complete source batch; TestFlight marketing version remains independently selected, and macOS publication waits for its exact-package native acceptance.
 
 - **Breaking** `F-120`, `C-026`: non-empty working directories keep their path whitespace through save and runtime resolution. Callers must send the intended absolute path without decorative padding; all-whitespace input still selects managed storage. Previously stored normalized paths require no migration.

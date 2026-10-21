@@ -39,7 +39,7 @@ describe("App Escape handling", () => {
     vi.restoreAllMocks()
   })
 
-  it("closes a mounted image dialog before Escape can stop the running turn", async () => {
+  it("closes an image preview without stopping the turn on another Escape", async () => {
     const interrupt = useApp.getState().interrupt
     render(<><App /><Preview /></>)
 
@@ -48,7 +48,7 @@ describe("App Escape handling", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull())
 
     fireEvent.keyDown(document.body, { key: "Escape" })
-    expect(interrupt).toHaveBeenCalledOnce()
+    expect(interrupt).not.toHaveBeenCalled()
   })
 
   it("closes the image dialog before a find bar underneath it", async () => {
@@ -67,14 +67,31 @@ describe("App Escape handling", () => {
     expect(screen.queryByTestId("conversation-find")).toBeNull()
     expect(interrupt).not.toHaveBeenCalled()
     fireEvent.keyDown(document.body, { key: "Escape" })
-    expect(interrupt).toHaveBeenCalledOnce()
+    expect(interrupt).not.toHaveBeenCalled()
   })
 
-  it("ignores closed dialog remnants when stopping the running turn", () => {
+  it("keeps the running turn after Escape with closed dialog remnants", () => {
     const interrupt = useApp.getState().interrupt
     render(<><App /><div role="dialog" data-state="closed" /></>)
 
     fireEvent.keyDown(document.body, { key: "Escape" })
+    expect(interrupt).not.toHaveBeenCalled()
+  })
+
+  it("does not turn plain or repeated Escape into a task stop", () => {
+    const interrupt = useApp.getState().interrupt
+    render(<App />)
+    const input = screen.getByTestId("composer-input")
+    fireEvent.keyDown(input, { key: "Escape" })
+    fireEvent.keyDown(document.body, { key: "Escape" })
+    fireEvent.keyDown(document.body, { key: "Escape", repeat: true })
+    expect(interrupt).not.toHaveBeenCalled()
+  })
+
+  it("still stops a running turn from its explicit Stop button", () => {
+    const interrupt = useApp.getState().interrupt
+    render(<App />)
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }))
     expect(interrupt).toHaveBeenCalledOnce()
   })
 

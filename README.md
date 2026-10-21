@@ -649,8 +649,9 @@ the draft into the current turn · Shift+Enter a newline · `⌘K` command palet
 (titles, bodies, and meaning when embeddings are on) · `⌘N` new
 conversation · `⌘F` find in the open conversation · `⌘B` hide or show the
 list beside the icon rail (the rail stays) · `⌘\` toggle the right panel · `⌘J` open a terminal in the
-current project (or conversation) directory · `⌘,` settings · `Esc` stop
-the running turn (or close find first, if that bar is open). Drag the border
+current project (or conversation) directory · `⌘,` settings · `Esc` close
+the active preview, find bar or other local overlay. To stop a running turn,
+click **Stop** in the composer; Escape never stops it. Drag the border
 of the conversation list or the right panel to resize them. Conversations
 and projects sort by last update; drag a row to pin a custom order (a click
 still opens it). On the
