@@ -21,8 +21,8 @@ type accumulator struct {
 	turnID   string
 
 	mu        sync.Mutex
-	reasoning map[string]string
-	answer    map[string]string
+	reasoning map[string]outputSnapshot
+	answer    map[string]outputSnapshot
 	roles     map[string]string
 
 	// live holds the latest streamed delta per agent and kind until the
@@ -44,11 +44,16 @@ type accumulator struct {
 	beforeLiveEmit func()
 }
 
+type outputSnapshot struct {
+	text      string
+	messageID string
+}
+
 func newAccumulator(e *Engine, threadID, turnID string, coalesce time.Duration) *accumulator {
 	return &accumulator{
 		engine: e, threadID: threadID, turnID: turnID,
-		reasoning: map[string]string{},
-		answer:    map[string]string{},
+		reasoning: map[string]outputSnapshot{},
+		answer:    map[string]outputSnapshot{},
 		roles:     map[string]string{},
 		coalesce:  coalesce,
 		live:      map[string]store.Event{},
@@ -60,7 +65,7 @@ func (a *accumulator) event(n swarm.Notification, kind string) store.Event {
 	ev := store.Event{
 		ThreadID: a.threadID, TurnID: a.turnID,
 		Kind: kind, AgentID: n.AgentID, Role: n.Role,
-		Text: n.Text, ToolCallID: n.ToolCallID,
+		Text: n.Text, ToolCallID: n.ToolCallID, MessageID: n.MessageID,
 	}
 	if n.Err != nil {
 		ev.Err = n.Err.Error()
@@ -81,7 +86,7 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 	}
 	switch n.Kind {
 	case swarm.NotifyReasoningDelta:
-		a.setReasoning(n.AgentID, n.Text)
+		a.setReasoning(n)
 		a.pushLive(n)
 
 	case swarm.NotifyDelta:
@@ -92,7 +97,7 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 		a.flushKeyLocked(liveKey(n.AgentID, swarm.NotifyReasoningDelta.String(), ""))
 		a.flushReasoning(n.AgentID)
 		a.gate.Unlock()
-		a.setAnswer(n.AgentID, n.Text)
+		a.setAnswer(n)
 		a.pushLive(n)
 
 	case swarm.NotifyToolCall:
@@ -166,15 +171,15 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 	}
 }
 
-func (a *accumulator) setReasoning(agentID, text string) {
+func (a *accumulator) setReasoning(n swarm.Notification) {
 	a.mu.Lock()
-	a.reasoning[agentID] = text
+	a.reasoning[n.AgentID] = outputSnapshot{text: n.Text, messageID: n.MessageID}
 	a.mu.Unlock()
 }
 
-func (a *accumulator) setAnswer(agentID, text string) {
+func (a *accumulator) setAnswer(n swarm.Notification) {
 	a.mu.Lock()
-	a.answer[agentID] = text
+	a.answer[n.AgentID] = outputSnapshot{text: n.Text, messageID: n.MessageID}
 	a.mu.Unlock()
 }
 
@@ -184,33 +189,33 @@ func (a *accumulator) clearAnswer(agentID string) {
 	a.mu.Unlock()
 }
 
-func (a *accumulator) take(m map[string]string, agentID string) (string, string) {
+func (a *accumulator) take(m map[string]outputSnapshot, agentID string) (outputSnapshot, string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	text := m[agentID]
+	snapshot := m[agentID]
 	delete(m, agentID)
-	return text, a.roles[agentID]
+	return snapshot, a.roles[agentID]
 }
 
 func (a *accumulator) flushReasoning(agentID string) {
-	text, role := a.take(a.reasoning, agentID)
-	if strings.TrimSpace(text) == "" {
+	snapshot, role := a.take(a.reasoning, agentID)
+	if strings.TrimSpace(snapshot.text) == "" {
 		return
 	}
 	a.engine.record(store.Event{
 		ThreadID: a.threadID, TurnID: a.turnID,
-		Kind: KindReasoning, AgentID: agentID, Role: role, Text: text,
+		Kind: KindReasoning, AgentID: agentID, Role: role, Text: snapshot.text, MessageID: snapshot.messageID,
 	})
 }
 
 func (a *accumulator) flushAnswer(agentID string) {
-	text, role := a.take(a.answer, agentID)
-	if strings.TrimSpace(text) == "" {
+	snapshot, role := a.take(a.answer, agentID)
+	if strings.TrimSpace(snapshot.text) == "" {
 		return
 	}
 	a.engine.record(store.Event{
 		ThreadID: a.threadID, TurnID: a.turnID,
-		Kind: swarm.NotifyAgentMessage.String(), AgentID: agentID, Role: role, Text: text,
+		Kind: swarm.NotifyAgentMessage.String(), AgentID: agentID, Role: role, Text: snapshot.text, MessageID: snapshot.messageID,
 	})
 }
 

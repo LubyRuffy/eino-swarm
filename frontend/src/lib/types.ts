@@ -70,6 +70,8 @@ export interface SwarmEvent {
   agent_id: string
   role?: string
   text?: string
+  /** Identity of one model output, retained by cumulative checkpoints across manager turns. */
+  message_id?: string
   tool_call_id?: string
   err?: string
   /** Pasted vision inputs. Handles, not pixels — the bytes live under GET

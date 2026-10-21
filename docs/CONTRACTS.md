@@ -36,6 +36,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 允许行为：delta 丢失后下一帧恢复；禁止行为：丢弃已存储事件或随意重命名 kind；失败语义：落后订阅者转追赶；不变量：存储顺序与流顺序一致；边界条件：重连和回放。
 - 证据：实现 `internal/engine`, `internal/store`, `internal/remote`, `frontend/src/components/app/transcript.tsx`, `frontend/src/components/app/transcript-session.tsx`, `mobile/src/lib/transcript.ts`, `mobile/src/components/thread-blocks.tsx`；测试 `internal/engine`, `internal/remote`, `frontend/src/components/app/transcript.test.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/components/thread-blocks.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、数据模型和 wire 测试；来源：`AGENTS.md`、GitHub Issues #59、#61。
 
+- PC 输出与事件身份：同一流式模型输出的 `message_id` 在 worker 跨 manager 轮次继续运行时不变；同 agent、同 kind、同输出身份的累计快照更新首次出现的区块，不伪装成新思考。真正的新模型输出、恢复后的新流使用不同身份；旧事件缺少字段时不按文字推断身份。迟到的短快照不能回退正文或重开已结束输出。原始 checkpoint 事件仍各自按 seq 保存于 Trace，不改写历史；回退编辑时从保留的原始事件恢复撤回前的快照。
+- PC 历史与实时重叠：以实际已加载的 `(thread_id, seq)` 去重，并在 reducer 与业务副作用前执行；不能用最高 seq 拒绝未加载的较旧记录。roster sidecar 进入完整历史页时仍需补齐其完整展示，重连、分页、按需 Agent 日志和切换对话遵守相同规则。证据：`frontend/src/store/thread-history.ts`、`frontend/src/store/app-stream.ts`、`frontend/src/store/app-stream-history.test.ts`、`frontend/src/lib/transcript-message.test.ts`、`frontend/e2e/agent-history-overlap.spec.ts`；来源：GitHub Issue #88。
+
 ## C-004 Workspace is an anchor; HTTP paths are untrusted
 
 - 状态：active；类型：security；作用范围：tools、server、files；关联功能：`F-140`, `F-224`。

@@ -77,6 +77,8 @@ export interface Block {
   agentId: string
   role?: string
   text: string
+  /** One model output can span several manager turns and durable checkpoints. */
+  messageId?: string
   /** Still being streamed. Complete blocks stop showing a cursor and can be
    *  collapsed. */
   streaming?: boolean
@@ -722,7 +724,7 @@ export function collapseLiveEvents(events: SwarmEvent[]): SwarmEvent[] {
   for (let i = events.length - 1; i >= 0; i--) {
     const ev = events[i]
     if (ev.kind === "delta" || ev.kind === "reasoning_delta") {
-      const key = `${ev.agent_id || MANAGER_ID}:${ev.kind}`
+      const key = `${ev.agent_id || MANAGER_ID}:${ev.kind}:${ev.message_id || ""}`
       if (seen.has(key)) continue
       seen.add(key)
     }

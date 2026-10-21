@@ -83,6 +83,13 @@ E2E suite.
   cannot prove that the selected image reached the visual-input path.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
+- A worker model output can outlive several manager checks. Preserve its
+  `message_id` through live deltas and durable checkpoints; regress one real
+  worker stream across those boundaries, replay and a later distinct output
+  with identical text. History pages, agent logs and SSE must apply each
+  stored `(thread_id, seq)` once before state changes or side effects. Do not
+  use text similarity or a highest-seq cutoff as identity. Regress both arrival
+  orders and rewind across multiple checkpoints of one output.
 - Engine replacement follows `C-027`: freeze new work, durably checkpoint every
   active or parked registry, then stop and restore within one launch deadline.
   Regress real process replacement, original turn/worker identities, human

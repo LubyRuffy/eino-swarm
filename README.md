@@ -254,6 +254,15 @@ uploads, downloads and the live event stream have exactly one implementation.
   **Reading** / **Exec** while a tool is in flight.
   Settings → General, the app menu (`…` at the bottom of the icon rail),
   or ⌘K switches to developer view.
+- **PC worker thoughts keep their identity across checks.** A background worker
+  can keep generating while the manager ends a scheduled check. Its growing
+  thought or answer updates the same row, including after reload, instead of
+  adding another copy on every check. Independent model outputs remain separate.
+  Overlapping historical pages and live events do not duplicate rows or trigger
+  the same completion refresh again. Legacy records without output identity
+  remain separate. See the [cancellation investigation](docs/diagnostics/issue88-cancellation-evidence.md)
+  for how to distinguish engine handoff and failed-check cleanup from provider
+  timeouts using Trace.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
   (finished ones are not re-parsed on every token; fenced code is highlighted

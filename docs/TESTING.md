@@ -1,5 +1,39 @@
 # Testing
 
+## Worker output identity and history overlap (F-130 / C-003)
+
+`signal_identity_test.go` and `internal/engine/accumulator_identity_test.go`
+exercise a controlled Registry/ADK worker stream across manager returns and
+notification-sink changes. Reasoning, answers and checkpoints retain one
+`message_id`; a new model round, resumed stream and another worker do not share
+it. Tool calls and results retain their original pairing. Store reopen and
+legacy-schema migration, remote projection and event-to-notification adapters
+must preserve the optional field without fabricating it for old events.
+
+`frontend/src/lib/transcript-message.test.ts` covers live/replay checkpoint
+replacement, distinct outputs with identical text, stale snapshots and
+per-output burst coalescing. `frontend/src/store/app-stream-history.test.ts`
+controls both historical/live arrival orders, exact stored identities below
+the current cursor, side effects, paging, rewind and conversation changes.
+History requests freeze a local generation so a response begun before rewind
+cannot restore deleted events beyond the client's cursor. A delayed history
+snapshot preserves newer explicitly identified live output, including before
+its first durable checkpoint, without reviving stopped workers or an older
+model output.
+`frontend/e2e/agent-history-overlap.spec.ts` verifies the visible Agents flow,
+tool details and reload through controlled offline event responses.
+
+```bash
+go test -race -timeout 20m ./...
+cd frontend && npm test -- src/lib/transcript-message.test.ts src/store/app-stream-history.test.ts
+cd frontend && npm run e2e -- e2e/agent-history-overlap.spec.ts
+```
+
+The [cancellation evidence](diagnostics/issue88-cancellation-evidence.md)
+records what was verified from existing Trace and read-only storage. A model
+call's `context canceled` string alone cannot distinguish handoff, parent-turn
+cleanup, human interruption or an upstream failure.
+
 ## UI message catalogs
 
 Worker failure translations live in `frontend/src/lib/messages-agent-failure-en.ts`
