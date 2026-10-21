@@ -269,8 +269,10 @@ uploads, downloads and the live event stream have exactly one implementation.
   hits its tool-round limit, the transcript asks whether to add another slice
   rather than dying with a graph error.
 - **Automatic restart with saved progress.** Opening a newer/different build
-  requests a handoff and automatically replaces the engine within a 30s launch
-  budget. Active and background sub-agents retain their IDs, histories, unread
+  prepares the checkout frontend while the old engine keeps serving, then
+  requests a handoff and automatically replaces the engine within a 30s
+  handoff/recovery budget. A preparation error leaves the old engine in place.
+  Active and background sub-agents retain their IDs, histories, unread
   messages and confirmed results. Summaries are best effort under one shared
   deadline; a task does not become completed because it was summarized.
   Questions and iteration-cap pauses still wait for you. The conversation
@@ -279,7 +281,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   error. An older engine without handoff support uses bounded event-based
   recovery; its unsaved messages cannot be reconstructed.
 - **Local startup remains available while the phone hub connects.** A cold
-  launch allows up to two minutes for local initialization and reports progress
+  launch allows up to two minutes for local initialization after frontend
+  preparation and reports progress
   every ten seconds. Phone registration runs in the background, so its network
   wait does not hold the window closed. Startup errors show the current
   attempt's log and actual process failure. The separate 30s restart budget
@@ -369,8 +372,8 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 ## Quick start
 
-Requirements: Go 1.26+ and Node.js (for the UI bundle on first run; `npm install`
-uses the public registry). The desktop window uses
+Requirements: Go 1.26+ and Node.js (for a missing/stale checkout UI bundle or
+dependency repair; `npm install --include=dev` uses the public registry). The desktop window uses
 [Wails 3](https://wails.io) and needs a C toolchain (macOS: Xcode Command Line
 Tools; Linux: `webkit2gtk` dev packages).
 
@@ -385,6 +388,11 @@ go run ./cmd/zwai desktop
 # or the same app in your browser
 go run ./cmd/zwai web
 ```
+
+When a checkout bundle needs rebuilding, startup checks its declared direct
+dependencies and development build tools. An empty or partial `node_modules`
+is repaired before building even when its directory timestamp is recent.
+Installation is checked again before the build can be stamped as current.
 
 First launch writes `~/.zwai-swarm/config.yaml` and shows a setup banner until a
 model is configured. Open **Settings** (⌘,) — a full-page sheet that starts on
@@ -862,8 +870,9 @@ zwai --data-dir /tmp/demo   # use a throwaway data directory
 the terminal share one engine for that directory: the first shell starts
 it, the next one attaches, and closing a window does not stop a turn that
 is still running. A newer binary requests a durable task handoff, prints
-progress every 5s, and automatically replaces the engine within one 30s launch
-budget. The old engine must acknowledge saved progress before it is stopped;
+progress every 5s, and automatically replaces the engine within one 30s
+handoff/recovery budget after checkout frontend preparation. The old engine
+must acknowledge saved progress before it is stopped;
 engines without this API use bounded compatibility recovery. See
 [docs/CLI.md](docs/CLI.md).
 

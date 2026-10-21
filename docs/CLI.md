@@ -47,7 +47,13 @@ that is still going keeps the process up. A user **Stop** is the only path
 that records `cancelled`. If the engine process is killed, the next shell
 takes the lock and resumes orphaned turns.
 
-A cold start waits up to **two minutes** for the local engine, printing startup
+From a checkout, the launcher prepares the current frontend before engine
+discovery or replacement, while the old engine continues serving. A build
+failure or cancellation returns before handoff or a new engine launch. Package
+installation/build time precedes the replacement budget; preparation does not
+guarantee that the later process cannot encounter another startup failure.
+
+After preparation, a cold start waits up to **two minutes** for the local engine, printing startup
 progress every **10s**. Waiting for another process that already holds the
 directory lock uses the same readiness limit and checks its published build
 before attaching. Phone-hub registration runs in the background; a slow hub
@@ -68,7 +74,8 @@ a competing process that owns the directory remains untouched.
 
 Opening a **different build** (another version, or a replacement executable)
 automatically hands off and replaces the old engine, with one **30s budget**
-covering handoff, old-process exit and the new listener. No terminal answer
+starting after frontend preparation and covering handoff, old-process exit and
+the new listener. No terminal answer
 is required. Up to 20s is reserved for saving progress and workers' best-effort
 summaries; the remaining time is for replacement and recovery. The new engine
 continues unfinished tasks under the original turn and worker IDs. Finished
@@ -87,10 +94,14 @@ are reported; a 30s budget is not a promise that a model will finish its task.
 A second `zwai desktop` on the same data directory opens another window on
 the same engine. Both can type. The app menu (the `…` at the bottom of the icon rail) names the connected shells when more than one is attached.
 
-A checkout with no `frontend/dist/index.html` (or with TypeScript newer than
-the last build) runs `npm install` then `npm run build` before the window
-opens, against `registry.npmjs.org` (the project `.npmrc`, not a user-level
-mirror). Ctrl-C during that first install stops it.
+A checkout with a missing or stale `frontend/dist` prepares it before the
+window opens. It checks declared direct dependencies, development dependencies
+and their local executable entries; a missing/partial install triggers
+`npm install --include=dev` against `registry.npmjs.org` (the project `.npmrc`).
+The install is checked again before `npm run build` and the new source stamp.
+Preparation serializes across processes using the same checkout; Ctrl-C can
+cancel installation, building or waiting for another build. A current bundle
+and an installed binary's embed keep working without new Node requirements.
 
 A loopback engine can show a file in the platform file manager and open
 http(s) links in the system browser. A non-loopback bind cannot; the UI

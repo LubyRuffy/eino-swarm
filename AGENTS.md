@@ -86,6 +86,19 @@ E2E suite.
   registration with a responsive local API, current-attempt logs and exit
   status, and cancellation that reaps only the launcher's own child. Cold-start
   readiness must not extend the separate `C-027` 30s replacement deadline.
+- A reported checkout-launch failure must be accepted through the reported
+  command in that same checkout, with current source/build provenance and
+  unrelated dirty edits preserved. Regress empty and partial `node_modules`
+  newer than the manifests, including missing development build tools. Observe
+  the resulting native window and an offline turn from that launch. Another
+  worktree, prebuilt embed or separately launched `.app` cannot accept the
+  original checkout command.
+  Check declared direct/development packages and executable entries before a
+  rebuild, revalidate after installation, and do not stamp an incomplete build.
+  Serialize install/build/stamping for one checkout across processes; regress
+  cancellation while waiting and staleness checked again after locking.
+  Regress real npm-to-Node descendants: cancellation or script exit must stop
+  old writers before another build acquires the lock; retain the context cause.
 - Engine replacement follows `C-027`: freeze new work, durably checkpoint every
   active or parked registry, then stop and restore within one launch deadline.
   Regress real process replacement, original turn/worker identities, human

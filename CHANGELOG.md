@@ -34,6 +34,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-110`, `F-430`, `C-001`, `C-010`: checkout frontend preparation repairs empty or incomplete direct dependency installs even when `node_modules` has a newer timestamp. Installation explicitly includes development packages and is revalidated before build/stamping. Concurrent processes serialize preparation for the same checkout; cancellation/script exit stops build descendants before lock reuse and retains the cancellation cause. Current-bundle/embed behavior is preserved.
+
+- `F-110`, `C-001`, `C-027`: checkout frontend preparation now runs before engine discovery/replacement while the old engine continues serving. A preparation build error or cancellation leaves that engine in place; installation/build time does not consume the subsequent 30s handoff/recovery budget. Later process startup is still checked independently.
+
 - `F-150`, `F-160`, `C-009`, `C-012`: an explicit human prohibition on parking the conversation now persists independently of compressed summaries. Thread `schedule_wake` and `report_schedule(next_in_s)` refuse at the tool and storage boundaries with source-attributed Trace evidence, leaving the wait unchanged and producing no armed card. Pending policy classification also refuses arming. Only a later explicit human allowance releases the prohibition; reporting without rescheduling and cancellation remain available. The scheduled-start regression keeps its callback for its private database's lifetime so test cleanup cannot race the runtime's final writes.
 
 - `F-110`, `F-210`, `C-001`, `C-006`, `C-027`: local startup no longer waits for phone-hub registration, and slow initialization has a bounded two-minute readiness window with 10s progress. Remote Stop/Reload cancel registration and reject stale results. Failed launches retain their actual exit status and only the current attempt's log; cancellation reaps only the launched child. The separate 30s engine-replacement budget and ordered task restoration remain in force.

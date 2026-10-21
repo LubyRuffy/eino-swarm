@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/LubyRuffy/eino-swarm/frontend"
 	"github.com/LubyRuffy/eino-swarm/internal/app"
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/lease"
@@ -28,6 +29,8 @@ var activeEngineStop func()
 
 // Tests replace the process launcher with the same engine running in-process.
 var launchEngine = spawnEngineContext
+
+var loadEngineFrontend = frontend.Load
 
 func runEngine(args []string) error {
 	fs := flag.NewFlagSet("engine", flag.ExitOnError)
@@ -140,9 +143,14 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 		return "", err
 	}
 	dir := cfg.DataDir()
-	started := time.Now()
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stopSignals()
+	// Prepare checkout assets while the old engine can still serve its clients.
+	// Package installation must not consume its bounded handoff/recovery window.
+	if _, err := loadEngineFrontend(ctx); err != nil {
+		return "", fmt.Errorf("prepare frontend before engine startup: %w", err)
+	}
+	started := time.Now()
 	restarting := false
 	for {
 		if err := ctx.Err(); err != nil {

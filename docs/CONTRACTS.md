@@ -13,8 +13,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：lifecycle；作用范围：desktop、web、tui、engine；关联功能：`F-110`, `F-120`, `F-320`。
 - 契约内容：同一数据目录只由一个 engine 进程持有；客户端连接同一 loopback 服务；不同版本或开发二进制身份替换引擎时先进行有界持久化交接并自动恢复。持锁但尚未发布地址的引擎必须在地址出现后经过同一身份和活动 turn 检查；子进程启动输给竞争者时也不得直接接受竞争者的 URL。身份/状态检查或检查点保存失败时不得假称已安全交接；明确报告错误并保留可重试的恢复现场。
-- 就绪和失败边界：普通冷启动最多等待 2 分钟，每 10 秒报告进度；替换引擎仍受 `C-027` 的统一 30 秒预算约束。启动失败必须保留实际子进程退出错误，日志仅取本次启动后追加的部分，不得用旧模型错误充当本次原因。取消／超时必须回收本次启动的子进程，不得终止竞争 lease 的其他持有者。本地就绪不得等待可选手机 hub 注册，turn／worker 恢复与调度仍有序完成。证据：`cmd/zwai/engine_boot_test.go`、`cmd/zwai/engine_restart_budget_test.go`、`internal/app/startup_remote_test.go`。
+- 就绪和失败边界：前端准备后的普通冷启动最多等待 2 分钟，每 10 秒报告进度；替换引擎仍受 `C-027` 的统一 30 秒预算约束。启动失败必须保留实际子进程退出错误，日志仅取本次启动后追加的部分，不得用旧模型错误充当本次原因。取消／超时必须回收本次启动的子进程，不得终止竞争 lease 的其他持有者。本地就绪不得等待可选手机 hub 注册，turn／worker 恢复与调度仍有序完成。证据：`cmd/zwai/engine_boot_test.go`、`cmd/zwai/engine_restart_budget_test.go`、`internal/app/startup_remote_test.go`。
 - 单次健康探测边界：`lease.Discover` 在 `ErrUnreachable` 时保留已解析的未验证租约，仅用于将 PID 与本次启动的自有 child 关联；错误记录不能作为附着地址、版本或模式已验证的证据。仅当 PID 属于本次 child 且尚未观察其退出时，启动器可在原总截止时间内继续探测；成功元数据校验仍是附着前提。竞争 holder 的不可达与模式冲突保持可判断错误并立即返回，不能借此终止竞争进程。证据：`internal/lease/lease.go`、`internal/lease/lease_test.go`、`cmd/zwai/engine_boot.go`、`cmd/zwai/engine_boot_test.go`。
+- 前端准备边界：当前 checkout 的 `frontend.Load` 在引擎发现／交接／启动前、同一可取消启动上下文内执行；准备失败或取消不得冻结／停止旧引擎或启动新 child。准备耗时不消耗随后 30 秒交接／恢复预算，后续进程仍须完成自身构建／启动校验，不保证准备后不会发生新的故障。证据：`cmd/zwai/engine.go`、`cmd/zwai/engine_frontend_test.go`。
 - 允许行为：多个 shell 同时连接；禁止行为：多个进程同时写同一数据库；失败语义：引擎不可达或租约冲突需明确报告；不变量：一个目录一把 lease；边界条件：进程异常结束后可恢复。
 - 证据：实现 `internal/lease`, `internal/app`, `cmd/zwai`；测试 `internal/lease`, `internal/app`, `cmd/zwai/engine_startup_test.go`；变更规则：同步架构、CLI 和恢复测试；来源：`ARCHITECTURE.md` 和 Git 历史。
 
@@ -100,7 +101,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-010 Build artifacts and update channel
 
-- 状态：active；类型：compatibility / lifecycle；作用范围：build、mobile update、macOS desktop update；关联功能：`F-190`, `F-240`, `F-430`。
+- 状态：active；类型：compatibility / lifecycle；作用范围：checkout frontend build、mobile update、macOS desktop update；关联功能：`F-110`, `F-190`, `F-240`, `F-430`。
+- checkout 构建依赖：需要重建 bundle 时，按 manifest 检查直接 `dependencies`／`devDependencies` 的已安装包 JSON 及所声明的本地 bin 入口，不能只凭 `node_modules` 目录存在或 mtime 判定可构建；不递归审计传递依赖或保证任意包内容完整。缺失时执行 `npm install --include=dev` 并在成功返回后复验，仍不满足则明确失败，不运行 build、不写 source stamp。安装、构建和 stamp 在 checkout 的忽略目录 `.build-lock` 下跨进程互斥，持锁后重查 staleness，等待可取消。新鲜 bundle 和无 checkout 的发布 embed 不新增 Node 要求。证据：`frontend/ensure.go`、`frontend/ensure_build_lock.go`、`frontend/ensure_dependencies_test.go`、`frontend/ensure_build_lock_test.go`。
+- 构建进程所有权：脚本退出或取消后，先终止并等待本次构建的进程树，再允许后续 builder 复用 checkout 锁，不能只结束 npm 而留下 Node 写入 `dist`／`node_modules`。取消错误保留可判断的 context 类别，脚本退出状态和清理错误保留，不把清理失败报告为成功。Unix 用进程组，Windows 用 Job Object；平台行为验收分别记录，交叉编译只证明可构建。证据：`frontend/ensure_process_unix.go`、`frontend/ensure_process_windows.go`、`frontend/ensure_process_test.go`、`frontend/ensure_process_windows_test.go`。
 - 契约内容：`make build` 先更新嵌入的前端；Android sideload 使用 GitHub Release 中版本匹配的 `zwai-<version>-android.apk`；iOS 不显示 GitHub 版本检查菜单，测试版由 TestFlight 分发和更新。手机新版本从 package 版本派生 Android versionCode 和 iOS build number；开发用 Xcode 设置仍从 package 同步，TestFlight archive 默认沿用本应用私有台账中最高 build 的成功交付 marketing version，无成功历史时使用批次版本。私有 `marketing_version` 可显式开启新版本；已存在的候选状态、IPA 或源码回执冻结原 iOS 版本。批次 version/SHA 与 iOS marketing version/build number 分别保存，build number 必须高于远端全部 builds/uploads。macOS 桌面发布物是 `zwai-<version>-darwin-<arch>.zip`，根目录为 `zwai.app`。新版本仅在未分配待发布修复存在、主线自上一个公开源码 SHA 后提交超过三次，或最早待发布验收记录超过 24 小时时分配；跨日期、跨运行累计。`make release` 按台账只发布本批实际受影响且尚未交付的平台：desktop 为 macOS，mobile 为 Android 与 iOS；混合批次共享 tag 和源码 SHA，桌面单端发布无需增加手机 package/build number。各端门禁独立，最终缺任一必需端则非零。附件同名同 SHA-256 跳过，不允许覆盖；已发布 tag 必须对应冻结完整主线 SHA。TestFlight 只有 VALID、内测 READY_FOR_BETA_TESTING、外测 IN_BETA_TESTING 且全部既定组关联时才完成；存在审核记录时还必须 APPROVED，无审核记录不能代替真实外测状态。加组后重新观察，仅 READY_FOR_BETA_SUBMISSION 请求提交审核；同版本后续 build 仍可能被 Apple 要求审核。上传前查 builds/buildUploads、当前构建声明和北京日成功账本，每日最多一新构建成功；已接受上传、处理或审核等待均保存恢复信息，不重复上传。Mac 与 Android 更新器从本仓库最近的非 draft、非 prerelease 且包含本平台安全安装包的 Release 升级，不假定 `/releases/latest` 含每个平台；下载只跟随 github.com 与 GitHub 的 release 资源主机。
 - 允许行为：不同渠道单独验收；禁止行为：把本地 APK/AAB 或未上传的 zip 称为远端发布，或从其他仓库安装；失败语义：构建、签名、下载错误可观察；不变量：用户可获取与显示版本一致的产物；边界条件：安装签名、新旧版本按数字比较、未打版本号的构建不提供升级。
 - Mac 安装 ZIP 的根目录 `zwai.app` 必须在 `Info.plist` 声明 `CFBundleIconFile=AppIcon.icns`，并包含有效的 Contents/Resources/AppIcon.icns 图标资源；发布入口在首次上传前检查这两处。运行时 Wails/Dock 图标不能代替 Finder 安装包图标。
@@ -263,7 +266,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 ## C-027 Automatic bounded restart handoff
 
 - 状态：active；类型：lifecycle / consistency / compatibility；作用范围：swarm、engine、lease、server、PC shell；关联功能：`F-110`、`F-130`、`F-150`、`F-160`、`F-330`。
-- 契约内容：不同构建启动后自动交接，无终端确认；交接、旧进程退出、新引擎监听共用 30 秒启动预算。交接先冻结新工作，覆盖活动及停泊 registry；先保存确定性检查点，再在统一截止时间内尽力收集 worker 摘要；不能为每个 worker 重新计算 30 秒。
+- 契约内容：不同构建在当前 checkout 的前端准备成功后自动交接，无终端确认；准备后的引擎发现／交接检查、旧进程退出、新引擎监听共用 30 秒预算，依赖安装／前端构建时间不计入该预算。准备失败或取消时旧引擎继续服务；准备成功不代表后续进程已就绪。交接先冻结新工作，覆盖活动及停泊 registry；先保存确定性检查点，再在统一截止时间内尽力收集 worker 摘要；不能为每个 worker 重新计算 30 秒。证据：`cmd/zwai/engine_frontend_test.go`。
 - 启动预算边界：普通冷启动的 2 分钟就绪等待不能延长本项 30 秒预算；启动等待、lease 竞争和子进程回收都遵守调用方剩余截止时间。证据：`cmd/zwai/engine_boot_test.go`、`cmd/zwai/engine_restart_budget_test.go`。
 - 恢复不变量：保留原 turn／worker ID、真实完成结果、原任务与历史、未消费消息及 watchdog 预算；交接摘要／停止不等于完成、失败或用户取消。人类问答和迭代上限暂停不能被重启绕过；成功 ACK 的回答、继续／停止决定必须保留；已有权威终态的遗留 running 行只能收敛状态，不能重新执行；后台 worker 不能被会话 `running=false` 漏掉，启动后直接恢复其执行而不提前未来唤醒，且活跃后台 worker 阻止空闲退出。检查点的完整指令／历史不得离开 PC，手机仅保留空正文与序号。
 - 收尾顺序：正常收尾与重启接管必须互斥排序，覆盖终态判断、worker 停泊／清理和终态持久化，不能仅凭 idle 通知报告交接成功；先收尾的 turn 必须完成持久化，先接管的 turn 必须保留 worker 检查点。等待收尾使用同一截止时间，超时不能部分接管，也不能返回 ready，后续可重试。重启取消不能被写成权威的用户 `interrupted` 终态；真实的人类 Stop 仍必须取消。证据：`internal/engine/goal_session.go`、`internal/engine/restart_finish.go`、`internal/engine/restart.go`、`internal/engine/restart_finish_test.go`、`internal/engine/restart_finish_ownership_test.go`。
