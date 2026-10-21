@@ -190,11 +190,16 @@ func (s *Store) CheckGoalContinuation(scope *GoalTurnScope, continuing bool) err
 // destination. Done one-shots still share the ordinary active ceiling.
 func (s *Store) RearmScheduleForTurn(scope *GoalTurnScope, id string, cap int, fields map[string]any) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
-		if err := goalContinuation(tx, scope, false); err != nil {
-			return err
-		}
 		var row Schedule
 		if err := tx.First(&row, "id = ?", id).Error; err != nil {
+			return err
+		}
+		if scope != nil && row.Kind == ScheduleThread {
+			if err := checkThreadWakePolicy(tx, row.ThreadID); err != nil {
+				return err
+			}
+		}
+		if err := goalContinuation(tx, scope, false); err != nil {
 			return err
 		}
 		if err := goalWakeDestination(tx, scope, &row); err != nil {
@@ -224,6 +229,11 @@ func (s *Store) RearmScheduleForTurn(scope *GoalTurnScope, id string, cap int, f
 // remains independent of a conversation's standing objective.
 func (s *Store) CreateScheduleForTurn(scope *GoalTurnScope, row *Schedule, cap int) error {
 	return s.db.Transaction(func(tx *gorm.DB) error {
+		if scope != nil && row.Kind == ScheduleThread {
+			if err := checkThreadWakePolicy(tx, row.ThreadID); err != nil {
+				return err
+			}
+		}
 		if err := goalContinuation(tx, scope, row.Kind == ScheduleThread && row.CreatedBy == ScheduleCreatedManager); err != nil {
 			return err
 		}
@@ -255,6 +265,11 @@ func (s *Store) ReplaceThreadWakeForTurn(scope *GoalTurnScope, threadID, id stri
 		if row.Kind != ScheduleThread || row.ThreadID != threadID {
 			return fmt.Errorf("store: that wait is not a wake on this conversation")
 		}
+		if scope != nil {
+			if err := checkThreadWakePolicy(tx, threadID); err != nil {
+				return err
+			}
+		}
 		if err := goalContinuation(tx, scope, row.CreatedBy == ScheduleCreatedManager); err != nil {
 			return err
 		}
@@ -272,6 +287,16 @@ func (s *Store) ReplaceThreadWakeForTurn(scope *GoalTurnScope, threadID, id stri
 // CancelScheduleForTurn is report_schedule keep:false. Its destination check
 // and status write share a transaction with human retargeting.
 func (s *Store) CancelScheduleForTurn(scope *GoalTurnScope, id string) (*Schedule, error) {
+	return s.cancelScheduleForTurn(scope, id, false)
+}
+
+// CancelScheduleForTurnWithWakePolicy validates a report carrying a next-wake
+// delay before committing any cancellation, including a concurrent human edit.
+func (s *Store) CancelScheduleForTurnWithWakePolicy(scope *GoalTurnScope, id string) (*Schedule, error) {
+	return s.cancelScheduleForTurn(scope, id, true)
+}
+
+func (s *Store) cancelScheduleForTurn(scope *GoalTurnScope, id string, requireWakePolicy bool) (*Schedule, error) {
 	var changed *Schedule
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if scope != nil {
@@ -282,6 +307,11 @@ func (s *Store) CancelScheduleForTurn(scope *GoalTurnScope, id string) (*Schedul
 		var row Schedule
 		if err := tx.First(&row, "id = ?", id).Error; err != nil {
 			return err
+		}
+		if requireWakePolicy && scope != nil && row.Kind == ScheduleThread {
+			if err := checkThreadWakePolicy(tx, row.ThreadID); err != nil {
+				return err
+			}
 		}
 		if err := goalWakeDestination(tx, scope, &row); err != nil {
 			return err

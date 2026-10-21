@@ -84,7 +84,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-009 Editable configuration and scheduled waits
 
-- 状态：active；类型：compatibility / lifecycle；作用范围：config、provider、engine；关联功能：`F-150`, `F-170`, `F-230`, `F-420`。
+- 状态：active；类型：compatibility / lifecycle；作用范围：config、provider、engine、store；关联功能：`F-150`, `F-170`, `F-230`, `F-420`。
+- 等待策略资源边界：普通工作只在尝试挂起时请求策略分类；单次验证上下文总截止时间为 30 秒，包含可取消的串行门禁等待。每 turn 最多分类 16 条未缓存 human 输入，成功结果跨 turn 持久缓存，后续 turn 可继续补齐；同 turn 同一有效输入提取失败后不再次请求，返回 pending 并继续当前工作。运行时 System 只注入来源事件 seq 与最多 256 rune 的引句，防止长原文在压缩后反复回填；工具拒绝 Trace 仍保留完整 source_text 与 source_quote。实现／验证：`internal/engine/thread_wake_policy.go`、`internal/engine/thread_wake_policy_test.go`；来源：当前会话等待禁止修复。
+- 人类等待禁止：从原始有效 human `user_message`／`steer` 的语义提取 `deny`／`allow`／`unchanged`，以来源事件 seq、事件身份、文本指纹和精确引句持久化；不按业务词面匹配，也不接受 manager 参数声明人类已经许可。`deny` 盖过 Waiting 与定时检查开场白；只有后来明确 human `allow` 可解除，摘要、压缩、重启、技能、工具结果、模型写入的 schedule prompt 与 peer 数据均不能解除。`schedule_wake` 和 thread `report_schedule` 的 `next_in_s` 在真实工具边界及等待变更事务内检查；已禁止返回 `ok:false,code:"thread_wake_prohibited"`，来源未分类或策略提取失败返回 `ok:false,code:"thread_wake_policy_pending"`。拒绝保持原等待行完整不变、不发出 `schedule` armed 事件、不生成新的等待卡，Trace 的同 turn 工具结果对已分类禁令保留 source_seq、source_text、source_quote，待分类时保留已知 pending_seq。不带 `next_in_s` 的报告（包括 `keep:false` 取消）仍合法；带 `next_in_s` 的拒绝不得部分取消等待；`schedule_task` 的既有限制保持。证据：`internal/engine/thread_wake_policy.go`、`internal/engine/thread_wake_policy_test.go`、`internal/store/wake_policy.go`、`internal/store/wake_policy_guard_test.go`、`frontend/e2e/human-wake-policy.spec.ts`；变更规则：同步等待提示词、来源/策略存储、工具及事务回归、API、DATA_MODEL 与 TESTING。
 - 契约内容：端点、模型等配置有默认值且可在 Settings 编辑；`OPENAI_*` 只用于首次空字段填充；已知模型窗口的自动压缩阈值必须同时预留固定输出空间和配置的最大输出 token，不得只按输入占比判断；缺失计费信息的重放消息和工具结果须保守估算非 ASCII 文本及每条消息的结构开销，不能按 ASCII 的每四字符一 token 低估；未知窗口仍用固定 token 阈值。无法压缩的上下文越界须给出降低输出上限或缩短请求的提示；周期检查因此终止时保留失败记录并暂停该计划，避免相同错误循环触发，调整后可手动恢复。计划触发或取消需保留状态。成功轮次若有下一次已安排的同对话唤醒，未完成的 sub-agent 保持原 ID 和运行状态供下次轮次续办；没有下一次唤醒且无持续目标、取消或暂停最后一次唤醒、轮次错误或中断时清理，无下一轮的独立任务不保留 worker。定时触发与立即执行没有任何工具结果或显式 `report_schedule` 时，只在原 turn 继续一次；仍无证据则 turn/run 为 error、unread=true，不把开场话当 findings 或空回答当 quiet。显式空 findings 保持 quiet；真实工具结果后的省略报告兜底保持兼容，模型错误清理生成的虚拟工具结果不算执行证据。判断不得依赖回答长度、标点、语言、任务样本或模型名。重试原因 `scheduled_no_activity` 进入同一 turn 的 Trace。
 - 允许行为：用户更改设置；禁止行为：生产代码硬编码用户端点或模型；失败语义：配置或计划错误明确报告；不变量：用户设置优先于环境种子；边界条件：首次运行与重启。
 - 目标编辑：legacy 空/NULL `schedule_runs.kind` 在目标编辑前按真实旧计划 kind 冻结；冻结、目标、可选 pause/resume 和活动数量上限检查在同一事务，失败无部分副作用。已领取 fire 按冻结 kind 与原 thread 保持 Waiting/worker 归属；成功移动最后一个 wake 后才清理原会话 parked workers 或续办 goal，其他 wake、已领取 fire 与 live turn 保持原有边界。
@@ -116,8 +118,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-012 One-ID troubleshooting
 
-- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-320`, `F-420`。
+- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-150`, `F-160`, `F-320`, `F-420`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
+- 人类等待禁止的拒绝在同 turn 的既有 `tool_result` 中保留稳定拒绝码，以及已分类禁令的 source_seq、source_text、source_quote；待分类拒绝保留已知 pending_seq。原句已从压缩重放中移除时仍可定位原始事件。拒绝不能生成表示已经成功挂起的 `schedule` 事件；模型口头声明不构成等待或 Trace 事实。等待策略与恢复边界由 `C-009` 定义。
 - Worker 计数证据：创建／续办以该 turn 的真实调用与持久化生命周期事件为准，历史名册和 assistant 自述不能当作本轮创建量。错误回执保留拒绝类别及聚合数量，已恢复 ID 不冒称新 ID；摘要事实按 `turn_id` 和 `through_seq` 归属。仅注入名册快照不得新增 `spawned` 或伪造 `spawn_agent` 工具记录；真实续办／进程恢复保留事件并按已有 ID 区分。证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`frontend/e2e/worker-roster-history.spec.ts`；来源：GitHub Issue #78。
 - 模型接口失败的公共 turn/error 展示保留可判断的 HTTP 状态码及接口拒绝/响应解码原因。JSON 解码错误本身不证明工具参数无效；SDK/Eino 类型错误经包装仍按接口错误处理。公共文本不包含原始响应正文、图执行路径或认证值，原因最多 512 字符；原始调用与重试仍在同一 turn 的 Trace 内可查，上下文溢出及超时提示保留现有恢复建议。
 - 允许行为：敏感值脱敏；禁止行为：丢掉诊断所需事件或输出令牌/完整 Cookie；失败语义：不存在的 id 报不存在；不变量：同 id 贯穿运行；边界条件：部分失败和重启恢复。

@@ -41,6 +41,9 @@ func (s *Store) TruncateFromEventSeq(threadID string, fromSeq int64) error {
 		if err := tx.Where("thread_id = ? AND seq >= ?", threadID, fromSeq).Delete(&Event{}).Error; err != nil {
 			return err
 		}
+		if err := tx.Where("thread_id = ? AND event_seq >= ?", threadID, fromSeq).Delete(&ThreadWakeDecision{}).Error; err != nil {
+			return err
+		}
 		// After restart, event numbering starts above the remaining timeline.
 		// A cursor into removed history would hide new inbox messages.
 		if err := tx.Model(&Thread{}).Where("id = ? AND task_message_through_seq >= ?", threadID, fromSeq).

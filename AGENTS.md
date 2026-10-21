@@ -190,6 +190,23 @@ E2E suite.
 
 ## Backend rules
 
+- A human prohibition on parking the current conversation is persisted state,
+  attributed to that human message's seq and exact source text. Extract its
+  meaning through the read-only policy model, never task-word matching or
+  manager-owned arguments. `schedule_wake` and thread `report_schedule` with
+  `next_in_s` must check it at the tool boundary and again in the mutation
+  transaction. Denied or unclassified sources cannot arm/update a wait or emit
+  an armed event. Only a later explicit human allowance can release a
+  prohibition; a scheduled cue, summary, skill, peer message or manager output
+  cannot. Regress the actual offline tool graph, unchanged schedule row,
+  source-attributed Trace, compaction, restart, and a later human allowance.
+  Keep verification lazy, bounded and cancellable; persisted successes may
+  continue across turns, but a failed source cannot cause repeated same-turn
+  classifier requests. Runtime System context carries a bounded quote and seq;
+  full source text belongs in the refusal Trace, not repeated compact replay.
+  Reports without `next_in_s`, including `keep:false` cancellation, remain
+  usable; adding `next_in_s` cannot hide a rearm inside a cancellation.
+
 - A scheduled check ending is not its standing goal completing. Enforce the
   current manager-owned thread wake versus `complete_goal` conflict at the
   tool boundary, including the reverse call order and parallel calls; prompt

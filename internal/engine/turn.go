@@ -33,6 +33,8 @@ type runtime struct {
 	startedAt time.Time
 	running   bool
 	idle      chan struct{} // closed when the current turn finishes
+
+	wakePolicyCheck wakePolicyCheck
 	// continueCh is set only while the manager is paused at its tool-round
 	// cap. true extends the run; false (or interrupt) ends it. Buffered so
 	// Interrupt cannot block on a receiver that has not reached the select.
