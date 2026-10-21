@@ -52,11 +52,15 @@ test("cleanup and interruption replay shows stopped workers separately from comp
       { kind: "spawned", agent_id: "worker-1", role: "worker" },
       { kind: "spawned", agent_id: "worker-2", role: "worker" },
       { kind: "spawned", agent_id: "worker-3", role: "worker" },
+      { kind: "spawned", agent_id: "worker-4", role: "worker" },
       { kind: "finished", agent_id: "worker-3", text: "Verified result." },
+      { kind: "finished", agent_id: "worker-4", err: "provider unavailable" },
       { kind: "tool_call", agent_id: "worker-1", text: "exec({})", tool_call_id: "call" },
       { kind: "user_stop_requested", text: "Stop requested by the user." },
       { kind: "cleanup", text: "Stopped unfinished workers." },
       { kind: "error", err: "interrupted" },
+      { kind: "finished", agent_id: "worker-1", err: "swarm: agent worker-1 cancelled: context canceled" },
+      { kind: "finished", agent_id: "worker-2", err: "swarm: agent worker-2 cancelled: context canceled" },
     ].map((event, index) => ({ ...base, seq: index + 1, ...event }))
     await route.fulfill({ response, json: body })
   })
@@ -67,10 +71,11 @@ test("cleanup and interruption replay shows stopped workers separately from comp
     await page.getByRole("tab", { name: "Agents" }).click()
     const roster = page.getByTestId("agent-roster")
     await expect(roster.getByText("Stopped (2)", { exact: true })).toBeVisible()
-    await expect(roster.getByText("Done (1)", { exact: true })).toBeVisible()
+    await expect(roster.getByText("Done (2)", { exact: true })).toBeVisible()
     await expect(roster.getByText(/Active \(/)).toHaveCount(0)
     await expect(roster.locator('[aria-label="stopped"]')).toHaveCount(2)
     await expect(roster.locator('[data-agent-id="worker-3"] [aria-label="done"]')).toBeVisible()
+    await expect(roster.locator('[data-agent-id="worker-4"] [aria-label="failed"]')).toBeVisible()
     await expect(page.locator(".animate-spin, .animate-breathe")).toHaveCount(0)
     if (replay === 0) await reloadOpenConversation(page)
   }

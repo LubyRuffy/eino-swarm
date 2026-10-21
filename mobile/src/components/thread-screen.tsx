@@ -84,10 +84,12 @@ export function ThreadScreen({
   const manager = managerBlocks(blocks)
   const agents = phoneAgents(blocks)
   const activeAgents = agents.filter((agent) => agent.status === "running")
-  const finishedAgents = agents.filter((agent) => agent.status !== "running")
+  const finishedAgents = agents.filter((agent) => agent.status === "done" || agent.status === "failed")
+  const stoppedAgents = agents.filter((agent) => agent.status === "cancelled")
   const agentGroups = [
     { id: "active", label: t("thread.agent.activeGroup", { n: activeAgents.length }), agents: activeAgents },
     { id: "finished", label: t("thread.agent.finishedGroup", { n: finishedAgents.length }), agents: finishedAgents },
+    { id: "stopped", label: t("thread.agent.stoppedGroup", { n: stoppedAgents.length }), agents: stoppedAgents },
   ]
   const [agentPage, setAgentPage] = useState("chat")
   useLayoutEffect(() => { onReadVisibility?.(agentPage === "chat") }, [agentPage, onReadVisibility])

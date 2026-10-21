@@ -55,7 +55,7 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-130 Agent runs, tools, and live control
 
 - 自动重启的任务交接沿用 `F-110`／`C-027`：已接受的回答、继续／停止决定不会因交接被忽略；已确认终态不重复执行；完成 manager 下的后台 worker 直接按原 ID 恢复。证据：`internal/engine/restart_recovery_test.go`、`internal/engine/restart_parked_test.go`。
-- PC 人工停止与清理：未完成的子代理显示在独立的 Stopped／已停止分组，停止后的刷新与重开仍保留该状态；不把资源清理当成成功完成，也不把人工停止显示为模型失败。真实完成的代理继续显示完成。关联契约：`C-002`、`C-003`；证据：`frontend/src/lib/transcript-stop.test.ts`、`frontend/src/components/app/panel-stop.test.tsx`、`frontend/e2e/restart.spec.ts`。
+- PC 人工停止与清理：未完成的子代理显示在独立的 Stopped／已停止分组，停止后的刷新与重开仍保留该状态。绑定当前代理身份的取消 `finished` 回执无论出现在清理前、清理后或主管终态后，都保留已停止；不把资源清理当成成功，也不把普通 provider／watchdog 失败改成停止。真实完成或失败的结果保留，显式续办同一 ID 可重新运行。关联契约：`C-002`、`C-003`；证据：`frontend/src/lib/transcript-stop.test.ts`、`frontend/src/lib/transcript-cancelled-finish.test.ts`、`frontend/src/components/app/panel-stop.test.tsx`、`frontend/e2e/restart.spec.ts`。
 
 - PC 用户视图：连续工作区块只有一段思考或一个可见工具时，直接显示该条自身的折叠，一次点击即可查看内容；流式思考沿用默认展开与手动折叠。多项保留聚合，回答分隔工作区块。关联契约：`C-022`；实现证据：`frontend/src/components/app/work-fold.tsx`, `frontend/src/components/app/transcript-fold.test.tsx`, `frontend/e2e/work-fold.spec.ts`。
 
@@ -133,7 +133,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-222 Inspect sub-agents on the phone
 
-- 目的：在手机查看 PC 对话中的子 Agent 而不混入主 Agent 回答；使用者：已配对手机用户；入口：对话页 → 子 Agent／Agents → 子 Agent 行；输入：Pairlink 已允许的事件及更早历史页；输出：页头仅统计运行中的子 Agent，列表按进行中／已结束分组，保留完成与失败历史的角色、ID、状态、活动摘要及独立思考、工具、回答记录；页面返回、Android 系统返回或 iOS 左边缘右滑按详情→列表→对话逐级返回；列表在实时多段输出与历史分页后仍不显示主管正文或工作折叠；前置条件：PC 端有可回放的子 Agent 事件；失败表现：离线时沿用重连提示，未加载到启动事件前角色暂以 ID 显示；关联契约：`C-003`, `C-006`, `C-015`；实现证据：`mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/src/components/agent-page.test.tsx`, `mobile/e2e/agent-roster.spec.ts`。
+- 目的：在手机查看 PC 对话中的子 Agent 而不混入主 Agent 回答；使用者：已配对手机用户；入口：对话页 → 子 Agent／Agents → 子 Agent 行；输入：Pairlink 已允许的事件及更早历史页；输出：页头仅统计运行中的子 Agent，列表按进行中／已停止／已结束分组，保留完成与失败历史的角色、ID、状态、活动摘要及独立思考、工具、回答记录；页面返回、Android 系统返回或 iOS 左边缘右滑按详情→列表→对话逐级返回；列表在实时多段输出与历史分页后仍不显示主管正文或工作折叠；前置条件：PC 端有可回放的子 Agent 事件；失败表现：离线时沿用重连提示，未加载到启动事件前角色暂以 ID 显示；关联契约：`C-002`, `C-003`, `C-006`, `C-015`；实现证据：`mobile/src/lib/transcript.ts`, `mobile/src/lib/session.ts`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/lib/session.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/src/components/agent-page.test.tsx`, `mobile/e2e/agent-roster.spec.ts`。
+- 人工停止沿用 `C-002`：清理与当前代理的取消回执都显示已停止，重新打开和更早历史分页不改成完成或失败；详情保留诊断原因但不显示失败样式。真实成功／失败与显式续办保持独立。证据：`mobile/src/lib/transcript-stop.test.ts`、`mobile/src/components/thread-stop-roster.test.tsx`、`mobile/e2e/worker-stop-replay.spec.ts`；来源：Issue #85。
 
 ### F-223 Inspect local client tasks on the phone
 

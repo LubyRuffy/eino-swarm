@@ -29,6 +29,7 @@ export type CompactBlock = {
   streaming?: boolean
   pending?: boolean
   failed?: boolean
+  cancelled?: boolean
   toolName?: string
   callId?: string
   args?: string
@@ -40,14 +41,16 @@ export type CompactBlock = {
 export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
   const worker = ev.agent_id && ev.agent_id !== "manager" ? ev.agent_id : undefined
   if (ev.kind === "finished" && worker) {
-    return blocks.map((b) => b.agentId === worker ? settleWorkerBlock(b, Boolean(ev.err)) : b)
-      .concat({ id: `${worker}:${blockId(ev)}`, kind: "finish", agentId: worker, text: ev.err || ev.text, failed: Boolean(ev.err) })
+    const cancelled = cancelledWorkerFinish(worker, ev.err)
+    const failed = Boolean(ev.err) && !cancelled
+    return blocks.map((b) => b.agentId === worker ? settleWorkerBlock(b, failed) : b)
+      .concat({ id: `${worker}:${blockId(ev)}`, kind: "finish", agentId: worker, text: ev.err || ev.text, failed, cancelled })
   }
   if (ev.kind === "cleanup") {
     const settled = applyEventForAgent(blocks.filter((b) => !b.agentId), ev)
     const kept = blocks.filter((b) => b.agentId)
     const closed = phoneAgents(blocks).filter((a) => a.status === "running")
-      .map((a) => ({ id: `${a.id}:${blockId(ev)}`, kind: "finish" as const, agentId: a.id, text: "" }))
+      .map((a) => ({ id: `${a.id}:${blockId(ev)}`, kind: "finish" as const, agentId: a.id, text: "", cancelled: true }))
     return settled.concat(kept.map((b) => settleWorkerBlock(b, false)), closed)
   }
   const positions: number[] = []
@@ -69,6 +72,12 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
     } else next[positions[i]] = block
   }
   return next
+}
+
+function cancelledWorkerFinish(id: string, err?: string): boolean {
+  // completeWorker emits this ID-bound prefix only after its own context cancels.
+  const prefix = `swarm: agent ${id} cancelled: `
+  return Boolean(err?.startsWith(prefix) && err.slice(prefix.length).trim())
 }
 
 function liveBlockId(blocks: CompactBlock[], id: string): string {
@@ -277,7 +286,7 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
       })
       return next
     case "error":
-      next.push({ id: blockId(ev), kind: "error", text: ev.err || ev.text })
+      next.push({ id: blockId(ev), kind: ev.err === "interrupted" ? "notice" : "error", text: ev.err || ev.text })
       next.push({ id: `${blockId(ev)}:end`, kind: "turn_end", text: ev.created_at })
       return next
     case "done":
@@ -346,7 +355,7 @@ export function pendingAsk(blocks: CompactBlock[]): CompactBlock | undefined {
 export type PhoneAgent = {
   id: string
   role: string
-  status: "running" | "done" | "failed"
+  status: "running" | "done" | "failed" | "cancelled"
   blocks: CompactBlock[]
   activity: string
 }
@@ -369,8 +378,9 @@ export function phoneAgents(blocks: CompactBlock[]): PhoneAgent[] {
       agent.role = block.text || agent.role
       agent.status = "running"
     } else if (block.kind === "finish") {
-      agent.status = block.failed ? "failed" : "done"
+      agent.status = block.cancelled ? "cancelled" : block.failed ? "failed" : "done"
       if (block.failed) agent.activity = block.text.slice(0, 80)
+      else if (block.cancelled) agent.activity = ""
     } else if (block.kind === "answer" || block.kind === "reasoning") {
       agent.status = "running"
       agent.activity = lastLine(block.text).slice(0, 80)
@@ -378,7 +388,7 @@ export function phoneAgents(blocks: CompactBlock[]): PhoneAgent[] {
       agent.status = "running"
       agent.activity = block.toolName || block.text.slice(0, 80)
     }
-    if (block.kind !== "finish" || block.failed) agent.blocks.push(block)
+    if (block.kind !== "finish" || block.failed || block.cancelled) agent.blocks.push(block)
   }
   return [...agents.values()]
 }
@@ -491,7 +501,7 @@ export type PhoneTicker = {
 /** Bookkeeping the phone never paints. Skipping it keeps a thought and the
  *  next real tool in one fold. */
 export function isPhoneOmitted(block: CompactBlock): boolean {
-  if (block.kind === "spawn" || (block.kind === "finish" && !block.failed)) return true
+  if (block.kind === "spawn" || (block.kind === "finish" && !block.failed && !block.cancelled)) return true
   if (block.kind !== "tool") return false
   const name = block.toolName ?? ""
   if (OMITTED_TOOLS.has(name)) return true
@@ -504,6 +514,7 @@ function isAlwaysVisible(block: CompactBlock): boolean {
     block.kind === "steer" ||
     block.kind === "answer" ||
     block.kind === "question" ||
+    (block.kind === "finish" && block.cancelled === true) ||
     block.kind === "error" ||
     block.kind === "notice" ||
     block.kind === "turn_end"

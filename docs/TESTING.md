@@ -328,6 +328,68 @@ cd frontend && npm test -- src/components/app/transcript-fold.test.tsx src/compo
 cd frontend && npm run e2e -- e2e/work-fold.spec.ts
 ```
 
+## Worker Stop receipts and replay (Issue #85, F-130 / F-222, C-002 / C-003)
+
+Cleanup cancels workers without joining their goroutines. A cancellation
+`finished` receipt may precede cleanup, follow cleanup, or follow the manager's
+`interrupted` terminal. The earlier Stop fixtures omitted these real finish
+receipts, so their green cleanup/replay checks did not cover the later failure.
+This is a derived-state classification defect, not evidence of a stored versus
+streamed sequence violation.
+
+`frontend/src/lib/transcript-cancelled-finish.test.ts` exercises all three
+orders through live reduction, cold replay and the paged roster sidecar.
+`mobile/src/lib/transcript-stop.test.ts` checks the phone's independent reducer
+through live events, rewatch and earlier-history paging; cleanup alone remains
+stopped. `mobile/src/components/thread-stop-roster.test.tsx` checks English and
+Chinese Stopped groups and worker detail styling.
+
+Both reducers recognize only the existing engine envelope
+`swarm: agent ${agentID} cancelled: ` with the current event's exact agent ID
+and a nonempty cause. Regress ordinary `context canceled`, cancellation words
+inside provider errors, another ID, an ID-prefix collision, an empty cause and
+watchdog failure as genuine failures. Already successful or failed workers
+retain their results through cleanup; an explicit same-ID resume starts a new
+running lifetime and its later result remains authoritative. Retain diagnostic
+causes in Trace while settling pending tools/streams without worker-failure
+styling for a stop; the PC's derived worker error field is not its Trace record.
+
+`frontend/e2e/restart.spec.ts` includes late cancellation finish receipts and a
+genuine provider failure in the persisted replay/reload path.
+`mobile/e2e/worker-stop-replay.spec.ts` clicks Stop in the offline phone fixture,
+then inspects both locales, all three finish orders and worker details, returns
+Home and reopens the same host conversation through a new watch. It does not
+reset the mock host by reloading the browser.
+These fixtures use generic worker identities and the engine's receipt envelope,
+not words from a user's task.
+
+```bash
+(cd frontend && npm test -- src/lib/transcript-cancelled-finish.test.ts src/lib/transcript-stop.test.ts)
+(cd mobile && npm test -- src/lib/transcript-stop.test.ts src/components/thread-stop-roster.test.tsx)
+(cd frontend && npm run e2e -- e2e/restart.spec.ts)
+(cd mobile && npm run e2e -- e2e/worker-stop-replay.spec.ts)
+```
+
+For native acceptance, use the exact new candidate's real window: observe
+workers running, press Stop before they finish, retain the same worker IDs and
+turn Trace, then Reload/reopen and inspect Stopped separately from genuine
+success/failure. Bind screenshots and runtime/package identity to that run.
+Synthetic reducer histories, an offline Web fixture or an old package's failure
+screenshots do not accept the new native package. A filename saying “live” or
+“Stop” is not proof that the captured turn was still running or stopped.
+
+Packaged phone drivers are `mobile/e2e/ios-worker-stop-replay.swift` method
+`BindFlowTests/testNativeWorkerStopReplayRetainsStoppedAndFinishedOutcomes` and
+`mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/WorkerStopReplayTest.java`
+method `nativeWorkerStopReplayRetainsStoppedAndFinishedOutcomes`. Use disposable
+offline native fixtures with `history=stopped-workers&stop_order=after_terminal`.
+Both tap Stop, check stopped versus genuine done/failed workers, inspect details,
+then return Home and reopen the same host conversation for a new watch. Android
+may read the actual WebView DOM to locate visible, unoccluded targets; input
+remains native touch. Keep each attempt's screenshots/results in a new directory
+or xcresult bundle so retries cannot overwrite a failure. These are execution
+entry points, not a claim that the current package has passed native acceptance.
+
 ## Phone queue steering after Stop (F-220 / C-003)
 
 The phone does not decide whether a queued row is a live steer or a new turn;

@@ -86,7 +86,13 @@ E2E suite.
   or process launch is not proof of handoff or recovery.
 - A cleanup event is not a worker completion receipt. Regress Stop and replay
   with unfinished workers shown as stopped, actual finished workers retained,
-  and no model-failure retry banner for human interruption. Serialize restart
+  and no model-failure retry banner for human interruption. Cleanup does not
+  join worker goroutines: include their actual cancellation `finished` receipts
+  before cleanup, after cleanup and after the manager terminal, through live,
+  cold and paged replay on both PC and phone. Bind cancellation to the current
+  worker ID and a nonempty engine cancellation cause; ordinary errors containing
+  cancellation words, wrong IDs and watchdog failures remain failures. A fixture
+  without these finish receipts cannot accept Stop/reload behavior. Serialize restart
   ownership against the whole normal finalization, including worker parking
   and durable terminal writes. Regress a deadline while waiting for that
   ownership: no partial abandonment, premature ready or lost parked worker.

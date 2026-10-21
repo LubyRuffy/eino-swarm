@@ -30,6 +30,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `F-222`, `C-002`, `C-003`: PC and phone worker rosters retain Stopped after human Stop and replay, including cancellation finish receipts before cleanup, after cleanup or after the manager terminal. Classification binds the current worker ID and an engine cancellation cause; unrelated provider/watchdog errors remain failures, genuine results survive cleanup, and explicit same-ID resume can run again (Issue #85).
+
 - `F-420`, `F-160`, `C-025`, `C-012`: memory-review failures show their stopping reason, submitted-proposal count and refusal categories, including capacity usage/excess when available. Same-turn Trace retains bounded safe proposal metadata while excluding rejected bodies and quotes. Trace opens the source turn even with the panel closed, historical focus avoids the latest turn's token usage, and pending manual results outside the loaded tail recover through one bounded turn read. Capacity repair receives structured feedback within the existing iteration budget; evidence, numeric spelling, note limits, fixed-revision commit and immediate skill writes retain their existing boundaries (Issue #84).
 
 - `F-430`, `C-010`: pending native Mac acceptance resumes with a fresh guest observation. Unknown guest state takes precedence over historical login success or failure, so old UTM failures cannot keep a resumed check blocked. Exact-package native acceptance remains valid after a later session or host lock; the audit still performs no login or VM operations.

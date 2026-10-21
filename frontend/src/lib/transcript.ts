@@ -567,11 +567,15 @@ export function reduceEvent(
 
     case "finished": {
       const child = touchAgent(next, ev.agent_id, ev.role)
-      child.status = ev.err ? "failed" : "done"
+      // Worker cancellation can finish before cleanup or after the manager.
+      // Match its engine envelope, not a provider's ordinary cancellation text.
+      const cancelledPrefix = `swarm: agent ${ev.agent_id} cancelled: `
+      const cancelled = Boolean(ev.err?.startsWith(cancelledPrefix) && ev.err.slice(cancelledPrefix.length).trim())
+      child.status = cancelled ? "cancelled" : ev.err ? "failed" : "done"
       child.endedAt = ev.created_at
       child.result = ev.text
-      child.error = ev.err
-      child.activity = ev.err ? "failed" : "done"
+      child.error = cancelled ? undefined : ev.err
+      child.activity = cancelled ? "stopped" : ev.err ? "failed" : "done"
       closeStreaming(child, "reasoning")
       closeStreaming(child, "answer")
       closePendingTools(child, ev.err)

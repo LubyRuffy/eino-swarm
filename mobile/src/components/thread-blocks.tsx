@@ -90,6 +90,9 @@ export function renderBlock(b: CompactBlock) {
   if (b.kind === "error" || (b.kind === "finish" && b.failed)) {
     return <p className="text-sm text-destructive">{localizeNotice(b.text)}</p>
   }
+  if (b.kind === "finish" && b.cancelled) {
+    return <p className="text-[11px] text-muted-foreground">{b.text || t("thread.agent.cancelled")}</p>
+  }
   if (b.kind === "notice") {
     const text = localizeNotice(b.text)
     if (!text) return null
