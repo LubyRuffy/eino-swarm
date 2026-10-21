@@ -21,14 +21,16 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 状态：active；类型：consistency；作用范围：engine、server、desktop、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-222`, `F-230`, `F-310`。
 - 契约内容：同一对话同时只有一个活动 turn；第二条普通消息进入 follow-up，活动中的 steer 指向该 turn；排队行在 turn 已经结束后点击注入，改为作为下一轮发送，Stop 仍不自动清空其余队列；排队消息和尚未被 manager 读取的 steer 可以拉进输入框后重新排队，已读 steer 不能改；手机在等待队列上执行“中断插入”时，先将队首消息转为本轮 steer，再请求中断当前 manager 步骤，其他消息继续排队；并发 API 冲突返回可识别的状态。
 - 手机主按钮：真实运行且无可发送草稿（包括附件或引用）时显示可点击停止图标，连接既有停止请求；有内容仍可点击跟进／插入，提问时保持回答，定时等待不显示停止。直连流式回复期间停止按钮可中止请求并保留已收到的文本；停止不发送空消息。
+- PC 停止交互：桌面和 Web 保留输入框的明确 Stop 按钮；Esc 不得调用停止请求，无弹层、输入框聚焦、关闭弹层后及连续按键均遵守该边界。Esc 继续关闭当前图片预览、Find 或其他局部弹层；图片预览优先于底层 Find。证据：实现 `frontend/src/App.tsx`；测试 `frontend/src/App.test.tsx`、`frontend/e2e/shell.spec.ts`。来源：用户 2026-10-21 避免 Esc 误停任务的要求。
 - PC 与手机停止展示：`cleanup` 只证明尚在运行的子代理已停止，不证明其任务成功完成；其派生状态为 `cancelled`，与真实完成及失败分组区分。绑定当前 `agent_id` 且有非空原因的引擎取消 `finished` 回执，无论早于清理、晚于清理或晚于主管终态，实时与历史回放都显示已停止，Trace 保留原始原因；普通取消字样、其他代理 ID、ID 前缀碰撞、provider／watchdog 失败不能据此变成停止。稳定的人工 `interrupted` 终态不显示模型失败／重试。真实成功及失败结果不得被清理回退，显式 `spawned` 续办同一 ID 后按新执行结果更新。该派生展示不增加 wire event，也不改变存储／广播顺序。证据：`frontend/src/lib/transcript.ts`、`frontend/src/lib/transcript-cancelled-finish.test.ts`、`frontend/src/components/app/panel.tsx`、`frontend/e2e/restart.spec.ts`、`mobile/src/lib/transcript.ts`、`mobile/src/lib/transcript-stop.test.ts`、`mobile/src/components/thread-stop-roster.test.tsx`、`mobile/e2e/worker-stop-replay.spec.ts`。
 - 允许行为：排队和插入；禁止行为：在同一对话并行启动两个 turn；失败语义：`ErrBusy`/`ErrIdle` 对应 409 与 code；不变量：turn 状态可恢复；边界条件：中断和等待。
 - 证据：实现 `internal/engine`, `internal/server`, `mobile/src/app.tsx`, `mobile/src/lib/phone-turn.ts`, `mobile/src/components/composer.tsx`, `mobile/src/components/direct-chat-screen.tsx`；测试 `internal/engine`, `frontend/src/store/app-steer.test.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/src/components/thread-stop.test.tsx`, `mobile/src/components/direct-chat-screen.test.tsx`, `mobile/e2e/composer-layout.spec.ts`；变更规则：同步 API、手机 RPC 和竞态测试；来源：`AGENTS.md`、GitHub Issues #31、#69。
 
 ## C-003 Stored events and streamed order
 
-- 状态：active；类型：data / consistency；作用范围：engine、store、SSE、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-310`, `F-330`, `F-410`。
+- 状态：active；类型：data / consistency；作用范围：engine、store、SSE、PC transcript、phone；关联功能：`F-120`, `F-130`, `F-150`, `F-220`, `F-310`, `F-330`, `F-410`。
 - 契约内容：完成事件按同一锁分配 seq、保存、广播；流式 delta 包含截至当前的完整文本，不逐 token 持久化；慢订阅者通过数据库追赶，事件 kind 是回放格式的一部分。桌面运行态在首个进度脉冲前显示动态等待，不伪造服务端耗时；脉冲到达后显示服务端计时，轮次结束即移除。桌面与手机的轮次分界仅由真实 `done` / `error` 的 `created_at` 标记，不以最后一条回答或设备当前时间推断；隐藏定时输入也不能抹去已完成轮次的时间边界。
+- PC 对话切片：渲染保留可见事件原顺序；同一 turn 可因穿插后续 turn 或跨越自身终态而形成多个连续片段，不把迟到事件搬回旧位置。每个已结束、非 quiet turn 只在最后一片终态前可见内容后显示一次结束栏，quiet turn 不显示；仅有隐藏 `title`／`session_memory` 的片段不生成空行或结束栏。迟到 `memory_review` 提示仍可见，且不被已结束 goal session 的工作折叠隐藏；实时活动仅归属最新 running turn 的最后一片，旧回合反馈不得抹去当前进度提示。回答与工具详情保留。该规则只改变前端投影，不删除或改写数据库事件、turn 终态和 Trace。证据：实现 `frontend/src/lib/turn-boundary.ts`；测试 `frontend/src/lib/turn-boundary.test.ts`, `frontend/src/components/app/transcript-boundary.test.tsx`, `frontend/e2e/late-review-footer.spec.ts`；来源：GitHub Issue #87。
 - 桌面发送 ACK 仅确认服务器接受请求，不能把同一 turn 已收到的 `done` / `error` 回退为运行中；迟到 ACK 不得改变后来选择的其他对话。正常新 turn 和实时 steer 仍遵循真实事件及 ACK 身份。证据：`frontend/src/store/app.ts`, `frontend/src/store/app-send.test.ts`, `frontend/e2e/api-error.spec.ts`；来源：GitHub Issue #74。
 - 允许行为：delta 丢失后下一帧恢复；禁止行为：丢弃已存储事件或随意重命名 kind；失败语义：落后订阅者转追赶；不变量：存储顺序与流顺序一致；边界条件：重连和回放。
 - 证据：实现 `internal/engine`, `internal/store`, `internal/remote`, `frontend/src/components/app/transcript.tsx`, `frontend/src/components/app/transcript-session.tsx`, `mobile/src/lib/transcript.ts`, `mobile/src/components/thread-blocks.tsx`；测试 `internal/engine`, `internal/remote`, `frontend/src/components/app/transcript.test.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/components/thread-blocks.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、数据模型和 wire 测试；来源：`AGENTS.md`、GitHub Issues #59、#61。
@@ -261,11 +263,12 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 证据：实现 `handoff.go`、`internal/engine/restart.go`、`cmd/zwai/engine_restart.go`、`internal/server/restart.go`；测试 `handoff_test.go`、`internal/engine/restart_test.go`、`cmd/zwai/engine_restart_acceptance_test.go`、`internal/server/restart_http_test.go`、`frontend/src/lib/transcript-restart.test.ts`。
 - 变更规则：同步 CLI、API、持久化格式、恢复及真实进程验收、UI 通知和 CHANGELOG；来源：用户 2026-10-19 的自动交接重启需求。
 
-## C-028 Image intake retains vision bytes
+## C-028 Image intake and sent-image preview retain vision bytes
 
-- 状态：active；类型：data / compatibility；作用范围：PC composer 的粘贴／拖入图片、视觉请求和输入图片存储；关联功能：`F-140`。
+- 状态：active；类型：data / compatibility；作用范围：PC composer 的粘贴／拖入图片、视觉请求、输入图片存储与桌面／Web 已发送图片预览；关联功能：`F-140`。
 - 契约内容：真实 image MIME 继续走视觉输入；空、通用 binary 或 UTI 标签且名称为 png/jpeg/gif/webp 的文件也走视觉输入。显式 text/PDF 不因图片后缀改为视觉输入。客户端归一化 MIME 声明但不改原图片字节；服务端保留内容类型嗅探及声明匹配校验，不信任扩展名替代该校验。
+- 预览交互：已发送缩略图是可用鼠标及 Enter／Space 操作的按钮；每次打开所选图片的现有 input-images 地址，刷新重载后仍可打开。大图按原比例适配窗口，Esc、遮罩或关闭按钮关闭后焦点回到打开它的缩略图。预览打开时 Esc 由弹层优先消费，不得关闭底层 Find 搜索；预览关闭后继续按 Esc 也不得停止正在运行的任务，沿用 `C-002` 的 PC 停止边界。
 - 允许行为：兼容 Finder/WKWebView 的通用文件类型；禁止行为：图片仅变为 uploads 路径，或客户端 MIME 推断绕过服务端校验。
-- 失败语义：不支持的格式或真实类型不匹配沿用既有输入错误；不变量：有效图片在预览、请求、存储与重载中保留原字节及可解码尺寸；边界条件：JPEG MIME 别名、大小写扩展名、明确非图片类型。
-- 证据：实现 `frontend/src/lib/paste-image.ts`, `internal/engine/input.go`；测试 `frontend/src/lib/paste-image.test.ts`, `frontend/src/components/app/composer-image-drop.test.tsx`, `frontend/e2e/image-input.spec.ts`；Schema：现有 turn 图片请求。
-- 变更规则：同步 Files/attachments 功能、README、API、TESTING、CHANGELOG；使用可解码的有效图片验收，不能只用魔数或 img src。来源：本地图片拖入修复及本轮未提交工作审计。
+- 失败语义：不支持的格式或真实类型不匹配沿用既有输入错误；大图加载中有可见状态，加载失败明确显示错误且仍可关闭；不变量：有效图片在预览、请求、存储与重载中保留原字节及可解码尺寸；边界条件：JPEG MIME 别名、大小写扩展名、明确非图片类型、多图所选身份。
+- 证据：实现 `frontend/src/lib/paste-image.ts`, `frontend/src/components/app/input-thumbs.tsx`, `frontend/src/App.tsx`, `internal/engine/input.go`；测试 `frontend/src/lib/paste-image.test.ts`, `frontend/src/components/app/composer-image-drop.test.tsx`, `frontend/src/components/app/input-thumbs.test.tsx`, `frontend/src/App.test.tsx`, `frontend/e2e/image-input.spec.ts`；Schema：现有 turn 图片请求。
+- 变更规则：同步 Files/attachments 功能、README、API、TESTING、CHANGELOG；使用可解码的有效图片验收，不能只用魔数或 img src。来源：本地图片拖入修复及用户 2026-10-21 的已发送图片放大需求。

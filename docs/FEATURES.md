@@ -41,7 +41,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-120 Conversations and projects
 
-- 目的：创建、组织、搜索和继续对话；使用者：PC 用户；入口：侧边栏、项目、`/api/threads`；输入：项目和消息；输出：可恢复的对话；前置条件：本机数据库可写；失败表现：错误提示或不存在的对话；关联契约：`C-001`, `C-008`, `C-026`；实现证据：`internal/engine`, `internal/store`, `frontend/src/store/app.ts`。
+- 目的：创建、组织、搜索和继续对话；使用者：PC 用户；入口：侧边栏、项目、`/api/threads`；输入：项目和消息；输出：可恢复的对话；前置条件：本机数据库可写；失败表现：错误提示或不存在的对话；关联契约：`C-001`, `C-003`, `C-008`, `C-026`；实现证据：`internal/engine`, `internal/store`, `frontend/src/store/app.ts`。
+- PC 历史呈现：可见内容按事件原顺序显示，不为聚合同一 turn 而重排。每个已结束且非 quiet 的 turn 仅在最后一片终态前可见内容后显示一次耗时和真实完成时间；隐藏标题／会话摘要不产生空片或结束栏。迟到复盘提示保留在实际到达位置，独立于已结束持续目标的工作折叠，不打断当前回合的实时活动提示；原回答与工具详情仍可查看，数据库和 Trace 记录不变。关联契约：`C-003`；实现／验证证据：`frontend/src/lib/turn-boundary.ts`, `frontend/src/lib/turn-boundary.test.ts`, `frontend/src/components/app/transcript-boundary.test.tsx`, `frontend/e2e/late-review-footer.spec.ts`。
 - 项目工作目录：原生桌面新建／编辑项目时可用「选择目录」打开系统目录窗口，将单个现存目录的绝对路径填入字段；取消保留原值，选择失败在字段下显示错误。手动输入与留空使用 zwai 管理目录仍可用；浏览器提示桌面支持选择目录，不提供无法返回本机绝对路径的目录上传。保存仍经现有工作目录校验。实现／验证证据：`frontend/src/components/app/project-dialog.tsx`, `frontend/src/components/app/workdir-input.tsx`, `frontend/src/lib/workdir.ts`, `internal/desktop/directory.go`, `internal/desktop/directory_test.go`, `internal/engine/project_test.go`, `frontend/src/components/app/project-dialog.test.tsx`, `frontend/src/components/app/workdir-input.test.tsx`, `frontend/src/lib/workdir.test.ts`, `frontend/e2e/workdir.spec.ts`。
 - 目录身份：非空目录路径不裁剪首尾空白；路径标准化仍使用 filepath.Clean。全空白保留托管目录行为。保存、编辑和实际运行解析必须指向同一所选目录；路径失效时拒绝并保留草稿，不回退到去空白后的同名目录。兼容变化：手动输入非空路径也按实际路径验证，不再猜测修正外围空白；已保存的规范路径无需迁移。证据：`internal/engine/project_workdir_identity_test.go`。
 
@@ -54,6 +55,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- PC 停止操作：桌面和 Web 使用输入框中的 Stop 按钮停止正在运行的任务；Esc 只关闭图片预览、Find 或其他当前弹层，未打开弹层和连续按 Esc 时也不会停止任务。关联契约：`C-002`、`C-028`；实现／验证证据：`frontend/src/App.tsx`、`frontend/src/App.test.tsx`、`frontend/e2e/shell.spec.ts`。
 - 自动重启的任务交接沿用 `F-110`／`C-027`：已接受的回答、继续／停止决定不会因交接被忽略；已确认终态不重复执行；完成 manager 下的后台 worker 直接按原 ID 恢复。证据：`internal/engine/restart_recovery_test.go`、`internal/engine/restart_parked_test.go`。
 - PC 人工停止与清理：未完成的子代理显示在独立的 Stopped／已停止分组，停止后的刷新与重开仍保留该状态。绑定当前代理身份的取消 `finished` 回执无论出现在清理前、清理后或主管终态后，都保留已停止；不把资源清理当成成功，也不把普通 provider／watchdog 失败改成停止。真实完成或失败的结果保留，显式续办同一 ID 可重新运行。关联契约：`C-002`、`C-003`；证据：`frontend/src/lib/transcript-stop.test.ts`、`frontend/src/lib/transcript-cancelled-finish.test.ts`、`frontend/src/components/app/panel-stop.test.tsx`、`frontend/e2e/restart.spec.ts`。
 
@@ -63,7 +65,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 停止后的排队行点击注入，作为下一轮发送；活动轮次仍注入当前回合。Stop 不自动清空其余队列。证据：`internal/engine/followup_test.go`, `frontend/e2e/conversation.spec.ts`。
 - 极快完成的轮次在发送 ACK 晚于终态事件时仍保持空闲，迟到 ACK 不改变后来选择的对话；证据：`frontend/src/store/app-send.test.ts`, `frontend/e2e/api-error.spec.ts`。
 - 轮次开始后响应区立即显示旋转的“工作中”，首个服务端进度脉冲到达后切换为计时；轮次结束即消失，不等待本地模型首字节。实现证据：`frontend/src/components/app/transcript.tsx`, `frontend/src/components/app/transcript.test.tsx`。
-- 每个已结束轮次在桌面/Web 对话中都有横线及本地日期时间，持续目标折叠的轮次也保留该分界；进行中不提前标结束。实现证据：`frontend/src/components/app/transcript-session.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `frontend/e2e/schedules.spec.ts`。
+- 桌面/Web 的结束分界沿用 `F-120`／`C-003` 的单次结束栏规则；持续目标折叠也保留该分界，进行中不提前标结束。实现证据：`frontend/src/components/app/transcript-session.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `frontend/e2e/schedules.spec.ts`。
 - 代理名单：行上是 `resume_agent` 使用的 `agent_id`，不是 `#n`。进行中与已完成各自成组。组内默认按最后更新从新到旧；可改为创建时间或行上的名称，并在从新到旧 / 从旧到新（名称则是 A 到 Z / Z 到 A）之间切换。没有时间的行留在底部。实现证据：`frontend/src/lib/agent-label.ts`, `frontend/src/lib/agent-roster-sort.ts`, `frontend/src/components/app/panel.tsx`。
 - 历史 worker 续接：manager 通过 System JSON 状态快照接收历史 worker 的 ID、角色及运行／完成／失败状态；已结束 worker 仍可查询或显式续办，不把历史名册重放为本轮新建调用。持续目标、定时检查、压缩、模型重试及重启使用同一状态语义。关联契约：`C-019`、`C-012`；实现／测试证据：`internal/workerstate/snapshot.go`、`internal/engine/autocompact_roster.go`、`internal/engine/resume_workers.go`、`internal/engine/worker_roster_test.go`、`frontend/e2e/worker-roster-history.spec.ts`。
 - 排队与未读引导：工作中的 Enter 进入队列。点开一条排队消息，或点未读引导上的铅笔，原文进输入框（引用变成卡片），原来的那条先拿掉。再按 Enter，和新建一条排队一样，排到队尾。已读引导不会被拉进输入框。只有图片的未读引导没有可排队的文字，只能删除。
@@ -85,6 +87,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：让对话使用工作区文件和附件；使用者：PC 用户；入口：文件面板、上传及下载 API；输入：文件或图片；输出：文件、预览或模型视觉输入；前置条件：工作区和权限可用；失败表现：上传或工具错误；关联契约：`C-004`, `C-005`；实现证据：`internal/server`, `internal/tools`, `frontend/src/components/app`。
 - 图片输入：png/jpeg/gif/webp 文件在空 MIME、通用 binary 或 UTI 标签下仍进入视觉输入；显式 text/PDF 保持文件附件。客户端只归一化 MIME 声明，不改原字节，服务端继续执行真实类型与声明匹配校验。关联契约：`C-028`；证据：`frontend/src/lib/paste-image.ts`、`frontend/src/lib/paste-image.test.ts`、`frontend/src/components/app/composer-image-drop.test.tsx`、`frontend/e2e/image-input.spec.ts`。
+- 已发送图片预览：桌面与 Web 对话中的图片缩略图可点击或通过 Enter／Space 打开放大层，多图时打开点选的图片。预览沿用已保存图片地址，按原比例适配窗口；显示加载及失败状态，可通过 Esc、遮罩或关闭按钮关闭并回到缩略图焦点，刷新重载后仍可打开。关闭预览不停止正在运行的任务。关联契约：`C-028`；证据：`frontend/src/components/app/input-thumbs.tsx`、`frontend/src/components/app/input-thumbs.test.tsx`、`frontend/e2e/image-input.spec.ts`。
 
 ### F-150 Goals and scheduled waits
 

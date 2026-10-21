@@ -2,6 +2,11 @@ import type { en } from "./messages-en"
 
 /** Chinese UI chrome. Every key in messages-en.ts must have a string here. */
 export const zh: { [K in keyof typeof en]: string } = {
+  "image.pasted": "粘贴的图片",
+  "image.enlarge": "放大 {name}",
+  "image.close": "关闭图片预览",
+  "image.loading": "正在加载图片…",
+  "image.failed": "图片加载失败，请关闭后重新打开。",
   "notice.userStopRequested": "已收到停止任务的请求。",
   "notice.restartPreparing": "正在保存任务进度，准备重启。",
   "notice.restartReady": "任务进度已保存，正在重启引擎。",

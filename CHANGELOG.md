@@ -13,11 +13,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-140`, `C-028`: sent image thumbnails in desktop and Web conversations open the selected saved image in a window-fitting preview. Mouse and keyboard activation, loading/error states, Escape/backdrop/Close dismissal and return focus are supported after sending and reloading; closing the preview keeps the running task going.
+
 - `F-120`, `C-026`: desktop project creation and editing now offer a system directory picker. Cancelling keeps the current path; selection failures show an inline error. Manual entry and the empty managed directory remain available, and the browser explains the desktop option. Directory selection uses files in place and retains save-time validation. The native folder confirmation button is usable without extension filters.
 
 - `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.
 
 ### Changed
+
+- `F-130`, `C-002`, `C-028`: desktop and Web Escape no longer stop a running task. Escape continues to close image previews, Find and other local overlays; stopping a task uses the composer's explicit Stop button, including after repeated Escape presses.
 
 - `F-430`, `C-010`: prepared unified source batch `0.1.33` with mobile package/build `133` after the cumulative main-commit threshold was met. Android and iOS use this complete source batch; TestFlight marketing version remains independently selected, and macOS publication waits for its exact-package native acceptance.
 
@@ -31,6 +35,7 @@ co-working app built on it. The library API is unchanged except where noted
 ### Fixed
 
 - `F-130`, `F-222`, `C-002`, `C-003`: PC and phone worker rosters retain Stopped after human Stop and replay, including cancellation finish receipts before cleanup, after cleanup or after the manager terminal. Classification binds the current worker ID and an engine cancellation cause; unrelated provider/watchdog errors remain failures, genuine results survive cleanup, and explicit same-ID resume can run again (Issue #85).
+- `F-120`, `F-130`, `C-003`: late memory-review notices and hidden turn metadata no longer repeat an older turn's duration/completion footer after newer work. PC transcript slices preserve event order, keep one footer after each non-quiet turn's last visible pre-completion content, and leave late review feedback outside completed goal-session folds. Older feedback also retains the running turn's live activity. Original answers, tool details, stored events and Trace remain available (Issue #87).
 
 - `F-420`, `F-160`, `C-025`, `C-012`: memory-review failures show their stopping reason, submitted-proposal count and refusal categories, including capacity usage/excess when available. Same-turn Trace retains bounded safe proposal metadata while excluding rejected bodies and quotes. Trace opens the source turn even with the panel closed, historical focus avoids the latest turn's token usage, and pending manual results outside the loaded tail recover through one bounded turn read. Capacity repair receives structured feedback within the existing iteration budget; evidence, numeric spelling, note limits, fixed-revision commit and immediate skill writes retain their existing boundaries (Issue #84).
 

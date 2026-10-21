@@ -322,7 +322,7 @@ test("dragging the panel border does not select text", async ({ page }) => {
   expect(selected).toBe("")
 })
 
-test("escape stops a running turn", async ({ page }) => {
+test("Escape leaves a running turn active until the user clicks Stop", async ({ page }) => {
   await page.goto("/")
   await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
@@ -330,17 +330,26 @@ test("escape stops a running turn", async ({ page }) => {
   await page.getByTestId("composer-input").press("Enter")
   await expect(page.getByTestId("status-badge")).toContainText("Working")
 
+  const interruptions: string[] = []
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/interrupt")) interruptions.push(request.url())
+  })
+  await page.getByTestId("composer-input").press("Escape")
   await page.keyboard.press("Escape")
+  await expect(page.getByTestId("status-badge")).toContainText("Working")
+  expect(interruptions).toEqual([])
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
   await expect(page.getByTestId("status-badge")).toContainText("Idle", {
     timeout: 60_000,
   })
+  expect(interruptions).toHaveLength(1)
   // stopping is not failing: the partial answer stays on screen
   await expect(page.getByTestId("transcript")).toContainText(
     "Something that takes a while",
   )
 })
 
-test("⌘F searches the conversation and Escape closes find before stopping a turn", async ({
+test("⌘F searches the conversation and Escape only closes find", async ({
   page,
 }) => {
   await page.goto("/")
@@ -369,12 +378,19 @@ test("⌘F searches the conversation and Escape closes find before stopping a tu
   await input.fill("Something that takes a while")
   await input.press("Enter")
   await expect(page.getByTestId("status-badge")).toContainText("Working")
+  const interruptions: string[] = []
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/interrupt")) interruptions.push(request.url())
+  })
   await page.keyboard.press("ControlOrMeta+f")
   await expect(page.getByLabel("Find in conversation")).toBeVisible()
   await page.keyboard.press("Escape")
   await expect(page.getByTestId("conversation-find")).toBeHidden()
   await expect(page.getByTestId("status-badge")).toContainText("Working")
   await page.keyboard.press("Escape")
+  await expect(page.getByTestId("status-badge")).toContainText("Working")
+  expect(interruptions).toEqual([])
+  await page.getByRole("button", { name: "Stop", exact: true }).click()
   await expect(page.getByTestId("status-badge")).toContainText("Idle", {
     timeout: 60_000,
   })
