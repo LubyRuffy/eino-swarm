@@ -1,5 +1,6 @@
 import { en } from "./messages-en"
 import { zh } from "./messages-zh"
+import { firstByteTimeoutDuration } from "./first-byte-timeout"
 
 export type Locale = "en" | "zh"
 export type LocalePref = "system" | Locale
@@ -150,6 +151,8 @@ export function t(locale: Locale, key: MessageKey, vars?: Vars): string {
 /** Transcript chrome the reducer still emits in English. Model text and
  *  unknown notices pass through so a translation table cannot swallow them. */
 export function localizeNotice(text: string, locale: Locale): string {
+  const firstByteWait = firstByteTimeoutDuration(text)
+  if (firstByteWait) return t(locale, "notice.firstByteTimeout", { duration: firstByteWait })
   const peer = /^Peer task ([^:]*): ([\s\S]*)$/.exec(text)
   if (peer) return t(locale, "notice.peerTask", { id: peer[1], text: peer[2] })
   const key = NOTICE_EXACT[text]

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import { defaultAppearance } from "@/lib/appearance"
 import { OUTPUT_BUDGET_ERROR } from "@/lib/output-budget"
 import { emptyTranscript } from "@/lib/transcript"
-import type { Settings } from "@/lib/types"
+import type { Settings, Turn } from "@/lib/types"
 import { useApp } from "@/store/app"
 import { closeSettings, useSettingsSheet } from "@/store/settings-sheet"
 
@@ -107,6 +107,7 @@ describe("output budget error", () => {
     })
     useApp.setState({
       activeId: "th1",
+      turns: [],
       status: { running: false },
       transcript: emptyTranscript(),
       locale: "en",
@@ -214,5 +215,52 @@ describe("output budget error", () => {
       screen.queryByRole("button", { name: "Max completion tokens" }),
     ).not.toBeInTheDocument()
     expect(useSettingsSheet.getState().open).toBe(false)
+  })
+
+  it("opens the failed turn's provider first-byte setting and saves a longer wait", async () => {
+    const provider = (id: string) => ({
+      id, label: id, base_url: "http://offline.invalid/v1", model: "offline",
+      timeout_seconds: 300, first_byte_timeout_seconds: 30,
+      has_api_key: false, ready: true,
+    })
+    vi.mocked(api.settings).mockResolvedValue({
+      ...settings,
+      models: { default: "current", providers: [provider("current"), provider("failed")] },
+    })
+    useApp.setState({ turns: [{ id: "failed-turn", provider_id: "failed" } as Turn] })
+    const user = userEvent.setup()
+    render(<Harness text="the model sent no first byte within 30s" turnId="failed-turn" />)
+    expect(screen.getByText(/increase the first-byte timeout/i)).toBeVisible()
+    await user.click(screen.getByRole("button", { name: "Configure first-byte timeout" }))
+    const field = await screen.findByLabelText("First-byte timeout (seconds)")
+    await waitFor(() => expect(field).toHaveFocus())
+    expect(field).toHaveValue(30)
+    expect(screen.getByRole("button", { name: "failed details" })).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("button", { name: "current details" })).toHaveAttribute("aria-expanded", "false")
+    fireEvent.change(field, { target: { value: "120" } })
+    await user.click(screen.getByRole("button", { name: "Back to app" }))
+    expect(api.saveSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+      models: expect.objectContaining({ providers: [
+        expect.objectContaining({ id: "current", first_byte_timeout_seconds: 30 }),
+        expect.objectContaining({ id: "failed", first_byte_timeout_seconds: 120 }),
+      ] }),
+    }))
+  })
+
+  it("localizes the actual first-byte wait and never recommends it for an idle timeout", () => {
+    useApp.getState().setLocale("zh", { persist: false })
+    const { unmount } = render(<Harness text="the model sent no first byte within 2m0s" />)
+    expect(screen.getByText("模型在 2m0s 内未返回首字节。" )).toBeVisible()
+    expect(screen.getByRole("button", { name: "配置首字节等待时间" })).toBeVisible()
+    unmount()
+    render(<Harness text="the model stopped sending data" />)
+    expect(screen.queryByRole("button", { name: "配置首字节等待时间" })).not.toBeInTheDocument()
+  })
+
+  it("opens Models without guessing a provider when the failed turn is unavailable", async () => {
+    const user = userEvent.setup()
+    render(<Harness text="the model sent no first byte within 30s" turnId="missing" />)
+    await user.click(screen.getByRole("button", { name: "Configure first-byte timeout" }))
+    expect(useSettingsSheet.getState()).toMatchObject({ section: "models", focus: "" })
   })
 })

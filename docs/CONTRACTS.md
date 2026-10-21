@@ -84,6 +84,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 状态：active；类型：compatibility / lifecycle；作用范围：config、provider、engine；关联功能：`F-150`, `F-170`, `F-230`, `F-420`。
 - 契约内容：端点、模型等配置有默认值且可在 Settings 编辑；`OPENAI_*` 只用于首次空字段填充；已知模型窗口的自动压缩阈值必须同时预留固定输出空间和配置的最大输出 token，不得只按输入占比判断；缺失计费信息的重放消息和工具结果须保守估算非 ASCII 文本及每条消息的结构开销，不能按 ASCII 的每四字符一 token 低估；未知窗口仍用固定 token 阈值。无法压缩的上下文越界须给出降低输出上限或缩短请求的提示；周期检查因此终止时保留失败记录并暂停该计划，避免相同错误循环触发，调整后可手动恢复。计划触发或取消需保留状态。成功轮次若有下一次已安排的同对话唤醒，未完成的 sub-agent 保持原 ID 和运行状态供下次轮次续办；没有下一次唤醒且无持续目标、取消或暂停最后一次唤醒、轮次错误或中断时清理，无下一轮的独立任务不保留 worker。定时触发与立即执行没有任何工具结果或显式 `report_schedule` 时，只在原 turn 继续一次；仍无证据则 turn/run 为 error、unread=true，不把开场话当 findings 或空回答当 quiet。显式空 findings 保持 quiet；真实工具结果后的省略报告兜底保持兼容，模型错误清理生成的虚拟工具结果不算执行证据。判断不得依赖回答长度、标点、语言、任务样本或模型名。重试原因 `scheduled_no_activity` 进入同一 turn 的 Trace。
 - 允许行为：用户更改设置；禁止行为：生产代码硬编码用户端点或模型；失败语义：配置或计划错误明确报告；不变量：用户设置优先于环境种子；边界条件：首次运行与重启。
+- 模型等待边界：每个提供商的 `first_byte_timeout_seconds` 独立约束响应头等待，默认 30 秒，缺失、零和负值归默认；`timeout_seconds` 只约束流开始后的空闲，持续产生数据的流不因总时长被切断，首字节等待可以大于该空闲值。旧配置无需迁移；旧配置的空闲值小于 30 秒时，首字节不再由它缩短，需显式设置首字节值以保留较短等待。PUT 省略首字节字段保留同一提供商原值，显式非正值重置默认；保存后下一轮使用新值，无需重启，既有 turn 的模型客户端保持原值。响应头超时仍最多换新连接重试一次。证据：实现 `internal/config/provider.go`, `internal/provider/http.go`, `internal/server/settings.go`；测试 `internal/config/provider_timeout_test.go`, `internal/provider/http_test.go`, `internal/server/settings_timeout_test.go`。
 - 目标编辑：legacy 空/NULL `schedule_runs.kind` 在目标编辑前按真实旧计划 kind 冻结；冻结、目标、可选 pause/resume 和活动数量上限检查在同一事务，失败无部分副作用。已领取 fire 按冻结 kind 与原 thread 保持 Waiting/worker 归属；成功移动最后一个 wake 后才清理原会话 parked workers 或续办 goal，其他 wake、已领取 fire 与 live turn 保持原有边界。
 - 续办展示：`scheduled_no_activity` 的桌面提示是继续执行定时检查，不冒称发生了模型错误；旧模型错误提示保持兼容。
 - 完成范围：定时工具以精确 turn 与 claimed run 绑定。该 run 认领的是 manager 创建的 thread wake、当前仍指向同会话且 active，或本 turn 新排了仍 active 的 manager thread wake 时，不得把单次检查记为长期目标完成，返回 `ok:false,code:"goal_schedule_conflict"`；`report_schedule(keep:false)` 或取消当前等待后可正常完成，已消费且未重排的一次性等待不阻止完成。同轮成功完成后再用 `report_schedule` 或 `schedule_wake` 重排该续办也拒绝；调用顺序和并行调用不得绕过。人工、独立任务、已改投其他会话的等待不自动取消，不普遍禁止完成目标与独立等待共存。完成字段与 `goal_complete` 事件必须原子提交，存储失败不得回报成功或只落一半。历史完成记录不因存在等待而自动恢复；仍使用显式 Start／`reopen_goal`。证据：`internal/engine/goal_schedule_completion_test.go`, `frontend/e2e/goal-schedule.spec.ts`。`schedules.armed_turn_id` 在创建、替换、续期事务内记录精确工具轮次，不暴露为 JSON、不按时间或文本推测旧记录。即使旧一次性等待已消费、新等待换了 ID，也不得绕过。本规则是完成工具边界的 Changed，保留独立调度语义；来源：Issue #79。
@@ -113,10 +114,11 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-012 One-ID troubleshooting
 
-- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-320`, `F-420`。
+- 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace；关联功能：`F-130`, `F-160`, `F-170`, `F-320`, `F-420`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
 - Worker 计数证据：创建／续办以该 turn 的真实调用与持久化生命周期事件为准，历史名册和 assistant 自述不能当作本轮创建量。错误回执保留拒绝类别及聚合数量，已恢复 ID 不冒称新 ID；摘要事实按 `turn_id` 和 `through_seq` 归属。仅注入名册快照不得新增 `spawned` 或伪造 `spawn_agent` 工具记录；真实续办／进程恢复保留事件并按已有 ID 区分。证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`frontend/e2e/worker-roster-history.spec.ts`；来源：GitHub Issue #78。
 - 模型接口失败的公共 turn/error 展示保留可判断的 HTTP 状态码及接口拒绝/响应解码原因。JSON 解码错误本身不证明工具参数无效；SDK/Eino 类型错误经包装仍按接口错误处理。公共文本不包含原始响应正文、图执行路径或认证值，原因最多 512 字符；原始调用与重试仍在同一 turn 的 Trace 内可查，上下文溢出及超时提示保留现有恢复建议。
+- 首字节超时保留实际等待时长；桌面/Web 引导用户到设置 → 模型调大该提供商的首字节等待时间。直达按钮使用失败 turn 的 `provider_id` 展开并聚焦字段，不能用当前切换后的提供商代替；提供商未知或已删除时只打开模型页。修改沿现有设置保存链路生效，不因打开或关闭设置自动重发请求。证据：实现 `internal/engine/runerr.go`, `frontend/src/components/app/transcript-error.tsx`, `frontend/src/components/app/model-settings.tsx`；测试 `internal/engine/runerr_timeout_test.go`, `frontend/src/components/app/transcript-error.test.tsx`, `frontend/e2e/api-error.spec.ts`。
 - 允许行为：敏感值脱敏；禁止行为：丢掉诊断所需事件或输出令牌/完整 Cookie；失败语义：不存在的 id 报不存在；不变量：同 id 贯穿运行；边界条件：部分失败和重启恢复。
 - 证据：实现 `internal/engine/runerr.go`, `internal/engine`, `internal/server`, `internal/store`；测试 `internal/engine/runerr_api_test.go`, `internal/engine/api_error_integration_test.go`, `internal/server`；变更规则：同步 CLI、API 和 Trace 测试；来源：`AGENTS.md`、GitHub Issue #71。
 

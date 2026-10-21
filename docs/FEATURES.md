@@ -70,6 +70,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 有界 worker 超时恢复：同一 worker 连续三次 watchdog 失败后停止 manager 的 resume／同角色 spawn，持续目标停止自动推进，失败周期计划暂停；成功或显式人类重试恢复预算。错误、worker ID 和次数保留在 Trace 与手机/桌面对话；普通 provider 超时和取消不计入。关联契约：`C-019`、`C-009`；实现／测试：`worker_timeout.go`、`internal/engine/worker_timeout.go`、`internal/engine/worker_timeout_test.go`、`frontend/e2e/worker-timeout.spec.ts`。
 
 - 错误提示：模型 HTTP/流响应无法解析时，桌面和手机区分响应解码与真实工具参数错误，并保留同 turn Trace 和最多两次重试；证据：`internal/engine/api_error_integration_test.go`, `frontend/e2e/api-error.spec.ts`。
+- 首字节超时恢复：错误保留实际等待时长；桌面/Web 建议到设置 → 模型调大首字节等待时间，可从错误直接打开失败轮次的提供商并聚焦字段。设置能力和提供商缺失时的行为见 `F-170`；关联契约：`C-009`、`C-012`。
 - 请求前工具参数检查：压缩 middleware 返回状态后检查当前尾部调用的非空 JSON 参数；无效参数在实际模型 HTTP 前拒绝，沿既有有界重试清理，不清除人类 steer 或伪造 worker 创建。不是全历史 JSON 扫描。关联契约：`C-012`；证据：`internal/engine/autocompact.go`、`internal/engine/model_retry.go`、`internal/engine/model_retry_http_test.go`。
 
 ### F-135 Independent task coordination
@@ -98,7 +99,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-170 Settings and providers
 
-- 目的：配置模型、外观、工具和远程连接；使用者：PC 用户；入口：Settings；输入：配置字段，包括每个提供商在输入框模型列表里的开关；输出：持久化设置和可用模型，关掉的提供商不出现在输入框和已配对手机的目录里，已经选中它的会话继续用；前置条件：本机数据目录；失败表现：校验或连接错误；关联契约：`C-006`, `C-009`；实现证据：`internal/config`, `internal/provider`, `frontend/src`。
+- 目的：配置模型、外观、工具和远程连接；使用者：PC 用户；入口：Settings；输入：配置字段，包括每个提供商在输入框模型列表里的开关；输出：持久化设置和可用模型，关掉的提供商不出现在输入框和已配对手机的目录里，已经选中它的会话继续用；前置条件：本机数据目录；失败表现：校验或连接错误；关联契约：`C-006`, `C-009`, `C-012`；实现证据：`internal/config`, `internal/provider`, `frontend/src`。
+- 首字节等待：设置 → 模型的每个提供商可单独设置「首字节等待时间（秒）」，默认 30 秒，与流开始后的请求空闲超时独立。首字节错误的「配置首字节等待时间」打开失败 turn 的提供商并滚动聚焦输入框，不跟随后来切换的模型；未知或已删除提供商只打开模型页。修改自动保存，关闭设置后用户可重新发送请求。实现证据：`internal/config/provider.go`, `internal/provider/http.go`, `frontend/src/components/app/model-settings.tsx`, `frontend/src/components/app/transcript-error.tsx`；验证：`internal/config/provider_timeout_test.go`, `internal/server/settings_timeout_test.go`, `frontend/src/components/app/transcript-error.test.tsx`, `frontend/e2e/api-error.spec.ts`。
 - 输出额度用尽：桌面端这条错误下面有提示，链到设置 → 集群的「单次输出上限」，并聚焦该输入。关掉设置后，同一条错误上出现重试，按原来的请求再跑一轮。手机不能改这项，只显示错误原文。实现证据：`frontend/src/components/app/transcript-error.tsx`, `frontend/src/lib/output-budget.ts`。
 
 ### F-180 PC text quoting

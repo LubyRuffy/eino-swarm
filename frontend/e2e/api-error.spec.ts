@@ -121,3 +121,81 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
 })
 
 }
+
+test("a first-byte timeout guides configuration and a longer wait reaches the model response", async ({ page, request }, info) => {
+  test.skip(process.env.ZWAI_E2E_MODEL_API_ERROR !== "1", "requires the opt-in keyless loopback model endpoint")
+  let attempts = 0
+  const endpoint = createServer((incoming, response) => {
+    attempts++
+    incoming.resume()
+    const timer = setTimeout(() => {
+      response.writeHead(200, { "Content-Type": "text/event-stream" })
+      response.end('data: {"id":"offline","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"The check is complete."},"finish_reason":null}]}\n\ndata: {"id":"offline","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+    }, 1200)
+    response.once("close", () => clearTimeout(timer))
+  })
+  await new Promise<void>((resolve) => endpoint.listen(0, "127.0.0.1", resolve))
+  try {
+    const address = endpoint.address()
+    if (!address || typeof address === "string") throw new Error("offline endpoint did not listen")
+    const { settings } = await (await request.get("/api/settings")).json()
+    expect((await request.put("/api/settings", { data: {
+      models: { default: "slow-start", providers: [{
+        id: "slow-start", label: "Offline slow start", base_url: `http://127.0.0.1:${address.port}`,
+        model: "offline", api_key: "", timeout_seconds: 1, first_byte_timeout_seconds: 1,
+      }] },
+      swarm: { ...settings.swarm, auto_title: false },
+      memory: { ...settings.memory, auto_review: false },
+    } })).ok()).toBe(true)
+
+    await freshConversation(page)
+    const threadID = await page.locator('[data-testid="thread-row"][aria-current="true"]').getAttribute("data-id")
+    const submit = async () => {
+      const response = page.waitForResponse((r) => r.request().method() === "POST"
+        && new URL(r.url()).pathname === `/api/threads/${threadID}/steer`)
+      await composer(page).fill("Perform the requested check")
+      await composer(page).press("Enter")
+      const accepted = await response
+      expect(accepted.status()).toBe(202)
+      return (await accepted.json()).turn.id as string
+    }
+    const failed = await submit()
+    const failure = page.getByTestId("first-byte-timeout-error")
+    await expect(failure).toContainText("The model sent no first byte within 1s.")
+    await waitForIdle(page)
+    expect(attempts).toBe(2)
+    const trace = await (await request.get(`/api/trace/${failed}`)).json()
+    expect(trace.turn).toMatchObject({ status: "error", provider_id: "slow-start", error: "the model sent no first byte within 1s" })
+    expect(trace.events.some((e: TraceEvent) => e.kind === "error" && e.err === trace.turn.error)).toBe(true)
+    await reloadOpenConversation(page)
+    await expect(failure).toBeVisible()
+    await page.screenshot({ path: info.outputPath("first-byte-guidance.png"), animations: "disabled" })
+    await failure.getByRole("button", { name: "Configure first-byte timeout" }).click()
+    const dialog = page.getByRole("dialog")
+    const wait = dialog.getByLabel("First-byte timeout (seconds)")
+    await expect(wait).toBeFocused()
+    await expect(wait).toHaveValue("1")
+    await wait.fill("3")
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+    const saved = await (await request.get("/api/settings")).json()
+    expect(saved.settings.models.providers[0]).toMatchObject({ first_byte_timeout_seconds: 3, timeout_seconds: 1 })
+    await failure.getByRole("button", { name: "Configure first-byte timeout" }).click()
+    await expect(dialog.getByLabel("First-byte timeout (seconds)")).toHaveValue("3")
+    await page.screenshot({ path: info.outputPath("first-byte-setting.png"), animations: "disabled" })
+    await dialog.getByRole("button", { name: "Back to app" }).click()
+    await expect(dialog).toBeHidden()
+    const retried = await submit()
+    await expect(page.getByTestId("transcript").getByText("The check is complete.", { exact: true })).toBeVisible()
+    await waitForIdle(page)
+    const success = await (await request.get(`/api/trace/${retried}`)).json()
+    expect(success.turn.status).toBe("done")
+    expect(attempts).toBe(3)
+    await writeFile(info.outputPath("first-byte-traces.json"), JSON.stringify({ failed: trace, retried: success, attempts }, null, 2), { mode: 0o600 })
+  } finally {
+    await new Promise<void>((resolve) => {
+      endpoint.close(() => resolve())
+      endpoint.closeAllConnections()
+    })
+  }
+})

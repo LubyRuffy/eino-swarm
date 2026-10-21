@@ -33,6 +33,7 @@ models:
             - your-model
             - your-other-model
           timeout_seconds: 300
+          first_byte_timeout_seconds: 30
           context_window: 0
           model_context: {}
           # enabled omitted means on. enabled: false hides it from the composer.
@@ -132,7 +133,7 @@ full machine access. Do that only on a network you control.
 conversations use. Each conversation remembers its own provider **and** model, so
 you can switch names in the composer without adding an endpoint per model.
 Settings → Models shows that list collapsed: open a row to edit URL, key,
-default model, and timeout. **Add a provider** sits under the list and opens
+default model, first-byte wait, and stream idle timeout. **Add a provider** sits under the list and opens
 the new row.
 
 | key | meaning |
@@ -144,9 +145,21 @@ the new row.
 | `model` | the default model name new conversations start on. Switch per conversation in the composer. |
 | `enabled` | whether this endpoint appears in the composer model list (and the paired phone's catalog, and a phone's own direct-chat list). Omitted or `true` means on, so an older file stays visible; a save of `true` omits the key. `false` hides it. A conversation already on that endpoint keeps using it. If the hidden one was `models.default`, default moves to the first endpoint still listed. Turning every provider off is repaired on load: the default stays on, because a new conversation needs somewhere to start. |
 | `catalog` | names this endpoint listed the last time you clicked **Discover models**. The composer offers every name here; you do not add a provider row per model. Empty until you discover (or type a default). |
-| `timeout_seconds` | how long a stream may stay silent after it has started. Default `300`. A thinking model that is still producing tokens is not killed. The wait for the first byte is separate and shorter (`30s`); that failure is tried once more on a new connection. Compact (`/compact` and auto-compact) and the memory review (post-turn and catalog tidy) use this same idle clock — there is no separate swarm compact timeout. The review streams, so the 30s cap is the first byte of that stream, not the finished JSON body. |
+| `first_byte_timeout_seconds` | how long this provider may take to return response headers, shown as **First-byte timeout (seconds)** in Settings → Models. Default `30`; missing, zero, and negative values use that default. Raise this field when a model needs more time before its response starts. It is independent of `timeout_seconds` and may be longer. A first-byte failure is retried once on a new connection, then reports the actual wait; desktop/Web directs the user to this setting. Changes save automatically and apply from the next turn without restarting the engine. |
+| `timeout_seconds` | how long a stream may stay silent after it has started. Default `300`. A thinking model that is still producing tokens is not killed. This does not change the first-byte wait. Compact (`/compact` and auto-compact) and the memory review (post-turn and catalog tidy) use this same idle clock — there is no separate swarm compact timeout. The review streams, so its first-byte wait concerns the start of that stream, not the finished JSON body. |
 | `context_window` | fallback token limit for **names that have no row of their own**. `0` means unknown: the composer ring then shows a count (not a fake 0%) and a saturating arc scaled by `swarm.context_char_budget`. Never invented from a model name. Do not put one model's limit here — that would pin every other name on the endpoint to the same number. |
 | `model_context` | per-name windows. Settings lists one field per catalog name; **Discover models** fills a value when the listing included `context_length` / `max_model_len` / `context_window` / `max_context_length` / `max_input_tokens` / `n_ctx` / `max_seq_len`, including one nesting under `top_provider` / `meta` / `limits` / `parameters`. Empty for endpoints that only return names. Output caps are not copied. |
+
+Existing configuration files need no migration: an omitted first-byte wait uses
+30 seconds. Previously, a `timeout_seconds` below 30 also shortened the
+first-byte wait; these budgets are now independent. Set
+`first_byte_timeout_seconds` explicitly to retain that shorter wait.
+
+The desktop/Web error's **Configure first-byte timeout** button opens the failed
+turn's provider, scrolls to this field and focuses it. If that provider is
+unknown or was deleted, the button opens Models without selecting a different
+provider. Raise the wait, let the change save, close Settings and resend the
+request when ready.
 
 A provider is **ready** when it has both `base_url` and `model`. Until the default
 provider is ready, `GET /api/meta` reports `configured: false` and the UI shows a

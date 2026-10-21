@@ -275,8 +275,12 @@ uploads, downloads and the live event stream have exactly one implementation.
   groups models by provider, searches, refreshes the catalog, and jumps
   to Edit providers. A thinking-level menu (Default / Low / Medium / High)
   sets how hard the models reason. Both apply from the next turn. A
-  thought that is still streaming is not cut off by the request timeout;
-  raise it in Settings → Models if the endpoint stays silent.
+  thought that is still streaming is not cut off by the request timeout.
+  If the model sends no first byte, open its provider under Settings → Models
+  and raise **First-byte timeout (seconds)** (default 30 seconds). The error's
+  **Configure first-byte timeout** button opens and focuses that provider's
+  field. Changes save automatically; close Settings and resend when ready.
+  **Request timeout (seconds)** separately controls silence after the stream starts.
 - **Real tools.** File read/write/edit, `ls`/`tree`/`glob`/`grep`, shell `exec`,
   web search and fetch, from [eino-tools](https://github.com/LubyRuffy/eino-tools).
   The transcript shows the command or query, not the JSON envelope; a failed
