@@ -27,8 +27,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-003 Stored events and streamed order
 
-- 状态：active；类型：data / consistency；作用范围：engine、store、SSE、phone；关联功能：`F-130`, `F-150`, `F-220`, `F-310`, `F-330`, `F-410`。
+- 状态：active；类型：data / consistency；作用范围：engine、store、SSE、PC transcript、phone；关联功能：`F-120`, `F-130`, `F-150`, `F-220`, `F-310`, `F-330`, `F-410`。
 - 契约内容：完成事件按同一锁分配 seq、保存、广播；流式 delta 包含截至当前的完整文本，不逐 token 持久化；慢订阅者通过数据库追赶，事件 kind 是回放格式的一部分。桌面运行态在首个进度脉冲前显示动态等待，不伪造服务端耗时；脉冲到达后显示服务端计时，轮次结束即移除。桌面与手机的轮次分界仅由真实 `done` / `error` 的 `created_at` 标记，不以最后一条回答或设备当前时间推断；隐藏定时输入也不能抹去已完成轮次的时间边界。
+- PC 对话切片：渲染保留可见事件原顺序；同一 turn 可因穿插后续 turn 或跨越自身终态而形成多个连续片段，不把迟到事件搬回旧位置。每个已结束、非 quiet turn 只在最后一片终态前可见内容后显示一次结束栏，quiet turn 不显示；仅有隐藏 `title`／`session_memory` 的片段不生成空行或结束栏。迟到 `memory_review` 提示仍可见，且不被已结束 goal session 的工作折叠隐藏；实时活动仅归属最新 running turn 的最后一片，旧回合反馈不得抹去当前进度提示。回答与工具详情保留。该规则只改变前端投影，不删除或改写数据库事件、turn 终态和 Trace。证据：实现 `frontend/src/lib/turn-boundary.ts`；测试 `frontend/src/lib/turn-boundary.test.ts`, `frontend/src/components/app/transcript-boundary.test.tsx`, `frontend/e2e/late-review-footer.spec.ts`；来源：GitHub Issue #87。
 - 桌面发送 ACK 仅确认服务器接受请求，不能把同一 turn 已收到的 `done` / `error` 回退为运行中；迟到 ACK 不得改变后来选择的其他对话。正常新 turn 和实时 steer 仍遵循真实事件及 ACK 身份。证据：`frontend/src/store/app.ts`, `frontend/src/store/app-send.test.ts`, `frontend/e2e/api-error.spec.ts`；来源：GitHub Issue #74。
 - 允许行为：delta 丢失后下一帧恢复；禁止行为：丢弃已存储事件或随意重命名 kind；失败语义：落后订阅者转追赶；不变量：存储顺序与流顺序一致；边界条件：重连和回放。
 - 证据：实现 `internal/engine`, `internal/store`, `internal/remote`, `frontend/src/components/app/transcript.tsx`, `frontend/src/components/app/transcript-session.tsx`, `mobile/src/lib/transcript.ts`, `mobile/src/components/thread-blocks.tsx`；测试 `internal/engine`, `internal/remote`, `frontend/src/components/app/transcript.test.tsx`, `frontend/src/components/app/transcript-session.test.tsx`, `mobile/src/lib/transcript.test.ts`, `mobile/src/components/thread-blocks.test.tsx`, `mobile/e2e/walkthrough.spec.ts`；变更规则：同步 API、数据模型和 wire 测试；来源：`AGENTS.md`、GitHub Issues #59、#61。

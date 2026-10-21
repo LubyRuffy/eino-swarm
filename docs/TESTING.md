@@ -310,6 +310,29 @@ and `CanChooseFiles=false`; native acceptance must also confirm that the folder
 confirmation button is enabled and fills the path. Option assertions alone do
 not replace that native check.
 
+## Late review turn boundaries (F-120 / F-130 / C-003)
+
+`frontend/src/lib/turn-boundary.test.ts` covers consecutive slices without
+reordering events, the single footer owned by the last visible slice before
+the actual terminal sequence (with legacy end-time fallback), hidden
+title/session-memory metadata, quiet turns,
+and late notices for a turn that has already ended.
+`frontend/src/components/app/transcript-boundary.test.tsx` renders the real
+transcript to retain the original answers while preventing
+duplicate or metadata-only footers; late review notices remain visible outside
+completed goal-session folds. A finished tool followed by an answer establishes
+the current turn's live planning status before an older review arrives; that
+status must remain visible without adding a footer for the running turn.
+`frontend/e2e/late-review-footer.spec.ts` exercises
+the browser transcript with delayed review events, paged history and reload,
+including opening the original goal session and its stored tool result. These are
+regression scopes; a browser check does not replace native-window acceptance.
+
+```bash
+cd frontend && npm test -- src/lib/turn-boundary.test.ts src/components/app/transcript-boundary.test.tsx
+cd frontend && npm run e2e -- e2e/late-review-footer.spec.ts
+```
+
 ## Single PC work disclosures (F-130 / C-022)
 
 `frontend/src/components/app/transcript-fold.test.tsx` verifies that one finished

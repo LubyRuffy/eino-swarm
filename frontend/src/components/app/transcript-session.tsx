@@ -7,22 +7,14 @@ import { isArmedWaitNotice, isGoalHoldNotice } from "@/lib/transcript-notices"
 import { useT } from "@/lib/use-t"
 import type { Block, TurnState } from "@/lib/transcript"
 
-export function groupByTurn(blocks: Block[]): [string, Block[]][] {
-  const groups: [string, Block[]][] = []
-  for (const b of blocks) {
-    const last = groups.at(-1)
-    if (last && last[0] === b.turnId) last[1].push(b)
-    else groups.push([b.turnId, [b]])
-  }
-  return groups
-}
-
 export function GoalSessionTurn({
   blocks,
   turn,
   revealIds,
   renderBlock,
   live = false,
+  showFooter = true,
+  afterCompletion = false,
 }: {
   blocks: Block[]
   turn?: TurnState
@@ -32,10 +24,12 @@ export function GoalSessionTurn({
    *  that never got a `done` still look "running" in the store; they must
    *  not keep Planning next moves after the conversation has moved on. */
   live?: boolean
+  showFooter?: boolean
+  afterCompletion?: boolean
 }) {
   const t = useT()
   const failed = turn?.status === "error"
-  const finishedSession = Boolean(turn?.session) && turn?.status !== "running"
+  const finishedSession = Boolean(turn?.session) && turn?.status !== "running" && !afterCompletion
   const [open, setOpen] = useState(!finishedSession || failed)
   useEffect(() => {
     if (turn?.status === "running") setOpen(true)
@@ -55,7 +49,7 @@ export function GoalSessionTurn({
           renderBlock={renderBlock}
           running={live}
         />
-        <TurnFooter turn={turn} />
+        {showFooter ? <TurnFooter turn={turn} /> : null}
       </div>
     )
   }
@@ -124,7 +118,7 @@ export function GoalSessionTurn({
         revealIds={revealIds}
         renderBlock={renderBlock}
       />
-      <TurnFooter turn={turn} />
+      {showFooter ? <TurnFooter turn={turn} /> : null}
     </div>
   )
 }

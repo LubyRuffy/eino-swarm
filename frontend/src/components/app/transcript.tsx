@@ -29,7 +29,6 @@ import { ToolRow } from "@/components/app/tool-row"
 import { MarqueeText } from "@/components/app/marquee"
 import {
   GoalSessionTurn,
-  groupByTurn,
   responseClockBlockId,
 } from "@/components/app/transcript-session"
 import { QueuedSteers } from "@/components/app/queued-steers"
@@ -64,6 +63,7 @@ import { Textarea } from "@/components/ui/textarea"
 import type { AgentState, Block, Pulse, TranscriptState } from "@/lib/transcript"
 import { MANAGER_ID, liveWorkers, splitQueuedSteers } from "@/lib/transcript"
 import { useApp } from "@/store/app"
+import { turnSlices } from "@/lib/turn-boundary"
 
 const EMPTY_BLOCKS: Block[] = []
 
@@ -111,12 +111,14 @@ export function Transcript({
     () => splitQueuedSteers(blocks, state.running),
     [blocks, state.running],
   )
-  const groups = useMemo(() => groupByTurn(body), [body])
+  const groups = useMemo(() => turnSlices(body, state.turns), [body, state.turns])
   const budgetRetries = useMemo(() => budgetRetryMessages(body), [body])
   const turnById = useMemo(
     () => new Map(state.turns.map((row) => [row.id, row])),
     [state.turns],
   )
+  const liveTurn = state.running ? state.turns.slice().reverse().find((row) => row.status === "running")?.id : undefined
+  const liveAt = liveTurn ? groups.map((group) => group.turnId).lastIndexOf(liveTurn) : -1
   const beginEdit = useCallback((seq: number) => setEditingSeq(seq), [])
   const cancelEdit = useCallback(() => setEditingSeq(null), [])
   const revealIds = useMemo(
@@ -233,10 +235,10 @@ export function Transcript({
           {historyHasMore ? (
             <div ref={sentinelRef} data-testid="history-sentinel" className="h-4" />
           ) : null}
-          {groups.map(([turnId, turnBlocks], i) => {
+          {groups.map(({ turnId, blocks: turnBlocks, showFooter, afterCompletion }, i) => {
             const clockAnswerId = responseClockBlockId(turnBlocks)
             const turn = turnById.get(turnId)
-            const live = i === groups.length - 1 && Boolean(state.running) && turn?.status === "running"
+            const live = i === liveAt
             // A memory note can carry an earlier turn id after the next turn
             // has started, so one id is two slices. Keying only on the id
             // leaves the previous slice's DOM at the top once older history
@@ -248,6 +250,8 @@ export function Transcript({
                 blocks={turnBlocks}
                 turn={turn}
                 live={live}
+                showFooter={showFooter}
+                afterCompletion={afterCompletion}
                 renderBlock={(b) => (
                   <BlockView
                     key={b.id}

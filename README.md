@@ -33,6 +33,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   before scrolling. A click is re-applied after those older pages land, so a
   load that started at the top cannot swallow it. New tokens while you are
   reading light a jump-to-latest control; click it to return and follow again.
+- **Completed turns keep one end marker.** Each visible finished turn has one
+  duration and local completion time after its last pre-completion content.
+  Original answers and tool results remain available through their existing
+  controls. A late memory-review notice stays at its event position, including
+  after a newer turn, without repeating the old end marker or hiding inside
+  that completed goal session's work fold. It also leaves the running turn's
+  live activity visible.
 - **A ring on the composer shows how full the last manager prompt is.** Hover
   it for the compact count against this model's window, plus this-turn billed
   in/out. The numbers come from the endpoint, not a guessed tokenizer. Discover

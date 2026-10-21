@@ -715,6 +715,18 @@ turn for API, CLI and desktop Trace diagnosis.
 The UI must survive a refresh, a reconnect and a slow client without losing an
 event or showing a duplicate:
 
+- **PC transcript slices preserve event order.**
+  `frontend/src/lib/turn-boundary.ts` projects visible blocks into consecutive
+  turn slices without gathering an older turn's late events above newer work.
+  The persisted terminal sequence (recorded end time for legacy snapshots)
+  separates pre-completion content from late
+  notices for the same turn. Only the last slice with visible pre-completion
+  content owns that non-quiet turn's footer; hidden title/session-memory
+  metadata cannot create an empty slice or footer. Late memory-review notices
+  remain visible outside a completed goal session's work fold. Live activity
+  belongs to the last slice of the newest running turn, so older feedback at
+  the transcript tail cannot suppress current progress. This projection
+  changes neither stored events nor the turn's Trace.
 - **Sequence numbers are assigned under one lock, together with the broadcast**,
   so stored order and streamed order cannot diverge.
 - **`GET /api/threads/:id/events` replays first, then goes live**, from a
