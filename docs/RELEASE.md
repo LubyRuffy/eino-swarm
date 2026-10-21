@@ -169,6 +169,24 @@ Before assigning a newer batch, move a still-pending public batch into
 The release entry can resume that old version from its frozen checkout; its
 completion updates the old Issue rows and never rewinds the newest public SHA.
 
+TestFlight may become public before a GitHub tag exists. In that case the
+release entry recognizes a frozen current or historical batch by its exact
+version/source and finalized workset, rather than treating it as unallocated.
+It cross-checks the private release state's `first_publication` evidence and
+successful TestFlight ledger row for the same source, build, marketing version,
+build ID and IPA hash. This immutable proof includes the observed time and
+strict processing, testing, review and bidirectional group state. A later iOS
+expiry, group change or unavailable Apple client does not revoke this source
+proof or block Mac/Android. The iOS publisher saves it on successful delivery.
+Legacy state without this proof needs one current read-only Apple verification;
+`--check` never saves it, while actual recovery saves it under the release lock
+before attempting an installer upload. Missing/conflicting evidence stops
+recovery; a conflicting GitHub tag is always refused. None of these proof
+checks archives, uploads or submits review. Actual iOS delivery still checks
+current installability. The frozen source may precede today's main. Each
+remaining platform still passes its own acceptance gate, and unpublished new
+batches still need the live qualification audit and complete finalized workset.
+
 ## Private iOS setup
 
 Use the documented existing signing and App Manager CLI; browser login is unnecessary.

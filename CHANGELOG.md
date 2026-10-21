@@ -55,6 +55,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-010`: resume an already public TestFlight-first batch before its
+  GitHub tag exists, retaining precise first-public source/build/IPA and strict
+  availability evidence independently of later iOS expiry or Apple availability.
+  Legacy proof bootstrap is read-only during preflight. Keep new-batch qualification, independent native gates,
+  immutable tag/source identity and publication locking intact (Issue #90).
+
 - `F-190`, `C-024`: desktop updates show downloaded bytes and a percentage when the installer size is known, then installation/restart stages. Check and install failures display red alerts; installation retry retains the confirmed version and retries it directly. A failed progress read does not end a pending installation. Installer bodies use a separate bounded download timeout instead of the metadata request's 30-second limit.
 
 - `F-430`, `C-031`: native-case process inspection bounds Darwin `EIO`/`ENOMEM`

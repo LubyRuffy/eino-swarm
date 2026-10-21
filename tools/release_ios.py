@@ -46,6 +46,45 @@ def available(detail, review, groups, expected):
             and set(expected) <= set(groups))
 
 
+def verify_public_receipt(version, source_sha, state, ledger):
+    """Validate retained first-public evidence without Apple tools or credentials."""
+    proof = state.get('first_publication', {})
+    ios = state.get('ios', {})
+    if not isinstance(proof, dict):
+        raise ValueError('First-public TestFlight receipt must be an object')
+    number = version_code(version)
+    known = [r for r in ledger.get('releases', []) if r.get('app_id') == proof.get('app_id')
+             and str(r.get('build_number')) == number]
+    identity = {'version': version, 'source_sha': source_sha, 'build_number': number,
+                'marketing_version': ios.get('marketing_version'), 'build_id': ios.get('build_id'),
+                'ipa_sha256': ios.get('ipa_sha256')}
+    if (proof.get('schema_version') != 1 or proof.get('channel') != 'ios_testflight'
+            or not proof.get('app_id') or state.get('version') != version
+            or state.get('source_sha') != source_sha or ios.get('source_sha') != source_sha
+            or ios.get('status') != 'published' or ios.get('build_number') != number
+            or not identity['build_id'] or not isinstance(identity['marketing_version'], str)
+            or not re.fullmatch(r'[0-9a-f]{64}', identity['ipa_sha256'] or '')
+            or any(proof.get(key) != value for key, value in identity.items()) or len(known) != 1):
+        raise ValueError('First-public TestFlight receipt has conflicting source/build identity')
+    row = known[0]
+    if (not row.get('successfully_published') or any(row.get(key) != identity[key]
+            for key in ('version', 'source_sha', 'marketing_version', 'ipa_sha256'))):
+        raise ValueError('First-public TestFlight receipt conflicts with the successful ledger row')
+    try:
+        moment = datetime.fromisoformat(proof['available_at'])
+        observed = proof['availability']
+        expected = ios['group_ids']
+        valid = (moment.tzinfo is not None and expected and len(expected) == len(set(expected))
+                 and observed['processing_state'] == 'VALID' and observed['expired'] is False
+                 and available(observed['detail'], observed['review'], observed['groups_forward'], expected)
+                 and set(expected) <= set(observed['groups_reverse']))
+    except (KeyError, TypeError, ValueError):
+        valid = False
+    if not valid:
+        raise ValueError('First-public TestFlight receipt lacks strict availability evidence')
+    return proof
+
+
 class IOSRelease:
     def __init__(self, root, version, source_sha, state):
         self.root, self.version, self.source_sha, self.state = root, version, source_sha, state
@@ -70,6 +109,8 @@ class IOSRelease:
             ipa, digest = identities.pop()
             self.state['ios'] = {'ipa': ipa, 'ipa_sha256': digest, 'source_sha': source_sha, 'status': 'signed'}
         self.marketing_version = self.select_marketing_version()
+        if self.state.get('ios', {}).get('build_number', self.number) != self.number:
+            raise ValueError('Retained iOS build number does not match this frozen batch')
         self.state.setdefault('ios', {}).update(marketing_version=self.marketing_version, build_number=self.number)
 
     def select_marketing_version(self):
@@ -114,12 +155,60 @@ class IOSRelease:
             raise ValueError('Ambiguous remote build number')
         return builds[0] if builds else None
 
+    def verify_publication(self):
+        """Prove an iOS-first frozen batch without archiving or mutating Apple."""
+        if 'first_publication' in self.state:
+            return verify_public_receipt(self.version, self.source_sha, self.state, self.ledger)
+        existing = self.state.get('ios', {})
+        known = [r for r in self.ledger.get('releases', [])
+                 if r.get('app_id') == self.module.APP_ID and str(r.get('build_number')) == self.number]
+        if (self.state.get('version') != self.version or self.state.get('source_sha') != self.source_sha
+                or existing.get('status') != 'published' or existing.get('source_sha') != self.source_sha
+                or existing.get('build_number') != self.number or not existing.get('build_id')
+                or not re.fullmatch(r'[0-9a-f]{64}', existing.get('ipa_sha256', ''))
+                or len(known) != 1):
+            raise ValueError('TestFlight public recovery needs the exact source/build publication receipt')
+        known = known[0]
+        if (not known.get('successfully_published') or known.get('version') != self.version
+                or known.get('source_sha') != self.source_sha
+                or known.get('marketing_version') != self.marketing_version
+                or known.get('ipa_sha256') != existing['ipa_sha256']):
+            raise ValueError('TestFlight public recovery has conflicting source/build publication receipts')
+        build = self.snapshot()
+        if not build or build['id'] != existing['build_id']:
+            raise ValueError('TestFlight public recovery build is missing or changed')
+        marketing = self.api.request('GET', f'builds/{build["id"]}/preReleaseVersion')['data']['attributes']['version']
+        reverse = {g['id'] for g in self.api.all(f'builds/{build["id"]}/betaGroups?limit=200')}
+        detail = self.api.request('GET', f'builds/{build["id"]}/buildBetaDetail').get('data')
+        review = self.api.request('GET', f'builds/{build["id"]}/betaAppReviewSubmission').get('data')
+        forward = [g for g, ids in self.members.items() if build['id'] in ids]
+        if (marketing != self.marketing_version or not set(self.config['group_ids']) <= reverse
+                or build['attributes'].get('expired') or build['attributes'].get('processingState') != 'VALID'
+                or not available(detail, review, forward, self.config['group_ids'])):
+            raise ValueError('TestFlight public recovery requires current configured-group installability and review')
+        return self.publication_evidence(build, detail, review, forward, reverse)
+
+    def publication_evidence(self, build, detail, review, forward, reverse):
+        return {'schema_version': 1, 'channel': 'ios_testflight', 'app_id': self.module.APP_ID,
+                'version': self.version, 'source_sha': self.source_sha, 'build_number': self.number,
+                'marketing_version': self.marketing_version, 'build_id': build['id'],
+                'ipa_sha256': self.state['ios']['ipa_sha256'], 'available_at': datetime.now(timezone.utc).isoformat(),
+                'availability': {'processing_state': 'VALID', 'expired': False, 'detail': detail,
+                    'review': review, 'groups_forward': sorted(forward), 'groups_reverse': sorted(reverse)}}
+
     def observe(self, build, record=True):
         build_id = build['id']
         detail = self.api.request('GET', f'builds/{build_id}/buildBetaDetail').get('data')
         review = self.api.request('GET', f'builds/{build_id}/betaAppReviewSubmission').get('data')
         attached = [g for g, ids in self.members.items() if build_id in ids]
         ready = not build['attributes'].get('expired') and build['attributes'].get('processingState') == 'VALID' and available(detail, review, attached, self.config['group_ids'])
+        proof = None
+        if ready and record and build['attributes']['version'] == self.number and self.state.get('ios', {}).get('ipa_sha256'):
+            reverse = {g['id'] for g in self.api.all(f'builds/{build_id}/betaGroups?limit=200')}
+            marketing = self.api.request('GET', f'builds/{build_id}/preReleaseVersion')['data']['attributes']['version']
+            ready = set(self.config['group_ids']) <= reverse and marketing == self.marketing_version
+            if ready:
+                proof = self.publication_evidence(build, detail, review, attached, reverse)
         if ready and record:
             releases = self.ledger.setdefault('releases', [])
             row = next((r for r in releases if str(r.get('build_number')) == build['attributes']['version'] and r.get('app_id') == self.module.APP_ID), None)
@@ -129,12 +218,16 @@ class IOSRelease:
             if not row.get('successfully_published'):
                 if build['attributes']['version'] == self.number:
                     row.update(version=self.version, marketing_version=self.marketing_version, source_sha=self.source_sha)
+                    if proof:
+                        row['ipa_sha256'] = proof['ipa_sha256']
                 elif not row.get('marketing_version') and not row.get('version'):
                     row['marketing_version'] = self.api.request(
                         'GET', f'builds/{build_id}/preReleaseVersion')['data']['attributes']['version']
                 row.update(successfully_published=True, success_beijing_date=self.day,
                            first_observed_available_at=datetime.now(ZoneInfo('Asia/Shanghai')).isoformat())
                 write_json(self.ledger_path, self.ledger)
+            if proof:
+                self.state.setdefault('first_publication', proof)
         return ready
 
     def quota(self, record=True):
@@ -267,6 +360,8 @@ class IOSRelease:
             result.update(marketing_version=self.marketing_version, build_number=self.number)
             if not check:
                 self.state['ios'] = result
+                if result['status'] == 'published' and result.get('ipa_sha256'):
+                    verify_public_receipt(self.version, self.source_sha, self.state, self.ledger)
                 write_json(home() / 'releases' / f'{self.version}.json', self.state)
             if result['status'] == 'published' and not check:
                 self.complete_delivery()
