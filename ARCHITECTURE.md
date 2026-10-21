@@ -1220,3 +1220,23 @@ verified before a tool is repeated; no generic exactly-once guarantee is made.
 The full process replacement is exercised by
 `cmd/zwai/engine_restart_acceptance_test.go` using real processes and a keyless
 loopback model fixture.
+
+## Provider cloud tool boundary
+
+`internal/config/provider_tools.go` validates `api_mode` and `builtin_tools`.
+The existing OpenAI chat adapter remains the default. An explicit Responses
+provider uses `internal/provider/responses.go`, which converts Eino messages,
+local function declarations and cloud tool objects to `/responses` requests.
+The adapter converts function calls back to Eino ToolCalls, while cloud call
+items remain provider output and diagnostics. It preserves raw Responses output
+for the next function-result/model round and appends clickable citation links
+without buffering the answer stream. Existing HTTP silence timeouts, call
+telemetry, cancellation and model error provenance surround either adapter.
+
+Each recorded model request carries its cloud receipts into
+`internal/engine/builtin_tools.go`. They use the original turn and agent plus
+provider/model/request identity and persist as `builtin_tool` events, distinct
+from locally executed `tool_call` and `tool_result`. The PC SSE reducer labels
+them as cloud activity, and Trace / `zwai trace <turn>` retain the full receipt.
+No new database table or engine-owned cloud executor is introduced. See `C-030`
+in [current contracts](docs/CONTRACTS.md).

@@ -277,3 +277,24 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 失败语义：不支持的格式或真实类型不匹配沿用既有输入错误；大图加载中有可见状态，加载失败明确显示错误且仍可关闭；不变量：有效图片在预览、请求、存储与重载中保留原字节及可解码尺寸；边界条件：JPEG MIME 别名、大小写扩展名、明确非图片类型、多图所选身份。
 - 证据：实现 `frontend/src/lib/paste-image.ts`, `frontend/src/components/app/input-thumbs.tsx`, `frontend/src/App.tsx`, `internal/engine/input.go`；测试 `frontend/src/lib/paste-image.test.ts`, `frontend/src/components/app/composer-image-drop.test.tsx`, `frontend/src/components/app/input-thumbs.test.tsx`, `frontend/src/App.test.tsx`, `frontend/e2e/image-input.spec.ts`；Schema：现有 turn 图片请求。
 - 变更规则：同步 Files/attachments 功能、README、API、TESTING、CHANGELOG；使用可解码的有效图片验收，不能只用魔数或 img src。来源：本地图片拖入修复及用户 2026-10-21 的已发送图片放大需求。
+
+## C-030 Provider cloud tools retain protocol and execution origin
+
+- 状态：active
+- 类型：API / compatibility / security / lifecycle
+- 作用范围：config、provider、engine、server、PC Settings/Trace
+- 关联功能：`F-175`、`F-160`、`F-170`
+- 契约内容：
+  - 空或 `chat_completions` 的 `api_mode` 保留现有 POST /chat/completions 行为；`responses` 显式选择 POST /responses，不根据名称猜测协议。
+  - `builtin_tools` 默认空；非空只允许 Responses。每项为完整对象，`type` 为非空字符串、不得重复，当前支持 web_search/web_search_preview/file_search/code_interpreter，嵌套参数原样保存。
+  - 云端工具与实际 Agent 本地函数声明合并；只有 function_call 进入本地工具调度，云端 *_call 不能伪造成本地调用、spawn 或本地成功回执。
+  - 云端调用状态同模型请求归属原 turn/agent/provider/model，保存在 `builtin_tool` 事件，并可通过一 ID Trace 重建；同请求中重复的同 ID/状态不重复计数。quiet 定时检查保持 Chat 安静，同时在 Trace Full log 保留收据。流式失败或取消不得伪造完成。
+  - 回答文本保持流式；URL 引用保留为可点击 Markdown 来源。无 billed usage 的历史预算取可见消息与实际 Responses 回放 JSON 估算的较大值，纳入云端输出及 encrypted reasoning，不计被剔除的调用。协议错误保留原始模型调用错误类别，不能归咎于本地工具 JSON。
+- 允许行为：模型自行选择不调用已声明工具；由服务商验证更具体的参数或模型支持情况。
+- 禁止行为：静默启用工具、将云端回执本地再执行、把任意需客户端审批/执行的类型透传为已支持功能。
+- 失败语义：非法配置在写入前失败，Settings 保留草稿；服务商/流错误沿现有模型失败与有界重试链路处理。
+- 不变量：provider API key 继续仅以 has_api_key 暴露；工具配置不授予本地额外权限。
+- 边界条件：同 provider ID 的 PUT 中省略 api_mode/builtin_tools 或发送 JSON null 保留该字段旧值，显式 [] 清空工具；其他 PUT 字段沿用原语义。旧 YAML 无需迁移。云端资源参数必须由用户提供，不保证服务商实际可用。
+- 证据：实现 `internal/config/provider_tools.go`、`internal/provider/responses.go`、`internal/engine/builtin_tools.go`；测试 `internal/config/provider_tools_test.go`、`internal/server/settings_provider_tools_test.go`、`internal/engine/builtin_tools_test.go`、`frontend/e2e/builtin-tools.spec.ts`。
+- 变更规则：类型支持、协议或执行来源变化必须同步配置/API/功能文档、适配器及 Trace 回归测试。
+- 来源：2026-10-21 provider 云端内置工具配置需求；[OpenAI web search](https://developers.openai.com/api/docs/guides/tools-web-search?api-mode=responses)。

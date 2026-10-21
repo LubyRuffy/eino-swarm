@@ -224,6 +224,20 @@ describe("historical turn usage", () => {
 })
 
 describe("review Full log summary", () => {
+  it("opens cloud tool metadata with provider provenance in Full log", () => {
+    const recorded = structuredClone(noisy)
+    const cloudTool = { provider_id: "endpoint-a", model: "model-a", id: "cloud-1", type: "file_search_call", status: "completed", action: { query: "topic" } }
+    recorded.agents[MANAGER_ID].blocks.push(block({
+      id: "cloud", kind: "notice", text: "Cloud tool", quiet: true, cloudTool, detail: JSON.stringify(cloudTool, null, 2),
+    }))
+    render(<TraceTab turns={[turn()]} transcript={recorded} />)
+    fireEvent.click(screen.getByTestId("trace-log-toggle"))
+    const summary = screen.getByText(/Cloud tool: file_search_call/)
+    expect(summary).toHaveTextContent("completed")
+    fireEvent.click(summary)
+    expect(screen.getByText(/"provider_id": "endpoint-a"/)).toBeVisible()
+    expect(screen.getByText(/"query": "topic"/)).toBeVisible()
+  })
   it("renders a successful review summary once so it stays an unambiguous log row", () => {
     const reviewed = structuredClone(noisy)
     reviewed.agents[MANAGER_ID].blocks.push(block({

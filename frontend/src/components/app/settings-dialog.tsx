@@ -35,6 +35,7 @@ import { normalizeAppearance, type Appearance } from "@/lib/appearance"
 import { chromeTypeClass } from "@/lib/chrome-type"
 import type { LocalePref } from "@/lib/i18n"
 import { SettingsPersist } from "@/lib/settings-persist"
+import { resolveProviderToolsDrafts, type ProviderToolsDrafts } from "@/lib/provider-tools"
 import type { Meta, Settings, ToolDescriptor } from "@/lib/types"
 import { cn } from "@/lib/utils"
 import { useT, type Translate } from "@/lib/use-t"
@@ -67,7 +68,7 @@ function sections(t: Translate) {
       id: "models",
       label: t("settings.nav.models"),
       icon: Cpu,
-      keys: "provider endpoint api key base url discover auxiliary title compact context window timeout model embedding semantic search 模型 提供商 嵌入 语义 搜索",
+      keys: "provider endpoint api key base url responses cloud builtin tools discover auxiliary title compact context window timeout model embedding semantic search 模型 提供商 云端 内置 工具 嵌入 语义 搜索",
     },
     {
       id: "swarm",
@@ -169,6 +170,8 @@ export function SettingsDialog({
   tRef.current = t
   const nav = useMemo(() => sections(t), [t.locale])
   const [settings, setSettings] = useState<Settings>()
+  const [toolsDrafts, setToolsDrafts] = useState<ProviderToolsDrafts>({})
+  const toolsDraftsRef = useRef<ProviderToolsDrafts>({})
   const [catalog, setCatalog] = useState<ToolDescriptor[]>([])
   const [query, setQuery] = useState("")
   const [section, setSection] = useState<SettingsSectionId>(initialSection)
@@ -206,6 +209,8 @@ export function SettingsDialog({
     setSection(initialSection)
     void Promise.all([api.settings(), api.tools()])
       .then(([s, tools]) => {
+        toolsDraftsRef.current = {}
+        setToolsDrafts({})
         setSettings(s)
         setCatalog(tools.catalog)
       })
@@ -226,12 +231,24 @@ export function SettingsDialog({
   }, [])
 
   const apply = (next: Settings) => {
-    setSettings(next)
+    const providerIds = new Set(next.models.providers.map((provider) => provider.id))
+    toolsDraftsRef.current = Object.fromEntries(
+      Object.entries(toolsDraftsRef.current).filter(([id]) => providerIds.has(id)),
+    )
+    setToolsDrafts(toolsDraftsRef.current)
+    const resolved = resolveProviderToolsDrafts(next, toolsDraftsRef.current)
+    setSettings(resolved.settings)
     useToasts.getState().dismiss("settings:save")
-    persistRef.current?.schedule(next, localeRef.current)
+    if (Object.keys(resolved.errors).length) persistRef.current?.dispose()
+    else persistRef.current?.schedule(resolved.settings, localeRef.current)
   }
 
   const leave = async () => {
+    if (settings && Object.keys(resolveProviderToolsDrafts(settings, toolsDraftsRef.current).errors).length) {
+      setQuery("")
+      setSection("models")
+      return
+    }
     try {
       await persistRef.current?.flush()
       onOpenChange(false)
@@ -432,6 +449,13 @@ export function SettingsDialog({
                       settings={settings}
                       onChange={apply}
                       query={query}
+                      toolsDrafts={toolsDrafts}
+                      toolsErrors={resolveProviderToolsDrafts(settings, toolsDrafts).errors}
+                      onToolsDraftChange={(id, text) => {
+                        toolsDraftsRef.current = { ...toolsDraftsRef.current, [id]: text }
+                        setToolsDrafts(toolsDraftsRef.current)
+                        apply(settings)
+                      }}
                     />
                   ) : null}
                   {page === "swarm" ? (

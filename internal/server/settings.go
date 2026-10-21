@@ -86,17 +86,19 @@ type settingsView struct {
 }
 
 type providerView struct {
-	ID             string         `json:"id"`
-	Label          string         `json:"label"`
-	BaseURL        string         `json:"base_url"`
-	Model          string         `json:"model"`
-	Catalog        []string       `json:"catalog"`
-	TimeoutSeconds int            `json:"timeout_seconds"`
-	ContextWindow  int            `json:"context_window"`
-	ModelContext   map[string]int `json:"model_context"`
-	HasAPIKey      bool           `json:"has_api_key"`
-	Ready          bool           `json:"ready"`
-	Enabled        bool           `json:"enabled"`
+	APIMode        string           `json:"api_mode"`
+	BuiltinTools   []map[string]any `json:"builtin_tools"`
+	ID             string           `json:"id"`
+	Label          string           `json:"label"`
+	BaseURL        string           `json:"base_url"`
+	Model          string           `json:"model"`
+	Catalog        []string         `json:"catalog"`
+	TimeoutSeconds int              `json:"timeout_seconds"`
+	ContextWindow  int              `json:"context_window"`
+	ModelContext   map[string]int   `json:"model_context"`
+	HasAPIKey      bool             `json:"has_api_key"`
+	Ready          bool             `json:"ready"`
+	Enabled        bool             `json:"enabled"`
 }
 
 func toSettingsView(cfg *config.Config) settingsView {
@@ -121,7 +123,13 @@ func toSettingsView(cfg *config.Config) settingsView {
 		if windows == nil {
 			windows = map[string]int{}
 		}
+		builtinTools := p.BuiltinTools
+		if builtinTools == nil {
+			builtinTools = []map[string]any{}
+		}
 		v.Models.Providers = append(v.Models.Providers, providerView{
+			APIMode:        p.APIMode,
+			BuiltinTools:   builtinTools,
 			ID:             p.ID,
 			Label:          p.Label,
 			BaseURL:        p.BaseURL,
@@ -160,15 +168,17 @@ type putSettingsRequest struct {
 	Models *struct {
 		Default   string `json:"default"`
 		Providers []struct {
-			ID             string          `json:"id"`
-			Label          string          `json:"label"`
-			BaseURL        string          `json:"base_url"`
-			Model          string          `json:"model"`
-			Catalog        *[]string       `json:"catalog"`
-			TimeoutSeconds int             `json:"timeout_seconds"`
-			ContextWindow  *int            `json:"context_window"`
-			ModelContext   *map[string]int `json:"model_context"`
-			APIKey         *string         `json:"api_key"`
+			APIMode        *string           `json:"api_mode"`
+			BuiltinTools   *[]map[string]any `json:"builtin_tools"`
+			ID             string            `json:"id"`
+			Label          string            `json:"label"`
+			BaseURL        string            `json:"base_url"`
+			Model          string            `json:"model"`
+			Catalog        *[]string         `json:"catalog"`
+			TimeoutSeconds int               `json:"timeout_seconds"`
+			ContextWindow  *int              `json:"context_window"`
+			ModelContext   *map[string]int   `json:"model_context"`
+			APIKey         *string           `json:"api_key"`
 			// Absent keeps the stored switch. A new id with no field stays
 			// on. False is the only value that hides the endpoint.
 			Enabled *bool `json:"enabled"`
@@ -234,6 +244,14 @@ func (s *Server) putSettings(c *gin.Context) {
 		providers := make([]config.Provider, 0, len(req.Models.Providers))
 		for _, p := range req.Models.Providers {
 			prev := existing[p.ID]
+			apiMode := prev.APIMode
+			if p.APIMode != nil {
+				apiMode = *p.APIMode
+			}
+			builtinTools := prev.BuiltinTools
+			if p.BuiltinTools != nil {
+				builtinTools = *p.BuiltinTools
+			}
 			key := prev.APIKey
 			if p.APIKey != nil {
 				key = *p.APIKey
@@ -255,6 +273,8 @@ func (s *Server) putSettings(c *gin.Context) {
 				enabled = listedFlag(*p.Enabled)
 			}
 			providers = append(providers, config.Provider{
+				APIMode:        apiMode,
+				BuiltinTools:   builtinTools,
 				ID:             p.ID,
 				Label:          p.Label,
 				BaseURL:        p.BaseURL,

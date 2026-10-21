@@ -19,6 +19,7 @@ import {
 } from "react"
 import { AskCardView } from "@/components/app/ask-card"
 import { CompactNotice } from "@/components/app/compact-notice"
+import { CloudToolNotice } from "@/components/app/cloud-tool-notice"
 import { isScheduleNotice, ScheduleNotice } from "@/components/app/schedule-notice"
 import { MemoMarkdown } from "@/components/app/markdown"
 import { Badge } from "@/components/ui/badge"
@@ -399,6 +400,7 @@ const BlockView = memo(function BlockView({
       return <IterationLimitCard block={block} />
 
     case "notice":
+      if (block.cloudTool) return <CloudToolNotice block={block} />
       return isScheduleNotice(block) ? <ScheduleNotice block={block} /> : <CompactNotice block={block} />
 
     case "title":

@@ -177,6 +177,7 @@ provider carries `has_api_key` and `ready` instead.
   "models": {"default": "default", "providers": [
     {"id": "default", "label": "", "base_url": "https://endpoint/v1",
      "model": "some-model", "catalog": ["some-model", "other-model"],
+     "api_mode": "", "builtin_tools": [],
      "timeout_seconds": 300, "context_window": 0, "model_context": {},
      "has_api_key": true, "ready": true, "enabled": true}
   ]},
@@ -2000,3 +2001,31 @@ reviving the stopped turn. A pending accepted answer or iteration-cap decision
 is retained even if its waiter had not consumed it before handoff. Phone
 watch/log retain checkpoint sequence identity with an empty body; internal
 manager/worker prompts and histories stay on the PC.
+
+## Provider Responses tools and Trace
+
+`GET /api/settings` includes provider `api_mode` and `builtin_tools` (an array,
+empty when disabled). `PUT /api/settings` accepts these fields in each provider:
+
+```json
+{"models":{"default":"cloud","providers":[{"id":"cloud","base_url":"https://endpoint.example/v1","model":"your-model","api_mode":"responses","builtin_tools":[{"type":"web_search","search_context_size":"low"}]}]}}
+```
+
+Omitting `api_mode` or `builtin_tools`, or sending JSON `null` for either,
+preserves that field for the same provider ID; `builtin_tools: []` clears the
+list. Other provider fields retain their documented PUT semantics. Empty/`chat_completions` retains the old protocol. Invalid API
+mode, non-object entries, missing/non-string/duplicate/unsupported types or tools
+on Chat Completions return `400` before changing configuration. API key omission,
+clearing and masking retain their existing semantics. Supported types and cloud
+resource limits are described in [configuration](CONFIG.md#provider-cloud-tools).
+
+`builtin_tool` is a durable event kind returned by `GET /api/trace/:turn` and the
+conversation event log/SSE. Its `text` is JSON with `provider_id`, `model`,
+`llm_call_id`, `id` (provider cloud call ID), `type` (such as web_search_call),
+`status`, optional `action`, and `details` containing the actual cloud output item
+(search queries/results or interpreter code/container/output when returned). Event `turn_id` and `agent_id` identify the actual
+model caller. These are cloud receipts, never local tool-dispatch instructions.
+Quiet scheduled checks keep these receipts in Trace Full log while hiding cloud
+activity notices from Chat. No local `tool_call` or `tool_result` is fabricated for cloud work. Receipts are
+recorded when the model request ends, including partial/failed requests; only
+provider-reported completion produces a completed status.

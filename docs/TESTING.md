@@ -2717,3 +2717,41 @@ cd frontend && npm test -- src/lib/paste-image.test.ts src/lib/composer-drop.tes
 cd frontend && npm run e2e -- image-input.spec.ts
 cd frontend && npm run e2e -- shell.spec.ts
 ```
+
+### Provider Responses and cloud tools
+
+Use keyless loopback fixtures, never a real model or network service:
+
+```bash
+go test -race -timeout 20m ./internal/config ./internal/provider ./internal/server ./internal/engine
+cd frontend && npm run lint && npm test && npm run build
+ZWAI_E2E_BUILTIN_TOOLS=1 ZWAI_E2E_PORT=8819 npm run e2e -- builtin-tools.spec.ts
+```
+
+`internal/config/provider_tools_test.go` and
+`internal/server/settings_provider_tools_test.go` verify old configuration,
+protocol/type errors, nested parameter round trips, omission/clearing, API key
+masking and refused writes. `internal/engine/responses_spawn_replay_test.go` verifies the actual Registry/ADK
+boundary keeps merged refused-spawn calls paired without resurrecting discarded
+calls from raw Responses metadata. `internal/engine/builtin_tools_test.go` drives the
+actual Responses HTTP adapter and Eino manager: cloud and local declarations
+coexist; hosted calls never execute locally; usage, sources and attributed
+receipts persist once in the original turn. The opt-in browser test checks
+clickable sources, Trace Full log and reload through the real server with a
+keyless local Responses endpoint. Default `make e2e` remains offline scripted.
+
+Responses streams retain ordinary text deltas, function argument pairing,
+non-strict optional function parameters, encrypted reasoning, HTTP/stream error
+origin and context cancellation. The framework's plain StreamReader.Close does
+not expose a transport-close hook: it is observed at the next publication;
+request context cancellation or the configured silence timeout bounds a quiet
+upstream. User Stop uses context cancellation. Quiet scheduled checks hide cloud
+notices in Chat while retaining their full metadata in Trace.
+
+`internal/engine/responses_budget_test.go` regresses replay without billed usage:
+ASCII/CJK/emoji hosted output and encrypted reasoning are included using the
+larger of the visible estimate and actual filtered Responses replay JSON. Shared
+text is not counted twice and removed calls do not inflate the request. The
+Registry/ADK loopback test observes compaction before the HTTP request, preserving
+the current human request and briefing. Existing billed-usage precedence remains
+unchanged; this test does not establish its accuracy for arbitrary providers.

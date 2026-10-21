@@ -278,6 +278,61 @@ describe("Settings dialog", () => {
     })
   })
 
+  it("keeps invalid cloud tool JSON across pages and blocks auto-save and leaving", async () => {
+    vi.mocked(api.settings).mockResolvedValue({
+      ...base,
+      models: { ...base.models, providers: [{ ...base.models.providers[0], api_mode: "responses" }] },
+    })
+    const onOpenChange = vi.fn()
+    renderDialog({ onOpenChange })
+    await waitSettingsLoaded()
+    fireEvent.click(screen.getByRole("tab", { name: "Models" }))
+    fireEvent.click(screen.getByRole("button", { name: "Endpoint details" }))
+    fireEvent.change(screen.getByLabelText("Provider"), { target: { value: "Changed" } })
+    fireEvent.change(screen.getByLabelText("Cloud built-in tools (JSON)"), { target: { value: "[" } })
+    fireEvent.click(screen.getByRole("tab", { name: "Swarm" }))
+    fireEvent.change(screen.getByLabelText("Sub-agents at once"), { target: { value: "2" } })
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    expect(api.saveSettings).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Back to app" }))
+    expect(onOpenChange).not.toHaveBeenCalled()
+    expect(screen.getByLabelText("Cloud built-in tools (JSON)")).toHaveValue("[")
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a JSON array")
+
+    fireEvent.change(screen.getByLabelText("Cloud built-in tools (JSON)"), { target: { value: '[{"type":"file_search","vector_store_ids":["store-a"]}]' } })
+    expect(screen.getByLabelText("Cloud built-in tools (JSON)")).toBeVisible()
+    expect(screen.getByLabelText("API mode")).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Back to app" }))
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0].models?.providers[0].builtin_tools).toEqual([
+      { type: "file_search", vector_store_ids: ["store-a"] },
+    ])
+    expect(vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0].swarm?.max_concurrent).toBe(2)
+  })
+
+  it.each(["[", '[{"type":"file_search"}]'])("drops a deleted provider's cloud draft before its ID is reused: %s", async (draft) => {
+    vi.mocked(api.settings).mockResolvedValue({
+      ...base,
+      models: { ...base.models, providers: [base.models.providers[0], { ...base.models.providers[0], id: "provider-2", label: "Second", api_mode: "responses" }] },
+    })
+    const onOpenChange = vi.fn()
+    renderDialog({ onOpenChange })
+    await waitSettingsLoaded()
+    fireEvent.click(screen.getByRole("tab", { name: "Models" }))
+    fireEvent.click(screen.getByRole("button", { name: "Second details" }))
+    fireEvent.change(screen.getByLabelText("Cloud built-in tools (JSON)"), { target: { value: draft } })
+    fireEvent.click(screen.getByRole("button", { name: "Remove Second" }))
+    fireEvent.click(screen.getByRole("button", { name: "Remove provider" }))
+    fireEvent.click(screen.getByRole("button", { name: "Add a provider" }))
+    expect(screen.getByRole("button", { name: "provider-2 details" })).toBeVisible()
+    expect(screen.getByLabelText("Cloud built-in tools (JSON)")).toHaveValue("[]")
+    expect(screen.getByLabelText("Cloud built-in tools (JSON)")).toHaveAttribute("aria-invalid", "false")
+    fireEvent.click(screen.getByRole("button", { name: "Back to app" }))
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false))
+    expect(vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0].models?.providers[1].builtin_tools).toEqual([])
+    expect(vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0].models?.providers[1].api_mode).toBe("chat_completions")
+  })
+
   it("writes personality without a Save button", async () => {
     const user = userEvent.setup()
     renderDialog()

@@ -11,6 +11,7 @@ export type EventKind =
   | "spawned"
   | "finished"
   | "tool_call"
+  | "builtin_tool"
   | "tool_result"
   | "tool_delta"
   | "tool_call_delta"
@@ -467,6 +468,10 @@ export interface ProviderSettings {
   id: string
   label: string
   base_url: string
+  /** Empty retains the Chat Completions protocol. */
+  api_mode?: string
+  /** Provider-executed Responses tools, including provider-specific options. */
+  builtin_tools?: Array<Record<string, unknown>>
   model: string
   catalog?: string[]
   timeout_seconds: number

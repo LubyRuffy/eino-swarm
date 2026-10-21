@@ -949,3 +949,14 @@ Older PCs that omit completion watermarks keep ordinary phone conversations
 and scheduled checks usable. The phone does not send the optional read
 acknowledgement to those hosts. A supported PC's initial watermark of zero
 still allows the first visible result to be acknowledged.
+
+### Cloud built-in tools
+
+Settings → Models → open a provider, select **Responses**, and configure its cloud
+tools JSON, for example `[{"type":"web_search"}]`. The endpoint and model must
+support that API and tool. The default remains Chat Completions with no cloud
+tools. Cloud calls run at the provider, coexist with local Agent functions, and
+appear in the same turn's Trace; web sources remain clickable in answers.
+See [configuration](docs/CONFIG.md#provider-cloud-tools) for supported tool types,
+parameters, YAML and limits. Paired phone sessions using the PC inherit its
+provider configuration; independent phone direct chat has its own configuration.

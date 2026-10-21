@@ -141,10 +141,20 @@ function dropQuietChat(state: TranscriptState, turnId: string) {
   if (!turnId) return
   for (const id of Object.keys(state.agents)) {
     const agent = state.agents[id]
-    const blocks = agent.blocks.filter(
-      (b) => b.turnId !== turnId || !QUIET_DROP.has(b.kind),
-    )
-    if (blocks.length !== agent.blocks.length) {
+    let changed = false
+    const blocks = agent.blocks.flatMap((row) => {
+      if (row.turnId !== turnId || !QUIET_DROP.has(row.kind)) return [row]
+      // Cloud receipts remain inspectable in Full log even when the check
+      // has no findings worth interrupting the conversation with.
+      if (row.cloudTool) {
+        if (row.quiet) return [row]
+        changed = true
+        return [{ ...row, quiet: true }]
+      }
+      changed = true
+      return []
+    })
+    if (changed) {
       state.agents[id] = { ...agent, blocks }
     }
   }

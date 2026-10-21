@@ -140,6 +140,8 @@ the new row.
 | `id` | stable identifier, referenced by `models.default` and by each conversation. Blank or duplicate ids are renamed to `provider-N` on load. |
 | `label` | name of this provider in Settings and as the composer group heading. Empty groups by `id`. Never the default model — that made one endpoint look like a pile of unrelated names. |
 | `base_url` | the endpoint, including any `/v1`. |
+| `api_mode` | empty or `chat_completions` calls `/chat/completions` (the existing default); `responses` calls `/responses`. Set this explicitly from the endpoint documentation; provider labels and model names never select a protocol. |
+| `builtin_tools` | optional list of complete cloud tool objects. Empty disables them. Requires `api_mode: responses`; accepts `web_search`, `web_search_preview`, `file_search`, and `code_interpreter`, with one entry per type. Nested provider parameters are preserved. Unknown, local-execution and approval-dependent tool types are rejected. |
 | `api_key` | may be empty: local endpoints frequently need none. Never returned by the API — the settings dialog sees only a "set / not set" flag. |
 | `model` | the default model name new conversations start on. Switch per conversation in the composer. |
 | `enabled` | whether this endpoint appears in the composer model list (and the paired phone's catalog, and a phone's own direct-chat list). Omitted or `true` means on, so an older file stays visible; a save of `true` omits the key. `false` hides it. A conversation already on that endpoint keeps using it. If the hidden one was `models.default`, default moves to the first endpoint still listed. Turning every provider off is repaired on load: the default stays on, because a new conversation needs somewhere to start. |
@@ -160,6 +162,52 @@ directory stays under that field — that is the control that caused it.
 On macOS, a desktop window that cannot reach a LAN URL (`no route to host`)
 while Terminal `curl` can is Local Network privacy: allow **zwai** under
 System Settings → Privacy & Security → Local Network.
+
+### Provider cloud tools
+
+Settings → Models → open a provider → select **Responses** and edit the cloud
+built-in tools JSON array. For example:
+
+```yaml
+models:
+  providers:
+    - id: cloud
+      base_url: https://endpoint.example/v1
+      model: your-model
+      api_mode: responses
+      builtin_tools:
+        - type: web_search
+          search_context_size: low
+```
+
+The example enables search only for that provider; the default configuration
+never enables a cloud tool. The endpoint and selected model must actually support
+the configured protocol and tools. A compatible Chat Completions endpoint alone
+is insufficient. Model discovery remains `GET {base_url}/models`.
+
+Each configured object is merged with the Agent's local function declarations in
+the Responses request. Cloud tool calls execute at the provider and never enter
+the local tool dispatcher. All calls using this provider (including workers and
+auxiliary model calls) receive its tool list. Local Tools-tab switches affect
+local tools only. Cloud parameters such as file-search vector store IDs or a code
+interpreter container must be supplied according to the provider's documentation;
+the app does not upload files or issue separate cloud-resource management calls.
+An automatic container option can cause the provider to create and bill a
+container when the tool runs; the app does not verify resource availability.
+The adapter supports text and image inputs and preserves provider tool outputs;
+client-side downloading of authenticated container files and other audio/video/file
+input parts are not implemented by this adapter.
+
+Invalid JSON keeps the settings draft and suspends automatic saving. Clear the
+list before switching back to Chat Completions. A malformed/unsupported saved
+configuration returns an error on load or save rather than silently dropping tools.
+Web citations become clickable Markdown source links while answer text continues
+to stream. Cloud execution receipts are stored as `builtin_tool` events in the
+same turn's Trace; they are distinct from local `tool_call` / `tool_result` events.
+
+See the [official OpenAI web search guide](https://developers.openai.com/api/docs/guides/tools-web-search?api-mode=responses)
+for supported search parameters. This integration does not implement client-side
+computer control, shell execution, hosted MCP approvals or arbitrary tool types.
 
 ### First-run seeding
 

@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-175`, `C-030`, `C-012`: providers can explicitly select Responses and configure cloud built-in tools (`web_search`, `web_search_preview`, `file_search`, `code_interpreter`) with their parameters in Settings or YAML/API. Cloud tools coexist with local functions, preserve clickable sources and retain attributed Trace receipts without local execution. Existing providers keep Chat Completions with no cloud tools. Invalid drafts pause automatic saving.
+
 - `F-140`, `C-028`: sent image thumbnails in desktop and Web conversations open the selected saved image in a window-fitting preview. Mouse and keyboard activation, loading/error states, Escape/backdrop/Close dismissal and return focus are supported after sending and reloading; closing the preview keeps the running task going.
 
 - `F-120`, `C-026`: desktop project creation and editing now offer a system directory picker. Cancelling keeps the current path; selection failures show an inline error. Manual entry and the empty managed directory remain available, and the browser explains the desktop option. Directory selection uses files in place and retains save-time validation. The native folder confirmation button is usable without extension filters.

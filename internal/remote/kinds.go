@@ -12,6 +12,7 @@ var PushKinds = []string{
 	"spawned",
 	"finished",
 	"tool_call",
+	"builtin_tool",
 	"tool_result",
 	"tool_delta",
 	"tool_call_delta",

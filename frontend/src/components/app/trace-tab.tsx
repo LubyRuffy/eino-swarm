@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
 import { reviewTraceMetadata } from "@/lib/review-diagnostics"
+import { cloudToolSummary } from "@/lib/cloud-tool"
 import { reviewNotice } from "@/lib/transcript-review"
 import type { Locale } from "@/lib/i18n"
 import { CopyButton } from "@/components/app/copy-button"
@@ -220,10 +221,10 @@ function collectRows(transcript: TranscriptState, turnId: string, locale: Locale
       if (b.turnId !== turnId) continue
       rows.push({
         at: b.at,
-        kind: b.kind === "tool" ? (b.tool?.name ?? "tool") : b.kind,
+        kind: b.cloudTool ? "builtin_tool" : b.kind === "tool" ? (b.tool?.name ?? "tool") : b.kind,
         agent: b.agentId || id,
-        text: b.review ? (reviewNotice(b.review, locale) ?? b.text) : b.kind === "tool" ? (b.tool?.args ?? "") : b.text,
-        details: b.review ? reviewTraceMetadata(b.review) : undefined,
+        text: b.cloudTool ? cloudToolSummary(b.cloudTool, locale) : b.review ? (reviewNotice(b.review, locale) ?? b.text) : b.kind === "tool" ? (b.tool?.args ?? "") : b.text,
+        details: b.cloudTool ? b.detail : b.review ? reviewTraceMetadata(b.review) : undefined,
         failed: b.kind === "error" || Boolean(b.tool?.failed) || Boolean(b.review?.err),
       })
     }

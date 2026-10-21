@@ -34,6 +34,7 @@ type CallRecord struct {
 	ReasoningTokens  int
 	Duration         time.Duration
 	Err              error
+	BuiltinTools     []BuiltinToolEvent
 }
 
 // Recorder receives one CallRecord per model request. Implementations must be
@@ -269,8 +270,14 @@ func (p *Pool) ModelBuilder(ctx context.Context, id, modelName, effort string, r
 }
 
 func buildOpenAI(ctx context.Context, p config.Provider) (model.BaseChatModel, error) {
+	if err := p.Validate(); err != nil {
+		return nil, err
+	}
 	if !p.Ready() {
 		return nil, fmt.Errorf("provider: %q needs a base_url and a model", p.ID)
+	}
+	if p.APIMode == "responses" {
+		return newResponsesModel(p)
 	}
 	// HTTPClient, not Timeout: eino puts Timeout on http.Client, which
 	// includes the streamed body and kills a long thought mid-token.
@@ -325,17 +332,22 @@ func (r *recordingModel) withReasoning(opts []model.Option) []model.Option {
 		return opts
 	}
 	effort := openaimodel.WithReasoningEffort(openaimodel.ReasoningEffortLevel(r.reasoning))
+	if _, ok := r.inner.(*responsesModel); ok {
+		effort = responsesReasoningOption(r.reasoning)
+	}
 	return append([]model.Option{effort}, opts...)
 }
 
 func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.Message, error) {
 	opts = r.withReasoning(opts)
+	ctx, builtin := observeBuiltinTools(ctx, r.rec != nil)
 	start := time.Now()
 	out, err := r.inner.Generate(ctx, in, opts...)
 	if r.rec == nil {
 		return out, modelCallError(err)
 	}
 	rec := r.base(in, start)
+	rec.BuiltinTools = builtin.snapshot()
 	rec.Err = err
 	if out != nil {
 		rec.OutputChars = len(out.Content) + len(out.ReasoningContent)
@@ -347,6 +359,7 @@ func (r *recordingModel) Generate(ctx context.Context, in []*schema.Message, opt
 
 func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts ...model.Option) (*schema.StreamReader[*schema.Message], error) {
 	opts = r.withReasoning(opts)
+	ctx, builtin := observeBuiltinTools(ctx, r.rec != nil)
 	start := time.Now()
 	stream, err := r.inner.Stream(ctx, in, opts...)
 	if r.rec == nil {
@@ -354,6 +367,7 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 	}
 	if err != nil {
 		rec := r.base(in, start)
+		rec.BuiltinTools = builtin.snapshot()
 		rec.Err = err
 		r.rec(rec)
 		return nil, modelCallError(err)
@@ -373,6 +387,7 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 			msg, recvErr := stream.Recv()
 			if recvErr != nil {
 				rec := r.base(in, start)
+				rec.BuiltinTools = builtin.snapshot()
 				rec.OutputChars = chars
 				applyUsage(&rec, usage)
 				if !isStreamEnd(recvErr) {
@@ -388,6 +403,7 @@ func (r *recordingModel) Stream(ctx context.Context, in []*schema.Message, opts 
 			}
 			if closed := sw.Send(msg, nil); closed {
 				rec := r.base(in, start)
+				rec.BuiltinTools = builtin.snapshot()
 				rec.OutputChars = chars
 				applyUsage(&rec, usage)
 				r.rec(rec)

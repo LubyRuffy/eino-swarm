@@ -13,6 +13,7 @@ This is the current user-facing capability map. The code and tests named below a
     - `F-150` Goals and scheduled waits
     - `F-160` Trace and diagnostics
     - `F-170` Settings and providers
+    - `F-175` Provider cloud built-in tools
     - `F-180` PC text quoting
     - `F-190` Desktop updates
   - `F-200` Phone
@@ -111,6 +112,11 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 目的：配置模型、外观、工具和远程连接；使用者：PC 用户；入口：Settings；输入：配置字段，包括每个提供商在输入框模型列表里的开关；输出：持久化设置和可用模型，关掉的提供商不出现在输入框和已配对手机的目录里，已经选中它的会话继续用；前置条件：本机数据目录；失败表现：校验或连接错误；关联契约：`C-006`, `C-009`；实现证据：`internal/config`, `internal/provider`, `frontend/src`。
 - 输出额度用尽：桌面端这条错误下面有提示，链到设置 → 集群的「单次输出上限」，并聚焦该输入。关掉设置后，同一条错误上出现重试，按原来的请求再跑一轮。手机不能改这项，只显示错误原文。实现证据：`frontend/src/components/app/transcript-error.tsx`, `frontend/src/lib/output-budget.ts`。
+
+### F-175 Provider cloud built-in tools
+
+- 目的：让支持 Responses 的 provider 在云端执行自带工具；使用者：PC 用户及 API 配置管理者；入口：Settings → Models 的 provider API 模式和工具 JSON、`PUT /api/settings`、`config.yaml`；输入：`api_mode` 和 `builtin_tools`，工具对象包含唯一非空 `type` 及服务商参数；输出：云端工具与本地函数工具共同供模型选择，流式回答含可点击来源，同 turn 的 `builtin_tool` Trace 回执；前置条件：端点、模型及所配置工具支持 Responses；失败表现：无效配置拒绝且保留草稿，服务端拒绝或流错误沿现有模型错误通道显示；关联契约：`C-030`、`C-009`、`C-012`；实现证据：`internal/config/provider_tools.go`、`internal/provider/responses.go`、`internal/engine/builtin_tools.go`、`frontend/src/components/app/model-settings.tsx`；验证：`internal/config/provider_tools_test.go`、`internal/server/settings_provider_tools_test.go`、`internal/engine/builtin_tools_test.go`、`frontend/e2e/builtin-tools.spec.ts`。
+- 当前支持 `web_search`、`web_search_preview`、`file_search`、`code_interpreter`；参数原样保留，不另行上传文件或调用资源管理接口；自动容器等选项仍可在服务商执行时创建资源。默认仍为 Chat Completions 且工具为空，不能根据服务商名称自动开工具。PC provider 配置也作用于通过 PC 执行的配对手机会话；手机独立直连配置不在此功能范围。
 
 ### F-180 PC text quoting
 

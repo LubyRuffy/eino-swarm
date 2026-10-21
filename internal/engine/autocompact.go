@@ -7,6 +7,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
+	"github.com/LubyRuffy/eino-swarm/internal/provider"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/LubyRuffy/eino-swarm/internal/workerstate"
 	"github.com/cloudwego/eino/adk"
@@ -454,6 +455,12 @@ func estimateMessageTokens(m *schema.Message) int {
 	n := 4 + estimateTextTokens(m.Content) + estimateTextTokens(m.ReasoningContent)
 	for _, tc := range m.ToolCalls {
 		n += estimateTextTokens(tc.Function.Name) + estimateTextTokens(tc.Function.Arguments)
+	}
+	// Stateless Responses replay also carries hosted outputs and encrypted
+	// reasoning. They are absent from the visible message fields above; take
+	// the larger representation so shared text and calls are not counted twice.
+	if raw, err := provider.ResponsesReplayJSON(m); err == nil && len(raw) > 0 {
+		n = max(n, 4+estimateTextTokens(string(raw)))
 	}
 	return n
 }

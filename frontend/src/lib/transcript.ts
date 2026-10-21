@@ -1,4 +1,5 @@
 import type { ImageRef, ReviewOutcome, SwarmEvent } from "./types"
+import { cloudToolSummary, parseCloudTool } from "./cloud-tool"
 import {
   compactBriefing,
   compactNotice,
@@ -87,6 +88,8 @@ export interface Block {
   detail?: string
   /** Structured reviewer diagnostics, formatted when the UI language changes. */
   review?: ReviewOutcome
+  /** Provider-executed tool metadata; never a local function call. */
+  cloudTool?: Record<string, unknown>
   /** Tool blocks only. */
   tool?: {
     callId: string
@@ -276,6 +279,14 @@ export function reduceEvent(
       append(touchAgent(next, MANAGER_ID), row)
     }
     return next
+  }
+  if (ev.kind === "builtin_tool") {
+    const metadata = parseCloudTool(ev.text)
+    const row = block(ev, "notice", cloudToolSummary(metadata))
+    row.cloudTool = metadata
+    row.detail = ev.text
+    append(touchAgent(next, MANAGER_ID), row)
+    return sealQuietTurns(next, ev)
   }
   if (ev.kind === "task_message") {
     const manager = touchAgent(next, MANAGER_ID)

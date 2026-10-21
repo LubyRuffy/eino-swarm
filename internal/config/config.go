@@ -564,6 +564,9 @@ func Load(dataDir string) (*Config, error) {
 
 	cfg.dataDir = abs
 	cfg.seedFromEnv()
+	if err := cfg.validateProviders(); err != nil {
+		return nil, err
+	}
 	cfg.normalize()
 
 	if os.IsNotExist(err) {
@@ -822,6 +825,9 @@ func (c *Config) DBPath() string { return filepath.Join(c.dataDir, "zwai.db") }
 // Save writes the config back to disk atomically, so a crash mid-write cannot
 // leave a truncated file that fails to parse on the next start.
 func (c *Config) Save() error {
+	if err := c.validateProviders(); err != nil {
+		return err
+	}
 	if strings.TrimSpace(c.dataDir) == "" {
 		return fmt.Errorf("config: no data dir; load the config before saving it")
 	}
@@ -849,6 +855,9 @@ func (c *Config) Save() error {
 func (c *Config) Replace(next *Config) error {
 	if next == nil {
 		return fmt.Errorf("config: nothing to apply")
+	}
+	if err := next.validateProviders(); err != nil {
+		return err
 	}
 	c.Server = next.Server
 	c.Models = next.Models
