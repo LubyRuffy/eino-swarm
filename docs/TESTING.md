@@ -364,6 +364,31 @@ can replace watch hooks; closing the Pairlink socket alone does not do this.
 triggers to prove deletion, event-persistence and restoration error behavior;
 `internal/server/followup_failure_test.go` covers the HTTP missing/storage paths.
 
+`internal/store/followups_claim_test.go` pauses a real GORM selection to let
+another consumer claim or edit the row, then verifies unique delivery, FIFO
+reselection, conversation isolation and storage/busy failures. The old
+implementation returned the already claimed row in controlled interleavings.
+`internal/server/missing_record_test.go` uses the actual HTTP handlers to check
+a repeated queued Steer creates one turn, distinguishes missing conversations,
+and binds response/header/default-level log to one request ID without bodies,
+query strings or authorization values.
+`frontend/src/store/app-followup.test.ts` covers pending-click coalescing,
+stale-row refresh outcomes and cross-conversation late responses;
+`frontend/e2e/followup-error.spec.ts` drives those controls through the browser.
+Queue actions live in `frontend/src/store/app-followup.ts`.
+
+For a native queue check, the app bundle must retain a private data-directory
+fallback before an app-selection tool can launch it: such tools may reopen a
+bundle without the CLI arguments of an earlier process. Keep the explicit
+`desktop --mock --data-dir <temporary-directory>` process alive, and verify
+that the native window URL matches that directory's `engine.json` with
+`mock: true` before any fixture action. A launch icon or a running process does
+not establish this identity. Never use the main data directory for queue fixtures.
+The accepted native path removes only a private waiting row, clicks its stale
+Steer button, verifies the explanatory banner and refreshed queue while the
+turn stays running, then opens a new conversation and verifies the banner clears.
+
+
 The offline phone fixture now matches the existing host's idle-Steer rule. Its
 RED was a missing fixture `user_message`, not a new Go product failure.
 `mobile/e2e/composer-layout.spec.ts`,

@@ -10,7 +10,8 @@ the URL in `engine.json` (a random loopback port unless `--addr` was set).
   your conversations and listens on loopback. Mutating `/api` requests with a
   non-loopback `Origin` are `403`. The PTY upgrade also requires a loopback
   `Origin` (or a loopback peer when `Origin` is empty).
-- Errors are `{"error": "...")` with an optional `"code"`.
+- Errors are `{"error": "..."}` with an optional `"code"`.
+- Missing-record errors handled by the server use `code: "not_found"`; missing conversations checked by a thread route use `thread_not_found`. The JSON includes `request_id`, `method`, the matched `route` template and available record identity; `X-Request-ID` repeats that ID. The same ID is logged at WARN as `HTTP record not found` in `engine.log`, without request bodies, query strings or credentials. These client-action failures do not change a running turn into an error.
 
 | status | meaning |
 |---|---|
@@ -1220,6 +1221,15 @@ Pulls that waiting message into the running turn (same injection as
 `POST …/steer`). The row leaves the queue. If the turn has already ended, the
 same click starts that text as the next turn (`steered: false` plus `turn`).
 A start that loses the slot puts the row back (`409 busy`, or another error).
+
+A missing waiting row is `404 followup_unavailable` with `thread_id`,
+`followup_id`, `request_id`, `method` and `route`. It may already have been
+sent or removed; the response is not a successful injection and never resends
+its old text. An unknown conversation remains `404 thread_not_found`. The PC
+client coalesces concurrent Steer clicks on the same conversation/row and
+refreshes its queue after a stale-row response, reporting whether refresh
+succeeded. Automatic dequeue grants delivery only to the consumer that
+actually removed that row; a lost claim reselects the oldest remaining row.
 
 ```json
 {"steered": true}

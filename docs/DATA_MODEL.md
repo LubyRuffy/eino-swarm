@@ -296,7 +296,11 @@ the `[steer]` message is dropped).
 Cancelled and failed turns leave the queue alone. A crash, a kill, or quitting
 the app also leaves the rows: they are not in-memory, so the next start still
 lists them and flushes them after the leftover turn finishes cleanly. Deleting the conversation
-deletes leftover rows.
+deletes leftover rows. A consumer owns delivery only after its DELETE affects one row.
+Automatic dequeue reselects the FIFO head after losing that claim to another
+consumer or a concurrent edit; reading a row alone does not authorize delivery.
+No consumed-row tombstone is stored, so a missing row does not prove whether it
+was sent or removed by a person.
 
 | column | notes |
 |---|---|

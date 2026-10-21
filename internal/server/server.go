@@ -260,7 +260,8 @@ func (s *Server) rejectForeignOrigin() gin.HandlerFunc {
 func (s *Server) fail(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		s.missingRecord(c, "not_found", "The requested record was not found. Refresh and try again.",
+			gin.H{"record_id": c.Param("id")})
 	case errors.Is(err, engine.ErrRestarting):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "restarting"})
 	case errors.Is(err, engine.ErrBusy):
@@ -299,6 +300,11 @@ func badRequest(c *gin.Context, format string, args ...any) {
 func (s *Server) thread(c *gin.Context) (*store.Thread, bool) {
 	th, err := s.engine.Store().GetThread(c.Param("id"))
 	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.missingRecord(c, "thread_not_found", "This conversation no longer exists. Refresh the conversation list.",
+				gin.H{"thread_id": c.Param("id")})
+			return nil, false
+		}
 		s.fail(c, err)
 		return nil, false
 	}

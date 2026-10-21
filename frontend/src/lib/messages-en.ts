@@ -172,6 +172,11 @@ export const en = {
   "model.edit": "Edit providers",
   "model.fallback": "Model",
 
+  "api.threadNotFound": "The conversation for this action no longer exists. Refresh the conversation list and reopen it.",
+  "api.recordNotFound": "Could not complete {method} {route}: the requested record no longer exists. Refresh and try again.",
+  "queue.unavailable": "This message is no longer in the waiting queue. It may already have been sent or removed.",
+  "queue.unavailableRefreshed": "This message is no longer in the waiting queue. It may already have been sent or removed. The queue has been refreshed.",
+  "queue.unavailableRefreshFailed": "This message is no longer in the waiting queue. It may already have been sent or removed. Could not refresh the waiting queue; reopen the conversation to try again.",
   "queue.count": "{n} Queued",
   "queue.clear": "Clear queue",
   "queue.steer": "Steer",
