@@ -53,7 +53,11 @@ Desktop update installation is also locked by the actual app bundle across
 engines with different data directories. The stable filesystem lock covers
 download, replacement and native launch/rollback; a successful installation
 keeps it until the old engine exits. Old-bundle cleanup owns a unique backup,
-so a later installer cannot lose its rollback copy.
+so a later installer cannot lose its rollback copy. `POST /api/update` remains
+the installation result; while it is pending, the frontend polls the read-only
+`GET /api/update/progress` snapshot for downloaded bytes and installation stage.
+An unavailable progress read leaves the installation running. A failed install
+retains its confirmed version for a direct retry.
 
 Both graphical shells load the **same** `http://127.0.0.1` origin, so there
 is exactly one implementation of uploads, downloads and the live event stream.
