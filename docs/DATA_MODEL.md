@@ -146,6 +146,14 @@ lives on `spawned` / `finished` events. After a fold, synthetic
 still has the ids. The in-flight ReAct tail stays in ADK state; that is
 not roster data.
 
+Model generation lifecycle uses existing `events` rows, without another table.
+`generation_started`, `generation_completed`, `generation_interrupted` and
+`generation_recovered` retain `agent_id`, `message_id` and the original
+`turn_id`. Interruption/recovery payloads retain `{reason,detail,recovery}`;
+recovery updates are additional events, preserving the historical cause.
+These are generation facts, not worker `finished` receipts or completion
+attention. Legacy rows need no output-ID or cause migration.
+
 ## `turns` — one request and everything done to answer it
 
 The `id` is the handle the whole troubleshooting story hangs off: the UI shows it,

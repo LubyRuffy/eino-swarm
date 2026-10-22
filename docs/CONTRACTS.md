@@ -381,3 +381,17 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 证据：实现 `mobile/src/components/markdown.tsx`, `frontend/src/lib/source-highlight.ts`, `frontend/src/lib/source-lang.ts`, `mobile/src/index.css`；测试 `mobile/src/components/markdown-highlight.test.tsx`, `mobile/src/components/markdown.test.tsx`, `mobile/e2e/markdown-highlight.spec.ts`, `mobile/e2e/ios-code-highlight.swift`, `mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/CodeHighlightTest.java`。
 - 变更规则：同步手机使用文档、关联功能、渲染与复制回归；改动主题色或移动 WebView 行为时验证两端原生应用。
 - 来源：GitHub Issue #91；Fixed，恢复手机代码围栏的语法高亮。
+
+## C-035 Interrupted generations retain cause and recovery
+
+- 状态：active；类型：lifecycle / consistency / compatibility；作用范围：模型流、engine 事件、Trace、PC 与配对手机；关联功能：`F-130`、`F-160`、`F-222`、`F-330`。
+- 契约内容：每个被中断的模型输出保留独立身份、已记录原因和实际恢复状态；旧思考与不再运行的流式参数必须停止动画。中断原因不能被下一次生成或当前 worker 状态覆盖；恢复说明表示已重新进入生成，不代表任务完成或重试副作用安全。
+- 允许行为：交接重启与异常进程退出后恢复同一 worker；用户显式续办更新恢复状态。禁止行为：为中断输出伪造普通 `finished`、将恢复中的 worker 标为失败、把 manager 巡检结束当成 worker 中断、按文字相似度合并不同输出。
+- 失败语义：区分交接重启、进程退出、取消、超时、模型错误及输出额度；无法证明具体退出原因时明确未记录。没有已安排恢复的错误不得宣称正在恢复；开始新生成不能宣称任务已经成功。
+- 原因来源：已观察到的模型错误或 finish reason 优先于迟到的 Stop／Shutdown；Stop 只能取消恢复安排，不能改写此前原因。运行时放弃标记不等于计划交接；冷启动使用的交接 checkpoint 必须晚于该次生成开始。配对推送裁剪只缩短 detail，不破坏原因及恢复状态。
+- 不变量：生命周期证据进入原 turn 的 Trace，跨 manager 检查的同一输出仍使用相同身份；实时、冷启动、分页及按需代理日志按持久事件身份幂等，恢复不抹除历史中断。
+- 删除边界：生成缓存仅来自持久事件；删除对话或项目与迟到的生成回调按同一所有权顺序执行。已删除的对话不得被回调重新缓存或写入孤立生成事件。
+- 存储失败：无法读取输出归属或持久化回执时必须告警，不发布／缓存假定成功的回执，也不得把旧输出归入当前轮次；后续读取恢复后重新构建归属。
+- 边界条件：仅思考、部分正文和未完成工具参数均可中断；输出限额截断的非法工具参数必须在真实执行器之前拒绝，不能只关闭界面动画。正常完成输出不因之后进程重开被倒推为中断。旧事件缺少身份时不臆造身份或原因。
+- 证据：实现 `signal.go`、`internal/engine`、`frontend/src/lib/transcript.ts`、`mobile/src/lib/transcript.ts`；测试 `generation_test.go`、`internal/engine/generation_test.go`、`internal/engine/generation_http_test.go`、`frontend/src/lib/transcript-generation.test.ts`、`mobile/src/lib/transcript-generation.test.ts`。
+- 变更规则：同步 API、库通知文档、数据模型、功能清单、两端 reducer、Trace 和 UI/原生回归；变更类型：Added；来源：GitHub Issue #95，用户 2026-10-22 要求逐次生成说明原因和恢复状态。

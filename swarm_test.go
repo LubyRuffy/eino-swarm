@@ -838,13 +838,13 @@ func TestRunCallbackSurface(t *testing.T) {
 	if len(notes) == 0 || notes[len(notes)-1].Kind != NotifyDone {
 		t.Fatalf("missing NotifyDone: %+v", notes)
 	}
-	// streaming order: the turn boundary opens the turn, then accumulated
-	// delta(s), then the sealed agent_message, then exactly one done.
-	if notes[0].Kind != NotifyTurn || notes[0].AgentID != DefaultManagerID {
-		t.Fatalf("first notification should be a manager turn: %+v", notes[0])
+	// The durable request starts before the first byte; the turn boundary
+	// and accumulated delta still precede the sealed assistant message.
+	if notes[0].Kind != NotifyGenerationStarted || notes[0].AgentID != DefaultManagerID {
+		t.Fatalf("first notification should identify the request: %+v", notes[0])
 	}
-	if notes[1].Kind != NotifyDelta || notes[1].AgentID != DefaultManagerID {
-		t.Fatalf("second notification should be a manager delta: %+v", notes[1])
+	if notes[1].Kind != NotifyTurn || notes[2].Kind != NotifyDelta || notes[2].AgentID != DefaultManagerID {
+		t.Fatalf("request lost the streamed turn boundary: %+v", notes)
 	}
 	var sawMsg, dones int
 	for _, n := range notes {

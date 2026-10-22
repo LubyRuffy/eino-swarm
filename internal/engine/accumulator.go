@@ -85,6 +85,8 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 		a.mu.Unlock()
 	}
 	switch n.Kind {
+	case swarm.NotifyGenerationStarted, swarm.NotifyGenerationCompleted, swarm.NotifyGenerationInterrupted:
+		a.generation(n)
 	case swarm.NotifyReasoningDelta:
 		a.setReasoning(n)
 		a.pushLive(n)
@@ -138,6 +140,9 @@ func (a *accumulator) onNotify(n swarm.Notification) {
 		a.gate.Unlock()
 
 	case swarm.NotifyTurn:
+		if n.MessageID != "" {
+			a.generation(n)
+		}
 		// The next model round is starting. Drop unpersisted deltas from a
 		// preempted generate so a later tool_call cannot flush them as a
 		// finished answer. gate covers the drop: a timer that already claimed

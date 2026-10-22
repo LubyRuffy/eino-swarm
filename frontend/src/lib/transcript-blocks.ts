@@ -89,14 +89,18 @@ function replaceIdentified(agent: AgentState, ev: SwarmEvent, kind: "reasoning" 
   if (!ev.message_id) return false
   const blocks = agent.blocks.slice()
   const i = blocks.findIndex((b) => b.kind === kind && b.messageId === ev.message_id)
+  const interrupted = blocks.findIndex((b) => b.generation && b.messageId === ev.message_id)
+  if (interrupted !== -1) streaming = false
   const text = ev.text ?? ""
   if (i === -1) {
     for (let n = 0; n < blocks.length; n++) {
-      if (blocks[n].kind === kind && blocks[n].streaming) {
+      if (interrupted === -1 && blocks[n].kind === kind && blocks[n].streaming) {
         blocks[n] = { ...blocks[n], streaming: false }
       }
     }
-    blocks.push({ ...block(ev, kind, text), streaming })
+    const row = { ...block(ev, kind, text), streaming }
+    if (interrupted === -1) blocks.push(row)
+    else blocks.splice(interrupted, 0, row)
   } else {
     const prev = blocks[i]
     if (ev.seq > 0 && prev.seq > ev.seq) return true

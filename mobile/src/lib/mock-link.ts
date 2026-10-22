@@ -1,3 +1,4 @@
+import { generationHistory } from "./mock-generation"
 import {
   OpAnswer,
   OpCancelWait,
@@ -101,7 +102,7 @@ type MockThread = {
   followups?: FollowupView[]
 }
 
-type Step = { kind: string; text?: string; callID?: string; err?: string; agentID?: string; role?: string; at?: string; sourceThreadID?: string; sourceTurnID?: string }
+type Step = { kind: string; messageID?: string; text?: string; callID?: string; err?: string; agentID?: string; role?: string; at?: string; sourceThreadID?: string; sourceTurnID?: string }
 
 const projects: ProjectView[] = [
   { id: "p-platform", name: "Platform" },
@@ -215,6 +216,7 @@ export class MockHost {
   private seq = 0
   private calls = 0
   private streamedAgentsStarted = false
+  private generationRecoveryStarted = false
   private completionChecksStarted = false
   private activeUnreadEnded = false
   private readonly activeUnread = new URLSearchParams(location.search).get("history") === "active-unread"
@@ -256,7 +258,9 @@ export class MockHost {
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
     if (live) {
-      if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
+      if (new URLSearchParams(location.search).get("history") === "generation-interruption") {
+        this.seed(live, generationHistory(), true)
+      } else if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
         this.seed(live, stopReplayStart(), true)
       } else if (new URLSearchParams(location.search).get("history") === "streamed-agents") {
         this.seed(live, [
@@ -397,6 +401,11 @@ export class MockHost {
 
   watch(w: Watcher) {
     this.watchers.add(w)
+    if (w.threadID === "t-live" && new URLSearchParams(location.search).get("history") === "generation-interruption" && !this.generationRecoveryStarted) {
+      this.generationRecoveryStarted = true
+      const th = this.find(w.threadID)!
+      this.later(() => this.push(th, { kind: "reasoning_delta", agentID: "worker-1", messageID: "generation-after-restart", text: "New thought after recovery, still running." }), Math.max(100, this.tickMs))
+    }
     if (w.threadID === "t-wait" && new URLSearchParams(location.search).get("history") === "completion-compatibility"
       && !this.completionChecksStarted) {
       this.completionChecksStarted = true
@@ -703,6 +712,7 @@ export class MockHost {
       thread_id: th.id,
       seq: streamed ? 0 : this.seq,
       kind: step.kind,
+      message_id: step.messageID,
       agent_id: step.agentID,
       source_thread_id: step.sourceThreadID,
       source_turn_id: step.sourceTurnID,

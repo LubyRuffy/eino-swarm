@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"unicode/utf8"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
+
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
@@ -48,6 +50,8 @@ func eventView(ev store.Event, cfg config.RemoteConfig) EventView {
 		// Worker instructions are project/task material. The phone gets
 		// the spawn notice, not the prompt body.
 		text = ""
+	case "generation_interrupted", "generation_recovered":
+		text = clipGenerationCause(ev.Text, eventChars(cfg))
 	case "tool_delta":
 		text = truncate(oneLine(ev.Text), summaryChars(cfg))
 	case "usage", "session_memory":
@@ -115,4 +119,19 @@ func encodeEventPushStatus(path, sessionID, threadID string, ev store.Event, cfg
 		}
 		view.Text = truncate(view.Text, n/2)
 	}
+}
+
+// The reason and recovery fields are protocol data. Clip only the bounded
+// explanation; truncating their raw JSON makes a phone lose the entire cause.
+func clipGenerationCause(text string, limit int) string {
+	var body swarm.GenerationInterruption
+	if json.Unmarshal([]byte(text), &body) != nil {
+		return text
+	}
+	limit = min(512, max(1, limit))
+	if chars := []rune(body.Detail); len(chars) > limit {
+		body.Detail = string(chars[:limit-1]) + "…"
+	}
+	clipped, _ := json.Marshal(body)
+	return string(clipped)
 }

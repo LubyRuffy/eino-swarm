@@ -1,4 +1,5 @@
 import type { ImageRef, ReviewOutcome, SwarmEvent } from "./types"
+import { applyGenerationEvent, applyInterruptedOutput, recoverLegacyGeneration, type GenerationInterruption } from "./transcript-generation"
 import { cloudToolSummary, parseCloudTool } from "./cloud-tool"
 import {
   compactBriefing,
@@ -94,6 +95,8 @@ export interface Block {
   review?: ReviewOutcome
   /** Provider-executed tool metadata; never a local function call. */
   cloudTool?: Record<string, unknown>
+  /** One interrupted output, independent of the worker lifecycle. */
+  generation?: GenerationInterruption
   /** Tool blocks only. */
   tool?: {
     callId: string
@@ -263,6 +266,7 @@ export function reduceEvent(
     if (retained && (!turn || turn.status === "running")) upsertTurn(next, ev.turn_id, { workerRetention: retained })
     return next
   }
+  if (ev.kind === "generation_started" || ev.kind === "generation_completed") return next
   // Recovery state is trace evidence, not a chat message or a new agent.
   if (ev.kind === "engine_restart_checkpoint") return next
   if (ev.kind === "restart_preparing" || ev.kind === "restart_ready" || ev.kind === "user_stop_requested") {
@@ -339,8 +343,9 @@ export function reduceEvent(
     // keeps the spinner next to a row that is no longer doing anything.
     // Keep leftover workers running: they are restarted under the same id.
     for (const id of next.agentOrder) {
-      const agent = next.agents[id]
-      if (agent) closePendingTools(agent, resumeToolStopped, true)
+      const agent = touchAgent(next, id)
+      recoverLegacyGeneration(agent, ev)
+      closePendingTools(agent, resumeToolStopped, true)
     }
     return next
   }
@@ -425,8 +430,14 @@ export function reduceEvent(
 
   const agentId = ev.agent_id || MANAGER_ID
   const agent = touchAgent(next, agentId, ev.role)
+  if (applyInterruptedOutput(agent, ev)) return next
 
   switch (ev.kind) {
+    case "generation_interrupted":
+    case "generation_recovered":
+      applyGenerationEvent(agent, ev)
+      break
+
     case "user_message":
       if (next.rewindCut?.live && ev.seq > next.rewindCut.through) {
         next.rewindCut = { ...next.rewindCut, live: false }
@@ -570,6 +581,7 @@ export function reduceEvent(
     case "spawned": {
       const existed = Boolean(next.agents[ev.agent_id])
       const child = touchAgent(next, ev.agent_id, ev.role ?? ev.text)
+      if (existed) recoverLegacyGeneration(child, ev)
       const instruction = recordedInstruction(ev.role, ev.text)
       if (instruction) child.instruction = instruction
       const manager = touchAgent(next, MANAGER_ID)

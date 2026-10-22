@@ -156,12 +156,15 @@ function oldestOf(
 }
 
 function applyLiveEvent(view: PhoneView, ev: RemoteEvent, status?: WatchStatus): PhoneView {
-  if (ev.seq > 0 && ev.seq <= view.lastSeq) return view
+  if (ev.seq > 0 && view.events.some((row) => row.seq === ev.seq)) return view
   const events = rememberEvent(view.events, ev)
-  const blocks = applyEvent(view.blocks, ev)
+  const historical = ev.seq > 0 && ev.seq < view.lastSeq
+  const blocks = historical
+    ? restoreStreaming(foldEvents(events), view.blocks)
+    : applyEvent(view.blocks, ev)
   let detail = view.detail
   if (detail) {
-    detail = patchDetail(detail, ev, blocks)
+    if (!historical) detail = patchDetail(detail, ev, blocks)
     if (status) detail = applyWatchStatus(detail, status, false)
   }
   return {
@@ -202,8 +205,17 @@ function foldEvents(events: RemoteEvent[]): CompactBlock[] {
 }
 
 function restoreStreaming(blocks: CompactBlock[], prev: CompactBlock[]): CompactBlock[] {
-  const next = blocks.slice()
-  for (const live of prev.filter((b) => b.streaming)) {
+  let next = blocks.slice()
+  for (const live of prev.filter((b) => b.streaming || b.messageId && b.sourceSeq === 0)) {
+    if (live.messageId && (live.kind === "reasoning" || live.kind === "answer")) {
+      next = applyEvent(next, {
+        thread_id: "", agent_id: live.agentId, message_id: live.messageId, seq: 0,
+        kind: live.kind === "reasoning" ? live.streaming ? "reasoning_delta" : "reasoning" : live.streaming ? "delta" : "agent_message",
+        text: live.text, created_at: "",
+      })
+      continue
+    }
+    if (next.some((b) => b.generation && b.id === `${live.id}:generation`)) continue
     const i = next.findIndex((b) => b.id === live.id)
     if (i >= 0) next[i] = live
     else next.push(live)

@@ -42,6 +42,7 @@ var (
 
 // Engine is the process-wide runtime.
 type Engine struct {
+	generations    generationLogs
 	configUpdateMu sync.Mutex
 	cfg            *config.Config
 	store          *store.Store
@@ -239,9 +240,13 @@ func (e *Engine) DeleteThread(id string) error {
 	}
 	e.closeRuntime(id)
 	ws := e.WorkspaceDir(id)
+	e.generations.Lock()
 	if err := e.store.DeleteThread(id); err != nil {
+		e.generations.Unlock()
 		return err
 	}
+	delete(e.generations.threads, id)
+	e.generations.Unlock()
 	e.dropIndex(id)
 	if e.ownsWorkspace(ws) {
 		if err := os.RemoveAll(ws); err != nil {

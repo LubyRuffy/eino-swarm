@@ -315,6 +315,12 @@ Given a **conversation** id it prints every turn of that conversation in order.
 Given an unknown id it fails with a message naming the data directory it looked
 in — usually the sign that you meant to pass `--data-dir`.
 
+Generation lifecycle rows retain the original output's `message_id` and turn.
+`generation_interrupted` explains its recorded cause and recovery state; a later
+`generation_recovered` confirms that execution resumed without declaring the
+worker successful. Use `--full` to inspect both payloads after a restart or a
+worker crossing several manager checks.
+
 The same data is available over HTTP at `GET /api/trace/:turn`. The UI Trace
 tab shows that turn's status, error and billed tokens; **Full log** is the
 on-screen timeline, folded by default so a long run is not a sidebar syslog.

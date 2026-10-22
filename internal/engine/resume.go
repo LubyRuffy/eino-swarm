@@ -56,6 +56,7 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 		}
 		checkpoint := e.checkpointForTurn(t.ID)
 		if e.turnHasKind(t.ID, KindUserStopRequested) || checkpoint != nil && checkpoint.HumanStopped {
+			e.stopOrphanedGenerations(t.ThreadID, true)
 			e.record(store.Event{ThreadID: t.ThreadID, TurnID: t.ID, Kind: swarm.NotifyError.String(), AgentID: swarm.DefaultManagerID, Err: "interrupted", SuppressCompletion: true})
 			if err := e.store.FinishTurn(t.ID, store.TurnCancelled, "", "interrupted"); err != nil {
 				return n, err
@@ -69,6 +70,7 @@ func (e *Engine) ResumeOrphanedTurns() (int, error) {
 			if errors.Is(err, ErrBusy) {
 				continue
 			}
+			e.stopOrphanedGenerations(t.ThreadID, false)
 			_ = e.store.FinishTurn(t.ID, store.TurnError, "", err.Error())
 			if !errors.Is(err, store.ErrScheduleRunConflict) {
 				e.finishScheduledRun(&t, store.TurnError, "", err.Error())
@@ -195,6 +197,7 @@ func (e *Engine) resumeTurn(turn *store.Turn) error {
 		}
 	}
 
+	e.interruptOrphanedGenerations(turn.ThreadID, e.checkpointForTurn(turn.ID) != nil)
 	_ = e.store.TouchThread(turn.ThreadID)
 	go rt.run(ctx, cancel, idle, turn, reg, toolset, pc, messages, len(messages), e.imagesForTurn(turn), true)
 	return nil

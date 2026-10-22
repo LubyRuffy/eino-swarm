@@ -45,6 +45,16 @@ func (e *Engine) ResumeParkedWorkers() (int, error) {
 	for _, th := range threads {
 		count, err := e.resumeParkedThread(&th)
 		n += count
+		if count == 0 {
+			if st := e.Status(th.ID); !st.Running && st.Workers == 0 {
+				if turns, readErr := e.store.ListTurns(th.ID); readErr == nil && len(turns) > 0 {
+					latest := turns[len(turns)-1]
+					if latest.Status != store.TurnRunning {
+						e.stopOrphanedGenerations(th.ID, e.turnHasKind(latest.ID, KindUserStopRequested))
+					}
+				}
+			}
+		}
 		if err != nil {
 			failures = append(failures, fmt.Errorf("restore parked workers for %s: %w", th.ID, err))
 		}
@@ -102,6 +112,7 @@ func (e *Engine) resumeParkedThread(th *store.Thread) (int, error) {
 	for _, msg := range checkpoint.ManagerInbox {
 		reg.SteerManagerMessage(msg)
 	}
+	e.interruptOrphanedGenerations(th.ID, true)
 	attachHostNotify(reg, newAccumulator(e, th.ID, turn.ID, e.cfg.SwarmSnapshot().DeltaCoalesce()))
 	workerTools := append(append([]tool.BaseTool(nil), reg.SubAgentTools...), reg.SendTool())
 	for _, w := range finished {

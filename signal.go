@@ -6,7 +6,9 @@ package swarm
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
+	"io"
 	"strings"
 	"sync"
 	"unicode/utf8"
@@ -55,33 +57,41 @@ func (c cbUI) OnDone(final string, err error) {
 type NotifyKind int
 
 const (
-	NotifyAgentMessage   NotifyKind = iota // an assistant message completed
-	NotifySpawned                          // a worker was spawned (Text=system prompt, Role=role, AgentID set)
-	NotifyFinished                         // a worker finished (Text=result; Err set on failure)
-	NotifyToolCall                         // a tool call was issued (Text="name(args)")
-	NotifyToolResult                       // a tool returned (Text=clipped result, newlines kept)
-	NotifyTurn                             // an agent started a new model turn (Text="turn N")
-	NotifyDelta                            // streamed answer text, accumulated within the turn
-	NotifyReasoningDelta                   // streamed reasoning, accumulated within the turn
-	NotifyToolDelta                        // streamed tool output, accumulated within the call
-	NotifyToolCallDelta                    // streamed tool-call arguments, before the call is issued
-	NotifyDone                             // manager final answer; run complete
-	NotifyError                            // fatal error; run failed
+	NotifyAgentMessage          NotifyKind = iota // an assistant message completed
+	NotifySpawned                                 // a worker was spawned (Text=system prompt, Role=role, AgentID set)
+	NotifyFinished                                // a worker finished (Text=result; Err set on failure)
+	NotifyToolCall                                // a tool call was issued (Text="name(args)")
+	NotifyToolResult                              // a tool returned (Text=clipped result, newlines kept)
+	NotifyTurn                                    // an agent started a new model turn (Text="turn N")
+	NotifyDelta                                   // streamed answer text, accumulated within the turn
+	NotifyReasoningDelta                          // streamed reasoning, accumulated within the turn
+	NotifyToolDelta                               // streamed tool output, accumulated within the call
+	NotifyToolCallDelta                           // streamed tool-call arguments, before the call is issued
+	NotifyDone                                    // manager final answer; run complete
+	NotifyError                                   // fatal error; run failed
+	NotifyGenerationStarted                       // one model request began, including before its first byte
+	NotifyGenerationCompleted                     // the model output ended normally
+	NotifyGenerationInterrupted                   // one model output ended before completion
+	NotifyGenerationRecovered                     // a subsequent generation actually began
 )
 
 var notifyNames = map[NotifyKind]string{
-	NotifyAgentMessage:   "agent_message",
-	NotifySpawned:        "spawned",
-	NotifyFinished:       "finished",
-	NotifyToolCall:       "tool_call",
-	NotifyToolResult:     "tool_result",
-	NotifyTurn:           "turn",
-	NotifyDelta:          "delta",
-	NotifyReasoningDelta: "reasoning_delta",
-	NotifyToolDelta:      "tool_delta",
-	NotifyToolCallDelta:  "tool_call_delta",
-	NotifyDone:           "done",
-	NotifyError:          "error",
+	NotifyAgentMessage:          "agent_message",
+	NotifySpawned:               "spawned",
+	NotifyFinished:              "finished",
+	NotifyToolCall:              "tool_call",
+	NotifyToolResult:            "tool_result",
+	NotifyTurn:                  "turn",
+	NotifyDelta:                 "delta",
+	NotifyReasoningDelta:        "reasoning_delta",
+	NotifyToolDelta:             "tool_delta",
+	NotifyToolCallDelta:         "tool_call_delta",
+	NotifyDone:                  "done",
+	NotifyError:                 "error",
+	NotifyGenerationStarted:     "generation_started",
+	NotifyGenerationCompleted:   "generation_completed",
+	NotifyGenerationInterrupted: "generation_interrupted",
+	NotifyGenerationRecovered:   "generation_recovered",
 }
 
 func (k NotifyKind) String() string {
@@ -119,7 +129,7 @@ type Notification struct {
 	AgentID string // emitting agent (DefaultManagerID for the top level)
 	Role    string
 	Text    string // accumulated text / tool summary / result
-	Err     error  // set for NotifyError and for a failed NotifyFinished
+	Err     error  // failure cause; interrupted generation causes are classified by the host
 
 	// ToolCallID pairs NotifyToolCall with its NotifyToolResult. Agents issue
 	// several calls in one turn, so matching by position or name is wrong;
@@ -349,6 +359,9 @@ type streamAcc struct {
 	reason    strings.Builder
 	previews  map[string]string // last tool_call_delta text per call id
 	messageID string
+	active    bool
+	ctx       context.Context
+	pending   []generationAttempt
 }
 
 // errOutputBudget is a model call that hit its output cap before any answer
@@ -378,12 +391,13 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 
 	var chunks []schema.ToolCall
 	var finish string
-	canceled := false
+	var streamErr error
 	for {
 		chunk, err := st.Recv()
 		if err != nil {
-			canceled = errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
-				strings.Contains(err.Error(), "context canceled")
+			if !errors.Is(err, io.EOF) {
+				streamErr = err
+			}
 			break
 		}
 		if chunk == nil {
@@ -416,12 +430,34 @@ func (s *streamAcc) drain(st *schema.StreamReader[*schema.Message]) (string, []s
 		}
 	}
 
+	if streamErr == nil && finish == "" {
+		s.mu.Lock()
+		ctx := s.ctx
+		s.mu.Unlock()
+		if ctx != nil {
+			streamErr = ctx.Err()
+		}
+	}
 	calls := mergeStreamedToolCalls(chunks)
 	answer := s.answerText()
-	if canceled {
+	if streamErr != nil {
+		if outputStoppedEarly(finish) {
+			streamErr = errOutputBudget
+		}
+		s.interruptGeneration(streamErr)
 		// Interrupt during generate is not a finished answer. Emitting one
 		// here leaves a complete manager bubble on a turn that will re-enter.
 		return answer, nil, nil
+	}
+	if outputStoppedEarly(finish) {
+		s.interruptGeneration(errOutputBudget)
+		for _, tc := range calls {
+			if !json.Valid([]byte(tc.Function.Arguments)) {
+				return answer, nil, errOutputBudget
+			}
+		}
+	} else {
+		s.completeGeneration()
 	}
 	for _, tc := range calls {
 		s.touch(tc.Function.Name + "(" + truncStr(tc.Function.Arguments, 80) + ")")
@@ -474,11 +510,22 @@ func (s *streamAcc) beginTurn() {
 	s.mu.Lock()
 	s.turn++
 	turn := s.turn
+	started := false
 	s.messageID = rand.Text()
+	if len(s.pending) > 0 {
+		attempt := s.pending[0]
+		s.pending = s.pending[1:]
+		s.messageID, s.ctx = attempt.id, attempt.ctx
+		started = true
+	}
+	s.active = true
 	s.answer.Reset()
 	s.reason.Reset()
 	s.previews = nil
 	s.mu.Unlock()
+	if !started {
+		s.emit(Notification{Kind: NotifyGenerationStarted})
+	}
 	s.emit(Notification{Kind: NotifyTurn, Text: "turn " + itoa(turn)})
 }
 

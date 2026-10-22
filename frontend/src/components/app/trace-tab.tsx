@@ -1,3 +1,4 @@
+import { generationNotice } from "@/lib/transcript-generation"
 import { ChevronDown, ChevronRight } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 
@@ -221,10 +222,10 @@ function collectRows(transcript: TranscriptState, turnId: string, locale: Locale
       if (b.turnId !== turnId) continue
       rows.push({
         at: b.at,
-        kind: b.cloudTool ? "builtin_tool" : b.kind === "tool" ? (b.tool?.name ?? "tool") : b.kind,
+        kind: b.generation ? "generation_interrupted" : b.cloudTool ? "builtin_tool" : b.kind === "tool" ? (b.tool?.name ?? "tool") : b.kind,
         agent: b.agentId || id,
-        text: b.cloudTool ? cloudToolSummary(b.cloudTool, locale) : b.review ? (reviewNotice(b.review, locale) ?? b.text) : b.kind === "tool" ? (b.tool?.args ?? "") : b.text,
-        details: b.cloudTool ? b.detail : b.review ? reviewTraceMetadata(b.review) : undefined,
+        text: b.generation ? generationNotice(b.generation, locale) : b.cloudTool ? cloudToolSummary(b.cloudTool, locale) : b.review ? (reviewNotice(b.review, locale) ?? b.text) : b.kind === "tool" ? (b.tool?.args ?? "") : b.text,
+        details: b.generation ? JSON.stringify({ message_id: b.messageId, ...b.generation }, null, 2) : b.cloudTool ? b.detail : b.review ? reviewTraceMetadata(b.review) : undefined,
         failed: b.kind === "error" || Boolean(b.tool?.failed) || Boolean(b.review?.err),
       })
     }

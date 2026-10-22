@@ -74,12 +74,13 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 		defer cancel()
 		defer watchCancel()
 
+		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true}
 		inj := &Injector{handle: h, histCap: r.historyCap(), reg: r}
 		agent, err := adk.NewChatModelAgent(watchCtx, &adk.ChatModelAgentConfig{
 			Name:        id,
 			Description: "spawned sub-agent " + role,
 			Instruction: instruction,
-			Model:       modelOpt(role, id),
+			Model:       &generationModel{BaseChatModel: modelOpt(role, id), acc: acc},
 			ToolsConfig: adk.ToolsConfig{
 				ToolsNodeConfig: compose.ToolsNodeConfig{Tools: extraTools},
 			},
@@ -92,7 +93,6 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 		}
 		runner := adk.NewRunner(watchCtx, adk.RunnerConfig{Agent: agent, EnableStreaming: true})
 		iter := runner.Run(watchCtx, initial)
-		acc := &streamAcc{reg: r, agentID: id, role: role, handle: h, rawEvents: true}
 		final := ""
 		for {
 			ev, ok := iter.Next()
@@ -103,6 +103,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 				continue
 			}
 			if ev.Err != nil {
+				acc.interruptPending(ev.Err)
 				h.completeWorker("", ev.Err, timeout, watchCtx.Err(), runCtx.Err())
 				return
 			}
@@ -130,6 +131,9 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 				len(o.MessageOutput.Message.ToolCalls) == 0 {
 				final = o.MessageOutput.Message.Content
 			}
+		}
+		if watchCtx.Err() != nil {
+			acc.interruptPending(watchCtx.Err())
 		}
 		h.completeWorker(final, nil, timeout, watchCtx.Err(), runCtx.Err())
 	}()

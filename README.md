@@ -279,6 +279,13 @@ uploads, downloads and the live event stream have exactly one implementation.
   remain separate. See the [cancellation investigation](docs/diagnostics/issue88-cancellation-evidence.md)
   for how to distinguish engine handoff and failed-check cleanup from provider
   timeouts using Trace.
+- **Interrupted generations explain what happened.** The transcript and Agents
+  detail retain the cause and recovery state of each interrupted model output.
+  Its old thought stops saying **Thinking**, while a resumed worker keeps its
+  original identity and can continue running. A recovery notice means generation
+  resumed, not that the task succeeded. Engine handoff, cancellation, output
+  limits and model failures remain distinct; an unrecorded process-exit cause is
+  shown as unknown. The same evidence is available in Trace after reload.
 - **It stays live without freezing the window.** Streamed tokens are folded into
   one event every few milliseconds, answers render as markdown as they arrive
   (finished ones are not re-parsed on every token; fenced code is highlighted

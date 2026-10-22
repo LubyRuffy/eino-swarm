@@ -139,6 +139,22 @@ E2E suite.
   stored `(thread_id, seq)` once before state changes or side effects. Do not
   use text similarity or a highest-seq cutoff as identity. Regress both arrival
   orders and rewind across multiple checkpoints of one output.
+- A model generation and its worker have separate lifetimes. Persist each interrupted
+  output identity, recorded cause and actual recovery state; close its old thinking
+  stream through live, cold and paged replay. Restart/handoff recovery must not
+  fabricate `finished` or mark a recovering worker failed. Unknown process-exit
+  causes stay unknown; a manager check ending is not a worker interruption.
+  Regress partial thoughts/tools, Stop, output limits, transport errors, both
+  history/live arrival orders and same-ID recovery at the real model boundary.
+  Preserve an observed model error or finish reason if Stop arrives later;
+  Stop changes recovery availability, not the earlier failure's cause. Runtime
+  abandonment alone is not proof of a planned restart. A cold-start checkpoint
+  must follow this generation's start before it can establish handoff intent.
+  Regress malformed partial tool arguments against the actual executor, not
+  only tool notifications: ADK may consume its stream before the UI does.
+  Generation caches derive only from durable events. Conversation/project
+  deletion and callback writes must share ownership ordering; a late callback
+  cannot recreate deleted conversation state or append an orphaned receipt.
 - A long-running worker belongs to its executable goal or active same-thread
   wake, not to one manager check's terminal status. A failed scheduled check
   must retain that ownership durably before its terminal error; the failed

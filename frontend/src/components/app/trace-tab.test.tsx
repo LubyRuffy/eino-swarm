@@ -249,3 +249,15 @@ describe("review Full log summary", () => {
     expect(screen.getAllByText("Memory updated: 1 note stored.")).toHaveLength(1)
   })
 })
+
+it("shows an interrupted generation and its recovery in Full log with output identity", () => {
+  const recorded = structuredClone(noisy)
+  recorded.agents[MANAGER_ID].blocks.push(block({
+    id: "interrupted", kind: "notice", text: "", messageId: "output-1",
+    generation: { reason: "engine_restart", recovery: "recovered", detail: "handoff", seq: 10 },
+  }))
+  render(<TraceTab turns={[turn()]} transcript={recorded} />)
+  fireEvent.click(screen.getByRole("button", { name: /Full log/i }))
+  expect(screen.getByTestId("trace-log")).toHaveTextContent(/engine restart/)
+  expect(screen.getByTestId("trace-log")).toHaveTextContent(/Execution resumed/)
+})

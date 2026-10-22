@@ -134,6 +134,10 @@ type Notification struct {
 | `NotifyTurn` | `turn N` |
 | `NotifyDelta` | the streamed answer **so far** |
 | `NotifyReasoningDelta` | the streamed reasoning **so far** |
+| `NotifyGenerationStarted` | a model output started, identified by `MessageID` |
+| `NotifyGenerationCompleted` | that output finished normally; not worker completion |
+| `NotifyGenerationInterrupted` | JSON `{reason,detail,recovery}` for an interrupted output; not worker failure |
+| `NotifyGenerationRecovered` | host lifecycle recovery for the original output identity; not successful task completion |
 | `NotifyDone` | the final answer |
 | `NotifyError` | fatal failure |
 

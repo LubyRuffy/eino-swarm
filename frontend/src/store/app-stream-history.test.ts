@@ -320,3 +320,22 @@ describe("live output during a history request", () => {
     })
   }
 })
+
+for (const historyFirst of [true, false]) {
+  it(`retains the interruption and recovered state when ${historyFirst ? "agent history" : "SSE"} arrives first`, () => {
+    const old = event(2, "reasoning", "unfinished", { message_id: "old" })
+    const stop = event(3, "generation_interrupted", JSON.stringify({ reason: "engine_restart", recovery: "pending" }), { message_id: "old" })
+    const resume = event(4, "generation_recovered", JSON.stringify({ reason: "engine_restart", recovery: "recovered" }), { message_id: "old" })
+    state.transcript = applyTail("th_1", [event(1, "spawned", "", { role: "worker" })])
+    if (historyFirst) state.transcript = applyAgentLog("th_1", [old, stop, resume])!
+    for (const row of [old, stop, resume]) emit(row)
+    emit(event(0, "reasoning_delta", "resumed output", { message_id: "new" }))
+    if (!historyFirst) state.transcript = applyAgentLog("th_1", [old, stop, resume], state.transcript)!
+    state.transcript = prependOlder("th_1", [old, stop], state.transcript)!
+    const worker = state.transcript.agents["worker-1"]
+    expect(worker.status).toBe("running")
+    expect(worker.blocks.filter((b) => b.kind === "reasoning").map((b) => [b.messageId, b.streaming])).toEqual([["old", false], ["new", true]])
+    expect(worker.blocks.filter((b) => b.generation)).toHaveLength(1)
+    expect(worker.blocks.find((b) => b.generation)?.generation?.recovery).toBe("recovered")
+  })
+}

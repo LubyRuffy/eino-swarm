@@ -153,6 +153,8 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 		opts = append(opts, WithMaxIterations(n))
 	}
 
+	acc := &streamAcc{reg: r, agentID: DefaultManagerID, role: DefaultManagerID}
+	managerModel = &generationModel{BaseChatModel: managerModel, acc: acc}
 	mgr, err := adk.NewChatModelAgent(ctx, r.ManagerConfig(
 		DefaultManagerID, "swarm manager", managerModel, opts...))
 	if err != nil {
@@ -179,7 +181,6 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 	// hit a gateway idle timeout on a long answer. In streaming mode eino
 	// delivers each assistant message ONLY as a MessageStream, so the final
 	// answer is the last stream that ended without tool calls.
-	acc := &streamAcc{reg: r, agentID: DefaultManagerID, role: DefaultManagerID}
 	final := ""
 	iter := adk.NewRunner(ctx, adk.RunnerConfig{Agent: mgr, EnableStreaming: true}).Run(ctx, msgs)
 	for {
@@ -191,6 +192,7 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 			continue
 		}
 		if ev.Err != nil {
+			acc.interruptPending(ev.Err)
 			return RunResult{Final: final, Transcript: r.historySnapshot()}, ev.Err
 		}
 		o := ev.Output
@@ -213,6 +215,9 @@ func (r *Registry) exec(ctx context.Context, cfg RunConfig, cb Callback) (RunRes
 			strings.TrimSpace(msg.Content) != "" {
 			final = msg.Content
 		}
+	}
+	if ctx.Err() != nil {
+		acc.interruptPending(ctx.Err())
 	}
 	return RunResult{Final: final, Transcript: r.historySnapshot()}, nil
 }

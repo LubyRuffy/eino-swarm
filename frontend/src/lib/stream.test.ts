@@ -46,6 +46,10 @@ const wireKinds: EventKind[] = [
   "agent_message",
   "reasoning",
   "reasoning_delta",
+  "generation_started",
+  "generation_completed",
+  "generation_interrupted",
+  "generation_recovered",
   "delta",
   "turn",
   "spawned",
@@ -173,4 +177,15 @@ describe("the event stream", () => {
     FakeEventSource.last.onerror?.()
     expect(onClose).toHaveBeenCalledTimes(1)
   })
+})
+
+it("delivers interrupted and recovered generations through the actual named SSE subscription", () => {
+  const onEvent = vi.fn()
+  subscribeEvents("thread", { onEvent })
+  for (const kind of ["generation_interrupted", "generation_recovered"]) {
+    FakeEventSource.last.deliver(kind, { kind, message_id: "output", seq: kind === "generation_interrupted" ? 2 : 3 })
+  }
+  expect(onEvent.mock.calls.map(([event]) => [event.kind, event.message_id])).toEqual([
+    ["generation_interrupted", "output"], ["generation_recovered", "output"],
+  ])
 })

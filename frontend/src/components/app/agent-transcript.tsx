@@ -1,3 +1,4 @@
+import { GenerationNotice } from "./generation-notice"
 import { useMemo } from "react"
 import { MemoMarkdown } from "@/components/app/markdown"
 import { Reasoning } from "@/components/app/transcript"
@@ -35,6 +36,8 @@ export function AgentTranscript({ agent }: { agent: AgentState }) {
           </div>
         ) : b.kind === "reasoning" ? (
           <Reasoning key={b.id} block={b} />
+        ) : b.generation ? (
+          <GenerationNotice key={b.id} block={b} />
         ) : b.kind === "tool" ? (
           <ToolRow key={b.id} block={b} />
         ) : null,

@@ -1,3 +1,4 @@
+import { generationEvent, identifiedOutput, recoverLegacyGeneration, type GenerationInterruption } from "./transcript-generation"
 import {
   ASK_TOOL,
   parseAskToolArgs,
@@ -36,9 +37,25 @@ export type CompactBlock = {
   hasImages?: boolean
   questions?: AskQuestion[]
   agentId?: string
+  messageId?: string
+  writing?: boolean
+  sourceSeq?: number
+  generation?: GenerationInterruption
 }
 
 export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
+  if (ev.kind === "resumed" || ev.kind === "restart_resumed") {
+    const owners = [...new Set(blocks.map((b) => b.agentId))]
+    let next = blocks.slice()
+    for (const owner of owners) {
+      const own = next.filter((b) => b.agentId === owner)
+      const recovered = recoverLegacyGeneration(own, ev)
+      if (recovered === own) continue
+      const replacements = new Map(recovered.map((b) => [b.id, b]))
+      next = next.map((b) => replacements.get(b.id) ?? b).concat(recovered.filter((b) => !own.some((old) => old.id === b.id)))
+    }
+    return next
+  }
   const worker = ev.agent_id && ev.agent_id !== "manager" ? ev.agent_id : undefined
   if (ev.kind === "finished" && worker) {
     const cancelled = cancelledWorkerFinish(worker, ev.err)
@@ -63,7 +80,7 @@ export function applyEvent(blocks: CompactBlock[], ev: RemoteEvent): CompactBloc
   const next = blocks.slice()
   for (let i = 0; i < reduced.length; i++) {
     const added = positions[i] === undefined
-    let block = worker ? { ...reduced[i], agentId: worker, id: added ? `${worker}:${reduced[i].id}` : reduced[i].id } : reduced[i]
+    let block = worker ? { ...reduced[i], agentId: worker, id: own.some((b) => b.id === reduced[i].id) ? reduced[i].id : `${worker}:${reduced[i].id}` } : reduced[i]
     if (added) {
       // Unstored deltas all have sequence zero. Their rendered identities
       // must outlive the stream without colliding with a later model call.
@@ -92,8 +109,13 @@ function settleWorkerBlock(block: CompactBlock, failed: boolean): CompactBlock {
 }
 
 function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlock[] {
-  const next = blocks.slice()
+  const identified = identifiedOutput(blocks, ev)
+  if (identified) return identified
+  const next = ev.kind === "spawned" ? recoverLegacyGeneration(blocks, ev).slice() : blocks.slice()
   switch (ev.kind) {
+    case "generation_interrupted":
+    case "generation_recovered":
+      return generationEvent(next, ev)
     case "task_message":
       if (!next.some((b) => b.id === blockId(ev))) {
         next.push({ id: blockId(ev), kind: "notice", text: t("notice.peerTask", { id: ev.source_thread_id ?? "", text: ev.text }) })
@@ -235,6 +257,8 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
           toolName: parsed.name || next[i].toolName,
           args: composing ? next[i].args : parsed.args,
           pending: true,
+          writing: composing,
+          messageId: ev.message_id,
         }
         return next
       }
@@ -247,6 +271,8 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
         args: composing ? "" : parsed.args,
         callId: ev.tool_call_id,
         pending: true,
+        writing: composing,
+        messageId: ev.message_id,
       })
       return next
     }
@@ -365,6 +391,7 @@ export function managerBlocks(blocks: CompactBlock[]): CompactBlock[] {
 }
 
 export function phoneAgents(blocks: CompactBlock[]): PhoneAgent[] {
+  const interrupted = new Set(blocks.filter((b) => b.generation && b.messageId).map((b) => `${b.agentId}:${b.messageId}`))
   const agents = new Map<string, PhoneAgent>()
   for (const block of blocks) {
     const id = block.agentId
@@ -382,8 +409,10 @@ export function phoneAgents(blocks: CompactBlock[]): PhoneAgent[] {
       if (block.failed) agent.activity = block.text.slice(0, 80)
       else if (block.cancelled) agent.activity = ""
     } else if (block.kind === "answer" || block.kind === "reasoning") {
-      agent.status = "running"
-      agent.activity = lastLine(block.text).slice(0, 80)
+      if (!block.messageId || !interrupted.has(`${id}:${block.messageId}`)) {
+        agent.status = "running"
+        agent.activity = lastLine(block.text).slice(0, 80)
+      }
     } else if (block.kind === "tool") {
       agent.status = "running"
       agent.activity = block.toolName || block.text.slice(0, 80)

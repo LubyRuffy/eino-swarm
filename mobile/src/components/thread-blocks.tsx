@@ -1,3 +1,4 @@
+import { GenerationNotice } from "./generation-notice"
 import { useState } from "react"
 import { ChevronRight, Loader2 } from "lucide-react"
 
@@ -94,6 +95,7 @@ export function renderBlock(b: CompactBlock) {
     return <p className="text-[11px] text-muted-foreground">{b.text || t("thread.agent.cancelled")}</p>
   }
   if (b.kind === "notice") {
+    if (b.generation) return <GenerationNotice block={b} />
     const text = localizeNotice(b.text)
     if (!text) return null
     return <p className="text-[11px] text-muted-foreground">{text}</p>

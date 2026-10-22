@@ -175,8 +175,8 @@ function thread(
     provider_id: "default",
     reasoning_effort: "",
     archived: false,
-    created_at: new Date().toISOString(),
-    last_active_at: new Date().toISOString(),
+    created_at: "2026-10-22T00:00:00.000Z",
+    last_active_at: "2026-10-22T00:00:00.000Z",
     running: false,
     ...extra,
   }
@@ -207,9 +207,16 @@ describe("Sidebar order", () => {
   })
 
   it("reports the new Recents order after a drop", () => {
+    // A clock tick between fixtures must not silently reverse the initial order.
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-10-22T00:00:00.000Z"))
+    const alpha = thread("th_a", "Alpha")
+    vi.setSystemTime(new Date("2026-10-22T00:00:00.001Z"))
+    const beta = thread("th_b", "Beta")
+    vi.useRealTimers()
     render(
       <Sidebar
-        threads={[thread("th_a", "Alpha"), thread("th_b", "Beta")]}
+        threads={[alpha, beta]}
         {...noop}
       />,
     )

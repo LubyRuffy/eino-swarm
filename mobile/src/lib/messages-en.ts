@@ -1,4 +1,6 @@
+import { generationEn } from "./messages-generation"
 export const en = {
+  ...generationEn,
   "pcTimeouts.title": "PC timeouts",
   "pcTimeouts.scope": "For this PC. First-byte waiting and stream-idle waiting are independent. Saved values apply to new model calls and new sub-agents; running work and paused tasks are unchanged.",
   "pcTimeouts.agent": "Sub-agent lifetime (seconds)",

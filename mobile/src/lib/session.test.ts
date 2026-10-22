@@ -324,3 +324,43 @@ describe("phone watch session", () => {
     expect(view.oldestSeq).toBe(1)
   })
 })
+
+it.each([true, false])("retains a generation receipt through live/history overlap and paging (history first: %s)", (historyFirst) => {
+  const thought = ev({ seq: 2, kind: "reasoning", agent_id: "worker", message_id: "old", text: "unfinished" })
+  const stop = ev({ seq: 3, kind: "generation_interrupted", agent_id: "worker", message_id: "old", text: JSON.stringify({ reason: "engine_restart", recovery: "pending" }) })
+  const resume = ev({ seq: 4, kind: "generation_recovered", agent_id: "worker", message_id: "old", text: JSON.stringify({ reason: "engine_restart", recovery: "recovered" }) })
+  let view = applyPush(openView(detail()), ready({ seq: historyFirst ? 4 : 1, more: true, events: historyFirst ? [thought, stop, resume] : [ev({ seq: 1, kind: "spawned", agent_id: "worker" })], status: { running: true } }))
+  for (const row of [thought, stop, resume]) view = applyPush(view, push(row))
+  view = applyPush(view, push(ev({ seq: 0, kind: "reasoning_delta", agent_id: "worker", message_id: "new", text: "new output" })))
+  view = prependOlder(view, [ev({ seq: 1, kind: "spawned", agent_id: "worker" })], false)
+  expect(view.blocks.filter((b) => b.kind === "reasoning").map((b) => [b.messageId, Boolean(b.streaming)])).toEqual([["old", false], ["new", true]])
+  expect(view.blocks.filter((b) => b.generation)).toHaveLength(1)
+  expect(view.blocks.find((b) => b.generation)?.generation?.recovery).toBe("recovered")
+  expect(phoneAgents(view.blocks)[0].status).toBe("running")
+})
+
+it("applies an unseen lower-sequence interruption once after newer work and never reopens it while paging", () => {
+  let view = applyPush(openView(detail()), ready({ seq: 5, events: [ev({ seq: 5, kind: "spawned", agent_id: "worker" })], status: { running: true } }))
+  view = applyPush(view, push(ev({ seq: 0, kind: "reasoning_delta", agent_id: "worker", message_id: "old", text: "unfinished" })))
+  const stop = ev({ seq: 3, kind: "generation_interrupted", agent_id: "worker", message_id: "old", text: JSON.stringify({ reason: "unknown", recovery: "pending" }) })
+  view = applyPush(view, push(stop))
+  view = applyPush(view, push(stop))
+  view = prependOlder(view, [ev({ seq: 1, kind: "user_message", text: "request" })], false)
+  expect(view.blocks.find((b) => b.messageId === "old" && b.kind === "reasoning")?.streaming).toBe(false)
+  expect(view.blocks.filter((b) => b.generation)).toHaveLength(1)
+})
+
+it("orders an unseen lower-sequence finish before the replacement spawn and live output", () => {
+  let view = applyPush(openView(detail()), ready({ seq: 8, events: [ev({ seq: 8, kind: "spawned", agent_id: "worker" })], status: { running: true } }))
+  view = applyPush(view, push(ev({ seq: 0, kind: "reasoning_delta", agent_id: "worker", message_id: "replacement", text: "running" })))
+  view = applyPush(view, push(ev({ seq: 7, kind: "finished", agent_id: "worker", text: "older finished attempt" })))
+  expect(phoneAgents(view.blocks)[0].status).toBe("running")
+  expect(view.blocks.find((b) => b.messageId === "replacement")?.streaming).toBe(true)
+})
+
+it("keeps the current turn running when an older unseen terminal arrives with its generation history", () => {
+  let view = applyPush(openView(detail()), ready({ seq: 8, events: [ev({ seq: 8, kind: "turn", agent_id: "manager", turn_id: "new-turn" })], status: { running: true, turn_id: "new-turn" } }))
+  view = applyPush(view, push(ev({ seq: 7, kind: "done", agent_id: "manager", turn_id: "old-turn" })))
+  expect(view.detail?.running?.turn_id).toBe("new-turn")
+  expect(view.events.filter((row) => row.seq === 7)).toHaveLength(1)
+})

@@ -75,6 +75,9 @@ func (e *Engine) applyRewind(threadID string, fromSeq int64) error {
 	if err != nil {
 		return err
 	}
+	e.generations.Lock()
+	delete(e.generations.threads, threadID)
+	e.generations.Unlock()
 	e.reindex(threadID)
 	e.emit(store.Event{
 		ThreadID: threadID,

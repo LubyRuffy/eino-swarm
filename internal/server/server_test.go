@@ -840,6 +840,7 @@ func TestNotifyKindsAreStableAcrossTheWire(t *testing.T) {
 		"agent_message", "spawned", "finished", "tool_call", "tool_result", "tool_delta",
 		"tool_call_delta",
 		"turn", "delta", "reasoning_delta", "done", "error",
+		"generation_started", "generation_completed", "generation_interrupted", "generation_recovered",
 	} {
 		if _, ok := swarm.ParseNotifyKind(want); !ok {
 			t.Fatalf("the event kind %q the UI relies on no longer exists", want)

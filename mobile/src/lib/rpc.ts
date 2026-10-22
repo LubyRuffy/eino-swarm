@@ -151,6 +151,7 @@ export type WakeView = {
 }
 
 export type RemoteEvent = {
+  message_id?: string
   source_thread_id?: string
   source_turn_id?: string
   thread_id: string

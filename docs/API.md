@@ -1506,9 +1506,27 @@ overlap: apply a stored `(thread_id, seq)` only once, including side effects.
 `message_id` does not replace `tool_call_id` or the SSE resume cursor. Pairlink
 also preserves the optional field; clients that do not use it remain compatible.
 
+Generation interruption `reason` is `engine_restart`, `process_exit`,
+`output_limit`, `model_error`, `timeout`, `cancelled` or `unknown`. `detail`
+contains the recorded cause; a process exit alone does not prove its trigger.
+`recovery` is `pending` (recovery is arranged), `recovered` (execution resumed)
+or `none` (no recovery is arranged). Lifecycle events retain the output's
+original turn for Trace even if its worker outlives that manager check.
+Close that output's old thinking stream when interrupted; a new output has a
+new identity. A recovering worker can remain running.
+An observed model error or finish reason remains the cause if Stop arrives
+later; Stop can change recovery to `none`. A planned restart needs handoff
+evidence for that generation, not merely an abandoned runtime flag. Pairlink
+retains `message_id` and valid cause/recovery JSON when `event_chars` is small,
+shortening only the bounded detail text.
+
 | kind | meaning |
 |---|---|
 | `user_message` | the request that started this turn. `images` is `{id,name,mime}[]` when the send carried pasted vision input; never the pixels |
+| `generation_started` | durable model-output start identity; internal lifecycle evidence for recovery and Trace, not a chat row |
+| `generation_completed` | the output finished normally; closes its generation identity without completing its worker |
+| `generation_interrupted` | interrupted model output; `message_id` identifies that output and `text` is JSON `{reason,detail,recovery}` (see below). It does not mark the worker failed |
+| `generation_recovered` | the interrupted output now has an actual resumed generation; updates its recovery state without erasing the interruption or claiming task success |
 | `reasoning` | a durable reasoning snapshot; it may checkpoint a still-running worker output identified by `message_id` |
 | `reasoning_delta` | streamed thinking, **full text so far**, not a fragment |
 | `delta` | streamed answer, **full text so far** |

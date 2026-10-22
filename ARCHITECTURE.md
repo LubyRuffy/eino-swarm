@@ -1356,6 +1356,17 @@ replies; failed refreshes preserve the window. Refresh snapshots compare complet
 identities across all loaded head, tail and attention rows, preserving newer
 results verified by a concurrent read reply (`C-007`).
 
+## Model generation lifecycle
+
+A streamed model output has its own identity and lifecycle, independent of
+its manager turn and worker lifetime. Durable generation start/completion
+records let recovery distinguish an interrupted stream from a completed
+output. Interruption and recovery events retain the original output identity
+and turn for Trace; clients close that old thinking stream and retain the
+reason/recovery notice through replay. Resuming the same worker starts a new
+output, without fabricating a worker failure or completion receipt.
+See `C-035` in [current contracts](docs/CONTRACTS.md).
+
 ## Automatic restart handoff
 
 `cmd/zwai/engine_restart.go` coordinates the existing lease with the old

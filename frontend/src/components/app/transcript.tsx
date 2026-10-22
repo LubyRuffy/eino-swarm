@@ -1,3 +1,4 @@
+import { GenerationNotice } from "./generation-notice"
 import {
   Brain,
   ChevronDown,
@@ -400,6 +401,7 @@ const BlockView = memo(function BlockView({
       return <IterationLimitCard block={block} />
 
     case "notice":
+      if (block.generation) return <GenerationNotice block={block} />
       if (block.cloudTool) return <CloudToolNotice block={block} />
       return isScheduleNotice(block) ? <ScheduleNotice block={block} /> : <CompactNotice block={block} />
 

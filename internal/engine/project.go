@@ -123,9 +123,16 @@ func (e *Engine) DeleteProject(id string) error {
 		}
 		e.closeRuntime(tid)
 	}
+	e.generations.Lock()
 	if err := e.store.DeleteProject(id); err != nil {
+		e.generations.Unlock()
 		return err
 	}
+	// Membership may change after the runtime snapshot. Every cached value
+	// derives from durable events, so discard the cache rather than miss a
+	// conversation that entered this project during deletion.
+	e.generations.threads = nil
+	e.generations.Unlock()
 	for _, tid := range threadIDs {
 		e.dropSubscribers(tid)
 	}

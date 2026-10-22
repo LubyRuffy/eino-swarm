@@ -1,5 +1,79 @@
 # Testing
 
+## Generation interruption and recovery (Issue #95 / C-035)
+
+The generation and worker lifetimes are independent. `generation_test.go`
+checks per-output identity for cancellation, deadline, transport failure and
+output limits, with normal empty completion as a negative control.
+`internal/engine/generation_test.go` checks original-turn attribution across
+manager checks, cold recovery and already-completed output exclusion.
+Deletion regressions hold a real worker callback across conversation/project
+deletion, then release it: no cache or orphaned lifecycle event may reappear.
+Test both callback/delete orders and preserve cache state when deletion fails.
+Inject an events-query failure while the owner read still succeeds: the old
+output must not be recorded in the current manager turn. Once reads recover,
+the original-turn attribution must be reconstructed from durable events.
+`internal/engine/generation_http_test.go` crosses the real keyless loopback
+HTTP adapter, including shutdown versus planned handoff and a late Stop that
+must retain the original failure cause. Partial-tool coverage must assert the
+actual executor is never called with truncated invalid arguments; observing
+only UI notifications misses ADK's independently consumed stream.
+`internal/remote/generation_test.go` checks the real paired push/watch path,
+including tiny text budgets that retain structured cause/recovery.
+Inspect the original turn with `zwai trace <turn>` or
+`GET /api/trace/:turn`; lifecycle rows must not become worker completion,
+spawn receipts, human input or completion attention.
+
+PC and phone generation reducer/component tests cover closure of old thinking,
+reason/recovery retention, an independent new stream, late deltas, reversed
+history/live arrival and unknown legacy causes. Replaying a stored event must
+not reapply its state or notification side effects. Closing a partial
+`tool_call_delta` must not complete a tool already executing.
+
+```bash
+go test -race -timeout 20m ./...
+go vet ./...
+(cd frontend && npm run lint && npm test && npm run build)
+(cd mobile && npm run lint && npm test && npm run build)
+ZWAI_E2E_GENERATION_INTERRUPTION=1 ZWAI_E2E_PORT=18995 ZWAI_E2E_DATA_DIR=.e2e-data-generation \
+  npm --prefix frontend run e2e -- generation-interruption.spec.ts --output /absolute/unique-generation-output
+(cd mobile && ZWAI_MOBILE_E2E_PORT=14195 npm run e2e -- generation-interruption.spec.ts --output /absolute/unique-phone-output)
+make docs-check
+```
+
+On a busy machine the complete frontend unit suite can use
+`npm test -- --maxWorkers=4 --minWorkers=1`. Sidebar drag fixtures use one fixed
+timestamp for every item; creating each timestamp from the wall clock can
+change the initial sort before the drag assertion. Keep the first failed
+output when diagnosing scheduling-sensitive loader tests; a later green run
+alone does not establish the original cause.
+
+The desktop opt-in fixture controls real HTTP streams: partial thought,
+output-limit interruption, same-worker resume, a distinct new thought and
+reload. Assert the visible cause/recovery, closed old thought and absence of a
+false worker failure. Keep the business-red trace separately from build or
+artifact failures. Each browser run owns its server port, data and output.
+
+Phone native acceptance uses the disposable iOS fixture below with
+`IOS_LAYOUT_QUERY='/?mock=1&tick=0&history=generation-interruption'`, copies
+`mobile/e2e/ios-generation-interruption.swift` into its private test target and
+selects `AppUITests/BindFlowTests/testInterruptedGenerationRetainsReasonAndRunningWorkerAfterReopen`.
+Android packages the same offline query into a disposable native tree and runs
+`com.lubyruffy.zwai.GenerationInterruptionTest#interruptedGenerationRetainsReasonAndRunningWorkerAfterReopen`.
+Both navigate the actual Agents controls, inspect the retained cause and
+recovery, check the worker remains active and reopen its detail. Android also
+reads the reached WebView DOM to assert the old thought has no animation.
+Retain screenshots/accessibility, build/test exit status, source/asset hashes
+and exact simulator/emulator cleanup. Desktop native checks still run only
+inside `ci-macOS` through the isolated case lifecycle below.
+The generation scenario is `tools/native_generation_interruption.py`, using
+the keyless HTTP fixture and the VM-only accessibility helper in
+`tools/native_generation_interruption_fixture.py` and
+`tools/native_generation_interruption_ax.m`. Compile the helper in the guest
+and pass it as `--ax` within a fresh `native_macos_case.py` case. Assertions
+cover the actual window, same-worker recovery and absence of a false failure;
+the runner's process success by itself is insufficient.
+
 ## PC timeout settings from a phone (`F-170`, `F-220`, `C-006`, `C-009`)
 
 `internal/config/timeouts_test.go` checks the one-hour new worker default,
