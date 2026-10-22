@@ -57,6 +57,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`: native-case headless tests wait for fixture readiness rather than assuming one-second process startup. A delayed fixture regresses false failures while retaining bounded scenarios and cleanup assertions; production native-case deadlines are unchanged.
+
 - `F-220`, `F-230`, `C-032`: iOS code-highlighting native tests now reject a light or
   blank screenshot presented as dark. Synthetic image regressions and a focused
   cold-dark path strengthen the existing UI/clipboard acceptance without

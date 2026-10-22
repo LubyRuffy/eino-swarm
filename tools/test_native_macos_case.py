@@ -51,7 +51,7 @@ class NativeCaseTests(unittest.TestCase):
                     shutil.copytree(evidence, durable / evidence.name)
             print("native case failure evidence: " + str(durable), file=sys.stderr)
 
-    def run_case(self, script="", timeout=5):
+    def run_case(self, script="", timeout=10):
         evidence = self.root / ("evidence-" + str(time.monotonic_ns()))
         code = runner.run_case(self.app, evidence, timeout, [sys.executable, "-c", script])
         receipt = json.loads((evidence / "cleanup.json").read_text())
@@ -60,14 +60,17 @@ class NativeCaseTests(unittest.TestCase):
         return code, evidence, receipt
 
     def test_success_has_unique_paths_preserved_logs_and_no_seed(self):
+        # Scenario startup does not mean the separate fixture has initialized.
+        # Keep a delayed fixture so the old one-second assumption stays covered.
         self.executable.write_text("#!" + sys.executable + "\nimport os,time\nfrom pathlib import Path\n"
+                                   "time.sleep(1.25)\n"
                                    "Path(os.environ['ZWAI_HOME'],'started').write_text('yes')\n"
                                    "print('app started',flush=True)\ntime.sleep(120)\n")
         scenario = """import os,time,json
 from pathlib import Path
 p=Path(os.environ['ZWAI_HOME'])
-for _ in range(100):
- if (p/'started').exists(): break
+deadline=time.monotonic()+5
+while not (p/'started').exists() and time.monotonic()<deadline:
  time.sleep(.01)
 assert (p/'started').exists()
 assert not any(k.startswith('OPENAI_') for k in os.environ)
@@ -115,8 +118,8 @@ print('scenario output')
         scenario = """import json,os,time
 from pathlib import Path
 cache=Path.home()/'Library/Caches/zwai/zwai.app'
-for _ in range(100):
- if (cache/'case-bundle').exists(): break
+deadline=time.monotonic()+5
+while not (cache/'case-bundle').exists() and time.monotonic()<deadline:
  time.sleep(.01)
 assert (cache/'case-bundle').read_text() == 'temporary app'
 Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'home.json').write_text(json.dumps(dict(home=str(Path.home()),cache=str(cache))))
@@ -179,8 +182,8 @@ Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'home.json').write_text(json.dumps(dict(
         scenario = """import os,time
 from pathlib import Path
 p=Path(os.environ['ZWAI_HOME'],'engine-pid')
-for _ in range(100):
- if p.exists(): break
+deadline=time.monotonic()+5
+while not p.exists() and time.monotonic()<deadline:
  time.sleep(.01)
 assert p.exists()
 Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'engine-pid').write_text(p.read_text())
@@ -282,8 +285,8 @@ time.sleep(.8)
         scenario = """import os,time
 from pathlib import Path
 p=Path(os.environ['ZWAI_NATIVE_EVIDENCE'],'escaped-pid')
-for _ in range(100):
- if p.exists(): break
+deadline=time.monotonic()+5
+while not p.exists() and time.monotonic()<deadline:
  time.sleep(.01)
 assert p.exists()
 time.sleep(.2)

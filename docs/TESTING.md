@@ -2,6 +2,12 @@
 
 ## Native desktop isolation (F-430 / C-031)
 
+The headless process fixtures wait for their readiness marker within a bounded
+five-second interval, inside a ten-second test scenario budget. They do not
+assume a separately launched process is ready in one second. The success fixture
+deliberately delays initialization to regress that race; native case deadlines
+and cleanup assertions remain separate.
+
 Recorded guest acceptance: [2026-10-21 native isolation evidence](diagnostics/native-isolation-20261021.md). It binds a frozen candidate, precise legacy cleanup, serial real-window cases and host foreground observations; it is not latest-main or release acceptance.
 
 Native macOS acceptance runs in the UTM **ci-macOS** guest. The user's host
