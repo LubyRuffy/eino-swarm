@@ -112,7 +112,7 @@ class PublicRecoveryTests(unittest.TestCase):
                     for group in self.groups]
         if route.startswith('betaGroups/'):
             return [self.build] if route.split('/')[1] in self.members else []
-        if route.startswith('builds/'):
+        if route == f'betaGroups?filter%5Bbuilds%5D={self.build["id"]}&limit=200':
             return [{'id': group} for group in self.reverse_members]
         if '/builds?' in route:
             return [self.build]

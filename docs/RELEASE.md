@@ -297,7 +297,17 @@ until native acceptance is recorded. Its success is tracked at batch level;
 the batch is not fully delivered while it remains pending.
 
 iOS first checks app `builds`, app `buildUploads`, group `builds` and the existing
-`ios-signing/testflight-releases.json`. API `builds/{id}/betaGroups` is not used.
+`ios-signing/testflight-releases.json`. Configured groups are validated against
+`apps/{app}/betaGroups`. Strict publication evidence cross-checks all pages of
+`betaGroups/{group}/builds` with the public
+`betaGroups?filter[builds]={build}&limit=200` collection
+([Apple's beta-group list](https://developer.apple.com/documentation/appstoreconnectapi/get-v1-betagroups)). Only one relationship
+filter is allowed: do not combine `filter[app]` with `filter[builds]`.
+Neither `GET builds/{id}/betaGroups` nor its relationship GET is supported or used.
+This retains the existing schema-1 first-public proof and its two actual query
+directions; old frozen proof is validated locally without rewriting it. Read-only
+checks do not persist that proof or delivery success; actual recording still
+requires strict availability and both group directions before writing success.
 An accepted build/upload is resumed, not uploaded again. Uncertain upload attempts
 stay `waiting_upload_confirmation` for investigation instead of blind retry. A
 failed Apple processing result stops this platform. Processing is polled every

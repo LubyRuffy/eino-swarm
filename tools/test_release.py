@@ -166,6 +166,11 @@ class Apple:
         self.ready = False
         self.review_state = 'WAITING_FOR_REVIEW'
     def all(self, path):
+        if path.startswith('builds/') and '/betaGroups' in path:
+            raise AssertionError('Unsupported Apple GET: ' + path)
+        if path.startswith('betaGroups?filter%5Bbuilds%5D='):
+            build_id = path.split('filter%5Bbuilds%5D=', 1)[1].split('&', 1)[0]
+            return [g for g in self.groups if any(b['id'] == build_id for b in self.members[g['id']])]
         if '/buildUploads' in path: return self.uploads
         if '/betaGroups' in path: return self.groups
         if path.startswith('betaGroups/'): return self.members[path.split('/')[1]]

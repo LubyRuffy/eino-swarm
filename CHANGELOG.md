@@ -55,6 +55,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-010`: TestFlight availability now reads build-filtered groups
+  through the supported public collection and cross-checks each configured
+  group's builds. Unsupported build-to-group GETs and combined relationship
+  filters are not used; strict delivery gates and frozen schema-1 publication
+  proofs remain unchanged (Issue #92).
+
 - `F-220`, `F-230`, `C-032`: phone conversations now highlight recognised
   fenced source, including C++ aliases, with the existing light/dark syntax
   tokens. Paired and direct chat share the renderer; unknown language fences

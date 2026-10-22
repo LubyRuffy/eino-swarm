@@ -2817,6 +2817,16 @@ never falls back to fresh queries. Legacy preflight is read-only, actual recover
 saves proof before even a failing upload, and iOS itself still checks current
 installability. No test contacts Apple or publishes.
 
+`python3 -m unittest discover -s tools -p 'test_release_ios_groups.py' -v`
+uses a strict offline adapter that rejects both unsupported build-to-group GET
+routes and combined app/build relationship filters. It checks the supported
+single-build-filter collection, its later pages, all four configured groups in
+both query directions, read-only checks versus actual success recording, and a
+failed group read without a partial success/proof write. The first-public proof
+stays schema 1; the existing recovery suite continues to reject incomplete old
+proof and accepts retained evidence without an Apple client. A successful
+preflight is not evidence of current installability or publication.
+
 `tools/test_release_ios_compliance.py` verifies the authorized app declaration is retained in source, a new source/build passes read-only preflight without borrowing an old answer, both boolean classifications are accepted, and invalid values, missing/mismatched IPA declarations or conflicting exact receipts prevent publication. The preflight regression asserts no archive, upload or private receipt write occurs.
 
 `make docs-check` includes `python3 -m unittest discover -s tools -p "test_*.py"`. `tools/test_release.py` uses temporary source/ledger/IPA fixtures and injected Apple/command adapters to verify independent platform failures, source/version/tag gates, daily availability counting and retained signed candidates, remote reviews absent from local ledgers, import caches not dirtying release source, no duplicate upload, compliance refusal and retained exact-build confirmations after config switches (including wrong-source and conflicting-record rejection), signature/profile/version validation, archive/export settings, review waits, extra batch platforms, and old iOS completion after a newer batch is public. `tools/test_audit_pending_batch.py` verifies that an extra platform needs an integrated main commit and does not rewrite phone Issue scope. `internal/release/safety_test.go` verifies immutable attachment digests and independent platform assets; run `go test -race -cover ./internal/release/...`. `tools/test_release_ios_versions.py` checks marketing-version reuse across batches, explicit new-version overrides, frozen legacy/source/IPA recovery, separate batch/train receipts, IPA and remote train validation, review-free external availability, and no resubmission while review is pending. No test contacts Apple or publishes. Actual `release-check` checks the real source and private configuration without uploading; actual publication remains subject to native acceptance and batch gates.

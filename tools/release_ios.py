@@ -178,7 +178,7 @@ class IOSRelease:
         if not build or build['id'] != existing['build_id']:
             raise ValueError('TestFlight public recovery build is missing or changed')
         marketing = self.api.request('GET', f'builds/{build["id"]}/preReleaseVersion')['data']['attributes']['version']
-        reverse = {g['id'] for g in self.api.all(f'builds/{build["id"]}/betaGroups?limit=200')}
+        reverse = {g['id'] for g in self.api.all(f'betaGroups?filter%5Bbuilds%5D={build["id"]}&limit=200')}
         detail = self.api.request('GET', f'builds/{build["id"]}/buildBetaDetail').get('data')
         review = self.api.request('GET', f'builds/{build["id"]}/betaAppReviewSubmission').get('data')
         forward = [g for g, ids in self.members.items() if build['id'] in ids]
@@ -204,7 +204,7 @@ class IOSRelease:
         ready = not build['attributes'].get('expired') and build['attributes'].get('processingState') == 'VALID' and available(detail, review, attached, self.config['group_ids'])
         proof = None
         if ready and record and build['attributes']['version'] == self.number and self.state.get('ios', {}).get('ipa_sha256'):
-            reverse = {g['id'] for g in self.api.all(f'builds/{build_id}/betaGroups?limit=200')}
+            reverse = {g['id'] for g in self.api.all(f'betaGroups?filter%5Bbuilds%5D={build_id}&limit=200')}
             marketing = self.api.request('GET', f'builds/{build_id}/preReleaseVersion')['data']['attributes']['version']
             ready = set(self.config['group_ids']) <= reverse and marketing == self.marketing_version
             if ready:

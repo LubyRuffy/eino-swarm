@@ -233,6 +233,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- TestFlight 严格可用性读取本应用的配置组白名单，分页交叉核对各组的 builds 与公开 `betaGroups?filter[builds]` 集合；不组合两个关系过滤器，不调用未支持的 build→betaGroups GET。首次公开证明仍为 schema 1，旧冻结证明保持不变；只读预检不写成功交付。关联契约：`C-010`；证据：`tools/release_ios.py`, `tools/test_release_ios_groups.py`, `tools/test_release_public_recovery.py`, `docs/RELEASE.md`。
+
 - 已完成的隔离生命周期验收及证据范围：[2026-10-21 ci-macOS 记录](diagnostics/native-isolation-20261021.md)，关联 `C-031`。
 
 - TestFlight 首先公开且 GitHub 尚无 tag 时，发布入口交叉核对冻结批次、精确源码/build/营销版本/IPA 与首次公开时的严格组／审核证明，恢复同版本的其余端。旧状态无该证明时只读核验 Apple，实际恢复持锁落证，预检不写；已有证明不因 iOS 后来过期或 Apple 不可达而阻断其他端。新批次门槛和各端原生门禁仍独立生效。证据：`tools/release.py`, `tools/release_ios.py`, `tools/test_release_public_recovery.py`；契约：`C-010`。
