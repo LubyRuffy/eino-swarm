@@ -68,6 +68,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`: native AX snapshots serialize `has_web_area` as a JSON boolean, preserving the smoke scenario's strict boolean validation across Objective-C and Python.
+
 - `F-430`, `C-031`: native smoke traverses AX child graphs by element identity,
   so cycles and repeated references cannot become duplicate input controls.
   Empty nodes and repeated edges count toward the bounded traversal work;

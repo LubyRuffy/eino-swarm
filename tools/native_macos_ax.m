@@ -188,11 +188,12 @@ int main(int argc, const char **argv) { @autoreleasepool {
     for (id area in areas) [values addObject:text((__bridge AXUIElementRef)area, kAXValueAttribute)];
     BOOL sendEnabled = sends.count == 1 && [attribute((__bridge AXUIElementRef)sends[0], kAXEnabledAttribute) boolValue];
     BOOL frontmost = running.active;
+    BOOL hasWebArea = urls.count > 0;
     BOOL ready = frontmost && bounds.size.width > 0 && bounds.size.height > 0 &&
-        windows.count == 1 && cg.count == 1 && urls.count > 0 && areas.count == 1;
+        windows.count == 1 && cg.count == 1 && hasWebArea && areas.count == 1;
     NSMutableDictionary *result = [@{@"pid": @(pid), @"bundle": bundle, @"origin": origin,
         @"case_verified": @YES, @"ready": @(ready), @"title": window ? text(window, kAXTitleAttribute) : @"",
-        @"frontmost": @(frontmost), @"has_web_area": @(urls.count > 0), @"web_urls": urls,
+        @"frontmost": @(frontmost), @"has_web_area": @(hasWebArea), @"web_urls": urls,
         @"textareas": @(areas.count), @"area_values": values, @"send_count": @(sends.count),
         @"send_enabled": @(sendEnabled), @"rect": @[@(bounds.origin.x), @(bounds.origin.y), @(bounds.size.width), @(bounds.size.height)],
         @"window_count": @(windows.count), @"windows": cg, @"screen_capture_allowed": @YES,

@@ -4,6 +4,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import struct
 import subprocess
 import sys
@@ -394,6 +395,30 @@ int main(void) { @autoreleasepool {
         environment = dict(os.environ, ZWAI_NATIVE_CASE_ID="pure-parser-fixture")
         result = subprocess.run([str(binary)], capture_output=True, text=True, env=environment, timeout=5)
         self.assertEqual(result.returncode, 0, "headless parser/identity contract failed with code " + str(result.returncode))
+
+    @unittest.skipUnless(sys.platform == "darwin" and Path("/usr/bin/xcrun").exists(), "macOS SDK required for production JSON boxing")
+    def test_production_web_area_field_serializes_real_json_booleans(self):
+        production = smoke.AX_SOURCE.read_text()
+        expression = re.search(r'@"has_web_area"\s*:\s*@\(([^)]*)\)', production).group(1)
+        declaration = ""
+        if expression.strip().isidentifier():
+            declaration = re.search(r'\bBOOL\s+' + re.escape(expression.strip()) + r'\s*=\s*[^;]+;', production).group(0)
+        source = self.root / "helper-json-checks.m"
+        source.write_text('''#import <Foundation/Foundation.h>
+static NSDictionary *snapshot(NSArray *urls) {
+''' + declaration + '\nreturn @{@"has_web_area": @(' + expression + ')};\n}\n' + '''
+int main(void) { @autoreleasepool {
+    NSData *json=[NSJSONSerialization dataWithJSONObject:@[snapshot(@[]),snapshot(@[@"http://127.0.0.1:4567/"])] options:0 error:nil];
+    fwrite(json.bytes,1,json.length,stdout); return 0;
+} }
+''')
+        binary = self.root / "helper-json-checks"
+        subprocess.run(["/usr/bin/xcrun", "clang", "-fobjc-arc", "-framework", "Foundation", str(source), "-o", str(binary)],
+                       capture_output=True, text=True, check=True, timeout=30)
+        result = subprocess.run([str(binary)], capture_output=True, text=True, check=True, timeout=5)
+        snapshots = json.loads(result.stdout)
+        self.assertIs(snapshots[0]["has_web_area"], False)
+        self.assertIs(snapshots[1]["has_web_area"], True)
 
     @unittest.skipUnless(sys.platform == "darwin" and Path("/usr/bin/xcrun").exists(), "macOS SDK required for in-memory AX graph checks")
     def test_direct_collect_handles_semantic_revisits_and_bounds_actual_work(self):
