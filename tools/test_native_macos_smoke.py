@@ -395,6 +395,74 @@ int main(void) { @autoreleasepool {
         result = subprocess.run([str(binary)], capture_output=True, text=True, env=environment, timeout=5)
         self.assertEqual(result.returncode, 0, "headless parser/identity contract failed with code " + str(result.returncode))
 
+    @unittest.skipUnless(sys.platform == "darwin" and Path("/usr/bin/xcrun").exists(), "macOS SDK required for in-memory AX graph checks")
+    def test_direct_collect_handles_semantic_revisits_and_bounds_actual_work(self):
+        source = self.root / "helper-graph-checks.m"
+        source.write_text('''#import <Foundation/Foundation.h>
+#import <ApplicationServices/ApplicationServices.h>
+@interface FixtureNode : NSObject
+@property NSString *identity;
+@property NSDictionary *attributes;
+@property NSMutableArray *children;
+@end
+@implementation FixtureNode
+- (NSUInteger)hash { return self.identity.hash; }
+- (BOOL)isEqual:(id)other { return [other isKindOfClass:FixtureNode.class] && [self.identity isEqual:((FixtureNode *)other).identity]; }
+@end
+static FixtureNode *node(NSString *identity, NSString *role) {
+    FixtureNode *value=[FixtureNode new]; value.identity=identity; value.children=[NSMutableArray array];
+    value.attributes=role ? @{@"AXRole":role} : @{}; return value;
+}
+static AXError fixtureCopy(AXUIElementRef element, CFStringRef key, CFTypeRef *output) {
+    FixtureNode *value=(__bridge FixtureNode *)element;
+    id result=CFEqual(key,kAXChildrenAttribute) ? value.children : value.attributes[(__bridge NSString *)key];
+    if (!result) return kAXErrorNoValue;
+    *output=CFBridgingRetain(result); return kAXErrorSuccess;
+}
+static AXError fixturePerform(AXUIElementRef element, CFStringRef action) { abort(); }
+#define AXUIElementCopyAttributeValue fixtureCopy
+#define AXUIElementPerformAction fixturePerform
+#define main unused_native_main
+#include ''' + json.dumps(str(smoke.AX_SOURCE.resolve())) + '''
+#undef main
+static BOOL check(NSString *label, FixtureNode *root, NSUInteger expectedRows, NSUInteger expectedSends, BOOL expectedTruncated) {
+    NSMutableArray *tree=[NSMutableArray array], *areas=[NSMutableArray array], *sends=[NSMutableArray array], *urls=[NSMutableArray array];
+    BOOL visible=NO,truncated=NO;
+    collect((__bridge AXUIElementRef)root,tree,areas,sends,urls,@"",CGRectZero,&visible,&truncated,0);
+    BOOL passed=truncated==expectedTruncated && (expectedTruncated || (tree.count==expectedRows && sends.count==expectedSends));
+    if (!passed) fprintf(stderr,"%s: rows=%lu sends=%lu truncated=%d\\n",label.UTF8String,(unsigned long)tree.count,(unsigned long)sends.count,truncated);
+    return passed;
+}
+int main(void) { @autoreleasepool {
+    BOOL passed=YES;
+    FixtureNode *selfLoop=node(@"self",@"AXGroup"); [selfLoop.children addObject:selfLoop];
+    passed=check(@"self-loop",selfLoop,1,0,NO) && passed;
+    FixtureNode *a=node(@"a",@"AXGroup"), *b=node(@"b",@"AXGroup");
+    [a.children addObject:b]; [b.children addObject:a];
+    passed=check(@"two-node-cycle",a,2,0,NO) && passed;
+    FixtureNode *root=node(@"root",@"AXGroup"), *first=node(@"shared",@"AXButton"), *alias=node(@"shared",@"AXButton");
+    first.attributes=alias.attributes=@{@"AXRole":@"AXButton",@"AXTitle":@"Send",@"AXEnabled":@YES};
+    [root.children addObjectsFromArray:@[first,alias]];
+    passed=check(@"equal-different-wrappers",root,2,1,NO) && passed;
+    alias.identity=@"independent";
+    passed=check(@"different-identity-same-text",root,3,2,NO) && passed;
+    FixtureNode *emptyRoot=node(@"empty-root",@"AXGroup");
+    for(int i=0;i<5000;i++) [emptyRoot.children addObject:node([NSString stringWithFormat:@"empty-%d",i],nil)];
+    passed=check(@"empty-node-work-limit",emptyRoot,0,0,YES) && passed;
+    [emptyRoot.children removeLastObject];
+    passed=check(@"exact-work-limit",emptyRoot,1,0,NO) && passed;
+    FixtureNode *deep=node(@"deep-root",@"AXGroup"), *cursor=deep;
+    for(int i=0;i<46;i++) { FixtureNode *next=node([NSString stringWithFormat:@"depth-%d",i],@"AXGroup"); [cursor.children addObject:next]; cursor=next; }
+    passed=check(@"unique-depth-limit",deep,0,0,YES) && passed;
+    return passed ? 0 : 1;
+} }
+''')
+        binary = self.root / "helper-graph-checks"
+        subprocess.run(["/usr/bin/xcrun", "clang", *smoke.AX_FLAGS, str(source), "-o", str(binary)],
+                       capture_output=True, text=True, check=True, timeout=30)
+        result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=5)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_screenshot_must_decode_dimensions_and_not_accept_magic_bytes(self):
         path = self.root / "image.png"
         path.write_bytes(b"\x89PNG\r\n\x1a\n")

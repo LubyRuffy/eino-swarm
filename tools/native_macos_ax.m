@@ -88,10 +88,17 @@ static BOOL pageMatches(NSString *value, NSString *origin, pid_t pid) {
         (!url.path.length || [url.path isEqual:@"/"]) &&
         [shell isEqual:@[@"desktop"]] && [pids isEqual:@[[NSString stringWithFormat:@"%d", pid]]];
 }
-static void collect(AXUIElementRef element, NSMutableArray *tree, NSMutableArray *areas,
+static void collectUnique(AXUIElementRef element, NSMutableArray *tree, NSMutableArray *areas,
                     NSMutableArray *sends, NSMutableArray *urls, NSString *expected,
-                    CGRect window, BOOL *visible, BOOL *truncated, int depth) {
-    if (depth > 45 || tree.count >= 5000) { *truncated = YES; return; }
+                    CGRect window, BOOL *visible, BOOL *truncated, int depth,
+                    CFMutableSetRef seen, NSUInteger *visits) {
+    if (*truncated) return;
+    if (++*visits > 5000) { *truncated = YES; return; }
+    // AX children form a graph. Equivalent references must not become duplicate
+    // editable controls, while empty nodes and repeated edges still cost work.
+    if (CFSetContainsValue(seen, element)) return;
+    if (depth > 45) { *truncated = YES; return; }
+    CFSetAddValue(seen, element);
     NSMutableDictionary *row = [NSMutableDictionary dictionary];
     for (NSString *key in @[@"AXRole", @"AXTitle", @"AXDescription", @"AXValue", @"AXURL"]) {
         id value = attribute(element, (__bridge CFStringRef)key);
@@ -119,8 +126,19 @@ static void collect(AXUIElementRef element, NSMutableArray *tree, NSMutableArray
         }
     }
     if (row.count) [tree addObject:row];
-    for (id child in children(element)) collect((__bridge AXUIElementRef)child, tree, areas, sends, urls,
-        expected, window, visible, truncated, depth+1);
+    for (id child in children(element)) {
+        collectUnique((__bridge AXUIElementRef)child, tree, areas, sends, urls,
+                      expected, window, visible, truncated, depth+1, seen, visits);
+        if (*truncated) break;
+    }
+}
+static void collect(AXUIElementRef element, NSMutableArray *tree, NSMutableArray *areas,
+                    NSMutableArray *sends, NSMutableArray *urls, NSString *expected,
+                    CGRect window, BOOL *visible, BOOL *truncated, int depth) {
+    CFMutableSetRef seen = CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks);
+    NSUInteger visits = 0;
+    collectUnique(element, tree, areas, sends, urls, expected, window, visible, truncated, depth, seen, &visits);
+    CFRelease(seen);
 }
 static CGEventRef keyboard(CGEventSourceRef source, bool down, UniChar character) {
     CGEventRef event = CGEventCreateKeyboardEvent(source, 0, down);

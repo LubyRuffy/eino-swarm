@@ -56,6 +56,11 @@ the same directory. Missing or different bundles fail; origin, case and PID
 checks remain exact. Before checking a helper's exit code, JSON or identity,
 `smoke-native-last.json` saves its raw stdout, stderr and return code alongside
 the requested bundle, origin, PID and action, including failed responses.
+AX children are traversed as a graph using `CFEqual` identity: revisiting one
+element does not create another composer or Send control. The helper counts all
+visits, including empty nodes and repeated edges, toward its 5000-visit bound;
+new nodes beyond depth 45 still fail. A genuine limit stops traversal and fails
+the case rather than accepting an incomplete set of controls.
 
 The runner's default `--budget 60` counts guest checks, isolated copy/preparation,
 launch, scenario, cleanup and receipt writing. `--timeout` remains the scenario's

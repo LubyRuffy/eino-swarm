@@ -68,6 +68,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`: native smoke traverses AX child graphs by element identity,
+  so cycles and repeated references cannot become duplicate input controls.
+  Empty nodes and repeated edges count toward the bounded traversal work;
+  genuine depth or visit limits still fail the case.
+
 - `F-430`, `C-031`: native smoke compares existing resolved bundle identities,
   accepting Darwin `/var` / `/private/var` aliases without accepting another or
   missing bundle. Raw helper stdout, stderr and exit status are retained before
