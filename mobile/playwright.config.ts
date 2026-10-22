@@ -18,7 +18,7 @@ export default defineConfig({
     { name: "phone" },
     {
       name: "iphone-layout",
-      testMatch: ["model-refresh.spec.ts", "composer-layout.spec.ts", "ask-answer.spec.ts", "agent-roster.spec.ts", "api-error.spec.ts", "unread-completion.spec.ts", "active-unread.spec.ts", "worker-stop-replay.spec.ts"],
+      testMatch: ["model-refresh.spec.ts", "composer-layout.spec.ts", "ask-answer.spec.ts", "agent-roster.spec.ts", "api-error.spec.ts", "unread-completion.spec.ts", "active-unread.spec.ts", "worker-stop-replay.spec.ts", "markdown-highlight.spec.ts"],
       use: { ...devices["iPhone 13"], browserName: "webkit", permissions: [] },
     },
   ],

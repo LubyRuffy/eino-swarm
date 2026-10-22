@@ -2828,6 +2828,54 @@ before tapping Save: provider visibility fields may move Save below a small
 iPhone viewport. Native acceptance must reach the menu after configuring the
 endpoint, rather than tapping an offscreen control.
 
+## Phone fenced source highlighting (Issue #91, F-220 / F-230 / C-032)
+
+`cd mobile && npm test -- --run src/components/markdown-highlight.test.tsx src/components/markdown.test.tsx`
+checks C++ aliases, untagged/unknown plain text, exact whitespace/HTML literal
+copying, open-to-closed streamed fences and stable block/copy state. Existing
+Markdown tests keep chart, formula and safe-link behaviour covered. The phone
+imports only the shared pure source lexer; token class literals stay in mobile
+sources so the mobile Tailwind build retains both themes' syntax colours.
+
+`cd mobile && npm run e2e -- markdown-highlight.spec.ts` reaches paired and
+direct conversations on Chromium and iPhone WebKit. It checks computed token
+colours in light/dark themes, narrow-screen bounds, source preservation and
+copying through the actual message renderer. Each concurrent run needs its own
+server port and output directory, as described above.
+
+Native acceptance uses the packaged app in a private iOS simulator and Android
+headless emulator with offline input. Keep the source/dirty manifest, production
+web-asset hashes, reached-screen screenshots, assertions, actual exit status and
+cleanup receipt. App launch, DOM token classes or a browser pass alone do not
+accept either native platform. Local QA does not increment release versions or
+build numbers and does not upload anything.
+
+The iOS fixture substitutes `mobile/e2e/ios-code-highlight.swift` as its private
+`BindFlowTests.swift` and selects
+`AppUITests/BindFlowTests/testNativeCppFenceRetainsSourceAndCopyAcrossThemes`.
+Android selects
+`com.lubyruffy.zwai.CodeHighlightTest#nativeCodeHighlightPreservesSourceCopyAndSystemThemes`
+through `AndroidJUnitRunner`. Both enter and send a generic fence using native
+controls and retain light/dark screenshots. Android compares the actual native
+clipboard with the source inside the selected test. The iOS XCTest taps Copy;
+its outer collector must then run `xcrun simctl pbpaste <owned-UDID>` with a
+five-second deadline before deleting that simulator, and compare the exact code
+bytes with the expected source, distinct from the initially pasted fence.
+Both a passing XCTest and this clipboard postcondition are required; a
+cross-app `UIPasteboard.string` read in the UI test runner can block and is not
+a reliable collector. Android additionally reads the reached WebView's
+computed colours and panel/viewport bounds without changing its DOM.
+
+Keep the actual `xcodebuild` exit status as well as the selected XCTest result.
+If finalization stalls, capture its stack before acting: optional
+`collectSimulatorDiagnostics` / `simctl diagnose` can wait after the case ends.
+Cancel only a diagnostic child whose parent, owned simulator UDID and private
+result path have all been verified, then observe the parent's real exit.
+For subsequent isolated runs, the supported `-collect-test-diagnostics never`
+option avoids verbose system-diagnostic collection; test logs, screenshots, AX,
+clipboard assertions and cleanup receipts remain mandatory. A passing case
+line alone does not accept a hung or cancelled parent command.
+
 ## Phone output rendering (Issue #63)
 
 `mobile/src/components/file-browser.test.tsx` exercises the real read/preview path; `text-file-preview.test.tsx` checks suffix selection, unknown/large/empty text, exact source preservation and inert HTML/SVG/MDX. `mobile/e2e/walkthrough.spec.ts` checks Markdown structure and syntax colors in light/dark; the packaged `mobile/e2e/ios-wait-layout.swift` `testPhoneOutputPreview` reaches both documents through Outputs. Reuse `scripts/ios-layout-fixture.py` and select only that XCTest. Android uses a disposable offline package and isolated emulator, inspecting the same reached screens; a browser pass or native launch alone does not accept the changed flow.

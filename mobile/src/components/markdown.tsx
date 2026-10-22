@@ -21,9 +21,20 @@ import { parseChartSpec } from "@/lib/chart-spec"
 import { cn } from "@/lib/cn"
 import { copyText } from "@/lib/copy-text"
 import { t } from "@/lib/i18n"
+import { languageFromFence, tokenizeSource, type SourceTokenKind } from "../../../frontend/src/lib/source-highlight"
 
 const PLUGINS = [remarkGfm, remarkMath]
 const MATH_LANGS = new Set(["math", "latex", "tex", "katex"])
+const SOURCE_CLASSES: Record<SourceTokenKind, string> = {
+  text: "",
+  keyword: "text-syntax-keyword",
+  command: "text-syntax-command",
+  string: "text-syntax-string",
+  comment: "text-syntax-comment",
+  operator: "text-syntax-operator",
+  flag: "text-syntax-flag",
+  variable: "text-syntax-variable",
+}
 
 export function PhoneMarkdown({ text, className }: { text: string; className?: string }) {
   return (
@@ -123,12 +134,24 @@ function PhonePre({
           <PhoneCopy text={fence.text} kind="code" />
         </div>
         <pre {...props}>
-          <code className={fence.className}>{fence.text}</code>
+          <code className={fence.className}>
+            <PhoneHighlightedCode source={fence.text} lang={fence.lang} />
+          </code>
         </pre>
       </div>
     )
   }
   return <pre {...props}>{children}</pre>
+}
+
+function PhoneHighlightedCode({ source, lang }: { source: string; lang: string }) {
+  const tokens = useMemo(() => {
+    const dialect = languageFromFence(lang)
+    return dialect ? tokenizeSource(source, dialect) : [{ kind: "text" as const, text: source }]
+  }, [source, lang])
+  return <>{tokens.map((token, i) => (
+    <span key={i} className={SOURCE_CLASSES[token.kind] || undefined}>{token.text}</span>
+  ))}</>
 }
 
 function PhoneInlineCode({

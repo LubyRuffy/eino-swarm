@@ -357,3 +357,18 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 变更规则：同步 runner、生命周期回归、开发规则及原生验收文档；保留源码身份与真实窗口行为的独立证据边界。
 - 现场证据：[2026-10-21 ci-macOS 串行窗口与清理验收](diagnostics/native-isolation-20261021.md)；仅接受其冻结候选和明确成功路径。
 - 来源：用户 2026-10-21 反馈测试抢占桌面及 UTM 中程序、数据残留；Added。
+
+## C-032 Phone fenced source retains its text
+
+- 状态：active
+- 类型：compatibility / data
+- 作用范围：手机配对对话和直连聊天的 Markdown；关联功能：`F-220`, `F-230`。
+- 契约内容：已知语言围栏复用现有源码语言识别、别名与词法器，使用手机明暗主题语法色；空标签、未知标签及普通文本不猜测语言。高亮只添加渲染节点，代码文本与复制内容保持 Markdown 解析后的原文和空白。流式追加不得重建整个围栏或丢失复制状态。
+- 允许行为：开放的流式围栏随输入重新分词；公式和有效图表继续使用专用渲染器。
+- 禁止行为：复制语言标题或 token 标记；把源码当 HTML 执行；将用户示例内容写成识别规则。
+- 失败语义：不支持的语言显示完整纯文本；无效图表沿用代码回退。
+- 不变量：高亮前后的代码字符相同，配对与直连聊天使用同一渲染器。
+- 边界条件：C++ 大小写与别名、空或未知语言、未闭合围栏、连续追加后闭合、制表符、尾随空格、中文和 HTML 字面量。
+- 证据：实现 `mobile/src/components/markdown.tsx`, `frontend/src/lib/source-highlight.ts`, `frontend/src/lib/source-lang.ts`, `mobile/src/index.css`；测试 `mobile/src/components/markdown-highlight.test.tsx`, `mobile/src/components/markdown.test.tsx`, `mobile/e2e/markdown-highlight.spec.ts`, `mobile/e2e/ios-code-highlight.swift`, `mobile/android/app/src/androidTest/java/com/lubyruffy/zwai/CodeHighlightTest.java`。
+- 变更规则：同步手机使用文档、关联功能、渲染与复制回归；改动主题色或移动 WebView 行为时验证两端原生应用。
+- 来源：GitHub Issue #91；Fixed，恢复手机代码围栏的语法高亮。

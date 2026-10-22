@@ -36,7 +36,11 @@ stays under 64KiB. First paint is a live-edge snapshot on the `watch` RPC
 `ready`, already at the tail; a tap shows the chrome before that returns.
 **Earlier** sits above the log; pulling up also pages older events. User and
 assistant rows render markdown; a path link does not navigate the
-webview. A `chart` fence paints as a plot with a table of the same rows;
+webview. Recognised language fences use the existing source syntax colours in
+both themes, including C++ tags `cpp`, `c++`, and `cxx`. The same rendering
+serves direct model chat. Empty or unknown language tags stay plain; no language
+is guessed. Copy code retains the original code text and whitespace as the
+stream grows. A `chart` fence paints as a plot with a table of the same rows;
 a truncated fence waits, and a finished invalid body stays code. Adjacent thoughts and tool calls fold into one row (the same
 compact rule as desktop user view, and the phone's only view). An
 answer stays on screen and splits that row. The live tail is **Thinking**

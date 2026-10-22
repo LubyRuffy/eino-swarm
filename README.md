@@ -390,7 +390,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   invalid body stays a code block. `zwai tui` still has the JSON fence.
 - **Code and formulas render.** A fenced block with a language tag is
   highlighted (same colours as a `read` of that suffix) and has a copy
-  control. `$…$` / `$$…$$` and `math` fences paint as formulas. The manager
+  control, including paired and direct phone conversations in light and dark
+  themes. Unknown or empty language tags stay plain; copying preserves the code
+  text and whitespace while streaming. `$…$` / `$$…$$` and `math` fences paint as formulas. The manager
   is told to tag fences and to write mathematics as LaTeX, not as a code dump.
 - **Links leave the app.** A markdown URL opens in a new browser tab (`zwai web`)
   or the system browser (`zwai desktop`). It does not replace the window.

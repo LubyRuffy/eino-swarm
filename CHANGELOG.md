@@ -55,6 +55,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`, `F-230`, `C-032`: phone conversations now highlight recognised
+  fenced source, including C++ aliases, with the existing light/dark syntax
+  tokens. Paired and direct chat share the renderer; unknown language fences
+  stay plain, streamed blocks retain their identity, and Copy code preserves
+  the original text and whitespace (Issue #91).
+
 - `F-430`, `C-031`: completed ci-macOS background-channel recovery, precise cleanup of 12 legacy test directories and a leftover fixture, and serial native-window isolation acceptance with per-case shutdown/data removal and host foreground observations. The receipt binds its frozen candidate and does not accept later application changes or a release.
 
 - `F-430`, `C-010`: resume an already public TestFlight-first batch before its
