@@ -3,6 +3,8 @@ package remote
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 )
 
 const (
@@ -29,6 +31,8 @@ const (
 	OpHello          = "hello"
 	OpCatalog        = "catalog"
 	OpRefreshCatalog = "refresh_catalog"
+	OpGetTimeouts    = "get_timeouts"
+	OpSetTimeouts    = "set_timeouts"
 	OpTune           = "tune"
 	OpPut            = "put"
 	OpFollowupDrop   = "followup_drop"
@@ -99,6 +103,9 @@ type Request struct {
 	TaskID string `json:"task_id,omitempty"`
 	// FilePath is workspace-relative; Before is the byte offset for file_chunk.
 	FilePath string `json:"file_path,omitempty"`
+
+	TimeoutSettings json.RawMessage `json:"timeout_settings,omitempty"`
+	timeoutInvalid  bool
 }
 
 // Response is what the PC replies. Path and SessionID are pairlink
@@ -136,6 +143,8 @@ type Response struct {
 	ClientView      *ClientView     `json:"client_view,omitempty"`
 	Files           []FileView      `json:"files,omitempty"`
 	FileChunk       *FileChunkView  `json:"file_chunk,omitempty"`
+
+	TimeoutSettings *config.TimeoutSettings `json:"timeout_settings,omitempty"`
 }
 
 // FileView is one PC workspace entry, including upload provenance.

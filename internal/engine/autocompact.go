@@ -60,11 +60,11 @@ func (e *Engine) newAutoCompact(threadID, turnID string, th *store.Thread) *auto
 		engine:    e,
 		threadID:  threadID,
 		turnID:    turnID,
-		threshold: e.cfg.Swarm.AutoCompactLimit(),
-		keep:      e.cfg.Swarm.CompactKeep(),
+		threshold: e.cfg.SwarmSnapshot().AutoCompactLimit(),
+		keep:      e.cfg.SwarmSnapshot().CompactKeep(),
 	}
 	if th != nil {
-		ac.providerID, ac.modelName = e.cfg.Swarm.ResolveCompact(th.ProviderID, th.Model)
+		ac.providerID, ac.modelName = e.cfg.SwarmSnapshot().ResolveCompact(th.ProviderID, th.Model)
 	}
 	return ac
 }

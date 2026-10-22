@@ -26,7 +26,7 @@ func (rt *runtime) workerOwner() (kind, id string) {
 		return "", ""
 	}
 	if pursuingGoal(th) && !th.GoalCapped && !th.GoalIdle &&
-		th.GoalAutoTurns < rt.engine.cfg.Swarm.GoalAutoTurns() {
+		th.GoalAutoTurns < rt.engine.cfg.SwarmSnapshot().GoalAutoTurns() {
 		return "goal", th.ID
 	}
 	wake, err := rt.engine.store.ActiveThreadWake(rt.threadID)

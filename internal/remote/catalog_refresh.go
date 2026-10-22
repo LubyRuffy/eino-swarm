@@ -38,7 +38,7 @@ func discoverModelViews(ctx context.Context, eng *engine.Engine) ([]ModelView, e
 		return modelViews(eng), nil
 	}
 	var providers []config.Provider
-	for _, p := range eng.Config().Models.Providers {
+	for _, p := range eng.Config().ModelsSnapshot().Providers {
 		if p.Listed() && p.EndpointReady() {
 			providers = append(providers, p)
 		}

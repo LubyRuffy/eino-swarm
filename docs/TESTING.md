@@ -1,5 +1,77 @@
 # Testing
 
+## PC timeout settings from a phone (`F-170`, `F-220`, `C-006`, `C-009`)
+
+`internal/config/timeouts_test.go` checks the one-hour new worker default,
+retained positive legacy values, detached snapshots, concurrent latest-state
+patches and failed-save isolation. `internal/remote/timeouts_test.go` checks
+narrow RPC serialization, secret exclusion, strict validation, atomic rejection,
+frame budgeting and a reply bound to the saved candidate. The desktop settings
+round trips in `internal/server/timeout_settings_test.go` must preserve omitted
+worker/first-byte/idle fields and unrelated provider options.
+`internal/config/timeout_contract_test.go` regresses a 120-second first-byte
+value alongside a two-second idle value, including the phone compatibility
+field. It also mutates nested cloud-tool maps and typed lists in snapshots and
+aborted updates, asserting unchanged live values and preserved integer precision
+under the existing `C-030` tool-options contract.
+
+`internal/remote/timeout_adapter_test.go` crosses the real phone RPC handler,
+atomic save and provider-cache invalidation into both loopback Chat Completions
+and Responses adapters. With idle set to one second and first-byte raised from
+one to three seconds, a response delayed 1.1 seconds must succeed in exactly one
+HTTP request. The Responses case must retain its configured cloud tool and
+protocol; checking the DTO alone cannot accept runtime application.
+
+`internal/engine/timeout_settings_test.go` checks real loopback first-byte
+failure through stored turn/Trace text, runtime application only after a saved
+candidate, current context budgets during saves, and reviewer-anchor fallbacks.
+`timeout_settings_test.go` checks real context deadlines for current and future
+worker lifetimes. Keep the three-failure watchdog and restart regressions;
+saving a timeout cannot reset those counts or resume a paused task. Provider
+adapter tests must include a first-byte wait longer than stream idle, since
+matching values cannot prove the two budgets remain independent.
+`internal/engine/timeout_worker_ownership_test.go` reads the actual worker owner
+while timeout saves replace the swarm settings, asserting the same goal owner
+under `-race`. Run it with the existing ownership, parked-worker and handoff
+regressions after changing snapshot reads in `worker_ownership.go` or
+`restart_parked.go`; a timeout-only setter test cannot cover those readers.
+
+`frontend/src/lib/settings-persist-delta.test.ts` covers provider-ID matching,
+stale local drafts after phone edits, explicit timeout edits, failed writes and
+queued reverts. `frontend/e2e/settings-timeout-concurrency.spec.ts` changes PC
+timeouts through the real API while Settings stays open, edits an unrelated
+field and verifies both saved values survive. Catalog refresh must also omit
+unchanged timeouts after awaited discovery.
+
+Phone hook/sheet tests cover loading, edited-field patches, invalid seconds,
+retry, old-host feedback and stale link/generation callbacks.
+`mobile/e2e/pc-timeouts.spec.ts` exercises save/reopen, read/write failures,
+Back during a pending save and empty provider lists in Chromium/WebKit. Closing
+a pending save cannot claim cancellation; reopening must reload the PC. The
+phone-direct provider configuration stays separate. Run from the repository root:
+
+```bash
+go test -race ./internal/config ./internal/provider ./internal/remote ./internal/server ./internal/engine
+go test -race -timeout 20m ./...
+(cd frontend && npm test -- settings-persist.test.ts settings-persist-delta.test.ts settings-dialog.test.tsx)
+(cd frontend && npm run lint && npm run build)
+(cd frontend && npm run e2e -- settings-timeout-concurrency.spec.ts --output /absolute/unique-frontend-output)
+(cd mobile && npm test)
+(cd mobile && npm run lint && npm run build)
+(cd mobile && npm run e2e -- pc-timeouts.spec.ts --output /absolute/unique-mobile-output)
+```
+
+Each concurrent browser run also needs its own server port and private data
+where applicable; use the existing runner options below. These are validation
+commands and expected assertions, not a statement that this candidate passed.
+Native phone acceptance must focus numeric inputs in the packaged app, save,
+dismiss the keyboard, reopen and inspect the displayed PC values and local
+old-host feedback. Retain screenshots/accessibility evidence bound to source
+and web asset hashes. Android Back must close the sheet before root navigation,
+and its affected native bundle must compile. Desktop native behavior uses only
+the isolated `ci-macOS` lifecycle below, with process/data cleanup before the
+next case; browser E2E does not accept that native result.
+
 ## Native desktop isolation (F-430 / C-031)
 
 Recorded guest acceptance: [2026-10-21 native isolation evidence](diagnostics/native-isolation-20261021.md). It binds a frozen candidate, precise legacy cleanup, serial real-window cases and host foreground observations; it is not latest-main or release acceptance.
@@ -2351,8 +2423,12 @@ Several things are tested here, some as pure logic and some in jsdom:
   this bar.
 - **`src/lib/settings-persist.ts`**: edits coalesce into one `PUT` after
   400ms; `flush` writes immediately; a failed write does not block the next.
-  The `ui` object always carries locale, font, size, column width and palette so a
-  swarm edit cannot reset General.
+  Only changed sections are submitted; a changed `ui` section carries normalized
+  locale, font, size, column width and palette. Swarm/provider edits omit
+  unchanged timeout fields. Each serialized write computes its delta when it
+  runs, so queued edits and reverts survive. Failure keeps the previous baseline;
+  success records the submitted local draft rather than unrelated phone values
+  returned by the server.
 - **`src/lib/appearance.ts`**: chrome tokens (`system`/`serif`/`mono`,
   `small`/`medium`/`large`, `comfortable`/`full`, `zwai`/`fofa`) map to CSS variables and
   `data-*` attributes. Junk becomes the current defaults. A `localStorage`
@@ -2380,7 +2456,9 @@ Several things are tested here, some as pure logic and some in jsdom:
   The dialog title is screen-reader only —
   the visible page heading is the section name (General, Models, …). There
   is no Save/Cancel: edits debounce into
-  `PUT /api/settings` (locale rides along) and **Back to app** flushes.
+  `PUT /api/settings` and **Back to app** flushes. Reopening waits for previous
+  writes before loading and seeding a fresh draft; a stale earlier-open response
+  cannot replace that draft.
   Searching a Swarm-only word jumps to that
   section and hides Models. The Personality tab writes personal preferences
   into `personality.instructions`. The Swarm tab exposes compact keep-messages,
@@ -2673,8 +2751,8 @@ a client at all is verified in the engine and reducer tests.
   skeleton, not the scan form. Selecting another host chip stays on that PC's
   inbox even when it has a live or last conversation. Otherwise the inbox is the compact screen on the same conversation
   bus (send / follow-up / steer / stop / ask); the paired conversation's file
-  tree and previews use read-only Pairlink RPC, while Settings, PTY and Trace
-  stay on the PC. The hub hostname is typed on the PC, never shipped in the binary.
+  tree and previews use read-only Pairlink RPC, while full Settings, PTY and Trace
+  stay on the PC. Paired phones also expose separate PC timeout controls. The hub hostname is typed on the PC, never shipped in the binary.
   Simulators: iOS can use a loopback hub; Android needs `adb reverse` onto
   that same hub port. `mobile/ios/App/AppUITests/BindFlowTests.swift` pastes
   the offer from `simctl pbcopy`, taps Back if a thread already opened, asserts

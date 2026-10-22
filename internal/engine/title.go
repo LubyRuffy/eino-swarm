@@ -128,7 +128,7 @@ func titleFrom(text string) string {
 // after the human had already learned the placeholder. A landed name, or
 // a title the user typed, stays put.
 func (e *Engine) scheduleTitle(threadID string, turn *store.Turn, userText, final string) {
-	if !e.cfg.Swarm.AutoTitle {
+	if !e.cfg.SwarmSnapshot().AutoTitle {
 		return
 	}
 	th, err := e.store.GetThread(threadID)
@@ -157,7 +157,7 @@ func (e *Engine) runTitle(threadID string, turn *store.Turn, userText, final str
 	ctx, cancel := context.WithTimeout(context.Background(), titleCallTimeout)
 	defer cancel()
 
-	providerID, model := e.cfg.Swarm.ResolveTitle(turn.ProviderID, turn.Model)
+	providerID, model := e.cfg.SwarmSnapshot().ResolveTitle(turn.ProviderID, turn.Model)
 	builder, err := e.pool.ModelBuilder(ctx, providerID, model, "", e.callRecorder(threadID, turn.ID))
 	if err != nil {
 		e.recordTitle(threadID, turn.ID, "", err.Error())

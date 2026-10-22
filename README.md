@@ -585,6 +585,14 @@ end-to-end tests run on and the fastest way to see the UI work.
     another model. Refresh shows progress, and a failure keeps the previous
     list with a retryable error. An older PC without this operation asks you
     to update the PC. Refresh does not change the PC's saved models or defaults.
+   On that PC's inbox, **Menu → PC timeouts / 电脑超时** edits its worker
+   lifetime and provider first-byte/stream-idle limits. A new worker defaults
+   to one hour; an existing saved positive value stays unchanged until edited.
+   First-byte waiting defaults to 30 seconds and is independent of stream idle,
+   so raise the first-byte field when an endpoint takes longer to start.
+   Save applies to subsequently created model clients and worker lifetimes;
+   current deadlines and tasks paused after three watchdog failures keep their
+   state. These controls are separate from phone-direct **Menu → Models**.
    Long drafts keep Send, Follow-up, and Steer inside the phone screen;
    closing the iOS keyboard preserves that width.
    An image is shown to the model; other files go into the
@@ -605,7 +613,7 @@ end-to-end tests run on and the fastest way to see the UI work.
    `/goal` wait paints **Pursuing** plus **Waiting** (next check, Run now,
    Cancel wait) instead of a silent composer. A long objective stays one
    line so that chrome cannot cover the wait or the box. A dropped hub socket is a
-   reconnect banner, not a frozen inbox. The file browser, Settings,
+   reconnect banner, not a frozen inbox. Full Settings,
    PTY and Trace stay on the PC. The composer can still attach a file or an image.
    `make mobile-ios` / `make mobile-android` open Xcode or Android Studio
    after copying the web bundle. `make mobile-android-release` writes the

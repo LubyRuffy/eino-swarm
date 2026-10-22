@@ -102,7 +102,7 @@ func (e *Engine) resumeParkedThread(th *store.Thread) (int, error) {
 	for _, msg := range checkpoint.ManagerInbox {
 		reg.SteerManagerMessage(msg)
 	}
-	attachHostNotify(reg, newAccumulator(e, th.ID, turn.ID, e.cfg.Swarm.DeltaCoalesce()))
+	attachHostNotify(reg, newAccumulator(e, th.ID, turn.ID, e.cfg.SwarmSnapshot().DeltaCoalesce()))
 	workerTools := append(append([]tool.BaseTool(nil), reg.SubAgentTools...), reg.SendTool())
 	for _, w := range finished {
 		if err := reg.PlantFinished(w); err != nil {

@@ -185,6 +185,7 @@ export function SettingsDialog({
   const localeRef = useRef(locale)
   localeRef.current = locale
   const persistRef = useRef<SettingsPersist | null>(null)
+  const openEpoch = useRef(0)
   if (!persistRef.current) {
     persistRef.current = new SettingsPersist(async (patch) => {
       try {
@@ -207,19 +208,32 @@ export function SettingsDialog({
     useToasts.getState().dismiss("settings:load")
     setQuery("")
     setSection(initialSection)
-    void Promise.all([api.settings(), api.tools()])
-      .then(([s, tools]) => {
+    setSettings(undefined)
+    let cancelled = false
+    openEpoch.current++
+    // Reopening must read after this dialog's older writes settle. A late GET
+    // from a previous open must not replace the new draft or its baseline.
+    void persistRef.current!.flush().catch(() => undefined)
+      .then(() => cancelled ? undefined : Promise.all([api.settings(), api.tools()]))
+      .then((loaded) => {
+        if (cancelled || !loaded) return
+        const [s, tools] = loaded
+        const loadedSettings = resolveProviderToolsDrafts(s, {}).settings
+        persistRef.current!.seed(loadedSettings)
         toolsDraftsRef.current = {}
         setToolsDrafts({})
-        setSettings(s)
+        setSettings(loadedSettings)
         setCatalog(tools.catalog)
       })
-      .catch((e) =>
+      .catch((e) => {
+        if (cancelled) return
         toastError(errorMessage(e), {
           id: "settings:load",
           title: tRef.current("settings.loadFailed"),
-        }),
-      )
+        })
+      })
+    return () => { cancelled = true; openEpoch.current++ }
+
   }, [open, initialSection])
 
   useEffect(() => {
@@ -249,9 +263,10 @@ export function SettingsDialog({
       setSection("models")
       return
     }
+    const epoch = openEpoch.current
     try {
       await persistRef.current?.flush()
-      onOpenChange(false)
+      if (openEpoch.current === epoch) onOpenChange(false)
     } catch (e) {
       toastError(errorMessage(e), {
         id: "settings:save",

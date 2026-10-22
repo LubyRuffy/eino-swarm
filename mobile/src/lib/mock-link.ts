@@ -3,6 +3,8 @@ import {
   OpCancelWait,
   OpCatalog,
   OpRefreshCatalog,
+  OpGetTimeouts,
+  OpSetTimeouts,
   OpEvent,
   OpFiles,
   OpFileChunk,
@@ -30,6 +32,8 @@ import {
   OpUnwatch,
   OpWatch,
   PROTOCOL_V,
+  type TimeoutSettings,
+  type TimeoutSettingsPatch,
   type ProjectView,
   type FollowupView,
   type RemoteEvent,
@@ -220,6 +224,31 @@ export class MockHost {
   takeCatalogFailure() {
     if (this.catalogFailures <= 0) return false
     this.catalogFailures -= 1
+    return true
+  }
+  readonly timeoutScenario = new URLSearchParams(location.search).get("timeouts") || ""
+  private timeoutLoadFailures = this.timeoutScenario === "load-fail" ? 1 : 0
+  private timeoutSaveFailures = this.timeoutScenario === "save-fail" ? 1 : 0
+  private timeoutSettings: TimeoutSettings = { agent_timeout_seconds: 600, providers: this.timeoutScenario === "empty" ? [] : [{ id: "walkthrough", label: "Walkthrough", timeout_seconds: 300, first_byte_timeout_seconds: 30, effective_first_byte_timeout_seconds: 30 }] }
+  takeTimeoutFailure(saving: boolean) {
+    if (saving ? this.timeoutSaveFailures <= 0 : this.timeoutLoadFailures <= 0) return false
+    if (saving) this.timeoutSaveFailures--; else this.timeoutLoadFailures--
+    return true
+  }
+  readTimeoutSettings(): TimeoutSettings {
+    return { ...this.timeoutSettings, providers: this.timeoutSettings.providers.map((p) => ({ ...p })) }
+  }
+  updateTimeoutSettings(patch: TimeoutSettingsPatch | undefined): boolean {
+    if (!patch || Object.keys(patch).length === 0) return false
+    const positive = (value: number | undefined) => value === undefined || Number.isSafeInteger(value) && value > 0
+    if (!positive(patch.agent_timeout_seconds) || patch.providers?.some((p) => !positive(p.timeout_seconds) || !positive(p.first_byte_timeout_seconds) || !this.timeoutSettings.providers.some((old) => old.id === p.id))) return false
+    if (patch.agent_timeout_seconds !== undefined) this.timeoutSettings.agent_timeout_seconds = patch.agent_timeout_seconds
+    for (const p of patch.providers || []) {
+      const old = this.timeoutSettings.providers.find((row) => row.id === p.id)!
+      if (p.timeout_seconds !== undefined) old.timeout_seconds = p.timeout_seconds
+      if (p.first_byte_timeout_seconds !== undefined) old.first_byte_timeout_seconds = p.first_byte_timeout_seconds
+      old.effective_first_byte_timeout_seconds = old.first_byte_timeout_seconds
+    }
     return true
   }
   private askFailures = new URLSearchParams(location.search).get("askfail") === "1" ? 1 : 0
@@ -799,6 +828,15 @@ export class MockLink {
         if (scenario === "slow") await new Promise((resolve) => setTimeout(resolve, 1200))
         if (this.host.takeCatalogFailure()) return this.ok({ id, ok: false, code: "refresh_failed" })
         return this.ok({ id, models: scenario === "empty" ? [] : [{ provider_id: "walkthrough", provider_label: "Walkthrough", model: "scripted-next", default: true }], reasoning_levels: ["low", "medium", "high"] })
+      }
+      case OpGetTimeouts:
+      case OpSetTimeouts: {
+        if (this.host.timeoutScenario === "legacy") return this.ok({ id, ok: false, code: "unknown_op" })
+        const saving = req.op === OpSetTimeouts
+        if (this.host.timeoutScenario === "slow" || saving && this.host.timeoutScenario === "save-slow") await new Promise((resolve) => setTimeout(resolve, 1200))
+        if (this.host.takeTimeoutFailure(saving)) return this.ok({ id, ok: false, code: saving ? "save_failed" : "unavailable" })
+        if (saving && !this.host.updateTimeoutSettings(req.timeout_settings)) return this.ok({ id, ok: false, code: "bad_request" })
+        return this.ok({ id, timeout_settings: this.host.readTimeoutSettings() })
       }
       case OpCatalog:
         return this.ok({

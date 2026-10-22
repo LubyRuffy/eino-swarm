@@ -26,7 +26,7 @@
 // close_agent:
 //
 //   - AgentTimeout: a watchdog context caps each sub-agent's lifetime
-//     (default 10m via DefaultAgentTimeout);
+//     (default 1h via DefaultAgentTimeout);
 //   - MaxTurns: caps ReAct iterations so a broken/looping model ends with
 //     eino's ErrExceedMaxIterations instead of spinning forever.
 //
@@ -52,7 +52,7 @@ import (
 
 // DefaultAgentTimeout is the watchdog applied to each sub-agent when
 // Registry.AgentTimeout is not set.
-const DefaultAgentTimeout = 10 * time.Minute
+const DefaultAgentTimeout = time.Hour
 
 // Handle is the public handle to one running sub-agent.
 type Handle struct {
@@ -635,6 +635,8 @@ func lastLine(s string) string {
 }
 
 func (r *Registry) turnsLimit() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.MaxTurns > 0 {
 		return r.MaxTurns
 	}

@@ -98,9 +98,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	managerTools = append(managerTools, AskUserTool(rt.waitAsk))
 	managerTools = append(managerTools, rt.managerScheduleTools(turn)...)
 	managerTools = append(managerTools, rt.managerTaskTools(turn)...)
-	budget := e.cfg.Swarm.ManagerIterations()
+	budget := e.cfg.SwarmSnapshot().ManagerIterations()
 	if pursuingGoal(th) {
-		budget = e.cfg.Swarm.GoalSessionIterations()
+		budget = e.cfg.SwarmSnapshot().GoalSessionIterations()
 	}
 	used := 0
 	modelRetries := 0
@@ -193,7 +193,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
 				rt.engine.managerToolResults(turn.ID),
 			)
-			budget = e.cfg.Swarm.GoalSessionIterations()
+			budget = e.cfg.SwarmSnapshot().GoalSessionIterations()
 			continue
 		}
 		if closedStandingGoal(th) {
@@ -202,7 +202,7 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 			// that already stopped pursuing.
 			return res, nil
 		}
-		extend := e.cfg.Swarm.ManagerIterations()
+		extend := e.cfg.SwarmSnapshot().ManagerIterations()
 		if !rt.waitToExtend(ctx, turn, used, extend) {
 			if ctx.Err() != nil {
 				return res, runErr

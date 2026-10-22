@@ -52,6 +52,8 @@ func dispatch(eng *engine.Engine, cfg config.RemoteConfig, stage *Staging, req R
 		return composeSend(eng, stage, req, path, sessionID)
 	case OpSteer:
 		return composeSteer(eng, stage, req, path, sessionID)
+	case OpGetTimeouts, OpSetTimeouts:
+		return handleTimeoutSettings(eng, req, path, sessionID)
 	case OpCatalog:
 		return handleCatalog(eng, req, path, sessionID)
 	case OpRefreshCatalog:

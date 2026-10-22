@@ -16,6 +16,7 @@ import { inboxPreview } from "@/lib/inbox-preview"
 import { searchRunning, searchThreads } from "@/lib/inbox-search"
 import { collectLive } from "@/lib/resume"
 import { GROUP_ATTENTION, type ClientTool, type ProjectView, type RunningView, type ThreadView } from "@/lib/rpc"
+import type { RemoteLink } from "@/lib/link"
 import type { SavedLink } from "@/lib/store"
 
 // HomeScreen unmounts when a conversation opens. A fold that resets on
@@ -64,6 +65,7 @@ export function HomeScreen({
   showChat = false,
   onSelectChat,
   onModels,
+  pcLink,
   path,
   connected = true,
   reconnecting = false,
@@ -97,6 +99,7 @@ export function HomeScreen({
   showChat?: boolean
   onSelectChat?: () => void
   onModels?: () => void
+  pcLink?: RemoteLink | null
   path: string
   connected?: boolean
   reconnecting?: boolean
@@ -188,6 +191,7 @@ export function HomeScreen({
         showChat={showChat}
         onSelectChat={onSelectChat}
         onModels={onModels}
+        pcLink={pcLink}
       />
 
       {waiting ? (

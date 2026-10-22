@@ -917,6 +917,7 @@ export function App() {
       {link ? banner : null}
       <div className="min-h-0 flex-1">
         <HomeScreen
+          pcLink={link}
           key={locale}
           hosts={hosts}
           activeFingerprint={activeFp}

@@ -220,7 +220,7 @@ func catalogTidyUserMessage(mem *memory.Store, library bool) (string, error) {
 func (e *Engine) tidyReviewAnchor(projectID string) (threadID, turnID, providerID, model, effort string) {
 	threads, err := e.store.ListThreads(true, projectID)
 	if err != nil {
-		return "", "", e.cfg.Models.Default, "", ""
+		return "", "", e.cfg.ModelsSnapshot().Default, "", ""
 	}
 	return e.pickReviewAnchor(threads)
 }
@@ -230,7 +230,7 @@ func (e *Engine) tidyReviewAnchor(projectID string) (threadID, turnID, providerI
 func (e *Engine) libraryReviewAnchor() (threadID, turnID, providerID, model, effort string) {
 	threads, err := e.store.ListThreads(true, "")
 	if err != nil {
-		return "", "", e.cfg.Models.Default, "", ""
+		return "", "", e.cfg.ModelsSnapshot().Default, "", ""
 	}
 	loose := make([]store.Thread, 0, len(threads))
 	for _, th := range threads {
@@ -272,7 +272,7 @@ func (e *Engine) pickReviewAnchor(threads []store.Thread) (threadID, turnID, pro
 	if fallback != nil {
 		return fallback.ID, "", fallback.ProviderID, fallback.Model, ""
 	}
-	return "", "", e.cfg.Models.Default, "", ""
+	return "", "", e.cfg.ModelsSnapshot().Default, "", ""
 }
 
 func turnFinishedAfter(a, b store.Turn) bool {

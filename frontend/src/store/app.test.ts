@@ -33,6 +33,8 @@ const fake = vi.hoisted(() => ({
   reviewCode: undefined as string | undefined,
   onEvent: undefined as ((ev: Record<string, unknown>) => void) | undefined,
   discovered: [] as Array<Record<string, unknown>>,
+  discoveryWait: undefined as Promise<void> | undefined,
+  phoneTimeouts: { idle: 300, first: 30 },
   savedProviders: undefined as unknown,
   savedUI: undefined as
     | {
@@ -122,6 +124,7 @@ vi.mock("@/lib/api", () => {
               model: "alpha",
               catalog: ["alpha"],
               timeout_seconds: 300,
+              first_byte_timeout_seconds: 30,
               has_api_key: true,
               ready: true,
               api_key: "must-not-be-written-back",
@@ -141,6 +144,7 @@ vi.mock("@/lib/api", () => {
       }),
       discoverModels: async (body: Record<string, unknown>) => {
         fake.discovered.push(body)
+        await fake.discoveryWait
         return { models: ["alpha", "beta"], context_windows: { alpha: 128000 } }
       },
       saveSettings: async (patch: {
@@ -153,6 +157,11 @@ vi.mock("@/lib/api", () => {
         }
       }) => {
         fake.savedProviders = patch.models?.providers
+        if (Array.isArray(patch.models?.providers)) {
+          const row = patch.models.providers.find((p) => p.id === "default")
+          if (typeof row?.timeout_seconds === "number") fake.phoneTimeouts.idle = row.timeout_seconds
+          if (typeof row?.first_byte_timeout_seconds === "number") fake.phoneTimeouts.first = row.first_byte_timeout_seconds
+        }
         if (patch.ui) fake.savedUI = patch.ui
         return patch
       },
@@ -374,6 +383,8 @@ beforeEach(() => {
   fake.reviewCode = undefined
   fake.onEvent = undefined
   fake.discovered.length = 0
+  fake.discoveryWait = undefined
+  fake.phoneTimeouts = { idle: 300, first: 30 }
   fake.savedProviders = undefined
   fake.savedUI = undefined
   fake.listedModels = []
@@ -792,6 +803,19 @@ describe("a generated conversation title", () => {
 })
 
 describe("refreshCatalogs", () => {
+  it("keeps phone timeouts changed while endpoint discovery was pending", async () => {
+    let release!: () => void
+    fake.discoveryWait = new Promise<void>((done) => { release = done })
+    const refresh = useApp.getState().refreshCatalogs()
+    await vi.waitFor(() => expect(fake.discovered).toHaveLength(1))
+    fake.phoneTimeouts = { idle: 99, first: 43 }
+    release(); await refresh
+    expect(fake.phoneTimeouts).toEqual({ idle: 99, first: 43 })
+    const rows = fake.savedProviders as Array<Record<string, unknown>>
+    expect(rows[0]).not.toHaveProperty("timeout_seconds")
+    expect(rows[0]).not.toHaveProperty("first_byte_timeout_seconds")
+    expect(rows[0].catalog).toEqual(["alpha", "beta"])
+  })
   it("re-lists every endpoint with a URL and does not reboot the conversation", async () => {
     fake.listedModels = [
       {

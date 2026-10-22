@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/LubyRuffy/eino-swarm/internal/config"
 )
 
 // A context-length rejection names the ceiling when the provider feels like
@@ -61,7 +63,7 @@ func (e *Engine) compactThreshold(threadID string) int {
 	if th, err := e.store.GetThread(threadID); err == nil {
 		window = e.pool.WindowFor(th.ProviderID, th.Model)
 	}
-	return e.cfg.Swarm.CompactTrigger(window)
+	return e.cfg.SwarmSnapshot().CompactTrigger(window)
 }
 
 // learnContextCeiling records a smaller window for this model after a
@@ -86,33 +88,36 @@ func (e *Engine) lowerModelWindow(providerID, model string, ceiling int) bool {
 	if current := e.pool.WindowFor(providerID, model); current > 0 && ceiling >= current {
 		return false
 	}
-	idx := -1
-	for i := range e.cfg.Models.Providers {
-		if e.cfg.Models.Providers[i].ID == providerID {
-			idx = i
+	changed := false
+	name := strings.TrimSpace(model)
+	err := e.cfg.Update(func(next *config.Config) error {
+		for i := range next.Models.Providers {
+			p := &next.Models.Providers[i]
+			if p.ID != providerID {
+				continue
+			}
+			if current := p.WindowFor(model); current > 0 && ceiling >= current {
+				return nil
+			}
+			if name == "" {
+				name = strings.TrimSpace(p.Model)
+			}
+			if name != "" {
+				if p.ModelContext == nil {
+					p.ModelContext = map[string]int{}
+				}
+				p.ModelContext[name] = ceiling
+			} else {
+				p.ContextWindow = ceiling
+			}
+			changed = true
 			break
 		}
-	}
-	if idx < 0 {
+		return nil
+	})
+	if err != nil {
+		e.log.Warn("could not store the learned context window", "model", name, "err", err)
 		return false
 	}
-	p := &e.cfg.Models.Providers[idx]
-	name := strings.TrimSpace(model)
-	if name == "" {
-		name = strings.TrimSpace(p.Model)
-	}
-	// WindowFor already refused a ceiling that is not strictly lower.
-	// The write is the same number the next call will read back.
-	if name != "" {
-		if p.ModelContext == nil {
-			p.ModelContext = map[string]int{}
-		}
-		p.ModelContext[name] = ceiling
-	} else {
-		p.ContextWindow = ceiling
-	}
-	if err := e.cfg.Save(); err != nil {
-		e.log.Warn("could not store the learned context window", "model", name, "err", err)
-	}
-	return true
+	return changed
 }

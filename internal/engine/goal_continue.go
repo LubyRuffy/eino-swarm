@@ -47,7 +47,7 @@ func (rt *runtime) continueGoal(status string) {
 		rt.reapParked()
 		return
 	}
-	capN := rt.engine.cfg.Swarm.GoalAutoTurns()
+	capN := rt.engine.cfg.SwarmSnapshot().GoalAutoTurns()
 	if th.GoalCapped || th.GoalAutoTurns >= capN {
 		rt.reapParked()
 		rt.markGoalCapped(th, capN)

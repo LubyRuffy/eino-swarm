@@ -3,6 +3,8 @@ import { Menu, MessageSquare, Monitor, SquarePen } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
+import { PCTimeoutSheet } from "@/components/pc-timeout-sheet"
+import type { RemoteLink } from "@/lib/link"
 import { VersionCheck } from "@/components/version-check"
 import { cn } from "@/lib/cn"
 import { webShellVersion } from "@/lib/app-update"
@@ -24,6 +26,7 @@ export function HostChrome({
   chatSelected = false,
   onSelectChat,
   onModels,
+  pcLink,
 }: {
   hosts: SavedLink[]
   activeFingerprint: string
@@ -40,11 +43,15 @@ export function HostChrome({
   chatSelected?: boolean
   onSelectChat?: () => void
   onModels?: () => void
+  pcLink?: RemoteLink | null
 }) {
   const [menu, setMenu] = useState(false)
   const [versionCheck, setVersionCheck] = useState(false)
+  const [timeoutsOpen, setTimeoutsOpen] = useState(false)
+  useEffect(() => setTimeoutsOpen(false), [pcLink, activeFingerprint])
   const rail = useRef<HTMLDivElement>(null)
   const pathKind = reconnecting ? "reconnecting" : connected ? path : "offline"
+  const activeHost = hosts.find((host) => host.fingerprint === activeFingerprint)
   const canCheckUpdates = Capacitor.getPlatform() !== "ios"
 
   // Enough PCs and the row scrolls. A header that leaves the one you are
@@ -87,6 +94,7 @@ export function HostChrome({
             >
               {t("home.addHost")}
             </MenuRow>
+            {pcLink && activeHost && !chatSelected ? <MenuRow onClick={() => { setMenu(false); setTimeoutsOpen(true) }}>{t("pcTimeouts.title")}</MenuRow> : null}
             {onModels ? (
               <MenuRow
                 onClick={() => {
@@ -134,6 +142,7 @@ export function HostChrome({
           </div>
         </>
       ) : null}
+      {timeoutsOpen && pcLink && activeHost ? <PCTimeoutSheet link={pcLink} hostLabel={linkLabel(activeHost, hosts)} onClose={() => setTimeoutsOpen(false)} /> : null}
       {versionCheck ? <VersionCheck onClose={() => setVersionCheck(false)} /> : null}
       <h1 className="sr-only">{t("home.app")}</h1>
       <div

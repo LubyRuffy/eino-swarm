@@ -213,7 +213,7 @@ func (s *Service) pinModel() string {
 }
 
 func (s *Service) providerID() string {
-	return s.cfg.Search.ResolveProvider(s.cfg.Models.Default)
+	return s.cfg.Search.ResolveProvider(s.cfg.ModelsSnapshot().Default)
 }
 
 func clampLimit(n int) int {

@@ -4,6 +4,82 @@ import XCTest
 // packaged app and enables the existing offline walkthrough; shipping assets
 // and the user's installed app are never edited.
 final class BindFlowTests: XCTestCase {
+  func testPCTimeoutsSaveReopenAfterNumericKeyboard() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 15))
+    back.tap()
+    app.buttons["Menu"].firstMatch.tap()
+    recordAgentPage(app, name: "pc-timeouts-menu-entry")
+    app.menuItems["PC timeouts"].firstMatch.tap()
+    let agent = app.textFields["Sub-agent lifetime (seconds)"].firstMatch
+    XCTAssertTrue(agent.waitForExistence(timeout: 8))
+    XCTAssertEqual(agent.value as? String, "600", "an explicitly configured lifetime must not be silently replaced by the new default")
+    recordAgentPage(app, name: "pc-timeouts-loaded-existing-values")
+    agent.tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+    // Focus moves the sheet above the keyboard. Resolve the field's new frame
+    // before placing the caret after its digits and deleting the old value.
+    agent.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+    app.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3))
+    guard agent.value as? String == "" else {
+      recordAgentPage(app, name: "pc-timeouts-number-clear-failed")
+      XCTFail("clear the actual configured number before entering its replacement")
+      return
+    }
+    app.typeText("3600")
+    guard agent.value as? String == "3600" else {
+      recordAgentPage(app, name: "pc-timeouts-number-replacement-failed")
+      XCTFail("the actual numeric value must be replaced before Save")
+      return
+    }
+    recordAgentPage(app, name: "pc-timeouts-number-keyboard-focused")
+    let done = app.toolbars.buttons.allElementsBoundByIndex.last
+    XCTAssertNotNil(done, "the packaged numeric input must expose its keyboard dismissal accessory")
+    done?.tap()
+    XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+    let close = try XCTUnwrap(app.buttons.matching(identifier: "Close").allElementsBoundByIndex.last)
+    let save = app.buttons["Save PC timeouts"].firstMatch
+    XCTAssertTrue(close.isHittable, "number entry must not zoom Close off the iPhone")
+    XCTAssertTrue(save.isHittable, "Save must remain visible after keyboard dismissal")
+    XCTAssertGreaterThanOrEqual(save.frame.minX, app.frame.minX)
+    XCTAssertLessThanOrEqual(save.frame.maxX, app.frame.maxX)
+    recordAgentPage(app, name: "pc-timeouts-keyboard-dismissed-controls")
+    save.tap()
+    XCTAssertTrue(app.staticTexts["PC timeouts saved."].waitForExistence(timeout: 8))
+    close.tap()
+    app.buttons["Menu"].firstMatch.tap()
+    recordAgentPage(app, name: "pc-timeouts-menu-entry")
+    app.menuItems["PC timeouts"].firstMatch.tap()
+    XCTAssertTrue(agent.waitForExistence(timeout: 8))
+    XCTAssertEqual(agent.value as? String, "3600", "reopening must read the value saved on this offline PC")
+    XCTAssertEqual(app.textFields["First byte (seconds) · Walkthrough"].firstMatch.value as? String, "30")
+    recordAgentPage(app, name: "pc-timeouts-saved-reopened")
+    try XCTUnwrap(app.buttons.matching(identifier: "Close").allElementsBoundByIndex.last).tap()
+    XCTAssertTrue(app.buttons["Menu"].firstMatch.exists)
+  }
+
+  func testPCTimeoutsLegacyHostFeedbackStaysLocal() throws {
+    let app = XCUIApplication()
+    app.launch()
+    let back = app.buttons["Back"].firstMatch
+    XCTAssertTrue(back.waitForExistence(timeout: 15), "requires timeouts=legacy")
+    back.tap()
+    app.buttons["Menu"].firstMatch.tap()
+    recordAgentPage(app, name: "pc-timeouts-menu-entry")
+    app.menuItems["PC timeouts"].firstMatch.tap()
+    let error = app.staticTexts["Update the PC app to edit its timeouts."].firstMatch
+    XCTAssertTrue(error.waitForExistence(timeout: 8))
+    XCTAssertFalse(app.textFields["Sub-agent lifetime (seconds)"].exists)
+    XCTAssertFalse(app.buttons["Save PC timeouts"].firstMatch.isEnabled)
+    recordAgentPage(app, name: "pc-timeouts-legacy-local-feedback")
+    try XCTUnwrap(app.buttons.matching(identifier: "Close").allElementsBoundByIndex.last).tap()
+    XCTAssertTrue(error.waitForNonExistence(timeout: 5))
+    XCTAssertTrue(app.buttons["Menu"].firstMatch.exists)
+    recordAgentPage(app, name: "pc-timeouts-legacy-inbox-usable")
+  }
+
   func testModelRefreshReplacesNamesAndKeepsExplicitSelection() throws {
     let app = XCUIApplication()
     app.launch()

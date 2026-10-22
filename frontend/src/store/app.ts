@@ -36,6 +36,7 @@ import {
   type TranscriptState,
 } from "@/lib/transcript"
 import { mergeModelContext } from "@/lib/usage"
+import { persistPayload } from "@/lib/settings-persist"
 import type {
   Attachment,
   FileEntry,
@@ -299,9 +300,9 @@ export const useApp = create<AppState>((set, get) => ({
           set({ error: message(e) })
         }
       }
-      await api.saveSettings({
-        models: { default: settings.models.default, providers },
-      })
+      await api.saveSettings(persistPayload({
+        ...settings, models: { default: settings.models.default, providers },
+      }, undefined, settings))
       const listed = await api.models()
       set({ models: listed.models })
     } catch (e) {

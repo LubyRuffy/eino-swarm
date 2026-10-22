@@ -421,16 +421,20 @@ func (e *Engine) markSessionMemoryAttempt(threadID string, tokens int) {
 }
 
 func (e *Engine) sessionMemoryRefreshTimeout() time.Duration {
-	if e == nil || e.cfg == nil || len(e.cfg.Models.Providers) == 0 {
+	if e == nil || e.cfg == nil {
 		return config.DefaultRequestTimeout
 	}
-	def := strings.TrimSpace(e.cfg.Models.Default)
-	for _, p := range e.cfg.Models.Providers {
+	models := e.cfg.ModelsSnapshot()
+	if len(models.Providers) == 0 {
+		return config.DefaultRequestTimeout
+	}
+	def := strings.TrimSpace(models.Default)
+	for _, p := range models.Providers {
 		if def == "" || p.ID == def {
 			return p.Timeout()
 		}
 	}
-	return e.cfg.Models.Providers[0].Timeout()
+	return models.Providers[0].Timeout()
 }
 
 func mergeSessionProgress(previous, progress string) string {

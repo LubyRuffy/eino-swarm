@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -22,6 +23,8 @@ const FileName = "config.yaml"
 
 // Config is the whole configuration tree.
 type Config struct {
+	mu *sync.RWMutex
+
 	Server      ServerConfig      `yaml:"server" json:"server"`
 	Models      ModelsConfig      `yaml:"models" json:"models"`
 	Swarm       SwarmConfig       `yaml:"swarm" json:"swarm"`
@@ -375,7 +378,7 @@ const (
 	// idle budget before anyone hears about it.
 	DefaultFirstByteTimeout    = 30 * time.Second
 	DefaultMaxConcurrent       = 6
-	DefaultAgentTimeoutSeconds = 600
+	DefaultAgentTimeoutSeconds = 3600
 	DefaultMaxTurns            = 200
 	DefaultManagerIterations   = 200
 	// A pulse every few seconds is frequent enough that a silent swarm still
@@ -437,6 +440,7 @@ const (
 // and OPENAI_* environment variables seed it when present.
 func Default() *Config {
 	return &Config{
+		mu:     &sync.RWMutex{},
 		Server: ServerConfig{Addr: DefaultAddr, OpenBrowser: true},
 		Models: ModelsConfig{
 			Default: DefaultProviderID,
@@ -796,19 +800,20 @@ func (c *Config) providerIndex(id string) int {
 
 // Provider looks up a provider by id; an empty id means the default one.
 func (c *Config) Provider(id string) (Provider, bool) {
+	m := c.ModelsSnapshot()
 	if strings.TrimSpace(id) == "" {
-		id = c.Models.Default
+		id = m.Default
 	}
-	if i := c.providerIndex(id); i >= 0 {
-		return c.Models.Providers[i], true
+	for _, p := range m.Providers {
+		if p.ID == id {
+			return p, true
+		}
 	}
 	return Provider{}, false
 }
 
 // DefaultProvider returns the provider new conversations use.
-func (c *Config) DefaultProvider() (Provider, bool) {
-	return c.Provider(c.Models.Default)
-}
+func (c *Config) DefaultProvider() (Provider, bool) { return c.Provider("") }
 
 // Configured reports whether the app can actually run a turn. The UI shows a
 // setup banner until this is true.
@@ -829,6 +834,10 @@ func (c *Config) DBPath() string { return filepath.Join(c.dataDir, "zwai.db") }
 // Save writes the config back to disk atomically, so a crash mid-write cannot
 // leave a truncated file that fails to parse on the next start.
 func (c *Config) Save() error {
+	return c.Update(func(*Config) error { return nil })
+}
+
+func (c *Config) save() error {
 	if err := c.validateProviders(); err != nil {
 		return err
 	}
@@ -860,21 +869,8 @@ func (c *Config) Replace(next *Config) error {
 	if next == nil {
 		return fmt.Errorf("config: nothing to apply")
 	}
-	if err := next.validateProviders(); err != nil {
-		return err
-	}
-	c.Server = next.Server
-	c.Models = next.Models
-	c.Swarm = next.Swarm
-	c.Tools = next.Tools
-	c.Memory = next.Memory
-	c.Personality = next.Personality
-	c.Log = next.Log
-	c.UI = next.UI
-	c.Remote = next.Remote
-	c.Search = next.Search
-	c.Clients = next.Clients
-	return c.Save()
+	snapshot := next.Snapshot()
+	return c.Update(func(candidate *Config) error { candidate.publish(snapshot); return nil })
 }
 
 // SlogLevel maps the configured level name to its slog value, defaulting to

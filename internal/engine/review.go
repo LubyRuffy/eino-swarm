@@ -385,7 +385,7 @@ func (e *Engine) runReviewInput(threadID string, turn *store.Turn, pc *projectCo
 // driveReviewer runs one ChatModelAgent with the memory tools. The caller
 // owns the outcome lock for onChange; this function writes Err and Note.
 func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOutcome) {
-	ctx, cancel := context.WithTimeout(context.Background(), e.cfg.Swarm.AgentTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), e.cfg.SwarmSnapshot().AgentTimeout())
 	defer cancel()
 
 	if run.maxIter <= 0 {
@@ -422,7 +422,7 @@ func (e *Engine) driveReviewer(run reviewRun, mu *sync.Mutex, outcome *reviewOut
 	}
 
 	// Always stream. A one-shot completion holds response headers until the
-	// JSON body exists, and the 30s first-byte cap then fails the review
+	// JSON body exists, and the configured first-byte cap then fails the review
 	// after a turn that itself streamed for minutes. The finished line is
 	// the assembled stream; a tool-call frame is not the conclusion.
 	// onText only paints when a panel is waiting.

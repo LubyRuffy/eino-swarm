@@ -121,7 +121,7 @@ When you spawn:
 
 `)
 
-	n := cfg.Swarm.MaxConcurrent
+	n := cfg.SwarmSnapshot().MaxConcurrent
 	if n <= 0 {
 		n = config.DefaultMaxConcurrent
 	}

@@ -125,13 +125,13 @@ func (e *Engine) goalContextHot(th *store.Thread) bool {
 	if th == nil {
 		return false
 	}
-	pct := e.cfg.Swarm.GoalCompactPercent()
+	pct := e.cfg.SwarmSnapshot().GoalCompactPercent()
 	turnID := e.lastTurnID(th.ID)
 	if snap, err := e.Usage(th.ID, turnID); err == nil && snap.ContextTokens > 0 {
-		return snap.ContextTokens >= e.cfg.Swarm.CompactTrigger(snap.ContextWindow)
+		return snap.ContextTokens >= e.cfg.SwarmSnapshot().CompactTrigger(snap.ContextWindow)
 	}
 	chars := e.contextChars(th)
-	budget := e.cfg.Swarm.ContextBudget()
+	budget := e.cfg.SwarmSnapshot().ContextBudget()
 	return int64(chars)*100 >= int64(budget)*int64(pct)
 }
 

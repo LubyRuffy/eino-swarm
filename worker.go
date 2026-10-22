@@ -28,10 +28,7 @@ func (r *Registry) startWorker(ctx context.Context, h *Handle, task, instruction
 	modelOpt ModelBuilder, seed string, extraTools []tool.BaseTool) {
 	role, id := h.Role, h.ID
 
-	timeout := r.AgentTimeout
-	if timeout <= 0 {
-		timeout = DefaultAgentTimeout
-	}
+	timeout := r.agentTimeout()
 
 	// Workers outlive one manager ReAct loop. A /goal or scheduled-wake
 	// handoff cancels the manager's context; tying the worker to that context
