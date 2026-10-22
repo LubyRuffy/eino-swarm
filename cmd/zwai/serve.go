@@ -35,6 +35,7 @@ func runDesktop(args []string) error {
 	if err != nil {
 		return err
 	}
+	defer opts.OnShutdown()
 	return desktop.Run(opts)
 }
 
@@ -47,18 +48,21 @@ func startDesktopServer(args []string) (desktop.Options, error) {
 	if err := fs.Parse(reorderFlags(args, map[string]bool{"data-dir": true})); err != nil {
 		return desktop.Options{}, err
 	}
-	raw, err := ensureEngine(*dataDir, "127.0.0.1:0", *mock)
+	raw, held, err := ensureDesktopEngine(*dataDir, *mock)
 	if err != nil {
 		return desktop.Options{}, err
 	}
+	// The successful HTTP handshake already parsed raw as a request URL.
+	u, _ := url.Parse(shellURL(raw, "desktop"))
+	query := u.Query()
+	query.Set("presence", held.id)
+	u.RawQuery = query.Encode()
 	return desktop.Options{
-		URL:     shellURL(raw, "desktop"),
-		Title:   "zwai",
-		Version: version,
-		OnShutdown: func() {
-			// The window is a client. The engine exits on its own when no
-			// shell, phone, or turn is left.
-		},
+		URL:        u.String(),
+		Title:      "zwai",
+		Version:    version,
+		OnShutdown: held.release,
+		Fatal:      held.fatal,
 	}, nil
 }
 

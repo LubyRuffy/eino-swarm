@@ -592,6 +592,101 @@ cd frontend && npm test -- src/lib/turn-boundary.test.ts src/components/app/tran
 cd frontend && npm run e2e -- e2e/late-review-footer.spec.ts
 ```
 
+## Desktop reopen at engine idle exit (F-110 / C-001)
+
+`cmd/zwai/desktop_attach_test.go` starts the real offline engine with a controlled
+idle clock, returns native options before any frontend loads, then advances the
+clock past the idle boundary. The pre-fix failure was the engine exiting before
+frontend presence. Closing the native hold twice must release it and permit idle
+exit. `desktop_attach_errors_test.go` exercises real HTTP POST/GET stopping and
+disconnect paths against a real lease holder, then verifies a fresh engine's
+identity only after that holder departs. A still-held unhealthy, forbidden or
+mock-mismatched owner must remain untouched; handshake timeouts differ from the
+unbounded lifetime of an acknowledged stream.
+`desktop_attach_identity_test.go` replaces a real lease-holding child before the
+failed reservation returns and republishes a different PID at the same loopback
+URL. It first failed with one POST and `engine_stopping`; the repaired launcher
+must validate that replacement and obtain a second acknowledged handshake.
+The preserved record includes PID, start time and build identity, rather than
+using the address as the owner.
+
+`desktop_attach_stream_recovery_test.go` drops an acknowledged real HTTP stream
+while its native process and the real offline engine remain alive. The old
+implementation lost the counted slot and allowed idle shutdown; the fixed
+owner must reserve and acknowledge another slot on the same engine and PID
+before the grace expires. `desktop_presence_test.go` checks consecutive short
+streams exhaust three attempts, a stable hold renews the next recovery episode,
+typed stopping causes survive, and release interrupts HTTP and backoff.
+`internal/desktop/lifecycle_test.go` tests terminal failure before and during
+startup, Quit after ApplicationStarted, normal shutdown and racing Run exit.
+It also ends Run while Quit is in flight, ensuring the cause returns without
+waiting for a native-loop callback. `lifecycle_terminal_test.go` runs a real
+subprocess whose fake native Quit calls `os.Exit`: the configured structured
+logger must write the terminal cause once before that non-returning boundary.
+The observed pre-fix RED reached Quit with only its marker and no cause. The
+production callback synchronously logs before queueing Wails Quit. Early, nil,
+closed and normal release paths remain silent; returning platforms retain the
+typed cause. These tests do not open Wails; changed native code still needs the
+same candidate's real window and exhaustion acceptance.
+
+The 2026-10-22 full five-package race profile measures `holdDesktopPresence`
+at 100%, `maintainDesktopPresence` at 96.7%, `openDesktopPresence` at 93.5%,
+and `reserveDesktopPresence` / `checkDesktopPresenceResponse` /
+`nativeFatalQuit` / `runWithFatal` at 100%. Unit coverage of these coordinators
+does not accept the new package's native Wails event-loop behavior.
+
+`internal/server/presence_shutdown_test.go` races attachment and final idle
+commit under the real registry lock. Exactly one wins. The HTTP counterpart
+checks typed `503 engine_stopping` for new and reserved ids, and rechecks an
+actual running turn. `TestIdleCommitRetainsRestartOwnership` prepares a real
+engine handoff to ready with no running manager, then requires the final idle
+check to retain `ActiveWork` and keep presence admission open. It first failed
+by committing shutdown with active work still owned. The final check uses the
+same count as the watcher, including parked worker and handoff ownership.
+The desktop frontend recognizes only `pc_` plus sixteen
+lowercase hex digits as native-owned presence. It does not take over that
+socket: reload and frontend closure leave the native slot counted. Web and
+legacy desktop URLs keep their own reservation path.
+
+`internal/server/presence_stream_error_test.go` lets the real heartbeat timer
+reach a failed socket write, then asserts that the handler returns and releases
+the lost native client's slot. It does not shorten the timer or inject a
+production callback. The native Wails wrapper still requires real window
+acceptance; unit coverage of its server/options is not GUI acceptance.
+
+The same profile measures `ensureDesktopEngine` at 95.5%,
+`ensureEngine` / `ensureEngineRecord` / `waitDesktopEngineDeparture` at 100%,
+`startDesktopServer` at 92.3%, `serveEngine` at 90.2%, `reserve` at 90%,
+`attach` / `isStopping` / `TryIdleShutdown` / `Watcher.Run` / `fail` at 100%,
+and presence POST/GET handlers at 94.1%/96.3%. The reserve's original random-ID
+failure branch remains outside this profile; the new stopping-admission path
+is exercised. The actual Wails `Run` wrapper and `runDesktop` remain outside
+offline unit execution. The same candidate's real native window, immediate
+reopen and terminal recovery-exhaustion path remain separate acceptance gates.
+
+```bash
+go test -race -count=1 -coverprofile=/tmp/presence.cover -timeout 20m ./cmd/zwai ./internal/desktop ./internal/server ./internal/lease ./internal/remote
+go tool cover -func=/tmp/presence.cover
+(cd frontend && npm run lint && npm test && npm run build)
+(cd frontend && npm run e2e -- e2e/presence.spec.ts)
+```
+
+The Playwright fixture holds the launcher's real HTTP socket separately from
+the app page and checks reload, closure and the single client id. This proves
+frontend lifecycle behavior; actual Mac window close/reopen, the candidate
+binary and the engine lease still require native acceptance. Waiting until an
+old engine is gone before a successful manual reopen does not accept the
+immediate-reopen race.
+
+The mainline Pairlink follow-up fixture retains its explicit close/join
+regression and cancelled dispatcher/watch cleanup before engine/store cleanup.
+Closing a Pairlink connection alone does not close `Link.Recv`; the leaked
+watch previously raced a later test's scoped `watchLagged` replacement. The
+reconnect-status fixture drops only its first
+real WebSocket and holds the replacement handshake, rather than repeatedly
+expiring it during the subsequent pairing/QR request. Both preserve actual
+relay, offline and reconnection assertions without production test hooks.
+
 ## Single PC work disclosures (F-130 / C-022)
 
 `frontend/src/components/app/transcript-fold.test.tsx` verifies that one finished

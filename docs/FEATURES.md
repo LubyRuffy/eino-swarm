@@ -45,6 +45,9 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 自动交接重启：新版本／不同二进制启动时，在前端准备后的统一 30 秒预算内请求旧引擎交接、退出并启动新引擎；无需输入确认。manager 及所有活跃／后台 worker 保存检查点，模型摘要尽力完成，不以摘要标记任务完成；原 turn／worker 身份、历史、未读消息、超时预算及人类暂停保留。存储失败不确认安全退出；旧引擎缺少交接 API 时采用有界兼容恢复。关联契约：`C-001`、`C-027`、`C-012`；证据：`cmd/zwai/engine_restart.go`、`internal/engine/restart.go`、`handoff.go`、`cmd/zwai/engine_restart_acceptance_test.go`、`frontend/src/lib/transcript-restart.test.ts`。
 
+- 桌面重开：native 进程在窗口加载前持有真实 presence，页面 reload 不释放连接，也不重复登记窗口；撞上 idle 停机时有界等待原持有人退出或租约身份改变，再完整核验后重新连接；新 PID 复用原 URL 仍识别为替换，不生成第二个数据库写入者；最终 idle 复核同时保留活动 manager、后台 worker 和交接中的执行归属。证据：`cmd/zwai/desktop_attach_test.go`、`cmd/zwai/desktop_attach_errors_test.go`、`cmd/zwai/desktop_attach_identity_test.go`、`frontend/e2e/presence.spec.ts`；契约：`C-001`。
+- 桌面连接恢复：已确认的 native presence 断流后，在同一地址有界重新登记并确认；短流不无限重置预算，稳定连接后可恢复后续独立断流。关闭应用中断恢复，耗尽则先通过桌面 logger 同步记录原因再请求原生退出；原生系统终止不保证返回 Go，能返回的平台保留原有错误类别，启动前失败直接返回且不开窗口，正常关闭不误报终止错误。证据：`cmd/zwai/desktop_presence.go`、`cmd/zwai/desktop_attach_stream_recovery_test.go`、`cmd/zwai/desktop_presence_test.go`、`internal/desktop/lifecycle_test.go`、`internal/desktop/lifecycle_terminal_test.go`；契约：`C-001`。
+
 ### F-120 Conversations and projects
 
 - 目的：创建、组织、搜索和继续对话；使用者：PC 用户；入口：侧边栏、项目、`/api/threads`；输入：项目和消息；输出：可恢复的对话；前置条件：本机数据库可写；失败表现：错误提示或不存在的对话；关联契约：`C-001`, `C-003`, `C-008`, `C-026`；实现证据：`internal/engine`, `internal/store`, `frontend/src/store/app.ts`。

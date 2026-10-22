@@ -427,6 +427,16 @@ uploads, downloads and the live event stream have exactly one implementation.
 
 ## Quick start
 
+The desktop confirms an engine presence connection before loading its window
+and keeps it while the native app is open, including page reloads. Reopening
+as the old engine becomes idle waits for that holder to leave or be replaced,
+including a new process at the same address, and checks its identity again;
+an engine that still holds the directory but fails to answer is reported.
+If the held connection drops, the native app retries that engine within a
+bounded recovery budget. If it cannot restore the connection, it records the
+cause in the desktop log before closing instead of leaving a disconnected window
+open. Native shutdown may terminate the process without returning to the CLI.
+
 Requirements: Go 1.26+ and Node.js (for a missing/stale checkout UI bundle or
 dependency repair; `npm install --include=dev` uses the public registry). The desktop window uses
 [Wails 3](https://wails.io) and needs a C toolchain (macOS: Xcode Command Line

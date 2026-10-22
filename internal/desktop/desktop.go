@@ -10,8 +10,10 @@ package desktop
 import (
 	"log/slog"
 	"strings"
+	"sync"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // Options configures the window.
@@ -22,11 +24,14 @@ type Options struct {
 	Title string
 	// Version appears in the about box.
 	Version string
-	// Logger receives window lifecycle messages.
+	// Logger receives window lifecycle messages and terminal connection causes.
 	Logger *slog.Logger
-	// OnShutdown runs when the user closes the app, before the process ends,
-	// so running turns are cancelled and the database is closed cleanly.
+	// OnShutdown releases this native client's presence when the app closes.
+	// Running turns and other connected clients keep the shared engine alive.
 	OnShutdown func()
+	// Fatal reports a terminal loss of this native client's engine connection.
+	// Run records the cause before native Quit; returning platforms preserve it.
+	Fatal <-chan error
 }
 
 // Run opens the window and blocks until the user quits.
@@ -45,7 +50,14 @@ func Run(opts Options) error {
 
 	keepTrafficLightsAligned(win)
 	log.Info("opening the desktop window", "url", opts.URL)
-	return app.Run()
+	started := make(chan struct{})
+	var once sync.Once
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		once.Do(func() { close(started) })
+	})
+	// Quit is synchronous; enqueue it so a concurrently exiting main loop
+	// cannot strand the watcher waiting for a native callback.
+	return runWithFatal(app.Run, nativeFatalQuit(log, func() { application.InvokeAsync(app.Quit) }), started, opts.Fatal)
 }
 
 // appOptions is everything Run feeds Wails except the window itself, so

@@ -260,6 +260,8 @@ func (s *Server) rejectForeignOrigin() gin.HandlerFunc {
 // a missing conversation is not a bad request.
 func (s *Server) fail(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, ErrEngineStopping):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error(), "code": "engine_stopping"})
 	case errors.Is(err, store.ErrNotFound):
 		s.missingRecord(c, "not_found", "The requested record was not found. Refresh and try again.",
 			gin.H{"record_id": c.Param("id")})

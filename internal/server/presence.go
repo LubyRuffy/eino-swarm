@@ -3,6 +3,7 @@ package server
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"math"
 	"net/http"
 	"sort"
@@ -19,6 +20,10 @@ var presenceSurfaces = map[string]bool{
 	"web":     true,
 	"tui":     true,
 }
+
+// ErrEngineStopping means idle shutdown won the race with a new shell.
+// The launcher must wait for this holder to leave before ensuring another.
+var ErrEngineStopping = errors.New("engine: idle shutdown has started")
 
 // PresenceClient is one shell holding a connection open. The engine stays up
 // while this list is non-empty.
@@ -39,8 +44,9 @@ type presenceSlot struct {
 // GET holds it until the socket drops. A reserve that never connects does not
 // count, or a crashed launcher would pin the process forever.
 type presence struct {
-	mu    sync.Mutex
-	slots map[string]*presenceSlot
+	mu       sync.Mutex
+	slots    map[string]*presenceSlot
+	stopping bool
 }
 
 func newPresence() *presence {
@@ -54,11 +60,14 @@ func (p *presence) reserve(surface string, pid int) (string, error) {
 		return "", err
 	}
 	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.stopping {
+		return "", ErrEngineStopping
+	}
 	p.slots[id] = &presenceSlot{
 		client:  PresenceClient{ID: id, Surface: surface, PID: pid},
 		created: time.Now(),
 	}
-	p.mu.Unlock()
 	return id, nil
 }
 
@@ -70,7 +79,7 @@ func (p *presence) attach(id string) (<-chan struct{}, func(), bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	slot, ok := p.slots[id]
-	if !ok {
+	if !ok || p.stopping {
 		return nil, nil, false
 	}
 	if slot.hold != nil {
@@ -81,6 +90,31 @@ func (p *presence) attach(id string) (<-chan struct{}, func(), bool) {
 	gen := slot.gen
 	hold := slot.hold
 	return hold, func() { p.detach(id, gen, hold) }, true
+}
+
+func (p *presence) isStopping() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.stopping
+}
+
+// TryIdleShutdown commits an idle exit under the same lock as shell attach.
+// A late shell either owns a counted connection or sees engine_stopping;
+// it cannot receive a successful hold from an engine already leaving.
+func (s *Server) TryIdleShutdown() bool {
+	p := s.presence
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if s.engine.ActiveWork() > 0 || (s.remote != nil && s.remote.Status().Online) {
+		return false
+	}
+	for _, slot := range p.slots {
+		if slot.hold != nil {
+			return false
+		}
+	}
+	p.stopping = true
+	return true
 }
 
 func (p *presence) detach(id string, gen int, hold chan struct{}) {
@@ -170,7 +204,11 @@ func (s *Server) postPresence(c *gin.Context) {
 	}
 	id, err := s.presence.reserve(req.Surface, req.PID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		if errors.Is(err, ErrEngineStopping) {
+			s.fail(c, err)
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		}
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"id": id})
@@ -181,6 +219,10 @@ func (s *Server) postPresence(c *gin.Context) {
 func (s *Server) holdPresence(c *gin.Context) {
 	hold, release, ok := s.presence.attach(c.Param("id"))
 	if !ok {
+		if s.presence.isStopping() {
+			s.fail(c, ErrEngineStopping)
+			return
+		}
 		c.JSON(http.StatusNotFound, gin.H{"error": "unknown presence"})
 		return
 	}

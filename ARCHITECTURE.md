@@ -49,6 +49,26 @@ attempt's appended log bytes; old model errors are not reported as the new
 startup cause. Cancellation or expiry cleans up the launcher's own child,
 without stopping a competing lease holder.
 
+A desktop launcher acknowledges a real presence SSE before returning the
+window URL, and owns that connection until shutdown, including page reloads.
+The URL carries its initial presence id so the frontend does not add a second
+desktop client. If that stream drops, the native owner makes at most three
+reserve/acknowledge attempts on the same URL, with cancelable handshakes and
+backoff inside the idle grace. A hold stable for an idle grace renews this
+budget; repeated short acknowledged streams do not. Only the handshake has a
+deadline. After ApplicationStarted, exhaustion synchronously records the cause
+through the configured desktop logger before queueing Wails Quit. AppKit may
+terminate without returning to Go, so reporting cannot depend on Run returning.
+Returning platforms retain the typed cause; an early failure returns without
+opening a window. Neither path ensures another engine or changes the window URL.
+Final idle shutdown rechecks `Engine.ActiveWork`, including parked workers
+and restart ownership, under the presence admission lock: a new hold
+either prevents the exit or receives `503 engine_stopping`. A launcher retries
+only after the original holder is observed gone or its recorded process/start/build
+identity changes, even when the replacement reuses the URL. The launcher keeps
+the validated record through the handshake, then repeats the complete identity/lease
+check within a bounded wait; it never kills an unhealthy holder.
+
 Desktop update installation is also locked by the actual app bundle across
 engines with different data directories. The stable filesystem lock covers
 download, replacement and native launch/rollback; a successful installation
