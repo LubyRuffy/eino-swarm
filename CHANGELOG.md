@@ -68,6 +68,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`: verified three serial ci-macOS daily native rounds in
+  14.50 / 12.30 / 12.06 seconds including cleanup and independent identity,
+  process and path checks. Each round has native input/result screenshots and
+  offline worker/tool/Trace evidence. The receipt binds its frozen application
+  and harness; temporary guest control, wake processes and prepared caches were
+  cleaned up. See `docs/diagnostics/native-minute-20261022.md`.
+
 - `F-430`, `C-031`: native AX snapshots serialize `has_web_area` as a JSON boolean, preserving the smoke scenario's strict boolean validation across Objective-C and Python.
 
 - `F-430`, `C-031`: native smoke traverses AX child graphs by element identity,

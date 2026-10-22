@@ -359,4 +359,5 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 证据：实现 `tools/native_macos_case.py`, `tools/native_macos_smoke.py`, `tools/native_macos_ax.m`, `Makefile`, `AGENTS.md`；测试 `tools/test_native_macos_case.py`, `tools/test_native_macos_smoke.py`；操作说明 `docs/TESTING.md`, `docs/RELEASE.md`。
 - 变更规则：同步 runner、生命周期回归、开发规则及原生验收文档；保留源码身份与真实窗口行为的独立证据边界。
 - 现场证据：[2026-10-21 ci-macOS 串行窗口与清理验收](diagnostics/native-isolation-20261021.md)；仅接受其冻结候选和明确成功路径。
+- 计时证据：[2026-10-22 日常三轮一分钟验收](diagnostics/native-minute-20261022.md)；含独立核验的完整单轮 14.50 / 12.30 / 12.06 秒，真实原生输入、结果、Trace、截图及进程/私有数据清理全部通过，仅接受其冻结输入。
 - 来源：用户 2026-10-21 反馈测试抢占桌面及 UTM 中程序、数据残留；Added。

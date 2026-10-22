@@ -23,6 +23,10 @@ python3 tools/native_macos_case.py \
 
 ### Daily native round: 60 seconds including cleanup
 
+Measured acceptance: [2026-10-22 three serial native rounds](diagnostics/native-minute-20261022.md),
+14.50 / 12.30 / 12.06 seconds including cleanup and independent checks, bound to
+the recorded application and harness inputs.
+
 With the identified candidate, prepare the direct Accessibility helper once on
 macOS (host builds are safe; this command opens no window):
 
