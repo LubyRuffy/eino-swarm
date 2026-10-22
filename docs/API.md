@@ -185,9 +185,15 @@ uses that list, not a writer lock, to decide when it may exit.
 
 `surface` is `desktop`, `web`, or `tui`. Anything else is `400`. The
 response is `{ "id": "pc_…" }`. `pid` may be omitted or zero; negative values and values above 2147483647 are `400`, so a native signal cannot become a process-group signal after integer conversion.
-The native desktop launcher includes its process ID in `?shell=desktop&pid=…`;
-the frontend sends that positive integer as `pid` so an accepted update can
-close the old windows. Web presence does not send a native PID.
+The native desktop launcher reserves with its actual process ID and holds the
+GET before opening the window. Its URL includes `?shell=desktop&pid=…&presence=pc_…`;
+the frontend leaves that native-owned connection alone, including on reload.
+This is the initial handoff id: native recovery from a dropped stream reserves
+a new id with the same PID on the same engine. The window URL stays unchanged.
+Older desktop URLs without a valid presence id still reserve from the frontend
+and send the positive `pid` query value. Web presence does not send a native PID
+and ignores the desktop presence query. The query is lifecycle information,
+not authentication or permission.
 
 ### `GET /api/presence/:id`
 
@@ -195,6 +201,24 @@ Server-sent events. The first frame is a comment (`: held`). Later frames
 are `: ping`. The connection stays open until the client drops or another
 GET for the same id replaces it (an EventSource reconnect). An unknown id
 is `404`. Dropping the socket removes the client from `GET /api/meta`.
+Once idle shutdown commits, both presence POST and GET return `503` with
+`{"code":"engine_stopping","error":"…"}`. The final idle decision and
+presence attachment are serialized. The final decision also rechecks active
+managers, parked workers and restart ownership through `Engine.ActiveWork`, so
+a successful held connection cannot be
+admitted after that decision. Other `404`/validation/network errors keep their
+own classifications; the launcher does not treat them as permission to replace
+a live holder. The launcher retains the validated lease identity through its
+initial handshake; a replacement PID or startup record at the same URL requires
+the same complete identity check before another attachment.
+An acknowledged desktop stream that ends is recovered by its native owner,
+with at most three consecutive reserve/acknowledge attempts. A stream stable
+for an idle grace renews the budget; short acknowledgements do not. Exhaustion
+records the connection cause through the desktop logger before requesting native
+Quit. Native termination may bypass the Go return path; if Run returns, its typed
+cause is retained. An early failure returns without opening the native window.
+Normal presence release does not report a terminal failure. No path replaces the
+engine or changes the frontend's presence ownership.
 
 ## Settings, models and tools
 

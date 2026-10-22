@@ -46,6 +46,9 @@ type Watcher struct {
 	IdleGrace  time.Duration
 	Poll       time.Duration
 	Now        func() time.Time
+	// StopIfIdle atomically rechecks load and closes admission to new shells.
+	// A rejected stop leaves the watcher running; its next sample is fresh.
+	StopIfIdle func() bool
 }
 
 // Run blocks. Cancel ctx to stop the engine on purpose (zwai engine's own
@@ -87,7 +90,7 @@ func (w Watcher) Run(ctx context.Context, started time.Time, sample func() (clie
 			if stopAfter(Load{
 				Clients: clients, PhoneOnline: phone, RunningTurns: turns,
 				Age: at.Sub(started), QuietFor: quiet,
-			}, start, idle) {
+			}, start, idle) && (w.StopIfIdle == nil || w.StopIfIdle()) {
 				return
 			}
 			timer.Reset(poll)

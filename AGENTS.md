@@ -182,6 +182,26 @@ E2E suite.
   Another worktree or a remote commit is not delivery.
   `tools/check_checkout_delivery.py` checks source ancestry and optional
   loopback asset hashes; it cannot accept native behavior.
+
+- Desktop launch must hold acknowledged native-owned presence before opening
+  the WebView. Regress reopening at idle shutdown, page reload, failed launch
+  and idempotent release; a meta probe or waiting for the old process to exit
+  cannot prove this boundary. Serialize final idle shutdown with new presence
+  admission instead of increasing the grace or creating a second writer.
+  Regress a replacement lease with a new PID at the same URL; keep the validated
+  process/start/build identity instead of treating a port as its owner.
+  Final idle admission must use the same ActiveWork count as the watcher,
+  including parked workers and restart handoff, not only running managers.
+- Regress loss of an already acknowledged desktop presence stream over real
+  HTTP. Recovery only reserves and acknowledges on the same engine URL, has a
+  bounded consecutive budget, and is interrupted by native shutdown. Short
+  acknowledgements cannot renew that budget; a stable hold can. The handshake
+  deadline must not later cancel a healthy stream. After startup, exhaustion
+  synchronously records its cause through the configured logger before native
+  Quit, which may terminate without returning to Go. Preserve the typed cause
+  when Run does return; an early failure returns without opening a window.
+  Regress a non-returning Quit in a subprocess and keep normal release silent.
+  Never start another engine or hand ownership back to the frontend.
 - If something cannot be tested, split it until the untestable part is a two-line
   wrapper: `startDesktopServer` vs `runDesktop`, `serveWeb` vs `runWeb`,
   `buildTUISwarm` vs `runTUI`. Do not leave logic inside a function that no test

@@ -90,7 +90,7 @@ func TestAppOptionsKeepShutdownAndDropTheQuitRace(t *testing.T) {
 		t.Fatalf("window title %q, want the one the caller set", got.Name)
 	}
 	if got.OnShutdown == nil {
-		t.Fatal("OnShutdown must reach Wails so closing the window closes the db")
+		t.Fatal("OnShutdown must reach Wails so closing the window releases native presence")
 	}
 	got.OnShutdown()
 	if !called {

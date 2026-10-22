@@ -212,6 +212,23 @@ down, and no turn is running. A reserve that never connects does not count.
 Killing the process releases the lock. A process that still holds the lock
 but does not answer `/api/meta` is reported; it is not killed.
 
+`desktop` confirms a held presence connection before it opens the WebView and
+keeps it through page reloads until native shutdown. If idle exit already won,
+it waits within the startup bound for that holder to leave or its recorded
+process/start/build identity to change, then performs the full lease and
+binary-identity checks again. A replacement may reuse the same URL. It does not extend the idle grace
+or start another writer while the old engine still owns the directory.
+After an acknowledged stream drops, the native owner makes at most three
+reserve/acknowledge attempts on that same engine URL. The handshake timeout
+does not bound a healthy stream's lifetime. Only a stream held for an idle
+grace renews the recovery budget; repeated short acknowledgements exhaust it.
+Native shutdown interrupts both requests and backoff. Exhaustion synchronously
+records the connection cause through the desktop logger before requesting Quit;
+on macOS, native termination may bypass the command's return path. Platforms
+that return retain the typed error, and an early failure returns before opening
+a window. Normal release does not log a terminal failure. No path starts a new
+engine behind the old window.
+
 ## `zwai tui`
 
 The terminal is a client of the same engine as the window. It reads and

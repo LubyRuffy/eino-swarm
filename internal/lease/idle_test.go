@@ -73,3 +73,14 @@ func TestWatcherUsesTheDefaultIntervals(t *testing.T) {
 	cancel()
 	(Watcher{}).Run(ctx, time.Now(), func() (int, bool, int) { return 0, false, 0 })
 }
+
+func TestWatcherRechecksAdmissionAfterAnIdleSample(t *testing.T) {
+	checks := 0
+	(Watcher{
+		StartGrace: time.Millisecond, IdleGrace: time.Millisecond, Poll: time.Millisecond,
+		StopIfIdle: func() bool { checks++; return checks == 2 },
+	}).Run(context.Background(), time.Now().Add(-time.Hour), func() (int, bool, int) { return 0, false, 0 })
+	if checks != 2 {
+		t.Fatalf("a rejected final idle decision must be retried: %d", checks)
+	}
+}

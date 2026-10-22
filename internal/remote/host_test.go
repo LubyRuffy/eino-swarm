@@ -1,8 +1,10 @@
 package remote
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -260,15 +262,17 @@ func TestStatusGoesOfflineWhenHubCloses(t *testing.T) {
 	// then redeem-fails with host offline. Status must follow the socket.
 	hubStore := pstore.NewMemory()
 	hub := relay.New(hubStore)
-	hub.Idle = 80 * time.Millisecond
 	reconnecting, allowReconnect := make(chan struct{}), make(chan struct{})
+	firstSocket := make(chan net.Conn, 1)
 	var releaseOnce sync.Once
 	release := func() { releaseOnce.Do(func() { close(allowReconnect) }) }
 	var sockets atomic.Int32
 	handler := hub.Handler()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if websocket.IsWebSocketUpgrade(r) {
-			if n := sockets.Add(1); n > 1 {
+			if n := sockets.Add(1); n == 1 {
+				w = &captureHostSocket{ResponseWriter: w, socket: firstSocket}
+			} else {
 				if n == 2 {
 					close(reconnecting)
 				}
@@ -304,10 +308,20 @@ func TestStatusGoesOfflineWhenHubCloses(t *testing.T) {
 	if !h.Status().Online {
 		t.Fatalf("status %+v", h.Status())
 	}
+	// Drop exactly the first real socket. Repeated short idle deadlines can
+	// close the replacement during HTTP pairing/QR work after Offer checked it.
+	select {
+	case conn := <-firstSocket:
+		if err := conn.Close(); err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("initial host socket was not captured")
+	}
 	select {
 	case <-reconnecting:
 	case <-time.After(2 * time.Second):
-		t.Fatal("quiet socket did not drop and attempt a replacement handshake")
+		t.Fatal("closed socket did not attempt a replacement handshake")
 	}
 	if h.Status().Online {
 		t.Fatal("status must be offline while the dropped socket reconnects")
@@ -319,4 +333,17 @@ func TestStatusGoesOfflineWhenHubCloses(t *testing.T) {
 	if !h.Status().Online {
 		t.Fatal("offer must wait for the host socket to reconnect")
 	}
+}
+
+type captureHostSocket struct {
+	http.ResponseWriter
+	socket chan<- net.Conn
+}
+
+func (w *captureHostSocket) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	conn, rw, err := w.ResponseWriter.(http.Hijacker).Hijack()
+	if err == nil {
+		w.socket <- conn
+	}
+	return conn, rw, err
 }

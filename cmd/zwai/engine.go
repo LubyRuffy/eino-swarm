@@ -113,6 +113,7 @@ func serveEngine(ctx context.Context, opts engineOpts) error {
 		watch.IdleGrace = time.Hour
 	}
 	started := time.Now()
+	watch.StopIfIdle = a.Server.TryIdleShutdown
 	watch.Run(ctx, started, func() (int, bool, int) {
 		phone := a.Remote != nil && a.Remote.Status().Online
 		return len(a.Server.Clients()), phone, a.Engine.ActiveWork()
@@ -138,9 +139,14 @@ func shut(a *app.App) {
 // process that will not answer is an error: starting a second engine on the
 // same database is the bug this exists to prevent.
 func ensureEngine(dataDir, addr string, mock bool) (string, error) {
+	rec, err := ensureEngineRecord(dataDir, addr, mock)
+	return rec.URL, err
+}
+
+func ensureEngineRecord(dataDir, addr string, mock bool) (lease.Record, error) {
 	cfg, err := config.Load(dataDir)
 	if err != nil {
-		return "", err
+		return lease.Record{}, err
 	}
 	dir := cfg.DataDir()
 	ctx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -148,13 +154,13 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 	// Prepare checkout assets while the old engine can still serve its clients.
 	// Package installation must not consume its bounded handoff/recovery window.
 	if _, err := loadEngineFrontend(ctx); err != nil {
-		return "", fmt.Errorf("prepare frontend before engine startup: %w", err)
+		return lease.Record{}, fmt.Errorf("prepare frontend before engine startup: %w", err)
 	}
 	started := time.Now()
 	restarting := false
 	for {
 		if err := ctx.Err(); err != nil {
-			return "", fmt.Errorf("engine launch stopped: %w", err)
+			return lease.Record{}, fmt.Errorf("engine launch stopped: %w", err)
 		}
 		rec, err := lease.Discover(dir, mock)
 		if ctx.Err() != nil {
@@ -166,7 +172,7 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 		if err != nil && !errors.Is(err, lease.ErrMockMismatch) && !errors.Is(err, lease.ErrUnreachable) {
 			if started, held, waitErr := discoverIfStartingContext(ctx, dir, mock); held {
 				if waitErr != nil {
-					return "", waitErr
+					return lease.Record{}, waitErr
 				}
 				rec, err = started, nil
 			}
@@ -177,7 +183,7 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 				if restarting {
 					log.Printf("engine restarted in %s; continuing tasks from saved progress", time.Since(started).Round(time.Millisecond))
 				}
-				return rec.URL, nil
+				return rec, nil
 			}
 			if !restarting {
 				var cancel context.CancelFunc
@@ -187,15 +193,15 @@ func ensureEngine(dataDir, addr string, mock bool) (string, error) {
 			}
 			if err := replaceEngine(ctx, rec); err != nil {
 				if _, discErr := lease.Discover(dir, mock); !errors.Is(discErr, lease.ErrNotRunning) {
-					return "", err
+					return lease.Record{}, err
 				}
 			}
 			continue
 		case errors.Is(err, lease.ErrMockMismatch), errors.Is(err, lease.ErrUnreachable):
-			return "", err
+			return lease.Record{}, err
 		}
 		if _, err := launchEngine(ctx, dir, addr, mock); err != nil {
-			return "", err
+			return lease.Record{}, err
 		}
 		// A competing holder may have won while our child started. Its
 		// published identity must pass the checks above before attaching.
