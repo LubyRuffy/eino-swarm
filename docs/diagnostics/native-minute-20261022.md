@@ -68,6 +68,8 @@ runner 默认整轮预算 60 秒，场景上限 50 秒，清理预留最多 5 �
 
 当前 harness 的 `make docs-check` 通过：26 项 Feature、31 项 Contract 引用闭合，170 项工具测试通过（54.296 秒）。真实 Objective-C 编译及 AX 图/跨语言 JSON 回归通过；修改的生产工具文件分别 444、469、223 行。应用构建通过；构建及首次准备时间单独记录，不计入上述结果。
 
+交付验证另行运行默认离线 headless Web E2E：147 项通过、14 项未启用场景按预期跳过，0 failed/flaky，退出码 0，完整耗时 384.308 秒，自动重试为 0。首次尝试在收集阶段加载了工作树与主目录两套 Playwright runtime，没有进入业务断言；保留首次失败与实际模块解析诊断，仅在任务 worktree 执行 `npm ci --include=dev` 恢复依赖，随后用新端口/data/output 完整重跑。最终端口 55756 无监听，测试进程及具有本轮精确私有环境/路径的服务和浏览器均已退出；该独立 data 与报告作为私有诊断证据保留。原生一分钟计时与这项广覆盖 Web 交付检查分别报告。
+
 真实来宾曾暴露 Darwin 路径别名、AX 自环和 Objective-C 数值冒充 JSON boolean 三类问题，均保留失败输出并补充观察失败后的回归修复。共享目录原地覆盖还曾返回旧/截断的驱动，后续使用全新 payload 路径、复制至来宾本地并核对全部哈希；不以一次重试变绿解释首次失败。首次失败和清理回执未被最终成功覆盖。
 
 私有原始证据位于 miniclash/dist 下：
@@ -86,5 +88,7 @@ utm-minute-control-2fc67b5161d0/   # 本次已停止的后台控制会话
 ```
 
 宿主前台观察日志、完整构建/测试输出与当前验收范围保存在任务 worktree 的 `bin/utm-minute-validation/`，不提交临时产物、会话 nonce 或来宾数据。此记录接受上述冻结输入的日常成功回归，不外推为完整功能套件、冷启动/长恢复或发布验收。
+
+Web E2E 的首次失败/诊断位于 `recovery-20261022/web-e2e-default-5db5b33cf8b6/`；通过结果及实际退出核验位于 `recovery-20261022/web-e2e-default-restored-724477379771/{status.json,report.json,e2e.log,teardown.json}`，受测 HEAD 为 `edb29ccfc701539e4701b269b89385bf51d1af32`，与原生验收的生产 harness 字节相同，仅新增验收文档。
 
 `evidence-index.json` 自身 SHA-256 为 `f85ac01d28df3edba04c81f7a707dceb246578a0730e97fd37e9e0197659200b`，不包含该索引自身或后续 Web E2E 产物。
