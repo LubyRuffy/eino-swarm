@@ -42,10 +42,11 @@ var (
 
 // Engine is the process-wide runtime.
 type Engine struct {
-	cfg   *config.Config
-	store *store.Store
-	pool  *provider.Pool
-	log   *slog.Logger
+	configUpdateMu sync.Mutex
+	cfg            *config.Config
+	store          *store.Store
+	pool           *provider.Pool
+	log            *slog.Logger
 
 	mu       sync.Mutex
 	runtimes map[string]*runtime
@@ -132,17 +133,17 @@ func (e *Engine) Store() *store.Store { return e.store }
 // of cfg. Callers that already mutated cfg (StartScheduler, PUT
 // /settings) do this so live schedule paths only ever Load() atomics.
 func (e *Engine) snapshotScheduleCaps() {
-	max := e.cfg.Swarm.ScheduleMaxActive
+	max := e.cfg.SwarmSnapshot().ScheduleMaxActive
 	if max <= 0 {
 		max = config.DefaultScheduleMaxActive
 	}
 	e.schedMaxActive.Store(int32(max))
-	min := e.cfg.Swarm.ScheduleMinIntervalSeconds
+	min := e.cfg.SwarmSnapshot().ScheduleMinIntervalSeconds
 	if min <= 0 {
 		min = config.DefaultScheduleMinIntervalSeconds
 	}
 	e.schedMinIntervalS.Store(int32(min))
-	def := strings.TrimSpace(e.cfg.Models.Default)
+	def := strings.TrimSpace(e.cfg.ModelsSnapshot().Default)
 	e.schedDefaultProvider.Store(&def)
 }
 
@@ -154,7 +155,7 @@ func (e *Engine) maxActiveSchedules() int {
 		}
 		return n
 	}
-	n := e.cfg.Swarm.ScheduleMaxActive
+	n := e.cfg.SwarmSnapshot().ScheduleMaxActive
 	if n <= 0 {
 		return config.DefaultScheduleMaxActive
 	}
@@ -169,7 +170,7 @@ func (e *Engine) scheduleMinInterval() time.Duration {
 		}
 		return time.Duration(n) * time.Second
 	}
-	n := e.cfg.Swarm.ScheduleMinIntervalSeconds
+	n := e.cfg.SwarmSnapshot().ScheduleMinIntervalSeconds
 	if n <= 0 {
 		return config.DefaultScheduleMinIntervalSeconds * time.Second
 	}
@@ -182,7 +183,7 @@ func (e *Engine) scheduleDefaultProvider() string {
 			return *p
 		}
 	}
-	return e.cfg.Models.Default
+	return e.cfg.ModelsSnapshot().Default
 }
 
 // Providers exposes the model pool.
@@ -194,7 +195,7 @@ func (e *Engine) Providers() *provider.Pool { return e.pool }
 // the project's directory; one in no project gets a workspace of its own.
 func (e *Engine) CreateThread(title, providerID, projectID string) (*store.Thread, error) {
 	if strings.TrimSpace(providerID) == "" {
-		providerID = e.cfg.Models.Default
+		providerID = e.cfg.ModelsSnapshot().Default
 	}
 	if _, err := e.pool.Resolve(providerID); err != nil {
 		return nil, err

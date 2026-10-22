@@ -14,6 +14,7 @@ import type {
   RemoteOffer,
   RemoteStatus,
   Settings,
+  SettingsPatch,
   SearchResult,
   Skill,
   SkillCopyResult,
@@ -314,7 +315,7 @@ export const api = {
     request<{ settings: Settings }>("/api/settings").then((r) =>
       withToolLists(r.settings),
     ),
-  saveSettings: (patch: Partial<Settings>) =>
+  saveSettings: (patch: SettingsPatch) =>
     request<{ settings: Settings }>("/api/settings", {
       method: "PUT",
       body: JSON.stringify(patch),

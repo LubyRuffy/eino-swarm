@@ -510,6 +510,15 @@ export interface Settings {
   clients?: ClientsSettings
 }
 
+/** A settings write may omit unchanged timeouts inside an edited section. */
+export type ProviderSettingsWrite = Omit<ProviderSettings, "timeout_seconds"> & {
+  timeout_seconds?: number
+}
+export type SettingsPatch = Omit<Partial<Settings>, "models" | "swarm"> & {
+  models?: { default: string; providers: ProviderSettingsWrite[] }
+  swarm?: Omit<SwarmLimits, "agent_timeout_seconds"> & { agent_timeout_seconds?: number }
+}
+
 /** Read-only local agent transcripts. Blank directories are filled on save. */
 export interface ClientsSettings {
   enabled: boolean

@@ -176,6 +176,11 @@ const MockContextWindow = 128000
 // An endpoint switched off in Settings is omitted. Lookup still resolves it,
 // so a conversation that already picked it keeps running.
 func (p *Pool) List() []Info {
+	return listModels(p.cfg.Snapshot(), p.mock)
+}
+
+func listModels(cfg *config.Config, mock bool) []Info {
+	p := &Pool{cfg: cfg, mock: mock}
 	out := make([]Info, 0, len(p.cfg.Models.Providers))
 	for _, prov := range p.cfg.Models.Providers {
 		if !prov.Listed() {
@@ -212,12 +217,12 @@ func cacheKey(id, model string) string {
 
 // Get returns the shared chat model for a provider id and model name.
 func (p *Pool) Get(ctx context.Context, id, model string) (model.BaseChatModel, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	prov, err := p.ResolveModel(id, model)
 	if err != nil {
 		return nil, err
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	key := cacheKey(prov.ID, prov.Model)
 	if m, ok := p.cache[key]; ok {
 		return m, nil
@@ -256,7 +261,7 @@ func (p *Pool) ModelBuilder(ctx context.Context, id, modelName, effort string, r
 		return nil, err
 	}
 	effort = config.NormalizeReasoning(effort)
-	limit := p.cfg.Swarm.CompletionTokenLimit()
+	limit := p.cfg.SwarmSnapshot().CompletionTokenLimit()
 	if p.mock {
 		return func(role, agentID string) model.BaseChatModel {
 			return wrap(newMockModel(role), agentID, prov, effort, limit, rec)

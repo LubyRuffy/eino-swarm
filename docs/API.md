@@ -120,7 +120,7 @@ What the UI reads once at startup to decide what to render.
   "reasoning_levels": ["low", "medium", "high"],
   "data_dir": "/Users/me/.zwai-swarm",
   "capabilities": { "reveal": false, "open_url": false, "memory": true, "restart_handoff": true },
-  "swarm": { "max_concurrent": 6, "agent_timeout_seconds": 600,
+  "swarm": { "max_concurrent": 6, "agent_timeout_seconds": 3600,
              "max_turns": 200, "manager_max_iterations": 200,
              "progress_interval_seconds": 5, "delta_coalesce_ms": 50,
              "auto_title": true, "title_provider": "", "title_model": "",
@@ -238,7 +238,7 @@ provider carries `has_api_key` and `ready` instead.
      "context_window": 0, "model_context": {},
      "has_api_key": true, "ready": true, "enabled": true}
   ]},
-  "swarm": {"max_concurrent": 6, "agent_timeout_seconds": 600,
+  "swarm": {"max_concurrent": 6, "agent_timeout_seconds": 3600,
             "max_turns": 200, "manager_max_iterations": 200,
             "progress_interval_seconds": 5, "delta_coalesce_ms": 50,
             "auto_title": true, "title_provider": "", "title_model": "",
@@ -329,6 +329,17 @@ conversation column. Unknown locale values become `system`; unknown `font` /
 `medium` / `comfortable` / `user` / `zwai`. `content_font` blank is `ui`; `code_font` blank is `mono`.
 Omitted ui fields keep what is stored, so a language PUT cannot reset the
 typeface.
+
+Within a supplied `swarm` section, omitted `agent_timeout_seconds` preserves the
+latest stored value. Within a supplied provider row, omitted `timeout_seconds`
+and `first_byte_timeout_seconds` preserve that provider's latest values by ID;
+a new provider receives the normal defaults. Explicit timeout fields retain
+the existing replacement/normalization rules. Desktop autosave submits changed
+sections and omits unchanged timeouts, so an unrelated local edit or catalog
+refresh cannot restore stale values over a concurrent phone save. Other section
+fields retain their existing replacement rules. Persistence failure leaves the
+live configuration and provider caches unchanged. Worker limit updates affect
+subsequent lifetimes, preserving current deadlines and watchdog failure counts.
 
 `search` is conversation search. Keyword indexing (FTS5) is always on.
 `embedding` defaults to `false`. Turning it on without `embedding_model` still
@@ -531,7 +542,8 @@ The slim RPC the phone sends over pairlink is not an HTTP API. Request ops:
 `hello` / `list` / `more` / `open` / `read` / `start` / `send` / `steer` / `stop` /
 `followup_drop` / `followup_steer` / `preempt` /
 `answer` / `watch` / `unwatch` / `log` / `run_now` / `cancel_wait` /
-`resume_goal` / `catalog` / `refresh_catalog` / `tune` / `put` / `clients` / `files` /
+`resume_goal` / `catalog` / `refresh_catalog` / `get_timeouts` / `set_timeouts` /
+`tune` / `put` / `clients` / `files` /
 `file_chunk`. `hello` `{text}` is the phone's one-line model; the host
 keys it by the pairlink fingerprint, not a client-supplied id.
 OK replies carry `host` (this PC's `remote.display_name`) so the phone can
@@ -640,6 +652,44 @@ tearing the link.
 `catalog` lists ready models (`provider_id`, `provider_label`, `model`,
 `default`) and `reasoning_levels`. It carries no keys, URLs, or context
 windows. A catalog that would not fit a pairlink frame is `too_large`.
+`get_timeouts` returns this PC's `timeout_settings`:
+
+```json
+{"agent_timeout_seconds":3600,"providers":[{"id":"default","label":"My provider","timeout_seconds":300,"first_byte_timeout_seconds":30,"effective_first_byte_timeout_seconds":30}]}
+```
+
+Only provider IDs/labels and timeout values leave the PC; no keys, URLs or model
+catalogs are included. A missing or nonpositive first-byte setting resolves to
+30 seconds. First-byte and stream-idle budgets are independent, and first-byte
+waiting may exceed stream idle. `effective_first_byte_timeout_seconds` is a
+read-only compatibility field equal to the resolved `first_byte_timeout_seconds`;
+it does not take the minimum with idle. The worker example is the new default,
+not a migration of an explicit saved value.
+
+`set_timeouts` takes a partial `timeout_settings` with only edited fields:
+
+```json
+{"agent_timeout_seconds":3600,"providers":[{"id":"default","first_byte_timeout_seconds":120}]}
+```
+
+It returns the resulting `timeout_settings` after persistence. The frame-budget
+check and response use that same saved candidate, so a later concurrent edit
+cannot change the acknowledgement. An oversized reply returns `too_large`
+before persistence. Provider `id` selects the existing row; labels and effective
+values are read-only. Empty edits, unknown/duplicate IDs, unknown fields, and
+nonpositive, fractional or overflowing durations return `bad_request` with no
+partial changes. Persistence failure returns sanitized `save_failed`, leaving
+live settings unchanged. Omitted fields and unrelated settings are preserved.
+This narrow validation differs from the normalization of explicit values in
+`PUT /api/settings`.
+
+The phone waits its normal 15 seconds for either settings operation without
+dropping the link. A timeout or closed sheet does not prove an already-sent
+save was cancelled; reopening reads the PC again. An old host's `unknown_op`
+becomes local update-PC feedback. New values affect subsequently created model
+clients and worker spawn/resume/restore lifetimes; current calls/deadlines,
+consecutive failures and paused tasks keep their state.
+
 `refresh_catalog` explicitly discovers the current upstream models for the
 enabled, ready PC providers and returns the same response shape. Ordinary
 `catalog` remains a network-free configuration snapshot. Discovery runs in
@@ -678,7 +728,7 @@ file `size`, `offset`, `next_offset`, and `more` in slices no larger than
 the phone file browser. The PC checks the thread and opens only a regular file beneath its
 workspace root, including symlink resolution; traversal and escaped symlinks
 fail. The phone limits assembled reads to 32 MiB, inline previews to 8 MiB,
-and renders HTML/SVG as text. Settings, PTY and Trace stay on the PC. The
+and renders HTML/SVG as text. Full Settings, PTY and Trace stay on the PC; paired phones also expose PC timeout controls. The
 phone composer can still attach a file or an image.
 
 ## Projects

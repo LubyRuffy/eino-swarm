@@ -9,9 +9,11 @@ at [v0.1.0](https://github.com/LubyRuffy/eino-swarm/releases/tag/v0.1.0).
 The repository grew from a swarm orchestration library into a desktop
 co-working app built on it. The library API is unchanged except where noted
 (`Restore`, `PlantFinished`, `RunConfig.RestoreWorkers` / `FinishedWorkers`,
-`SetMaxConcurrent`).
+`SetMaxConcurrent`, `SetAgentTimeout`, `SetMaxTurns`, the one-hour default worker lifetime).
 
 ### Added
+
+- `F-170`, `F-220`, `C-006`, `C-009`: paired phones can read and edit the PC's worker, provider first-byte and stream-idle timeouts through Menu → PC timeouts. A narrow encrypted RPC patch excludes credentials and unrelated settings, rejects invalid edits atomically, and keeps read/save errors local to the sheet (Issue #82).
 
 - `F-430`, `C-031`: native desktop acceptance has a guest-only case runner with
   serial ownership, fresh app/home/cache/data/workspace per case, bounded process shutdown
@@ -29,6 +31,8 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-420`, `C-025`: Settings → Memory can set a separate reasoning level for automatic and manual turn review. Empty retains conversation inheritance; conversation work, catalog tidy, model and output cap are unchanged.
 
 ### Changed
+
+- `F-130`, `F-170`, `F-330`, `C-009`, `C-019`: new worker lifetimes default to one hour in the library and app. Existing positive configured values, active deadlines and the three-failure watchdog budget retain their meaning. Live registries have synchronized `SetAgentTimeout` and `SetMaxTurns` setters for subsequent worker execution (Issue #82).
 
 - `F-430`, `C-010`: prepared complete source batch `0.1.35` with mobile package/build `135` after the cumulative main-commit threshold was met. Only Android and iOS require publication for the accepted phone code-highlighting change; TestFlight keeps its independently selected marketing version. Earlier public Mac batches retain their original source, packages and native acceptance gates.
 
@@ -58,6 +62,7 @@ co-working app built on it. The library API is unchanged except where noted
 ### Fixed
 
 - `F-430`, `C-031`: native-case headless tests wait for fixture readiness rather than assuming one-second process startup. A delayed fixture regresses false failures while retaining bounded scenarios and cleanup assertions; production native-case deadlines are unchanged.
+- `F-170`, `F-175`, `C-009`, `C-030`: desktop settings autosave and catalog refresh preserve concurrent phone timeout edits by omitting unchanged timeout fields. Saves merge with the latest detached configuration and publish runtime/cache changes only after atomic persistence succeeds; a failed save leaves current settings intact. Nested cloud-tool options retain their protocol, values and isolation across snapshots and rejected updates; worker ownership and parked restoration read configuration snapshots during saves (Issue #82).
 
 - `F-220`, `F-230`, `C-032`: iOS code-highlighting native tests now reject a light or
   blank screenshot presented as dark. Synthetic image regressions and a focused

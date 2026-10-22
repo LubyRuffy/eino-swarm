@@ -18,7 +18,7 @@ func scheduleTitlePoolKey(id string) string {
 // and never enters this path. Do not emit KindTitle: that event renames
 // the origin conversation in the sidebar.
 func (e *Engine) kickScheduleTitle(row *store.Schedule) {
-	if row == nil || !row.TitleAuto || !e.cfg.Swarm.AutoTitle {
+	if row == nil || !row.TitleAuto || !e.cfg.SwarmSnapshot().AutoTitle {
 		return
 	}
 	id := row.ID
@@ -33,7 +33,7 @@ func (e *Engine) kickScheduleTitle(row *store.Schedule) {
 	}
 	// Pin the namer endpoint before the goroutine. Tests (and PUT
 	// /settings) copy e.cfg; reading it from the namer races that write.
-	providerID, model = e.cfg.Swarm.ResolveTitle(providerID, model)
+	providerID, model = e.cfg.SwarmSnapshot().ResolveTitle(providerID, model)
 	origin := strings.TrimSpace(row.OriginThreadID)
 	if origin == "" {
 		origin = strings.TrimSpace(row.ThreadID)

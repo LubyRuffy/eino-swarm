@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -33,7 +34,7 @@ type metaView struct {
 }
 
 func (s *Server) getMeta(c *gin.Context) {
-	cfg := s.engine.Config()
+	cfg := s.engine.Config().Snapshot()
 	pool := s.engine.Providers()
 	clients := s.Clients()
 	if clients == nil {
@@ -159,7 +160,12 @@ func listedFlag(on bool) *bool {
 }
 
 func (s *Server) getSettings(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"settings": toSettingsView(s.engine.Config())})
+	c.JSON(http.StatusOK, gin.H{"settings": toSettingsView(s.engine.Config().Snapshot())})
+}
+
+type putSwarmSettings struct {
+	config.SwarmConfig
+	AgentTimeoutSeconds *int `json:"agent_timeout_seconds"`
 }
 
 // putSettingsRequest mirrors settingsView, plus the optional new API key per
@@ -177,7 +183,7 @@ type putSettingsRequest struct {
 			BaseURL                 string            `json:"base_url"`
 			Model                   string            `json:"model"`
 			Catalog                 *[]string         `json:"catalog"`
-			TimeoutSeconds          int               `json:"timeout_seconds"`
+			TimeoutSeconds          *int              `json:"timeout_seconds"`
 			FirstByteTimeoutSeconds *int              `json:"first_byte_timeout_seconds"`
 			ContextWindow           *int              `json:"context_window"`
 			ModelContext            *map[string]int   `json:"model_context"`
@@ -187,7 +193,7 @@ type putSettingsRequest struct {
 			Enabled *bool `json:"enabled"`
 		} `json:"providers"`
 	} `json:"models"`
-	Swarm       *config.SwarmConfig       `json:"swarm"`
+	Swarm       *putSwarmSettings         `json:"swarm"`
 	Tools       *config.ToolsConfig       `json:"tools"`
 	Memory      *config.MemoryConfig      `json:"memory"`
 	Personality *config.PersonalityConfig `json:"personality"`
@@ -198,131 +204,144 @@ type putSettingsRequest struct {
 	Clients     *config.ClientsConfig     `json:"clients"`
 }
 
+var errNoModelProviders = errors.New("at least one model provider is required")
+
 func (s *Server) putSettings(c *gin.Context) {
 	var req putSettingsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		badRequest(c, "could not read the request body: %v", err)
 		return
 	}
-	cfg := s.engine.Config()
+	err := s.engine.UpdateConfig(func(cfg *config.Config) error {
+		next := *cfg
+		if req.Server != nil {
+			next.Server = *req.Server
+		}
+		if req.Swarm != nil {
+			next.Swarm = req.Swarm.SwarmConfig
+			// Desktop autosave omits timeouts the user did not edit, so it
+			// does not overwrite a phone save made while the sheet was open.
+			next.Swarm.AgentTimeoutSeconds = cfg.Swarm.AgentTimeoutSeconds
+			if req.Swarm.AgentTimeoutSeconds != nil {
+				next.Swarm.AgentTimeoutSeconds = *req.Swarm.AgentTimeoutSeconds
+			}
+		}
+		if req.Tools != nil {
+			next.Tools = *req.Tools
+		}
+		if req.Memory != nil {
+			next.Memory = *req.Memory
+		}
+		if req.Personality != nil {
+			next.Personality = *req.Personality
+		}
+		if req.Log != nil {
+			next.Log = *req.Log
+		}
+		if req.UI != nil {
+			// A language-only PUT must not reset the typeface. Blank fields
+			// keep what is already stored; Normalize maps junk to defaults.
+			next.UI = config.MergeUI(cfg.UI, *req.UI)
+		}
+		if req.Remote != nil {
+			next.Remote = *req.Remote
+		}
+		if req.Search != nil {
+			next.Search = *req.Search
+		}
+		if req.Clients != nil {
+			next.Clients = *req.Clients
+		}
+		if req.Models != nil {
+			existing := map[string]config.Provider{}
+			for _, p := range cfg.Models.Providers {
+				existing[p.ID] = p
+			}
+			providers := make([]config.Provider, 0, len(req.Models.Providers))
+			for _, p := range req.Models.Providers {
+				prev := existing[p.ID]
+				apiMode := prev.APIMode
+				if p.APIMode != nil {
+					apiMode = *p.APIMode
+				}
+				builtinTools := prev.BuiltinTools
+				if p.BuiltinTools != nil {
+					builtinTools = *p.BuiltinTools
+				}
+				timeout := prev.TimeoutSeconds
+				if p.TimeoutSeconds != nil {
+					timeout = *p.TimeoutSeconds
+				}
+				firstByte := prev.FirstByteTimeoutSeconds
+				if p.FirstByteTimeoutSeconds != nil {
+					firstByte = *p.FirstByteTimeoutSeconds
+				}
+				key := prev.APIKey
+				if p.APIKey != nil {
+					key = *p.APIKey
+				}
+				catalog := prev.Catalog
+				if p.Catalog != nil {
+					catalog = *p.Catalog
+				}
+				window := prev.ContextWindow
+				if p.ContextWindow != nil {
+					window = *p.ContextWindow
+				}
+				modelCtx := prev.ModelContext
+				if p.ModelContext != nil {
+					modelCtx = *p.ModelContext
+				}
+				enabled := prev.Enabled
+				if p.Enabled != nil {
+					enabled = listedFlag(*p.Enabled)
+				}
+				providers = append(providers, config.Provider{
+					APIMode:                 apiMode,
+					BuiltinTools:            builtinTools,
+					ID:                      p.ID,
+					Label:                   p.Label,
+					BaseURL:                 p.BaseURL,
+					APIKey:                  key,
+					Model:                   p.Model,
+					Catalog:                 catalog,
+					TimeoutSeconds:          timeout,
+					FirstByteTimeoutSeconds: firstByte,
+					ContextWindow:           window,
+					ModelContext:            modelCtx,
+					Enabled:                 enabled,
+				})
+			}
+			if len(providers) == 0 {
+				return errNoModelProviders
+			}
+			next.Models = config.ModelsConfig{Default: req.Models.Default, Providers: providers}
+		}
 
-	next := *cfg
-	if req.Server != nil {
-		next.Server = *req.Server
+		*cfg = next
+		return nil
+	})
+	if errors.Is(err, errNoModelProviders) {
+		badRequest(c, "at least one model provider is required")
+		return
 	}
-	if req.Swarm != nil {
-		next.Swarm = *req.Swarm
-	}
-	if req.Tools != nil {
-		next.Tools = *req.Tools
-	}
-	if req.Memory != nil {
-		next.Memory = *req.Memory
-	}
-	if req.Personality != nil {
-		next.Personality = *req.Personality
-	}
-	if req.Log != nil {
-		next.Log = *req.Log
-	}
-	if req.UI != nil {
-		// A language-only PUT must not reset the typeface. Blank fields
-		// keep what is already stored; Normalize maps junk to defaults.
-		next.UI = config.MergeUI(cfg.UI, *req.UI)
-	}
-	if req.Remote != nil {
-		next.Remote = *req.Remote
-	}
-	if req.Search != nil {
-		next.Search = *req.Search
-	}
-	if req.Clients != nil {
-		next.Clients = *req.Clients
-	}
-	if req.Models != nil {
-		existing := map[string]config.Provider{}
-		for _, p := range cfg.Models.Providers {
-			existing[p.ID] = p
-		}
-		providers := make([]config.Provider, 0, len(req.Models.Providers))
-		for _, p := range req.Models.Providers {
-			prev := existing[p.ID]
-			apiMode := prev.APIMode
-			if p.APIMode != nil {
-				apiMode = *p.APIMode
-			}
-			builtinTools := prev.BuiltinTools
-			if p.BuiltinTools != nil {
-				builtinTools = *p.BuiltinTools
-			}
-			key := prev.APIKey
-			if p.APIKey != nil {
-				key = *p.APIKey
-			}
-			catalog := prev.Catalog
-			if p.Catalog != nil {
-				catalog = *p.Catalog
-			}
-			window := prev.ContextWindow
-			if p.ContextWindow != nil {
-				window = *p.ContextWindow
-			}
-			modelCtx := prev.ModelContext
-			if p.ModelContext != nil {
-				modelCtx = *p.ModelContext
-			}
-			enabled := prev.Enabled
-			if p.Enabled != nil {
-				enabled = listedFlag(*p.Enabled)
-			}
-			firstByteTimeout := prev.FirstByteTimeoutSeconds
-			if p.FirstByteTimeoutSeconds != nil {
-				firstByteTimeout = *p.FirstByteTimeoutSeconds
-			}
-			providers = append(providers, config.Provider{
-				APIMode:                 apiMode,
-				BuiltinTools:            builtinTools,
-				ID:                      p.ID,
-				Label:                   p.Label,
-				BaseURL:                 p.BaseURL,
-				APIKey:                  key,
-				Model:                   p.Model,
-				Catalog:                 catalog,
-				TimeoutSeconds:          p.TimeoutSeconds,
-				FirstByteTimeoutSeconds: firstByteTimeout,
-				ContextWindow:           window,
-				ModelContext:            modelCtx,
-				Enabled:                 enabled,
-			})
-		}
-		if len(providers) == 0 {
-			badRequest(c, "at least one model provider is required")
-			return
-		}
-		next.Models = config.ModelsConfig{Default: req.Models.Default, Providers: providers}
-	}
-
-	if err := cfg.Replace(&next); err != nil {
+	if err != nil {
 		s.fail(c, err)
 		return
 	}
-	// The next turn must use the new endpoint without a restart.
-	s.engine.Providers().Invalidate()
-	// Queued workers sit on the live / parked registry, not the yaml file.
-	s.engine.ApplyLiveSwarmLimits()
 	if s.remote != nil {
 		s.remote.Reload()
 	}
 	if s.search != nil {
 		s.search.Reload()
 	}
-	c.JSON(http.StatusOK, gin.H{"settings": toSettingsView(cfg)})
+	c.JSON(http.StatusOK, gin.H{"settings": toSettingsView(s.engine.Config().Snapshot())})
 }
 
 func (s *Server) getModels(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"models":  s.engine.Providers().List(),
-		"default": s.engine.Config().Models.Default,
+		"default": s.engine.Config().Snapshot().Models.Default,
 		"mock":    s.engine.Providers().IsMock(),
 	})
 }
@@ -339,7 +358,7 @@ func (s *Server) discoverModels(c *gin.Context) {
 		badRequest(c, "could not read the request body: %v", err)
 		return
 	}
-	cfg := s.engine.Config()
+	cfg := s.engine.Config().Snapshot()
 	prov := config.Provider{
 		BaseURL: strings.TrimSpace(req.BaseURL),
 	}
@@ -375,7 +394,7 @@ func (s *Server) discoverModels(c *gin.Context) {
 func (s *Server) getTools(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"catalog": tools.Catalog(),
-		"enabled": tools.Enabled(s.engine.Config().Tools),
+		"enabled": tools.Enabled(s.engine.Config().Snapshot().Tools),
 	})
 }
 

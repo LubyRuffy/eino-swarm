@@ -237,14 +237,17 @@ describe("output budget error", () => {
     expect(field).toHaveValue(30)
     expect(screen.getByRole("button", { name: "failed details" })).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByRole("button", { name: "current details" })).toHaveAttribute("aria-expanded", "false")
-    fireEvent.change(field, { target: { value: "120" } })
+    fireEvent.change(field, { target: { value: "900" } })
     await user.click(screen.getByRole("button", { name: "Back to app" }))
     expect(api.saveSettings).toHaveBeenLastCalledWith(expect.objectContaining({
       models: expect.objectContaining({ providers: [
-        expect.objectContaining({ id: "current", first_byte_timeout_seconds: 30 }),
-        expect.objectContaining({ id: "failed", first_byte_timeout_seconds: 120 }),
+        expect.objectContaining({ id: "current" }),
+        expect.objectContaining({ id: "failed", first_byte_timeout_seconds: 900 }),
       ] }),
     }))
+    const providers = vi.mocked(api.saveSettings).mock.calls.at(-1)![0].models!.providers
+    expect(providers[0]).not.toHaveProperty("first_byte_timeout_seconds")
+    for (const provider of providers) expect(provider).not.toHaveProperty("timeout_seconds")
   })
 
   it("localizes the actual first-byte wait and never recommends it for an idle timeout", () => {

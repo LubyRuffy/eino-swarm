@@ -73,8 +73,8 @@ const base: Settings = {
   log: { level: "info" },
 }
 
-function renderDialog(props: Partial<Parameters<typeof SettingsDialog>[0]> = {}) {
-  render(
+function dialogNode(props: Partial<Parameters<typeof SettingsDialog>[0]> = {}) {
+  return (
     <>
       <ToastStack />
       <SettingsDialog
@@ -89,8 +89,12 @@ function renderDialog(props: Partial<Parameters<typeof SettingsDialog>[0]> = {})
         onSaved={vi.fn()}
         {...props}
       />
-    </>,
+    </>
   )
+}
+
+function renderDialog(props: Partial<Parameters<typeof SettingsDialog>[0]> = {}) {
+  return render(dialogNode(props))
 }
 
 function activePanel() {
@@ -105,13 +109,11 @@ async function waitSettingsLoaded() {
 
 describe("Settings dialog", () => {
   beforeEach(() => {
+    vi.mocked(api.settings).mockReset()
     vi.mocked(api.settings).mockResolvedValue(base)
     vi.mocked(api.tools).mockResolvedValue({ catalog: [], enabled: [] })
     vi.mocked(api.saveSettings).mockReset()
-    vi.mocked(api.saveSettings).mockImplementation(async (patch) => ({
-      ...base,
-      ...patch,
-    }))
+    vi.mocked(api.saveSettings).mockResolvedValue(base)
     vi.mocked(api.remoteStatus).mockResolvedValue({
       enabled: false,
       hub_url: "",
@@ -119,6 +121,57 @@ describe("Settings dialog", () => {
       online: false,
     })
     vi.mocked(api.remoteBindings).mockResolvedValue([])
+  })
+
+  it("seeds the loaded draft and ignores unrelated phone values in save replies", async () => {
+    const phone = structuredClone(base); phone.swarm.agent_timeout_seconds = 73
+    vi.mocked(api.saveSettings).mockResolvedValue(phone)
+    renderDialog(); await waitSettingsLoaded()
+    const user = userEvent.setup()
+    await user.click(screen.getByRole("tab", { name: "Personality" }))
+    const box = await screen.findByLabelText("Personal preferences")
+    fireEvent.change(box, { target: { value: "first preference" } })
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(api.saveSettings).mock.calls[0][0]).toEqual({ personality: expect.any(Object) })
+    fireEvent.change(box, { target: { value: "second preference" } })
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(api.saveSettings).mock.calls[1][0]).toEqual({ personality: expect.any(Object) })
+  })
+
+  it("does not let an older open's late load replace its new baseline", async () => {
+    let resolve!: (value: Settings) => void
+    const old = new Promise<Settings>((done) => { resolve = done })
+    const newer = structuredClone(base); newer.swarm.agent_timeout_seconds = 73
+    vi.mocked(api.settings).mockReturnValueOnce(old).mockResolvedValueOnce(newer)
+    const ui = renderDialog()
+    await waitFor(() => expect(api.settings).toHaveBeenCalledTimes(1))
+    ui.rerender(dialogNode({ open: false }))
+    ui.rerender(dialogNode({ open: true, initialSection: "swarm" }))
+    expect(await screen.findByLabelText("Sub-agent timeout (seconds)")).toHaveValue(73)
+    resolve(base); await Promise.resolve()
+    expect(screen.getByLabelText("Sub-agent timeout (seconds)")).toHaveValue(73)
+    fireEvent.change(screen.getByLabelText("Sub-agents at once"), { target: { value: "2" } })
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalled())
+    expect(vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0].swarm).not.toHaveProperty("agent_timeout_seconds")
+  })
+
+  it("waits for an earlier write before reopening and ignores its stale close", async () => {
+    let finish!: (value: Settings) => void
+    vi.mocked(api.saveSettings).mockReturnValueOnce(new Promise<Settings>((done) => { finish = done }))
+    const newer = structuredClone(base); newer.swarm.agent_timeout_seconds = 73
+    vi.mocked(api.settings).mockResolvedValueOnce(base).mockResolvedValueOnce(newer)
+    const onOpenChange = vi.fn(); const ui = renderDialog({ onOpenChange })
+    await waitSettingsLoaded(); const user = userEvent.setup()
+    await user.click(screen.getByRole("tab", { name: "Personality" }))
+    fireEvent.change(await screen.findByLabelText("Personal preferences"), { target: { value: "pending preference" } })
+    await user.click(screen.getByRole("button", { name: "Back to app" }))
+    await waitFor(() => expect(api.saveSettings).toHaveBeenCalledTimes(1))
+    ui.rerender(dialogNode({ open: false, onOpenChange }))
+    ui.rerender(dialogNode({ open: true, initialSection: "swarm", onOpenChange }))
+    expect(api.settings).toHaveBeenCalledTimes(1)
+    finish(base)
+    expect(await screen.findByLabelText("Sub-agent timeout (seconds)")).toHaveValue(73)
+    expect(onOpenChange).not.toHaveBeenCalledWith(false)
   })
 
   it("opens on General, the same first page as everyone else", async () => {
@@ -271,11 +324,7 @@ describe("Settings dialog", () => {
     expect(vi.mocked(api.saveSettings).mock.calls[0][0].memory?.enabled).toBe(
       false,
     )
-    expect(vi.mocked(api.saveSettings).mock.calls[0][0].ui).toMatchObject({
-      locale: "system",
-      font: "system",
-      content_width: "comfortable",
-    })
+    expect(vi.mocked(api.saveSettings).mock.calls[0][0].ui).toBeUndefined()
   })
 
   it("keeps invalid cloud tool JSON across pages and blocks auto-save and leaving", async () => {

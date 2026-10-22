@@ -44,7 +44,7 @@ func (e *Engine) StartScheduler() {
 	stop := make(chan struct{})
 	e.schedStop = stop
 	e.schedWG.Add(1)
-	tick := e.cfg.Swarm.ScheduleTick()
+	tick := e.cfg.SwarmSnapshot().ScheduleTick()
 	go func() {
 		defer e.schedWG.Done()
 		e.fireDueSchedules()

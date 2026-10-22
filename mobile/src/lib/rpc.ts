@@ -22,6 +22,8 @@ export const OpResumeGoal = "resume_goal"
 export const OpHello = "hello"
 export const OpCatalog = "catalog"
 export const OpRefreshCatalog = "refresh_catalog"
+export const OpGetTimeouts = "get_timeouts"
+export const OpSetTimeouts = "set_timeouts"
 export const OpTune = "tune"
 export const OpPut = "put"
 export const OpFollowupDrop = "followup_drop"
@@ -60,6 +62,23 @@ export type RemoteRequest = {
   followup_id?: string
   task_id?: string
   file_path?: string
+  timeout_settings?: TimeoutSettingsPatch
+}
+
+export type TimeoutSettings = {
+  agent_timeout_seconds: number
+  providers: {
+    id: string
+    label: string
+    timeout_seconds: number
+    first_byte_timeout_seconds: number
+    effective_first_byte_timeout_seconds: number
+  }[]
+}
+
+export type TimeoutSettingsPatch = {
+  agent_timeout_seconds?: number
+  providers?: { id: string; timeout_seconds?: number; first_byte_timeout_seconds?: number }[]
 }
 
 export type FollowupView = {
@@ -201,6 +220,7 @@ export type RemoteResponse = {
   followups?: FollowupView[]
   clients?: ClientCatalog
   client_view?: ClientView
+  timeout_settings?: TimeoutSettings
   files?: WorkspaceFile[]
   file_chunk?: FileChunk
 }

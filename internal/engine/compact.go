@@ -159,7 +159,7 @@ func (e *Engine) CompactThread(threadID string) (*store.Thread, error) {
 		}
 		through = th.CompactThroughSeq
 	} else if summary == "" {
-		providerID, model := e.cfg.Swarm.ResolveCompact(th.ProviderID, th.Model)
+		providerID, model := e.cfg.SwarmSnapshot().ResolveCompact(th.ProviderID, th.Model)
 		builder, err := e.pool.ModelBuilder(ctx, providerID, model, "", e.callRecorder(threadID, turnID))
 		if err != nil {
 			e.recordCompact(threadID, turnID, "", err.Error())
@@ -213,7 +213,7 @@ func (e *Engine) compactCandidates(th *store.Thread) ([]store.Message, int64, er
 		return nil, 0, err
 	}
 	all := replayableMessages(rows)
-	keep := e.cfg.Swarm.CompactKeep()
+	keep := e.cfg.SwarmSnapshot().CompactKeep()
 	if keep < 0 {
 		keep = 0
 	}
@@ -371,7 +371,7 @@ func (e *Engine) ContextUsage(threadID string) (chars, budget int, err error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	return e.contextChars(th), e.cfg.Swarm.ContextBudget(), nil
+	return e.contextChars(th), e.cfg.SwarmSnapshot().ContextBudget(), nil
 }
 
 func (e *Engine) contextChars(th *store.Thread) int {

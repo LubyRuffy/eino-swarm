@@ -9,9 +9,10 @@ func (e *Engine) bindSwarmLimits(reg *swarm.Registry) {
 	if reg == nil {
 		return
 	}
-	reg.SetMaxConcurrent(e.cfg.Swarm.MaxConcurrent)
-	reg.AgentTimeout = e.cfg.Swarm.AgentTimeout()
-	reg.MaxTurns = e.cfg.Swarm.MaxTurns
+	limits := e.cfg.SwarmSnapshot()
+	reg.SetMaxConcurrent(limits.MaxConcurrent)
+	reg.SetAgentTimeout(limits.AgentTimeout())
+	reg.SetMaxTurns(limits.MaxTurns)
 }
 
 // ApplyLiveSwarmLimits pushes the current swarm caps onto every live or

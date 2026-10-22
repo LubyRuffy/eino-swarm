@@ -30,6 +30,20 @@ An older PC asks you to update its app. New models appear and retired models
 leave the choices, while an explicit selection remains until you change it.
 Refreshing does not save a catalog or change the PC's configured default.
 
+On a bound PC's inbox, **Menu → PC timeouts / 电脑超时** loads that PC's saved
+worker lifetime and each provider's first-byte and stream-idle limits, in
+seconds. Save sends only edited fields. The first-byte limit defaults to 30
+seconds and is independent of the provider's stream-idle limit. Increase
+first-byte waiting for a slow initial response; stream-idle waiting starts
+after the response begins.
+New worker settings default to one hour; existing explicit values remain.
+Changes affect subsequent model calls and worker lifetimes, without extending
+an active worker or restarting a task stopped by three watchdog failures.
+Loading or saving failures remain in this sheet with retry; an older PC asks
+for an update. Closing or pressing Back dismisses the sheet before leaving the
+inbox. Reopening reloads the PC values, including after an uncertain save.
+**Menu → Models** configures phone-direct providers separately.
+
 The phone is a compact screen on the same conversation as the desktop: same
 event kinds and seq (`watch` / `unwatch` / `log`), clipped bodies so a frame
 stays under 64KiB. First paint is a live-edge snapshot on the `watch` RPC
@@ -81,7 +95,7 @@ file to preview Markdown (.md/.markdown/.mdx) as a document, known source
 suffixes with syntax colors, plain text, a common image, or PDF. HTML/SVG and
 MDX components never execute. Unknown text stays plain; text over 256 Ki
 characters stays complete but skips document parsing and syntax colors. The read is limited to 32 MiB, with previews limited to 8 MiB. Other
-files show a download action. Settings, PTY and Trace stay on the PC.
+files show a download action. Full Settings, PTY and Trace stay on the PC; paired phones also expose PC timeout controls.
 
 While a PC turn runs, the empty composer shows a square Stop button. Typing a message or adding an attachment or quote switches it to Follow-up; Steer stays available for that draft. The header Stop remains available while drafting. A parked wait has no live turn to stop. In direct model chat, the square Stop cancels the stream, keeps the text received so far, and restores Send.
 
@@ -200,6 +214,10 @@ npm run cap:sync          # rebuild dist and copy into both apps
 npx cap open ios          # Xcode
 npx cap open android      # Android Studio
 ```
+
+Concurrent browser suites use separate ports and output directories, for example:
+`ZWAI_MOBILE_E2E_PORT=43187 npm run e2e -- e2e/pc-timeouts.spec.ts --output=/tmp/zwai-phone-timeouts`.
+The walkthrough stores this case's PC timeout values in memory.
 
 From the repo root: `make mobile-ios` / `make mobile-android`.
 Android debug builds need JDK 21 (`JAVA_HOME` pointing at it). iOS needs Xcode
@@ -356,8 +374,8 @@ Composer width regressions run on Chromium and iPhone WebKit:
 The packaged iOS keyboard-dismissal and submission checks use the disposable
 fixture documented in [TESTING](../docs/TESTING.md).
 
-The paired-PC model picker also has packaged iPhone checks in the disposable
-layout fixture. They use the generic offline catalog, not a live provider or
+The paired-PC model picker and PC timeout sheet have packaged iPhone checks
+in the disposable layout fixture. They use offline PC state, not a live provider or
 saved PC credentials. Set `IOS_LAYOUT_SIMULATOR` to an isolated iPhone 17 and run:
 
 ```bash
@@ -373,18 +391,25 @@ xcodebuild -project "$fixture/mobile/ios/App/App.xcodeproj" \
   -parallel-testing-enabled NO -resultBundlePath "$fixture/refresh.xcresult" test
 ```
 
-For each failure-path case create a new fixture with its matching query and
+For each additional case create a new fixture with its matching query and
 select its test method instead:
 
 | `IOS_LAYOUT_QUERY` | `BindFlowTests` method |
 | --- | --- |
 | `/?mock=1&tick=0&catalog=retry` | `testModelRefreshFailureKeepsChoicesAndCanRetryLocally` |
 | `/?mock=1&tick=0&catalog=legacy` | `testModelRefreshLegacyHostFeedbackDoesNotBlockConversation` |
+| `/?mock=1&tick=0` | `testPCTimeoutsSaveReopenAfterNumericKeyboard` |
+| `/?mock=1&tick=0&timeouts=legacy` | `testPCTimeoutsLegacyHostFeedbackStaysLocal` |
 
 These cases retain screenshots and accessibility trees before/after refresh,
 local failure/retry, and old-host feedback. The fixture copies current assets
 and injects only its query; it never edits the shipping native project or marks
 a private development build as a published release.
+The timeout case focuses the numeric input, waits for the keyboard, then uses
+the input's updated frame to position the caret and replace its value. It
+asserts both the empty intermediate value and the exact replacement before
+saving; a misplaced caret must not turn a test edit into an appended duration.
+The reached WKWebView exposes menu entries as menu items, not buttons.
 
 ## iOS TestFlight release
 

@@ -594,13 +594,13 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 			Kind: KindUser, AgentID: swarm.DefaultManagerID, Text: turn.UserText, Images: images})
 	}
 
-	acc := newAccumulator(e, rt.threadID, turn.ID, e.cfg.Swarm.DeltaCoalesce())
+	acc := newAccumulator(e, rt.threadID, turn.ID, e.cfg.SwarmSnapshot().DeltaCoalesce())
 	attachHostNotify(reg, acc)
 	// The pulse stops the moment the manager returns: everything after that is
 	// teardown, and a pulse arriving after the final event would make a finished
 	// turn look like it was still working.
 	beat, stopBeat := context.WithCancel(ctx)
-	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.Swarm.ProgressInterval())
+	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.SwarmSnapshot().ProgressInterval())
 	res, runErr := rt.runManager(ctx, turn, reg, acc, toolset, pc, messages)
 	stopBeat()
 	acc.flushAll()

@@ -130,6 +130,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-170 Settings and providers
 
+- 已配对手机在 PC 收件箱 **Menu → PC timeouts／电脑超时** 读取并编辑该 PC 的 worker、各提供商首字节和流空闲时限，加载失败、保存失败和旧主机均在面板内提示并可重试。仅提交改动字段，不接收密钥或端点，不覆盖无关设置；首字节与流空闲预算独立。新 worker 默认一小时，已有正值保持，保存不延长运行中的 deadline、不重置 watchdog 次数或恢复暂停任务。使用者：已配对手机用户；前置条件：PC 在线且支持相应 RPC；关联契约：`C-006`、`C-009`、`C-019`、`C-030`；入口说明：`mobile/README.md`、`docs/CONFIG.md`；实现／验证：`internal/config/timeouts.go`、`internal/config/timeout_contract_test.go`、`internal/remote/timeouts.go`、`internal/remote/timeouts_test.go`、`internal/remote/timeout_adapter_test.go`、`mobile/src/components/pc-timeout-sheet.tsx`、`mobile/src/lib/use-pc-timeouts.ts`、`mobile/e2e/pc-timeouts.spec.ts`。
+- 桌面 Settings 自动保存和刷新模型目录保留手机并发修改的超时；只有实际编辑的超时才提交替换，重开设置读取最新值。关联契约：`C-009`；实现／测试：`frontend/src/lib/settings-persist.ts`、`frontend/src/store/app.ts`、`frontend/src/lib/settings-persist-delta.test.ts`、`frontend/e2e/settings-timeout-concurrency.spec.ts`、`internal/server/timeout_settings_test.go`。
 - 目的：配置模型、外观、工具和远程连接；使用者：PC 用户；入口：Settings；输入：配置字段，包括每个提供商在输入框模型列表里的开关；输出：持久化设置和可用模型，关掉的提供商不出现在输入框和已配对手机的目录里，已经选中它的会话继续用；前置条件：本机数据目录；失败表现：校验或连接错误；关联契约：`C-006`, `C-009`, `C-012`；实现证据：`internal/config`, `internal/provider`, `frontend/src`。
 - 首字节等待：设置 → 模型的每个提供商可单独设置「首字节等待时间（秒）」，默认 30 秒，与流开始后的请求空闲超时独立。首字节错误的「配置首字节等待时间」打开失败 turn 的提供商并滚动聚焦输入框，不跟随后来切换的模型；未知或已删除提供商只打开模型页。修改自动保存，关闭设置后用户可重新发送请求。实现证据：`internal/config/provider.go`, `internal/provider/http.go`, `frontend/src/components/app/model-settings.tsx`, `frontend/src/components/app/transcript-error.tsx`；验证：`internal/config/provider_timeout_test.go`, `internal/server/settings_timeout_test.go`, `frontend/src/components/app/transcript-error.test.tsx`, `frontend/e2e/api-error.spec.ts`。
 - 输出额度用尽：桌面端主对话这条错误下面有提示，链到设置 → 集群的「单次输出上限」，并聚焦该输入。关掉设置后，同一条主对话错误上出现重试，按原来的请求再跑一轮。子代理详情中的同类错误复用该配置入口，不触发主对话重试；详见 `F-130`。手机不能改这项，只显示错误原文。实现证据：`frontend/src/components/app/transcript-error.tsx`, `frontend/src/components/app/agent-failure.tsx`, `frontend/src/lib/output-budget.ts`。
@@ -159,6 +161,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-220 Read and control PC conversations
 
+- 已绑定 PC 的收件箱菜单提供电脑超时入口；读取、编辑与保存的主定义见 `F-170`，不复用手机直连提供商设置。关联契约：`C-006`、`C-009`、`C-015`；实现／UI 回归：`mobile/src/components/pc-timeout-sheet.tsx`、`mobile/src/lib/use-pc-timeouts.ts`、`mobile/e2e/pc-timeouts.spec.ts`。
 - 手机配对对话中的用户与回答代码围栏按已知语言使用主题语法色，C++ 别名沿用现有词法器；未知或无语言标签保持纯文本，流式追加和复制保持代码原文。直连聊天复用同一渲染能力，详见 `F-230`。关联契约：`C-032`；实现证据：`mobile/src/components/markdown.tsx`, `frontend/src/lib/source-highlight.ts`；测试：`mobile/src/components/markdown-highlight.test.tsx`, `mobile/e2e/markdown-highlight.spec.ts`。
 - 手机在 PC 对话或新建对话的模型选择器里主动刷新上游模型目录，显示进行中和可重试错误；成功后可选目录移除下线模型并加入新模型，但保留显式选择，不改写 PC 配置或默认模型。旧 PC 不支持时在选择器内提示更新。关联契约：`C-006`, `C-009`；实现证据：`internal/remote/catalog_refresh.go`, `internal/remote/pump_catalog.go`, `mobile/src/lib/use-model-catalog.ts`, `mobile/src/components/model-picker.tsx`；测试：`internal/remote/catalog_refresh_test.go`, `internal/remote/pump_catalog_test.go`, `mobile/src/lib/use-model-catalog.test.ts`, `mobile/src/components/model-picker.test.tsx`, `mobile/e2e/model-refresh.spec.ts`。
 - 目的：在手机查看同一对话并发送、跟进、回答问题、插入及翻页；使用者：手机用户；入口：手机收件箱和对话页；输入：消息与操作，包括切换已绑定 PC、对 PC 的提问选择选项或填写 Other、把队列首条等待消息中断插入当前轮次；输出：切换 PC 后停留在该 PC 收件箱，进入对话后看到 PC 上同一对话的事件，提问回答经 PC 确认后继续，窄屏长输入仍可直接提交；当前轮次只有被隐藏的后台协调记录时说明空白原因，「更早」一次跨过连续隐藏记录到达可显示历史；前置条件：已绑定且在线；失败表现：重连提示或 RPC 错误，提问提交被拒绝时显示原因并保留草稿重试；关联契约：`C-002`, `C-003`, `C-006`, `C-015`, `C-016`, `C-017`；实现证据：`internal/remote/log.go`, `internal/remote/log_test.go`, `mobile/src/app.tsx`, `mobile/src/app.test.tsx`, `mobile/src/components/thread-screen.tsx`, `mobile/src/components/thread-screen.test.tsx`, `mobile/src/components/ask-card.tsx`, `mobile/src/lib/ask.ts`, `mobile/src/lib/phone-turn.ts`, `mobile/src/lib/phone-turn.test.ts`, `mobile/e2e/ask-answer.spec.ts`, `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`。
@@ -210,6 +213,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-330 Swarm library
 
+- worker lifetime 默认一小时，已有显式正值优先；live registry 用同步 `SetAgentTimeout`、`SetMaxTurns`、`SetMaxConcurrent` 更新后续执行，运行中 deadline 与三次 watchdog 恢复预算不变。关联契约：`C-009`、`C-019`；实现／验证：`swarm.go`、`worker.go`、`timeout_settings_test.go`、`worker_timeout_test.go`、`docs/LIBRARY.md`。
 - 模型输出通知提供可选 `MessageID`，同一流的思考、正文与 checkpoint 保留身份，新模型轮次使用不同身份；无身份的旧通知保持兼容。关联契约：`C-003`；证据：`signal.go`、`signal_identity_test.go`、`docs/LIBRARY.md`。
 - 进程交接 API 与恢复边界见 `F-110`、`C-027`；库使用说明：`docs/LIBRARY.md`；证据：`handoff.go`、`handoff_test.go`。
 

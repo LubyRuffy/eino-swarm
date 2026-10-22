@@ -1,6 +1,26 @@
 import type { MessageKey } from "./messages-en"
 
 export const zh: Record<MessageKey, string> = {
+  "pcTimeouts.title": "电脑超时",
+  "pcTimeouts.scope": "仅此电脑。首包等待与流空闲等待独立计时。保存后用于新的模型调用和新的子 Agent；不会修改运行中任务或恢复已暂停任务。",
+  "pcTimeouts.agent": "子 Agent 总时长（秒）",
+  "pcTimeouts.first": "首包等待（秒）",
+  "pcTimeouts.idle": "流空闲等待（秒）",
+  "pcTimeouts.effective": "已保存的首包等待：{seconds} 秒。",
+  "pcTimeouts.preview": "保存后的首包等待：{seconds} 秒。",
+  "pcTimeouts.previewInvalid": "输入正整数秒数以预览首包等待。",
+  "pcTimeouts.empty": "此电脑尚未配置模型服务。",
+  "pcTimeouts.loading": "正在加载电脑超时…",
+  "pcTimeouts.saving": "正在保存…",
+  "pcTimeouts.save": "保存电脑超时",
+  "pcTimeouts.saved": "电脑超时已保存。",
+  "pcTimeouts.invalid": "请输入正整数秒数。",
+  "pcTimeouts.unsupported": "请更新电脑端以编辑超时。",
+  "pcTimeouts.loadFailed": "无法加载电脑超时，请重试。",
+  "pcTimeouts.saveUnconfirmed": "未能确认保存结果，请重新打开以核对电脑上已保存的数值。",
+  "pcTimeouts.saveFailed": "无法保存电脑超时，请重试。",
+  "pcTimeouts.rejected": "电脑拒绝了这些超时数值。",
+  "pcTimeouts.disconnected": "请连接此电脑后编辑超时。",
   "notice.peerTask": "协作任务 {id}：{text}",
   "scan.title": "扫码绑定这台 PC",
   "scan.hint":

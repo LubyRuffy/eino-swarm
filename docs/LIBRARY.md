@@ -268,12 +268,19 @@ paid for (`TestPollingProgressKeepsAFinishedAgentsResult`).
 | mechanism | what it catches |
 |---|---|
 | Spawn context | **not** the worker lifetime. Cancelling the manager (a `/goal` session yield) must not kill in-flight sub-agents. |
-| `AgentTimeout` (default 10m) | a hung model or endpoint; the handle's error records the timeout |
+| `AgentTimeout` (default 1h) | one worker lifetime, including time queued for a slot; the handle's error records the timeout. An explicit positive value remains authoritative. A new live setting applies to later spawn/resume/restore without extending an existing deadline or resetting consecutive watchdog failures. |
 | `MaxTurns` (default 20) | a model looping forever; ends with eino's `ErrExceedMaxIterations` |
 | `ManagerMaxIterations` | the manager's ReAct cap when `RunConfig.MaxIterations` is unset; `<=0` keeps eino's own default |
 | `Registry.Close` | cancels everything and rejects further spawns; safe even for an agent whose cancel was not yet wired, because contexts are created synchronously inside `Spawn` |
 | `Registry.Cleanup` | kills whatever is still running at the end of a turn and reports how many |
 | bounded registry | finished handles are pruned by `Stats`, so a long session cannot grow the map without bound. Use `Progress` for reporting: it never prunes. Finished conversations stay in a separate archive (default 32) for `resume_agent`. |
+
+Set exported limit fields before starting workers. For a live registry use
+`SetAgentTimeout`, `SetMaxTurns` and `SetMaxConcurrent`. Timeout is captured
+when the lifetime context is created; the turn cap is read when the worker's
+model agent is created. Setters do not restart workers or clear their watchdog
+failure budget. `timeout_settings_test.go` exercises actual lifetime deadlines
+and live limit changes.
 
 Each of those has a test: `TestCallerContextCancelDoesNotReleaseAgents`,
 `TestWorkerSurvivesParentContextCancel`,

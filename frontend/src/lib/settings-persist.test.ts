@@ -129,7 +129,7 @@ describe("SettingsPersist", () => {
   it("does not write until the debounce has elapsed", async () => {
     vi.useFakeTimers()
     const write = vi.fn().mockResolvedValue(undefined)
-    const persist = new SettingsPersist(write)
+    const persist = new SettingsPersist(write, SETTINGS_SAVE_DEBOUNCE_MS, base)
     persist.schedule({ ...base, log: { level: "debug" } })
     expect(write).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(SETTINGS_SAVE_DEBOUNCE_MS - 1)
@@ -143,7 +143,7 @@ describe("SettingsPersist", () => {
   it("coalesces edits into one write", async () => {
     vi.useFakeTimers()
     const write = vi.fn().mockResolvedValue(undefined)
-    const persist = new SettingsPersist(write)
+    const persist = new SettingsPersist(write, SETTINGS_SAVE_DEBOUNCE_MS, base)
     persist.schedule({ ...base, swarm: { ...base.swarm, max_concurrent: 2 } })
     persist.schedule({ ...base, swarm: { ...base.swarm, max_concurrent: 3 } })
     await vi.advanceTimersByTimeAsync(SETTINGS_SAVE_DEBOUNCE_MS)
@@ -154,7 +154,7 @@ describe("SettingsPersist", () => {
   it("flush writes the pending document immediately", async () => {
     vi.useFakeTimers()
     const write = vi.fn().mockResolvedValue(undefined)
-    const persist = new SettingsPersist(write)
+    const persist = new SettingsPersist(write, SETTINGS_SAVE_DEBOUNCE_MS, base)
     persist.schedule({ ...base, log: { level: "warn" } })
     await persist.flush()
     expect(write).toHaveBeenCalledTimes(1)
@@ -164,7 +164,7 @@ describe("SettingsPersist", () => {
 
   it("flush is a no-op when nothing is pending", async () => {
     const write = vi.fn().mockResolvedValue(undefined)
-    const persist = new SettingsPersist(write)
+    const persist = new SettingsPersist(write, SETTINGS_SAVE_DEBOUNCE_MS, base)
     await persist.flush()
     expect(write).not.toHaveBeenCalled()
   })
@@ -173,7 +173,7 @@ describe("SettingsPersist", () => {
   it("dispose without flush drops an unwritten edit", async () => {
     vi.useFakeTimers()
     const write = vi.fn().mockResolvedValue(undefined)
-    const persist = new SettingsPersist(write)
+    const persist = new SettingsPersist(write, SETTINGS_SAVE_DEBOUNCE_MS, base)
     persist.schedule({ ...base, log: { level: "error" } })
     persist.dispose()
     await vi.advanceTimersByTimeAsync(SETTINGS_SAVE_DEBOUNCE_MS)
@@ -185,7 +185,7 @@ describe("SettingsPersist", () => {
   it("uses the language at write time, not at the first keystroke", async () => {
     vi.useFakeTimers()
     const write = vi.fn().mockResolvedValue(undefined)
-    const persist = new SettingsPersist(write)
+    const persist = new SettingsPersist(write, SETTINGS_SAVE_DEBOUNCE_MS, base)
     persist.schedule({ ...base, log: { level: "debug" } }, "en")
     persist.setLocale("zh")
     await persist.flush()
@@ -211,7 +211,7 @@ describe("SettingsPersist", () => {
       .fn()
       .mockRejectedValueOnce(new Error("disk full"))
       .mockResolvedValueOnce(undefined)
-    const persist = new SettingsPersist(write)
+    const persist = new SettingsPersist(write, SETTINGS_SAVE_DEBOUNCE_MS, base)
     persist.schedule({ ...base, log: { level: "debug" } })
     await vi.advanceTimersByTimeAsync(SETTINGS_SAVE_DEBOUNCE_MS)
     await expect(persist.flush()).rejects.toThrow("disk full")

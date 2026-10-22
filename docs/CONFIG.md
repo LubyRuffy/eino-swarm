@@ -7,10 +7,18 @@ $ZWAI_HOME (default ~/.zwai-swarm)/config.yaml     mode 0600
 ```
 
 `zwai config path` prints it, `zwai config show` prints its effective contents
-with the API key redacted. Everything in it is editable from **Settings** in the
-app: each control writes itself (debounced; **Back to app** flushes). A
-`PUT /api/settings` rewrites the file atomically — a crash mid-write
-cannot leave a truncated file that fails to parse on the next start.
+with the API key redacted. Desktop **Settings** controls save themselves
+(debounced; **Back to app** flushes). A paired phone's **Menu → PC timeouts**
+edits that PC's worker, first-byte and stream-idle timeouts independently of
+phone-direct model settings. A `PUT /api/settings` rewrites the file atomically
+— a crash mid-write cannot leave a truncated file. Saves merge into a detached
+candidate under the shared configuration lock and publish runtime settings only
+after persistence succeeds; a failed save leaves the current configuration intact.
+
+Desktop autosave sends changed sections and omits unchanged timeout fields.
+Changing a font, another swarm limit or a provider label therefore preserves a
+timeout saved by the phone while Settings was open. Explicit timeout edits
+replace the current value; reopening Settings loads the latest saved values.
 
 Nothing in the binary hardcodes an endpoint or a model name. If it is not in this
 file (or seeded from the environment on first run), it does not exist.
@@ -39,7 +47,7 @@ models:
           # enabled omitted means on. enabled: false hides it from the composer.
 swarm:
     max_concurrent: 6
-    agent_timeout_seconds: 600
+    agent_timeout_seconds: 3600
     max_turns: 200
     manager_max_iterations: 200
     progress_interval_seconds: 5
@@ -255,7 +263,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | key | default | meaning |
 |---|---|---|
 | `max_concurrent` | `6` | sub-agents running at the same time. The manager prompt and the `spawn_agent` / `resume_agent` descriptions state this number as a hard limit. Those tools refuse past it and do not park the extra worker; the manager waits, then resumes a finished id or spawns the next piece. Saving Settings applies it to the live and parked swarm immediately. Workers already queued by a programmatic `Spawn` start as soon as a slot opens under a higher cap. Lowering it does not kill in-flight workers. Raise it for wide fan-out; every one of them is a model call in flight. |
-| `agent_timeout_seconds` | `600` | watchdog per sub-agent run. A failed worker's View failure reason opens its recorded error; an exact watchdog error for that worker links to Settings → Swarm → Sub-agent timeout and focuses this field. Provider idle errors, generic deadlines and cancellation do not identify this watchdog and do not offer that link. Saving does not resume the stopped worker. Three consecutive watchdog failures of the same worker stop automatic resume, error the manager and pause its recurring schedule. Provider idle errors and cancellation do not count. Success or explicit human retry resets the budget; increasing this lifetime alone is not a recovery strategy. |
+| `agent_timeout_seconds` | `3600` | watchdog per sub-agent lifetime, including time queued for a slot. Existing positive saved values, including an old `600` or `1800`, remain unchanged. Saving updates later spawn/resume/restore lifetimes without extending an already created deadline or clearing failure counts. A failed worker's View failure reason opens its recorded error; an exact watchdog error for that worker links to Settings → Swarm → Sub-agent timeout and focuses this field. Provider idle errors, generic deadlines and cancellation do not identify this watchdog and do not offer that link. Saving does not resume the stopped worker. Three consecutive watchdog failures of the same worker stop automatic resume, error the manager and pause its recurring schedule. Provider idle errors and cancellation do not count. Success or explicit human retry resets the budget; increasing this lifetime alone is not a recovery strategy. |
 | `max_turns` | `200` | ReAct iterations per sub-agent. A model stuck in a loop ends here instead of spinning. A failed worker's recorded iteration-limit error links from its failure details to Settings → Swarm → Sub-agent tool rounds and focuses this field. Changing it does not resume that worker. |
 | `manager_max_iterations` | `200` | iterations for the manager. Lower it and complex plans get truncated mid-way; the manager also spends turns waiting for workers. Reaching the cap **pauses** the turn and asks whether to add another slice of this size, rather than failing with eino's iteration error. |
 | `progress_interval_seconds` | `5` | how often a running turn emits a progress pulse. It is the only thing that moves while every agent sits in a slow tool call, so a higher value makes a busy run look stuck for longer. Zero or negative falls back to the default; pulses cannot be switched off. |
@@ -275,7 +283,7 @@ The limits that keep a swarm from running away. All of them apply per turn.
 | `max_completion_tokens` | `16384` | `max_tokens` sent on every chat request. A thinking model that is left to the endpoint's default can spend that whole default before it emits an answer or a tool call, and the turn used to close as a blank success. Zero or negative is repaired to the default. When a turn fails with that empty length-stop, the desktop transcript links to Settings → Swarm and focuses this field. Closing that sheet offers Retry, which resends the same request. A sub-agent with the same exact recorded error offers the same focused field from its failure details, without arming a manager retry or automatically resuming the worker. |
 | `schedule_min_interval_seconds` | `30` | shortest cadence a schedule may use, in seconds. Zero or negative is repaired to the default so a hand-edit cannot arm a sub-second loop. Editable in Settings → Swarm. |
 | `schedule_tick_ms` | `1000` | how often the process looks for due schedules. Zero or negative is repaired to the default so the ticker cannot silently stop. Editable in Settings → Swarm. |
-| `schedule_max_active` | `32` | schedule runs that may execute at once. Overflow waits for the next tick. Zero or negative is repaired to the default so a hand-edit cannot refuse every fire or unbounded fan-out. Editable in Settings → Swarm. PUT `/api/settings` sends the whole `swarm` object; omitting these keys would zero the Go struct before repair. |
+| `schedule_max_active` | `32` | schedule runs that may execute at once. Overflow waits for the next tick. Zero or negative is repaired to the default so a hand-edit cannot refuse every fire or unbounded fan-out. Editable in Settings → Swarm. A supplied `swarm` section replaces these fields before normalization; only omitted `agent_timeout_seconds` preserves its latest stored value. Desktop autosave includes the other swarm fields when that section changes. |
 
 A leftover `goal_session_max_seconds` from older builds is ignored on load; the next save omits it.
 
