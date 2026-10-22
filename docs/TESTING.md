@@ -2876,6 +2876,30 @@ cross-app `UIPasteboard.string` read in the UI test runner can block and is not
 a reliable collector. Android additionally reads the reached WebView's
 computed colours and panel/viewport bounds without changing its DOM.
 
+The iOS screenshot guard runs on the actual captured frame after the C++ panel
+and Copy control are visible. It requires a mostly opaque dark background and
+visible foreground contrast, rejecting light, empty black and transparent
+frames. `AppUITests/DarkScreenshotTests` checks synthetic light/dark text and
+blank images without launching the target app. This guard catches an
+appearance getter reporting dark while the captured app remains light; it does
+not identify the UIKit mechanism or replace syntax-colour inspection, real
+Send/Copy, the exact clipboard postcondition or actual image review.
+
+For a focused cold-dark check, establish dark appearance on a new owned
+simulator before launching the app and select
+`AppUITests/BindFlowTests/testNativeCppFenceRetainsSourceAndCopyInEstablishedDark`.
+Keep earlier light evidence separate, and retain the original two-theme test
+and its failures. Build only a private Runner when reusing an accepted target:
+use a Runner-only test target, then a standard V1 `xctestrun` with `TestHostPath`
+pointing to that Runner, `TestBundlePath` to its test plug-in and
+`UITargetAppPath` to the preserved original app. Execute `test-without-building`
+and compare the installed target's full file/resource hashes before and after;
+reinstalling exactly the same app is permitted. `UseDestinationArtifacts` is
+not supported for an iOS Simulator destination by the current Xcode; its
+exit-70/zero-test rejection is a test-start failure, not a UI assertion or a
+permission problem. Never substitute another app or rebuild a frozen target to
+make the test pass.
+
 Keep the actual `xcodebuild` exit status as well as the selected XCTest result.
 If finalization stalls, capture its stack before acting: optional
 `collectSimulatorDiagnostics` / `simctl diagnose` can wait after the case ends.

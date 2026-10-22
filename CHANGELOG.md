@@ -57,6 +57,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`, `F-230`, `C-032`: iOS code-highlighting native tests now reject a light or
+  blank screenshot presented as dark. Synthetic image regressions and a focused
+  cold-dark path strengthen the existing UI/clipboard acceptance without
+  changing phone behaviour or a frozen release package (Issue #93).
+
 - `F-430`, `C-010`: TestFlight availability now reads build-filtered groups
   through the supported public collection and cross-checks each configured
   group's builds. Unsupported build-to-group GETs and combined relationship

@@ -193,6 +193,9 @@ E2E suite.
   Run its packaged-app XCTest and inspect the reached screen; iOS menu changes
   use `BindFlowTests/testNativeIOSMenuHidesAndroidUpdateCheck`. XCTest can drive
   the simulator while the host desktop session is locked.
+- Native appearance tests must check the captured target image against light,
+  dark and blank-image regressions; an appearance getter or delay never replaces
+  visible content, actual user actions and clipboard evidence.
 - A Mac Dock icon does not prove the extracted installer has a Finder icon.
   When changing desktop packaging, check the ZIP's `Info.plist` icon reference
   and `Contents/Resources/AppIcon.icns`, then inspect the extracted `.app` in
