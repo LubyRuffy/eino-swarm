@@ -30,6 +30,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-010`: prepared complete source batch `0.1.35` with mobile package/build `135` after the cumulative main-commit threshold was met. Only Android and iOS require publication for the accepted phone code-highlighting change; TestFlight keeps its independently selected marketing version. Earlier public Mac batches retain their original source, packages and native acceptance gates.
+
 - `F-430`, `C-010`: prepared unified source batch `0.1.34` with mobile package/build `134` for the complete accepted main. Required Mac, Android and iOS platforms share this batch source; TestFlight marketing version remains independently selected, and each platform retains its own acceptance and publication gates.
 
 - `F-430`, `C-010`: native acceptance recovery instructions now require executing the audit's next action and trying an available isolated native control path when one channel fails. Already authorized routine recovery does not wait for renewed approval; accepted source/package evidence stays bound to its actual scope when main advances.
