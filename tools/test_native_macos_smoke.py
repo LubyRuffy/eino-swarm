@@ -245,6 +245,51 @@ class SmokeTests(unittest.TestCase):
         self.assertIn(context["origin"], command)
         self.assertAlmostEqual(run.call_args.kwargs["timeout"], .25)
 
+    def test_native_bundle_alias_preserves_real_identity_and_keeps_origin_exact(self):
+        alias = self.root / "bundle-alias.app"
+        alias.symlink_to(self.context["app"], target_is_directory=True)
+        context = dict(self.context, ax=self.root / "unused-helper", origin="http://127.0.0.1:4567")
+        row = dict(self.native_row(), bundle=str(alias))
+        with mock.patch.object(smoke, "assert_process", return_value=self.context["app"] / "Contents/MacOS/zwai"), \
+                mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                mock.patch.object(smoke.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(row), "")):
+            self.assertEqual(smoke.native_snapshot(context, smoke.Deadline(1))["bundle"], str(alias))
+        row["origin"] = "http://127.0.0.1:9999"
+        with mock.patch.object(smoke, "assert_process", return_value=self.context["app"] / "Contents/MacOS/zwai"), \
+                mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                mock.patch.object(smoke.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(row), "")), \
+                self.assertRaisesRegex(RuntimeError, "origin"):
+            smoke.native_snapshot(context, smoke.Deadline(1))
+
+    def test_native_bundle_rejects_another_directory_and_missing_identity(self):
+        other = self.root / "other.app"
+        other.mkdir()
+        context = dict(self.context, ax=self.root / "unused-helper", origin="http://127.0.0.1:4567")
+        for returned in (other, self.root / "missing.app"):
+            row = dict(self.native_row(), bundle=str(returned))
+            with self.subTest(bundle=str(returned)), \
+                    mock.patch.object(smoke, "assert_process", return_value=self.context["app"] / "Contents/MacOS/zwai"), \
+                    mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                    mock.patch.object(smoke.subprocess, "run", return_value=subprocess.CompletedProcess([], 0, json.dumps(row), "")), \
+                    self.assertRaisesRegex(RuntimeError, "bundle"):
+                smoke.native_snapshot(context, smoke.Deadline(1))
+
+    def test_helper_error_and_bad_json_keep_raw_output_before_validation(self):
+        context = dict(self.context, ax=self.root / "unused-helper", origin="http://127.0.0.1:4567")
+        for code, stdout, stderr, error in ((2, '{"error":"case mismatch"}', "native stderr", RuntimeError),
+                                            (0, "not JSON", "decoder stderr", json.JSONDecodeError)):
+            with self.subTest(code=code), \
+                    mock.patch.object(smoke, "assert_process", return_value=self.context["app"] / "Contents/MacOS/zwai"), \
+                    mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                    mock.patch.object(smoke.subprocess, "run", return_value=subprocess.CompletedProcess([], code, stdout, stderr)), \
+                    self.assertRaises(error):
+                smoke.native_snapshot(context, smoke.Deadline(1))
+            receipt = json.loads((context["evidence"] / "smoke-native-last.json").read_text())
+            self.assertEqual(receipt["returncode"], code)
+            self.assertEqual(receipt["stdout"], stdout)
+            self.assertEqual(receipt["stderr"], stderr)
+            self.assertEqual(receipt["requested_bundle"], str(self.context["app"]))
+
     def test_preparation_reuses_verified_source_and_binary_hash_and_runtime_refuses_drift(self):
         output = self.root / "prepared-helper"
         def compile_helper(command, **kwargs):

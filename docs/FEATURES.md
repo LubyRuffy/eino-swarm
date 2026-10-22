@@ -231,7 +231,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
-- 快速原生场景通过 `make native-smoke-prepare` 预编译直接 AX helper，记录源码／构建参数／二进制身份；计时场景只验证收据，不冷编译。helper 核对本例 PID、WebView origin、desktop shell，先读回完整输入、核对唯一且可用的 Send，再按该控件；截图绑定本例窗口所有者。关联契约：`C-031`；实现证据：`tools/native_macos_ax.m`, `tools/native_macos_smoke.py`, `tools/test_native_macos_smoke.py`, `Makefile`。
+- 快速原生场景通过 `make native-smoke-prepare` 预编译直接 AX helper，记录源码／构建参数／二进制身份；计时场景只验证收据，不冷编译。helper 核对本例 PID、WebView origin、desktop shell，先读回完整输入、核对唯一且可用的 Send，再按该控件；截图绑定本例窗口所有者。bundle 以实际存在且解析后相同的目录核验，允许 Darwin 路径别名；每次 helper 返回先保存原始输出及退出码到 `smoke-native-last.json`，再进行解析和身份校验。关联契约：`C-031`；实现证据：`tools/native_macos_ax.m`, `tools/native_macos_smoke.py`, `tools/test_native_macos_smoke.py`, `Makefile`。
 - 已完成的隔离生命周期验收及证据范围：[2026-10-21 ci-macOS 记录](diagnostics/native-isolation-20261021.md)，关联 `C-031`。
 
 - 日常原生回归入口：来宾已启动、候选已构建和传输后，`make native-smoke APP=<app> EVIDENCE=<new-directory>` 在全新隔离状态中自动等待本地就绪、验证离线 worker/tool/Trace、原生窗口内容和截图，再清理本例。runner 默认整轮 `--budget 60`，`--timeout` 仍为受剩余预算限制的场景上限；`cleanup.json` 保留阶段与总耗时，超预算不得返回成功，清理不得被截止时间截断。冷构建／传输和长恢复另记范围与预算；实际一分钟验收需要来宾窗口及清理证据。关联契约：`C-031`；实现证据：`Makefile`, `tools/native_macos_case.py`, `tools/native_macos_smoke.py`, `tools/test_native_macos_case.py`, `tools/test_native_macos_smoke.py`。

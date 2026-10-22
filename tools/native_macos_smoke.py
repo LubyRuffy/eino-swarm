@@ -173,19 +173,30 @@ def wait_engine(context, deadline):
 
 def native_snapshot(context, deadline, action="snapshot", message="", expected=""):
     executable = assert_process(context, context["app_pid"], "desktop")
+    requested_bundle = executable.parent.parent.parent
     identity = validate_helper(context["ax"])
     if context.get("ax_identity", identity)["binary_sha256"] != identity["binary_sha256"]:
         raise RuntimeError("native helper changed during the case")
     result = subprocess.run([str(context["ax"]), str(context["app_pid"]), action,
-                             context["case_id"], str(executable.parent.parent.parent), context["origin"],
+                             context["case_id"], str(requested_bundle), context["origin"],
                              message if action in ("fill", "send") else expected],
                             capture_output=True, text=True,
                             timeout=min(8, deadline.remaining("native accessibility")))
+    runner.save_json(context["evidence"] / "smoke-native-last.json",
+                     dict(action=action, app_pid=context["app_pid"], requested_bundle=str(requested_bundle),
+                          requested_origin=context["origin"], returncode=result.returncode,
+                          stdout=result.stdout, stderr=result.stderr))
     if result.returncode:
         raise RuntimeError("guest native Accessibility/window check failed: " + (result.stdout + result.stderr).strip()[:500])
     row = json.loads(result.stdout)
-    if row.get("origin") != context["origin"] or row.get("bundle") != str(executable.parent.parent.parent):
-        raise RuntimeError("native helper returned another bundle or origin")
+    if row.get("origin") != context["origin"]:
+        raise RuntimeError("native helper returned another origin")
+    try:
+        same_bundle = Path(row.get("bundle")).resolve(strict=True) == requested_bundle.resolve(strict=True)
+    except (OSError, ValueError, TypeError) as error:
+        raise RuntimeError("native helper returned a missing or invalid bundle identity") from error
+    if not same_bundle:
+        raise RuntimeError("native helper returned another bundle")
     return row
 
 

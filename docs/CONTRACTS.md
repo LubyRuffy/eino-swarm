@@ -348,6 +348,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
   - 日常 native 回归在来宾和候选就绪后以整轮 60 秒为成功预算，包含准备、启动、行为断言、证据及清理；runner 的 `--budget` 默认 60 秒，场景 `--timeout` 不能另起一个脱离总预算的时钟。耗尽场景可用预算后不得再启动进程。总耗时越界不能返回成功，但必须继续清理并保留超时和清理结果。
   - 冷构建、首次传输和刻意长时恢复另列耗时与显式预算，不冒充一分钟回归。复用已准备候选不允许复用用例数据。快速场景必须保留原生窗口内容、截图及真实离线 worker/tool/Trace 断言；只有 HTTP 或进程证据时不得验收原生行为。
   - 快速场景的 AX helper 在候选准备阶段编译并记录源码、构建参数及二进制哈希，计时场景拒绝缺失／过期收据，不以冷编译延长周期。输入前核对本例 PID 和 WebView origin／desktop shell／PID，输入完整读回且唯一 Send 可用后才发送；截图必须来自本例 PID 的窗口。
+  - helper 返回的 bundle 与目标 bundle 必须实际存在且经 `Path.resolve(strict=True)` 解析后相同；同一目录的 Darwin 路径别名允许通过，其他目录或已缺失目标必须拒绝，origin、case 与 PID 校验不得放宽。helper 的原始 stdout、stderr、退出码及请求身份先写入 `smoke-native-last.json`，再检查返回码、解析 JSON 和验证身份，失败响应也必须留证。
 - 允许行为：宿主执行无窗口单元测试、headless 浏览器 E2E 和只读交付核验；来宾不可控时记录原生验收 pending。
 - 禁止行为：来宾失败后回退宿主；按程序名称全局终止进程；删除用户或其他用例的数据；把程序启动或 runner 的成功退出当作窗口行为验收。
 - 失败语义：物理宿主在启动前拒绝；锁冲突拒绝并发用例；清理未完成返回失败并保留待清理现场。

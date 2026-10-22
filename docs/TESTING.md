@@ -50,6 +50,12 @@ This avoids one System Events request per AX attribute. Missing accessibility/sc
 is a failed native check. HTTP success alone does not accept the window.
 The scenario verifies the helper's source, build arguments and binary hash from
 its preparation receipt; missing or stale inputs fail without cold compilation.
+Bundle identity compares existing paths with `Path.resolve(strict=True)`: Darwin
+aliases such as `/var` and `/private/var` are accepted only when they resolve to
+the same directory. Missing or different bundles fail; origin, case and PID
+checks remain exact. Before checking a helper's exit code, JSON or identity,
+`smoke-native-last.json` saves its raw stdout, stderr and return code alongside
+the requested bundle, origin, PID and action, including failed responses.
 
 The runner's default `--budget 60` counts guest checks, isolated copy/preparation,
 launch, scenario, cleanup and receipt writing. `--timeout` remains the scenario's
