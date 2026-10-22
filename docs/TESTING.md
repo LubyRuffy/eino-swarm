@@ -170,8 +170,75 @@ Inside the guest, run one scenario at a time:
 python3 tools/native_macos_case.py \
   --app /absolute/candidate/zwai.app \
   --evidence /absolute/private/new-case-evidence \
-  --timeout 180 -- /absolute/scenarios/check-native-window.sh
+  --timeout 50 --budget 60 -- /absolute/scenarios/check-native-window.sh
 ```
+
+### Daily native round: 60 seconds including cleanup
+
+Measured acceptance: [2026-10-22 three serial native rounds](diagnostics/native-minute-20261022.md),
+14.50 / 12.30 / 12.06 seconds including cleanup and independent checks, bound to
+the recorded application and harness inputs.
+
+With the identified candidate, prepare the direct Accessibility helper once on
+macOS (host builds are safe; this command opens no window):
+
+```bash
+make native-smoke-prepare
+```
+
+Transfer the helper and its adjacent JSON receipt with the tracked harness
+sources, retaining the same `tools/` and `bin/` layout. With `ci-macOS` already
+running and those prepared inputs present, run the offline smoke scenario in
+the guest:
+
+```bash
+make native-smoke APP=/absolute/candidate/zwai.app EVIDENCE=/absolute/private/new-round
+```
+
+This single command replaces separate manual preparation, API polling, window
+inspection and cleanup steps. It uses fresh case state, waits for actual
+readiness and completion rather than fixed startup sleeps, verifies a real
+offline worker/tool run and Trace, inspects the native window through direct
+Accessibility calls, and saves its PID-owned window screenshot. The helper
+binds the WebView to this case's origin, desktop shell and PID; input must read
+back exactly and the unique Send control must be enabled before it is pressed.
+This avoids one System Events request per AX attribute. Missing accessibility/screenshot access
+is a failed native check. HTTP success alone does not accept the window.
+The scenario verifies the helper's source, build arguments and binary hash from
+its preparation receipt; missing or stale inputs fail without cold compilation.
+Bundle identity compares existing paths with `Path.resolve(strict=True)`: Darwin
+aliases such as `/var` and `/private/var` are accepted only when they resolve to
+the same directory. Missing or different bundles fail; origin, case and PID
+checks remain exact. Before checking a helper's exit code, JSON or identity,
+`smoke-native-last.json` saves its raw stdout, stderr and return code alongside
+the requested bundle, origin, PID and action, including failed responses.
+AX children are traversed as a graph using `CFEqual` identity: revisiting one
+element does not create another composer or Send control. The helper counts all
+visits, including empty nodes and repeated edges, toward its 5000-visit bound;
+new nodes beyond depth 45 still fail. A genuine limit stops traversal and fails
+the case rather than accepting an incomplete set of controls.
+
+The runner's default `--budget 60` counts guest checks, isolated copy/preparation,
+launch, scenario, cleanup and receipt writing. `--timeout` remains the scenario's
+upper limit, further capped by the remaining round budget after reserving cleanup
+time. Preparation that exhausts that allowance cannot start the next process.
+`cleanup.json` records each phase, total time and whether the budget was exceeded.
+A successful scenario whose complete round exceeds the budget returns `124`.
+Cancellation and cleanup failures retain their own nonzero results. Cleanup
+always runs to completion or reports failure, even after the deadline; the
+budget is a success gate, not permission to leave running processes behind.
+
+App/helper build and first transfer are preparation costs outside this daily-round target;
+retain their source SHA, candidate executable/ZIP SHA-256 and elapsed time
+separately, then bind the smoke receipt's executed binary hash to that candidate.
+An app path or a version label alone is not build provenance. Reuse the same
+prepared candidate for repeat rounds, never the previous case's app copy or data.
+Run cold checkout/build acceptance and deliberately long recovery scenarios
+separately, with an explicit larger `--budget` and corresponding `--timeout`.
+They do not establish the daily round's latency. For a performance receipt,
+retain at least three serial guest rounds, each with real window/behavior evidence,
+`cleanup_complete: true`, no owned PIDs, data removed and total time at most 60s.
+Offline runner tests cannot establish that measurement.
 
 The runner refuses physical macOS hosts before launching anything; its VM guard
 does not verify the UTM inventory name, so the operator must select `ci-macOS`.
@@ -243,6 +310,11 @@ checkout command. The scenario's command and descendants remain case-owned.
 refusal, serial ownership, success/error/timeout cleanup and unrelated process
 preservation. These use headless child fixtures; they do not accept a native
 window. A real guest window and cleanup receipt are separate evidence.
+`tools/test_native_macos_smoke.py` checks helper preparation/identity, the shared
+deadline, case/loopback identity, worker-specific tool receipts, unchanged
+workspace bytes, draft/Send checks, visible-result requirements and PNG pixel
+completeness. Offline checks and helper compilation do not prove guest
+Accessibility access or native rendering.
 
 ## Local startup readiness (F-110 / C-001 / C-027)
 

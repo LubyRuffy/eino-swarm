@@ -17,6 +17,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-170`, `F-220`, `C-006`, `C-009`: paired phones can read and edit the PC's worker, provider first-byte and stream-idle timeouts through Menu → PC timeouts. A narrow encrypted RPC patch excludes credentials and unrelated settings, rejects invalid edits atomically, and keeps read/save errors local to the sheet (Issue #82).
 
+- `F-430`, `C-031`: add `make native-smoke` for one automated offline guest round
+  with worker/tool/Trace assertions, native window content and screenshot checks.
+  The case runner records phase/total timing and applies a default 60-second
+  whole-round success budget including cleanup. Expiry cannot skip cleanup;
+  cold build/transfer and long recovery tests retain separate explicit scope.
 - `F-430`, `C-031`: native desktop acceptance has a guest-only case runner with
   serial ownership, fresh app/home/cache/data/workspace per case, bounded process shutdown
   and cleanup receipts on success, failure, timeout and cancellation. Physical
@@ -40,11 +45,21 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-430`, `C-010`: prepared unified source batch `0.1.34` with mobile package/build `134` for the complete accepted main. Required Mac, Android and iOS platforms share this batch source; TestFlight marketing version remains independently selected, and each platform retains its own acceptance and publication gates.
 
+- `F-430`, `C-031`: native smoke prepares a source-identified direct AX helper
+  with the candidate, then validates it during timed rounds without compilation.
+  The helper verifies the case WebView, exact input and unique enabled Send;
+  screenshots are bound to the case's window owner. This removes per-attribute
+  System Events requests from the normal round.
+
 - `F-430`, `C-010`: native acceptance recovery instructions now require executing the audit's next action and trying an available isolated native control path when one channel fails. Already authorized routine recovery does not wait for renewed approval; accepted source/package evidence stays bound to its actual scope when main advances.
 
 - `F-130`, `F-150`, `C-009`, `C-027`: a failed scheduled check hands unfinished workers to their executable standing goal or active same-thread wake instead of treating the manager error as the end of every worker. The failed turn/run remain errors and unread; ordinary model rejections and exhausted transient retries do not automatically block the goal or immediately start another goal turn. A durable `workers_retained` receipt precedes the error and gates restoration of a failed check's workers; restart also requires current ownership and preserves the manager's failed outcome. No owner, human Stop, context-budget exhaustion and the worker-watchdog failure limit retain their stop boundaries (Issue #89).
 
 - `F-130`, `F-330`, `C-003`: streamed model notifications and stored events carry optional `message_id`, preserved by remote and TUI adapters. The additive SQLite column leaves legacy events unchanged; each new model output receives a distinct identity (Issue #88).
+
+- `F-430`, `C-031`: `native_macos_case.py --timeout` now shares the default
+  60-second whole-round budget. Deliberately longer native scenarios must pass
+  an explicit larger `--budget` as well as their scenario timeout.
 
 - `F-130`, `C-002`, `C-028`: desktop and Web Escape no longer stop a running task. Escape continues to close image previews, Find and other local overlays; stopping a task uses the composer's explicit Stop button, including after repeated Escape presses.
 
@@ -82,6 +97,25 @@ co-working app built on it. The library API is unchanged except where noted
   tokens. Paired and direct chat share the renderer; unknown language fences
   stay plain, streamed blocks retain their identity, and Copy code preserves
   the original text and whitespace (Issue #91).
+
+- `F-430`, `C-031`: verified three serial ci-macOS daily native rounds in
+  14.50 / 12.30 / 12.06 seconds including cleanup and independent identity,
+  process and path checks. Each round has native input/result screenshots and
+  offline worker/tool/Trace evidence. The receipt binds its frozen application
+  and harness; temporary guest control, wake processes and prepared caches were
+  cleaned up. See `docs/diagnostics/native-minute-20261022.md`.
+
+- `F-430`, `C-031`: native AX snapshots serialize `has_web_area` as a JSON boolean, preserving the smoke scenario's strict boolean validation across Objective-C and Python.
+
+- `F-430`, `C-031`: native smoke traverses AX child graphs by element identity,
+  so cycles and repeated references cannot become duplicate input controls.
+  Empty nodes and repeated edges count toward the bounded traversal work;
+  genuine depth or visit limits still fail the case.
+
+- `F-430`, `C-031`: native smoke compares existing resolved bundle identities,
+  accepting Darwin `/var` / `/private/var` aliases without accepting another or
+  missing bundle. Raw helper stdout, stderr and exit status are retained before
+  parsing and identity checks, including failed native responses.
 
 - `F-430`, `C-031`: completed ci-macOS background-channel recovery, precise cleanup of 12 legacy test directories and a leftover fixture, and serial native-window isolation acceptance with per-case shutdown/data removal and host foreground observations. The receipt binds its frozen candidate and does not accept later application changes or a release.
 

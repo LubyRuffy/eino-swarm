@@ -28,6 +28,8 @@ help:
 	@echo "make release      publish only affected, pending Mac/Android/iOS platforms"
 	@echo "make check      formatting, vet, test, e2e"
 	@echo "make docs-check  validate feature and contract references"
+	@echo "make native-smoke APP=... EVIDENCE=...  one isolated ci-macOS round, 60s budget"
+	@echo "make native-smoke-prepare  build the native AX helper once with the candidate"
 
 .PHONY: run
 run:
@@ -129,6 +131,16 @@ vet:
 docs-check:
 	python3 tools/docs_check.py
 	PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_*.py'
+
+# The candidate is built/transferred once; each invocation still owns fresh state.
+.PHONY: native-smoke-prepare
+native-smoke-prepare:
+	python3 "$(CURDIR)/tools/native_macos_smoke.py" --prepare-ax "$(CURDIR)/bin/native-macos-ax"
+
+.PHONY: native-smoke
+native-smoke:
+	@test -n "$(APP)" -a -n "$(EVIDENCE)" || (echo "APP and a new EVIDENCE directory are required" >&2; exit 2)
+	python3 "$(CURDIR)/tools/native_macos_case.py" --app "$(APP)" --evidence "$(EVIDENCE)" --timeout 50 --budget 60 -- python3 "$(CURDIR)/tools/native_macos_smoke.py" --ax "$(CURDIR)/bin/native-macos-ax"
 
 .PHONY: check
 check: fmt-check vet docs-check test e2e
