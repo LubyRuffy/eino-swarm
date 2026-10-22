@@ -415,7 +415,6 @@ describe("conversationSchedules", () => {
     expect(conversationSchedules(rows, home, ["sch_mint"]).map((row) => row.id)).toEqual([
       "sch_bound",
       "sch_paused",
-      "sch_done",
       "sch_mint",
     ])
     expect(conversationSchedules(rows, "  ", ["sch_mint"])).toEqual([])
@@ -423,6 +422,20 @@ describe("conversationSchedules", () => {
     expect(JSON.stringify(conversationSchedules(rows, home, ["sch_mint"]))).not.toMatch(
       /CI|deploy|GitHub/,
     )
+  })
+
+  it("hides finished bound waits but keeps terminal jobs that created the conversation", () => {
+    const rows = [
+      wait({ id: "sch_done", status: "done" }),
+      wait({ id: "sch_cancelled", status: "cancelled" }),
+      wait({ id: "sch_created_done", kind: "standalone", thread_id: "", status: "done" }),
+      wait({ id: "sch_created_cancelled", kind: "standalone", thread_id: "", status: "cancelled" }),
+    ]
+    expect(conversationSchedules(rows, "th_1", [])).toEqual([])
+    expect(
+      conversationSchedules(rows, "th_1", ["sch_created_done", "sch_created_cancelled"])
+        .map((row) => row.id),
+    ).toEqual(["sch_created_done", "sch_created_cancelled"])
   })
 })
 

@@ -1826,7 +1826,7 @@ conversation per fire). `status` is `active`, `paused`, `done`, or
 
 ### `GET /api/threads/:id/schedules`
 
-Waits the open conversation lists. `schedules` is the union, live rows
+Schedules related to the open conversation. `schedules` is the union, live rows
 first (`active` and `paused`, then `next_run_at`). `created_by` is the
 subset that minted this conversation.
 
@@ -1837,6 +1837,13 @@ schedule is still `standalone`. A cancelled wake that only used to land
 here is omitted. A cancelled job that minted the conversation stays, so
 the chat can still open it. `origin_thread_id` does not put a job on the
 conversation that created the job. A missing conversation is `404`.
+
+This association response retains completed conversation wakes. The desktop/Web
+right rail shows only `active`/`paused` bound wakes plus `created_by` jobs, with
+terminal jobs labelled by status. Completed wakes remain available in Scheduled
+→ Completed; a past `next_run_at` on a terminal row is not a pending run.
+For a one-shot, `done` means its only trigger was consumed; the claimed
+`schedule_run` and turn can still be `running` until execution ends.
 
 ```json
 {"schedules": [

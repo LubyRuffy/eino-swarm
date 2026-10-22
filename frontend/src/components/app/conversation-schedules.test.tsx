@@ -142,4 +142,57 @@ describe("conversation schedules", () => {
     })
     expect(screen.queryByTestId("conversation-schedules")).not.toBeInTheDocument()
   })
+
+  it("removes a bound wait as soon as it completes and hides the empty rail", async () => {
+    fake.rows = [row({ id: "sch_bound", title: "Aimed here" })]
+    useApp.setState({ schedules: fake.rows })
+    render(<ConversationSchedules threadId="th_home" />)
+    expect(await screen.findByTestId("conversation-schedules")).toHaveTextContent("Aimed here")
+
+    await act(async () => {
+      fake.rows = fake.rows.map((item) => ({ ...item, status: "done" }))
+      useApp.setState({ schedules: fake.rows })
+    })
+    expect(screen.queryByTestId("conversation-schedules")).not.toBeInTheDocument()
+
+    await act(async () => {
+      fake.rows = fake.rows.map((item) => ({ ...item, status: "paused" }))
+      useApp.setState({ schedules: fake.rows })
+    })
+    expect(screen.getByTestId("conversation-schedules")).toHaveTextContent("Paused")
+    expect(screen.getByTestId("conversation-schedules")).not.toHaveTextContent("Next run now")
+  })
+
+  it("does not present a claimed one-shot as another wait while its turn is still running", async () => {
+    // Claim consumes the one-shot before its run finishes. The rail describes
+    // future wakes; Working remains the turn's independent execution state.
+    fake.rows = [row({ id: "sch_claimed", status: "done", delay_s: 3600, every_s: 0 })]
+    useApp.setState({ schedules: fake.rows, status: { running: true } })
+    render(<ConversationSchedules threadId="th_home" />)
+    await act(async () => undefined)
+    expect(screen.queryByTestId("conversation-schedules")).not.toBeInTheDocument()
+    expect(useApp.getState().status.running).toBe(true)
+  })
+
+  it.each([
+    ["done", "Done"],
+    ["cancelled", "Cancelled"],
+  ])("retains the %s job that created this chat with its real status", async (status, label) => {
+    fake.createdBy = ["sch_mint"]
+    fake.rows = [
+      row({
+        id: "sch_mint",
+        kind: "standalone",
+        thread_id: "",
+        title: "Created this chat",
+        status,
+      }),
+    ]
+    useApp.setState({ schedules: fake.rows })
+    render(<ConversationSchedules threadId="th_home" />)
+    const list = await screen.findByTestId("conversation-schedules")
+    expect(list).toHaveTextContent("Created this chat")
+    expect(list).toHaveTextContent(label)
+    expect(list).not.toHaveTextContent("Next run now")
+  })
 })

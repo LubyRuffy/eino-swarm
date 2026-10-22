@@ -57,4 +57,21 @@ describe("scheduleMetaLine", () => {
     expect(scheduleMetaLine(wait({ next_run_at: "" }), tr, now)).toBe("Every 1 minute")
     expect(JSON.stringify(scheduleMetaLine(wait(), tr, now))).not.toMatch(/CI|deploy|GitHub/)
   })
+
+  it.each([
+    ["paused", "Paused"],
+    ["done", "Done"],
+    ["cancelled", "Cancelled"],
+  ])("shows %s instead of an expired next run", (status, label) => {
+    expect(
+      scheduleMetaLine(
+        wait({ status, next_run_at: "2026-09-21T04:00:00.000Z" }),
+        tr,
+        now,
+      ),
+    ).toBe(`${label} · Every 1 minute`)
+    expect(
+      scheduleMetaLine(wait({ status, next_run_at: "", every_s: 0 }), tr, now),
+    ).toBe(label)
+  })
 })

@@ -61,9 +61,8 @@ export function inboxSearchMatch(
   return title.includes(needle) || prompt.includes(needle)
 }
 
-/** Waits the open conversation lists: a wake aimed here, or a job that
- *  minted this conversation. Cancelled wakes stay off unless they minted
- *  the chat — that link is the only way to open the job that created it. */
+/** Live waits aimed here, or the job that minted this conversation.
+ *  The creator link survives completion so its result remains reachable. */
 export function conversationSchedules(
   rows: Schedule[],
   threadId: string,
@@ -75,7 +74,8 @@ export function conversationSchedules(
   return inboxScheduleOrder(
     rows.filter((row) => {
       if (created.has(row.id)) return true
-      if ((row.status ?? "").trim() === "cancelled") return false
+      const status = (row.status ?? "").trim()
+      if (status !== "active" && status !== "paused") return false
       return row.kind === "thread" && (row.thread_id ?? "").trim() === id
     }),
   )
