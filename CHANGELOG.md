@@ -78,6 +78,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `F-220`, `C-002`: PC and paired-phone question forms retain label-only options accepted by the host. Missing or unusable option IDs now derive from the label, so live and replayed questions remain selectable instead of leaving the turn waiting without a form.
+
 - `F-430`, `C-031`: native-case headless tests wait for fixture readiness rather than assuming one-second process startup. A delayed fixture regresses false failures while retaining bounded scenarios and cleanup assertions; production native-case deadlines are unchanged.
 - `F-170`, `F-175`, `C-009`, `C-030`: desktop settings autosave and catalog refresh preserve concurrent phone timeout edits by omitting unchanged timeout fields. Saves merge with the latest detached configuration and publish runtime/cache changes only after atomic persistence succeeds; a failed save leaves current settings intact. Nested cloud-tool options retain their protocol, values and isolation across snapshots and rejected updates; worker ownership and parked restoration read configuration snapshots during saves (Issue #82).
 
