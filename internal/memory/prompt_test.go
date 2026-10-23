@@ -41,7 +41,7 @@ func TestPromptCarriesTheProjectInstructionAndTheNotes(t *testing.T) {
 	if !strings.Contains(out, "status that will change") || !strings.Contains(out, "reduces the character count") {
 		t.Fatalf("the prompt must say a growing replace still has to fit:\n%s", out)
 	}
-	if !strings.Contains(out, "one or two sentences") || !strings.Contains(out, "collides") {
+	if !strings.Contains(out, "short, declarative notes") || !strings.Contains(out, "collides") {
 		t.Fatalf("the manager must see the same quality bar the tools enforce:\n%s", out)
 	}
 	if !strings.Contains(out, "share a stem") {
@@ -360,5 +360,30 @@ func TestReviewPromptRepairsOnlyRelatedNotesWithinTheExistingCapacity(t *testing
 	}
 	if strings.Contains(prompt, "If no safe supported change fits, submit an empty") {
 		t.Fatal("a capacity-blocked proposal must not become a successful empty review")
+	}
+}
+
+func TestMemoryBoundaryIsConsistentAcrossGenericPrompts(t *testing.T) {
+	prompts := map[string]string{
+		"manager":        PromptSections("", Snapshot{Limit: 100}, nil, 50, true),
+		"worker":         WorkerPromptSections(Snapshot{Limit: 100}, nil, 50),
+		"review":         ReviewPrompt(),
+		"tidy":           CatalogTidyPrompt(),
+		"library review": LibraryReviewPrompt(),
+		"library tidy":   LibraryTidyPrompt(),
+		"library live":   LibraryPromptSections(nil, 50),
+		"library worker": LibraryWorkerPromptSections(nil, 50),
+	}
+	for name, prompt := range prompts {
+		for _, want := range []string{"go off track", "know how to complete", "preconditions", "steps", "verification", "failure", "when to use", "only within a procedure"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("%s lacks boundary %q", name, want)
+			}
+		}
+		for _, leak := range []string{"one or two sentences", "multi-step", "make e2e", "usage.json", "EntryMax", "SKILL.md", "git worktree", "promote", "demote"} {
+			if strings.Contains(prompt, leak) {
+				t.Errorf("%s contains old length heuristic or task-specific wording %q", name, leak)
+			}
+		}
 	}
 }

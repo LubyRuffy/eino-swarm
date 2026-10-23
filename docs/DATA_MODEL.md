@@ -496,7 +496,10 @@ original project, so copying that copy does not start following a project
 that never changed the text. Agent writes to `MEMORY.md`
 are also capped per paragraph (`memory.entry_max`); a create that collides with
 an existing skill (same subject, shared name stem, or a copied procedure) is
-refused; a note that restates a skill's summary or steps is refused. After a
+refused; a note that restates a skill's summary or steps is refused. A pointer
+that names an existing skill exactly without restating its body can remain in
+notes; an unknown name does not grant this exception. The plain paragraph
+format of `MEMORY.md` is unchanged. After a
 successful turn, leftover families are folded into one `SKILL.md` under the
 shared stem. A hand edit of those files does not fold until the next turn, or
 until `POST /api/projects/:id/memory/tidy-skills` (stems fold first, then the

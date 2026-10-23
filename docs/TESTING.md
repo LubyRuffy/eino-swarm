@@ -620,6 +620,13 @@ Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
 
+Boundary regressions in `internal/memory/prompt_test.go` cover manager, worker,
+reviewer, tidy and library instructions, including generic wording and negative
+assertions. Store tests distinguish an existing-name pointer from copied steps
+and ensure an unknown name cannot bypass overlap checks. Frontend i18n tests
+check the extracted memory catalogs and both panel descriptions. Run
+`go test -race ./internal/memory` and `cd frontend && npm run lint && npm test`.
+
 The scripted offline reviewer submits one complete batch. Tests assert real
 memory files and stored outcomes, not agreement with the old reviewer's answer:
 

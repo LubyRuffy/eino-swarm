@@ -751,6 +751,13 @@ worker before closing SQLite.
    `schedule_continue` that cannot restart, or that is dropped as superseded,
    still closes the bound schedule run (`error`) so `HasRunningRun` cannot
    stick a wait that will never fire again.
+Notes and skills differ by loading: notes are short declarations whose absence
+would misdirect work and are injected each turn; skills contain the methods
+needed to accomplish work and load through `skill_view`. Workflow-local
+constraints belong in skill preconditions; descriptions state when to use a
+skill. An exact existing skill-name pointer may remain in notes if it does not
+restate the body. This changes no Markdown format or event kind.
+
 8. **Review** (`F-420`, `C-025`): with memory and auto-review enabled, a
    successful turn starts a single streaming `adk.ChatModelAgent` from the stored
    event log, even when the manager already used a memory tool. Compacted ADK

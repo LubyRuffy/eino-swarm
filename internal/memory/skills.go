@@ -234,11 +234,27 @@ func (s *Store) noteRestatesASkill(note string) error {
 		if err != nil {
 			continue
 		}
+		// A reminder may name the on-demand skill and its entry condition.
+		// The exception never allows copying the skill's execution into notes.
+		if noteReferencesSkill(note, skill.Name) && !noteCoveredBy(note, skill.Body) {
+			continue
+		}
 		if noteOverlapsSkill(note, skill) {
 			return &NoteSkillOverlapError{Name: skill.Name, Description: skill.Description}
 		}
 	}
 	return nil
+}
+
+func noteReferencesSkill(note, name string) bool {
+	for _, token := range strings.FieldsFunc(note, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-')
+	}) {
+		if token == name {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidSkillName reports whether name can be a directory under the skills

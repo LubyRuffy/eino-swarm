@@ -821,8 +821,11 @@ manager already wrote memory: one saved requirement does not prove that the
 whole turn was covered. A failed project turn may retain explicit human
 requirements as notes, without learning skills from failed work. Cancellation
 does not start an automatic review. What is worth carrying forward is kept:
-short notes about how this project works, and *skills* —
-step-by-step procedures the agents wrote for themselves. The next conversation in
+short notes whose absence would misdirect future work (preferences, facts, hard
+constraints, or pointers to recorded skills), and *skills* whose methods make
+work achievable (applicability, steps, verification and failure branches).
+Notes are short declarations that stand alone; constraints needed only inside
+one workflow belong in that skill. Skill descriptions say when to use them. The next conversation in
 that project starts with the notes in its prompt and an index of the skills, and
 opens a skill when it needs one. Sub-agents on that conversation get the same
 snapshot and can open a skill; they cannot write the store. Their report back to

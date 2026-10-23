@@ -401,3 +401,70 @@ func TestAgentNotesAreCappedPerEntryAndMustNotRestateASkill(t *testing.T) {
 		t.Fatalf("a note that copies the steps must be refused: %v", err)
 	}
 }
+
+// A standing reminder can point at an on-demand procedure without copying its
+// execution into every turn. Naming a skill must not bypass body overlap.
+func TestNotesCanPointAtAnExistingSkillWithoutRestatingItsBody(t *testing.T) {
+	const description = "when restoring durable archive metadata after validation failures"
+	const body = "Inspect the saved checkpoint, compare its source identity, verify the restored record, and preserve every validation receipt."
+	for _, tc := range []struct {
+		name        string
+		note        string
+		wantOverlap bool
+	}{
+		{"pointer", "When restoring durable archive metadata after validation failures, use archive-recovery.", false},
+		{"quoted pointer", "恢复 durable archive metadata after validation failures 时，先看 `archive-recovery`。", false},
+		{"missing target", "When restoring durable archive metadata after validation failures, use missing-recovery.", true},
+		{"longer name", "When restoring durable archive metadata after validation failures, use archive-recovery-new.", true},
+		{"body with target", "Use archive-recovery: " + body, true},
+		{"body without target", body, true},
+		{"unrelated fact", "The human prefers concise answers.", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewLimited(filepath.Join(t.TempDir(), "memory"), 3000, 500)
+			if _, err := s.WriteSkill("archive-recovery", description, body); err != nil {
+				t.Fatal(err)
+			}
+			_, changed, err := s.Add(tc.note)
+			if errors.Is(err, ErrNoteSkillOverlap) != tc.wantOverlap || (err != nil && !tc.wantOverlap) {
+				t.Fatalf("Add overlap=%v want %v: %v", errors.Is(err, ErrNoteSkillOverlap), tc.wantOverlap, err)
+			}
+			if changed == tc.wantOverlap {
+				t.Fatalf("changed=%v for overlap=%v", changed, tc.wantOverlap)
+			}
+			if tc.wantOverlap {
+				return
+			}
+			replacement := strings.ReplaceAll(tc.note, ".", "; retain this reminder.")
+			if _, err := s.Replace(tc.note, replacement); err != nil {
+				t.Fatalf("Replace pointer: %v", err)
+			}
+		})
+	}
+}
+
+func TestCheckingNotesSkipsNonSkillsAndReportsAnUnreadableCatalog(t *testing.T) {
+	t.Run("skip incomplete entries", func(t *testing.T) {
+		s := New(filepath.Join(t.TempDir(), "memory"), 1000)
+		for _, name := range []string{"INVALID", "missing-body"} {
+			if err := os.MkdirAll(filepath.Join(s.skillsDir(), name), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(s.skillsDir(), "plain-file"), []byte("not a skill directory"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, changed, err := s.Add("The project keeps durable human preferences."); err != nil || !changed {
+			t.Fatalf("non-skills blocked an unrelated note: changed=%v err=%v", changed, err)
+		}
+	})
+	t.Run("catalog unavailable", func(t *testing.T) {
+		s := New(t.TempDir(), 1000)
+		if err := os.WriteFile(s.skillsDir(), []byte("not a directory"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, changed, err := s.Add("A durable fact."); err == nil || changed || !strings.Contains(err.Error(), "list skills") {
+			t.Fatalf("an unavailable overlap check must not write notes: changed=%v err=%v", changed, err)
+		}
+	})
+}

@@ -16,8 +16,9 @@ type MemoryConfig struct {
 	// CharLimit bounds MEMORY.md. A write that would exceed it fails with the
 	// current entries attached, rather than silently dropping the oldest.
 	CharLimit int `yaml:"char_limit" json:"char_limit"`
-	// EntryMax bounds one note. Notes ride in every turn, so a runbook or a
-	// procedure that would fill a quarter of the budget belongs in a skill.
+	// EntryMax bounds one always-loaded note: a durable fact, preference,
+	// constraint or pointer. Workflow-specific prerequisites and execution
+	// knowledge belong in skills.
 	// Zero is repaired to the default; a value above CharLimit is clamped.
 	EntryMax int `yaml:"entry_max" json:"entry_max"`
 	// ReviewMaxIterations caps the reviewer's ReAct loop. It reads one

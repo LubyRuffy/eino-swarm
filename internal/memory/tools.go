@@ -109,14 +109,14 @@ func (t *memoryTool) Info(context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: ToolMemory,
 		Desc: "Curate the notes carried into every future conversation in this project. " +
-			"Store durable facts about the environment, the human's stated preferences, " +
-			"conventions and corrections — one or two sentences, not a procedure, not this " +
-			"conversation's working details, not a remaining count or other status that will " +
-			"change again, and not anything that can be looked up again. A note that restates " +
-			"a recorded skill is refused. The store is bounded by a total and by a per-note " +
+			memoryBoundary +
+			"Do not store this conversation's working details, a remaining count or other " +
+			"status that will change again, or anything easily looked up again. A pointer " +
+			"must name an existing skill without restating its body. A note that restates " +
+			"a recorded skill is refused. The store is bounded by a total and a per-note " +
 			"cap: a write that would grow it past either is refused, including replace with a " +
 			"longer note. The result includes over_by or entry_max and the current notes. " +
-			"Do not retry the same content; shorten, drop notes, or record a procedure as a skill.",
+			"Do not retry the same content; shorten related notes or record a procedure as a skill.",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"action": {Type: schema.String, Required: true,
 				Desc: "add, replace or remove",
@@ -278,14 +278,12 @@ type skillManageTool struct {
 func (t *skillManageTool) Info(context.Context) (*schema.ToolInfo, error) {
 	return &schema.ToolInfo{
 		Name: ToolSkillManage,
-		Desc: "Record a reusable procedure as one of this project's skills, so a later " +
-			"conversation can follow it instead of working it out again. Worth recording: a " +
-			"multi-step workflow that succeeded, a recovery from a failure, a correction the " +
-			"human made. Not worth recording: a single tool call, or anything specific to one " +
-			"request. One subject is one skill. Call skill_view on any index entry that might " +
-			"already cover the subject; a create that collides is refused and names the " +
-			"existing skill — patch that one, or merge the group (name is the skill to keep, " +
-			"sources are the others).",
+		Desc: "Record a supported reusable procedure as one of this project's skills. " +
+			memoryBoundary +
+			"Do not store anything specific to one request. One subject is one skill. " +
+			"Call skill_view on any index entry that might already cover the subject; " +
+			"a create that collides is refused and names the existing skill — patch " +
+			"that one, or merge the group (name is the skill to keep, sources are the others).",
 		ParamsOneOf: schema.NewParamsOneOfByParams(map[string]*schema.ParameterInfo{
 			"action": {Type: schema.String, Required: true,
 				Desc: "create, patch, merge or delete",
@@ -295,7 +293,7 @@ func (t *skillManageTool) Info(context.Context) (*schema.ToolInfo, error) {
 			"description": {Type: schema.String,
 				Desc: "one line saying when to use this skill; required for create, optional for merge"},
 			"content": {Type: schema.String,
-				Desc: "the procedure in Markdown: the steps and the tool calls to make; required for create, optional for merge"},
+				Desc: "the procedure in Markdown: preconditions, steps, verification and supported failure branches; required for create, optional for merge"},
 			"old_text": {Type: schema.String, Desc: "for patch: the text to replace, unique in the body"},
 			"new_text": {Type: schema.String, Desc: "for patch: what to put in its place"},
 			"sources": {Type: schema.Array, ElemInfo: &schema.ParameterInfo{Type: schema.String},

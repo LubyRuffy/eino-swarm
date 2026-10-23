@@ -422,8 +422,8 @@ const (
 	// About 800 tokens: enough for a dozen dense notes, small enough that
 	// every turn can afford to carry them.
 	DefaultMemoryCharLimit = 2200
-	// One or two sentences. A runbook that would eat a quarter of the notes
-	// budget belongs in a skill, where only the summary rides in the prompt.
+	// Always-loaded notes state facts, preferences, constraints or pointers.
+	// Procedures stay in skills; only applicability rides in the prompt.
 	DefaultMemoryEntryMax      = 360
 	DefaultReviewMaxIterations = 8
 	// DefaultTidyMaxIterations caps the Memory panel's catalog reviewer. A

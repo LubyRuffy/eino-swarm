@@ -523,3 +523,26 @@ func TestMemoryToolRefusesARunbookNoteAndARestatedSkill(t *testing.T) {
 		t.Fatalf("refused notes were recorded as changes: %+v", changes)
 	}
 }
+
+func TestMemoryToolDescriptionsUseTheSameBoundaryAsPrompts(t *testing.T) {
+	_, tools, _ := toolset(t, 500)
+	for name, required := range map[string][]string{
+		ToolMemory:      {"go off track", "pointer", "only within a procedure"},
+		ToolSkillManage: {"know how to complete", "preconditions", "verification", "failure", "when to use"},
+	} {
+		info, err := tools[name].Info(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range required {
+			if !strings.Contains(info.Desc, want) {
+				t.Errorf("%s lacks %q", name, want)
+			}
+		}
+		for _, old := range []string{"one or two sentences", "multi-step", "usage.json", "make e2e"} {
+			if strings.Contains(info.Desc, old) {
+				t.Errorf("%s retained %q", name, old)
+			}
+		}
+	}
+}

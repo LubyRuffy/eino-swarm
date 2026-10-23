@@ -235,6 +235,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-420 Configuration and project memory
 
+- 笔记以“不知道会走偏”为判据，常驻注入偏好、事实、硬约束及已有技能指针；技能以“不知道如何做成”为判据，按需加载适用条件、步骤、验证及失败分支。仅某流程相关的约束留在技能前置条件；description 写适用时机。指针仅在原样引用已有技能名且未复述正文时豁免重叠拒绝；纯文本中的不存在名称不能取得豁免。关联契约：`C-025`；实现证据：`internal/memory/prompt.go`、`internal/memory/library.go`、`internal/memory/tools.go`、`internal/memory/skills.go`；测试证据：`internal/memory/prompt_test.go`、`internal/memory/store_test.go`。
+
 - 目的：保留本机设置、项目说明和技能；使用者：PC 用户；入口：Settings、Memory、技能管理；输入：配置及项目文件；输出：后续运行可用的上下文；前置条件：本机数据目录；失败表现：保存或解析错误；关联契约：`C-009`、`C-012`、`C-025`；实现证据：`internal/config`, `internal/memory`, `docs/CONFIG.md`。
 - 会话摘要与成功回合记忆复核接收从完整历史重建、按 turn 归属的持久化 worker 生命周期事实；摘要预算与落库优先保留事实，复核先从源总 rune 预算预留完整事实块并独立前置，再选择事件来源，不把事实或派生摘要当作可引用写入来源。失败回合 human-only 不接收该前置块；旧摘要和模型自述只作待核对叙述，冲突创建量不能提升为执行证据。旧笔记／技能仍可在 Memory 中人工编辑，系统不按用户业务关键词清洗。关联契约：`C-008`、`C-012`；实现／测试证据：`internal/engine/worker_lifecycle_facts.go`、`internal/engine/worker_lifecycle_facts_test.go`、`internal/engine/session_memory.go`、`internal/engine/review_source.go`。
 - 压缩提示预览只显示摘要正文；生命周期证据继续保存在内部摘要、模型上下文与诊断中。关联契约：`C-008`；证据：`internal/engine/compact.go`、`internal/engine/autocompact.go`、`internal/engine/compact_evidence_test.go`、`internal/server/compact_evidence_test.go`。

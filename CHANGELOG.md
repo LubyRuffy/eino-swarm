@@ -39,6 +39,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-420`, `C-025`: unify notes/skills classification by permanent versus on-demand loading, applicability-focused descriptions and workflow-local constraints; clarify both Memory panel descriptions and split memory translations (Issue #99).
+
 - `F-130`, `F-170`, `F-330`, `C-009`, `C-019`: new worker lifetimes default to one hour in the library and app. Existing positive configured values, active deadlines and the three-failure watchdog budget retain their meaning. Live registries have synchronized `SetAgentTimeout` and `SetMaxTurns` setters for subsequent worker execution (Issue #82).
 
 - `F-430`, `C-010`: prepared complete source batch `0.1.35` with mobile package/build `135` after the cumulative main-commit threshold was met. Only Android and iOS require publication for the accepted phone code-highlighting change; TestFlight keeps its independently selected marketing version. Earlier public Mac batches retain their original source, packages and native acceptance gates.
@@ -77,6 +79,8 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-420`, `C-025`: allow notes pointing to an existing skill without restating its body; unknown names do not bypass duplicate checks (Issue #99).
 
 - `F-130`, `F-220`, `C-002`: PC and paired-phone question forms retain label-only options accepted by the host. Missing or unusable option IDs now derive from the label, so live and replayed questions remain selectable instead of leaving the turn waiting without a form.
 
