@@ -506,13 +506,15 @@ worker before closing SQLite.
    check error. Another scheduled fire or explicit user action collects the
    same workers. Interrupt, absent ownership, context-window exhaustion and
    the worker-watchdog failure limit retain their stop/cleanup boundaries.
-   Before a successful scheduled turn returns from `runManager`, durable
-   tool-result/report events in that turn are checked (`schedule_completion.go`).
-   With no evidence, the transcript is preserved and the same registry/turn
-   continues once with a generic completion cue. A second empty completion
-   returns an error for `finishScheduledRun`; it cannot archive as quiet or
-   turn an acknowledgement into findings. Model-error cleanup results are
-   excluded. Ordinary turns and explicit quiet reports retain their behavior.
+   Before a scheduled turn returns from `runManager`, its current final text
+   and durable tool-result/report events are checked (`schedule_completion.go`).
+   Automatic tool selection allows a nonempty text result to finish without
+   tools through the existing findings fallback. Only a blank final with no
+   real tool result or report preserves the transcript and continues once
+   in the same registry/turn; a second empty response remains an error.
+   Model-error cleanup results are excluded. Explicit quiet reports retain
+   precedence over final text. Ending a check does not prove external work
+   or replace the standing goal completion boundary; ordinary turns are unchanged.
 3. The manager's system prompt is generated per turn from the live toolset, the
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home).    It is

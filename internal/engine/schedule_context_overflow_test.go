@@ -90,7 +90,7 @@ func TestContextOverflowDoesNotClaimPauseWhenStorageRejectsIt(t *testing.T) {
 	}
 	sch, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: scheduleWaitPrompt, EveryS: 60,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, EveryS: 60,
 		CreatedBy: store.ScheduleCreatedHuman,
 	})
 	if err != nil {

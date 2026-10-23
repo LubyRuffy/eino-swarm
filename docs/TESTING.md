@@ -870,7 +870,14 @@ worker/tool admission, structured histories and unread inboxes, real completion
 versus handoff, watchdog budgets, active/parked workers, human pauses and
 checkpoint failures. `internal/engine/restart_parked_test.go` proves actual
 worker execution after restart while the manager remains completed and its
-future wake stays unchanged. `internal/remote/restart_test.go` prevents private
+future wake stays unchanged. Lifecycle helpers `mustCreateWake` and `armDueWake`,
+and the parked-restart fault fixture, create explicitly titled waits. Fixtures
+that replace the provider pool, register/remove database callbacks or close
+storage must not also start unrelated asynchronous title work. Helper assertions
+keep `TitleAuto=false`; automatic schedule-title tests use `CreateSchedule`
+directly. This isolates fault injection without changing runtime title generation
+or weakening race checks.
+`internal/remote/restart_test.go` prevents private
 checkpoint bodies leaving the PC. `internal/server/restart_http_test.go` covers idempotent
 HTTP acknowledgement, readable status, same-origin refusal and admission errors.
 `TestRestartLateWorkerToolResultStaysUnknownAfterRegistryClose` keeps late
@@ -2209,10 +2216,16 @@ nothing to surface archives (`quiet`, unread cleared, `turn.quiet`; a
 standalone fire leaves Recents) while an omitted report after actual tool
 execution with an answer is `findings` and stays in the sidebar, and why a crashed or cancelled
 scheduled turn marks the run `error` so `HasRunningRun` cannot stick.
-`internal/engine/schedule_completion_test.go` covers acknowledgement recovery
-in the original turn, two empty/acknowledgement responses failing visibly,
-ordinary chat remaining unchanged, and event-based evidence independent of
-answer length or language. Synthetic model-retry cleanup is not tool work.
+`internal/engine/schedule_completion_test.go` covers text-only scheduled results
+without forced tools or retries, two genuinely empty responses failing visibly,
+ordinary chat remaining unchanged, and explicit reports/actual tool results.
+Synthetic model-retry cleanup is not tool work.
+`internal/engine/schedule_completion_http_test.go` crosses the real Registry,
+ADK and loopback HTTP adapter: Run now and automatic fires accept text-only
+results in one request, blank recovery can end with text in the same run,
+requests keep automatic tool selection, explicit quiet reports keep precedence,
+and wholly empty output and Stop retain their bounded failure/cancellation.
+No external model is called.
 The desktop notice reducer and localization tests distinguish this continuation
 from a genuine model error while preserving older retry envelopes.
 `frontend/src/lib/schedule-view.test.ts` and
@@ -2225,10 +2238,13 @@ for paused/completed/cancelled rows instead of stale next-run times.
 checks its paused label and removal after completion, reloads the conversation,
 and opens its retained Completed history (`F-150` / `C-009`).
 
-`frontend/e2e/schedules.spec.ts` drives Run now through the real UI and Trace
-with `ZWAI_MOCK_SCHEDULE_ACK=once` (the E2E server default); `always` reproduces
-the visible error path with `ZWAI_MOCK_SCHEDULE_ACK=always npm run e2e -- schedules.spec.ts -g "Run now handles"` (use an isolated E2E port/data dir). These knobs only
-affect the offline provider on scheduled checks.
+`frontend/e2e/schedules.spec.ts` drives Run now and automatic fires through the
+real UI and Trace with text-only offline responses. Both
+`ZWAI_MOCK_SCHEDULE_ACK=once` (the E2E server default) and `always` now finish
+without tools or retry; these knobs only affect the offline scheduled provider.
+Use separate ports, data and output directories for concurrent runs. The
+worker-ownership E2E failure fixture returns a genuinely empty response so it
+continues testing failed-check retention without rejecting valid text.
 `TestCreateScheduleUsesFrozenCapWhenTickerIsLive` is why inbox create
 (and resume/patch, and a standalone claim's default provider) reads the
 same snapshot the ticker froze, not a later `e.cfg.Swarm` write;

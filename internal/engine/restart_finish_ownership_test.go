@@ -27,7 +27,7 @@ func TestRestartCannotTakeWorkersAwayFromNormalParking(t *testing.T) {
 	}
 	turn := plantUnfinishedTurn(t, e, th.ID, "continue assigned work")
 	wake, err := e.CreateSchedule(ScheduleInput{Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: "check progress", EveryS: 3600, CreatedBy: store.ScheduleCreatedManager})
+		Title: "Scheduled work", Prompt: "check progress", EveryS: 3600, CreatedBy: store.ScheduleCreatedManager})
 	if err != nil {
 		t.Fatal(err)
 	}

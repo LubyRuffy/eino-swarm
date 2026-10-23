@@ -58,6 +58,12 @@ co-working app built on it. The library API is unchanged except where noted
   package metadata before the exact-source Mac installer acceptance. This is a
   local acceptance candidate; native gates and publication remain pending, and
   no tag, installer upload or TestFlight delivery is implied.
+- `F-150`, `C-009`: scheduled checks and Run now accept a nonempty text result
+  without calling a tool or `report_schedule`, preserving automatic tool
+  selection. Only a wholly empty response with no real tool result or explicit
+  report receives one same-turn continuation before a visible error. Explicit
+  quiet reports keep precedence; ending a check does not complete its standing
+  goal or verify external work.
 
 - `F-130`, `F-170`, `F-330`, `C-009`, `C-019`: new worker lifetimes default to one hour in the library and app. Existing positive configured values, active deadlines and the three-failure watchdog budget retain their meaning. Live registries have synchronized `SetAgentTimeout` and `SetMaxTurns` setters for subsequent worker execution (Issue #82).
 
@@ -102,6 +108,10 @@ co-working app built on it. The library API is unchanged except where noted
   through its checkpoint, durable tool result and actual model input while the
   response is held. Remove the unrelated whole-turn completion wait without
   extending its deadline or changing runtime behavior (Issue #77).
+
+- `F-110`, `C-027`: isolate lifecycle schedule fixtures from asynchronous
+  naming, preventing fixture-owned provider-pool and database-callback races
+  under `-race`; automatic-title behavior remains covered through its real API.
 
 - `F-150`, `C-003`, `C-012`: a human goal resume followed by its new continuation turn shows one notice in desktop/Web chat. Late typed memory-review feedback keeps its own row without splitting that resume pair. Later continuations and independent or manager resumes retain their notices; original `goal_resumed` and `goal_continued` events remain available in Trace (Issue #96).
 
