@@ -505,6 +505,21 @@ file means the next shell may take the lock. A live pid whose
 alone. `mock` is part of the lease: a `--mock` client will not attach to a
 non-mock engine.
 
+Each skill directory may also contain `usage.json` with `views` (int64) and
+`last_viewed_at` (UTC RFC3339 timestamp; zero time means never viewed). Only a
+successful agent `skill_view` increments it, under the Store lock with atomic
+replacement. Missing or corrupt optional usage reads as zero; the next view
+repairs it. Listing, HTTP reading and copying do not count as views. Merges
+sum usage and preserve the latest view, deletion removes the directory, and
+copies start at zero; updating a copy retains its own usage. If a source
+deletion fails, the keeper retains usage no longer held by readable sources,
+including a source whose files were partially removed, allowing an ordinary
+failed merge to retry without double counting. Copy refuses an occupied
+destination directory even when it contains only an orphaned usage sidecar. A simultaneous
+restoration failure is returned with the deletion error; process interruption
+is not a cross-directory transaction. This sidecar is
+excluded from SKILL.md modification time and content-digest comparisons.
+
 `MEMORY.md` and `SKILL.md` are plain files, written atomically through a
 temporary file and a rename, so a crash mid-write leaves the old version rather
 than half of the new one. `PLAN.md` is the `/plan` draft for that conversation:
@@ -522,7 +537,10 @@ original project, so copying that copy does not start following a project
 that never changed the text. Agent writes to `MEMORY.md`
 are also capped per paragraph (`memory.entry_max`); a create that collides with
 an existing skill (same subject, shared name stem, or a copied procedure) is
-refused; a note that restates a skill's summary or steps is refused. After a
+refused; a note that restates a skill's summary or steps is refused. A pointer
+that names an existing skill exactly without restating its body can remain in
+notes; an unknown name does not grant this exception. The plain paragraph
+format of `MEMORY.md` is unchanged. After a
 successful turn, leftover families are folded into one `SKILL.md` under the
 shared stem. A hand edit of those files does not fold until the next turn, or
 until `POST /api/projects/:id/memory/tidy-skills` (stems fold first, then the
@@ -538,6 +556,16 @@ failures leave the official notes unchanged. Existing Markdown paragraphs and
 human-authored notes remain readable without a migration or mandatory provenance
 backfill. Direct external file writers do not participate in that in-process
 lock.
+
+Requested project tidy additionally moves existing content between notes and
+skills. Promote requires body and source-note text to be equivalent after whitespace
+normalization, with no extra steps or assertions; demote requires a short body without Markdown step markers and
+a whitespace-equivalent note under both budgets. Text overlap alone cannot
+authorize deleting source content. The destination is saved first, then the
+source is removed; partial failure may leave duplicates. Actual partial writes
+are create/add/delete changes; a completed move is promote/demote. A retry
+reporting no change establishes the already-present final state, not historical
+source provenance. Shared-library tidy and post-turn review do not move notes.
 
 Skills keep immediate file writes, including merge/delete; they are not part of
 the notes commit. A later refusal must not hide an earlier actual skill write.
@@ -560,8 +588,9 @@ matter or event kind are introduced. See [Memory reviews](API.md#memory-reviews)
 **Memory lives here, never in your working directory.** A project pointed at a
 repository must not leave files in it, and a memory that was in the repository
 would arrive in a commit, a diff and a code review. `skill_view` reads this
-tree only — the manager and sub-agents both have it; only the manager (and
-the post-turn reviewer) can write. A `SKILL.md` already in the workspace is a
+tree only — the manager and sub-agents both have it. The manager and
+post-turn reviewer can write under their tool boundaries; a user-requested
+project tidy can additionally reclassify existing content. Workers cannot write. A `SKILL.md` already in the workspace is a
 file; the agent `read`s it rather than opening it as a recorded skill.
 
 ## `search_docs` / `thread_fts` — keyword index

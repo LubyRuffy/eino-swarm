@@ -73,12 +73,16 @@ def _validate(row):
         _evidence(unlock["evidence"])
     if "native_window" in row:
         window = _object(row["native_window"],
-                         {"guest_target", "candidate", "observed", "behavior_verified", "evidence"})
+                         {"guest_target", "candidate", "observed", "behavior_verified", "evidence"},
+                         {"ssh_helper_permission_denied", "trusted_guest_terminal_available"})
         _text(window["guest_target"])
         _candidate(window["candidate"])
         _boolean(window["observed"])
         _boolean(window["behavior_verified"])
         _evidence(window["evidence"])
+        for flag in ("ssh_helper_permission_denied", "trusted_guest_terminal_available"):
+            if flag in window:
+                _boolean(window[flag])
 
 
 def decide(row):
@@ -102,6 +106,14 @@ def decide(row):
     if guest["state"] == "unknown":
         return result("pending", "observe_guest_session", "guest_state_unknown")
     if guest["state"] == "ready":
+        if window and window["guest_target"] == guest["target"] \
+                and window["candidate"] == row["candidate"] and window["evidence"] \
+                and window.get("ssh_helper_permission_denied") is True \
+                and window.get("trusted_guest_terminal_available") is True:
+            # Existing Terminal trust is evidence about this control path, not
+            # permission inferred from SSH access or the guest account's role.
+            return result("pending", "inspect_native_window_via_guest_terminal",
+                          "trusted_guest_terminal_control_available", window["evidence"])
         return result("pending", "inspect_native_window", "native_window_evidence_required")
     unlock = guest.get("unlock", {})
     outcome = unlock.get("result", "not_attempted")

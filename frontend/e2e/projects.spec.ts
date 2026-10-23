@@ -228,17 +228,17 @@ test("Review now says when there is nothing to review", async ({ page }) => {
   await expect(page.getByTestId("review-status")).toContainText(/nothing to review/i)
 })
 
-test("Tidy skills says when the catalog is empty", async ({ page }) => {
+test("Tidy memory says when the catalog is empty", async ({ page }) => {
   const project = `Project ${Date.now()}`
   await createProject(page, project)
   await startInProject(page, project)
   await openMemory(page)
-  await page.getByRole("button", { name: "Tidy skills" }).click()
-  await expect(page.getByTestId("tidy-status")).toContainText(/No skills to curate/i)
+  await page.getByRole("button", { name: "Tidy memory" }).click()
+  await expect(page.getByTestId("tidy-status")).toContainText(/No memory to curate/i)
   await expect(page.getByTestId("tidy-stats")).toContainText(/0 scanned/)
 })
 
-test("Tidy skills asks the model when the catalog has a skill", async ({
+test("Tidy memory asks the model when the catalog has a skill", async ({
   page,
 }) => {
   const project = `Project ${Date.now()}`
@@ -247,9 +247,9 @@ test("Tidy skills asks the model when the catalog has a skill", async ({
   await send(page, `Trace the ${Date.now()} material and summarise it`)
   await openMemory(page)
   await expect(page.getByTestId("skill-card")).toBeVisible({ timeout: 60_000 })
-  await page.getByRole("button", { name: "Tidy skills" }).click()
+  await page.getByRole("button", { name: "Tidy memory" }).click()
   await expect(page.getByTestId("tidy-status")).toContainText(
-    /The model reviewed the catalog|Skills curated/i,
+    /The model reviewed the memory|Memory curated/i,
     { timeout: 60_000 },
   )
   await expect(page.getByTestId("tidy-stats")).toContainText(/[1-9]\d* scanned/)

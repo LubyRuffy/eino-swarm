@@ -56,3 +56,19 @@ describe("Memory review thinking", () => {
     expect(next.memory).toEqual({ ...settings.memory, review_reasoning_effort: "" })
   })
 })
+
+
+describe("Skill age settings", () => {
+  it("shows the configured threshold and saves an edited value", () => {
+    const onChange = vi.fn()
+    const configured = { ...settings, memory: { ...settings.memory, skill_stale_days: 37 } }
+    render(<MemorySettings settings={configured} onChange={onChange} />)
+    const threshold = screen.getByLabelText("Unviewed skill threshold (days)")
+    expect(threshold).toHaveValue(37)
+    fireEvent.change(threshold, { target: { value: "45" } })
+    expect(onChange).toHaveBeenCalledWith({
+      ...configured, memory: { ...configured.memory, skill_stale_days: 45 },
+    })
+    expect(screen.getByText(/candidates for review.*never deleted automatically/i)).toBeInTheDocument()
+  })
+})

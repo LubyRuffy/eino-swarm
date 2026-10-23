@@ -879,7 +879,8 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
   "enabled": true,
   "memory": {"text": "…", "entries": ["…"], "chars": 412, "limit": 2200, "rev": "a1b2c3d4e5f6"},
   "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
-  "needs_tidy": false
+  "needs_tidy": false,
+  "skill_stale_days": 90
 }}
 ```
 
@@ -892,6 +893,11 @@ agent fetches it with `skill_view`. A copied skill also carries `origin`
 body. That index is the project's memory, not a
 `SKILL.md` already in the workspace. `needs_tidy` is true when a same-subject
 family is still on disk. Opening this endpoint does not fold them.
+Project and library memory responses include `skill_stale_days`, the configured
+advisory threshold. Each skill also includes `views` (number) and
+`last_viewed_at` (UTC timestamp; zero time means never viewed). Agent
+`skill_view` increments usage; HTTP reads, list and copy calls do not. The
+prompt index omits these fields, and copies start at zero.
 
 ### `PUT /api/projects/:id/memory`
 
@@ -908,7 +914,20 @@ typed them (`400`).
 
 ### `POST /api/projects/:id/memory/tidy-skills` → `200`
 
-Curates the skill catalog on demand. Stem families fold first — the same
+Curates project memory on demand. Current notes accompany the live skill index;
+tidy-only `memory_reclassify` can promote a uniquely matched note to a skill or
+demote a short declarative skill to a note. Workers and post-turn reviewers do
+not receive this tool; the shared-library tidy does not receive notes or moves.
+Promote requires its body to equal the entire source note after whitespace
+normalization, without extra steps or assertions;
+demote requires an equivalent complete short body without Markdown step markers,
+within `entry_max` and the total note budget. Destination writes precede source
+deletions, not a multi-file transaction. Partial moves retain actual writes as
+create/add/delete changes; only complete moves use
+`action: promote` / `demote` with `target: skill_manage`. Retry may establish an
+already-present final state without new changes; it does not establish history.
+
+Curates the skill catalog as part of that pass. Stem families fold first — the same
 hygiene that runs after a finished turn — then the memory-reviewer reads the
 live index and merge / patch / delete by content. A `SKILL.md` edited in
 Finder, or a pile of uniquely named duplicates the filename heuristic cannot
@@ -916,19 +935,20 @@ see, is otherwise left as it was. Without `Accept: text/event-stream` the
 body is the outcome, once. With that header the same call is
 `text/event-stream`: `tidy` events (`phase` `scan` / `text` / `change`)
 while the model is writing, then one `done` event whose `data` is the JSON
-body below, or `error` if the fold failed after the stream had started.
+body below, including `report.err` for reviewer failures. An outer fold or final
+memory-view failure after streaming starts emits `error` instead of `done`.
 `text` is the assistant prose so far, not a delta. A disconnect does not
 abort the fold. Model calls
 and a quiet `memory_review` (`notify: off`) hang on the project's latest
 finished turn when there is one; without a turn the reviewer still runs
 against the default provider. Serializes with that project's in-flight
-reviewer so a click cannot fold while a review is still writing. Pre-stream
-refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
+reviewer so a click cannot fold while a review is still writing.
 
 ```json
 {"memory": { "dir": "…", "enabled": true, "memory": {…}, "skills": […], "needs_tidy": false },
  "report": {
    "scanned": 3, "before": 3, "after": 2, "families": 1, "unchanged": 1,
+   "promoted": 0, "demoted": 0, "stale_candidates": [],
    "created": ["weekly-rollup"],
    "deleted": ["weekly-rollup-notes", "weekly-rollup-send"],
    "patched": [],
@@ -941,7 +961,34 @@ refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
  "reviewed": true}
 ```
 
-`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works. `report.err` is set when the model call failed after the stem fold already landed.
+`report.promoted` and `report.demoted` count completed moves. They do not count
+partial destination writes as completed moves, and existing count fields retain
+their skill-catalog meaning. `tidy` change events include those actions. No
+wire event kind or endpoint path changed. As before, when no prior conversation
+turn exists there is no turn Trace anchor.
+
+`report.stale_candidates` lists skill names whose last view (or content
+modification time when never viewed) reached `memory.skill_stale_days` before
+curation. The streamed scan and original-turn `memory_review` retain the same
+list. It is advisory input, not a list of automatic deletions.
+
+`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog or project notes after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works.
+
+`memory_reclassify` validation refusals are internal tool-result JSON with
+`success: false`; an unchanged refusal is feedback the reviewer may correct,
+not an HTTP failure or necessarily a `report.err`. If a move fails after saving
+changes, its tool result retains `changed: true` and the actual receipts, and
+the tidy wrapper stops the reviewer. Reviewer errors, including model errors
+and such partial tool failures, populate `report.err`. The endpoint still
+returns HTTP `200`, or SSE `done` with the same report, preserving saved changes.
+Clients must inspect `report.err`; successful transport is not successful curation.
+
+Errors outside the reviewer, such as fold setup/storage reads or the final
+memory-view read, use the normal JSON status/code mapping for non-streamed
+requests (`409` / `code: idle` after shutdown). Project lookup fails before a
+stream starts and remains JSON (`404` for a missing project). Once SSE headers
+are sent, outer fold/view errors emit an `error` event under HTTP `200`, with no
+`done` report; this differs from reviewer failures carried in `done.report.err`.
 
 ### `GET /api/projects/:id/skills/:name`
 

@@ -1,5 +1,5 @@
 import type { ReviewOutcome, SwarmEvent } from "./types"
-import { type Locale, localizeNotice } from "./i18n"
+import { type Locale, localizeNotice, t } from "./i18n"
 import { parseReviewDiagnostics, reviewFailure } from "./review-diagnostics"
 
 /** Read a review's outcome out of an event. A malformed one is dropped: the
@@ -15,6 +15,7 @@ export function parseReview(ev: SwarmEvent): ReviewOutcome | undefined {
   const body = raw as Partial<ReviewOutcome>
   return {
     ...parseReviewDiagnostics(raw),
+    stale_candidates: Array.isArray(body.stale_candidates) ? body.stale_candidates.filter((name): name is string => typeof name === "string" && name.trim() !== "") : undefined,
     changed: body.changed === true,
     notes: typeof body.notes === "object" && body.notes ? body.notes : undefined,
     skills: Array.isArray(body.skills) ? body.skills : undefined,
@@ -58,7 +59,7 @@ export function reviewNotice(outcome?: ReviewOutcome, locale: Locale = "en"): st
   if (!outcome) return undefined
   const failure = reviewFailure(outcome, locale)
   if (failure) return failure
-  if (!outcome.changed) return undefined
+  if (!outcome.changed) return outcome.stale_candidates?.length ? t(locale, "memory.tidyReviewed") : undefined
   const parts: string[] = []
   for (const action of Object.keys(NOTE_VERBS)) {
     const n = outcome.notes?.[action] ?? 0
@@ -66,14 +67,18 @@ export function reviewNotice(outcome?: ReviewOutcome, locale: Locale = "en"): st
   }
   for (const s of outcome.skills ?? []) {
     if (!s?.name) continue
-    parts.push(`skill "${s.name}" ${SKILL_VERBS[s.action] ?? s.action}`)
+    parts.push(s.action === "promote" || s.action === "demote"
+      ? t(locale, s.action === "promote" ? "memory.promoteNotice" : "memory.demoteNotice", { name: s.name })
+      : `skill "${s.name}" ${SKILL_VERBS[s.action] ?? s.action}`)
   }
   const head = outcome.library
     ? parts.length > 0
       ? `Saved to the skill library: ${parts.join(", ")}.`
       : "Saved to the skill library."
     : parts.length > 0
-      ? `Memory updated: ${parts.join(", ")}.`
+      ? outcome.skills?.some((change) => change.action === "promote" || change.action === "demote")
+        ? t(locale, "memory.reviewChanges", { detail: parts.join(locale === "zh" ? "，" : ", ") })
+        : `Memory updated: ${parts.join(", ")}.`
       : "Memory updated."
   const localizedHead = localizeNotice(head, locale)
   if (outcome.notify !== "verbose") return localizedHead
@@ -86,6 +91,7 @@ export function reviewNotice(outcome?: ReviewOutcome, locale: Locale = "en"): st
 
 function changePreview(c: { action?: string; name?: string; text?: string; target?: string }): string {
   const mark =
+    c.action === "promote" ? "↑" : c.action === "demote" ? "↓" :
     c.action === "add" || c.action === "create"
       ? "+"
       : c.action === "remove" || c.action === "delete"

@@ -64,6 +64,7 @@ export class ApiError extends Error {
 
 /** One beat of a streaming tidy: scan, prose so far, or a skill write. */
 export interface TidyStreamEvent {
+  stale_candidates?: string[]
   phase?: string
   scanned?: number
   text?: string

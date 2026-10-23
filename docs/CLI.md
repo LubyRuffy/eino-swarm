@@ -332,6 +332,9 @@ count, bounded attempt metadata and refusal categories/capacity numbers. These
 fields distinguish budget exhaustion from an invalid source or a full notes
 store, without recording rejected proposal bodies or exact quotes. Old review
 events can omit them; the same command still reads those events.
+A failed requested tidy retains the full `memory_review` payload together with
+its error in `--full`, including actual partial writes and `stale_candidates`.
+Completed moves use `promote` / `demote`; a failed move is not completion.
 
 Given a **conversation** id it prints every turn of that conversation in order.
 Given an unknown id it fails with a message naming the data directory it looked

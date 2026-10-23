@@ -2,6 +2,14 @@
 
 ## Generation interruption and recovery (Issue #95 / C-035)
 
+`TestInterruptCancelsButKeepsWork` uses the real loopback HTTP adapter with
+a first chunk delayed beyond the former 120ms test assumption. It waits for
+this turn's nonempty live reasoning delta while that generation remains open,
+checks that the same thought is not yet stored, then interrupts it. The stored
+thought must retain the live `message_id` and exact text, and a later turn must
+still complete. A fixed startup sleep or an already-persisted event cannot
+establish this partial-output retention boundary.
+
 The generation and worker lifetimes are independent. `generation_test.go`
 checks per-output identity for cancellation, deadline, transport failure and
 output limits, with normal empty completion as a negative control.
@@ -629,7 +637,10 @@ Accessibility access; the same helper launched through the existing guest
 Terminal session could observe and operate the private window. The isolated
 Terminal bootstrap used the shared native-case lock and changed no TCC policy.
 SSH success alone does not establish native UI control, and host lock state does
-not determine guest availability.
+not determine guest availability. For already authorized acceptance, try that
+evidenced existing Terminal responsibility chain before asking the user to
+change settings; retain the case lock, exact guest/candidate and current helper
+result. Guest administrator membership does not prove native privacy trust.
 
 All stages use the unchanged installer. `native_macos_resilience_fault.py` admits
 a renderer/GPU stall only after fresh before-Quit, after-Quit, before-reopen and
@@ -994,6 +1005,43 @@ cd frontend && ZWAI_E2E_WORKER_ROSTER=1 npm run e2e
 Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
+
+`internal/memory/reclassify_test.go` checks source-preserving moves, negation /
+numeric / condition changes, complete-text demotion, destination conflicts,
+capacity, failure after saving the target, partial deletion receipts and
+idempotent/concurrent retry. `internal/engine/review_reclassify_test.go` runs
+the actual offline reviewer/tool graph and checks post-turn tool isolation;
+`internal/server/memory_reclassify_test.go` checks HTTP report and original-turn
+Trace. `cmd/zwai/cli_trace_memory_test.go` runs the real CLI over stored
+review outcomes, preserving partial writes and candidates alongside errors.
+The offline script uses explicit step markers, not a semantic classifier.
+`frontend/e2e/memory-boundary.spec.ts` checks both languages, usage / thresholds
+and the requested tidy UI. Each test pins and restores server-side locale as
+well as its private browser storage; localStorage alone cannot override config.
+`frontend/src/lib/review-diagnostics.test.ts` distinguishes committed note and
+completed move receipts from a skill-only partial promotion while retaining
+post-turn note summaries. `frontend/e2e/memory-tidy-partial.spec.ts` makes only
+its owned skill parent read-only under an ordinary POSIX user, then runs the
+real offline model/tool/SSE path: the note survives source cleanup failure,
+Memory lists the saved write without a completed demotion, and the original
+turn's English/Chinese Trace does not claim that note was unsaved. The fixture
+restores permissions before deleting its project; Windows/root runs skip it.
+
+`internal/memory/skill_usage_test.go` checks concurrent successful views under
+`-race`, worker tool usage, immutable content identity, corrupt sidecars, merge
+counts, deletion/copy and exact stale boundaries.
+`internal/memory/skill_copy_collision_test.go` preserves the distinction between
+a filesystem file collision and an occupied skill directory.
+`internal/server/skill_usage_copy_test.go` exercises real copy HTTP routes;
+`internal/engine/review_stale_test.go` checks advisory candidates in model input,
+streamed scan, report and original-turn Trace.
+
+Boundary regressions in `internal/memory/prompt_test.go` cover manager, worker,
+reviewer, tidy and library instructions, including generic wording and negative
+assertions. Store tests distinguish an existing-name pointer from copied steps
+and ensure an unknown name cannot bypass overlap checks. Frontend i18n tests
+check the extracted memory catalogs and both panel descriptions. Run
+`go test -race ./internal/memory` and `cd frontend && npm run lint && npm test`.
 
 The scripted offline reviewer submits one complete batch. Tests assert real
 memory files and stored outcomes, not agreement with the old reviewer's answer:
@@ -3778,7 +3826,7 @@ from about 152 ms to 1.4 ms. These are development measurements, not a promise
 for every filesystem or model-running CPU load. Inspect a real native Mac
 window separately before recording native acceptance.
 
-## Native Mac acceptance recovery (`F-430`, `C-010`)
+## Native Mac acceptance recovery (`F-430`, `C-010`, `C-031`)
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.test_audit_macos_acceptance -v
@@ -3800,6 +3848,18 @@ unaccepted. Passed observations require real window/behavior references and exac
 version/source SHA/ZIP/hash/guest identity. Invalid JSON, unsupported credential
 fields and non-boolean flags are rejected without printing private input values.
 `make docs-check` discovers this regression with the existing Python tests.
+
+The optional `native_window.ssh_helper_permission_denied` and
+`native_window.trusted_guest_terminal_available` booleans describe this
+recovery's observed control paths, not requested permissions. A ready guest,
+nonempty evidence and matching guest/four-field candidate are all required
+before both true flags yield pending /
+`inspect_native_window_via_guest_terminal`. The regression first observed the
+old CLI reject these flags, then covers the action through the CLI and pure
+decision function, all false/missing combinations, every mismatched identity
+field, absent evidence, strict boolean types, unchanged input and precedence
+of unknown state and already completed exact-package acceptance. Existing
+observations without these optional fields retain their behavior.
 
 These tests exercise a pure JSON decision function and CLI with temporary files;
 they do not operate UTM, SSH, UI, login or an app. The caller must inspect the

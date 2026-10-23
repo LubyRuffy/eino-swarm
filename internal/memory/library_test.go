@@ -75,7 +75,7 @@ func TestLibraryPromptsStayGeneric(t *testing.T) {
 		{Name: "one", Description: "a"},
 		{Name: "two", Description: "b"},
 	}, 1)
-	if !strings.Contains(capped, "one") || strings.Contains(capped, "two") || !strings.Contains(capped, "1 more") {
+	if !strings.Contains(capped, "one") || strings.Contains(capped, "- two —") || !strings.Contains(capped, "1 more") {
 		t.Fatalf("index cap failed:\n%s", capped)
 	}
 }

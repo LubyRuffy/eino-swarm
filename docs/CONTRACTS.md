@@ -179,6 +179,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 - 状态：active；类型：compatibility；作用范围：engine、server、CLI、Trace、PC 子代理详情；关联功能：`F-130`, `F-150`, `F-160`, `F-170`, `F-310`, `F-320`, `F-420`。
 - 契约内容：一个 turn id 可在 CLI、API 和 Trace 面板还原输入、事件、模型与工具调用、错误及结果；新增事件类型需进入这一路径。
+- 记忆整理失败：CLI trace --full 必须在错误之外保留完整 memory_review payload，包括已保存的部分写入和陈旧候选；部分写入不伪造 promote/demote 完成。实现 `cmd/zwai/trace.go`；测试 `cmd/zwai/cli_trace_memory_test.go`。
 - 模型流终态：错误、取消和正常 EOF 必须在本次调用记录回调结束后才暴露给消费端，避免轮次收尾或关闭存储先于调用记录；保留已接收 usage、调用身份及原始错误类别，消费端在回调期间关闭也不得重复计费或重复记录。证据：`internal/provider/provider.go`、`internal/provider/stream_terminal_order_test.go`。
 - 人类等待禁止的拒绝在同 turn 的既有 `tool_result` 中保留稳定拒绝码，以及已分类禁令的 source_seq、source_text、source_quote；待分类拒绝保留已知 pending_seq。原句已从压缩重放中移除时仍可定位原始事件。拒绝不能生成表示已经成功挂起的 `schedule` 事件；模型口头声明不构成等待或 Trace 事实。等待策略与恢复边界由 `C-009` 定义。
 - HTTP 缺失记录：服务端返回可判断的缺失类别、请求 ID、方法、路由模板和相关记录身份；同请求 ID 写入默认可见的 WARN 日志，响应头与 JSON 保持一致。不得记录请求正文、查询串或认证头；界面不能将此类操作失败冒充当前模型轮次失败。证据：`internal/server/missing_record.go`、`internal/server/missing_record_test.go`、`frontend/src/lib/api.test.ts`；关联功能：`F-310`。
@@ -303,6 +304,9 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 写入边界：自动 reviewer 提交完整 apply_memory_review 批次，公开 manager 的 memory/skill 工具契约不变。notes 在内存草稿复用单条/总量上限、唯一匹配与技能重叠校验，基线与首次模型请求中的 notes 使用同一快照，在取得项目复盘锁后捕获；最终在同 Store 共享锁内比较该 Rev 并一次提交，零净变化不写盘。普通拒绝后的修复仍绑定同一 Rev，不自动刷新或静默重基；批次开始前检测到模型读取后的人类/manager 修改会终止冲突，不追加修复请求；最终 commit 的极短竞态可能追加一次修复请求，随后固定 Rev 仍禁止覆盖或静默重基。输入 notes 不可读时在模型调用前报错。失败不发布半套 notes，不自动重基覆盖并发人类/manager 修改；不承诺与外部直接文件写入之间的跨进程 CAS。
 - 推理配置：`memory.review_reasoning_effort` 默认空，自动及手动回合复盘继承原 turn；显式 `low` / `medium` / `high` 仅覆盖该复盘。无效值归空；不改变 manager、catalog tidy、模型、输出 cap 或超时。模型不支持显式档位时保留原 API 错误，不静默冒充降档成功。
 - 技能边界：skills 保持即时真实文件写入，不属于 notes 的跨文件事务。后续操作或 notes commit 失败，之前真实技能变化仍必须进入 changes。成功回合的既有 family fold 和独立 catalog tidy 保留，失败回合不 fold。
+- 整理搬家：仅用户触发的项目 tidy 获得 memory_reclassify；manager、worker、回合复盘和共享库整理不获得。promote 以 old_text 唯一匹配，目标正文空白规范化后必须与完整源笔记等值，不附加新事实或步骤；demote 仅允许不含 Markdown 步骤标记的短正文，新笔记须与完整正文空白规范化等值，并受 EntryMax／总预算约束。相似度不授权删源，否定、数字和条件不得改写。先存目标后删源，已有不同目标拒绝覆盖；失败保留实际 create/add/delete receipts，不发完整 promote/demote。幂等重试只证明所需最终状态存在，不证明原来源历史。非跨文件事务，部分删除后源已不可读时仍记录真实 delete，目标保全原正文；计数仅包括已完成动作。失败诊断以已提交 notes 汇总、memory 的 add/replace/remove 回执或完整 promote/demote 回执判断笔记侧变更，不得把仅 create 技能的部分提升当作笔记保存；已落盘笔记不得被 Trace 声称未保存。原事件 kind 与 tidy-skills 路径保持兼容；有既有 turn 时回挂原回合 Trace，无 turn 沿用现有无锚点行为。实现 `internal/memory/reclassify.go`、`internal/engine/review_tidy.go`、`frontend/src/lib/review-diagnostics.ts`；测试 `internal/memory/reclassify_test.go`、`internal/engine/review_reclassify_test.go`、`internal/server/memory_reclassify_test.go`、`frontend/e2e/memory-tidy-partial.spec.ts`。
+- 使用统计：只有成功的 agent skill_view（含 worker）原子递增同 Store 锁下的 usage.json；ReadSkill、列表、HTTP 查看和 copy 不递增。边车损坏不隐藏技能，查看时修复；merge 累加来源次数并保留最近时间，delete 同目录删除，copy 不复制统计；目标目录已占用（包括仅孤儿边车）时以既有冲突错误拒绝；非目录文件碰撞沿用文件系统拒绝类别，不冒称已有技能。merge 删除失败时，仅从 keeper 扣除仍由可读来源承载的统计，部分删除后已无来源技能承载的计数保留在 keeper，普通失败修复后重试不重复计数；统计恢复同时失败以组合错误返回，进程中断不承诺跨目录 exactly-once。计数不得更改 SKILL.md 的 UpdatedAt、内容摘要或 prompt 索引。陈旧阈值 memory.skill_stale_days 默认 90 天，非正数回默认；已查看技能按最后查看、未查看按正文修改时间，恰好达到阈值为候选，未知日期不判断。候选不是自动删除指令，整理结果和原 turn Trace 保留名单。实现 `internal/memory/skill_usage.go`、`internal/engine/review_tidy.go`；测试 `internal/memory/skill_usage_test.go`、`internal/engine/review_stale_test.go`。
+- 分类边界：常驻 notes 保留缺失会令后续工作走偏的短陈述（偏好、事实、硬约束及已有技能指针）；skills 按需加载如何做成所需的适用条件、步骤、验证和失败分支，description 写何时使用。仅在某流程相关的约束进入该技能前置条件。原样引用已有技能名且未复述正文的指针可通过重叠校验，不存在名称不能触发该豁免；这是文本启发式，不宣称语义判定。实现 `internal/memory/prompt.go`、`internal/memory/skills.go`；测试 `internal/memory/prompt_test.go`、`internal/memory/store_test.go`。
 - 提炼指令：技能须区分常规路径与故障已经发生时可独立执行的恢复分支，写清有证据的进入条件、恢复动作及回归正常或结束条件；失败探测是诊断上下文，不自动成为必须重做的步骤。该指令不构成程序对流程语义正确性的证明，效果仍须独立评测。
 - 来源约束：每个操作须引用可用源 seq 和有效原文；工具来源必须有配对调用且非显式拒绝，memory 写入回执及派生总结不能自证事实。notes 新增阿拉伯数字细节须保持引文或被替换旧条目中的拼写；引用存在和数字出现不证明蕴含、因果、长期价值、语义去重或授权。旧 notes 不因缺少引用而被批量删除或冒称正确。
 - 容量修复：首次输入包含当前 notes 用量、总容量与单条上限；容量拒绝向模型完整保留结构化 usage/over_by/current_entries/matched，notes 仍按操作顺序逐步校验。只能有依据地先缩短／替换相关条目，再新增；不得清理无关 notes，不放宽容量、来源、数字、唯一匹配或固定 Rev。原迭代预算内无法安全提交时明确失败；空批次仍只表示没有应保留的新变化。
@@ -384,6 +388,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 作用范围：原生桌面验收、UTM 来宾、测试数据与证据；关联功能：`F-430`。
 - 契约内容：
   - macOS 原生测试仅在 UTM `ci-macOS` 来宾运行；宿主只编排、构建、传输和收集证据。不得启动宿主测试窗口、抢前台或修改用户的运行实例、缓存 bundle 和正常数据。
+  - 已授权的验收中，SSH helper 权限拒绝而既有来宾 Terminal 责任链已证明可用时，先在相同 native-case 锁和隔离目标下执行该路径并保留本轮 helper 结果，不立即转交用户改设置。离线审计仅在 ready、来宾及四项候选身份匹配、证据非空且 `native_window.ssh_helper_permission_denied` 与 `trusted_guest_terminal_available` 均为 true 时返回 pending / `inspect_native_window_via_guest_terminal`；unknown 先重新观察，已通过的同包证据优先。旧输入兼容，不将管理员身份推断为隐私权限，不授予权限或执行控制。实现／验证：`tools/audit_macos_acceptance.py`、`tools/test_audit_macos_acceptance.py`。
   - 同一来宾用户同时只运行一个用例；每例使用全新私有 app 副本、home/cache、数据库、配置及 workspace，场景子进程继承私有 `HOME` 和 `ZWAI_HOME`；checkout 启动写入的 macOS 缓存 bundle 也属于本例。仅同一恢复场景内部步骤允许复用数据。
   - 用例成功、失败、超时或取消时，先保留证据，再停止本例 app、engine 及子进程并确认退出，然后删除本例临时数据及 home/cache；清理失败必须失败并阻止下一例启动。
   - `cleanup.json` 记录用例身份、清理完成状态、剩余进程和数据删除结果。日志、断言、截图及版本/源码/安装包证据保留在临时数据外。

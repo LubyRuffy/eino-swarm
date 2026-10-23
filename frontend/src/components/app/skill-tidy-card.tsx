@@ -31,6 +31,7 @@ export function SkillTidyCard({
   const t = useT()
   const [step, setStep] = useState(0)
   const [ratio, setRatio] = useState(0)
+  const scanned = report?.scanned ?? live?.scanned ?? skillCount
 
   useEffect(() => {
     if (!tidying) {
@@ -41,7 +42,7 @@ export function SkillTidyCard({
     setStep(0)
     setRatio(0)
     const started = Date.now()
-    const tick = () => setRatio(tidyEstimateRatio(Date.now() - started, skillCount))
+    const tick = () => setRatio(tidyEstimateRatio(Date.now() - started, scanned))
     tick()
     const pulse = window.setInterval(tick, 200)
     const id = window.setTimeout(() => setStep(1), TIDY_SCAN_MS)
@@ -49,12 +50,11 @@ export function SkillTidyCard({
       window.clearInterval(pulse)
       window.clearTimeout(id)
     }
-  }, [tidying, skillCount])
+  }, [tidying, scanned])
 
   if (!tidying && !report && !error) return null
 
   const folded = tidyFolded(report)
-  const scanned = report?.scanned ?? skillCount
   const failedText = tidyFailure(t, error || report?.err)
   const failed = Boolean(failedText)
 
@@ -201,12 +201,18 @@ function tidyFailure(t: Translate, raw?: string): string {
 function tidyChangeLine(t: Translate, change: TidyLiveChange) {
   const name = change.name || change.action
   switch (change.action) {
+    case "add":
+      return t("memory.tidyActAddNote")
     case "merge":
       return t("memory.tidyActMerge", { name })
     case "delete":
       return t("memory.tidyActDelete", { name })
     case "create":
       return t("memory.tidyActCreate", { name })
+    case "promote":
+      return t("memory.tidyActPromote", { name })
+    case "demote":
+      return t("memory.tidyActDemote", { name })
     default:
       return t("memory.tidyActPatch", { name })
   }
@@ -224,6 +230,9 @@ function TidyResult({ report }: { report: SkillTidyReport }) {
           patched: report.patched.length,
         })}
       </p>
+      {(report.promoted ?? 0) > 0 || (report.demoted ?? 0) > 0 ? (
+        <p>{t("memory.tidyReclassified", { promoted: report.promoted ?? 0, demoted: report.demoted ?? 0 })}</p>
+      ) : null}
       <div className="flex flex-wrap gap-1" data-testid="tidy-stats">
         <Badge variant="outline">{t("memory.tidyStatScanned", { n: report.scanned })}</Badge>
         <Badge variant={report.merged.length ? "success" : "outline"}>
@@ -238,8 +247,20 @@ function TidyResult({ report }: { report: SkillTidyReport }) {
         <Badge variant={report.patched.length ? "success" : "outline"}>
           {t("memory.tidyStatPatched", { n: report.patched.length })}
         </Badge>
+        <Badge variant={report.promoted ? "success" : "outline"}>
+          {t("memory.tidyStatPromoted", { n: report.promoted ?? 0 })}
+        </Badge>
+        <Badge variant={report.demoted ? "success" : "outline"}>
+          {t("memory.tidyStatDemoted", { n: report.demoted ?? 0 })}
+        </Badge>
         <Badge variant="outline">{t("memory.tidyStatLeft", { n: tidyLeft(report) })}</Badge>
       </div>
+      {report.err && (report.changes?.length ?? 0) > 0 ? (
+        <TidyNameList title={t("memory.tidySavedChanges")} items={(report.changes ?? []).map((change) => tidyChangeLine(t, { action: change.action, name: change.name ?? "" }))} />
+      ) : null}
+      {(report.stale_candidates?.length ?? 0) > 0 ? (
+        <TidyNameList title={t("memory.tidyStaleCandidates")} items={report.stale_candidates ?? []} />
+      ) : null}
       {report.merged.length > 0 ? (
         <TidyNameList
           title={t("memory.tidyMerged")}
@@ -269,8 +290,8 @@ function TidyNameList({ title, items }: { title: string; items: string[] }) {
     <div className="grid gap-1">
       <p className="font-medium text-foreground">{title}</p>
       <ul className="grid gap-0.5 text-muted-foreground">
-        {items.map((item) => (
-          <li key={item} className="break-all">
+        {items.map((item, index) => (
+          <li key={`${index}-${item}`} className="break-all">
             {item}
           </li>
         ))}

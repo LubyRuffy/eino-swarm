@@ -135,6 +135,8 @@ export interface SkillOrigin {
 }
 
 export interface SkillInfo {
+  views?: number
+  last_viewed_at?: string
   name: string
   description: string
   updated_at: string
@@ -164,6 +166,8 @@ export interface Skill extends SkillInfo {
 }
 
 export interface ProjectMemory {
+  /** Supplied by the current memory configuration. */
+  skill_stale_days?: number
   dir: string
   /** False when either the project or the global setting has memory off. */
   enabled: boolean
@@ -190,12 +194,17 @@ export interface TidyLiveChange {
 
 /** Prose and writes seen while POST /memory/tidy-skills is still open. */
 export interface TidyLive {
+  scanned?: number
   text: string
   changes: TidyLiveChange[]
 }
 
 /** What POST /memory/tidy-skills returns besides the refreshed catalog. */
 export interface SkillTidyReport {
+  changes?: MemoryChange[]
+  promoted?: number
+  demoted?: number
+  stale_candidates?: string[]
   scanned: number
   before: number
   after: number
@@ -212,6 +221,7 @@ export interface SkillTidyReport {
 /** The payload of a `memory_review` event: what the post-turn review decided
  *  to keep. `changed: false` is the common case and shows nothing. */
 export interface ReviewOutcome {
+  stale_candidates?: string[]
   changed: boolean
   stop_reason?: "completed" | "iteration_limit" | "proposal_missing" | "error"
   attempt_count?: number
@@ -680,6 +690,7 @@ export interface MemorySettings {
   review_max_iterations: number
   review_reasoning_effort?: string
   skills_index_max: number
+  skill_stale_days?: number
   notifications: MemoryNotify | string
 }
 
