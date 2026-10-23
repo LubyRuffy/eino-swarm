@@ -93,6 +93,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-115`, `C-034`: retain the last actual draft-save predicates and summaries
+  of existing native observations on isolated Mac check exit. A timeout keeps its
+  original failure status; later successful cases do not establish its cause.
+
 - `F-110`, `F-115`, `C-034`: checkout re-exec bundles are immutable per executable
   hash and atomically published under a cross-process lock; preparing another
   desktop no longer overwrites or re-signs a live cached executable (Issue #94).

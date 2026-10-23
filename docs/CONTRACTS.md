@@ -27,6 +27,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 身份保护：未打包的 checkout 启动使用按源可执行文件 SHA-256 的不可变缓存包，锁内完整构建后原子发布；复用不覆盖或重签 live bundle。恢复继任使用本会话私有副本和继承管道，不因另一次构建改变源码身份。
 - 诊断：同一 session／generation／attempt 记录阶段、原因、shell／engine PID、耗时和真实 thread／turn 归属；本机 journal 有 64 KiB 上限。有效回合的 `desktop_recovery` 事件进入同一 Trace 与 Full log，保留原事件身份及 rewind 规则，不创建 worker、改变任务状态或把内部 JSON 显示为主转录正文；写失败不得确认持久回执，无回合仅写元数据日志（可关联已存在会话），不编造任务。原因最多 256 字节有效 UTF-8；日志不含正文、附件、截图像素或握手令牌。
 - 允许行为：在系统 WebKit 尚有故障时有界恢复界面；禁止行为：把恢复机制称作系统缺陷已消除、只用进程／API 就绪接受窗口、在宿主桌面做原生故障验收。
+- 验收失败：草稿检查正常／异常／可处理取消退出时保留本例生成输入的最后 API／原生观察摘要与逐项判定，不复制正文、不追加输入或重试粘贴；硬杀／来宾丢失可能无法落证。采证写失败不覆盖原异常，原检查成功时则拒绝通过。后续通过不覆盖先前失败，也不能证明尚未捕获的失败原因。
 - 证据：实现 `internal/desktop/recovery.go`, `internal/desktop/recovery_state.go`, `internal/desktop/recovery_probe.go`, `internal/desktop/recovery_snapshot_darwin.m`, `internal/desktop/bundle_darwin.go`, `cmd/zwai/desktop_recovery_darwin.go`, `internal/engine/desktop_recovery.go`, `internal/server/desktop_recovery.go`；测试 `internal/desktop/recovery_test.go`, `cmd/zwai/desktop_recovery_test.go`, `internal/engine/desktop_recovery_test.go`, `internal/server/desktop_recovery_test.go`, `tools/test_native_macos_resilience.py`。
 - 变更规则：同步 ARCHITECTURE、CLI、API、FEATURES、TESTING、CHANGELOG；正式 ZIP 在 `ci-macOS` 验证渲染器／GPU 活挂、草稿／附件、后台任务连续性、真实睡眠唤醒和至少 18 小时长开，保留准确源码／ZIP 身份及独立 cleanup 回执。
 - 来源：GitHub Issue #94；Added，弥补仍存活的 WebContent 绘图挂起不能由终止回调恢复的缺口。
