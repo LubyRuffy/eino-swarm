@@ -49,6 +49,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-010`: prepare numeric candidate `0.1.36` with matching mobile
+  package metadata before the exact-source Mac installer acceptance. This is a
+  local acceptance candidate; native gates and publication remain pending, and
+  no tag, installer upload or TestFlight delivery is implied.
+
 - `F-130`, `F-170`, `F-330`, `C-009`, `C-019`: new worker lifetimes default to one hour in the library and app. Existing positive configured values, active deadlines and the three-failure watchdog budget retain their meaning. Live registries have synchronized `SetAgentTimeout` and `SetMaxTurns` setters for subsequent worker execution (Issue #82).
 
 - `F-430`, `C-010`: prepared complete source batch `0.1.35` with mobile package/build `135` after the cumulative main-commit threshold was met. Only Android and iOS require publication for the accepted phone code-highlighting change; TestFlight keeps its independently selected marketing version. Earlier public Mac batches retain their original source, packages and native acceptance gates.
