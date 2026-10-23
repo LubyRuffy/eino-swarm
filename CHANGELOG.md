@@ -111,6 +111,11 @@ co-working app built on it. The library API is unchanged except where noted
   timeouts retain their unknown cause; this is not a product keyboard or
   system WebKit fix. Headless tests exercise the actual pure helper guards.
 
+- Tests (`F-110`, `C-027`): verify restart retention of an acknowledged answer
+  through its checkpoint, durable tool result and actual model input while the
+  response is held. Remove the unrelated whole-turn completion wait without
+  extending its deadline or changing runtime behavior (Issue #77).
+
 - `F-110`, `C-027`: isolate lifecycle schedule fixtures from asynchronous
   naming, preventing fixture-owned provider-pool and database-callback races
   under `-race`; native resilience waits also use case-owned explicit titles

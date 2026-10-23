@@ -923,7 +923,15 @@ status write failures into a real completed run. Replacement must report the
 missing durable completion instead of accepting an idle runtime as ready.
 `internal/engine/restart_answer_replay_test.go` sends real answers before the
 waiter arms and across a new question, then checks cold-replayed tool results
-and model input. `internal/engine/restart_inbox_replay_test.go` checks unread
+and model input. `TestRestartCheckpointRetainsAnAcceptedAnswerBeforeTheWaiterReadsIt`
+also holds the real loopback model response after receiving the recovered
+call/result pair. While that turn remains running, it checks the accepted
+answer's checkpoint, matching durable tool result and exact adapter input;
+waiting for the whole turn to finish would test a different boundary. The
+barrier in `internal/engine/restart_answer_barrier_test.go` releases on cleanup
+or request cancellation. Run this target with
+`go test -race -count=1 ./internal/engine -run '^TestRestartCheckpointRetainsAnAcceptedAnswerBeforeTheWaiterReadsIt$'`.
+`internal/engine/restart_inbox_replay_test.go` checks unread
 messages, distinct steering sequences and peer roles survive exactly once.
 `internal/app/restart_parked_failure_test.go` opens real saved checkpoints with
 a missing provider or exhausted watchdog; startup must report failure without
