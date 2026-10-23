@@ -681,9 +681,29 @@ The baseline uses a real native Quit, verifies no shell revival, then reopens th
 same package and selects the original conversation through native controls.
 Running and parked workers retain their original engine/turn/worker identities
 and must produce their actual completion/collection receipts. A binary file uses
-the native file picker; a PNG uses native clipboard paste. Reloaded original
+the native file picker; a PNG uses one native **Edit → Paste** menu action.
+The guest helper checks the clipboard write result, original PNG readback bytes
+and unchanged ownership counter, focuses the exact composer, then requires
+unique enabled Edit/Paste menu items with the expected roles, same PID and
+foreground app before each public AXPress. It rechecks the clipboard before
+Paste and retains `paste-transport-observation.json` on success or refusal.
+No keyboard fallback, fixed paste delay or second Paste is attempted. A helper
+success acknowledges the menu request, not DOM delivery or durable storage:
+the existing full API snapshot, original bytes, native values and saved-label
+conditions still decide whether draft collection passed. The earlier keyboard
+transport timeouts remain failures of unknown cause; a later menu success does
+not establish a product keyboard or WebKit fix. Reloaded original
 bytes and the decoded 3-by-2 image dimensions are checked independently of the
 visible attachment chips.
+
+`python3 -m unittest tools/test_native_macos_paste.py -v` compiles a temporary
+Objective-C translation unit that renames `main` and includes the real helper.
+Its headless entry calls only the actual pure clipboard/menu predicates using
+in-memory Foundation values (27 positive/negative checks); it never calls the
+helper entry, NSApplication, NSWorkspace, AX or a pasteboard. Linking AppKit is
+not native acceptance. The thin AX/clipboard wrappers require fresh isolated
+ci-macOS evidence bound to the changed helper hash; no host GUI/clipboard test
+or earlier private helper result substitutes for that run.
 The guest may lock independently of the host. During this incident, guest AX
 reported no secure input field, while the user's subsequently authorized direct
 UTM control could wake the existing guest window and complete its normal login.

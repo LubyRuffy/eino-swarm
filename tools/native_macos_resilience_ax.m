@@ -1,5 +1,6 @@
 // CI-only native UI helper. Never run outside a private VM case.
 #import <AppKit/AppKit.h>
+#import <CommonCrypto/CommonDigest.h>
 #import <ApplicationServices/ApplicationServices.h>
 #include <libproc.h>
 #include <sys/proc_info.h>
@@ -135,6 +136,77 @@ static void type(pid_t pid, NSString *value) {
         }
         usleep(5000);
     }
+}
+static BOOL validPasteboardPayload(NSData *source, BOOL stored, NSData *actual,
+                                  NSInteger ownedCount, NSInteger observedCount) {
+    return source.length > 0 && stored && [actual isEqualToData:source]
+        && ownedCount >= 0 && observedCount == ownedCount;
+}
+static BOOL matchesPasteMenu(NSString *role, NSString *title, BOOL edit) {
+    return [role isEqual:edit ? @"AXMenuBarItem" : @"AXMenuItem"]
+        && [(edit ? @[@"Edit", @"编辑"] : @[@"Paste", @"粘贴"]) containsObject:title ?: @""];
+}
+static BOOL validPasteMenuTarget(NSUInteger matches, pid_t owner, pid_t target,
+                                id enabled, pid_t frontmost) {
+    return target > 0 && matches == 1 && owner == target && frontmost == target
+        && [enabled isKindOfClass:NSNumber.class] && [enabled boolValue];
+}
+static NSString *pasteDigest(NSData *data) {
+    if (!data) return @"unavailable";
+    unsigned char bytes[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(data.bytes, (CC_LONG)data.length, bytes);
+    NSMutableString *result = [NSMutableString string];
+    for (NSUInteger i = 0; i < sizeof(bytes); i++) [result appendFormat:@"%02x", bytes[i]];
+    return result;
+}
+static BOOL savePasteReceipt(NSDictionary *receipt) {
+    NSString *path = [env(@"ZWAI_NATIVE_EVIDENCE") stringByAppendingPathComponent:@"paste-transport-observation.json"];
+    NSData *data = [NSJSONSerialization dataWithJSONObject:receipt options:NSJSONWritingPrettyPrinted error:nil];
+    return data && [data writeToFile:path options:NSDataWritingAtomic error:nil];
+}
+static BOOL findPasteMenu(AXUIElementRef item, NSMutableArray *matches, NSUInteger depth, NSUInteger *visited) {
+    if (depth > 5 || ++*visited > 1000) return NO;
+    if (matches.count > 1) return YES;
+    if (matchesPasteMenu(string(attr(item, kAXRoleAttribute)), string(attr(item, kAXTitleAttribute)), NO))
+        [matches addObject:(__bridge id)item];
+    id children = attr(item, kAXChildrenAttribute);
+    if ([children isKindOfClass:NSArray.class]) for (id child in children)
+        if (!findPasteMenu((__bridge AXUIElementRef)child, matches, depth+1, visited)) return NO;
+    return YES;
+}
+static NSDictionary *requestNativePaste(AXUIElementRef app, pid_t pid, NSPasteboard *pasteboard,
+                                       NSData *source, NSInteger ownedCount) {
+    NSMutableArray *edits = [NSMutableArray array], *pastes = [NSMutableArray array];
+    id bar = attr(app, kAXMenuBarAttribute);
+    id children = bar ? attr((__bridge AXUIElementRef)bar, kAXChildrenAttribute) : nil;
+    if ([children isKindOfClass:NSArray.class]) for (id child in children)
+        if (matchesPasteMenu(string(attr((__bridge AXUIElementRef)child, kAXRoleAttribute)),
+                             string(attr((__bridge AXUIElementRef)child, kAXTitleAttribute)), YES)) [edits addObject:child];
+    pid_t editOwner = 0, pasteOwner = 0;
+    id editEnabled = edits.count == 1 ? attr((__bridge AXUIElementRef)edits[0], kAXEnabledAttribute) : nil;
+    if (edits.count == 1) AXUIElementGetPid((__bridge AXUIElementRef)edits[0], &editOwner);
+    AXError opened = kAXErrorFailure, pressed = kAXErrorFailure;
+    pid_t editFrontmost = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+    BOOL complete = NO; NSUInteger visited = 0;
+    if (validPasteMenuTarget(edits.count, editOwner, pid, editEnabled, editFrontmost)) {
+        opened = AXUIElementPerformAction((__bridge AXUIElementRef)edits[0], kAXPressAction);
+        if (opened == kAXErrorSuccess) complete = findPasteMenu((__bridge AXUIElementRef)edits[0], pastes, 0, &visited);
+    }
+    id pasteEnabled = pastes.count == 1 ? attr((__bridge AXUIElementRef)pastes[0], kAXEnabledAttribute) : nil;
+    if (pastes.count == 1) AXUIElementGetPid((__bridge AXUIElementRef)pastes[0], &pasteOwner);
+    NSData *actual = [pasteboard dataForType:NSPasteboardTypePNG];
+    NSInteger observedCount = pasteboard.changeCount;
+    BOOL unchanged = validPasteboardPayload(source, YES, actual, ownedCount, observedCount);
+    pid_t pasteFrontmost = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+    if (opened == kAXErrorSuccess && complete && unchanged
+        && validPasteMenuTarget(pastes.count, pasteOwner, pid, pasteEnabled, pasteFrontmost))
+        pressed = AXUIElementPerformAction((__bridge AXUIElementRef)pastes[0], kAXPressAction);
+    return @{@"edit_count": @(edits.count), @"edit_owner_pid": @(editOwner), @"edit_enabled": editEnabled ?: NSNull.null,
+             @"edit_open_error": @(opened), @"paste_count": @(pastes.count), @"paste_owner_pid": @(pasteOwner),
+             @"paste_enabled": pasteEnabled ?: NSNull.null, @"paste_press_error": @(pressed),
+             @"edit_frontmost_pid": @(editFrontmost), @"paste_frontmost_pid": @(pasteFrontmost),
+             @"menu_search_complete": @(complete), @"clipboard_unchanged_before_paste": @(unchanged),
+             @"change_count_before_paste": @(observedCount)};
 }
 static int fail(NSString *message) { fprintf(stderr, "%s\n", message.UTF8String); return 2; }
 int main(int argc, const char **argv) { @autoreleasepool {
@@ -361,22 +433,55 @@ int main(int argc, const char **argv) { @autoreleasepool {
         result[@"pressed"] = value;
     } else if ([action isEqual:@"paste-file"]) {
         NSString *root = [[env(@"ZWAI_NATIVE_WORKSPACE") stringByResolvingSymlinksInPath] stringByAppendingString:@"/"];
-        if (areas.count != 1 || ![[value stringByResolvingSymlinksInPath] hasPrefix:root])
+        if (areas.count != 1 || ![[value stringByResolvingSymlinksInPath] hasPrefix:root]
+            || ![value.pathExtension.lowercaseString isEqual:@"png"])
             { CFRelease(app); return fail(@"case attachment path refused"); }
-        NSPasteboard *pasteboard = NSPasteboard.generalPasteboard; [pasteboard clearContents];
-        if ([value.pathExtension.lowercaseString isEqual:@"png"])
-            [pasteboard setData:[NSData dataWithContentsOfFile:value] forType:NSPasteboardTypePNG];
-        else [pasteboard writeObjects:@[[NSURL fileURLWithPath:value]]];
-        if (AXUIElementSetAttributeValue((__bridge AXUIElementRef)areas[0], kAXFocusedAttribute, kCFBooleanTrue))
-            { CFRelease(app); return fail(@"native image paste cannot focus its case composer"); }
+        NSData *source = [NSData dataWithContentsOfFile:value];
+        NSMutableDictionary *receipt = [@{@"case_id":env(@"ZWAI_NATIVE_CASE_ID"), @"pid":@(pid),
+            @"method":@"native-menu", @"source_length":@(source.length), @"source_sha256":pasteDigest(source)} mutableCopy];
+        if (!source.length) {
+            receipt[@"error"] = @"case PNG source is unavailable";
+            if (!savePasteReceipt(receipt)) fprintf(stderr, "WARN native paste evidence could not be retained\n");
+            CFRelease(app); return fail(@"case PNG source is unavailable");
+        }
+        NSString *failure = nil;
+        NSPasteboard *pasteboard = NSPasteboard.generalPasteboard;
+        [pasteboard clearContents];
+        BOOL stored = [pasteboard setData:source forType:NSPasteboardTypePNG];
+        NSInteger ownedCount = pasteboard.changeCount;
+        NSData *actual = [pasteboard dataForType:NSPasteboardTypePNG];
+        NSInteger observedCount = pasteboard.changeCount;
+        receipt[@"clipboard"] = @{@"set_data_success":@(stored), @"change_count":@(ownedCount),
+            @"png_length":@(actual.length), @"png_sha256":pasteDigest(actual), @"readback_count":@(observedCount)};
+        if (!validPasteboardPayload(source, stored, actual, ownedCount, observedCount))
+            failure = @"case PNG clipboard identity was not confirmed; no paste requested";
+        if (!failure) {
+            AXError focusError = AXUIElementSetAttributeValue((__bridge AXUIElementRef)areas[0], kAXFocusedAttribute, kCFBooleanTrue);
+            receipt[@"focus_set_error"] = @(focusError);
+            if (focusError) failure = @"native image paste cannot focus its case composer";
+        }
         BOOL focused = NO;
-        for (NSUInteger attempt = 0; attempt < 20; attempt++) {
+        for (NSUInteger attempt = 0; !failure && attempt < 20; attempt++) {
             id current = attr(app, kAXFocusedUIElementAttribute);
             if (current && CFEqual((__bridge CFTypeRef)current, (__bridge CFTypeRef)areas[0])) { focused = YES; break; }
             usleep(25000);
         }
-        if (!focused || !focusedKey(pid, 9, kCGEventFlagMaskCommand))
-            { CFRelease(app); return fail(@"native image paste lost its exact guest composer target"); }
+        if (!focused) failure = failure ?: @"native image paste lost its exact guest composer target";
+        receipt[@"focused_composer"] = @(focused);
+        if (!failure) {
+            NSDictionary *menu = requestNativePaste(app, pid, pasteboard, source, ownedCount);
+            receipt[@"menu"] = menu;
+            if ([menu[@"paste_press_error"] intValue] != kAXErrorSuccess)
+                failure = @"native Edit/Paste requires unique enabled menu items in the foreground case app";
+        }
+        if (failure) receipt[@"error"] = failure;
+        if (!savePasteReceipt(receipt)) {
+            if (failure) fprintf(stderr, "WARN native paste evidence could not be retained\n");
+            else { CFRelease(app); return fail(@"native paste evidence could not be retained"); }
+        }
+        if (failure) { CFRelease(app); return fail(failure); }
+        // This acknowledges one menu request. collect_draft independently waits for bytes and the saved UI.
+        result[@"paste_method"] = @"native-menu";
         result[@"pasted"] = @YES;
     } else if (![action isEqual:@"snapshot"]) { CFRelease(app); return fail(@"unsupported test action"); }
     puts([[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:result options:0 error:nil]

@@ -98,6 +98,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-115`, `C-034`: native QA requests PNG paste once through the public
+  Edit/Paste menu, validating original clipboard bytes, ownership and exact
+  enabled foreground menu targets. A transport receipt never replaces the
+  unchanged durable-draft/UI acknowledgement checks. Earlier keyboard-input
+  timeouts retain their unknown cause; this is not a product keyboard or
+  system WebKit fix. Headless tests exercise the actual pure helper guards.
+
 - `F-115`, `C-034`: retain the last actual draft-save predicates and summaries
   of existing native observations on isolated Mac check exit. A timeout keeps its
   original failure status; later successful cases do not establish its cause.

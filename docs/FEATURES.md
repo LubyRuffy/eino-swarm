@@ -56,6 +56,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 健康条件包含本次随机探针的真实像素；HTTP、JS 响应或动画帧不单独算绘制成功。失焦、最小化、睡眠与唤醒有检测暂停／宽限。
 - 继任窗口经私有继承管道与两阶段确认接管，沿用数据目录、离线模式和原引擎 PID／URL／租约，恢复会话／项目与草稿位置；不调用引擎替换或重新执行任务。
 - 原生验收在草稿检查退出时保留已有 API／原生观察的摘要及逐项判定，不复制正文、不追加界面操作或放宽原断言；先前失败原因未捕获时仍标为未知。证据：`tools/native_macos_resilience.py`, `tools/test_native_macos_resilience.py`, `docs/TESTING.md`。
+- 原生 QA 的 PNG 输入使用一次同进程、前台、唯一启用的 Edit→Paste 菜单动作，先校验剪贴板写入与原 bytes／计数，并保留传输回执；菜单动作回执不替代完整草稿保存与原生 ACK。头less 测试只运行真实 helper 的纯校验，界面副作用仅在隔离来宾验收。证据：`tools/native_macos_resilience_ax.m`, `tools/test_native_macos_paste.py`, `docs/TESTING.md`。
 
 ### F-120 Conversations and projects
 
