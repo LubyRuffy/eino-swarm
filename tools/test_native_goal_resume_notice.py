@@ -15,6 +15,108 @@ spec.loader.exec_module(notice)
 
 
 class GoalResumeNoticeAssertions(unittest.TestCase):
+    def test_api_fixture_is_selected_from_the_native_conversations_tab_before_start(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary), "timeout": 45, "ax": Path("fixture")}
+            actions = []
+            def control(_, __, action, value=None):
+                actions.append((action, value))
+            with patch.object(notice.smoke.runner, "require_guest"), \
+                    patch.object(notice.smoke, "validate_helper"), \
+                    patch.object(notice.smoke, "wait_engine", return_value=("http://127.0.0.1:1", {})), \
+                    patch.object(notice, "wait_registered_application"), \
+                    patch.object(notice, "prepare_goal_fixture", return_value=({"id": "thread-1"}, {"id": "turn-1"}, "Known title", "objective")), \
+                    patch.object(notice, "api", side_effect=[{"threads": []}, {"settings": {"ui": {}, "swarm": {}, "memory": {}}}, {}, StopIteration("resume observation")]), \
+                    patch.object(notice, "control", side_effect=control), \
+                    patch.object(notice, "press_available", side_effect=lambda _, __, value: actions.append(("available press", value)), create=True), \
+                    self.assertRaisesRegex(StopIteration, "resume observation"):
+                notice.run(context)
+            self.assertEqual(actions, [("reload", None), ("available press", "对话"),
+                                       ("available press", "Known title"), ("available press", "开始目标")])
+
+    def test_native_button_waits_read_only_for_one_enabled_match_then_presses_once(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary)}
+            button = {"AXRole": "AXButton", "AXDescription": "Known title", "AXEnabled": True}
+            states = [{"tree": [{**button, "AXDescription": "Another title"}, {**button, "AXRole": "AXStaticText"}]},
+                      {"tree": [{**button, "AXEnabled": False}]}, {"tree": [button]}]
+            class Deadline:
+                def remaining(self, _):
+                    return 5
+                def pause(self, _):
+                    pass
+            with patch.object(notice.smoke, "wait_window", side_effect=states) as snapshot, \
+                    patch.object(notice, "control", return_value={"pressed": True}) as control:
+                self.assertEqual(notice.press_available(context, Deadline(), "Known title"), {"pressed": True})
+            self.assertEqual(snapshot.call_count, 3)
+            control.assert_called_once_with(context, unittest.mock.ANY, "press", "Known title")
+            receipt = json.loads((Path(temporary) / "goal-notice-availability-last.json").read_text())
+            self.assertEqual((receipt["value"], receipt["matches"], receipt["snapshot"]), ("Known title", 1, states[-1]))
+
+    def test_native_button_matching_uses_the_control_helpers_exact_preference_then_unique_contains(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary)}
+            exact = {"AXRole": "AXRadioButton", "AXTitle": "Known title", "AXEnabled": True}
+            suffix = {"AXRole": "AXButton", "AXDescription": "Known title · Done", "AXEnabled": True}
+            class Deadline:
+                def remaining(self, _):
+                    return 5
+            for rows in ([suffix, exact], [suffix]):
+                with self.subTest(rows=rows), patch.object(notice.smoke, "wait_window", return_value={"tree": rows}), \
+                        patch.object(notice, "control") as control:
+                    notice.press_available(context, Deadline(), "Known title")
+                    control.assert_called_once_with(context, unittest.mock.ANY, "press", "Known title")
+
+    def test_ambiguous_native_button_or_failed_press_is_never_retried(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary)}
+            button = {"AXRole": "AXButton", "AXTitle": "开始目标", "AXEnabled": True}
+            class Deadline:
+                def remaining(self, _):
+                    return 5
+                def pause(self, _):
+                    raise AssertionError("mutation must not retry")
+            with patch.object(notice.smoke, "wait_window", return_value={"tree": [button, button]}), \
+                    patch.object(notice, "control") as control, self.assertRaisesRegex(AssertionError, "ambiguous"):
+                notice.press_available(context, Deadline(), "开始目标")
+            control.assert_not_called()
+            with patch.object(notice.smoke, "wait_window", return_value={"tree": [button]}) as snapshot, \
+                    patch.object(notice, "control", side_effect=AssertionError("press refused")) as control, \
+                    self.assertRaisesRegex(AssertionError, "press refused"):
+                notice.press_available(context, Deadline(), "开始目标")
+            self.assertEqual((snapshot.call_count, control.call_count), (1, 1))
+
+    def test_missing_native_button_expires_at_the_existing_deadline_without_pressing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            context = {"evidence": Path(temporary)}
+            class Deadline:
+                def remaining(self, _):
+                    return 5
+                def pause(self, _):
+                    raise TimeoutError("case deadline")
+            with patch.object(notice.smoke, "wait_window", return_value={"tree": []}), \
+                    patch.object(notice, "control") as control, self.assertRaisesRegex(TimeoutError, "case deadline"):
+                notice.press_available(context, Deadline(), "Known title")
+            control.assert_not_called()
+
+    def test_native_control_failure_keeps_the_requested_label_with_the_actual_helper_result(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            controls = root / "controls"
+            controls.write_bytes(b"prepared controls")
+            context = {"evidence": root, "app_pid": 123, "controls": controls,
+                       "control_sha256": hashlib.sha256(controls.read_bytes()).hexdigest()}
+            class Deadline:
+                def remaining(self, _):
+                    return 5
+            result = SimpleNamespace(returncode=3, stdout='{"matches":0}', stderr="")
+            with patch.object(notice.smoke, "assert_process"), patch.object(notice.smoke, "wait_window"), \
+                    patch.object(notice.subprocess, "run", return_value=result), \
+                    self.assertRaisesRegex(AssertionError, "native control failed"):
+                notice.control(context, Deadline(), "press", "Known title")
+            row = json.loads((root / "goal-notice-control-last.json").read_text())
+            self.assertEqual((row["value"], row["returncode"], row["stdout"]), ("Known title", 3, result.stdout))
+
     def goal_trace(self, thread="thread-1", turn="turn-1", objective="fixture objective"):
         events = [{"kind": "user_message", "text": objective},
                   {"kind": "tool_call", "text": "complete_goal({})", "tool_call_id": "tool-1"},

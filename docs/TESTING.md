@@ -983,8 +983,13 @@ that case's private conversation workspace. It waits for the accepted first
 turn's real offline model calls, paired `complete_goal` result, goal completion
 and manager finish; `goal-notice-fixture.json` and
 `goal-notice-fixture-trace.json` retain those identities and receipts. After
-reload, the native window selects that conversation and clicks Start once;
-the scenario never resumes through the API or inserts lifecycle events.
+reload, the native window opens Conversations, selects that conversation and
+clicks Start once; reopen also opens Conversations before selecting the title.
+Each control is observed as uniquely available and enabled before one press;
+missing controls wait within the same deadline, ambiguous controls or failed
+presses fail without retry. `goal-notice-availability-last.json` retains the
+requested label, match count and raw snapshot. The scenario never resumes
+through the API or inserts lifecycle events.
 Native acceptance covers this Start action, the expanded visible notice,
 Trace retention and close/reopen. Initial slash typing is covered by the browser
 E2E above, so this case does not depend on unrelated system input candidates.

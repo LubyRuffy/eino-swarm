@@ -174,12 +174,30 @@ def control(context, deadline, action, value=None):
     result = subprocess.run(command, capture_output=True, text=True,
                             timeout=min(8, deadline.remaining("native " + action)))
     smoke.runner.save_json(context["evidence"] / "goal-notice-control-last.json",
-                           {"action": action, "pid": context["app_pid"], "returncode": result.returncode,
+                           {"action": action, "value": value, "pid": context["app_pid"], "returncode": result.returncode,
                             "stdout": result.stdout, "stderr": result.stderr})
     assert result.returncode == 0, "native control failed: " + result.stdout + result.stderr
     row = json.loads(result.stdout)
     assert row.get("ax_error") == 0 and row.get("pid") == context["app_pid"], "native control returned another target"
     return row
+
+
+def press_available(context, deadline, value):
+    while True:
+        deadline.remaining("native control " + value)
+        row = smoke.wait_window(context, deadline)
+        matches = [node for node in row.get("tree", [])
+                   if node.get("AXRole") in ("AXButton", "AXRadioButton", "AXCheckBox")
+                   and any(value in node.get(key, "") for key in ("AXTitle", "AXDescription"))]
+        exact = [node for node in matches if value in (node.get("AXTitle"), node.get("AXDescription"))]
+        matches = exact or matches
+        smoke.runner.save_json(context["evidence"] / "goal-notice-availability-last.json",
+                               {"value": value, "matches": len(matches), "snapshot": row})
+        assert len(matches) <= 1, "native control title is ambiguous: " + value
+        if matches and matches[0].get("AXEnabled") is True:
+            break
+        deadline.pause("available native control " + value)
+    return control(context, deadline, "press", value)
 
 
 def session_summary_label(row):
@@ -278,8 +296,8 @@ def run(context):
     }, "PUT")
     thread, first, title, objective = prepare_goal_fixture(context, deadline)
     control(context, deadline, "reload")
-    control(context, deadline, "press", title)
-    control(context, deadline, "press", "开始目标")
+    for label in ("对话", title, "开始目标"):
+        press_available(context, deadline, label)
 
     def completed_resume():
         turns = api(context, deadline, "/api/threads/" + thread["id"] + "/turns")["turns"]
@@ -310,7 +328,8 @@ def run(context):
     context["app_pid"] = process.pid
     context["origin"], reopened_lease = smoke.wait_engine(context, deadline)
     wait_registered_application(context, deadline)
-    control(context, deadline, "press", title)
+    for label in ("对话", title):
+        press_available(context, deadline, label)
     eventually(context, deadline, lambda: capture(context, deadline, "02-reopened"), "one reopened native notice")
     after = api(context, deadline, "/api/threads/" + thread["id"] + "/log?limit=1000")
     assert_resume_events(after["events"], first["id"], second["id"])
@@ -322,7 +341,7 @@ def run(context):
                "engine_pids": [lease["pid"], reopened_lease["pid"]],
                "executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
                "fixture_setup": "normal local API /goal with actual offline completion",
-               "native_actions": ["select thread", "Start goal", "close", "reopen", "select thread"],
+               "native_actions": ["Conversations tab", "select thread", "Start goal", "close", "reopen", "Conversations tab", "select thread"],
                "scope": "native Start goal, one displayed notice, both Trace events and native close/reopen; runner verifies cleanup",
                "elapsed_seconds": time.monotonic() - deadline.started}
     control(context, deadline, "close")
