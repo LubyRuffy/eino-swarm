@@ -3646,6 +3646,17 @@ checks the actual submit/steer bounds and sends long input from PC follow-up,
 New chat, and direct model chat with long model names. It runs on Chromium
 and iPhone WebKit; install both with `cd mobile && npx playwright install chromium webkit`
 before `npm run e2e`. JSDOM cannot prove WebKit focus zoom.
+`mobile/e2e/ask-answer.spec.ts` also checks the actual Other textarea font size
+before typing and retaining a rejected answer. The Issue #104 regression first
+observed 14 CSS px against the existing 16px focus boundary. Use
+`IOS_LAYOUT_QUERY='/?mock=1&ask=1&askfail=1&tick=0'` and
+`mobile/e2e/ios-ask-viewport.swift` in an isolated English native fixture for
+`testAskChoicesRetainAnswerAndNativeViewportAcrossFocusAndRetry`. It records
+actual App/main/Back bounds and PNG/AX evidence while focused, after keyboard
+Done, after rejection and after successful retry; functional assertions alone
+cannot accept layout. Keep the original cropped screenshots. Main-composer
+acceptance does not cover a separate Ask editor, and browser CSS checks do not
+replace this packaged native case. User pinch zoom remains enabled.
 `mobile/e2e/ios-wait-layout.swift` drives the packaged Capacitor app: open a
 parked wait, type, dismiss the keyboard, then check that Back is hittable at
 its original vertical position and Run now remains inside the screen.

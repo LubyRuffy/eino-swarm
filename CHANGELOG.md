@@ -104,6 +104,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-220`, `C-017`: Ask Other now uses the phone's 16px editable text size so
+  iOS focus does not leave the answer, navigation and retry result enlarged
+  and horizontally clipped. Browser font and packaged iOS viewport regressions
+  cover focus, keyboard dismissal, rejection and successful retry (Issue #104).
+
 - `F-115`, `C-034`: native QA requests PNG paste once through the public
   Edit/Paste menu, validating original clipboard bytes, ownership and exact
   enabled foreground menu targets. A transport receipt never replaces the

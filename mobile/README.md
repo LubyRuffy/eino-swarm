@@ -112,7 +112,7 @@ sends (Shift+Enter is a newline, and an IME candidate list is never a
 send), and the round button stays off until there is something to send.
 While a turn is live the box also offers steer, and says a plain send is
 queued after this turn.
-Message and quote editors use 16px text (`C-017`). On iOS, focusing and
+Message, quote and Ask Other editors use 16px text (`C-017`). On iOS, focusing and
 dismissing the keyboard must leave the header in its safe area and the wait
 actions and Send/Follow-up/Steer inside the screen, including long drafts;
 no horizontal dragging is needed to submit. Smaller editable text used to leave the WebView
