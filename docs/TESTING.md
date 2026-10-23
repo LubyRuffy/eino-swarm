@@ -1,5 +1,25 @@
 # Testing
 
+## Chat Completions reasoning fields (`F-170`, `F-230`, `C-009`)
+
+`internal/provider/reasoning_fields_test.go` runs both Generate and Stream through
+the configured Eino/SDK HTTP adapter against a keyless loopback fixture. It covers
+`reasoning_content`, newer vLLM `reasoning`, absent/empty/null fields and legacy
+precedence without duplication. A stream gate withholds the answer until the
+consumer receives the reasoning-only delta. Tool arguments, finish reason,
+reasoning usage and one original call record must survive unchanged.
+These cases pass on the existing adapter; they guard dependency upgrades rather
+than introduce another parser. PC E2E checks live thought, original-turn Trace
+and reload; phone E2E checks direct chat thought and reload for both fields.
+No real model, provider credentials or native desktop launch is involved.
+
+```bash
+go test -race ./internal/provider -run TestChatReasoningFieldsSurviveGenerateAndLiveStream -count=1
+ZWAI_E2E_REASONING_FIELDS=1 ZWAI_E2E_PORT=14879 ZWAI_E2E_DATA_DIR=.e2e-data-reasoning \
+  npm --prefix frontend run e2e -- reasoning-fields.spec.ts --output /absolute/unique-pc-reasoning-output
+(cd mobile && ZWAI_MOBILE_E2E_PORT=14874 npm run e2e -- direct-chat-reasoning.spec.ts --output /absolute/unique-phone-reasoning-output)
+```
+
 ## Long-conversation opening (`F-120`, `F-130`, `C-003`, `C-008`)
 
 Replay regressions use the real Store with tool bodies much larger than retained

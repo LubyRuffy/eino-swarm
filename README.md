@@ -279,6 +279,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   scrolling, with a fade at the top so it is obvious they are there. The
   **Thinking** label sweeps like the other live status lines. Click the row to
   hide it while it is still running. After it finishes it collapses to **Thought**.
+  Chat Completions accepts both `reasoning_content` and newer vLLM `reasoning`
+  in JSON replies and streamed deltas, including direct phone chat. No field-name
+  setting is needed; a nonempty legacy field wins when both are returned.
   **User view** (the default) shows a lone thought or tool call with its own
   disclosure: one click opens its content, with no outer group. A live lone
   thought starts open. Multiple adjacent work rows fold into one live ticker.

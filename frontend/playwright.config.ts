@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test"
 // The suite drives the real binary against the scripted offline provider, in a
 // throwaway data directory. The opt-in API-error spec uses a keyless loopback
 // endpoint through the real SDK; the default suite stays on the offline script.
+const reasoningFields = process.env.ZWAI_E2E_REASONING_FIELDS === "1"
 const port = Number(process.env.ZWAI_E2E_PORT ?? 8799)
 const dataDir = process.env.ZWAI_E2E_DATA_DIR ?? ".e2e-data"
 const scheduledAck = process.env.ZWAI_MOCK_SCHEDULE_ACK === "always" ? "always" : "once"
@@ -14,11 +15,11 @@ const memoryReview = process.env.ZWAI_E2E_MEMORY_REVIEW === "1"
 const builtinTools = process.env.ZWAI_E2E_BUILTIN_TOOLS === "1"
 const workerOwnership = process.env.ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP === "1"
 const generationInterruption = process.env.ZWAI_E2E_GENERATION_INTERRUPTION === "1"
-const loopbackModel = modelAPIError || workerRoster || goalSchedule || humanWakePolicy || memoryReview || builtinTools || workerOwnership || generationInterruption
+const loopbackModel = modelAPIError || workerRoster || goalSchedule || humanWakePolicy || memoryReview || builtinTools || workerOwnership || generationInterruption || reasoningFields
 
 export default defineConfig({
   testDir: "./e2e",
-  testMatch: generationInterruption ? "generation-interruption.spec.ts" : workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : undefined,
+  testMatch: reasoningFields ? "reasoning-fields.spec.ts" : generationInterruption ? "generation-interruption.spec.ts" : workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : undefined,
   timeout: 90_000,
   expect: { timeout: 20_000 },
   fullyParallel: false,

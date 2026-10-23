@@ -154,6 +154,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-170 Settings and providers
 
+- Chat Completions 推理字段兼容：PC 模型调用与手机直连均接收旧 `reasoning_content` 和新版 vLLM `reasoning`，覆盖 JSON message 与 SSE delta；非空旧字段优先，旧字段空或 null 时回退到新字段，不重复拼接。无需字段名配置；PC 思考沿现有流、历史与 Trace 展示，手机直连保留思考及本地历史。关联契约：`C-009`；入口：Settings → Models、手机 Models／Chat；实现证据：`internal/provider/provider.go`、`go.mod`、`mobile/src/lib/openai-wire.ts`；验证：`internal/provider/reasoning_fields_test.go`、`frontend/e2e/reasoning-fields.spec.ts`。
 - 已配对手机在 PC 收件箱 **Menu → PC timeouts／电脑超时** 读取并编辑该 PC 的 worker、各提供商首字节和流空闲时限，加载失败、保存失败和旧主机均在面板内提示并可重试。仅提交改动字段，不接收密钥或端点，不覆盖无关设置；首字节与流空闲预算独立。新 worker 默认一小时，已有正值保持，保存不延长运行中的 deadline、不重置 watchdog 次数或恢复暂停任务。使用者：已配对手机用户；前置条件：PC 在线且支持相应 RPC；关联契约：`C-006`、`C-009`、`C-019`、`C-030`；入口说明：`mobile/README.md`、`docs/CONFIG.md`；实现／验证：`internal/config/timeouts.go`、`internal/config/timeout_contract_test.go`、`internal/remote/timeouts.go`、`internal/remote/timeouts_test.go`、`internal/remote/timeout_adapter_test.go`、`mobile/src/components/pc-timeout-sheet.tsx`、`mobile/src/lib/use-pc-timeouts.ts`、`mobile/e2e/pc-timeouts.spec.ts`。
 - 桌面 Settings 自动保存和刷新模型目录保留手机并发修改的超时；只有实际编辑的超时才提交替换，重开设置读取最新值。关联契约：`C-009`；实现／测试：`frontend/src/lib/settings-persist.ts`、`frontend/src/store/app.ts`、`frontend/src/lib/settings-persist-delta.test.ts`、`frontend/e2e/settings-timeout-concurrency.spec.ts`、`internal/server/timeout_settings_test.go`。
 - 目的：配置模型、外观、工具和远程连接；使用者：PC 用户；入口：Settings；输入：配置字段，包括每个提供商在输入框模型列表里的开关；输出：持久化设置和可用模型，关掉的提供商不出现在输入框和已配对手机的目录里，已经选中它的会话继续用；前置条件：本机数据目录；失败表现：校验或连接错误；关联契约：`C-006`, `C-009`, `C-012`；实现证据：`internal/config`, `internal/provider`, `frontend/src`。
@@ -219,6 +220,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-230 Direct model chat
 
+- 新旧 Chat Completions 推理字段兼容沿用 `F-170`／`C-009`；通过直连的同一思考区块显示，字段名称不影响正文。证据：`mobile/src/lib/openai-wire.ts`、`mobile/e2e/direct-chat-reasoning.spec.ts`。
 - 用户与流式回答复用 `F-220` 的手机 Markdown 代码围栏渲染及原文复制，遵守 `C-032`；证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/e2e/markdown-highlight.spec.ts`。
 - 目的：手机在没有 PC 时直接连接模型，并在应用内按服务商选择模型；使用者：手机用户；入口：Models、Chat 和输入框模型按钮；输入：兼容端点、所选模型、消息及附件，Models 里可把某个接口从输入框列表里关掉；输出：流式回答，长模型名和长输入不挤出发送按钮，关掉的接口不出现在列表里，已经选中它的对话继续用；前置条件：端点可访问；失败表现：连接或模型错误；关联契约：`C-002`, `C-006`, `C-009`, `C-013`, `C-015`, `C-017`；实现证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/model-picker.tsx`, `mobile/src/components/composer.test.tsx`, `mobile/e2e/composer-layout.spec.ts`, `mobile/src/lib/openai-client.ts`。
 - 直连流式回复期间输入框主按钮显示可点击停止图标，取消后保留已收到的回复并恢复发送。证据：`mobile/src/components/direct-chat-screen.tsx`, `mobile/src/components/direct-chat-screen.test.tsx`。

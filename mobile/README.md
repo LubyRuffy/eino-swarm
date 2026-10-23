@@ -171,7 +171,10 @@ the same composer as a PC thread. Tap its model button to choose from an
 in-app, provider-grouped list; long names wrap, and Back closes the list.
 The reply streams. The thought is the
 same live row as a PC thread: the latest line while it is arriving, the
-full text when the row is opened. Discover uses the platform HTTP stack so
+full text when the row is opened. Chat Completions accepts both legacy
+`reasoning_content` and newer vLLM `reasoning` in streamed deltas and JSON replies.
+A nonempty legacy field wins; empty or null legacy values fall back to the new
+field. No additional setting is needed. Discover uses the platform HTTP stack so
 the webview origin is not the caller. The completion is read as it arrives
 (`StreamBody` on the device) because that stack returns a POST body in one
 piece. An image is vision; a text file is sent as text. A responses front

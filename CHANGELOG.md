@@ -13,6 +13,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-170`, `F-230`, `C-009`: document and regress the existing Chat Completions
+  compatibility with legacy `reasoning_content` and newer vLLM `reasoning` in
+  JSON replies and live deltas. Offline adapter and PC/phone UI tests preserve
+  empty/null fallback, legacy precedence, thoughts, history and Trace without
+  adding a duplicate parser or changing runtime behavior.
+
 - `F-115`, `C-034`, `C-012`: macOS windows validate actual painted probe pixels,
   attempt one reload, then perform bounded attach-only window replacement with
   the original engine and durable per-turn diagnostics. Sleep/focus grace,

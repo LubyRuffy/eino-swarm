@@ -144,6 +144,14 @@ Settings → Models shows that list collapsed: open a row to edit URL, key,
 default model, first-byte wait, and stream idle timeout. **Add a provider** sits under the list and opens
 the new row.
 
+Chat Completions reads both `message.reasoning_content` / `delta.reasoning_content`
+and the newer vLLM `message.reasoning` / `delta.reasoning` automatically. A nonempty
+`reasoning_content` takes precedence; an empty or null value falls back to
+`reasoning`, without concatenating duplicate fields. This also applies to direct
+phone chat. There is no field-name switch or configuration migration. The
+Responses API uses its separate reasoning events and output items. See
+[vLLM reasoning outputs](https://docs.vllm.ai/en/latest/features/reasoning_outputs/).
+
 | key | meaning |
 |---|---|
 | `id` | stable identifier, referenced by `models.default` and by each conversation. Blank or duplicate ids are renamed to `provider-N` on load. |
