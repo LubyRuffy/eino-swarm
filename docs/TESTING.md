@@ -3734,3 +3734,22 @@ text is not counted twice and removed calls do not inflate the request. The
 Registry/ADK loopback test observes compaction before the HTTP request, preserving
 the current human request and briefing. Existing billed-usage precedence remains
 unchanged; this test does not establish its accuracy for arbitrary providers.
+
+## Question options without model IDs (`F-130`, `F-220`, `C-002`)
+
+`frontend/src/lib/transcript-ask.test.ts` and `mobile/src/lib/ask.test.ts`
+regress label-only, blank/invalid and normalized explicit option IDs.
+`mobile/src/components/ask-card.test.tsx` checks that a label-only choice submits
+its original label. `frontend/e2e/plan.spec.ts` uses the real offline manager
+and host tool with an omitted option ID, verifies the live form and pending
+form after reload, submits that option into the same turn, then reloads the
+settled answer. The trace retains the raw call and matching result.
+
+```bash
+(cd frontend && npm test -- src/lib/transcript-ask.test.ts)
+(cd mobile && npm test -- src/lib/ask.test.ts src/components/ask-card.test.tsx)
+(cd frontend && ZWAI_E2E_PORT=8936 ZWAI_E2E_DATA_DIR=.e2e-ask-options npm run e2e -- plan.spec.ts --output=test-results/ask-options)
+```
+
+Browser checks validate the shared Web UI and do not establish native-window
+acceptance or update an already running engine.

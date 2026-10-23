@@ -28,6 +28,35 @@ describe("ask", () => {
     expect(structuredAnswers(qs, {}, {})).toBeNull()
   })
 
+  it("renders label-only options accepted by the host", () => {
+    const qs = parseAskToolArgs(JSON.stringify({ questions: [{
+      id: "approach", prompt: "Choose an approach", options: [
+        { label: "First choice" }, { label: "中文选项" },
+      ],
+    }] }))
+    expect(qs).toEqual([{
+      id: "approach", prompt: "Choose an approach", options: [
+        { id: "first_choice", label: "First choice" },
+        { id: "中文选项", label: "中文选项" },
+        { id: "other", label: "Other" },
+      ],
+    }])
+    expect(structuredAnswers(qs!, { approach: "中文选项" }, {}))
+      .toEqual({ approach: { answers: ["中文选项"] } })
+  })
+
+  it("normalizes option ids and falls back to labels when ids normalize to empty", () => {
+    const qs = parseAskToolArgs(JSON.stringify({ questions: [{
+      id: "approach", prompt: "Choose an approach", options: [
+        { id: " First-Choice! ", label: "First choice" },
+        { id: " !!! ", label: "中文 选项" },
+        { id: "  ", label: "Last choice" },
+      ],
+    }] }))
+    expect(qs?.[0].options.map((o) => o.id))
+      .toEqual(["first_choice", "中文_选项", "last_choice", "other"])
+  })
+
   it("uses the host's normalized question id when Other is submitted", () => {
     const qs = parseAskToolArgs(JSON.stringify({ questions: [{
       id: "test-window", prompt: "When?", options: [

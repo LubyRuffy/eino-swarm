@@ -64,6 +64,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 结构化提问：PC 与配对手机在实时和历史重放中按主机规则解析选项 ID；省略或归一化后为空的 ID 从 label 生成，保留选项文字，选择提交后继续同一 turn。关联契约：`C-002`；证据：`internal/engine/ask.go`、`frontend/src/lib/transcript-ask.test.ts`、`mobile/src/lib/ask.test.ts`、`frontend/e2e/plan.spec.ts`。
+
 - 生成中断：桌面、Web 和配对手机按模型输出身份保留中断原因及恢复状态，旧思考结束流式动画，新生成使用独立身份；恢复中的 worker 保留原 ID，不冒充失败或任务完成。明确区分交接重启、进程退出、取消、超时、模型错误与输出额度；未记录的具体原因保持未知。实时、重开与历史重放保留说明，原 turn 的 Trace 可查。关联契约：`C-035`、`C-003`、`C-027`；实现证据：`signal.go`、`internal/engine`、`frontend/src/lib/transcript.ts`、`mobile/src/lib/transcript.ts`。
 
 - 巡检失败后的 Agent 状态：按 `F-150` 的有效任务归属回执保留指定 worker 的 running、思考流和待完成工具；父巡检错误仍可见，不派生为这些 worker 的失败原因，也不把内部归属 JSON 显示为正文。实时、完整历史和 roster 重放保持一致，实际完成／Stop／cleanup 仍生效。关联契约：`C-009`、`C-012`、`C-003`；实现证据：`frontend/src/lib/transcript-worker-ownership.ts`、`internal/engine/worker_ownership.go`；测试：`frontend/src/lib/transcript-worker-ownership.test.ts`、`frontend/e2e/schedule-worker-ownership.spec.ts`。
