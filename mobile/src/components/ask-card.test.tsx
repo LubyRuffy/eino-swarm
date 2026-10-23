@@ -5,6 +5,20 @@ import { AskCard } from "./ask-card"
 import { parseAskToolArgs } from "@/lib/ask"
 
 describe("AskCard", () => {
+  it("shows and submits label-only options from the model", async () => {
+    const onSubmit = vi.fn()
+    const questions = parseAskToolArgs(JSON.stringify({ questions: [{
+      id: "approach", prompt: "Choose an approach", options: [
+        { label: "First choice" }, { label: "中文选项" },
+      ],
+    }] }))!
+    render(<AskCard questions={questions} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole("button", { name: "中文选项" }))
+    fireEvent.click(screen.getByTestId("ask-submit"))
+    expect(onSubmit).toHaveBeenCalledWith({ approach: { answers: ["中文选项"] } })
+    await screen.findByRole("status")
+  })
+
   it("submits the picked option label", async () => {
     const onSubmit = vi.fn()
     const questions = parseAskToolArgs(

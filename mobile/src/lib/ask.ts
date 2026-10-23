@@ -57,8 +57,8 @@ function parseQuestion(raw: unknown): AskQuestion | null {
   for (const o of row.options) {
     if (!o || typeof o !== "object") continue
     const opt = o as { id?: unknown; label?: unknown; description?: unknown }
-    const oid = typeof opt.id === "string" ? opt.id.trim() : ""
     const label = typeof opt.label === "string" ? opt.label.trim() : ""
+    const oid = (typeof opt.id === "string" ? hostAskIdent(opt.id) : "") || hostAskIdent(label)
     if (!oid || !label || oid === ASK_OTHER_ID) continue
     options.push({
       id: oid,

@@ -43,6 +43,34 @@ describe("parseAskToolArgs", () => {
     expect(qs?.[0]?.id).toBe("test_window")
   })
 
+  it("keeps a question whose options contain labels without ids", () => {
+    const qs = parseAskToolArgs(JSON.stringify({ questions: [{
+      id: "timing", prompt: "When should the review happen?", options: [
+        { label: "Review now" }, { label: "Review later" },
+      ],
+    }] }))
+    expect(qs?.[0]?.options.map((o) => o.id)).toEqual(["review_now", "review_later", ASK_OTHER_ID])
+  })
+
+  it("shows every option accepted by the host when model ids are absent or unusable", () => {
+    const qs = parseAskToolArgs(JSON.stringify({ questions: [{
+      id: "review-window", prompt: "Which review window?", options: [
+        { label: "  现在审阅（推荐）  ", description: "Keep the review brief" },
+        { id: "  !!!  ", label: "Review later" },
+        { id: "  Explicit-ID  ", label: "Another window" },
+      ],
+    }] }))
+    expect(qs).toEqual([{
+      id: "review_window", prompt: "Which review window?", header: undefined,
+      options: [
+        { id: "现在审阅推荐", label: "现在审阅（推荐）", description: "Keep the review brief" },
+        { id: "review_later", label: "Review later", description: undefined },
+        { id: "explicit_id", label: "Another window", description: undefined },
+        { id: ASK_OTHER_ID, label: "Other" },
+      ],
+    }])
+  })
+
   it("rejects junk so a malformed tool_call does not paint a card", () => {
     expect(parseAskToolArgs("")).toBeNull()
     expect(parseAskToolArgs("{}")).toBeNull()

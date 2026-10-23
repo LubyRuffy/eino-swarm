@@ -439,7 +439,7 @@ func mockAskMessage(turn int) *schema.Message {
 				"prompt": "Which approach should this work take?",
 				"options": []map[string]any{
 					{"id": "safer", "label": "Prefer the safer path (Recommended)"},
-					{"id": "faster", "label": "Prefer the faster path"},
+					{"label": "Prefer the faster path"},
 				},
 			},
 		},

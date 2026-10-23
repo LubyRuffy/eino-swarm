@@ -164,6 +164,165 @@ headless unit/browser tests may run on the host. Use background guest control
 (SSH when available) and guest-side screenshots/accessibility. An unavailable
 guest is a pending native check, never permission to test on the host.
 
+### Access evidence and maintenance exclusion (Issue #97)
+
+Run the host preflight with the provisioned private profile and a new evidence
+directory; it needs no repeated address or credential entry:
+
+```bash
+python3 tools/native_macos_access.py --profile /absolute/private/access.json --evidence /absolute/private/new-access-check
+python3 tools/native_macos_access.py --profile /absolute/private/access.json --evidence /absolute/private/new-dhcp-check --repair-network
+```
+
+The profile must belong to the current user and exclude group/other permissions
+(normally mode `0600`). It contains references, not passwords:
+
+| Fields | Meaning |
+|---|---|
+| `vm_id`, `vm_name`, `mac`, `user`, `uid`, `interface` | Selected VM/account and exact Ethernet identity |
+| `identity_file`, `known_hosts`, `host_key_alias` | Existing SSH key path and pinned host-key identity |
+| `shared_host_root`, `shared_guest_root` | Absolute host/guest views of the same shared directory |
+
+The default preflight freezes the guest probe source and writes diagnostics,
+without changing network/service/VM state. It discovers candidate addresses
+from DHCP leases for the selected MAC, checks their actual routes, and avoids
+SSH to an old address routed through a proxy. SSH uses batch mode, the explicit
+key and strict pinned host checking. A failed SSH probe falls back to newly
+identified shared-queue requests, including nested queue roots. Replies must
+match request/session, frozen source and guest identity; local monotonic waits
+bound the attempt without treating guest/host clock differences as expiry.
+
+Exit `0` means a target control channel was verified; shared control can be
+available while guest networking remains down. Exit `3` means control is
+unverified or requested repair did not converge; exit `2` is a profile, protocol
+or probe failure. `--repair-network` requires a fresh queue and verified current
+peer inventory, then requests one guarded guest DHCP renewal. SSH-only access
+does not fabricate a queue claim for maintenance. Repair succeeds only after a
+new pinned SSH/identity probe also succeeds; `guest_renewed_host_unverified`
+retains exit `3`. The CLI never reboots the VM. A suggested rebuild still needs
+actual exclusive maintenance ownership covering that separately authorized action.
+
+Host evidence includes `source.json`, `host.json`, `queue.json`, `guest.json`,
+`observation.json` and `decision.json`. Before publishing each request, a
+`request-<id>.json` stores its queue/ID/timeout without the nonce. `repair.json`
+retains the real request identity and outcome; a successful guest renewal also
+creates an `after/` preflight. Deadline expiry leaves `outcome_unknown` and
+`cancellation=unconfirmed`; removing this caller's pending request cannot prove
+it never ran and does not authorize an automatic retry.
+
+`tools/native_macos_access_state.py` classifies a strict current-probe observation;
+it does not run commands. Host VM-interface presence and an old IP's route are
+separate from the selected guest's identity, carrier, IPv4, default route and
+sshd loaded/disabled state. A loaded on-demand sshd without a current listener
+is not a disabled service. An unsupported `utmctl exec` result is retained as a
+reason rather than retried as progress. A shared queue needs a newly identified
+read-only request and matching response; old `ready.json` and cross-host wall
+clock subtraction cannot prove that channel current or expired. Classification
+always retains `native_acceptance=pending`.
+
+`tools/native_macos_access_guest.py` exposes `inspect`, `renew-dhcp` and
+`hold-maintenance`. Each checks Darwin, the ci-macOS hostname, expected UID,
+hypervisor and the explicitly selected Ethernet MAC before use. `inspect` reads
+the selected service, carrier/IP/default route, SSH socket and service state;
+its `host_connectivity=unverified` is deliberate.
+Its fresh process inventory supplies `current_peer_roots` and controller/child
+PIDs without argv or nonces. Historical roots remain diagnostic candidates;
+they leave the current maintenance inventory only after controller death and
+their recorded effects/children are verified. Missing or ambiguous inventory is
+`null` and blocks repair. A normal historical stop acknowledgement does not
+weaken the current guard's strict completed-command check.
+
+```text
+python3 tools/native_macos_access_guest.py inspect --expected-uid <uid> --expected-mac <mac> --interface <interface> --evidence <new-directory>
+```
+
+Maintenance additionally requires `--own-queue-root`, `--request-id` and each
+current `--peer-queue-root` (repeatable). The exact own claim must exist and its
+root must be among those checked. Only that claim is exempt; another claim needs
+a matching id/nonce, `status=exited` and integer exit code before it is considered
+finished. Both maintenance modes take the existing native-case lock inode with
+nonblocking exclusive flock and require a complete previous cleanup with no
+remaining owned PIDs; they leave its receipt unchanged.
+
+`renew-dhcp` only operates on one matching enabled service already using DHCP.
+It runs `sudo -n ipconfig set <interface> DHCP` once under that lock, then rechecks
+bounded network snapshots. It does not cycle interfaces or reboot.
+`needs_host_recovery` exits 3 and preserves that the guest network remains down;
+a successful renewal still leaves host connectivity to a separate SSH probe.
+Evidence includes `identity.json`, `network-before.json`, `dhcp-command.json`,
+`network-after.json` and `result.json`; refusals use `failure.json`. An existing
+evidence directory is refused without writing into it.
+
+`hold-maintenance` additionally needs an own `--token` and a positive `--ttl` up
+to 180 seconds. It keeps the same flock, checks peer claims while holding it,
+and writes `maintenance-ready.json` with actual ownership, identity, heartbeat
+and guest monotonic timing. Only a matching private release token or bounded
+expiry ends the hold; `maintenance-finished.json` records lock release. A host
+performing an already authorized VM action must keep actual ownership through
+that action. A classifier's `restart_admitted=true`, or a lock acquired and
+released during a probe, cannot substitute for this hold. Neither helper
+reboots the VM or accepts application-window behavior.
+
+The state tests cover stale probes, unsupported backend fallback, separate
+network/service/authentication failures, strict input and privacy boundaries.
+The guest tests include actual two-process contention between maintenance and
+the native runner's `case_lock`, wrong and correct release tokens, TTL release,
+peer refusal and a single targeted DHCP attempt.
+
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tools -p 'test_native_macos_access*.py'
+```
+
+#### Host NetworkSharing/PF stall
+
+Issue #97 observed the correct guest MAC with inactive Ethernet, no IPv4 or
+default route, working local SSH service, and no host `bridge100`/`vmenet`
+interface. VM and UTM restarts did not repair it. Repeated samples of the
+identified `/usr/libexec/InternetSharing` process showed `PFUserDeleteRules`
+waiting on synchronous XPC. These combined observations located the current
+failure in host sharing; an old address routed through a VPN alone cannot do
+so. Do not blindly disable the VPN, repeat restarts or reinstall the guest.
+
+For the same evidenced failure, an authorized operator/Agent can use this
+bounded maintenance procedure while preserving the peer exclusion above:
+
+1. Retain fresh interface/route/guest identity evidence, the exact sharing
+   daemon's process identity and repeated bounded samples. Inspect PF status,
+   complete filter/NAT/anchor policy and reference owners before any change;
+   an empty state table is insufficient. A pfd exit status of 3 is not proof
+   of a signal crash or a documented Apple exit-code contract.
+2. If that daemon needs replacement, recheck its exact PID and executable,
+   attempt graceful termination with a bounded wait, and escalate only for
+   that still-identified process. Never kill by process name, change SIP or
+   alter another VM's ownership. In this recovery, replacing the stalled
+   daemon alone still left the new process waiting.
+3. Only after checking the policy impact, `sudo pfctl -E` can acquire a private
+   temporary enable reference. It enables existing PF policy even without
+   changing rules. Retain the returned reference privately; recheck sharing
+   interfaces, the target MAC/address/route and strict pinned SSH.
+4. Inspect `sudo pfctl -s References` for independent system ownership, then
+   release only this maintenance reference with `sudo pfctl -X <own-reference>`.
+   Recheck owners, network and pinned SSH after release; releasing the last
+   reference can stop PF. Never use `-d`, `-F` or `-f` for this cleanup, release
+   another owner's reference, or manually start pfd.
+
+This recovery produced `bridge100`/`vmenet` and verified pinned SSH after the
+temporary reference was acquired; pfd retained its own reference after the
+maintenance reference was released. It needed no further VM cold restart,
+rule changes or persistent host service. The actual access CLI returned
+`access_available`, `control_channel=ssh`, and `native_acceptance=pending`.
+That result proves this access recovery, not future zero-reference startup
+or native-window behavior. The CLI collects evidence and supports only the
+guarded guest DHCP operation; it does not automate this host procedure.
+
+[Apple container #2275](https://github.com/apple/container/issues/2275) and
+[UTM #7951](https://github.com/utmapp/UTM/issues/7951) contain related user
+reproductions in the official repositories, not an Apple-confirmed fix.
+Check the installed `pfctl(8)`/`pfd(8)` manuals for the current host; `-E`,
+`-X` and `-s References` respectively acquire, release and inspect enable
+references. Preserve local stacks, maintenance and release receipts, then
+run the access preflight again before resuming the separate native case.
+
 Inside the guest, run one scenario at a time:
 
 ```bash
@@ -1874,6 +2033,20 @@ go test -race -cover -timeout 20m ./...       # everything
 go test -race ./internal/engine/              # one package
 go test -race -run TestSteer ./internal/engine/
 go test ./internal/server/ -coverprofile=/tmp/c.out && go tool cover -html=/tmp/c.out
+```
+
+`internal/terminal/pty_unix_test.go` keeps its working-directory fixture's shell
+waiting on stdin after `/bin/pwd`. The PTY slave therefore stays open through
+the directory-output and resize assertions; a short-lived command can instead
+leave an empty EOF on Darwin after exiting successfully. This fixture retains
+the existing three-second output assertion. Its timer closes its own session
+at that budget so a blocking Darwin PTY read cannot wait indefinitely for
+missing output; cleanup stops or joins that timer, then closes and waits for
+only its own child. No terminal runtime behavior changes.
+
+```bash
+go test -race -count=100 -run '^TestStartRunsInTheGivenDirectory$' -timeout 2m ./internal/terminal
+go test -race -count=1 -timeout 2m ./internal/terminal
 ```
 
 `-race` is not optional here. The engine runs a swarm, an event bus and an HTTP
@@ -3798,3 +3971,22 @@ text is not counted twice and removed calls do not inflate the request. The
 Registry/ADK loopback test observes compaction before the HTTP request, preserving
 the current human request and briefing. Existing billed-usage precedence remains
 unchanged; this test does not establish its accuracy for arbitrary providers.
+
+## Question options without model IDs (`F-130`, `F-220`, `C-002`)
+
+`frontend/src/lib/transcript-ask.test.ts` and `mobile/src/lib/ask.test.ts`
+regress label-only, blank/invalid and normalized explicit option IDs.
+`mobile/src/components/ask-card.test.tsx` checks that a label-only choice submits
+its original label. `frontend/e2e/plan.spec.ts` uses the real offline manager
+and host tool with an omitted option ID, verifies the live form and pending
+form after reload, submits that option into the same turn, then reloads the
+settled answer. The trace retains the raw call and matching result.
+
+```bash
+(cd frontend && npm test -- src/lib/transcript-ask.test.ts)
+(cd mobile && npm test -- src/lib/ask.test.ts src/components/ask-card.test.tsx)
+(cd frontend && ZWAI_E2E_PORT=8936 ZWAI_E2E_DATA_DIR=.e2e-ask-options npm run e2e -- plan.spec.ts --output=test-results/ask-options)
+```
+
+Browser checks validate the shared Web UI and do not establish native-window
+acceptance or update an already running engine.
