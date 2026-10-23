@@ -825,36 +825,55 @@ result; it never retries the native input. Run
 for actual adapter and final-retain boundary regressions, including a real
 owned child producing binary streams before timeout. These headless tests do
 not accept an attachment panel or explain a historical unobserved AX stall.
-The final panel scan reads the original title/description/value attributes only
-until the generated fixture filename is found. It then continues role/children
-and button-title reads to exclude a second distinct Open; the first match alone
-cannot authorize Press. Root enumeration retains AX errors and validates array
-and role types instead of silently dropping a failed window. Roots and traversal
-share 5000 visits, count repeated edges and use `CFEqual` graph identity; a new
-node beyond depth 45, an incomplete required graph read or a malformed button
-title fails before Press. Explicit Unsupported/NoValue keeps its existing absent
-attribute meaning. Auxiliary filename Title/Description/Value failures (button
-Title remains required) and successful non-string values are unknown, never a
-filename witness or an absence conclusion. They keep the original AX status;
-another successful string contains witness may satisfy filename presence while
-all roots, roles, children and button titles still prove one distinct Open.
-Without that witness, or with a later second Open/required failure, Press stays
-forbidden. This is a Changed QA acceptance condition, not diagnostic equivalence.
-It does not bind the selected row; actual original bytes, MIME/dimensions and
-saved draft ACK remain separate acceptance checks. No filename-with-newline
-matching contract is claimed for this generated fixture.
-`test_native_macos_attachment_scan.py` compiles actual scanner functions and their
-actual caller with OS seams. It covers unknowns before/after a successful witness,
+The final panel scan requests a fixed Role/Title/Description/Value/Children array
+with options zero in one `AXUIElementCopyMultipleAttributeValues` call per
+distinct scanned node. Outer root enumeration keeps its independent complete
+reads. A top-level error, non-array or array length other than five refuses;
+there is no individual-read fallback. Successful batches can still contain
+attribute errors: only typed AXValue AXError wrappers that decode a nonzero error
+are interpreted as errors. Negative NSNumber values remain ordinary values;
+malformed error wrappers and a wrapped success code refuse, including in unused
+prefetched auxiliary slots. CFNull is a separate
+`batch_missing`, never a fabricated NoValue/Unsupported error. Missing Role
+refuses; missing Children is a leaf; missing Button Title creates no Open
+candidate, preserving the existing explicit Unsupported/NoValue boundaries.
+
+The scanner consumes auxiliary title/description/value text until it obtains a
+successful string containing the generated fixture basename. After that it
+still requests the fixed batch but stops consuming unrelated text. Role,
+children and every button title remain required to exclude a second distinct
+Open; the first match alone cannot authorize Press. Roots and traversal share
+5000 visits, count repeated edges and use `CFEqual` graph identity; a new node
+beyond depth 45, an incomplete required read or a malformed required value fails.
+Consumed auxiliary attribute errors and non-string values remain unknowns with
+their original state, never a filename witness or an absence conclusion. Another
+successful witness may satisfy filename presence while the complete graph still
+proves one distinct Open. Missing witnesses, later second Open and required
+failures forbid Press. The witness does not bind the selected row: actual
+original bytes, MIME/dimensions and saved draft ACK remain separate acceptance
+checks. No filename-with-newline matching contract is claimed for this fixture.
+Fixed auxiliary prefetch and CFNull representation are Changed QA semantics,
+not the same query sequence or an atomic snapshot.
+`test_native_macos_attachment_scan.py` and `test_native_macos_panel_batch.py`
+compile actual decoder/scanner functions and their actual caller with OS seams.
+Run the batch suite with
+`python3 -m unittest discover -s tools -p 'test_native_macos_panel_batch.py'`.
+They cover top-level and per-slot batch errors,
+CFNull and malformed wrappers, unknowns before/after a successful witness,
 non-string-only failure, button-title/children failures, late duplicates, cycles
 and the unchanged visit/depth limits. The first64 auxiliary unknown records
 retain cached role/path/depth/visits and witness/Open count; one summary retains
-the total, and a later required failure is always recorded. No attribute-list
-query, error reread, input retry or eight-second extension is added. Instrumenting those
-same extracted functions/caller on this change gave filePanelText100% lines /
-95.83% branches, scanFilePanel100% /95.24%, and caller100% /95%; this is headless
-behavior coverage, not guest success. The legacy traversal literal measures RPC
-counts only, not guest elapsed time. Private b2e17a diagnosed an AXOutline Value
-Failure; b837's unrecorded node and historical5008 timeout remain unknown.
+the total, and a later required failure is always recorded. No attribute-name
+discovery query, error reread, input retry or eight-second extension is added.
+Client API call counts and instrumented actual-function coverage are headless
+evidence, not provider-internal IPC counts or guest elapsed time. The graph stays
+O(N), and no arbitrary 5000-node eight-second performance guarantee is implied.
+Private 91f5 retained 7733 short completed reads approaching its eight-second
+deadline; this supports cumulative traversal cost for that case, not permanent
+deadlock or historical timeout causes. Private 016618 returned NoValue for both
+panel and host DefaultButton, so that observation did not authorize a shortcut.
+Private b2e17a diagnosed an AXOutline Value Failure; b837's unrecorded node and
+historical5008 timeout remain unknown. Original failure receipts remain unchanged.
 Run it with the same unittest command pattern. The complete helper still needs
 SDK compilation and a fresh guest attachment path. At most 64 choose-only
 stderr JSON stages retain public helper identity and monotonic boundaries,

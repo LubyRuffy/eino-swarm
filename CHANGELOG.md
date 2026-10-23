@@ -53,6 +53,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-031`: native QA file-panel traversal requests a fixed five-attribute
+  batch per distinct scanned node, retaining complete graph/unique Open checks
+  and the existing visit, depth and eight-second bounds. Top-level success does
+  not hide per-attribute errors; typed AXError wrappers and CFNull missing values
+  remain separate, with no individual-read fallback. Filename discovery stops
+  consuming auxiliary text while fixed batches still request it. Query strategy
+  changes do not prove native speed, historical timeout causes or attachment
+  acceptance; original bytes and durable draft ACK remain required (Issue #94).
+
 - `F-430`, `C-031`: change native QA file-panel acceptance to separate a complete
   roots/role/children/button-title graph from auxiliary filename text. Failed or
   non-string auxiliary reads remain recorded unknowns with their original AX

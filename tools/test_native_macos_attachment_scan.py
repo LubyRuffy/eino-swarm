@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import os
 import platform
 import subprocess
 import tempfile
@@ -53,22 +54,50 @@ LEGACY_CALLER = r'''
 
 PREFIX=r'''#import <Foundation/Foundation.h>
 #import <ApplicationServices/ApplicationServices.h>
-static NSMutableDictionary *nodes,*reads;static NSUInteger queries=0,presses=0;
+static NSMutableDictionary *nodes,*reads;static NSUInteger queries=0,presses=0,batches=0,singles=0;
+static NSMutableArray *batchArguments;static NSString *fixtureMode;
 static NSString *errorText;
 static NSString *string(id value){return [value isKindOfClass:NSString.class]?value:@"";}
-static AXError fixtureCopy(AXUIElementRef element,CFStringRef key,CFTypeRef *output){
-    queries++;NSString *node=(__bridge NSString*)element,*name=(__bridge NSString*)key;
+static AXError fixtureValue(AXUIElementRef element,CFStringRef key,CFTypeRef *output){
+    NSString *node=(__bridge NSString*)element,*name=(__bridge NSString*)key;
     NSString *read=[NSString stringWithFormat:@"%@:%@",node,name];reads[read]=@([reads[read] unsignedIntegerValue]+1);
     NSDictionary *row=nodes[node];NSNumber *failure=row[@"errors"][name];*output=NULL;
     if(failure)return failure.intValue;
     id value=row[name];if(!value)return kAXErrorAttributeUnsupported;
     *output=CFRetain((__bridge CFTypeRef)value);return kAXErrorSuccess;
 }
+static AXError fixtureCopy(AXUIElementRef element,CFStringRef key,CFTypeRef *output){
+    queries++;singles++;return fixtureValue(element,key,output);
+}
+static AXError fixtureBatch(AXUIElementRef element,CFArrayRef attributes,AXCopyMultipleAttributeOptions options,CFArrayRef *output){
+    queries++;batches++;NSString *name=(__bridge NSString*)element;
+    [batchArguments addObject:@{@"node":name,@"attributes":(__bridge NSArray*)attributes,@"options":@(options)}];
+    *output=NULL;
+    if([fixtureMode isEqual:@"batch-top-error"])return kAXErrorCannotComplete;
+    if([fixtureMode isEqual:@"batch-top-unsupported"])return kAXErrorAttributeUnsupported;
+    if([fixtureMode isEqual:@"batch-nil"])return kAXErrorSuccess;
+    if([fixtureMode isEqual:@"batch-array-type"]){*output=(CFArrayRef)CFRetain((__bridge CFTypeRef)@42);return kAXErrorSuccess;}
+    NSMutableArray *slots=[NSMutableArray array];
+    for(NSString *key in (__bridge NSArray*)attributes){
+        CFTypeRef raw=NULL;AXError status=fixtureValue(element,(__bridge CFStringRef)key,&raw);
+        if(status){AXValueRef error=AXValueCreate(kAXValueAXErrorType,&status);[slots addObject:CFBridgingRelease(error)];}
+        else [slots addObject:CFBridgingRelease(raw)];
+    }
+    NSDictionary *overrides=nodes[name][@"batch_slots"];
+    for(NSNumber *index in overrides)slots[index.unsignedIntegerValue]=overrides[index];
+    if([fixtureMode isEqual:@"batch-short"])[slots removeLastObject];
+    if([fixtureMode isEqual:@"batch-long"])[slots addObject:NSNull.null];
+    *output=(CFArrayRef)CFRetain((__bridge CFTypeRef)slots);
+    return [fixtureMode isEqual:@"batch-top-partial"] ? kAXErrorCannotComplete : kAXErrorSuccess;
+}
+static Boolean fixtureDecode(AXValueRef value,AXValueType type,void *output){
+    return [fixtureMode isEqual:@"batch-decode-failure"] ? false : AXValueGetValue(value,type,output);
+}
 static id attr(AXUIElementRef element,CFStringRef key){
     CFTypeRef value=NULL;AXError status=fixtureCopy(element,key,&value);
     if(status!=kAXErrorSuccess)return nil;return value?CFBridgingRelease(value):nil;
 }
-static AXError press(AXUIElementRef element,CFStringRef action){presses++;return 0;}
+static AXError press(AXUIElementRef element,CFStringRef action){presses++;return [fixtureMode isEqual:@"press-error"]?kAXErrorCannotComplete:0;}
 static NSArray *sheets(id windows){
     NSMutableArray *result=[NSMutableArray array];if(![windows isKindOfClass:NSArray.class])return result;
     for(id window in windows){id children=attr((__bridge AXUIElementRef)window,kAXChildrenAttribute);
@@ -81,7 +110,7 @@ static void releaseFixture(CFTypeRef value){if(CFGetTypeID(value)!=CFStringGetTy
 static void chooseTrace(NSString *stage,NSDictionary *identityRow){}
 static NSMutableDictionary *node(NSString *role,NSArray *children){return [@{@"AXRole":role,@"AXChildren":children} mutableCopy];}
 static void configure(NSString *mode){
-    nodes=[NSMutableDictionary dictionary];reads=[NSMutableDictionary dictionary];
+    fixtureMode=mode;nodes=[NSMutableDictionary dictionary];reads=[NSMutableDictionary dictionary];batchArguments=[NSMutableArray array];
     nodes[@"app"]=[@{@"AXWindows":@[@"window"]} mutableCopy];nodes[@"window"]=node(@"AXWindow",@[@"root"]);nodes[@"root"]=node(@"AXSheet",@[@"file",@"open"]);
     nodes[@"file"]=node(@"AXStaticText",@[]);nodes[@"open"]=node(@"AXButton",@[]);nodes[@"open"][@"AXTitle"]=@"Open";
     NSString *field=[mode isEqual:@"description"]?@"AXDescription":[mode isEqual:@"value"]?@"AXValue":@"AXTitle";
@@ -175,6 +204,8 @@ static void configure(NSString *mode){
     }
 }
 #define AXUIElementCopyAttributeValue fixtureCopy
+#define AXUIElementCopyMultipleAttributeValues fixtureBatch
+#define AXValueGetValue fixtureDecode
 #define AXUIElementGetTypeID CFStringGetTypeID
 #define AXUIElementPerformAction press
 #define CFRelease releaseFixture
@@ -191,16 +222,18 @@ class ActualFilePanelScanner(unittest.TestCase):
         for label in ['before','after']:
             source=after;helpers=LEGACY_COLLECT if label=='before' else ''
             if label=='after':
-                for signature in ['static AXError filePanelAttribute(','static BOOL filePanelText(','static BOOL filePanelVisit(','static BOOL scanFilePanel(','static BOOL filePanelRoots(']:helpers+=function(source,signature)
+                for signature in ['static AXError filePanelAttribute(','static NSDictionary *filePanelSlot(','static BOOL filePanelBatch(','static BOOL filePanelText(','static BOOL filePanelVisit(','static BOOL scanFilePanel(','static BOOL filePanelRoots(']:helpers+=function(source,signature)
             start=source.index('        chooseTrace(@"panel.collect.before", nil);');last=source.index('        chooseTrace(@"panel.open.after", nil);',start)+len('        chooseTrace(@"panel.open.after", nil);')
             actual=LEGACY_CALLER if label=='before' else source[start:last]
             program=PREFIX+helpers+'\nstatic int run(void){AXUIElementRef app=(__bridge AXUIElementRef)@"app";NSString *value=@"/private/test/input.bin";\n'+actual+'\nreturn 0;}\n'
             program+=r'''int main(int argc,const char **argv){@autoreleasepool{configure(@(argv[1]));int code=run();
-                NSDictionary *row=@{@"queries":@(queries),@"presses":@(presses),@"reads":reads,@"error":errorText?:@""};
+                NSDictionary *row=@{@"queries":@(queries),@"batch_queries":@(batches),@"single_queries":@(singles),@"presses":@(presses),@"reads":reads,@"error":errorText?:@""};
                 puts([[NSString alloc]initWithData:[NSJSONSerialization dataWithJSONObject:row options:0 error:nil]encoding:NSUTF8StringEncoding].UTF8String);return code;}}
 '''
-            p=Path(cls.temp.name)/(label+'.m');p.write_text(program);binary=p.with_suffix('')
-            built=subprocess.run(['/usr/bin/xcrun','clang','-fobjc-arc','-framework','Foundation','-framework','ApplicationServices',str(p),'-o',str(binary)],capture_output=True,text=True)
+            folder=Path(os.environ.get('PANEL_SCAN_COVERAGE_DIR',cls.temp.name));folder.mkdir(parents=True,exist_ok=True)
+            p=folder/(label+'.m');p.write_text(program);binary=p.with_suffix('')
+            flags=['-fprofile-instr-generate','-fcoverage-mapping'] if os.environ.get('PANEL_SCAN_COVERAGE_DIR') and label=='after' else []
+            built=subprocess.run(['/usr/bin/xcrun','clang','-fobjc-arc',*flags,'-framework','Foundation','-framework','ApplicationServices',str(p),'-o',str(binary)],capture_output=True,text=True)
             if built.returncode:raise AssertionError(built.stderr)
             cls.binaries[label]=binary
 
@@ -246,7 +279,7 @@ class ActualFilePanelScanner(unittest.TestCase):
         self.assertEqual(records[-1]['disposition'],'required_failure');self.assertTrue(records[-1]['filename_found'])
         code,row,records,summaries=self.witnessed('aux-after-witness')
         self.assertEqual(code,0,row);self.assertEqual(row['presses'],1);self.assertEqual(records,[])
-        self.assertNotIn('outline:AXValue',row['reads'])
+        self.assertEqual(row['reads']['outline:AXValue'],1)  # prefetched, not consumed
 
     def test_unknown_diagnostics_are_bounded_without_hiding_a_later_required_failure(self):
         code,row,records,summaries=self.witnessed('unknown-cap')
@@ -321,13 +354,13 @@ class ActualFilePanelScanner(unittest.TestCase):
         code,row=self.sample('button-file');self.assertEqual(code,0,row);self.assertEqual(row['presses'],1)
         self.assertEqual(row['reads']['open:AXTitle'],1)
         self.assertEqual(row['reads']['open:AXDescription'],1)
-        self.assertNotIn('open:AXValue',row['reads'])
+        self.assertEqual(row['reads']['open:AXValue'],1)  # fixed batch, no second read
 
-    def test_found_filename_stops_unrelated_text_reads_but_keeps_unique_button_proof(self):
+    def test_found_filename_keeps_unique_button_proof_with_fixed_auxiliary_prefetch(self):
         before,old=self.sample('large','before');after,new=self.sample('large')
         self.assertEqual((before,after),(0,0));self.assertEqual((old['presses'],new['presses']),(1,1))
         self.assertLess(new['queries'],old['queries']/2)
-        for key in ['AXTitle','AXDescription','AXValue']:self.assertNotIn('filler-199:'+key,new['reads'])
+        for key in ['AXTitle','AXDescription','AXValue']:self.assertEqual(new['reads']['filler-199:'+key],1)
         self.assertEqual(new['reads']['filler-199:AXRole'],1);self.assertEqual(new['reads']['filler-199:AXChildren'],1)
         self.assertEqual(new['reads']['open:AXTitle'],1)
         print(json.dumps({'fixture':'203 unique panel nodes; filename before200unrelated nodes','before_queries':old['queries'],'after_queries':new['queries'],'presses':1,'guest_runtime_not_measured':True}))

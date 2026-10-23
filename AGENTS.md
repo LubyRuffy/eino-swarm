@@ -142,17 +142,30 @@ E2E suite.
   missing success evidence fails the case, while evidence I/O cannot replace an
   existing action failure. Keep the eight-second adapter deadline and never
   repeat an input to repair a missing acknowledgement.
-  File-panel inspection stops reading unrelated text after finding the fixture
-  filename, but still proves one distinct Open across the complete supplied AX
-  graph. Roots, role/children and every button title keep their required read
-  and type checks; unreadable, malformed or over-budget graphs cannot prove
-  uniqueness. Auxiliary filename text failures and non-string values are unknown,
+  File-panel inspection requests Role/Title/Description/Value/Children in one
+  fixed-order, options-zero batch per distinct scanned node. Validate the top
+  status and array type/exact length. Decode every returned slot's error-wrapper
+  structure, including unused prefetched auxiliary slots; decode only correctly
+  typed AXValue AXError wrappers, never negative numbers. CFNull is a separate
+  batch-missing result, not an invented NoValue error: Role missing refuses,
+  Children missing is a leaf and Button Title missing creates no Open candidate,
+  preserving the existing explicit Unsupported/NoValue boundaries. Malformed
+  error wrappers and incomplete required reads refuse; never fall back to
+  individual reads. Roots keep their complete independent enumeration.
+  A filename witness stops auxiliary text consumption, although fixed batches
+  still request those attributes. Continue proving one distinct Open across the
+  complete supplied AX graph. Roots, role/children and every button title keep
+  their required read and type checks; unreadable, malformed or over-budget
+  graphs cannot prove uniqueness. Consumed auxiliary text errors and non-string
+  values are unknown,
   never absence or a filename witness. Retain their original status and cached
   node context; only another successful string witness plus the complete unique
-  Open proof permits Press. Regress unknowns before/after a witness, a hidden
-  second Open, missing witnesses and required failures through the actual caller.
+  Open proof permits Press. Regress partial batch errors, CFNull and malformed
+  wrappers, unknowns before/after a witness, a hidden second Open, missing
+  witnesses and required failures through the actual caller.
   Bound auxiliary error records without dropping a later required failure;
-  query-count savings do not prove native elapsed time or a past timeout cause.
+  Query-count savings do not prove provider-internal IPC count, atomic snapshots,
+  native elapsed time or a past timeout cause. The full graph remains O(N).
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in
   [docs/TESTING.md](docs/TESTING.md); do not regress it.

@@ -227,11 +227,47 @@ static AXError filePanelAttribute(AXUIElementRef item, CFStringRef key, id *valu
     *value = raw ? CFBridgingRelease(raw) : nil;
     return status;
 }
-static BOOL filePanelText(AXUIElementRef item, CFStringRef key, NSString **text, BOOL required,
+static NSDictionary *filePanelSlot(id raw, NSString **failure) {
+    if (!raw) { *failure = @"native panel batch slot is nil"; return nil; }
+    if (CFGetTypeID((__bridge CFTypeRef)raw) == CFNullGetTypeID())
+        return @{@"source":@"batch_missing", @"value":NSNull.null, @"status":NSNull.null};
+    if (CFGetTypeID((__bridge CFTypeRef)raw) == AXValueGetTypeID()
+        && AXValueGetType((__bridge AXValueRef)raw) == kAXValueAXErrorType) {
+        AXError status = kAXErrorSuccess;
+        if (!AXValueGetValue((__bridge AXValueRef)raw, kAXValueAXErrorType, &status) || status == kAXErrorSuccess) {
+            *failure = @"native panel batch AXError wrapper could not be decoded or contains success"; return nil;
+        }
+        return @{@"source":@"attribute_error", @"value":NSNull.null, @"status":@(status)};
+    }
+    return @{@"source":@"value", @"value":raw, @"status":@(kAXErrorSuccess)};
+}
+static BOOL filePanelBatch(AXUIElementRef item, NSArray **values, NSString **failure) {
+    NSArray *keys = @[@"AXRole", @"AXTitle", @"AXDescription", @"AXValue", @"AXChildren"];
+    CFArrayRef result = NULL;
+    AXError status = AXUIElementCopyMultipleAttributeValues(item, (__bridge CFArrayRef)keys, 0, &result);
+    id raw = result ? CFBridgingRelease(result) : nil;
+    if (status != kAXErrorSuccess) {
+        *failure = [NSString stringWithFormat:@"native panel batch read failed: %d", status]; return NO;
+    }
+    if (![raw isKindOfClass:NSArray.class] || [raw count] != keys.count) {
+        *failure = @"native panel batch did not return exactly five attribute values"; return NO;
+    }
+    NSMutableArray *decoded = [NSMutableArray arrayWithCapacity:keys.count];
+    for (NSUInteger index = 0; index < keys.count; index++) {
+        NSDictionary *slot = filePanelSlot(raw[index], failure);
+        if (!slot) { *failure = [NSString stringWithFormat:@"%@: %@", keys[index], *failure]; return NO; }
+        [decoded addObject:slot];
+    }
+    *values = decoded; return YES;
+}
+static BOOL filePanelText(NSDictionary *slot, CFStringRef key, NSString **text, BOOL required,
                           NSDictionary *context, NSUInteger *unknownReads, NSString **failure) {
-    id raw = nil; *text = nil;
-    AXError status = filePanelAttribute(item, key, &raw);
-    if (status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) { *text = @""; return YES; }
+    id raw = slot[@"value"]; *text = nil;
+    // Batch CFNull carries no AXError. Preserve its provenance instead of
+    // inventing Unsupported/NoValue for an allowed absent attribute.
+    BOOL missing = [slot[@"source"] isEqual:@"batch_missing"];
+    AXError status = missing ? kAXErrorSuccess : [slot[@"status"] intValue];
+    if (missing || status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) { *text = @""; return YES; }
     if (status == kAXErrorSuccess && [raw isKindOfClass:NSString.class]) { *text = raw; return YES; }
     NSString *message = status != kAXErrorSuccess
         ? [NSString stringWithFormat:@"native panel %@ read failed: %d", (__bridge NSString *)key, status]
@@ -240,6 +276,7 @@ static BOOL filePanelText(AXUIElementRef item, CFStringRef key, NSString **text,
     if (required || *unknownReads <= 64) {
         NSMutableDictionary *row = [context mutableCopy];
         row[@"attribute"] = (__bridge NSString *)key; row[@"status"] = @(status);
+        row[@"source"] = slot[@"source"];
         row[@"disposition"] = required ? @"required_failure" : @"unknown";
         row[@"value_type"] = raw ? NSStringFromClass([raw class]) : @"nil";
         row[@"primary_error"] = message;
@@ -268,27 +305,30 @@ static BOOL scanFilePanel(AXUIElementRef item, NSString *name, NSMutableArray *o
     if (CFSetContainsValue(seen, item)) return YES;
     if (depth > 45) { *failure = @"native panel exceeded depth 45"; return NO; }
     CFSetAddValue(seen, item);
-    id role = nil;
-    AXError status = filePanelAttribute(item, kAXRoleAttribute, &role);
-    if (status != kAXErrorSuccess || ![role isKindOfClass:NSString.class] || ![role length]) {
-        *failure = [NSString stringWithFormat:@"native panel role is unavailable or malformed: %d", status]; return NO;
+    NSArray *values = nil;
+    if (!filePanelBatch(item, &values, failure)) return NO;
+    NSDictionary *roleSlot = values[0]; id role = roleSlot[@"value"];
+    if (![roleSlot[@"status"] isEqual:@(kAXErrorSuccess)] || ![role isKindOfClass:NSString.class] || ![role length]) {
+        *failure = [NSString stringWithFormat:@"native panel role is unavailable or malformed: %@", roleSlot[@"status"]]; return NO;
     }
     NSMutableDictionary *context = [@{@"role":role, @"depth":@(depth), @"visits":@(*visits),
         @"root_index":nodePath[0], @"child_index":nodePath.count > 1 ? nodePath.lastObject : NSNull.null,
         @"node_path":nodePath, @"filename_found":@(*found), @"open_count":@(opens.count)} mutableCopy];
     NSString *title = nil;
     if ([role isEqual:@"AXButton"]) {
-        if (!filePanelText(item, kAXTitleAttribute, &title, YES, context, unknownReads, failure)) return NO;
+        if (!filePanelText(values[1], kAXTitleAttribute, &title, YES, context, unknownReads, failure)) return NO;
         if ([@[@"Open", @"打开"] containsObject:title]) [opens addObject:(__bridge id)item];
     }
     context[@"open_count"] = @(opens.count);
-    if (!*found) for (NSString *key in @[@"AXTitle", @"AXDescription", @"AXValue"]) {
+    if (!*found) for (NSUInteger index = 1; index <= 3; index++) {
+        NSString *key = @[@"AXRole", @"AXTitle", @"AXDescription", @"AXValue", @"AXChildren"][index];
         NSString *text = title && [key isEqual:@"AXTitle"] ? title : nil;
-        if (!text && !filePanelText(item, (__bridge CFStringRef)key, &text, NO, context, unknownReads, failure)) return NO;
+        if (!text && !filePanelText(values[index], (__bridge CFStringRef)key, &text, NO, context, unknownReads, failure)) return NO;
         if ([text containsString:name]) { *found = YES; break; }
     }
-    id children = nil;
-    status = filePanelAttribute(item, kAXChildrenAttribute, &children);
+    NSDictionary *childrenSlot = values[4]; id children = childrenSlot[@"value"];
+    if ([childrenSlot[@"source"] isEqual:@"batch_missing"]) return YES;
+    AXError status = [childrenSlot[@"status"] intValue];
     if (status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) return YES;
     if (status != kAXErrorSuccess || ![children isKindOfClass:NSArray.class]) {
         *failure = [NSString stringWithFormat:@"native panel children are unreadable or malformed: %d", status]; return NO;
