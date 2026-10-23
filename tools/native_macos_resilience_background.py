@@ -35,7 +35,20 @@ def stop_awake(context, harness):
     if process is None:
         return
     if process.poll() is None:
-        harness.signal_identified(Path(context["helper"]), context["awake_identity"], signal.SIGTERM)
+        expected = context["awake_identity"]
+        if process.pid != expected["pid"] or expected.get("executable") != "/usr/bin/caffeinate":
+            raise RuntimeError("display assertion child identity differs")
+        try:
+            current = harness.process_identity(Path(context["helper"]), process.pid)
+        except (OSError, subprocess.SubprocessError):
+            if process.poll() is None:
+                raise
+        else:
+            if current != expected:
+                raise RuntimeError("display assertion public process identity changed")
+            # System utilities may omit their environment from KERN_PROCARGS2.
+            # The unreaped Popen child and fresh birth/path establish this owner.
+            process.terminate()
     process.wait(timeout=5)
     exited = process.poll() is not None
     harness.atomic_json(context["evidence"] / "display-assertion-cleanup.json",

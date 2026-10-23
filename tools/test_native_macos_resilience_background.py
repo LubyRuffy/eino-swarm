@@ -87,10 +87,23 @@ class BackgroundTests(unittest.TestCase):
             self.assertEqual(command[:4], ["/usr/bin/caffeinate", "-d", "-i", "-u"])
             self.assertEqual(command[command.index("-t") + 1], "100")
             self.assertIn("-w", command)
-            harness.signal_identified.assert_called_once_with(Path("helper"), identity, signal.SIGTERM)
+            harness.signal_identified.assert_not_called()
+            process.terminate.assert_called_once_with()
+            self.assertEqual(harness.process_identity.call_count,2)
             process.wait.assert_called_once_with(timeout=5)
             self.assertTrue(json.loads((root / "display-assertion-cleanup.json").read_text())["exited"])
             self.assertNotIn("awake_process", context)
+
+    def test_display_cleanup_rejects_changed_public_identity_without_terminating_any_process(self):
+        identity=dict(pid=42,birth=[1,2],executable="/usr/bin/caffeinate")
+        for observed,pid in ((dict(identity,birth=[2,2]),42),(identity,43)):
+            with tempfile.TemporaryDirectory() as temporary:
+                process=mock.Mock(pid=pid);process.poll.return_value=None
+                context=dict(awake_process=process,awake_identity=identity,helper="/helper",evidence=Path(temporary))
+                harness=SimpleNamespace(process_identity=mock.Mock(return_value=observed),signal_identified=mock.Mock(),atomic_json=mock.Mock())
+                with self.assertRaisesRegex(RuntimeError,"identity"):
+                    background.stop_awake(context,harness)
+                process.terminate.assert_not_called();harness.signal_identified.assert_not_called()
 
     def setUp(self):
         self.expected = dict(worker_id="worker-a", turn_id="turn-a")

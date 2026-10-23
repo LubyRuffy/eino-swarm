@@ -108,7 +108,8 @@ uploads, downloads and the live event stream have exactly one implementation.
   every card. The same ReAct turn continues after the answer. Workers cannot
   ask. While a card is waiting, Enter in the composer is Other, not a
   follow-up. On a paired phone, a rejected submission shows the PC error and
-  retains the selected option or Other text for retry.
+  retains the selected option or Other text for retry. Options whose IDs are
+  omitted still appear on PC and phone, including after reopening the conversation.
 - **Scheduled waits.** The manager can arm a wake on this conversation
   (`schedule_wake`) or, on a human turn, an independent job (`schedule_task`).
   A successful check with another wake scheduled keeps its unfinished

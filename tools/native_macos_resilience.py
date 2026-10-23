@@ -276,14 +276,14 @@ def process_identity(helper, pid):
 
 
 def signal_identified(helper, expected, sig):
-    # Only setup's private shell/engine and the finite display assertion use
-    # this adapter. WebKit faults require the separate lifecycle proof module.
+    # Setup discovers its private shell/engine by case marker. Held display
+    # children and WebKit faults have separate ownership and cleanup paths.
     case, app = os.environ.get("ZWAI_NATIVE_CASE_ID", ""), Path(os.environ.get("ZWAI_NATIVE_APP", "."))
     argv, marker = runner.process_identity(expected["pid"])
-    allowed = {"/usr/bin/caffeinate", str(app / "Contents/MacOS/zwai")}
+    allowed = str(app / "Contents/MacOS/zwai")
     if (sig != signal.SIGTERM or not re.fullmatch(r"[0-9a-f]{32}", case)
             or not app.is_absolute() or not app.parent.name.startswith("zwai-native-" + case + "-")
-            or marker != case or not argv or argv[0] != expected.get("executable") or argv[0] not in allowed):
+            or marker != case or not argv or argv[0] != expected.get("executable") or argv[0] != allowed):
         raise RuntimeError("TERM target is not an owned private case process")
     if process_identity(helper, expected["pid"]) != expected:
         raise RuntimeError("process identity changed; owned process termination refused")
@@ -678,6 +678,14 @@ def collect_draft(context, timeout):
     text = "Unsent recovery input " + context["case_id"] + " 中文  "
     native(context, "fill", text)
     native(context, "press", "Attach files")
+    def panel_ready():
+        row = native(context, "dialogs")
+        if row.get("case_id") != context["case_id"] or row.get("pid") != context["app_pid"]:
+            raise RuntimeError("attachment panel observation belongs to another case")
+        return row if any(item.get("AXRole") == "AXSheet" or item.get("AXSubrole") == "AXDialog"
+                          for item in row.get("rows", [])) else None
+    panel = wait_for(panel_ready, Deadline(timeout))
+    atomic_json(context["evidence"] / "attachment-panel-ready.json", panel)
     if native(context, "choose-file", str(binary)).get("chosen") is not True:
         raise RuntimeError("native file selection was not confirmed")
     wait_for(lambda: any(item["sha256"] == sha256(binary) for item in draft_snapshot(context)["files"]), Deadline(timeout))

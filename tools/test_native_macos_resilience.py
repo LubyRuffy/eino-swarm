@@ -270,6 +270,31 @@ class ResilienceTests(unittest.TestCase):
             self.assertEqual(resilience.submit(context, text, 1, result), turn)
         self.assertEqual(result["turn_ids"], ["turn-new"])
 
+    def test_attachment_selection_waits_for_the_real_sheet_before_one_choose_action(self):
+        import hashlib
+        context=dict(case_id="a"*32,app_pid=7,workspace=self.root,evidence=self.root)
+        state=dict(text="",files=[],dialogs=0,choices=0,panel_ready=False)
+        def draft(ctx):return dict(text=state["text"],files=list(state["files"]),quotes=[],state="editing")
+        def native(ctx,action="snapshot",value=""):
+            if action=="fill":state["text"]=value;return dict(filled=True)
+            if action=="dialogs":
+                state["dialogs"]+=1;state["panel_ready"]=state["dialogs"]>=2
+                return dict(case_id=context["case_id"],pid=7,rows=[dict(AXRole="AXSheet")] if state["panel_ready"] else [])
+            if action=="choose-file":
+                if not state["panel_ready"]:raise OSError("attachment sheet is not present yet")
+                state["choices"]+=1
+                path=Path(value);state["files"].append(dict(id="binary",name=path.name,kind="file",sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
+                return dict(chosen=True)
+            if action=="paste-file":
+                path=Path(value);state["files"].append(dict(id="image",name=path.name,kind="image",sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
+            return dict(values=[state["text"]],text="Draft saved")
+        with mock.patch.object(resilience,"native",side_effect=native),mock.patch.object(resilience,"draft_snapshot",side_effect=draft), \
+                mock.patch.object(resilience.time,"sleep"):
+            row=resilience.collect_draft(context,5)
+        self.assertEqual(state["dialogs"],2);self.assertEqual(state["choices"],1)
+        self.assertEqual(len(row["files"]),2)
+        self.assertEqual(resilience.read_json(self.root/"attachment-panel-ready.json")["rows"][0]["AXRole"],"AXSheet")
+
     def test_native_attachment_send_matches_uploaded_bytes_notice_and_actual_vision_input(self):
         import hashlib
         binary, image = b"unchanged attachment", resilience.fixture_png()
@@ -304,10 +329,10 @@ class ResilienceTests(unittest.TestCase):
         process=mock.Mock(pid=123);process.poll.side_effect=[None,0]
         context=dict(awake_process=process,awake_identity=identity,helper="/helper",evidence=self.root)
         with mock.patch.dict(resilience.os.environ,case_env), \
-                mock.patch.object(resilience.runner,"process_identity",return_value=(["/usr/bin/caffeinate"],case)), \
+                mock.patch.object(resilience.runner,"process_identity",return_value=(None,None)) as arguments, \
                 mock.patch.object(resilience,"process_identity",return_value=identity),mock.patch.object(resilience.os,"kill") as kill:
             resilience.background.stop_awake(context,resilience)
-        kill.assert_called_once_with(123,signal.SIGTERM);process.wait.assert_called_once_with(timeout=5)
+        kill.assert_not_called();arguments.assert_not_called();process.terminate.assert_called_once_with();process.wait.assert_called_once_with(timeout=5)
         self.assertNotIn("awake_process",context)
         self.assertTrue(resilience.read_json(self.root/"display-assertion-cleanup.json")["exited"])
         context=dict(case_id=case,app=app,app_pid=333,engine_pid=444,helper="/helper",evidence=self.root,workspace=self.root,
@@ -339,6 +364,23 @@ class ResilienceTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,"identity|owned"):
                     resilience.signal_identified(Path("/helper"),identity,signum)
                 kill.assert_not_called()
+
+    def test_display_child_exit_during_actual_identity_probe_is_reaped_but_a_live_probe_failure_is_retained(self):
+        identity=dict(pid=123,birth=[10,20],executable="/usr/bin/caffeinate")
+        for gone in (True,False):
+            process=mock.Mock(pid=123);process.poll.side_effect=[None,0,0] if gone else [None,None]
+            context=dict(awake_process=process,awake_identity=identity,helper="/helper",evidence=self.root)
+            failure=subprocess.CalledProcessError(2,["/helper","identity","123"],stderr="process identity unavailable")
+            with self.subTest(gone=gone),mock.patch.object(resilience.subprocess,"run",side_effect=failure):
+                if gone:
+                    resilience.background.stop_awake(context,resilience)
+                    process.wait.assert_called_once_with(timeout=5)
+                    self.assertTrue(resilience.read_json(self.root/"display-assertion-cleanup.json")["exited"])
+                    self.assertNotIn("awake_process",context)
+                else:
+                    with self.assertRaises(subprocess.CalledProcessError):resilience.background.stop_awake(context,resilience)
+                    process.wait.assert_not_called();self.assertIn("awake_process",context)
+                process.terminate.assert_not_called()
 
     def test_accepted_stage_needs_matching_cleanup_and_actual_scenario_evidence(self):
         stage = self.root / "baseline"

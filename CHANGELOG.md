@@ -107,6 +107,12 @@ co-working app built on it. The library API is unchanged except where noted
   SSE path as well as cold history; paired-phone metadata preserves task state
   and does not stop Earlier on an invisible page (Issue #94).
 
+- Tests: keep the PTY working-directory fixture alive through its output and resize assertions, bound blocking reads by closing its own session at the existing three-second budget, then reap its child. This avoids an empty EOF from a successful short-lived command on Darwin without increasing the assertion timeout or changing terminal behavior.
+
+- `F-130`, `F-220`, `C-002`: PC and paired-phone question forms retain label-only options accepted by the host. Missing or unusable option IDs now derive from the label, so live and replayed questions remain selectable instead of leaving the turn waiting without a form.
+
+- `F-430`, `C-031`, `C-010`: add a private-profile ci-macOS preflight with pinned SSH, current shared probes and separate route/NIC/sshd evidence. Fresh process/effect inventory and actual native-case maintenance exclusion protect peer work; one guarded DHCP renewal needs a subsequent pinned SSH probe before repair succeeds. Unknown request outcomes retain their IDs without automatic retry, and VM reboot remains a separate owned action. Access success remains separate from native-window acceptance (Issue #97).
+
 - `F-430`, `C-031`: native-case headless tests wait for fixture readiness rather than assuming one-second process startup. A delayed fixture regresses false failures while retaining bounded scenarios and cleanup assertions; production native-case deadlines are unchanged.
 - `F-170`, `F-175`, `C-009`, `C-030`: desktop settings autosave and catalog refresh preserve concurrent phone timeout edits by omitting unchanged timeout fields. Saves merge with the latest detached configuration and publish runtime/cache changes only after atomic persistence succeeds; a failed save leaves current settings intact. Nested cloud-tool options retain their protocol, values and isolation across snapshots and rejected updates; worker ownership and parked restoration read configuration snapshots during saves (Issue #82).
 
