@@ -98,6 +98,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-420`, `C-025`: clarify existing tidy API failure semantics: internal tool refusals, reviewer errors in HTTP 200 / SSE `done` with saved receipts, and outer fold/view errors through normal JSON mapping or SSE `error`. Documentation only; runtime behavior is unchanged (Issue #99).
+
 - Tests: synchronize interrupted-output retention with a real live partial HTTP stream instead of assuming the manager produced text within 120ms. Keep the stream open until Stop, verify the identical text and output identity after persistence, and retain delayed-start and next-turn coverage without changing runtime behavior.
 
 - `F-430`, `C-031`: native acceptance recovery now selects the existing authorized guest Terminal control path when current exact-target evidence shows SSH helper permission denial and that path is usable. Unknown-state observation and completed acceptance retain priority; the offline audit neither grants privacy permissions nor operates the VM.

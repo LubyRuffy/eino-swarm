@@ -922,8 +922,8 @@ Promote requires its body to equal the entire source note after whitespace
 normalization, without extra steps or assertions;
 demote requires an equivalent complete short body without Markdown step markers,
 within `entry_max` and the total note budget. Destination writes precede source
-deletions, not a multi-file transaction. Failed moves retain actual writes as
-create/add/delete changes and return an error; only complete moves use
+deletions, not a multi-file transaction. Partial moves retain actual writes as
+create/add/delete changes; only complete moves use
 `action: promote` / `demote` with `target: skill_manage`. Retry may establish an
 already-present final state without new changes; it does not establish history.
 
@@ -935,14 +935,14 @@ see, is otherwise left as it was. Without `Accept: text/event-stream` the
 body is the outcome, once. With that header the same call is
 `text/event-stream`: `tidy` events (`phase` `scan` / `text` / `change`)
 while the model is writing, then one `done` event whose `data` is the JSON
-body below, or `error` if the fold failed after the stream had started.
+body below, including `report.err` for reviewer failures. An outer fold or final
+memory-view failure after streaming starts emits `error` instead of `done`.
 `text` is the assistant prose so far, not a delta. A disconnect does not
 abort the fold. Model calls
 and a quiet `memory_review` (`notify: off`) hang on the project's latest
 finished turn when there is one; without a turn the reviewer still runs
 against the default provider. Serializes with that project's in-flight
-reviewer so a click cannot fold while a review is still writing. Pre-stream
-refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
+reviewer so a click cannot fold while a review is still writing.
 
 ```json
 {"memory": { "dir": "…", "enabled": true, "memory": {…}, "skills": […], "needs_tidy": false },
@@ -972,7 +972,23 @@ modification time when never viewed) reached `memory.skill_stale_days` before
 curation. The streamed scan and original-turn `memory_review` retain the same
 list. It is advisory input, not a list of automatic deletions.
 
-`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog or project notes after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works. `report.err` is set when the model call failed after the stem fold already landed.
+`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog or project notes after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works.
+
+`memory_reclassify` validation refusals are internal tool-result JSON with
+`success: false`; an unchanged refusal is feedback the reviewer may correct,
+not an HTTP failure or necessarily a `report.err`. If a move fails after saving
+changes, its tool result retains `changed: true` and the actual receipts, and
+the tidy wrapper stops the reviewer. Reviewer errors, including model errors
+and such partial tool failures, populate `report.err`. The endpoint still
+returns HTTP `200`, or SSE `done` with the same report, preserving saved changes.
+Clients must inspect `report.err`; successful transport is not successful curation.
+
+Errors outside the reviewer, such as fold setup/storage reads or the final
+memory-view read, use the normal JSON status/code mapping for non-streamed
+requests (`409` / `code: idle` after shutdown). Project lookup fails before a
+stream starts and remains JSON (`404` for a missing project). Once SSE headers
+are sent, outer fold/view errors emit an `error` event under HTTP `200`, with no
+`done` report; this differs from reviewer failures carried in `done.report.err`.
 
 ### `GET /api/projects/:id/skills/:name`
 
