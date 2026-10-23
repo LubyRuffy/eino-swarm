@@ -104,6 +104,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- Tests (`F-110`, `C-027`): verify restart retention of an acknowledged answer
+  through its checkpoint, durable tool result and actual model input while the
+  response is held. Remove the unrelated whole-turn completion wait without
+  extending its deadline or changing runtime behavior (Issue #77).
+
 - `F-110`, `C-027`: isolate lifecycle schedule fixtures from asynchronous
   naming, preventing fixture-owned provider-pool and database-callback races
   under `-race`; automatic-title behavior remains covered through its real API.

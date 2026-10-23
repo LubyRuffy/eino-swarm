@@ -257,7 +257,8 @@ func TestRestartRecoveryKeepsALateConfirmedManagerToolResult(t *testing.T) {
 // An answer acknowledged while its waiter is between scheduling boundaries is
 // still human authorization and must not be discarded by restart cancellation.
 func TestRestartCheckpointRetainsAnAcceptedAnswerBeforeTheWaiterReadsIt(t *testing.T) {
-	e := newTestEngine(t)
+	e, modelInput, releaseModel := heldRestartAnswerEngine(t)
+	defer releaseModel()
 	th, _ := e.CreateThread("", "", "")
 	turn := plantUnfinishedTurn(t, e, th.ID, "choose")
 	questions := []AskQuestion{{ID: "approach", Prompt: "Choose an approach", Options: []AskOption{{ID: "one", Label: "One"}, {ID: "two", Label: "Two"}}}}
@@ -282,14 +283,38 @@ func TestRestartCheckpointRetainsAnAcceptedAnswerBeforeTheWaiterReadsIt(t *testi
 	if got, err := e.PrepareRestart(deadline); err != nil || !got.Ready {
 		t.Fatalf("prepare=%+v %v", got, err)
 	}
+	checkpoint := e.checkpointForTurn(turn.ID)
+	if checkpoint == nil || checkpoint.Answer == nil || checkpoint.Answer.CallID != "ask-accepted" || checkpoint.Pause == "ask" {
+		t.Fatalf("accepted answer was not checkpointed: %+v", checkpoint)
+	}
+	assertRestartReplayAnswer(t, FormatAskResult(checkpoint.Answer.Answers), "approach", "One")
 	next := restartedTestEngine(t, e)
 	if n, err := next.ResumeOrphanedTurns(); n != 1 || err != nil {
 		t.Fatalf("resume=%d %v", n, err)
 	}
-	waitRestartState(t, func() bool { status := next.Status(th.ID); return status.AwaitingAnswer || !status.Running })
-	if next.Status(th.ID).AwaitingAnswer {
-		t.Fatal("acknowledged answer was lost and asked again")
+	select {
+	case request := <-modelInput:
+		assertRestartReplayToolPair(t, request, "ask-accepted", "approach", "One")
+	case <-time.After(5 * time.Second):
+		t.Fatalf("recovered answer did not reach the model: status=%+v checkpoint=%+v", next.Status(th.ID), next.checkpointForTurn(turn.ID))
 	}
+	assertRestartReplayAskResult(t, next, turn.ID, "ask-accepted", "approach", "One")
+	events, err := next.Store().ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		if event.Kind == swarm.NotifyToolResult.String() && event.ToolCallID == "ask-accepted" && event.Err != "" {
+			t.Fatalf("recovered answer has a tool error: %+v", event)
+		}
+	}
+	status := next.Status(th.ID)
+	if !status.Running || status.AwaitingAnswer {
+		t.Fatalf("model barrier must hold the recovered turn running without another ask: %+v", status)
+	}
+	// Recovery has used the answer before this held model response can finish
+	// the turn. Its later terminal state is not the answer-retention boundary.
+	t.Log("matched accepted answer reached the real model adapter and durable tool result while its response is held")
 }
 
 func TestRestartKeepsAnAcceptedCapDecisionBeforeItsWaiterReadsIt(t *testing.T) {
