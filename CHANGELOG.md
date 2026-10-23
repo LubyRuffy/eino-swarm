@@ -53,6 +53,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-010`: allocate source batch `0.1.37` for accepted Issues #101 and #103 after the cumulative first-parent commit threshold. Mobile package metadata shares that batch version; TestFlight marketing version stays on its successful train. Each installer retains independent native acceptance and publication gates; allocation does not claim upload or delivery.
+
 - `F-130`, `F-330`, `C-019`, `C-002`, `C-027`: ordinary turns without current goal/wake ownership must collect every worker's current generation with `wait_agents`, or explicitly discard it with `close_agent`, before publishing completion. An early final receives one durable same-turn correction; repetition pauses for human Continue/Stop while preserving the original workers. Continue grants one further attempt, and restart retains collection state, correction allowance and human pauses. Finished close receipts remain `already_finished`, rather than fabricated cancellation (Issue #103).
 
 - `F-420`, `C-025`: unify notes/skills classification by permanent versus on-demand loading, applicability-focused descriptions and workflow-local constraints; clarify both Memory panel descriptions and split memory translations (Issue #99).
