@@ -117,6 +117,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-150`, `C-009`, `C-012`: a trailing `/goal` activates its preceding objective across PC, HTTP and paired-phone sends and steering, including after an older goal completed. Scheduling success claims now require verification against persisted, currently effective plans before manager prose is published; unsupported claims receive one bounded same-turn correction, then a visible failure. Tool and worker activity remain live (Issue #103).
 
+- `F-430`, `C-031`: native QA helpers refresh activation state through bounded
+  main-runloop slices after one activate/raise request per helper action invocation,
+  with one monotonic deadline. Failed activation and fill/Send guards retain sampled predicates and
+  Press attempt state; resilience activation failures retain key fields in
+  stderr. This changes the QA harness, not the application package, and does not
+  establish the cause of historical Send failures or accept pending native gates.
+
 - `F-220`, `C-017`: Ask Other now uses the phone's 16px editable text size so
   iOS focus does not leave the answer, navigation and retry result enlarged
   and horizontally clipped. Browser font and packaged iOS viewport regressions

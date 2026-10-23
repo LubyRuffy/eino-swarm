@@ -407,6 +407,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
   - 冷构建、首次传输和刻意长时恢复另列耗时与显式预算，不冒充一分钟回归。复用已准备候选不允许复用用例数据。快速场景必须保留原生窗口内容、截图及真实离线 worker/tool/Trace 断言；只有 HTTP 或进程证据时不得验收原生行为。
   - 快速场景的 AX helper 在候选准备阶段编译并记录源码、构建参数及二进制哈希，计时场景拒绝缺失／过期收据，不以冷编译延长周期。输入前核对本例 PID 和 WebView origin／desktop shell／PID，输入完整读回且唯一 Send 可用后才发送；截图必须来自本例 PID 的窗口。
   - helper 返回的 bundle 与目标 bundle 必须实际存在且经 `Path.resolve(strict=True)` 解析后相同；同一目录的 Darwin 路径别名允许通过，其他目录或已缺失目标必须拒绝，origin、case 与 PID 校验不得放宽。helper 的原始 stdout、stderr、退出码及请求身份先写入 `smoke-native-last.json`，再检查返回码、解析 JSON 和验证身份，失败响应也必须留证。
+  - 每次 helper 动作调用内原生激活只请求一次并 raise 本例窗口，使用从请求前开始的同一 monotonic deadline，以短主 runloop 片段刷新后再确认 `NSRunningApplication.active`；缓存为 true 时也至少刷新一次，越过 deadline 不得继续确认或另起等待。activation／fill／Send 守卫失败保留本次已采集的窗口、草稿、Send 谓词及 Press 尝试状态；调用方不保留非零 stdout 时，关键失败字段必须同时进入 stderr。不得用固定 sleep、调用内重复激活或自动重发 Send 掩盖失败；上层原有轮询及共享 replacement deadline 不因 helper 等待而重置。
   - AX children 按图遍历，并以 `CFEqual` 判断元素身份；重复引用不得制造重复 composer／Send，不同身份的同文字控件不得合并。所有访问（含空节点和重复边）共享 5000 次上限，新节点的深度上限仍为 45；真实超限立即停止遍历并失败，不得用截断后的控件集合证明唯一性。
   - 访问诊断按本次 probe 区分宿主 VM 网卡／旧地址路由、来宾身份与 MAC、carrier／IPv4／默认路由、sshd loaded／disabled 及实际 SSH 通道；on-demand sshd 暂无监听进程不能据此判为 disabled。旧 IP、UTM started 或旧 ready 文件只作线索；共享通道须有本次请求身份匹配的真实响应，不能用宿主／来宾墙钟差判失效。不支持的 backend 操作不得重复当恢复。纯分类器严格校验输入，不回显私有身份；`restart_admitted` 只是必要准入，`native_acceptance` 始终为 pending，不执行重启或验收窗口。
   - 宿主访问入口复用仅当前用户可读的私有 profile，以选定 MAC 的 DHCP 候选、实际路由及严格 pinned SSH 验证目标；默认只读，SSH 未证时使用匹配当前 probe／nonce／源码哈希／来宾身份的真实队列响应，不把历史 ready 当成功。递归发现历史队列作盘点候选，维护只使用本次 guest 进程／效果证据确认的 current peer roots；未知盘点拒绝维护。发出请求前持久化不含 nonce 的 ID／queue／timeout，超时保留未知效果及未确认取消，不自动重试。`--repair-network` 只触发有 guard 的一次 DHCP，成功仍须新 pinned SSH 验证；不自动 reboot。证据：实现 `tools/native_macos_access.py`；测试 `tools/test_native_macos_access.py`；来源：GitHub Issue #97。
@@ -417,7 +418,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 不变量：一个用例的退出不能破坏另一个实例；下一用例不继承上一用例数据。
 - 边界条件：硬杀 runner／断电无法运行 finally，后续用例必须识别未清理记录并拒绝启动，核实并完成同一用例清理后才能继续。历史未知来源的残留不得按名称一并清空。
 - 场景与辅助进程必须保留继承的 `ZWAI_NATIVE_CASE_ID`，使已脱离父进程／新建 session 的辅助进程仍可归因；不得主动清除标记后创建脱管 daemon。测试 runner 不是 OS 进程容器，不终止共享系统服务。
-- 证据：实现 `tools/native_macos_case.py`, `tools/native_macos_smoke.py`, `tools/native_macos_ax.m`, `Makefile`, `AGENTS.md`；测试 `tools/test_native_macos_case.py`, `tools/test_native_macos_smoke.py`；操作说明 `docs/TESTING.md`, `docs/RELEASE.md`。
+- 证据：实现 `tools/native_macos_case.py`, `tools/native_macos_smoke.py`, `tools/native_macos_ax.m`, `tools/native_macos_resilience_ax.m`, `Makefile`, `AGENTS.md`；测试 `tools/test_native_macos_case.py`, `tools/test_native_macos_smoke.py`, `tools/test_native_macos_activation.py`；操作说明 `docs/TESTING.md`, `docs/RELEASE.md`。
 - 变更规则：同步 runner、生命周期回归、开发规则及原生验收文档；保留源码身份与真实窗口行为的独立证据边界。
 - 现场证据：[2026-10-21 ci-macOS 串行窗口与清理验收](diagnostics/native-isolation-20261021.md)；仅接受其冻结候选和明确成功路径。
 - 计时证据：[2026-10-22 日常三轮一分钟验收](diagnostics/native-minute-20261022.md)；含独立核验的完整单轮 14.50 / 12.30 / 12.06 秒，真实原生输入、结果、Trace、截图及进程/私有数据清理全部通过，仅接受其冻结输入。
