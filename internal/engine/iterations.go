@@ -167,9 +167,9 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				if err != nil {
 					return res, fmt.Errorf("read scheduled check evidence: %w", err)
 				}
-				if !scheduledWorkRecorded(events) {
+				if !scheduledOutputRecorded(events, res.Final) {
 					if scheduleContinued {
-						return res, errors.New("scheduled check ended without executing a tool or reporting its result")
+						return res, errors.New("scheduled check ended without returning text, executing a tool or reporting its result")
 					}
 					scheduleContinued = true
 					e.record(store.Event{ThreadID: turn.ThreadID, TurnID: turn.ID,

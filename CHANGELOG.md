@@ -58,6 +58,12 @@ co-working app built on it. The library API is unchanged except where noted
   package metadata before the exact-source Mac installer acceptance. This is a
   local acceptance candidate; native gates and publication remain pending, and
   no tag, installer upload or TestFlight delivery is implied.
+- `F-150`, `C-009`: scheduled checks and Run now accept a nonempty text result
+  without calling a tool or `report_schedule`, preserving automatic tool
+  selection. Only a wholly empty response with no real tool result or explicit
+  report receives one same-turn continuation before a visible error. Explicit
+  quiet reports keep precedence; ending a check does not complete its standing
+  goal or verify external work.
 
 - `F-130`, `F-170`, `F-330`, `C-009`, `C-019`: new worker lifetimes default to one hour in the library and app. Existing positive configured values, active deadlines and the three-failure watchdog budget retain their meaning. Live registries have synchronized `SetAgentTimeout` and `SetMaxTurns` setters for subsequent worker execution (Issue #82).
 

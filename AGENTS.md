@@ -452,10 +452,14 @@ E2E suite.
   Late-steer continuation accepts only User-role messages. Regress late
   completion/cancellation, restart read cursors and storage failure.
 
-- Scheduled completion needs a tool result or explicit report in the same turn.
-  Prose alone is not evidence that the check ran. Keep one bounded same-turn
-  continuation and regress both Run now and automatic fires, including quiet
-  reports and model-retry cleanup; never classify completion by answer length.
+- Scheduled checks retain automatic tool selection and may end with a nonempty
+  text result without tools. Do not require a tool call to accept that result.
+  Only an empty/whitespace final with no actual tool result or explicit report
+  gets one bounded same-turn continuation. Regress Run now and automatic fires,
+  text-only results, empty recovery, explicit quiet reports and synthetic retry
+  cleanup through the real model adapter. Text is a delivered response, not
+  proof of external work or standing-goal completion; do not classify its
+  meaning by keywords, similarity, language or a length threshold.
 
 - Lifecycle argument errors are recoverable feedback. Do not let one model reply flood history with repeated rejected spawns: validate complete streamed arguments, keep a counted representative refusal and preserve every valid call. Refused spawns are not worker creation or cleanup; regress trace pairing and same-turn repair.
 

@@ -183,11 +183,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   waiting for the timer (the wait banner hides while that turn is working,
   and an early cron check consumes the pending slot). The next-check time
   comes from the live schedule row, not the first arm snapshot — a refresh
-  used to look like the timer jumped. A scheduled check reports through `report_schedule`;
-  empty findings stay quiet. A check that stops without a tool result or
-  report continues once in the same turn; if it still does no work/report,
-  the run visibly fails rather than treating an opening acknowledgement as
-  findings. This also applies to **Run now**. Quiet standalone runs stay out of Recents;
+  used to look like the timer jumped. A scheduled check can return its result
+  directly as text, with tools remaining optional. `report_schedule` can also
+  report the result; explicit empty findings stay quiet. Only a blank response
+  with no tool result or report continues once in the same turn; a second
+  empty response visibly fails. This also applies to **Run now**. Quiet standalone runs stay out of Recents;
   findings open from the inbox — **Open findings** on a live wait, with a
   count when several fires are unread, so finished reports stay off the row.
   Workers cannot schedule. Caps live in
