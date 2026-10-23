@@ -399,6 +399,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 类型：lifecycle / security / consistency
 - 作用范围：原生桌面验收、UTM 来宾、测试数据与证据；关联功能：`F-430`。
 - 契约内容：
+  - 原生 worker 夹具的调度答复分类仅识别引擎完整固定 System 协议及独立非流式、无工具、`tool_choice:none` 的两条 System／User 字符串消息；User JSON 仅含非空候选数组与 RFC3339 时间。只有夹具自身已知的三类固定 manager 候选可返回空 claims；未知／混合候选、坏协议或形状须 HTTP 400 拒绝，不能无条件批准普通文本。用户引用不选择该协议，分类不能消费 worker 请求、改变 spawn 计数／身份或释放持有流。证据：`tools/native_macos_resilience_worker.py`、`tools/test_native_macos_schedule_answer.py`；变更类型：Fixed，QA 适配；来源：Issue #106。
   - macOS 原生测试仅在 UTM `ci-macOS` 来宾运行；宿主只编排、构建、传输和收集证据。不得启动宿主测试窗口、抢前台或修改用户的运行实例、缓存 bundle 和正常数据。
   - 已授权的验收中，SSH helper 权限拒绝而既有来宾 Terminal 责任链已证明可用时，先在相同 native-case 锁和隔离目标下执行该路径并保留本轮 helper 结果，不立即转交用户改设置。离线审计仅在 ready、来宾及四项候选身份匹配、证据非空且 `native_window.ssh_helper_permission_denied` 与 `trusted_guest_terminal_available` 均为 true 时返回 pending / `inspect_native_window_via_guest_terminal`；unknown 先重新观察，已通过的同包证据优先。旧输入兼容，不将管理员身份推断为隐私权限，不授予权限或执行控制。实现／验证：`tools/audit_macos_acceptance.py`、`tools/test_audit_macos_acceptance.py`。
   - 同一来宾用户同时只运行一个用例；每例使用全新私有 app 副本、home/cache、数据库、配置及 workspace，场景子进程继承私有 `HOME` 和 `ZWAI_HOME`；checkout 启动写入的 macOS 缓存 bundle 也属于本例。仅同一恢复场景内部步骤允许复用数据。

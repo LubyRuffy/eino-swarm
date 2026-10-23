@@ -764,6 +764,23 @@ Multimodal manager messages read the fixed scheduled-check wrapper from text
 parts only; image parts cannot select that protocol. Real HTTP regressions cover
 both ordinary and scheduled multimodal input without a second spawn.
 
+Schedule-answer admission calls the same thread model separately from the
+manager and worker streams. The fixture recognizes the exact System protocol
+from `internal/engine/schedule_answer.go`, with two System/User string messages,
+non-streaming Generate, no tools and `tool_choice: "none"`. Its User JSON must
+contain only nonempty `messages` and RFC3339 `now`. Only the fixture's three
+fixed manager answers (checkpoint complete, independently owned operation
+active, existing operation complete) receive `{"claims":[]}`. Unknown or mixed
+candidates and malformed protocol requests return HTTP 400. Human text and
+quoted protocol text do not select this branch; it neither consumes a worker
+request nor changes a spawn receipt or held stream.
+`tools/test_native_macos_schedule_answer.py` constructs requests from the actual
+Go prompt and tests this boundary over real loopback HTTP, including a held
+worker. Run it with
+`PYTHONPATH=tools python3 -m unittest tools/test_native_macos_schedule_answer.py tools/test_native_macos_resilience_worker.py`.
+These protocol tests do not accept the native application or erase a prior
+case's classification failure (Issue #106).
+
 The final Issue #94 combined-source browser run passed 164 default cases (15
 existing opt-in skips), plus ten related opt-in cases: interrupted generations,
 live/parked worker ownership, roster replay, watchdog limits, model-API error/Trace
@@ -1024,8 +1041,13 @@ from the spawning interpreter to the requested image. Wait for that owned
 transition within the existing deadline before freezing full identity; unknown,
 wrong birth, unexpected image, early exit and expiry remain refusals. Exercise
 the actual kernel identity reader through a headless exec boundary. Keep helper
-executable modes when copying and verify them before App launch: source/binary
-hash equality alone cannot rule out a transfer-created PermissionError.
+executable modes through the whole launch chain, including the actual
+LaunchServices/Terminal `.command` entry, and check them before triggering it.
+A source file passed to an explicit interpreter need not be executable. Regress
+the same entry bytes at 0644 refusing before any trigger/claim and at the
+intended executable mode passing preflight. Helper-only checks and matching
+hashes cannot rule out a transfer-created PermissionError or a never-started
+entry; inspect that boundary before waiting for a native-case timeout.
 
 Preserve the new observation frame without another approval delay for the same
 identified target and action. A wake image or a power handoff does not establish

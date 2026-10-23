@@ -387,8 +387,13 @@ E2E suite.
   A direct child's PID/birth can precede its expected executable after spawn;
   bind that transition within the same deadline before freezing its full
   identity. Regress a real headless exec, not only a mocked identity reader.
-  Preserve helper executable modes on transfer and check them before App launch;
-  a matching byte hash alone does not establish that the helper can execute.
+  Preserve executable modes through the entire launch chain, including a
+  LaunchServices/Terminal `.command` entry, and check each actual executable
+  before triggering that entry. Source read by an explicit interpreter does
+  not need an executable bit. Regress unchanged bytes at mode 0644 refusing
+  before any trigger and the intended executable mode passing preflight.
+  Checking helper binaries alone or matching byte hashes misses this boundary;
+  a missing entry claim must not become an unexamined wait for native timeout.
   For the already identified, authorized target, retain the new observation
   frame without adding an approval delay. A wake frame or power handoff is not
   continuing login proof; input still needs the actual guest login state, and
@@ -455,6 +460,13 @@ E2E suite.
   Do not repair this feedback loop by matching a user's words or business data.
 - Never test against a network or a real model. Use the scripted offline
   provider, and keep its script generic.
+- Native worker fixtures must distinguish the engine's exact System policy
+  protocol from manager and worker requests. Schedule-answer classification is
+  non-streaming, tool-free and two-message; only the fixture's own fixed known
+  candidates may receive empty claims. Unknown candidates or malformed policy
+  requests fail closed. Regress actual loopback HTTP, quoted/user protocol
+  spoofing and an already-held worker without changing its spawn or request
+  counters; never approve arbitrary prose to make a native case pass.
 - Regress a new explicit goal after a completed one through the real PC and
   paired-phone send paths, including a standalone trailing `/goal`. The
   original objective text must reach the model, and the completed flag must

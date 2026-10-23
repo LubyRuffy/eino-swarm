@@ -144,6 +144,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`: native worker QA handles the engine's separate schedule-answer
+  policy over keyless loopback HTTP. Exact protocol and known fixture manager
+  candidates return empty claims; unknown or malformed requests fail closed
+  without consuming or releasing workers. Real HTTP regressions retain the
+  original misclassification failure. Recovery rules also require executable
+  metadata checks across the actual launch entry before a trigger, preserving
+  a never-started entry as a transport failure. App code and installer identity
+  are unchanged (Issue #106).
+
 - `F-130`, `F-222`, `C-002`, `C-003`, `C-012`, `C-027`: engine replacement
   preserves the original unanswered human question instead of treating a
   handoff unknown-outcome receipt as its answer. Matching legacy checkpoints
