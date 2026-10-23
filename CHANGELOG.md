@@ -104,6 +104,9 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-110`, `C-027`: isolate parked-restart setup-failure tests from asynchronous
+  schedule naming, preventing a fixture-owned provider-pool race under `-race`.
+
 - `F-420`, `C-025`: clarify existing tidy API failure semantics: internal tool refusals, reviewer errors in HTTP 200 / SSE `done` with saved receipts, and outer fold/view errors through normal JSON mapping or SSE `error`. Documentation only; runtime behavior is unchanged (Issue #99).
 
 - Tests: synchronize interrupted-output retention with a real live partial HTTP stream instead of assuming the manager produced text within 120ms. Keep the stream open until Stop, verify the identical text and output identity after persistence, and retain delayed-start and next-turn coverage without changing runtime behavior.

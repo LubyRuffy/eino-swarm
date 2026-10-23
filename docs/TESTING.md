@@ -850,7 +850,11 @@ worker/tool admission, structured histories and unread inboxes, real completion
 versus handoff, watchdog budgets, active/parked workers, human pauses and
 checkpoint failures. `internal/engine/restart_parked_test.go` proves actual
 worker execution after restart while the manager remains completed and its
-future wake stays unchanged. `internal/remote/restart_test.go` prevents private
+future wake stays unchanged. Its fault-injection fixture creates an explicitly
+titled wake: tests that replace the provider pool or close storage must not
+also start an unrelated asynchronous title task. This isolates the setup-failure
+assertions without changing runtime title generation or weakening race checks.
+`internal/remote/restart_test.go` prevents private
 checkpoint bodies leaving the PC. `internal/server/restart_http_test.go` covers idempotent
 HTTP acknowledgement, readable status, same-origin refusal and admission errors.
 `TestRestartLateWorkerToolResultStaysUnknownAfterRegistryClose` keeps late

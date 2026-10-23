@@ -24,8 +24,10 @@ func plantParkedRestart(t *testing.T, e *Engine) (*store.Thread, *store.Turn, *s
 	if err := e.store.FinishTurn(turn.ID, store.TurnDone, "waiting for the next check", ""); err != nil {
 		t.Fatal(err)
 	}
+	// Recovery fixtures replace the model pool or close storage to test failures.
+	// An explicit title keeps the unrelated background namer out of that setup.
 	wake, err := e.CreateSchedule(ScheduleInput{Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: "check progress", EveryS: 3600, CreatedBy: store.ScheduleCreatedManager})
+		Title: "Parked work", Prompt: "check progress", EveryS: 3600, CreatedBy: store.ScheduleCreatedManager})
 	if err != nil {
 		t.Fatal(err)
 	}
