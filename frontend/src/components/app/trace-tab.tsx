@@ -230,5 +230,16 @@ function collectRows(transcript: TranscriptState, turnId: string, locale: Locale
       })
     }
   }
+  for (const event of transcript.desktopRecoveryEvents ?? []) {
+    if (event.turn_id !== turnId) continue
+    rows.push({
+      at: event.created_at,
+      kind: event.kind,
+      agent: "desktop",
+      text: event.text ?? "",
+      details: JSON.stringify(event, null, 2),
+      failed: false,
+    })
+  }
   return rows.sort((a, b) => a.at.localeCompare(b.at))
 }

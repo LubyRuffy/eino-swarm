@@ -99,6 +99,11 @@ func New(opts Options) (*Server, error) {
 	api.Use(s.rejectForeignOrigin())
 	{
 		api.GET("/meta", s.getMeta)
+		api.POST("/desktop/recovery", s.postDesktopRecovery)
+		api.GET("/composer/drafts/:key", s.getComposerDraft)
+		api.PUT("/composer/drafts/:key", s.putComposerDraft)
+		api.DELETE("/composer/drafts/:key", s.clearComposerDraft)
+		api.GET("/composer/drafts/:key/files/:file", s.getComposerDraftFile)
 		api.GET("/engine/restart", s.restartStatus)
 		api.POST("/engine/restart", s.prepareRestart)
 		api.GET("/update", s.getUpdate)
@@ -260,6 +265,12 @@ func (s *Server) rejectForeignOrigin() gin.HandlerFunc {
 // a missing conversation is not a bad request.
 func (s *Server) fail(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, store.ErrDraftConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "code": "draft_conflict"})
+	case errors.Is(err, store.ErrInvalidDraft):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_draft"})
+	case errors.Is(err, engine.ErrInvalidDesktopRecovery):
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error(), "code": "invalid_desktop_recovery"})
 	case errors.Is(err, ErrEngineStopping):
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": err.Error(), "code": "engine_stopping"})
 	case errors.Is(err, store.ErrNotFound):

@@ -6,7 +6,7 @@ import type { Thread, ThreadStatus } from "@/lib/types"
  *  1000 lines — the store object would otherwise grow with every slash. */
 
 export type PlanAskSlice = {
-  setPlan: (text: string) => Promise<void>
+  setPlan: (text: string, threadId?: string) => Promise<boolean>
   savePlan: (text: string) => Promise<void>
   leavePlan: () => Promise<void>
   implementPlan: () => Promise<void>
@@ -21,7 +21,7 @@ type PlanHost = {
   status: ThreadStatus
   threads: Thread[]
   newThread: (projectId?: string) => Promise<string | undefined>
-  send: (text: string) => Promise<void>
+  send: (text: string, images?: undefined, opts?: { threadId?: string }) => Promise<boolean | void>
 }
 
 type SetPlan = (
@@ -49,20 +49,22 @@ export function planAskActions(
     }))
 
   return {
-    setPlan: async (text) => {
-      let id = await deps.currentThread()
+    setPlan: async (text, threadId) => {
+      let id = threadId ?? await deps.currentThread()
       if (!id) {
         id = await get().newThread()
-        if (!id) return
+        if (!id) return false
       }
-      const running = get().status.running
       try {
+        const running = id === get().activeId ? get().status.running : (await api.thread(id)).status.running
         const updated = await api.patchThread(id, { plan_mode: true })
         patchThreads(id, updated)
         const arg = text.trim()
-        if (arg && !running) await get().send(arg)
+        if (arg && !running) return (await get().send(arg, undefined, { threadId: id })) !== false
+        return true
       } catch (e) {
         set({ error: deps.fail(e) })
+        return false
       }
     },
 

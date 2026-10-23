@@ -21,6 +21,8 @@ import (
 // process stops waiting for them.
 const shutdownGrace = 5 * time.Second
 
+var openDesktopWindow = desktop.Run
+
 func runDesktop(args []string) error {
 	// macOS Local Network privacy keys off a bundle id. `go run` is a naked
 	// binary (identifier a.out); LAN model endpoints then fail with
@@ -36,7 +38,12 @@ func runDesktop(args []string) error {
 		return err
 	}
 	defer opts.OnShutdown()
-	return desktop.Run(opts)
+	opts, cleanup, err := configureDesktopRecovery(opts, args)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+	return openDesktopWindow(opts)
 }
 
 // startDesktopServer resolves the engine URL and describes the window. It does

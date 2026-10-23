@@ -50,6 +50,7 @@ const wireKinds: EventKind[] = [
   "generation_completed",
   "generation_interrupted",
   "generation_recovered",
+  "desktop_recovery",
   "delta",
   "turn",
   "spawned",
@@ -135,6 +136,17 @@ describe("the event stream", () => {
       text: "Weekly status",
     })
     expect(onEvent.mock.calls.map(([ev]) => ev.kind)).toEqual(["done", "title"])
+  })
+
+  it("delivers native interface diagnostics live after the task finishes", () => {
+    const onEvent = vi.fn()
+    subscribeEvents("th_1", { onEvent })
+    FakeEventSource.last.deliver("done", { kind: "done", seq: 12 })
+    FakeEventSource.last.deliver("desktop_recovery", {
+      kind: "desktop_recovery", seq: 13, agent_id: "", text: '{"phase":"recovered"}',
+    })
+    expect(onEvent.mock.calls.map(([event]) => event.kind)).toEqual(["done", "desktop_recovery"])
+    expect(onEvent.mock.calls[1][0]).toMatchObject({ seq: 13, agent_id: "", text: '{"phase":"recovered"}' })
   })
 
   // The event name is the authority: a payload whose kind disagrees with the

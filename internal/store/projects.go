@@ -73,11 +73,20 @@ func (s *Store) DeleteProject(id string) error {
 	if _, err := s.GetProject(id); err != nil {
 		return err
 	}
-	threadIDs, err := s.ListThreadIDsByProject(id)
-	if err != nil {
-		return err
-	}
-	err = s.db.Transaction(func(tx *gorm.DB) error {
+	var threadIDs []string
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Derive owned drafts from the same snapshot that deletes their owners.
+		// A pre-transaction list can miss a newly created thread's private bytes.
+		if err := tx.Model(&Thread{}).Where("project_id = ?", id).Pluck("id", &threadIDs).Error; err != nil {
+			return err
+		}
+		draftKeys := []string{"new:" + id}
+		for _, tid := range threadIDs {
+			draftKeys = append(draftKeys, "thread:"+tid)
+		}
+		if err := deleteComposerDraftScopes(tx, draftKeys); err != nil {
+			return err
+		}
 		for _, tid := range threadIDs {
 			if err := cancelWakesForThread(tx, tid); err != nil {
 				return err

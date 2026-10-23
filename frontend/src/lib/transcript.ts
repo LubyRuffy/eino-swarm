@@ -13,6 +13,7 @@ import {
 } from "./transcript-notices"
 import { parseReview, reviewNotice } from "./transcript-review"
 import { modelBackoffNotice } from "./transcript-backoff"
+import { recordDesktopRecovery, type DesktopRecoveryEvent } from "./transcript-recovery"
 import { askCardFromEvent, parseAskResult, ASK_TOOL, type AskCard } from "./transcript-ask"
 import { isPlanEvent, planNotice } from "./transcript-plan"
 import { parseIterationLimit, parsePulse } from "./transcript-pulse"
@@ -223,6 +224,7 @@ export interface TranscriptState {
   /** Stored seqs in `[from, through]` belong to a resent message. Live
    *  deltas stay dropped until the replacement `user_message` arrives. */
   rewindCut?: { from: number; through: number; live: boolean }
+  desktopRecoveryEvents?: DesktopRecoveryEvent[]
 }
 
 export function emptyTranscript(): TranscriptState {
@@ -258,7 +260,9 @@ export function reduceEvent(
     quietTurns: state.quietTurns?.slice(),
     scheduledFiredTurns: state.scheduledFiredTurns?.slice(),
     rewindCut: state.rewindCut,
+    desktopRecoveryEvents: state.desktopRecoveryEvents,
   }
+  if (recordDesktopRecovery(next, ev)) return next
   if (applyScheduleEvent(next, ev)) return sealQuietTurns(next, ev)
   if (ev.kind === "workers_retained") {
     const retained = parseWorkerRetention(ev)
@@ -830,6 +834,7 @@ export function rewindTranscript(
     quietTurns: (state.quietTurns ?? []).filter((id) => keptTurns.has(id)),
     scheduledFiredTurns: (state.scheduledFiredTurns ?? []).filter((id) => keptTurns.has(id)),
     rewindCut: { from: fromSeq, through: state.lastSeq, live: true },
+    desktopRecoveryEvents: state.desktopRecoveryEvents?.filter((event) => event.seq > 0 && event.seq < fromSeq),
   }
 }
 
@@ -862,6 +867,7 @@ export function placePendingEdit(
     quietTurns: state.quietTurns?.slice(),
     scheduledFiredTurns: state.scheduledFiredTurns?.slice(),
     rewindCut: state.rewindCut,
+    desktopRecoveryEvents: state.desktopRecoveryEvents,
   }
   const agent = touchAgent(next, MANAGER_ID)
   agent.blocks = agent.blocks.filter((b) => b.id !== PENDING_EDIT_ID)

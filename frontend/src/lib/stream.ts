@@ -23,6 +23,7 @@ export const KINDS = [
   "generation_completed",
   "generation_interrupted",
   "generation_recovered",
+  "desktop_recovery",
   "delta",
   "turn",
   "spawned",

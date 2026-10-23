@@ -115,11 +115,33 @@ Windows / Linux taskbar) uses the embedded app icon even under `go run`: a
 naked binary has no `.app` bundle, so the PNG has to be set at runtime, inset
 to Apple's 824/1024 icon grid, and the corners rounded here — macOS will not
 apply its squircle or content margin to a loose executable.
-On macOS, `desktop` copies itself into `~/Library/Caches/zwai/zwai.app` and
+On macOS, `desktop` copies itself into
+`~/Library/Caches/zwai/bundles/<executable-sha256>/zwai.app` and
 re-execs before opening the window. Sequoia+ Local Network privacy keys off a
 bundle id; a `go run` binary is `a.out` with no Info.plist, so listing models
 on a LAN endpoint fails with `no route to host` while Terminal `curl` works.
 The first launch may prompt to allow local network access.
+
+The executable-hash cache is immutable: preparation verifies a complete bundle
+under a per-hash lock, then reuses it without overwriting or signing a running
+binary. Different source executables get different bundles.
+
+On macOS the native shell checks actual painted probe pixels every five seconds.
+After its 30-second startup grace, a 20-second health failure triggers one page
+reload and a 15-second wait, then an owned shell replacement with a 30-second
+deadline. At most two replacements are allowed until five continuous healthy,
+active minutes reset the budget. Inactivity, minimization and sleep pause health
+decisions and reset that continuous-health timer. Exhaustion shows a native
+error. The original engine and its task identities remain in place.
+
+Recovery uses the internal `desktop-attach` entry through inherited private
+pipes, an immutable private app copy and the original engine lease. It is not a
+user command: ordinary arguments or missing pipes fail explicitly, without
+starting an engine or falling back to `desktop`. The old shell exits only after
+the successor paints and completes the ownership handshake. Normal Quit and
+application updates do not trigger watchdog resurrection. See
+[recovery diagnostics](API.md#desktop-recovery-diagnostics) and
+[native acceptance](TESTING.md#desktop-renderer-resilience-f-115--c-034).
 
 A released Mac app shows its version at the bottom of the conversation list
 (`Version x.y.z`). On startup it asks

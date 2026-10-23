@@ -13,6 +13,16 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-115`, `C-034`, `C-012`: macOS windows validate actual painted probe pixels,
+  attempt one reload, then perform bounded attach-only window replacement with
+  the original engine and durable per-turn diagnostics. Sleep/focus grace,
+  cumulative cross-process budgets, private successor packages and confirmed
+  ownership transfer prevent restart loops and unintended task restarts (Issue #94).
+- `F-145`, `C-033`: local composer snapshots persist text, quotations and original
+  attachment/image bytes independently of the engine's HTTP port. CAS revisions,
+  clear tombstones, fixed send targets, first-send source retention and explicit
+  uncertain-send handling protect content across reload and rendering recovery
+  (Issue #94).
 - `F-130`, `F-160`, `F-222`, `F-330`, `C-035`: retain per-generation interruption causes and recovery states in the transcript, agent detail and original-turn Trace. Interrupted thoughts stop showing Thinking; restored workers retain their identity and running state instead of being marked failed (Issue #95).
 
 - `F-170`, `F-220`, `C-006`, `C-009`: paired phones can read and edit the PC's worker, provider first-byte and stream-idle timeouts through Menu → PC timeouts. A narrow encrypted RPC patch excludes credentials and unrelated settings, rejects invalid edits atomically, and keeps read/save errors local to the sheet (Issue #82).
@@ -77,6 +87,25 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-110`, `F-115`, `C-034`: checkout re-exec bundles are immutable per executable
+  hash and atomically published under a cross-process lock; preparing another
+  desktop no longer overwrites or re-signs a live cached executable (Issue #94).
+- `F-145`, `C-033`: upload/send failures and missing acknowledgements keep the
+  original composer snapshot; navigating during an upload cannot change the
+  captured target conversation (Issue #94).
+- `F-145`, `C-033`: text-only goal and plan actions reject drafts containing files,
+  pasted images or quotations before sending, preserving content those actions
+  cannot acknowledge (Issue #94).
+- `F-145`, `C-033`: editing a saved attachment snapshot verifies the stored bytes
+  still exist with the recorded length; storage loss rejects the transaction
+  without advancing the draft revision or retaining partial new files (Issue #94).
+- `F-145`, `C-033`: saved inactive composer scopes release attachment caches and
+  preview URLs, reload original bytes on return, and retain explicit ownership
+  while migration, storage or send acknowledgement is pending (Issue #94).
+- `F-115`, `C-034`, `C-012`: recovery diagnostics subscribe through the live named
+  SSE path as well as cold history; paired-phone metadata preserves task state
+  and does not stop Earlier on an invisible page (Issue #94).
 
 - `F-430`, `C-031`: native-case headless tests wait for fixture readiness rather than assuming one-second process startup. A delayed fixture regresses false failures while retaining bounded scenarios and cleanup assertions; production native-case deadlines are unchanged.
 - `F-170`, `F-175`, `C-009`, `C-030`: desktop settings autosave and catalog refresh preserve concurrent phone timeout edits by omitting unchanged timeout fields. Saves merge with the latest detached configuration and publish runtime/cache changes only after atomic persistence succeeds; a failed save leaves current settings intact. Nested cloud-tool options retain their protocol, values and isolation across snapshots and rejected updates; worker ownership and parked restoration read configuration snapshots during saves (Issue #82).

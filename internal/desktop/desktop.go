@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -29,6 +30,9 @@ type Options struct {
 	// OnShutdown releases this native client's presence when the app closes.
 	// Running turns and other connected clients keep the shared engine alive.
 	OnShutdown func()
+	// Recovery is present only when the launcher can safely reattach a successor.
+	Recovery          *RecoveryOptions
+	rawMessageHandler func(application.Window, string, *application.OriginInfo)
 	// Fatal reports a terminal loss of this native client's engine connection.
 	// Run records the cause before native Quit; returning platforms preserve it.
 	Fatal <-chan error
@@ -44,11 +48,22 @@ func Run(opts Options) error {
 		log = slog.Default()
 	}
 
+	var recovery atomic.Pointer[recoveryController]
+	opts.rawMessageHandler = func(window application.Window, message string, origin *application.OriginInfo) {
+		if controller := recovery.Load(); controller != nil {
+			controller.raw(window, message, origin)
+		}
+	}
 	app := application.New(appOptions(opts))
 
 	win := app.Window.NewWithOptions(windowOptions(opts))
 
 	keepTrafficLightsAligned(win)
+	controller := startRendererRecovery(app, win, opts)
+	recovery.Store(controller)
+	if controller != nil {
+		defer controller.shutdown()
+	}
 	log.Info("opening the desktop window", "url", opts.URL)
 	started := make(chan struct{})
 	var once sync.Once
@@ -79,8 +94,13 @@ func appOptions(opts Options) application.Options {
 		Mac: application.MacOptions{
 			ApplicationShouldTerminateAfterLastWindowClosed: true,
 		},
-		OnShutdown:        opts.OnShutdown,
-		RawMessageHandler: directoryMessageHandler(opts.URL, chooseNativeDirectory),
+		OnShutdown: opts.OnShutdown,
+		RawMessageHandler: func(window application.Window, message string, origin *application.OriginInfo) {
+			directoryMessageHandler(opts.URL, chooseNativeDirectory)(window, message, origin)
+			if opts.rawMessageHandler != nil {
+				opts.rawMessageHandler(window, message, origin)
+			}
+		},
 		WarningHandler: func(msg string) {
 			if staleWindowWarning(msg) {
 				return

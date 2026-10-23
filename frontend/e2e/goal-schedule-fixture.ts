@@ -25,6 +25,12 @@ export async function startGoalScheduleFixture(automatic: boolean) {
       try {
         if (incoming.headers.authorization) throw new Error("The fixture must be keyless")
         const input = JSON.parse(body) as Input
+        if (input.messages[0]?.role === "system" && input.messages[0].content?.startsWith("## Thread wake authorization classification")) {
+          if (input.messages.length !== 2 || input.tools?.length) throw new Error("Policy classification must remain a separate tool-free request")
+          response.writeHead(200, { "Content-Type": "application/json" })
+          response.end(JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify({ decision: "unchanged", quote: "" }) }, finish_reason: "stop" }] }))
+          return
+        }
         const lastUser = input.messages.findLastIndex((message) => message.role === "user")
         const current = input.messages.slice(lastUser + 1)
         const called = (name: string) => current.some((message) => message.tool_calls?.some((call) => call.function.name === name))

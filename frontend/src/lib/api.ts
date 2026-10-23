@@ -36,6 +36,7 @@ import { normalizeUISettings } from "./appearance"
 import type { ClientCatalog } from "./local-clients"
 import type { SendImage } from "./paste-image"
 import type { ThreadLog } from "./thread-log"
+import type { ComposerDraftRecord } from "./composer-draft"
 
 /** The fields a project dialog can send. Each is optional so a patch changes
  *  only what the user touched. */
@@ -282,6 +283,25 @@ export function dismissDesktopVersion(version: string) {
 }
 
 export const api = {
+  composerDraft: (key: string) => request<{ draft: ComposerDraftRecord }>(
+    `/api/composer/drafts/${encodeURIComponent(key)}`,
+  ).then((r) => r.draft),
+  saveComposerDraft: (draft: ComposerDraftRecord, files: Map<string, File>) => {
+    const body = new FormData()
+    body.append("snapshot", JSON.stringify(draft))
+    files.forEach((file, id) => body.append(`file.${id}`, file))
+    return request<{ draft: ComposerDraftRecord }>(`/api/composer/drafts/${encodeURIComponent(draft.key)}`, {
+      method: "PUT", body,
+    }).then((r) => r.draft)
+  },
+  composerDraftFile: async (key: string, id: string) => {
+    const res = await fetch(`/api/composer/drafts/${encodeURIComponent(key)}/files/${encodeURIComponent(id)}`)
+    if (!res.ok) throw new ApiError("Could not restore the saved attachment.", res.status)
+    return res.blob()
+  },
+  deleteComposerDraft: (key: string, revision: number) => request<{ draft: ComposerDraftRecord }>(
+    `/api/composer/drafts/${encodeURIComponent(key)}?revision=${revision}`, { method: "DELETE" },
+  ).then((r) => r.draft),
   meta: () => request<Meta>("/api/meta"),
 
   desktopUpdate: (fresh = false) =>

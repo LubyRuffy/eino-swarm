@@ -1,10 +1,12 @@
 import { generationEn } from "./messages-generation"
 import { updateEN } from "./messages-update"
+import { draftEN } from "./messages-draft"
 import { agentFailureEn } from "./messages-agent-failure-en"
 
 /** English UI chrome. Keys are stable; Chinese lives in messages-zh.ts.
  *  Agent replies and protocol markers (quoted-send wrappers) stay English. */
 export const en = {
+  ...draftEN,
   ...generationEn,
   "image.pasted": "Pasted image",
   "image.enlarge": "Enlarge {name}",

@@ -1,5 +1,8 @@
 import { ArrowUp, Brain, Paperclip, ShieldCheck, Square } from "lucide-react"
-import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type SetStateAction } from "react"
+import { ComposerDraftStatus } from "@/components/app/composer-draft-status"
+import { useComposerDraft } from "@/lib/use-composer-draft"
+import { composerDraftSession } from "@/lib/composer-draft"
 
 import { ContextMeter } from "@/components/app/context-meter"
 import { ComposerAttachments } from "@/components/app/composer-attachments"
@@ -88,11 +91,13 @@ export function Composer({
   reasoningLevels,
   onReasoningChange,
   onSend,
+  onResolveThread,
+  draftKey,
   onStop,
   onUpload,
   onRefreshModels,
   onEditProviders,
-  disabled,
+  disabled: readOnly,
   prefill,
   prefillToken,
   focusSignal,
@@ -139,9 +144,11 @@ export function Composer({
   /** Explicit levels the server offers (low/medium/high), in order. */
   reasoningLevels: string[]
   onReasoningChange: (level: string) => void
-  onSend: (text: string, images?: SendImage[], opts?: { steer?: boolean; files?: string[] }) => void
+  onSend: (text: string, images?: SendImage[], opts?: { steer?: boolean; files?: string[]; threadId?: string }) => void | boolean | Promise<boolean>
+  onResolveThread?: () => Promise<string | undefined>
+  draftKey?: string
   onStop: () => void
-  onUpload: (files: File[]) => Promise<Attachment[]>
+  onUpload: (files: File[], threadId?: string) => Promise<Attachment[]>
   onRefreshModels?: () => Promise<void>
   onEditProviders?: () => void
   disabled?: boolean
@@ -170,7 +177,7 @@ export function Composer({
   goalStartedAt?: string
   contextChars?: number
   contextBudget?: number
-  onSetGoal?: (text: string) => void
+  onSetGoal?: (text: string, threadId?: string) => void | boolean | Promise<boolean>
   onClearGoal?: () => void
   onEditGoal?: (text: string) => void
   onResumeGoal?: () => void
@@ -178,7 +185,7 @@ export function Composer({
   planMode?: boolean
   planMarkdown?: string
   awaitingAnswer?: boolean
-  onSetPlan?: (text: string) => void
+  onSetPlan?: (text: string, threadId?: string) => void | boolean | Promise<boolean>
   onSavePlan?: (text: string) => void
   onImplementPlan?: () => void
   onLeavePlan?: () => void
@@ -190,9 +197,28 @@ export function Composer({
       !s.status.running &&
       Boolean(s.status.waiting || activeWake(s.schedules, s.activeId)),
   )
-  const [text, setText] = useState("")
-  const [pending, setPending] = useState<File[]>([])
-  const [pasted, setPasted] = useState<PasteImage[]>([])
+  const durable = useComposerDraft(draftKey)
+  const [localText, setLocalText] = useState("")
+  const [localPending, setLocalPending] = useState<File[]>([])
+  const [localPasted, setLocalPasted] = useState<PasteImage[]>([])
+  const text = durable.snapshot?.draft.text ?? localText
+  const pending = durable.snapshot?.draft.files.filter((file) => file.kind === "file").map((file) => file.file) ?? localPending
+  const pasted = durable.snapshot?.draft.files.filter((file) => file.kind === "image").map((file) => ({
+    id: file.id, name: file.name, mime: file.mime, file: file.file, previewUrl: file.previewUrl || "",
+  })) ?? localPasted
+  const setText = (next: SetStateAction<string>) => durable.session
+    ? durable.session.update({ text: typeof next === "function" ? next(text) : next }) : setLocalText(next)
+  const setPending = (next: SetStateAction<File[]>) => durable.session
+    ? durable.session.replaceFiles(typeof next === "function" ? next(pending) : next, "file") : setLocalPending(next)
+  const setPasted = (next: SetStateAction<PasteImage[]>) => {
+    if (!durable.session) { setLocalPasted(next); return }
+    const images = typeof next === "function" ? next(pasted) : next
+    durable.session.replaceFiles(images.map((image) => image.file), "image", images)
+  }
+  const [submitting, setSubmitting] = useState(false)
+  const [slashRejected, setSlashRejected] = useState(false)
+  const submittingRef = useRef(false)
+  const disabled = readOnly || submitting || Boolean(durable.snapshot && (!durable.snapshot.loaded || durable.snapshot.busy || durable.snapshot.conflict || durable.snapshot.draft.state !== "editing"))
   const [uploading, setUploading] = useState(false)
   const [armed, setArmed] = useState(false)
   const [adding, setAdding] = useState(false)
@@ -226,7 +252,7 @@ export function Composer({
     },
     [],
   )
-  useEffect(() => () => revokePasteImages(pastedRef.current), [])
+  useEffect(() => () => { if (!draftKey) revokePasteImages(pastedRef.current) }, [draftKey])
 
   // The box sits on the transcript. Without this pad the last line hides
   // under it, which is the whole reason the fade exists.
@@ -287,7 +313,9 @@ export function Composer({
     el.setSelectionRange(el.value.length, el.value.length)
   }, [focusSignal, disabled])
 
-  const quoted = quotes ?? []
+  const quoted = durable.snapshot?.draft.quotes ?? quotes ?? []
+  useEffect(() => { setSlashRejected(false) }, [draftKey, text, pending.length, pasted.length, quoted.length])
+  const changeQuotes = (next: Quote[]) => durable.session ? durable.session.update({ quotes: next }) : onQuotesChange?.(next)
   const meterWindow = windowForSelection(models, provider, model)
   const draft = slashDraft(text)
   // Hints (the compact %) live in ComposerSlashMenu so a usage pulse cannot
@@ -334,6 +362,7 @@ export function Composer({
   }
 
   const submit = async (opts?: { steer?: boolean }) => {
+    if (submittingRef.current || disabled) return
     const slash = parseSlashSubmit(text)
     // A glued `/goal…` argument must not be eaten as a menu pick. Codex
     // dispatches inline args the same way: the rest is the objective, not
@@ -350,10 +379,10 @@ export function Composer({
         return
       }
       if (!slash.arg) return
-      setText("")
-      if (slash.id === "plan") onSetPlan?.(slash.arg)
-      else onSetGoal?.(slash.arg)
-      return
+      if (pending.length || pasted.length || quoted.length) {
+        setSlashRejected(true)
+        return
+      }
     }
     const payload = formatQuotedMessage(
       quoted.map((q) => q.text),
@@ -361,31 +390,50 @@ export function Composer({
     )
     if (!payload && pending.length === 0 && pasted.length === 0) return
     if (echoRef.current && payload.trim() === echoRef.current) return
-    let uploaded: Attachment[] = []
-    if (pending.length > 0) {
-      setUploading(true)
-      try {
-        uploaded = (await onUpload(pending)) ?? []
-        if (uploaded.length === 0) return
-        setPending([])
-      } catch {
-        return
-      } finally {
-        setUploading(false)
+    submittingRef.current = true
+    setSubmitting(true)
+    const sourceSession = durable.session
+    const releaseSource = sourceSession?.retain()
+    let session = sourceSession
+    let receipt: Awaited<ReturnType<NonNullable<typeof session>["beginSend"]>> | undefined
+    let sourceReceipt: typeof receipt
+    try {
+      const threadId = onResolveThread ? await onResolveThread() : undefined
+      if (onResolveThread && !threadId) throw new Error("Could not create the draft's conversation.")
+      if (session && threadId && session.key !== `thread:${threadId}`) {
+        session = composerDraftSession(`thread:${threadId}`)
       }
-    }
-    const images = pasted.length > 0 ? await toSendImages(pasted) : undefined
-    const files = uploaded.map((a) => a.rel_path).filter(Boolean)
-    if (!payload && !(images && images.length > 0) && files.length === 0) return
-    echoRef.current = payload.trim()
-    onSend(payload, images, {
-      steer: Boolean(opts?.steer),
-      files: files.length > 0 ? files : undefined,
-    })
-    setText("")
-    onQuotesChange?.([])
-    revokePasteImages(pasted)
-    setPasted([])
+      if (session) receipt = await session.beginSend()
+      if (sourceSession && sourceSession !== session) sourceReceipt = await sourceSession.beginSend()
+      let accepted: void | boolean
+      if (slash?.arg) {
+        const action = slash.id === "plan" ? onSetPlan : onSetGoal
+        const result = threadId ? action?.(slash.arg, threadId) : action?.(slash.arg)
+        accepted = result instanceof Promise ? await result : result
+      } else {
+        let uploaded: Attachment[] = []
+        if (pending.length > 0) {
+          setUploading(true)
+          uploaded = (await (threadId ? onUpload(pending, threadId) : onUpload(pending))) ?? []
+          if (uploaded.length !== pending.length) throw new Error("The attachments were not completely uploaded. The draft was kept.")
+        }
+        const images = pasted.length > 0 ? await toSendImages(pasted) : undefined
+        const files = uploaded.map((a) => a.rel_path).filter(Boolean)
+        const result = onSend(payload, images, {
+          steer: Boolean(opts?.steer), files: files.length > 0 ? files : undefined,
+          ...(threadId ? { threadId } : {}),
+        })
+        accepted = result instanceof Promise ? await result : result
+      }
+      if (accepted === false) throw new Error("The send was not acknowledged. The draft was kept.")
+      echoRef.current = payload.trim()
+      if (session && receipt) await session.completeSend(receipt)
+      else { setText(""); changeQuotes([]); revokePasteImages(pasted); setPasted([]); setPending([]) }
+      if (sourceSession && sourceReceipt) await sourceSession.completeSend(sourceReceipt)
+    } catch {
+      if (session && receipt) await session.markUncertain().catch(() => undefined)
+      if (sourceSession && sourceReceipt) await sourceSession.markUncertain().catch(() => undefined)
+    } finally { releaseSource?.(); submittingRef.current = false; setSubmitting(false); setUploading(false) }
   }
 
   const onFileDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -420,6 +468,7 @@ export function Composer({
       filesFromDataTransfer(e.dataTransfer),
     )
     if (images.length === 0 && attachments.length === 0) return
+    if (durable.session) { durable.session.addSelection([...images, ...attachments]); return }
     setAdding(true)
     try {
       if (images.length > 0) {
@@ -457,7 +506,7 @@ export function Composer({
         aria-disabled={disabled || undefined}
         className={cn(
           "relative z-10 content-column content-gutter pb-3",
-          disabled ? "pointer-events-none opacity-60" : "pointer-events-auto",
+          readOnly ? "pointer-events-none opacity-60" : disabled ? "pointer-events-none" : "pointer-events-auto",
         )}
       >
         <div
@@ -539,7 +588,9 @@ export function Composer({
             }
           >
           {armed || adding ? <ComposerDropOverlay busy={adding} /> : null}
-          <ComposerQuotes quotes={quoted} onChange={(next) => onQuotesChange?.(next)} />
+          {durable.session && durable.snapshot ? <ComposerDraftStatus session={durable.session} snapshot={durable.snapshot} /> : null}
+          {slashRejected ? <p role="alert" className="pointer-events-auto px-4 py-1 text-xs text-destructive">{t("draft.slashTextOnly")}</p> : null}
+          <ComposerQuotes quotes={quoted} onChange={changeQuotes} />
           <ComposerImages
             images={pasted}
             onRemove={(id) => setPasted((prev) => dropPasteImage(prev, id))}
@@ -594,7 +645,8 @@ export function Composer({
               const files = filesFromClipboard(e.clipboardData)
               if (files.length > 0) {
                 e.preventDefault()
-                setPasted((prev) => addPasteImages(prev, files).next)
+                if (durable.session) durable.session.addSelection(files)
+                else setPasted((prev) => addPasteImages(prev, files).next)
                 return
               }
               const incoming = plainTextFromClipboard(e.clipboardData)
