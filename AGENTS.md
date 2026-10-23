@@ -144,9 +144,14 @@ E2E suite.
   repeat an input to repair a missing acknowledgement.
   File-panel inspection stops reading unrelated text after finding the fixture
   filename, but still proves one distinct Open across the complete supplied AX
-  graph. Retain AX status through root enumeration and traversal; unreadable,
-  malformed or over-budget trees cannot prove uniqueness. Regress actual
-  callers with late duplicate buttons, repeated edges and partial root reads;
+  graph. Roots, role/children and every button title keep their required read
+  and type checks; unreadable, malformed or over-budget graphs cannot prove
+  uniqueness. Auxiliary filename text failures and non-string values are unknown,
+  never absence or a filename witness. Retain their original status and cached
+  node context; only another successful string witness plus the complete unique
+  Open proof permits Press. Regress unknowns before/after a witness, a hidden
+  second Open, missing witnesses and required failures through the actual caller.
+  Bound auxiliary error records without dropping a later required failure;
   query-count savings do not prove native elapsed time or a past timeout cause.
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in

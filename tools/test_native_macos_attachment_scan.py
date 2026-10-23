@@ -129,6 +129,26 @@ static void configure(NSString *mode){
     }
     if([mode isEqual:@"description-error"]){nodes[@"file"][@"AXTitle"]=@"unrelated";nodes[@"file"][@"errors"]=@{@"AXDescription":@(kAXErrorCannotComplete)};}
     if([mode isEqual:@"value-error"]){nodes[@"file"][@"AXTitle"]=@"unrelated";nodes[@"file"][@"AXDescription"]=@"unrelated";nodes[@"file"][@"errors"]=@{@"AXValue":@(kAXErrorCannotComplete)};}
+    if([mode hasPrefix:@"aux-"]||[mode hasPrefix:@"unknown-"]){
+        nodes[@"outline"]=node(@"AXOutline",@[]);nodes[@"outline"][@"errors"]=@{@"AXValue":@(kAXErrorFailure)};
+        nodes[@"root"][@"AXChildren"]=@[@"outline",@"file",@"open"];
+    }
+    if([mode isEqual:@"aux-after-open"])nodes[@"root"][@"AXChildren"]=@[@"open",@"outline",@"file"];
+    if([mode isEqual:@"aux-after-witness"])nodes[@"root"][@"AXChildren"]=@[@"file",@"outline",@"open"];
+    if([mode isEqual:@"aux-description-witness"]){nodes[@"file"][@"errors"]=@{@"AXTitle":@(kAXErrorCannotComplete)};[nodes[@"file"] removeObjectForKey:@"AXTitle"];nodes[@"file"][@"AXDescription"]=@"input.bin";}
+    if([mode isEqual:@"aux-value-witness"]){nodes[@"file"][@"errors"]=@{@"AXTitle":@(kAXErrorCannotComplete),@"AXDescription":@(kAXErrorFailure)};nodes[@"file"][@"AXValue"]=@"input.bin";}
+    if([mode isEqual:@"aux-button-witness"]){nodes[@"root"][@"AXChildren"]=@[@"open"];nodes[@"open"][@"errors"]=@{@"AXDescription":@(kAXErrorFailure)};nodes[@"open"][@"AXValue"]=@"input.bin";}
+    if([mode isEqual:@"unknown-without-witness"])nodes[@"file"][@"AXTitle"]=@"unrelated";
+    if([mode isEqual:@"unknown-nonstring"]){nodes[@"file"][@"AXTitle"]=@42;nodes[@"file"][@"AXDescription"]=@{};nodes[@"file"][@"AXValue"]=@42;}
+    if([mode isEqual:@"unknown-children-error"])nodes[@"outline"][@"errors"]=@{@"AXValue":@(kAXErrorFailure),@"AXChildren":@(kAXErrorCannotComplete)};
+    if([mode isEqual:@"unknown-late-open"]){nodes[@"another-open"]=node(@"AXButton",@[]);nodes[@"another-open"][@"AXTitle"]=@"Open";nodes[@"root"][@"AXChildren"]=@[@"outline",@"file",@"open",@"another-open"];}
+    if([mode isEqual:@"unknown-button-title"]||[mode isEqual:@"unknown-button-title-type"]){nodes[@"root"][@"AXChildren"]=@[@"file",@"open"];if([mode hasSuffix:@"type"])nodes[@"open"][@"AXTitle"]=@42;else nodes[@"open"][@"errors"]=@{@"AXTitle":@(kAXErrorFailure)};}
+    if([mode isEqual:@"unknown-cap"]||[mode isEqual:@"unknown-cap-required"]){
+        NSMutableArray *children=[NSMutableArray array];
+        for(NSUInteger i=0;i<200;i++){NSString *name=[NSString stringWithFormat:@"unknown-%lu",i];nodes[name]=node(@"AXGroup",@[]);nodes[name][@"errors"]=@{@"AXTitle":@(kAXErrorFailure),@"AXDescription":@(kAXErrorFailure),@"AXValue":@(kAXErrorFailure)};[children addObject:name];}
+        [children addObjectsFromArray:@[@"file",@"open"]];nodes[@"root"][@"AXChildren"]=children;
+        if([mode hasSuffix:@"required"])nodes[@"open"][@"errors"]=@{@"AXTitle":@(kAXErrorFailure)};
+    }
     if([mode isEqual:@"empty-role"])nodes[@"file"][@"AXRole"]=@"";
     if([mode isEqual:@"inner-role-novalue"])nodes[@"file"][@"errors"]=@{@"AXRole":@(kAXErrorNoValue)};
     if([mode hasPrefix:@"outer-"]){
@@ -187,6 +207,55 @@ class ActualFilePanelScanner(unittest.TestCase):
     def sample(self,mode,label='after'):
         result=subprocess.run([str(self.binaries[label]),mode],capture_output=True,text=True,timeout=5)
         return result.returncode,json.loads(result.stdout)
+
+    def witnessed(self,mode):
+        result=subprocess.run([str(self.binaries['after']),mode],capture_output=True,text=True,timeout=5)
+        records=[json.loads(line.removeprefix('ZWAI_PANEL_NODE_FAILURE ')) for line in result.stderr.splitlines() if line.startswith('ZWAI_PANEL_NODE_FAILURE ')]
+        summaries=[json.loads(line.removeprefix('ZWAI_PANEL_UNKNOWN_SUMMARY ')) for line in result.stderr.splitlines() if line.startswith('ZWAI_PANEL_UNKNOWN_SUMMARY ')]
+        return result.returncode,json.loads(result.stdout),records,summaries
+
+    def test_other_successful_filename_witness_survives_auxiliary_unknown_reads(self):
+        for mode in ['aux-before-witness','aux-after-open','aux-description-witness','aux-value-witness','aux-button-witness']:
+            with self.subTest(mode=mode):
+                code,row,records,summaries=self.witnessed(mode)
+                self.assertEqual(code,0,row);self.assertEqual(row['presses'],1)
+                self.assertTrue(records);self.assertTrue(all(item['disposition']=='unknown' for item in records))
+                self.assertTrue(all(isinstance(item['status'],int) for item in records));self.assertGreater(summaries[0]['unknown_reads'],0)
+        code,row,records,summaries=self.witnessed('aux-before-witness')
+        error=records[0];self.assertEqual(error['role'],'AXOutline');self.assertEqual(error['attribute'],'AXValue')
+        self.assertEqual(error['status'],-25200);self.assertEqual(error['node_path'],[0,0]);self.assertFalse(error['filename_found'])
+        self.assertEqual(error['open_count'],0);self.assertEqual(error['depth'],1)
+
+    def test_unknown_and_nonstring_values_cannot_invent_a_filename_witness(self):
+        for mode in ['unknown-without-witness','unknown-nonstring']:
+            with self.subTest(mode=mode):
+                code,row,records,summaries=self.witnessed(mode)
+                self.assertEqual(code,2,row);self.assertEqual(row['presses'],0);self.assertTrue(records)
+                self.assertTrue(all(item['disposition']=='unknown' for item in records))
+                self.assertIn('did not reach',row['error'])
+        code,row,records,summaries=self.witnessed('unknown-nonstring')
+        self.assertTrue(any(item['status']==0 and item['value_type']!='NSString' for item in records))
+
+    def test_auxiliary_unknown_never_hides_a_second_open_or_required_read_failure(self):
+        for mode in ['unknown-late-open','unknown-children-error','unknown-button-title','unknown-button-title-type']:
+            with self.subTest(mode=mode):
+                code,row,records,summaries=self.witnessed(mode)
+                self.assertEqual(code,2,row);self.assertEqual(row['presses'],0)
+        code,row,records,summaries=self.witnessed('unknown-button-title')
+        self.assertEqual(row['error'],'native panel AXTitle read failed: -25200')
+        self.assertEqual(records[-1]['disposition'],'required_failure');self.assertTrue(records[-1]['filename_found'])
+        code,row,records,summaries=self.witnessed('aux-after-witness')
+        self.assertEqual(code,0,row);self.assertEqual(row['presses'],1);self.assertEqual(records,[])
+        self.assertNotIn('outline:AXValue',row['reads'])
+
+    def test_unknown_diagnostics_are_bounded_without_hiding_a_later_required_failure(self):
+        code,row,records,summaries=self.witnessed('unknown-cap')
+        self.assertEqual(code,0,row);self.assertEqual(row['presses'],1);self.assertEqual(len(records),64)
+        self.assertEqual(summaries,[dict(unknown_reads=600,retained_unknown_reads=64)])
+        code,row,records,summaries=self.witnessed('unknown-cap-required')
+        self.assertEqual(code,2,row);self.assertEqual(row['presses'],0);self.assertEqual(len(records),65)
+        self.assertEqual(records[-1]['disposition'],'required_failure');self.assertEqual(records[-1]['status'],-25200)
+        self.assertEqual(summaries,[dict(unknown_reads=600,retained_unknown_reads=64)])
 
     def test_filename_contains_remains_supported_in_each_original_text_attribute(self):
         for mode in ['title','description','value','optional-nontext','optional-absence']:

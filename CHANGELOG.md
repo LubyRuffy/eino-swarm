@@ -53,6 +53,16 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-430`, `C-031`: change native QA file-panel acceptance to separate a complete
+  roots/role/children/button-title graph from auxiliary filename text. Failed or
+  non-string auxiliary reads remain recorded unknowns with their original AX
+  status; another successful filename witness and exactly one distinct Open are
+  still required before Press. Required read/type failures, missing witnesses,
+  ambiguity and traversal/deadline limits still reject. Bound cached-node error
+  evidence without hiding later required failures; final original bytes and saved
+  draft ACK remain mandatory. This changes QA acceptance, not the App or the
+  historical b837/5008 results (Issue #94).
+
 - `F-130`, `F-330`, `C-019`, `C-002`, `C-027`: ordinary turns without current goal/wake ownership must collect every worker's current generation with `wait_agents`, or explicitly discard it with `close_agent`, before publishing completion. An early final receives one durable same-turn correction; repetition pauses for human Continue/Stop while preserving the original workers. Continue grants one further attempt, and restart retains collection state, correction allowance and human pauses. Finished close receipts remain `already_finished`, rather than fabricated cancellation (Issue #103).
 
 - `F-420`, `C-025`: unify notes/skills classification by permanent versus on-demand loading, applicability-focused descriptions and workflow-local constraints; clarify both Memory panel descriptions and split memory translations (Issue #99).

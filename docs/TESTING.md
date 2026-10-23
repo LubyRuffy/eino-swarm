@@ -831,11 +831,30 @@ and button-title reads to exclude a second distinct Open; the first match alone
 cannot authorize Press. Root enumeration retains AX errors and validates array
 and role types instead of silently dropping a failed window. Roots and traversal
 share 5000 visits, count repeated edges and use `CFEqual` graph identity; a new
-node beyond depth 45 or any incomplete read fails before Press. Explicit absent
-optional attributes remain valid. No filename-with-newline matching contract is
-claimed for this generated fixture. `test_native_macos_attachment_scan.py`
-compiles actual scanner functions and their actual caller with OS seams; its
-legacy traversal literal measures RPC counts only, not guest elapsed time.
+node beyond depth 45, an incomplete required graph read or a malformed button
+title fails before Press. Explicit Unsupported/NoValue keeps its existing absent
+attribute meaning. Auxiliary filename Title/Description/Value failures (button
+Title remains required) and successful non-string values are unknown, never a
+filename witness or an absence conclusion. They keep the original AX status;
+another successful string contains witness may satisfy filename presence while
+all roots, roles, children and button titles still prove one distinct Open.
+Without that witness, or with a later second Open/required failure, Press stays
+forbidden. This is a Changed QA acceptance condition, not diagnostic equivalence.
+It does not bind the selected row; actual original bytes, MIME/dimensions and
+saved draft ACK remain separate acceptance checks. No filename-with-newline
+matching contract is claimed for this generated fixture.
+`test_native_macos_attachment_scan.py` compiles actual scanner functions and their
+actual caller with OS seams. It covers unknowns before/after a successful witness,
+non-string-only failure, button-title/children failures, late duplicates, cycles
+and the unchanged visit/depth limits. The first64 auxiliary unknown records
+retain cached role/path/depth/visits and witness/Open count; one summary retains
+the total, and a later required failure is always recorded. No attribute-list
+query, error reread, input retry or eight-second extension is added. Instrumenting those
+same extracted functions/caller on this change gave filePanelText100% lines /
+95.83% branches, scanFilePanel100% /95.24%, and caller100% /95%; this is headless
+behavior coverage, not guest success. The legacy traversal literal measures RPC
+counts only, not guest elapsed time. Private b2e17a diagnosed an AXOutline Value
+Failure; b837's unrecorded node and historical5008 timeout remain unknown.
 Run it with the same unittest command pattern. The complete helper still needs
 SDK compilation and a fresh guest attachment path. At most 64 choose-only
 stderr JSON stages retain public helper identity and monotonic boundaries,

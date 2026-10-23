@@ -227,15 +227,32 @@ static AXError filePanelAttribute(AXUIElementRef item, CFStringRef key, id *valu
     *value = raw ? CFBridgingRelease(raw) : nil;
     return status;
 }
-static BOOL filePanelText(AXUIElementRef item, CFStringRef key, NSString **text, NSString **failure) {
-    id raw = nil;
+static BOOL filePanelText(AXUIElementRef item, CFStringRef key, NSString **text, BOOL required,
+                          NSDictionary *context, NSUInteger *unknownReads, NSString **failure) {
+    id raw = nil; *text = nil;
     AXError status = filePanelAttribute(item, key, &raw);
     if (status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) { *text = @""; return YES; }
-    if (status != kAXErrorSuccess) {
-        *failure = [NSString stringWithFormat:@"native panel %@ read failed: %d", (__bridge NSString *)key, status];
-        return NO;
+    if (status == kAXErrorSuccess && [raw isKindOfClass:NSString.class]) { *text = raw; return YES; }
+    NSString *message = status != kAXErrorSuccess
+        ? [NSString stringWithFormat:@"native panel %@ read failed: %d", (__bridge NSString *)key, status]
+        : [NSString stringWithFormat:@"native panel %@ value is not text", (__bridge NSString *)key];
+    if (!required) ++*unknownReads;
+    if (required || *unknownReads <= 64) {
+        NSMutableDictionary *row = [context mutableCopy];
+        row[@"attribute"] = (__bridge NSString *)key; row[@"status"] = @(status);
+        row[@"disposition"] = required ? @"required_failure" : @"unknown";
+        row[@"value_type"] = raw ? NSStringFromClass([raw class]) : @"nil";
+        row[@"primary_error"] = message;
+        row[@"monotonic"] = @(NSProcessInfo.processInfo.systemUptime);
+        NSData *data = [NSJSONSerialization dataWithJSONObject:row options:0 error:nil];
+        if (data) {
+            NSString *encoded = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            fprintf(stderr, "ZWAI_PANEL_NODE_FAILURE %s\n", encoded.UTF8String); fflush(stderr);
+        }
     }
-    *text = string(raw);
+    if (required) { *failure = message; return NO; }
+    // Unknown auxiliary text supplies neither presence nor absence evidence.
+    // The caller still needs another successful filename witness and full graph.
     return YES;
 }
 static BOOL filePanelVisit(AXUIElementRef item, NSUInteger *visits, NSString **failure) {
@@ -246,7 +263,7 @@ static BOOL filePanelVisit(AXUIElementRef item, NSUInteger *visits, NSString **f
     return YES;
 }
 static BOOL scanFilePanel(AXUIElementRef item, NSString *name, NSMutableArray *opens, BOOL *found,
-                          CFMutableSetRef seen, NSUInteger *visits, NSUInteger depth, NSString **failure) {
+                          CFMutableSetRef seen, NSUInteger *visits, NSUInteger depth, NSArray<NSNumber *> *nodePath, NSUInteger *unknownReads, NSString **failure) {
     if (!filePanelVisit(item, visits, failure)) return NO;
     if (CFSetContainsValue(seen, item)) return YES;
     if (depth > 45) { *failure = @"native panel exceeded depth 45"; return NO; }
@@ -256,14 +273,18 @@ static BOOL scanFilePanel(AXUIElementRef item, NSString *name, NSMutableArray *o
     if (status != kAXErrorSuccess || ![role isKindOfClass:NSString.class] || ![role length]) {
         *failure = [NSString stringWithFormat:@"native panel role is unavailable or malformed: %d", status]; return NO;
     }
+    NSMutableDictionary *context = [@{@"role":role, @"depth":@(depth), @"visits":@(*visits),
+        @"root_index":nodePath[0], @"child_index":nodePath.count > 1 ? nodePath.lastObject : NSNull.null,
+        @"node_path":nodePath, @"filename_found":@(*found), @"open_count":@(opens.count)} mutableCopy];
     NSString *title = nil;
     if ([role isEqual:@"AXButton"]) {
-        if (!filePanelText(item, kAXTitleAttribute, &title, failure)) return NO;
+        if (!filePanelText(item, kAXTitleAttribute, &title, YES, context, unknownReads, failure)) return NO;
         if ([@[@"Open", @"打开"] containsObject:title]) [opens addObject:(__bridge id)item];
     }
+    context[@"open_count"] = @(opens.count);
     if (!*found) for (NSString *key in @[@"AXTitle", @"AXDescription", @"AXValue"]) {
         NSString *text = title && [key isEqual:@"AXTitle"] ? title : nil;
-        if (!text && !filePanelText(item, (__bridge CFStringRef)key, &text, failure)) return NO;
+        if (!text && !filePanelText(item, (__bridge CFStringRef)key, &text, NO, context, unknownReads, failure)) return NO;
         if ([text containsString:name]) { *found = YES; break; }
     }
     id children = nil;
@@ -272,8 +293,11 @@ static BOOL scanFilePanel(AXUIElementRef item, NSString *name, NSMutableArray *o
     if (status != kAXErrorSuccess || ![children isKindOfClass:NSArray.class]) {
         *failure = [NSString stringWithFormat:@"native panel children are unreadable or malformed: %d", status]; return NO;
     }
-    for (id child in children)
-        if (!scanFilePanel((__bridge AXUIElementRef)child, name, opens, found, seen, visits, depth+1, failure)) return NO;
+    NSUInteger childIndex = 0;
+    for (id child in children) {
+        NSArray *childPath = [nodePath arrayByAddingObject:@(childIndex++)];
+        if (!scanFilePanel((__bridge AXUIElementRef)child, name, opens, found, seen, visits, depth+1, childPath, unknownReads, failure)) return NO;
+    }
     return YES;
 }
 
@@ -501,15 +525,19 @@ int main(int argc, const char **argv) { @autoreleasepool {
         chooseTrace(@"goto.close.loop.after", nil);
         chooseTrace(@"panel.collect.before", nil);
         NSMutableArray *opens = [NSMutableArray array];
-        BOOL filenameFound = NO, complete = YES; NSUInteger visits = 0; NSString *scanFailure = nil;
+        BOOL filenameFound = NO, complete = YES; NSUInteger visits = 0, unknownReads = 0; NSString *scanFailure = nil;
         NSMutableArray *roots = [NSMutableArray array];
         complete = filePanelRoots(app, roots, &visits, &scanFailure);
         CFMutableSetRef seen = CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks);
-        if (complete) for (id sheet in roots)
-            if (!scanFilePanel((__bridge AXUIElementRef)sheet, value.lastPathComponent, opens,
-                               &filenameFound, seen, &visits, 0, &scanFailure)) { complete = NO; break; }
+        if (complete) for (NSUInteger rootIndex = 0; rootIndex < roots.count; rootIndex++)
+            if (!scanFilePanel((__bridge AXUIElementRef)roots[rootIndex], value.lastPathComponent, opens,
+                               &filenameFound, seen, &visits, 0, @[@(rootIndex)], &unknownReads, &scanFailure)) { complete = NO; break; }
         CFRelease(seen);
         chooseTrace(@"panel.collect.after", nil);
+        if (unknownReads) {
+            fprintf(stderr, "ZWAI_PANEL_UNKNOWN_SUMMARY {\"unknown_reads\":%lu,\"retained_unknown_reads\":%lu}\n",
+                    unknownReads, MIN(unknownReads, (NSUInteger)64)); fflush(stderr);
+        }
         if (!complete) { CFRelease(app); return fail(scanFailure); }
         if (!filenameFound) { CFRelease(app); return fail(@"native panel did not reach the exact selected filename"); }
         chooseTrace(@"panel.open.before", nil);
