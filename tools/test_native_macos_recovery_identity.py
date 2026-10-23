@@ -1,5 +1,6 @@
 """Offline proof preparation refuses untrusted origins and changed writer inputs."""
 import contextlib
+import errno
 import io
 import json
 from pathlib import Path
@@ -72,7 +73,7 @@ class RecoveryIdentityPreparationTests(unittest.TestCase):
 
     def test_command_failure_and_timeout_retain_raw_streams_without_inventing_empty_output(self):
         self.assertEqual(identity.run([sys.executable, "-c", "print('verified')"], self.root, "success"), b"verified\n")
-        with self.assertRaisesRegex(RuntimeError, "retained exit 3"):
+        with self.assertRaisesRegex(RuntimeError, "exit 3"):
             identity.run([sys.executable, "-c", "import sys;print('cause',file=sys.stderr);sys.exit(3)"], self.root, "failure")
         self.assertEqual((self.root / "failure.stderr").read_bytes(), b"cause\n")
         self.assertEqual(json.loads((self.root / "failure.execution.json").read_text())["exit_code"], 3)
@@ -84,6 +85,153 @@ class RecoveryIdentityPreparationTests(unittest.TestCase):
         self.assertFalse(json.loads((self.root / "timeout.timeout.json").read_text())["stderr_present"])
         with self.assertRaises(FileExistsError):
             identity.save(self.root / "success.execution.json", {})
+
+    @contextlib.contextmanager
+    def failed_receipts(self, names):
+        attempts = []
+        write, save = Path.write_bytes, identity.save
+        def bytes_receipt(path, data):
+            attempts.append(path.name)
+            if path.name in names:
+                raise OSError(errno.EIO, "controlled receipt failure")
+            return write(path, data)
+        def json_receipt(path, value):
+            attempts.append(path.name)
+            if path.name in names:
+                raise OSError(errno.EIO, "controlled receipt failure")
+            return save(path, value)
+        with mock.patch.object(Path, "write_bytes", bytes_receipt), \
+                mock.patch.object(identity, "save", side_effect=json_receipt):
+            yield attempts
+
+    def assert_receipt_failures(self, error, names):
+        errors = error.evidence_errors
+        self.assertEqual([row["artifact"] for row in errors], names)
+        for row in errors:
+            self.assertEqual(row["error_type"], "OSError")
+            self.assertEqual(row["errno"], errno.EIO)
+            self.assertIn(row["operation"], ("write_bytes", "save_json"))
+            self.assertNotIn("controlled receipt failure", json.dumps(row))
+
+    def test_failed_command_keeps_its_actual_exit_and_streams_when_any_receipt_write_fails(self):
+        artifacts = ["failure.stdout", "failure.stderr", "failure.execution.json"]
+        argv = [sys.executable, "-c", "import sys;print('actual output');print('actual rejection',file=sys.stderr);sys.exit(7)"]
+        for index, failed in enumerate(([name] for name in artifacts)):
+            directory = self.root / str(index); directory.mkdir()
+            with self.subTest(failed=failed), self.failed_receipts(failed) as attempts, \
+                    self.assertRaisesRegex(RuntimeError, "exit 7") as caught:
+                identity.run(argv, directory, "failure")
+            self.assertEqual(attempts, artifacts)
+            primary = caught.exception.__cause__
+            self.assertIsInstance(primary, subprocess.CalledProcessError)
+            self.assertEqual((primary.returncode, primary.cmd), (7, argv))
+            self.assertEqual(primary.stdout, b"actual output\n")
+            self.assertEqual(primary.stderr, b"actual rejection\n")
+            self.assert_receipt_failures(caught.exception, failed)
+            for name in set(artifacts) - set(failed):
+                self.assertTrue((directory / name).exists())
+
+    def test_actual_timeout_survives_all_secondary_receipt_failures_with_original_partial_bytes(self):
+        artifacts = ["timeout.stdout", "timeout.stderr", "timeout.timeout.json"]
+        argv = [sys.executable, "-c", "import sys,time;print('partial out',flush=True);print('partial err',file=sys.stderr,flush=True);time.sleep(5)"]
+        observed, real_run = [], subprocess.run
+        def observe_timeout(*args, **kwargs):
+            try:
+                return real_run(*args, **kwargs)
+            except subprocess.TimeoutExpired as error:
+                observed.append(error)
+                raise
+        with self.failed_receipts(artifacts) as attempts, \
+                mock.patch.object(identity.subprocess, "run", side_effect=observe_timeout), \
+                self.assertRaises(subprocess.TimeoutExpired) as caught:
+            identity.run(argv, self.root, "timeout", timeout=.2)
+        self.assertEqual(attempts, artifacts)
+        self.assertIs(caught.exception, observed[0])
+        self.assertEqual(caught.exception.stdout, b"partial out\n")
+        self.assertEqual(caught.exception.stderr, b"partial err\n")
+        self.assertEqual(caught.exception.timeout, .2)
+        self.assertIsInstance(caught.exception.__cause__, OSError)
+        self.assert_receipt_failures(caught.exception, artifacts)
+        self.assertFalse((self.root / "timeout.execution.json").exists())
+
+    def test_timeout_keeps_an_existing_cause_before_secondary_storage_errors(self):
+        # An adapter may already have attributed this exact child timeout.
+        real_run = subprocess.run
+        for failed in ([], ["cause.stdout"]):
+            directory = self.root / ("with-io" if failed else "without-io")
+            directory.mkdir()
+            original, observed = RuntimeError("existing attribution"), []
+            def attributed_timeout(*args, **kwargs):
+                try:
+                    return real_run(*args, **kwargs)
+                except subprocess.TimeoutExpired as error:
+                    error.__cause__ = original
+                    observed.append(error)
+                    raise
+            argv = [sys.executable, "-c", "import time;print('partial',flush=True);time.sleep(5)"]
+            with self.subTest(failed=failed), self.failed_receipts(failed), \
+                    mock.patch.object(identity.subprocess, "run", side_effect=attributed_timeout), \
+                    self.assertRaises(subprocess.TimeoutExpired) as caught:
+                identity.run(argv, directory, "cause", timeout=.2)
+            self.assertIs(caught.exception, observed[0])
+            self.assertIs(caught.exception.__cause__, original)
+            self.assertEqual(caught.exception.stdout, b"partial\n")
+            if failed:
+                self.assert_receipt_failures(caught.exception, failed)
+
+    def test_success_is_refused_when_any_mandatory_receipt_is_unavailable(self):
+        artifacts = ["success.stdout", "success.stderr", "success.execution.json"]
+        for index, failed in enumerate(([name] for name in artifacts)):
+            directory = self.root / str(index); directory.mkdir()
+            with self.subTest(failed=failed), self.failed_receipts(failed) as attempts, \
+                    self.assertRaises(OSError) as caught:
+                identity.run([sys.executable, "-c", "print('actual success')"], directory, "success")
+            self.assertEqual(attempts, artifacts)
+            self.assert_receipt_failures(caught.exception, failed)
+            for name in set(artifacts) - set(failed):
+                self.assertTrue((directory / name).exists())
+
+    def test_actual_CLI_exposes_safe_secondary_errors_without_replacing_its_git_failure(self):
+        checkout = self.root / "not-a-repository"; checkout.mkdir()
+        output = self.root / "build"
+        script = """
+import errno,sys
+from pathlib import Path
+from unittest import mock
+sys.path.insert(0, sys.argv.pop(1))
+import native_macos_recovery_identity as identity
+real_write = Path.write_bytes
+def write(path, data):
+    if path.name == 'before-head.stderr':
+        raise OSError(errno.EIO, 'hidden-secondary-canary')
+    return real_write(path, data)
+with mock.patch.object(Path, 'write_bytes', write):
+    identity.main()
+"""
+        result = subprocess.run([sys.executable, "-c", script, str(identity.HERE), "build",
+                                 "--checkout", str(checkout), "--source", "a"*40, "--output", str(output)],
+                                capture_output=True, timeout=5)
+        self.assertNotEqual(result.returncode, 0)
+        secondary = json.loads(result.stderr.splitlines()[0])["evidence_errors"]
+        self.assertEqual(secondary, [dict(artifact="before-head.stderr", operation="write_bytes",
+                                          error_type="OSError", errno=errno.EIO)])
+        self.assertIn(b"CalledProcessError", result.stderr)
+        self.assertIn(b"before-head failed; exit 128", result.stderr)
+        self.assertNotIn(b"hidden-secondary-canary", result.stderr)
+        self.assertEqual(json.loads((output / "before-head.execution.json").read_text())["exit_code"], 128)
+        self.assertFalse((output / "writer-binding.json").exists())
+
+    def test_secondary_stderr_failure_cannot_replace_the_original_command_failure(self):
+        class BrokenStderr:
+            def write(self, text):
+                raise OSError("controlled broken stderr")
+        with self.failed_receipts(["failure.stderr"]), \
+                mock.patch.object(sys, "stderr", BrokenStderr()), \
+                self.assertRaisesRegex(RuntimeError, "exit 7") as caught:
+            identity.run([sys.executable, "-c", "import sys;sys.exit(7)"], self.root, "failure")
+        self.assertIsInstance(caught.exception.__cause__, subprocess.CalledProcessError)
+        self.assertEqual(caught.exception.__cause__.returncode, 7)
+        self.assert_receipt_failures(caught.exception, ["failure.stderr"])
 
     def test_writer_inputs_are_actual_clean_tracked_package_and_module_bytes(self):
         checkout, source = self.repository()

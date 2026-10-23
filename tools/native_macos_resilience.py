@@ -444,6 +444,7 @@ def native(context, action="snapshot", value=""):
         result = subprocess.run([context["helper"], action, str(context["app_pid"]), value],
                                 capture_output=True, text=True, timeout=8)
     except subprocess.TimeoutExpired as error:
+        fault_phases.observe_restore_native(context, action, error=error)
         if action != "choose-file":
             raise
         try:
@@ -457,6 +458,7 @@ def native(context, action="snapshot", value=""):
         except (OSError, TypeError, ValueError):
             pass
         raise
+    fault_phases.observe_restore_native(context, action, result=result)
     if action == "choose-file":
         try:
             atomic_json(context["evidence"] / "native-result.json", dict(
@@ -551,27 +553,7 @@ def context_for(manifest, timeout):
 
 
 def current_shell(context):
-    meta = api(context["origin"], "/api/meta")
-    if meta.get("data_dir") != str(context["data"]) or meta.get("mock") is not context.get("expected_mock", True):
-        raise RuntimeError("case engine changed identity")
-    lease = read_json(context["data"] / "engine.json")
-    if lease["pid"] != context["engine_pid"] or lease["url"] != context["origin"]:
-        raise RuntimeError("UI recovery replaced the engine")
-    desktops = [row for row in meta.get("clients", []) if row.get("surface") == "desktop"]
-    # Old and new presence leases can overlap briefly during a bounded handoff.
-    for row in reversed(desktops):
-        argv, marker = runner.process_identity(row["pid"])
-        if marker == context["case_id"] and argv and Path(argv[0]).is_relative_to(context["app"].parent):
-            context["app_pid"] = row["pid"]
-            try:
-                if context.get("activated_pid") != row["pid"]:
-                    native(context, "activate")
-                    context["activated_pid"] = row["pid"]
-                if native(context).get("textareas") == 1:
-                    return row["pid"]
-            except (OSError, subprocess.SubprocessError):
-                pass
-    return None
+    return fault_phases.current_shell(context, sys.modules[__name__])
 
 
 def turn_rows(context):
@@ -672,6 +654,7 @@ def draft_snapshot(context):
     key = urllib.parse.quote("thread:" + context["thread_id"], safe="")
     path = "/api/composer/drafts/" + key
     draft = api(context["origin"], path)["draft"]
+    fault_phases.observe_restore_api(context, draft)
     files = []
     for item in draft.get("files", []):
         request = urllib.request.Request(context["origin"] + path + "/files/" + item["id"])
@@ -797,19 +780,8 @@ def collect_draft(context, timeout):
 
 
 def verify_draft(context, expected, timeout):
-    def restored():
-        if not current_shell(context):
-            return None
-        row = native(context)
-        if row.get("values") != [expected["text"]]:
-            return None
-        saved = draft_snapshot(context)
-        if saved != expected:
-            raise RuntimeError("recovery changed unsent text, quotes, metadata or attachment bytes")
-        if not all(item["name"] in row.get("text", "") for item in expected["files"]):
-            return None
-        return saved
-    return wait_for(restored, Deadline(timeout))
+    return fault_phases.verify_draft(context, expected, timeout, sys.modules[__name__])
+
 
 
 

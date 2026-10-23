@@ -1078,6 +1078,9 @@ Rules for changing this code — coverage bars, prompt hygiene, documentation
 duties — are in [AGENTS.md](AGENTS.md). Read it before opening a pull request.
 
 Native desktop tests run only in UTM `ci-macOS`, one isolated case at a time.
+Offline recovery-proof preparation also refuses incomplete evidence: a failed
+command or timeout remains the primary error if receipt storage fails.
+Recovery checks retain first/last predicate summaries without copying draft content.
 Use the [native case runner](docs/TESTING.md#native-desktop-isolation-f-430--c-031):
 it refuses a physical host and closes case-owned processes before removing
 their private home/cache and test data. Keep the user's running desktop and normal data untouched.

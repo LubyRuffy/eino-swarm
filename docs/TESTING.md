@@ -585,6 +585,22 @@ copies and require identical full bytes. Compare every pre-signature code/data
 and load-command byte, normalizing only the measured signature datasize and
 linkedit virtual/file size fields, with strict tail/segment constraints.
 
+Proof preparation attempts each available raw stream and exit/timeout receipt
+even if another receipt write fails. A failed command retains its real exit
+and raw streams as a `CalledProcessError` cause; a timeout propagates the
+original `TimeoutExpired` object, partial streams and any existing cause. Secondary storage errors
+are retained in an `evidence_errors` exception attribute and stderr JSON with
+only artifact filename, operation, error type and errno. This works on the
+guest's Python 3.9; a broken stderr cannot replace the primary failure.
+Missing timeout streams remain missing. A successful
+command with unavailable mandatory evidence still refuses preparation. The
+recovery-identity tests exercise real child exit 7 and timeout paths while
+controlling only receipt I/O, including independent stdout/stderr/status
+failures and partial retention. A real CLI subprocess checks that safe
+secondary details reach parent-captured stderr without losing the actual Git
+failure; system-Python 3.9 and current-Python regressions remain separate from
+App or guest UI acceptance.
+
 The prepare command prints a binding object. Freeze its absolute `path`, full
 `sha256`, `source_sha` and `version` as the JSON environment value
 `ZWAI_NATIVE_RECOVERY_IDENTITY` in the isolated case capsule. Schema 1 proof
@@ -1045,6 +1061,22 @@ private code-page-corrupted copy and own linker-signed headless code. None of
 those binaries is executed and no system file is changed. Existing actual
 owned-child resume and scenario-SIGKILL cleanup tests remain required. These
 tests prove QA admission boundaries, not native renderer recovery (Issue #107).
+
+Each `verify_draft` invocation writes its own `draft-restore-<sequence>-<id>.json`
+at normal, error or handled-cancellation exit. It keeps only the first unmet
+observation and the last observation: existing engine/lease/candidate/native
+and API predicates distinguish false, error and not-read. A first-false poll
+does not itself fail a case. Types, lengths, hashes and equality flags retain
+the observed boundary without copying draft text, quotes or filenames; native
+text-mode stream summaries are explicitly decoded text, not original bytes.
+No extra API/AX call, navigation, retry or deadline is added. Malformed summary
+fields cannot pre-empt the original business checks. Receipt or WARN failures
+preserve an existing primary exception/cause; success without its mandatory
+receipt refuses. Hard kill or guest loss may prevent the final in-memory
+observation from being written. `tools/test_native_macos_restore_observation.py`
+crosses the real module wrappers, loopback API and native adapter seams,
+including malformed API fields, unchanged call order and cancellation/write
+failures. These are QA evidence tests, not native recovery acceptance.
 
 The exhaustion stage removes execute permission only from this ready session's
 unused private recovery copy, then stalls its attributed renderer. It requires

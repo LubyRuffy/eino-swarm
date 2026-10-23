@@ -1,10 +1,224 @@
 """Public-OS fault stage orchestration for one private native case."""
 import importlib
+import copy
+import hashlib
 import json
 from pathlib import Path
 import re
 import subprocess
+import sys
 import time
+
+
+def _restore_digest(value):
+    kind = type(value).__name__
+    if isinstance(value, str):
+        kind = "decoded_text"
+    elif isinstance(value, bytes):
+        kind = "bytes"
+    elif value is None:
+        kind = "none"
+    if not isinstance(value, (str, bytes)):
+        return dict(type=kind)
+    data = value.encode("utf-8", "surrogatepass") if isinstance(value, str) else value
+    return dict(type=kind, length=len(value), byte_length=len(data), sha256=hashlib.sha256(data).hexdigest())
+
+
+def _restore_current(context, stage=None):
+    state = context.get("_restore_observation")
+    row = state.get("last") if state else None
+    if row is not None and stage is not None:
+        row["stage"] = stage
+    return row
+
+
+def _restore_error(context, error):
+    row = _restore_current(context)
+    if row is not None:
+        row["error"] = dict(origin=row["stage"], type=type(error).__name__)
+        if type(getattr(error, "errno", None)) is int:
+            row["error"]["errno"] = error.errno
+        predicate = dict(metadata="engine_metadata", lease="engine_lease",
+            candidate_identity="candidate_owned", activation="current_shell",
+            current_shell_native="native_textareas", verify_native="native_values",
+            draft_snapshot="saved_snapshot").get(row["stage"])
+        if predicate and row["predicates"][predicate] == "not_read":
+            row["predicates"][predicate] = "error"
+
+
+def observe_restore_native(context, action, result=None, error=None):
+    row = _restore_current(context)
+    if row is not None:
+        source = result if result is not None else error
+        row["native_calls"].append(dict(action=action, pid=context["app_pid"],
+            returncode=result.returncode if result is not None else None,
+            error_type=type(error).__name__ if error is not None else None,
+            stdout=_restore_digest(source.stdout), stderr=_restore_digest(source.stderr)))
+
+
+def _restore_scalar(value):
+    return value if value is None or type(value) in (int, bool) else _restore_digest(value)
+
+
+def _restore_draft_summary(draft):
+    if not isinstance(draft, dict):
+        return _restore_digest(draft)
+    quotes, files = draft.get("quotes"), draft.get("files")
+    state = draft.get("state")
+    key = draft.get("key")
+    return dict(key=key if isinstance(key, str) and re.fullmatch(r"(?:thread|new):[\w-]{1,128}", key) else _restore_digest(key),
+        revision=_restore_scalar(draft.get("revision")),
+        revision_type=type(draft.get("revision")).__name__,
+        state=state if state in ("editing", "sending", "uncertain") else _restore_digest(state),
+        text=_restore_digest(draft.get("text")), quotes_type=type(quotes).__name__,
+        quote_count=len(quotes) if isinstance(quotes, list) else None,
+        quotes=[dict(id=_restore_digest(item.get("id")), text=_restore_digest(item.get("text")))
+                if isinstance(item, dict) else _restore_digest(item) for item in quotes]
+               if isinstance(quotes, list) else _restore_digest(quotes),
+        files_type=type(files).__name__, file_count=len(files) if isinstance(files, list) else None,
+        files=[dict(id=_restore_digest(item.get("id")), name=_restore_digest(item.get("name")),
+                    kind=item.get("kind") if item.get("kind") in ("file", "image") else _restore_digest(item.get("kind")),
+                    mime=_restore_digest(item.get("mime")), size=_restore_scalar(item.get("size")),
+                    sha256=item.get("sha256") if isinstance(item.get("sha256"), str)
+                           and re.fullmatch(r"[0-9a-f]{64}", item["sha256"]) else _restore_digest(item.get("sha256")))
+               if isinstance(item, dict)
+               else _restore_digest(item) for item in files] if isinstance(files, list) else _restore_digest(files))
+
+
+def observe_restore_api(context, draft):
+    row = _restore_current(context)
+    if row is not None:
+        row["api"] = _restore_draft_summary(draft)
+        row["api"]["expected_key_matches"] = (draft.get("key") == "thread:" + context["thread_id"]
+                                               if isinstance(draft, dict) else "unknown")
+
+
+def current_shell(context, harness):
+    """Keep the existing reads and refusals; retain only their already-read predicates."""
+    observation = _restore_current(context, "metadata")
+    try:
+        meta = harness.api(context["origin"], "/api/meta")
+        matched = meta.get("data_dir") == str(context["data"]) and meta.get("mock") is context.get("expected_mock", True)
+        if observation is not None:
+            observation["predicates"]["engine_metadata"] = matched
+            observation["metadata"] = dict(data_dir_matches=meta.get("data_dir") == str(context["data"]),
+                mock_type=type(meta.get("mock")).__name__, mock_matches=meta.get("mock") is context.get("expected_mock", True))
+        if not matched:
+            raise RuntimeError("case engine changed identity")
+        _restore_current(context, "lease")
+        lease = harness.read_json(context["data"] / "engine.json")
+        matched = lease["pid"] == context["engine_pid"] and lease["url"] == context["origin"]
+        if observation is not None:
+            observation["predicates"]["engine_lease"] = matched
+            observation["lease"] = dict(pid_matches=lease["pid"] == context["engine_pid"],
+                                       url_matches=lease["url"] == context["origin"])
+        if not matched:
+            raise RuntimeError("UI recovery replaced the engine")
+        desktops = [row for row in meta.get("clients", []) if row.get("surface") == "desktop"]
+        if observation is not None:
+            observation["desktop_count"] = len(desktops)
+        # Old and new presence leases can overlap briefly during a bounded handoff.
+        for row in reversed(desktops):
+            _restore_current(context, "candidate_identity")
+            argv, marker = harness.runner.process_identity(row["pid"])
+            matched = marker == context["case_id"] and argv and Path(argv[0]).is_relative_to(context["app"].parent)
+            if observation is not None:
+                observation["predicates"]["candidate_owned"] = bool(matched)
+                observation["candidate"] = dict(marker_matches=marker == context["case_id"], argv_present=bool(argv),
+                    private_path_matches=bool(matched) if marker == context["case_id"] and argv else "not_read")
+            if matched:
+                context["app_pid"] = row["pid"]
+                try:
+                    if context.get("activated_pid") != row["pid"]:
+                        _restore_current(context, "activation")
+                        harness.native(context, "activate")
+                        context["activated_pid"] = row["pid"]
+                    _restore_current(context, "current_shell_native")
+                    actual = harness.native(context)
+                    matched = actual.get("textareas") == 1
+                    if observation is not None:
+                        value = actual.get("textareas")
+                        observation["native_textareas"] = dict(type=type(value).__name__,
+                            value=value if type(value) in (int, bool) else None)
+                        observation["predicates"]["native_textareas"] = matched
+                    if matched:
+                        return row["pid"]
+                except (OSError, subprocess.SubprocessError) as error:
+                    _restore_error(context, error)
+        return None
+    except BaseException as error:
+        _restore_error(context, error)
+        raise
+
+
+def verify_draft(context, expected, timeout, harness):
+    number = context.get("_restore_verify_sequence", 0) + 1
+    context["_restore_verify_sequence"] = number
+    path = context["evidence"] / ("draft-restore-%06d-%s.json" % (number, harness.uuid.uuid4().hex))
+    state = dict(case_id=context["case_id"], invocation=number, first_false=None, last=None,
+                 outcome="pending", expected=_restore_draft_summary(expected))
+    previous = context.get("_restore_observation")
+    context["_restore_observation"] = state
+    def restored():
+        observation = dict(stage="current_shell", predicates={name: "not_read" for name in (
+            "engine_metadata", "engine_lease", "candidate_owned", "current_shell",
+            "native_textareas", "native_values", "saved_snapshot", "attachment_names", "verified")},
+            native_calls=[])
+        state["last"] = observation
+        try:
+            current = harness.current_shell(context)
+            observation["predicates"]["current_shell"] = bool(current)
+            if not current:
+                return None
+            _restore_current(context, "verify_native")
+            row = harness.native(context)
+            matched = row.get("values") == [expected["text"]]
+            values = row.get("values")
+            observation["native_values"] = dict(type=type(values).__name__,
+                items=[_restore_digest(value) for value in values] if isinstance(values, list) else [])
+            observation["predicates"]["native_values"] = matched
+            if not matched:
+                return None
+            _restore_current(context, "draft_snapshot")
+            saved = harness.draft_snapshot(context)
+            observation["saved"] = _restore_draft_summary(saved)
+            observation["saved_parts"] = {key: saved.get(key) == expected.get(key)
+                                          for key in ("text", "quotes", "files", "state")}
+            observation["predicates"]["saved_snapshot"] = saved == expected
+            if saved != expected:
+                raise RuntimeError("recovery changed unsent text, quotes, metadata or attachment bytes")
+            matched = all(item["name"] in row.get("text", "") for item in expected["files"])
+            observation["predicates"]["attachment_names"] = matched
+            if not matched:
+                return None
+            observation["predicates"]["verified"] = True
+            return saved
+        except BaseException as error:
+            _restore_error(context, error)
+            raise
+        finally:
+            if observation["predicates"]["verified"] is not True and state["first_false"] is None:
+                state["first_false"] = copy.deepcopy(observation)
+    try:
+        result = harness.wait_for(restored, harness.Deadline(timeout))
+        state["outcome"] = "verified"
+    except BaseException as error:
+        state.update(outcome="failed", error=dict(type=type(error).__name__))
+        try:
+            harness.atomic_json(path, state)
+        except (OSError, TypeError, ValueError) as write_error:
+            try:
+                print("WARN restore_observation_write_failed " + type(write_error).__name__, file=sys.stderr)
+            except (OSError, ValueError):
+                pass
+        raise
+    else:
+        harness.atomic_json(path, state)
+        return result
+    finally:
+        context.pop("_restore_observation", None)
+        if previous is not None:
+            context["_restore_observation"] = previous
 
 
 def journal_rows(context):

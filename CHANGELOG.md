@@ -144,6 +144,18 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`, `C-034`: native draft-recovery checks retain the first
+  unmet and last observed predicates per check, without extra API/AX calls or
+  copied draft content. Diagnostic failures preserve the original exception;
+  successful checks refuse missing mandatory evidence. This does not backfill
+  earlier native timeouts or accept renderer recovery (Issue #94).
+
+- `F-430`, `C-031`: offline recovery-proof preparation preserves the original
+  command exit or timeout when evidence storage fails, attempts remaining
+  receipts, and records safe secondary storage details. Successful commands
+  still refuse incomplete evidence; no retry or native acceptance is added
+  (Issue #94).
+
 - `F-430`, `C-031`, `C-034`: native QA activation derives the original or
   case-owned recovery bundle from the kernel executable. Preserve the original
   anchor, marker, NS identity, unchanged process birth and two-second budget.

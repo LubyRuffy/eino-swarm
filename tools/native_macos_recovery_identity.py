@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import struct
 import subprocess
+import sys
 
 
 HERE = Path(__file__).resolve().parent
@@ -30,21 +31,46 @@ def save(path, value):
 
 
 def run(argv, directory, label, *, env=None, cwd=None, timeout=120):
+    argv = list(map(str, argv))
+    primary, cause = None, None
     try:
-        result = subprocess.run(list(map(str, argv)), env=env, cwd=cwd,
+        result = subprocess.run(argv, env=env, cwd=cwd,
                                 capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired as error:
-        for name, data in (("stdout", error.stdout), ("stderr", error.stderr)):
-            if data is not None:
-                (directory / (label + "." + name)).write_bytes(data)
-        save(directory / (label + ".timeout.json"), dict(timeout=timeout,
-             stdout_present=error.stdout is not None, stderr_present=error.stderr is not None))
-        raise
-    (directory / (label + ".stdout")).write_bytes(result.stdout)
-    (directory / (label + ".stderr")).write_bytes(result.stderr)
-    save(directory / (label + ".execution.json"), dict(argv=list(map(str, argv)), exit_code=result.returncode))
-    if result.returncode:
-        raise RuntimeError(label + " failed; retained exit " + str(result.returncode))
+        primary = error
+        artifacts = [(name, "write_bytes", data) for name, data in
+                     (("stdout", error.stdout), ("stderr", error.stderr)) if data is not None]
+        artifacts.append(("timeout.json", "save_json", dict(timeout=timeout,
+                         stdout_present=error.stdout is not None, stderr_present=error.stderr is not None)))
+    else:
+        artifacts = [("stdout", "write_bytes", result.stdout), ("stderr", "write_bytes", result.stderr),
+                     ("execution.json", "save_json", dict(argv=argv, exit_code=result.returncode))]
+        if result.returncode:
+            primary = RuntimeError(label + " failed; exit " + str(result.returncode))
+            cause = subprocess.CalledProcessError(result.returncode, argv, result.stdout, result.stderr)
+    failure, errors = None, []
+    for suffix, operation, data in artifacts:
+        path = directory / (label + "." + suffix)
+        try:
+            if operation == "write_bytes":
+                path.write_bytes(data)
+            else:
+                save(path, data)
+        except OSError as error:
+            if failure is None:
+                failure = OSError(error.errno, "evidence write failed", path.name)
+            errors.append(dict(artifact=path.name, operation=operation,
+                               error_type=type(error).__name__, errno=error.errno))
+    if errors:
+        (primary or failure).evidence_errors = errors
+        try:
+            print(json.dumps(dict(evidence_errors=errors), sort_keys=True), file=sys.stderr)
+        except (OSError, ValueError):
+            pass
+    if primary is not None:
+        raise primary from (primary.__cause__ or cause or failure)
+    if failure is not None:
+        raise failure
     return result.stdout
 
 

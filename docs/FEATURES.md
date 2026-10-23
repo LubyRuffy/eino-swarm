@@ -286,6 +286,10 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-430 Build and release paths
 
+- 原生恢复的每次 `verify_draft` 草稿恢复检查保留首个不成立观察和最后观察，区分 false、未知错误及未读取；只记录原调用已有值的类型、摘要和匹配判定，不复制正文或增加输入／请求。退出采证不得覆盖原异常，成功缺必要收据仍拒绝。关联契约：`C-031`、`C-034`；实现／验证：`tools/native_macos_resilience.py`、`tools/native_macos_resilience_phases.py`、`tools/test_native_macos_restore_observation.py`；来源：Issue #94。
+
+- 离线恢复 proof 准备逐项尝试保留原命令输出与退出／超时收据；写证失败不能覆盖原退出／超时，次级失败仅以文件名、操作、错误类型和 errno 留在异常属性与 stderr JSON 中，stderr 再失败仍保首因。命令成功但必要证据写入失败仍拒绝，不生成 proof。关联契约：`C-031`；实现／验证：`tools/native_macos_recovery_identity.py`、`tools/test_native_macos_recovery_identity.py`；来源：Issue #94。
+
 - 原生恢复 QA 激活保留原 case bundle 锚，从实际内核 executable 推导原包或同 case 的严格 recovery-cache 继任包。产品 writer 会重签副本；不同原始字节通过离线实际 writer／签名系统生成并冻结的 proof 绑定原 core、派生 core、Info/icon、source/version，不能从待接受 target 反推。动作前核对 session、全文件 SHA、继承 marker、NS PID／bundle，动作后核对 birth／executable 不变。仍仅一次激活、无 AX、原期限；不代表产品恢复期限或整包门禁通过。关联契约：`C-031`、`C-034`；实现／验证：`tools/native_macos_resilience_ax.m`、`tools/native_macos_recovery_identity.py`、`tools/native_macos_recovery_writer_test.go.txt`、`tools/test_native_macos_recovery_identity.py`、`tools/test_native_macos_successor_identity.py`、`tools/test_native_macos_activation.py`；来源：Issue #108。
 
 - 原生故障 QA 对完整 cohort 已选出的系统 WebContent／GPU 可执行文件执行严格全架构代码验证与 inline `anchor apple`／精确服务 identifier，明确不验证资源或整个 bundle；原发行 App 深度严格验证不变。成功／失败／超时均持久保留命令、case／PID／birth／路径及原始输出，未知或写证失败不得准入或发送信号，之后仍重新核对完整 cohort 与内核身份。入口为 renderer／GPU 原生恢复 campaign；该门禁不代表恢复场景已通过。关联契约：`C-031`；实现／验证：`tools/native_macos_resilience_fault.py`、`tools/test_native_macos_signature_admission.py`、`tools/test_native_macos_resilience_fault.py`、`tools/test_native_macos_fault_cleanup.py`；来源：Issue #107。
