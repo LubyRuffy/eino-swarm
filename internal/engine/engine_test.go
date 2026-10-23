@@ -453,8 +453,10 @@ func TestSteerReachesARunningTurn(t *testing.T) {
 // An interrupted turn keeps what it produced: the user gets a short answer,
 // not a blank one.
 func TestInterruptCancelsButKeepsWork(t *testing.T) {
-	e := newTestEngine(t)
+	e, requestCancelled := newDelayedInterruptEngine(t)
 	th, _ := e.CreateThread("", "", "")
+	sub := e.Subscribe(th.ID)
+	defer sub.Close()
 
 	if err := e.Interrupt(th.ID); !errors.Is(err, ErrIdle) {
 		t.Fatalf("interrupting an idle conversation should report ErrIdle, got %v", err)
@@ -464,8 +466,25 @@ func TestInterruptCancelsButKeepsWork(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// let the manager get going, then stop it
-	time.Sleep(120 * time.Millisecond)
+	// Stop only after this turn produced observable text, while the actual
+	// model stream is still held open. Waiting for a stored row would hide
+	// the regression: the work must survive before it has been checkpointed.
+	partial := waitLive(t, sub, swarm.NotifyReasoningDelta.String(), 5*time.Second)
+	if partial.TurnID != turn.ID || partial.Text != interruptedPartialThought || partial.MessageID == "" {
+		t.Fatalf("the held stream did not produce this turn's partial thought: %+v", partial)
+	}
+	if running, err := e.Store().GetTurn(turn.ID); err != nil || running.Status != store.TurnRunning {
+		t.Fatalf("the model was not still running before Stop: %+v err=%v", running, err)
+	}
+	before, err := e.Store().ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range before {
+		if ev.Kind == KindReasoning && ev.MessageID == partial.MessageID {
+			t.Fatalf("the fixture already stored the thought before Stop: %+v", ev)
+		}
+	}
 	if err := e.Interrupt(th.ID); err != nil {
 		t.Fatalf("Interrupt: %v", err)
 	}
@@ -473,12 +492,16 @@ func TestInterruptCancelsButKeepsWork(t *testing.T) {
 	if finished.Status != store.TurnCancelled {
 		t.Fatalf("want a cancelled turn, got %s (%s)", finished.Status, finished.Error)
 	}
+	select {
+	case <-requestCancelled:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Stop did not cancel the held HTTP generation")
+	}
 
 	events, _ := e.Replay(th.ID, 0)
 	var sawSomething bool
 	for _, ev := range events {
-		switch ev.Kind {
-		case KindReasoning, swarm.NotifyAgentMessage.String(), swarm.NotifyToolCall.String():
+		if ev.Kind == KindReasoning && ev.MessageID == partial.MessageID && ev.Text == partial.Text {
 			sawSomething = true
 		}
 	}

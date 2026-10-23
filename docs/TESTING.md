@@ -2,6 +2,14 @@
 
 ## Generation interruption and recovery (Issue #95 / C-035)
 
+`TestInterruptCancelsButKeepsWork` uses the real loopback HTTP adapter with
+a first chunk delayed beyond the former 120ms test assumption. It waits for
+this turn's nonempty live reasoning delta while that generation remains open,
+checks that the same thought is not yet stored, then interrupts it. The stored
+thought must retain the live `message_id` and exact text, and a later turn must
+still complete. A fixed startup sleep or an already-persisted event cannot
+establish this partial-output retention boundary.
+
 The generation and worker lifetimes are independent. `generation_test.go`
 checks per-output identity for cancellation, deadline, transport failure and
 output limits, with normal empty completion as a negative control.

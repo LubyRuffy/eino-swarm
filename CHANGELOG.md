@@ -98,6 +98,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- Tests: synchronize interrupted-output retention with a real live partial HTTP stream instead of assuming the manager produced text within 120ms. Keep the stream open until Stop, verify the identical text and output identity after persistence, and retain delayed-start and next-turn coverage without changing runtime behavior.
+
 - `F-430`, `C-031`: native acceptance recovery now selects the existing authorized guest Terminal control path when current exact-target evidence shows SSH helper permission denial and that path is usable. Unknown-state observation and completed acceptance retain priority; the offline audit neither grants privacy permissions nor operates the VM.
 
 - `F-420`, `F-160`, `C-025`: failed tidy Trace summaries use committed note and completed move receipts, preserving saved destination notes instead of claiming they were not saved; a skill-only partial promotion retains the uncommitted-note warning (Issue #99).
