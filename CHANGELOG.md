@@ -104,8 +104,9 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
-- `F-110`, `C-027`: isolate parked-restart setup-failure tests from asynchronous
-  schedule naming, preventing a fixture-owned provider-pool race under `-race`.
+- `F-110`, `C-027`: isolate lifecycle schedule fixtures from asynchronous
+  naming, preventing fixture-owned provider-pool and database-callback races
+  under `-race`; automatic-title behavior remains covered through its real API.
 
 - `F-420`, `C-025`: clarify existing tidy API failure semantics: internal tool refusals, reviewer errors in HTTP 200 / SSE `done` with saved receipts, and outer fold/view errors through normal JSON mapping or SSE `error`. Documentation only; runtime behavior is unchanged (Issue #99).
 

@@ -72,14 +72,14 @@ func TestReportScheduleNextInSRespectsTheActiveCap(t *testing.T) {
 	th, _ := e.CreateThread("", "", "")
 	if _, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: scheduleToolWaitPrompt, EveryS: 60,
+		Title: "Scheduled work", Prompt: scheduleToolWaitPrompt, EveryS: 60,
 		CreatedBy: store.ScheduleCreatedManager,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	sch, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: scheduleToolWaitPrompt, DelayS: 90,
+		Title: "Scheduled work", Prompt: scheduleToolWaitPrompt, DelayS: 90,
 		CreatedBy: store.ScheduleCreatedManager,
 	})
 	if err != nil {

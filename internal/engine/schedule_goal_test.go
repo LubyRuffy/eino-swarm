@@ -380,7 +380,7 @@ func TestHasFutureWakeSeesDueAndIgnoresNonTargetRows(t *testing.T) {
 
 	future, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: scheduleWaitPrompt, EveryS: 60,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, EveryS: 60,
 		CreatedBy: store.ScheduleCreatedManager,
 	})
 	if err != nil {
@@ -395,7 +395,7 @@ func TestHasFutureWakeSeesDueAndIgnoresNonTargetRows(t *testing.T) {
 
 	due, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: other.ID,
-		Prompt: scheduleWaitPrompt, DelayS: 30,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, DelayS: 30,
 		CreatedBy: store.ScheduleCreatedManager,
 	})
 	if err != nil {
@@ -428,7 +428,7 @@ func TestHasFutureWakeSeesDueAndIgnoresNonTargetRows(t *testing.T) {
 
 	claimed, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: scheduleWaitPrompt, DelayS: 30,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, DelayS: 30,
 		CreatedBy: store.ScheduleCreatedManager,
 	})
 	if err != nil {
@@ -460,7 +460,7 @@ func TestHasFutureWakeSeesDueAndIgnoresNonTargetRows(t *testing.T) {
 
 	originOnly, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleStandalone, OriginThreadID: th.ID,
-		Prompt: scheduleWaitPrompt, EveryS: 60,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, EveryS: 60,
 		CreatedBy: store.ScheduleCreatedHuman,
 	})
 	if err != nil {

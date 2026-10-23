@@ -135,6 +135,11 @@ E2E suite.
 - Image acceptance must use a decodable fixture and verify dimensions, MIME
   and unchanged bytes after save/reload. Magic bytes and an img src alone
   cannot prove that the selected image reached the visual-input path.
+- Lifecycle-only schedule fixtures use explicit titles. Before fault injection
+  replaces provider state, registers/removes database callbacks or closes storage,
+  unrelated background title tasks must be absent or joined. Keep automatic-title
+  tests on the real untitled schedule API and assert lifecycle helper waits have
+  `TitleAuto=false`; a repeated green race run alone does not prove isolation.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
 - Local startup must not wait for optional phone-hub registration. Keep remote
