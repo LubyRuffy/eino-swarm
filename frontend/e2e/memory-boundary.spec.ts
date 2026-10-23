@@ -59,7 +59,9 @@ test("skill usage and the editable stale threshold are visible in the memory pan
     const oldCard = page.getByTestId("skill-card").filter({ hasText: "older-procedure" })
     const currentCard = page.getByTestId("skill-card").filter({ hasText: "current-procedure" })
     await expect(oldCard.getByTestId("skill-usage")).toContainText("9 views")
-    await expect(oldCard.locator("time")).toHaveAttribute("datetime", oldViewed)
+    // Go's RFC3339 encoder trims trailing fractional zeros; compare the
+    // represented instant so .410Z and .41Z do not create a timing flake.
+    await expect.poll(async () => Date.parse((await oldCard.locator("time").getAttribute("datetime")) ?? "")).toBe(Date.parse(oldViewed))
     await expect(oldCard.getByText("Stale candidate", { exact: true })).toBeVisible()
     await expect(currentCard.getByTestId("skill-usage")).toContainText("Never viewed")
     await expect(currentCard.getByText("Stale candidate", { exact: true })).toHaveCount(0)

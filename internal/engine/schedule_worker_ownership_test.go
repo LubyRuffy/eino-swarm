@@ -166,6 +166,21 @@ func failOwnedScheduleCheck(t *testing.T, e *Engine, f *scheduleOwnershipFixture
 	if f.steps.Load() != 2 {
 		t.Fatalf("manager requests=%d; scheduled evidence failure must have one bounded continuation", f.steps.Load())
 	}
+	// A failed scheduled check is already terminally ineligible. It must not
+	// enter the ordinary successful-final collection/continuation workflow.
+	if e.Status(turn.ThreadID).AwaitingContinue {
+		t.Fatal("failed scheduled check paused for an ordinary worker-collection continuation")
+	}
+	events, err := e.store.ListTurnEvents(turn.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range events {
+		var retry struct{ Reason string }
+		if event.Kind == KindMaxIterations || event.Kind == KindMaxIterationsContinued || event.Kind == KindModelRetry && json.Unmarshal([]byte(event.Text), &retry) == nil && retry.Reason == "workers_uncollected" {
+			t.Fatalf("failed scheduled check entered ordinary worker collection: kind=%s seq=%d", event.Kind, event.Seq)
+		}
+	}
 	return got
 }
 

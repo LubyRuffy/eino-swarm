@@ -47,6 +47,9 @@ func newScheduleCompletionHTTPEngine(t *testing.T, reply func(http.ResponseWrite
 			http.Error(w, "invalid fixture request", http.StatusBadRequest)
 			return
 		}
+		if len(request.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, request.Messages[0].Content, request.Stream, len(request.Tools)) {
+			return
+		}
 		manager := false
 		for _, tool := range request.Tools {
 			manager = manager || tool.Function.Name == "spawn_agent"

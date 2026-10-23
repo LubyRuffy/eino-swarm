@@ -53,6 +53,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `F-330`, `C-019`, `C-002`, `C-027`: ordinary turns without current goal/wake ownership must collect every worker's current generation with `wait_agents`, or explicitly discard it with `close_agent`, before publishing completion. An early final receives one durable same-turn correction; repetition pauses for human Continue/Stop while preserving the original workers. Continue grants one further attempt, and restart retains collection state, correction allowance and human pauses. Finished close receipts remain `already_finished`, rather than fabricated cancellation (Issue #103).
+
 - `F-420`, `C-025`: unify notes/skills classification by permanent versus on-demand loading, applicability-focused descriptions and workflow-local constraints; clarify both Memory panel descriptions and split memory translations (Issue #99).
 - `F-430`, `C-010`: prepare numeric candidate `0.1.36` with matching mobile
   package metadata before the exact-source Mac installer acceptance. This is a
@@ -103,6 +105,8 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-150`, `C-009`: a scheduled check cannot complete the standing objective while its own manager-created conversation wake remains armed, including a newly armed wake ID after a one-shot fired. The final check may complete after cancelling that wait; the reverse call order and parallel tool calls cannot rearm the same continuation after completion. Conflicts return recoverable `goal_schedule_conflict` results. Human-created waits and independent jobs retain their own lifecycle; existing completed goals are not automatically reopened (Issue #79).
 
 ### Fixed
+
+- `F-150`, `C-009`, `C-012`: a trailing `/goal` activates its preceding objective across PC, HTTP and paired-phone sends and steering, including after an older goal completed. Scheduling success claims now require verification against persisted, currently effective plans before manager prose is published; unsupported claims receive one bounded same-turn correction, then a visible failure. Tool and worker activity remain live (Issue #103).
 
 - `F-220`, `C-017`: Ask Other now uses the phone's 16px editable text size so
   iOS focus does not leave the answer, navigation and retry result enlarged

@@ -54,9 +54,14 @@ func newWakePolicyResponseEngine(t *testing.T, response func(store.WakePolicyInp
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Messages []struct{ Role, Content string }
+			Stream   bool              `json:"stream"`
+			Tools    []json.RawMessage `json:"tools"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			t.Error(err)
+			return
+		}
+		if len(req.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, req.Messages[0].Content, req.Stream, len(req.Tools)) {
 			return
 		}
 		if len(req.Messages) != 2 || !strings.Contains(req.Messages[0].Content, "## Thread wake authorization classification") {
@@ -94,13 +99,13 @@ func runWakePolicyManager(t *testing.T, e *Engine, turn *store.Turn, name, args,
 			if !strings.Contains(out, `"code":"`+code+`"`) || !strings.Contains(out, source) {
 				t.Errorf("wrong refusal/source: %s", out)
 			}
-			return schema.AssistantMessage("A wait has been set.", nil)
+			return schema.AssistantMessage("The scheduling tool refused the request; work continues in this turn.", nil)
 		},
 	}}
 	reg := e.newTurnRegistry(func(string, string) model.BaseChatModel { return cm }, set, nil)
 	t.Cleanup(reg.Close)
 	acc := newAccumulator(e, turn.ThreadID, turn.ID, 0)
-	_, err := e.runtimeFor(turn.ThreadID).runManager(context.Background(), turn, reg, acc, set, nil, []adk.Message{schema.UserMessage("continue the check")})
+	_, err := e.runtimeFor(turn.ThreadID).runOwnedTestManager(context.Background(), turn, reg, acc, set, nil, []adk.Message{schema.UserMessage("continue the check")})
 	acc.flushAll()
 	if err != nil {
 		t.Fatal(err)
@@ -141,11 +146,11 @@ func TestReportRecadenceCannotCancelOrChangeAHumanProhibitedWake(t *testing.T) {
 			if hasKind(t, e, th.ID, KindScheduleReport) {
 				t.Fatal("refused recadence persisted a report")
 			}
-			out, err := e.reportScheduleJSON(th.ID, turn.ID, `{"findings":"work continues"}`)
+			out, err := e.reportOwnedTestScheduleJSON(th.ID, turn.ID, `{"findings":"work continues"}`)
 			if err != nil || !strings.Contains(out, `"ok":true`) {
 				t.Fatalf("ordinary findings refused: %s %v", out, err)
 			}
-			out, err = e.reportScheduleJSON(th.ID, turn.ID, `{"keep":false}`)
+			out, err = e.reportOwnedTestScheduleJSON(th.ID, turn.ID, `{"keep":false}`)
 			if err != nil || !strings.Contains(out, `"ok":true`) {
 				t.Fatalf("ending the wait refused: %s %v", out, err)
 			}
@@ -426,7 +431,7 @@ func TestWakePolicyMiddlewareRemainsBoundedAfterCompaction(t *testing.T) {
 	reg := e.newTurnRegistry(func(string, string) model.BaseChatModel { return cm }, set, nil)
 	defer reg.Close()
 	acc := newAccumulator(e, th.ID, turn.ID, 0)
-	if _, err := e.runtimeFor(th.ID).runManager(context.Background(), turn, reg, acc, set, nil, []adk.Message{schema.UserMessage("check progress")}); err != nil {
+	if _, err := e.runtimeFor(th.ID).runOwnedTestManager(context.Background(), turn, reg, acc, set, nil, []adk.Message{schema.UserMessage("check progress")}); err != nil {
 		t.Fatal(err)
 	}
 	acc.flushAll()
@@ -471,7 +476,7 @@ func TestReportWithNextDelayStillCancelsWhenHumanAuthorityAllowsIt(t *testing.T)
 	row := mustCreateWake(t, e, th.ID)
 	run := mustRunningRun(t, e, row.ID, th.ID)
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true, ScheduleRunID: run})
-	out, err := e.reportScheduleJSON(th.ID, turn.ID, `{"keep":false,"next_in_s":60,"findings":"finished"}`)
+	out, err := e.reportOwnedTestScheduleJSON(th.ID, turn.ID, `{"keep":false,"next_in_s":60,"findings":"finished"}`)
 	if err != nil || !strings.Contains(out, `"ok":true`) {
 		t.Fatalf("authorized report no longer cancels: %s %v", out, err)
 	}

@@ -200,6 +200,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   after what you already wrote, the same way Cursor does. Paths (`foo/bar`)
   and URLs do not open the palette. Picking **goal** or **plan** from the
   menu writes `/goal ` / `/plan ` in the box; type the rest and Enter.
+  A standalone `/goal` at the end of a message uses the preceding text as
+  the objective. This explicit command starts a new pursuit even when the
+  conversation's previous objective is Done; trailing whitespace is allowed.
   **goal** sets a standing objective and
   starts pursuing it in this turn. **plan** explores and writes a plan before
   changing anything. Codex cuts the command name at a space;
@@ -215,9 +218,16 @@ uploads, downloads and the live event stream have exactly one implementation.
   or cancel it. The final check can then complete the objective. Conflicting
   calls return a recoverable tool error rather than marking a partial check Done.
   Human-created waits and independent jobs retain their separate lifecycle.
+  Reports that a future check was arranged are checked against saved, currently
+  effective plans before the manager's prose is shown. A failed or missing
+  scheduling call cannot support a success report. One same-turn correction is
+  allowed; a repeated unsupported claim or unavailable check ends visibly with
+  an error. Tool, thinking and worker activity remain live during this check.
   A mistaken `complete_goal` can be undone in that
   turn with `reopen_goal`, or later with **Start** on the Done banner. Existing
-  completed records are not reopened automatically. A live turn is steered so this round sees the
+  completed records are not reopened by ordinary messages. A new explicit
+  `/goal` replaces the old objective and clears its completed state.
+  A live turn is steered so this round sees the
   new text. A turn ends when the manager stops calling tools; the runtime
   then continues, unless an active thread wake is waiting on this
   conversation — that wait is the next turn until it fires or you cancel it. Context pressure compact in place. Hitting the manager
@@ -729,6 +739,15 @@ The manager waits for one to finish, then resumes that worker or starts
 the next piece. It does not launch the whole batch and leave the rest hanging.
 The manager checks the workers' evidence and combines their results before
 reporting completion. The same policy applies to ordinary turns and `/goal`.
+An ordinary turn without an executable goal or next conversation wake must
+collect each worker's current result with `wait_agents`, or explicitly discard
+that work with `close_agent`, before it can complete. A finished worker still
+needs collection; a wait timeout is insufficient. If the manager ends early,
+the engine withholds that answer and lets it correct once in the same turn.
+A repeated early ending pauses for **Continue** or **Stop**, retaining the
+original workers. Continue grants one further attempt; Stop cancels them.
+Restart preserves this pause and the correction allowance. The turn's Trace
+records `workers_uncollected` and the affected worker IDs.
 A request with independent parts is one way to benefit:
 
 > Go through the three files I just uploaded, pull out every deadline, and leave me

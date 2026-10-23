@@ -292,6 +292,11 @@ func TestResumeStillWorksAfterStatsPrune(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("worker did not finish")
 	}
+	// Pruning settled results remains the archive contract. Uncollected
+	// results now retain their identity until the real wait tool returns them.
+	if _, err := invokable(t, reg.Tools()[2]).InvokableRun(t.Context(), fmt.Sprintf(`{"agent_ids":[%q]}`, h.ID)); err != nil {
+		t.Fatal(err)
+	}
 	if _, finished := reg.Stats(); finished == 0 {
 		t.Fatal("Stats should prune the finished handle")
 	}
@@ -393,6 +398,9 @@ func TestArchiveEvictsOldestFinishedWorkers(t *testing.T) {
 		case <-h.Done():
 		case <-time.After(5 * time.Second):
 			t.Fatal("worker did not finish")
+		}
+		if _, err := invokable(t, reg.Tools()[2]).InvokableRun(t.Context(), fmt.Sprintf(`{"agent_ids":[%q]}`, h.ID)); err != nil {
+			t.Fatal(err)
 		}
 		ids[i] = h.ID
 	}

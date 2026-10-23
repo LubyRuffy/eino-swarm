@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { describe, expect, it } from "vitest"
 
 import {
@@ -168,6 +169,25 @@ describe("parseSlashSubmit", () => {
     expect(parseSlashSubmit("see foo/bar")).toBeNull()
     expect(parseSlashSubmit("/goals")).toBeNull()
     expect(parseSlashSubmit("/compacted")).toBeNull()
+  })
+})
+
+describe("trailing goal commands", () => {
+  const cases = JSON.parse(readFileSync("../internal/slash/testdata/trailing-goal.json", "utf8")) as { text: string; objective?: string }[]
+  it.each(cases)("parses the shared task/literal fixture: $text", ({ text, objective }) => {
+    expect(parseSlashSubmit(text)).toEqual(objective ? { id: "goal", arg: objective } : null)
+    expect(slashAwaitingArg(text)).toBeNull()
+    if (objective) expect(slashSubmitReady(text)).toBe(true)
+    else { const draft = slashDraft(text); expect(draft ? filterSlashCommands(draft.query) : []).toEqual([]) }
+  })
+
+  it("keeps an empty goal waiting and preserves the established argument commands", () => {
+    expect(parseSlashSubmit(" /goal \n")).toEqual({ id: "goal", arg: "" })
+    expect(slashAwaitingArg(" /goal \n")).toBe("goal")
+    expect(parseSlashSubmit("before /goal after")).toEqual({ id: "goal", arg: "after" })
+    expect(parseSlashSubmit("/goal 检查当前状态")).toEqual({ id: "goal", arg: "检查当前状态" })
+    expect(parseSlashSubmit("before /plan after")).toEqual({ id: "plan", arg: "after" })
+    expect(parseSlashSubmit("before /compact")).toEqual({ id: "compact", arg: "" })
   })
 })
 

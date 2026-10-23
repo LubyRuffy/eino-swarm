@@ -74,7 +74,9 @@ E2E suite.
   server locale as well as browser storage.
 
 - Concurrent Playwright runs must each own a separate server port, data
-  directory and `--output` directory. Preserve the first failure and identify
+  directory and `--output` directory. A Vite preview also owns its built `dist`:
+  never rebuild that directory while it is serving a case; concurrent builds
+  need separate source/build copies. Preserve the first failure and identify
   whether it came from a business assertion or artifact/teardown handling;
   shared trace/network/ZIP `ENOENT` errors require an isolated rerun with its
   own evidence. A retry turning green alone does not establish the cause or
@@ -199,6 +201,17 @@ E2E suite.
   checks, live/history/roster replay, restart, same-ID collection, Stop and
   revocation of the last owner. Keep resource-budget and watchdog termination
   separate, and do not turn a failed check into an immediate goal retry.
+- An ordinary turn without executable goal/wake ownership cannot finish with
+  running workers or finished results it has not collected. Bind actual
+  `wait_agents` results and explicit `close_agent` decisions to the current
+  worker generation; timeout, unknown IDs and old-generation receipts do not
+  settle it. Closing an already-finished worker may discard its result but
+  must retain `already_finished`, never fabricate cancellation. Withhold early
+  completion prose, allow one durably counted correction, then keep the same
+  turn/workers paused for human Continue or Stop. Continue grants one further
+  attempt; restart preserves both collection state and the consumed allowance.
+  Regress actual HTTP workers, completed-uncollected results, resume, archive,
+  restart, owner revocation, storage failure and live/history/Trace output.
 - A parked registry's conversation-wide cleanup recording/publication attempt
   must finish before another registry can be taken or occupied. Serialize that
   attempt with the runtime claim; cancel/close the detached registry outside
@@ -357,6 +370,14 @@ E2E suite.
   Do not repair this feedback loop by matching a user's words or business data.
 - Never test against a network or a real model. Use the scripted offline
   provider, and keep its script generic.
+- Regress a new explicit goal after a completed one through the real PC and
+  paired-phone send paths, including a standalone trailing `/goal`. The
+  original objective text must reach the model, and the completed flag must
+  be cleared before work starts. A resumed worker or an assistant's promise
+  of a future check is not a successful schedule receipt: verify the exact
+  turn's persisted schedule and its current state before publishing that
+  success claim. Failed, denied, cancelled and historical schedules must not
+  become a new armed wait through prose or replay.
 - Memory quality tests must not treat prior notes, old reviewer output, or model
   agreement as truth. Freeze source evidence and follow-up checks before comparing
   final facts, missed explicit corrections, conflicts and task behavior. Optional

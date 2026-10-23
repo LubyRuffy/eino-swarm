@@ -62,15 +62,22 @@ func Split(line string) (name, arg string, ok bool) {
 	return strings.ToLower(rest[:end]), strings.TrimSpace(rest[end:]), true
 }
 
-// Lookup is Split plus an exact name match (aliases are the caller's job).
+// Lookup matches leading commands and the trailing /goal objective marker.
+// Aliases are the caller's job; a bare /goal still has an empty argument.
 func Lookup(line string, names ...string) (arg string, ok bool) {
 	name, arg, ok := Split(line)
-	if !ok {
-		return "", false
-	}
 	for _, n := range names {
-		if name == strings.ToLower(strings.TrimSpace(n)) {
-			return arg, true
+		n = strings.ToLower(strings.TrimSpace(n))
+		if ok && name == n {
+			rest, _ := Leading(strings.TrimSpace(line))
+			if tail := rest[len(name):]; tail == "" || !strings.ContainsRune("./\\", rune(tail[0])) {
+				return arg, true
+			}
+		}
+		if n == "goal" {
+			if objective, trailing := trailingGoal(line); trailing {
+				return objective, true
+			}
 		}
 	}
 	return "", false

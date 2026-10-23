@@ -6,13 +6,14 @@ import { composer, freshConversation, reloadOpenConversation } from "./session"
 const deniedText = "Keep working in this conversation. Do not suspend it or arm another timed wake."
 const allowedText = "You may now suspend this conversation and arm its next timed wake."
 const waitingClaim = "I have armed the next check and will wait for it."
+const refusedWait = "The next check was not armed; the current waiting prohibition remains in effect."
 type Event = { seq: number; kind: string; text: string; tool_call_id?: string }
 type Trace = { turn: { id: string; status: string }; events: Event[] }
 type Message = { role: string; content?: string; tool_calls?: { function: { name: string } }[] }
 type HumanSource = { seq: number; kind: string; text: string }
 
 // This fixture supplies decisions from known human packets. The manager always
-// attempts to wait and claims success, so prose cannot accidentally pass the test.
+// attempts to wait, then reports the actual tool result rather than inventing success.
 async function startWakePolicyFixture() {
   const errors: string[] = []
   const sources: HumanSource[] = []
@@ -38,6 +39,12 @@ async function startWakePolicyFixture() {
       try {
         if (incoming.headers.authorization) throw new Error("The fixture must be keyless")
         const input = JSON.parse(body) as { messages: Message[]; tools?: { function: { name: string } }[]; stream?: boolean }
+        if (input.messages[0]?.role === "system" && input.messages[0].content?.startsWith("## Schedule answer claims")) {
+          if (input.stream || input.tools?.length || input.messages.length !== 2) throw new Error("Answer classification must remain a separate tool-free request")
+          const candidate = JSON.parse(input.messages[1].content ?? "") as { messages: string[] }
+          reply(response, false, JSON.stringify({ claims: candidate.messages.includes(waitingClaim) ? [{ quote: waitingClaim, scope: "thread", new: true }] : [] }))
+          return
+        }
         if (input.messages[0]?.content?.includes("## Thread wake authorization classification")) {
           const source = JSON.parse(input.messages[1]?.content ?? "") as HumanSource
           if (input.messages.length !== 2 || source.seq <= 0 || !["user_message", "steer"].includes(source.kind)) throw new Error("Classification must contain one original human source")
@@ -54,7 +61,9 @@ async function startWakePolicyFixture() {
         const scheduled = input.messages[user]?.content?.startsWith("This turn is a scheduled check.")
         const name = scheduled ? "report_schedule" : "schedule_wake"
         const called = input.messages.slice(user + 1).some((message) => message.tool_calls?.some((call) => call.function.name === name))
-        reply(response, Boolean(input.stream), waitingClaim, called ? undefined : {
+        const result = input.messages.slice(user + 1).findLast((message) => message.role === "tool")
+        const accepted = result ? (JSON.parse(result.content ?? "{}") as { ok?: boolean }).ok === true : false
+        reply(response, Boolean(input.stream), accepted ? waitingClaim : refusedWait, called ? undefined : {
           name,
           args: scheduled ? { findings: "The check ran.", keep: true, next_in_s: 3600 } : { prompt: "Inspect the current work state.", delay_s: 3600 },
         })
@@ -119,7 +128,7 @@ async function expectNoWait(page: Page) {
   await expect(page.locator('[data-testid="thread-row"][aria-current="true"]').getByTestId("wait-mark")).toHaveCount(0)
 }
 
-test("a human prohibition prevents a wait card even when the manager claims it armed one", async ({ page, request }, info) => {
+test("a human prohibition prevents a wait card and the manager reports the refused wait", async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_HUMAN_WAKE_POLICY !== "1", "requires the keyless wake policy fixture")
   const fixture = await startWakePolicyFixture()
   let scheduleID = ""
@@ -131,12 +140,14 @@ test("a human prohibition prevents a wait card even when the manager claims it a
     const source = denied.events.find((event) => event.kind === "user_message")!
     expect(receipt(denied, "schedule_wake")).toMatchObject({ ok: false, code: "thread_wake_prohibited", source_seq: source.seq, source_quote: deniedText })
     expect(denied.events.some((event) => event.kind === "schedule")).toBe(false)
-    await expect(page.getByTestId("transcript")).toContainText(waitingClaim)
+    await expect(page.getByTestId("transcript")).toContainText(refusedWait)
+    await expect(page.getByTestId("transcript")).not.toContainText(waitingClaim)
     await expect(page.getByTestId("schedule-notice")).toHaveCount(0)
     await expectNoWait(page)
     const { schedules } = await (await request.get(`/api/threads/${threadID}/schedules`)).json()
     expect(schedules).toEqual([])
     await reloadOpenConversation(page)
+    await expect(page.getByTestId("transcript")).not.toContainText(waitingClaim)
     await expectNoWait(page)
     await page.getByRole("tab", { name: "Trace", exact: true }).click()
     await page.getByTestId("trace-log-toggle").click()
@@ -197,6 +208,7 @@ test("a prohibited scheduled recadence leaves the consumed one-shot without a ne
     const { schedule: consumed } = await (await request.get(`/api/schedules/${scheduleID}`)).json()
     expect(consumed).toMatchObject({ id: scheduleID, status: "done", delay_s: 3600, every_s: 0 })
     await reloadOpenConversation(page)
+    await expect(page.getByTestId("transcript")).not.toContainText(waitingClaim)
     await expectNoWait(page)
     await expect(page.getByTestId("schedule-notice")).toHaveCount(2)
     expect(fixture.errors).toEqual([])

@@ -131,7 +131,7 @@ func TestGoalReportDoesNotPretendAMutationSucceededAfterASecondReadFails(t *test
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = db.Callback().Query().Remove(name) })
-			out, err := e.reportScheduleJSON(thread, turn, `{"keep":false}`)
+			out, err := e.reportOwnedTestScheduleJSON(thread, turn, `{"keep":false}`)
 			if err != nil {
 				t.Fatal(err)
 			}

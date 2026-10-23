@@ -66,6 +66,8 @@ type Handle struct {
 	history         []adk.Message // cloned each model call; resume_agent's seed
 	resumedFrom     string
 	gen             int // bumps on resume so Result/Done cannot see the previous life
+	collected       bool
+	closeRequested  bool
 	cancel          context.CancelFunc
 	result          string
 	err             error
@@ -158,6 +160,7 @@ func (h *Handle) drainInbox() []string {
 type Registry struct {
 	mu                  sync.Mutex
 	agents              map[string]*Handle
+	pending             map[string]*Handle // current generations awaiting wait/close
 	seq                 int
 	closed              bool
 	handingOff          bool
@@ -280,6 +283,9 @@ func (r *Registry) get(id string) (*Handle, bool) {
 		return nil, false
 	}
 	h, ok := r.agents[id]
+	if !ok {
+		h, ok = r.pending[id]
+	}
 	return h, ok
 }
 
@@ -584,9 +590,10 @@ func (r *Registry) spawnAgent(ctx context.Context, role, task string,
 	}
 	r.seq++
 	id := fmt.Sprintf("%s-%d", role, r.seq)
-	h := &Handle{ID: id, Role: role, done: make(chan struct{}), spawned: time.Now()}
+	h := &Handle{ID: id, Role: role, done: make(chan struct{}), spawned: time.Now(), gen: 1}
 	h.handoff.task, h.handoff.instruction = task, r.workerInstruction(task)
 	r.agents[id] = h
+	r.notePendingLocked(h)
 	hook := r.spawnHook
 	r.mu.Unlock()
 	if hook != nil {
@@ -672,12 +679,13 @@ func (r *Registry) Stats() (running, finished int) {
 // AgentProgress is a read-only snapshot of one sub-agent, for hosts that want
 // to report progress while a turn is still running.
 type AgentProgress struct {
-	AgentID  string
-	Role     string
-	Running  bool
-	Activity string        // latest streamed tail, while running
-	Err      string        // why it failed, once it has
-	Elapsed  time.Duration // how long it ran, or has been running so far
+	AgentID        string
+	Role           string
+	Running        bool
+	CloseRequested bool          // close_agent explicitly cancelled this generation
+	Activity       string        // latest streamed tail, while running
+	Err            string        // why it failed, once it has
+	Elapsed        time.Duration // how long it ran, or has been running so far
 }
 
 // Progress snapshots every tracked sub-agent without mutating the registry,
@@ -726,6 +734,7 @@ func (h *Handle) progress() AgentProgress {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	p.Activity = h.activity
+	p.CloseRequested = h.closeRequested
 	if h.err != nil {
 		p.Err = h.err.Error()
 	}
@@ -804,6 +813,7 @@ func (r *Registry) Close() {
 		}
 	}
 	r.agents = map[string]*Handle{}
+	r.pending = nil
 	r.past = map[string]*agentPast{}
 	r.pastIDs = nil
 	r.mu.Unlock()

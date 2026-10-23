@@ -135,6 +135,54 @@ flowchart LR
   Review --> Bus
 ```
 
+## Manager scheduling reports
+
+Manager prose admission for scheduled-work claims lives in
+`internal/engine/schedule_answer.go` and `manager_answer_buffer.go`. A tool-free
+policy call extracts claims from candidate prose; code checks them against
+persisted schedule rows, current state and turn ownership before publishing
+the buffered text. Unsupported claims get one correction in the same turn;
+uncertainty is not scheduling success. Exhausting this gate is terminal even
+when the diagnostic cause is a model transport or decoding failure, so goal
+continuation cannot reset its correction budget. The same-turn allowance is
+restored from its durable correction event after restart; failed receipt reads
+or writes terminate admission before another corrective model request.
+Tools, reasoning and worker events
+continue on the original notification path. Policy calls and correction
+metadata are attributed to the original turn's Trace.
+
+## Ordinary turn completion
+
+`internal/engine/worker_completion.go` checks delegated work before admitted
+completion prose is published. `Registry.PendingAgents` includes both running
+workers and finished results that the manager has not collected. Actual
+`wait_agents` results and explicit `close_agent` decisions settle the exact
+worker generation; a timed-out wait or an old generation's result cannot settle
+a later resume. Closing finished work acknowledges discarding its result and
+retains `already_finished`, rather than reporting a new cancellation.
+The gate applies to a manager's natural completion. Exhausting a ReAct slice
+is not that attempt; resource limits and externally completed or blocked goals
+retain their existing termination boundary rather than gaining a collection pause.
+Human preemption and existing scheduled-check completion eligibility precede
+collection admission. An empty failed check keeps its original error/ownership
+semantics and cannot be converted into a worker-collection pause.
+
+Without a currently executable goal or active same-thread wake, an early final
+is withheld and receives one same-turn correction with the original worker IDs.
+`model_retry` reason `workers_uncollected` durably records the consumed allowance
+and IDs in the original Trace. A second early final uses the existing human
+Continue/Stop pause while the turn and worker requests remain live. Continue
+allows one further attempt; Stop or declining cancels. Checkpoints and event
+replay retain collection state, the allowance and an existing human pause across
+restart. Legacy finished rosters without generation identity remain historically
+finished; legacy running work still requires collection. Ownership is reread
+after scheduling policy verification, so removing
+the last owner during that request cannot authorize stale parking. This fresh
+check is the completion-gate decision point: an owner present then permits
+yielding; later explicit revocation retains the existing worker cancellation
+and finalization boundary, without rolling back published prose. Valid goal
+and wake parking continues under the existing ownership rules.
+
 ## Composer durability and renderer recovery
 
 The engine owns `composer_drafts` and scoped `composer_draft_blobs`. A browser
@@ -514,7 +562,8 @@ worker before closing SQLite.
    in the same registry/turn; a second empty response remains an error.
    Model-error cleanup results are excluded. Explicit quiet reports retain
    precedence over final text. Ending a check does not prove external work
-   or replace the standing goal completion boundary; ordinary turns are unchanged.
+   or replace the standing goal completion boundary. Ordinary turns also obey
+   the worker-collection admission boundary described above.
 3. The manager's system prompt is generated per turn from the live toolset, the
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home).    It is

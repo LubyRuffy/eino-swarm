@@ -115,6 +115,9 @@ func (r *Registry) recall(id string) (*agentPast, error) {
 		return cp, nil
 	}
 	h, ok := r.agents[id]
+	if !ok {
+		h, ok = r.pending[id]
+	}
 	r.mu.Unlock()
 	if !ok {
 		return nil, fmt.Errorf("resume_agent: unknown agent %q", id)
@@ -181,6 +184,13 @@ func (r *Registry) reusableFinishedID(role string) string {
 		}
 		if _, _, done := h.Result(); done {
 			return h.ID
+		}
+	}
+	for _, h := range r.pending {
+		if h.Role == role {
+			if _, _, done := h.Result(); done {
+				return h.ID
+			}
 		}
 	}
 	return ""
@@ -280,6 +290,7 @@ func (r *Registry) claimForResume(past *agentPast, admit bool) (*Handle, error) 
 			return nil, budgetErr
 		}
 		cur.resetForResume(past.ID)
+		r.notePendingLocked(cur)
 		return cur, nil
 	}
 	if admit && r.liveCountLocked() >= r.capLocked() {
@@ -290,9 +301,10 @@ func (r *Registry) claimForResume(past *agentPast, admit bool) (*Handle, error) 
 	}
 	fresh := &Handle{
 		ID: past.ID, Role: past.Role, done: make(chan struct{}),
-		spawned: time.Now(), resumedFrom: past.ID, gen: 1, timeoutFailures: past.TimeoutFailures,
+		spawned: time.Now(), resumedFrom: past.ID, gen: past.checkpoint.Generation + 1, timeoutFailures: past.TimeoutFailures,
 	}
 	r.agents[past.ID] = fresh
+	r.notePendingLocked(fresh)
 	return fresh, nil
 }
 
@@ -301,6 +313,7 @@ func (h *Handle) resetForResume(fromID string) {
 	defer h.mu.Unlock()
 	h.done = make(chan struct{})
 	h.gen++
+	h.collected, h.closeRequested = false, false
 	h.err = nil
 	h.result = ""
 	h.finished = time.Time{}
@@ -343,7 +356,7 @@ func (r *Registry) resume(ctx context.Context, args string) (string, error) {
 		}
 		return ctlRefuse(err.Error())
 	}
-	return marshal(map[string]string{"agent_id": h.ID, "resumed_from": a.AgentID}), nil
+	return marshal(map[string]any{"agent_id": h.ID, "generation": h.generation(), "resumed_from": a.AgentID}), nil
 }
 
 // forkContext carries conversation evidence across roles, not the manager's

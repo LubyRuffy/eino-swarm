@@ -156,14 +156,36 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
 test("a first-byte timeout guides configuration and a longer wait reaches the model response", async ({ page, request }, info) => {
   test.skip(process.env.ZWAI_E2E_MODEL_API_ERROR !== "1", "requires the opt-in keyless loopback model endpoint")
   let attempts = 0
+  let policyRequests = 0
+  const fixtureErrors: string[] = []
   const endpoint = createServer((incoming, response) => {
-    attempts++
-    incoming.resume()
-    const timer = setTimeout(() => {
-      response.writeHead(200, { "Content-Type": "text/event-stream" })
-      response.end('data: {"id":"offline","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"The check is complete."},"finish_reason":null}]}\n\ndata: {"id":"offline","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
-    }, 1200)
-    response.once("close", () => clearTimeout(timer))
+    let body = ""
+    incoming.setEncoding("utf8")
+    incoming.on("data", (part: string) => { body += part })
+    incoming.on("end", () => {
+      try {
+        const input = JSON.parse(body) as { messages: { role: string; content?: string }[]; stream?: boolean; tools?: unknown[]; tool_choice?: string }
+        if (input.messages[0]?.role === "system" && input.messages[0].content?.split("\n", 1)[0] === "## Schedule answer claims") {
+          if (input.stream || input.tools?.length || input.tool_choice !== "none" || input.messages.length !== 2 || input.messages[1].role !== "user") {
+            throw new Error("Schedule answer policy must remain a separate non-streaming, tool-free request")
+          }
+          policyRequests++
+          response.writeHead(200, { "Content-Type": "application/json" })
+          response.end(JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content: '{"claims":[]}' }, finish_reason: "stop" }] }))
+          return
+        }
+        attempts++
+        const timer = setTimeout(() => {
+          response.writeHead(200, { "Content-Type": "text/event-stream" })
+          response.end('data: {"id":"offline","object":"chat.completion.chunk","choices":[{"index":0,"delta":{"role":"assistant","content":"The check is complete."},"finish_reason":null}]}\n\ndata: {"id":"offline","object":"chat.completion.chunk","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
+        }, 1200)
+        response.once("close", () => clearTimeout(timer))
+      } catch (error) {
+        fixtureErrors.push(String(error))
+        response.writeHead(400, { "Content-Type": "application/json" })
+        response.end(JSON.stringify({ error: { message: String(error), type: "invalid_request_error" } }))
+      }
+    })
   })
   await new Promise<void>((resolve) => endpoint.listen(0, "127.0.0.1", resolve))
   try {
@@ -222,7 +244,9 @@ test("a first-byte timeout guides configuration and a longer wait reaches the mo
     const success = await (await request.get(`/api/trace/${retried}`)).json()
     expect(success.turn.status).toBe("done")
     expect(attempts).toBe(3)
-    await writeFile(info.outputPath("first-byte-traces.json"), JSON.stringify({ failed: trace, retried: success, attempts }, null, 2), { mode: 0o600 })
+    expect(policyRequests).toBe(1)
+    expect(fixtureErrors).toEqual([])
+    await writeFile(info.outputPath("first-byte-traces.json"), JSON.stringify({ failed: trace, retried: success, attempts, policyRequests }, null, 2), { mode: 0o600 })
   } finally {
     await new Promise<void>((resolve) => {
       endpoint.close(() => resolve())

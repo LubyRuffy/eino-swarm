@@ -2,7 +2,7 @@ import { createServer, type ServerResponse } from "node:http"
 
 type Call = { id: string; type: string; function: { name: string; arguments: string } }
 type Message = { role: string; content?: string; tool_calls?: Call[] }
-type Input = { messages: Message[]; tools?: { function: { name: string } }[] }
+type Input = { messages: Message[]; tools?: { function: { name: string } }[]; stream?: boolean; tool_choice?: string }
 type Worker = { agent_id: string; role: string; status: string }
 
 // This fixture rejects misleading model input at the real HTTP adapter. It
@@ -27,6 +27,14 @@ export async function startRosterFixture() {
     incoming.on("end", () => {
       try {
         const input = JSON.parse(body) as Input
+        if (input.messages[0]?.role === "system" && input.messages[0].content?.split("\n", 1)[0] === "## Schedule answer claims") {
+          if (input.stream || input.tools?.length || input.tool_choice !== "none" || input.messages.length !== 2 || input.messages[1].role !== "user") {
+            throw new Error("Schedule answer policy must remain a separate non-streaming, tool-free request")
+          }
+          response.writeHead(200, { "Content-Type": "application/json" })
+          response.end(JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content: '{"claims":[]}' }, finish_reason: "stop" }] }))
+          return
+        }
         const manager = input.tools?.some((tool) => tool.function.name === "spawn_agent")
         if (!manager) { reply(response, "Verification complete."); return }
         const lastUser = input.messages.findLastIndex((message) => message.role === "user")

@@ -15,7 +15,7 @@ func reportNextInS(t *testing.T, e *Engine, threadID, runID string, nextInS int)
 	t.Helper()
 	turn := mustStoredTurn(t, e, threadID, store.Turn{ScheduleContinue: true, ScheduleRunID: runID})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(threadID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(threadID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(),
 		fmt.Sprintf(`{"findings":"note","next_in_s":%d}`, nextInS))
 	if err != nil {
@@ -257,7 +257,7 @@ func TestWakeAndRecadenceInOneTurnRecordOneChip(t *testing.T) {
 		t.Fatalf("wake: %s %v", wake, err)
 	}
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(),
 		`{"findings":"note","next_in_s":60}`)
 	if err != nil || !strings.Contains(out, `"ok":true`) {

@@ -400,6 +400,19 @@ func (f *restartProcessFixture) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid fixture request", http.StatusBadRequest)
 		return
 	}
+	for _, msg := range input.Messages {
+		if msg != nil && msg.Role == schema.System && strings.HasPrefix(msg.Content, "## Schedule answer claims\n") {
+			if input.Stream || len(input.Tools) != 0 {
+				f.mu.Lock()
+				f.errors = append(f.errors, "answer classifier was not tool-free and non-streaming")
+				f.mu.Unlock()
+				http.Error(w, "invalid classifier request", http.StatusBadRequest)
+				return
+			}
+			f.reply(w, false, `{"claims":[]}`, "", "", nil)
+			return
+		}
+	}
 	manager := false
 	for _, tool := range input.Tools {
 		manager = manager || tool.Function.Name == "spawn_agent"

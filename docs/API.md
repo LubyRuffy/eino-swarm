@@ -1316,6 +1316,14 @@ the rest is the objective, space optional so a glued CJK IME string still
 matches. That pins the standing objective and starts pursuit when idle, or
 steers the live turn. The stored `user_text` is the objective. Bare `/goal`
 is `400`. `/goals …` is still an ordinary message.
+The standalone suffix `<objective> /goal` also sets the objective, using
+the preceding text; trailing whitespace is allowed. An explicit new goal
+replaces a completed objective and starts pursuit again. Normal messages
+retain the completed state. HTTP and paired-phone sends use the same engine
+command parser, including steering while a turn is running.
+Goal commands accept text only. Images or files on a goal-command send are
+rejected before changing the objective, including while the conversation is
+running; clients must retain the original draft and attachments on that error.
 
 `from_event_seq`, when set, names a stored `user_message` to replace. That
 event and everything after it is deleted (later turns, their messages and
@@ -1499,6 +1507,11 @@ Body `{"continue": true|false}`. Answers a pause at the manager's tool-round cap
 another `swarm.manager_max_iterations` rounds; `false` ends it as `cancelled`
 with a short "stopped after N tool rounds" rather than eino's graph error.
 Steering while paused also continues. `409 idle` when the turn is not waiting.
+
+普通回合因未收取 worker 而重复提前结束时，也使用同一 `max_iterations`
+人工暂停。暂停保留同一 running turn 与原 worker 请求；`continue:true` 或
+人工 steer 只再授予一次收取纠正尝试，`false`／Stop 仍取消。重启恢复人工暂停，
+不能在没有新的人类继续指令时自动获得更多纠正额度。
 
 ```json
 {"continued": true}
@@ -1704,6 +1717,42 @@ shortening only the bounded detail text.
 | `done` | the turn finished; `text` is the final answer. Empty / whitespace `text` hides chat bubbles only after `schedule_fired` when that turn did not already report findings. An armed `schedule`, `goal_continued`, compact, or other notice plus empty `done` stays visible. Non-empty `text` after a fire is findings and keeps the fired chip |
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
+
+`model_retry.reason: "schedule_claim_unverified"` is a bounded correction of
+an unsupported scheduling claim in the same turn. It does not mean the
+provider failed or that a wait was created. Its metadata remains in Trace;
+the transcript says the schedule is being checked. Candidate manager prose
+is held until the tool-free `schedule-answer-policy` call extracts claims
+and code verifies them against current persisted plans. A new-arrangement
+claim needs this turn's successful arrangement, and a cancelled or failed
+arrangement cannot support it. One correction is allowed; repeated unsupported
+claims or an unavailable check produce an explicit error. Restart preserves
+the original turn’s consumed allowance. Reading or saving its correction
+receipt must succeed before another corrective model request. Tool, reasoning and
+worker events continue live. The policy model is an interpreter, and the
+schedule database remains the source of scheduling facts. Exhaustion keeps
+its scheduling-admission error class even when the underlying diagnostic
+cause is a provider error; it cannot start another automatic goal turn.
+Paired-phone Earlier paging retains classified retry notices, including this
+reason, and skips unknown or malformed envelopes that paint no phone block.
+
+`model_retry.reason: "workers_uncollected"` 表示普通回合的完成答复被暂扣，
+等待主管收取或明确放弃仍未结清的子任务；这是生命周期纠正，不是 provider
+错误。`text` 为 `{attempt:1,cap:1,reason:"workers_uncollected",worker_ids:[...]}`，
+归属原 turn，PC 与手机显示正在收取子任务结果。一次自动纠正后仍提前结束，
+进入上述 Continue／Stop 暂停，不能发布 done 或为成功收尾取消这些 worker。
+有当前有效 goal／同对话 wake 的工作继续遵守既有停泊契约。
+
+生命周期 `tool_result.text` 的新成功回执附带 worker 执行 `generation`：
+`spawn_agent`／`resume_agent` 返回 `{agent_id,generation,...}`；`wait_agents`
+每个已知条目包含 `{agent_id,generation,status,...}`，只有实际返回的 done／failed
+结果结清该 generation，running／unknown 和 wait 超时不结清；`close_agent`
+返回 `{agent_id,generation,cancelled:true}`，或对已结束任务返回
+`{agent_id,generation,cancelled:false,already_finished:true}` 并明确放弃其结果。
+未知 ID 仍返回拒绝，不结清其他任务。回放只认 manager 的配对调用／回执及精确
+ID／generation；它不同于一次模型输出的 `message_id`，不新增 event 列。
+缺 generation 的旧 finished roster 保持 legacy 已结束兼容，不追溯要求收取；
+旧 running worker 仍须收取，新 `generation>0` 严格保留收取状态。
 
 Two rules the client depends on:
 

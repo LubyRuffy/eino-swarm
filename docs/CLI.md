@@ -266,6 +266,9 @@ committed text (a painted block caret left the hardware cursor at column 0,
 which is where the IME attached). Type `/` for a Codex-style command popup
 (`/goal`, `/plan`, `/model`, `/reason`, `/clear`, `/help`, `/exit`; `/quit` appears once you
 type it). `/goal`, `/plan` and `/implement` are sent to the engine.
+`<objective> /goal` also activates a standing objective; the suffix is a
+standalone command, and the preceding text becomes the objective. It can
+replace an already completed objective. A bare `/goal` still needs text.
 `/model NAME` and `/reason LEVEL` patch that conversation.
 `/clear` only clears this screen. `ctrl+c` leaves the terminal; it does
 not stop a turn the engine is still running. `ctrl+x` does. `--task` stores a turn and

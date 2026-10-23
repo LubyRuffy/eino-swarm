@@ -200,11 +200,15 @@ func newContextFlowEngine(t *testing.T, recover bool) (*Engine, *contextFlowEndp
 			return
 		}
 		var request struct {
-			Tools  []json.RawMessage `json:"tools"`
-			Stream bool              `json:"stream"`
+			Tools    []json.RawMessage `json:"tools"`
+			Stream   bool              `json:"stream"`
+			Messages []struct{ Role, Content string }
 		}
 		if err := json.Unmarshal(body, &request); err != nil {
 			t.Error(err)
+			return
+		}
+		if len(request.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, request.Messages[0].Content, request.Stream, len(request.Tools)) {
 			return
 		}
 		if len(request.Tools) == 0 {

@@ -389,6 +389,8 @@ export const zh: { [K in keyof typeof en]: string } = {
   "notice.modelRetryResponse": "模型服务返回的响应无法解析，正在重试。",
   "notice.modelServiceResponse": "模型服务返回的响应无法解析。",
   "notice.modelRetryIdle": "模型服务停止发送数据，正在重试。",
+  "notice.scheduleClaimCheck": "正在核对调度记录，确认后再报告已安排。",
+  "notice.workerCollection": "正在收取子任务结果，收取后才能完成本回合。",
   "notice.invalidToolJSON": "模型返回的工具调用不是合法 JSON。",
   "notice.modelServiceRateLimited": "模型服务正在限流。",
   "notice.modelServiceUnavailable": "模型服务不可用。",

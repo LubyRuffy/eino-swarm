@@ -432,6 +432,10 @@ function modelRetryNotice(text: string): string {
   try {
     const body = JSON.parse(text) as { reason?: string }
     switch (body?.reason) {
+      case "schedule_claim_unverified":
+        return "Checking the schedule before reporting it as arranged."
+      case "workers_uncollected":
+        return "Collecting delegated work before completing this turn."
       case "context_overflow":
         return "The prompt exceeds the model window. Compressing and trying once."
       case "invalid_tool_json":

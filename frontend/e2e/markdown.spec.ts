@@ -44,19 +44,17 @@ test("paints a tagged code fence, inline math, and a contained gfm table", async
   }
 })
 
-test("renders markdown as the answer streams, not after it finishes", async ({ page }) => {
+test("renders the admitted manager answer as markdown", async ({ page }) => {
   await freshConversation(page)
   await page.getByTestId("composer-input").fill(
     "Look at this from two angles and merge the findings",
   )
   await page.getByTestId("composer-input").press("Enter")
   const transcript = page.getByTestId("transcript")
-  // A heading that only appears after Idle would pass even if the UI still
-  // dumped raw hashes until the stream ended.
-  await expect(async () => {
-    await expect(transcript.getByRole("heading", { name: "Result" })).toBeVisible()
-    await expect(page.getByTestId("status-badge")).toContainText("Working")
-  }).toPass({ timeout: 60_000 })
+  // Manager prose is published after checking scheduling claims. Its first
+  // visible body must already be formatted, rather than a raw Markdown dump.
+  await expect(transcript.getByRole("heading", { name: "Result" })).toBeVisible({ timeout: 60_000 })
+  await expect(transcript.getByText(/^## Result/)).toHaveCount(0)
   await expect(page.getByTestId("status-badge")).toContainText("Idle", {
     timeout: 60_000,
   })

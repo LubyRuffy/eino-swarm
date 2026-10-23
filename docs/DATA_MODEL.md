@@ -159,6 +159,27 @@ writes them into this table so the next force-quit does not depend on the
 event scan. An answer already stored for that turn — including below
 `compact_through_seq` — is not rewritten; that would mint a new seq and
 undo `/compact`.
+Candidate manager prose is withheld while scheduling-success claims are
+checked. Admission rechecks the matched schedules and the running turn in one
+transaction, then writes its `agent_message` events and assistant replay rows
+together before broadcasting. A cancelled/retargeted schedule or ended turn
+cannot admit a late success answer. `schedule_report` findings pass the same
+fact check; admitting a report does not create an assistant replay message.
+Unadmitted prose is excluded from compaction inputs. The interpretation call
+is attributed to `schedule-answer-policy`; a bounded correction uses the
+existing `model_retry` event with `reason: "schedule_claim_unverified"`.
+No new table or column is introduced (Issue #103, `C-009`, `C-012`).
+
+普通回合的 worker 收取状态也不新增表或列。生命周期工具的成功回执在既有
+`tool_result.text` 中保存精确 `agent_id` 与 worker 执行 `generation`；manager
+的配对 `wait_agents` 终态条目及成功 `close_agent` 决定该 generation 已收取或
+明确放弃，wait 超时、unknown、孤立／异 caller／旧 generation 回执不结清。
+提前完成的主管候选正文同样不能进入保存回答、压缩输入或后续模型输入。
+原 turn 的 manager `model_retry` 事件保存
+`{attempt:1,cap:1,reason:"workers_uncollected",worker_ids:[...]}`；消费一次纠正后
+再提前结束，保留 running turn 和原 worker，在既有 `max_iterations` 等待人工。
+`max_iterations_continued` 是授予一次新尝试的人类继续依据；重启读取相同事件
+恢复额度，读写失败不得重置额度或授予新的请求（`C-019`、`C-027`）。
 `/compact` is a second, optional fold: older
 of those replay messages become a briefing on the thread (`compact_summary`),
 copied from `session_memory` when that briefing exists;
@@ -167,9 +188,10 @@ columns are written mid-turn when a manager call would exceed
 the compact trigger (after older replayable tool results are cleared). Compacted
 answers are not unfolded from the event log, even when later messages of
 the same turn are still live. Worker identity is **not** in this table: it
-lives on `spawned` / `finished` events. After a fold, synthetic
-`spawn_agent` pairs are re-injected from those events so the next Generate
-still has the ids. The in-flight ReAct tail stays in ADK state; that is
+lives on `spawned` / `finished` events and their paired lifecycle tool receipts.
+After a fold, a System runtime-worker roster supplies their IDs and current
+states; historical workers are not fabricated assistant `spawn_agent` calls or
+new creation receipts. The in-flight ReAct tail stays in ADK state; that is
 not roster data.
 
 Model generation lifecycle uses existing `events` rows, without another table.
@@ -708,6 +730,17 @@ original `id` and `role`, current invocation `task`, original-task
 `summary`, and `in_flight` tools (`name`, `call_id`, `arguments`). After recovery,
 `task` can be a resumption cue; the original assignment remains in `instruction`
 and its retained conversation history.
+
+worker 还保留可选 `generation`、`collected` 与 `close_requested`，对应公开
+checkpoint／restore 结构的 `Generation`、`Collected`、`CloseRequested`。
+`generation` 绑定一次 worker 执行，resume 开始新值，区别于一次模型输出的
+`message_id`。`collected` 表示真实终态结果已交给 manager，或 manager 明确
+关闭已结束任务而放弃结果；`close_requested` 表示对该 generation 请求取消。
+二者不伪造 worker 成功，不覆盖已观察的失败。运行与已完成未收取的结果均保留
+到结清，Stats／历史归档淘汰不能丢弃它们。缺 generation 身份的旧 finished
+checkpoint／roster 按 legacy 已结束兼容，不追加追溯收取义务；旧 running 仍待
+收取，新 `generation>0` 保留精确状态。冷回放只从同 manager 配对工具回执恢复，
+不能凭旧 ID 或正文推断收取；人工 Continue 暂停仍由同一 checkpoint 保存。
 
 The latest valid checkpoint supplies recovery state; confirmed lifecycle
 events remain authoritative for subsequent completed work. Summaries are

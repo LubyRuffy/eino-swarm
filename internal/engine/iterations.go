@@ -107,24 +107,46 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 	overflowRetries := 0
 	forceCompact := false
 	scheduleContinued := false
+	answerContinued, answerStateErr := e.scheduleAnswerContinued(turn)
+	if answerStateErr != nil {
+		return swarm.RunResult{}, answerStateErr
+	}
+	collectionContinued, collectionStateErr := e.workerCollectionContinued(turn)
+	if collectionStateErr != nil {
+		return swarm.RunResult{}, collectionStateErr
+	}
 	var res swarm.RunResult
 	var runErr error
 	restore, planted := rt.takeWorkerRestore()
 	for {
-		res, runErr = reg.RunWith(ctx, swarm.RunConfig{
+		answer := newManagerAnswerBuffer(acc)
+		middlewares := append(e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact), answer)
+		answerCtx := context.WithValue(ctx, scheduleAnswerBufferContextKey{}, answer)
+		res, runErr = reg.RunWith(answerCtx, swarm.RunConfig{
 			Instruction:        instruction,
 			Messages:           messages,
 			ManagerTools:       managerTools,
 			MaxIterations:      budget,
 			RestoreWorkers:     restore,
 			FinishedWorkers:    planted,
-			ManagerMiddlewares: e.autoCompactHandlers(rt.threadID, turn.ID, th, forceCompact),
-		}, swarm.Callback(acc.onNotify))
+			ManagerMiddlewares: middlewares,
+		}, swarm.Callback(answer.onNotify))
 		forceCompact = false
 		restore, planted = nil, nil
 		used += budget
 		if ctx.Err() != nil {
-			return res, ctx.Err()
+			return answer.reject(res), ctx.Err()
+		}
+		var failure *scheduleAnswerError
+		var evidence []store.Schedule
+		if runErr == nil || isMaxIterations(runErr) {
+			failure = answer.reportError()
+			if failure == nil {
+				evidence, failure = e.verifyScheduleAnswer(ctx, turn, answer.text())
+			}
+		} else {
+			res = answer.reject(res)
+			reg.SetHistory(res.Transcript)
 		}
 		// A human Interrupt Injection cancels the epoch, not this ctx. The
 		// generate can die with context.Canceled while the turn is still live;
@@ -132,6 +154,8 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 		preempted := reg.TakePreempt()
 		if preempted && (runErr == nil || isPreemptRunError(runErr)) {
 			if runErr != nil || reg.HasPendingSteers() {
+				res = answer.reject(res)
+				reg.SetHistory(res.Transcript)
 				messages = stitchManagerToolResults(
 					nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
 					rt.engine.managerToolResults(turn.ID),
@@ -139,6 +163,84 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				messages = dropTrailingIncompleteToolCalls(messages)
 				continue
 			}
+		}
+		// Existing completion eligibility precedes answer admission. A failed
+		// scheduled check is not an ordinary successful final with worker debt.
+		if runErr == nil && turn.ScheduleContinue && failure == nil {
+			events, err := e.store.ListTurnEvents(turn.ID)
+			if err != nil {
+				res = answer.reject(res)
+				reg.SetHistory(res.Transcript)
+				return res, fmt.Errorf("read scheduled check evidence: %w", err)
+			}
+			if !scheduledOutputRecorded(events, res.Final) {
+				res = answer.reject(res)
+				reg.SetHistory(res.Transcript)
+				if scheduleContinued {
+					return res, errors.New("scheduled check ended without returning text, executing a tool or reporting its result")
+				}
+				scheduleContinued = true
+				e.record(store.Event{ThreadID: turn.ThreadID, TurnID: turn.ID,
+					Kind: KindModelRetry, AgentID: swarm.DefaultManagerID,
+					Text: `{"attempt":1,"cap":1,"reason":"scheduled_no_activity"}`})
+				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
+					schema.UserMessage(scheduleCompletionCue))
+				continue
+			}
+		}
+		if runErr == nil || isMaxIterations(runErr) {
+			if failure == nil {
+				if ctx.Err() != nil {
+					return answer.reject(res), ctx.Err()
+				}
+				// The policy call can outlive removal of the last goal/wake.
+				// Recheck actual ownership and collection after it, before any
+				// candidate prose is visible as a successful completion.
+				if got, err := e.store.GetThread(rt.threadID); err == nil {
+					th = got
+				}
+				if runErr == nil {
+					if ids := rt.uncollectedWorkerIDs(reg); len(ids) > 0 {
+						res = answer.reject(res)
+						reg.SetHistory(res.Transcript)
+						if collectionContinued {
+							extend := e.cfg.SwarmSnapshot().ManagerIterations()
+							if !rt.waitToExtend(ctx, turn, used, extend) {
+								if ctx.Err() != nil {
+									return res, ctx.Err()
+								}
+								return res, limitStopError{Used: used}
+							}
+							budget = extend
+						}
+						if err := rt.recordWorkerCollectionRetry(turn, ids); err != nil {
+							return res, err
+						}
+						collectionContinued = true
+						messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), schema.UserMessage(workerCollectionCue(ids)))
+						continue
+					}
+				}
+				failure = answer.publish(evidence)
+			}
+			if failure != nil {
+				res = answer.reject(res)
+				reg.SetHistory(res.Transcript)
+				if ctx.Err() != nil {
+					return res, ctx.Err()
+				}
+				if answerContinued {
+					return res, failure
+				}
+				answerContinued = true
+				if err := rt.recordScheduleAnswerRetry(turn, failure); err != nil {
+					return res, err
+				}
+				messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()), schema.UserMessage(scheduleAnswerCorrectionCue))
+				continue
+			}
+			res = answer.accept(res)
+			reg.SetHistory(res.Transcript)
 		}
 		if !isMaxIterations(runErr) {
 			if runErr != nil && th != nil && isContextOverflow(runErr) && overflowRetries < 1 {
@@ -161,24 +263,6 @@ func (rt *runtime) runManager(ctx context.Context, turn *store.Turn, reg *swarm.
 				rt.recordModelRetry(turn, modelRetries, modelFailureClass(runErr))
 				messages = rt.retryManagerRun(turn, res, messages, reg)
 				continue
-			}
-			if runErr == nil && turn.ScheduleContinue {
-				events, err := e.store.ListTurnEvents(turn.ID)
-				if err != nil {
-					return res, fmt.Errorf("read scheduled check evidence: %w", err)
-				}
-				if !scheduledOutputRecorded(events, res.Final) {
-					if scheduleContinued {
-						return res, errors.New("scheduled check ended without returning text, executing a tool or reporting its result")
-					}
-					scheduleContinued = true
-					e.record(store.Event{ThreadID: turn.ThreadID, TurnID: turn.ID,
-						Kind: KindModelRetry, AgentID: swarm.DefaultManagerID,
-						Text: `{"attempt":1,"cap":1,"reason":"scheduled_no_activity"}`})
-					messages = append(nextManagerMessages(res, messages, reg.TakePendingSteerMessages()),
-						schema.UserMessage(scheduleCompletionCue))
-					continue
-				}
 			}
 			return res, runErr
 		}

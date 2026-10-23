@@ -22,6 +22,18 @@ func newDelayedInterruptEngine(t *testing.T) (*Engine, <-chan struct{}) {
 	var requests atomic.Int32
 	cancelled := make(chan struct{})
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Messages []struct{ Role, Content string }
+			Stream   bool              `json:"stream"`
+			Tools    []json.RawMessage `json:"tools"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Error(err)
+			return
+		}
+		if len(request.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, request.Messages[0].Content, request.Stream, len(request.Tools)) {
+			return
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
 		send := func(delta map[string]any, finish any) {
 			raw, _ := json.Marshal(map[string]any{"id": "interrupt-fixture", "choices": []any{map[string]any{"index": 0, "delta": delta, "finish_reason": finish}}})

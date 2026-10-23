@@ -2,7 +2,7 @@ import { createServer, type ServerResponse } from "node:http"
 import { fileURLToPath } from "node:url"
 
 type Message = { role: string; content?: string; tool_calls?: { function: { name: string; arguments: string } }[] }
-type Input = { messages: Message[]; tools?: { function: { name: string } }[] }
+type Input = { messages: Message[]; tools?: { function: { name: string } }[]; stream?: boolean }
 
 /** Real, keyless HTTP adapter fixture. All rejections pass through the engine's
  *  evidence, numeric and bounded NotesDraft gates. No UI state is fabricated. */
@@ -25,6 +25,12 @@ export async function startMemoryReviewFixture(port = 0) {
     incoming.on("end", async () => {
       try {
         const input = JSON.parse(body) as Input
+        if (input.messages[0]?.role === "system" && input.messages[0].content?.startsWith("## Schedule answer claims")) {
+          if (input.stream || input.messages.length !== 2 || input.tools?.length) throw new Error("Answer classification must remain a separate tool-free request")
+          response.writeHead(200, { "Content-Type": "application/json" })
+          response.end(JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content: JSON.stringify({ claims: [] }) }, finish_reason: "stop" }] }))
+          return
+        }
         const review = input.tools?.some((tool) => tool.function.name === "apply_memory_review") ?? false
         const attempt = input.messages.filter((message) => message.role === "assistant" && message.tool_calls?.some((call) => call.function.name === "apply_memory_review")).length + 1
         calls.push({ review, attempt, authorization: Boolean(incoming.headers.authorization) })

@@ -16,6 +16,9 @@ import (
 // process died. Restore starts it under the same id so wait_agents and the
 // roster keep working.
 type RestoredWorker struct {
+	Generation      int  `json:"generation,omitempty"`
+	Collected       bool `json:"collected,omitempty"`
+	CloseRequested  bool `json:"close_requested,omitempty"`
 	ID              string
 	Role            string
 	Instruction     string // stored system prompt; empty means workerInstruction(Task)
@@ -29,6 +32,9 @@ type RestoredWorker struct {
 // FinishedWorker is a sub-agent that already completed in the previous
 // process. PlantFinished puts it back so wait_agents does not report unknown.
 type FinishedWorker struct {
+	Generation      int  `json:"generation,omitempty"`
+	Collected       bool `json:"collected,omitempty"`
+	CloseRequested  bool `json:"close_requested,omitempty"`
 	ID              string
 	Role            string
 	Result          string
@@ -64,6 +70,7 @@ func (r *Registry) Restore(ctx context.Context, w RestoredWorker, modelOpt Model
 	if err != nil {
 		return nil, err
 	}
+	r.restoreCollection(h, w.Generation, w.Collected, w.CloseRequested)
 	h.mu.Lock()
 	h.handoff.task, h.handoff.instruction = task, instruction
 	h.handoff.restoreHistory = cloneMessages(w.History)
@@ -104,6 +111,7 @@ func (r *Registry) claimForRestore(id, role string, failures int) (*Handle, erro
 			return nil, err
 		}
 		cur.resetForResume(id)
+		r.notePendingLocked(cur)
 		cur.mu.Lock()
 		cur.timeoutFailures = failures
 		cur.mu.Unlock()
@@ -118,6 +126,7 @@ func (r *Registry) claimForRestore(id, role string, failures int) (*Handle, erro
 		spawned: time.Now(), resumedFrom: id, gen: 1, timeoutFailures: failures,
 	}
 	r.agents[id] = h
+	r.notePendingLocked(h)
 	r.noteIDLocked(id)
 	return h, nil
 }
@@ -137,6 +146,11 @@ func (r *Registry) PlantFinished(w FinishedWorker) error {
 		ID: id, Role: role, done: make(chan struct{}),
 		spawned: time.Now(), finished: time.Now(),
 		result: w.Result, err: w.Err, history: cloneMessages(w.History), timeoutFailures: w.TimeoutFailures,
+		gen: w.Generation, collected: w.Collected, closeRequested: w.CloseRequested,
+	}
+	if h.gen <= 0 {
+		h.gen = 1
+		h.collected = true // legacy finished rosters predate collection tracking
 	}
 	close(h.done)
 
@@ -153,6 +167,7 @@ func (r *Registry) PlantFinished(w FinishedWorker) error {
 		return nil
 	}
 	r.agents[id] = h
+	r.notePendingLocked(h)
 	r.noteIDLocked(id)
 	r.mu.Unlock()
 	r.remember(h)

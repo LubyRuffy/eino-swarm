@@ -1,5 +1,102 @@
 # Testing
 
+## Ordinary completion collects delegated work (F-130 / C-019 / C-012)
+
+`internal/engine/ordinary_worker_completion_test.go` 使用真实 Registry／ADK／
+loopback HTTP：原 worker 请求保持运行，主管提前给出 final，候选正文必须在
+live、保存回答和下次模型输入中缺席；纠正后真实 `wait_agents` 收到同一 worker
+当前 generation 的结果，才允许正常完成，不能靠取消 worker 或新建替代者通过。
+`settlement_http_test.go` 验证查询／Stats 归档之后仍能真实收取已完成结果。
+`internal/engine/worker_completion_replay_test.go` 验证配对调用、worker ID 与 generation，
+旧 generation、wait 超时、unknown、错误调用者及孤立回执均不能消耗当前结果。
+
+`internal/engine/worker_completion_budget_test.go` 验证原 turn 的持久化纠正额度及存储失败边界。
+首次 `model_retry` reason 为 `workers_uncollected`，携带 `worker_ids`；再次
+提前 final 进入人工 Continue／Stop 暂停，保持同一 running turn 和 worker 请求。
+Continue 只增加一次尝试；Stop／拒绝取消，重启保持原收取状态、额度和人工暂停。
+门禁针对主管自然完成；`goal_session_test.go` 的外部 Complete／Block 中途终止与
+ReAct 切片耗尽沿原边界收尾，不能因为这类结束新增收取确认卡。
+有当前有效 goal／wake 时保留原停泊行为，policy 请求期间撤销最后 owner 后必须
+重新执行收取门禁。显式关闭已结束的 worker 可以放弃结果，但回执仍须是
+`already_finished:true,cancelled:false`；未知 ID 不得结清任何 worker。
+`settlement_test.go` 覆盖旧 finished 无 generation 身份的兼容、旧 running 的
+收取义务，以及新 generation 的精确状态、resume、显式 close 与归档淘汰。
+
+```bash
+go test -race -timeout 5m . -run 'TestActualWaitCollectsACompletedWorkerAfterStatsPrunesIt'
+go test -race -timeout 5m ./internal/engine -run 'TestOrdinaryTurn|TestWorkerCollection'
+# 独立端口、数据及输出目录；真实 named SSE、worker HTTP、Trace 和刷新历史。
+cd frontend
+ZWAI_E2E_WORKER_COMPLETION=1 ZWAI_E2E_PORT=8990 ZWAI_E2E_DATA_DIR=/tmp/zwai-collection-e2e npx playwright test --output=/tmp/zwai-collection-output
+```
+
+真实桌面验收继续使用 `ci-macOS` 独立 case 和当前源码／包哈希；普通请求须在
+没有 goal／wake 的会话完成真实 spawn／wait／最终答复，保留原 worker 身份、
+Trace、窗口截图及完整 cleanup。正常离线脚本的窗口验收不能替代提前 final 的
+故障分支回归；生产源码变化后须重新绑定候选，不能复用旧包证据。
+
+## Trailing goals and verified scheduling reports (F-150 / C-009 / C-012)
+
+Issue #103 starts from a completed objective and no active thread wake.
+Shared fixtures in `internal/slash/testdata/trailing-goal.json` cover ASCII,
+CJK/IME slash, whitespace, multiline objectives and literal paths, quotations
+and code. Go and PC parsers use the same cases. Engine and paired-phone tests
+exercise actual sends and steering so a successful parse alone cannot accept
+goal activation, and program-generated goal updates are not parsed recursively.
+
+`internal/engine/schedule_answer_http_test.go` uses the real Registry and
+loopback model adapter to check missing, denied, failed, historical and
+cancelled scheduling evidence. It checks both live events and persisted
+replay: unsupported scheduling prose must not become an answer. Correction
+is bounded to the original turn, and its policy calls remain attributed there.
+The classifier extracts claims only; deterministic schedule checks must reject
+unsupported scope, current state, cadence or new-arrangement attribution.
+No external model is used in regression tests.
+`internal/engine/schedule_answer_retry_test.go` returns a malformed real
+policy HTTP response and proves that its retained diagnostic cause cannot
+restart the standing goal or reset the same-turn correction budget.
+`internal/engine/schedule_answer_restart_test.go` holds the real corrective
+model request across PrepareRestart and cold resume of the same turn. The
+persisted correction allowance stays consumed; event writes and budget reads
+that fail prevent another model attempt instead of resetting the allowance.
+
+`frontend/src/lib/schedule-claim-notice.test.ts` and
+`mobile/src/lib/transcript-schedule-claim.test.ts` check the correction notice
+and Chinese display without exposing internal JSON or claiming a wait exists.
+`internal/remote/schedule_answer_paging_test.go` exercises actual phone
+Earlier requests for all visible retry reasons and invisible/invalid envelopes,
+so a correction-only page is retained without trapping paging on an empty row.
+`internal/engine/schedule_answer_responses_test.go` checks the real Responses
+adapter: rejected prose is absent from raw `responses_output` replay while
+function calls and encrypted reasoning survive. Stop admission tests hold the
+actual lock ordering after `user_stop_requested` commits; the answer cannot
+publish during that gap. Store tests check the same-turn stop receipt, exact
+schedule snapshots and rollback of answer events plus replay messages.
+
+Goal commands are text-only. `internal/remote/slash_goal_attachment_test.go`
+and `internal/engine/slash_attachment_test.go` reject mixed image/file inputs
+before goal mutation, including busy sends and steering.
+`mobile/src/components/composer-goal-refusal.test.tsx` checks that a refused
+send preserves the original draft and decodable PNG/file bytes for correction
+and resubmission through the actual phone client.
+
+The PC and phone trailing-goal E2E specs exercise a completed objective followed
+by a new suffix command. The scheduling admission browser regression runs with:
+
+```bash
+cd frontend
+ZWAI_E2E_SCHEDULE_ANSWER=1 ZWAI_E2E_PORT=19306 ZWAI_E2E_DATA_DIR=.e2e-data-answer npm run e2e -- --output=/tmp/zwai-answer-e2e
+```
+
+`frontend/e2e/schedule-answer.spec.ts` blocks history reads until the actual
+named `model_retry` SSE subscription paints the notice, then releases a real
+successful `schedule_wake` call. It verifies the saved schedule, paired tool
+receipt, Trace and reload without the rejected prose. Each concurrent run
+must choose its own port, data directory and output directory.
+
+Native acceptance uses an identified candidate in an isolated `ci-macOS`
+case; Web E2E or successful SSH access does not accept the native window.
+
 ## Generation interruption and recovery (Issue #95 / C-035)
 
 `TestInterruptCancelsButKeepsWork` uses the real loopback HTTP adapter with
@@ -3484,6 +3581,13 @@ cd frontend
 ZWAI_E2E_PORT=18860 ZWAI_E2E_DATA_DIR=.e2e-data-default npm run e2e -- --output=test-results/default --retries=0
 ZWAI_E2E_PORT=18861 ZWAI_E2E_DATA_DIR=.e2e-data-ownership ZWAI_E2E_SCHEDULE_WORKER_OWNERSHIP=1 npm run e2e -- --output=test-results/ownership --retries=0
 ```
+
+Vite preview serves its build directory directly. Do not run `npm run build`
+against that directory during a phone E2E run: Vite removes `dist/index.html`
+before writing the new bundle, so navigation can reach an empty document before
+the application mounts. Separate concurrent source/build copies as well, or run
+the build and browser suite serially. Preserve startup evidence before blaming
+an absent UI element on its business logic.
 
 Keep the first failure log and its available artifacts. Inspect whether a
 failure is a business assertion or an artifact/teardown error such as `ENOENT`

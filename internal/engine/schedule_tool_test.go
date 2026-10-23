@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	swarm "github.com/LubyRuffy/eino-swarm"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
@@ -227,7 +228,7 @@ func TestReportScheduleEmptyFindingsIsQuiet(t *testing.T) {
 	th, _ := e.CreateThread("", "", "")
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true})
 	tl := mustInvokable(t, ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}))
 	out, err := tl.InvokableRun(context.Background(), `{"findings":""}`)
 	if err != nil {
@@ -240,7 +241,7 @@ func TestReportScheduleEmptyFindingsIsQuiet(t *testing.T) {
 
 	human := mustStoredTurn(t, e, th.ID, store.Turn{})
 	out, err = ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, human.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, human.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":""}`)
 	if err != nil || !strings.Contains(out, `"ok":false`) {
 		t.Fatalf("human turn: %s %v", out, err)
@@ -252,7 +253,7 @@ func TestReportScheduleFindingsAreNotQuiet(t *testing.T) {
 	th, _ := e.CreateThread("", "", "")
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":"something changed"}`)
 	if err != nil {
 		t.Fatal(err)
@@ -278,7 +279,7 @@ func TestScheduleToolsRejectGarbageJSON(t *testing.T) {
 			return e.cancelScheduleJSON(th.ID, turn.ID, args)
 		})),
 		mustInvokable(t, ReportScheduleTool(func(args string) (string, error) {
-			return e.reportScheduleJSON(th.ID, turn.ID, args)
+			return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 		})),
 	}
 	for _, tl := range tools {
@@ -359,7 +360,7 @@ func TestReportScheduleRejectsABelowFloorRecadence(t *testing.T) {
 	th, _ := e.CreateThread("", "", "")
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":"","next_in_s":1}`)
 	if err != nil || !strings.Contains(out, `"ok":false`) {
 		t.Fatalf("next_in_s below floor: %s %v", out, err)
@@ -455,6 +456,10 @@ func TestManagerScheduleToolsAreWired(t *testing.T) {
 	th, _ := e.CreateThread("", "", "")
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true})
 	rt := e.runtimeFor(th.ID)
+	reg := swarm.NewRegistry()
+	defer reg.Close()
+	ctx, release := ownManagerTestFixture(context.Background(), rt, turn.ID, reg)
+	defer release()
 	got := rt.managerScheduleTools(turn)
 	if len(got) != 4 {
 		t.Fatalf("len=%d", len(got))
@@ -467,26 +472,26 @@ func TestManagerScheduleToolsAreWired(t *testing.T) {
 		}
 	}
 	wake := mustInvokable(t, got[0])
-	out, err := wake.InvokableRun(context.Background(),
+	out, err := wake.InvokableRun(ctx,
 		`{"prompt":"`+scheduleToolWaitPrompt+`","every_s":60}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := mustToolOK(t, out).ID
 	task := mustInvokable(t, got[1])
-	out, err = task.InvokableRun(context.Background(),
+	out, err = task.InvokableRun(ctx,
 		`{"prompt":"`+scheduleToolWaitPrompt+`","every_s":60}`)
 	if err != nil || !strings.Contains(out, `"ok":false`) {
 		t.Fatalf("task on a scheduled turn: %s %v", out, err)
 	}
 	cancel := mustInvokable(t, got[2])
-	out, err = cancel.InvokableRun(context.Background(), `{"id":"`+id+`"}`)
+	out, err = cancel.InvokableRun(ctx, `{"id":"`+id+`"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	mustToolOK(t, out)
 	report := mustInvokable(t, got[3])
-	out, err = report.InvokableRun(context.Background(), `{"findings":""}`)
+	out, err = report.InvokableRun(ctx, `{"findings":""}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -586,7 +591,7 @@ func TestReportScheduleMissingTurnIsJSON(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, "tn_missing", args)
+		return e.reportOwnedTestScheduleJSON(th.ID, "tn_missing", args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":""}`)
 	if err != nil || !strings.Contains(out, `"ok":false`) {
 		t.Fatalf("missing turn: %s %v", out, err)
@@ -599,7 +604,7 @@ func TestReportScheduleRejectedOnWrongThread(t *testing.T) {
 	other, _ := e.CreateThread("", "", "")
 	turn := mustStoredTurn(t, e, other.ID, store.Turn{ScheduleContinue: true})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":""}`)
 	if err != nil || !strings.Contains(out, `"ok":false`) {
 		t.Fatalf("wrong thread: %s %v", out, err)
@@ -611,7 +616,7 @@ func TestReportScheduleRecadenceWithoutARunIsStillOK(t *testing.T) {
 	th, _ := e.CreateThread("", "", "")
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":"","next_in_s":60}`)
 	if err != nil {
 		t.Fatal(err)
@@ -626,7 +631,7 @@ func TestReportScheduleUnknownRunIsQuiet(t *testing.T) {
 	th, _ := e.CreateThread("", "", "")
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true, ScheduleRunID: "srun_missing"})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":"","keep":false}`)
 	if err != nil {
 		t.Fatal(err)
@@ -690,7 +695,7 @@ func TestReportScheduleOrphanRunIsQuiet(t *testing.T) {
 	}
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true, ScheduleRunID: run.ID})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":"","next_in_s":60}`)
 	if err != nil {
 		t.Fatal(err)
@@ -782,7 +787,7 @@ func TestReportScheduleKeepFalseCancels(t *testing.T) {
 	}
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true, ScheduleRunID: run.ID})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":"","keep":false}`)
 	if err != nil {
 		t.Fatal(err)
@@ -870,7 +875,7 @@ func TestReportScheduleRecadenceUpdatesTheInterval(t *testing.T) {
 	}
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true, ScheduleRunID: run.ID})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":"note","next_in_s":120}`)
 	if err != nil {
 		t.Fatal(err)
@@ -910,7 +915,7 @@ func TestReportScheduleNextInSRearmsAFiredDelay(t *testing.T) {
 	}
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true, ScheduleRunID: run.ID})
 	out, err := ReportScheduleTool(func(args string) (string, error) {
-		return e.reportScheduleJSON(th.ID, turn.ID, args)
+		return e.reportOwnedTestScheduleJSON(th.ID, turn.ID, args)
 	}).(tool.InvokableTool).InvokableRun(context.Background(), `{"findings":"note","next_in_s":60}`)
 	if err != nil {
 		t.Fatal(err)

@@ -74,6 +74,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-130 Agent runs, tools, and live control
 
+- 普通回合完成门禁：没有当前可执行 goal 或活动同对话 wake 时，主管必须用真实 `wait_agents` 结果收取每个 worker 当前 generation，或用 `close_agent` 明确放弃，才可发布完成答复；已完成未收取仍待处理，wait 超时、未知 ID 和旧 generation 回执不结清。提前结束只自动纠正一次，再次提前结束则保持原 turn 与 worker 请求，等待人工 Continue／Stop；Continue 再授予一次尝试，Stop／拒绝取消。重启保留收取状态、纠正额度及人工暂停。Trace 与 PC／手机提示保留 `workers_uncollected` 的真实原因。关联契约：`C-019`、`C-002`、`C-012`、`C-027`；实现证据：`settlement.go`、`internal/engine/worker_completion.go`、`internal/engine/iterations.go`；测试：`settlement_http_test.go`、`internal/engine/ordinary_worker_completion_test.go`、`internal/engine/worker_completion_budget_test.go`、`internal/engine/worker_completion_replay_test.go`。
+
 - 结构化提问：PC 与配对手机在实时和历史重放中按主机规则解析选项 ID；省略或归一化后为空的 ID 从 label 生成，保留选项文字，选择提交后继续同一 turn。关联契约：`C-002`；证据：`internal/engine/ask.go`、`frontend/src/lib/transcript-ask.test.ts`、`mobile/src/lib/ask.test.ts`、`frontend/e2e/plan.spec.ts`。
 
 - 生成中断：桌面、Web 和配对手机按模型输出身份保留中断原因及恢复状态，旧思考结束流式动画，新生成使用独立身份；恢复中的 worker 保留原 ID，不冒充失败或任务完成。明确区分交接重启、进程退出、取消、超时、模型错误与输出额度；未记录的具体原因保持未知。实时、重开与历史重放保留说明，原 turn 的 Trace 可查。关联契约：`C-035`、`C-003`、`C-027`；实现证据：`signal.go`、`internal/engine`、`frontend/src/lib/transcript.ts`、`mobile/src/lib/transcript.ts`。
@@ -131,6 +133,9 @@ This is the current user-facing capability map. The code and tests named below a
 - 每份草稿正文与引用合计最多 1 MiB，最多 32 个附件、附件总量 256 MiB；视觉图片另遵守最多 8 张、单张 8 MiB。此限制约束草稿保存，不改变工作区上传的单文件上限。
 
 ### F-150 Goals and scheduled waits
+
+- 显式目标命令：`<objective> /goal` 使用前置正文激活新持续目标，清除旧目标的完成状态；PC、HTTP 和手机发送／插话共用命令语义，普通消息、路径、引用及代码中的字面命令保持普通内容。关联契约：`C-009`；实现／验证：`internal/slash/trailing.go`、`internal/slash/trailing_goal_test.go`、`internal/engine/slash_steer_test.go`、`internal/remote/slash_goal_test.go`、`frontend/src/lib/slash.ts`、`frontend/src/components/app/composer-trailing-goal.test.tsx`。
+- 调度成功答复：主管正文发布前通过无工具语义抽取识别调度成功声明，再由代码核对持久化计划、当前有效状态、本轮归属和声明的周期。未调用、被拒或存储失败的安排、已取消的计划、把旧等待说成本轮新建，均不能作为成功依据；最多一次原轮纠正，仍不成立则明确失败。工具、思考及 worker 活动继续显示，正文需等待校验。关联契约：`C-009`、`C-012`；实现／验证：`internal/engine/schedule_answer.go`、`internal/engine/manager_answer_buffer.go`、`internal/engine/schedule_answer_http_test.go`。
 
 - PC 恢复提示：人工恢复目标后，紧接启动的新轮次只显示一条继续提示；新轮次尚未启动时保留恢复提示。迟到的类型化复盘反馈保持既有可见性与原顺序，不中断同次恢复配对；普通提示、输入、实质 manager 活动与普通错误仍中断配对。后续自动续轮、独立恢复及 manager `reopen_goal` 仍分别可见，不按提示文字去重。原始 `goal_resumed`、`goal_continued` 和区块保留，Trace 可逐事件查看。关联契约：`C-003`、`C-012`；实现／验证证据：`frontend/src/lib/goal-notice.ts`、`frontend/src/lib/goal-notice.test.ts`、`frontend/src/components/app/transcript.tsx`、`frontend/src/components/app/transcript-goal-notice.test.tsx`、`frontend/src/store/goal-notice-history.test.ts`、`frontend/e2e/goal-resume-notice.spec.ts`；来源：GitHub Issue #96。
 - 巡检与 worker 生命周期隔离：定时触发或 Run now 的常规失败，包括无执行证据和有界重试后的模型错误，不取消仍归属有效持续目标或活动同对话 wake 的 worker；原 registry、ID 和正在进行的调用继续供后续轮次接回。有效目标不含 blocked、complete、capped、idle 或自动续轮预算耗尽；plan mode 中目标与 wake 均不能提供可执行归属；已消费 one-shot 不能单独充当归属。turn/run 保留 error、run unread，失败不自动 block goal 或立即开启新的目标轮次。无归属、人工 Stop、上下文预算耗尽及 worker watchdog 失败上限仍按原停止边界清理。持久化 `workers_retained` 在 error 前记录精确归属和 worker IDs，写入失败不得保留执行；重启恢复还需该回执、检查点及当前有效归属，不改变原失败终态。关联契约：`C-009`、`C-027`、`C-012`；实现证据：`internal/engine/worker_ownership.go`、`internal/engine/turn.go`、`internal/engine/restart_parked.go`；测试：`internal/engine/schedule_worker_ownership_test.go`、`internal/engine/worker_ownership_test.go`、`frontend/e2e/schedule-worker-ownership.spec.ts`。
@@ -241,6 +246,8 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：从 shell 启动、诊断和管理对话；使用者：终端用户；入口：`zwai` 子命令；输入：命令与参数；输出：终端文本或客户端；前置条件：可运行二进制；失败表现：命令错误；关联契约：`C-001`, `C-012`；实现证据：`cmd/zwai`, `docs/CLI.md`。
 
 ### F-330 Swarm library
+
+- worker 收取状态：`Registry.PendingAgents` 非消费地列出运行中及已完成未收取的 worker，保留精确执行 `generation`；`wait_agents`／`close_agent` 的回执及 checkpoint 的 `Generation`、`Collected`、`CloseRequested` 绑定本次执行，查询与归档不得丢失待收取结果，resume 开始新 generation；缺 generation 身份的旧 finished roster 保持已结束兼容，旧 running 仍需收取。关联契约：`C-019`、`C-027`；证据：`settlement.go`、`tools.go`、`handoff.go`、`restore.go`、`settlement_http_test.go`。
 
 - 逐次生成生命周期通知沿用 `F-130`／`C-035`；公开通知与输出身份见 `docs/LIBRARY.md`，验证：`generation_test.go`。
 
