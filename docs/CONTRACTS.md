@@ -387,6 +387,7 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 - 作用范围：原生桌面验收、UTM 来宾、测试数据与证据；关联功能：`F-430`。
 - 契约内容：
   - macOS 原生测试仅在 UTM `ci-macOS` 来宾运行；宿主只编排、构建、传输和收集证据。不得启动宿主测试窗口、抢前台或修改用户的运行实例、缓存 bundle 和正常数据。
+  - 已授权的验收中，SSH helper 权限拒绝而既有来宾 Terminal 责任链已证明可用时，先在相同 native-case 锁和隔离目标下执行该路径并保留本轮 helper 结果，不立即转交用户改设置。离线审计仅在 ready、来宾及四项候选身份匹配、证据非空且 `native_window.ssh_helper_permission_denied` 与 `trusted_guest_terminal_available` 均为 true 时返回 pending / `inspect_native_window_via_guest_terminal`；unknown 先重新观察，已通过的同包证据优先。旧输入兼容，不将管理员身份推断为隐私权限，不授予权限或执行控制。实现／验证：`tools/audit_macos_acceptance.py`、`tools/test_audit_macos_acceptance.py`。
   - 同一来宾用户同时只运行一个用例；每例使用全新私有 app 副本、home/cache、数据库、配置及 workspace，场景子进程继承私有 `HOME` 和 `ZWAI_HOME`；checkout 启动写入的 macOS 缓存 bundle 也属于本例。仅同一恢复场景内部步骤允许复用数据。
   - 用例成功、失败、超时或取消时，先保留证据，再停止本例 app、engine 及子进程并确认退出，然后删除本例临时数据及 home/cache；清理失败必须失败并阻止下一例启动。
   - `cleanup.json` 记录用例身份、清理完成状态、剩余进程和数据删除结果。日志、断言、截图及版本/源码/安装包证据保留在临时数据外。

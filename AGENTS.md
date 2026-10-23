@@ -290,7 +290,12 @@ E2E suite.
   Execute the reported next action during the current recovery. A failed
   control channel alone is not a reason to leave authorized acceptance waiting:
   try another available isolated native control path and record its actual
-  result. Routine recovery already authorized by the user needs no second
+  result. If an SSH-launched helper is denied native permissions while an
+  existing authorized guest Terminal control path is evidenced as usable,
+  execute that path before asking the user to change settings. Keep the
+  native-case lock, exact target/candidate and fresh helper receipts; guest
+  administrator status does not establish Accessibility or Screen Recording
+  trust. Routine recovery already authorized by the user needs no second
   approval. Preserve passed evidence for its exact source and package; a later
   main change requires checking the affected inputs, not erasing that evidence.
 - Repeated ci-macOS access failures need fresh route/interface, guest MAC/link/IP/

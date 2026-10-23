@@ -621,7 +621,10 @@ Accessibility access; the same helper launched through the existing guest
 Terminal session could observe and operate the private window. The isolated
 Terminal bootstrap used the shared native-case lock and changed no TCC policy.
 SSH success alone does not establish native UI control, and host lock state does
-not determine guest availability.
+not determine guest availability. For already authorized acceptance, try that
+evidenced existing Terminal responsibility chain before asking the user to
+change settings; retain the case lock, exact guest/candidate and current helper
+result. Guest administrator membership does not prove native privacy trust.
 
 All stages use the unchanged installer. `native_macos_resilience_fault.py` admits
 a renderer/GPU stall only after fresh before-Quit, after-Quit, before-reopen and
@@ -3720,7 +3723,7 @@ from about 152 ms to 1.4 ms. These are development measurements, not a promise
 for every filesystem or model-running CPU load. Inspect a real native Mac
 window separately before recording native acceptance.
 
-## Native Mac acceptance recovery (`F-430`, `C-010`)
+## Native Mac acceptance recovery (`F-430`, `C-010`, `C-031`)
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 python3 -m unittest tools.test_audit_macos_acceptance -v
@@ -3742,6 +3745,18 @@ unaccepted. Passed observations require real window/behavior references and exac
 version/source SHA/ZIP/hash/guest identity. Invalid JSON, unsupported credential
 fields and non-boolean flags are rejected without printing private input values.
 `make docs-check` discovers this regression with the existing Python tests.
+
+The optional `native_window.ssh_helper_permission_denied` and
+`native_window.trusted_guest_terminal_available` booleans describe this
+recovery's observed control paths, not requested permissions. A ready guest,
+nonempty evidence and matching guest/four-field candidate are all required
+before both true flags yield pending /
+`inspect_native_window_via_guest_terminal`. The regression first observed the
+old CLI reject these flags, then covers the action through the CLI and pure
+decision function, all false/missing combinations, every mismatched identity
+field, absent evidence, strict boolean types, unchanged input and precedence
+of unknown state and already completed exact-package acceptance. Existing
+observations without these optional fields retain their behavior.
 
 These tests exercise a pure JSON decision function and CLI with temporary files;
 they do not operate UTM, SSH, UI, login or an app. The caller must inspect the
