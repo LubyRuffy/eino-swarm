@@ -209,6 +209,18 @@ static NSDictionary *requestNativePaste(AXUIElementRef app, pid_t pid, NSPastebo
              @"change_count_before_paste": @(observedCount)};
 }
 static int fail(NSString *message) { fprintf(stderr, "%s\n", message.UTF8String); return 2; }
+static BOOL waitForActivation(NSRunningApplication *running, double deadline) {
+    for (;;) {
+        double remaining = deadline - NSProcessInfo.processInfo.systemUptime;
+        if (remaining <= 0) return NO;
+        // NSRunningApplication refreshes these properties on the main runloop.
+        [[NSRunLoop mainRunLoop] runMode:NSDefaultRunLoopMode
+                            beforeDate:[NSDate dateWithTimeIntervalSinceNow:MIN(.01, remaining)]];
+        if (NSProcessInfo.processInfo.systemUptime >= deadline) return NO;
+        if (running.active) return YES;
+    }
+}
+
 int main(int argc, const char **argv) { @autoreleasepool {
     if (argc < 3 || !guest() || !env(@"ZWAI_NATIVE_CASE_ID").length) return fail(@"guest case required");
     NSString *action = @(argv[1]); pid_t pid = atoi(argv[2]);
@@ -244,13 +256,21 @@ int main(int argc, const char **argv) { @autoreleasepool {
         if (![windows isKindOfClass:NSArray.class] || [windows count] != 1)
             { CFRelease(app); return fail(@"one private case window required for activation"); }
         NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        double activationStarted = NSProcessInfo.processInfo.systemUptime;
+        double activationDeadline = activationStarted + 2;
         BOOL requested = [running activateWithOptions:0];
         AXError raised = AXUIElementPerformAction((__bridge AXUIElementRef)windows[0], kAXRaiseAction);
-        usleep(200000);
-        printf("{\"activated\":%s,\"active\":%s,\"pid\":%d,\"frontmost_pid\":%d,\"raise_error\":%d}\n",
-               requested ? "true" : "false", running.active ? "true" : "false", pid,
-               NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier, raised);
-        CFRelease(app); return 0;
+        BOOL activationReady = waitForActivation(running, activationDeadline);
+        double elapsed = NSProcessInfo.processInfo.systemUptime - activationStarted;
+        BOOL active = running.active;
+        pid_t frontmostPID = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+        printf("{\"activated\":%s,\"active\":%s,\"pid\":%d,\"frontmost_pid\":%d,\"raise_error\":%d,\"activation_ready\":%s,\"activation_elapsed_seconds\":%.6f}\n",
+               requested ? "true" : "false", active ? "true" : "false", pid, frontmostPID, raised,
+               activationReady ? "true" : "false", elapsed);
+        if (!activationReady || !active)
+            fprintf(stderr, "native activation not confirmed: activated=%s active=%s pid=%d frontmost_pid=%d raise_error=%d elapsed=%.6f\n",
+                    requested ? "true" : "false", active ? "true" : "false", pid, frontmostPID, raised, elapsed);
+        CFRelease(app); return activationReady && active ? 0 : 2;
     }
     if ([action isEqual:@"quit"]) {
         NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];

@@ -490,6 +490,42 @@ visits, including empty nodes and repeated edges, toward its 5000-visit bound;
 new nodes beyond depth 45 still fail. A genuine limit stops traversal and fails
 the case rather than accepting an incomplete set of controls.
 
+Within each action invocation, both direct AX helpers request activation and raise the case window once, then
+refresh `NSRunningApplication.active` through short main-runloop slices. A single
+two-second monotonic deadline starts before activation; each slice is at most
+10 ms and no longer than the remaining budget. At least one refresh precedes
+the `active` check, including cached true; a refresh crossing the deadline fails.
+There is no fixed activation sleep, repeated activation within the invocation or automatic Send retry.
+The resilience caller still verifies its actual frontmost PID independently.
+Its existing polling and shared 30-second replacement deadline are unchanged;
+the helper's activation wait cannot reset that deadline.
+
+The smoke helper retains the same collected window/draft/Send predicates on
+activation or fill/Send guard failure, with `activation_requested`,
+`activation_ready`, `activation_elapsed_seconds` and `press_attempted`.
+An attempted AXPress that returns an error stays `press_attempted=true`; it is
+not retried. The resilience activate action retains requested/active/frontmost
+PID/raise status/elapsed in stdout and, on failure, stderr because its caller
+uses stderr for nonzero exits. Those fields reuse one sample.
+
+On macOS, run the headless helper regression with:
+
+```bash
+python3 -m unittest discover -s tools -p 'test_native_macos_activation.py'
+```
+
+It compiles actual Objective-C wait and caller/action logic with OS/clock seams,
+covering delayed cached false, stale true, deadline expiry, one activation and
+zero/one Press. It also compiles both complete helpers against the real SDK and
+runs their no-target refusal before window/input calls. These checks do not
+exercise the real collector or accept a guest window. The separate native
+diagnostic observed cached false becoming true after a main-runloop iteration;
+the reverse transition is a seam regression inferred from the API's caching
+semantics, not a claimed native reproduction. Neither result establishes the
+cause of an earlier failed Send. Record QA helper source/build hashes separately
+from the unchanged application ZIP/source; fresh native acceptance remains
+required for the changed harness.
+
 The runner's default `--budget 60` counts guest checks, isolated copy/preparation,
 launch, scenario, cleanup and receipt writing. `--timeout` remains the scenario's
 upper limit, further capped by the remaining round budget after reserving cleanup

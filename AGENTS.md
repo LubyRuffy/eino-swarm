@@ -125,6 +125,17 @@ E2E suite.
   and total timings including cleanup. Build/first transfer and deliberately
   long recovery tests have separate measured scope and explicit budgets. Do not
   replace behavior checks with shorter timeouts or abandon cleanup at expiry.
+- Native activation is requested once per helper action invocation. Refresh `NSRunningApplication` on the
+  main runloop before trusting `active`, even when its cached value is true.
+  One monotonic deadline covers activation, raise and short runloop slices;
+  expiration cannot allocate another wait or retry Send. Regress actual
+  Objective-C callers with OS/clock seams, including stale true/false and an
+  activation that consumes the deadline. Keep real SDK/main-entry refusal checks
+  separate from those seams and from guest window/collector acceptance. Failed
+  activation and fill/Send guards retain their sampled predicates and Press
+  attempt state; a caller that drops stdout must still retain key failure fields.
+  Existing caller polling keeps its original shared deadline; this helper wait
+  cannot reset the replacement budget.
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in
   [docs/TESTING.md](docs/TESTING.md); do not regress it.
