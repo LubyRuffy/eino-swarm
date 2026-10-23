@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-420`, `C-025`: record agent skill views in a separate usage sidecar, expose usage and configurable `memory.skill_stale_days` in Settings and Memory, and retain advisory stale candidates in tidy results and original-turn Trace. Merges sum usage; copies start unused (Issue #99).
+
 - `F-130`, `F-160`, `F-222`, `F-330`, `C-035`: retain per-generation interruption causes and recovery states in the transcript, agent detail and original-turn Trace. Interrupted thoughts stop showing Thinking; restored workers retain their identity and running state instead of being marked failed (Issue #95).
 
 - `F-170`, `F-220`, `C-006`, `C-009`: paired phones can read and edit the PC's worker, provider first-byte and stream-idle timeouts through Menu → PC timeouts. A narrow encrypted RPC patch excludes credentials and unrelated settings, rejects invalid edits atomically, and keeps read/save errors local to the sheet (Issue #82).

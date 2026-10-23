@@ -824,6 +824,10 @@ does not start an automatic review. What is worth carrying forward is kept:
 short notes whose absence would misdirect future work (preferences, facts, hard
 constraints, or pointers to recorded skills), and *skills* whose methods make
 work achievable (applicability, steps, verification and failure branches).
+The Memory panel shows agent view counts and the last view time. Settings →
+Memory controls the stale-candidate threshold (`memory.skill_stale_days`,
+default 90 days). Stale skills are candidates for review, never automatically
+deleted. Usage is local to a skill copy and does not rewrite its content.
 Notes are short declarations that stand alone; constraints needed only inside
 one workflow belong in that skill. Skill descriptions say when to use them. The next conversation in
 that project starts with the notes in its prompt and an index of the skills, and

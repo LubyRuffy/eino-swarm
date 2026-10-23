@@ -5,13 +5,14 @@ import { ReviewStatus } from "@/components/app/review-status"
 import { MemoMarkdown } from "@/components/app/markdown"
 import { ConfirmDeleteDialog } from "@/components/app/confirm-delete-dialog"
 import { SkillCopyDialog, SkillPullDialog } from "@/components/app/skill-copy-dialog"
+import { SkillUsage } from "@/components/app/skill-usage"
 import { SkillTidyCard } from "@/components/app/skill-tidy-card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { api } from "@/lib/api"
 import { LIBRARY_ID } from "@/lib/library"
-import type { Project, ProjectMemory, ReviewOutcome, Skill, SkillOrigin, SkillTidyReport, TidyLive } from "@/lib/types"
+import type { Project, ProjectMemory, ReviewOutcome, Skill, SkillInfo, SkillOrigin, SkillTidyReport, TidyLive } from "@/lib/types"
 import { useT } from "@/lib/use-t"
 
 export interface MemoryPanelProps {
@@ -307,6 +308,8 @@ export function MemoryPanel({
                   projectId={project?.id ?? LIBRARY_ID}
                   name={skill.name}
                   description={skill.description}
+                  usage={skill}
+                  staleDays={memory.skill_stale_days}
                   origin={skill.origin}
                   startOpen={skill.name === focusSkill}
                   onDelete={() => setDoomedSkill(skill.name)}
@@ -385,6 +388,8 @@ function originLabel(
 }
 
 function SkillRow({
+  usage,
+  staleDays,
   projectId,
   name,
   description,
@@ -394,6 +399,8 @@ function SkillRow({
   onCopy,
   onRefresh,
 }: {
+  usage: SkillInfo
+  staleDays?: number
   projectId: string
   name: string
   description: string
@@ -495,6 +502,7 @@ function SkillRow({
           <Trash2 />
         </Button>
       </div>
+      <SkillUsage skill={usage} staleDays={staleDays} />
       {origin ? (
         <div className="flex items-center gap-2 px-2 pb-1.5">
           <p data-testid="skill-origin" className="min-w-0 flex-1 text-xs text-muted-foreground">

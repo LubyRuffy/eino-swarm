@@ -430,6 +430,7 @@ const (
 	// post-turn review is a handful of writes; a tidy is the whole index.
 	DefaultTidyMaxIterations   = 24
 	DefaultSkillsIndexMax      = 50
+	DefaultSkillStaleDays      = 90
 	DefaultMemoryNotifications = MemoryNotifyOn
 	dirPerm                    = 0o700
 	filePerm                   = 0o600
@@ -488,6 +489,7 @@ func Default() *Config {
 			ReviewMaxIterations:   DefaultReviewMaxIterations,
 			ReviewReasoningEffort: ReasoningDefault,
 			SkillsIndexMax:        DefaultSkillsIndexMax,
+			SkillStaleDays:        DefaultSkillStaleDays,
 			Notifications:         DefaultMemoryNotifications,
 		},
 		Log: LogConfig{Level: DefaultLogLevel},
@@ -700,6 +702,9 @@ func (c *Config) normalize() {
 	c.Memory.ReviewReasoningEffort = NormalizeReasoning(c.Memory.ReviewReasoningEffort)
 	if c.Memory.SkillsIndexMax <= 0 {
 		c.Memory.SkillsIndexMax = d.Memory.SkillsIndexMax
+	}
+	if c.Memory.SkillStaleDays <= 0 {
+		c.Memory.SkillStaleDays = d.Memory.SkillStaleDays
 	}
 	switch c.Memory.Notifications {
 	case MemoryNotifyOff, MemoryNotifyOn, MemoryNotifyVerbose:

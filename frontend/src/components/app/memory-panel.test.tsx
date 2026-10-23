@@ -64,6 +64,27 @@ describe("Memory panel", () => {
     vi.mocked(api.copyLibrarySkills).mockResolvedValue({ copied: [], skipped: [] })
   })
 
+  it("shows skill views, the actual last view and a stale candidate badge", () => {
+    const lastViewed = new Date(Date.now() - 40 * 86_400_000).toISOString()
+    renderPanel({ memory: {
+      ...memory, skill_stale_days: 30,
+      skills: [{ ...memory.skills[0], views: 7, last_viewed_at: lastViewed }],
+    } })
+    expect(screen.getByTestId("skill-usage")).toHaveTextContent("7 views")
+    expect(screen.getByTestId("skill-usage").querySelector("time")).toHaveAttribute("dateTime", lastViewed)
+    expect(screen.getByText("Stale candidate")).toBeInTheDocument()
+  })
+
+  it("uses a never-viewed skill's modification time for the configured age threshold", () => {
+    renderPanel({ memory: {
+      ...memory, skill_stale_days: 30,
+      skills: [{ ...memory.skills[0], views: 0, last_viewed_at: "0001-01-01T00:00:00Z", updated_at: new Date(Date.now() - 31 * 86_400_000).toISOString() }],
+    } })
+    expect(screen.getByTestId("skill-usage")).toHaveTextContent("0 views")
+    expect(screen.getByTestId("skill-usage")).toHaveTextContent("Never viewed")
+    expect(screen.getByText("Stale candidate")).toBeInTheDocument()
+  })
+
   it("shows the notes, what they cost, and the skills", () => {
     renderPanel()
     expect(screen.getByLabelText("Project notes")).toHaveValue("one note")

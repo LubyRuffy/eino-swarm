@@ -235,6 +235,8 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-420 Configuration and project memory
 
+- 技能查看统计：manager/worker 的成功 skill_view 累加 usage.json，列表、HTTP 查看及复制不计数；面板显示次数、最近查看与可编辑阈值的陈旧 Badge。merge 累加来源统计、delete 删除边车、copy 从零开始，正文修改时间和摘要不变。整理陈旧候选仅供模型判断，候选名单随结果／原 turn Trace 保留。入口：Memory、Settings → Memory、skill_view；关联契约：`C-025`、`C-012`；实现证据：`internal/memory/skill_usage.go`、`internal/engine/review_tidy.go`、`internal/server/projects.go`；测试证据：`internal/memory/skill_usage_test.go`、`internal/server/skill_usage_copy_test.go`、`internal/engine/review_stale_test.go`。
+
 - 笔记以“不知道会走偏”为判据，常驻注入偏好、事实、硬约束及已有技能指针；技能以“不知道如何做成”为判据，按需加载适用条件、步骤、验证及失败分支。仅某流程相关的约束留在技能前置条件；description 写适用时机。指针仅在原样引用已有技能名且未复述正文时豁免重叠拒绝；纯文本中的不存在名称不能取得豁免。关联契约：`C-025`；实现证据：`internal/memory/prompt.go`、`internal/memory/library.go`、`internal/memory/tools.go`、`internal/memory/skills.go`；测试证据：`internal/memory/prompt_test.go`、`internal/memory/store_test.go`。
 
 - 目的：保留本机设置、项目说明和技能；使用者：PC 用户；入口：Settings、Memory、技能管理；输入：配置及项目文件；输出：后续运行可用的上下文；前置条件：本机数据目录；失败表现：保存或解析错误；关联契约：`C-009`、`C-012`、`C-025`；实现证据：`internal/config`, `internal/memory`, `docs/CONFIG.md`。

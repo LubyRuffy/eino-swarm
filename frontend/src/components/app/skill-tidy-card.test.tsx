@@ -94,6 +94,16 @@ describe("Skill tidy card", () => {
     expect(screen.queryByText("Merged")).not.toBeInTheDocument()
   })
 
+  it("lists stale candidates even when the model kept every skill", () => {
+    render(<SkillTidyCard tidying={false} skillCount={1} report={{
+      ...emptyTidyReport(1), reviewed: true, stale_candidates: ["older-procedure"],
+    }} />)
+    expect(screen.getByText("Stale candidates reviewed")).toBeInTheDocument()
+    expect(screen.getByText("older-procedure")).toBeInTheDocument()
+    expect(screen.getByText(/nothing to merge/i)).toBeInTheDocument()
+    expect(screen.getByTestId("tidy-stats")).toHaveTextContent("0 deleted")
+  })
+
   it("does not pretend the model ran on an empty catalog", () => {
     render(
       <SkillTidyCard tidying={false} skillCount={0} report={emptyTidyReport(0)} />,

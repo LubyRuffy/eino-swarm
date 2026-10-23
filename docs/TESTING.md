@@ -620,6 +620,13 @@ Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
 
+`internal/memory/skill_usage_test.go` checks concurrent successful views under
+`-race`, worker tool usage, immutable content identity, corrupt sidecars, merge
+counts, deletion/copy and exact stale boundaries.
+`internal/server/skill_usage_copy_test.go` exercises real copy HTTP routes;
+`internal/engine/review_stale_test.go` checks advisory candidates in model input,
+streamed scan, report and original-turn Trace.
+
 Boundary regressions in `internal/memory/prompt_test.go` cover manager, worker,
 reviewer, tidy and library instructions, including generic wording and negative
 assertions. Store tests distinguish an existing-name pointer from copied steps

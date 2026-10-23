@@ -227,12 +227,20 @@ that the catalog needed nothing.`, ToolSkillView, ToolSkillManage)
 // CatalogTidyMessage is the user turn for a catalog-only review. The
 // instruction is fixed; the live index has to ride here or the reviewer
 // cannot merge a family it cannot see.
-func CatalogTidyMessage(catalog string) string {
+func CatalogTidyMessage(catalog string, staleDays int, stale []SkillInfo) string {
 	catalog = strings.TrimSpace(catalog)
 	if catalog == "" {
-		return "Catalog to curate:\n\n(none)"
+		catalog = "(none)"
 	}
-	return "Catalog to curate:\n\n" + catalog
+	var b strings.Builder
+	b.WriteString("Catalog to curate:\n\n" + catalog)
+	if len(stale) > 0 {
+		fmt.Fprintf(&b, "\n\nStale skill candidates (not viewed for at least %d days; never-viewed skills use their content modification time). Inactivity is not proof of obsolescence. Inspect applicability before deciding to keep, merge or delete:\n", staleDays)
+		for _, sk := range stale {
+			fmt.Fprintf(&b, "- %s\n", sk.Name)
+		}
+	}
+	return b.String()
 }
 
 // ReviewCatalog is appended to the reviewer's user message so it can see the

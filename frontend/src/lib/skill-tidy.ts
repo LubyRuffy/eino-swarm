@@ -26,6 +26,7 @@ export type TidyProgressStep = (typeof TIDY_PROGRESS_STEPS)[number]
 
 export function emptyTidyReport(scanned = 0): SkillTidyReport {
   return {
+    stale_candidates: [],
     scanned,
     before: scanned,
     after: scanned,
@@ -62,6 +63,7 @@ export function normalizeTidyReport(raw: Partial<SkillTidyReport> | undefined, s
   const after = num(raw?.after, Math.max(0, before - deleted.length + created.length))
   const err = typeof raw?.err === "string" && raw.err.trim() !== "" ? raw.err : undefined
   return {
+    stale_candidates: namesOf(raw?.stale_candidates),
     scanned: num(raw?.scanned, scanned),
     before,
     after,

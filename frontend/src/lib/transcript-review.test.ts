@@ -137,6 +137,13 @@ describe("the memory review", () => {
     expect(manager(state).blocks.filter((b) => b.kind === "notice")).toHaveLength(0)
   })
 
+  it("keeps an unchanged tidy's stale candidates for Trace without adding a chat notice", () => {
+    const state = fold([review({ changed: false, stale_candidates: ["older-procedure"], notify: "off" })])
+    const [row] = manager(state).blocks
+    expect(row).toMatchObject({ quiet: true, review: { stale_candidates: ["older-procedure"] } })
+    expect(row.text).toBe("Memory catalog reviewed.")
+  })
+
   it("still answers a click that kept nothing", () => {
     expect(reviewPanelHint({ changed: false })).toMatch(/nothing new to keep/)
     expect(reviewPanelHint({ changed: true })).toBe("Review finished.")

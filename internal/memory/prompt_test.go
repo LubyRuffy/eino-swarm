@@ -267,13 +267,13 @@ func TestCatalogTidyPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 }
 
 func TestCatalogTidyMessageWrapsTheIndexWithoutInventingAConversation(t *testing.T) {
-	if CatalogTidyMessage("") != "Catalog to curate:\n\n(none)" {
+	if CatalogTidyMessage("", 90, nil) != "Catalog to curate:\n\n(none)" {
 		t.Fatal("an empty catalog still needs a user turn or the reviewer has nothing to answer")
 	}
 	out := CatalogTidyMessage(ReviewCatalog(
 		[]SkillInfo{{Name: "weekly-rollup", Description: "when filing the week"}},
 		nil,
-	))
+	), 90, nil)
 	if !strings.HasPrefix(out, "Catalog to curate:") {
 		t.Fatalf("catalog tidy must mark itself, or the mock reviewer stores a conversation clip:\n%s", out)
 	}

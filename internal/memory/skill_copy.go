@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -131,7 +132,7 @@ func (s *Store) ImportSkill(name, description, body string, origin SkillOrigin) 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := os.Stat(s.skillPath(name)); err == nil {
+	if _, err := os.Stat(filepath.Join(s.skillsDir(), name)); err == nil {
 		return Skill{}, ErrSkillExists
 	} else if err != nil && !os.IsNotExist(err) {
 		return Skill{}, fmt.Errorf("memory: copy skill %s: %w", name, err)

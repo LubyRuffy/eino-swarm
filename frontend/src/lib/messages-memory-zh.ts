@@ -121,4 +121,12 @@ export const memoryZh: { [K in keyof typeof memoryEn]: string } = {
   "skill.deleteTitle": "删除 {name}？",
   "skill.deleteDesc": "这个项目里之后的会话不会再带上这条流程。",
   "skill.deleteConfirm": "删除技能",
+  "settings.memory.skillStaleDays": "技能未查看阈值（天）",
+  "settings.memory.skillStaleDaysHint": "超过这些天未查看的技能会成为整理候选，由模型审阅，不会自动删除。",
+  "skill.views": "查看 {n} 次",
+  "skill.lastViewed": "最近查看 {when}",
+  "skill.neverViewed": "从未查看",
+  "skill.stale": "陈旧候选",
+  "memory.tidyStaleCandidates": "已审阅的陈旧候选",
+  "memory.tidyReviewed": "已审阅记忆目录。",
 }

@@ -14,9 +14,11 @@ import (
 // disk until something asks for it, which is what keeps a hundred skills from
 // costing a hundred procedures' worth of tokens on every turn.
 type SkillInfo struct {
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	Name         string    `json:"name"`
+	Description  string    `json:"description"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Views        int64     `json:"views"`
+	LastViewedAt time.Time `json:"last_viewed_at"`
 	// Origin is set when this file was copied from another project. It is not
 	// part of the procedure: skill_view does not return it, and the prompt
 	// index does not list it.
@@ -92,6 +94,9 @@ func (s *Store) readSkill(name string) (Skill, error) {
 	if info, statErr := os.Stat(s.skillPath(name)); statErr == nil {
 		skill.UpdatedAt = info.ModTime().UTC()
 	}
+	usage := s.readSkillUsage(name)
+	skill.Views = usage.Views
+	skill.LastViewedAt = usage.LastViewedAt
 	return skill, nil
 }
 

@@ -240,6 +240,9 @@ function TidyResult({ report }: { report: SkillTidyReport }) {
         </Badge>
         <Badge variant="outline">{t("memory.tidyStatLeft", { n: tidyLeft(report) })}</Badge>
       </div>
+      {(report.stale_candidates?.length ?? 0) > 0 ? (
+        <TidyNameList title={t("memory.tidyStaleCandidates")} items={report.stale_candidates ?? []} />
+      ) : null}
       {report.merged.length > 0 ? (
         <TidyNameList
           title={t("memory.tidyMerged")}

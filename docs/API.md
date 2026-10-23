@@ -802,7 +802,8 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
   "enabled": true,
   "memory": {"text": "…", "entries": ["…"], "chars": 412, "limit": 2200, "rev": "a1b2c3d4e5f6"},
   "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
-  "needs_tidy": false
+  "needs_tidy": false,
+  "skill_stale_days": 90
 }}
 ```
 
@@ -815,6 +816,11 @@ agent fetches it with `skill_view`. A copied skill also carries `origin`
 body. That index is the project's memory, not a
 `SKILL.md` already in the workspace. `needs_tidy` is true when a same-subject
 family is still on disk. Opening this endpoint does not fold them.
+Project and library memory responses include `skill_stale_days`, the configured
+advisory threshold. Each skill also includes `views` (number) and
+`last_viewed_at` (UTC timestamp; zero time means never viewed). Agent
+`skill_view` increments usage; HTTP reads, list and copy calls do not. The
+prompt index omits these fields, and copies start at zero.
 
 ### `PUT /api/projects/:id/memory`
 
@@ -863,6 +869,11 @@ refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
  "folded": true,
  "reviewed": true}
 ```
+
+`report.stale_candidates` lists skill names whose last view (or content
+modification time when never viewed) reached `memory.skill_stale_days` before
+curation. The streamed scan and original-turn `memory_review` retain the same
+list. It is advisory input, not a list of automatic deletions.
 
 `report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works. `report.err` is set when the model call failed after the stem fold already landed.
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { reviewTraceMetadata } from "./review-diagnostics"
 import { parseReview, reviewNotice, reviewPanelHint } from "./transcript-review"
 import type { SwarmEvent } from "./types"
 
@@ -18,6 +19,12 @@ const failure = {
 }
 
 describe("review diagnostics", () => {
+  it("keeps the tidy's stale candidates visible in the turn Trace", () => {
+    const got = parseReview(event({ changed: false, stale_candidates: ["older-procedure", "", 1] }))
+    expect(got?.stale_candidates).toEqual(["older-procedure"])
+    expect(JSON.parse(reviewTraceMetadata(got!) ?? "{}")).toMatchObject({ stale_candidates: ["older-procedure"] })
+  })
+
   it("retains structured refusal and bounded attempt metadata through replay", () => {
     const got = parseReview(event(failure))
     expect(got).toMatchObject({ stop_reason: "iteration_limit", attempt_count: 8, refused: failure.refused, attempts: failure.attempts })

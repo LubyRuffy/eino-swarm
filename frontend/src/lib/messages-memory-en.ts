@@ -129,4 +129,12 @@ export const memoryEn = {
   "skill.deleteDesc":
     "Later conversations in this project will not start with this procedure.",
   "skill.deleteConfirm": "Delete skill",
+  "settings.memory.skillStaleDays": "Unviewed skill threshold (days)",
+  "settings.memory.skillStaleDaysHint": "Skills not viewed for this many days become candidates for review. They are never deleted automatically.",
+  "skill.views": "{n} views",
+  "skill.lastViewed": "Last viewed {when}",
+  "skill.neverViewed": "Never viewed",
+  "skill.stale": "Stale candidate",
+  "memory.tidyStaleCandidates": "Stale candidates reviewed",
+  "memory.tidyReviewed": "Memory catalog reviewed.",
 }

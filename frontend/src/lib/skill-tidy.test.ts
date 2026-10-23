@@ -53,6 +53,12 @@ describe("skill tidy report", () => {
     expect(report.reviewed).toBe(true)
   })
 
+  it("retains stale candidates without treating a review as a modification", () => {
+    const report = normalizeTidyReport({ stale_candidates: ["old-procedure", " "], reviewed: true })
+    expect(report.stale_candidates).toEqual(["old-procedure"])
+    expect(tidyFolded(report)).toBe(false)
+  })
+
   it("drops blank names rather than painting empty rows", () => {
     const report = normalizeTidyReport({
       created: ["kept", "  "],

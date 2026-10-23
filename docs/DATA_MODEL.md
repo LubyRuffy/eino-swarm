@@ -479,6 +479,21 @@ file means the next shell may take the lock. A live pid whose
 alone. `mock` is part of the lease: a `--mock` client will not attach to a
 non-mock engine.
 
+Each skill directory may also contain `usage.json` with `views` (int64) and
+`last_viewed_at` (UTC RFC3339 timestamp; zero time means never viewed). Only a
+successful agent `skill_view` increments it, under the Store lock with atomic
+replacement. Missing or corrupt optional usage reads as zero; the next view
+repairs it. Listing, HTTP reading and copying do not count as views. Merges
+sum usage and preserve the latest view, deletion removes the directory, and
+copies start at zero; updating a copy retains its own usage. If a source
+deletion fails, the keeper retains usage no longer held by readable sources,
+including a source whose files were partially removed, allowing an ordinary
+failed merge to retry without double counting. Copy refuses an occupied
+destination directory even when it contains only an orphaned usage sidecar. A simultaneous
+restoration failure is returned with the deletion error; process interruption
+is not a cross-directory transaction. This sidecar is
+excluded from SKILL.md modification time and content-digest comparisons.
+
 `MEMORY.md` and `SKILL.md` are plain files, written atomically through a
 temporary file and a rename, so a crash mid-write leaves the old version rather
 than half of the new one. `PLAN.md` is the `/plan` draft for that conversation:

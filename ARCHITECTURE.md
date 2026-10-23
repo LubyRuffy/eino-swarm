@@ -751,6 +751,12 @@ worker before closing SQLite.
    `schedule_continue` that cannot restart, or that is dropped as superseded,
    still closes the bound schedule run (`error`) so `HasRunningRun` cannot
    stick a wait that will never fire again.
+Skill usage lives beside each `SKILL.md` in `usage.json`, under the Store lock.
+Only agent `ViewSkill` updates it; API reads and copies use `ReadSkill`. The
+sidecar keeps content timestamps and digests stable. Tidy snapshots stale
+candidates before inspection and records the names in the report, streamed scan
+and original-turn memory review, without deleting by age.
+
 Notes and skills differ by loading: notes are short declarations whose absence
 would misdirect work and are injected each turn; skills contain the methods
 needed to accomplish work and load through `skill_view`. Workflow-local

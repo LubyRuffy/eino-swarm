@@ -246,7 +246,7 @@ func (t *skillViewTool) InvokableRun(_ context.Context, args string, _ ...tool.O
 	if err := json.Unmarshal([]byte(args), &a); err != nil {
 		return failure("could not read the arguments: %v", err), nil
 	}
-	skill, err := t.store.ReadSkill(strings.TrimSpace(a.Name))
+	skill, err := t.store.ViewSkill(strings.TrimSpace(a.Name))
 	if err != nil {
 		if errors.Is(err, ErrNoMatch) {
 			names, _ := t.store.ListSkills()
