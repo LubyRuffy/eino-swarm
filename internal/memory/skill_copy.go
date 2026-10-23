@@ -132,7 +132,7 @@ func (s *Store) ImportSkill(name, description, body string, origin SkillOrigin) 
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, err := os.Stat(filepath.Join(s.skillsDir(), name)); err == nil {
+	if info, err := os.Stat(filepath.Join(s.skillsDir(), name)); err == nil && info.IsDir() {
 		return Skill{}, ErrSkillExists
 	} else if err != nil && !os.IsNotExist(err) {
 		return Skill{}, fmt.Errorf("memory: copy skill %s: %w", name, err)

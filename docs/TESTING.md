@@ -795,6 +795,8 @@ well as its private browser storage; localStorage alone cannot override config.
 `internal/memory/skill_usage_test.go` checks concurrent successful views under
 `-race`, worker tool usage, immutable content identity, corrupt sidecars, merge
 counts, deletion/copy and exact stale boundaries.
+`internal/memory/skill_copy_collision_test.go` preserves the distinction between
+a filesystem file collision and an occupied skill directory.
 `internal/server/skill_usage_copy_test.go` exercises real copy HTTP routes;
 `internal/engine/review_stale_test.go` checks advisory candidates in model input,
 streamed scan, report and original-turn Trace.
