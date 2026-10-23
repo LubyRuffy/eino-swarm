@@ -837,7 +837,20 @@ typed them (`400`).
 
 ### `POST /api/projects/:id/memory/tidy-skills` → `200`
 
-Curates the skill catalog on demand. Stem families fold first — the same
+Curates project memory on demand. Current notes accompany the live skill index;
+tidy-only `memory_reclassify` can promote a uniquely matched note to a skill or
+demote a short declarative skill to a note. Workers and post-turn reviewers do
+not receive this tool; the shared-library tidy does not receive notes or moves.
+Promote requires its body to equal the entire source note after whitespace
+normalization, without extra steps or assertions;
+demote requires an equivalent complete short body without Markdown step markers,
+within `entry_max` and the total note budget. Destination writes precede source
+deletions, not a multi-file transaction. Failed moves retain actual writes as
+create/add/delete changes and return an error; only complete moves use
+`action: promote` / `demote` with `target: skill_manage`. Retry may establish an
+already-present final state without new changes; it does not establish history.
+
+Curates the skill catalog as part of that pass. Stem families fold first — the same
 hygiene that runs after a finished turn — then the memory-reviewer reads the
 live index and merge / patch / delete by content. A `SKILL.md` edited in
 Finder, or a pile of uniquely named duplicates the filename heuristic cannot
@@ -858,6 +871,7 @@ refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
 {"memory": { "dir": "…", "enabled": true, "memory": {…}, "skills": […], "needs_tidy": false },
  "report": {
    "scanned": 3, "before": 3, "after": 2, "families": 1, "unchanged": 1,
+   "promoted": 0, "demoted": 0, "stale_candidates": [],
    "created": ["weekly-rollup"],
    "deleted": ["weekly-rollup-notes", "weekly-rollup-send"],
    "patched": [],
@@ -870,12 +884,18 @@ refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
  "reviewed": true}
 ```
 
+`report.promoted` and `report.demoted` count completed moves. They do not count
+partial destination writes as completed moves, and existing count fields retain
+their skill-catalog meaning. `tidy` change events include those actions. No
+wire event kind or endpoint path changed. As before, when no prior conversation
+turn exists there is no turn Trace anchor.
+
 `report.stale_candidates` lists skill names whose last view (or content
 modification time when never viewed) reached `memory.skill_stale_days` before
 curation. The streamed scan and original-turn `memory_review` retain the same
 list. It is advisory input, not a list of automatic deletions.
 
-`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works. `report.err` is set when the model call failed after the stem fold already landed.
+`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog or project notes after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works. `report.err` is set when the model call failed after the stem fold already landed.
 
 ### `GET /api/projects/:id/skills/:name`
 

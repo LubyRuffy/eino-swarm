@@ -531,6 +531,16 @@ human-authored notes remain readable without a migration or mandatory provenance
 backfill. Direct external file writers do not participate in that in-process
 lock.
 
+Requested project tidy additionally moves existing content between notes and
+skills. Promote requires body and source-note text to be equivalent after whitespace
+normalization, with no extra steps or assertions; demote requires a short body without Markdown step markers and
+a whitespace-equivalent note under both budgets. Text overlap alone cannot
+authorize deleting source content. The destination is saved first, then the
+source is removed; partial failure may leave duplicates. Actual partial writes
+are create/add/delete changes; a completed move is promote/demote. A retry
+reporting no change establishes the already-present final state, not historical
+source provenance. Shared-library tidy and post-turn review do not move notes.
+
 Skills keep immediate file writes, including merge/delete; they are not part of
 the notes commit. A later refusal must not hide an earlier actual skill write.
 The `events.text` JSON payload for `memory_review` has optional `evidence`

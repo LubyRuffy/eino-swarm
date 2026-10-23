@@ -100,6 +100,8 @@ type FoldMerge struct {
 // the names that were merged, deleted, or created. A finished turn still
 // only records Changes; the panel needs the rest so a click is not a shrug.
 type FoldReport struct {
+	Promoted        int         `json:"promoted"`
+	Demoted         int         `json:"demoted"`
 	StaleCandidates []string    `json:"stale_candidates"`
 	Scanned         int         `json:"scanned"`
 	Before          int         `json:"before"`
@@ -118,7 +120,7 @@ type FoldReport struct {
 // Folded is true when the catalog changed: a merge, a delete, a create, or
 // a rewrite. A model that looked and left everything is not a fold.
 func (r FoldReport) Folded() bool {
-	return len(r.Merged) > 0 || len(r.Deleted) > 0 || len(r.Created) > 0 || len(r.Patched) > 0
+	return len(r.Changes) > 0 || r.Promoted > 0 || r.Demoted > 0 || len(r.Merged) > 0 || len(r.Deleted) > 0 || len(r.Created) > 0 || len(r.Patched) > 0
 }
 
 func emptyFoldReport(scanned int) FoldReport {
@@ -172,6 +174,10 @@ func ComposeTidyReport(before, after []string, families int, changes []Change) F
 			continue
 		}
 		switch c.Action {
+		case "promote":
+			report.Promoted++
+		case "demote":
+			report.Demoted++
 		case "merge":
 			dropped := splitDroppedNames(c.Text)
 			_, keepWasThere := beforeSet[c.Name]
@@ -190,6 +196,11 @@ func ComposeTidyReport(before, after []string, families int, changes []Change) F
 	report.Deleted = sortedSetNames(deleted)
 	report.Patched = sortedSetNames(patched)
 	touched := map[string]struct{}{}
+	for _, c := range changes {
+		if c.Target == ToolSkillManage && (c.Action == "promote" || c.Action == "demote") {
+			touched[c.Name] = struct{}{}
+		}
+	}
 	for n := range created {
 		touched[n] = struct{}{}
 	}

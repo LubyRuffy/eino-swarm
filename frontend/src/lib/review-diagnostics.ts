@@ -67,7 +67,7 @@ export function parseReviewDiagnostics(raw: unknown): Partial<ReviewOutcome> {
     const operations = Array.isArray(r.operations) ? r.operations.slice(0, 32).flatMap((item) => {
       const op = record(item)
       return op && typeof op.target === "string" && typeof op.action === "string"
-        ? [{ target: ["memory", "skill_manage"].includes(op.target) ? op.target : "unknown", action: ["add", "replace", "remove", "create", "patch", "merge", "delete"].includes(op.action) ? op.action : "unknown", sources: sequences(op.sources) }] : []
+        ? [{ target: ["memory", "skill_manage"].includes(op.target) ? op.target : "unknown", action: ["add", "replace", "remove", "create", "patch", "merge", "delete", "promote", "demote"].includes(op.action) ? op.action : "unknown", sources: sequences(op.sources) }] : []
     }) : []
     return [{ number: r.number as number, status, operations }]
   }) : undefined

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -202,6 +203,15 @@ The batch validates notes in a draft before a single revision-checked commit. A 
 // CatalogTidyPrompt is the Memory panel's skill tidy. There is no
 // conversation: the job is the recorded catalog, not extracting a new note.
 func CatalogTidyPrompt() string {
+	return catalogSkillTidyPrompt() + `
+This requested project tidy also includes current notes. Use ` + ToolMemoryReclassify + ` only to move already-recorded content:
+- promote: old_text must identify one note. Keep the new skill body equal to the complete source note except whitespace; description states when it applies.
+- demote: only a short declarative skill without steps may become a note. Keep the complete body unchanged except whitespace, within the per-note and total budgets.
+Do not add facts or reinterpret negation, conditions or numbers. Text similarity alone cannot authorize deleting a source. A destination is saved before removing its source; after failure inspect the saved state and retry the same content. This is not a cross-file transaction.
+`
+}
+
+func catalogSkillTidyPrompt() string {
 	return fmt.Sprintf(`You are curating this project's recorded skills. There is no
 conversation attached. You are not extracting notes and you are not
 replying to the human.
@@ -217,8 +227,9 @@ cover another, then:
 - delete a skill that is obsolete, empty, or fully covered by another.
 - create only when merge needs a keeper name that is not already a skill.
 
-Do not add notes. Do not invent a procedure that is not already recorded.
-When nothing overlaps, write nothing and say so in one line.
+Do not invent knowledge or a procedure that is not already recorded.
+When no catalog changes are justified, write nothing and say so in one line.
+A project-specific reclassification instruction may independently justify a move.
 
 Finish with one short line naming what you merged, deleted or rewrote, or
 that the catalog needed nothing.`, ToolSkillView, ToolSkillManage)
@@ -227,7 +238,15 @@ that the catalog needed nothing.`, ToolSkillView, ToolSkillManage)
 // CatalogTidyMessage is the user turn for a catalog-only review. The
 // instruction is fixed; the live index has to ride here or the reviewer
 // cannot merge a family it cannot see.
-func CatalogTidyMessage(catalog string, staleDays int, stale []SkillInfo) string {
+// TidyNotes carries existing project memory and its budgets, never new evidence.
+type TidyNotes struct {
+	Entries   []string `json:"entries"`
+	EntryMax  int      `json:"entry_max"`
+	CharLimit int      `json:"char_limit"`
+	Chars     int      `json:"chars"`
+}
+
+func CatalogTidyMessage(catalog string, staleDays int, stale []SkillInfo, notes *TidyNotes) string {
 	catalog = strings.TrimSpace(catalog)
 	if catalog == "" {
 		catalog = "(none)"
@@ -239,6 +258,10 @@ func CatalogTidyMessage(catalog string, staleDays int, stale []SkillInfo) string
 		for _, sk := range stale {
 			fmt.Fprintf(&b, "- %s\n", sk.Name)
 		}
+	}
+	if notes != nil {
+		raw, _ := json.Marshal(notes)
+		b.WriteString("\n\nNotes to reclassify (JSON):\n" + string(raw))
 	}
 	return b.String()
 }

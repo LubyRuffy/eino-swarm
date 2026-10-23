@@ -870,11 +870,21 @@ restate the body. This changes no Markdown format or event kind.
    Successful-turn reviews, or successful turns with auto-review off, still fold
    leftover skill families. A standalone successful turn writes procedures only
    into the shared library. Manual **Review now** selects the most recent
-   successful turn. Catalog tidy remains its separate live-catalog flow with
-   direct skill tools and no notes. `POST /api/projects/:id/memory/tidy-skills`
+   successful turn. Requested project tidy receives current notes and live skill catalog, with
+   `CatalogTools` plus tidy-only `ReclassifyTools`; turn reviewers and workers
+   never receive the latter. Promote requires its body to equal the complete source note after
+   whitespace normalization, without extra steps or assertions. Demote requires a short body
+   without Markdown step markers and a whitespace-equivalent note, within both
+   budgets. Similarity cannot authorize source deletion. The destination is
+   saved first; partial failures emit actual create/add/delete changes, not a
+   completed move. State-idempotent retries do not prove historical provenance.
+   Shared-library tidy receives skill tools only, with no notes or move tools. `POST /api/projects/:id/memory/tidy-skills`
    folds stems before model curation; `Accept: text/event-stream` reports the
    scan, streamed prose and actual writes, then the same result as JSON with
-   created/deleted/patched/unchanged counts and `reviewed` when the model ran.
+   created/deleted/patched/unchanged counts, promoted/demoted counts, stale
+   candidate names and `reviewed` when the model ran (skills or project notes).
+   A project without a prior turn retains the existing no-Trace-anchor behavior;
+   this flow does not fabricate conversation history to supply one.
    The Memory panel keeps each tidy card with its own project; switching away
    and back preserves in-flight progress or the finished result. An earlier
    memory read cannot replace the completed catalog with stale content. Opening

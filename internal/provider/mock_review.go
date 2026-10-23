@@ -72,13 +72,18 @@ func isLibraryReview(msgs []*schema.Message) bool {
 	return false
 }
 
-// catalogTidyScript curates the index it was handed. When the catalog lists
-// a family to merge, it folds the first group; otherwise it stores nothing.
-// Derived from the message, never from a baked-in procedure.
+// catalogTidyScript folds the first listed family, or moves one recorded note
+// or skill when project notes are supplied. It derives every write from the
+// message rather than a baked-in procedure.
 func catalogTidyScript(turn int, msgs []*schema.Message) *schema.Message {
+	groups := catalogMergeGroups(catalogTidyUserText(msgs))
+	if len(groups) == 0 {
+		if out, handled := catalogReclassificationScript(msgs); handled {
+			return out
+		}
+	}
 	switch turn {
 	case 1:
-		groups := catalogMergeGroups(firstUserText(msgs))
 		if len(groups) == 0 {
 			return schema.AssistantMessage("Catalog already curated.", nil)
 		}

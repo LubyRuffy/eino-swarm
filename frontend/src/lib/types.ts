@@ -193,12 +193,16 @@ export interface TidyLiveChange {
 
 /** Prose and writes seen while POST /memory/tidy-skills is still open. */
 export interface TidyLive {
+  scanned?: number
   text: string
   changes: TidyLiveChange[]
 }
 
 /** What POST /memory/tidy-skills returns besides the refreshed catalog. */
 export interface SkillTidyReport {
+  changes?: MemoryChange[]
+  promoted?: number
+  demoted?: number
   stale_candidates?: string[]
   scanned: number
   before: number

@@ -53,6 +53,23 @@ describe("skill tidy report", () => {
     expect(report.reviewed).toBe(true)
   })
 
+  it("retains a saved note after the source skill could not be removed", () => {
+    const report = normalizeTidyReport({ err: "source skill removal failed", demoted: 0, changes: [{ target: "memory", action: "add", text: "saved fact" }] })
+    expect(tidyFolded(report)).toBe(true)
+    expect(report.changes).toEqual([{ target: "memory", action: "add", text: "saved fact" }])
+    expect(report.demoted).toBe(0)
+  })
+
+  it("counts moves between notes and skills as completed memory changes", () => {
+    const promoted = normalizeTidyReport({ promoted: 2, demoted: 0 })
+    const demoted = normalizeTidyReport({ promoted: 0, demoted: 1 })
+    expect(promoted.promoted).toBe(2)
+    expect(demoted.demoted).toBe(1)
+    expect(tidyFolded(promoted)).toBe(true)
+    expect(tidyFolded(demoted)).toBe(true)
+    expect(normalizeTidyReport({ promoted: -2, demoted: Number.NaN })).toMatchObject({ promoted: 0, demoted: 0 })
+  })
+
   it("retains stale candidates without treating a review as a modification", () => {
     const report = normalizeTidyReport({ stale_candidates: ["old-procedure", " "], reviewed: true })
     expect(report.stale_candidates).toEqual(["old-procedure"])

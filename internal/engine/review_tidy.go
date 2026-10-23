@@ -85,6 +85,14 @@ func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (s
 		return zero, err
 	}
 
+	var noteCount int
+	if gateKey != memory.LibraryID {
+		snap, readErr := mem.Read()
+		if readErr != nil {
+			return zero, readErr
+		}
+		noteCount = len(snap.Entries)
+	}
 	var changes []memory.Change
 	folded, err := mem.FoldSkillFamilies()
 	if err != nil {
@@ -101,18 +109,22 @@ func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (s
 	var mu sync.Mutex
 	outcome := reviewOutcome{Notes: map[string]int{}}
 	reviewed := false
-	if len(remaining) > 0 {
+	if len(remaining) > 0 || noteCount > 0 {
 		onChange := func(c memory.Change) {
 			mu.Lock()
 			collectReviewChange(&outcome, c)
 			mu.Unlock()
-			if watch != nil && c.Target == memory.ToolSkillManage {
+			if watch != nil {
 				watch(TidyEvent{Phase: "change", Action: c.Action, Name: c.Name})
 			}
 		}
 		userMsg, msgErr := catalogTidyUserMessage(mem, gateKey == memory.LibraryID, e.cfg.Memory.StaleDays(), stale)
 		if msgErr != nil {
 			return zero, msgErr
+		}
+		tools := memory.CatalogTools(mem, onChange)
+		if gateKey != memory.LibraryID {
+			tools = append(tools, tidyReclassifyTools(mem, onChange)...)
 		}
 		e.driveReviewer(reviewRun{
 			threadID:    threadID,
@@ -124,7 +136,8 @@ func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (s
 			instruction: instruction,
 			userMsg:     userMsg,
 			maxIter:     e.cfg.Memory.TidyIterations(),
-			tools:       memory.CatalogTools(mem, onChange),
+			tools:       tools,
+			sequential:  true,
 			onText: func(text string) {
 				if watch == nil || strings.TrimSpace(text) == "" {
 					return
@@ -175,7 +188,7 @@ func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (s
 			Library:         gateKey == memory.LibraryID,
 		}
 		if recorded.Note == "" && recorded.Changed {
-			recorded.Note = "Folded overlapping skills."
+			recorded.Note = "Curated recorded memory."
 		}
 		e.recordReview(threadID, turnID, recorded)
 	}
@@ -213,7 +226,15 @@ func catalogTidyUserMessage(mem *memory.Store, library bool, staleDays int, stal
 	if library {
 		catalog = memory.LibraryCatalog(skills, families)
 	}
-	return memory.CatalogTidyMessage(catalog, staleDays, stale), nil
+	var notes *memory.TidyNotes
+	if !library {
+		snap, readErr := mem.Read()
+		if readErr != nil {
+			return "", readErr
+		}
+		notes = &memory.TidyNotes{Entries: snap.Entries, EntryMax: mem.EntryMax(), CharLimit: snap.Limit, Chars: snap.Chars}
+	}
+	return memory.CatalogTidyMessage(catalog, staleDays, stale, notes), nil
 }
 
 // tidyReviewAnchor is where catalog-tidy model calls are attributed. The

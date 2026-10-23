@@ -67,14 +67,18 @@ export function reviewNotice(outcome?: ReviewOutcome, locale: Locale = "en"): st
   }
   for (const s of outcome.skills ?? []) {
     if (!s?.name) continue
-    parts.push(`skill "${s.name}" ${SKILL_VERBS[s.action] ?? s.action}`)
+    parts.push(s.action === "promote" || s.action === "demote"
+      ? t(locale, s.action === "promote" ? "memory.promoteNotice" : "memory.demoteNotice", { name: s.name })
+      : `skill "${s.name}" ${SKILL_VERBS[s.action] ?? s.action}`)
   }
   const head = outcome.library
     ? parts.length > 0
       ? `Saved to the skill library: ${parts.join(", ")}.`
       : "Saved to the skill library."
     : parts.length > 0
-      ? `Memory updated: ${parts.join(", ")}.`
+      ? outcome.skills?.some((change) => change.action === "promote" || change.action === "demote")
+        ? t(locale, "memory.reviewChanges", { detail: parts.join(locale === "zh" ? "，" : ", ") })
+        : `Memory updated: ${parts.join(", ")}.`
       : "Memory updated."
   const localizedHead = localizeNotice(head, locale)
   if (outcome.notify !== "verbose") return localizedHead
@@ -87,6 +91,7 @@ export function reviewNotice(outcome?: ReviewOutcome, locale: Locale = "en"): st
 
 function changePreview(c: { action?: string; name?: string; text?: string; target?: string }): string {
   const mark =
+    c.action === "promote" ? "↑" : c.action === "demote" ? "↓" :
     c.action === "add" || c.action === "create"
       ? "+"
       : c.action === "remove" || c.action === "delete"

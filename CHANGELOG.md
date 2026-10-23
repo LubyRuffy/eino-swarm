@@ -13,6 +13,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-420`, `C-025`, `C-012`: requested project memory tidy can promote notes to skills and demote short declarative skills to notes, with source-preserving checks, budget validation, partial-write receipts and original-turn Trace. Project controls now say **Tidy memory**; shared-library tidy remains skills-only (Issue #99).
+
 - `F-420`, `C-025`: record agent skill views in a separate usage sidecar, expose usage and configurable `memory.skill_stale_days` in Settings and Memory, and retain advisory stale candidates in tidy results and original-turn Trace. Merges sum usage; copies start unused (Issue #99).
 
 - `F-130`, `F-160`, `F-222`, `F-330`, `C-035`: retain per-generation interruption causes and recovery states in the transcript, agent detail and original-turn Trace. Interrupted thoughts stop showing Thinking; restored workers retain their identity and running state instead of being marked failed (Issue #95).

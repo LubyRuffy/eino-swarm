@@ -263,8 +263,8 @@ export function MemoryPanel({
             onClick={onTidySkills}
             disabled={tidying}
             aria-busy={tidying}
-            aria-label={t("memory.tidySkills")}
-            title={t("memory.tidySkills")}
+            aria-label={t(library ? "memory.tidyLibrary" : "memory.tidySkills")}
+            title={t(library ? "memory.tidyLibrary" : "memory.tidySkills")}
           >
             {tidying ? <Loader2 className="animate-spin" /> : <Layers />}
           </Button>
@@ -282,6 +282,9 @@ export function MemoryPanel({
         </div>
         <p className="text-xs text-muted-foreground">
           {library ? t("memory.libraryHint") : t("memory.skillsHint")}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {t(library ? "memory.tidyLibraryHint" : "memory.tidyHint")}
         </p>
         {copyNotice ? (
           <p data-testid="skill-copy-notice" className="text-xs text-muted-foreground">

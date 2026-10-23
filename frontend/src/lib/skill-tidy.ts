@@ -26,6 +26,9 @@ export type TidyProgressStep = (typeof TIDY_PROGRESS_STEPS)[number]
 
 export function emptyTidyReport(scanned = 0): SkillTidyReport {
   return {
+    changes: [],
+    promoted: 0,
+    demoted: 0,
     stale_candidates: [],
     scanned,
     before: scanned,
@@ -43,10 +46,13 @@ export function emptyTidyReport(scanned = 0): SkillTidyReport {
 export function tidyFolded(report?: SkillTidyReport): boolean {
   if (!report) return false
   return (
+    (report.changes?.length ?? 0) > 0 ||
     report.merged.length > 0 ||
     report.deleted.length > 0 ||
     report.created.length > 0 ||
-    report.patched.length > 0
+    report.patched.length > 0 ||
+    (report.promoted ?? 0) > 0 ||
+    (report.demoted ?? 0) > 0
   )
 }
 
@@ -63,6 +69,9 @@ export function normalizeTidyReport(raw: Partial<SkillTidyReport> | undefined, s
   const after = num(raw?.after, Math.max(0, before - deleted.length + created.length))
   const err = typeof raw?.err === "string" && raw.err.trim() !== "" ? raw.err : undefined
   return {
+    changes: Array.isArray(raw?.changes) ? raw.changes.filter((change) => change && typeof change.target === "string" && typeof change.action === "string") : [],
+    promoted: Math.max(0, Math.trunc(num(raw?.promoted, 0))),
+    demoted: Math.max(0, Math.trunc(num(raw?.demoted, 0))),
     stale_candidates: namesOf(raw?.stale_candidates),
     scanned: num(raw?.scanned, scanned),
     before,

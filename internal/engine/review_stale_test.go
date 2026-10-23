@@ -20,7 +20,7 @@ func TestTidyRecordsTheStaleCandidatesInItsOriginalTurn(t *testing.T) {
 	p, th := projectThread(t, e)
 	turn := plantDoneTurn(t, e, th.ID, time.Now().UTC())
 	mem := e.ProjectMemory(p.ID)
-	plantProjectSkill(t, e, p.ID, "old-method", "when maintaining dormant records", "Inspect the source and verify the retained identity.")
+	plantProjectSkill(t, e, p.ID, "old-method", "when maintaining dormant records", "1. Inspect the source.\n2. Verify the retained identity.")
 	path := filepath.Join(mem.Dir(), "skills", "old-method", "SKILL.md")
 	old := time.Now().Add(-11 * 24 * time.Hour)
 	if err := os.Chtimes(path, old, old); err != nil {

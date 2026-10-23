@@ -28,7 +28,7 @@ type Change struct {
 	// Target is ToolMemory or ToolSkillManage.
 	Target string `json:"target"`
 	// Action is add / replace / remove for memory, create / patch / merge / delete for
-	// a skill.
+	// a skill; promote / demote move existing content during a requested tidy.
 	Action string `json:"action"`
 	// Name is the skill's name, empty for memory.
 	Name string `json:"name,omitempty"`
@@ -71,8 +71,8 @@ func ViewTools(s *Store) []tool.BaseTool {
 }
 
 // CatalogTools is the Memory panel's tidy set: open a skill, then merge,
-// patch or delete. Notes stay out — a catalog pass is not a conversation
-// review, and writing MEMORY.md from it would invent facts nobody said.
+// patch or delete. Project tidy adds ReclassifyTools separately; it never
+// receives direct note writes or a source-extraction batch.
 func CatalogTools(s *Store, onChange func(Change)) []tool.BaseTool {
 	if s == nil {
 		return nil

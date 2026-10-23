@@ -33,9 +33,9 @@ Finish by calling %s with the complete minimal changes array, or an empty array 
 // LibraryTidyPrompt is the Memory panel's tidy for the shared library.
 // Same job as a project's catalog tidy, without a project to attribute it to.
 func LibraryTidyPrompt() string {
-	return strings.Replace(CatalogTidyPrompt(),
+	return strings.Replace(catalogSkillTidyPrompt(),
 		"this project's recorded skills",
-		"the shared skill library", 1)
+		"the shared skill library", 1) + "\nThere is no note store. Do not add notes or reclassify them.\n"
 }
 
 // LibraryCatalog is the live index for a library review. The header must not

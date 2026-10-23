@@ -620,6 +620,17 @@ Concurrent runs follow the [E2E isolation rules](#end-to-end-tests).
 
 ## Memory review provenance and commit (F-420 / C-025 / C-012)
 
+`internal/memory/reclassify_test.go` checks source-preserving moves, negation /
+numeric / condition changes, complete-text demotion, destination conflicts,
+capacity, failure after saving the target, partial deletion receipts and
+idempotent/concurrent retry. `internal/engine/review_reclassify_test.go` runs
+the actual offline reviewer/tool graph and checks post-turn tool isolation;
+`internal/server/memory_reclassify_test.go` checks HTTP report and original-turn
+Trace. The offline script uses explicit step markers, not a semantic classifier.
+`frontend/e2e/memory-boundary.spec.ts` checks both languages, usage / thresholds
+and the requested tidy UI. Each test pins and restores server-side locale as
+well as its private browser storage; localStorage alone cannot override config.
+
 `internal/memory/skill_usage_test.go` checks concurrent successful views under
 `-race`, worker tool usage, immutable content identity, corrupt sidecars, merge
 counts, deletion/copy and exact stale boundaries.

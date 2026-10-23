@@ -241,14 +241,24 @@ func (s *Store) noteRestatesASkill(note string) error {
 		}
 		// A reminder may name the on-demand skill and its entry condition.
 		// The exception never allows copying the skill's execution into notes.
-		if noteReferencesSkill(note, skill.Name) && !noteCoveredBy(note, skill.Body) {
-			continue
+		if noteReferencesSkill(note, skill.Name) {
+			if noteCopiesSkillBody(note, skill.Body) {
+				return &NoteSkillOverlapError{Name: skill.Name, Description: skill.Description}
+			}
+			if !noteCoveredBy(note, skill.Body) {
+				continue
+			}
 		}
 		if noteOverlapsSkill(note, skill) {
 			return &NoteSkillOverlapError{Name: skill.Name, Description: skill.Description}
 		}
 	}
 	return nil
+}
+
+func noteCopiesSkillBody(note, body string) bool {
+	body = strings.Join(strings.Fields(strings.ToLower(body)), " ")
+	return body != "" && strings.Contains(strings.Join(strings.Fields(strings.ToLower(note)), " "), body)
 }
 
 func noteReferencesSkill(note, name string) bool {

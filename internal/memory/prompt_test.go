@@ -193,8 +193,8 @@ func TestMemoryPromptsStayGenericAndGrounded(t *testing.T) {
 		t.Fatal("the worker prompt must name skill_view")
 	}
 	tidy := prompts["tidy"]
-	if strings.Contains(tidy, ToolMemory) {
-		t.Fatalf("a catalog tidy must not write notes:\n%s", tidy)
+	if !strings.Contains(tidy, ToolMemoryReclassify) || strings.Contains(LibraryTidyPrompt(), ToolMemoryReclassify) {
+		t.Fatalf("only project tidy may move existing notes:\n%s", tidy)
 	}
 	if !strings.Contains(worker, "Most tasks have nothing to add") {
 		t.Fatal("the worker prompt must allow returning nothing extra")
@@ -261,19 +261,19 @@ func TestCatalogTidyPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 			t.Fatalf("the catalog tidy must be told about %q:\n%s", want, p)
 		}
 	}
-	if strings.Contains(p, ToolMemory) {
-		t.Fatal("a catalog tidy that can write notes will invent them")
+	if !strings.Contains(p, ToolMemoryReclassify) {
+		t.Fatal("project tidy must name its source-preserving move tool")
 	}
 }
 
 func TestCatalogTidyMessageWrapsTheIndexWithoutInventingAConversation(t *testing.T) {
-	if CatalogTidyMessage("", 90, nil) != "Catalog to curate:\n\n(none)" {
+	if CatalogTidyMessage("", 90, nil, nil) != "Catalog to curate:\n\n(none)" {
 		t.Fatal("an empty catalog still needs a user turn or the reviewer has nothing to answer")
 	}
 	out := CatalogTidyMessage(ReviewCatalog(
 		[]SkillInfo{{Name: "weekly-rollup", Description: "when filing the week"}},
 		nil,
-	), 90, nil)
+	), 90, nil, nil)
 	if !strings.HasPrefix(out, "Catalog to curate:") {
 		t.Fatalf("catalog tidy must mark itself, or the mock reviewer stores a conversation clip:\n%s", out)
 	}
@@ -380,7 +380,7 @@ func TestMemoryBoundaryIsConsistentAcrossGenericPrompts(t *testing.T) {
 				t.Errorf("%s lacks boundary %q", name, want)
 			}
 		}
-		for _, leak := range []string{"one or two sentences", "multi-step", "make e2e", "usage.json", "EntryMax", "SKILL.md", "git worktree", "promote", "demote"} {
+		for _, leak := range []string{"one or two sentences", "multi-step", "make e2e", "usage.json", "EntryMax", "SKILL.md", "git worktree"} {
 			if strings.Contains(prompt, leak) {
 				t.Errorf("%s contains old length heuristic or task-specific wording %q", name, leak)
 			}

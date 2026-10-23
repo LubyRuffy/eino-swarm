@@ -10,6 +10,7 @@ import {
   rewindTranscript,
   type TranscriptState,
 } from "./transcript"
+import { reviewNotice } from "./transcript-review"
 import type { SwarmEvent } from "./types"
 
 let seq = 0
@@ -374,5 +375,26 @@ describe("plan notices", () => {
       "Planning.",
       "Plan updated.",
     ])
+  })
+})
+
+
+describe("memory reclassification receipts", () => {
+  const outcome = { changed: true, notify: "verbose" as const, skills: [
+    { target: "skill_manage", action: "promote", name: "procedure" },
+    { target: "skill_manage", action: "demote", name: "fact" },
+  ], changes: [
+    { target: "skill_manage", action: "promote", name: "procedure", text: "retained procedure" },
+    { target: "skill_manage", action: "demote", name: "fact", text: "retained fact" },
+  ] }
+
+  it("explains the direction of each move in both languages", () => {
+    expect(reviewNotice(outcome)).toContain('skill "procedure" promoted from a note')
+    expect(reviewNotice(outcome)).toContain('skill "fact" demoted to a note')
+    expect(reviewNotice(outcome)).toContain("↑ skill procedure: retained procedure")
+    expect(reviewNotice(outcome)).toContain("↓ skill fact: retained fact")
+    expect(reviewNotice(outcome, "zh")).toContain("记忆已更新")
+    expect(reviewNotice(outcome, "zh")).toContain("笔记已提升为技能“procedure”")
+    expect(reviewNotice(outcome, "zh")).toContain("技能“fact”已降为笔记")
   })
 })

@@ -66,6 +66,13 @@ E2E suite.
 
 ## Testing rules
 
+- Memory reclassification deletes a source only after preserving its full text
+  (whitespace normalization is allowed); token overlap cannot prove that negation,
+  numbers or conditions survived. Regress partial filesystem deletion and report
+  actual writes even when the move fails. Skill usage is separate from content
+  identity and never enters the prompt index. E2E language fixtures must restore
+  server locale as well as browser storage.
+
 - Concurrent Playwright runs must each own a separate server port, data
   directory and `--output` directory. Preserve the first failure and identify
   whether it came from a business assertion or artifact/teardown handling;

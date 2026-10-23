@@ -64,6 +64,19 @@ describe("Memory panel", () => {
     vi.mocked(api.copyLibrarySkills).mockResolvedValue({ copied: [], skipped: [] })
   })
 
+  it("explains the complete memory tidy scope while shared libraries keep skills only", () => {
+    renderPanel()
+    expect(screen.getByRole("button", { name: "Tidy memory" })).toBeEnabled()
+    expect(screen.getByText(/Merge overlapping skills, review stale candidates, and move misplaced information between notes and skills/)).toBeInTheDocument()
+  })
+
+  it("keeps shared-library tidy limited to skills", () => {
+    renderPanel({ library: true, project: undefined })
+    expect(screen.getByRole("button", { name: "Tidy skills" })).toBeEnabled()
+    expect(screen.getByText(/The shared library contains skills only/)).toBeInTheDocument()
+    expect(screen.queryByText(/move misplaced information/)).not.toBeInTheDocument()
+  })
+
   it("shows skill views, the actual last view and a stale candidate badge", () => {
     const lastViewed = new Date(Date.now() - 40 * 86_400_000).toISOString()
     renderPanel({ memory: {
@@ -287,7 +300,7 @@ describe("Memory panel", () => {
       screen.getByRole("button", { name: "Review this conversation now" }),
     )
     fireEvent.click(screen.getByRole("button", { name: "Reload memory" }))
-    fireEvent.click(screen.getByRole("button", { name: "Tidy skills" }))
+    fireEvent.click(screen.getByRole("button", { name: "Tidy memory" }))
     fireEvent.click(
       screen.getByRole("button", { name: "Delete the skill a-procedure" }),
     )
@@ -303,7 +316,7 @@ describe("Memory panel", () => {
     renderPanel({ tidying: true })
     expect(screen.getByTestId("tidy-status")).toHaveTextContent(/Asking the model/)
     expect(screen.getByText(/Scanning 1 skills/)).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Tidy skills" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Tidy memory" })).toBeDisabled()
   })
 
   it("reports a tidy that folded nothing", () => {
@@ -321,7 +334,7 @@ describe("Memory panel", () => {
         reviewed: true,
       },
     })
-    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/nothing to merge/i)
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/nothing to change/i)
     expect(screen.getByTestId("tidy-stats")).toHaveTextContent(/1 scanned/)
   })
 
@@ -342,7 +355,7 @@ describe("Memory panel", () => {
         reviewed: true,
       },
     })
-    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/Skills curated/)
+    expect(screen.getByTestId("tidy-status")).toHaveTextContent(/Memory curated/)
     expect(screen.getByText("a-procedure-notes → a-procedure")).toBeInTheDocument()
   })
 
@@ -353,7 +366,7 @@ describe("Memory panel", () => {
 
   it("marks the tidy control when the catalog still has a family", () => {
     renderPanel({ memory: { ...memory, needs_tidy: true } })
-    expect(screen.getByRole("button", { name: "Tidy skills" })).toHaveClass(
+    expect(screen.getByRole("button", { name: "Tidy memory" })).toHaveClass(
       "border",
     )
   })
