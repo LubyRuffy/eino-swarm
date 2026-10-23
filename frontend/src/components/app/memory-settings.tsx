@@ -126,6 +126,18 @@ export function MemorySettings({
         </Field>
         <Field
           query={query}
+          label={t("settings.memory.skillStaleDays")}
+          hint={t("settings.memory.skillStaleDaysHint")}
+        >
+          <Input
+            type="number"
+            min={1}
+            value={settings.memory.skill_stale_days ?? ""}
+            onChange={(e) => update({ skill_stale_days: Number(e.target.value) })}
+          />
+        </Field>
+        <Field
+          query={query}
           label={t("settings.memory.skillsIndex")}
           hint={t("settings.memory.skillsIndexHint")}
         >

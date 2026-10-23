@@ -64,7 +64,8 @@ python3 tools/audit_macos_acceptance.py --observation /absolute/private/observat
 | `guest.target`, `guest.state` | Existing guest identity; current state is `locked`, `ready` or `unknown`. `unknown` requires fresh guest observation before using any login result |
 | `guest.existing_credentials_available` | Boolean availability of an already authorized account; never the account or secret itself |
 | `guest.unlock` (optional) | Object with that guest's `target`, `result` (`not_attempted`, `succeeded`, `failed`) and `evidence` list of private observation references |
-| `native_window` (optional) | Object with `guest_target`, the same four-field `candidate`, boolean `observed` and `behavior_verified`, and an `evidence` list of real window/behavior receipt references |
+| `native_window` (optional) | Object with `guest_target`, the same four-field `candidate`, boolean `observed` and `behavior_verified`, and an `evidence` list of current native-control or real window/behavior receipt references |
+| `native_window.ssh_helper_permission_denied`, `native_window.trusted_guest_terminal_available` (optional) | Booleans supported by this recovery's native-control evidence: the SSH-launched helper was denied, and an existing authorized guest Terminal responsibility chain is usable. Administrator membership alone proves neither |
 | `host_locked` (optional) | Boolean observation only; may be omitted and does not affect the decision |
 | `guest.ssh_ok`, `guest.process_started` (optional) | Boolean transport/process observations only; never native acceptance |
 
@@ -87,6 +88,16 @@ lock does not invalidate an already accepted exact package. Continue publication
 using the same accepted ZIP and existing batch/version under the rules above.
 This development audit tool does not itself change app behavior or require a new
 installer release.
+
+For a ready guest, both optional native-control flags being true with nonempty
+evidence and the same guest/four-field candidate yields pending /
+`inspect_native_window_via_guest_terminal`. Execute that existing authorized
+isolated path under the shared native-case lock and retain the actual helper
+result before asking the user to change settings. Missing/false flags, missing
+evidence or mismatched identity keep the ordinary window-inspection action;
+older observations without these flags remain valid. Unknown guest state still
+requires re-observation, and completed exact-package acceptance still wins.
+The action grants no privacy permission and does not itself accept a window.
 
 ### Finalize one processing batch before publication
 

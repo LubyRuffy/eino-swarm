@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
+	"github.com/LubyRuffy/eino-swarm/internal/engine"
 	"github.com/LubyRuffy/eino-swarm/internal/store"
 )
 
@@ -138,6 +139,9 @@ func printTurn(w io.Writer, st *store.Store, turn store.Turn, full bool) error {
 
 func eventText(ev store.Event) string {
 	if ev.Err != "" {
+		if ev.Kind == engine.KindMemoryReview && strings.TrimSpace(ev.Text) != "" {
+			return "error: " + ev.Err + "\n" + ev.Text
+		}
 		return "error: " + ev.Err
 	}
 	return ev.Text

@@ -16,8 +16,9 @@ type MemoryConfig struct {
 	// CharLimit bounds MEMORY.md. A write that would exceed it fails with the
 	// current entries attached, rather than silently dropping the oldest.
 	CharLimit int `yaml:"char_limit" json:"char_limit"`
-	// EntryMax bounds one note. Notes ride in every turn, so a runbook or a
-	// procedure that would fill a quarter of the budget belongs in a skill.
+	// EntryMax bounds one always-loaded note: a durable fact, preference,
+	// constraint or pointer. Workflow-specific prerequisites and execution
+	// knowledge belong in skills.
 	// Zero is repaired to the default; a value above CharLimit is clamped.
 	EntryMax int `yaml:"entry_max" json:"entry_max"`
 	// ReviewMaxIterations caps the reviewer's ReAct loop. It reads one
@@ -32,6 +33,9 @@ type MemoryConfig struct {
 	// the one-line summary are listed, so the agent pays for the index and not
 	// for every procedure it might not need.
 	SkillsIndexMax int `yaml:"skills_index_max" json:"skills_index_max"`
+	// SkillStaleDays marks a skill as a catalog-tidy candidate after this many
+	// days without a view. It never deletes skills automatically.
+	SkillStaleDays int `yaml:"skill_stale_days" json:"skill_stale_days"`
 	// Notifications is how chatty a completed review is in the transcript:
 	// off (nothing), on (one line naming what changed), verbose (the line
 	// plus a preview of the written text).
@@ -97,6 +101,14 @@ func (m MemoryConfig) IndexMax() int {
 		return DefaultSkillsIndexMax
 	}
 	return m.SkillsIndexMax
+}
+
+// StaleDays is the advisory inactivity threshold for catalog tidy.
+func (m MemoryConfig) StaleDays() int {
+	if m.SkillStaleDays <= 0 {
+		return DefaultSkillStaleDays
+	}
+	return m.SkillStaleDays
 }
 
 const (

@@ -788,6 +788,19 @@ worker before closing SQLite.
    `schedule_continue` that cannot restart, or that is dropped as superseded,
    still closes the bound schedule run (`error`) so `HasRunningRun` cannot
    stick a wait that will never fire again.
+Skill usage lives beside each `SKILL.md` in `usage.json`, under the Store lock.
+Only agent `ViewSkill` updates it; API reads and copies use `ReadSkill`. The
+sidecar keeps content timestamps and digests stable. Tidy snapshots stale
+candidates before inspection and records the names in the report, streamed scan
+and original-turn memory review, without deleting by age.
+
+Notes and skills differ by loading: notes are short declarations whose absence
+would misdirect work and are injected each turn; skills contain the methods
+needed to accomplish work and load through `skill_view`. Workflow-local
+constraints belong in skill preconditions; descriptions state when to use a
+skill. An exact existing skill-name pointer may remain in notes if it does not
+restate the body. This changes no Markdown format or event kind.
+
 8. **Review** (`F-420`, `C-025`): with memory and auto-review enabled, a
    successful turn starts a single streaming `adk.ChatModelAgent` from the stored
    event log, even when the manager already used a memory tool. Compacted ADK
@@ -894,11 +907,21 @@ worker before closing SQLite.
    Successful-turn reviews, or successful turns with auto-review off, still fold
    leftover skill families. A standalone successful turn writes procedures only
    into the shared library. Manual **Review now** selects the most recent
-   successful turn. Catalog tidy remains its separate live-catalog flow with
-   direct skill tools and no notes. `POST /api/projects/:id/memory/tidy-skills`
+   successful turn. Requested project tidy receives current notes and live skill catalog, with
+   `CatalogTools` plus tidy-only `ReclassifyTools`; turn reviewers and workers
+   never receive the latter. Promote requires its body to equal the complete source note after
+   whitespace normalization, without extra steps or assertions. Demote requires a short body
+   without Markdown step markers and a whitespace-equivalent note, within both
+   budgets. Similarity cannot authorize source deletion. The destination is
+   saved first; partial failures emit actual create/add/delete changes, not a
+   completed move. State-idempotent retries do not prove historical provenance.
+   Shared-library tidy receives skill tools only, with no notes or move tools. `POST /api/projects/:id/memory/tidy-skills`
    folds stems before model curation; `Accept: text/event-stream` reports the
    scan, streamed prose and actual writes, then the same result as JSON with
-   created/deleted/patched/unchanged counts and `reviewed` when the model ran.
+   created/deleted/patched/unchanged counts, promoted/demoted counts, stale
+   candidate names and `reviewed` when the model ran (skills or project notes).
+   A project without a prior turn retains the existing no-Trace-anchor behavior;
+   this flow does not fabricate conversation history to supply one.
    The Memory panel keeps each tidy card with its own project; switching away
    and back preserves in-flight progress or the finished result. An earlier
    memory read cannot replace the completed catalog with stale content. Opening

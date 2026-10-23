@@ -67,7 +67,7 @@ export function parseReviewDiagnostics(raw: unknown): Partial<ReviewOutcome> {
     const operations = Array.isArray(r.operations) ? r.operations.slice(0, 32).flatMap((item) => {
       const op = record(item)
       return op && typeof op.target === "string" && typeof op.action === "string"
-        ? [{ target: ["memory", "skill_manage"].includes(op.target) ? op.target : "unknown", action: ["add", "replace", "remove", "create", "patch", "merge", "delete"].includes(op.action) ? op.action : "unknown", sources: sequences(op.sources) }] : []
+        ? [{ target: ["memory", "skill_manage"].includes(op.target) ? op.target : "unknown", action: ["add", "replace", "remove", "create", "patch", "merge", "delete", "promote", "demote"].includes(op.action) ? op.action : "unknown", sources: sequences(op.sources) }] : []
     }) : []
     return [{ number: r.number as number, status, operations }]
   }) : undefined
@@ -100,7 +100,11 @@ export function reviewFailure(outcome: ReviewOutcome | undefined, locale: Locale
     }
     lines.push(`${line}${zh ? "。" : "."}`)
   }
-  if (!Object.values(outcome.notes ?? {}).some((n) => n > 0)) lines.push(zh ? "本次笔记未保存。" : "Notes were not saved.")
+  const savedNotes = Object.values(outcome.notes ?? {}).some((n) => n > 0) || outcome.changes?.some((change) =>
+    (change?.target === "memory" && ["add", "replace", "remove"].includes(change.action)) ||
+    (change?.target === "skill_manage" && ["promote", "demote"].includes(change.action)),
+  )
+  if (!savedNotes) lines.push(zh ? "本次笔记未保存。" : "Notes were not saved.")
   if (outcome.skills?.length) lines.push(zh ? "已完成的技能变更已保存。" : "Skill changes were saved.")
   return lines.join("\n")
 }
@@ -108,8 +112,9 @@ export function reviewFailure(outcome: ReviewOutcome | undefined, locale: Locale
 /** The trace retains only operation kinds and source positions. Legacy free-form
  *  rejection text can contain an old note, quote or provider secret. */
 export function reviewTraceMetadata(outcome: ReviewOutcome): string | undefined {
-  if (!outcome.attempts?.length && !outcome.refused?.length && !outcome.stop_reason) return undefined
+  if (!outcome.attempts?.length && !outcome.refused?.length && !outcome.stop_reason && !outcome.stale_candidates?.length) return undefined
   return JSON.stringify({
+    stale_candidates: outcome.stale_candidates,
     stop_reason: outcome.stop_reason,
     attempt_count: outcome.attempt_count,
     attempts: outcome.attempts,

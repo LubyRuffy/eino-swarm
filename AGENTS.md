@@ -66,6 +66,13 @@ E2E suite.
 
 ## Testing rules
 
+- Memory reclassification deletes a source only after preserving its full text
+  (whitespace normalization is allowed); token overlap cannot prove that negation,
+  numbers or conditions survived. Regress partial filesystem deletion and report
+  actual writes even when the move fails. Skill usage is separate from content
+  identity and never enters the prompt index. E2E language fixtures must restore
+  server locale as well as browser storage.
+
 - Concurrent Playwright runs must each own a separate server port, data
   directory and `--output` directory. Preserve the first failure and identify
   whether it came from a business assertion or artifact/teardown handling;
@@ -283,7 +290,12 @@ E2E suite.
   Execute the reported next action during the current recovery. A failed
   control channel alone is not a reason to leave authorized acceptance waiting:
   try another available isolated native control path and record its actual
-  result. Routine recovery already authorized by the user needs no second
+  result. If an SSH-launched helper is denied native permissions while an
+  existing authorized guest Terminal control path is evidenced as usable,
+  execute that path before asking the user to change settings. Keep the
+  native-case lock, exact target/candidate and fresh helper receipts; guest
+  administrator status does not establish Accessibility or Screen Recording
+  trust. Routine recovery already authorized by the user needs no second
   approval. Preserve passed evidence for its exact source and package; a later
   main change requires checking the affected inputs, not erasing that evidence.
 - Repeated ci-macOS access failures need fresh route/interface, guest MAC/link/IP/

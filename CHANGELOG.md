@@ -13,6 +13,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-420`, `C-025`, `C-012`: requested project memory tidy can promote notes to skills and demote short declarative skills to notes, with source-preserving checks, budget validation, partial-write receipts and original-turn Trace. Project controls now say **Tidy memory**; shared-library tidy remains skills-only (Issue #99).
+
+- `F-420`, `C-025`: record agent skill views in a separate usage sidecar, expose usage and configurable `memory.skill_stale_days` in Settings and Memory, and retain advisory stale candidates in tidy results and original-turn Trace. Merges sum usage; copies start unused (Issue #99).
+
 - `F-115`, `C-034`, `C-012`: macOS windows validate actual painted probe pixels,
   attempt one reload, then perform bounded attach-only window replacement with
   the original engine and durable per-turn diagnostics. Sleep/focus grace,
@@ -49,6 +53,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-420`, `C-025`: unify notes/skills classification by permanent versus on-demand loading, applicability-focused descriptions and workflow-local constraints; clarify both Memory panel descriptions and split memory translations (Issue #99).
 - `F-430`, `C-010`: prepare numeric candidate `0.1.36` with matching mobile
   package metadata before the exact-source Mac installer acceptance. This is a
   local acceptance candidate; native gates and publication remain pending, and
@@ -93,6 +98,19 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-420`, `C-025`: clarify existing tidy API failure semantics: internal tool refusals, reviewer errors in HTTP 200 / SSE `done` with saved receipts, and outer fold/view errors through normal JSON mapping or SSE `error`. Documentation only; runtime behavior is unchanged (Issue #99).
+
+- Tests: synchronize interrupted-output retention with a real live partial HTTP stream instead of assuming the manager produced text within 120ms. Keep the stream open until Stop, verify the identical text and output identity after persistence, and retain delayed-start and next-turn coverage without changing runtime behavior.
+
+- `F-430`, `C-031`: native acceptance recovery now selects the existing authorized guest Terminal control path when current exact-target evidence shows SSH helper permission denial and that path is usable. Unknown-state observation and completed acceptance retain priority; the offline audit neither grants privacy permissions nor operates the VM.
+
+- `F-420`, `F-160`, `C-025`: failed tidy Trace summaries use committed note and completed move receipts, preserving saved destination notes instead of claiming they were not saved; a skill-only partial promotion retains the uncommitted-note warning (Issue #99).
+
+- `F-420`, `C-025`: keep ordinary file collisions classified as filesystem rejections while refusing occupied skill directories, including orphaned usage sidecars (Issue #99).
+
+- `F-420`, `F-160`, `C-012`, `C-025`: retain partial memory writes and stale candidate payloads beside storage errors in `zwai trace --full`, so a failed tidy remains reconstructable (Issue #99).
+
+- `F-420`, `C-025`: allow notes pointing to an existing skill without restating its body; unknown names do not bypass duplicate checks (Issue #99).
 - `F-110`, `F-115`, `C-034`: checkout re-exec bundles are immutable per executable
   hash and atomically published under a cross-process lock; preparing another
   desktop no longer overwrites or re-signs a live cached executable (Issue #94).

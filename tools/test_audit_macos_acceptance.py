@@ -45,6 +45,91 @@ class MacAcceptanceTests(unittest.TestCase):
             "evidence": ["private/native-window.png", "private/behavior-receipt.json"],
         }
 
+    def trusted_terminal(self, row):
+        self.window(row)
+        row["native_window"].update(
+            observed=False, behavior_verified=False,
+            ssh_helper_permission_denied=True, trusted_guest_terminal_available=True,
+            evidence=["private/current-native-control.json"],
+        )
+
+    def test_ssh_helper_denial_uses_an_evidenced_trusted_guest_terminal(self):
+        row = observation()
+        row["guest"]["state"] = "ready"
+        self.trusted_terminal(row)
+        before = copy.deepcopy(row)
+        result = self.decide(row)
+        self.assertEqual(result["status"], "pending")
+        self.assertEqual(result["next_action"], "inspect_native_window_via_guest_terminal")
+        self.assertEqual(result["reason"], "trusted_guest_terminal_control_available")
+        self.assertEqual(result["evidence_refs"], row["native_window"]["evidence"])
+        self.assertEqual(row, before)
+
+    def test_terminal_fallback_requires_both_current_control_flags(self):
+        for denied in (True, False, None):
+            for available in (True, False, None):
+                if denied is True and available is True:
+                    continue
+                with self.subTest(denied=denied, available=available):
+                    row = observation()
+                    row["guest"]["state"] = "ready"
+                    self.trusted_terminal(row)
+                    for field, value in (("ssh_helper_permission_denied", denied),
+                                         ("trusted_guest_terminal_available", available)):
+                        if value is None:
+                            del row["native_window"][field]
+                        else:
+                            row["native_window"][field] = value
+                    self.assertEqual(self.decide(row)["next_action"], "inspect_native_window")
+
+    def test_terminal_fallback_requires_matching_guest_candidate_and_evidence(self):
+        for field, value in (
+            ("guest_target", "another-macOS"), ("evidence", []),
+            ("version", "1.2.4"), ("source_sha", "c" * 40),
+            ("asset_name", "another-package.zip"), ("asset_sha256", "d" * 64),
+        ):
+            with self.subTest(field=field):
+                row = observation()
+                row["guest"]["state"] = "ready"
+                self.trusted_terminal(row)
+                target = row["native_window"]
+                if field in row["candidate"]:
+                    target = target["candidate"]
+                target[field] = value
+                self.assertEqual(self.decide(row)["next_action"], "inspect_native_window")
+
+    def test_terminal_control_evidence_cannot_replace_current_guest_observation(self):
+        for state, action in (("unknown", "observe_guest_session"), ("locked", "unlock_guest")):
+            with self.subTest(state=state):
+                row = observation()
+                row["guest"]["state"] = state
+                self.trusted_terminal(row)
+                self.assertEqual(self.decide(row)["next_action"], action)
+
+    def test_completed_acceptance_precedes_terminal_control_recovery(self):
+        for state in ("ready", "unknown", "locked"):
+            with self.subTest(state=state):
+                row = observation()
+                row["guest"]["state"] = state
+                self.trusted_terminal(row)
+                row["native_window"].update(
+                    observed=True, behavior_verified=True,
+                    evidence=["private/native-window.png", "private/behavior-receipt.json"],
+                )
+                result = self.decide(row)
+                self.assertEqual(result["status"], "passed")
+                self.assertEqual(result["next_action"], "record_acceptance")
+
+    def test_terminal_control_flags_reject_non_boolean_claims(self):
+        for field in ("ssh_helper_permission_denied", "trusted_guest_terminal_available"):
+            for value in (1, "true", None):
+                with self.subTest(field=field, value=value):
+                    row = observation()
+                    self.trusted_terminal(row)
+                    row["native_window"][field] = value
+                    with self.assertRaises(ValueError):
+                        self.decide(row)
+
     def test_locked_guest_with_authorized_account_returns_unlock_guest(self):
         result = self.decide(observation())
         self.assertEqual(result["status"], "pending")
@@ -227,6 +312,16 @@ class MacAcceptanceTests(unittest.TestCase):
         result = self.cli(json.dumps(observation()))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["next_action"], "unlock_guest")
+
+    def test_cli_returns_trusted_terminal_action_without_accepting_a_window(self):
+        row = observation()
+        row["guest"]["state"] = "ready"
+        self.trusted_terminal(row)
+        result = self.cli(json.dumps(row))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        decision = json.loads(result.stdout)
+        self.assertEqual(decision["status"], "pending")
+        self.assertEqual(decision["next_action"], "inspect_native_window_via_guest_terminal")
 
     def test_cli_unknown_guest_ignores_a_historical_login_failure(self):
         row = observation()
