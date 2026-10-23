@@ -227,10 +227,10 @@ Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user en
 
 ## C-017 Phone composer focus preserves the viewport
 
-- 状态：active；类型：lifecycle / compatibility；作用范围：手机消息与引用编辑器；关联功能：`F-220`, `F-221`, `F-230`。
-- 契约内容：消息和引用的可编辑文字至少为 16 CSS px，避免 iOS 聚焦小字输入框后留下自动放大；关闭键盘后，会话顶部仍在原有安全区域，等待操作及发送／跟进／插入按钮不得超出屏幕右边缘；长输入和长模型名不要求用户横向拖动才能提交。
+- 状态：active；类型：lifecycle / compatibility；作用范围：手机消息、引用与 Ask Other 编辑器；关联功能：`F-220`, `F-221`, `F-230`。
+- 契约内容：消息、引用和 Ask Other 的可编辑文字至少为 16 CSS px，避免 iOS 聚焦小字输入框后留下自动放大；关闭键盘后，会话顶部仍在原有安全区域，等待操作及发送／跟进／插入／提问提交按钮不得超出屏幕右边缘；长输入和长模型名不要求用户横向拖动才能提交。Ask 拒绝保留草稿、重试成功后的页面也必须满足同一边界。
 - 允许行为：用户主动缩放；禁止行为：用禁止用户缩放代替修复，或在键盘关闭后留下自动缩放和顶部偏移；失败语义：布局恢复不依赖网络；不变量：聚焦输入框不改变关闭键盘后的导航、等待操作和提交可达性；边界条件：窄屏、长输入、长模型名、引用编辑、等待中的会话、PC／新建／直连对话。
-- 证据：实现 `mobile/src/components/composer.tsx`；测试 `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`, `mobile/e2e/ios-wait-layout.swift`, `mobile/scripts/ios-layout-fixture.py`；变更规则：修改编辑器字号须重验 Web 布局和 iOS 键盘关闭后的真实页面；来源：GitHub Issues #40、#41（同一聚焦放大根因）。
+- 证据：实现 `mobile/src/components/composer.tsx`, `mobile/src/components/ask-card.tsx`；测试 `mobile/e2e/walkthrough.spec.ts`, `mobile/e2e/composer-layout.spec.ts`, `mobile/e2e/ask-answer.spec.ts`, `mobile/e2e/ios-wait-layout.swift`, `mobile/e2e/ios-ask-viewport.swift`, `mobile/scripts/ios-layout-fixture.py`；变更规则：修改编辑器字号须重验 Web 布局和 iOS 聚焦、键盘关闭、提问拒绝及重试后的真实页面，不得只用既有主输入框或 JSDOM 通过替代新入口；变更类型：Fixed；来源：GitHub Issues #40、#41、#104（Ask 曾遗漏同一聚焦边界）。
 
 ## C-018 Phone client detail stays in the viewport
 

@@ -91,6 +91,7 @@ export function AskCard({
             {picks[q.id] === ASK_OTHER_ID ? (
               <Textarea
                 aria-label={t("ask.other")}
+                className="text-base"
                 disabled={disabled || submitting || submitted}
                 value={other[q.id] ?? ""}
                 onChange={(e) =>
