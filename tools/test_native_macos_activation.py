@@ -27,6 +27,8 @@ PREFIX = r'''
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <CommonCrypto/CommonDigest.h>
+#include <sys/sysctl.h>
 #include <stdio.h>
 static double clockValue=10, lastSlice=0;
 static int pumps=0, activations=0, raises=0, presses=0, inputs=0, axReads=0, collections=0;
@@ -125,9 +127,20 @@ static AXError fixturePid(AXUIElementRef element,pid_t *pid) {
     return [mode isEqual:@"unknown-pid"] ? kAXErrorCannotComplete : kAXErrorSuccess;
 }
 static id attr(AXUIElementRef element, CFStringRef key) {return attribute(element,key);}
-static NSDictionary *identity(pid_t pid) {identities++; return @{@"pid":@(pid),@"birth":@[@1,@([mode isEqual:@"pid-reused"] && identities>1 ? 3 : 2)],@"executable":@"/private/case/Contents/MacOS/zwai"};}
-static NSString *env(NSString *key) {return [key isEqual:@"ZWAI_NATIVE_APP"] ? @"/private/case" : @"case-marker";}
+static NSDictionary *identity(pid_t pid) {identities++; return @{@"pid":@(pid),@"birth":@[@1,@([mode isEqual:@"pid-reused"] && activations>0 ? 3 : 2)],@"executable":@"/private/case/Contents/MacOS/zwai"};}
+static NSString *env(NSString *key) {return [key isEqual:@"ZWAI_NATIVE_APP"] ? @"/private/case" : [key isEqual:@"ZWAI_NATIVE_CASE_ID"] ? @"case-marker" : @"";}
 static BOOL bound(pid_t pid) {return ![mode isEqual:@"bound-lost"] || activations==0;}
+static int fixtureSysctl(int *mib,u_int count,void *out,size_t *size,void *unused,size_t length) {
+    NSMutableData *data=[NSMutableData data]; int argc=1; [data appendBytes:&argc length:sizeof(argc)];
+    const char *value="/private/case/Contents/MacOS/zwai"; char zero=0;
+    [data appendBytes:value length:strlen(value)+1]; [data appendBytes:&zero length:1];
+    [data appendBytes:value length:strlen(value)+1];
+    value="ZWAI_NATIVE_CASE_ID=case-marker"; [data appendBytes:value length:strlen(value)+1];
+    if (!out) {*size=data.length;return 0;}
+    memcpy(out,data.bytes,data.length); *size=data.length; return 0;
+}
+#define sysctl fixtureSysctl
+
 static NSString *text(AXUIElementRef element, CFStringRef key) {return @"private window";}
 static void fixtureRelease(CFTypeRef value) {}
 static AXError fixtureSet(AXUIElementRef element,CFStringRef key,CFTypeRef value) {return 0;}
@@ -157,7 +170,11 @@ class NativeActivationTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix="native-activation-headless-")
         cls.addClassCleanup(cls.temporary.cleanup)
-        directory = Path(cls.temporary.name)
+        directory = Path(cls.temporary.name).resolve()
+        bundle = directory / "zwai-native-case-marker-fixture/zwai.app"
+        core = bundle / "Contents/MacOS/zwai"
+        core.parent.mkdir(parents=True)
+        core.write_bytes(b"frozen actual activation core\n")
         cls.binaries = {}
         cls.full_binaries = {}
         for label, name in (("smoke", "native_macos_ax.m"),
@@ -167,7 +184,14 @@ class NativeActivationTests(unittest.TestCase):
                        + function(source, "static int fail(")
                        + function(source, "static BOOL waitForActivation(")
                        + function(source, "static int failSnapshot(")
-                       + function(source, "static BOOL realWindow("))
+                       + function(source, "static BOOL realWindow(")
+                       + function(source, "static NSString *pasteDigest(")
+                       + function(source, "static BOOL activationCase(")
+                       + function(source, "static NSString *activationCoreHash(")
+                       + function(source, "static NSString *string(")
+                       + function(source, "static BOOL activationRecoveryProof(")
+                       + function(source, "static NSString *activationBundle(")
+                       + function(source, "static int activationRefused("))
             if label == "smoke":
                 caller = source[source.index("    NSArray *windows = attribute(app, kAXWindowsAttribute)"):
                                 source.index("    CGRect bounds = window ? frame(window)")]
@@ -187,7 +211,7 @@ class NativeActivationTests(unittest.TestCase):
 ''' + action
             else:
                 body = ""
-                body += function(source, '    if ([action isEqual:@"activate"])')
+                body += function(source, '    if ([action isEqual:@"activate"]) {')
                 if "windows[" in body:
                     body = "id windows=attr(app,kAXWindowsAttribute);\n" + body
                 body += "    return 3;\n"
@@ -210,7 +234,7 @@ int main(int argc,const char **argv) {@autoreleasepool {
 }}
 '''
             path = directory / (label + ".m")
-            path.write_text(program)
+            path.write_text(program.replace("/private/case", str(bundle)))
             binary = directory / label
             built = subprocess.run(["/usr/bin/xcrun", "clang", "-fobjc-arc",
                                     "-framework", "AppKit", "-framework", "ApplicationServices",
@@ -405,7 +429,7 @@ int main(int argc,const char **argv) {@autoreleasepool {
         activation=main.index('if ([action isEqual:@"activate"])')
         for call in ("AXIsProcessTrusted()","AXUIElementCreateApplication(pid)","attr(app, kAXWindowsAttribute)"):
             self.assertLess(activation,main.index(call))
-        self.assertNotIn("AX",function(main,'    if ([action isEqual:@"activate"])').replace("an AX window","").replace("validated window", ""))
+        self.assertNotIn("AX",function(main,'    if ([action isEqual:@"activate"]) {').replace("an AX window","").replace("validated window", ""))
 
     def test_real_sdk_main_refuses_no_target_without_window_calls(self):
         # No seams here: argc refuses before permission/window/input calls on a VM too.
@@ -425,6 +449,8 @@ STARTUP_PREFIX = r"""
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <CommonCrypto/CommonDigest.h>
+#include <sys/sysctl.h>
 #include <sys/sysctl.h>
 #include <unistd.h>
 static NSString *startupMode;

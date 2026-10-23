@@ -558,6 +558,65 @@ result is not a window receipt: subsequent snapshot/input still requires a
 fresh positively identified window and actual pixels. The file-panel path has
 its own independent scan and acceptance rules below.
 
+Recovery activation keeps the original `ZWAI_NATIVE_APP` case anchor rather
+than replacing it with a caller-supplied successor path. The helper derives the
+bundle from the kernel executable, accepts the original or the same case's
+home/Library/Caches/zwai/desktop-recovery-*/zwai.app with its 16-hex session
+file, and hashes both actual core files before requesting activation. With no
+proof, their full SHA-256 values must match. Product `WriteMacApp` rewrites
+Info/icon and re-signs its copy, so equal raw core bytes are not a general
+recovery invariant. Never replace the original anchor or learn an expected
+digest from the target being accepted. Prepare a proof through the actual
+writer and signing system before the timed round:
+
+```bash
+python3 tools/native_macos_recovery_identity.py build --checkout "$CLEAN_SOURCE" --source "$SOURCE_SHA" --output "$NEW_BUILD_DIR"
+python3 tools/native_macos_recovery_identity.py prepare --writer "$NEW_BUILD_DIR/recovery-identity-writer.test" --binding "$NEW_BUILD_DIR/writer-binding.json" --original "$ORIGINAL_CORE" --original-sha256 "$ORIGINAL_SHA256" --source "$SOURCE_SHA" --version "$VERSION" --output "$NEW_PROOF_DIR"
+```
+
+The build checks tracked and untracked desktop-package/module inputs before
+and after compilation, disables external Go overlays/workspaces and requires a
+new output outside the checkout. Its Go overlay calls actual `WriteMacApp`
+with the real embedded icon; it does not copy the writer implementation or
+launch an App. Prepare on the target signing system: strict/all-architecture
+verify the frozen original, retain the writer's actual codesign argv/exit/raw
+output (its production best-effort error is insufficient), verify two derived
+copies and require identical full bytes. Compare every pre-signature code/data
+and load-command byte, normalizing only the measured signature datasize and
+linkedit virtual/file size fields, with strict tail/segment constraints.
+
+The prepare command prints a binding object. Freeze its absolute `path`, full
+`sha256`, `source_sha` and `version` as the JSON environment value
+`ZWAI_NATIVE_RECOVERY_IDENTITY` in the isolated case capsule. Schema 1 proof
+binds the original and derived full core hashes, derived Info/icon hashes and
+the preparation receipt hash. The helper reads and hashes the actual proof;
+unknown/extra schema fields, missing bytes, wrong pin/origin/source/version,
+metadata changes and a different full target hash refuse. A present bad proof
+also refuses when core hashes happen to match; no fallback or subprocess is
+added to activation. Only proof path/hash/stage and sampled identity are logged.
+The inherited case marker, NS PID/resolved bundle,
+and kernel birth/executable before and after the request must agree; unknown
+registration and nonempty wrong identities refuse. Layout/hash checks share
+the original two-second deadline, with no new loop or fallback. Structured
+`activation_identity` diagnostics retain actual/expected paths, hashes and the
+sampled reason without reading the recovery spec or its handshake token.
+`tools/test_native_macos_successor_identity.py` runs the entire real helper main
+with kernel/NS/clock seams and real temporary files. Its actual product-writer
+regression uses real signed Mach-O page-size and Info-version variants, broken
+original signatures, and code/data/signature/metadata mutations. The companion
+`tools/test_native_macos_recovery_identity.py` checks full-payload normalization,
+dirty/untracked build inputs, raw failures and timeout streams, deterministic
+writer/signature validation and CLI binding. Original/same-core success,
+cross-case/layout/core/NS refusal, malformed process arguments and PID reuse
+remain covered. The existing activation tests
+still exercise one-request/runloop/deadline and AX-free behavior. These tests
+accept QA targeting only: an earlier uncaptured NS refusal stays unknown, and
+a separately observed 30-second product replacement failure remains pending
+until its own real window and timing evidence passes (`C-034`, Issue #108).
+The earlier raw-equality review missed the actual writer's signing side effect;
+retain its software-green/native-red history rather than describing it as a
+product failure or accepted native recovery.
+
 When an action requests activation, it does so at most once; the guarded window
 actions raise only the validated case window. Activation waits refresh
 `NSRunningApplication.active` through short main-runloop slices. A single

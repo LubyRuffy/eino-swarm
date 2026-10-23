@@ -232,6 +232,133 @@ static BOOL waitForActivation(NSRunningApplication *running, double deadline) {
     }
 }
 
+static BOOL activationCase(pid_t pid) {
+    // Only inspect the inherited marker, never publish the target environment.
+    int mib[] = {CTL_KERN, KERN_PROCARGS2, pid}; size_t size = 0;
+    if (sysctl(mib, 3, NULL, &size, NULL, 0) || size < sizeof(int)) return NO;
+    NSMutableData *data = [NSMutableData dataWithLength:size];
+    if (sysctl(mib, 3, data.mutableBytes, &size, NULL, 0) || size < sizeof(int) || size > data.length) return NO;
+    const char *cursor = (const char *)data.bytes + sizeof(int), *end = (const char *)data.bytes + size;
+    int argc = 0; memcpy(&argc, data.bytes, sizeof(argc));
+    if (argc <= 0) return NO;
+    size_t length = strnlen(cursor, end-cursor);
+    if (cursor+length == end) return NO;
+    cursor += length+1;
+    while (cursor < end && !*cursor) cursor++;
+    for (int index = 0; index < argc && cursor < end; index++) {
+        length = strnlen(cursor, end-cursor);
+        if (cursor+length == end) return NO;
+        cursor += length+1;
+    }
+    NSString *expected = [@"ZWAI_NATIVE_CASE_ID=" stringByAppendingString:env(@"ZWAI_NATIVE_CASE_ID")];
+    while (cursor < end) {
+        if (!*cursor) { cursor++; continue; }
+        length = strnlen(cursor, end-cursor);
+        if (cursor+length == end) return NO;
+        if ([expected isEqualToString:[[NSString alloc] initWithBytes:cursor length:length encoding:NSUTF8StringEncoding]]) return YES;
+        cursor += length+1;
+    }
+    return NO;
+}
+
+static NSString *activationCoreHash(NSString *path, double deadline) {
+    if (NSProcessInfo.processInfo.systemUptime >= deadline) return nil;
+    NSDictionary *before = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+    if (![before[NSFileType] isEqual:NSFileTypeRegular] || ![before[NSFileSize] unsignedLongLongValue]
+        || [before[NSFileSize] unsignedLongLongValue] > UINT_MAX) return nil;
+    NSData *data = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:nil];
+    NSDictionary *after = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+    if (!data || data.length != [before[NSFileSize] unsignedLongLongValue] || ![before isEqual:after]
+        || NSProcessInfo.processInfo.systemUptime >= deadline) return nil;
+    return pasteDigest(data);
+}
+
+static BOOL activationRecoveryProof(NSString *originalHash, NSString *actualHash,
+                                    NSString *bundle, NSString *original,
+                                    NSMutableDictionary *observed, double deadline) {
+    NSString *frozen = env(@"ZWAI_NATIVE_RECOVERY_IDENTITY");
+    if (!frozen.length) return [originalHash isEqual:actualHash];
+    observed[@"proof_stage"] = @"binding";
+    if (frozen.length > 8192 || NSProcessInfo.processInfo.systemUptime >= deadline) return NO;
+    id binding = [NSJSONSerialization JSONObjectWithData:[frozen dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+    NSSet *keys = [NSSet setWithArray:@[@"path", @"sha256", @"source_sha", @"version"]];
+    if (![binding isKindOfClass:NSDictionary.class] || ![[NSSet setWithArray:[binding allKeys]] isEqual:keys]) return NO;
+    NSString *path = string(binding[@"path"]), *pin = string(binding[@"sha256"]);
+    observed[@"proof_path"] = path; observed[@"proof_sha256"] = pin;
+    NSString *source = string(binding[@"source_sha"]), *version = string(binding[@"version"]);
+    NSRegularExpression *hex = [NSRegularExpression regularExpressionWithPattern:@"\\A[0-9a-f]{64}\\z" options:0 error:nil];
+    NSRegularExpression *commit = [NSRegularExpression regularExpressionWithPattern:@"\\A[0-9a-f]{40}\\z" options:0 error:nil];
+    NSRegularExpression *release = [NSRegularExpression regularExpressionWithPattern:@"\\A[0-9]+\\.[0-9]+\\.[0-9]+\\z" options:0 error:nil];
+    if (!path.isAbsolutePath
+        || [hex numberOfMatchesInString:pin options:0 range:NSMakeRange(0,pin.length)] != 1
+        || [commit numberOfMatchesInString:source options:0 range:NSMakeRange(0,source.length)] != 1
+        || [release numberOfMatchesInString:version options:0 range:NSMakeRange(0,version.length)] != 1) return NO;
+    NSDictionary *attributes = [NSFileManager.defaultManager attributesOfItemAtPath:path error:nil];
+    observed[@"proof_stage"] = @"bytes";
+    if (![attributes[NSFileType] isEqual:NSFileTypeRegular] || [attributes[NSFileSize] unsignedLongLongValue] > 32768) return NO;
+    NSData *data = [NSData dataWithContentsOfFile:path];
+    if (![pasteDigest(data) isEqual:pin] || NSProcessInfo.processInfo.systemUptime >= deadline) return NO;
+    id proof = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    observed[@"proof_stage"] = @"schema_and_origin";
+    keys = [NSSet setWithArray:@[@"schema", @"source_sha", @"version", @"original_core_sha256",
+        @"derived_core_sha256", @"derived_info_sha256", @"derived_icon_sha256", @"preparation_sha256"]];
+    if (![proof isKindOfClass:NSDictionary.class] || ![[NSSet setWithArray:[proof allKeys]] isEqual:keys]
+        || ![proof[@"schema"] isKindOfClass:NSNumber.class]
+        || CFGetTypeID((__bridge CFTypeRef)proof[@"schema"]) == CFBooleanGetTypeID()
+        || CFNumberIsFloatType((__bridge CFNumberRef)proof[@"schema"])
+        || ![proof[@"schema"] isEqual:@1] || ![source isEqual:proof[@"source_sha"]]
+        || ![version isEqual:proof[@"version"]] || ![originalHash isEqual:proof[@"original_core_sha256"]]) return NO;
+    for (NSString *key in @[@"original_core_sha256", @"derived_core_sha256", @"derived_info_sha256", @"derived_icon_sha256", @"preparation_sha256"]) {
+        NSString *value = string(proof[key]);
+        if ([hex numberOfMatchesInString:value options:0 range:NSMakeRange(0,value.length)] != 1) return NO;
+    }
+    observed[@"proof_stage"] = @"derived_identity";
+    if (![bundle isEqual:original] && (![actualHash isEqual:proof[@"derived_core_sha256"]]
+        || ![activationCoreHash([bundle stringByAppendingPathComponent:@"Contents/Info.plist"], deadline) isEqual:proof[@"derived_info_sha256"]]
+        || ![activationCoreHash([bundle stringByAppendingPathComponent:@"Contents/Resources/AppIcon.icns"], deadline) isEqual:proof[@"derived_icon_sha256"]])) return NO;
+    observed[@"proof_validated"] = @YES;
+    observed[@"proof_stage"] = @"confirmed";
+    return YES;
+}
+
+static NSString *activationBundle(NSDictionary *process, NSMutableDictionary *observed, double deadline) {
+    NSString *original = [env(@"ZWAI_NATIVE_APP") stringByResolvingSymlinksInPath];
+    NSString *root = original.stringByDeletingLastPathComponent;
+    NSString *executable = [process[@"executable"] stringByResolvingSymlinksInPath];
+    NSString *bundle = executable.stringByDeletingLastPathComponent.stringByDeletingLastPathComponent.stringByDeletingLastPathComponent;
+    observed[@"kernel_executable_raw"] = process[@"executable"] ?: NSNull.null;
+    observed[@"kernel_executable_resolved"] = executable ?: NSNull.null;
+    observed[@"expected_target_bundle"] = bundle ?: NSNull.null;
+    NSString *prefix = [@"zwai-native-" stringByAppendingFormat:@"%@-", env(@"ZWAI_NATIVE_CASE_ID")];
+    NSString *coreSuffix = @"Contents/MacOS/zwai";
+    if (![original.pathExtension isEqual:@"app"] || ![root.lastPathComponent hasPrefix:prefix]
+        || ![executable isEqual:[bundle stringByAppendingPathComponent:coreSuffix]]) return nil;
+    if (![bundle isEqual:original]) {
+        NSString *cache = [root stringByAppendingPathComponent:@"home/Library/Caches/zwai"];
+        NSString *folder = bundle.stringByDeletingLastPathComponent;
+        NSString *name = folder.lastPathComponent;
+        if (![bundle.lastPathComponent isEqual:@"zwai.app"] || ![folder.stringByDeletingLastPathComponent isEqual:cache]
+            || ![name hasPrefix:@"desktop-recovery-"] || name.length <= @"desktop-recovery-".length) return nil;
+        NSString *session = [NSString stringWithContentsOfFile:[folder stringByAppendingPathComponent:@"session"]
+                                                   encoding:NSUTF8StringEncoding error:nil];
+        if (session.length != 16 || [session rangeOfCharacterFromSet:
+            [[NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"] invertedSet]].location != NSNotFound) return nil;
+    }
+    NSString *originalCore = [original stringByAppendingPathComponent:coreSuffix];
+    NSString *expectedHash = activationCoreHash(originalCore, deadline);
+    NSString *actualHash = [executable isEqual:originalCore] ? expectedHash : activationCoreHash(executable, deadline);
+    observed[@"original_core_sha256"] = expectedHash ?: NSNull.null;
+    observed[@"target_core_sha256"] = actualHash ?: NSNull.null;
+    return expectedHash && actualHash && activationRecoveryProof(expectedHash, actualHash, bundle, original, observed, deadline) ? bundle : nil;
+}
+
+static int activationRefused(NSMutableDictionary *observed, NSString *reason) {
+    observed[@"reason"] = reason;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:@{@"activation_identity":observed} options:0 error:nil];
+    fprintf(stderr, "%s\n", [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding].UTF8String);
+    return fail(reason);
+}
+
 static AXError filePanelAttribute(AXUIElementRef item, CFStringRef key, id *value) {
     CFTypeRef raw = NULL;
     AXError status = AXUIElementCopyAttributeValue(item, key, &raw);
@@ -404,31 +531,60 @@ int main(int argc, const char **argv) { @autoreleasepool {
         puts([[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:row options:0 error:nil]
                                    encoding:NSUTF8StringEncoding].UTF8String); return 0;
     }
-    if (!bound(pid)) return fail([NSString stringWithFormat:@"case executable identity refused: target=%@ expected=%@", identity(pid), env(@"ZWAI_NATIVE_APP")]);
+    if (!bound(pid)) {
+        if ([action isEqual:@"activate"]) return activationRefused([@{
+            @"kernel_before":identity(pid) ?: NSNull.null, @"expected_original_bundle":env(@"ZWAI_NATIVE_APP"),
+            @"NS_registered":NSNull.null, @"NS_pid":NSNull.null, @"NS_bundle_raw":NSNull.null,
+            @"NS_bundle_resolved":NSNull.null} mutableCopy], @"case executable identity refused");
+        return fail([NSString stringWithFormat:@"case executable identity refused: target=%@ expected=%@", identity(pid), env(@"ZWAI_NATIVE_APP")]);
+    }
     if ([action isEqual:@"activate"]) {
         // Activating the already bound process does not require an AX window.
         // Callers must read a fresh, positively validated window afterward.
-        NSDictionary *before = identity(pid);
-        NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-        NSString *bundle = [env(@"ZWAI_NATIVE_APP") stringByResolvingSymlinksInPath];
-        if (!before || !running || running.processIdentifier != pid
-            || ![[running.bundleURL.path stringByResolvingSymlinksInPath] isEqual:bundle])
-            return fail(@"native activation process or bundle identity refused");
         double activationStarted = NSProcessInfo.processInfo.systemUptime;
         double activationDeadline = activationStarted + 2;
+        NSDictionary *before = identity(pid);
+        NSMutableDictionary *observed = [@{@"kernel_before":before ?: NSNull.null,
+            @"expected_original_bundle":env(@"ZWAI_NATIVE_APP"), @"NS_registered":NSNull.null,
+            @"NS_pid":NSNull.null, @"NS_bundle_raw":NSNull.null, @"NS_bundle_resolved":NSNull.null} mutableCopy];
+        if (!before || !activationCase(pid)) return activationRefused(observed, @"native activation case marker refused");
+        NSString *bundle = activationBundle(before, observed, activationDeadline);
+        if (!bundle) return activationRefused(observed, @"native activation layout, core or deadline refused");
+        NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        observed[@"NS_registered"] = @(running != nil); observed[@"NS_pid"] = running ? @(running.processIdentifier) : NSNull.null;
+        observed[@"NS_bundle_raw"] = running.bundleURL.path ?: NSNull.null;
+        observed[@"NS_bundle_resolved"] = [running.bundleURL.path stringByResolvingSymlinksInPath] ?: NSNull.null;
+        if (!running || running.processIdentifier != pid
+            || ![[running.bundleURL.path stringByResolvingSymlinksInPath] isEqual:bundle])
+            return activationRefused(observed, @"native activation process or bundle identity refused");
+        observed[@"kernel_before_request"] = identity(pid) ?: NSNull.null;
+        if (![before isEqual:observed[@"kernel_before_request"]] || !activationCase(pid))
+            return activationRefused(observed, @"native activation process changed before request");
+        if (NSProcessInfo.processInfo.systemUptime >= activationDeadline)
+            return activationRefused(observed, @"native activation identity check exhausted deadline");
         BOOL requested = [running activateWithOptions:0];
         BOOL activationReady = waitForActivation(running, activationDeadline);
-        BOOL sameProcess = bound(pid) && [before isEqual:identity(pid)];
+        observed[@"kernel_after"] = identity(pid) ?: NSNull.null;
+        observed[@"NS_pid_after"] = @(running.processIdentifier);
+        observed[@"NS_bundle_raw_after"] = running.bundleURL.path ?: NSNull.null;
+        observed[@"NS_bundle_resolved_after"] = [running.bundleURL.path stringByResolvingSymlinksInPath] ?: NSNull.null;
+        BOOL sameProcess = bound(pid) && [before isEqual:observed[@"kernel_after"]] && activationCase(pid)
+            && running.processIdentifier == pid && [[running.bundleURL.path stringByResolvingSymlinksInPath] isEqual:bundle];
         double elapsed = NSProcessInfo.processInfo.systemUptime - activationStarted;
         BOOL active = running.active;
         pid_t frontmostPID = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
         activationReady = activationReady && sameProcess && elapsed < 2;
-        printf("{\"activation_only\":true,\"activated\":%s,\"active\":%s,\"pid\":%d,\"frontmost_pid\":%d,\"activation_ready\":%s,\"activation_elapsed_seconds\":%.6f}\n",
-               requested ? "true" : "false", active ? "true" : "false", pid, frontmostPID,
-               activationReady ? "true" : "false", elapsed);
-        if (!activationReady || !active)
+        observed[@"reason"] = activationReady && active ? @"confirmed" : @"native activation or identity not confirmed";
+        NSDictionary *result = @{@"activation_only":@YES, @"activated":@(requested), @"active":@(active),
+            @"pid":@(pid), @"frontmost_pid":@(frontmostPID), @"activation_ready":@(activationReady),
+            @"activation_elapsed_seconds":@(elapsed), @"activation_identity":observed};
+        puts([[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:result options:0 error:nil]
+                                  encoding:NSUTF8StringEncoding].UTF8String);
+        if (!activationReady || !active) {
+            activationRefused(observed, observed[@"reason"]);
             fprintf(stderr, "native activation not confirmed: activated=%s active=%s pid=%d frontmost_pid=%d elapsed=%.6f\n",
                     requested ? "true" : "false", active ? "true" : "false", pid, frontmostPID, elapsed);
+        }
         return activationReady && active ? 0 : 2;
     }
     if (!AXIsProcessTrusted()) return fail(@"guest accessibility is unavailable to this helper");

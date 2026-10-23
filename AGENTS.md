@@ -147,6 +147,26 @@ E2E suite.
   bundle remain immediate refusals. Regress the real main and window caller.
   The resilience helper's application-only activate command does no AX lookup
   or raise; callers still require a fresh real-window and pixel observation.
+  Keep `ZWAI_NATIVE_APP` as the original case anchor when a recovery shell
+  replaces its PID. Derive the activation bundle from the actual kernel
+  executable: accept only that original bundle or this case's exact private
+  home/Library/Caches/zwai/desktop-recovery-*/zwai.app layout, with its session
+  marker and verified original/derived core identities. Actual `WriteMacApp`
+  rewrites metadata and re-signs the copy; equal raw hashes are not a general
+  successor contract. For different bytes, prepare a pinned proof independently
+  through the real writer on the target signing system, never from the runtime
+  target. Strictly verify the original and both derived signatures, compare two
+  outputs and every non-signature byte, normalizing only the three measured
+  signature/linkedit length fields. Freeze source/version, original/derived
+  full hashes and metadata; a present malformed proof never falls back to raw
+  equality. Regress the actual writer with real signed page/Info variants,
+  damaged code, dirty/untracked writer inputs and the entire real helper main.
+  Verify the inherited case marker,
+  NS PID/resolved bundle and unchanged kernel birth/executable around the one
+  request. Hashing shares the existing two-second deadline. Regress the actual
+  helper main against real private files; wrong layout/core/NS identity or PID
+  reuse must refuse without AX/input. Record sampled identities and reason,
+  never credentials. A QA identity fix does not accept product recovery timing.
   One monotonic deadline covers activation, raise and short runloop slices;
   expiration cannot allocate another wait or retry Send. Regress actual
   Objective-C callers with OS/clock seams, including stale true/false and an

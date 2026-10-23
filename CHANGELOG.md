@@ -144,6 +144,16 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`, `C-034`: native QA activation derives the original or
+  case-owned recovery bundle from the kernel executable. Preserve the original
+  anchor, marker, NS identity, unchanged process birth and two-second budget.
+  Actual `WriteMacApp` re-signs its copy; the first raw-hash equality review
+  missed this product transformation. Different bytes now require an independently
+  prepared, pinned actual-writer/signature proof covering full core/metadata
+  hashes and all non-signature payload bytes. Regress real signed page/Info
+  variants and refuse damaged origins, proofs and targets. Preserve the earlier
+  native failure and independent product replacement timeout (Issue #108).
+
 - `F-430`, `C-031`: native renderer/GPU fault QA uses an inline requirement
   with Apple's own anchor and the exact selected service identifier. Its
   two-second strict, all-architecture system-code check explicitly excludes
