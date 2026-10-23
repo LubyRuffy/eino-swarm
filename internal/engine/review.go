@@ -239,9 +239,10 @@ func (e *Engine) ReviewTurn(threadID string) (*store.Turn, error) {
 // reviewOutcome is the payload of the memory_review event, and what the UI
 // turns into one line saying what was learned.
 type reviewOutcome struct {
-	Changed bool            `json:"changed"`
-	Notes   map[string]int  `json:"notes,omitempty"`
-	Skills  []memory.Change `json:"skills,omitempty"`
+	StaleCandidates []string        `json:"stale_candidates,omitempty"`
+	Changed         bool            `json:"changed"`
+	Notes           map[string]int  `json:"notes,omitempty"`
+	Skills          []memory.Change `json:"skills,omitempty"`
 	// Library is true when the writes landed in the shared skill library
 	// rather than a project's memory. Stamped here so a replay does not
 	// have to guess from the conversation's project.

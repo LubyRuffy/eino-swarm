@@ -422,14 +422,15 @@ const (
 	// About 800 tokens: enough for a dozen dense notes, small enough that
 	// every turn can afford to carry them.
 	DefaultMemoryCharLimit = 2200
-	// One or two sentences. A runbook that would eat a quarter of the notes
-	// budget belongs in a skill, where only the summary rides in the prompt.
+	// Always-loaded notes state facts, preferences, constraints or pointers.
+	// Procedures stay in skills; only applicability rides in the prompt.
 	DefaultMemoryEntryMax      = 360
 	DefaultReviewMaxIterations = 8
 	// DefaultTidyMaxIterations caps the Memory panel's catalog reviewer. A
 	// post-turn review is a handful of writes; a tidy is the whole index.
 	DefaultTidyMaxIterations   = 24
 	DefaultSkillsIndexMax      = 50
+	DefaultSkillStaleDays      = 90
 	DefaultMemoryNotifications = MemoryNotifyOn
 	dirPerm                    = 0o700
 	filePerm                   = 0o600
@@ -488,6 +489,7 @@ func Default() *Config {
 			ReviewMaxIterations:   DefaultReviewMaxIterations,
 			ReviewReasoningEffort: ReasoningDefault,
 			SkillsIndexMax:        DefaultSkillsIndexMax,
+			SkillStaleDays:        DefaultSkillStaleDays,
 			Notifications:         DefaultMemoryNotifications,
 		},
 		Log: LogConfig{Level: DefaultLogLevel},
@@ -700,6 +702,9 @@ func (c *Config) normalize() {
 	c.Memory.ReviewReasoningEffort = NormalizeReasoning(c.Memory.ReviewReasoningEffort)
 	if c.Memory.SkillsIndexMax <= 0 {
 		c.Memory.SkillsIndexMax = d.Memory.SkillsIndexMax
+	}
+	if c.Memory.SkillStaleDays <= 0 {
+		c.Memory.SkillStaleDays = d.Memory.SkillStaleDays
 	}
 	switch c.Memory.Notifications {
 	case MemoryNotifyOff, MemoryNotifyOn, MemoryNotifyVerbose:

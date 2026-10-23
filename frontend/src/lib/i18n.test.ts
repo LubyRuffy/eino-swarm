@@ -46,6 +46,15 @@ describe("t", () => {
     expect(t("zh", "tool.diffMore", { n: 12 })).toBe("还有 12 行")
   })
 
+  it("explains when notes and skills matter in both languages", () => {
+    expect(t("en", "memory.notesHint")).toMatch(/without.*go off track/i)
+    expect(t("en", "memory.skillsHint")).toMatch(/without.*cannot complete/i)
+    expect(t("zh", "memory.notesHint")).toContain("不看会走偏")
+    expect(t("zh", "memory.skillsHint")).toContain("不看做不成")
+    expect(t("en", "memory.skillsHint")).toMatch(/when to use/i)
+    expect(t("zh", "memory.skillsHint")).toContain("适用条件")
+  })
+
   it("has a Chinese string for every English key", () => {
     const missing = (Object.keys(en) as Array<keyof typeof en>).filter(
       (key) => !zh[key],

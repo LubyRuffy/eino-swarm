@@ -41,7 +41,7 @@ func TestPromptCarriesTheProjectInstructionAndTheNotes(t *testing.T) {
 	if !strings.Contains(out, "status that will change") || !strings.Contains(out, "reduces the character count") {
 		t.Fatalf("the prompt must say a growing replace still has to fit:\n%s", out)
 	}
-	if !strings.Contains(out, "one or two sentences") || !strings.Contains(out, "collides") {
+	if !strings.Contains(out, "short, declarative notes") || !strings.Contains(out, "collides") {
 		t.Fatalf("the manager must see the same quality bar the tools enforce:\n%s", out)
 	}
 	if !strings.Contains(out, "share a stem") {
@@ -193,8 +193,8 @@ func TestMemoryPromptsStayGenericAndGrounded(t *testing.T) {
 		t.Fatal("the worker prompt must name skill_view")
 	}
 	tidy := prompts["tidy"]
-	if strings.Contains(tidy, ToolMemory) {
-		t.Fatalf("a catalog tidy must not write notes:\n%s", tidy)
+	if !strings.Contains(tidy, ToolMemoryReclassify) || strings.Contains(LibraryTidyPrompt(), ToolMemoryReclassify) {
+		t.Fatalf("only project tidy may move existing notes:\n%s", tidy)
 	}
 	if !strings.Contains(worker, "Most tasks have nothing to add") {
 		t.Fatal("the worker prompt must allow returning nothing extra")
@@ -261,19 +261,19 @@ func TestCatalogTidyPromptSetsTheBarAndNamesItsTools(t *testing.T) {
 			t.Fatalf("the catalog tidy must be told about %q:\n%s", want, p)
 		}
 	}
-	if strings.Contains(p, ToolMemory) {
-		t.Fatal("a catalog tidy that can write notes will invent them")
+	if !strings.Contains(p, ToolMemoryReclassify) {
+		t.Fatal("project tidy must name its source-preserving move tool")
 	}
 }
 
 func TestCatalogTidyMessageWrapsTheIndexWithoutInventingAConversation(t *testing.T) {
-	if CatalogTidyMessage("") != "Catalog to curate:\n\n(none)" {
+	if CatalogTidyMessage("", 90, nil, nil) != "Catalog to curate:\n\n(none)" {
 		t.Fatal("an empty catalog still needs a user turn or the reviewer has nothing to answer")
 	}
 	out := CatalogTidyMessage(ReviewCatalog(
 		[]SkillInfo{{Name: "weekly-rollup", Description: "when filing the week"}},
 		nil,
-	))
+	), 90, nil, nil)
 	if !strings.HasPrefix(out, "Catalog to curate:") {
 		t.Fatalf("catalog tidy must mark itself, or the mock reviewer stores a conversation clip:\n%s", out)
 	}
@@ -360,5 +360,30 @@ func TestReviewPromptRepairsOnlyRelatedNotesWithinTheExistingCapacity(t *testing
 	}
 	if strings.Contains(prompt, "If no safe supported change fits, submit an empty") {
 		t.Fatal("a capacity-blocked proposal must not become a successful empty review")
+	}
+}
+
+func TestMemoryBoundaryIsConsistentAcrossGenericPrompts(t *testing.T) {
+	prompts := map[string]string{
+		"manager":        PromptSections("", Snapshot{Limit: 100}, nil, 50, true),
+		"worker":         WorkerPromptSections(Snapshot{Limit: 100}, nil, 50),
+		"review":         ReviewPrompt(),
+		"tidy":           CatalogTidyPrompt(),
+		"library review": LibraryReviewPrompt(),
+		"library tidy":   LibraryTidyPrompt(),
+		"library live":   LibraryPromptSections(nil, 50),
+		"library worker": LibraryWorkerPromptSections(nil, 50),
+	}
+	for name, prompt := range prompts {
+		for _, want := range []string{"go off track", "know how to complete", "preconditions", "steps", "verification", "failure", "when to use", "only within a procedure"} {
+			if !strings.Contains(prompt, want) {
+				t.Errorf("%s lacks boundary %q", name, want)
+			}
+		}
+		for _, leak := range []string{"one or two sentences", "multi-step", "make e2e", "usage.json", "EntryMax", "SKILL.md", "git worktree"} {
+			if strings.Contains(prompt, leak) {
+				t.Errorf("%s contains old length heuristic or task-specific wording %q", name, leak)
+			}
+		}
 	}
 }

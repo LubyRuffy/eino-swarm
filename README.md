@@ -840,8 +840,23 @@ manager already wrote memory: one saved requirement does not prove that the
 whole turn was covered. A failed project turn may retain explicit human
 requirements as notes, without learning skills from failed work. Cancellation
 does not start an automatic review. What is worth carrying forward is kept:
-short notes about how this project works, and *skills* —
-step-by-step procedures the agents wrote for themselves. The next conversation in
+short notes whose absence would misdirect future work (preferences, facts, hard
+constraints, or pointers to recorded skills), and *skills* whose methods make
+work achievable (applicability, steps, verification and failure branches).
+Requested project **Tidy memory** merges duplicate skills, reviews stale
+candidates and corrects notes/skills classification. Moves preserve source text:
+promote keeps the complete note unchanged except whitespace in the skill; demote keeps a short skill body
+unchanged except whitespace and refuses list steps or budget excess. The target
+is saved before deleting the source, so failure may leave duplicates. Retry
+reuses an identical target and never overwrites different content. Post-turn
+review and workers cannot move memory; the shared library has no notes.
+
+The Memory panel shows agent view counts and the last view time. Settings →
+Memory controls the stale-candidate threshold (`memory.skill_stale_days`,
+default 90 days). Stale skills are candidates for review, never automatically
+deleted. Usage is local to a skill copy and does not rewrite its content.
+Notes are short declarations that stand alone; constraints needed only inside
+one workflow belong in that skill. Skill descriptions say when to use them. The next conversation in
 that project starts with the notes in its prompt and an index of the skills, and
 opens a skill when it needs one. Sub-agents on that conversation get the same
 snapshot and can open a skill; they cannot write the store. Their report back to
@@ -928,7 +943,7 @@ split into chapter-skills) are refused the same way, and leftover families are
 folded into one skill after a successful turn — automatically, including when
 auto-review is off. Failed-turn requirements-only reviews do not fold skills. The fold is reported
 as a `memory_review` when it changed the catalog. Editing a skill file by hand
-does **not** fold until the next turn; **Tidy skills** on the Skills
+does **not** fold until the next turn; **Tidy memory** on the Memory
 heading still folds leftover name-stem families, then asks the model to curate
 the whole catalog by content. That is a real reviewer call — it takes as long
 as the model takes. While it runs, the panel estimates progress (the bar stays

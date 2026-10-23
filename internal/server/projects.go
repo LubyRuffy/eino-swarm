@@ -142,10 +142,11 @@ func (s *Server) deleteProject(c *gin.Context) {
 // ---------- memory ----------
 
 type memoryView struct {
-	Dir     string             `json:"dir"`
-	Enabled bool               `json:"enabled"`
-	Memory  memory.Snapshot    `json:"memory"`
-	Skills  []memory.SkillInfo `json:"skills"`
+	SkillStaleDays int                `json:"skill_stale_days"`
+	Dir            string             `json:"dir"`
+	Enabled        bool               `json:"enabled"`
+	Memory         memory.Snapshot    `json:"memory"`
+	Skills         []memory.SkillInfo `json:"skills"`
 	// NeedsTidy is true when the catalog still holds a same-subject family.
 	// The panel uses it to mark the tidy control, not to fold on load — a
 	// GET must not rewrite files the user came to read.
@@ -185,11 +186,12 @@ func (s *Server) memoryViewOf(p *store.Project) (memoryView, error) {
 		families = nil
 	}
 	return memoryView{
-		Dir:       mem.Dir(),
-		Enabled:   s.engine.MemoryEnabled(p),
-		Memory:    snap,
-		Skills:    skills,
-		NeedsTidy: len(families) > 0,
+		SkillStaleDays: s.engine.Config().Memory.StaleDays(),
+		Dir:            mem.Dir(),
+		Enabled:        s.engine.MemoryEnabled(p),
+		Memory:         snap,
+		Skills:         skills,
+		NeedsTidy:      len(families) > 0,
 	}, nil
 }
 

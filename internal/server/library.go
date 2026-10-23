@@ -38,11 +38,12 @@ func (s *Server) libraryView() (memoryView, error) {
 		families = nil
 	}
 	return memoryView{
-		Dir:       mem.Dir(),
-		Enabled:   s.engine.Config().Memory.Enabled,
-		Memory:    snap,
-		Skills:    skills,
-		NeedsTidy: len(families) > 0,
+		SkillStaleDays: s.engine.Config().Memory.StaleDays(),
+		Dir:            mem.Dir(),
+		Enabled:        s.engine.Config().Memory.Enabled,
+		Memory:         snap,
+		Skills:         skills,
+		NeedsTidy:      len(families) > 0,
 	}, nil
 }
 

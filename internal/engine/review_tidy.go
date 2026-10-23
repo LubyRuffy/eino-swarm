@@ -14,11 +14,12 @@ import (
 // writing. The panel streams `text` (the prose so far) and names a skill
 // write as it lands. The finished report is not one of these.
 type TidyEvent struct {
-	Phase   string `json:"phase"`
-	Scanned int    `json:"scanned,omitempty"`
-	Text    string `json:"text,omitempty"`
-	Action  string `json:"action,omitempty"`
-	Name    string `json:"name,omitempty"`
+	StaleCandidates []string `json:"stale_candidates,omitempty"`
+	Phase           string   `json:"phase"`
+	Scanned         int      `json:"scanned,omitempty"`
+	Text            string   `json:"text,omitempty"`
+	Action          string   `json:"action,omitempty"`
+	Name            string   `json:"name,omitempty"`
 }
 
 // FoldProjectSkills is the Memory panel's tidy. Stem families still collapse
@@ -74,14 +75,24 @@ func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (s
 	if err != nil {
 		return zero, err
 	}
+	stale := memory.StaleSkillCandidates(before, time.Now().UTC(), e.cfg.Memory.StaleDays())
+	staleNames := skillInfoNames(stale)
 	if watch != nil {
-		watch(TidyEvent{Phase: "scan", Scanned: len(before)})
+		watch(TidyEvent{Phase: "scan", Scanned: len(before), StaleCandidates: staleNames})
 	}
 	families, err := mem.SkillFamilyNames()
 	if err != nil {
 		return zero, err
 	}
 
+	var noteCount int
+	if gateKey != memory.LibraryID {
+		snap, readErr := mem.Read()
+		if readErr != nil {
+			return zero, readErr
+		}
+		noteCount = len(snap.Entries)
+	}
 	var changes []memory.Change
 	folded, err := mem.FoldSkillFamilies()
 	if err != nil {
@@ -98,18 +109,22 @@ func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (s
 	var mu sync.Mutex
 	outcome := reviewOutcome{Notes: map[string]int{}}
 	reviewed := false
-	if len(remaining) > 0 {
+	if len(remaining) > 0 || noteCount > 0 {
 		onChange := func(c memory.Change) {
 			mu.Lock()
 			collectReviewChange(&outcome, c)
 			mu.Unlock()
-			if watch != nil && c.Target == memory.ToolSkillManage {
+			if watch != nil {
 				watch(TidyEvent{Phase: "change", Action: c.Action, Name: c.Name})
 			}
 		}
-		userMsg, msgErr := catalogTidyUserMessage(mem, gateKey == memory.LibraryID)
+		userMsg, msgErr := catalogTidyUserMessage(mem, gateKey == memory.LibraryID, e.cfg.Memory.StaleDays(), stale)
 		if msgErr != nil {
 			return zero, msgErr
+		}
+		tools := memory.CatalogTools(mem, onChange)
+		if gateKey != memory.LibraryID {
+			tools = append(tools, tidyReclassifyTools(mem, onChange)...)
 		}
 		e.driveReviewer(reviewRun{
 			threadID:    threadID,
@@ -121,7 +136,8 @@ func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (s
 			instruction: instruction,
 			userMsg:     userMsg,
 			maxIter:     e.cfg.Memory.TidyIterations(),
-			tools:       memory.CatalogTools(mem, onChange),
+			tools:       tools,
+			sequential:  true,
 			onText: func(text string) {
 				if watch == nil || strings.TrimSpace(text) == "" {
 					return
@@ -153,6 +169,7 @@ func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (s
 		return zero, err
 	}
 	report := memory.ComposeTidyReport(skillInfoNames(before), skillInfoNames(after), len(families), changes)
+	report.StaleCandidates = staleNames
 	report.Reviewed = reviewed
 	mu.Lock()
 	report.Err = outcome.Err
@@ -161,16 +178,17 @@ func (e *Engine) foldCatalog(gateKey string, mem *memory.Store, anchor func() (s
 
 	if turnID != "" && (report.Reviewed || report.Folded() || report.Err != "") {
 		recorded := reviewOutcome{
-			Changed: len(report.Changes) > 0,
-			Skills:  skillChanges(report.Changes),
-			Changes: report.Changes,
-			Note:    note,
-			Err:     report.Err,
-			Notify:  config.MemoryNotifyOff,
-			Library: gateKey == memory.LibraryID,
+			StaleCandidates: staleNames,
+			Changed:         len(report.Changes) > 0,
+			Skills:          skillChanges(report.Changes),
+			Changes:         report.Changes,
+			Note:            note,
+			Err:             report.Err,
+			Notify:          config.MemoryNotifyOff,
+			Library:         gateKey == memory.LibraryID,
 		}
 		if recorded.Note == "" && recorded.Changed {
-			recorded.Note = "Folded overlapping skills."
+			recorded.Note = "Curated recorded memory."
 		}
 		e.recordReview(threadID, turnID, recorded)
 	}
@@ -195,7 +213,7 @@ func skillChanges(changes []memory.Change) []memory.Change {
 	return out
 }
 
-func catalogTidyUserMessage(mem *memory.Store, library bool) (string, error) {
+func catalogTidyUserMessage(mem *memory.Store, library bool, staleDays int, stale []memory.SkillInfo) (string, error) {
 	skills, err := mem.ListSkills()
 	if err != nil {
 		return "", err
@@ -208,7 +226,15 @@ func catalogTidyUserMessage(mem *memory.Store, library bool) (string, error) {
 	if library {
 		catalog = memory.LibraryCatalog(skills, families)
 	}
-	return memory.CatalogTidyMessage(catalog), nil
+	var notes *memory.TidyNotes
+	if !library {
+		snap, readErr := mem.Read()
+		if readErr != nil {
+			return "", readErr
+		}
+		notes = &memory.TidyNotes{Entries: snap.Entries, EntryMax: mem.EntryMax(), CharLimit: snap.Limit, Chars: snap.Chars}
+	}
+	return memory.CatalogTidyMessage(catalog, staleDays, stale, notes), nil
 }
 
 // tidyReviewAnchor is where catalog-tidy model calls are attributed. The

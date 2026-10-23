@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { reviewTraceMetadata } from "./review-diagnostics"
 import { parseReview, reviewNotice, reviewPanelHint } from "./transcript-review"
 import type { SwarmEvent } from "./types"
 
@@ -18,6 +19,12 @@ const failure = {
 }
 
 describe("review diagnostics", () => {
+  it("keeps the tidy's stale candidates visible in the turn Trace", () => {
+    const got = parseReview(event({ changed: false, stale_candidates: ["older-procedure", "", 1] }))
+    expect(got?.stale_candidates).toEqual(["older-procedure"])
+    expect(JSON.parse(reviewTraceMetadata(got!) ?? "{}")).toMatchObject({ stale_candidates: ["older-procedure"] })
+  })
+
   it("retains structured refusal and bounded attempt metadata through replay", () => {
     const got = parseReview(event(failure))
     expect(got).toMatchObject({ stop_reason: "iteration_limit", attempt_count: 8, refused: failure.refused, attempts: failure.attempts })
@@ -89,5 +96,37 @@ describe("localized successful review notices", () => {
     expect(reviewNotice({ changed: true }, "zh")).toBe("记忆已更新。")
     expect(reviewNotice({ changed: true, library: true }, "zh")).toBe("已写入共享技能库。")
     expect(reviewNotice({ changed: true, library: true, skills: [{ target: "skill_manage", action: "create", name: "a-procedure" }] }, "zh")).toBe('已写入共享技能库：skill "a-procedure" recorded。')
+  })
+})
+
+
+describe("persisted notes after a tidy failure", () => {
+  it.each([
+    ["added destination note", "memory", "add"],
+    ["replaced note", "memory", "replace"],
+    ["removed note", "memory", "remove"],
+    ["completed promotion", "skill_manage", "promote"],
+    ["completed demotion", "skill_manage", "demote"],
+  ])("does not deny the persisted %s when later work fails", (_label, target, action) => {
+    const got = parseReview(event({ changed: true, err: "later operation failed", changes: [{ target, action, name: "recorded", text: "retained information" }] }))
+    expect(reviewNotice(got)).not.toContain("Notes were not saved")
+    expect(reviewNotice(got, "zh")).not.toContain("本次笔记未保存")
+    expect(reviewNotice(got)).toContain("Memory review failed")
+  })
+
+  it.each([
+    ["partial promotion", "skill_manage", "create"],
+    ["skill patch", "skill_manage", "patch"],
+    ["unrecognized note action", "memory", "create"],
+    ["unrecognized target", "other", "demote"],
+  ])("keeps the uncommitted-note warning for %s", (_label, target, action) => {
+    const got = parseReview(event({ changed: true, err: "later operation failed", changes: [{ target, action }] }))
+    expect(reviewNotice(got)).toContain("Notes were not saved")
+    expect(reviewNotice(got, "zh")).toContain("本次笔记未保存")
+  })
+
+  it("preserves the committed post-turn notes summary without move receipts", () => {
+    const got = parseReview(event({ changed: true, err: "later operation failed", notes: { add: 1 }, changes: [] }))
+    expect(reviewNotice(got)).not.toContain("Notes were not saved")
   })
 })
