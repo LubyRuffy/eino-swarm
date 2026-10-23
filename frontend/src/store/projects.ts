@@ -298,12 +298,15 @@ export const useProjects = create<ProjectsState>((set, get) => ({
     const id = get().memoryProjectId
     if (!id) return
     set((s) =>
-      applySlot(s, id, { tidying: true, report: undefined, error: undefined, live: { text: "", changes: [] } }),
+      applySlot(s, id, { tidying: true, report: undefined, error: undefined, live: { text: "", changes: [], scanned: s.memory?.skills.length ?? 0 } }),
     )
     try {
-      const onEvent = (ev: { phase?: string; text?: string; action?: string; name?: string }) => {
+      const onEvent = (ev: { phase?: string; scanned?: number; text?: string; action?: string; name?: string }) => {
         set((s) => {
           const prev = slotOf(s.tidySlots, id).live ?? { text: "", changes: [] }
+          if (ev.phase === "scan") {
+            return applySlot(s, id, { live: { ...prev, scanned: ev.scanned ?? 0 } })
+          }
           if (ev.phase === "text" && typeof ev.text === "string") {
             return applySlot(s, id, { live: { ...prev, text: ev.text } })
           }

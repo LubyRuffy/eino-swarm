@@ -34,16 +34,26 @@ func TestResponsesRefusedSpawnBatchReplaysOnlyTheRetainedPairedCall(t *testing.T
 			return
 		}
 		var body struct {
-			Input  []inputItem `json:"input"`
-			Stream bool        `json:"stream"`
+			Input      json.RawMessage `json:"input"`
+			Stream     bool            `json:"stream"`
+			ToolChoice string          `json:"tool_choice"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 			http.Error(w, "invalid body", 400)
 			return
 		}
+		if replyNoScheduleClaimsResponsesFixture(t, w, body.Input, body.Stream, body.ToolChoice) {
+			return
+		}
+		var items []inputItem
+		if err := json.Unmarshal(body.Input, &items); err != nil {
+			t.Error(err)
+			http.Error(w, "invalid fixture input", 400)
+			return
+		}
 		mu.Lock()
-		requests = append(requests, body.Input)
+		requests = append(requests, items)
 		request := len(requests)
 		mu.Unlock()
 		if !body.Stream {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/LubyRuffy/eino-swarm/internal/config"
 	"github.com/LubyRuffy/eino-swarm/internal/engine"
+	"github.com/LubyRuffy/eino-swarm/internal/slash"
 )
 
 // maxCatalogFrame is the catalog reply budget. withHost adds the PC name
@@ -251,6 +252,12 @@ func materialize(eng *engine.Engine, threadID string, blobs []StagedBlob) (engin
 }
 
 func deliverUser(eng *engine.Engine, threadID string, in engine.UserInput, running bool) error {
+	// Goal commands change the current task's lifetime immediately, even when
+	// an ordinary phone Send would queue behind the current manager turn.
+	if _, goal := slash.Lookup(in.Text, "goal"); goal {
+		_, err := eng.StartTurnInput(threadID, in)
+		return err
+	}
 	attached := len(in.Images) > 0 || len(in.Files) > 0
 	if running && !attached {
 		if _, err := eng.EnqueueFollowup(threadID, in.Text); err != nil {

@@ -148,6 +148,12 @@ func TestAskUserPausesThisTurnUntilAnswered(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := waitAskToolCall(t, sub, 15*time.Second)
+	// The tool-call notification precedes the executor arming waitAsk. Observe
+	// the actual paused state before asserting it, rather than that callback gap.
+	ready := time.Now().Add(2 * time.Second)
+	for !e.Status(th.ID).AwaitingAnswer && time.Now().Before(ready) {
+		time.Sleep(time.Millisecond)
+	}
 	if ids := e.AwaitingAnswer(); len(ids) != 1 || ids[0] != th.ID {
 		t.Fatalf("AwaitingAnswer=%v want [%s]", ids, th.ID)
 	}

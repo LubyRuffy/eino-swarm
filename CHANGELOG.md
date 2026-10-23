@@ -13,6 +13,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Added
 
+- `F-420`, `C-025`, `C-012`: requested project memory tidy can promote notes to skills and demote short declarative skills to notes, with source-preserving checks, budget validation, partial-write receipts and original-turn Trace. Project controls now say **Tidy memory**; shared-library tidy remains skills-only (Issue #99).
+
+- `F-420`, `C-025`: record agent skill views in a separate usage sidecar, expose usage and configurable `memory.skill_stale_days` in Settings and Memory, and retain advisory stale candidates in tidy results and original-turn Trace. Merges sum usage; copies start unused (Issue #99).
+
 - `F-115`, `C-034`, `C-012`: macOS windows validate actual painted probe pixels,
   attempt one reload, then perform bounded attach-only window replacement with
   the original engine and durable per-turn diagnostics. Sleep/focus grace,
@@ -49,10 +53,19 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `F-330`, `C-019`, `C-002`, `C-027`: ordinary turns without current goal/wake ownership must collect every worker's current generation with `wait_agents`, or explicitly discard it with `close_agent`, before publishing completion. An early final receives one durable same-turn correction; repetition pauses for human Continue/Stop while preserving the original workers. Continue grants one further attempt, and restart retains collection state, correction allowance and human pauses. Finished close receipts remain `already_finished`, rather than fabricated cancellation (Issue #103).
+
+- `F-420`, `C-025`: unify notes/skills classification by permanent versus on-demand loading, applicability-focused descriptions and workflow-local constraints; clarify both Memory panel descriptions and split memory translations (Issue #99).
 - `F-430`, `C-010`: prepare numeric candidate `0.1.36` with matching mobile
   package metadata before the exact-source Mac installer acceptance. This is a
   local acceptance candidate; native gates and publication remain pending, and
   no tag, installer upload or TestFlight delivery is implied.
+- `F-150`, `C-009`: scheduled checks and Run now accept a nonempty text result
+  without calling a tool or `report_schedule`, preserving automatic tool
+  selection. Only a wholly empty response with no real tool result or explicit
+  report receives one same-turn continuation before a visible error. Explicit
+  quiet reports keep precedence; ending a check does not complete its standing
+  goal or verify external work.
 
 - `F-130`, `F-170`, `F-330`, `C-009`, `C-019`: new worker lifetimes default to one hour in the library and app. Existing positive configured values, active deadlines and the three-failure watchdog budget retain their meaning. Live registries have synchronized `SetAgentTimeout` and `SetMaxTurns` setters for subsequent worker execution (Issue #82).
 
@@ -101,6 +114,51 @@ co-working app built on it. The library API is unchanged except where noted
   their previous behavior. Late responses cannot replace a newer transcript
   or another conversation's running state. Existing databases acquire replay
   indexes automatically when opened; API payloads and pagination are unchanged.
+
+- `F-150`, `C-009`, `C-012`: a trailing `/goal` activates its preceding objective across PC, HTTP and paired-phone sends and steering, including after an older goal completed. Scheduling success claims now require verification against persisted, currently effective plans before manager prose is published; unsupported claims receive one bounded same-turn correction, then a visible failure. Tool and worker activity remain live (Issue #103).
+
+- `F-220`, `C-017`: Ask Other now uses the phone's 16px editable text size so
+  iOS focus does not leave the answer, navigation and retry result enlarged
+  and horizontally clipped. Browser font and packaged iOS viewport regressions
+  cover focus, keyboard dismissal, rejection and successful retry (Issue #104).
+
+- `F-115`, `C-034`: native QA requests PNG paste once through the public
+  Edit/Paste menu, validating original clipboard bytes, ownership and exact
+  enabled foreground menu targets. A transport receipt never replaces the
+  unchanged durable-draft/UI acknowledgement checks. Earlier keyboard-input
+  timeouts retain their unknown cause; this is not a product keyboard or
+  system WebKit fix. Headless tests exercise the actual pure helper guards.
+
+- Tests (`F-110`, `C-027`): verify restart retention of an acknowledged answer
+  through its checkpoint, durable tool result and actual model input while the
+  response is held. Remove the unrelated whole-turn completion wait without
+  extending its deadline or changing runtime behavior (Issue #77).
+
+- `F-110`, `C-027`: isolate lifecycle schedule fixtures from asynchronous
+  naming, preventing fixture-owned provider-pool and database-callback races
+  under `-race`; native resilience waits also use case-owned explicit titles
+  and require the actual schedule row's boolean `title_auto=false` before
+  freezing it. Automatic-title behavior remains covered through its real API.
+
+- `F-150`, `C-003`, `C-012`: a human goal resume followed by its new continuation turn shows one notice in desktop/Web chat. Late typed memory-review feedback keeps its own row without splitting that resume pair. Later continuations and independent or manager resumes retain their notices; original `goal_resumed` and `goal_continued` events remain available in Trace (Issue #96).
+
+- `F-115`, `C-034`: retain the last actual draft-save predicates and summaries
+  of existing native observations on isolated Mac check exit. A timeout keeps its
+  original failure status; later successful cases do not establish its cause.
+
+- `F-420`, `C-025`: clarify existing tidy API failure semantics: internal tool refusals, reviewer errors in HTTP 200 / SSE `done` with saved receipts, and outer fold/view errors through normal JSON mapping or SSE `error`. Documentation only; runtime behavior is unchanged (Issue #99).
+
+- Tests: synchronize interrupted-output retention with a real live partial HTTP stream instead of assuming the manager produced text within 120ms. Keep the stream open until Stop, verify the identical text and output identity after persistence, and retain delayed-start and next-turn coverage without changing runtime behavior.
+
+- `F-430`, `C-031`: native acceptance recovery now selects the existing authorized guest Terminal control path when current exact-target evidence shows SSH helper permission denial and that path is usable. Unknown-state observation and completed acceptance retain priority; the offline audit neither grants privacy permissions nor operates the VM.
+
+- `F-420`, `F-160`, `C-025`: failed tidy Trace summaries use committed note and completed move receipts, preserving saved destination notes instead of claiming they were not saved; a skill-only partial promotion retains the uncommitted-note warning (Issue #99).
+
+- `F-420`, `C-025`: keep ordinary file collisions classified as filesystem rejections while refusing occupied skill directories, including orphaned usage sidecars (Issue #99).
+
+- `F-420`, `F-160`, `C-012`, `C-025`: retain partial memory writes and stale candidate payloads beside storage errors in `zwai trace --full`, so a failed tidy remains reconstructable (Issue #99).
+
+- `F-420`, `C-025`: allow notes pointing to an existing skill without restating its body; unknown names do not bypass duplicate checks (Issue #99).
 
 - `F-110`, `F-115`, `C-034`: checkout re-exec bundles are immutable per executable
   hash and atomically published under a cross-process lock; preparing another

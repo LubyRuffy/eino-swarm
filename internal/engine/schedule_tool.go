@@ -517,11 +517,29 @@ func (e *Engine) reportScheduleContextJSON(ctx context.Context, threadID, turnID
 		Findings string `json:"findings"`
 		Quiet    bool   `json:"quiet"`
 	}{Findings: findings, Quiet: quiet})
-	e.record(store.Event{
-		ThreadID: threadID, TurnID: turnID,
-		Kind: KindScheduleReport, AgentID: swarm.DefaultManagerID,
-		Text: string(payload),
-	})
+	var committedRearm []string
+	if sch != nil && a.NextInS > 0 && (a.Keep == nil || *a.Keep) {
+		committedRearm = append(committedRearm, sch.ID)
+	}
+	var evidence []store.Schedule
+	var failure *scheduleAnswerError
+	if findings != "" {
+		evidence, failure = e.verifyScheduleAnswer(ctx, turn, []string{findings}, committedRearm...)
+	}
+	if failure == nil {
+		failure = e.admitScheduleAnswer(threadID, turnID, evidence, []store.Event{{
+			ThreadID: threadID, TurnID: turnID,
+			Kind: KindScheduleReport, AgentID: swarm.DefaultManagerID,
+			Text: string(payload),
+		}})
+	}
+	if buffer, ok := ctx.Value(scheduleAnswerBufferContextKey{}).(*managerAnswerBuffer); ok {
+		buffer.reportStatus(failure)
+	}
+	if failure != nil {
+		body, _ := json.Marshal(map[string]any{"ok": false, "code": "schedule_claim_unverified", "error": failure.Error()})
+		return string(body), nil
+	}
 	body, _ := json.Marshal(map[string]any{"ok": true, "quiet": quiet})
 	return string(body), nil
 }

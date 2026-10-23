@@ -10,6 +10,7 @@ import {
   rewindTranscript,
   type TranscriptState,
 } from "./transcript"
+import { reviewNotice } from "./transcript-review"
 import type { SwarmEvent } from "./types"
 
 let seq = 0
@@ -135,6 +136,13 @@ describe("the memory review", () => {
       review({ changed: false, note: "nothing durable" }),
     ])
     expect(manager(state).blocks.filter((b) => b.kind === "notice")).toHaveLength(0)
+  })
+
+  it("keeps an unchanged tidy's stale candidates for Trace without adding a chat notice", () => {
+    const state = fold([review({ changed: false, stale_candidates: ["older-procedure"], notify: "off" })])
+    const [row] = manager(state).blocks
+    expect(row).toMatchObject({ quiet: true, review: { stale_candidates: ["older-procedure"] } })
+    expect(row.text).toBe("Memory catalog reviewed.")
   })
 
   it("still answers a click that kept nothing", () => {
@@ -367,5 +375,26 @@ describe("plan notices", () => {
       "Planning.",
       "Plan updated.",
     ])
+  })
+})
+
+
+describe("memory reclassification receipts", () => {
+  const outcome = { changed: true, notify: "verbose" as const, skills: [
+    { target: "skill_manage", action: "promote", name: "procedure" },
+    { target: "skill_manage", action: "demote", name: "fact" },
+  ], changes: [
+    { target: "skill_manage", action: "promote", name: "procedure", text: "retained procedure" },
+    { target: "skill_manage", action: "demote", name: "fact", text: "retained fact" },
+  ] }
+
+  it("explains the direction of each move in both languages", () => {
+    expect(reviewNotice(outcome)).toContain('skill "procedure" promoted from a note')
+    expect(reviewNotice(outcome)).toContain('skill "fact" demoted to a note')
+    expect(reviewNotice(outcome)).toContain("↑ skill procedure: retained procedure")
+    expect(reviewNotice(outcome)).toContain("↓ skill fact: retained fact")
+    expect(reviewNotice(outcome, "zh")).toContain("记忆已更新")
+    expect(reviewNotice(outcome, "zh")).toContain("笔记已提升为技能“procedure”")
+    expect(reviewNotice(outcome, "zh")).toContain("技能“fact”已降为笔记")
   })
 })

@@ -2,7 +2,7 @@ import { createServer, type ServerResponse } from "node:http"
 
 type Call = { function: { name: string; arguments: string } }
 type Message = { role: string; content?: string; tool_calls?: Call[] }
-type Input = { messages: Message[]; tools?: { function: { name: string } }[] }
+type Input = { messages: Message[]; tools?: { function: { name: string } }[]; stream?: boolean; tool_choice?: string }
 
 // Both model attempts stay open until the test inspects their actual UI. This
 // reproduces an output-budget interruption without relying on timing or a mock
@@ -34,6 +34,14 @@ export async function startGenerationInterruptionFixture() {
       try {
         if (incoming.headers.authorization) throw new Error("The fixture must be keyless")
         const input = JSON.parse(body) as Input
+        if (input.messages[0]?.role === "system" && input.messages[0].content?.split("\n", 1)[0] === "## Schedule answer claims") {
+          if (input.stream || input.tools?.length || input.tool_choice !== "none" || input.messages.length !== 2 || input.messages[1].role !== "user") {
+            throw new Error("Schedule answer policy must remain a separate non-streaming, tool-free request")
+          }
+          response.writeHead(200, { "Content-Type": "application/json" })
+          response.end(JSON.stringify({ choices: [{ index: 0, message: { role: "assistant", content: '{"claims":[]}' }, finish_reason: "stop" }] }))
+          return
+        }
         const manager = input.tools?.some((tool) => tool.function.name === "spawn_agent")
         if (!manager) {
           workerRequests++

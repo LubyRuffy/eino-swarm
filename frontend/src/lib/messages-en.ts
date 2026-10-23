@@ -1,3 +1,4 @@
+import { memoryEn } from "./messages-memory-en"
 import { generationEn } from "./messages-generation"
 import { updateEN } from "./messages-update"
 import { draftEN } from "./messages-draft"
@@ -8,6 +9,7 @@ import { agentFailureEn } from "./messages-agent-failure-en"
 export const en = {
   ...draftEN,
   ...generationEn,
+  ...memoryEn,
   "image.pasted": "Pasted image",
   "image.enlarge": "Enlarge {name}",
   "image.close": "Close image preview",
@@ -300,67 +302,6 @@ export const en = {
   "terminal.closeTab": "Close this terminal",
   "terminal.untitled": "Terminal {n}",
 
-  "memory.noProject":
-    "This conversation is not in a project, so it has nothing to remember between conversations.",
-  "memory.libraryTitle": "Shared skills",
-  "memory.libraryHint":
-    "Recorded from conversations that are not in a project. Later conversations outside a project start with this index and can open a skill. Copy one into a project when that agent should follow it.",
-  "memory.libraryOff":
-    "Memory is switched off. Skills already here stay and are not carried into later conversations. New conversations will not add to them.",
-  "memory.reviewNow": "Review this conversation now",
-  "memory.reload": "Reload memory",
-  "memory.reviewing": "Reading the last finished turn…",
-  "memory.off":
-    "Memory is switched off for this project. What is already stored stays here and is not used.",
-  "memory.notes": "Notes",
-  "memory.notesHint":
-    "Carried into every conversation in this project. One note per paragraph.",
-  "memory.notesLabel": "Project notes",
-  "memory.conflict":
-    "These notes were updated while you were editing. Save keeps yours; Reload takes the new ones.",
-  "memory.storedNow": "Stored now: {text}",
-  "memory.saveNotes": "Save notes",
-  "memory.reloadNotes": "Reload",
-  "memory.revert": "Revert",
-  "memory.skills": "Skills",
-  "memory.skillsHint":
-    "A finished turn folds same-subject names. Tidy asks the model to curate the whole catalog after a hand edit.",
-  "memory.tidySkills": "Tidy skills",
-  "memory.tidying": "Asking the model to curate skills…",
-  "memory.tidyNone": "The model reviewed the catalog. Nothing to merge.",
-  "memory.tidyEmpty": "No skills to curate.",
-  "memory.tidyDone": "Skills curated.",
-  "memory.tidyScan": "Scanning {n} skills",
-  "memory.tidyReview": "Asking the model to review the catalog",
-  "memory.tidyProgress": "Tidy progress",
-  "memory.tidyStream": "Model output",
-  "memory.tidyWaiting": "Waiting for the model…",
-  "memory.tidyHeaderTimeout":
-    "No first byte arrived before the configured timeout. Increase First-byte timeout in Settings → Models, then retry.",
-  "memory.tidySummary":
-    "Deleted {deleted}, created {created}, merged {merged}, updated {patched}.",
-  "memory.tidyActMerge": "Merged {name}",
-  "memory.tidyActDelete": "Deleted {name}",
-  "memory.tidyActCreate": "Created {name}",
-  "memory.tidyActPatch": "Updated {name}",
-  "memory.tidyStatScanned": "{n} scanned",
-  "memory.tidyStatMerged": "{n} merged",
-  "memory.tidyStatDeleted": "{n} deleted",
-  "memory.tidyStatCreated": "{n} created",
-  "memory.tidyStatPatched": "{n} updated",
-  "memory.tidyStatLeft": "{n} remaining",
-  "memory.tidyMerged": "Merged",
-  "memory.tidyDeleted": "Deleted",
-  "memory.tidyCreated": "Created",
-  "memory.tidyPatched": "Updated",
-  "memory.tidyMergeLine": "{dropped} → {keep}",
-  "memory.tidyDismiss": "Dismiss tidy result",
-  "memory.noSkills":
-    "No procedures recorded yet. They appear here when a conversation produces one worth following again.",
-  "memory.showInFinder": "Show in Finder",
-  "memory.deleteSkill": "Delete the skill {name}",
-  "memory.delete": "Delete",
-  "memory.loading": "Loading…",
 
   "transcript.queuedSteering": "Queued steering",
   "transcript.interruptSteer": "Interrupt",
@@ -469,6 +410,8 @@ export const en = {
   "notice.modelRetryResponse": "The model service returned a response that could not be decoded. Retrying.",
   "notice.modelServiceResponse": "the model service returned a response that could not be decoded",
   "notice.modelRetryIdle": "The model service stopped sending data. Retrying.",
+  "notice.scheduleClaimCheck": "Checking the schedule before reporting it as arranged.",
+  "notice.workerCollection": "Collecting delegated work before completing this turn.",
   "notice.invalidToolJSON":
     "the model returned a tool call that was not valid JSON",
   "notice.modelServiceRateLimited": "the model service is rate limiting requests",
@@ -827,42 +770,6 @@ export const en = {
   "settings.tools.noProxy": "Skip the proxy for",
   "settings.tools.noProxyHint": "Comma-separated hosts.",
 
-  "settings.memory.title": "Memory",
-  "settings.memory.desc":
-    "What a project may keep, and how expensive that is per turn.",
-  "settings.memory.when": "When it runs",
-  "settings.memory.enabled": "Remember anything at all",
-  "settings.memory.enabledHint":
-    "Off means no project carries notes or skills, and a conversation outside a project does not add to the shared skill library. What is already stored stays.",
-  "settings.memory.autoReview": "Review a conversation when it finishes",
-  "settings.memory.autoReviewHint":
-    "A finished turn is read back so durable facts and reusable procedures are kept. A conversation outside a project keeps procedures in the shared skill library. Off means memory only changes when an agent or you write to it.",
-  "settings.memory.after": "After a review",
-  "settings.memory.afterHint":
-    "The review still runs and still writes. This only governs the line that appears after the answer.",
-  "settings.memory.notifyOn": "One line naming what changed",
-  "settings.memory.notifyVerbose": "The line, plus a preview of the text",
-  "settings.memory.notifyOff": "Nothing in the transcript",
-  "settings.memory.budget": "Budget",
-  "settings.memory.reviewThinking": "Review thinking",
-  "settings.memory.reviewThinkingHint":
-    "Choose a separate reasoning level for automatic reviews and Review now. Select a level supported by your model; other conversation work keeps its own setting.",
-  "settings.memory.reviewThinkingInherit": "Inherit conversation",
-  "settings.memory.reviewThinkingLow": "Low",
-  "settings.memory.reviewThinkingMedium": "Medium",
-  "settings.memory.reviewThinkingHigh": "High",
-  "settings.memory.charLimit": "Notes budget (characters)",
-  "settings.memory.charLimitHint":
-    "Every note is in the prompt of every turn in the project, so this is a per-turn cost. Once it is full, an agent must replace a note to add one.",
-  "settings.memory.entryMax": "Per-note cap (characters)",
-  "settings.memory.entryMaxHint":
-    "Agent writes longer than this are refused. A procedure or a runbook belongs in a skill, where only the summary rides in the prompt. Editing notes by hand still uses the total budget.",
-  "settings.memory.reviewRounds": "Review tool rounds",
-  "settings.memory.reviewRoundsHint":
-    "How many times the review may think and write before it is stopped.",
-  "settings.memory.skillsIndex": "Skills listed in the prompt",
-  "settings.memory.skillsIndexHint":
-    "Only names and one-line descriptions are listed; an agent opens the one it needs.",
 
   "settings.remote.title": "Phone",
   "settings.remote.desc":
@@ -955,38 +862,6 @@ export const en = {
   "file.deleteTitle": "Delete {name}?",
   "file.deleteDesc": "This file is removed from the workspace.",
   "file.deleteConfirm": "Delete file",
-  "skill.copyNamed": "Copy skill {name}",
-  "skill.copyAll": "Copy all skills",
-  "skill.copyTitle": "Copy {name}",
-  "skill.copyAllTitle": "Copy all skills",
-  "skill.copyDesc":
-    "The destination gets its own copy. Edits there stay there, and edits here are not written back. If this skill later changes and that copy was not edited, it can pull the update. Copy from the project that should stay the shared procedure — an edited copy is what the next project receives.",
-  "skill.copyTo": "Destination project",
-  "skill.copyPick": "Choose a project",
-  "skill.copyAs": "Name in the destination",
-  "skill.copyAsHint": "Leave this blank to keep the same name.",
-  "skill.copyConfirm": "Copy skill",
-  "skill.copyAllConfirm": "Copy skills",
-  "skill.copyNone": "Create another project first.",
-  "skill.copyWorking": "Copying…",
-  "skill.copied": "Copied {n} to {project}.",
-  "skill.copySkipped": "{name}: {error}",
-  "skill.copyFailed": "Nothing was copied.",
-  "skill.originFrom": "Copied from {project}",
-  "skill.originLibrary": "From the shared skill library",
-  "skill.originLocal": "Edited in this project. The source has not changed.",
-  "skill.originDiverged": "This copy and the source have both changed.",
-  "skill.originMissing": "The source skill is gone.",
-  "skill.update": "Update",
-  "skill.updateFrom": "Update {name} from its source",
-  "skill.pullConfirmTitle": "Replace local edits?",
-  "skill.pullConfirmDesc":
-    "Updating replaces this copy with the source. The source is not changed.",
-  "skill.pullConfirm": "Replace with source",
-  "skill.deleteTitle": "Delete {name}?",
-  "skill.deleteDesc":
-    "Later conversations in this project will not start with this procedure.",
-  "skill.deleteConfirm": "Delete skill",
   "queue.deleteTitle": "Remove this queued message?",
   "queue.deleteDesc": "It will not be sent.",
   "queue.deleteConfirm": "Remove",

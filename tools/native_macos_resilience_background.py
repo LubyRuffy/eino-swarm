@@ -105,6 +105,7 @@ def start(context, harness, timeout):
     context["thread_title"] = "Native recovery " + context["case_id"]
     parked = harness.api(context["origin"], "/api/threads", "POST", dict(provider_id="resilience-parked"))["thread"]["id"]
     wake = harness.api(context["origin"], "/api/schedules", "POST", dict(kind="thread", thread_id=parked,
+                       title="Native recovery parked worker " + context["case_id"],
                        prompt="Inspect the assigned operation state.", every_s=86400))["schedule"]["id"]
     context["background"] = dict(running=dict(thread_id=own), parked=dict(thread_id=parked, wake_id=wake))
     for kind, row in context["background"].items():
@@ -151,6 +152,7 @@ def validate_schedule(expected, current):
     row = dict(current)
     if (row["id"] != expected["wake_id"] or row["kind"] != "thread" or row["thread_id"] != expected["thread_id"]
             or row["status"] != "active" or row["every_s"] != 86400 or not row["next_run_at"]
+            or row.get("title_auto") is not False
             or ("schedule" in expected and row != expected["schedule"])):
         raise RuntimeError("background parked schedule identity, ownership or cadence changed")
     return row

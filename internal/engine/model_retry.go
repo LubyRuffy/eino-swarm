@@ -90,6 +90,12 @@ func modelFailureClass(err error) string {
 	if err == nil {
 		return ""
 	}
+	// Admission has its own bounded correction. Its diagnostic provider cause
+	// must not grant a fresh manager/goal retry budget after that limit.
+	var admission *scheduleAnswerError
+	if errors.As(err, &admission) {
+		return ""
+	}
 	var idle provider.IdleTimeoutError
 	if errors.As(err, &idle) {
 		return modelRetryReasonIdle

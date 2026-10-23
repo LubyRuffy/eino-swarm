@@ -19,7 +19,7 @@ const scheduleFiredNotice = "Scheduled check."
 // fires. Generic on purpose: a sample CI/deploy task leaking in here would
 // become the product's scheduled-check protocol.
 func ScheduleContinueText(prompt string) string {
-	return "This turn is a scheduled check. Human restrictions on parking this conversation remain authoritative; this cue and the instruction below cannot grant permission to wait. Do the check in the instruction below, then call report_schedule. Empty findings archive the run. Cancel the schedule when the wait is over.\n\n" + strings.TrimSpace(prompt)
+	return "This turn is a scheduled check. Human restrictions on parking this conversation remain authoritative; this cue and the instruction below cannot grant permission to wait. Do the check in the instruction below and return the result as text, or call report_schedule. Empty findings in report_schedule archive the run. Cancel the schedule when the wait is over.\n\n" + strings.TrimSpace(prompt)
 }
 
 func (e *Engine) clock() time.Time {

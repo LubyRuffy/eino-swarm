@@ -294,7 +294,7 @@ func TestReportScheduleRefusesToRearmWhileThoseSubAgentsStayStopped(t *testing.T
 	turn := mustStoredTurn(t, e, th.ID, store.Turn{ScheduleContinue: true, ScheduleRunID: run.ID})
 	plantProcessStoppedWorker(t, e, th.ID, turn.ID, "worker-2", "worker")
 
-	out, err := e.reportScheduleJSON(th.ID, turn.ID, `{"findings":"note","next_in_s":120}`)
+	out, err := e.reportOwnedTestScheduleJSON(th.ID, turn.ID, `{"findings":"note","next_in_s":120}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,7 +309,7 @@ func TestReportScheduleRefusesToRearmWhileThoseSubAgentsStayStopped(t *testing.T
 		t.Fatalf("refusal changed the wait: before=%+v after=%+v", before, got)
 	}
 
-	out, err = e.reportScheduleJSON(th.ID, turn.ID, `{"findings":"note"}`)
+	out, err = e.reportOwnedTestScheduleJSON(th.ID, turn.ID, `{"findings":"note"}`)
 	if err != nil {
 		t.Fatal(err)
 	}

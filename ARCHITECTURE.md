@@ -135,6 +135,54 @@ flowchart LR
   Review --> Bus
 ```
 
+## Manager scheduling reports
+
+Manager prose admission for scheduled-work claims lives in
+`internal/engine/schedule_answer.go` and `manager_answer_buffer.go`. A tool-free
+policy call extracts claims from candidate prose; code checks them against
+persisted schedule rows, current state and turn ownership before publishing
+the buffered text. Unsupported claims get one correction in the same turn;
+uncertainty is not scheduling success. Exhausting this gate is terminal even
+when the diagnostic cause is a model transport or decoding failure, so goal
+continuation cannot reset its correction budget. The same-turn allowance is
+restored from its durable correction event after restart; failed receipt reads
+or writes terminate admission before another corrective model request.
+Tools, reasoning and worker events
+continue on the original notification path. Policy calls and correction
+metadata are attributed to the original turn's Trace.
+
+## Ordinary turn completion
+
+`internal/engine/worker_completion.go` checks delegated work before admitted
+completion prose is published. `Registry.PendingAgents` includes both running
+workers and finished results that the manager has not collected. Actual
+`wait_agents` results and explicit `close_agent` decisions settle the exact
+worker generation; a timed-out wait or an old generation's result cannot settle
+a later resume. Closing finished work acknowledges discarding its result and
+retains `already_finished`, rather than reporting a new cancellation.
+The gate applies to a manager's natural completion. Exhausting a ReAct slice
+is not that attempt; resource limits and externally completed or blocked goals
+retain their existing termination boundary rather than gaining a collection pause.
+Human preemption and existing scheduled-check completion eligibility precede
+collection admission. An empty failed check keeps its original error/ownership
+semantics and cannot be converted into a worker-collection pause.
+
+Without a currently executable goal or active same-thread wake, an early final
+is withheld and receives one same-turn correction with the original worker IDs.
+`model_retry` reason `workers_uncollected` durably records the consumed allowance
+and IDs in the original Trace. A second early final uses the existing human
+Continue/Stop pause while the turn and worker requests remain live. Continue
+allows one further attempt; Stop or declining cancels. Checkpoints and event
+replay retain collection state, the allowance and an existing human pause across
+restart. Legacy finished rosters without generation identity remain historically
+finished; legacy running work still requires collection. Ownership is reread
+after scheduling policy verification, so removing
+the last owner during that request cannot authorize stale parking. This fresh
+check is the completion-gate decision point: an owner present then permits
+yielding; later explicit revocation retains the existing worker cancellation
+and finalization boundary, without rolling back published prose. Valid goal
+and wake parking continues under the existing ownership rules.
+
 ## Composer durability and renderer recovery
 
 The engine owns `composer_drafts` and scoped `composer_draft_blobs`. A browser
@@ -511,13 +559,16 @@ worker before closing SQLite.
    check error. Another scheduled fire or explicit user action collects the
    same workers. Interrupt, absent ownership, context-window exhaustion and
    the worker-watchdog failure limit retain their stop/cleanup boundaries.
-   Before a successful scheduled turn returns from `runManager`, durable
-   tool-result/report events in that turn are checked (`schedule_completion.go`).
-   With no evidence, the transcript is preserved and the same registry/turn
-   continues once with a generic completion cue. A second empty completion
-   returns an error for `finishScheduledRun`; it cannot archive as quiet or
-   turn an acknowledgement into findings. Model-error cleanup results are
-   excluded. Ordinary turns and explicit quiet reports retain their behavior.
+   Before a scheduled turn returns from `runManager`, its current final text
+   and durable tool-result/report events are checked (`schedule_completion.go`).
+   Automatic tool selection allows a nonempty text result to finish without
+   tools through the existing findings fallback. Only a blank final with no
+   real tool result or report preserves the transcript and continues once
+   in the same registry/turn; a second empty response remains an error.
+   Model-error cleanup results are excluded. Explicit quiet reports retain
+   precedence over final text. Ending a check does not prove external work
+   or replace the standing goal completion boundary. Ordinary turns also obey
+   the worker-collection admission boundary described above.
 3. The manager's system prompt is generated per turn from the live toolset, the
    workspace path, the concurrency limits, and a snapshot of the host
    (OS, architecture, kernel, shell, date, timezone, user, home).    It is
@@ -793,6 +844,19 @@ worker before closing SQLite.
    `schedule_continue` that cannot restart, or that is dropped as superseded,
    still closes the bound schedule run (`error`) so `HasRunningRun` cannot
    stick a wait that will never fire again.
+Skill usage lives beside each `SKILL.md` in `usage.json`, under the Store lock.
+Only agent `ViewSkill` updates it; API reads and copies use `ReadSkill`. The
+sidecar keeps content timestamps and digests stable. Tidy snapshots stale
+candidates before inspection and records the names in the report, streamed scan
+and original-turn memory review, without deleting by age.
+
+Notes and skills differ by loading: notes are short declarations whose absence
+would misdirect work and are injected each turn; skills contain the methods
+needed to accomplish work and load through `skill_view`. Workflow-local
+constraints belong in skill preconditions; descriptions state when to use a
+skill. An exact existing skill-name pointer may remain in notes if it does not
+restate the body. This changes no Markdown format or event kind.
+
 8. **Review** (`F-420`, `C-025`): with memory and auto-review enabled, a
    successful turn starts a single streaming `adk.ChatModelAgent` from the stored
    event log, even when the manager already used a memory tool. Compacted ADK
@@ -899,11 +963,21 @@ worker before closing SQLite.
    Successful-turn reviews, or successful turns with auto-review off, still fold
    leftover skill families. A standalone successful turn writes procedures only
    into the shared library. Manual **Review now** selects the most recent
-   successful turn. Catalog tidy remains its separate live-catalog flow with
-   direct skill tools and no notes. `POST /api/projects/:id/memory/tidy-skills`
+   successful turn. Requested project tidy receives current notes and live skill catalog, with
+   `CatalogTools` plus tidy-only `ReclassifyTools`; turn reviewers and workers
+   never receive the latter. Promote requires its body to equal the complete source note after
+   whitespace normalization, without extra steps or assertions. Demote requires a short body
+   without Markdown step markers and a whitespace-equivalent note, within both
+   budgets. Similarity cannot authorize source deletion. The destination is
+   saved first; partial failures emit actual create/add/delete changes, not a
+   completed move. State-idempotent retries do not prove historical provenance.
+   Shared-library tidy receives skill tools only, with no notes or move tools. `POST /api/projects/:id/memory/tidy-skills`
    folds stems before model curation; `Accept: text/event-stream` reports the
    scan, streamed prose and actual writes, then the same result as JSON with
-   created/deleted/patched/unchanged counts and `reviewed` when the model ran.
+   created/deleted/patched/unchanged counts, promoted/demoted counts, stale
+   candidate names and `reviewed` when the model ran (skills or project notes).
+   A project without a prior turn retains the existing no-Trace-anchor behavior;
+   this flow does not fabricate conversation history to supply one.
    The Memory panel keeps each tidy card with its own project; switching away
    and back preserves in-flight progress or the finished result. An earlier
    memory read cannot replace the completed catalog with stale content. Opening

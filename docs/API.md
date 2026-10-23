@@ -879,7 +879,8 @@ Body `{"ids": ["pj_a", "pj_b"]}`. Pins that order in the sidebar. Unknown ids ar
   "enabled": true,
   "memory": {"text": "…", "entries": ["…"], "chars": 412, "limit": 2200, "rev": "a1b2c3d4e5f6"},
   "skills": [{"name": "weekly-rollup", "description": "…", "updated_at": "…"}],
-  "needs_tidy": false
+  "needs_tidy": false,
+  "skill_stale_days": 90
 }}
 ```
 
@@ -892,6 +893,11 @@ agent fetches it with `skill_view`. A copied skill also carries `origin`
 body. That index is the project's memory, not a
 `SKILL.md` already in the workspace. `needs_tidy` is true when a same-subject
 family is still on disk. Opening this endpoint does not fold them.
+Project and library memory responses include `skill_stale_days`, the configured
+advisory threshold. Each skill also includes `views` (number) and
+`last_viewed_at` (UTC timestamp; zero time means never viewed). Agent
+`skill_view` increments usage; HTTP reads, list and copy calls do not. The
+prompt index omits these fields, and copies start at zero.
 
 ### `PUT /api/projects/:id/memory`
 
@@ -908,7 +914,20 @@ typed them (`400`).
 
 ### `POST /api/projects/:id/memory/tidy-skills` → `200`
 
-Curates the skill catalog on demand. Stem families fold first — the same
+Curates project memory on demand. Current notes accompany the live skill index;
+tidy-only `memory_reclassify` can promote a uniquely matched note to a skill or
+demote a short declarative skill to a note. Workers and post-turn reviewers do
+not receive this tool; the shared-library tidy does not receive notes or moves.
+Promote requires its body to equal the entire source note after whitespace
+normalization, without extra steps or assertions;
+demote requires an equivalent complete short body without Markdown step markers,
+within `entry_max` and the total note budget. Destination writes precede source
+deletions, not a multi-file transaction. Partial moves retain actual writes as
+create/add/delete changes; only complete moves use
+`action: promote` / `demote` with `target: skill_manage`. Retry may establish an
+already-present final state without new changes; it does not establish history.
+
+Curates the skill catalog as part of that pass. Stem families fold first — the same
 hygiene that runs after a finished turn — then the memory-reviewer reads the
 live index and merge / patch / delete by content. A `SKILL.md` edited in
 Finder, or a pile of uniquely named duplicates the filename heuristic cannot
@@ -916,19 +935,20 @@ see, is otherwise left as it was. Without `Accept: text/event-stream` the
 body is the outcome, once. With that header the same call is
 `text/event-stream`: `tidy` events (`phase` `scan` / `text` / `change`)
 while the model is writing, then one `done` event whose `data` is the JSON
-body below, or `error` if the fold failed after the stream had started.
+body below, including `report.err` for reviewer failures. An outer fold or final
+memory-view failure after streaming starts emits `error` instead of `done`.
 `text` is the assistant prose so far, not a delta. A disconnect does not
 abort the fold. Model calls
 and a quiet `memory_review` (`notify: off`) hang on the project's latest
 finished turn when there is one; without a turn the reviewer still runs
 against the default provider. Serializes with that project's in-flight
-reviewer so a click cannot fold while a review is still writing. Pre-stream
-refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
+reviewer so a click cannot fold while a review is still writing.
 
 ```json
 {"memory": { "dir": "…", "enabled": true, "memory": {…}, "skills": […], "needs_tidy": false },
  "report": {
    "scanned": 3, "before": 3, "after": 2, "families": 1, "unchanged": 1,
+   "promoted": 0, "demoted": 0, "stale_candidates": [],
    "created": ["weekly-rollup"],
    "deleted": ["weekly-rollup-notes", "weekly-rollup-send"],
    "patched": [],
@@ -941,7 +961,34 @@ refusals stay JSON: `409 idle` after shutdown, `404` for a project nobody has.
  "reviewed": true}
 ```
 
-`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works. `report.err` is set when the model call failed after the stem fold already landed.
+`report.promoted` and `report.demoted` count completed moves. They do not count
+partial destination writes as completed moves, and existing count fields retain
+their skill-catalog meaning. `tidy` change events include those actions. No
+wire event kind or endpoint path changed. As before, when no prior conversation
+turn exists there is no turn Trace anchor.
+
+`report.stale_candidates` lists skill names whose last view (or content
+modification time when never viewed) reached `memory.skill_stale_days` before
+curation. The streamed scan and original-turn `memory_review` retain the same
+list. It is advisory input, not a list of automatic deletions.
+
+`report` is what the Memory panel prints after a click: how many skills were scanned, which names were merged / deleted / created / patched, and the leftover count. `created` is the keeper when that name was not already a skill; merging into an existing keeper leaves `created` empty. `reviewed` is true when the reviewer ran (any non-empty catalog or project notes after the stem fold). `folded` is false and the name lists are empty when the model looked and kept the catalog. `changes` duplicates `report.changes` so a client that only read the first version still works.
+
+`memory_reclassify` validation refusals are internal tool-result JSON with
+`success: false`; an unchanged refusal is feedback the reviewer may correct,
+not an HTTP failure or necessarily a `report.err`. If a move fails after saving
+changes, its tool result retains `changed: true` and the actual receipts, and
+the tidy wrapper stops the reviewer. Reviewer errors, including model errors
+and such partial tool failures, populate `report.err`. The endpoint still
+returns HTTP `200`, or SSE `done` with the same report, preserving saved changes.
+Clients must inspect `report.err`; successful transport is not successful curation.
+
+Errors outside the reviewer, such as fold setup/storage reads or the final
+memory-view read, use the normal JSON status/code mapping for non-streamed
+requests (`409` / `code: idle` after shutdown). Project lookup fails before a
+stream starts and remains JSON (`404` for a missing project). Once SSE headers
+are sent, outer fold/view errors emit an `error` event under HTTP `200`, with no
+`done` report; this differs from reviewer failures carried in `done.report.err`.
 
 ### `GET /api/projects/:id/skills/:name`
 
@@ -1286,6 +1333,14 @@ the rest is the objective, space optional so a glued CJK IME string still
 matches. That pins the standing objective and starts pursuit when idle, or
 steers the live turn. The stored `user_text` is the objective. Bare `/goal`
 is `400`. `/goals …` is still an ordinary message.
+The standalone suffix `<objective> /goal` also sets the objective, using
+the preceding text; trailing whitespace is allowed. An explicit new goal
+replaces a completed objective and starts pursuit again. Normal messages
+retain the completed state. HTTP and paired-phone sends use the same engine
+command parser, including steering while a turn is running.
+Goal commands accept text only. Images or files on a goal-command send are
+rejected before changing the objective, including while the conversation is
+running; clients must retain the original draft and attachments on that error.
 
 `from_event_seq`, when set, names a stored `user_message` to replace. That
 event and everything after it is deleted (later turns, their messages and
@@ -1469,6 +1524,11 @@ Body `{"continue": true|false}`. Answers a pause at the manager's tool-round cap
 another `swarm.manager_max_iterations` rounds; `false` ends it as `cancelled`
 with a short "stopped after N tool rounds" rather than eino's graph error.
 Steering while paused also continues. `409 idle` when the turn is not waiting.
+
+普通回合因未收取 worker 而重复提前结束时，也使用同一 `max_iterations`
+人工暂停。暂停保留同一 running turn 与原 worker 请求；`continue:true` 或
+人工 steer 只再授予一次收取纠正尝试，`false`／Stop 仍取消。重启恢复人工暂停，
+不能在没有新的人类继续指令时自动获得更多纠正额度。
 
 ```json
 {"continued": true}
@@ -1674,6 +1734,42 @@ shortening only the bounded detail text.
 | `done` | the turn finished; `text` is the final answer. Empty / whitespace `text` hides chat bubbles only after `schedule_fired` when that turn did not already report findings. An armed `schedule`, `goal_continued`, compact, or other notice plus empty `done` stays visible. Non-empty `text` after a fire is findings and keeps the fired chip |
 | `error` | the turn failed; `err` explains |
 | `ready` | replay is complete (no `seq`, not stored) |
+
+`model_retry.reason: "schedule_claim_unverified"` is a bounded correction of
+an unsupported scheduling claim in the same turn. It does not mean the
+provider failed or that a wait was created. Its metadata remains in Trace;
+the transcript says the schedule is being checked. Candidate manager prose
+is held until the tool-free `schedule-answer-policy` call extracts claims
+and code verifies them against current persisted plans. A new-arrangement
+claim needs this turn's successful arrangement, and a cancelled or failed
+arrangement cannot support it. One correction is allowed; repeated unsupported
+claims or an unavailable check produce an explicit error. Restart preserves
+the original turn’s consumed allowance. Reading or saving its correction
+receipt must succeed before another corrective model request. Tool, reasoning and
+worker events continue live. The policy model is an interpreter, and the
+schedule database remains the source of scheduling facts. Exhaustion keeps
+its scheduling-admission error class even when the underlying diagnostic
+cause is a provider error; it cannot start another automatic goal turn.
+Paired-phone Earlier paging retains classified retry notices, including this
+reason, and skips unknown or malformed envelopes that paint no phone block.
+
+`model_retry.reason: "workers_uncollected"` 表示普通回合的完成答复被暂扣，
+等待主管收取或明确放弃仍未结清的子任务；这是生命周期纠正，不是 provider
+错误。`text` 为 `{attempt:1,cap:1,reason:"workers_uncollected",worker_ids:[...]}`，
+归属原 turn，PC 与手机显示正在收取子任务结果。一次自动纠正后仍提前结束，
+进入上述 Continue／Stop 暂停，不能发布 done 或为成功收尾取消这些 worker。
+有当前有效 goal／同对话 wake 的工作继续遵守既有停泊契约。
+
+生命周期 `tool_result.text` 的新成功回执附带 worker 执行 `generation`：
+`spawn_agent`／`resume_agent` 返回 `{agent_id,generation,...}`；`wait_agents`
+每个已知条目包含 `{agent_id,generation,status,...}`，只有实际返回的 done／failed
+结果结清该 generation，running／unknown 和 wait 超时不结清；`close_agent`
+返回 `{agent_id,generation,cancelled:true}`，或对已结束任务返回
+`{agent_id,generation,cancelled:false,already_finished:true}` 并明确放弃其结果。
+未知 ID 仍返回拒绝，不结清其他任务。回放只认 manager 的配对调用／回执及精确
+ID／generation；它不同于一次模型输出的 `message_id`，不新增 event 列。
+缺 generation 的旧 finished roster 保持 legacy 已结束兼容，不追溯要求收取；
+旧 running worker 仍须收取，新 `generation>0` 严格保留收取状态。
 
 Two rules the client depends on:
 
@@ -2117,16 +2213,22 @@ slot (`next_run_at` becomes the occurrence after the one that was pending);
 an interval resets from now. A delay one-shot is marked `done`. The
 composer wait banner hides while that conversation is working.
 
-A model response with no tool result or explicit `report_schedule` continues
-once in that same turn (`model_retry`, reason `scheduled_no_activity`). A
-second such response ends the turn and run as `error`, leaving the run unread;
-opening prose alone cannot become findings. Automatic fires use the same
-rule. Explicit empty findings remain quiet; a real tool result preserves the
-existing omitted-report fallback. No new run is created by this continuation.
+A nonempty text result may finish the check without any tool call or explicit
+`report_schedule`; it becomes findings and stays unread. Tool selection remains
+automatic, including recovery. A blank/whitespace final with neither a real
+tool result nor an explicit report continues once in the same turn
+(`model_retry`, reason `scheduled_no_activity`). A second empty response ends
+the turn and run as `error`, leaving the run unread, with
+`scheduled check ended without returning text, executing a tool or reporting its result`.
+Automatic fires use the same rule. Explicit empty findings remain quiet and
+take precedence over final text; a real tool result preserves the existing
+omitted-report fallback. Synthetic retry cleanup is not a tool result.
+No new run is created by this continuation. A text result ends this check;
+it does not establish that external effects occurred or complete a standing goal.
 
 A failed scheduled check can finish while its workers continue under an
 executable standing goal or an active same-thread wake. This applies to the
-evidence failure above and ordinary model failures, including a rejected
+empty-response failure above and ordinary model failures, including a rejected
 request or exhausted in-turn transient retries. The engine persists
 `workers_retained` before the terminal error and keeps the same registry,
 worker IDs and ongoing calls. The turn/run stay `error`, the run stays unread,

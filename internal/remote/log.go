@@ -98,7 +98,10 @@ func hasPhoneContent(events []store.Event) bool {
 		if !shouldPush(ev.Kind) || ev.Kind == "tool_result" || ev.Kind == "engine_restart_checkpoint" || ev.Kind == engine.KindDesktopRecovery {
 			continue
 		}
-		if ev.Kind == "max_iterations" || ev.Kind == "max_iterations_continued" || ev.Kind == "model_retry" || ev.Kind == "compacted" {
+		if ev.Kind == "model_retry" && !phoneRetryNoticeVisible(ev.Text) {
+			continue
+		}
+		if ev.Kind == "max_iterations" || ev.Kind == "max_iterations_continued" || ev.Kind == "compacted" {
 			body := strings.TrimSpace(ev.Text)
 			if strings.HasPrefix(body, "{") || strings.HasPrefix(body, "[") {
 				continue
@@ -113,6 +116,24 @@ func hasPhoneContent(events []store.Event) bool {
 		return true
 	}
 	return false
+}
+
+// Keep this protocol enum aligned with mobile's modelRetryNotice. Unknown
+// envelopes render no phone block and must not strand Earlier on an empty page.
+func phoneRetryNoticeVisible(text string) bool {
+	var payload struct {
+		Reason string `json:"reason"`
+	}
+	if json.Unmarshal([]byte(text), &payload) != nil {
+		return false
+	}
+	switch payload.Reason {
+	case "workers_uncollected", "schedule_claim_unverified", "context_overflow", "invalid_tool_json", "rate_limited",
+		"model_unavailable", "model_response_invalid", "model_transport", "model_idle":
+		return true
+	default:
+		return false
+	}
 }
 
 func packLogEvents(id, path, sessionID, threadID string, events []store.Event, more bool, cfg config.RemoteConfig) Response {

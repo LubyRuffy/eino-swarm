@@ -45,6 +45,8 @@ const NOTICE_EXACT: Record<string, MessageKey> = {
   "The connection to the model service dropped. Retrying.":
     "notice.modelRetryTransport",
   "The model service stopped sending data. Retrying.": "notice.modelRetryIdle",
+  "Checking the schedule before reporting it as arranged.": "notice.scheduleClaimCheck",
+  "Collecting delegated work before completing this turn.": "notice.workerCollection",
   "the model request failed because a tool call was not valid JSON":
     "notice.invalidToolJSON",
   "the model returned a tool call that was not valid JSON":

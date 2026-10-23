@@ -174,7 +174,7 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		if ok {
 			if _, _, finished := h.Result(); !finished {
 				h.pushInbox(a.Task)
-				return marshal(map[string]string{"agent_id": h.ID, "steered": "true"}), nil
+				return marshal(map[string]any{"agent_id": h.ID, "generation": h.generation(), "steered": "true"}), nil
 			}
 		}
 	}
@@ -190,7 +190,7 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 			}
 			return ctlRefuse(err.Error())
 		}
-		return marshal(map[string]string{"agent_id": h.ID, "resumed_from": id}), nil
+		return marshal(map[string]any{"agent_id": h.ID, "generation": h.generation(), "resumed_from": id}), nil
 	}
 	var h *Handle
 	var err error
@@ -206,9 +206,9 @@ func (r *Registry) spawn(ctx context.Context, args string) (string, error) {
 		return ctlRefuse(err.Error())
 	}
 	if a.ForkContext {
-		return marshal(map[string]string{"agent_id": h.ID, "forked": "true"}), nil
+		return marshal(map[string]any{"agent_id": h.ID, "generation": h.generation(), "forked": "true"}), nil
 	}
-	return marshal(map[string]string{"agent_id": h.ID}), nil
+	return marshal(map[string]any{"agent_id": h.ID, "generation": h.generation()}), nil
 }
 
 func (r *Registry) send(ctx context.Context, args string) (string, error) {
@@ -409,12 +409,21 @@ func (r *Registry) wait(ctx context.Context, args string) (string, error) {
 		}
 	}
 
-	return marshal(r.waitSnapshot(a.AgentIDs, timedOut)), nil
+	report, collected := r.waitSnapshotCollections(a.AgentIDs, timedOut)
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	out := marshal(report)
+	for _, token := range collected {
+		r.collectWorker(token, false)
+	}
+	return out, nil
 }
 
 // waitEntry is one agent's line in a wait_agents result.
 type waitEntry struct {
 	AgentID     string   `json:"agent_id"`
+	Generation  int      `json:"generation,omitempty"`
 	Role        string   `json:"role,omitempty"`
 	Status      string   `json:"status"` // running | done | failed | unknown
 	Result      string   `json:"result,omitempty"`
@@ -428,42 +437,6 @@ type waitEntry struct {
 type waitReport struct {
 	Agents   []waitEntry `json:"agents"`
 	TimedOut bool        `json:"timed_out"` // true when the wait hit its deadline with nothing new finished
-}
-
-// waitSnapshot describes every requested agent as it stands right now: the
-// finished ones with their result, the running ones with their latest
-// activity, so the manager can narrate progress and decide whether to wait
-// again.
-func (r *Registry) waitSnapshot(ids []string, timedOut bool) waitReport {
-	agents := make([]waitEntry, 0, len(ids))
-	for _, id := range ids {
-		h, ok := r.get(id)
-		if !ok {
-			agents = append(agents, waitEntry{AgentID: id, Status: "unknown", Err: "unknown agent"})
-			continue
-		}
-		result, err, done := h.Result()
-		e := waitEntry{AgentID: id, Role: h.Role}
-		switch {
-		case !done:
-			e.Status = "running"
-			e.Activity = h.Activity()
-		case err != nil:
-			e.Status = "failed"
-			e.Err = err.Error()
-			e.Result = result
-			e.Elapsed = float64(h.Elapsed()) / float64(time.Millisecond)
-		default:
-			e.Status = "done"
-			e.Result = result
-			e.Elapsed = float64(h.Elapsed()) / float64(time.Millisecond)
-		}
-		if done {
-			e.Undelivered = h.leftover()
-		}
-		agents = append(agents, e)
-	}
-	return waitReport{Agents: agents, TimedOut: timedOut}
 }
 
 func (r *Registry) close(ctx context.Context, args string) (string, error) {
@@ -484,11 +457,15 @@ func (r *Registry) close(ctx context.Context, args string) (string, error) {
 	// Leftover finished workers stay in the registry for resume_agent.
 	// cancelled:true on those made a long /goal treat one close as a canary
 	// and walk the rest of the roster.
-	if _, _, finished := h.Result(); finished {
+	snapshot, token := h.collectionSnapshot()
+	if snapshot.Status != "running" {
+		r.collectWorker(token, false)
 		return marshal(map[string]any{
-			"agent_id": a.AgentID, "cancelled": false, "already_finished": true,
+			"agent_id": a.AgentID, "generation": token.generation, "cancelled": false, "already_finished": true,
 		}), nil
 	}
-	h.Cancel()
-	return marshal(map[string]any{"agent_id": a.AgentID, "cancelled": true}), nil
+	if !r.collectWorker(token, true) {
+		return ctlRefuse("close_agent: that worker generation already changed")
+	}
+	return marshal(map[string]any{"agent_id": a.AgentID, "generation": token.generation, "cancelled": true}), nil
 }

@@ -32,14 +32,16 @@ func holdRegistry(t *testing.T, cap int) (*Registry, chan struct{}) {
 
 func mustAgentID(t *testing.T, out string) string {
 	t.Helper()
-	var m map[string]string
+	var m struct {
+		AgentID string `json:"agent_id"`
+	}
 	if err := json.Unmarshal([]byte(out), &m); err != nil {
 		t.Fatalf("agent id: %v (%s)", err, out)
 	}
-	if m["agent_id"] == "" {
+	if m.AgentID == "" {
 		t.Fatalf("no agent_id in %s", out)
 	}
-	return m["agent_id"]
+	return m.AgentID
 }
 
 func waitRosterID(t *testing.T, reg *Registry, id string) {

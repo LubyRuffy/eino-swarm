@@ -66,8 +66,17 @@ E2E suite.
 
 ## Testing rules
 
+- Memory reclassification deletes a source only after preserving its full text
+  (whitespace normalization is allowed); token overlap cannot prove that negation,
+  numbers or conditions survived. Regress partial filesystem deletion and report
+  actual writes even when the move fails. Skill usage is separate from content
+  identity and never enters the prompt index. E2E language fixtures must restore
+  server locale as well as browser storage.
+
 - Concurrent Playwright runs must each own a separate server port, data
-  directory and `--output` directory. Preserve the first failure and identify
+  directory and `--output` directory. A Vite preview also owns its built `dist`:
+  never rebuild that directory while it is serving a case; concurrent builds
+  need separate source/build copies. Preserve the first failure and identify
   whether it came from a business assertion or artifact/teardown handling;
   shared trace/network/ZIP `ENOENT` errors require an isolated rerun with its
   own evidence. A retry turning green alone does not establish the cause or
@@ -128,6 +137,11 @@ E2E suite.
 - Image acceptance must use a decodable fixture and verify dimensions, MIME
   and unchanged bytes after save/reload. Magic bytes and an img src alone
   cannot prove that the selected image reached the visual-input path.
+- Lifecycle-only schedule fixtures use explicit titles. Before fault injection
+  replaces provider state, registers/removes database callbacks or closes storage,
+  unrelated background title tasks must be absent or joined. Keep automatic-title
+  tests on the real untitled schedule API and assert lifecycle helper waits have
+  `TitleAuto=false`; a repeated green race run alone does not prove isolation.
 - Run with `-race`. The engine, the event bus and the HTTP server run
   concurrently, and every serious bug found here so far has been an ordering bug.
 - Local startup must not wait for optional phone-hub registration. Keep remote
@@ -187,6 +201,17 @@ E2E suite.
   checks, live/history/roster replay, restart, same-ID collection, Stop and
   revocation of the last owner. Keep resource-budget and watchdog termination
   separate, and do not turn a failed check into an immediate goal retry.
+- An ordinary turn without executable goal/wake ownership cannot finish with
+  running workers or finished results it has not collected. Bind actual
+  `wait_agents` results and explicit `close_agent` decisions to the current
+  worker generation; timeout, unknown IDs and old-generation receipts do not
+  settle it. Closing an already-finished worker may discard its result but
+  must retain `already_finished`, never fabricate cancellation. Withhold early
+  completion prose, allow one durably counted correction, then keep the same
+  turn/workers paused for human Continue or Stop. Continue grants one further
+  attempt; restart preserves both collection state and the consumed allowance.
+  Regress actual HTTP workers, completed-uncollected results, resume, archive,
+  restart, owner revocation, storage failure and live/history/Trace output.
 - A parked registry's conversation-wide cleanup recording/publication attempt
   must finish before another registry can be taken or occupied. Serialize that
   attempt with the runtime claim; cancel/close the detached registry outside
@@ -283,7 +308,12 @@ E2E suite.
   Execute the reported next action during the current recovery. A failed
   control channel alone is not a reason to leave authorized acceptance waiting:
   try another available isolated native control path and record its actual
-  result. Routine recovery already authorized by the user needs no second
+  result. If an SSH-launched helper is denied native permissions while an
+  existing authorized guest Terminal control path is evidenced as usable,
+  execute that path before asking the user to change settings. Keep the
+  native-case lock, exact target/candidate and fresh helper receipts; guest
+  administrator status does not establish Accessibility or Screen Recording
+  trust. Routine recovery already authorized by the user needs no second
   approval. Preserve passed evidence for its exact source and package; a later
   main change requires checking the affected inputs, not erasing that evidence.
 - Repeated ci-macOS access failures need fresh route/interface, guest MAC/link/IP/
@@ -340,6 +370,14 @@ E2E suite.
   Do not repair this feedback loop by matching a user's words or business data.
 - Never test against a network or a real model. Use the scripted offline
   provider, and keep its script generic.
+- Regress a new explicit goal after a completed one through the real PC and
+  paired-phone send paths, including a standalone trailing `/goal`. The
+  original objective text must reach the model, and the completed flag must
+  be cleared before work starts. A resumed worker or an assistant's promise
+  of a future check is not a successful schedule receipt: verify the exact
+  turn's persisted schedule and its current state before publishing that
+  success claim. Failed, denied, cancelled and historical schedules must not
+  become a new armed wait through prose or replay.
 - Memory quality tests must not treat prior notes, old reviewer output, or model
   agreement as truth. Freeze source evidence and follow-up checks before comparing
   final facts, missed explicit corrections, conflicts and task behavior. Optional
@@ -440,10 +478,14 @@ E2E suite.
   Late-steer continuation accepts only User-role messages. Regress late
   completion/cancellation, restart read cursors and storage failure.
 
-- Scheduled completion needs a tool result or explicit report in the same turn.
-  Prose alone is not evidence that the check ran. Keep one bounded same-turn
-  continuation and regress both Run now and automatic fires, including quiet
-  reports and model-retry cleanup; never classify completion by answer length.
+- Scheduled checks retain automatic tool selection and may end with a nonempty
+  text result without tools. Do not require a tool call to accept that result.
+  Only an empty/whitespace final with no actual tool result or explicit report
+  gets one bounded same-turn continuation. Regress Run now and automatic fires,
+  text-only results, empty recovery, explicit quiet reports and synthetic retry
+  cleanup through the real model adapter. Text is a delivered response, not
+  proof of external work or standing-goal completion; do not classify its
+  meaning by keywords, similarity, language or a length threshold.
 
 - Lifecycle argument errors are recoverable feedback. Do not let one model reply flood history with repeated rejected spawns: validate complete streamed arguments, keep a counted representative refusal and preserve every valid call. Refused spawns are not worker creation or cleanup; regress trace pairing and same-turn repair.
 

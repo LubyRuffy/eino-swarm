@@ -48,6 +48,10 @@ func newMockModel(role string) model.BaseChatModel {
 		return &mockModel{script: func(int, []*schema.Message) *schema.Message {
 			return schema.AssistantMessage(`{"decision":"unchanged","quote":""}`, nil)
 		}, instant: true, role: role}
+	case "schedule-answer-policy":
+		return &mockModel{script: func(int, []*schema.Message) *schema.Message {
+			return schema.AssistantMessage(`{"claims":[]}`, nil)
+		}, instant: true, role: role}
 	case titleRole:
 		return &mockModel{script: titleNamerScript, role: titleRole}
 	case compactRole, sessionMemoryRole:

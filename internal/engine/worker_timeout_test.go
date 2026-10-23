@@ -105,7 +105,7 @@ func TestWorkerTimeoutPauseIsBoundToTheActualRecurringRun(t *testing.T) {
 	e := newTestEngine(t)
 	th, _ := e.CreateThread("", "", "")
 	makeRun := func(recurring bool) (*store.Schedule, *store.Turn) {
-		in := ScheduleInput{Kind: store.ScheduleThread, ThreadID: th.ID, Prompt: scheduleWaitPrompt, CreatedBy: store.ScheduleCreatedHuman, DelayS: 60}
+		in := ScheduleInput{Kind: store.ScheduleThread, ThreadID: th.ID, Title: "Scheduled work", Prompt: scheduleWaitPrompt, CreatedBy: store.ScheduleCreatedHuman, DelayS: 60}
 		if recurring {
 			in.DelayS = 0
 			in.EveryS = 60

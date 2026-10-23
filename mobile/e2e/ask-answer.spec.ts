@@ -5,7 +5,12 @@ test("a rejected phone question keeps Other text and can be submitted again", as
   const card = page.getByTestId("ask-card")
   await expect(card).toBeVisible()
   await card.getByRole("button", { name: "其他" }).click()
-  await card.getByRole("textbox", { name: "其他" }).fill("After review")
+  const other = card.getByRole("textbox", { name: "其他" })
+  // Keep the free-text answer at the same focus-safe size as the phone composer.
+  await expect.poll(() => other.evaluate((field) =>
+    Number.parseFloat(getComputedStyle(field).fontSize),
+  )).toBeGreaterThanOrEqual(16)
+  await other.fill("After review")
   await card.getByTestId("ask-submit").click()
   await expect(card.getByRole("alert")).toContainText("PC rejected the answer")
   await expect(card.getByRole("textbox", { name: "其他" })).toHaveValue("After review")

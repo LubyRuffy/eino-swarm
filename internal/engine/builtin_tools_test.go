@@ -22,18 +22,24 @@ import (
 func TestBuiltinSearchStaysCloudExecutedAndTraceable(t *testing.T) {
 	var requests atomic.Int32
 	endpoint := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests.Add(1)
 		if r.Method != http.MethodPost || r.URL.Path != "/responses" {
 			t.Errorf("model used %s %s, want POST /responses", r.Method, r.URL.Path)
 			http.Error(w, "wrong protocol", http.StatusBadRequest)
 			return
 		}
 		var body struct {
-			Tools []map[string]any `json:"tools"`
+			Tools      []map[string]any `json:"tools"`
+			Input      json.RawMessage  `json:"input"`
+			Stream     bool             `json:"stream"`
+			ToolChoice string           `json:"tool_choice"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			t.Error(err)
 		}
+		if replyNoScheduleClaimsResponsesFixture(t, w, body.Input, body.Stream, body.ToolChoice) {
+			return
+		}
+		requests.Add(1)
 		foundCloud, foundLocal := false, false
 		for _, tool := range body.Tools {
 			foundCloud = foundCloud || tool["type"] == "web_search"
@@ -116,11 +122,17 @@ data: {"type":"response.completed","response":{"id":"response-receipt","status":
 		t.Errorf("completed receipts=%d requests=%d answer=%q", completed, requests.Load(), answer)
 	}
 	calls, err := st.ListLLMCalls(turn.ID)
-	if err != nil || len(calls) != 1 {
+	var managerCalls []store.LLMCall
+	for _, call := range calls {
+		if call.AgentID == swarm.DefaultManagerID {
+			managerCalls = append(managerCalls, call)
+		}
+	}
+	if err != nil || len(managerCalls) != 1 {
 		t.Fatalf("calls=%v err=%v", calls, err)
 	}
-	if calls[0].PromptTokens != 10 || calls[0].CompletionTokens != 5 || calls[0].AgentID != swarm.DefaultManagerID {
-		t.Errorf("model usage/identity lost: %+v", calls[0])
+	if managerCalls[0].PromptTokens != 10 || managerCalls[0].CompletionTokens != 5 || managerCalls[0].AgentID != swarm.DefaultManagerID {
+		t.Errorf("model usage/identity lost: %+v", managerCalls[0])
 	}
 }
 

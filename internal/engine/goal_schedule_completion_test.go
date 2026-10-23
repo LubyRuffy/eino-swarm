@@ -68,7 +68,7 @@ func requireGoalScheduleToolOK(t *testing.T, out string, want bool) {
 
 func TestCompleteGoalRejectsAnArmedWakeFromItsScheduledTurn(t *testing.T) {
 	e, thread, turn, schedule := goalScheduledTurn(t, store.ScheduleCreatedManager, store.ScheduleThread, store.ScheduleActive)
-	out, err := e.reportScheduleJSON(thread, turn, `{"findings":"partial progress","keep":true,"next_in_s":60}`)
+	out, err := e.reportOwnedTestScheduleJSON(thread, turn, `{"findings":"partial progress","keep":true,"next_in_s":60}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestCompleteGoalRejectsAnArmedWakeFromItsScheduledTurn(t *testing.T) {
 func TestCompletedGoalCannotRearmTheSameScheduledTurn(t *testing.T) {
 	e, thread, turn, schedule := goalScheduledTurn(t, store.ScheduleCreatedManager, store.ScheduleThread, store.ScheduleDone)
 	requireGoalScheduleToolOK(t, completeScheduledGoal(t, e, thread, turn), true)
-	out, err := e.reportScheduleJSON(thread, turn, `{"findings":"done","keep":true,"next_in_s":60}`)
+	out, err := e.reportOwnedTestScheduleJSON(thread, turn, `{"findings":"done","keep":true,"next_in_s":60}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestOverdueScheduledCheckMustStillStopItsWakeBeforeCompleting(t *testing.T)
 	if !strings.Contains(out, `"code":"goal_schedule_conflict"`) {
 		t.Fatalf("conflict lost its recoverable category: %s", out)
 	}
-	out, err := e.reportScheduleJSON(thread, turn, `{"keep":false,"findings":"objective satisfied"}`)
+	out, err := e.reportOwnedTestScheduleJSON(thread, turn, `{"keep":false,"findings":"objective satisfied"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -194,7 +194,7 @@ func TestSameTurnCompletionCannotBeRearmedAfterEngineRestart(t *testing.T) {
 	}
 	restarted := newTestEngineAt(t, e.cfg.DataDir())
 	for _, args := range []string{`{"keep":true}`, `{"next_in_s":60}`} {
-		out, err := restarted.reportScheduleJSON(thread, turn, args)
+		out, err := restarted.reportOwnedTestScheduleJSON(thread, turn, args)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -241,7 +241,7 @@ func TestOldScheduledTurnCannotRecadenceAHumanRetargetedWake(t *testing.T) {
 				t.Fatal(err)
 			}
 			before, _ := e.Store().GetSchedule(schedule)
-			out, err := e.reportScheduleJSON(thread, turn, `{"next_in_s":120}`)
+			out, err := e.reportOwnedTestScheduleJSON(thread, turn, `{"next_in_s":120}`)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -261,7 +261,7 @@ func TestOldScheduledTurnCannotCancelAHumanRetargetedWake(t *testing.T) {
 	if _, err := e.PatchScheduleFields(schedule, ScheduleFields{Kind: &kind, ThreadID: &other.ID}); err != nil {
 		t.Fatal(err)
 	}
-	out, err := e.reportScheduleJSON(thread, turn, `{"keep":false}`)
+	out, err := e.reportOwnedTestScheduleJSON(thread, turn, `{"keep":false}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestGoalToolsFailClosedOnMissingOrMisboundScheduledFire(t *testing.T) {
 			}
 			requireGoalScheduleToolOK(t, completeScheduledGoal(t, e, thread, turn), false)
 			for _, args := range []string{`{"next_in_s":60}`, `{"keep":false}`} {
-				out, err := e.reportScheduleJSON(thread, turn, args)
+				out, err := e.reportOwnedTestScheduleJSON(thread, turn, args)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -312,7 +312,7 @@ func TestCurrentTurnCanUseAnEditedOrExplicitlyReopenedObjective(t *testing.T) {
 	if err := e.ReopenThreadGoal(thread, "further work remains"); err != nil {
 		t.Fatal(err)
 	}
-	out, err := e.reportScheduleJSON(thread, turn, `{"next_in_s":60}`)
+	out, err := e.reportOwnedTestScheduleJSON(thread, turn, `{"next_in_s":60}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestParallelScheduledCompletionAndRearmCannotBothCommit(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				<-start
-				rearm, _ = e.reportScheduleJSON(thread, turn, `{"next_in_s":60}`)
+				rearm, _ = e.reportOwnedTestScheduleJSON(thread, turn, `{"next_in_s":60}`)
 			}()
 			close(start)
 			wg.Wait()

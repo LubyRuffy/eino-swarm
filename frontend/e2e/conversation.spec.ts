@@ -169,7 +169,7 @@ test("runs a swarm turn end to end and keeps it after a reload", async ({ page }
 test("stays put when the reader scrolls up mid-stream and offers a jump back", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1280, height: 520 })
+  await page.setViewportSize({ width: 1280, height: 360 })
   await freshConversation(page)
   await showDeveloperLog(page)
   await send(page, "Look at this from two angles and merge the findings")
@@ -185,20 +185,23 @@ test("stays put when the reader scrolls up mid-stream and offers a jump back", a
       transcript.evaluate((el) => el.scrollHeight - el.clientHeight > 40),
     )
     .toBe(true)
-  const left = await transcript.evaluate((el) => {
+  await expect(statusBadge(page)).toContainText("Working")
+  await expect(transcript.getByRole("heading", { name: "Result" })).toHaveCount(0)
+  const before = await transcript.evaluate((el) => {
     el.scrollTop = 0
     el.dispatchEvent(new WheelEvent("wheel", { deltaY: -160, bubbles: true }))
-    return el.scrollTop
+    return { top: el.scrollTop, height: el.scrollHeight }
   })
-  await expect(async () => {
-    await expect(transcript.getByRole("heading", { name: "Result" })).toBeVisible()
-    await expect(statusBadge(page)).toContainText("Working")
-  }).toPass({ timeout: 60_000 })
+  // Reading position must survive new content, including the manager answer
+  // admitted at the end. The smaller viewport leaves the live edge while
+  // workers are still active rather than waiting for that buffered answer.
+  await expect.poll(() => transcript.evaluate((el) => el.scrollHeight)).toBeGreaterThan(before.height)
+  await expect(transcript.getByRole("heading", { name: "Result" })).toBeVisible()
   const away = await transcript.evaluate((el) => ({
     top: el.scrollTop,
     gap: el.scrollHeight - el.scrollTop - el.clientHeight,
   }))
-  expect(away.top).toBe(left)
+  expect(away.top).toBe(before.top)
   expect(away.gap).toBeGreaterThan(40)
   const jump = page.getByRole("button", { name: "Jump to latest" })
   await expect(jump).toBeVisible()
@@ -450,7 +453,8 @@ test("Enter while working queues until the turn finishes", async ({ page }) => {
 test("Steer on a queued row after Stop starts that text as the next turn", async ({ page }) => {
   await freshConversation(page)
   await send(page, "Look at this from two angles and merge the findings")
-  await expect(page.getByText(/Waiting for/)).toBeVisible({ timeout: 30_000 })
+  await page.getByRole("tab", { name: "Agents" }).click()
+  await expect(page.getByTestId("agent-roster").getByText("Active (2)", { exact: true })).toBeVisible()
   const later = "continue after the stop"
   await composer(page).fill(later)
   await composer(page).press("Enter")

@@ -191,6 +191,8 @@ export const en = {
   "notice.modelRetryResponse": "The model service returned a response that could not be decoded. Retrying.",
   "notice.modelServiceResponse": "the model service returned a response that could not be decoded",
   "notice.modelRetryIdle": "The model service stopped sending data. Retrying.",
+  "notice.scheduleClaimCheck": "Checking the schedule before reporting it as arranged.",
+  "notice.workerCollection": "Collecting delegated work before completing this turn.",
   "notice.invalidToolJSON": "the model returned a tool call that was not valid JSON",
   "notice.modelServiceRateLimited": "the model service is rate limiting requests",
   "notice.modelServiceUnavailable": "the model service is unavailable",

@@ -277,6 +277,19 @@ func newReviewProtocolEngine(t *testing.T, response func(int) (string, []reviewO
 			http.Error(w, "fixture read failure", http.StatusBadRequest)
 			return
 		}
+		var request struct {
+			Messages []struct{ Role, Content string }
+			Stream   bool              `json:"stream"`
+			Tools    []json.RawMessage `json:"tools"`
+		}
+		if err := json.Unmarshal(body, &request); err != nil {
+			t.Error(err)
+			http.Error(w, "invalid fixture request", http.StatusBadRequest)
+			return
+		}
+		if len(request.Messages) > 0 && replyNoScheduleClaimsFixture(t, w, request.Messages[0].Content, request.Stream, len(request.Tools)) {
+			return
+		}
 		fixture.mu.Lock()
 		fixture.requests = append(fixture.requests, body)
 		number := len(fixture.requests)

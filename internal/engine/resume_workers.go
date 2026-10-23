@@ -135,10 +135,13 @@ type workerSlot struct {
 	history                        []adk.Message
 	restoredHistory                []*schema.Message
 	inbox                          []string
+	generation                     int
+	collected, closeRequested      bool
 }
 
 func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, finished []swarm.FinishedWorker) {
 	byID := map[string]*workerSlot{}
+	calls := workerCollectionCalls{}
 	order := make([]string, 0)
 	note := func(id string) *workerSlot {
 		s, ok := byID[id]
@@ -150,10 +153,23 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 		return s
 	}
 	if checkpoint, index := latestRestartCheckpoint(events); checkpoint != nil {
+		// The original call may precede the checkpoint while its result
+		// follows it. Retain that pairing without replaying old state.
+		for _, ev := range events[:index+1] {
+			calls.note(ev)
+			if isManagerAgent(ev.AgentID) && ev.Kind == swarm.NotifyToolResult.String() {
+				delete(calls, workerCollectionCallKey{ev.TurnID, ev.ToolCallID})
+			}
+		}
+		for key, call := range calls {
+			call.startsGeneration = false
+			calls[key] = call
+		}
 		for _, w := range checkpoint.Workers {
 			s := note(w.ID)
 			s.role, s.instruction, s.spawned, s.running = w.Role, w.Instruction, true, !w.Finished
 			s.result, s.err, s.timeoutFailures = w.Result, w.Err, w.TimeoutFailures
+			s.generation, s.collected, s.closeRequested = w.Generation, w.Collected, w.CloseRequested
 			if checkpoint.HumanStopped {
 				s.running = false
 				s.err = "interrupted"
@@ -198,6 +214,7 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 			continue
 		}
 		if isManagerAgent(ev.AgentID) {
+			calls.apply(ev, byID)
 			continue
 		}
 		s := note(ev.AgentID)
@@ -212,6 +229,10 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 			s.instruction = ev.Text
 			s.result, s.err = "", ""
 			s.inflight = false
+			if s.generation > 0 && calls.startsGeneration(ev) {
+				s.generation++
+			}
+			s.collected, s.closeRequested = false, false
 		case swarm.NotifyFinished.String():
 			s.running = false
 			s.result = ev.Text
@@ -259,8 +280,13 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 		if !s.spawned {
 			continue
 		}
+		if s.closeRequested && s.running {
+			s.running = false
+			s.err = "context canceled"
+		}
 		if s.running {
 			w := swarm.RestoredWorker{
+				Generation: s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
 				ID: id, Role: s.role, Instruction: s.instruction, Task: resumeCue, TimeoutFailures: s.timeoutFailures,
 				History: s.restoredHistory, Inbox: s.inbox,
 			}
@@ -281,6 +307,7 @@ func orphanedWorkers(events []store.Event) (running []swarm.RestoredWorker, fini
 			ferr = errors.New(s.err)
 		}
 		finished = append(finished, swarm.FinishedWorker{
+			Generation: s.generation, Collected: s.collected, CloseRequested: s.closeRequested,
 			ID: id, Role: s.role, Result: s.result, Err: ferr, History: s.history, TimeoutFailures: s.timeoutFailures,
 		})
 	}

@@ -471,6 +471,10 @@ func (e *Engine) Steer(threadID, text string) error {
 }
 
 func (e *Engine) SteerInput(threadID string, in UserInput) error {
+	return e.steerInput(threadID, in, true)
+}
+
+func (e *Engine) steerInput(threadID string, in UserInput, interpretSlash bool) error {
 	if _, err := e.store.GetThread(threadID); err != nil {
 		return err
 	}
@@ -485,6 +489,11 @@ func (e *Engine) SteerInput(threadID string, in UserInput) error {
 	rt.mu.Unlock()
 	if !running || reg == nil {
 		return ErrIdle
+	}
+	if interpretSlash {
+		if _, done, err := e.applySlashGoal(threadID, &in); done || err != nil {
+			return err
+		}
 	}
 	text, files, err := e.hydrateUserInput(threadID, in, "engine: nothing to steer with")
 	if err != nil {

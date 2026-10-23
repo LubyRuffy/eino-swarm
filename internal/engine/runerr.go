@@ -38,6 +38,10 @@ func publicTurnError(err error) string {
 	if err == nil {
 		return ""
 	}
+	var admission *scheduleAnswerError
+	if errors.As(err, &admission) {
+		return admission.Error()
+	}
 	var idle provider.IdleTimeoutError
 	if errors.As(err, &idle) {
 		return fmt.Sprintf("the model sent no data for %s; raise the provider request timeout in Settings, or lower thinking", idle.Idle)
