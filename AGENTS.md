@@ -276,6 +276,35 @@ E2E suite.
   result. Routine recovery already authorized by the user needs no second
   approval. Preserve passed evidence for its exact source and package; a later
   main change requires checking the affected inputs, not erasing that evidence.
+- Repeated ci-macOS access failures need fresh route/interface, guest MAC/link/IP/
+  default-route and SSH-service evidence. A saved IP, UTM started state or old
+  queue ready file cannot establish current access. Send a newly identified
+  read-only shared probe before rejecting that channel; use a local bounded wait,
+  not host/guest wall-clock subtraction. Do not retry an unsupported UTM backend
+  operation as progress. On-demand sshd without a listener is not evidence that
+  the service is disabled. Before disruptive VM recovery, verify peer claims and
+  the previous native cleanup, then hold the actual native-case exclusion lock
+  through the action; acquiring and releasing it during a probe is insufficient.
+  Only the exact current queue/request may be exempted from peer checks. Include
+  nested queue roots in the inventory; exclude historical controllers and claims
+  only after current process-death evidence, while retaining their receipts. Test
+  queue requests against the actual protocol, including absolute executables and
+  integer timeouts, rather than a permissive subprocess fixture. Keep
+  DHCP renewal bounded to one attempt on the identified, already-DHCP interface,
+  recheck the result, and retain `needs_host_recovery` when it remains down.
+  Access classification and a restart-admission flag do not execute or authorize
+  a reboot, and transport success never accepts native application behavior.
+  If the identified guest has no carrier/IP/route and the host lacks sharing
+  interfaces, inspect NetworkSharing/PF before another VM restart, VPN change or
+  reinstall. Bind a persistent `PFUserDeleteRules` synchronous-XPC wait to the
+  actual daemon PID; one sample or a pfd exit status is not a crash diagnosis.
+  Authorized host maintenance must preserve peer exclusion, recheck any exact
+  PID before signalling, and retain the PF filter/NAT/anchor/reference baseline.
+  A temporary `pfctl -E` enables existing policy: release only its own reference
+  with `-X`, verify other owners and pinned SSH afterward, and never flush/load/
+  disable PF or change SIP as cleanup. This is manual evidence-led maintenance,
+  not part of the access CLI or permission to add a host watchdog. See the
+  NetworkSharing/PF procedure in `docs/TESTING.md`.
 - Desktop install exclusion belongs to the application bundle, not an engine or
   data directory. Regress two Service instances and two real processes
   updating the same bundle, launch failure/rollback, independent bundles and

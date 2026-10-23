@@ -13,11 +13,28 @@ import (
 
 func TestStartRunsInTheGivenDirectory(t *testing.T) {
 	dir := t.TempDir()
+	// Keep the slave open while checking output: Darwin can report EOF after
+	// a short-lived pwd exits even though the command succeeded.
 	s := startOrSkip(t, Options{
 		Dir:     dir,
 		Cols:    80,
 		Rows:    24,
-		Command: "/bin/pwd",
+		Command: "/bin/sh",
+		Args:    []string{"-c", "/bin/pwd; read -r terminal_ack"},
+	})
+	// Darwin's blocking PTY ignores read deadlines. Closing our session at the
+	// assertion budget also releases a read when the expected output is absent.
+	timedOut := make(chan struct{})
+	timer := time.AfterFunc(3*time.Second, func() {
+		defer close(timedOut)
+		_ = s.Close()
+	})
+	t.Cleanup(func() {
+		if !timer.Stop() {
+			<-timedOut
+		}
+		_ = s.Close()
+		_ = s.cmd.Wait()
 	})
 	got := readPTY(t, s, dir)
 	if !strings.Contains(got, dir) {
