@@ -62,6 +62,23 @@ co-working app built on it. The library API is unchanged except where noted
   changes do not prove native speed, historical timeout causes or attachment
   acceptance; original bytes and durable draft ACK remain required (Issue #94).
 
+- `F-430`, `C-031`: require positive AX element type, `AXWindow` role and owner
+  PID before native QA window actions, with explicit object lifetime and real
+  helper counterexamples. Resilience application-only activation performs no AX
+  lookup or raise; later window/pixel acceptance remains mandatory. Empty smoke
+  snapshots retain their not-ready result, action deadlines and file-panel
+  acceptance stay independent. Snapshot alone can report native registration
+  pending after the kernel case guard, without native activation or AX access;
+  wrong PID/bundle and mutation before registration remain refusals. The
+  existing window deadline also bounds this startup phase. This changes QA tools, not the frozen App or
+  earlier acceptance records (Issue #105).
+  Recovery rules retain current session/owned-assertion evidence and separate
+  input-actor cleanup from finite power-owner takeover under the original case
+  lock, deadlines and failure cleanup. Active assertions do not prove continuing
+  guest unlock; these rules do not accept the application or add a runner mode.
+  Recovery checks also distinguish a direct child's bounded exec transition
+  from PID/birth ownership and verify transferred helper executable modes.
+
 - `F-430`, `C-031`: change native QA file-panel acceptance to separate a complete
   roots/role/children/button-title graph from auxiliary filename text. Failed or
   non-string auxiliary reads remain recorded unknowns with their original AX

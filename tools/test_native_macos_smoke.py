@@ -262,6 +262,58 @@ class SmokeTests(unittest.TestCase):
                 self.assertRaisesRegex(RuntimeError, "origin"):
             smoke.native_snapshot(context, smoke.Deadline(1))
 
+    def test_window_wait_consumes_registration_pending_before_strict_window_acceptance(self):
+        context = dict(self.context, ax=self.root / "unused-helper", origin="http://127.0.0.1:4567")
+        pending = dict(pid=123, origin=context["origin"], bundle=str(context["app"]),
+                       requested_bundle=str(context["app"]), ready=False,
+                       registration_pending=True, bundle_verified=False, case_verified=False)
+        ready = dict(self.native_row(), ready=True)
+        clock = mock.Mock(return_value=10)
+        deadline = smoke.Deadline(1, clock=clock)
+        responses = [subprocess.CompletedProcess([], 0, json.dumps(row), "") for row in (pending, ready)]
+        with mock.patch.object(smoke, "assert_process", return_value=context["app"] / "Contents/MacOS/zwai"), \
+                mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                mock.patch.object(smoke.subprocess, "run", side_effect=responses) as run, \
+                mock.patch.object(smoke.time, "sleep", side_effect=lambda seconds: setattr(clock, "return_value", clock.return_value + seconds)) as pause:
+            self.assertEqual(smoke.wait_window(context, deadline), ready)
+        self.assertEqual(run.call_count, 2)
+        self.assertEqual(pause.call_count, 1)
+        self.assertLess(run.call_args_list[1].kwargs["timeout"], run.call_args_list[0].kwargs["timeout"])
+        self.assertTrue(all(call.args[0][2] == "snapshot" for call in run.call_args_list))
+
+    def test_registration_pending_cannot_reset_the_existing_window_deadline(self):
+        context = dict(self.context, ax=self.root / "unused-helper", origin="http://127.0.0.1:4567")
+        pending = dict(pid=123, origin=context["origin"], bundle=str(context["app"]), ready=False,
+                       registration_pending=True, bundle_verified=False, case_verified=False)
+        clock = mock.Mock(return_value=10)
+        deadline = smoke.Deadline(.2, clock=clock)
+        response = subprocess.CompletedProcess([], 0, json.dumps(pending), "")
+        with mock.patch.object(smoke, "assert_process", return_value=context["app"] / "Contents/MacOS/zwai"), \
+                mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                mock.patch.object(smoke.subprocess, "run", return_value=response) as run, \
+                mock.patch.object(smoke.time, "sleep", side_effect=lambda seconds: setattr(clock, "return_value", clock.return_value + seconds)), \
+                self.assertRaisesRegex(TimeoutError, "native composer"):
+            smoke.wait_window(context, deadline)
+        self.assertLessEqual(run.call_count, 3)
+        self.assertGreaterEqual(clock.return_value, deadline.ends)
+
+    def test_window_wait_propagates_identity_refusal_and_cancellation_without_retry(self):
+        context = dict(self.context, ax=self.root / "unused-helper", origin="http://127.0.0.1:4567")
+        cancelled = KeyboardInterrupt("owned case cancelled")
+        for response, expected in ((subprocess.CompletedProcess([], 2, '{"error":"bundle mismatch"}', ""), RuntimeError),
+                                   (cancelled, KeyboardInterrupt)):
+            with self.subTest(error=expected.__name__), \
+                    mock.patch.object(smoke, "assert_process", return_value=context["app"] / "Contents/MacOS/zwai"), \
+                    mock.patch.object(smoke, "validate_helper", return_value={"binary_sha256": "prepared"}), \
+                    mock.patch.object(smoke.subprocess, "run", **({"side_effect": response} if isinstance(response, BaseException) else {"return_value": response})) as run, \
+                    mock.patch.object(smoke.time, "sleep") as pause, \
+                    self.assertRaises(expected) as caught:
+                smoke.wait_window(context, smoke.Deadline(1))
+            self.assertEqual(run.call_count, 1)
+            pause.assert_not_called()
+            if expected is KeyboardInterrupt:
+                self.assertIs(caught.exception, cancelled)
+
     def test_native_bundle_rejects_another_directory_and_missing_identity(self):
         other = self.root / "other.app"
         other.mkdir()

@@ -17,6 +17,17 @@ static NSString *text(AXUIElementRef element, CFStringRef key) {
     id value = attribute(element, key);
     return [value isKindOfClass:NSString.class] ? value : @"";
 }
+static BOOL realWindow(id candidate, pid_t expectedPID) {
+    if (!candidate || CFGetTypeID((__bridge CFTypeRef)candidate) != AXUIElementGetTypeID()) return NO;
+    AXUIElementRef window = (__bridge AXUIElementRef)candidate;
+    CFTypeRef role = NULL; pid_t owner = 0;
+    AXError roleError = AXUIElementCopyAttributeValue(window, kAXRoleAttribute, &role);
+    AXError pidError = AXUIElementGetPid(window, &owner);
+    BOOL valid = roleError == kAXErrorSuccess && role && CFGetTypeID(role) == CFStringGetTypeID()
+        && CFEqual(role, kAXWindowRole) && pidError == kAXErrorSuccess && owner == expectedPID;
+    if (role) CFRelease(role);
+    return valid;
+}
 static NSArray *children(AXUIElementRef element) {
     id value = attribute(element, kAXChildrenAttribute);
     return [value isKindOfClass:NSArray.class] ? value : @[];
@@ -173,7 +184,23 @@ int main(int argc, const char **argv) { @autoreleasepool {
     if (!validOrigin(origin)) return fail(@"native origin must be numeric loopback HTTP without a path");
     if (!caseID.length || !ownsCase(pid, caseID)) return fail(@"native target case identity mismatch");
     NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-    if (!running || ![[running.bundleURL.path stringByResolvingSymlinksInPath] isEqual:bundle])
+    if (running && running.processIdentifier != pid)
+        return fail(@"native target process identity mismatch");
+    NSString *registeredBundle = running.bundleURL.path;
+    if (!running || !registeredBundle.length) {
+        if (![action isEqual:@"snapshot"])
+            return fail(@"native target bundle identity mismatch");
+        // A process and its engine can precede native application registration.
+        // Only the caller's existing snapshot deadline may wait for this state.
+        emit(@{@"pid": @(pid), @"case_id": caseID, @"origin": origin,
+            @"bundle": bundle, @"requested_bundle": bundle,
+            @"case_verified": @NO, @"bundle_verified": @NO, @"ready": @NO,
+            @"registration_pending": @YES,
+            @"registration_state": running ? @"bundle_unavailable" : @"not_registered",
+            @"window_count": @0, @"windows": @[], @"tree": @[]});
+        return 0;
+    }
+    if (![[registeredBundle stringByResolvingSymlinksInPath] isEqual:bundle])
         return fail(@"native target bundle identity mismatch");
     if (!AXIsProcessTrusted()) return fail(@"guest Accessibility permission must already be granted");
     if (!CGPreflightScreenCaptureAccess()) return fail(@"guest Screen Recording permission must already be granted");
@@ -182,8 +209,12 @@ int main(int argc, const char **argv) { @autoreleasepool {
     AXUIElementSetAttributeValue(app, CFSTR("AXEnhancedUserInterface"), kCFBooleanTrue);
     AXUIElementSetAttributeValue(app, CFSTR("AXManualAccessibility"), kCFBooleanTrue);
     NSArray *windows = attribute(app, kAXWindowsAttribute) ?: @[];
-    if (windows.count > 1) { CFRelease(app); return fail(@"native target has multiple AX windows"); }
-    AXUIElementRef window = windows.count ? (__bridge AXUIElementRef)windows[0] : NULL;
+    if (![windows isKindOfClass:NSArray.class] || windows.count > 1)
+        { CFRelease(app); return fail(@"native target has malformed or multiple AX windows"); }
+    __attribute__((objc_precise_lifetime)) id windowOwner = windows.count ? windows[0] : nil;
+    if (windowOwner && !realWindow(windowOwner, pid))
+        { CFRelease(app); return fail(@"native AX window role or PID refused"); }
+    AXUIElementRef window = (__bridge AXUIElementRef)windowOwner;
     if (window && [attribute(window, CFSTR("AXSheets")) count]) { CFRelease(app); return fail(@"native target has a modal sheet"); }
     double activationStarted = NSProcessInfo.processInfo.systemUptime;
     double activationDeadline = activationStarted + 2;

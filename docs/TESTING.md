@@ -534,8 +534,33 @@ visits, including empty nodes and repeated edges, toward its 5000-visit bound;
 new nodes beyond depth 45 still fail. A genuine limit stops traversal and fails
 the case rather than accepting an incomplete set of controls.
 
-Within each action invocation, both direct AX helpers request activation and raise the case window once, then
-refresh `NSRunningApplication.active` through short main-runloop slices. A single
+Smoke snapshot/fill/Send and resilience snapshot/fill/press/select-thread
+validate a nonempty candidate's actual AX element type, `AXWindow` role and
+owner PID before raising or traversing that window or requesting input. Its
+strong lifetime covers the entire action. A proxy,
+unknown read/type or wrong PID is a refusal, including during snapshot; no
+window mutation is permitted before this boundary. The smoke helper's empty
+window snapshot still reports not ready and cannot permit fill or Send.
+Engine/API presence can precede `NSRunningApplication` registration. After the
+kernel case guard, only `snapshot` may return `registration_pending:true` and
+`ready:false` for a missing native application or unavailable same-PID bundle
+URL/path. This returns before activation or AX access. `bundle` and
+`requested_bundle` then echo the requested target; `case_verified:false` and
+`bundle_verified:false` explicitly withhold native identity acceptance.
+The existing `wait_window` polls within its original shared deadline and runs
+the strict window assertions only when ready. Fill/Send, a wrong NS PID or a
+nonempty wrong bundle remain immediate nonzero refusals. Regress these branches
+through the actual C main, plus pending-to-window, deadline exhaustion and
+identity-error/cancellation propagation through the actual Python caller.
+The resilience helper's application-only `activate` command uses only
+`NSRunningApplication`, without AX window lookup or raise. Its activation-only
+result is not a window receipt: subsequent snapshot/input still requires a
+fresh positively identified window and actual pixels. The file-panel path has
+its own independent scan and acceptance rules below.
+
+When an action requests activation, it does so at most once; the guarded window
+actions raise only the validated case window. Activation waits refresh
+`NSRunningApplication.active` through short main-runloop slices. A single
 two-second monotonic deadline starts before activation; each slice is at most
 10 ms and no longer than the remaining budget. At least one refresh precedes
 the `active` check, including cached true; a refresh crossing the deadline fails.
@@ -549,8 +574,9 @@ activation or fill/Send guard failure, with `activation_requested`,
 `activation_ready`, `activation_elapsed_seconds` and `press_attempted`.
 An attempted AXPress that returns an error stays `press_attempted=true`; it is
 not retried. The resilience activate action retains requested/active/frontmost
-PID/raise status/elapsed in stdout and, on failure, stderr because its caller
-uses stderr for nonzero exits. Those fields reuse one sample.
+PID/activation-only status/elapsed in stdout and, on failure, stderr because its
+caller uses stderr for nonzero exits. Those fields reuse one sample; no AX raise
+success is inferred from application activation.
 
 On macOS, run the headless helper regression with:
 
@@ -970,6 +996,51 @@ application acceptance. Baseline and soak hold a finite, case-owned display/idle
 assertion; sleep/wake releases it before actual sleep and restores it afterward.
 Cleanup must also reap that exact assertion process without changing the guest's
 lock-screen security policy.
+
+A ready observation is a point in time. If an already authorized guest relocks
+while control returns to the model, keep the guest input actor's exit/cleanup,
+a fresh session check and guarded launch in one bounded invocation. Distinguish
+that actor from the finite power owner: waiting for the short wake assertion to
+expire before the scenario owns its assertions leaves a handoff gap. Retained
+WindowServer timer UUIDs were armed before the new case's power child existed
+and later fired during that case despite its valid assertions. A nearby event
+or an old unbound child PID alone does not establish that event's owner.
+
+A recovery bridge must be registered in the actual runner's original process
+list under its held case lock and incomplete-cleanup latch before recovery.
+Keep it alive until a fresh same-birth, direct scenario child acknowledges all
+three power assertions; a file's existence, partial JSON or one assertion is
+insufficient. Terminate and reap the bridge on takeover; original cleanup owns
+all failure, timeout and cancellation paths. A surviving bridge retains the
+refusal latch. Regress this through actual `run_case`, `ProcessScope`, its
+three-argument preparation-failure fallback, `stop_owned` and lock publication,
+including malformed/wrong-owner ACKs and interruption. These are recovery
+controls, not a new standalone runner mode or an application acceptance result.
+They must share the existing whole-round/work/cleanup deadlines and may not add
+a pulse loop or change lock-screen settings.
+
+A direct `Popen` child can retain its PID/birth while its executable changes
+from the spawning interpreter to the requested image. Wait for that owned
+transition within the existing deadline before freezing full identity; unknown,
+wrong birth, unexpected image, early exit and expiry remain refusals. Exercise
+the actual kernel identity reader through a headless exec boundary. Keep helper
+executable modes when copying and verify them before App launch: source/binary
+hash equality alone cannot rule out a transfer-created PermissionError.
+
+Preserve the new observation frame without another approval delay for the same
+identified target and action. A wake image or a power handoff does not establish
+lasting unlock. Credential input still requires the actual guest login state;
+a refused preflight that never launched is distinct from a failed native case.
+
+An owned `caffeinate` process or even current `UserIsActive`, display-idle and
+system-idle assertions do not establish continued guest unlock. A real case
+recorded those three assertions with 49 seconds remaining while WindowServer's
+dim timer led to a loginwindow DisplayDim lock. Retain the case's PID/birth/poll,
+exact owned assertion block and bounded session-event timeline; do not infer a
+five-second default when `-t` is present, or attribute the lock to a nearby
+capture without causal evidence. Missing lock flags remain unknown. Programmatic
+events remain synthetic input; neither posting them nor an activity counter
+replaces the original window/action and cleanup checks.
 
 `native_macos_resilience_soak.py` persists an initial identity, fsynced per-tick
 results and a final summary. Each tick checks the original engine and running/

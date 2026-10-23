@@ -127,6 +127,18 @@ E2E suite.
   replace behavior checks with shorter timeouts or abandon cleanup at expiry.
 - Native activation is requested once per helper action invocation. Refresh `NSRunningApplication` on the
   main runloop before trusting `active`, even when its cached value is true.
+  A nonempty window candidate must have the actual AX element type, `AXWindow`
+  role and expected owner PID before raise, traversal or window input; retain
+  its strong lifetime through the action. Regress proxy, unknown and wrong-PID
+  candidates through both actual helpers, with no window action on refusal.
+  Engine presence can precede native application registration. After the kernel
+  case guard, only a snapshot may report registration pending for an absent
+  `NSRunningApplication` or unavailable bundle path. It performs no activation
+  or AX access and does not verify that requested bundle. Keep the existing
+  shared window deadline; fill/Send, wrong native PID and a nonempty wrong
+  bundle remain immediate refusals. Regress the real main and window caller.
+  The resilience helper's application-only activate command does no AX lookup
+  or raise; callers still require a fresh real-window and pixel observation.
   One monotonic deadline covers activation, raise and short runloop slices;
   expiration cannot allocate another wait or retry Send. Regress actual
   Objective-C callers with OS/clock seams, including stale true/false and an
@@ -362,7 +374,32 @@ E2E suite.
   native-case lock, exact target/candidate and fresh helper receipts; guest
   administrator status does not establish Accessibility or Screen Recording
   trust. Routine recovery already authorized by the user needs no second
-  approval. Preserve passed evidence for its exact source and package; a later
+  approval. If the guest relocks during model/tool handoffs, chain the guest
+  input actor's exit/cleanup, a fresh session check and guarded case launch in
+  one bounded invocation. Keep finite power ownership continuous through that
+  handoff: register any bridge in the original case's process list under its
+  held exclusion lock and incomplete-cleanup latch, before recovery or launch.
+  Release/reap it only after the actual scenario child's fresh same-birth three
+  assertions acknowledge takeover, or through original failure cleanup. Regress
+  the actual runner's preparation-failure fallback, malformed/partial/wrong-owner
+  acknowledgements, cancellation and false cleanup latch; fixture-only methods
+  cannot prove this wiring. Keep the existing whole-round/work/cleanup budgets.
+  A direct child's PID/birth can precede its expected executable after spawn;
+  bind that transition within the same deadline before freezing its full
+  identity. Regress a real headless exec, not only a mocked identity reader.
+  Preserve helper executable modes on transfer and check them before App launch;
+  a matching byte hash alone does not establish that the helper can execute.
+  For the already identified, authorized target, retain the new observation
+  frame without adding an approval delay. A wake frame or power handoff is not
+  continuing login proof; input still needs the actual guest login state, and
+  lock-screen settings stay unchanged.
+  A live owned `caffeinate` process, active power assertions or an active App
+  do not prove that the guest remains unlocked. Preserve missing lock flags as
+  unknown. If a case locks, retain its exact child birth/poll and assertion
+  observations plus the bounded session-event timeline before choosing another
+  action; a timed assertion is not the default five-second untimed assertion.
+  Synthetic input is not physical keyboard/mouse evidence.
+  Preserve passed evidence for its exact source and package; a later
   main change requires checking the affected inputs, not erasing that evidence.
 - Repeated ci-macOS access failures need fresh route/interface, guest MAC/link/IP/
   default-route and SSH-service evidence. A saved IP, UTM started state or old

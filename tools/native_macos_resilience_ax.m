@@ -30,6 +30,17 @@ static id attr(AXUIElementRef item, CFStringRef key) {
     return AXUIElementCopyAttributeValue(item, key, &result) == kAXErrorSuccess ? CFBridgingRelease(result) : nil;
 }
 static NSString *string(id value) { return [value isKindOfClass:NSString.class] ? value : @""; }
+static BOOL realWindow(id candidate, pid_t expectedPID) {
+    if (!candidate || CFGetTypeID((__bridge CFTypeRef)candidate) != AXUIElementGetTypeID()) return NO;
+    AXUIElementRef window = (__bridge AXUIElementRef)candidate;
+    CFTypeRef role = NULL; pid_t owner = 0;
+    AXError roleError = AXUIElementCopyAttributeValue(window, kAXRoleAttribute, &role);
+    AXError pidError = AXUIElementGetPid(window, &owner);
+    BOOL valid = roleError == kAXErrorSuccess && role && CFGetTypeID(role) == CFStringGetTypeID()
+        && CFEqual(role, kAXWindowRole) && pidError == kAXErrorSuccess && owner == expectedPID;
+    if (role) CFRelease(role);
+    return valid;
+}
 static void collect(AXUIElementRef item, NSMutableArray *areas, NSMutableArray *buttons,
                     NSMutableString *text, NSUInteger *count, BOOL *web) {
     if (++*count > 20000 || text.length > 100000) return;
@@ -394,6 +405,32 @@ int main(int argc, const char **argv) { @autoreleasepool {
                                    encoding:NSUTF8StringEncoding].UTF8String); return 0;
     }
     if (!bound(pid)) return fail([NSString stringWithFormat:@"case executable identity refused: target=%@ expected=%@", identity(pid), env(@"ZWAI_NATIVE_APP")]);
+    if ([action isEqual:@"activate"]) {
+        // Activating the already bound process does not require an AX window.
+        // Callers must read a fresh, positively validated window afterward.
+        NSDictionary *before = identity(pid);
+        NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        NSString *bundle = [env(@"ZWAI_NATIVE_APP") stringByResolvingSymlinksInPath];
+        if (!before || !running || running.processIdentifier != pid
+            || ![[running.bundleURL.path stringByResolvingSymlinksInPath] isEqual:bundle])
+            return fail(@"native activation process or bundle identity refused");
+        double activationStarted = NSProcessInfo.processInfo.systemUptime;
+        double activationDeadline = activationStarted + 2;
+        BOOL requested = [running activateWithOptions:0];
+        BOOL activationReady = waitForActivation(running, activationDeadline);
+        BOOL sameProcess = bound(pid) && [before isEqual:identity(pid)];
+        double elapsed = NSProcessInfo.processInfo.systemUptime - activationStarted;
+        BOOL active = running.active;
+        pid_t frontmostPID = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
+        activationReady = activationReady && sameProcess && elapsed < 2;
+        printf("{\"activation_only\":true,\"activated\":%s,\"active\":%s,\"pid\":%d,\"frontmost_pid\":%d,\"activation_ready\":%s,\"activation_elapsed_seconds\":%.6f}\n",
+               requested ? "true" : "false", active ? "true" : "false", pid, frontmostPID,
+               activationReady ? "true" : "false", elapsed);
+        if (!activationReady || !active)
+            fprintf(stderr, "native activation not confirmed: activated=%s active=%s pid=%d frontmost_pid=%d elapsed=%.6f\n",
+                    requested ? "true" : "false", active ? "true" : "false", pid, frontmostPID, elapsed);
+        return activationReady && active ? 0 : 2;
+    }
     if (!AXIsProcessTrusted()) return fail(@"guest accessibility is unavailable to this helper");
     NSString *value = argc > 3 ? @(argv[3]) : @"";
     if ([action isEqual:@"image"]) {
@@ -419,26 +456,6 @@ int main(int argc, const char **argv) { @autoreleasepool {
     if ([action isEqual:@"choose-file"]) chooseTrace(@"windows.before", nil);
     id windows = attr(app, kAXWindowsAttribute);
     if ([action isEqual:@"choose-file"]) chooseTrace(@"windows.after", nil);
-    if ([action isEqual:@"activate"]) {
-        if (![windows isKindOfClass:NSArray.class] || [windows count] != 1)
-            { CFRelease(app); return fail(@"one private case window required for activation"); }
-        NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
-        double activationStarted = NSProcessInfo.processInfo.systemUptime;
-        double activationDeadline = activationStarted + 2;
-        BOOL requested = [running activateWithOptions:0];
-        AXError raised = AXUIElementPerformAction((__bridge AXUIElementRef)windows[0], kAXRaiseAction);
-        BOOL activationReady = waitForActivation(running, activationDeadline);
-        double elapsed = NSProcessInfo.processInfo.systemUptime - activationStarted;
-        BOOL active = running.active;
-        pid_t frontmostPID = NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier;
-        printf("{\"activated\":%s,\"active\":%s,\"pid\":%d,\"frontmost_pid\":%d,\"raise_error\":%d,\"activation_ready\":%s,\"activation_elapsed_seconds\":%.6f}\n",
-               requested ? "true" : "false", active ? "true" : "false", pid, frontmostPID, raised,
-               activationReady ? "true" : "false", elapsed);
-        if (!activationReady || !active)
-            fprintf(stderr, "native activation not confirmed: activated=%s active=%s pid=%d frontmost_pid=%d raise_error=%d elapsed=%.6f\n",
-                    requested ? "true" : "false", active ? "true" : "false", pid, frontmostPID, raised, elapsed);
-        CFRelease(app); return activationReady && active ? 0 : 2;
-    }
     if ([action isEqual:@"quit"]) {
         NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
         BOOL requested = [running terminate];
@@ -600,7 +617,9 @@ int main(int argc, const char **argv) { @autoreleasepool {
         return 0;
     }
     if (![windows isKindOfClass:NSArray.class] || [windows count] != 1) { CFRelease(app); return fail(@"one case window required"); }
-    AXUIElementRef window = (__bridge AXUIElementRef)windows[0];
+    __attribute__((objc_precise_lifetime)) id windowOwner = windows[0];
+    if (!realWindow(windowOwner, pid)) { CFRelease(app); return fail(@"native AX window role or PID refused"); }
+    AXUIElementRef window = (__bridge AXUIElementRef)windowOwner;
     NSMutableArray *areas = [NSMutableArray array], *buttons = [NSMutableArray array];
     NSMutableString *text = [NSMutableString string]; NSUInteger count = 0; BOOL web = NO;
     collect(window, areas, buttons, text, &count, &web);
