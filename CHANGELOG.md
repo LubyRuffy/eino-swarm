@@ -100,6 +100,10 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-150`, `C-003`, `C-012`: a human goal resume followed by its new continuation turn shows one notice in desktop/Web chat. Late typed memory-review feedback keeps its own row without splitting that resume pair. Later continuations and independent or manager resumes retain their notices; original `goal_resumed` and `goal_continued` events remain available in Trace (Issue #96).
 
+- `F-115`, `C-034`: retain the last actual draft-save predicates and summaries
+  of existing native observations on isolated Mac check exit. A timeout keeps its
+  original failure status; later successful cases do not establish its cause.
+
 - `F-420`, `C-025`: clarify existing tidy API failure semantics: internal tool refusals, reviewer errors in HTTP 200 / SSE `done` with saved receipts, and outer fold/view errors through normal JSON mapping or SSE `error`. Documentation only; runtime behavior is unchanged (Issue #99).
 
 - Tests: synchronize interrupted-output retention with a real live partial HTTP stream instead of assuming the manager produced text within 120ms. Keep the stream open until Stop, verify the identical text and output identity after persistence, and retain delayed-start and next-turn coverage without changing runtime behavior.
@@ -113,6 +117,7 @@ co-working app built on it. The library API is unchanged except where noted
 - `F-420`, `F-160`, `C-012`, `C-025`: retain partial memory writes and stale candidate payloads beside storage errors in `zwai trace --full`, so a failed tidy remains reconstructable (Issue #99).
 
 - `F-420`, `C-025`: allow notes pointing to an existing skill without restating its body; unknown names do not bypass duplicate checks (Issue #99).
+
 - `F-110`, `F-115`, `C-034`: checkout re-exec bundles are immutable per executable
   hash and atomically published under a cross-process lock; preparing another
   desktop no longer overwrites or re-signs a live cached executable (Issue #94).

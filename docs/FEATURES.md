@@ -55,6 +55,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：在 macOS WebContent 活挂、绘图失效或白屏时恢复可用窗口；使用者：桌面用户；入口：`zwai desktop` 的原生恢复控制循环；输入：同源、主 frame、当前 challenge 响应与实际截图像素；输出：一次重载，必要时附着原引擎的继任窗口；前置条件：引擎租约可验证、恢复副本与诊断目录可写；失败表现：有界尝试耗尽后的原生错误提示及保留诊断；关联契约：`C-034`, `C-001`, `C-012`, `C-033`；实现证据：`internal/desktop/recovery.go`, `internal/desktop/recovery_state.go`, `internal/desktop/recovery_snapshot_darwin.m`, `cmd/zwai/desktop_recovery_darwin.go`, `internal/desktop/recovery_test.go`, `cmd/zwai/desktop_recovery_test.go`。
 - 健康条件包含本次随机探针的真实像素；HTTP、JS 响应或动画帧不单独算绘制成功。失焦、最小化、睡眠与唤醒有检测暂停／宽限。
 - 继任窗口经私有继承管道与两阶段确认接管，沿用数据目录、离线模式和原引擎 PID／URL／租约，恢复会话／项目与草稿位置；不调用引擎替换或重新执行任务。
+- 原生验收在草稿检查退出时保留已有 API／原生观察的摘要及逐项判定，不复制正文、不追加界面操作或放宽原断言；先前失败原因未捕获时仍标为未知。证据：`tools/native_macos_resilience.py`, `tools/test_native_macos_resilience.py`, `docs/TESTING.md`。
 
 ### F-120 Conversations and projects
 

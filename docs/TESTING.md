@@ -630,6 +630,18 @@ a fresh public birth/executable match before `terminate`/`wait`. Both use only
 `caffeinate`; that does not establish whether its environment was inherited.
 Attachment setup waits for the same case/PID's actual AX sheet/dialog before
 issuing one file-selection action.
+Draft collection keeps its last existing API/native observations in memory and
+writes a fixed diagnostic file on success, failure or handled cancellation.
+It retains individual predicates, attachment byte hashes/metadata and text/value
+lengths/hashes, without copying draft prose or the native transcript. There are
+no added native/API reads, paste retries, polling file writes or sleeps; the
+deadline and exact text/attachment-byte assertions stay unchanged. Evidence
+write failure cannot replace an existing exception and prevents an otherwise
+successful check from passing. SIGKILL or VM loss may prevent the final write.
+A later successful case cannot explain an earlier timeout whose final observation
+was not captured; retain both results and mark the earlier cause unknown. These
+diagnostics belong to the isolated case's generated fixture, outside disposable
+state; they never inspect a user's real draft.
 
 Verify native control in its actual guest responsibility chain. In the Issue 94
 recovery, pinned SSH worked but the helper launched through SSH lacked guest
