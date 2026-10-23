@@ -562,8 +562,9 @@ matter or event kind are introduced. See [Memory reviews](API.md#memory-reviews)
 **Memory lives here, never in your working directory.** A project pointed at a
 repository must not leave files in it, and a memory that was in the repository
 would arrive in a commit, a diff and a code review. `skill_view` reads this
-tree only — the manager and sub-agents both have it; only the manager (and
-the post-turn reviewer) can write. A `SKILL.md` already in the workspace is a
+tree only — the manager and sub-agents both have it. The manager and
+post-turn reviewer can write under their tool boundaries; a user-requested
+project tidy can additionally reclassify existing content. Workers cannot write. A `SKILL.md` already in the workspace is a
 file; the agent `read`s it rather than opening it as a recorded skill.
 
 ## `search_docs` / `thread_fts` — keyword index

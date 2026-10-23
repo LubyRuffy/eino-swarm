@@ -785,7 +785,9 @@ capacity, failure after saving the target, partial deletion receipts and
 idempotent/concurrent retry. `internal/engine/review_reclassify_test.go` runs
 the actual offline reviewer/tool graph and checks post-turn tool isolation;
 `internal/server/memory_reclassify_test.go` checks HTTP report and original-turn
-Trace. The offline script uses explicit step markers, not a semantic classifier.
+Trace. `cmd/zwai/cli_trace_memory_test.go` runs the real CLI over stored
+review outcomes, preserving partial writes and candidates alongside errors.
+The offline script uses explicit step markers, not a semantic classifier.
 `frontend/e2e/memory-boundary.spec.ts` checks both languages, usage / thresholds
 and the requested tidy UI. Each test pins and restores server-side locale as
 well as its private browser storage; localStorage alone cannot override config.

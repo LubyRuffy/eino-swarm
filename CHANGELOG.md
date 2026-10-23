@@ -84,6 +84,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-420`, `F-160`, `C-012`, `C-025`: retain partial memory writes and stale candidate payloads beside storage errors in `zwai trace --full`, so a failed tidy remains reconstructable (Issue #99).
+
 - `F-420`, `C-025`: allow notes pointing to an existing skill without restating its body; unknown names do not bypass duplicate checks (Issue #99).
 
 - Tests: keep the PTY working-directory fixture alive through its output and resize assertions, bound blocking reads by closing its own session at the existing three-second budget, then reap its child. This avoids an empty EOF from a successful short-lived command on Darwin without increasing the assertion timeout or changing terminal behavior.
