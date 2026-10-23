@@ -1812,6 +1812,20 @@ go test -race -run TestSteer ./internal/engine/
 go test ./internal/server/ -coverprofile=/tmp/c.out && go tool cover -html=/tmp/c.out
 ```
 
+`internal/terminal/pty_unix_test.go` keeps its working-directory fixture's shell
+waiting on stdin after `/bin/pwd`. The PTY slave therefore stays open through
+the directory-output and resize assertions; a short-lived command can instead
+leave an empty EOF on Darwin after exiting successfully. This fixture retains
+the existing three-second output assertion. Its timer closes its own session
+at that budget so a blocking Darwin PTY read cannot wait indefinitely for
+missing output; cleanup stops or joins that timer, then closes and waits for
+only its own child. No terminal runtime behavior changes.
+
+```bash
+go test -race -count=100 -run '^TestStartRunsInTheGivenDirectory$' -timeout 2m ./internal/terminal
+go test -race -count=1 -timeout 2m ./internal/terminal
+```
+
 `-race` is not optional here. The engine runs a swarm, an event bus and an HTTP
 server concurrently, and the interesting bugs in it have all been ordering bugs:
 a subscriber that misses the "done" event, a runtime that is still marked busy
