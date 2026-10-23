@@ -84,6 +84,8 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-420`, `F-160`, `C-025`: failed tidy Trace summaries use committed note and completed move receipts, preserving saved destination notes instead of claiming they were not saved; a skill-only partial promotion retains the uncommitted-note warning (Issue #99).
+
 - `F-420`, `C-025`: keep ordinary file collisions classified as filesystem rejections while refusing occupied skill directories, including orphaned usage sidecars (Issue #99).
 
 - `F-420`, `F-160`, `C-012`, `C-025`: retain partial memory writes and stale candidate payloads beside storage errors in `zwai trace --full`, so a failed tidy remains reconstructable (Issue #99).

@@ -98,3 +98,35 @@ describe("localized successful review notices", () => {
     expect(reviewNotice({ changed: true, library: true, skills: [{ target: "skill_manage", action: "create", name: "a-procedure" }] }, "zh")).toBe('已写入共享技能库：skill "a-procedure" recorded。')
   })
 })
+
+
+describe("persisted notes after a tidy failure", () => {
+  it.each([
+    ["added destination note", "memory", "add"],
+    ["replaced note", "memory", "replace"],
+    ["removed note", "memory", "remove"],
+    ["completed promotion", "skill_manage", "promote"],
+    ["completed demotion", "skill_manage", "demote"],
+  ])("does not deny the persisted %s when later work fails", (_label, target, action) => {
+    const got = parseReview(event({ changed: true, err: "later operation failed", changes: [{ target, action, name: "recorded", text: "retained information" }] }))
+    expect(reviewNotice(got)).not.toContain("Notes were not saved")
+    expect(reviewNotice(got, "zh")).not.toContain("本次笔记未保存")
+    expect(reviewNotice(got)).toContain("Memory review failed")
+  })
+
+  it.each([
+    ["partial promotion", "skill_manage", "create"],
+    ["skill patch", "skill_manage", "patch"],
+    ["unrecognized note action", "memory", "create"],
+    ["unrecognized target", "other", "demote"],
+  ])("keeps the uncommitted-note warning for %s", (_label, target, action) => {
+    const got = parseReview(event({ changed: true, err: "later operation failed", changes: [{ target, action }] }))
+    expect(reviewNotice(got)).toContain("Notes were not saved")
+    expect(reviewNotice(got, "zh")).toContain("本次笔记未保存")
+  })
+
+  it("preserves the committed post-turn notes summary without move receipts", () => {
+    const got = parseReview(event({ changed: true, err: "later operation failed", notes: { add: 1 }, changes: [] }))
+    expect(reviewNotice(got)).not.toContain("Notes were not saved")
+  })
+})

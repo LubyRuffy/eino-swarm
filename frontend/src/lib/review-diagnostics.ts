@@ -100,7 +100,11 @@ export function reviewFailure(outcome: ReviewOutcome | undefined, locale: Locale
     }
     lines.push(`${line}${zh ? "。" : "."}`)
   }
-  if (!Object.values(outcome.notes ?? {}).some((n) => n > 0)) lines.push(zh ? "本次笔记未保存。" : "Notes were not saved.")
+  const savedNotes = Object.values(outcome.notes ?? {}).some((n) => n > 0) || outcome.changes?.some((change) =>
+    (change?.target === "memory" && ["add", "replace", "remove"].includes(change.action)) ||
+    (change?.target === "skill_manage" && ["promote", "demote"].includes(change.action)),
+  )
+  if (!savedNotes) lines.push(zh ? "本次笔记未保存。" : "Notes were not saved.")
   if (outcome.skills?.length) lines.push(zh ? "已完成的技能变更已保存。" : "Skill changes were saved.")
   return lines.join("\n")
 }

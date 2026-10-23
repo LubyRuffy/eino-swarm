@@ -235,7 +235,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-420 Configuration and project memory
 
-- 用户触发的“整理记忆”支持原笔记升为技能、无步骤短技能降为笔记；完整保留源文字、唯一匹配、预算与目标冲突校验后先存目标再删源，部分失败记录已保存内容，重试按已有最终状态幂等。自动复盘／worker／共享库不获搬家权限。结果显示升降类计数与流式动作，有既有 turn 时动作和陈旧名单进入同 turn Trace。入口：项目 Memory 整理按钮、既有 tidy-skills API；关联契约：`C-025`、`C-012`；实现证据：`internal/memory/reclassify.go`、`internal/engine/review_tidy.go`；测试证据：`internal/engine/review_reclassify_test.go`、`internal/server/memory_reclassify_test.go`、`frontend/e2e/memory-boundary.spec.ts`。
+- 用户触发的“整理记忆”支持原笔记升为技能、无步骤短技能降为笔记；完整保留源文字、唯一匹配、预算与目标冲突校验后先存目标再删源，部分失败记录已保存内容，重试按已有最终状态幂等。自动复盘／worker／共享库不获搬家权限。结果显示升降类计数与流式动作，有既有 turn 时动作和陈旧名单进入同 turn Trace。失败摘要按已提交笔记及完整搬家回执判断保存结果，不将仅创建技能的半完成提升当作笔记已保存。入口：项目 Memory 整理按钮、既有 tidy-skills API；关联契约：`C-025`、`C-012`；实现证据：`internal/memory/reclassify.go`、`internal/engine/review_tidy.go`；测试证据：`internal/engine/review_reclassify_test.go`、`internal/server/memory_reclassify_test.go`、`frontend/e2e/memory-boundary.spec.ts`、`frontend/e2e/memory-tidy-partial.spec.ts`。
 
 - 技能查看统计：manager/worker 的成功 skill_view 累加 usage.json，列表、HTTP 查看及复制不计数；面板显示次数、最近查看与可编辑阈值的陈旧 Badge。merge 累加来源统计、delete 删除边车、copy 从零开始，正文修改时间和摘要不变。整理陈旧候选仅供模型判断，候选名单随结果／原 turn Trace 保留。入口：Memory、Settings → Memory、skill_view；关联契约：`C-025`、`C-012`；实现证据：`internal/memory/skill_usage.go`、`internal/engine/review_tidy.go`、`internal/server/projects.go`；测试证据：`internal/memory/skill_usage_test.go`、`internal/server/skill_usage_copy_test.go`、`internal/engine/review_stale_test.go`。
 

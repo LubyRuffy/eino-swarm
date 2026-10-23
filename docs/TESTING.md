@@ -791,6 +791,14 @@ The offline script uses explicit step markers, not a semantic classifier.
 `frontend/e2e/memory-boundary.spec.ts` checks both languages, usage / thresholds
 and the requested tidy UI. Each test pins and restores server-side locale as
 well as its private browser storage; localStorage alone cannot override config.
+`frontend/src/lib/review-diagnostics.test.ts` distinguishes committed note and
+completed move receipts from a skill-only partial promotion while retaining
+post-turn note summaries. `frontend/e2e/memory-tidy-partial.spec.ts` makes only
+its owned skill parent read-only under an ordinary POSIX user, then runs the
+real offline model/tool/SSE path: the note survives source cleanup failure,
+Memory lists the saved write without a completed demotion, and the original
+turn's English/Chinese Trace does not claim that note was unsaved. The fixture
+restores permissions before deleting its project; Windows/root runs skip it.
 
 `internal/memory/skill_usage_test.go` checks concurrent successful views under
 `-race`, worker tool usage, immutable content identity, corrupt sidecars, merge
