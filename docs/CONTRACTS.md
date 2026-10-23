@@ -2,6 +2,35 @@
 
 Only current behavior is listed here. See [FEATURES.md](FEATURES.md) for user entry points and [CHANGELOG.md](../CHANGELOG.md) for history. Contract IDs are stable.
 
+## C-033 Composer drafts are durable versioned snapshots
+
+- 状态：active；类型：data / consistency / lifecycle / security；作用范围：PC 输入框、草稿 API、SQLite 和首发迁移；关联功能：`F-145`, `F-140`, `F-180`。
+- 契约内容：草稿以 `thread:<id>`、`new:<project-id>` 或 `new:home` 为身份，不依赖 HTTP 端口或浏览器 origin。正文、引用、附件 manifest 和新增原始 bytes 原子提交；已保存附件使用同 scope 的不可变 ID，后续键入不重传 bytes。保存与清理均以 expected revision 做 CAS，冲突返回 `409 draft_conflict`，不覆盖另一窗口。
+- 引用校验：保存事务必须确认既存附件 bytes 仍存在且长度与 manifest 一致；缺失或长度变化拒绝保存，正文、revision 和同批新增 bytes 全部回滚。长度校验不宣称能检测等长存储损坏。
+- 允许行为：保留未确认输入、显式解决冲突、发送结果未知时先检查对话；禁止行为：保存失败仍称已保存、发送 ACK 前清稿、自动重发未知结果、按文字相似度推断发送成功或跨 scope 取附件。
+- 失败语义：恢复、保存、上传、发送或 CAS 清理失败必须可见并保留当前内容。只能保证已收到持久化 ACK 的版本可恢复；最后尚未 ACK 的修改不得伪称已落盘。`sending` 在重开后按结果未知处理。首发复制保留源稿直到发送确认，旧原生归属也能找到完整副本。
+- 不变量：发送固定目标会话；每个成功 ACK 只清对应 revision，tombstone 防止旧保存复活。scope 所属会话／项目必须在保存事务内存在；删除所属对象同时清理其草稿与 bytes，迟到保存不得复活它。
+- 文本动作：PC `/goal`、`/plan` 不携带附件或引用；含这些内容的草稿必须在发送前可见拒绝并完整保留，不能用仅文本动作的 ACK 清除整份快照。
+- 缓存生命周期：无订阅、操作或待写入且已确认保存的闲置 scope 释放 File 缓存和预览 URL，返回时从 SQLite 重读；未保存、冲突或发送中的唯一副本不能被淘汰。首发迁移和发送必须持有跨导航所有权，不能依赖组件及时挂载。
+- 边界条件：正文与引用合计 1 MiB；32 个附件、总量 256 MiB；图片最多 8 张且每张最多 8 MiB。原始 bytes、MIME、名称、最后修改时间保留；blob URL 不持久化。附件下载强制 attachment、nosniff、no-store。工作区上传原有单文件限制不变。
+- 证据：实现 `internal/store/composer_draft.go`, `internal/server/composer_draft.go`, `frontend/src/lib/composer-draft.ts`, `frontend/src/lib/use-composer-draft.ts`, `frontend/src/components/app/composer.tsx`, `frontend/src/store/app.ts`；测试 `internal/store/composer_draft_test.go`, `internal/server/composer_draft_test.go`, `frontend/src/lib/composer-draft.test.ts`, `frontend/src/components/app/composer-draft.test.tsx`。
+- 变更规则：同步 API、DATA_MODEL、README、FEATURES、TESTING、CHANGELOG；回归 ACK 丢失、跨 scope／首发迁移、附件逐字节、可解码图片、CAS 和实际原生恢复。
+- 缓存证据：`frontend/src/lib/composer-draft-cache.test.ts`、`frontend/e2e/composer-draft.spec.ts`。
+- 来源：GitHub Issue #94；Added，修复白屏恢复丢失未发送内容及发送前清稿。
+
+## C-034 Native renderer recovery is bounded and preserves the engine
+
+- 状态：active；类型：lifecycle / consistency / security；作用范围：macOS 窗口、启动器、原生快照和恢复诊断；关联功能：`F-115`, `F-110`, `F-130`, `F-160`, `F-430`。
+- 契约内容：健康探测必须验证当前 64 位随机挑战对应的完整有序像素图案；相近颜色的旧图案、HTTP、JS 心跳、动画帧或截图回调本身不足以证明本次绘制。raw 消息只接受同源主 frame、当前 session／generation／challenge，迟到回调不得更新新代际健康。
+- 恢复边界：启动宽限 30 秒，活动窗口健康期限 20 秒；先一次重载，等待最多 15 秒，仍失败才启动继任窗口。每个连续故障最多两次替换，预算跨进程传递；至少连续健康 5 分钟后可重置。继任启动与确认总截止 30 秒，失败必须可见并保留诊断，禁止循环复活。休眠、最小化、失焦暂停检测，返回时给予宽限；长时间定时器停顿不记为故障。
+- 不变量：继任仅附着原 PID／URL／租约／模式的引擎，不调用引擎交接、重跑任务或改变 turn／worker 身份。原窗口在继任真实绘制就绪、commit 和 committed 回执完成后才退出；取消、失败与用户正常退出只处理本次拥有的子进程及私有副本。新窗口必须登记自己的真实 PID。
+- 身份保护：未打包的 checkout 启动使用按源可执行文件 SHA-256 的不可变缓存包，锁内完整构建后原子发布；复用不覆盖或重签 live bundle。恢复继任使用本会话私有副本和继承管道，不因另一次构建改变源码身份。
+- 诊断：同一 session／generation／attempt 记录阶段、原因、shell／engine PID、耗时和真实 thread／turn 归属；本机 journal 有 64 KiB 上限。有效回合的 `desktop_recovery` 事件进入同一 Trace 与 Full log，保留原事件身份及 rewind 规则，不创建 worker、改变任务状态或把内部 JSON 显示为主转录正文；写失败不得确认持久回执，无回合仅写元数据日志（可关联已存在会话），不编造任务。原因最多 256 字节有效 UTF-8；日志不含正文、附件、截图像素或握手令牌。
+- 允许行为：在系统 WebKit 尚有故障时有界恢复界面；禁止行为：把恢复机制称作系统缺陷已消除、只用进程／API 就绪接受窗口、在宿主桌面做原生故障验收。
+- 证据：实现 `internal/desktop/recovery.go`, `internal/desktop/recovery_state.go`, `internal/desktop/recovery_probe.go`, `internal/desktop/recovery_snapshot_darwin.m`, `internal/desktop/bundle_darwin.go`, `cmd/zwai/desktop_recovery_darwin.go`, `internal/engine/desktop_recovery.go`, `internal/server/desktop_recovery.go`；测试 `internal/desktop/recovery_test.go`, `cmd/zwai/desktop_recovery_test.go`, `internal/engine/desktop_recovery_test.go`, `internal/server/desktop_recovery_test.go`, `tools/test_native_macos_resilience.py`。
+- 变更规则：同步 ARCHITECTURE、CLI、API、FEATURES、TESTING、CHANGELOG；正式 ZIP 在 `ci-macOS` 验证渲染器／GPU 活挂、草稿／附件、后台任务连续性、真实睡眠唤醒和至少 18 小时长开，保留准确源码／ZIP 身份及独立 cleanup 回执。
+- 来源：GitHub Issue #94；Added，弥补仍存活的 WebContent 绘图挂起不能由终止回调恢复的缺口。
+
 ## C-022 Single PC work rows use one disclosure
 
 - 状态：active；类型：lifecycle / compatibility；作用范围：PC 主对话用户视图；关联功能：`F-130`。

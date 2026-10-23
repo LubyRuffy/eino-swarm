@@ -21,6 +21,83 @@ the URL in `engine.json` (a random loopback port unless `--addr` was set).
 | `429` | too many terminals are already open |
 | `501` | the shell cannot do this (`reveal` / `open` when this process is not a loopback engine or the desktop app) |
 
+## Composer drafts
+
+`F-145` / `C-033`. Drafts belong to `thread:<thread_id>`,
+`new:<project_id>`, or `new:home`. Thread/project owners must still exist.
+All routes have the existing same-origin protection. A key is one URL path
+segment (URL-encode it); files are private to that key.
+
+| endpoint | behavior |
+|---|---|
+| `GET /api/composer/drafts/:key` | `{ "draft": snapshot }`; absent drafts return revision `0`, empty arrays and state `editing` |
+| `PUT /api/composer/drafts/:key` | multipart snapshot and new file bytes, committed in one SQLite transaction; returns the next revision |
+| `DELETE /api/composer/drafts/:key?revision=N` | compare-and-swap an empty snapshot; retains a newer tombstone revision |
+| `GET /api/composer/drafts/:key/files/:file` | original bytes with attachment disposition, `no-store` and `nosniff`; missing or foreign files are `404` |
+
+PUT has exactly one `snapshot` JSON form field:
+
+```json
+{
+  "key": "new:home", "revision": 0,
+  "text": "", "quotes": [{"id": "quote_id", "text": "quoted source"}],
+  "files": [{"id": "file_id", "name": "notes.txt", "mime": "text/plain",
+    "kind": "file", "size": 3, "last_modified": 123}],
+  "state": "editing"
+}
+```
+
+The encoded snapshot field is capped at 8 MiB, allowing JSON escapes for the
+1 MiB original UTF-8 text budget; total multipart body is capped at attachment
+bytes plus 9 MiB of metadata/framing. New files use `file.<id>` multipart fields;
+an existing immutable ID references
+already saved bytes and must not be uploaded again. Changing name, MIME, kind,
+size or modification time requires a new ID. Referenced bytes must still exist
+and match the recorded length in the save transaction; missing or truncated
+storage rejects the save without advancing its revision. `state` is `editing`, `sending`,
+or `uncertain`. A loaded `sending` snapshot is treated as uncertain: the client
+does not automatically submit it. Only an acknowledged send clears its captured
+snapshot; navigation cannot redirect it to another conversation. Editing a queued
+message saves its complete draft before deleting the queue row. A failed delete
+retains both copies and requires human review before resubmission.
+The desktop composer rejects `/goal` and `/plan` with attachments or quotations
+before starting a send: those actions accept only their text argument, so their
+acknowledgement cannot clear the rest of a draft snapshot.
+
+Per snapshot: text plus quotes at most 1 MiB UTF-8; at most 32 quotes and 32
+attachments, 256 MiB total; at most eight images of 8 MiB each. Images support
+PNG/JPEG/GIF/WebP and their declared MIME must match the received bytes. Oversized
+or malformed drafts return `400` / `invalid_draft`; stale revisions return
+`409` / `draft_conflict`; deleted owners return `404`. Other storage failures
+return an error, never a successful save or an empty-draft fallback. The client
+keeps its current draft visible and reports that persistence failed.
+
+## Desktop recovery diagnostics
+
+`F-115` / `C-034`. `POST /api/desktop/recovery` accepts only a bounded diagnostic
+record (8 KiB), containing `session_id`, `generation`, `attempt` (0–2), actual
+`shell_pid`, this process's `engine_pid`, `phase`, RFC3339 `at`, optional `reason`
+(256 bytes), `duration_ms`, and optional `thread_id` / `turn_id` (a turn always requires its thread).
+
+Phases are `probe_failed`, `reloading`, `replacing`, `ready`, `recovered`,
+`exhausted`, `replacement_failed`, `suspended`, and `resumed`. Unknown fields,
+extra JSON records, invalid identities and mismatched turn ownership are rejected
+with `400` / `invalid_desktop_recovery`. Valid attributed records are appended as
+`desktop_recovery` events before broadcasting and appear in
+`GET /api/trace/:turn` and the Trace Full log. Response `{ "persisted": true }`
+means that event was stored. The UI keeps these diagnostic events in Trace Full
+log without rendering their JSON as conversation text or inventing an agent. Without a turn, the optional thread must exist; metadata is logged and the response
+is `{ "persisted": false }`; no turn or completion is invented. A failed storage
+write returns an error and emits no successful live receipt.
+The named SSE listener subscribes to this kind explicitly. Paired-phone watch
+and replay retain its sequence as metadata without adding conversation blocks,
+workers or task-state transitions; Earlier skips metadata-only history pages.
+
+These records contain no draft text, attachment bytes, screenshots or tokens.
+The native session also keeps a bounded 64 KiB local diagnostic journal under
+`$ZWAI_HOME/diagnostics/desktop-<session>.jsonl` when the HTTP path is unavailable.
+This endpoint reports interface recovery; it never restarts or completes work.
+
 ## Desktop update
 
 ### `GET /api/update`

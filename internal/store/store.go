@@ -75,7 +75,7 @@ func Open(path string) (*Store, error) {
 		followupSeq: map[string]int64{},
 		inMemory:    inMemory,
 	}
-	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}, &ThreadWakeDecision{}); err != nil {
+	if err := db.AutoMigrate(&Project{}, &Thread{}, &Message{}, &Turn{}, &Event{}, &LLMCall{}, &Attachment{}, &Followup{}, &Schedule{}, &ScheduleRun{}, &RemoteDevice{}, &ThreadWakeDecision{}, &ComposerDraft{}, &ComposerDraftBlob{}); err != nil {
 		return nil, fmt.Errorf("store: migrate: %w", err)
 	}
 	if err := s.ensureSearch(); err != nil {
@@ -248,6 +248,9 @@ func (s *Store) DeleteThread(id string) error {
 	}
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := cancelWakesForThread(tx, id); err != nil {
+			return err
+		}
+		if err := deleteComposerDraftScopes(tx, []string{"thread:" + id}); err != nil {
 			return err
 		}
 		if err := deleteSearchForThread(tx, id); err != nil {

@@ -33,7 +33,9 @@ import { toggleContentWidth, toggleTranscriptMode } from "@/lib/appearance"
 import { attachExternalLinkHandler } from "@/lib/external-links"
 import { findShortcut } from "@/lib/find"
 import { LIBRARY_ID } from "@/lib/library"
-import { appendQuote, composerDraftFromStored, type Quote } from "@/lib/quote"
+import { appendQuote } from "@/lib/quote"
+import { composerDraftKey, composerDraftSession } from "@/lib/composer-draft"
+import { installComposerRecoveryAttribution } from "@/lib/composer-recovery"
 import { liveWorkers } from "@/lib/transcript"
 import { terminalShortcut, terminalTarget } from "@/lib/terminal"
 import { isWelcomePane, visibleManagerBlockCount } from "@/lib/welcome"
@@ -51,6 +53,7 @@ import { useTerminal } from "@/store/terminal"
 import { openSettings, useSettingsSheet } from "@/store/settings-sheet"
 
 export function App() {
+  useEffect(installComposerRecoveryAttribution, [])
   const boot = useApp((s) => s.boot)
   const openNative = openLinksNatively(useApp((s) => s.meta?.capabilities?.open_url), desktopShell())
   const booted = useRef(false)
@@ -128,7 +131,6 @@ function AppShell() {
   const [prefill, setPrefill] = useState("")
   const [prefillToken, setPrefillToken] = useState(0)
   const [focusSignal, setFocusSignal] = useState(0)
-  const [quotes, setQuotes] = useState<Quote[]>([])
   const [focusSkill, setFocusSkill] = useState<{
     projectId: string
     name?: string
@@ -192,13 +194,10 @@ function AppShell() {
     useTerminal.getState().toggle(target)
   }, [])
 
-  useEffect(() => {
-    setQuotes([])
-  }, [activeId])
-
   const addQuote = useCallback(
     (text: string) => {
-      setQuotes((prev) => appendQuote(prev, text))
+      const draft = currentComposerDraft()
+      void draft.load().then(() => draft.update({ quotes: appendQuote(draft.getSnapshot().draft.quotes, text) })).catch(() => undefined)
       focusComposer()
     },
     [focusComposer],
@@ -263,39 +262,32 @@ function AppShell() {
     [focusComposer],
   )
 
-  // The row or unread bubble is already gone. Enter then uses the normal
-  // queue path, so this is a new follow-up at the back, not an in-place edit.
-  const pullIntoComposer = useCallback(
-    (raw: string) => {
-      const draft = composerDraftFromStored(raw)
-      setQuotes(draft.quotes)
-      setPrefill(draft.body)
-      setPrefillToken((n) => n + 1)
-      focusComposer()
+  const editQueuedFollowup = useCallback(
+    (id: string, text: string) => {
+      const threadId = useApp.getState().activeId
+      const draft = currentComposerDraft()
+      void (async () => {
+        try {
+          await draft.importQueuedDraft(text, () => useApp.getState().activeId === threadId ? useApp.getState().deleteFollowup(id) : Promise.resolve(false))
+          focusComposer()
+        } catch (error) { useApp.getState().setError(error instanceof Error ? error.message : String(error)) }
+      })()
     },
     [focusComposer],
   )
 
-  const editQueuedFollowup = useCallback(
-    (id: string, text: string) => {
-      void (async () => {
-        const removed = await useApp.getState().deleteFollowup(id)
-        if (!removed) return
-        pullIntoComposer(text)
-      })()
-    },
-    [pullIntoComposer],
-  )
-
   const editUnreadSteer = useCallback(
     (text: string, seq: number) => {
+      const threadId = useApp.getState().activeId
+      const draft = currentComposerDraft()
       void (async () => {
-        const removed = await useApp.getState().retractSteer(seq)
-        if (!removed) return
-        pullIntoComposer(text)
+        try {
+          await draft.importQueuedDraft(text, () => useApp.getState().activeId === threadId ? useApp.getState().retractSteer(seq) : Promise.resolve(false))
+          focusComposer()
+        } catch (error) { useApp.getState().setError(error instanceof Error ? error.message : String(error)) }
       })()
     },
-    [pullIntoComposer],
+    [focusComposer],
   )
 
   useEffect(() => {
@@ -424,8 +416,6 @@ function AppShell() {
               prefill={prefill}
               prefillToken={prefillToken}
               focusSignal={focusSignal}
-              quotes={quotes}
-              onQuotesChange={setQuotes}
               onEditFollowup={editQueuedFollowup}
               onEditProviders={() => openSettings("models")}
             />
@@ -687,12 +677,14 @@ function TranscriptPane({
   )
 }
 
+function currentComposerDraft() {
+  return composerDraftSession(composerDraftKey(useApp.getState().activeId, useProjects.getState().selectedId))
+}
+
 function AppComposer({
   prefill,
   prefillToken,
   focusSignal,
-  quotes,
-  onQuotesChange,
   onEditFollowup,
   onEditProviders,
   locked,
@@ -700,8 +692,6 @@ function AppComposer({
   prefill: string
   prefillToken: number
   focusSignal: number
-  quotes: Quote[]
-  onQuotesChange: (quotes: Quote[]) => void
   onEditFollowup: (id: string, text: string) => void
   onEditProviders: () => void
   locked?: boolean
@@ -724,6 +714,8 @@ function AppComposer({
   const refreshThreads = useApp((s) => s.refreshThreads)
   const refreshCatalogs = useApp((s) => s.refreshCatalogs)
   const newThread = useApp((s) => s.newThread)
+  const creatingThread = useApp((s) => s.creatingThread)
+  const projectId = useProjects((s) => s.selectedId)
   const setGoal = useApp((s) => s.setGoal)
   const editGoal = useApp((s) => s.editGoal)
   const resumeGoal = useApp((s) => s.resumeGoal)
@@ -735,6 +727,8 @@ function AppComposer({
   const awaitingAnswer = useApp((s) => Boolean(s.status.awaiting_answer))
   return (
     <Composer
+      draftKey={composerDraftKey(activeId, projectId)}
+      onResolveThread={async () => activeId ?? await newThread(projectId, composerDraftKey(activeId, projectId))}
       running={running}
       compressing={compressing}
       models={models}
@@ -742,7 +736,7 @@ function AppComposer({
       model={thread?.model}
       onModelChange={(providerId, name) => {
         void (async () => {
-          const id = activeId ?? (await newThread())
+          const id = activeId ?? (await newThread(projectId, composerDraftKey(activeId, projectId)))
           if (!id) return
           await api.patchThread(id, { provider_id: providerId, model: name })
           await refreshThreads()
@@ -755,18 +749,16 @@ function AppComposer({
           void api.patchThread(activeId, { reasoning_effort: level }).then(() => refreshThreads())
       }}
       onSend={
-        locked ? () => undefined : (text, images, opts) => void send(text, images, opts)
+        locked ? () => false : (text, images, opts) => send(text, images, opts)
       }
       onStop={() => void interrupt()}
       onUpload={upload}
       onRefreshModels={() => refreshCatalogs()}
       onEditProviders={onEditProviders}
-      disabled={locked}
+      disabled={locked || creatingThread}
       prefill={prefill}
       prefillToken={prefillToken}
       focusSignal={focusSignal}
-      quotes={quotes}
-      onQuotesChange={onQuotesChange}
       followups={followups}
       onSteerFollowup={(id) => void steerFollowup(id)}
       onDeleteFollowup={(id) => void deleteFollowup(id)}
@@ -781,7 +773,7 @@ function AppComposer({
       goalStartedAt={thread?.goal_started_at}
       contextChars={thread?.context_chars}
       contextBudget={thread?.context_budget ?? meta?.swarm.context_char_budget}
-      onSetGoal={(text) => void setGoal(text)}
+      onSetGoal={(text, id) => setGoal(text, id)}
       onClearGoal={() => void setGoal("")}
       onEditGoal={(text) => void editGoal(text)}
       onResumeGoal={() => void resumeGoal()}
@@ -789,7 +781,7 @@ function AppComposer({
       planMode={thread?.plan_mode}
       planMarkdown={thread?.plan_markdown}
       awaitingAnswer={awaitingAnswer}
-      onSetPlan={(text) => void setPlan(text)}
+      onSetPlan={(text, id) => setPlan(text, id)}
       onSavePlan={(text) => void savePlan(text)}
       onImplementPlan={() => void implementPlan()}
       onLeavePlan={() => void leavePlan()}

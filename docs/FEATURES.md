@@ -5,11 +5,13 @@ This is the current user-facing capability map. The code and tests named below a
 - `F-000` zwai
   - `F-100` PC conversations
     - `F-110` Desktop, browser, and terminal shells
+    - `F-115` Bounded native renderer recovery
     - `F-120` Conversations and projects
     - `F-125` Unread completion attention
     - `F-130` Agent runs, tools, and live control
     - `F-135` Independent task coordination
     - `F-140` Files and attachments
+    - `F-145` Durable composer drafts
     - `F-150` Goals and scheduled waits
     - `F-160` Trace and diagnostics
     - `F-170` Settings and providers
@@ -47,6 +49,12 @@ This is the current user-facing capability map. The code and tests named below a
 
 - 桌面重开：native 进程在窗口加载前持有真实 presence，页面 reload 不释放连接，也不重复登记窗口；撞上 idle 停机时有界等待原持有人退出或租约身份改变，再完整核验后重新连接；新 PID 复用原 URL 仍识别为替换，不生成第二个数据库写入者；最终 idle 复核同时保留活动 manager、后台 worker 和交接中的执行归属。证据：`cmd/zwai/desktop_attach_test.go`、`cmd/zwai/desktop_attach_errors_test.go`、`cmd/zwai/desktop_attach_identity_test.go`、`frontend/e2e/presence.spec.ts`；契约：`C-001`。
 - 桌面连接恢复：已确认的 native presence 断流后，在同一地址有界重新登记并确认；短流不无限重置预算，稳定连接后可恢复后续独立断流。关闭应用中断恢复，耗尽则先通过桌面 logger 同步记录原因再请求原生退出；原生系统终止不保证返回 Go，能返回的平台保留原有错误类别，启动前失败直接返回且不开窗口，正常关闭不误报终止错误。证据：`cmd/zwai/desktop_presence.go`、`cmd/zwai/desktop_attach_stream_recovery_test.go`、`cmd/zwai/desktop_presence_test.go`、`internal/desktop/lifecycle_test.go`、`internal/desktop/lifecycle_terminal_test.go`；契约：`C-001`。
+
+### F-115 Bounded native renderer recovery
+
+- 目的：在 macOS WebContent 活挂、绘图失效或白屏时恢复可用窗口；使用者：桌面用户；入口：`zwai desktop` 的原生恢复控制循环；输入：同源、主 frame、当前 challenge 响应与实际截图像素；输出：一次重载，必要时附着原引擎的继任窗口；前置条件：引擎租约可验证、恢复副本与诊断目录可写；失败表现：有界尝试耗尽后的原生错误提示及保留诊断；关联契约：`C-034`, `C-001`, `C-012`, `C-033`；实现证据：`internal/desktop/recovery.go`, `internal/desktop/recovery_state.go`, `internal/desktop/recovery_snapshot_darwin.m`, `cmd/zwai/desktop_recovery_darwin.go`, `internal/desktop/recovery_test.go`, `cmd/zwai/desktop_recovery_test.go`。
+- 健康条件包含本次随机探针的真实像素；HTTP、JS 响应或动画帧不单独算绘制成功。失焦、最小化、睡眠与唤醒有检测暂停／宽限。
+- 继任窗口经私有继承管道与两阶段确认接管，沿用数据目录、离线模式和原引擎 PID／URL／租约，恢复会话／项目与草稿位置；不调用引擎替换或重新执行任务。
 
 ### F-120 Conversations and projects
 
@@ -110,6 +118,15 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：让对话使用工作区文件和附件；使用者：PC 用户；入口：文件面板、上传及下载 API；输入：文件或图片；输出：文件、预览或模型视觉输入；前置条件：工作区和权限可用；失败表现：上传或工具错误；关联契约：`C-004`, `C-005`；实现证据：`internal/server`, `internal/tools`, `frontend/src/components/app`。
 - 图片输入：png/jpeg/gif/webp 文件在空 MIME、通用 binary 或 UTI 标签下仍进入视觉输入；显式 text/PDF 保持文件附件。客户端只归一化 MIME 声明，不改原字节，服务端继续执行真实类型与声明匹配校验。关联契约：`C-028`；证据：`frontend/src/lib/paste-image.ts`、`frontend/src/lib/paste-image.test.ts`、`frontend/src/components/app/composer-image-drop.test.tsx`、`frontend/e2e/image-input.spec.ts`。
 - 已发送图片预览：桌面与 Web 对话中的图片缩略图可点击或通过 Enter／Space 打开放大层，多图时打开点选的图片。预览沿用已保存图片地址，按原比例适配窗口；显示加载及失败状态，可通过 Esc、遮罩或关闭按钮关闭并回到缩略图焦点，刷新重载后仍可打开。关闭预览不停止正在运行的任务。关联契约：`C-028`；证据：`frontend/src/components/app/input-thumbs.tsx`、`frontend/src/components/app/input-thumbs.test.tsx`、`frontend/e2e/image-input.spec.ts`。
+
+### F-145 Durable composer drafts
+
+- 目的：在刷新、窗口恢复及引擎换端口后保留未发送内容；使用者：PC 桌面和 Web 用户；入口：输入框、附件／粘贴图片／引用，以及 `/api/composer/drafts/:key`；输入：正文、引用、原始文件与图片；输出：按会话或新会话项目隔离的完整草稿及保存／失败／冲突状态；前置条件：本机 SQLite 可写；失败表现：保留当前输入并显示恢复／保存／发送未确认或版本冲突，不自动重发；关联契约：`C-033`, `C-028`, `C-011`；实现证据：`frontend/src/lib/composer-draft.ts`, `frontend/src/lib/use-composer-draft.ts`, `frontend/src/components/app/composer-draft-status.tsx`, `internal/store/composer_draft.go`, `internal/server/composer_draft.go`, `internal/store/composer_draft_test.go`, `internal/server/composer_draft_test.go`, `frontend/src/components/app/composer-draft.test.tsx`。
+- 正文、引用、附件引用在同一事务中保存；原始 bytes 只在新增附件时写入，后续键入仅更新快照。保存 ACK 前不能显示“已保存”；发送 ACK 后才清理对应版本，旧页面迟到保存不能复活已清草稿。首发迁移保留来源副本至发送确认。
+- 后续编辑引用的附件 bytes 缺失或长度不符时拒绝保存，保留原版本，不能仅凭 manifest 返回保存成功。
+- 离开已保存且无待处理操作的 scope 后释放内存中的附件缓存和预览 URL，返回时重读原始 bytes；未保存、冲突和发送中内容继续保留。
+- `/goal`、`/plan` 仅接收文本；同时带附件、粘贴图片或引用时，输入框拒绝动作并保留完整草稿，不能用只覆盖文本的确认清理其他内容。
+- 每份草稿正文与引用合计最多 1 MiB，最多 32 个附件、附件总量 256 MiB；视觉图片另遵守最多 8 张、单张 8 MiB。此限制约束草稿保存，不改变工作区上传的单文件上限。
 
 ### F-150 Goals and scheduled waits
 

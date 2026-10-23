@@ -21,6 +21,8 @@ const (
 //go:embed AppIcon.icns
 var macAppIcon []byte
 
+var writeCacheBundle = writeAppBundle
+
 // ReexecIfUnbundled copies this process into a stable .app and replaces
 // the image with that copy. `go run` leaves a naked executable (Info.plist
 // not bound, identifier a.out); macOS Local Network privacy then returns
@@ -49,11 +51,7 @@ func prepareBundle(exe, cacheDir string) (string, error) {
 	if alreadyBundled(exe) {
 		return "", nil
 	}
-	appDir := filepath.Join(cacheDir, "zwai", "zwai.app")
-	if err := writeAppBundle(exe, appDir, ""); err != nil {
-		return "", fmt.Errorf("desktop: local-network app bundle: %w", err)
-	}
-	return filepath.Join(appDir, "Contents", "MacOS", macBundleName), nil
+	return prepareImmutableBundle(exe, cacheDir)
 }
 
 func alreadyBundled(exe string) bool {

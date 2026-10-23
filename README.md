@@ -47,6 +47,25 @@ uploads, downloads and the live event stream have exactly one implementation.
   each name, with a fallback only for names that still have none. Until one
   is set the arc still grows (it is not an empty circle)
   and the label stays a count, not a fake percentage.
+- **Unsent content survives a reload.** The composer saves text, quotations,
+  original files and pasted images together in the local engine database, per
+  conversation or new-conversation project. Its saved/saving/error status is
+  visible. Only an acknowledged save is durable. Sending retains the snapshot
+  until the server accepts it; an uncertain result keeps the draft for inspection
+  and is never automatically sent again. Resolve a conflicting window explicitly.
+  Leaving a saved idle draft releases its attachment previews from memory;
+  returning restores its original files from the local database.
+  `/goal` and `/plan` accept text only; a draft with attachments or quotations
+  stays intact with an error until those items are sent separately or removed.
+  Draft text and quotes share a 1 MiB limit; up to 32 attachments share 256 MiB,
+  with the existing eight images / 8 MiB per-image vision limits.
+- **The Mac window has bounded rendering recovery.** An independent native
+  controller checks actual painted pixels, tries one reload, then replaces the
+  window on the same engine if needed. Background work continues; the restored
+  window returns to its conversation and saved draft. Repeated failures stop
+  with a native error instead of an endless restart loop. A system WebKit fault
+  can still occur; successful recovery is not evidence that the system fault has
+  been removed. See [recovery diagnostics](docs/API.md#desktop-recovery-diagnostics).
 - **Paste a screenshot into the box.** It lands as a thumbnail you can drop
   before sending, and goes to the model as visual input — not as a file in the
   workspace. Dragging a file onto the box does the same split: images become

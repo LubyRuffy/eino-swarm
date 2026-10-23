@@ -85,6 +85,12 @@ E2E suite.
   desktop as an acceptance fallback. Leave the user's desktop app, engine,
   cache bundle and data untouched. If guest control is unavailable, retain a
   pending native result instead of switching to the host.
+- Guest login recovery is separate from application acceptance. A failed guest
+  AX secure-field lookup does not establish that every input path is unavailable.
+  When the current user explicitly authorizes direct control of that guest,
+  inspect its existing UTM window and try its bound guest keyboard before asking
+  the user to unlock it. Keep that authorization and login observation in the
+  recovery receipt; it does not authorize a host application acceptance fallback.
 - Run native cases one at a time through `tools/native_macos_case.py` in the
   guest (see `docs/TESTING.md`). Each case owns a fresh app copy, home/cache,
   data and workspace; scenario children inherit that private environment.
@@ -95,6 +101,17 @@ E2E suite.
   within one case may retain state, independent cases may not. Never use
   process-name-wide kills or delete another case/user's data. Preserve logs,
   assertions, screenshots and cleanup receipts outside disposable state.
+  Renderer fault admission needs the complete fresh process inventory, including
+  WebKit name variants and unreadable/departed candidates. A pure selector test
+  cannot accept a collector that silently drops them. Persist exact target
+  identity before a stall; regress scenario SIGKILL through the runner's actual
+  resume/exit cleanup. Corrupt or broken-link receipts must fail closed.
+  Regress changed lifecycle adapters through the actual main harness module.
+  A fake namespace that invents its missing methods cannot prove module wiring;
+  exercise every real caller, including setup and cleanup, before freezing it.
+  A long soak needs durable successful UI/identity observations across its whole
+  duration with bounded gaps in both wall and monotonic clocks. Elapsed time,
+  an overnight VM pause or a final screenshot alone cannot accept that duration.
 
 - Fork-context role isolation must be tested at actual worker model input through
   both Registry and manager-tool paths. `spawned.Text` omits the separately
@@ -347,6 +364,30 @@ E2E suite.
   tab's Full log). A new event kind that is not recorded there is not finished.
 
 ## Front-end rules
+
+- A renderer stall with a healthy engine is a product recovery failure until
+  bounded native recovery is accepted. Preserve process-specific WebContent/GPU
+  evidence before restarting; a successful reopen does not prove the trigger
+  was fixed. A candidate upstream WebKit patch is not proof of an Apple private
+  build's patch contents. Health acceptance needs current challenge pixels from
+  the actual WKWebView, not only JavaScript callbacks or `requestAnimationFrame`.
+- Unsent text, quotes and attachment bytes must be durably acknowledged before
+  destructive queue editing or send-state transitions. A lost send acknowledgment
+  preserves an uncertain draft and never authorizes automatic resubmission.
+  Regress fixed conversation ownership during navigation, first-send scope
+  migration, CAS tombstones and original image/file bytes after renderer recovery.
+  Saved inactive composer scopes release attachment caches; retain dirty,
+  conflicting and sending state, and pin asynchronous migration/send owners
+  across navigation. Regress actual preview release and durable byte reload.
+- A new stored event needs its actual named SSE subscription tested end to end.
+  Prevent history/Trace reads from hiding a missing live listener; metadata must
+  preserve worker/task state and must not strand phone paging on invisible rows.
+- Renderer recovery replaces only its owned shell, retains the original engine
+  lease, and carries its finite retry budget across generations. Regress sleep,
+  inactive windows, cancellation at each handshake phase, budget exhaustion and
+  normal Quit/update. Never overwrite or re-sign a live runtime cache bundle.
+  Accept the unchanged formal ZIP in ci-macOS with recorded source/package
+  identity, actual pixels/actions, retained task IDs and complete case cleanup.
 
 - Colours and spacing come from the shadcn CSS variables in `src/index.css`. No
   hex literals, no one-off utility soup. If a token is missing, add the token.

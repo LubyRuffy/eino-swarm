@@ -49,6 +49,32 @@ erDiagram
   SCHEDULE ||--o{ SCHEDULERUN : fires
 ```
 
+## Durable composer snapshots (`F-145` / `C-033`)
+
+`composer_drafts` stores one current snapshot per `draft_key` (primary key):
+`revision`, `text`, JSON `quotes` and `files`, `state`, and `updated_at`.
+`composer_draft_blobs` stores original binary `data`, with composite primary key
+`(draft_key, file_id)`. File metadata retains its name, MIME, kind, byte count and
+modification time. Browser object URLs and temporary upload paths are not stored.
+
+A save compares the caller's revision inside the write transaction, verifies that
+the owning thread/project still exists, inserts new immutable blobs, replaces
+the manifest and removes unreferenced blobs. Any failure rolls back the whole
+snapshot. Text-only edits reference existing bytes. Explicit clear and accepted
+send use a new empty revision rather than deleting the row, so delayed writes
+cannot resurrect a sent draft. Thread/project deletion removes its snapshots
+and blobs in the same transaction as the owner. `new:home` is independent.
+
+Snapshots are separate from sent `messages`, `attachments` and queued `followups`.
+An unresolved `sending` state does not attest whether an HTTP request reached
+the engine; reloading exposes it as uncertain and never automatically resends.
+The first-send transition may temporarily retain identical source and target
+snapshots until acknowledgment. That duplication protects against interruption
+between creating a conversation and selecting it in the native window.
+
+Implementation: `internal/store/composer_draft.go`; persistence, concurrent-page,
+tombstone and rollback tests: `internal/store/composer_draft_test.go`.
+
 ## `projects` — a directory, an instruction and a memory
 
 A project is the thing several conversations have in common. Its memory is not
