@@ -1,0 +1,145 @@
+[
+  {
+    "text": "Inspect the assigned operation /goal",
+    "objective": "Inspect the assigned operation"
+  },
+  {
+    "text": "检查当前状态/goal",
+    "objective": "检查当前状态"
+  },
+  {
+    "text": "  检查 ASCII 和中文 /GOAL \n\t",
+    "objective": "检查 ASCII 和中文"
+  },
+  {
+    "text": "Inspect the first phase.\nContinue with verification.\n/goal",
+    "objective": "Inspect the first phase.\nContinue with verification."
+  },
+  {
+    "text": "目标／goal",
+    "objective": "目标"
+  },
+  {
+    "text": "目标、goal",
+    "objective": "目标"
+  },
+  {
+    "text": "Don't stop after one check /goal",
+    "objective": "Don't stop after one check"
+  },
+  {
+    "text": "Inspect \"quoted context\" /goal",
+    "objective": "Inspect \"quoted context\""
+  },
+  {
+    "text": "Inspect `literal context` /goal",
+    "objective": "Inspect `literal context`"
+  },
+  {
+    "text": "```text\n/goal\n```\nInspect the operation /goal",
+    "objective": "```text\n/goal\n```\nInspect the operation"
+  },
+  {
+    "text": "~~~text\n/goal\n~~~\nInspect the operation /goal",
+    "objective": "~~~text\n/goal\n~~~\nInspect the operation"
+  },
+  {
+    "text": "Inspect ./goal"
+  },
+  {
+    "text": "Inspect /tmp/goal"
+  },
+  {
+    "text": "Inspect assigned]/goal"
+  },
+  {
+    "text": "Inspect assigned] /goal",
+    "objective": "Inspect assigned]"
+  },
+  {
+    "text": "Inspect https://example.test/goal"
+  },
+  {
+    "text": "Inspect \"/goal\""
+  },
+  {
+    "text": "Inspect '/goal'"
+  },
+  {
+    "text": "Inspect “/goal”"
+  },
+  {
+    "text": "Inspect 「/goal」"
+  },
+  {
+    "text": "Inspect `/goal`"
+  },
+  {
+    "text": "```text\n/goal"
+  },
+  {
+    "text": "~~~text\n/goal"
+  },
+  {
+    "text": "> /goal"
+  },
+  {
+    "text": "Inspect\n> /goal"
+  },
+  {
+    "text": "Inspect `/goal"
+  },
+  {
+    "text": "Inspect \"/goal"
+  },
+  {
+    "text": "Inspect /goals"
+  },
+  {
+    "text": "Inspect \\/goal"
+  },
+  {
+    "text": "Inspect [command](/goal)"
+  },
+  {
+    "text": "Inspect \"the quoted /goal task\""
+  },
+  {
+    "text": "Inspect `the quoted /goal task`"
+  },
+  {
+    "text": "Inspect 『quoted context』 /goal",
+    "objective": "Inspect 『quoted context』"
+  },
+  {
+    "text": "Inspect ‘quoted context’ /goal",
+    "objective": "Inspect ‘quoted context’"
+  },
+  {
+    "text": "Inspect \\\"quoted context\\\" /goal",
+    "objective": "Inspect \\\"quoted context\\\""
+  },
+  {
+    "text": "Inspect ~~plain text~~ /goal",
+    "objective": "Inspect ~~plain text~~"
+  },
+  {
+    "text": "引用\"/goal\""
+  },
+  {
+    "text": "引用\"/goal"
+  },
+  {
+    "text": "引用\"quoted context\" /goal",
+    "objective": "引用\"quoted context\""
+  },
+  {
+    "text": "Inspect /tmp/中文/goal"
+  },
+  {
+    "text": "Inspect ./中文/goal"
+  },
+  {
+    "text": "Inspect C:\\中文/goal"
+  }
+]

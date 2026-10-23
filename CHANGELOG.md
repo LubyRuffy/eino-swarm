@@ -93,6 +93,12 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150`, `C-009`, `C-033`: desktop/Web accepts the preceding objective when
+  `/goal` is appended or selected after existing text, so a nonempty draft no
+  longer waits for a missing argument. Quoted/code evidence and recognizable
+  suffix paths do not trigger goals; existing leading-command argument rules
+  and acknowledged-draft behavior are retained.
+
 - `F-120`, `F-130`, `C-003`, `C-008`: opening long PC conversations paints the
   tail page before context usage and other metadata finish. The existing
   replay and rune-count formula now read retained user/assistant messages and

@@ -1,5 +1,31 @@
 # Testing
 
+## Trailing PC goal commands (`F-150`, `C-009`, `C-033`)
+
+`frontend/src/lib/slash.test.ts` uses
+`frontend/e2e/fixtures/trailing-goal.json` to cover multiline/CJK objectives,
+IME slash variants, empty commands, existing arguments and command literals in
+quotes, code and recognizable paths. `composer-trailing-goal.test.tsx` checks Send and
+Enter while idle/running, menu completion after existing text and ordinary
+literal messages. The old parser must fail these assertions because it drops
+the preceding objective and disables Send. Leading commands retain their whole
+argument, even when it ends with `/goal`; the UI/HTTP regression checks the
+stored objective cannot be rewritten by a second command interpretation.
+
+`frontend/e2e/trailing-goal.spec.ts` drives the real offline HTTP/UI path,
+checks the stored objective and acknowledged draft clearing, and reopens the
+conversation. Use an independent port, data directory and output directory:
+
+```bash
+(cd frontend && npm run lint && npm test && npm run build)
+ZWAI_E2E_PORT=19123 ZWAI_E2E_DATA_DIR=.e2e-data-trailing-goal \
+  npm --prefix frontend run e2e -- trailing-goal.spec.ts --output /absolute/unique-trailing-goal-output
+make docs-check
+```
+
+Native behavior requires the same candidate in an isolated `ci-macOS` case;
+browser results alone do not accept an already-running desktop binary.
+
 ## Long-conversation opening (`F-120`, `F-130`, `C-003`, `C-008`)
 
 Replay regressions use the real Store with tool bodies much larger than retained

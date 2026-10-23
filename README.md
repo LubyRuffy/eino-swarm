@@ -200,6 +200,11 @@ uploads, downloads and the live event stream have exactly one implementation.
   after what you already wrote, the same way Cursor does. Paths (`foo/bar`)
   and URLs do not open the palette. Picking **goal** or **plan** from the
   menu writes `/goal ` / `/plan ` in the box; type the rest and Enter.
+  On desktop/Web, writing the objective first and appending `/goal` also works:
+  the preceding text becomes the objective, including when **goal** is picked
+  after that text. A bare `/goal` still waits for an objective. Quoted text,
+  code and recognizable paths containing a trailing `/goal` remain ordinary
+  message content. Existing commands at the start keep their argument rules.
   **goal** sets a standing objective and
   starts pursuing it in this turn. **plan** explores and writes a plan before
   changing anything. Codex cuts the command name at a space;
