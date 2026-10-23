@@ -61,6 +61,8 @@ import {
   liveTurnUserText,
 } from "./followup-sync"
 import { managerHasVisibleBlocks } from "@/lib/welcome"
+import { explicitComposerRecovery } from "@/lib/composer-recovery"
+import { composerDraftSession } from "@/lib/composer-draft"
 import {
   applyTail,
   historyNewestSeq,
@@ -80,6 +82,7 @@ interface AppState extends ScheduleSlice {
   models: ModelInfo[]
   threads: Thread[]
   activeId?: string
+  creatingThread: boolean
   transcript: TranscriptState
   status: ThreadStatus
   turns: Turn[]
@@ -124,7 +127,7 @@ interface AppState extends ScheduleSlice {
   /** Keep paging until this turn's user row is in the transcript. */
   loadUntilTurn: (turnId: string, clientHeight?: number) => Promise<boolean>
   /** Lands in projectId. Omit it and the conversation sits in Recents. */
-  newThread: (projectId?: string) => Promise<string | undefined>
+  newThread: (projectId?: string, draftKey?: string) => Promise<string | undefined>
   /** Highlights a project and loads its memory. Does not filter the list. */
   selectProject: (projectId?: string) => Promise<void>
   pinThread: (id: string, pinned: boolean) => Promise<void>
@@ -132,9 +135,9 @@ interface AppState extends ScheduleSlice {
   renameThread: (id: string, title: string) => Promise<void>
   deleteThread: (id: string) => Promise<void>
   reorderThreads: (ids: string[]) => Promise<void>
-  send: (text: string, images?: SendImage[], opts?: { steer?: boolean; files?: string[]; fromEventSeq?: number }) => Promise<void>
-  setGoal: (text: string) => Promise<void>
-  setPlan: (text: string) => Promise<void>
+  send: (text: string, images?: SendImage[], opts?: { steer?: boolean; files?: string[]; fromEventSeq?: number; threadId?: string }) => Promise<boolean>
+  setGoal: (text: string, threadId?: string) => Promise<boolean>
+  setPlan: (text: string, threadId?: string) => Promise<boolean>
   savePlan: (text: string) => Promise<void>
   leavePlan: () => Promise<void>
   implementPlan: () => Promise<void>
@@ -155,7 +158,7 @@ interface AppState extends ScheduleSlice {
   clearFollowups: () => Promise<void>
   refreshFollowups: () => Promise<void>
   extendTurn: (proceed: boolean) => Promise<void>
-  upload: (files: File[]) => Promise<Attachment[]>
+  upload: (files: File[], threadId?: string) => Promise<Attachment[]>
   refreshFiles: () => Promise<void>
   removeFile: (path: string) => Promise<void>
   setTheme: (t: Theme) => void
@@ -186,6 +189,7 @@ const THEME_KEY = "zwai.theme"
 export const useApp = create<AppState>((set, get) => ({
   models: [],
   threads: [],
+  creatingThread: false,
   transcript: emptyTranscript(),
   status: { running: false },
   turns: [],
@@ -233,6 +237,11 @@ export const useApp = create<AppState>((set, get) => ({
       }
       // Home page on launch. Nothing is selected: sidebar order is not
       // a remembered conversation.
+      const recovery = explicitComposerRecovery(window.location.search)
+      if (recovery.threadId) await get().openThread(recovery.threadId)
+      else if (recovery.projectId && useProjects.getState().projects.some((project) => project.id === recovery.projectId)) {
+        await get().selectProject(recovery.projectId)
+      }
     } catch (e) {
       set({ error: message(e) })
     }
@@ -496,7 +505,8 @@ export const useApp = create<AppState>((set, get) => ({
   loadUntilTurn: async (turnId, clientHeight) =>
     loadUntilTurnHistory(get, turnId, clientHeight),
 
-  newThread: async (projectId) => {
+  newThread: async (projectId, draftKey) => {
+    set({ creatingThread: true })
     creating = (async () => {
       try {
         // Stamp before the create round-trip: a listing refresh that lands
@@ -510,6 +520,9 @@ export const useApp = create<AppState>((set, get) => ({
           }))
         }
         const thread = await api.createThread(undefined, undefined, projectId)
+        // The recovery attribution must not advertise a new empty scope
+        // while the only durable copy still belongs to the home composer.
+        if (draftKey) await composerDraftSession(draftKey).transferTo(composerDraftSession(`thread:${thread.id}`))
         set((s) => {
           const rest = s.threads.filter((t) => t.id !== thread.id)
           return {
@@ -532,6 +545,7 @@ export const useApp = create<AppState>((set, get) => ({
       return await creating
     } finally {
       creating = undefined
+      set({ creatingThread: false })
     }
   },
 
@@ -587,7 +601,7 @@ export const useApp = create<AppState>((set, get) => ({
   send: async (text, images, opts) => {
     if (opts?.fromEventSeq) {
       const id = get().activeId
-      if (!id) return
+      if (!id) return false
       const from = opts.fromEventSeq
       const cut = get().transcript.agents[MANAGER_ID]?.blocks.find(
         (b) => b.kind === "user" && b.seq === from,
@@ -613,51 +627,58 @@ export const useApp = create<AppState>((set, get) => ({
         await api.startTurn(id, text, images, opts.files, from)
         void get().refreshFollowups()
         void get().refreshThreads()
+        return true
       } catch (e) {
         set({ error: message(e) })
         set({ activeId: undefined })
         await get().openThread(id)
+        return false
       }
-      return
     }
-    const key = inflightKey(get().activeId, text)
-    if (inflightDrafts.has(key)) return
+    const target = opts?.threadId ?? (creating ? undefined : get().activeId)
+    const key = inflightKey(target, text)
+    if (inflightDrafts.has(key)) return false
     inflightDrafts.add(key)
     try {
-      let id = await currentThread(get)
+      let id = target ?? await currentThread(get)
       if (!id) {
         id = await get().newThread()
-        if (!id) return
+        if (!id) return false
       }
+      const status = id === get().activeId ? get().status : (await api.thread(id)).status
       // A live question is not a follow-up: Enter is Other for every
       // unanswered prompt. Queueing here would wait for a turn that cannot
       // finish until this answer lands.
-      if (get().status.awaiting_answer) {
+      if (status.awaiting_answer) {
+        if (images?.length || opts?.files?.length) {
+          set({ error: "Attachments cannot be sent as an answer to a pending question. Answer the question with text first; the draft was kept." })
+          return false
+        }
         await api.answerTurn(id, { text })
         set({ error: undefined })
-        return
+        return true
       }
       // Pasted images have nowhere to wait: the follow-up row is text. They
       // inject now rather than being dropped on the floor.
       const queue =
         !opts?.steer &&
-        get().status.running &&
+        status.running &&
         !(images && images.length > 0) &&
         !(opts?.files && opts.files.length > 0)
       if (queue) {
-        if (liveTurnUserText(get().status, get().transcript) === text.trim()) {
-          return
+        if (id === get().activeId && liveTurnUserText(status, get().transcript) === text.trim()) {
+          return false
         }
         try {
           const item = await api.enqueueFollowup(id, text)
           bumpFollowups()
-          set((s) => ({ followups: [...s.followups, item] }))
-          return
+          set((s) => s.activeId === id ? { followups: [...s.followups, item] } : {})
+          return true
         } catch (e) {
           if (!(e instanceof ApiError && e.code === "idle")) throw e
         }
       }
-      if (opts?.steer) {
+      if (opts?.steer && id === get().activeId) {
         const kept = dropMatchingFollowups(get().followups, text)
         if (kept.length !== get().followups.length) {
           const dropped = get().followups.filter((f) => !kept.includes(f))
@@ -683,21 +704,23 @@ export const useApp = create<AppState>((set, get) => ({
       })
       void get().refreshFollowups()
       void get().refreshThreads()
+      return true
     } catch (e) {
       set({ error: message(e) })
+      return false
     } finally {
       inflightDrafts.delete(key)
     }
   },
 
-  setGoal: async (text) => {
-    let id = await currentThread(get)
+  setGoal: async (text, threadId) => {
+    let id = threadId ?? await currentThread(get)
     if (!id) {
       id = await get().newThread()
-      if (!id) return
+      if (!id) return false
     }
-    const running = get().status.running
     try {
+      const running = id === get().activeId ? get().status.running : (await api.thread(id)).status.running
       const updated = await api.patchThread(id, { goal: text })
       set((s) => ({
         threads: s.threads.map((t) => (t.id === id ? { ...t, ...updated } : t)),
@@ -707,9 +730,11 @@ export const useApp = create<AppState>((set, get) => ({
       // pin that waits for another Enter. A live turn is steered by the
       // engine; starting a second one here would 409 or queue the objective.
       const objective = updated.goal?.trim() || text.trim()
-      if (objective && !running) await get().send(objective)
+      if (objective && !running) return await get().send(objective, undefined, { threadId: id })
+      return true
     } catch (e) {
       set({ error: message(e) })
+      return false
     }
   },
 
@@ -798,8 +823,9 @@ export const useApp = create<AppState>((set, get) => ({
     }
   },
 
-  upload: async (files) => {
-    let id = await currentThread(get)
+  upload: async (files, threadId) => {
+    const target = threadId ?? (creating ? undefined : get().activeId)
+    let id = target ?? await currentThread(get)
     if (!id) {
       id = await get().newThread()
       if (!id) return []

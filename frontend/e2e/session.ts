@@ -7,6 +7,7 @@ export async function freshConversation(page: Page) {
   await page.getByTestId("dest-chats").click()
   await page.getByRole("button", { name: "New conversation", exact: true }).click()
   await expect(composer(page)).toBeVisible()
+  await expect(composer(page)).toBeEnabled()
 }
 
 /** Reload lands on the home page with nothing selected. Tests that still

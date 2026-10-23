@@ -38,6 +38,8 @@ func dispatch(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "desktop":
 		err = runDesktop(args[1:])
+	case "desktop-attach":
+		err = runDesktopAttach(args[1:])
 	case "web":
 		err = runWeb(args[1:])
 	case "tui":

@@ -483,6 +483,214 @@ workspace bytes, draft/Send checks, visible-result requirements and PNG pixel
 completeness. Offline checks and helper compilation do not prove guest
 Accessibility access or native rendering.
 
+## Desktop renderer resilience (F-115 / C-034)
+
+Incident evidence and the upstream-cause uncertainty are recorded in
+[the white-screen investigation](diagnostics/desktop-white-screen-20261022.md).
+`internal/desktop/recovery*_test.go` exercises the actual controller with injected
+clock/probe/snapshot effects, including stale challenges, blank pixels, source
+origin, inactivity, sleep-sized tick gaps, retry exhaustion and cancellation.
+`cmd/zwai/desktop_recovery_test.go` uses real child processes and private pipes
+to regress readiness/commit ownership and exact-child cleanup. Cache tests keep
+an executable alive while preparing its immutable bundle again.
+`desktop_recovery_entry_test.go` also exercises real inherited descriptors and
+the OS-path preparation errors without opening a host window. Reporter tests
+hold an actual HTTP request, close a full bounded queue with concurrent late
+producers, and require cancellation plus local draining before return. The
+original shutdown-delay failure and corrected repeated race runs are retained.
+
+`internal/store/composer_draft_test.go` and the HTTP tests in
+`internal/server/composer_draft*_test.go` verify original bytes and decoded image
+dimensions after reload, CAS conflicts/tombstones, owner deletion, upload failure
+and transactional rollback. Missing, truncated or extended stored blobs reject
+later metadata saves without a new revision or partial new files; zero-byte
+attachments remain valid. `internal/engine/desktop_recovery_test.go` checks
+durable/live Trace ordering without model calls or changing task state. Run:
+
+```bash
+go test -race -count=1 -timeout 20m ./...
+cd frontend && npm run lint && npm test && npm run build
+```
+
+`frontend/e2e/composer-draft.spec.ts` drives text, quotes, real File/JPEG bytes,
+page reload, per-conversation drafts, first-send migration, navigation while
+uploading, rejected/lost send acknowledgment and failed queue edits. Each browser
+run needs separate port/data/output paths. Keep the first failed run and its
+cause; corrected selectors or teardown do not erase that evidence.
+
+`frontend/src/lib/transcript-recovery.ts` retains recovery diagnostics separately
+from conversation blocks. Reducer and Trace UI tests require original event
+identity, deduplication/rewind, no invented worker or state transition, and no raw
+diagnostic JSON in the main transcript. The Trace Full log renders that evidence.
+Conversation-creation tests also hold the real create request: the old composer
+is disabled until the new scope opens, preserving the old scope's draft.
+
+`tools/native_macos_resilience_worker.py` is a keyless loopback fixture for the
+native campaign. Explicit model identities select its scenarios; user wording
+does not. A real worker calls exec, the fixture checks the actual file side
+effect, and its next HTTP stream stays open with heartbeats until a driver
+handshake. Per-kind requests, the actual spawn receipt, cancellation and release
+are retained separately from engine Trace. A fixture request is not proof of a
+worker identity or task completion: the campaign must independently compare the
+engine's turn/worker events before and after recovery. Unit tests use real HTTP.
+The identified development baseline retained both workers through native
+Quit/reopen, as recorded in the investigation; formal-installer integration
+remains pending until observed for its exact package.
+The pinned compact provider uses the checkpoint fixture; rolling session memory
+still calls the thread's model, so the fixture separately recognizes that fixed
+tool-free System/User protocol without consuming another worker request. A real
+headless engine test forced a briefing and persisted automatic compaction while
+the original worker kept its second HTTP stream; release completed the same
+worker with one spawn. This is adapter evidence, not native acceptance.
+Multimodal manager messages read the fixed scheduled-check wrapper from text
+parts only; image parts cannot select that protocol. Real HTTP regressions cover
+both ordinary and scheduled multimodal input without a second spawn.
+
+The final Issue #94 combined-source browser run passed 164 default cases (15
+existing opt-in skips), plus ten related opt-in cases: interrupted generations,
+live/parked worker ownership, roster replay, watchdog limits, model-API error/Trace
+and goal/schedule completion. Frontend unit tests passed 2,127 cases; phone
+compatibility tests passed 700 cases without changing phone production code. The five
+unrelated opt-in cases were not run and are not counted as passed. The extra
+goal fixture initially treated the tool-free wake-policy classifier request as
+a manager call, returning a tool call instead of policy JSON; its fixed system
+protocol handling was regressed separately. Earlier create-scope business
+failures and synthetic-paste readiness errors retain their original evidence in
+`/tmp/issue94-frontend-evidence/`; the final helper waits for an enabled composer.
+These browser checks are separate from native installer acceptance.
+The first final unit run encountered worker-RPC timeouts while other worktrees
+also ran Vitest; it had no failed business assertion. Its missing file passed
+all 24 tests in isolation, and a fresh full run with four workers passed all
+210 files without unhandled errors. Keep the original failure and limit this
+run's concurrency rather than changing assertions or timeouts.
+
+`composer-draft-cache.test.ts` covers idle saved-session eviction, preview URL
+release, durable reload and explicit ownership across pending save, conflict,
+migration and send acknowledgement. The browser regression verifies actual URL
+revocation and renewed byte downloads with a decodable image. Recovery streaming
+also needs the actual named EventSource listener: the live E2E posts a persisted
+diagnostic while blocking history/Trace reads, so a cold reload cannot hide a
+missing subscription. `internal/remote/desktop_recovery_test.go` and
+`mobile/src/lib/session-desktop-recovery.test.ts` keep those metadata frames from
+changing phone work state or trapping Earlier on an invisible history page.
+
+Formal native acceptance uses `tools/native_macos_resilience.py` inside ci-macOS
+and the unchanged versioned ZIP from the clean pushed source:
+
+```bash
+python3 tools/native_macos_resilience.py launch \
+  --zip /absolute/zwai-X.Y.Z-darwin-arm64.zip --source FULL_40_CHARACTER_SHA \
+  --evidence /absolute/new-campaign --soak-seconds 64800 --sleep-cycles 3 \
+  --interval 60 --stage-timeout 180 \
+  --phases baseline renderer gpu exhaustion sleepwake soak
+python3 tools/native_macos_resilience.py status --evidence /absolute/new-campaign
+```
+
+The driver supports baseline, renderer stall, GPU stall, exhaustion, sleep/wake
+and an 18-hour soak. `selection_complete` and an exit status of zero mean only the
+selected stages passed; overall `passed` requires real evidence for all six.
+Selection and the full plan are immutable within one evidence directory;
+removing pending stages cannot produce acceptance. Exhaustion's case budget is
+at least 360 seconds. Each stage runs via
+`native_macos_case.py` and cannot advance without complete cleanup. The driver
+checks ZIP/plist/API version and clean embedded Git revision; a claimed or unknown
+stage is not passed and cannot be blindly repeated. Use the driver's detached
+launch/cancel commands for a campaign longer than its control-channel lifetime;
+retain campaign PID/birth identity and wait for cancellation cleanup.
+The frozen manifest includes the package, source, executable, runner, native
+helper and all scenario-module hashes. Stages recheck these inputs and their
+whole-case budgets, including cleanup; a zero scenario exit with an exceeded
+budget or missing cleanup receipt is not accepted. The long soak explicitly
+receives a longer budget rather than extending the runner's one-minute default.
+
+`test_native_macos_fault_cleanup.py` also kills a real private scenario child
+after it records and stops its private target. The runner must resume that exact
+PID/birth/executable, stop the case, verify the target exited and retain the
+scenario's failed exit status. Recovery runs before and after owned-process
+shutdown, including permission-only receipts. Missing confirmation or a corrupt
+receipt retains private data and the refusal latch. This host-side child test
+does not signal WebKit or accept a native fault stage. Read-only private Go module
+cache directories are made removable without following links into other caches.
+Lifecycle adapter regressions pass the actual main harness into both
+`background.prepare` and `background.stop_awake`; a fake adapter had hidden the
+missing identity-checked termination function. Private app/engine teardown and
+the display assertion have different ownership boundaries: discovered app/engine
+processes require the private case marker, path and fresh birth identity; the
+display assertion is an unreaped `Popen` child and requires that held child plus
+a fresh public birth/executable match before `terminate`/`wait`. Both use only
+`SIGTERM`. A real guest observation returned no readable case marker for
+`caffeinate`; that does not establish whether its environment was inherited.
+Attachment setup waits for the same case/PID's actual AX sheet/dialog before
+issuing one file-selection action.
+
+Verify native control in its actual guest responsibility chain. In the Issue 94
+recovery, pinned SSH worked but the helper launched through SSH lacked guest
+Accessibility access; the same helper launched through the existing guest
+Terminal session could observe and operate the private window. The isolated
+Terminal bootstrap used the shared native-case lock and changed no TCC policy.
+SSH success alone does not establish native UI control, and host lock state does
+not determine guest availability.
+
+All stages use the unchanged installer. `native_macos_resilience_fault.py` admits
+a renderer/GPU stall only after fresh before-Quit, after-Quit, before-reopen and
+after-reopen observations: the complete WebKit cohort must disappear, then one
+new signed system cohort must appear with this private shell. Additional name
+variants and incomplete process observations refuse admission. Public PID/birth,
+executable and signature checks bind each target; the bounded stall records its
+identity durably before stopping it and resumes only that identity. These
+lifecycle observations support case attribution, not proof of every possible
+IPC relationship. They do not reproduce the host's exact vendor defect.
+
+The exhaustion stage removes execute permission only from this ready session's
+unused private recovery copy, then stalls its attributed renderer. It requires
+two actual permission-denied launch failures, the native exhausted dialog and
+no third attempt during a further fifteen-second observation. It restores the
+copy's mode and never modifies/re-signs the installer or a live executable.
+This accepts bounded failure handling; it is not three successful native
+replacement generations followed by a fourth stall. Cross-generation retry
+accounting has separate controller/real-child tests.
+
+`native_macos_resilience_phases.py` verifies the actual new ready event, parent
+commit receipt and old-shell exit within the replacement deadline. Offline
+acceptance rechecks the raw journal's session, engine, generation and attempt
+order against those receipts. The unexecuted experimental private-API/dynamic
+probe has been removed. A safety/signature/control failure leaves the stage
+pending; do not bypass that check, re-sign the release or weaken runtime protections. Verify the
+actual restored native pixels/actions, text/quotes and original file/image bytes,
+the same engine PID and task/worker identities, no duplicate send, finite retry
+behavior and the visible exhausted error. Real sleep/wake requires actual power
+transition evidence, not only a posted application event or a successful `pmset`
+command. A successful process launch, helper compile or headless suite cannot
+substitute for these observations. Current formal native result: **pending**.
+The baseline uses a real native Quit, verifies no shell revival, then reopens the
+same package and selects the original conversation through native controls.
+Running and parked workers retain their original engine/turn/worker identities
+and must produce their actual completion/collection receipts. A binary file uses
+the native file picker; a PNG uses native clipboard paste. Reloaded original
+bytes and the decoded 3-by-2 image dimensions are checked independently of the
+visible attachment chips.
+The guest may lock independently of the host. During this incident, guest AX
+reported no secure input field, while the user's subsequently authorized direct
+UTM control could wake the existing guest window and complete its normal login.
+Record the current guest state and actual input attempt; a failed individual
+channel does not prove all guest input unavailable. This login recovery is not
+application acceptance. Baseline and soak hold a finite, case-owned display/idle
+assertion; sleep/wake releases it before actual sleep and restores it afterward.
+Cleanup must also reap that exact assertion process without changing the guest's
+lock-screen security policy.
+
+`native_macos_resilience_soak.py` persists an initial identity, fsynced per-tick
+results and a final summary. Each tick checks the original engine and running/
+parked workers, edits the native composer, waits for the complete saved snapshot,
+then restores and independently reads the original text/quotes/file hashes.
+Editing, saving and restoration share one action deadline; immediate UI input
+does not imply the debounced durable save has finished. Both wall and monotonic
+clocks must remain ordered and within `interval + stage-timeout` between ticks;
+a tick itself must finish within the action timeout. The interval cannot exceed
+that timeout. Independent acceptance requires at least eighteen hours between
+the first and last successful real ticks, checks every gap, and hashes the tick
+ledger. A long wall-clock gap, missing ticks or an elapsed summary alone fails.
+
 ## Local startup readiness (F-110 / C-001 / C-027)
 
 `cmd/zwai/engine_frontend_test.go` injects preparation failure and actual

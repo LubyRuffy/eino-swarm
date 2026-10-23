@@ -58,13 +58,17 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
     expect(started.status()).toBe(202)
     const { turn } = await started.json()
     const transcript = page.getByTestId("transcript")
+    // Generation notices now retain each attempt's cause too. Select the
+    // terminal error bubble rather than one of those diagnostic details.
+    const terminalError = transcript.locator("p.stream-text").and(transcript.getByText(responseCase.error, { exact: true }))
     const backoffNotices = [5, 10].map((seconds) => `Waiting ${seconds}s before retrying the model request.`)
     if (responseCase.status === 502) {
       await expect(transcript.getByText(backoffNotices[0], { exact: true })).toBeVisible()
       await expect(transcript).not.toContainText('"wait_ms"')
     }
     await waitForIdle(page)
-    await expect(transcript.getByText(responseCase.error, { exact: true })).toBeVisible()
+    await expect(terminalError).toHaveText(responseCase.error)
+    await expect(terminalError).toBeVisible()
     await expect(transcript).not.toContainText("a tool call was not valid JSON")
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0)
     await page.screenshot({ path: info.outputPath("api-error-chat.png"), animations: "disabled" })
@@ -124,7 +128,8 @@ test(`${responseCase.name} stays visible in Chat and the same turn Trace after r
 
     await reloadOpenConversation(page)
     await waitForIdle(page)
-    await expect(transcript.getByText(responseCase.error, { exact: true })).toBeVisible()
+    await expect(terminalError).toHaveText(responseCase.error)
+    await expect(terminalError).toBeVisible()
     await page.getByRole("tab", { name: "Trace", exact: true }).click()
     await expect(page.getByRole("tabpanel").getByText(turn.id, { exact: true })).toBeVisible()
     await expect(page.getByTestId("trace-error")).toHaveText(responseCase.error)

@@ -4,13 +4,17 @@ package desktop
 
 import (
 	"bytes"
+	"fmt"
 	"image/color"
 	"image/png"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestAlreadyBundledLooksAtTheMacOSPath(t *testing.T) {
@@ -143,9 +147,196 @@ func TestPrepareBundleWritesUnderCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := filepath.Join(dir, "zwai", "zwai.app", "Contents", "MacOS", macBundleName)
-	if got != want {
-		t.Fatalf("dest %q want %q", got, want)
+	want := filepath.Join(dir, "zwai", "bundles") + string(filepath.Separator)
+	if !strings.HasPrefix(got, want) || !strings.HasSuffix(got, filepath.Join("zwai.app", "Contents", "MacOS", macBundleName)) {
+		t.Fatalf("dest %q is not an immutable cache bundle under %q", got, want)
+	}
+}
+
+func TestPreparingAnExecutingBundleNeverRewritesOrResignsIt(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "source")
+	if err := os.WriteFile(src, []byte("#!/bin/sh\nprintf 'ready\\n'\nread input\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	path, err := prepareBundle(src, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bytesBefore, _ := os.ReadFile(path)
+	command := exec.Command(path)
+	stdout, _ := command.StdoutPipe()
+	stdin, _ := command.StdinPipe()
+	if err := command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stdin.Close(); _ = command.Wait() }()
+	ready := make([]byte, 6)
+	if _, err := io.ReadFull(stdout, ready); err != nil || string(ready) != "ready\n" {
+		t.Fatalf("bundle child not running: %q %v", ready, err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	again, err := prepareBundle(src, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, _ := os.Stat(path)
+	bytesAfter, _ := os.ReadFile(path)
+	if again != path || !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) || !bytes.Equal(bytesBefore, bytesAfter) {
+		t.Fatal("preparing the same source mutated a live bundle")
+	}
+}
+
+func TestDifferentExecutablesAndConcurrentPreparationHaveIndependentImmutableBundles(t *testing.T) {
+	dir := t.TempDir()
+	first, second := filepath.Join(dir, "one"), filepath.Join(dir, "two")
+	_ = os.WriteFile(first, []byte("first"), 0755)
+	_ = os.WriteFile(second, []byte("second"), 0755)
+	var group sync.WaitGroup
+	paths := make(chan string, 8)
+	failures := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		group.Add(1)
+		go func() { defer group.Done(); path, err := prepareBundle(first, dir); paths <- path; failures <- err }()
+	}
+	group.Wait()
+	close(paths)
+	close(failures)
+	for err := range failures {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var same string
+	for path := range paths {
+		if same != "" && same != path {
+			t.Fatal("same source created competing bundles")
+		}
+		same = path
+	}
+	other, err := prepareBundle(second, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if same == other {
+		t.Fatal("a different executable replaced the first bundle")
+	}
+	if body, _ := os.ReadFile(same); string(body) != "first" {
+		t.Fatal("another preparation overwrote the old executable")
+	}
+}
+
+func TestFailedBundlePreparationNeverPublishesAReceiptOrLeavesTemporaryState(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "source")
+	_ = os.WriteFile(src, []byte("fixture"), 0755)
+	previous := writeCacheBundle
+	writeCacheBundle = func(_, path, _ string) error {
+		_ = os.MkdirAll(path, 0755)
+		return fmt.Errorf("fixture interrupted packaging")
+	}
+	defer func() { writeCacheBundle = previous }()
+	if _, err := prepareBundle(src, dir); err == nil {
+		t.Fatal("failed packaging published a bundle")
+	}
+	entries, err := os.ReadDir(filepath.Join(dir, "zwai", "bundles"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".lock") {
+			t.Fatalf("partial bundle survived: %s", entry.Name())
+		}
+	}
+}
+
+func TestImmutableBundleRejectsIncompleteOrChangedCacheWithoutRepairingIt(t *testing.T) {
+	for _, damage := range []string{"not_directory", "receipt_missing", "receipt_invalid", "source_mismatch", "executable_missing", "executable_changed"} {
+		t.Run(damage, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "source")
+			_ = os.WriteFile(src, []byte("immutable executable"), 0755)
+			path, err := prepareBundle(src, dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			final := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(path))))
+			source, _ := bundleFileHash(src)
+			switch damage {
+			case "not_directory":
+				_ = os.RemoveAll(final)
+				_ = os.WriteFile(final, []byte("blocked"), 0600)
+			case "receipt_missing":
+				_ = os.Remove(filepath.Join(final, "complete.json"))
+			case "receipt_invalid":
+				_ = os.WriteFile(filepath.Join(final, "complete.json"), []byte("{"), 0600)
+			case "source_mismatch":
+				source = "different"
+			case "executable_missing":
+				_ = os.Remove(path)
+			case "executable_changed":
+				_ = os.WriteFile(path, []byte("different executable"), 0755)
+			}
+			if _, err := verifyCachedBundle(final, source); err == nil {
+				t.Fatal("invalid immutable bundle was accepted")
+			}
+		})
+	}
+}
+
+func TestImmutableBundleReportsBlockedPathsAndChangedSourceBeforePublication(t *testing.T) {
+	for _, failure := range []string{"blocked_root", "blocked_lock", "source_removed", "source_changed", "files_missing", "receipt_blocked", "publish_conflict"} {
+		t.Run(failure, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "source")
+			_ = os.WriteFile(src, []byte("fixture"), 0755)
+			source, _ := bundleFileHash(src)
+			root := filepath.Join(dir, "zwai", "bundles")
+			if failure == "blocked_root" {
+				_ = os.WriteFile(filepath.Join(dir, "zwai"), []byte("blocked"), 0600)
+			}
+			if failure == "blocked_lock" {
+				_ = os.MkdirAll(filepath.Join(root, source+".lock"), 0700)
+			}
+			previous := writeCacheBundle
+			defer func() { writeCacheBundle = previous }()
+			if failure != "blocked_root" && failure != "blocked_lock" {
+				writeCacheBundle = func(executable, app, version string) error {
+					if failure == "files_missing" {
+						return nil
+					}
+					if err := writeAppBundle(executable, app, version); err != nil {
+						return err
+					}
+					switch failure {
+					case "source_removed":
+						return os.Remove(executable)
+					case "source_changed":
+						return os.WriteFile(executable, []byte("changed"), 0755)
+					case "receipt_blocked":
+						return os.Mkdir(filepath.Join(filepath.Dir(app), "complete.json"), 0700)
+					case "publish_conflict":
+						return os.MkdirAll(filepath.Join(root, source, "occupied"), 0700)
+					}
+					return nil
+				}
+			}
+			if _, err := prepareBundle(src, dir); err == nil {
+				t.Fatalf("preparation hid %s", failure)
+			}
+		})
+	}
+	if _, err := bundleFileHash(t.TempDir()); err == nil {
+		t.Fatal("directory accepted as executable")
+	}
+	file := filepath.Join(t.TempDir(), "unreadable")
+	_ = os.WriteFile(file, []byte("no access"), 0000)
+	if _, err := bundleFileHash(file); err == nil {
+		t.Fatal("unreadable executable accepted")
 	}
 }
 

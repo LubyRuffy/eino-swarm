@@ -17,6 +17,7 @@ import platform
 import plistlib
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 import time
@@ -279,6 +280,41 @@ def finish_receipt(evidence, receipt, started, code):
     return code
 
 
+def remove_case_tree(root):
+    # Go's module cache intentionally uses read-only directories. The whole
+    # case is disposable, but links into another cache never grant ownership.
+    def writable(directory):
+        mode = os.lstat(directory).st_mode
+        if not stat.S_ISDIR(mode):
+            raise RuntimeError("private case directory identity changed")
+        os.chmod(directory, stat.S_IMODE(mode) | 0o700, follow_symlinks=False)
+    writable(root)
+    def fail(error):
+        raise error
+    for directory, children, _ in os.walk(root, followlinks=False, onerror=fail):
+        for child in children:
+            path = Path(directory) / child
+            if stat.S_ISDIR(os.lstat(path).st_mode):
+                writable(path)
+    shutil.rmtree(root)
+
+
+def recover_renderer_faults(evidence, receipt, bundle, *, require_exit=False):
+    if not any(os.path.lexists(evidence / name) for name in
+               ("renderer-fault-targets.jsonl", "renderer-fault-copies.jsonl")):
+        return True
+    try:
+        from native_macos_resilience_fault import cleanup_case
+        result = cleanup_case(evidence, receipt["case_id"], bundle, require_exit=require_exit)
+        if not isinstance(result, dict) or result.get("complete") is not True:
+            raise RuntimeError("renderer fault cleanup was not confirmed")
+        receipt.setdefault("renderer_fault_cleanup", []).append(result)
+        return True
+    except Exception as error:
+        receipt["renderer_fault_cleanup_error"] = str(error)
+        return False
+
+
 def run_case(app, evidence, timeout, command, *, budget=60):
     started = time.monotonic()
     evidence = evidence.absolute()
@@ -372,13 +408,17 @@ def run_case(app, evidence, timeout, command, *, budget=60):
                     handlers = {sig: signal.signal(sig, signal.SIG_IGN) for sig in (signal.SIGINT, signal.SIGTERM)}
                     try:
                         try:
-                            remaining = stop_owned(bundle, data, processes, scope=scope)
+                            before_faults = recover_renderer_faults(evidence, receipt, bundle)
+                            try:
+                                remaining = stop_owned(bundle, data, processes, scope=scope)
+                            finally:
+                                after_faults = recover_renderer_faults(evidence, receipt, bundle, require_exit=True)
                             receipt["remaining_owned_pids"] = remaining
-                            if not remaining:
+                            if not remaining and before_faults and after_faults:
                                 engine_log = data / "engine.log"
                                 if engine_log.is_file() and not engine_log.is_symlink():
                                     shutil.copyfile(engine_log, evidence / "engine.log")
-                                shutil.rmtree(root)
+                                remove_case_tree(root)
                                 receipt["data_removed"] = True
                                 receipt["cleanup_complete"] = True
                             else:
