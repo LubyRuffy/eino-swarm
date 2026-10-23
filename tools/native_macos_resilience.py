@@ -689,21 +689,85 @@ def collect_draft(context, timeout):
     if native(context, "choose-file", str(binary)).get("chosen") is not True:
         raise RuntimeError("native file selection was not confirmed")
     wait_for(lambda: any(item["sha256"] == sha256(binary) for item in draft_snapshot(context)["files"]), Deadline(timeout))
-    atomic_json(context["evidence"] / "draft-file-selection.json", draft_snapshot(context))
-    native(context, "paste-file", str(image))
-    expected = {sha256(binary): "file", sha256(image): "image"}
+    selected = draft_snapshot(context)
+    atomic_json(context["evidence"] / "draft-file-selection.json", selected)
+    def text_identity(value):
+        if not isinstance(value, str):
+            return dict(type=type(value).__name__)
+        return dict(length=len(value),
+                    sha256=hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest())
+    def api_observation(row):
+        files = [dict(kind=item.get("kind"), mime=str(item.get("mime", ""))[:128], size=item.get("size"),
+                      sha256=item.get("sha256")) for item in row["files"][:2]]
+        return dict(text=text_identity(row["text"]), state=row["state"], file_count=len(row["files"]),
+                    quote_count=len(row.get("quotes", [])), files=files)
+    def native_observation(row):
+        values = row.get("values", [])
+        return dict(case_id=row.get("case_id"), pid=row.get("pid"), value_count=len(values),
+                    values=[text_identity(value) for value in values[:2]], pasted=row.get("pasted"),
+                    saved_label=any(label in row.get("text", "") for label in ("Draft saved", "草稿已保存")))
+    observation = dict(case_id=context["case_id"], stage="paste", api=api_observation(selected), native=None,
+                       api_refreshed=False, native_for_api=False, predicates={})
+    pasted = None
     def saved():
-        row = draft_snapshot(context)
-        if (row["text"] != text or row["state"] != "editing" or len(row["files"]) != 2
-                or {item["sha256"]: item["kind"] for item in row["files"]} != expected):
-            return None
-        if native(context).get("values") != [text]:
-            return None
-        return row
-    row = wait_for(saved, Deadline(timeout))
-    # Metadata alone is insufficient; the UI must also acknowledge the durable
-    # save before the rendering process is interrupted.
-    wait_for(lambda: any(label in native(context).get("text", "") for label in ("Draft saved", "草稿已保存")), Deadline(timeout))
+        observation.update(stage="saved", api_refreshed=False, native_for_api=False)
+        try:
+            row = draft_snapshot(context)
+            observation.update(api=api_observation(row), api_refreshed=True)
+            checks = dict(text=row["text"] == text, state=row["state"] == "editing",
+                          file_count=len(row["files"]) == 2,
+                          file_hash_kinds={item["sha256"]: item["kind"] for item in row["files"]} == expected,
+                          native_values=None, saved_acknowledged=None)
+            observation["predicates"] = checks
+            observation.pop("observation_error", None)
+            if not all(checks[name] for name in ("text", "state", "file_count", "file_hash_kinds")):
+                return None
+            actual = native(context)
+            observation.update(native=native_observation(actual), native_for_api=True)
+            checks["native_values"] = actual.get("values") == [text]
+            return row if checks["native_values"] else None
+        except Exception as error:
+            observation["observation_error"] = dict(type=type(error).__name__)
+            raise
+    def acknowledged():
+        observation["stage"] = "acknowledgement"
+        try:
+            actual = native(context)
+            observation.update(native=native_observation(actual), native_for_api=True)
+            observation.pop("observation_error", None)
+            matched = any(label in actual.get("text", "") for label in ("Draft saved", "草稿已保存"))
+            observation["predicates"]["saved_acknowledged"] = matched
+            return matched
+        except Exception as error:
+            observation["observation_error"] = dict(type=type(error).__name__)
+            raise
+    def flush():
+        if pasted is not None:
+            atomic_json(context["evidence"] / "draft-image-paste.json", pasted)
+        atomic_json(context["evidence"] / "draft-collection-last.json", observation)
+    try:
+        pasted = native_observation(native(context, "paste-file", str(image)))
+        expected = {sha256(binary): "file", sha256(image): "image"}
+        observation["expected_hash_kinds"] = expected
+        row = wait_for(saved, Deadline(timeout))
+        # Retain existing reads in memory and flush after the check exits;
+        # add no native input/reads, polling I/O or sleeps.
+        wait_for(acknowledged, Deadline(timeout))
+    except BaseException as error:
+        observation["error"] = dict(type=type(error).__name__, stage=observation["stage"])
+        try:
+            flush()
+        except OSError as write_error:
+            try:
+                print("WARN draft_collection_evidence_write_failed " + json.dumps(dict(case_id=context["case_id"],
+                      stage=observation["stage"], error_type=type(write_error).__name__)), file=sys.stderr)
+            except OSError:
+                pass
+        raise
+    try:
+        flush()
+    except OSError as write_error:
+        raise RuntimeError("native draft collection evidence could not be retained") from write_error
     atomic_json(context["evidence"] / "draft-before.json", row)
     return row
 

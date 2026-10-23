@@ -81,6 +81,8 @@ export interface Block {
   agentId: string
   role?: string
   text: string
+  /** Source goal event for chat projection; the original receipt stays in Trace. */
+  goalNoticeKind?: "goal_resumed" | "goal_continued"
   /** One model output can span several manager turns and durable checkpoints. */
   messageId?: string
   /** Still being streamed. Complete blocks stop showing a cursor and can be
@@ -371,7 +373,7 @@ export function reduceEvent(
     // "Done" roster until the next session timed out.
     const manager = touchAgent(next, MANAGER_ID)
     manager.status = "running"
-    append(manager, block(ev, "notice", ev.text?.trim() || "Continuing the standing objective."))
+    append(manager, { ...block(ev, "notice", ev.text?.trim() || "Continuing the standing objective."), goalNoticeKind: ev.kind })
     return next
   }
   if (ev.kind === "goal_capped") {
@@ -403,7 +405,7 @@ export function reduceEvent(
     upsertTurn(next, ev.turn_id, { status: "running", startedAt: ev.created_at })
     const manager = touchAgent(next, MANAGER_ID)
     manager.status = "running"
-    append(manager, block(ev, "notice", ev.text?.trim() || "Resuming the standing objective."))
+    append(manager, { ...block(ev, "notice", ev.text?.trim() || "Resuming the standing objective."), goalNoticeKind: ev.kind })
     return next
   }
   if (ev.kind === "goal_session") {
