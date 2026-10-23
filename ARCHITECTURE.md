@@ -375,7 +375,12 @@ worker before closing SQLite.
    extra). Manager `agent_message` events are stored as assistant rows as they
    land, and replay also folds any that only exist on the event log — a
    force-quit used to leave the UI with answers the next model call could not
-   see. It then resolves the
+   see. Message reconstruction and missing-answer recovery share the filtered
+   Store reads; tool-message bodies and unrelated event kinds
+   are not loaded. Opening a PC conversation starts its tail page alongside
+   detail/usage reads, paints that page immediately and merges later metadata
+   without replacing a newer transcript. The detail's rune compact hint still
+   uses this same replay as the next model turn. It then resolves the
    conversation's model (`threads.model`, empty = that provider's default; the
    composer lists every catalog name of endpoints still switched on, grouped
    by provider — `enabled: false` stays out of that list and out of the paired

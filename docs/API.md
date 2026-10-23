@@ -1159,6 +1159,23 @@ call count). A new conversation is all zeros. `context_chars` /
 `context_budget` on the thread object, when present, are the rune compact hint
 and are not these token counts.
 
+`GET /api/threads/:id` still computes `context_chars` when a conversation is
+opened. It uses the same `replayHistory` path as the next model turn: the rune
+counts of the trimmed goal and compact summary, plus each retained replay
+user/assistant message's `Content` after the active compact watermark. Retracted
+steering is excluded and missing manager answers from stored `agent_message` events are
+included. Previous tool calls/results are excluded; this value is independent
+of `usage.context_tokens`. Replay queries filter out tool-message bodies and
+unrelated event kinds before reading them. No response fields have changed.
+
+The PC opens the existing tail-log request in parallel with this detail
+request. A successful tail page removes the transcript skeleton immediately;
+context usage, status, turns and follow-ups merge as their requests finish.
+Switching conversations or rewinding invalidates obsolete responses, and late
+metadata cannot replace a newer transcript or mark another conversation running.
+When the tail contains only tool activity, the existing visible-history paging
+continues with the same page limits and event ordering.
+
 ### `PATCH /api/threads/:id`
 
 Body may contain `title`, `provider_id`, `model`, `reasoning_effort`, `archived`,

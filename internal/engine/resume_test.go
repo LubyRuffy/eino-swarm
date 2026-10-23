@@ -741,10 +741,10 @@ func TestReplayHistoryDoesNotUncompactFoldedAnswers(t *testing.T) {
 	}
 }
 
-func TestAppendMissingEventAnswersReportsAClosedStore(t *testing.T) {
+func TestReplayHistoryReportsAClosedStore(t *testing.T) {
 	e := newTestEngine(t)
 	_ = e.Store().Close()
-	_, err := e.appendMissingEventAnswers("th_x", map[string]struct{}{"tn": {}}, map[string]struct{}{}, nil)
+	_, err := e.replayHistory("th_x")
 	if err == nil {
 		t.Fatal("a closed database must surface")
 	}

@@ -113,9 +113,12 @@ func (s *Store) IndexThread(id string) error {
 	if err != nil {
 		return err
 	}
-	msgs, err := s.ListMessages(id)
-	if err != nil {
-		return err
+	// A repaired replay answer reindexes synchronously while opening history.
+	// Apply the existing indexableRole rule before decoding tool payloads.
+	var msgs []Message
+	if err := s.db.Table("messages INDEXED BY idx_msg_thread_role_seq").Select("role", "content").Where("thread_id = ? AND lower(trim(role, ?)) IN ?",
+		id, replayWhitespace, []string{"user", "assistant"}).Order("seq asc").Find(&msgs).Error; err != nil {
+		return fmt.Errorf("store: list search messages: %w", err)
 	}
 	doc := searchDoc{
 		ThreadID: id,

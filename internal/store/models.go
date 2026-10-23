@@ -124,15 +124,15 @@ type Thread struct {
 	LastActiveAt time.Time `gorm:"index" json:"last_active_at"`
 }
 
-// Message is one entry of the conversation as the model sees it. This is the
-// record replayed into the next turn, which is why tool calls and tool results
-// are kept verbatim rather than summarized.
+// Message is one durable entry of the model transcript. Tool calls/results stay
+// verbatim for same-turn recovery; later-turn replay loads user/assistant text
+// and images, without previous tool calls or results.
 type Message struct {
 	ID         uint   `gorm:"primaryKey" json:"id"`
-	ThreadID   string `gorm:"index:idx_msg_thread_seq;size:64" json:"thread_id"`
+	ThreadID   string `gorm:"index:idx_msg_thread_seq;index:idx_msg_thread_role_seq,priority:1;size:64" json:"thread_id"`
 	TurnID     string `gorm:"index;size:64" json:"turn_id"`
-	Seq        int64  `gorm:"index:idx_msg_thread_seq" json:"seq"`
-	Role       string `gorm:"size:32" json:"role"`
+	Seq        int64  `gorm:"index:idx_msg_thread_seq;index:idx_msg_thread_role_seq,priority:3" json:"seq"`
+	Role       string `gorm:"index:idx_msg_thread_role_seq,priority:2;size:32" json:"role"`
 	AgentID    string `gorm:"size:64" json:"agent_id"`
 	Content    string `json:"content"`
 	Reasoning  string `json:"reasoning,omitempty"`
@@ -200,10 +200,10 @@ type Event struct {
 	SourceThreadID     string     `gorm:"size:64" json:"source_thread_id,omitempty"`
 	SourceTurnID       string     `gorm:"size:64" json:"source_turn_id,omitempty"`
 	ID                 uint       `gorm:"primaryKey" json:"-"`
-	ThreadID           string     `gorm:"index:idx_evt_thread_seq;size:64" json:"thread_id"`
+	ThreadID           string     `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:1;size:64" json:"thread_id"`
 	TurnID             string     `gorm:"index;size:64" json:"turn_id"`
-	Seq                int64      `gorm:"index:idx_evt_thread_seq" json:"seq"`
-	Kind               string     `gorm:"size:32" json:"kind"`
+	Seq                int64      `gorm:"index:idx_evt_thread_seq;index:idx_evt_thread_kind_seq,priority:3" json:"seq"`
+	Kind               string     `gorm:"index:idx_evt_thread_kind_seq,priority:2;size:32" json:"kind"`
 	AgentID            string     `gorm:"size:64" json:"agent_id"`
 	Role               string     `gorm:"size:64" json:"role,omitempty"`
 	Text               string     `json:"text"`

@@ -11,8 +11,7 @@ import {
 } from "@/lib/appearance"
 import { ApiError, api } from "@/lib/api"
 import { closeClient } from "@/lib/client-open"
-import { deskDest, listDestForThread, setDeskDest } from "@/lib/desk-nav"
-import { LIBRARY_ID } from "@/lib/library"
+import { listDestForThread, setDeskDest } from "@/lib/desk-nav"
 import { desktopShell, startPresence } from "@/lib/shell"
 import {
   applyLocale,
@@ -22,12 +21,9 @@ import {
   type LocalePref,
 } from "@/lib/i18n"
 import type { SendImage } from "@/lib/paste-image"
-import { subscribeEvents } from "@/lib/stream"
 import {
   setThreadRunning,
-  upsertThread,
 } from "@/lib/thread-title"
-import { logPageSize, type ThreadLog } from "@/lib/thread-log"
 import {
   emptyTranscript,
   MANAGER_ID,
@@ -53,30 +49,27 @@ import { planAskActions } from "./app-plan"
 import { followupActions } from "./app-followup"
 import { scheduleActions, type ScheduleSlice } from "./app-schedule"
 import { steerInjectActions } from "./app-steer"
-import { dropQueued, queueEvent, withRunningClock } from "./app-stream"
+import { dropQueued, withRunningClock } from "./app-stream"
+import { loadOpenedThread } from "./app-open"
 import { applyThreadListing } from "./app-thread-list"
 import {
   bumpFollowups,
   dropMatchingFollowups,
   liveTurnUserText,
 } from "./followup-sync"
-import { managerHasVisibleBlocks } from "@/lib/welcome"
 import { explicitComposerRecovery } from "@/lib/composer-recovery"
 import { composerDraftSession } from "@/lib/composer-draft"
 import {
-  applyTail,
-  historyNewestSeq,
   loadAgentHistory,
   loadOlderHistory,
   loadUntilTurnHistory,
-  loadUntilVisibleHistory,
   rememberRewind,
   resetThreadHistory,
 } from "./thread-history"
 
 export type Theme = "light" | "dark" | "system"
 
-interface AppState extends ScheduleSlice {
+export interface AppState extends ScheduleSlice {
   completionVisit?: number
   meta?: Meta
   models: ModelInfo[]
@@ -90,8 +83,8 @@ interface AppState extends ScheduleSlice {
   files: FileEntry[]
   workspace: string
   usage?: UsageSnapshot
-  /** Undefined until the first stream has replayed, so the transcript can
-   *  show a skeleton instead of an empty conversation. */
+  /** The first tail page is ready, or fallback SSE replay has acknowledged.
+   *  Context usage and other metadata can still be loading. */
   loaded: boolean
   /** Older event pages exist above the loaded tail. */
   historyHasMore: boolean
@@ -169,6 +162,7 @@ interface AppState extends ScheduleSlice {
 }
 
 let unsubscribe: (() => void) | undefined
+let openGeneration = 0
 
 /** Set while a conversation is being created. Someone who clicks "New
  *  conversation" starts typing immediately, and a send that read activeId
@@ -362,6 +356,7 @@ export const useApp = create<AppState>((set, get) => ({
       set({ scheduleInboxOpen: false, error: undefined })
     }
     if (get().activeId === id) return
+    const generation = ++openGeneration
     dropQueued()
     unsubscribe?.()
     unsubscribe = undefined
@@ -393,109 +388,11 @@ export const useApp = create<AppState>((set, get) => ({
           : s.threads,
     }))
 
-    try {
-      const [{ thread, status, usage }, turns, followups] = await Promise.all([
-        api.thread(id),
-        api.turns(id),
-        api.followups(id),
-      ])
-      if (get().activeId !== id) return
-      // Correct the guess once the row exists, unless the reader already
-      // moved to another list while this was loading.
-      if (!opts?.keepList && deskDest() === guess) {
-        setDeskDest(listDestForThread(thread.project_id))
-      }
-      let since = 0
-      let haveTail = false
-      let log: ThreadLog = { events: [], has_more: false }
-      try {
-        log = await api.threadLog(id, { limit: logPageSize(0) })
-        haveTail = true
-      } catch {
-        // SSE still replays from the start so a missing log endpoint
-        // does not leave the skeleton up forever.
-      }
-      if (get().activeId !== id) return
-      if (haveTail) {
-        const transcript = applyTail(id, log.events ?? [], log.roster ?? [])
-        if (status.running) transcript.running = true
-        since = historyNewestSeq()
-        set((s) => ({
-          connected: true,
-          transcript,
-          historyHasMore: Boolean(log.has_more),
-          status,
-          turns,
-          followups,
-          usage,
-          threads: setThreadRunning(
-            upsertThread(s.threads, thread),
-            id,
-            status.running,
-            Boolean(status.awaiting_answer),
-          ),
-        }))
-        if (Boolean(log.has_more) && !managerHasVisibleBlocks(transcript)) {
-          await loadUntilVisibleHistory(get)
-          if (get().activeId !== id) return
-        }
-        set((s) => ({
-          loaded: true,
-          transcript: s.status.running ? { ...s.transcript, running: true } : s.transcript,
-        }))
-      } else {
-        set((s) => ({
-          status,
-          turns,
-          followups,
-          usage,
-          threads: setThreadRunning(
-            upsertThread(s.threads, thread),
-            id,
-            status.running,
-            Boolean(status.awaiting_answer),
-          ),
-        }))
-      }
-      // The Memory tab belongs to the project, not the conversation. Opening
-      // a Recents chat must drop the previous project's highlight or the
-      // folder would still look selected.
-      void useProjects.getState().restoreReview(id, log.events ?? [])
-      useProjects.getState().select(thread.project_id || undefined)
-      void useProjects.getState().loadMemory(thread.project_id || LIBRARY_ID)
-      void get().refreshSchedules()
-      unsubscribe = subscribeEvents(
-        id,
-        {
-          onEvent: (ev) => queueEvent(set, get, id, ev),
-          onReady: ({ status: live }) => {
-            set((s) => ({
-              loaded: true,
-              connected: true,
-              status: live
-                ? { ...live, waiting: live.waiting ?? s.status.waiting }
-                : s.status,
-              historyHasMore: since > 0 ? s.historyHasMore : false,
-              threads:
-                live && s.activeId
-                  ? setThreadRunning(
-                      s.threads,
-                      s.activeId,
-                      Boolean(live.running),
-                      Boolean(live.awaiting_answer),
-                    )
-                  : s.threads,
-            }))
-            void get().refreshFiles()
-          },
-          onClose: (reason) => set({ connected: reason !== "error" }),
-        },
-        since,
-      )
-    } catch (e) {
-      if (get().activeId !== id) return
-      set({ error: message(e) })
-    }
+    await loadOpenedThread(
+      id, get, set,
+      () => get().activeId === id && generation === openGeneration,
+      (stop) => { unsubscribe = stop }, message, guess, opts?.keepList,
+    )
   },
 
   loadOlder: async (clientHeight) => {

@@ -93,6 +93,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-120`, `F-130`, `C-003`, `C-008`: opening long PC conversations paints the
+  tail page before context usage and other metadata finish. The existing
+  replay and rune-count formula now read retained user/assistant messages and
+  relevant steering/manager-answer events without loading tool bodies;
+  compacted answers, retracted steering and missing-answer recovery retain
+  their previous behavior. Late responses cannot replace a newer transcript
+  or another conversation's running state. Existing databases acquire replay
+  indexes automatically when opened; API payloads and pagination are unchanged.
+
 - `F-110`, `F-115`, `C-034`: checkout re-exec bundles are immutable per executable
   hash and atomically published under a cross-process lock; preparing another
   desktop no longer overwrites or re-signs a live cached executable (Issue #94).

@@ -26,6 +26,7 @@ import { applyPlanThreadFlags } from "./plan-events"
 import { useProjects } from "./projects"
 import { rememberStored, rewindStoredTranscript } from "./thread-history"
 import { bumpFollowups, dropMatchingFollowups } from "./followup-sync"
+import { beginTurnsRead, isCurrentTurnsRead } from "./turns-sync"
 import {
   activeWake,
   applyArmedSchedule,
@@ -37,6 +38,7 @@ import {
 
 /** The slice of the store the live event flush reads and writes. */
 export type StreamSnapshot = {
+  turns?: Turn[]
   activeId?: string
   transcript: TranscriptState
   status: ThreadStatus
@@ -292,9 +294,16 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     void get().refreshFiles()
     void get().refreshThreads()
     void get().refreshFollowups()
+    const token = beginTurnsRead()
+    const turnSnapshot = get().turns
+    const rewind = get().transcript.rewindCut
     void api
       .turns(threadId)
-      .then((turns) => set({ turns }))
+      .then((turns) => {
+        const current = get()
+        if (isCurrentTurnsRead(token) && current.activeId === threadId &&
+            current.turns === turnSnapshot && current.transcript.rewindCut === rewind) set({ turns })
+      })
       .catch(() => undefined)
   }
 }

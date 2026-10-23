@@ -1,5 +1,49 @@
 # Testing
 
+## Long-conversation opening (`F-120`, `F-130`, `C-003`, `C-008`)
+
+Replay regressions use the real Store with tool bodies much larger than retained
+user/assistant text. Assert the query results exclude tool roles and unrelated
+event kinds, compare output and `context_chars` with the previous replay, and
+measure allocation/time while increasing only tool-body volume. Cover the active
+compact watermark, seq-based and legacy-caption steer retraction, already-stored
+answers below the watermark, tool-only/empty-message turns, missing manager
+answers and mixed ASCII/CJK text. A second replay must not insert another answer.
+Keep `ContextUsage` and the next model turn on the same replay entry point.
+The differential and decoded-row checks are in
+`internal/engine/replay_history_test.go`; Store migration, query-plan, Unicode
+whitespace and repair-search regressions are in `internal/store/replay_test.go`.
+`internal/engine/replay_history_benchmark_test.go` keeps row counts and retained
+text fixed while increasing only tool-body bytes, and compares the filtered
+replay with the frozen legacy-semantics reference, including the former two
+whole-message and two whole-event reads. The benchmark's answers are already
+stored, so missing-answer repair does not change either side during measurement.
+
+Replay indexes are installed by the existing `store.Open` migration for both new
+and existing SQLite databases; the migration test must reopen an existing store
+with the indexes absent and inspect the resulting query plans. No columns or
+manual conversation repair are needed. Frontend regressions hold detail usage,
+turns and follow-ups while releasing the tail, then exercise late responses,
+navigation and rewind. The UI E2E must show visible tail content with the usage
+response still pending, then the unchanged compact meter after it arrives.
+The independently delayed open responses are covered by
+`frontend/src/store/app-open.test.ts`; `frontend/e2e/thread-open-tail.spec.ts`
+checks visible tail content while the detail response remains held.
+Opening and terminal turn-list reads share the request generation in
+`frontend/src/store/turns-sync.ts`. Regress both response orders: an older
+opening response must neither replace nor prevent the newer terminal snapshot.
+
+```bash
+go test -race -timeout 20m ./internal/store ./internal/engine
+go test ./internal/engine -run '^$' -bench '^BenchmarkReplayHistoryToolBodies$' -benchmem
+go test -race -timeout 20m ./...
+go vet ./...
+(cd frontend && npm run lint && npm test && npm run build)
+ZWAI_E2E_PORT=18996 ZWAI_E2E_DATA_DIR=.e2e-data-open-tail \
+  npm --prefix frontend run e2e -- thread-open-tail.spec.ts --output /absolute/unique-open-tail-output
+make docs-check
+```
+
 ## Generation interruption and recovery (Issue #95 / C-035)
 
 The generation and worker lifetimes are independent. `generation_test.go`

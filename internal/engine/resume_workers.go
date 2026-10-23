@@ -305,54 +305,6 @@ func isSteerUser(m adk.Message) bool {
 	return m != nil && m.Role == schema.User && strings.HasPrefix(userMessageText(m), "[steer]")
 }
 
-func (e *Engine) replayHistorySkipping(threadID, skipTurnID string) ([]adk.Message, error) {
-	th, err := e.store.GetThread(threadID)
-	if err != nil {
-		return nil, err
-	}
-	rows, err := e.store.ListMessages(threadID)
-	if err != nil {
-		return nil, err
-	}
-	skipThrough := int64(0)
-	if strings.TrimSpace(th.CompactSummary) != "" {
-		skipThrough = th.CompactThroughSeq
-	}
-	out := make([]adk.Message, 0, len(rows))
-	liveTurns := map[string]struct{}{}
-	seen := map[string]struct{}{}
-	events, _ := e.store.ListEvents(threadID, 0, 0)
-	retracted := retractedSteerSeqs(events)
-	captions := retractedSteerCaptionsFrom(events)
-	for _, r := range rows {
-		if skipTurnID != "" && r.TurnID == skipTurnID {
-			continue
-		}
-		if skipThrough > 0 && r.Seq <= skipThrough {
-			continue
-		}
-		liveTurns[r.TurnID] = struct{}{}
-		if skipRetractedSteer(r, retracted, captions) {
-			continue
-		}
-		switch schema.RoleType(r.Role) {
-		case schema.User:
-			if strings.TrimSpace(r.Content) != "" || len(r.Images) > 0 {
-				out = append(out, e.schemaUser(r))
-				if key := strings.TrimSpace(r.Content); key != "" {
-					seen[key] = struct{}{}
-				}
-			}
-		case schema.Assistant:
-			if strings.TrimSpace(r.Content) != "" {
-				out = append(out, schema.AssistantMessage(r.Content, nil))
-				seen[strings.TrimSpace(r.Content)] = struct{}{}
-			}
-		}
-	}
-	return e.appendMissingEventAnswers(threadID, liveTurns, seen, out)
-}
-
 func (e *Engine) resumeConversation(turn *store.Turn) ([]adk.Message, error) {
 	prior, err := e.replayHistorySkipping(turn.ThreadID, turn.ID)
 	if err != nil {
