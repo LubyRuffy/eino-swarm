@@ -787,6 +787,70 @@ and `CanChooseFiles=false`; native acceptance must also confirm that the folder
 confirmation button is enabled and fills the path. Option assertions alone do
 not replace that native check.
 
+## Goal resume notices (F-150 / C-003 / C-012)
+
+`frontend/src/lib/goal-notice.test.ts` checks the display projection for an
+idle human resume followed by its new continuation turn, including hidden
+metadata between them and a resume still waiting for that turn. It preserves
+later automatic continuations, independent resumes, manager reopen actions and
+the original blocks; equal wording is not event identity. Input, substantive
+manager activity and errors prevent unrelated notices from being paired.
+`frontend/src/components/app/transcript-goal-notice.test.tsx` renders the real
+transcript and retains both original events for Trace.
+`frontend/src/store/goal-notice-history.test.ts` covers both history/live arrival
+orders, repeated replay, page and agent-log overlap, rewind and reconstruction,
+and actual worker/quiet-metadata events between the two manager notices.
+`frontend/e2e/goal-resume-notice.spec.ts` exercises the actual Start action with
+the offline provider, checks one new turn and one visible notice per restore,
+and reads both original turns' Trace events. Reload and a history-page split
+between a stored resume/continuation pair retain the same notice count and
+unchanged stored events; the visible Full log retains its continuation notice.
+
+```bash
+cd frontend && npm test -- src/lib/goal-notice.test.ts src/components/app/transcript-goal-notice.test.tsx src/store/goal-notice-history.test.ts
+cd frontend && ZWAI_E2E_PORT=18996 ZWAI_E2E_DATA_DIR=.e2e-data-goal-resume npm run e2e -- e2e/goal-resume-notice.spec.ts --output /absolute/unique-goal-resume-output
+```
+
+These browser checks do not replace acceptance in the actual desktop window.
+`tools/native_goal_resume_notice.py` runs through `tools/native_macos_case.py`
+with an identified candidate and prepared AX helpers in `ci-macOS`. It checks
+the native Start action, one visible notice, both original turns' Trace events
+and close/reopen without another turn, retaining window evidence and cleanup
+receipts outside the isolated case data. Its assertion regressions are in
+`tools/test_native_goal_resume_notice.py`.
+The initial completed objective is fixture setup through normal local
+`POST /api/threads` and `POST /api/threads/:id/turns` with `/goal` text, inside
+that case's private conversation workspace. It waits for the accepted first
+turn's real offline model calls, paired `complete_goal` result, goal completion
+and manager finish; `goal-notice-fixture.json` and
+`goal-notice-fixture-trace.json` retain those identities and receipts. After
+reload, the native window selects that conversation and clicks Start once;
+the scenario never resumes through the API or inserts lifecycle events.
+Native acceptance covers this Start action, the expanded visible notice,
+Trace retention and close/reopen. Initial slash typing is covered by the browser
+E2E above, so this case does not depend on unrelated system input candidates.
+Prepare its narrow `tools/native_goal_resume_notice_ax.m` helper before the case
+with `python3 tools/native_goal_resume_notice.py --prepare-session-ax /absolute/private/native-goal-session-ax`.
+The helper reads the completed session's actual `AXExpanded` state; the scenario
+expands folded work and confirms it is expanded before counting notices.
+An older visible resume notice cannot stand in for that check. The helper's
+source and binary hashes must match its preparation receipt.
+On initial launch and reopen, a read-only `startup` observation distinguishes
+an unregistered application from a registered wrong bundle. Only a null bundle
+with `registered=false` may wait within the original case deadline; each attempt
+rechecks the actual executable/case PID and keeps `goal-notice-startup-NNN.json`.
+A wrong nonempty bundle or helper failure is fatal. This wait neither opens a
+window nor relaxes the later Accessibility, session and screenshot assertions.
+The generic helper's single-window, exact-draft and Send safety checks are
+unchanged; this dedicated case has no composer/Escape workaround. Its
+45-second scenario cap is unchanged.
+Before each screenshot, `reveal-notice` selects the unique localized UI receipt,
+uses `AXScrollToVisible` when needed, and checks its whole frame against the
+window and ancestor scroll viewports. The scenario independently rejects
+missing, nonfinite, empty or offscreen geometry before taking a screenshot;
+`01-resumed.viewport.json` and `02-reopened.viewport.json` retain that evidence.
+An AX node count alone cannot accept a notice outside the captured viewport.
+
 ## Late review turn boundaries (F-120 / F-130 / C-003)
 
 `frontend/src/lib/turn-boundary.test.ts` covers consecutive slices without

@@ -78,6 +78,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-150`, `C-003`, `C-012`: a human goal resume followed by its new continuation turn shows one notice in desktop/Web chat. Later continuations and independent or manager resumes retain their notices; original `goal_resumed` and `goal_continued` events remain available in Trace (Issue #96).
 - `F-430`, `C-031`: native-case headless tests wait for fixture readiness rather than assuming one-second process startup. A delayed fixture regresses false failures while retaining bounded scenarios and cleanup assertions; production native-case deadlines are unchanged.
 - `F-170`, `F-175`, `C-009`, `C-030`: desktop settings autosave and catalog refresh preserve concurrent phone timeout edits by omitting unchanged timeout fields. Saves merge with the latest detached configuration and publish runtime/cache changes only after atomic persistence succeeds; a failed save leaves current settings intact. Nested cloud-tool options retain their protocol, values and isolation across snapshots and rejected updates; worker ownership and parked restoration read configuration snapshots during saves (Issue #82).
 

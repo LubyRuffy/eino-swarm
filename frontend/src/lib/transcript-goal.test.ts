@@ -9,6 +9,7 @@ import {
 } from "./transcript"
 import { GOAL_SESSION_WRAP_STEER, compactIsStarting } from "./transcript-notices"
 import type { SwarmEvent } from "./types"
+import { visibleGoalNotices } from "./goal-notice"
 
 let seq = 0
 function ev(partial: Partial<SwarmEvent> & { kind: string }): SwarmEvent {
@@ -187,6 +188,7 @@ describe("standing objective and compact notices", () => {
     expect(manager(complete).blocks[0].text).toBe("Standing objective completed.")
     const continued = fold([ev({ kind: "goal_continued", text: "Continuing the standing objective." })])
     expect(manager(continued).blocks[0].text).toBe("Continuing the standing objective.")
+    expect(manager(continued).blocks[0].goalNoticeKind).toBe("goal_continued")
     const capped = fold([ev({ kind: "goal_capped", text: '{"auto_turns":12,"cap":12}' })])
     expect(manager(capped).blocks[0].text).toMatch(/Stopped auto-continuing/)
     expect(manager(capped).blocks[0].text).toMatch(/Press Start on the goal/)
@@ -245,6 +247,7 @@ describe("standing objective and compact notices", () => {
     expect(manager(edited).blocks[0].text).toBe("Standing objective updated.")
     const resumed = fold([ev({ kind: "goal_resumed", text: "Resuming the standing objective." })])
     expect(manager(resumed).blocks[0].text).toBe("Resuming the standing objective.")
+    expect(manager(resumed).blocks[0].goalNoticeKind).toBe("goal_resumed")
     const idle = fold([
       ev({
         kind: "goal_idle",
@@ -263,6 +266,25 @@ describe("standing objective and compact notices", () => {
     expect(manager(byIters).blocks[0].text).toBe("Work session ended after the tool-round cap.")
     expect(byIters.turns[0]?.session).toBe(true)
   })
+
+  for (const boundary of [
+    { kind: "user_message", text: "new instruction" },
+    { kind: "error", err: "the next turn could not start" },
+    { kind: "schedule_fired" },
+    { kind: "goal_resumed" },
+    { kind: "goal_complete" },
+  ]) {
+    it(`keeps separate goal notices across an actual ${boundary.kind} boundary`, () => {
+      const state = fold([
+        ev({ kind: "goal_resumed", role: "human", turn_id: "previous" }),
+        ev(boundary),
+        ev({ kind: "goal_continued", turn_id: "next" }),
+      ])
+      const blocks = manager(state).blocks
+      expect(visibleGoalNotices(blocks)).toBe(blocks)
+      expect(blocks[0]).toMatchObject({ goalNoticeKind: "goal_resumed", role: "human" })
+    })
+  }
 
   it("marks an auto-continue turn as a session", () => {
     const continued = fold([ev({ kind: "goal_continued", text: "Continuing the standing objective." })])
