@@ -108,6 +108,14 @@ E2E suite.
   cannot accept a collector that silently drops them. Persist exact target
   identity before a stall; regress scenario SIGKILL through the runner's actual
   resume/exit cleanup. Corrupt or broken-link receipts must fail closed.
+  System WebContent/GPU fault admission verifies only the already-selected
+  allowlisted executable: strict code validation, all architectures and inline
+  `=anchor apple and identifier "<exact service identifier>"`. Resource omission
+  is explicit, never a fallback or App bundle acceptance. Keep raw signature
+  stdout/stderr, command, target and status durable on success, failure and
+  timeout; unknown results or failed evidence cannot append a target or signal.
+  Regress real CLI syntax, wrong identity and a privately corrupted code page.
+  Distribution App verification remains deep and strict with resources.
   Regress changed lifecycle adapters through the actual main harness module.
   A fake namespace that invents its missing methods cannot prove module wiring;
   exercise every real caller, including setup and cleanup, before freezing it.

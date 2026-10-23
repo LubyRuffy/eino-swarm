@@ -956,6 +956,37 @@ identity durably before stopping it and resumes only that identity. These
 lifecycle observations support case attribution, not proof of every possible
 IPC relationship. They do not reproduce the host's exact vendor defect.
 
+Selected system services use `codesign --verify --strict --ignore-resources
+--all-architectures -R '=anchor apple and identifier "<exact service identifier>"'
+<selected-executable>`, still within the original two-second timeout. The leading
+`=` selects requirement source; its absence means a requirement filename.
+`anchor apple` is Apple's own code, not `anchor apple generic`. Only the existing
+system path/name allowlist and unchanged complete-cohort proof can select this
+command. It verifies executable code and the exact Apple identity; resource
+contents and the whole bundle are explicitly **not** validated. This is the
+defined system-code gate, not a retry that ignores an earlier verification
+failure. The selected guest's obsolete resource envelope error, also seen
+without strict mode, is retained separately and does not prove system damage.
+Formal App packages retain their existing `codesign --verify --deep --strict`.
+See the local `codesign(1)` requirements and `--ignore-resources` sections and
+[Apple's requirement language](https://developer.apple.com/library/archive/documentation/Security/Conceptual/CodeSigningGuide/RequirementLang/RequirementLang.html).
+
+`renderer-fault-signatures.jsonl` preserves each attempted command, case, exact
+PID/birth/executable, shell, return code or timeout, elapsed time and raw stdout /
+stderr as base64. JSON null distinguishes an absent stream from empty bytes.
+It records `resources_validated:false` and `whole_bundle_validated:false`.
+No command failure, timeout or missing receipt can append an admitted target or
+reach `_pause` / SIGSTOP. A write failure preserves the original command error
+as the raised exception, with the write error as its cause; a successful command
+without durable evidence fails closed. Fresh cohort and kernel identity checks
+still follow verification, and the target receipt must be durable before STOP.
+`tools/test_native_macos_signature_admission.py` crosses the actual stall caller
+for these refusals and runs the real read-only macOS CLI on `/usr/bin/true`, a
+private code-page-corrupted copy and own linker-signed headless code. None of
+those binaries is executed and no system file is changed. Existing actual
+owned-child resume and scenario-SIGKILL cleanup tests remain required. These
+tests prove QA admission boundaries, not native renderer recovery (Issue #107).
+
 The exhaustion stage removes execute permission only from this ready session's
 unused private recovery copy, then stalls its attributed renderer. It requires
 two actual permission-denied launch failures, the native exhausted dialog and

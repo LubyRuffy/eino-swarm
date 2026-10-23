@@ -144,6 +144,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-430`, `C-031`: native renderer/GPU fault QA uses an inline requirement
+  with Apple's own anchor and the exact selected service identifier. Its
+  two-second strict, all-architecture system-code check explicitly excludes
+  resources; distribution App deep/strict verification is unchanged. Signature
+  command/output/status evidence is durable before admission, including failures
+  and timeouts; failed checks or evidence cannot signal a target. Real CLI,
+  wrong-identity and privately corrupted-code regressions cover this boundary
+  without rewriting prior native failures (Issue #107).
+
 - `F-430`, `C-031`: native worker QA handles the engine's separate schedule-answer
   policy over keyless loopback HTTP. Exact protocol and known fixture manager
   candidates return empty claims; unknown or malformed requests fail closed
