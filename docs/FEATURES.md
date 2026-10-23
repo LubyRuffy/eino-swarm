@@ -55,6 +55,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 目的：在 macOS WebContent 活挂、绘图失效或白屏时恢复可用窗口；使用者：桌面用户；入口：`zwai desktop` 的原生恢复控制循环；输入：同源、主 frame、当前 challenge 响应与实际截图像素；输出：一次重载，必要时附着原引擎的继任窗口；前置条件：引擎租约可验证、恢复副本与诊断目录可写；失败表现：有界尝试耗尽后的原生错误提示及保留诊断；关联契约：`C-034`, `C-001`, `C-012`, `C-033`；实现证据：`internal/desktop/recovery.go`, `internal/desktop/recovery_state.go`, `internal/desktop/recovery_snapshot_darwin.m`, `cmd/zwai/desktop_recovery_darwin.go`, `internal/desktop/recovery_test.go`, `cmd/zwai/desktop_recovery_test.go`。
 - 健康条件包含本次随机探针的真实像素；HTTP、JS 响应或动画帧不单独算绘制成功。失焦、最小化、睡眠与唤醒有检测暂停／宽限。
 - 继任窗口经私有继承管道与两阶段确认接管，沿用数据目录、离线模式和原引擎 PID／URL／租约，恢复会话／项目与草稿位置；不调用引擎替换或重新执行任务。
+- 原生验收在草稿检查退出时保留已有 API／原生观察的摘要及逐项判定，不复制正文、不追加界面操作或放宽原断言；先前失败原因未捕获时仍标为未知。证据：`tools/native_macos_resilience.py`, `tools/test_native_macos_resilience.py`, `docs/TESTING.md`。
 
 ### F-120 Conversations and projects
 
@@ -130,6 +131,7 @@ This is the current user-facing capability map. The code and tests named below a
 
 ### F-150 Goals and scheduled waits
 
+- PC 恢复提示：人工恢复目标后，紧接启动的新轮次只显示一条继续提示；新轮次尚未启动时保留恢复提示。迟到的类型化复盘反馈保持既有可见性与原顺序，不中断同次恢复配对；普通提示、输入、实质 manager 活动与普通错误仍中断配对。后续自动续轮、独立恢复及 manager `reopen_goal` 仍分别可见，不按提示文字去重。原始 `goal_resumed`、`goal_continued` 和区块保留，Trace 可逐事件查看。关联契约：`C-003`、`C-012`；实现／验证证据：`frontend/src/lib/goal-notice.ts`、`frontend/src/lib/goal-notice.test.ts`、`frontend/src/components/app/transcript.tsx`、`frontend/src/components/app/transcript-goal-notice.test.tsx`、`frontend/src/store/goal-notice-history.test.ts`、`frontend/e2e/goal-resume-notice.spec.ts`；来源：GitHub Issue #96。
 - 巡检与 worker 生命周期隔离：定时触发或 Run now 的常规失败，包括无执行证据和有界重试后的模型错误，不取消仍归属有效持续目标或活动同对话 wake 的 worker；原 registry、ID 和正在进行的调用继续供后续轮次接回。有效目标不含 blocked、complete、capped、idle 或自动续轮预算耗尽；plan mode 中目标与 wake 均不能提供可执行归属；已消费 one-shot 不能单独充当归属。turn/run 保留 error、run unread，失败不自动 block goal 或立即开启新的目标轮次。无归属、人工 Stop、上下文预算耗尽及 worker watchdog 失败上限仍按原停止边界清理。持久化 `workers_retained` 在 error 前记录精确归属和 worker IDs，写入失败不得保留执行；重启恢复还需该回执、检查点及当前有效归属，不改变原失败终态。关联契约：`C-009`、`C-027`、`C-012`；实现证据：`internal/engine/worker_ownership.go`、`internal/engine/turn.go`、`internal/engine/restart_parked.go`；测试：`internal/engine/schedule_worker_ownership_test.go`、`internal/engine/worker_ownership_test.go`、`frontend/e2e/schedule-worker-ownership.spec.ts`。
 - 人类等待边界：用户明确禁止挂起当前会话时，原始有效人话经只读策略模型提取为按来源事件 seq、事件身份和文本指纹缓存的状态；`schedule_wake` 与 thread `report_schedule(next_in_s)` 返回 `thread_wake_prohibited`，未完成策略提取返回 `thread_wake_policy_pending`。拒绝不更新等待行、不产生新的等待卡；已分类禁令的 Trace 保留 source_seq、source_text、source_quote；待分类拒绝保留已知 pending_seq。压缩、重启及模型自写的唤醒正文不能解除，仅后来明确允许等待的人话可放行；不带 `next_in_s` 的报告（包括 `keep:false` 取消）继续可用。关联契约：`C-009`、`C-012`；实现／验证证据：`internal/engine/thread_wake_policy.go`、`internal/engine/thread_wake_policy_test.go`、`internal/store/wake_policy.go`、`internal/store/wake_policy_guard_test.go`、`frontend/e2e/human-wake-policy.spec.ts`。
 
