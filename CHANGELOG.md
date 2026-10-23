@@ -117,6 +117,15 @@ co-working app built on it. The library API is unchanged except where noted
 
 - `F-150`, `C-009`, `C-012`: a trailing `/goal` activates its preceding objective across PC, HTTP and paired-phone sends and steering, including after an older goal completed. Scheduling success claims now require verification against persisted, currently effective plans before manager prose is published; unsupported claims receive one bounded same-turn correction, then a visible failure. Tool and worker activity remain live (Issue #103).
 
+- `F-430`, `C-031`: native attachment QA retains completed helper output and
+  the first file-selection timeout's binary streams without allowing cleanup
+  snapshots to overwrite it. Missing success evidence fails the case; existing
+  action failures retain their cause and the eight-second input is not retried.
+  File-panel inspection omits unrelated text after finding the fixture filename
+  while retaining complete, bounded graph and unique-Open validation. Failed
+  AX reads cannot disappear from the panel roots. Bounded helper stage logs
+  preserve new timing evidence without assigning a historical timeout cause.
+
 - `F-430`, `C-031`: native QA helpers refresh activation state through bounded
   main-runloop slices after one activate/raise request per helper action invocation,
   with one monotonic deadline. Failed activation and fill/Send guards retain sampled predicates and

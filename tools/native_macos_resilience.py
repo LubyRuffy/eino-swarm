@@ -7,6 +7,7 @@ public native UI and operating-system diagnostics. Each fault requires fresh
 private-app ownership proof and a verified bounded cleanup receipt.
 """
 import argparse
+import base64
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 import fcntl
@@ -439,8 +440,31 @@ def native(context, action="snapshot", value=""):
         raise RuntimeError("native action lost its private case ownership")
     if action == "press" and context.get("native_language") == "zh":
         value = {"Send": "发送", "Attach files": "附加文件", "Conversations": "对话", "New conversation": "新对话"}.get(value, value)
-    result = subprocess.run([context["helper"], action, str(context["app_pid"]), value],
-                            capture_output=True, text=True, timeout=8)
+    try:
+        result = subprocess.run([context["helper"], action, str(context["app_pid"]), value],
+                                capture_output=True, text=True, timeout=8)
+    except subprocess.TimeoutExpired as error:
+        if action != "choose-file":
+            raise
+        try:
+            streams = {name: base64.b64encode(raw if isinstance(raw, bytes) else (raw or "").encode()).decode()
+                       for name, raw in (("stdout_base64", error.stdout), ("stderr_base64", error.stderr))}
+            atomic_json(context["evidence"] / "native-timeout.json", dict(streams,
+                        type=type(error).__name__, action=action, case_id=context["case_id"],
+                        requested_argv=[context["helper"], action, str(context["app_pid"]), value],
+                        exception_argv=error.cmd, timeout_seconds=error.timeout,
+                        stdout_is_none=error.stdout is None, stderr_is_none=error.stderr is None))
+        except (OSError, TypeError, ValueError):
+            pass
+        raise
+    if action == "choose-file":
+        try:
+            atomic_json(context["evidence"] / "native-result.json", dict(
+                        case_id=context["case_id"], action=action, argv=result.args,
+                        returncode=result.returncode, stdout=result.stdout, stderr=result.stderr))
+        except OSError:
+            if not result.returncode:
+                raise
     if result.returncode:
         raise OSError("native " + action + ": " + result.stderr.strip()[:1000])
     row = json.loads(result.stdout)

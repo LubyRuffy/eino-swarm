@@ -221,6 +221,106 @@ static BOOL waitForActivation(NSRunningApplication *running, double deadline) {
     }
 }
 
+static AXError filePanelAttribute(AXUIElementRef item, CFStringRef key, id *value) {
+    CFTypeRef raw = NULL;
+    AXError status = AXUIElementCopyAttributeValue(item, key, &raw);
+    *value = raw ? CFBridgingRelease(raw) : nil;
+    return status;
+}
+static BOOL filePanelText(AXUIElementRef item, CFStringRef key, NSString **text, NSString **failure) {
+    id raw = nil;
+    AXError status = filePanelAttribute(item, key, &raw);
+    if (status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) { *text = @""; return YES; }
+    if (status != kAXErrorSuccess) {
+        *failure = [NSString stringWithFormat:@"native panel %@ read failed: %d", (__bridge NSString *)key, status];
+        return NO;
+    }
+    *text = string(raw);
+    return YES;
+}
+static BOOL filePanelVisit(AXUIElementRef item, NSUInteger *visits, NSString **failure) {
+    if (++*visits > 5000) { *failure = @"native panel exceeded 5000 visits"; return NO; }
+    if (!item || CFGetTypeID(item) != AXUIElementGetTypeID()) {
+        *failure = @"native panel node is not an AX element"; return NO;
+    }
+    return YES;
+}
+static BOOL scanFilePanel(AXUIElementRef item, NSString *name, NSMutableArray *opens, BOOL *found,
+                          CFMutableSetRef seen, NSUInteger *visits, NSUInteger depth, NSString **failure) {
+    if (!filePanelVisit(item, visits, failure)) return NO;
+    if (CFSetContainsValue(seen, item)) return YES;
+    if (depth > 45) { *failure = @"native panel exceeded depth 45"; return NO; }
+    CFSetAddValue(seen, item);
+    id role = nil;
+    AXError status = filePanelAttribute(item, kAXRoleAttribute, &role);
+    if (status != kAXErrorSuccess || ![role isKindOfClass:NSString.class] || ![role length]) {
+        *failure = [NSString stringWithFormat:@"native panel role is unavailable or malformed: %d", status]; return NO;
+    }
+    NSString *title = nil;
+    if ([role isEqual:@"AXButton"]) {
+        if (!filePanelText(item, kAXTitleAttribute, &title, failure)) return NO;
+        if ([@[@"Open", @"打开"] containsObject:title]) [opens addObject:(__bridge id)item];
+    }
+    if (!*found) for (NSString *key in @[@"AXTitle", @"AXDescription", @"AXValue"]) {
+        NSString *text = title && [key isEqual:@"AXTitle"] ? title : nil;
+        if (!text && !filePanelText(item, (__bridge CFStringRef)key, &text, failure)) return NO;
+        if ([text containsString:name]) { *found = YES; break; }
+    }
+    id children = nil;
+    status = filePanelAttribute(item, kAXChildrenAttribute, &children);
+    if (status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) return YES;
+    if (status != kAXErrorSuccess || ![children isKindOfClass:NSArray.class]) {
+        *failure = [NSString stringWithFormat:@"native panel children are unreadable or malformed: %d", status]; return NO;
+    }
+    for (id child in children)
+        if (!scanFilePanel((__bridge AXUIElementRef)child, name, opens, found, seen, visits, depth+1, failure)) return NO;
+    return YES;
+}
+
+static BOOL filePanelRoots(AXUIElementRef app, NSMutableArray *roots, NSUInteger *visits, NSString **failure) {
+    if (!filePanelVisit(app, visits, failure)) return NO;
+    id windows = nil;
+    AXError status = filePanelAttribute(app, kAXWindowsAttribute, &windows);
+    if (status != kAXErrorSuccess || ![windows isKindOfClass:NSArray.class]) {
+        *failure = [NSString stringWithFormat:@"native panel windows are unreadable or malformed: %d", status]; return NO;
+    }
+    for (id window in windows) {
+        AXUIElementRef element = (__bridge AXUIElementRef)window;
+        if (!filePanelVisit(element, visits, failure)) return NO;
+        id children = nil;
+        status = filePanelAttribute(element, kAXChildrenAttribute, &children);
+        if (status == kAXErrorAttributeUnsupported || status == kAXErrorNoValue) continue;
+        if (status != kAXErrorSuccess || ![children isKindOfClass:NSArray.class]) {
+            *failure = [NSString stringWithFormat:@"native panel window children are unreadable or malformed: %d", status]; return NO;
+        }
+        for (id child in children) {
+            AXUIElementRef candidate = (__bridge AXUIElementRef)child;
+            if (!filePanelVisit(candidate, visits, failure)) return NO;
+            id role = nil;
+            status = filePanelAttribute(candidate, kAXRoleAttribute, &role);
+            if (status != kAXErrorSuccess || ![role isKindOfClass:NSString.class] || ![role length]) {
+                *failure = [NSString stringWithFormat:@"native panel root role is unavailable or malformed: %d", status]; return NO;
+            }
+            if ([role isEqual:@"AXSheet"]) [roots addObject:child];
+        }
+    }
+    return YES;
+}
+
+// BEGIN PRIVATE CHOOSE TRACE
+static void chooseTrace(NSString *stage, NSDictionary *identityRow) {
+    static NSUInteger emitted = 0;
+    if (emitted++ >= 64) return;
+    NSMutableDictionary *row = [@{@"stage":stage, @"monotonic":@(NSProcessInfo.processInfo.systemUptime)} mutableCopy];
+    if (identityRow) row[@"identity"] = identityRow;
+    NSData *data = [NSJSONSerialization dataWithJSONObject:row options:0 error:nil];
+    NSString *encoded = data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"{}";
+    fprintf(stderr, "ZWAI_CHOOSE %s\n", encoded.UTF8String);
+    fflush(stderr);
+}
+static void chooseExit(void) { @autoreleasepool { chooseTrace(@"process.exit.after_pool", nil); } }
+// END PRIVATE CHOOSE TRACE
+
 int main(int argc, const char **argv) { @autoreleasepool {
     if (argc < 3 || !guest() || !env(@"ZWAI_NATIVE_CASE_ID").length) return fail(@"guest case required");
     NSString *action = @(argv[1]); pid_t pid = atoi(argv[2]);
@@ -251,7 +351,10 @@ int main(int argc, const char **argv) { @autoreleasepool {
                                    encoding:NSUTF8StringEncoding].UTF8String); return 0;
     }
     AXUIElementRef app = AXUIElementCreateApplication(pid);
+    if ([action isEqual:@"choose-file"]) { chooseTrace(@"entry", identity(getpid())); atexit(chooseExit); }
+    if ([action isEqual:@"choose-file"]) chooseTrace(@"windows.before", nil);
     id windows = attr(app, kAXWindowsAttribute);
+    if ([action isEqual:@"choose-file"]) chooseTrace(@"windows.after", nil);
     if ([action isEqual:@"activate"]) {
         if (![windows isKindOfClass:NSArray.class] || [windows count] != 1)
             { CFRelease(app); return fail(@"one private case window required for activation"); }
@@ -317,6 +420,7 @@ int main(int argc, const char **argv) { @autoreleasepool {
     }
     if ([action isEqual:@"choose-file"]) {
         NSString *root = [[env(@"ZWAI_NATIVE_WORKSPACE") stringByResolvingSymlinksInPath] stringByAppendingString:@"/"];
+        chooseTrace(@"panel.scan.before", nil);
         BOOL panel = NO;
         pid_t panelPID = pid;
         if ([windows isKindOfClass:NSArray.class]) for (id item in windows) {
@@ -331,12 +435,16 @@ int main(int argc, const char **argv) { @autoreleasepool {
                 }
             if ([string(attr(element, kAXSubroleAttribute)) isEqual:@"AXDialog"]) panel = YES;
         }
+        chooseTrace(@"panel.scan.after", nil);
         if (!panel || ![[value stringByResolvingSymlinksInPath] hasPrefix:root])
             { CFRelease(app); return fail(@"native attachment panel or case path refused"); }
         if (panelPID != pid && ![identity(panelPID)[@"executable"] containsString:@"openAndSavePanelService"])
             { CFRelease(app); return fail(@"case-owned attachment sheet has an unexpected input process"); }
         NSRunningApplication *running = [NSRunningApplication runningApplicationWithProcessIdentifier:pid];
+        chooseTrace(@"activate.before", nil);
         [running activateWithOptions:0];
+        chooseTrace(@"activate.after", nil);
+        chooseTrace(@"focus.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 20; attempt++) {
             id focused = attr(app, kAXFocusedUIElementAttribute);
             NSString *role = focused ? string(attr((__bridge AXUIElementRef)focused, kAXRoleAttribute)) : @"";
@@ -344,49 +452,84 @@ int main(int argc, const char **argv) { @autoreleasepool {
             if (attempt == 19) { CFRelease(app); return fail(@"native attachment panel has not received input focus"); }
             usleep(50000);
         }
+        chooseTrace(@"focus.loop.after", nil);
+        chooseTrace(@"goto.shortcut.before", nil);
         if (!nestedSheet(app) && !focusedKey(pid, 5, kCGEventFlagMaskCommand | kCGEventFlagMaskShift))
             { CFRelease(app); return fail(@"private case is not the active guest input target"); }
+        chooseTrace(@"goto.shortcut.after", nil);
         NSMutableArray *fields = [NSMutableArray array];
+        chooseTrace(@"goto.fields.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 10 && !fields.count; attempt++) {
             usleep(100000);
             id go = nestedSheet(app);
             if (go) editable((__bridge AXUIElementRef)go, fields, 0);
         }
+        chooseTrace(@"goto.fields.loop.after", nil);
         // The actual path control must appear before any pathname is entered.
         // A sent shortcut alone is never a successful native selection.
         if (fields.count != 1) { CFRelease(app); return fail([NSString stringWithFormat:@"Go to Folder requires one actual path field; found %lu active=%d frontmost=%d panel=%d", fields.count, running.active, NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier, panelPID]); }
         AXUIElementRef field = (__bridge AXUIElementRef)fields[0];
+        chooseTrace(@"path.set.before", nil);
         if (AXUIElementSetAttributeValue(field, kAXValueAttribute, (__bridge CFStringRef)value)
             || ![string(attr(field, kAXValueAttribute)) isEqual:value])
             { CFRelease(app); return fail(@"native Go to Folder did not retain the exact case path"); }
+        chooseTrace(@"path.set.after", nil);
+        chooseTrace(@"path.confirm.before", nil);
         if (AXUIElementPerformAction(field, kAXConfirmAction))
             { CFRelease(app); return fail(@"native Go to Folder has no confirm action"); }
+        chooseTrace(@"path.confirm.after", nil);
         NSMutableArray *matches = [NSMutableArray array];
+        chooseTrace(@"path.matches.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 10 && !matches.count; attempt++) {
             id go = nestedSheet(app);
             if (go) openablePath((__bridge AXUIElementRef)go, value.lastPathComponent, matches, 0);
             if (!matches.count) usleep(100000);
         }
+        chooseTrace(@"path.matches.loop.after", nil);
+        chooseTrace(@"path.open.before", nil);
         if (matches.count != 1 || AXUIElementPerformAction((__bridge AXUIElementRef)matches[0], CFSTR("AXOpen")))
             { CFRelease(app); return fail(@"native Go to Folder has no unique exact-file AXOpen action"); }
+        chooseTrace(@"path.open.after", nil);
+        chooseTrace(@"path.commit.before", nil);
         if (AXUIElementSetAttributeValue(field, kAXFocusedAttribute, kCFBooleanTrue)
             || !focusedKey(pid, 36, 0))
             { CFRelease(app); return fail(@"native exact-path confirmation lost its guest input target"); }
+        chooseTrace(@"path.commit.after", nil);
+        chooseTrace(@"goto.close.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 15 && nestedSheet(app); attempt++) usleep(100000);
         if (nestedSheet(app)) { CFRelease(app); return fail(@"native Go to Folder did not commit the exact path"); }
-        NSMutableArray *areas = [NSMutableArray array], *buttons = [NSMutableArray array];
-        NSMutableString *panelText = [NSMutableString string]; NSUInteger count = 0; BOOL web = NO;
-        for (id sheet in sheets(attr(app, kAXWindowsAttribute))) collect((__bridge AXUIElementRef)sheet, areas, buttons, panelText, &count, &web);
-        if (![panelText containsString:value.lastPathComponent]) { CFRelease(app); return fail(@"native panel did not reach the exact selected filename"); }
+        chooseTrace(@"goto.close.loop.after", nil);
+        chooseTrace(@"panel.collect.before", nil);
         NSMutableArray *opens = [NSMutableArray array];
-        for (id button in buttons) if ([@[@"Open", @"打开"] containsObject:string(attr((__bridge AXUIElementRef)button, kAXTitleAttribute))]) [opens addObject:button];
+        BOOL filenameFound = NO, complete = YES; NSUInteger visits = 0; NSString *scanFailure = nil;
+        NSMutableArray *roots = [NSMutableArray array];
+        complete = filePanelRoots(app, roots, &visits, &scanFailure);
+        CFMutableSetRef seen = CFSetCreateMutable(kCFAllocatorDefault, 0, &kCFTypeSetCallBacks);
+        if (complete) for (id sheet in roots)
+            if (!scanFilePanel((__bridge AXUIElementRef)sheet, value.lastPathComponent, opens,
+                               &filenameFound, seen, &visits, 0, &scanFailure)) { complete = NO; break; }
+        CFRelease(seen);
+        chooseTrace(@"panel.collect.after", nil);
+        if (!complete) { CFRelease(app); return fail(scanFailure); }
+        if (!filenameFound) { CFRelease(app); return fail(@"native panel did not reach the exact selected filename"); }
+        chooseTrace(@"panel.open.before", nil);
         if (opens.count != 1 || AXUIElementPerformAction((__bridge AXUIElementRef)opens[0], kAXPressAction))
             { CFRelease(app); return fail(@"native selected file has no unique Open action"); }
+        chooseTrace(@"panel.open.after", nil);
+        chooseTrace(@"panel.close.loop.before", nil);
         for (NSUInteger attempt = 0; attempt < 20 && sheets(attr(app, kAXWindowsAttribute)).count; attempt++) usleep(100000);
         if (sheets(attr(app, kAXWindowsAttribute)).count) { CFRelease(app); return fail(@"native Open did not close its attachment panel"); }
+        chooseTrace(@"panel.close.loop.after", nil);
+        chooseTrace(@"chosen.stdout.before", nil);
         printf("{\"chosen\":true,\"panel_pid\":%d,\"active\":%s,\"frontmost_pid\":%d}\n", panelPID,
                running.active ? "true" : "false", NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier);
-        CFRelease(app); return 0;
+        fflush(stdout);
+        chooseTrace(@"chosen.stdout.after", nil);
+        chooseTrace(@"release.before", nil);
+        CFRelease(app);
+        chooseTrace(@"release.after", nil);
+        chooseTrace(@"return.before_pool_drain", nil);
+        return 0;
     }
     if (![windows isKindOfClass:NSArray.class] || [windows count] != 1) { CFRelease(app); return fail(@"one case window required"); }
     AXUIElementRef window = (__bridge AXUIElementRef)windows[0];

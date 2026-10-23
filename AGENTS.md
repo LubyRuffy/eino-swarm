@@ -136,6 +136,18 @@ E2E suite.
   attempt state; a caller that drops stdout must still retain key failure fields.
   Existing caller polling keeps its original shared deadline; this helper wait
   cannot reset the replacement budget.
+- Native file-selection diagnostics retain the first choose-file timeout's raw
+  streams and original exception before final cleanup. Later snapshot failures
+  cannot overwrite them. Preserve completed helper streams before parsing;
+  missing success evidence fails the case, while evidence I/O cannot replace an
+  existing action failure. Keep the eight-second adapter deadline and never
+  repeat an input to repair a missing acknowledgement.
+  File-panel inspection stops reading unrelated text after finding the fixture
+  filename, but still proves one distinct Open across the complete supplied AX
+  graph. Retain AX status through root enumeration and traversal; unreadable,
+  malformed or over-budget trees cannot prove uniqueness. Regress actual
+  callers with late duplicate buttons, repeated edges and partial root reads;
+  query-count savings do not prove native elapsed time or a past timeout cause.
 - New or changed Go functions need unit tests in the same package, covering more
   than 90% of the new statements. Current per-package coverage is listed in
   [docs/TESTING.md](docs/TESTING.md); do not regress it.

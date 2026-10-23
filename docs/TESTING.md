@@ -814,6 +814,33 @@ a fresh public birth/executable match before `terminate`/`wait`. Both use only
 `caffeinate`; that does not establish whether its environment was inherited.
 Attachment setup waits for the same case/PID's actual AX sheet/dialog before
 issuing one file-selection action.
+The eight-second `choose-file` adapter saves completed argv, exit status and
+captured text streams to `native-result.json` before parsing. A timeout saves
+the original binary stdout/stderr as base64, including absent-versus-empty
+stream flags, in `native-timeout.json`, then rethrows the same exception.
+Final cleanup snapshots cannot overwrite this choose-only receipt. Evidence
+I/O preserves an existing action failure and rejects an otherwise successful
+result; it never retries the native input. Run
+`python3 -m unittest discover -s tools -p 'test_native_macos_choose_evidence.py'`
+for actual adapter and final-retain boundary regressions, including a real
+owned child producing binary streams before timeout. These headless tests do
+not accept an attachment panel or explain a historical unobserved AX stall.
+The final panel scan reads the original title/description/value attributes only
+until the generated fixture filename is found. It then continues role/children
+and button-title reads to exclude a second distinct Open; the first match alone
+cannot authorize Press. Root enumeration retains AX errors and validates array
+and role types instead of silently dropping a failed window. Roots and traversal
+share 5000 visits, count repeated edges and use `CFEqual` graph identity; a new
+node beyond depth 45 or any incomplete read fails before Press. Explicit absent
+optional attributes remain valid. No filename-with-newline matching contract is
+claimed for this generated fixture. `test_native_macos_attachment_scan.py`
+compiles actual scanner functions and their actual caller with OS seams; its
+legacy traversal literal measures RPC counts only, not guest elapsed time.
+Run it with the same unittest command pattern. The complete helper still needs
+SDK compilation and a fresh guest attachment path. At most 64 choose-only
+stderr JSON stages retain public helper identity and monotonic boundaries,
+including the region containing both sheet lookup and recursive inspection;
+that region timing does not identify an individual blocked AX call.
 Draft collection keeps its last existing API/native observations in memory and
 writes a fixed diagnostic file on success, failure or handled cancellation.
 It retains individual predicates, attachment byte hashes/metadata and text/value
