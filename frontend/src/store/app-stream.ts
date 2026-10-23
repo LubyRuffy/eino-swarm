@@ -1,11 +1,10 @@
 import { api } from "@/lib/api"
-import { ASK_TOOL } from "@/lib/transcript-ask"
+import { askStatusFromTranscript } from "@/lib/transcript-ask"
 import { compactIsStarting } from "@/lib/transcript-notices"
 import {
   collapseLiveEvents,
   parseReview,
   reduceEvent,
-  splitToolCall,
   toolNameOf,
   type TranscriptState,
 } from "@/lib/transcript"
@@ -97,7 +96,7 @@ export function queueEvent(
       ev.kind === "schedule_skipped" || ev.kind === "schedule_report" ||
       ev.kind === "schedule_cancelled" ||
       ev.kind === "rewound" ||
-      ev.kind === "tool_call" || ev.kind === "tool_result" ||
+      ev.kind === "tool_call" || ev.kind === "tool_result" || ev.kind === "ask_recovered" ||
       ev.kind === "steer" || ev.kind === "steer_retracted" || ev.kind === "steer_revised" || ev.kind === "steer_preempted") {
     flushQueued(set, get)
     return
@@ -165,17 +164,8 @@ function flushQueued(set: StreamSet, get: StreamGet) {
     if (ev.kind === "max_iterations_continued") {
       status = { ...status, running: true, awaiting_continue: false }
     }
-    if (ev.kind === "tool_call") {
-      const { name } = splitToolCall(ev.text ?? "")
-      if (name === ASK_TOOL) {
-        status = withRunningClock(status, {
-          awaiting_answer: true,
-          turn_id: ev.turn_id,
-        })
-      }
-    }
-    if (ev.kind === "tool_result" && toolNameOf(transcript, ev.tool_call_id) === ASK_TOOL) {
-      status = { ...status, awaiting_answer: false }
+    if (ev.kind === "tool_call" || ev.kind === "tool_result" || ev.kind === "ask_recovered") {
+      status = askStatusFromTranscript(transcript, status)
     }
     if (ev.kind === "done" || ev.kind === "error") {
       status = {

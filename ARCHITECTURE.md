@@ -1520,6 +1520,12 @@ the same turn's Trace. It is not rendered as a chat message or a new worker.
 visible phases. Recovery retains worker identities, finished results and
 human question/iteration-cap pauses. Unknown external effects must be
 verified before a tool is repeated; no generic exactly-once guarantee is made.
+An unanswered human ask is not an external effect: the engine suppresses its
+own handoff placeholder and narrowly recovers legacy unknown receipts from a
+matching unaccepted checkpoint. A durable `ask_recovered` event carries only
+the original call identity and questions to PC/phone projections; the private
+checkpoint and raw historical unknown receipt stay intact. Confirmed answers
+take precedence, and recovery persistence failure cannot start the manager.
 The full process replacement is exercised by
 `cmd/zwai/engine_restart_acceptance_test.go` using real processes and a keyless
 loopback model fixture.

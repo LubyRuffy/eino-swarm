@@ -106,6 +106,13 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-130`, `F-222`, `C-002`, `C-003`, `C-012`, `C-027`: engine replacement
+  preserves the original unanswered human question instead of treating a
+  handoff unknown-outcome receipt as its answer. Matching legacy checkpoints
+  restore the wait; confirmed answers remain authoritative in both replay
+  orders. Durable `ask_recovered` events restore PC/phone forms without
+  fabricating another call or exposing private checkpoint histories (Issue #101).
+
 - `F-120`, `F-130`, `C-003`, `C-008`: opening long PC conversations paints the
   tail page before context usage and other metadata finish. The existing
   replay and rune-count formula now read retained user/assistant messages and

@@ -1,4 +1,6 @@
-import type { SwarmEvent } from "./types"
+import type { SwarmEvent, ThreadStatus } from "./types"
+import type { AgentState, TranscriptState } from "./transcript"
+import { append, block } from "./transcript-blocks"
 
 /** ask_user payload. Host injects Other; models must not send that id. */
 export const ASK_TOOL = "ask_user"
@@ -23,6 +25,7 @@ export interface AskCard {
   questions: AskQuestion[]
   pending: boolean
   answers?: Record<string, string>
+  recoveredSeq?: number
 }
 
 export function parseAskToolArgs(args: string): AskQuestion[] | null {
@@ -111,4 +114,57 @@ export function askCardFromEvent(
   const questions = parseAskToolArgs(args)
   if (!questions) return null
   return { callId: ev.tool_call_id ?? "", questions, pending: true }
+}
+
+/** Only the engine's durable, checkpoint-verified receipt can reopen a human wait. */
+export function askRecoveryCard(ev: SwarmEvent): AskCard | null {
+  if (ev.kind !== "ask_recovered" || ev.agent_id !== "manager" || !ev.thread_id ||
+      !ev.turn_id || !ev.tool_call_id || !Number.isSafeInteger(ev.seq) || ev.seq <= 0) return null
+  const questions = parseAskToolArgs(ev.text ?? "")
+  return questions ? { callId: ev.tool_call_id, questions, pending: true, recoveredSeq: ev.seq } : null
+}
+
+export function applyAskRecovery(agent: AgentState, ev: SwarmEvent, card: AskCard) {
+  const existing = agent.blocks.find((b) => b.turnId === ev.turn_id && b.question?.callId === card.callId)
+  if (!agent.blocks.some((b) => b.askRecovery?.thread_id === ev.thread_id && b.askRecovery.seq === ev.seq)) {
+    append(agent, { ...block(ev, "notice", "ask_recovered"), quiet: true, askRecovery: ev })
+  }
+  // Accepted answers win even when a delayed recovery or old unknown arrives later.
+  if (existing?.question) {
+    if (completeAskAnswers(existing.question.questions, existing.question.answers) || (existing.question.recoveredSeq ?? 0) >= ev.seq) return
+    agent.blocks = agent.blocks.map((b) => b === existing
+      ? { ...b, question: { ...b.question!, pending: true, recoveredSeq: ev.seq } } : b)
+  } else append(agent, { ...block(ev, "question", ASK_TOOL), question: card })
+}
+
+export function settleAskCard(card: AskCard, ev: SwarmEvent): AskCard {
+  if (completeAskAnswers(card.questions, card.answers)) return card
+  const answers = confirmedAskAnswers(card.questions, ev.text ?? "", ev.err)
+  if (answers) return { ...card, pending: false, answers }
+  // Stored results preceding this recovery may arrive after it over live catch-up.
+  if (ev.seq > 0 && ev.seq < (card.recoveredSeq ?? 0)) return card
+  return { ...card, pending: false, answers: undefined }
+}
+
+export function askStatusFromTranscript(state: TranscriptState, status: ThreadStatus): ThreadStatus {
+  if (!status.running) return status
+  const questions = state.agents.manager?.blocks.filter((b) => b.question && (!status.turn_id || b.turnId === status.turn_id)) ?? []
+  return questions.length ? { ...status, awaiting_answer: questions.some((b) => b.question?.pending) } : status
+}
+
+export function completeAskAnswers(questions: AskQuestion[], answers?: Record<string, string>): boolean {
+  return Boolean(questions.length && answers && Object.keys(answers).length === questions.length &&
+    questions.every((q) => typeof answers[q.id] === "string" && answers[q.id].trim()))
+}
+
+export function confirmedAskAnswers(questions: AskQuestion[], text: string, err?: string): Record<string, string> | undefined {
+  if (err) return undefined
+  try {
+    const body = JSON.parse(text) as { answers?: Record<string, unknown> }
+    // FormatAskResult has one answers object. Error/unknown envelopes are not human receipts.
+    if (!body || Object.keys(body).length !== 1 || !body.answers || Array.isArray(body.answers) ||
+        Object.keys(body.answers).length !== questions.length) return undefined
+    const answers = parseAskResult(text)
+    return completeAskAnswers(questions, answers) ? answers : undefined
+  } catch { return undefined }
 }

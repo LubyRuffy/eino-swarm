@@ -567,6 +567,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 		}
 	}()
 
+	var resumeErr error
 	if resumed {
 		if !e.turnHasKind(turn.ID, KindUser) && !e.turnHasKind(turn.ID, KindGoalContinued) &&
 			!e.turnHasKind(turn.ID, KindScheduleFired) {
@@ -582,7 +583,7 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 			}
 		}
 		e.closeOrphanedToolCalls(turn)
-		messages = rt.resolveOrphanedAsk(ctx, turn, messages)
+		messages, resumeErr = rt.resolveOrphanedAsk(ctx, turn, messages)
 		kind, notice := KindResumed, resumeNotice
 		if e.checkpointForTurn(turn.ID) != nil {
 			kind, notice = KindRestartResumed, "Saved task progress restored; continuing."
@@ -610,7 +611,11 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// turn look like it was still working.
 	beat, stopBeat := context.WithCancel(ctx)
 	go rt.heartbeat(beat, turn.ID, reg, time.Now(), e.cfg.SwarmSnapshot().ProgressInterval())
-	res, runErr := rt.runManager(ctx, turn, reg, acc, toolset, pc, messages)
+	var res swarm.RunResult
+	runErr := resumeErr
+	if runErr == nil {
+		res, runErr = rt.runManager(ctx, turn, reg, acc, toolset, pc, messages)
+	}
 	stopBeat()
 	acc.flushAll()
 	finishUnlock, _ = rt.lockFinish(context.Background())

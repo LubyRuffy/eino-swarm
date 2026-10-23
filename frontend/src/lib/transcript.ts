@@ -14,7 +14,7 @@ import {
 import { parseReview, reviewNotice } from "./transcript-review"
 import { modelBackoffNotice } from "./transcript-backoff"
 import { recordDesktopRecovery, type DesktopRecoveryEvent } from "./transcript-recovery"
-import { askCardFromEvent, parseAskResult, ASK_TOOL, type AskCard } from "./transcript-ask"
+import { askCardFromEvent, askRecoveryCard, applyAskRecovery, settleAskCard, type AskCard } from "./transcript-ask"
 import { isPlanEvent, planNotice } from "./transcript-plan"
 import { parseIterationLimit, parsePulse } from "./transcript-pulse"
 import {
@@ -41,6 +41,7 @@ import {
 export { MANAGER_ID }
 
 export { splitToolCall, summarise }
+export { toolNameOf } from "./transcript-tool-block"
 
 export { parseIterationLimit, parsePulse } from "./transcript-pulse"
 export { splitQueuedSteers } from "./transcript-steer"
@@ -115,6 +116,7 @@ export interface Block {
   }
   /** ask_user cards. */
   question?: AskCard
+  askRecovery?: SwarmEvent
   /** Spawn blocks only: which sub-agent was started. */
   spawn?: { agentId: string; role: string }
   /** Confirm blocks only: the manager hit its tool-round cap. */
@@ -275,6 +277,11 @@ export function reduceEvent(
   if (ev.kind === "generation_started" || ev.kind === "generation_completed") return next
   // Recovery state is trace evidence, not a chat message or a new agent.
   if (ev.kind === "engine_restart_checkpoint") return next
+  if (ev.kind === "ask_recovered") {
+    const card = askRecoveryCard(ev)
+    if (card) applyAskRecovery(touchAgent(next, MANAGER_ID), ev, card)
+    return next
+  }
   if (ev.kind === "restart_preparing" || ev.kind === "restart_ready" || ev.kind === "user_stop_requested") {
     if (ev.text) append(touchAgent(next, MANAGER_ID), block(ev, "notice", ev.text))
     return next
@@ -503,7 +510,7 @@ export function reduceEvent(
       const { name, args } = splitToolCall(ev.text ?? "")
       const writing = ev.kind === "tool_call_delta" ? Number(args) : undefined
       const ask = ev.kind === "tool_call" ? askCardFromEvent(ev, name, args) : undefined
-      const existing = ev.tool_call_id ? findToolBlock(agent, ev.tool_call_id) : undefined
+      const existing = ev.tool_call_id ? findToolBlock(agent, ev.tool_call_id, ask ? ev.turn_id : undefined) : undefined
       if (existing?.tool && !ask) {
         existing.tool = {
           ...existing.tool,
@@ -519,7 +526,7 @@ export function reduceEvent(
       if (existing && ask) {
         existing.kind = "question"
         existing.tool = undefined
-        existing.question = ask
+        existing.question ??= ask
         existing.text = name
         break
       }
@@ -555,13 +562,9 @@ export function reduceEvent(
     }
 
     case "tool_result": {
-      const target = findToolBlock(agent, ev.tool_call_id)
+      const target = findToolBlock(agent, ev.tool_call_id, ev.turn_id)
       if (target?.question) {
-        target.question = {
-          ...target.question,
-          pending: false,
-          answers: parseAskResult(ev.text ?? ""),
-        }
+        target.question = settleAskCard(target.question, ev)
       } else if (target?.tool) {
         target.tool = {
           ...target.tool,
@@ -984,17 +987,4 @@ function settlePendingConfirm(agent: AgentState, continued: boolean, text?: stri
     }
   }
   agent.blocks = blocks
-}
-
-/** The tool a result belongs to, looked up by call id after the reducer has
- *  paired them. Used to refresh the Memory panel the moment a write lands,
- *  rather than waiting for the review that may never come (memory off). */
-export function toolNameOf(state: TranscriptState, callId?: string): string | undefined {
-  if (!callId) return undefined
-  for (const id of state.agentOrder) {
-    for (const b of state.agents[id]?.blocks ?? []) {
-      if (b.kind === "question" && b.question?.callId === callId) return ASK_TOOL
-      if (b.kind === "tool" && b.tool?.callId === callId) return b.tool.name
-    }
-  }
 }

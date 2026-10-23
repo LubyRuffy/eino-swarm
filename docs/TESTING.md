@@ -1069,6 +1069,24 @@ failure details and their recovery-settings links. Run them with
 
 ## Automatic restart handoff (F-110 / C-027)
 
+Issue #101 regressions must use the real manager Registry middleware: directly
+calling `AskUserTool` does not run the handoff unknown-result conversion.
+`internal/server/restart_ask_http_test.go` drives a loopback provider, HTTP
+restart, a new engine on the same persisted data, named SSE recovery, the
+original human answer and duplicate refusal. The replacement cannot call its
+manager before that answer. `cmd/zwai/engine_restart_ask_acceptance_test.go`
+also replaces actual executable processes and checks the original turn/call,
+the shared 30-second deadline and one confirmed result. Legacy tests retain
+both result/checkpoint orderings and accepted-answer precedence; ordinary
+external-tool unknown outcomes remain unknown. PC/phone reducers and their
+actual history/live adapters must retain confirmed answers and only re-open
+an uncertain ask on the explicit recovery event. Checkpoint content stays on
+the host; `ask_recovered` carries only the original public questions.
+
+```bash
+go test -race -count=1 -timeout 8m ./cmd/zwai -run '^TestRestartRealProcessPreservesTheOriginalUnansweredAsk$'
+```
+
 `handoff_test.go` and `internal/engine/restart_test.go` cover shared deadlines,
 worker/tool admission, structured histories and unread inboxes, real completion
 versus handoff, watchdog budgets, active/parked workers, human pauses and

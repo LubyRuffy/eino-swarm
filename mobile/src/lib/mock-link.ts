@@ -1,3 +1,4 @@
+import { restartAskHistory } from "./mock-ask-restart"
 import { generationHistory } from "./mock-generation"
 import {
   OpAnswer,
@@ -102,7 +103,7 @@ type MockThread = {
   followups?: FollowupView[]
 }
 
-type Step = { kind: string; messageID?: string; text?: string; callID?: string; err?: string; agentID?: string; role?: string; at?: string; sourceThreadID?: string; sourceTurnID?: string }
+type Step = { kind: string; turnID?: string; messageID?: string; text?: string; callID?: string; err?: string; agentID?: string; role?: string; at?: string; sourceThreadID?: string; sourceTurnID?: string }
 
 const projects: ProjectView[] = [
   { id: "p-platform", name: "Platform" },
@@ -258,7 +259,10 @@ export class MockHost {
   constructor(readonly tickMs = mockTickMs()) {
     const live = this.find("t-live")
     if (live) {
-      if (new URLSearchParams(location.search).get("history") === "generation-interruption") {
+      if (new URLSearchParams(location.search).get("history") === "restart-ask") {
+        live.askUser = true
+        this.seed(live, restartAskHistory(), true)
+      } else if (new URLSearchParams(location.search).get("history") === "generation-interruption") {
         this.seed(live, generationHistory(), true)
       } else if (new URLSearchParams(location.search).get("history") === "stopped-workers") {
         this.seed(live, stopReplayStart(), true)
@@ -656,7 +660,8 @@ export class MockHost {
       return "PC rejected the answer"
     }
     th.askUser = false
-    this.push(th, { kind: "tool_result", callID: "ask-fixture", text: JSON.stringify({ answers }) })
+    const original = [...th.events].reverse().find((ev) => ev.kind === "tool_call" && ev.tool_call_id === "ask-fixture")
+    this.push(th, { kind: "tool_result", turnID: original?.turn_id, callID: "ask-fixture", text: JSON.stringify({ answers }) })
     this.push(th, { kind: "agent_message", text: "The answer was received." })
     this.settle(th)
     this.push(th, { kind: "done" })
@@ -710,6 +715,7 @@ export class MockHost {
     }
     return {
       thread_id: th.id,
+      turn_id: step.turnID,
       seq: streamed ? 0 : this.seq,
       kind: step.kind,
       message_id: step.messageID,

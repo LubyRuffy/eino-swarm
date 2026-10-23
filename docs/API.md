@@ -1547,6 +1547,12 @@ and replayed tool calls. Display labels and submitted labels remain unchanged.
 `409 idle` when nothing is waiting; `409 ask_mismatch` when `call_id` is not
 the open questionnaire. The same ReAct turn continues after the tool result.
 
+An engine handoff retains an unanswered questionnaire under the original turn
+and `call_id`. A synthetic interrupted-tool `outcome_unknown` is not an answer.
+Legacy unknown receipts remain in Trace; recovery needs the matching unaccepted
+human-pause checkpoint. A real accepted answer takes precedence in either
+receipt/checkpoint order. Repeated answers do not create another model call.
+
 ```json
 {"answered": true}
 ```
@@ -1690,6 +1696,7 @@ shortening only the bounded detail text.
 | `agent_message` | a completed assistant message |
 | `tool_call` | `Text` is `name(args)`, paired by `tool_call_id` |
 | `tool_result` | the result, paired by `tool_call_id`. Newlines are kept so the UI can render a file body; clipped at 64k runes |
+| `ask_recovered` | the existing unanswered human wait is restored, not executed again; original `tool_call_id`, `text` is original `{"questions":[...]}`. A confirmed answer wins over duplicate recovery or unknown-result replay; private checkpoint history is excluded |
 | `tool_delta` | live tool output while a call still runs; `text` is the accumulated payload so far (for `exec`, `{stdout,stderr}` JSON), paired by `tool_call_id`. `seq` is 0, not stored. The model still receives one `tool_result` when the call finishes |
 | `tool_call_delta` | the model is still writing a tool call. `text` is `name(N)` where `N` is the argument size in runes so far, paired by `tool_call_id`. `seq` is 0, not stored. The call has not run; `tool_call` arrives when the stream ends and replaces this row |
 | `spawned` | a sub-agent started; `text` is its system prompt, `role` is its role, `agent_id` is its id. A slash-shaped role is stored as the job word (`-2`, `-3` when that word is taken), not the path. Older rows stored the role in `text` too. A later `spawn_agent` for that role reuses the same id: steering while running, a second `spawned` after it finished |
@@ -2373,6 +2380,15 @@ The same turn's event/Trace stream contains `restart_preparing`,
 `engine_restart_checkpoint` is versioned recovery data, hidden from ordinary
 conversation rendering; it is not a completed answer, tool result or worker
 creation. Unknown interrupted tools require verification of external effects.
+
+The named SSE / phone event `ask_recovered` restores one original unanswered
+questionnaire. Its `thread_id`, `turn_id`, manager identity and `tool_call_id`
+refer to the existing call; `text` is the original argument JSON
+`{"questions":[...]}`. It contains neither answers nor manager/worker history.
+It is persisted before broadcasting or entering the recovered wait. It does
+not represent a new tool execution or successful result. PC/phone live,
+reconnect and paged replay keep an already accepted answer authoritative over
+late unknown receipts and duplicate call/recovery events.
 
 An acknowledged user Stop is recorded as `user_stop_requested` before its
 cancellation is signalled. Restart must consume that intent rather than

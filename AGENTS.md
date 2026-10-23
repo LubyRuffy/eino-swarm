@@ -236,6 +236,13 @@ E2E suite.
   pauses and Stop, storage failure, and tool results arriving after shutdown.
   Unknown external effects require verification before retry; a model summary
   or process launch is not proof of handoff or recovery.
+- Unanswered ask recovery must cross the real Registry middleware and HTTP/
+  process replacement boundary. A direct `AskUserTool` call misses handoff's
+  synthetic unknown result. Recover a legacy placeholder only from the matching
+  unaccepted human-pause checkpoint; real answers win in either arrival order.
+  Preserve the original turn/call identity, raw unknown receipt and private
+  checkpoint. Test named `ask_recovered` delivery, PC/phone replay and duplicate
+  answer refusal; a restored form is not a new call or an accepted answer.
 - A cleanup event is not a worker completion receipt. Regress Stop and replay
   with unfinished workers shown as stopped, actual finished workers retained,
   and no model-failure retry banner for human interruption. Cleanup does not

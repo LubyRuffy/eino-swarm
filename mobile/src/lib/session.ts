@@ -1,4 +1,3 @@
-import { ASK_TOOL, splitToolCall } from "./ask"
 import { applyGoalDetail } from "./goal"
 import {
   OpEvent,
@@ -99,12 +98,14 @@ export function prependOlder(
     return { ...view, oldestSeq: next, hasMore: true }
   }
   const merged = mergeEvents(view.events, incoming)
+  const blocks = restoreStreaming(foldEvents(merged), view.blocks)
   return {
     ...view,
     events: merged,
     oldestSeq: merged[0]?.seq ?? view.oldestSeq,
     hasMore: more,
-    blocks: restoreStreaming(foldEvents(merged), view.blocks),
+    blocks,
+    detail: askDetail(view.detail, blocks),
   }
 }
 
@@ -121,7 +122,7 @@ function applyReady(view: PhoneView, resp: RemoteResponse): PhoneView {
     if (ev.seq > lastSeq) lastSeq = ev.seq
   }
   if (resp.status && detail) {
-    detail = applyWatchStatus(detail, resp.status, true)
+    detail = askDetail(applyWatchStatus(detail, resp.status, true), blocks)
   }
   return {
     ...view,
@@ -166,6 +167,7 @@ function applyLiveEvent(view: PhoneView, ev: RemoteEvent, status?: WatchStatus):
   if (detail) {
     if (!historical) detail = patchDetail(detail, ev, blocks)
     if (status) detail = applyWatchStatus(detail, status, false)
+    detail = askDetail(detail, blocks)
   }
   return {
     ...view,
@@ -283,11 +285,12 @@ function patchDetail(
   if (ev.kind === "done" || ev.kind === "error") {
     next = { ...next, running: undefined }
   }
-  const asking =
-    Boolean(pendingAsk(blocks)) ||
-    (ev.kind === "tool_call" && splitToolCall(ev.text).name === ASK_TOOL)
-  if (next.running && asking !== Boolean(next.running.ask_user)) {
-    next = { ...next, running: { ...next.running, ask_user: asking } }
-  }
-  return next
+  return askDetail(next, blocks)!
+}
+
+function askDetail(detail: ThreadDetail | null, blocks: CompactBlock[]): ThreadDetail | null {
+  if (!detail?.running) return detail
+  const questions = blocks.filter((b) => !b.agentId && b.kind === "question" && (!detail.running?.turn_id || b.turnId === detail.running.turn_id))
+  if (!questions.length) return detail
+  return { ...detail, running: { ...detail.running, ask_user: Boolean(pendingAsk(questions)) } }
 }

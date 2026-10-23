@@ -2,6 +2,9 @@ import { generationEvent, identifiedOutput, recoverLegacyGeneration, type Genera
 import {
   ASK_TOOL,
   parseAskToolArgs,
+  completeAskAnswers,
+  confirmedAskAnswers,
+  parseAskRecovery,
   splitToolCall,
   type AskQuestion,
 } from "./ask"
@@ -36,6 +39,9 @@ export type CompactBlock = {
   args?: string
   hasImages?: boolean
   questions?: AskQuestion[]
+  answers?: Record<string, string>
+  recoveredSeq?: number
+  turnId?: string
   agentId?: string
   messageId?: string
   writing?: boolean
@@ -113,6 +119,17 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
   if (identified) return identified
   const next = ev.kind === "spawned" ? recoverLegacyGeneration(blocks, ev).slice() : blocks.slice()
   switch (ev.kind) {
+    case "ask_recovered": {
+      const card = parseAskRecovery(ev)
+      if (!card) return next
+      const i = lastIndex(next, (b) => b.kind === "question" && b.turnId === card.turnId && b.callId === card.callId)
+      if (i >= 0) {
+        if (completeAskAnswers(next[i].questions ?? [], next[i].answers) ||
+            (next[i].recoveredSeq ?? 0) >= ev.seq) return next
+        next[i] = { ...next[i], pending: true, recoveredSeq: ev.seq }
+      } else next.push({ id: blockId(ev), kind: "question", text: "", pending: true, ...card })
+      return next
+    }
     case "generation_interrupted":
     case "generation_recovered":
       return generationEvent(next, ev)
@@ -218,14 +235,16 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
       const parsed = splitToolCall(ev.text)
       const composing = ev.kind === "tool_call_delta"
       if (!composing && parsed.name === ASK_TOOL) {
-        const i = lastIndex(next, (b) => Boolean(b.callId) && b.callId === ev.tool_call_id)
+        const i = lastIndex(next, (b) => b.turnId === ev.turn_id && Boolean(b.callId) && b.callId === ev.tool_call_id)
         if (i >= 0) {
+          if (next[i].kind === "question") return next
           next[i] = {
             ...next[i],
             kind: "question",
             text: "",
             pending: true,
             callId: ev.tool_call_id,
+            turnId: ev.turn_id,
             questions: parseAskToolArgs(parsed.args) ?? [],
           }
           return next
@@ -236,6 +255,7 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
           text: "",
           pending: true,
           callId: ev.tool_call_id,
+          turnId: ev.turn_id,
           questions: parseAskToolArgs(parsed.args) ?? [],
         })
         return next
@@ -279,17 +299,21 @@ function applyEventForAgent(blocks: CompactBlock[], ev: RemoteEvent): CompactBlo
     case "tool_result": {
       const i = lastIndex(
         next,
-        (b) => Boolean(b.callId) && b.callId === ev.tool_call_id,
+        (b) => Boolean(b.callId) && b.callId === ev.tool_call_id && (b.kind !== "question" || b.turnId === ev.turn_id),
       )
       if (i >= 0) {
+        if (next[i].kind === "question") {
+          if (completeAskAnswers(next[i].questions ?? [], next[i].answers)) return next
+          const answers = confirmedAskAnswers(next[i].questions ?? [], ev.text, ev.err)
+          if (!answers && ev.seq > 0 && ev.seq < (next[i].recoveredSeq ?? 0)) return next
+          next[i] = { ...next[i], pending: false, failed: Boolean(ev.err), answers }
+          return next
+        }
         next[i] = {
           ...next[i],
           pending: false,
           failed: Boolean(ev.err),
-          text:
-            next[i].kind === "question"
-              ? next[i].text
-              : ev.text || next[i].text,
+          text: ev.text || next[i].text,
         }
       }
       return next

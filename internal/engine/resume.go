@@ -271,21 +271,28 @@ type orphanedToolCall struct {
 }
 
 func orphanedToolCalls(events []store.Event) []orphanedToolCall {
-	open := make(map[string]orphanedToolCall)
-	order := make([]string, 0)
+	events = restartAskEvents(events)
+	type callKey struct{ agent, id string }
+	open := make(map[callKey]orphanedToolCall)
+	order := make([]callKey, 0)
 	for _, ev := range events {
 		id := strings.TrimSpace(ev.ToolCallID)
 		if id == "" {
 			continue
 		}
+		agent := ev.AgentID
+		if isManagerAgent(agent) {
+			agent = swarm.DefaultManagerID
+		}
+		key := callKey{agent: agent, id: id}
 		switch ev.Kind {
 		case swarm.NotifyToolCall.String():
-			if _, ok := open[id]; !ok {
-				order = append(order, id)
+			if _, ok := open[key]; !ok {
+				order = append(order, key)
 			}
-			open[id] = orphanedToolCall{AgentID: ev.AgentID, Role: ev.Role, ToolCallID: id, Text: ev.Text}
+			open[key] = orphanedToolCall{AgentID: ev.AgentID, Role: ev.Role, ToolCallID: id, Text: ev.Text}
 		case swarm.NotifyToolResult.String():
-			delete(open, id)
+			delete(open, key)
 		}
 	}
 	out := make([]orphanedToolCall, 0, len(open))

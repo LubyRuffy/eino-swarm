@@ -19,6 +19,7 @@ var PushKinds = []string{
 	"tool_call",
 	"builtin_tool",
 	"tool_result",
+	"ask_recovered",
 	"tool_delta",
 	"tool_call_delta",
 	"steer",

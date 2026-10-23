@@ -78,6 +78,7 @@ This is the current user-facing capability map. The code and tests named below a
 - 普通回合完成门禁：没有当前可执行 goal 或活动同对话 wake 时，主管必须用真实 `wait_agents` 结果收取每个 worker 当前 generation，或用 `close_agent` 明确放弃，才可发布完成答复；已完成未收取仍待处理，wait 超时、未知 ID 和旧 generation 回执不结清。提前结束只自动纠正一次，再次提前结束则保持原 turn 与 worker 请求，等待人工 Continue／Stop；Continue 再授予一次尝试，Stop／拒绝取消。重启保留收取状态、纠正额度及人工暂停。Trace 与 PC／手机提示保留 `workers_uncollected` 的真实原因。关联契约：`C-019`、`C-002`、`C-012`、`C-027`；实现证据：`settlement.go`、`internal/engine/worker_completion.go`、`internal/engine/iterations.go`；测试：`settlement_http_test.go`、`internal/engine/ordinary_worker_completion_test.go`、`internal/engine/worker_completion_budget_test.go`、`internal/engine/worker_completion_replay_test.go`。
 
 - 结构化提问：PC 与配对手机在实时和历史重放中按主机规则解析选项 ID；省略或归一化后为空的 ID 从 label 生成，保留选项文字，选择提交后继续同一 turn。关联契约：`C-002`；证据：`internal/engine/ask.go`、`frontend/src/lib/transcript-ask.test.ts`、`mobile/src/lib/ask.test.ts`、`frontend/e2e/plan.spec.ts`。
+- 未答提问的交接恢复：重启保留原 turn/call 和人类等待，回答前不调用主管模型；匹配未答检查点的旧未知结果可恢复，真实答案优先。PC 与手机按明确的 `ask_recovered` 通知恢复同一表单，重复回放和迟到未知结果不会覆盖已确认答案。关联契约：`C-002`、`C-003`、`C-027`、`C-012`；验证：`internal/server/restart_ask_http_test.go`、`cmd/zwai/engine_restart_ask_acceptance_test.go`。
 
 - 生成中断：桌面、Web 和配对手机按模型输出身份保留中断原因及恢复状态，旧思考结束流式动画，新生成使用独立身份；恢复中的 worker 保留原 ID，不冒充失败或任务完成。明确区分交接重启、进程退出、取消、超时、模型错误与输出额度；未记录的具体原因保持未知。实时、重开与历史重放保留说明，原 turn 的 Trace 可查。关联契约：`C-035`、`C-003`、`C-027`；实现证据：`signal.go`、`internal/engine`、`frontend/src/lib/transcript.ts`、`mobile/src/lib/transcript.ts`。
 
