@@ -23,6 +23,23 @@ func TestStandaloneManagerDoesNotAdvertiseHostInboxTools(t *testing.T) {
 	}
 }
 
+// A text result is a valid end to a scheduled check; instructions must not
+// turn tool selection into an implicit requirement that rejects that path.
+func TestScheduledInstructionsAllowTextResultsWithoutTools(t *testing.T) {
+	for name, instruction := range map[string]string{
+		"manager":  ManagerPrompt(&tools.Set{}, config.Default(), ""),
+		"fired":    ScheduleContinueText("Inspect the current state."),
+		"recovery": scheduleCompletionCue,
+	} {
+		t.Run(name, func(t *testing.T) {
+			instruction = strings.ToLower(instruction)
+			if !strings.Contains(instruction, "return the result as text") || !strings.Contains(instruction, "or call report_schedule") {
+				t.Fatal("scheduled instructions must allow a text result without a tool call")
+			}
+		})
+	}
+}
+
 func TestManagerPromptRejectsInvalidSpawnCleanupClaims(t *testing.T) {
 	prompt := ManagerPrompt(&tools.Set{}, config.Default(), "")
 	for _, text := range []string{"one corrected call", "rejected_calls", "They created no worker", "do not invent ids"} {

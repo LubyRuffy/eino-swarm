@@ -2147,16 +2147,22 @@ slot (`next_run_at` becomes the occurrence after the one that was pending);
 an interval resets from now. A delay one-shot is marked `done`. The
 composer wait banner hides while that conversation is working.
 
-A model response with no tool result or explicit `report_schedule` continues
-once in that same turn (`model_retry`, reason `scheduled_no_activity`). A
-second such response ends the turn and run as `error`, leaving the run unread;
-opening prose alone cannot become findings. Automatic fires use the same
-rule. Explicit empty findings remain quiet; a real tool result preserves the
-existing omitted-report fallback. No new run is created by this continuation.
+A nonempty text result may finish the check without any tool call or explicit
+`report_schedule`; it becomes findings and stays unread. Tool selection remains
+automatic, including recovery. A blank/whitespace final with neither a real
+tool result nor an explicit report continues once in the same turn
+(`model_retry`, reason `scheduled_no_activity`). A second empty response ends
+the turn and run as `error`, leaving the run unread, with
+`scheduled check ended without returning text, executing a tool or reporting its result`.
+Automatic fires use the same rule. Explicit empty findings remain quiet and
+take precedence over final text; a real tool result preserves the existing
+omitted-report fallback. Synthetic retry cleanup is not a tool result.
+No new run is created by this continuation. A text result ends this check;
+it does not establish that external effects occurred or complete a standing goal.
 
 A failed scheduled check can finish while its workers continue under an
 executable standing goal or an active same-thread wake. This applies to the
-evidence failure above and ordinary model failures, including a rejected
+empty-response failure above and ordinary model failures, including a rejected
 request or exhausted in-turn transient retries. The engine persists
 `workers_retained` before the terminal error and keeps the same registry,
 worker IDs and ongoing calls. The turn/run stay `error`, the run stays unread,

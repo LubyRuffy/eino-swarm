@@ -63,7 +63,7 @@ export async function startScheduleWorkerOwnershipFixture() {
         }
         if (mode === "fail") {
           failedReplies++
-          reply(response, "The next check will inspect the current state.")
+          reply(response, "")
           return
         }
         if (mode === "spawn") {

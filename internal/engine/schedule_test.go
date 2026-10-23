@@ -340,14 +340,14 @@ func TestCreateScheduleUsesFrozenCapWhenTickerIsLive(t *testing.T) {
 	th, _ := e.CreateThread("", "", "")
 	if _, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: scheduleWaitPrompt, EveryS: 60,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, EveryS: 60,
 		CreatedBy: store.ScheduleCreatedHuman,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	_, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: scheduleWaitPrompt, EveryS: 60,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, EveryS: 60,
 		CreatedBy: store.ScheduleCreatedHuman,
 	})
 	if err == nil || !strings.Contains(err.Error(), "too many active") {
@@ -358,7 +358,7 @@ func TestCreateScheduleUsesFrozenCapWhenTickerIsLive(t *testing.T) {
 	e.ApplyLiveSwarmLimits()
 	if _, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: th.ID,
-		Prompt: scheduleWaitPrompt, EveryS: 60,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, EveryS: 60,
 		CreatedBy: store.ScheduleCreatedHuman,
 	}); err != nil {
 		t.Fatalf("settings must refresh the frozen cap: %v", err)
@@ -378,7 +378,7 @@ func TestPatchScheduleResumeUsesFrozenCapWhenTickerIsLive(t *testing.T) {
 	}
 	if _, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleStandalone, OriginThreadID: th.ID,
-		Prompt: scheduleWaitPrompt, EveryS: 60,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, EveryS: 60,
 		CreatedBy: store.ScheduleCreatedHuman,
 	}); err != nil {
 		t.Fatal(err)
@@ -708,11 +708,39 @@ func TestCancelScheduleConcurrentWritesOneEvent(t *testing.T) {
 	}
 }
 
+// Lifecycle fixtures inject storage and provider failures after arming a wake.
+// They must not also start an unrelated model request against that mutable setup.
+func TestLifecycleWakeFixturesDoNotStartBackgroundNaming(t *testing.T) {
+	for _, fixture := range []string{"future", "due", "parked"} {
+		t.Run(fixture, func(t *testing.T) {
+			e := newTestEngine(t)
+			var wake *store.Schedule
+			if fixture == "parked" {
+				_, _, wake = plantParkedRestart(t, e)
+			} else {
+				thread, err := e.CreateThread("lifecycle fixture", "", "")
+				if err != nil {
+					t.Fatal(err)
+				}
+				if fixture == "due" {
+					wake = armDueWake(t, e, newScheduleClock(), thread.ID, 60)
+				} else {
+					wake = mustCreateWake(t, e, thread.ID)
+				}
+			}
+			if strings.TrimSpace(wake.Title) == "" || wake.TitleAuto {
+				t.Fatalf("lifecycle wake can start the background namer: %+v", wake)
+			}
+		})
+	}
+}
+
 func mustCreateWake(t *testing.T, e *Engine, threadID string) *store.Schedule {
 	t.Helper()
+	// This fixture owns wake lifecycle, not asynchronous title generation.
 	sch, err := e.CreateSchedule(ScheduleInput{
 		Kind: store.ScheduleThread, ThreadID: threadID,
-		Prompt: scheduleWaitPrompt, EveryS: 60,
+		Title: "Scheduled work", Prompt: scheduleWaitPrompt, EveryS: 60,
 		CreatedBy: store.ScheduleCreatedHuman,
 	})
 	if err != nil {
