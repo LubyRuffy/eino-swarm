@@ -221,8 +221,9 @@ uploads, downloads and the live event stream have exactly one implementation.
   objective that finished too early. It does not
   appear while the objective is still pursuing between auto-continue
   sessions. Resuming an idle goal shows one continuation notice when its next
-  turn starts. Later automatic continuations and manager reopen actions keep
-  their own notices; each original resume and continuation event remains in
+  turn starts. Late memory-review feedback keeps its place without splitting
+  that restore into two notices. Later automatic continuations and manager
+  reopen actions keep their own notices; each original resume and continuation event remains in
   its turn's Trace tab and `zwai trace <turn-id>`. The
   text is editable in place, and a live turn is told immediately. The
   runtime starts the next turn itself; a queued follow-up still wins. **compact** folds earlier turns into a briefing for later

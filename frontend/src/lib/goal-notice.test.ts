@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import { visibleGoalNotices } from "./goal-notice"
-import type { Block } from "./transcript"
+import { emptyTranscript, reduceEvents, type Block } from "./transcript"
+import type { SwarmEvent } from "./types"
 
 function block(seq: number, extra: Partial<Block> = {}): Block {
   return {
@@ -32,6 +33,38 @@ describe("visibleGoalNotices", () => {
     const next = continued()
     expect(visibleGoalNotices([resumed(), metadata, next])).toEqual([metadata, next])
   })
+
+  for (const outcome of [{ changed: true, notes: { add: 1 }, notify: "on" },
+                         { changed: false, err: "review failed", notify: "on" }]) {
+    it(`keeps a late ${outcome.err ? "failed" : "changed"} review visible without splitting one human resume`, () => {
+      const events: SwarmEvent[] = [
+        { kind: "goal_resumed", seq: 1, turn_id: "previous", role: "human" },
+        { kind: "memory_review", seq: 2, turn_id: "older", agent_id: "memory-reviewer", text: JSON.stringify(outcome) },
+        { kind: "goal_continued", seq: 3, turn_id: "next" },
+      ].map((event) => ({ thread_id: "thread", agent_id: "manager", created_at: "2026-01-01T00:00:00.000Z", ...event }))
+      const state = reduceEvents(emptyTranscript(), events)
+      const rows = state.agents.manager.blocks
+      const review = rows.find((row) => row.review)!
+      expect(review.quiet).toBe(false)
+      expect(visibleGoalNotices(rows).map((row) => row.seq)).toEqual([2, 3])
+      expect(visibleGoalNotices(rows)[0]).toBe(review)
+      expect(rows.map((row) => row.seq)).toEqual([1, 2, 3])
+      expect(state.running).toBe(true)
+    })
+  }
+
+  for (const kind of ["goal_edited", "error"] as const) {
+    it(`still separates resumes around an actual ${kind} event`, () => {
+      const events: SwarmEvent[] = [
+        { kind: "goal_resumed", seq: 1, turn_id: "previous", role: "human" },
+        { kind, seq: 2, turn_id: "previous", err: kind === "error" ? "turn failed" : undefined },
+        { kind: "goal_continued", seq: 3, turn_id: "next" },
+      ].map((event) => ({ thread_id: "thread", agent_id: "manager", created_at: "2026-01-01T00:00:00.000Z", ...event }))
+      const rows = reduceEvents(emptyTranscript(), events).agents.manager.blocks
+      expect(visibleGoalNotices(rows)).toBe(rows)
+      expect(rows.filter((row) => row.goalNoticeKind)).toHaveLength(2)
+    })
+  }
 
   for (const kind of ["user", "steer", "error", "answer", "tool", "notice"] as const) {
     it(`does not merge across an intervening ${kind} row`, () => {

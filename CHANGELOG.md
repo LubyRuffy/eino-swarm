@@ -78,7 +78,7 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
-- `F-150`, `C-003`, `C-012`: a human goal resume followed by its new continuation turn shows one notice in desktop/Web chat. Later continuations and independent or manager resumes retain their notices; original `goal_resumed` and `goal_continued` events remain available in Trace (Issue #96).
+- `F-150`, `C-003`, `C-012`: a human goal resume followed by its new continuation turn shows one notice in desktop/Web chat. Late typed memory-review feedback keeps its own row without splitting that resume pair. Later continuations and independent or manager resumes retain their notices; original `goal_resumed` and `goal_continued` events remain available in Trace (Issue #96).
 - Tests: keep the PTY working-directory fixture alive through its output and resize assertions, bound blocking reads by closing its own session at the existing three-second budget, then reap its child. This avoids an empty EOF from a successful short-lived command on Darwin without increasing the assertion timeout or changing terminal behavior.
 
 - `F-130`, `F-220`, `C-002`: PC and paired-phone question forms retain label-only options accepted by the host. Missing or unusable option IDs now derive from the label, so live and replayed questions remain selectable instead of leaving the turn waiting without a form.

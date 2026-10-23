@@ -1,6 +1,9 @@
 import { expect, test, type Page } from "@playwright/test"
 import { writeFile } from "node:fs/promises"
 
+import { visibleGoalNotices } from "../src/lib/goal-notice"
+import { emptyTranscript, reduceEvents } from "../src/lib/transcript"
+import type { SwarmEvent } from "../src/lib/types"
 import { composer, freshConversation, reloadOpenConversation } from "./session"
 
 type Event = { seq: number; kind: string; turn_id: string; text?: string; role?: string }
@@ -105,3 +108,57 @@ test("one goal restore shows one notice on Start and replay while paged Trace re
     lifecycle: completeLog.events.filter((event) => event.kind === "goal_resumed" || event.kind === "goal_continued"),
   }, null, 2), { mode: 0o600 })
 })
+
+for (const review of [
+  { label: "changed", outcome: { changed: true, notes: { add: 1 }, notify: "on" }, text: "Memory updated: 1 note stored." },
+  { label: "failed", outcome: { changed: false, err: "The review could not finish.", notify: "on" }, text: "Memory review failed" },
+]) {
+  test(`browser replay keeps a late ${review.label} review beside one goal continuation`, async ({ page }, info) => {
+    const title = `Goal review replay ${review.label} ${info.workerIndex}-${info.retry}`
+    const created = await page.request.post("/api/threads", { data: { title } })
+    expect(created.ok()).toBe(true)
+    const threadId = (await created.json()).thread.id as string
+    expect(threadId).toBeTruthy()
+    const base = { thread_id: threadId, turn_id: "earlier-turn", agent_id: "manager" }
+    const events: SwarmEvent[] = [
+      { ...base, seq: 1, kind: "goal_resumed", role: "human", created_at: "2026-01-01T00:00:01.000Z" },
+      { ...base, seq: 2, kind: "memory_review", agent_id: "memory-reviewer", text: JSON.stringify(review.outcome), created_at: "2026-01-01T00:00:02.000Z" },
+      { ...base, seq: 3, kind: "goal_continued", turn_id: "later-turn", created_at: "2026-01-01T00:00:03.000Z" },
+      { ...base, seq: 4, kind: "done", turn_id: "later-turn", text: "The assigned check is complete.", created_at: "2026-01-01T00:00:04.000Z" },
+    ]
+    // This is a browser history fixture, not a claim of new server activity.
+    // Trace reads these raw reducer blocks; projection must retain all three.
+    const stored = reduceEvents(emptyTranscript(), events).agents.manager.blocks
+    expect(visibleGoalNotices(stored).filter((block) => block.goalNoticeKind).map((block) => block.seq)).toEqual([3])
+    expect(stored.filter((block) => block.goalNoticeKind || block.review).map((block) => block.seq)).toEqual([1, 2, 3])
+
+    let paginate = false
+    const beforeRequests: number[] = []
+    await page.route(new RegExp(`/api/threads/${threadId}/log(?:\\?|$)`), async (route) => {
+      const response = await route.fetch()
+      const body = await response.json()
+      const before = Number(new URL(route.request().url()).searchParams.get("before"))
+      if (before) beforeRequests.push(before)
+      const tailOnly = paginate && !before
+      body.events = tailOnly ? events.filter((event) => event.seq >= 3) : before ? events.filter((event) => event.seq < before) : events
+      body.has_more = tailOnly
+      body.roster = []
+      await route.fulfill({ response, json: body })
+    })
+    await page.goto("/")
+    await page.getByTestId("dest-chats").click()
+    await page.getByRole("button", { name: title, exact: true }).click()
+    const transcript = page.getByTestId("transcript")
+    const reviewNotice = transcript.getByTestId("memory-notice").filter({ hasText: review.text })
+    for (let replay = 0; replay < 3; replay++) {
+      if (replay) await reloadOpenConversation(page)
+      if (paginate) {
+        await transcript.evaluate((element) => { element.scrollTop = 0; element.dispatchEvent(new Event("scroll")) })
+        await expect.poll(() => beforeRequests.includes(3)).toBe(true)
+      }
+      await expectContinuationNotices(page, 1)
+      await expect(reviewNotice).toBeVisible()
+      if (replay === 1) paginate = true
+    }
+  })
+}

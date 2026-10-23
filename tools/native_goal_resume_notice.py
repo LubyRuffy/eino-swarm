@@ -328,8 +328,7 @@ def run(context):
     context["app_pid"] = process.pid
     context["origin"], reopened_lease = smoke.wait_engine(context, deadline)
     wait_registered_application(context, deadline)
-    for label in ("对话", title):
-        press_available(context, deadline, label)
+    press_available(context, deadline, title)
     eventually(context, deadline, lambda: capture(context, deadline, "02-reopened"), "one reopened native notice")
     after = api(context, deadline, "/api/threads/" + thread["id"] + "/log?limit=1000")
     assert_resume_events(after["events"], first["id"], second["id"])
@@ -341,7 +340,7 @@ def run(context):
                "engine_pids": [lease["pid"], reopened_lease["pid"]],
                "executable_sha256": hashlib.sha256(executable.read_bytes()).hexdigest(),
                "fixture_setup": "normal local API /goal with actual offline completion",
-               "native_actions": ["Conversations tab", "select thread", "Start goal", "close", "reopen", "Conversations tab", "select thread"],
+               "native_actions": ["Conversations tab", "select thread", "Start goal", "close", "reopen", "select thread"],
                "scope": "native Start goal, one displayed notice, both Trace events and native close/reopen; runner verifies cleanup",
                "elapsed_seconds": time.monotonic() - deadline.started}
     control(context, deadline, "close")

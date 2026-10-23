@@ -15,6 +15,51 @@ spec.loader.exec_module(notice)
 
 
 class GoalResumeNoticeAssertions(unittest.TestCase):
+    def test_reopened_chats_pane_selects_its_visible_title_without_pressing_ambiguous_navigation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = root / "private.app/Contents/MacOS/zwai"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"private fixture executable")
+            context = {"evidence": root, "timeout": 45, "ax": root / "ax", "app_pid": 123,
+                       "app": root / "private.app", "workspace": root, "data": root / "data", "case_id": "owned-case"}
+            first, second = {"id": "turn-1", "status": "done"}, {"id": "turn-2", "status": "done"}
+            pair = [{"kind": "goal_resumed", "seq": 10, "turn_id": "turn-1", "role": "human"},
+                    {"kind": "goal_continued", "seq": 11, "turn_id": "turn-2"}]
+            def api(_, __, path, body=None, method=None):
+                if path == "/api/threads":
+                    return {"threads": []}
+                if path == "/api/settings":
+                    return {"settings": {"ui": {}, "swarm": {}, "memory": {}}}
+                if path.endswith("/turns"):
+                    return {"turns": [first, second]}
+                if "/log?" in path:
+                    return {"events": pair}
+                trace = self.goal_trace(turn=path.rsplit("/", 1)[-1], objective="objective")
+                trace["events"].append(pair[0 if trace["turn"]["id"] == "turn-1" else 1])
+                return trace
+            def snapshot(target, _):
+                buttons = [{"AXRole": "AXButton", "AXTitle": label, "AXEnabled": True}
+                           for label in ("对话", "Known title", "开始目标")]
+                if target["app_pid"] == 456:
+                    buttons.append({"AXRole": "AXButton", "AXTitle": "对话", "AXEnabled": True})
+                return {"tree": buttons}
+            actions = []
+            with patch.object(notice.smoke.runner, "require_guest"), patch.object(notice.smoke, "validate_helper"), \
+                    patch.object(notice.smoke, "wait_engine", return_value=("http://127.0.0.1:1", {"pid": 999})), \
+                    patch.object(notice.smoke, "wait_window", side_effect=snapshot), \
+                    patch.object(notice.smoke.runner, "process_argv", return_value=None), \
+                    patch.object(notice, "wait_registered_application"), patch.object(notice, "api", side_effect=api), \
+                    patch.object(notice, "prepare_goal_fixture", return_value=({"id": "thread-1"}, first, "Known title", "objective")), \
+                    patch.object(notice, "control", side_effect=lambda _, __, action, value=None: actions.append((action, value))), \
+                    patch.object(notice, "capture", return_value={"captured": True}) as capture, \
+                    patch.object(notice.subprocess, "Popen", return_value=SimpleNamespace(pid=456, wait=lambda **_: 0)):
+                receipt = notice.run(context)
+            self.assertEqual(actions, [("reload", None), ("press", "对话"), ("press", "Known title"),
+                                       ("press", "开始目标"), ("close", None), ("press", "Known title"), ("close", None)])
+            self.assertEqual([call.args[2] for call in capture.call_args_list], ["01-resumed", "02-reopened"])
+            self.assertEqual(receipt["native_actions"], ["Conversations tab", "select thread", "Start goal", "close", "reopen", "select thread"])
+
     def test_api_fixture_is_selected_from_the_native_conversations_tab_before_start(self):
         with tempfile.TemporaryDirectory() as temporary:
             context = {"evidence": Path(temporary), "timeout": 45, "ax": Path("fixture")}

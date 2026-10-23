@@ -47,6 +47,34 @@ beforeEach(() => {
 afterEach(() => { dropQueued(); resetThreadHistory() })
 
 describe("goal notice projection through stored history", () => {
+  for (const outcome of [{ changed: true, notes: { add: 1 }, notify: "on" },
+                         { changed: false, err: "review failed", notify: "on" }]) {
+    const review = () => event("memory_review", 3, { turn_id: "older", agent_id: "memory-reviewer", text: JSON.stringify(outcome) })
+    for (const historyFirst of [true, false]) {
+      it(`retains the late ${outcome.err ? "failed" : "changed"} review across ${historyFirst ? "history-first" : "SSE-first"} replay with one resume`, () => {
+        const events = [resumed(), review(), continued()]
+        state.transcript = applyTail("thread", historyFirst ? events : [])
+        for (const ev of events) emit(ev)
+        if (!historyFirst) state.transcript = applyAgentLog("thread", events, state.transcript)!
+        for (const ev of events) emit(ev)
+        expect(shown()).toEqual([5])
+        expect(raw().map((row) => row.seq)).toEqual([2, 3, 5])
+        expect(visibleGoalNotices(raw()).map((row) => row.seq)).toEqual([3, 5])
+        expect(raw().find((row) => row.review)?.quiet).toBe(false)
+      })
+    }
+    it(`keeps the late ${outcome.err ? "failed" : "changed"} review while pairing a resume loaded on an older page`, () => {
+      state.transcript = applyTail("thread", [continued()])
+      state.transcript = prependOlder("thread", [review()], state.transcript)!
+      state.transcript = prependOlder("thread", [resumed()], state.transcript)!
+      expect(shown()).toEqual([5])
+      expect(raw().map((row) => row.seq)).toEqual([2, 3, 5])
+      expect(visibleGoalNotices(raw()).map((row) => row.seq)).toEqual([3, 5])
+      for (const ev of [resumed(), review(), continued()]) emit(ev)
+      expect(raw().map((row) => row.seq)).toEqual([2, 3, 5])
+    })
+  }
+
   for (const historyFirst of [true, false]) {
     it(`keeps one notice when ${historyFirst ? "history" : "live events"} arrive first and replay`, () => {
       const events = [resumed(), continued()]

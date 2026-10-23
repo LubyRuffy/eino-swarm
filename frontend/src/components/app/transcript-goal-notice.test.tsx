@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import { Transcript } from "./transcript"
 import { TraceTab } from "./trace-tab"
-import { emptyTranscript, reduceEvents, type TranscriptState } from "@/lib/transcript"
+import { emptyTranscript, reduceEvents, reviewNotice, type TranscriptState } from "@/lib/transcript"
 import type { SwarmEvent } from "@/lib/types"
 import { useApp } from "@/store/app"
 
@@ -20,6 +20,23 @@ function notices(state: TranscriptState) {
 }
 
 describe("human goal resume notices", () => {
+  for (const outcome of [{ changed: true, notes: { add: 1 }, notify: "on" },
+                         { changed: false, err: "review failed", notify: "on" }]) {
+    it(`shows the late ${outcome.err ? "failed" : "changed"} review beside one resume notice`, () => {
+      act(() => useApp.setState({ locale: "zh" }))
+      const state = reduceEvents(emptyTranscript(), [
+        event("goal_resumed", 1, { role: "human" }),
+        event("memory_review", 2, { agent_id: "memory-reviewer", text: JSON.stringify(outcome) }),
+        event("goal_continued", 3, { turn_id: "next" }),
+      ])
+      render(<Transcript state={state} loaded onSelectAgent={() => {}} />)
+      expect(screen.getAllByText("继续追求目标。")).toHaveLength(1)
+      const review = notices(state).find((row) => row.review)!
+      expect(screen.getByText(reviewNotice(review.review, "zh")!.replace(/\s+/g, " "), { selector: "p" })).toBeVisible()
+      expect(notices(state).map((row) => row.seq)).toEqual([1, 2, 3])
+    })
+  }
+
   it("shows one notice across the actual old-turn resume and new-turn continuation", () => {
     act(() => useApp.setState({ locale: "zh" }))
     const resumed = event("goal_resumed", 1, { role: "human" })
