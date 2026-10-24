@@ -167,19 +167,49 @@ func TestForwardReplacementPreservesExplicitCancellationCause(t *testing.T) {
 
 func TestForwardReplacementExpiryDoesNotClaimOrStopACompetingHolder(t *testing.T) {
 	t.Setenv("ZWAI_ENGINE_STARTUP_HELPER", "1")
+	t.Setenv("ZWAI_ENGINE_BEFORE_ACQUIRE_DELAY", "500ms")
 	t.Setenv("GORACE", "atexit_sleep_ms=0")
 	dir := t.TempDir()
-	startLeaseHolder(t, dir)
+	holder := startLeaseHolder(t, dir)
 	before := engineBootWait
 	engineBootWait = 200 * time.Millisecond
 	t.Cleanup(func() { engineBootWait = before })
 	ctx := context.WithValue(t.Context(), engineStartupPolicyKey{}, engineStartupPolicy{owner: t.Context(), forwardOnly: true})
 	_, err := spawnEngineContext(ctx, dir, "127.0.0.1:0", true)
 	var pending *engineStartupPendingError
-	if !errors.Is(err, context.DeadlineExceeded) || errors.As(err, &pending) || !lease.Busy(dir) {
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pending) || pending.PID <= 0 || pending.PID == holder.Process.Pid || !strings.Contains(err.Error(), "ownership unconfirmed") || !lease.Busy(dir) {
 		t.Fatalf("a failed child claimed or stopped the competing lease: err=%v held=%v", err, lease.Busy(dir))
 	}
 	waitForStartupBudgetGoroutines(t, "spawnEngineContext.func1(", 0)
+	body, readErr := os.ReadFile(filepath.Join(dir, "startup-helper-attempt.pid"))
+	if readErr != nil || string(body) != strconv.Itoa(pending.PID) {
+		t.Fatalf("unconfirmed error did not identify this launch's child: pid=%d attempt=%q err=%v", pending.PID, body, readErr)
+	}
+}
+
+// A child can be descheduled before taking the lock, or while publishing its
+// owner receipt. A forward-only wait cannot turn missing evidence into a kill.
+func TestForwardReplacementExpiryPreservesChildWhoseOwnershipIsNotYetKnown(t *testing.T) {
+	t.Setenv("ZWAI_ENGINE_STARTUP_HELPER", "1")
+	t.Setenv("ZWAI_ENGINE_BEFORE_ACQUIRE_DELAY", "500ms")
+	t.Setenv("GORACE", "atexit_sleep_ms=0")
+	dir := t.TempDir()
+	t.Cleanup(func() { stopStartupHelper(t, dir) })
+	before := engineBootWait
+	engineBootWait = 200 * time.Millisecond
+	t.Cleanup(func() { engineBootWait = before })
+	ctx := context.WithValue(t.Context(), engineStartupPolicyKey{}, engineStartupPolicy{owner: t.Context(), forwardOnly: true})
+	_, err := spawnEngineContext(ctx, dir, "127.0.0.1:0", true)
+	var rec lease.Record
+	waitRestartCondition(t, 5*time.Second, "unconfirmed child publishing its real lease after the cold wait", func() bool {
+		var discoverErr error
+		rec, discoverErr = lease.Discover(dir, true)
+		return discoverErr == nil
+	})
+	var pending *engineStartupPendingError
+	if !errors.Is(err, context.DeadlineExceeded) || !errors.As(err, &pending) || pending.PID != rec.PID || !strings.Contains(err.Error(), "ownership unconfirmed") || !strings.Contains(err.Error(), filepath.Join(dir, "engine.log")) {
+		t.Fatalf("missing ownership evidence became a claimed lease or omitted its diagnostics: %v", err)
+	}
 }
 
 // A successful response can finish decoding at the deadline. At that point

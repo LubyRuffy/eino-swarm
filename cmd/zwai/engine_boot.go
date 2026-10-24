@@ -129,7 +129,10 @@ func spawnEngineContext(parent context.Context, dir, addr string, mock bool) (st
 			default:
 			}
 			policy, _ := parent.Value(engineStartupPolicyKey{}).(engineStartupPolicy)
-			if policy.forwardOnly && parent.Err() == nil && !childExited && lease.Busy(dir) {
+			if policy.forwardOnly && parent.Err() == nil && !childExited {
+				// Busy cannot identify our child. It may not have attempted
+				// Acquire yet, and a current competitor can exit before it does.
+				// After handoff, only explicit cancellation may reap this child.
 				keepChild = true
 				return "", &engineStartupPendingError{PID: cmd.Process.Pid, LogPath: logPath, Cause: err}
 			}

@@ -75,9 +75,11 @@ output appended during this attempt. Historical model errors are not used as
 its cause. Explicit cancellation stops and reaps this launcher's child; ordinary cold-start
 timeout also does. After handoff ACK and stopping the old engine, the launcher
 continues waiting beyond that handoff deadline. If the replacement is still alive
-after the cold wait, it reports a pending startup with the PID and log path and
-leaves the process running;
-a competing process that owns the directory remains untouched. Cancellation
+after the cold wait, it reports a pending startup with the child's PID, log path
+and `lease ownership unconfirmed`, leaving that child running even if it has
+not attempted to acquire the lock yet. This error does not identify the current
+lease holder or establish readiness. A child losing its single acquisition
+attempt exits and is reaped; a competing holder remains untouched. Cancellation
 during a metadata probe remains authoritative over a late success or failure.
 
 Opening a **different build** (another version, or a replacement executable)

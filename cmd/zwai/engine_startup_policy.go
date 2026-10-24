@@ -15,6 +15,8 @@ type engineStartupPolicy struct {
 	forwardOnly bool
 }
 
+// engineStartupPendingError identifies only this launch's live child. It does
+// not establish lease ownership or readiness; attaching still needs Discover.
 type engineStartupPendingError struct {
 	PID     int
 	LogPath string
@@ -22,7 +24,7 @@ type engineStartupPendingError struct {
 }
 
 func (e *engineStartupPendingError) Error() string {
-	return fmt.Sprintf("engine %d is still initializing; launcher wait ended: %v; log: %s", e.PID, e.Cause, e.LogPath)
+	return fmt.Sprintf("engine child %d is still running; lease ownership unconfirmed; launcher wait ended: %v; log: %s", e.PID, e.Cause, e.LogPath)
 }
 
 func (e *engineStartupPendingError) Unwrap() error { return e.Cause }

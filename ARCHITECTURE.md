@@ -46,8 +46,12 @@ After preparation, `cmd/zwai/engine_boot.go` waits up to two minutes for cold-st
 local readiness, reporting every ten seconds. ACK and stopping the old process
 make replacement irreversible: the launcher then uses the cancellable launch
 owner instead of killing the only replacement at the handoff deadline. A live
-replacement that exceeds the cold wait remains running and yields its PID/log
-path in a pending error. Explicit cancellation reaps only this launcher's child.
+child that exceeds the cold wait remains running and yields its PID/log path
+with an ownership-unconfirmed pending error. This proves only that this launch's
+child has not exited: a busy lock may belong to a competitor, and a free lock
+does not prove the child cannot acquire it later. Successful metadata validation
+is still required before attaching. Explicit cancellation reaps only this
+launcher's child; a competing loser is reaped when its single Acquire fails.
 
 `app.New(DeferRestore:true)` constructs the engine and routes without recovering
 history. `serveEngine` listens, publishes a `restoring` lease and serves HTTP,

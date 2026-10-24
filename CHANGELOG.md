@@ -96,6 +96,7 @@ co-working app built on it. The library API is unchanged except where noted
 ### Fixed
 
 - `F-110`, `C-027`: preserve the sole replacement engine after irreversible handoff when the old launch deadline expires; explicit cancellation still reaps only the owned child. A Stop received before restoration is durable and prevents checkpoint revival.
+- `F-110`, `C-027`: a forward-only startup deadline also preserves a live child that has not acquired the lock yet. Its pending error reports the child's PID/log with lease ownership unconfirmed; a competing holder is never inferred to belong to that launch, and a losing child is naturally reaped after its acquisition fails.
 
 - `F-120`, `F-130`, `C-003`, `C-008`: opening long PC conversations paints the
   tail page before context usage and other metadata finish. The existing

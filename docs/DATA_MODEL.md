@@ -505,6 +505,12 @@ file means the next shell may take the lock. A live pid whose
 alone. `mock` is part of the lease: a `--mock` client will not attach to a
 non-mock engine.
 
+The lock's busy/free state does not identify its holder. A launcher pending
+error identifies its own still-running child only, with lease ownership
+unconfirmed; that child may not have attempted acquisition yet. It is not an
+additional persisted lease record or permission to attach without validated
+metadata.
+
 `MEMORY.md` and `SKILL.md` are plain files, written atomically through a
 temporary file and a rename, so a crash mid-write leaves the old version rather
 than half of the new one. `PLAN.md` is the `/plan` draft for that conversation:

@@ -34,6 +34,9 @@ func runStartupHelper() int {
 	if err := fs.Parse(os.Args[2:]); err != nil {
 		return 3
 	}
+	_ = os.WriteFile(filepath.Join(*dir, "startup-helper-attempt.pid"), []byte(strconv.Itoa(os.Getpid())), 0o600)
+	beforeAcquire, _ := time.ParseDuration(os.Getenv("ZWAI_ENGINE_BEFORE_ACQUIRE_DELAY"))
+	time.Sleep(beforeAcquire)
 	hold, err := lease.Acquire(*dir)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
