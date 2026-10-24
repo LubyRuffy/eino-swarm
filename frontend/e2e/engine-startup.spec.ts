@@ -98,7 +98,7 @@ test("restoration blocks schedule changes and Run now while preserving the edito
     await route.fulfill({ response, json: { ...await response.json(), startup, restore: { completed: 1, total: 3 } } })
   })
   await freshConversation(page)
-  const created = await request.post("/api/schedules", { data: { title: "Independent verification", prompt: "Inspect the assigned operation.", every_s: 3600 } })
+  const created = await request.post("/api/schedules", { data: { kind: "standalone", title: "Independent verification", prompt: "Inspect the assigned operation.", every_s: 3600 } })
   expect(created.ok()).toBe(true)
   const { schedule } = await created.json()
   try {

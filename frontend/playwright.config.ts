@@ -18,6 +18,7 @@ const loopbackModel = modelAPIError || workerRoster || goalSchedule || humanWake
 
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: "./e2e/engine-presence.ts",
   testMatch: generationInterruption ? "generation-interruption.spec.ts" : workerOwnership ? "schedule-worker-ownership.spec.ts" : builtinTools ? "builtin-tools.spec.ts" : memoryReview ? "memory-review.spec.ts" : modelAPIError ? "api-error.spec.ts" : workerRoster ? "worker-roster-history.spec.ts" : goalSchedule ? "goal-schedule.spec.ts" : humanWakePolicy ? "human-wake-policy.spec.ts" : undefined,
   timeout: 90_000,
   expect: { timeout: 20_000 },
