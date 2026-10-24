@@ -235,7 +235,8 @@ timeline before `resumed` (`err` is `the previous process stopped`) so a
 killed process does not leave the call looking live. A dangling
 `wait_agents` is closed as a timed-out wait snapshot of those ids, not as a
 stopped exec, so the manager can wait again on the live workers. Follow-ups in
-`followups` stay queued until that leftover turn finishes cleanly. Unread
+`followups` stay queued during restart until that resumed leftover turn completes
+or fails. Unread
 `[steer]` rows stay on the leftover turn unless they were retracted
 (`steer_retracted` plus `DeleteMessageByEventSeq`). An edit before the
 manager reads one rewrites that message's `content` and appends
@@ -372,7 +373,7 @@ exists is saved alongside the old one rather than overwriting it.
 ## `followups` — messages waiting for the current turn
 
 Typed while a turn is already running. They are **not** steering: the manager
-does not see them until this turn finishes cleanly and the engine starts the
+does not see them until this turn completes or fails and the engine starts the
 oldest one as the next turn. The live turn's user text is not stored as a
 follow-up. Submitting an edit of a waiting row assigns a
 new `seq` at the back of that FIFO. **Steer** on a row (or ⌘Enter on a new draft)
@@ -381,9 +382,11 @@ drops a queued copy of the same words.
 **Interrupt** on the unread-steer pin aborts the current manager tool so those
 steers drain on this turn; **Delete** retracts one unread `steer` (event stays,
 the `[steer]` message is dropped).
-Cancelled and failed turns leave the queue alone. A crash, a kill, or quitting
+Cancelled turns leave the queue alone; an error starts the next queued human
+message without changing the failed turn or schedule run. A crash, a kill, or quitting
 the app also leaves the rows: they are not in-memory, so the next start still
-lists them and flushes them after the leftover turn finishes cleanly. Deleting the conversation
+lists them and flushes them after the resumed leftover turn completes or fails.
+Deleting the conversation
 deletes leftover rows. A consumer owns delivery only after its DELETE affects one row.
 Automatic dequeue reselects the FIFO head after losing that claim to another
 consumer or a concurrent edit; reading a row alone does not authorize delivery.

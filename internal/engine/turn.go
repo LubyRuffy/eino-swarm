@@ -703,15 +703,19 @@ func (rt *runtime) run(ctx context.Context, cancel context.CancelFunc, idle chan
 	// rather than sit there looking stuck. Compact still waits on the
 	// same gate if the next Generate actually needs the briefing.
 	e.scheduleSessionAndReview(rt.threadID, turn, status, pc, res.Final)
+	pursue := !(turn.ScheduleContinue && status == store.TurnError) && shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal())
 	started := false
-	if !(turn.ScheduleContinue && status == store.TurnError) && shouldPursueAfterTurn(status, runErr, rt.pursuingOpenGoal()) {
+	if pursue {
 		started = rt.runLateSteerMessages(store.TurnDone, leftover)
-		if !started {
-			started = rt.flushFollowup(store.TurnDone)
-		}
-		if !started {
-			rt.continueGoal(store.TurnDone)
-		}
+	}
+	// A failed check must stay failed, but it does not revoke the user's
+	// separate request to run a queued message next. Automatic goal retries
+	// and unread late steers retain their existing eligibility above.
+	if !started && (pursue || status == store.TurnError) {
+		started = rt.flushFollowup(status)
+	}
+	if !started && pursue {
+		rt.continueGoal(store.TurnDone)
 	}
 }
 

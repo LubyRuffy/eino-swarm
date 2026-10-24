@@ -1,5 +1,18 @@
 # Testing
 
+## Queued human work after errors (`F-130`, `C-002`, `C-009`)
+
+`internal/engine/followup_after_error_test.go` exercises the actual Engine,
+Registry and offline HTTP model boundary. Queue while the first request is
+running, exhaust the real first-byte reconnect for a scheduled check, and assert
+independent human turns consume FIFO once while the original error, schedule run,
+unread result and future wake stay intact. Cover ordinary errors, an empty queue,
+Stop, restart and competing manual delivery. Do not broaden automatic goal retry
+to make an explicit queue pass, or initialize a fixture as already failed.
+`frontend/e2e/api-error.spec.ts` exercises the real composer, loopback model,
+queue and reload path with `ZWAI_E2E_MODEL_API_ERROR=1`; each execution owns a
+separate port, data directory and output directory.
+
 ## Long-conversation opening (`F-120`, `F-130`, `C-003`, `C-008`)
 
 Replay regressions use the real Store with tool bodies much larger than retained

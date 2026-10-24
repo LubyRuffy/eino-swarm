@@ -125,8 +125,10 @@ promotes the oldest waiting message into the current turn, then interrupts
 the current manager step so it can read that message sooner; later messages
 remain queued. Stop also leaves waiting rows in place. The selected row's
 Steer action starts it as a new turn when the PC is idle; the other rows stay
-queued while that turn runs. A later clean finish continues the FIFO, whereas
-a second Stop leaves the remaining rows waiting.
+queued while that turn runs. A later completion or failure continues the FIFO, whereas
+a second Stop leaves the remaining rows waiting. This queue runs on the paired PC;
+completion/error recovery requires the updated PC engine, not a new phone app.
+A failed scheduled check keeps its failed result and future wake.
 Select text in the PC conversation and tap **Add to chat** near the selection,
 below the system Copy/Select menu when there is room, to attach it to
 the next message. The quote appears above the box and can be read, edited, or removed before

@@ -1435,13 +1435,17 @@ when that seq is not an unread steer on this turn.
 
 ### Follow-ups
 
-A follow-up is a message typed while a turn was already running. It waits for
-that turn to finish cleanly, then starts as the next turn. The live turn's own
+A follow-up is a message typed while a turn was already running. After that
+turn completes or fails, the oldest queued human message starts as a separate
+turn. This also applies to a failed scheduled check; dequeueing does not rewrite
+its error or run result, or rearm, cancel or unpause its future wake. A failure
+without queued human input does not
+authorize an automatic retry. The live turn's own
 user text is not queued: a leftover Enter or an IME restoring the committed
 string must not schedule the same request again. ⌘Enter (and Steer on a waiting
-row) injects into this turn and drops a queued copy of that text. Cancelled and failed
-turns leave the remaining queue in place. Steer on one of those leftover rows starts
-that text as the next turn; Stop still does not flush the rest by itself. Refresh, a crash, or quitting the app does not
+row) injects into this turn and drops a queued copy of that text. Stop, cancelled
+turns and engine restart leave the remaining queue in place. Steer on a leftover
+row starts that text as the next turn; Stop does not flush the rest by itself. Refresh, a crash, or quitting the app does not
 lose it: the rows live on the conversation and run after a leftover turn
 finishes. Editing a waiting row and submitting it moves that message to the
 back of the FIFO. Pasted images are not queued (the row is text-only) — they
@@ -1717,7 +1721,7 @@ shortening only the bounded detail text.
 | `model_backoff` | a chat request is waiting for its shared upstream recovery cooldown. `agent_id` is the actual caller; `text` is JSON `{attempt,wait_ms}` (consecutive service failure generation and remaining cooldown at observation, with positive sub-millisecond waits recorded as `1`; `0` means waiting for an already active probe with unknown remaining time). This is neither a sent request nor a new retry allowance. Multiple waiters can record the same generation; only one probe is admitted after cooldown. A later failure can extend the wait. Stored in the same turn Trace and shown in the desktop Full log. |
 | `model_retry` | the manager hit a recoverable ChatModel failure and re-entered this turn. `text` is JSON `{attempt,cap,reason?}`. `reason` selects the transcript notice: `invalid_tool_json` (the model returned a tool call that was not valid JSON), `model_response_invalid` (the SDK cannot decode the model HTTP response or stream, including a wrong field type; the turn did not reach a tool), `rate_limited`, `model_unavailable` (HTTP 500/502/503/504/529), `model_transport` (dropped stream, connection reset, mid-stream read timeout), `model_idle` (silence after the first byte). Older rows omit `reason` and keep the generic retry line. `reason: "context_overflow"` is separate: the endpoint rejected the call because the prompt plus the requested output does not fit the window. That notice names the window, the turn compacts once, and a second rejection ends the turn with `the prompt plus the requested output exceeds this model's context window; automatic compact could not free enough space. Lower Max completion tokens in Settings → Swarm, or shorten the request, then retry`. A repeating schedule that ends that way is paused. When the in-turn retries are exhausted, the turn error is the same class: `the model returned a tool call that was not valid JSON`, `the model service is rate limiting requests`, `the model service is unavailable`, `the model service returned a response that could not be decoded`, or `the connection to the model service dropped`. An exhausted idle timeout keeps the sentence that names how long the model sent no data. A trailing tool call whose arguments are not valid JSON is refused before the next model request and then dropped, so that payload is not sent and a `400 Unterminated string` cannot repeat. `reason: "scheduled_no_activity"` is the scheduled-check continuation, not a model failure |
 | `title` | the conversation was named; `text` is the new title, `agent_id` is `title-namer`. Not rendered in the transcript |
-| `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done`, and does not wait for this event |
+| `session_memory` | the rolling session briefing was refreshed from the event log; `text` is JSON `{summary,through_seq}`. `agent_id` is `session-memory`. Not rendered in the transcript; compact and the reviewer read the thread fields. Post-turn refresh is background work: a queued follow-up starts as soon as the turn is `done` or `error`, and does not wait for this event |
 | `goal` | the human set or cleared a standing objective; `text` is the objective (empty when cleared). Resets complete/blocked/capped |
 | `goal_complete` | the manager called `complete_goal`; auto-continue stops. `text` is JSON `{summary}`. `reopen_goal` in the same turn records `goal_resumed`, resets the auto-continue budget, and pursuit continues |
 | `goal_blocked` | the manager called `block_goal`, or a pursuing turn had a non-recoverable failure outside the isolated scheduled-check boundary. Auto-continue stops until the human resumes. `text` is JSON `{reason}` |

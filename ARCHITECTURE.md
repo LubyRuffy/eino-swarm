@@ -18,6 +18,12 @@ engine exits after the idle grace once no presence connection is held, the
 phone hub socket is down, and no turn is running. A host that is killed
 releases `engine.lock`; the next shell takes it and resumes orphaned turns.
 
+Explicitly queued human follow-ups start in FIFO order after a turn completes
+or fails, independently of automatic goal continuation. A failed scheduled check
+keeps its failed turn/run and future wake; no queue means no new error-triggered
+turn. Stop, cancellation and restart do not auto-drain the queue. Terminal writes
+and finalization release their ownership before the next turn starts.
+
 Queued-message consumption is claimed by successful row removal: concurrent
 automatic dequeue and manual steering cannot both deliver the same row or
 discard a concurrent edit. PC queue actions coalesce pending clicks per
@@ -399,7 +405,8 @@ worker before closing SQLite.
    `from_event_seq`, which interrupts, truncates from that `user_message`,
    and starts again at that position. Ordinary Enter while running **queues a
    follow-up** (`POST /api/threads/:id/followups`) that starts as the next turn
-   after a clean finish. Clicking a waiting row deletes it and loads the
+   after completion or failure. Stop, cancellation and restart keep it queued.
+   Clicking a waiting row deletes it and loads the
    text into the composer; Enter while the turn is still running enqueues a
    new follow-up at the back. `PATCH …/followups/:fid` still rewrites one row
    in place for other clients. **Steer** / ⌘Enter injects into the current turn
@@ -777,9 +784,11 @@ worker before closing SQLite.
    if it actually needs the briefing, and emits `compacted` `phase: "start"`
    so the chrome can say so. Steering that arrived after the
    manager's last model call is not dropped — it starts a follow-up turn, and
-   takes that slot ahead of anything waiting in the follow-up table. A clean
-   `done` then pops the oldest queued follow-up and starts it; Stop and errors
-   leave those rows where they are until Steer on one row starts that text.
+   takes that slot ahead of anything waiting in the follow-up table when the
+   existing continuation rules allow it. `done` or `error` then pops the oldest
+   explicitly queued human follow-up and starts it; a failed scheduled check
+   does not otherwise start an automatic continuation. Stop, cancellation and
+   restart leave those rows waiting until an authorized later turn or Steer.
    `worker_lifecycle_facts.go` separately derives worker counts from the full
    persisted history, scoped to at most the four newest turns being summarized.
    Its `persisted_worker_lifecycle` JSON rows lead the bounded input and the
@@ -835,8 +844,8 @@ worker before closing SQLite.
    `report_schedule` `next_in_s`, refuse until `resume_agent` on those ids or
    a newer spawn has started. A shorter id is a different agent;
    `wait_agents` `unknown` is not a reason to keep the timer. Follow-ups
-   waiting in `followups` stay queued and run after the leftover turn finishes
-   cleanly. Unread `[steer]` messages stay in the leftover turn (a dangling
+   waiting in `followups` stay queued during restart and run after the resumed
+   leftover turn completes or fails. Unread `[steer]` messages stay in the leftover turn (a dangling
    `wait_agents` is completed; any other unfinished tool call is dropped; the
    steer is not). A user **Stop**
    (`cancelled`) is not resumed.

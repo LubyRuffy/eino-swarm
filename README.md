@@ -331,7 +331,11 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **Steering, not restarting.** Enter while a turn is running **queues** a
   follow-up for after this one finishes (refresh-safe; a post-turn session
   briefing or memory review does not hold that start), except the live turn's
-  own words — those are already in flight. Click a waiting row to
+  own words — those are already in flight. An ordinary error or failed scheduled
+  check also starts the next queued message, retaining the failed result and
+  future wake. Stop, cancellation and engine restart keep the queue waiting.
+  Paired phones use the PC queue, so this recovery requires the updated PC.
+  Click a waiting row to
   pull it into the composer; the row leaves, and Enter queues that draft at the back. **Steer** on
   that row, or ⌘Enter, injects into the current turn at the next model boundary
   — it does not kill an in-flight tool, and it drops a queued copy of the same

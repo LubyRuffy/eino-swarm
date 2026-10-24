@@ -53,6 +53,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Changed
 
+- `F-130`, `C-002`, `C-009`: explicitly queued human messages now start as
+  independent FIFO turns after an ordinary error or failed scheduled check.
+  Original failures and future wakes remain intact; an empty queue, Stop,
+  cancellation and restart do not trigger an extra turn (Issue #86).
+
 - `F-430`, `C-031`: native QA file-panel traversal requests a fixed five-attribute
   batch per distinct scanned node, retaining complete graph/unique Open checks
   and the existing visit, depth and eight-second bounds. Top-level success does

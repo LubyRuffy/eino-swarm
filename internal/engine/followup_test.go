@@ -411,14 +411,14 @@ func TestFlushFollowupSkipsCancelledTurns(t *testing.T) {
 	}
 	rt := e.runtimeFor(th.ID)
 	rt.flushFollowup(store.TurnCancelled)
-	rt.flushFollowup(store.TurnError)
+	rt.flushFollowup("unknown")
 	left, _ := e.Store().ListFollowups(th.ID)
 	if len(left) != 1 {
-		t.Fatalf("non-done flush drained the queue: %+v", left)
+		t.Fatalf("cancelled or unknown flush drained the queue: %+v", left)
 	}
 	turns, _ := e.Store().ListTurns(th.ID)
 	if len(turns) != 0 {
-		t.Fatalf("non-done flush started a turn: %+v", turns)
+		t.Fatalf("cancelled or unknown flush started a turn: %+v", turns)
 	}
 }
 
