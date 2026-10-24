@@ -95,6 +95,11 @@ co-working app built on it. The library API is unchanged except where noted
 
 ### Fixed
 
+- `F-110`, `C-027`: clarify the existing failed-handoff boundary: retain frozen
+  execution and retryable checkpoints, keep readable history/Trace/restart
+  diagnostics available, and never treat a surviving engine as proof that
+  workers resumed. HTTP failure/repair/retry and fatal startup cleanup now have
+  explicit offline regression evidence; production behavior is unchanged.
 - `F-110`, `C-027`: preserve the sole replacement engine after irreversible handoff when the old launch deadline expires; explicit cancellation still reaps only the owned child. A Stop received before restoration is durable and prevents checkpoint revival.
 - `F-110`, `C-027`: a forward-only startup deadline also preserves a live child that has not acquired the lock yet. Its pending error reports the child's PID/log with lease ownership unconfirmed; a competing holder is never inferred to belong to that launch, and a losing child is naturally reaped after its acquisition fails.
 

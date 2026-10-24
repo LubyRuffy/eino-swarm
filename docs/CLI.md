@@ -97,7 +97,11 @@ for the human.
 
 The launcher prints handoff/restart progress. A capable engine must acknowledge
 its durable checkpoints; storage failures stop replacement and report a
-retryable error. An older engine without handoff support gets a bounded quiet
+retryable error. Once handoff has frozen execution, failure retains that freeze
+and the captured checkpoints; it does not resume unknown external operations.
+While storage remains readable, history, Trace and restart status remain
+available. Repairing storage permits retrying the same restart request; new work
+continues to receive `409 restarting`. An older engine without handoff support gets a bounded quiet
 wait followed by automatic stop and event-based recovery. This compatibility
 path cannot recover unread in-memory worker messages that the old code never
 saved. A tool stopped with an unconfirmed outcome requires checking its actual

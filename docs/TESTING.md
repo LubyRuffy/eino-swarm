@@ -947,6 +947,28 @@ worker execution after restart while the manager remains completed and its
 future wake stays unchanged. `internal/remote/restart_test.go` prevents private
 checkpoint bodies leaving the PC. `internal/server/restart_http_test.go` covers idempotent
 HTTP acknowledgement, readable status, same-origin refusal and admission errors.
+`TestRestartStorageFailureKeepsDiagnosticsAndCanRetry` registers its private
+checkpoint-write failure callback before starting any runtime or HTTP goroutine.
+The actual offline worker reaches checkpointing; failed storage returns a
+non-success HTTP response, leaves `failed` readable with the original turn's
+Trace and rejects new work with `409 restarting`. Clearing only the atomic
+failure switch allows the same handoff to return `ready` with one original-turn
+checkpoint and no additional turn. This verifies retained diagnostics/retry,
+not continued worker execution after a failed handoff. The launcher test
+`TestReplacementStopsOnlyAfterTheCheckpointAcknowledgement` separately proves
+that a failed acknowledgement does not authorize killing the old lease holder.
+`TestNewRejectsFatalRecoveryAndClosesItsDatabase` retains a valid SQLite schema
+with an invalid integer in a thread row: migration succeeds, actual recovery
+fails decoding `ListThreads`, and `App.New` returns the fatal error and no app.
+Changing the database out of WAL mode then proves its failed app closed the SQL
+connection. Isolated source-overlay negative controls omit that cleanup and
+hide the failed restart stage; both assertions fail before testing the unchanged
+production behavior.
+
+```bash
+go test -race ./internal/app ./internal/server -run 'TestNewRejectsFatalRecoveryAndClosesItsDatabase|TestRestartStorageFailureKeepsDiagnosticsAndCanRetry' -count=1
+```
+
 `TestRestartLateWorkerToolResultStaysUnknownAfterRegistryClose` keeps late
 cancelled tool results unknown even after the registry has closed;
 `TestRestartLateUnknownReceiptKeepsItsCallIdentity` replays both unknown and

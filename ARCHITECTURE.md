@@ -29,6 +29,10 @@ The launcher prepares the checkout frontend before discovering or handing off
 an existing engine, while that engine continues serving. A preparation failure
 or cancellation returns before replacement begins. This catches build failures
 available at preparation time; the new process still validates its own startup.
+After engine handoff freezes execution, a checkpoint storage failure instead
+retains the freeze and captured checkpoints. Readable history, Trace and failed
+restart status remain available; repairing storage allows retrying the handoff
+without automatically executing unknown external operations.
 
 When a bundle needs rebuilding, `frontend/ensure.go` checks `package.json`'s
 direct dependencies and devDependencies through installed package manifests

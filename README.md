@@ -338,14 +338,17 @@ uploads, downloads and the live event stream have exactly one implementation.
 - **Automatic restart with saved progress.** Opening a newer/different build
   prepares the checkout frontend while the old engine keeps serving, then
   requests a handoff and automatically replaces the engine within a 30s
-  handoff/recovery budget. A preparation error leaves the old engine in place.
+  handoff/listener budget. A frontend preparation error leaves the old engine serving.
   Active and background sub-agents retain their IDs, histories, unread
   messages and confirmed results. Summaries are best effort under one shared
   deadline; a task does not become completed because it was summarized.
   Questions and iteration-cap pauses still wait for you. The conversation
   shows saving/saved/restored notices, and its turn ID exposes the complete
   handoff in Trace. Checkpoint failures stop replacement with an explicit
-  error. An older engine without handoff support uses bounded event-based
+  error. A failed handoff keeps execution frozen and its checkpoints retryable;
+  readable history, Trace and restart status remain available while storage can
+  be read. It does not automatically resume unknown external operations.
+  An older engine without handoff support uses bounded event-based
   recovery; its unsaved messages cannot be reconstructed.
 - **Local startup remains available while the phone hub connects.** A cold
   launch allows up to two minutes for local initialization after frontend
@@ -976,7 +979,8 @@ the terminal share one engine for that directory: the first shell starts
 it, the next one attaches, and closing a window does not stop a turn that
 is still running. A newer binary requests a durable task handoff, prints
 progress every 5s, and automatically replaces the engine within one 30s
-handoff/recovery budget after checkout frontend preparation. The old engine
+handoff/listener budget after checkout frontend preparation. Recovery follows
+listener publication. The old engine
 must acknowledge saved progress before it is stopped;
 engines without this API use bounded compatibility recovery. See
 [docs/CLI.md](docs/CLI.md).
