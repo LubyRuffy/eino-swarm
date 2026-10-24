@@ -82,6 +82,28 @@ func acknowledgedStartingEngine(t *testing.T) string {
 	return dir
 }
 
+func stopUnconfirmedStartupAttempt(t *testing.T, dir string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for startupBudgetGoroutines("spawnEngineContext.func1(") != 0 && time.Now().Before(deadline) {
+		body, err := os.ReadFile(filepath.Join(dir, "startup-helper-attempt.pid"))
+		if err == nil {
+			pid, err := strconv.Atoi(string(body))
+			if err != nil || pid <= 0 || pid == os.Getpid() {
+				t.Errorf("invalid startup attempt identity %q: %v", body, err)
+				return
+			}
+			process, err := os.FindProcess(pid)
+			if err == nil {
+				_ = process.Kill()
+			}
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	waitForStartupBudgetGoroutines(t, "spawnEngineContext.func1(", 0)
+}
+
 // A real detached child publishes after the original 30s handoff deadline.
 // The launch must still attach to that same process instead of leaving no engine.
 func TestAcknowledgedReplacementAttachesAfterTheHandoffDeadline(t *testing.T) {
@@ -171,6 +193,10 @@ func TestForwardReplacementExpiryDoesNotClaimOrStopACompetingHolder(t *testing.T
 	t.Setenv("GORACE", "atexit_sleep_ms=0")
 	dir := t.TempDir()
 	holder := startLeaseHolder(t, dir)
+	// Register after the holder so a failing assertion stops our delayed child
+	// before releasing the competing lock. Otherwise that child could acquire
+	// it during cleanup and recreate the directory after TempDir removes it.
+	t.Cleanup(func() { stopUnconfirmedStartupAttempt(t, dir) })
 	before := engineBootWait
 	engineBootWait = 200 * time.Millisecond
 	t.Cleanup(func() { engineBootWait = before })
@@ -195,6 +221,7 @@ func TestForwardReplacementExpiryPreservesChildWhoseOwnershipIsNotYetKnown(t *te
 	t.Setenv("GORACE", "atexit_sleep_ms=0")
 	dir := t.TempDir()
 	t.Cleanup(func() { stopStartupHelper(t, dir) })
+	t.Cleanup(func() { stopUnconfirmedStartupAttempt(t, dir) })
 	before := engineBootWait
 	engineBootWait = 200 * time.Millisecond
 	t.Cleanup(func() { engineBootWait = before })
