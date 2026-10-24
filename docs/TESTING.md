@@ -1007,8 +1007,47 @@ broken links without publishing a case. Independent file descriptors prove
 lock ownership during admission and release after refusal; default returns,
 interrupts, busy locks and real owner/terminal EISDIR failures are also checked.
 These are HOST metadata/ownership tests, not native behavior acceptance.
+`control.launch(args, script, *, admission=None)` also offers a single raising
+check after both driver log files open and immediately before `Popen`.
+`main(*, launch_admission=None)` passes it only to launch; the default CLI and
+existing run/resume paths gain no new gate. Rejection retains the exclusive
+claim/logs, launches no driver and creates no fake owner/terminal. Tests use the
+actual main/parser/control, real log I/O and bounded owned inert Python children;
+late log opens must refuse before publication and all test children are reaped.
+The caller keeps its original absolute visual/local deadline; return values do
+not authorize a launch and earlier outer checks do not cover the final I/O gap.
+These hooks add no CLI flags or automatic retry.
+
+`sleepwake(..., *, after_wake=None)` offers a separate raising hook after the
+original wake log is saved. It receives `(context, cycle, deadline)`, with a
+zero-based cycle and the same Deadline used by that wake wait and subsequent
+draft verification. Log/progress I/O and the callback consume that original
+budget; slow I/O cannot start a new timeout. The snapshot adapter still has its
+fixed 8-second leaf limit, with the cycle deadline checked around it. Default
+pmset commands, three-cycle policy, whole-case budgets and the owned wake-event
+cleanup stay unchanged. `test_native_macos_sleepwake.py` exercises the actual
+scenario/sleepwake path through explicit OS and business-I/O seams. This hook
+does not establish that an actor is connected or accept native sleep/wake.
+
+Snapshots without an evidence label preserve the original request/size/hash
+checks and primary-error order; only an explicit label enables the added MIME
+and raw-body capture. Both before/after revisions must be exact integers,
+not JSON booleans or floats.
+
+Campaign input bodies are recorded by `native_macos_input_evidence.py` beneath
+`http-inputs/{before,after,sent-<turn>}/{index}.body`, with separate `receipt.json`
+containing the original HTTP Content-Type, parsed MIME, metadata and body
+hash/size/path. Ordinary file metadata MIME need not equal ServeContent's HTTP
+sniff result. Image bodies must exactly match the decodable fixture and be
+decompressed to verify dimensions. `accepted_stage` reopens these original
+bodies, checks before/after/sent equality, scope/revision and HTTP/path identity,
+and refuses missing, altered, cross-case or redirected evidence. Draft image
+IDs are not required to equal permanent turn-image IDs. The module is part of
+the runtime fingerprint; old manifests lacking it refuse rather than silently
+upgrading old evidence. `test_native_macos_input_evidence.py` uses actual
+loopback HTTP and offline revalidation; this is not a native package acceptance.
 The frozen manifest includes the package, source, executable, runner, native
-helper and all scenario-module hashes. Stages recheck these inputs and their
+helper and all scenario/input-evidence module hashes. Stages recheck these inputs and their
 whole-case budgets, including cleanup; a zero scenario exit with an exceeded
 budget or missing cleanup receipt is not accepted. The long soak explicitly
 receives a longer budget rather than extending the runner's one-minute default.

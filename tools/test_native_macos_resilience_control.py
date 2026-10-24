@@ -32,8 +32,8 @@ class ControlTests(unittest.TestCase):
         manifest = dict(dependencies={}, phases=[dict(name="baseline")], selection=["baseline"], budgets={"baseline": 240}, probe=None)
         for name, field in fields.items():
             path = self.root / name; path.write_text(name); manifest[field] = digest(path)
-        for name in ("native_macos_resilience_background.py", "native_macos_resilience_worker.py",
-                     "native_macos_resilience_fault.py", "native_macos_resilience_phases.py", "native_macos_resilience_soak.py"):
+        self.assertIn("native_macos_input_evidence.py", control.DEPENDENCIES)
+        for name in control.DEPENDENCIES:
             path = self.root / name; path.write_text(name); manifest["dependencies"][name] = digest(path)
         for name in ("helper", "package.zip", "executable"):
             (self.root / name).write_text(name)
@@ -49,6 +49,11 @@ class ControlTests(unittest.TestCase):
                     manifest["dependencies"].items() if key != name}), self.root, digest)
         changed = dict(manifest, budgets={"baseline": 60})
         self.assertNotEqual(before, control.input_fingerprint(changed, self.root, digest))
+        evidence = self.root / "native_macos_input_evidence.py"
+        evidence.write_text("changed accepted-input evidence validation")
+        with self.assertRaisesRegex(RuntimeError, "inputs"):
+            control.input_fingerprint(manifest, self.root, digest)
+        evidence.write_text(evidence.name)
         (self.root / "native_macos_resilience_worker.py").write_text("changed HTTP behavior")
         with self.assertRaisesRegex(RuntimeError, "inputs"):
             control.input_fingerprint(manifest, self.root, digest)

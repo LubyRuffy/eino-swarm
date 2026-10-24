@@ -87,6 +87,19 @@ co-working app built on it. The library API is unchanged except where noted
   close their own lock. Two-process races and real filesystem failures regress
   this internal boundary; default full6 launch/resume policy is unchanged
   (Issue #94).
+- `F-430`, `C-031`: expose an optional internal launch check after both driver
+  logs open and immediately before publication, preserving default CLI and
+  run/resume behavior. Callback refusal retains the claim and original failure
+  without creating a driver. Native QA now retains actual before/after/sent
+  HTTP input bodies and separate HTTP MIME/metadata; offline stage acceptance
+  rereads them, validates exact bytes and decoded image dimensions, and binds
+  the evidence validator in the runtime fingerprint. Old case evidence remains
+  unchanged and these HOST checks do not accept native recovery (Issue #94).
+- `F-430`, `C-031`: add an optional internal after-wake callback after the
+  original wake log, sharing the original cycle Deadline with recovery checks
+  and slow I/O. The fixed 8-second snapshot leaf, pmset commands, cycle/whole-case
+  budgets and wake-event cleanup are unchanged. This exposes a QA seam without
+  claiming actor integration or native sleep/wake acceptance (Issue #94).
 
 - `F-430`, `C-031`: native QA file-panel traversal requests a fixed five-attribute
   batch per distinct scanned node, retaining complete graph/unique Open checks

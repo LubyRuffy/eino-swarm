@@ -296,6 +296,8 @@ This is the current user-facing capability map. The code and tests named below a
 ### F-430 Build and release paths
 
 - 原生 campaign 控制模块为内部调用方提供可选持锁 admission：真实取得本 campaign 的 `driver.lock` 后、首次写 owner 前运行；检查失败必须抛出异常，返回值不参与准入判定，拒绝不调用场景或改写 owner／terminal，所有退出路径关闭本次锁。旧记录拒绝策略只约束显式使用该 hook 的调用方，默认 full6 launch／resume 行为不变。关联契约：`C-031`；实现／验证：`tools/native_macos_resilience_control.py`、`tools/test_native_macos_driver_admission.py`、`tools/test_native_macos_resilience_control.py`；来源：Issue #94。
+- 内部 launch 可在双日志打开后、真实发布 driver 前执行一次 raising admission；实际 main 仅向 launch 传递，默认 CLI 和 run／resume 不变。拒绝保留 claim／日志、不发布进程，不用先前外层视觉检查掩盖最后 I/O 的过期。campaign 还保留 before／after／实际 sent 下载原体与原 HTTP MIME／元数据，accepted_stage 离线重读核验原字节、同 case 作用域与解压图像尺寸；输入证据模块也受 fingerprint 约束。这些 HOST 适配测试不等于原生恢复或 full6 通过。关联契约：`C-031`；实现／验证：`tools/native_macos_resilience_control.py`、`tools/native_macos_input_evidence.py`、`tools/test_native_macos_driver_admission.py`、`tools/test_native_macos_input_evidence.py`；来源：Issue #94。
+- 内部 sleepwake 可在原 wake 日志保存后执行可选 `after_wake(context, cycle, deadline)`，与随后恢复检查共用原周期 Deadline；慢 I/O 不累计新预算，snapshot 固定 8 秒叶边界和 pmset／周期数／清理不变。默认无 hook，不据此声称 actor 已接入或原生通过。关联契约：`C-031`；实现／验证：`tools/native_macos_resilience.py`、`tools/test_native_macos_sleepwake.py`；来源：Issue #94。
 
 - 原生恢复的每次 `verify_draft` 草稿恢复检查保留首个不成立观察和最后观察，区分 false、未知错误及未读取；只记录原调用已有值的类型、摘要和匹配判定，不复制正文或增加输入／请求。退出采证不得覆盖原异常，成功缺必要收据仍拒绝。关联契约：`C-031`、`C-034`；实现／验证：`tools/native_macos_resilience.py`、`tools/native_macos_resilience_phases.py`、`tools/test_native_macos_restore_observation.py`；来源：Issue #94。
 

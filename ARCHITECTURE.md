@@ -1482,6 +1482,10 @@ owned processes before deleting disposable state, retaining logs and cleanup
 receipts separately. A failed cleanup blocks another case. Host-side provenance
 checks do not launch or replace the user's native app. See `C-031` and
 [Testing](docs/TESTING.md#native-desktop-isolation-f-430--c-031).
+The campaign control module offers an optional final launch admission after its
+log I/O, separate from its existing ownership-lock admission. Input-body capture
+and offline stage revalidation live in `tools/native_macos_input_evidence.py`,
+which belongs to the same frozen runtime dependency set as the scenario modules.
 
 `make native-smoke` runs `tools/native_macos_smoke.py` through that same lifecycle.
 It combines readiness, an offline worker/tool run, Trace assertions, native

@@ -48,6 +48,9 @@ _phases_spec.loader.exec_module(fault_phases)
 _soak_spec = importlib.util.spec_from_file_location("resilience_soak", HERE / "native_macos_resilience_soak.py")
 soak = importlib.util.module_from_spec(_soak_spec)
 _soak_spec.loader.exec_module(soak)
+_input_spec = importlib.util.spec_from_file_location("resilience_input_evidence", HERE / "native_macos_input_evidence.py")
+input_evidence = importlib.util.module_from_spec(_input_spec)
+_input_spec.loader.exec_module(input_evidence)
 
 
 def sha256(path):
@@ -234,6 +237,7 @@ def accepted_stage(directory, name, manifest=None):
     if not result.get("input_fingerprint") or result["input_fingerprint"] != manifest.get("input_fingerprint"):
         raise RuntimeError("native stage input fingerprint differs from its campaign")
     background.accept_evidence(directory, result)
+    input_evidence.accept_stage(directory, result, fixture_png())
     if name in ("renderer", "gpu", "exhaustion"):
         fault_phases.accept_evidence(directory, result, cleanup, name, sys.modules[__name__])
     elif name == "soak":
@@ -564,54 +568,12 @@ def turn_rows(context):
     return rows
 
 
-def download_input(context, path, mime=None):
-    request = urllib.request.Request(context["origin"] + path)
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(request, timeout=3) as response:
-        if (response.url != request.full_url or response.headers.get("X-Content-Type-Options") != "nosniff"
-                or mime and response.headers.get_content_type() != mime):
-            raise RuntimeError("sent input download identity or MIME differs")
-        return response.read()
+def download_input(context, path, mime=None, *, capture=None):
+    return input_evidence.download(context, path, mime, capture)
 
 
 def validate_sent_input(context, text, draft, row, trace):
-    prefix = "/api/threads/" + urllib.parse.quote(row["thread_id"], safe="")
-    events = [event for event in trace.get("events", []) if event.get("kind") == "user_message"]
-    if len(events) != 1:
-        raise RuntimeError("sent input has no unique actual user-message event")
-    event = events[0]
-    listing = api(context["origin"], prefix + "/files")["files"]
-    paths, evidence = [], []
-    images = list(event.get("images", []))
-    for item in draft["files"]:
-        if item["kind"] == "file":
-            matches = [entry for entry in listing if entry.get("uploaded") and not entry.get("dir")
-                       and entry.get("name") == item["name"] and entry.get("size") == item["size"]]
-            if len(matches) != 1:
-                raise RuntimeError("sent attachment has no unique uploaded file")
-            path = matches[0]["path"]
-            paths.append(path)
-            url = prefix + "/download/" + urllib.parse.quote(path, safe="/")
-            data = download_input(context, url)
-        else:
-            if not images:
-                raise RuntimeError("sent image is absent from the actual visual input")
-            image = images.pop(0)
-            if image.get("mime") != item["mime"]:
-                raise RuntimeError("sent image MIME differs")
-            path = image["id"]
-            data = download_input(context, prefix + "/input-images/" + urllib.parse.quote(path, safe=""), item["mime"])
-            if data[:8] != b"\x89PNG\r\n\x1a\n" or struct.unpack(">II", data[16:24]) != (3, 2):
-                raise RuntimeError("sent image dimensions differ from the decodable fixture")
-        if len(data) != item["size"] or hashlib.sha256(data).hexdigest() != item["sha256"]:
-            raise RuntimeError("sent attachment bytes differ from the exact saved draft")
-        evidence.append(dict(item, input_path=path))
-    expected = text.strip()
-    if paths:
-        expected += "\n\nAttached files:\n" + "\n".join("- " + path for path in paths)
-    if images or row.get("user_text") != expected or event.get("text") != expected:
-        raise RuntimeError("sent input differs from the exact hydrated attachment notice")
-    atomic_json(context["evidence"] / ("sent-input-" + row["id"] + ".json"), dict(text=expected, files=evidence))
+    return input_evidence.validate_sent_input(context, text, draft, row, trace, sys.modules[__name__])
 
 
 def submit(context, text, timeout, result, expected_draft=None):
@@ -650,23 +612,8 @@ def submit(context, text, timeout, result, expected_draft=None):
     return row
 
 
-def draft_snapshot(context):
-    key = urllib.parse.quote("thread:" + context["thread_id"], safe="")
-    path = "/api/composer/drafts/" + key
-    draft = api(context["origin"], path)["draft"]
-    fault_phases.observe_restore_api(context, draft)
-    files = []
-    for item in draft.get("files", []):
-        request = urllib.request.Request(context["origin"] + path + "/files/" + item["id"])
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=3) as response:
-            if response.url != request.full_url or response.headers.get("X-Content-Type-Options") != "nosniff":
-                raise RuntimeError("draft byte download identity differs")
-            data = response.read()
-        if len(data) != item["size"]:
-            raise RuntimeError("draft attachment was truncated")
-        files.append(dict(item, sha256=hashlib.sha256(data).hexdigest()))
-    return dict(text=draft["text"], quotes=draft.get("quotes", []), files=files, state=draft["state"])
+def draft_snapshot(context, *, evidence_label=None):
+    return input_evidence.draft_snapshot(context, sys.modules[__name__], evidence_label)
 
 
 def fixture_png():
@@ -804,7 +751,7 @@ def case_shells(context):
 
 
 
-def sleepwake(context, expected, cycles, timeout, result):
+def sleepwake(context, expected, cycles, timeout, result, *, after_wake=None):
     for number in range(cycles):
         held = "awake_process" in context
         background.stop_awake(context, sys.modules[__name__])
@@ -817,18 +764,26 @@ def sleepwake(context, expected, cycles, timeout, result):
             subprocess.run([*command, "sleepnow"], check=True, capture_output=True, timeout=5)
             deadline = Deadline(timeout)
             def woke():
-                log = subprocess.check_output(["/usr/bin/pmset", "-g", "log"], timeout=10, text=True)
+                log = subprocess.check_output(["/usr/bin/pmset", "-g", "log"], timeout=min(10, deadline.remaining()), text=True)
                 delta = log[len(before):] if log.startswith(before) else ""
                 if "Entering Sleep" not in delta or not re.search(r"Wake from|Wake\s+", delta):
                     return None
                 return delta
             log = wait_for(woke, deadline)
+            deadline.remaining()
             (context["evidence"] / ("sleepwake-" + str(number) + ".log")).write_text(log)
-            verify_draft(context, expected, timeout)
-            result["snapshots"].append(snapshot(context, "wake-" + str(number)))
-            result["sleep_cycles"] = number + 1
+            deadline.remaining()
+            if after_wake is not None:
+                after_wake(context, number, deadline)
+            verify_draft(context, expected, deadline.remaining())
+            deadline.remaining()
+            image = snapshot(context, "wake-" + str(number))
+            deadline.remaining()
             atomic_json(context["evidence"] / "progress.json", dict(phase="sleepwake", sleep_cycles=number + 1,
                         case_id=context["case_id"]))
+            deadline.remaining()
+            result["snapshots"].append(image)
+            result["sleep_cycles"] = number + 1
         finally:
             removed = subprocess.run([*command, "schedule", "cancel", "wake", wake, owner], capture_output=True, timeout=5)
             scheduled = subprocess.check_output(["/usr/bin/pmset", "-g", "sched"], text=True, timeout=5)
@@ -866,6 +821,8 @@ def scenario(args):
             native(context, "press", "New conversation")
         submit(context, "Perform an offline checkpoint " + context["case_id"], args.timeout, result)
         expected = collect_draft(context, args.timeout)
+        if draft_snapshot(context, evidence_label="before") != expected:
+            raise RuntimeError("input evidence differs from the acknowledged unsent draft")
         background.start(context, sys.modules[__name__], args.timeout)
         background.resources(context, sys.modules[__name__])
         result["turn_ids"].extend(row["turn_id"] for row in context["background"].values())
@@ -898,7 +855,7 @@ def scenario(args):
         if {row["id"] for row in turn_rows(context)} != prior_turns:
             raise RuntimeError("UI recovery automatically sent an unsent draft")
         result["draft_verified"] = True
-        atomic_json(context["evidence"] / "draft-after.json", draft_snapshot(context))
+        atomic_json(context["evidence"] / "draft-after.json", draft_snapshot(context, evidence_label="after"))
         result["snapshots"].append(snapshot(context, "after"))
         background.finish(context, sys.modules[__name__], args.timeout, result)
         verify_draft(context, expected, args.timeout)
@@ -922,7 +879,7 @@ def scenario(args):
                 atomic_json(receipt, result)
 
 
-def main():
+def main(*, launch_admission=None):
     def cancel(signum, frame):
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
@@ -955,7 +912,7 @@ def main():
         return control.execute(args, campaign)
     if args.command in ("launch", "cancel"):
         require_guest()
-        row = control.launch(args, Path(__file__).resolve()) if args.command == "launch" else control.cancel(args.evidence)
+        row = control.launch(args, Path(__file__).resolve(), admission=launch_admission) if args.command == "launch" else control.cancel(args.evidence)
         print(json.dumps(row, indent=2))
         return 0
     if args.command == "scenario":

@@ -121,11 +121,11 @@ class ResilienceTests(unittest.TestCase):
         self.assertEqual(resilience.read_json(claim / "claim.json"), dict(identity="original"))
 
     def test_background_and_worker_sources_are_frozen_and_missing_or_mutated_dependencies_refuse_resume(self):
-        for name in ("native_macos_resilience_background.py", "native_macos_resilience_worker.py", "native_macos_resilience_fault.py", "native_macos_resilience_phases.py", "native_macos_resilience_soak.py"):
+        for name in ("native_macos_resilience_background.py", "native_macos_resilience_worker.py", "native_macos_resilience_fault.py", "native_macos_resilience_phases.py", "native_macos_resilience_soak.py", "native_macos_input_evidence.py"):
             (self.root / name).write_text("identified helper " + name)
         with mock.patch.object(resilience, "HERE", self.root):
             dependencies = resilience.dependency_hashes()
-            self.assertEqual(set(dependencies), {"native_macos_resilience_background.py", "native_macos_resilience_worker.py", "native_macos_resilience_fault.py", "native_macos_resilience_phases.py", "native_macos_resilience_soak.py"})
+            self.assertEqual(set(dependencies), {"native_macos_resilience_background.py", "native_macos_resilience_worker.py", "native_macos_resilience_fault.py", "native_macos_resilience_phases.py", "native_macos_resilience_soak.py", "native_macos_input_evidence.py"})
             resilience.validate_dependencies(dict(dependencies=dependencies))
             with self.assertRaisesRegex(RuntimeError, "dependencies"):
                 resilience.validate_dependencies({})
@@ -439,6 +439,7 @@ class ResilienceTests(unittest.TestCase):
         trace = dict(events=[dict(kind="user_message", text=wire, images=[dict(id="img_a", mime="image/png", name="image.png")])])
         listing = dict(files=[dict(path="uploads/input.bin", name="input.bin", size=len(binary), uploaded=True, dir=False)])
         with mock.patch.object(resilience, "api", return_value=listing), \
+                mock.patch.object(resilience.input_evidence, "retain"), \
                 mock.patch.object(resilience, "download_input", side_effect=[binary, image]) as download:
             resilience.validate_sent_input(context, text, dict(files=files), row, trace)
         self.assertEqual(download.call_args_list[0].args[1], "/api/threads/thread-a/download/uploads/input.bin")
@@ -449,6 +450,7 @@ class ResilienceTests(unittest.TestCase):
             if mutation == "duplicate": changed["events"] *= 2
             bad_row = dict(row, user_text="wrong") if mutation == "notice" else row
             with self.subTest(mutation=mutation), mock.patch.object(resilience, "api", return_value=listing), \
+                    mock.patch.object(resilience.input_evidence, "retain"), \
                     mock.patch.object(resilience, "download_input", side_effect=[b"changed" if mutation == "bytes" else binary, image]):
                 with self.assertRaisesRegex(RuntimeError, "input|attachment|image"):
                     resilience.validate_sent_input(context, text, dict(files=files), bad_row, changed)
@@ -525,9 +527,11 @@ class ResilienceTests(unittest.TestCase):
             (stage / name).write_bytes(b"PNG is validated by the guest helper")
         for name, row in [("cleanup.json", cleanup), ("resilience.json", result)]:
             resilience.atomic_json(stage / name, row)
-        with mock.patch.object(resilience.background, "accept_evidence") as background_gate:
+        with mock.patch.object(resilience.background, "accept_evidence") as background_gate, \
+                mock.patch.object(resilience.input_evidence, "accept_stage") as input_gate:
             self.assertTrue(resilience.accepted_stage(stage, "baseline", self.manifest))
             background_gate.assert_called_once_with(stage, result)
+            input_gate.assert_called_once_with(stage, result, resilience.fixture_png())
         for patch in [dict(case_id="other-case"), dict(engine_pid_after=10), dict(draft_verified=False),
                       dict(turn_ids=["turn-a"]), dict(snapshots=["missing.png"])]:
             resilience.atomic_json(stage / "resilience.json", dict(result, **patch))
@@ -586,6 +590,7 @@ class ResilienceTests(unittest.TestCase):
             manifest = dict(self.manifest, phases=resilience.phase_plan(64800,3,60))
             gate = resilience.soak if name == "soak" else resilience.fault_phases
             with mock.patch.object(resilience.background, "accept_evidence"), \
+                    mock.patch.object(resilience.input_evidence, "accept_stage"), \
                     mock.patch.object(gate, "accept_evidence") as evidence:
                 self.assertTrue(resilience.accepted_stage(stage,name,manifest))
                 evidence.assert_called_once()
